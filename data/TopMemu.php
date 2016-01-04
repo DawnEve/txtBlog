@@ -1,5 +1,6 @@
 <?php
 return array (
+  'Git' => '0',
   'html' => '0',
   'css' => '1',
   'javascript' => '2',
