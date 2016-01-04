@@ -1,6 +1,9 @@
 ===============================
 本文按时间【倒序】排列。
 ===============================
+git remote add origin git@github.com:DawnEve/txtBlog.git
+git push -u origin master
+===============================
 
 项明名：txtBlog
 devLog.txt 记录版本详细变化。
@@ -17,7 +20,8 @@ devLog.txt 记录版本详细变化。
 历史记录：
 1.独立git跟踪。
 2.增加返回顶部功能，纯css效果。 添加javascript学习记录。
-	[1]优化css参数。
+	[1]优化css参数。添加去底部按钮。
+	[2]优化底部友情链接内容及样式。
 3--
 
 

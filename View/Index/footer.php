@@ -1,9 +1,13 @@
 
 <div class='footer'><a name='footer'></a>
 	<div class=wrap>
-		&copy;2015 xxx All Rights Reserved. | 
+		Copyright &copy; 2009 - 2016 DawnEve. All Rights Reserved. | 
+		<a target='_blank' href='https://github.com/DawnEve/txtBlog'>Powered by txtBLog v0.3</a> | 
 		<a href='index.php?k=PHP'>联系我</a> | 
-		<a target='_blank' href='https://github.com/DawnEve'>My Github</a> | 
+		<a target='_blank' href='https://github.com/DawnEve'>MyGithub</a>
+		<br>
+		
+		友情链接:
 		<a target='_blank' href='http://www.ruanyifeng.com/' title='Alipay.com as an Node/JavaScript engineer.'>阮一峰</a> | 
 		<a target='_blank' href='http://www.liaoxuefeng.com/'>廖雪峰</a> | 
 		<a target='_blank' href='http://www.zhangxinxu.com/' title='腾讯ISUX。欢迎与我一同交流web前端方面的东西！'>张鑫旭</a> | 
