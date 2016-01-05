@@ -14,7 +14,7 @@
 		<div class='links'>
 			Copyright &copy; 2009 - 2016 DawnEve. All Rights Reserved. | 
 			<a target='_blank' href='https://github.com/DawnEve'>MyGithub</a> | 
-			<a href='index.php?k=PHP'>联系我</a>
+			<a class=red href='index.php?k=PHP'>联系我</a>
 		</div>
 
 

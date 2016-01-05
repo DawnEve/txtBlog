@@ -3,14 +3,12 @@ return array (
   0 => 
   array (
     0 => 1,
-    1 => 'php参考资料',
-    2 => 
-    array (
-      array( '参考资料','PHP20160104134801','html',),
-      array('打开文件','20151231165011', ),
-      array('关闭文件','20151231165012', ),
-      array('读取','20151231165013', 'txt'),
+    1 => '前言与资料',
+    2 => array (
+      array('项目描述','PHP001','html',),
+      array('参考资料','PHP002','html'),
       array('FAQ','PHP20160105','html'),
+      array('博客示例','PHP000Example','html'),
     ),
   ),
   1 => 
