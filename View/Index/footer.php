@@ -2,7 +2,7 @@
 <div class='footer'><a name='footer'></a>
 	<div class=wrap>
 		Copyright &copy; 2009 - 2016 DawnEve. All Rights Reserved. | 
-		<a target='_blank' href='https://github.com/DawnEve/txtBlog'>Powered by txtBLog v0.3</a> | 
+		Powered by <a target='_blank' href='https://github.com/DawnEve/txtBlog'>txtBLog v0.3</a> | 
 		<a href='index.php?k=PHP'>联系我</a> | 
 		<a target='_blank' href='https://github.com/DawnEve'>MyGithub</a>
 		<br>
