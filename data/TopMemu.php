@@ -12,4 +12,6 @@ return array (
   'yii' => '7',
   'Laravel' => '8',
   'JavaEE' => '9',
+  'Linux' => '10',
+  'c' => '11',
 );

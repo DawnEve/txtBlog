@@ -7,7 +7,8 @@
 
 <body>
 <div class=header>
-<h1>我的博客</h1>
+<h1>我的博客:web技术笔记</h1>
+
 <div class=nav>
 <?php
 $keyword=$arrTop['keyword'];

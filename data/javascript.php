@@ -19,6 +19,7 @@ return array (
     2 => 
     array (
 	  array('快速入门','js101','txt' ),
+	  array('函数','js102','txt' ),
 
     ),
   ),
