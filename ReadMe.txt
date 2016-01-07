@@ -27,12 +27,15 @@ devLog.txt 记录版本详细变化。
 	[3]优化a链接的颜色。
 	[4]优化顶部导航字体大小、更改博客标题、优化底部友情链接。
 3.增加访问日志功能。增加一个myAgentInfo类，一个myLog()函数; 记录到文件中。
+	[1] 增加.htaccess文件，兼容index.htm转向index.php功能，以及404页面；todo
+	
+	-- 发现日志类在ubuntu15 Firefox下报错。
 
 
+footer效果：
+https://flowplayer.org/
 
-
-
-
+http://www.zixue.it/phpvideo
 
 
 

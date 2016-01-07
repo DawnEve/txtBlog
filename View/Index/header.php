@@ -12,9 +12,10 @@
 
 <body>
 <div class=header>
-<h1>Dawn's Blog</h1>
+
 
 <div class=nav>
+<b><a class='redBg' href='index.php'>Dawn's Blog</a></b>
 <?php
 $keyword=$arrTop['keyword'];
 $top=$arrTop['data'];
