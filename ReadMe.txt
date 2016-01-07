@@ -10,6 +10,10 @@ devLog.txt 记录版本详细变化。
 访问地址：http://blog.dawneve.cc/index.php?k=PHP
 目的：建立一个能组织和阅读txt文件的博客系统。
 
+项目要具有如下特性：
+	可移动性：主体文件夹可以移动位置且不出错（discuz就不行，移动位置后头像不显示）。
+	兼容性：主流浏览器（PC端的chrome和移动端UC、腾讯浏览器）
+	可扩展性：方便扩展模块和添加功能。
 
 ================================================================
 [version 0.3] 14:45 2016/1/4
@@ -28,14 +32,29 @@ devLog.txt 记录版本详细变化。
 	[4]优化顶部导航字体大小、更改博客标题、优化底部友情链接。
 3.增加访问日志功能。增加一个myAgentInfo类，一个myLog()函数; 记录到文件中。
 	[1] 增加.htaccess文件，兼容index.htm转向index.php功能，以及404页面；todo
+		增加了blockquote的样式。
+	[] 优化代码显示样式：行内。代码段落已经可以看了。
+		添加多说评论框。
+		
 	
-	-- 发现日志类在ubuntu15 Firefox下报错。
-
-
-footer效果：
-https://flowplayer.org/
-
+	-- bug[日志类在ubuntu15 Firefox下报错。]
+	-- 二级菜单怎么做？
+	-- 伪静态怎么做？（类似与thinkPHP的域名解析功能）
+	-- 底部加入二维码。便于手机访问。
+	
+	
+	
+footer效果：https://flowplayer.org/
 http://www.zixue.it/phpvideo
+footer鲜活：http://www.iisp.com/ztview/ID_18392.html
+
+
+
+
+
+
+
+
 
 
 

@@ -30,9 +30,9 @@
 <div class="foot_top">
 	<a href="#" id="to_top">返回顶部</a>
 	<a href="#footer" id="to_top">下到底部</a>
-	
-	
 </div>
+
+
 
 </body>
 </html>
