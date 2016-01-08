@@ -34,7 +34,9 @@ devLog.txt 记录版本详细变化。
 	[1] 增加.htaccess文件，兼容index.htm转向index.php功能，以及404页面；todo
 		增加了blockquote的样式。
 	[2] 优化代码显示样式：行内。代码段落已经可以看了。
-		添加多说评论框。
+		添加多说评论框。todo:请使用者自己到多说申请，并替换掉该评论框。
+						todo:怎么做到文章id的唯一性？还要便于扩展，调整url，修改文件名，哪个才是唯一ID？
+	[3] 调整css使顶部标题为position:fixed;始终悬浮顶部。	
 		
 	
 	-- bug[日志类在ubuntu15 Firefox下报错。]

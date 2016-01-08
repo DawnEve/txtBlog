@@ -15,7 +15,7 @@ return array (
   
   array (
     0 => 1,
-    1 => '小专题',
+    1 => 'PHP小专题',
     2 => array (
       array('文件操作','PHP101','html',),
 
