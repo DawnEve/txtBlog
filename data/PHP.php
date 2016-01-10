@@ -27,11 +27,11 @@ return array (
 
   array (
     0 => 2,
-    1 => 'mysql数据库操作',
+    1 => 'mysql数据库',
     2 => 
     array (
-	  array('mysql常用操作','20151231165021', ),
-      array('select语句','20151231165022', ),
+	  array('mysql常用操作','mysql001', 'txt'),
+      array('Mysql权限管理grant','mysql002','txt' ),
       array('insert语句','20151231165023', ),
       array('update','20151231165024', ),
       array('delete','20151231165025', ),
