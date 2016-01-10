@@ -29,7 +29,8 @@ function dump($s,$d=false){
 
 
 /**
-	记录日志信息
+	记录日志信息 
+	v0.2 记录来源url 
 */
 function myLog($keyWord='',$fileName='my_log.txt'){
 	$agent=$_SERVER["HTTP_USER_AGENT"];
@@ -44,6 +45,13 @@ function myLog($keyWord='',$fileName='my_log.txt'){
 	$time=date('Y-m-d H:i:s',time());
 	//写入日志
 	$fh=fopen($fileName,'a');
+	
+	//访问来源url
+	$Referer='';
+	if(isset($_SERVER['HTTP_REFERER'])){
+		$Referer=$_SERVER['HTTP_REFERER'];
+	}
+	
 	//时间、IP地址、消息头、系统、浏览器、关键词
 	fwrite($fh,"\r\n===============================\r\n");
 	fwrite($fh,"{$time}------IP: {$ip}\r\n");
@@ -54,6 +62,8 @@ function myLog($keyWord='',$fileName='my_log.txt'){
 	fwrite($fh,"{$browser}\r\n");
 	fwrite($fh,"-------------------------------\r\n");
 	fwrite($fh,"keyWord: {$keyWord}\r\n");
+	fwrite($fh,"-------------------------------\r\n");
+	fwrite($fh,"from: {$Referer}\r\n");
 	fwrite($fh,"===============================\r\n");
 	//关闭文件
 	fclose($fh);
