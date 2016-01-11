@@ -19,6 +19,7 @@ return array (
     2 => array (
       array('文件操作','PHP101','html',),
       array('浏览追踪','PHP102','html',),
+      array('php函数和类','PHP103','html',),
 
     ),
   ),
@@ -30,11 +31,10 @@ return array (
     1 => 'mysql数据库',
     2 => 
     array (
-	  array('mysql常用操作','mysql001', 'txt'),
-      array('Mysql权限管理grant','mysql002','txt' ),
-      array('insert语句','20151231165023', ),
-      array('update','20151231165024', ),
-      array('delete','20151231165025', ),
+		array('项目描述','mysql001','html',),
+		array('mysql常用操作','mysql101', 'txt'),
+		array('Mysql权限管理grant','mysql102','txt' ),
+		array('Mysql优化指南','mysql103', 'txt'),
     ),
   ),
   

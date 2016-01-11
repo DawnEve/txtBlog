@@ -10,6 +10,9 @@
 			<a target='_blank' href='http://www.runoob.com/' title=''>菜鸟教程网</a> | 
 			<a target='_blank' href='https://www.v2ex.com/' title='V2EX 是一个关于分享和探索的地方。创意工作者们的社区'>v2ex</a> | 
 			<a target='_blank' href='http://www.nowamagic.net/' title='其实每个程序员都是魔法师。'>简明现代魔法</a> | 
+			<a target='_blank' href='http://segmentfault.com/' title='中文编程问答'>segmentfault</a> | 
+			<a target='_blank' href='http://tool.oschina.net/apidocs' title='oschina编程API手册'>API手册</a> | 
+			<a target='_blank' href='http://www.ycku.com/course/' title='瓢城Web俱乐部'>李炎恢</a> | 
 		</div>
 		
 		<div class='links'>
