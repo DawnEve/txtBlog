@@ -13,6 +13,7 @@
 			<a target='_blank' href='http://segmentfault.com/' title='中文编程问答'>segmentfault</a> | 
 			<a target='_blank' href='http://tool.oschina.net/apidocs' title='oschina编程API手册'>API手册</a> | 
 			<a target='_blank' href='http://www.ycku.com/course/' title='瓢城Web俱乐部'>李炎恢</a> | 
+			<a target='_blank' href='http://www.kancloud.cn/explore' title=''>看云文档</a> | 
 		</div>
 		
 		<div class='links'>
