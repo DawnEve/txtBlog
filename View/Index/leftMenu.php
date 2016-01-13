@@ -62,8 +62,11 @@ function n(s){
 
 //左侧菜单toggle
 var oUl=$('leftpanel');
-var aTitle=oUl.getElementsByClassName('title');
-var aSubMenu=oUl.getElementsByClassName('submenu');
+
+//getElementsByClassName不兼容IE8-。用到了common.js中定义的函数getElementsByClassName
+var aTitle=getElementsByClassName('title',oUl);
+var aSubMenu=getElementsByClassName('submenu',oUl);
+
 
 for(var i=0;i<aTitle.length;i++){
 	var oTitle=aTitle[i];
