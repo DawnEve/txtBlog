@@ -135,92 +135,95 @@ class myAgentInfo{
 	}
 	
 	
-	//testing
+	/**
+		正在使用。获取浏览器版本信息
+	*/
 	function getBrowser_2(){
-     //global $_SERVER;
-     $Agent = $_SERVER['HTTP_USER_AGENT']; 
-	 
-     $browser = '';
-     $browserver = '';
-     $Browsers = array('Lynx', 'MOSAIC', 'AOL', 'Opera', 'JAVA', 'MacWeb', 'WebExplorer', 'OmniWeb','Safari','Chrome','MQQBrowser'); 
-     for($i = 0; $i <count($Browsers); $i ++){
-         if(strpos($Agent, $Browsers[$i])){
-             $browser = $Browsers[$i]; 
-             $browserver = '';
-         }
-     }
-	 
-	 	 
-	 
-     if(preg_match('/Mozilla/', $Agent) && preg_match('/MSIE/', $Agent)){
-         $temp = explode('(', $Agent);
-         $Part = $temp[1]; 
-         $temp = explode(';', $Part);
-         $Part = $temp[1];
-         $temp = explode(' ', $Part);
-         $browserver = $temp[2]; 
-         $browser = 'Internet Explorer';
-     }
-	 elseif(preg_match('/Mozilla/', $Agent) && preg_match('/Firefox/', $Agent)){
-         $temp = explode('(', $Agent);
-         $Part = $temp[1]; 
-         $temp = explode(';', $Part); 
-         $Part = $temp[1];
-         $temp = explode(' ', $Part); 
-         $browserver = $temp[3]; 
-		 $browserver = preg_replace('/(Firefox\/)/', '', $browserver);
-         $browser = 'Firefox';
-     }
-	 
-	 elseif(preg_match('/Mozilla/', $Agent) && preg_match('/MQQBrowser/', $Agent)){
-         $temp = explode('(', $Agent); 
-         $Part = $temp[2]; 
-         $temp = explode(')', $Part); 
-         $Part = $temp[1];
-         $temp = explode(' ', $Part);
-         $browserver = $temp[1]; 
-         $browserver = preg_replace('/(MQQBrowser\/)/','',$browserver);
-         $browser = 'MQQBrowser';
-     }
-	 elseif(preg_match('/Mozilla/', $Agent) && preg_match('/UCBrowser/', $Agent)){
-         $temp = explode('(', $Agent); 
-         $Part = $temp[2]; 
-         $temp = explode(')', $Part); 
-         $Part = $temp[1];
-         $temp = explode(' ', $Part);
-         $browserver = $temp[2]; 
-         $browserver = preg_replace('/(UCBrowser\/)/','',$browserver);
-         $browser = 'UCBrowser';
-     }
-	 
-     elseif(preg_match('/Mozilla/', $Agent) && preg_match('/Safari/', $Agent) && (!preg_match('/Chrome/', $Agent)) ) {
-         $temp = explode('(', $Agent); 
-         $Part = $temp[2]; 
-         $temp = explode(')', $Part);
-         $browserver = $temp[1];
-         $temp = explode(' ', $browserver); 
-         $browserver = $temp[2]; 
-         $browserver = preg_replace('/(Safari\/)/', '', $browserver);
-         $browser = 'Safari'; 
-     }
-     elseif(preg_match('/Mozilla/', $Agent) && preg_match('/Chrome/', $Agent)){
-         $temp = explode('(', $Agent); 
-         $Part = $temp[2]; 
-         $temp = explode(')', $Part); 
-         $Part = $temp[1];
-         $temp = explode(' ', $Part);
-         $browserver = $temp[1];  
-         $browserver = preg_replace('/(Chrome\/)/','',$browserver);
-         $browser = 'Chrome';
-     }
-	 
-     
-	 if($browser != ''){
-         $browseinfo = $browser.' '.$browserver;
-     } else {
-         $browseinfo = 'unknow';
-     }
-	 
+		 //global $_SERVER;
+		 $Agent = $_SERVER['HTTP_USER_AGENT']; 
+		 
+		 $browser = '';
+		 $browserver = '';
+		 $Browsers = array('Lynx', 'MOSAIC', 'AOL', 'Opera', 'JAVA', 'MacWeb', 'WebExplorer', 'OmniWeb','Safari','Chrome','MQQBrowser'); 
+		 for($i = 0; $i <count($Browsers); $i ++){
+			 if(strpos($Agent, $Browsers[$i])){
+				 $browser = $Browsers[$i]; 
+				 $browserver = '';
+			 }
+		 }		 
+		
+		//获取浏览器型号和版本号
+		if(preg_match('/Mozilla/', $Agent) && preg_match('/MSIE/', $Agent)){
+			$temp = explode('(', $Agent);
+			$Part = $temp[1]; 
+			$temp = explode(';', $Part);
+			$Part = $temp[1];
+			$temp = explode(' ', $Part);
+			$browserver = $temp[2]; 
+			$browser = 'Internet Explorer';
+		}elseif(preg_match('/Mozilla/', $Agent) && preg_match('/Firefox/', $Agent)){
+			$temp = explode('(', $Agent); //[0] =>Mozilla/5.0	[1] =>Windows NT 6.1; WOW64; rv:31.0) Gecko/20100101 Firefox/31.0
+			$Part = $temp[1]; //Windows NT 6.1; WOW64; rv:31.0) Gecko/20100101 Firefox/31.0
+			$temp = explode(')', $Part); //[0] => Windows NT 6.1; WOW64; rv:31.0	[1] =>  Gecko/20100101 Firefox/31.0
+			$Part = $temp[1];// Gecko/20100101 Firefox/31.0
+			$temp = explode(' ', $Part);  // [0] =>     [1] => Gecko/20100101    [2] => Firefox/31.0
+			$browserver = $temp[2]; //Firefox/31.0
+			$browserver = preg_replace('/(Firefox\/)/', '', $browserver);//31.0
+			$browser = 'Firefox';
+		}elseif(preg_match('/Mozilla/', $Agent) && preg_match('/MQQBrowser/', $Agent)){
+			$temp = explode('(', $Agent); 
+			$Part = $temp[2]; 
+			$temp = explode(')', $Part); 
+			$Part = $temp[1];
+			$temp = explode(' ', $Part);
+			$browserver = $temp[1]; 
+			$browserver = preg_replace('/(MQQBrowser\/)/','',$browserver);
+			$browser = 'MQQBrowser';
+		}elseif(preg_match('/Mozilla/', $Agent) && preg_match('/UCBrowser/', $Agent)){
+			$temp = explode('(', $Agent); 
+			$Part = $temp[2]; 
+			$temp = explode(')', $Part); 
+			$Part = $temp[1];
+			$temp = explode(' ', $Part);
+			$browserver = $temp[2]; 
+			$browserver = preg_replace('/(UCBrowser\/)/','',$browserver);
+			$browser = 'UCBrowser';
+		}elseif(preg_match('/Mozilla/', $Agent) && preg_match('/Safari/', $Agent) && (!preg_match('/Chrome/', $Agent)) ) {
+			$temp = explode('(', $Agent); 
+			$Part = $temp[2]; 
+			$temp = explode(')', $Part);
+			$browserver = $temp[1];
+			$temp = explode(' ', $browserver); 
+			$browserver = $temp[2]; 
+			$browserver = preg_replace('/(Safari\/)/', '', $browserver);
+			$browser = 'Safari'; 
+		}elseif(preg_match('/Mozilla/', $Agent) && preg_match('/Chrome/', $Agent)){
+			$temp = explode('(', $Agent); 
+			$Part = $temp[2]; 
+			$temp = explode(')', $Part); 
+			$Part = $temp[1];
+			$temp = explode(' ', $Part);
+			$browserver = $temp[1];  
+			$browserver = preg_replace('/(Chrome\/)/','',$browserver);
+			$browser = 'Chrome';
+		}elseif(preg_match('/Mozilla/', $Agent) && preg_match('/Baiduspider/', $Agent)){
+			$temp = explode('(', $Agent); 
+			// [0] => Mozilla/5.0 	    [1] => compatible; Baiduspider/2.0; +http://www.baidu.com/search/spider.html)
+			$Part = $temp[1]; 
+			$temp = explode(';', $Part); 
+			//  [0] => compatible	    [1] =>  Baiduspider/2.0	    [2] =>  +http://www.baidu.com/search/spider.html)
+			$browserver = $temp[1];  
+			$browserver = preg_replace('/(Baiduspider\/)/','',$browserver);
+			$browser = 'Baiduspider';
+		}
+		 
+		//拼装字符串
+		if($browser != ''){
+			$browseinfo = $browser.' '.$browserver;
+		} else {
+			$browseinfo = 'unknow';
+		}
+
 		return $browseinfo;
      }
 	
@@ -286,6 +289,9 @@ class myAgentInfo{
 			$os = 'Windows 8.1';
 		 }
 		 elseif (preg_match('/win/i', $agent) && preg_match('/nt 6.4/i', $agent)){
+			$os = 'Windows 10';
+		 }
+		 elseif (preg_match('/win/i', $agent) && preg_match('/NT 10.0/i', $agent)){
 			$os = 'Windows 10';
 		 }
 		 elseif (preg_match('/win/i', $agent) && preg_match('/nt 6/i', $agent)){
