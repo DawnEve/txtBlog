@@ -2,9 +2,12 @@
 /******************************************
 * 我自己的框架: dawnPHP v0.1.0
 * 
-* 需要把库文件的地址定义为常量 define("DAWN_PATH","D:/xampp/dawnPHP/");
-* 然后引用该库头文件 include('dawnPHP/mylib.php');
+* 引用该库入口文件即可 include('dawnPHP/door.php');
 ******************************************/
+
+//定义入口文件位置
+defined('DAWN_PATH') or define('DAWN_PATH', dirname(__file__) .'/' );
+
 //1.定义字符集
 header("Content-type: text/html; charset=utf-8");
 //2.检测入口合法性

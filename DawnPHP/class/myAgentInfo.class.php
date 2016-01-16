@@ -142,6 +142,9 @@ class myAgentInfo{
 		 //global $_SERVER;
 		 $Agent = $_SERVER['HTTP_USER_AGENT']; 
 		 
+		 //$Agent='Mozilla/5.0 (compatible; bingbot/2.0; +http://www.bing.com/bingbot.htm)';
+		 //$Agent='Mozilla/5.0 (compatible; Googlebot/2.1; +http://www.google.com/bot.html))';
+		 
 		 $browser = '';
 		 $browserver = '';
 		 $Browsers = array('Lynx', 'MOSAIC', 'AOL', 'Opera', 'JAVA', 'MacWeb', 'WebExplorer', 'OmniWeb','Safari','Chrome','MQQBrowser'); 
@@ -215,6 +218,20 @@ class myAgentInfo{
 			$browserver = $temp[1];  
 			$browserver = preg_replace('/(Baiduspider\/)/','',$browserver);
 			$browser = 'Baiduspider';
+		}elseif(preg_match('/Mozilla/', $Agent) && preg_match('/bingbot/', $Agent)){
+			$temp = explode('(', $Agent); 
+			$Part = $temp[1]; 
+			$temp = explode(';', $Part); 
+			$browserver = $temp[1];  
+			$browserver = preg_replace('/(bingbot\/)/','',$browserver);
+			$browser = 'bingbot';
+		}elseif(preg_match('/Mozilla/', $Agent) && preg_match('/Googlebot/', $Agent)){
+			$temp = explode('(', $Agent); 
+			$Part = $temp[1]; 
+			$temp = explode(';', $Part); 
+			$browserver = $temp[1];  
+			$browserver = preg_replace('/(Googlebot\/)/','',$browserver);
+			$browser = 'Googlebot';
 		}
 		 
 		//拼装字符串
@@ -227,7 +244,7 @@ class myAgentInfo{
 		return $browseinfo;
      }
 	
-	
+	/*
 	//获取操作系统类型：很粗糙
 	function getOS_2(){
 		$agent = strtolower($_SERVER['HTTP_USER_AGENT']);
@@ -252,7 +269,7 @@ class myAgentInfo{
 		}
 			return $platform;
 	}
-	
+	*/
 	
 	
 	
@@ -395,10 +412,16 @@ class myAgentInfo{
 		return $browseragent." ".$browserversion;
 	}
 	
-	
-	// 同理获取访问用户的浏览器的信息
+	/**
+		正在使用。
+·		获取操作系统信息
+	*/
 	function getOS_3() {
 		$Agent = $_SERVER['HTTP_USER_AGENT'];
+		
+		//$Agent='Mozilla/5.0 (Windows NT 10.0; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/47.0.2526.106 Safari/537.36';
+		//$Agent='Mozilla/5.0 (iPhone; CPU iPhone OS 5_0 like Mac OS X) AppleWebKit/534.46 (KHTML, like Gecko) Version/5.1 Mobile/9A334 Safari/7534.48.3';
+		
 		$browserplatform='';
 		if (preg_match('/win/i',$Agent) && strpos($Agent, '95')) {
 			$browserplatform="Windows 95";
@@ -421,13 +444,14 @@ class myAgentInfo{
 		elseif (preg_match('/win/i',$Agent) && preg_match('/nt 6.1/i',$Agent)) {
 			$browserplatform="Windows 7";
 		}
+		elseif (preg_match('/win/i',$Agent) && preg_match('/nt 10.0/i',$Agent)) {
+			$browserplatform="Windows 10";
+		}
 		elseif (preg_match('/win/i',$Agent) && preg_match('/32/',$Agent)) {
 			$browserplatform="Windows 32";
 		}
 		elseif (preg_match('/win/i',$Agent) && preg_match('/nt/i',$Agent)) {
 			$browserplatform="Windows NT";
-		}elseif (preg_match('/Mac OS/i',$Agent)) {
-			$browserplatform="Mac OS";
 		}
 		elseif (preg_match('/Android/i',$Agent)) {
 			$version='';
@@ -458,9 +482,17 @@ class myAgentInfo{
 		elseif (preg_match('/ibm/i',$Agent) && preg_match('/os/i',$Agent)) {
 			$browserplatform="IBM OS/2";
 		}
+		elseif (preg_match('/iPhone/i',$Agent) && preg_match('/os/i',$Agent)) {
+			dump($Agent);
+			$browserplatform="iPhone";
+		}
 		elseif (preg_match('/Mac/i',$Agent) && preg_match('/PC/i',$Agent)) {
 			$browserplatform="Macintosh";
 		}
+		elseif (preg_match('/Mac OS/i',$Agent)) {
+			$browserplatform="Mac OS";
+		}
+		
 		elseif (preg_match('/PowerPC/i',$Agent)) {
 			$browserplatform="PowerPC";
 		}
