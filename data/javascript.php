@@ -31,6 +31,19 @@ return array (
     2 => 
     array (
 	  array('字符串处理','js201','txt' ),
+	  array('dom操作','js202','txt' ),
+	  array('bom操作','js203','txt' ),
+
+    ),
+  ),
+  
+   
+  array (
+    0 => 2,
+    1 => 'nodeJS',
+    2 => 
+    array (
+	  array('项目描述','node001','html' ),
 
     ),
   ),

@@ -22,6 +22,7 @@ function addContents(){
 	oContent.insertBefore( oDiv, oPre);
 }
 
+//风险：修改的时候防止被覆盖！
 window.onload=function(){
 	addContents();
 }
