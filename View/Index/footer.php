@@ -33,9 +33,9 @@
 		<div class='links'>
 			Copyright &copy; 2009 - 2016 DawnEve. All Rights Reserved. | 
 			<a target='_blank' href='https://github.com/DawnEve'>Folk me on Github</a> | 
-			<a class=red href='index.php?k=PHP'>Contact me</a>
+			<a class=red href='index.php?k=PHP'>Contact me</a> | 
+			<a href='http://pan.baidu.com/s/1i3imHpF' title='密码:qa53'>web tools</a>
 		</div>
-
 
 		<div class='small fade'>
 			♥ Do have faith in what you're doing. 

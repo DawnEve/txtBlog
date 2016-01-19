@@ -44,6 +44,7 @@ return array (
     2 => 
     array (
 	  array('项目描述','node001','html' ),
+	  array('入门简介','node002','txt' ),
 
     ),
   ),
