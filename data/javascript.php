@@ -44,7 +44,20 @@ return array (
     2 => 
     array (
 	  array('项目描述','node001','html' ),
-	  array('入门简介','node002','txt' ),
+	  array('入门简介篇','node002','txt' ),
+	  array('项目实战篇','node003','txt' ),
+
+    ),
+  ),
+  
+     
+  array (
+    0 => 2,
+    1 => 'mongoDB',
+    2 => 
+    array (
+	  array('项目描述','mongoDB001','html' ),
+	  array('入门简介篇','mongoDB002','txt' ),
 
     ),
   ),
