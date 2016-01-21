@@ -33,6 +33,11 @@ for($i=0; $i<count($arrLeft['data']);$i++){
 			    $fileType='html';
 			}
 			$trueFileName .= '.' . $fileType;
+			
+			//如果是txt，则引入txt.js文件
+			if($fileType=='txt'){
+				echo '<script type="text/javascript" src="/public/js/txt.js"></script>';
+			}
 		}
 		//这是文件说明
 		$fname=$two[$j][0];

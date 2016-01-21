@@ -18,6 +18,8 @@ return array (
     2 => 
     array (
 	  array('十大常用命令','Linux101', 'txt'),
+	  array('VIM常用命令','vim001', 'txt'),
+	  array('sublime编辑器','sublime001', 'html'),
     ),
   ),
   

@@ -9,6 +9,7 @@ return array (
       array('参考资料','PHP002','html'),
       array('FAQ','PHP20160105-003','html'),
       array('博客示例','PHP000Example','html'),
+      array('语言之争','PHP003-1','txt'),
     ),
   ),
   
@@ -22,7 +23,7 @@ return array (
       array('php函数和类','PHP103','html',),
 
       array('smarty3简介','smarty001','html',),
-      array('smarty3入门','smarty104','txt'),
+      array('smarty3入门','smarty102','txt'),
     ),
   ),
   

@@ -1,6 +1,6 @@
 <?php
 return array (
-  0 => 
+ 
   array (
     0 => 1,
     1 => '前言与资料',
@@ -12,7 +12,7 @@ return array (
 
     ),
   ),
-  1 => 
+ 
   array (
     0 => 2,
     1 => '入门教程',
@@ -23,4 +23,46 @@ return array (
 
     ),
   ),
+  
+   
+  array (
+    0 => 2,
+    1 => '常用工具函数',
+    2 => 
+    array (
+	  array('字符串处理','js201','txt' ),
+	  array('dom操作','js202','txt' ),
+	  array('bom操作','js203','txt' ),
+
+    ),
+  ),
+  
+   
+  array (
+    0 => 2,
+    1 => 'nodeJS',
+    2 => 
+    array (
+	  array('项目描述','node001','html' ),
+	  array('入门简介篇','node002','txt' ),
+	  array('项目实战篇','node003','txt' ),
+
+    ),
+  ),
+  
+     
+  array (
+    0 => 2,
+    1 => 'mongoDB',
+    2 => 
+    array (
+	  array('项目描述','mongoDB001','html' ),
+	  array('入门简介篇','mongoDB002','txt' ),
+
+    ),
+  ),
+  
+  
+  
+  
 );
