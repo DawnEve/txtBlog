@@ -36,6 +36,18 @@ return array (
 
     ),
   ),
+   
+   
+  array (
+    0 => 2,
+    1 => 'jQuery',
+    2 => 
+    array (
+	  array('项目描述','jQuery001','html' ),
+
+
+    ),
+  ),
   
    
   array (
