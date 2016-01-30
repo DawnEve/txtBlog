@@ -18,7 +18,8 @@ return array (
     0 => 1,
     1 => '基础操作',
     2 => array (
-      array('入门1','thinkPHP004-20151231210012','txt' ),
+      array('入门篇','thinkPHP004-20151231210012','txt' ),
+      array('进阶篇','thinkPHP005-20160130201400','txt' ),
     ),
   ),
 
