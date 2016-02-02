@@ -1,6 +1,5 @@
 <?php
 //引用库
-define("DAWN_PATH","F:/xampp/htdocs/txtBlog/DawnPHP/");
 include('DawnPHP/door.php');
 
 //获取数据

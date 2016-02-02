@@ -5,14 +5,13 @@
 * 引用该库入口文件即可 include('dawnPHP/door.php');
 ******************************************/
 
-//定义入口文件位置
-defined('DAWN_PATH') or define('DAWN_PATH', dirname(__file__) .'/' );
 
 //1.定义字符集
 header("Content-type: text/html; charset=utf-8");
+
 //2.检测入口合法性
-//定义入口路径示例 define("DAWN_PATH","D:/xampp/htdocs/php/php_user/dawnPHP/");
-defined('DAWN_PATH') or die('DAWN_PATH not defined.');
+defined('DAWN_PATH') or define('DAWN_PATH', dirname(__file__) .'/' );
+
 //3.设置时区
 date_default_timezone_set('PRC');
 //date_default_timezone_set('Asia/Shanghai');
