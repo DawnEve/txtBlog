@@ -15,8 +15,8 @@ return array (
   
 	'yii' => '美国人写的框架',
   //暂时没有内容
-    'phpCMS' => '一个流行的MVC内容管理系统',
+  //  'phpCMS' => '一个流行的MVC内容管理系统',
   'symfony' => '很经典的设计，被Laravel借鉴了好多。',
   'Laravel' => '巨匠级的php开发框架',
-  'ZF' => 'ZendFramework很重，耦合度很低。',
+  //'ZF' => 'ZendFramework很重，耦合度很低。',
 );

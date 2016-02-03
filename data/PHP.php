@@ -53,7 +53,6 @@ return array (
       array('项目描述','PHP001','html',),
       array('参考资料','PHP002','html'),
       array('FAQ','PHP20160105','html'),
-      array('博客示例','PHP000Example','html'),
     ),
   ),
   
@@ -61,28 +60,12 @@ return array (
 
   array (
     0 => 2,
-    1 => 'CI',
+    1 => 'phpCMS',
     2 => 
     array (
-      array('项目描述','PHP001','html',),
-      array('参考资料','PHP002','html'),
-      array('FAQ','PHP20160105','html'),
-      array('博客示例','PHP000Example','html'),
-    ),
-  ),
-  
-    
-  
-
-  array (
-    0 => 2,
-    1 => 'yii',
-    2 => 
-    array (
-      array('项目描述','PHP001','html',),
-      array('参考资料','PHP002','html'),
-      array('FAQ','PHP20160105','html'),
-      array('博客示例','PHP000Example','html'),
+      array('项目描述','phpCMS001','html',),
+      array('参考资料','phpCMS002','html'),
+      array('FAQ','phpCMS003','html'),
     ),
   ),
   
@@ -97,7 +80,6 @@ return array (
       array('项目描述','PHP001','html',),
       array('参考资料','PHP002','html'),
       array('FAQ','PHP20160105','html'),
-      array('博客示例','PHP000Example','html'),
     ),
   ),
   
