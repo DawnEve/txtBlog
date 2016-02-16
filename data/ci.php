@@ -12,6 +12,15 @@ return array (
   ),
   
   
+  array (
+    0 => 1,
+    1 => '入门介绍',
+    2 => array (
+      array('MVC简介','ci101','txt',),
+    ),
+  ),
+  
+  
   
   
 );
