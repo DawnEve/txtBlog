@@ -171,11 +171,12 @@ echo 'text from user->index view';
 ========================================
 ci超级对象中的load加载器
 ----------------------------------------
-我们在任意控制器方法中使用var_dump打印this，看ci为我们做了什么？
+1.我们在任意控制器方法中使用var_dump打印this，看ci为我们做了什么？
 	public function index4(){
 		echo '<pre>';
 		var_dump($this);
 	}
+	
 访问 http://wjl.com/ci3/index.php/user/index4显示好几十屏幕内容：
 object(User)#12 (12) {
   ["benchmark"]=>
@@ -196,6 +197,116 @@ object(User)#12 (12) {
 ... ...
 
 
+2.$this有一个load方法，我们看一下细节：
+	public function index5(){
+		echo '<pre>';
+		var_dump($this->load);
+	}
+
+访问http://wjl.com/ci3/user/index5，可见一屏幕细节：
+object(CI_Loader)#13 (10) {
+  ["_ci_ob_level":protected]=>
+  int(1)
+  ["_ci_view_paths":protected]=>
+  array(1) {
+    ["D:\xampp\htdocs\ci3\application\views\"]=>
+    bool(true)
+  }
+  ["_ci_library_paths":protected]=>
+  array(2) {
+    [0]=>
+    string(32) "D:\xampp\htdocs\ci3\application\"
+    [1]=>
+    string(27) "D:/xampp/htdocs/ci3/system/"
+  }
+  ["_ci_model_paths":protected]=>
+  ...
+  
+ 由第一行object(CI_Loader)可知，$this->load是CI_Loader的是一个实例。
+ 
+	$this->load
+		装载器类（system/core/Loader.php中的class CI_Loader 类）的实例
+		CI_Loader定义了很多方法，上文用过view和vars两个。
+		- view()	装载视图
+		- vars	分配变量到视图
+		- database() 装载数据库操作对象 system/database文件夹下
+		- model()	装载模型对象
+		- helper()	辅助类	system/helpers文件夹下
+ 
+[?]ci会在某个地方自动实例化一个CI_Loader对象，放到超级对象的属性中：
+	$obj=new CI_Loader(); 
+	$this->load=$obj;
+	//然后以后调用CI_Loader中的方法时，
+	$this->load->view();//表明load确实是ci装载器的一个实例
+
+
+3.$this有一个url方法，我们看一下细节：
+ 
+	public function index6(){
+		echo '<pre>';
+		var_dump($this->uri);
+	}
+访问：http://wjl.com/ci3/user/index6，输出：
+ object(CI_URI)#6 (6) {
+  ["keyval"]=>
+  array(0) {
+  }
+  ["uri_string"]=>
+  string(11) "user/index6"
+  ["segments"]=>
+  array(2) {
+    [1]=>
+    string(4) "user"
+    [2]=>
+    string(6) "index6"
+  }
+ ...
+ 
+ 从第一行object(CI_URI)可知，
+ 
+ $this->uri
+	是CI_URI类（system/core/URI.php中）的一个实例。
+	提供的方法是url相关的方法，作用是Parses URIs and determines routing。
+	
+	- segment()	用于获取url中的第n个参数，基于分段获取
+		index.php/控制器/操作/参数1/参数2/参数3/...
+		
+	
+例1：使用segment()方法获取参数。
+使用url获取参数的例子：
+	//获取id
+	public function get(){
+		echo $_GET['id'];
+	}
+访问 http://wjl.com/ci3/user/get?id=20 会显示20；
+	
+与tp框架不同，使用 http://wjl.com/ci3/user/get/id/20 会报错：未定义id。
+	原因是ci和其他框架不同，pathinfo模式取值使用的是分段获取。我们重新设置服务器url:ci.com指向ci3的根目录，重启apache生效。
+
+控制器中：
+	//获取id，分段获取
+	public function get2(){
+		echo $this->uri->segment(4);
+		//http://ci.com/user/get2/id/5
+	}
+	
+访问：
+http://wjl.com/ci3/user/get2/id/5
+http://ci.com/user/get2/id/5
+都可以正常打印出数字。
+说明ci的解析器写的很牛！相对于index.php对字段进行分段，1号是user，2号是get2，3号是id，4号是5.
+这样写3号字段就有点不必要了，不过保留着更语义化，不保留更简洁。
+
+分段获取参数使路由更灵活了，可以让程序员自由选择简洁或语义化。
+
+
+例2：使用方法直接获取参数
+	//获取id，分段获取，从参数获取
+	public function get3($id,$name){
+		echo 'id:' . $id, ', name: '. $name;
+	}
+访问：http://ci.com/user/get3/1/dawn
+显示： id:1, name: dawn
 
 ========================================
 移除url中的index.php
