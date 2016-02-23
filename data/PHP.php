@@ -22,6 +22,7 @@ return array (
       array('浏览追踪','PHP102','html',),
       array('php函数和类','PHP103','html',),
       array('php魔术方法','PHP104','html',),
+      array('php引用','PHP105','html',),
 
       array('smarty3简介','smarty001','html',),
       array('smarty3入门','smarty102','txt'),
