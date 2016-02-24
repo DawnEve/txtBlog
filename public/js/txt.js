@@ -3,7 +3,8 @@ function addContents(){
 	 aH4=document.getElementsByTagName('h4')
 	var	oContent=getElementsByClassName('content')[0],
 		oPre=oContent.getElementsByTagName('pre')[0],
-		oDiv=createElement('div');
+		
+		oDiv=createElement('div'),
 		oUl=createElement('ol');
 	//添加标题、日期
 	oDiv.appendChild( createElement('h2',{},'目录' ) );
@@ -12,7 +13,17 @@ function addContents(){
 	for(var i=0;i<aH4.length;i++){
 		var text=aH4[i].innerHTML;
 		if(trim(text)!=''){
-			oUl.appendChild( createElement('li',{'class':'text_menu'},text ) );
+			// 添加锚定a标签到h4标签前面，包含显示编号
+			var oH4 = aH4[i];
+			oH4.parentNode.insertBefore( createElement('a',{'class':'smallA', 'name':i}, '[Section '+(i+1)+']'), oH4 ); //显示从1开始，而不是0.
+			
+			// 添加点击锚点
+			var innerLi = createElement('li',{'class':'text_menu'},text );
+			
+			// 装载锚点 
+			var innerA = createElement('a',{'href':'#'+i});
+			innerA.appendChild(innerLi);
+			oUl.appendChild( innerA );
 		}
 	}
 	oDiv.appendChild( oUl );
