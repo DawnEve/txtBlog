@@ -737,15 +737,212 @@ ci中的AR模型会(1)对数据自动验证，(2)自动添加表前缀。
 ========================================
 ci中的AR(连惯操作)
 ----------------------------------------
+1.连贯操作适合构建常用sql语句：
+	// AR连贯操作
+	function ar(){
+		//配置文件设置过自动载入database()
+		//select * from blog_user where ... limit ... order by ..
+		$res = $this->db->select('id, name')
+				->from('user')
+				->where('id >=',3) //注意在id后面跟着空格，如果省略=>则默认是=
+				->limit(2,3) //该顺序和sql语句中limit相反！取2个但是跳过3个。
+				->order_by('id desc')
+				->get();
+		// 获得结果
+		$rows = $res->result();
+		echo '<pre>';
+		print_r($rows);
+		
+		//上一条sql语句
+		echo $this->db->last_query();
+		/*
+		* SELECT `id`, `name` FROM `blog_user` WHERE `id` >= 3 ORDER BY `id` desc LIMIT 3, 2
+		* 跳过3个取出2个。
+		*/
+	}
+访问 http://ci.com/User2/ar ，正常输出2条结果和一条sql语句。
+
+	注意：
+	(1).AR中limit和sql中limit顺序是反的。[?]bug吗？
+	(2).显示上一条sql语句的方法 echo $this->db->last_query();
+	(3).where中的条件符号前要有空格。
+
+
+2.关于where查询
+
+	// AR连贯操作2:where条件
+	function ar2(){
+		//配置文件设置过自动载入database()
+		//select * from blog_user where ... limit ... order by ..
+				//注意在id后面跟着空格，如果省略=>则默认是=
+		$res = $this->db->where('id >',3) ->get('user');
+			// SELECT * FROM `blog_user` WHERE `id` > 3
+		
+		$res = $this->db->where('id',3) ->get('user');
+			//SELECT * FROM `blog_user` WHERE `id` = 3
+		
+		$res = $this->db->where('id!=',3) ->get('user');// !=前没空格貌似也行
+			// SELECT * FROM `blog_user` WHERE `id` != 3
+		
+		$res = $this->db->where(array('id !='=>3, 'id <'=>5)) ->get('user');
+			// SELECT * FROM `blog_user` WHERE `id` != 3 AND `id` < 5
+			
+		$res = $this->db->where(array('name'=>'lili', 'id >'=>1)) ->get('user');
+			// SELECT * FROM `blog_user` WHERE `name` = 'lili' AND `id` > 1
+		
+		//上一条sql语句
+		echo $this->db->last_query();
+		
+		// 获得结果
+		$rows = $res->result();
+		echo '<pre>';
+		print_r($rows);
+		
+	}
+	
+	注意：where语句中多条件的表示方法
+	$res = $this->db->where(array('name'=>'lili', 'id >'=>1)) ->get('user');
+	
+3.复杂的查询，请用$this->db->query($sql, $data);//使用?绑定参数
+	这样可读性和可维护性都很高。
 
 ========================================
+扩展ci中的控制器
 ----------------------------------------
+就是对ci中现有控制器进行功能增强。
+
+1.继承：ci中的控制器默认继承自CI_Controller类，扩展也要继承它。
+2.位置：不用修改system文件夹，只需要在application中对应的文件夹添加文件即可；
+	比如 application/core/MY_Controller.php 
+3.前缀：需要加上 MY_ 前缀，这个在配置文件(application/config/config.php)中可以修改的：
+	$config['subclass_prefix'] = 'MY_';
+4.构造函数：要有构造函数__construct()，并且第一条要调用父类构造函数。
+
+实例：
+1)建立application/core/MY_Controller.php 文件：
+	<?php
+	// 自定义控制器扩展
+	class MY_Controller extends CI_Controller{
+		function __construct(){
+			parent::__construct();
+			
+			//登陆验证
+			//权限验证
+			echo '验证通过.<hr>';
+		}	
+	}
+
+2)建立 application/controller/User3.php 文件，继承自刚才扩展的控制器：	
+	<?php
+	// 继承的是刚定义的控制器
+	class User3 extends MY_Controller {
+		// AR连贯操作
+		function ar(){
+			//配置文件设置过自动载入database()
+			//select * from blog_user where ... limit ... order by ..
+					//注意在id后面跟着空格，如果省略=>则默认是=
+			$res = $this->db->where('id >',3) ->get('user');
+				// SELECT * FROM `blog_user` WHERE `id` > 3
+		
+			//上一条sql语句
+			echo $this->db->last_query();
+			
+			// 获得结果
+			$rows = $res->result();
+			echo '<pre>';
+			print_r($rows);
+		}
+	}
+			
+3)访问 	http://ci.com/User3/ar ，打印了
+	验证通过.
+	SELECT * FROM `blog_user` WHERE `id` > 3
+	Array	
+	...
+		
+表明扩展成功。
 
 ========================================
+ci中的模型
 ----------------------------------------
+模型是为了方便开发和维护而独立出来的。 
+在以上例子中模型部分都写在了控制器中，这是不规范的。
+
+1.模型文件名全小写 user_model.php，原因是模型是转成小写后加载的，参考loader.php；
+2.类名大写 class User_model extends CI_Model 
+3.要加_model后缀，防止和控制器重名冲突。
+4.model中可以使用所有超级对象的属性
+	system/core/Model.php 
+	
+实例：
+1) 建立文件 application/models/user_model.php 
+	<?php
+	class User_model extends CI_Model{
+		function getAll(){
+			//模型中可以直接使用超级对象的属性
+			$res=$this->db->get('user');
+			return $res->result();
+		}
+	}
+
+2) 在控制器中使用该模型 application/controllers/User3.php 
+
+	// 使用模型获取数据
+	function data(){
+		//配置文件设置过自动载入database()
+		//加载模型。加载之后成为超级对象的属性
+		$this->load->model('User_model');
+		
+		//获取数据
+		$list=$this->User_model->getAll();
+
+		//加载视图，传递数据
+		$this->load->view('User/index4', array( 
+			'list'=>$list
+			));
+	}
+
+3) 创建视图 application/views/User/index4.php 
+
+	<?php 
+	echo '<pre>';
+	print_r($list);
+	
+4) 访问 http://ci.com/User3/data ，打印出来用户信息。
+
+这就是一个完整的MVC的例子。
+
+注意： 
+ - 以后仅仅在model中获取并返回数据，者更容易维护，不能都塞到放到控制器中！
+ - 基本上一张表对应一个模型，关联表除外。
+ - model中的方法是根据控制器的需要加载的，没有统一要求。注意写好注释！
+ - 另一种加载模型的方法：别名加载，别名也立刻被加载到超级对象中。
+ 
+模型不变，控制器：
+	// 使用模型获取数据:模型用别名加载
+	function data2(){
+		//配置文件设置过自动载入database()
+		//加载模型。加载之后成为超级对象的属性
+		$this->load->model('User_model', 'user');//别名user，已经在超级对象中
+		
+		//获取数据
+		$list=$this->user->getAll();//使用别名调用
+
+		//加载视图
+		$this->load->view('User/index4', array( 
+			'list'=>$list
+			));
+	}
+访问 http://ci.com/User3/data2 ，输出效果不变。
+
 
 ========================================
+ci中的url相关函数
 ----------------------------------------
+生成或获取目录。
+
+
+
 
 
 ========================================
