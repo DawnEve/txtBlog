@@ -1,19 +1,22 @@
 <?php
 return array (
-  'Git' => '-1',
-  'html' => '0',
-  'css' => '1',
-  'javascript' => '2',
-  'PHP' => '3',
-  'thinkPHP' => '3',
-  'ci' => '4',
-  'phpCMS' => '5',
-  'ci' => '6',
-  'yii' => '7',
-  'Laravel' => '8',
+  'Git' => '版本控制',
+  'html' => '前端框架',
+  'css' => 'css增强',
+  'javascript' => 'js、jQuery、nodeJS等js框架',
+  'PHP' => 'php基础知识',
+  'thinkPHP' => '第一个框架',
+  'ci' => '第二个框架',
+  'Illustrator' => '矢量图插画师',
+  
+  'JavaEE' => '从javaSE到javaEE和Android',
+  'Linux' => 'Linux操作系统、服务器软件等',
+  'c' => 'C语言在学习-linux环境下',
+  
+	'yii' => '美国人写的框架',
+  //暂时没有内容
+  //  'phpCMS' => '一个流行的MVC内容管理系统',
   'symfony' => '很经典的设计，被Laravel借鉴了好多。',
-  'ZendFramework' => '很重，耦合度很低。',
-  'JavaEE' => '9',
-  'Linux' => '10',
-  'c' => '11',
+  'Laravel' => '巨匠级的php开发框架',
+  //'ZF' => 'ZendFramework很重，耦合度很低。',
 );

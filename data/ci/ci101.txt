@@ -1,0 +1,959 @@
+ci3框架学习笔记
+
+data:2016-2-23
+refer:兄弟连 -> 邹义良(weibo.com/it266)
+
+主要内容：
+	ci简介
+	深入理解MVC设计模式
+	ci中的控制器和视图
+	ci的超级对象
+	ci访问数据库
+	
+	AR模型
+	如何扩展ci的控制器
+	url相关函数
+	设置路由
+	分页
+	文件上传
+	session
+	验证码
+	表单验证
+
+========================================
+MVC入门
+----------------------------------------
+ci的文档：
+模型 代表你的数据结构。通常来说，模型类将包含帮助你对数据库进行增删改查的方法。
+
+视图 是要展现给用户的信息。一个视图通常就是一个网页，但是在 CodeIgniter 中， 一个视图也可以是一部分页面（譬如页头、页尾），它也可以是一个 RSS 页面， 或其他任何类型的页面。
+
+控制器 是模型、视图以及其他任何处理 HTTP 请求所必须的资源之间的中介，并生成网页。
+
+
+
+简言之：
+C主要是路由功能，访问正确的控制器和动作；
+M主要是获取数据，return数据即可，来自于数据库或配置文件；
+V是视图，负责显示
+
+========================================
+CI的MVC架构
+----------------------------------------
+直接访问 http://wjl.com/ci3/，可以知道2条有效信息：
+1.如果想修改该页面，请查看application/views/welcome_message.php
+2.相应的控制器在：application/controllers/Welcome.php
+
+
+可以知道ci3下的文件结构：
+|-index.php	入口文件
+|-system	框架所在目录，不要框架的修改任何代码！
+|-application 应用程序所在目录，用户根据需要编写
+
+========================================
+URL模式
+----------------------------------------
+常用的是pathinfo模式。
+
+http://wjl.com/ci3/index.php/welcome/test
+url/入口文件/控制器/方法名
+
+
+========================================
+ci3中的控制器
+----------------------------------------
+1.不需要加后缀；不同于thinkPHP、yii
+2.控制器一般小写；为了防止用户访问时出错
+3.所有的控制器，直接或间接的继承自CI_Controller类；ci的类是以CI_开头的；
+4.控制器中的方法能被浏览器访问的条件：
+	- 必须public，
+	- 不能用下划线_开头；
+	
+	如public function _test()不能被浏览器访问，但是可以内部访问。
+5.如何修改默认为index控制器？
+	新建一个Index控制器，添加一个index方法：
+<?php
+class Index extends CI_Controller {
+
+	public function index()
+	{
+		echo 'from Index->index()<hr>';
+	}
+}
+
+结果访问 http://wjl.com/ci3/index.php/index/index时，字符打印了两遍，为什么呢？
+	from Index->index()
+	from Index->index()
+因为与类同名函数会被当做构造函数，直接执行一次，调用时又执行一次。
+
+解决办法：
+	- 不使用和类同名的方法【推荐】；
+	- 添加一个__construct空方法：
+	
+	//防止类同名函数被当做构造函数提前执行
+	public function __construct(){
+		parent::__construct();
+	}
+	
+
+	
+	
+========================================
+ci3中的视图
+----------------------------------------
+建立application/Controller/User.php控制器：
+<?php
+class User extends CI_Controller {
+
+	public function index()
+	{
+		//echo 'from User->index()<hr>';
+		//$this->load->view('User_index');//访问views文件夹下的User_index.php文件
+		$this->load->view('User/index');//访问views/User文件夹下的index.php文件
+	}
+}
+
+建立application/Views/User/index.php视图文件：
+<?php 
+echo 'text from user->index view';
+
+访问：http://wjl.com/ci3/index.php/user/index
+显示：text from user->index view
+
+
+小结：
+1.在控制器中如果加载视图，直接写视图名字，不写扩展名；
+
+2.视图中，直接使用原生php：
+	//分配一般变量：
+	public function index2()
+	{
+		$this->load->vars('title','这是标题');
+		$this->load->view('User/index2');
+	}
+视图中可以直接使用php代码：
+	<?php 
+	echo "<h2>$title</h2>";
+
+
+	
+	分配关联数组：
+
+	//分配关联数组	
+	public function index3()
+	{
+		$list=array(
+			array('id'=>1, 'name'=>'javascript'),
+			array('id'=>2, 'name'=>'php'),
+			array('id'=>3, 'name'=>'linux'),
+			array('id'=>4, 'name'=>'python'),
+		);
+		$data['title']='标题1';
+		$data['list']=$list;
+		$this->load->vars($data);
+		//$data分配之后消失，直接使用内部信息。
+		
+		$this->load->view('User/index3');
+	}
+	
+	视图文件index3.php 
+	<meta charset='utf8'>
+	<?php 
+	echo "<h1>".$title."</h1>";
+
+	foreach($list as $item){
+		echo $item['id'] . ' - ' .$item['name'] .'<br>';
+	}
+	?>
+
+	<h2>推荐显示方法（少用echo会更简洁）：</h2>
+	<?php foreach($list as $item):?>
+		<?=$item['id']?> - <?=$item['name']?> <br>
+	<?php endforeach;?>
+
+	访问后显示：
+	标题1
+1 - javascript
+2 - php
+3 - linux
+4 - python
+
+推荐显示方法（少用echo会更简洁）：
+1 - javascript 
+2 - php 
+3 - linux 
+4 - python 
+
+	
+	
+
+	
+3.推荐使用<?=$item['id']?>类似的短标签；
+	<?php foreach($list as $item):?>
+		<?=$item['id']?>
+		<?=$item['name']?>
+		<?=$item['title']?>
+	<?endforeach;?>
+	
+4.可以在一个方法中多次调用视图；
+
+
+
+========================================
+移除url中的index.php
+----------------------------------------
+
+1. Apache 服务器启用 mod_rewrite； 
+2. 在根目录添加一个.htaccess 文件，其中使用了 "否定条件" 来排除某些不需要重定向的项目：
+
+RewriteEngine On
+RewriteCond %{REQUEST_FILENAME} !-f
+RewriteCond %{REQUEST_FILENAME} !-d
+RewriteRule ^(.*)$ index.php/$1 [L]
+
+在上面的例子中，除已存在的目录和文件，其他的 HTTP 请求都会经过你的 index.php 文件。
+
+注意：确保使用上面的规则排除掉你希望能直接访问到的资源。
+
+测试：
+访问http://wjl.com/ci3/user/index3 输出正常。
+
+
+添加 URL 后缀
+在你的 config/config.php 文件中你可以指定一个后缀。
+如：.html ，这样页面可以同时被如下url访问：
+http://wjl.com/ci3/user/index3
+http://wjl.com/ci3/user/index3.html
+
+
+
+========================================
+ci超级对象$this (load/uri/input)
+----------------------------------------
+1.我们在任意控制器方法中使用var_dump打印this，看ci为我们做了什么？
+	public function index4(){
+		echo '<pre>';
+		var_dump($this);
+	}
+	
+访问 http://wjl.com/ci3/index.php/user/index4显示好几十屏幕内容：
+object(User)#12 (12) {
+  ["benchmark"]=>
+  &object(CI_Benchmark)#1 (1) {
+    ["marker"]=>
+    array(4) {
+      ["total_execution_time_start"]=>
+      float(1455096738.0121)
+      ["loading_time:_base_classes_start"]=>
+      float(1455096738.0121)
+      ["loading_time:_base_classes_end"]=>
+      float(1455096738.0865)
+      ["controller_execution_time_( User / index4 )_start"]=>
+      float(1455096738.092)
+    }
+  }
+  ["hooks"]=>
+... ...
+
+
+2.$this有一个load方法，我们看一下细节：
+	public function index5(){
+		echo '<pre>';
+		var_dump($this->load);
+	}
+
+访问http://wjl.com/ci3/user/index5，可见一屏幕细节：
+object(CI_Loader)#13 (10) {
+  ["_ci_ob_level":protected]=>
+  int(1)
+  ["_ci_view_paths":protected]=>
+  array(1) {
+    ["D:\xampp\htdocs\ci3\application\views\"]=>
+    bool(true)
+  }
+  ["_ci_library_paths":protected]=>
+  array(2) {
+    [0]=>
+    string(32) "D:\xampp\htdocs\ci3\application\"
+    [1]=>
+    string(27) "D:/xampp/htdocs/ci3/system/"
+  }
+  ["_ci_model_paths":protected]=>
+  ...
+  
+ 由第一行object(CI_Loader)可知，$this->load是CI_Loader的是一个实例。
+ 
+	$this->load
+		装载器类（system/core/Loader.php中的class CI_Loader 类）的实例
+		CI_Loader定义了很多方法，上文用过view和vars两个。
+		- view()	装载视图
+		- vars	分配变量到视图
+		- database() 装载数据库操作对象 system/database文件夹下
+		- model()	装载模型对象
+		- helper()	辅助类	system/helpers文件夹下
+ 
+[?]ci会在某个地方自动实例化一个CI_Loader对象，放到超级对象的属性中：
+	$obj=new CI_Loader(); 
+	$this->load=$obj;
+	//然后以后调用CI_Loader中的方法时，
+	$this->load->view();//表明load确实是ci装载器的一个实例
+
+
+
+3.$this有一个uri方法，我们看一下细节：
+ 
+	public function index6(){
+		echo '<pre>';
+		var_dump($this->uri);
+	}
+访问：http://wjl.com/ci3/user/index6，输出：
+ object(CI_URI)#6 (6) {
+  ["keyval"]=>
+  array(0) {
+  }
+  ["uri_string"]=>
+  string(11) "user/index6"
+  ["segments"]=>
+  array(2) {
+    [1]=>
+    string(4) "user"
+    [2]=>
+    string(6) "index6"
+  }
+ ...
+ 
+ 从第一行object(CI_URI)可知，
+ 
+ $this->uri
+	是CI_URI类（system/core/URI.php中）的一个实例。
+	提供的方法是url相关的方法，作用是Parses URIs and determines routing。
+	
+	- segment()	用于获取url中的第n个参数，基于分段获取
+		index.php/控制器/操作/参数1/参数2/参数3/...
+		
+	
+例1：使用segment()方法获取参数。
+使用url获取参数的例子：
+	//获取id
+	public function get(){
+		echo $_GET['id'];
+	}
+访问 http://wjl.com/ci3/user/get?id=20 会显示20；
+	
+与tp框架不同，使用 http://wjl.com/ci3/user/get/id/20 会报错：未定义id。
+	原因是ci和其他框架不同，pathinfo模式取值使用的是分段获取。我们重新设置服务器url:ci.com指向ci3的根目录，重启apache生效。
+
+控制器中：
+	//获取id，分段获取
+	public function get2(){
+		echo $this->uri->segment(4);
+		//http://ci.com/user/get2/id/5
+	}
+	
+访问：
+http://wjl.com/ci3/user/get2/id/5
+http://ci.com/user/get2/id/5
+都可以正常打印出数字。
+说明ci的解析器写的很牛！相对于index.php对字段进行分段，1号是user，2号是get2，3号是id，4号是5.
+这样写3号字段就有点不必要了，不过保留着更语义化，不保留更简洁。
+
+分段获取参数使路由更灵活了，可以让程序员自由选择简洁或语义化。
+
+
+例2：使用方法直接获取参数
+	//获取id，分段获取，从参数获取
+	public function get3($id,$name){
+		echo 'id:' . $id, ', name: '. $name;
+	}
+访问：http://ci.com/user/get3/1/dawn
+显示： id:1, name: dawn
+
+
+
+
+4.$this有一个 input 方法，我们看一下细节：
+ 
+	public function input(){
+		echo '<pre>';
+		var_dump($this->input);
+	}
+访问 http://ci.com/user/input ，输出：
+object(CI_Input)#10 (10) {
+  ["ip_address":protected]=>
+  bool(false)
+  ["_allow_get_array":protected]=>
+  bool(true)
+  ["_standardize_newlines":protected]=>
+  bool(false)
+  ...
+  
+  
+  $this->input 
+	- 从第一行object(CI_Input)可知，该对象是CI_Input类的一个实例。
+	- 文件地址 system/core/Input.php  
+	- CI_Input类提供方法：
+		- $this->input->post('usr');  // 等价于$_POST['user']
+		- $this->input->server('DOCUMENT_ROOT'); 
+			//D:/xampp/htdocs/ci3 就是原来的$_SERVER['DOCUMENT_ROOT'] 
+			更多服务器信息可以从 print_r( $_SERVER ); 打印结果中查找。
+		- 好处是ci提供了安全过滤。也可以直接用原生php接收参数。
+	
+
+
+
+5.在视图中，也可以使用超级对象$this访问其属性:
+控制器中：
+	// 在view中也可以直接使用$this
+	public function view(){
+		$this->load->view('User/index');
+	}
+视图文件application/view/User/index.php中：
+	<?php 
+		echo '<pre>';
+		print_r($this);
+访问：http://ci.com/user/view ， 正常输出。
+
+
+
+
+
+
+
+========================================
+ci中的数据库操作-入门
+----------------------------------------
+主要包括：
+	数据库访问：
+	AR模型：
+
+ci中的数据库操作方法名很多是php中的mysql函数去掉mysql_前缀。
+
+
+1.数据库查询：
+	1)配置文件：application/config/database.php,
+		$db['default'] = array(
+		'dsn'	=> 'mysql:dbname=ci3;host=localhost',
+		'hostname' => 'localhost',
+		'username' => 'root',
+		'password' => '',
+		'database' => 'ci3',
+		'dbdriver' => 'mysqli',
+		'dbprefix' => 'blog_',
+		...
+		
+		其实，除了$db['default']，我们还可以配置更多的数据库。
+
+		
+	2)创建表，插入数据：
+-- 用户表
+create table if not exists blog_user(
+	id INT auto_increment primary key,
+	name varchar(255) not null unique,
+	password char(32) not null,
+	email varchar(255) not null default ''
+) ENGINE MyISAM DEFAULT CHARSET=UTF8;
+
+-- 测试数据
+insert into blog_user(name, password) values('admin', md5('admin'));
+
+
+-- 分类表
+create table if not exists blog_category(
+	id INT auto_increment primary key,
+	name varchar(255) not null,
+	title varchar(255) not null,
+	pid int default 0,
+	path varchar(255) default '0,'
+) ENGINE MyISAM DEFAULT CHARSET=UTF8;
+
+-- 测试数据 (待续)
+-- insert into blog_category();
+
+
+	3)在User控制器中添加方法
+	//对数据库的增删改查
+	public function showUsers(){
+		//装载数据库操作类	
+		$this->load->database();
+		
+		//装载成功后，会放到超级对象的属性中，默认属性名是db；
+		echo '<pre>';
+		var_dump($this->db);
+	}
+	
+访问 http://ci.com/User2/showUsers，输出：
+	object(CI_DB_mysqli_driver)#14 (73) {
+  ["dbdriver"]=>
+  string(6) "mysqli"
+  ["compress"]=>
+ ...
+ 
+ 那么CI_DB_mysqli_driver类提供了哪些方法呢？
+	- 文件位置：system/database/drivers/mysqli/musqli_driver.php；
+	- 继承性 class CI_DB_mysqli_driver extends CI_DB；
+	- 提供的方法：( [?]有些来自：system/database/DB_driver.php )
+		- query()方法，
+		- $rs->result() 方法返回数组，数组中是一个一个的对象；
+		- $rs->result_array() 方法返回关联数组；
+		- $rs->row() 方法返回首行，是一个对象。比如用户登录时只需要一行；
+		- 其他的看手册： 数据库类-生成查询记录集。
+  
+	再插入几条数据：
+insert into blog_user(name, password) values('Jim', md5('Jim000')),('dawn',md5('dawn000'));
+insert into blog_user(name, password,email) values('Tom', md5('Tom000'),'tom@tom.com');
+
+
+
+例:
+在控制器中写：
+  
+	//对数据库的增删改查
+	public function showUsers(){
+		//装载数据库操作类	
+		$this->load->database();
+		
+		////装载成功后，会放到超级对象的属性中，默认属性名是db；
+		echo '<pre>';
+		//var_dump($this->db);
+		
+		$sql='select * from blog_user;';
+		$rs = $this->db->query($sql);//返回值是一个对象（CI_DB_mysqli_result Object）
+		//print_r($rs);
+		
+		//获得结果
+		$users=$rs->result();
+		//print_r($users);
+		//从结果看，返回的是一个一个的对象，推测调用的应该是mysql_fetch_object().
+		//我们自己用的使用常用mysql_fetch_assoc();
+		
+		//在模板中显示
+		$data['user_list']=$users;
+		$this->load->view('User2/index', $data);
+	}
+  
+定义模板文件view/User2/index.php： 
+  <?php
+	echo 'this is view.<hr>';
+
+	echo '<pre>';
+	print_r($user_list);
+
+访问 http://ci.com/User2/showUsers ，可见数据库数据从模板中正常输出。
+  Array
+(
+    [0] => stdClass Object
+        (
+            [id] => 1
+            [name] => admin
+            [password] => 21232f297a57a5a743894a0e4a801fc3
+            [email] => 
+        )
+		...
+  
+  
+
+2.数据库添加条目
+控制器：
+	function add(){
+		//装载数据库类到$this->db;
+		$this->load->database();
+		
+		//构建查询
+		$sql='insert into blog_user(name, password,email) values("mary", md5("mary000"),"eve@eve.com")';
+		
+		//执行
+		$bool=$this->db->query($sql);
+		
+		if($bool){
+			echo '受影响行数：', $this->db->affected_rows();
+			echo '<br> 插入id：', $this->db->insert_id();
+		}else{
+			// 貌似错误不是这么处理的，这一句不执行
+			echo $this->db->error();
+		}
+	}
+
+访问 http://ci.com/User2/add ，结果显示：
+	受影响行数：1
+	插入id：6
+
+
+
+	
+3. 其他的update和delete和这个类似。
+目前的处理方式还有几个问题：
+	- 表前缀是写死的，怎么灵活处理？
+	- 数据安全怎么保证？需要过滤；
+	
+	1)常用类库的自动加载，和参数绑定
+tips:由于经常性的使用数据库，所以数据库可以设置为自动加载。
+设置方式：application/config/autoload.php中，
+	$autoload['libraries'] = array('database');
+	就无需写 $this->load->database();
+	
+	例：
+	//传参绑定：单个?传递变量，多个?传递索引数组。
+	$sql = "select * from blog_user where name='?';";
+	$name = 'dawn';
+	$bool = $this->db->query($sql, $name);//单个参数
+	
+	//多参数绑定的例子
+	function test1(){
+		//配置文件自动加载database文件
+		//$autoload['libraries'] = array('database');
+		
+		//$name=$this->input->post('name');
+		
+		$data[0]='lili'; //这个参数可以匹配到sql语句中
+		$data[1]='123';
+		$sql="insert into blog_user(name, password) values(?, md5(?))";
+		$bool = $this->db->query($sql, $data);
+		
+		if($bool){
+			echo '受影响行数：', $this->db->affected_rows();
+			echo '<br> 插入id：', $this->db->insert_id();
+		}
+	}
+
+	
+	
+	2)灵活处理表前缀，从配置文件取出来再拼接，还是很麻烦的。
+	还好ci提供了一个很好的机制 swap_pre 替换。
+	配置文件中（application/config/database.php中），
+		以后，只要 swap_pre 不变即可，它会自动替换为 dbprefix 的。
+		'dbprefix' => 'blog_',
+		'swap_pre' => 'swap_',
+	建议：首次配置成一样的，后续变动的话只可以变动 dbprefix。
+	警告：其他框架很可能没有这种机制，可能有其他解决方案。
+	
+例：
+	//表前缀：ci采用swap_替换机制 
+	function test2(){
+		//配置文件自动加载database文件
+		//$autoload['libraries'] = array('database');
+		
+		//$name=$this->input->post('name');
+		$data[0]='lili2';
+		$data[1]='123';
+		$sql="insert into swap_user(name, password) values(?, md5(?))";
+		
+		$bool = $this->db->query($sql, $data);
+		if($bool){
+			echo '受影响行数：', $this->db->affected_rows();
+			echo '<br> 插入id：', $this->db->insert_id();
+		}
+	}
+  
+========================================
+ci中的数据库操作-AR模型(active record)初步
+----------------------------------------
+一般操作都是使用AR的，只有特别复杂的才直接使用sql语句。
+ci中的AR模型会(1)对数据自动验证，(2)自动添加表前缀。
+
+使用AR需要配置：
+	- application/config/database.php中设置$active_reccord为true
+		[?]不过没找到这一项，在该位置找到了$query_builder = TRUE;，可能是升级替代品。
+		对应的文件system/database/DB_query_builder.php.
+		
+	- 在application/config/autoload.php中设置自动加载数据库类：
+		$autoload['libraries'] = array('database');
+	- 提供的方法：
+		- $this->db->get('表名'); //返回资源，还需要调用result()方法获得数组。
+		- $this->db->insert('表名', 关联数组数据);
+		- $this->db->update('表名', 关联数组数据, 条件);
+		- $this->db->delete('表名', 条件);
+		
+例1：
+	//AR模型查询
+	function test3(){
+		$res = $this->db->get('user'); //获得资源
+		
+		echo '<pre>';
+		//print_r($res);// 是一个CI_DB_mysqli_result Object对象
+		
+		$users = $res->result();//获得结果
+		//逐条输出
+		foreach($users as $user){
+			print_r($user);
+		}
+	}
+访问 http://ci.com/user2/test3 ，直接输出结果。		
+
+
+例2：
+	//AR模型插入
+	function test4(){
+		$data=array(
+			'name'=>'Rubin',
+			'password'=>md5(123),
+		);
+		
+		$bool = $this->db->insert('user', $data); 
+		var_dump($bool);
+		
+		//获取id的方法就是
+		//echo $this->db->insert_id();
+	}
+访问 http://ci.com/user2/test4 ，输出 bool(true)。
+
+
+例3：
+	//AR模型更新
+	function test5(){
+		$data=array(
+			'name'=>'Rubin',
+			'email'=>'rubin@gmail.com'
+		);
+		
+		$bool = $this->db->update('user', $data,array('id'=>9)); 
+		var_dump($bool);
+		
+		//影响条目数
+		echo '<hr>',$this->db->affected_rows();
+	}
+
+访问 http://ci.com/user2/test5 ，可见输出 bool(true) 1
+
+
+
+例4：
+	//AR模型删除操作
+	function delete($id=''){		
+		if($id!=''){
+			$bool = $this->db->delete('user', array('id'=>$id));
+			var_dump($bool);
+			echo '影响的行数：', $this->db->affected_rows();
+		}else{
+			echo '请指定id';
+		}
+	}
+访问 http://ci.com/user2/delete/9 ，输出：bool(true) 影响的行数：1
+
+	[?]是不是个bug?
+	再次刷新 bool(true) 影响的行数：0。
+	悲剧！虽然已经没有id=9的条目了，但是依旧返回true。
+
+	
+========================================
+ci中的AR(连惯操作)
+----------------------------------------
+1.连贯操作适合构建常用sql语句：
+	// AR连贯操作
+	function ar(){
+		//配置文件设置过自动载入database()
+		//select * from blog_user where ... limit ... order by ..
+		$res = $this->db->select('id, name')
+				->from('user')
+				->where('id >=',3) //注意在id后面跟着空格，如果省略=>则默认是=
+				->limit(2,3) //该顺序和sql语句中limit相反！取2个但是跳过3个。
+				->order_by('id desc')
+				->get();
+		// 获得结果
+		$rows = $res->result();
+		echo '<pre>';
+		print_r($rows);
+		
+		//上一条sql语句
+		echo $this->db->last_query();
+		/*
+		* SELECT `id`, `name` FROM `blog_user` WHERE `id` >= 3 ORDER BY `id` desc LIMIT 3, 2
+		* 跳过3个取出2个。
+		*/
+	}
+访问 http://ci.com/User2/ar ，正常输出2条结果和一条sql语句。
+
+	注意：
+	(1).AR中limit和sql中limit顺序是反的。[?]bug吗？
+	(2).显示上一条sql语句的方法 echo $this->db->last_query();
+	(3).where中的条件符号前要有空格。
+
+
+2.关于where查询
+
+	// AR连贯操作2:where条件
+	function ar2(){
+		//配置文件设置过自动载入database()
+		//select * from blog_user where ... limit ... order by ..
+				//注意在id后面跟着空格，如果省略=>则默认是=
+		$res = $this->db->where('id >',3) ->get('user');
+			// SELECT * FROM `blog_user` WHERE `id` > 3
+		
+		$res = $this->db->where('id',3) ->get('user');
+			//SELECT * FROM `blog_user` WHERE `id` = 3
+		
+		$res = $this->db->where('id!=',3) ->get('user');// !=前没空格貌似也行
+			// SELECT * FROM `blog_user` WHERE `id` != 3
+		
+		$res = $this->db->where(array('id !='=>3, 'id <'=>5)) ->get('user');
+			// SELECT * FROM `blog_user` WHERE `id` != 3 AND `id` < 5
+			
+		$res = $this->db->where(array('name'=>'lili', 'id >'=>1)) ->get('user');
+			// SELECT * FROM `blog_user` WHERE `name` = 'lili' AND `id` > 1
+		
+		//上一条sql语句
+		echo $this->db->last_query();
+		
+		// 获得结果
+		$rows = $res->result();
+		echo '<pre>';
+		print_r($rows);
+		
+	}
+	
+	注意：where语句中多条件的表示方法
+	$res = $this->db->where(array('name'=>'lili', 'id >'=>1)) ->get('user');
+	
+3.复杂的查询，请用$this->db->query($sql, $data);//使用?绑定参数
+	这样可读性和可维护性都很高。
+
+========================================
+扩展ci中的控制器
+----------------------------------------
+就是对ci中现有控制器进行功能增强。
+
+1.继承：ci中的控制器默认继承自CI_Controller类，扩展也要继承它。
+2.位置：不用修改system文件夹，只需要在application中对应的文件夹添加文件即可；
+	比如 application/core/MY_Controller.php 
+3.前缀：需要加上 MY_ 前缀，这个在配置文件(application/config/config.php)中可以修改的：
+	$config['subclass_prefix'] = 'MY_';
+4.构造函数：要有构造函数__construct()，并且第一条要调用父类构造函数。
+
+实例：
+1)建立application/core/MY_Controller.php 文件：
+	<?php
+	// 自定义控制器扩展
+	class MY_Controller extends CI_Controller{
+		function __construct(){
+			parent::__construct();
+			
+			//登陆验证
+			//权限验证
+			echo '验证通过.<hr>';
+		}	
+	}
+
+2)建立 application/controller/User3.php 文件，继承自刚才扩展的控制器：	
+	<?php
+	// 继承的是刚定义的控制器
+	class User3 extends MY_Controller {
+		// AR连贯操作
+		function ar(){
+			//配置文件设置过自动载入database()
+			//select * from blog_user where ... limit ... order by ..
+					//注意在id后面跟着空格，如果省略=>则默认是=
+			$res = $this->db->where('id >',3) ->get('user');
+				// SELECT * FROM `blog_user` WHERE `id` > 3
+		
+			//上一条sql语句
+			echo $this->db->last_query();
+			
+			// 获得结果
+			$rows = $res->result();
+			echo '<pre>';
+			print_r($rows);
+		}
+	}
+			
+3)访问 	http://ci.com/User3/ar ，打印了
+	验证通过.
+	SELECT * FROM `blog_user` WHERE `id` > 3
+	Array	
+	...
+		
+表明扩展成功。
+
+========================================
+ci中的模型
+----------------------------------------
+模型是为了方便开发和维护而独立出来的。 
+在以上例子中模型部分都写在了控制器中，这是不规范的。
+
+1.模型文件名全小写 user_model.php，原因是模型是转成小写后加载的，参考loader.php；
+2.类名大写 class User_model extends CI_Model 
+3.要加_model后缀，防止和控制器重名冲突。
+4.model中可以使用所有超级对象的属性
+	system/core/Model.php 
+	
+实例：
+1) 建立文件 application/models/user_model.php 
+	<?php
+	class User_model extends CI_Model{
+		function getAll(){
+			//模型中可以直接使用超级对象的属性
+			$res=$this->db->get('user');
+			return $res->result();
+		}
+	}
+
+2) 在控制器中使用该模型 application/controllers/User3.php 
+
+	// 使用模型获取数据
+	function data(){
+		//配置文件设置过自动载入database()
+		//加载模型。加载之后成为超级对象的属性
+		$this->load->model('User_model');
+		
+		//获取数据
+		$list=$this->User_model->getAll();
+
+		//加载视图，传递数据
+		$this->load->view('User/index4', array( 
+			'list'=>$list
+			));
+	}
+
+3) 创建视图 application/views/User/index4.php 
+
+	<?php 
+	echo '<pre>';
+	print_r($list);
+	
+4) 访问 http://ci.com/User3/data ，打印出来用户信息。
+
+这就是一个完整的MVC的例子。
+
+注意： 
+ - 以后仅仅在model中获取并返回数据，者更容易维护，不能都塞到放到控制器中！
+ - 基本上一张表对应一个模型，关联表除外。
+ - model中的方法是根据控制器的需要加载的，没有统一要求。注意写好注释！
+ - 另一种加载模型的方法：别名加载，别名也立刻被加载到超级对象中。
+ 
+模型不变，控制器：
+	// 使用模型获取数据:模型用别名加载
+	function data2(){
+		//配置文件设置过自动载入database()
+		//加载模型。加载之后成为超级对象的属性
+		$this->load->model('User_model', 'user');//别名user，已经在超级对象中
+		
+		//获取数据
+		$list=$this->user->getAll();//使用别名调用
+
+		//加载视图
+		$this->load->view('User/index4', array( 
+			'list'=>$list
+			));
+	}
+访问 http://ci.com/User3/data2 ，输出效果不变。
+
+
+========================================
+ci中的url相关函数
+----------------------------------------
+生成或获取目录。
+
+
+
+
+
+========================================
+----------------------------------------
+
+========================================
+----------------------------------------
+
+========================================
+----------------------------------------
+
+========================================
+----------------------------------------
+

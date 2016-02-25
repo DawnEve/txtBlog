@@ -54,6 +54,7 @@ return array (
     2 => 
     array (
 	  array('htaccess配置规则','apache001','txt' ),
+	  array('虚拟域名和二级域名配置','apache002','txt' ),
 
     ),
   ),
