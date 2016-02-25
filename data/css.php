@@ -7,7 +7,7 @@ return array (
     2 => array (
       array('项目描述','css001','html',),
       array('参考资料','css002','html'),
-      array('FAQ','css002','html'),
+      array('FAQ','css003','html'),
     ),
   ),
   
@@ -18,6 +18,7 @@ return array (
       array('LESS描述','LESS001','html',),
       array('LESS入门','LESS002','txt'),
       array('Sass描述','Sass001','html',),
+	  array('gulp入门','gulp001','md',),
     ),
   ),
 
