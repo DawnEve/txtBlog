@@ -2,8 +2,8 @@
 
 
 <?php
-$trueFileName='';
-$fileType='';
+$trueFileName='';//真实文件名
+$fileType=''; //文件类型
 
 for($i=0; $i<count($arrLeft['data']);$i++){
 	//1级目录
@@ -28,16 +28,26 @@ for($i=0; $i<count($arrLeft['data']);$i++){
 			//为文件真名连接扩展名
 			if(isset($two[$j][2])){
 			    //获取文件扩展名
-			    $fileType=$two[$j][2];
+			    $fileType=strtolower( $two[$j][2] );
 			}else{
 			    $fileType='html';
 			}
 			$trueFileName .= '.' . $fileType;
 			
-			//如果是txt，则引入txt.js文件
-			if($fileType=='txt'){
-				echo '<script type="text/javascript" src="/public/js/txt.js"></script>';
+			// 根据文件类型判断需要加载的组件
+			switch( $fileType ){
+				//如果是txt，则引入txt.js文件
+				case 'txt':
+					echo '<script type="text/javascript" src="/public/js/txt.js"></script>';
+					break;
+				//如果是markdown，则引入md的样式表
+				case 'md':
+				case 'markdown':
+					echo '<link rel="stylesheet" type="text/css" href="/public/css/MarkDown.css">';//温和的样式表
+					//echo '<link rel="stylesheet" type="text/css" href="/public/css/MarkDown2.css">';//原始txt样的md
+					break;
 			}
+
 		}
 		//这是文件说明
 		$fname=$two[$j][0];
