@@ -93,3 +93,56 @@ function rtrim(str){ //删除右边的空格
 	return str.replace(/(\s*$)/g,"");
 }
 
+
+
+/**
+* js回到页面顶部，缓动效果
+* version 1.0
+* @param acceleration 速度
+* @param stime 时间间隔 (毫秒)
+**/
+function gotoTop(acceleration,stime) {
+	var acceleration = acceleration || 0.05,
+		stime = stime || 10,
+		pos=getXY(),
+		x=pos[0],
+		y=pos[1];
+	
+	// 滚动距离 = 目前距离 / 速度, 因为距离原来越小, 速度是大于 1 的数, 所以滚动距离会越来越小
+	var speeding = 1 + acceleration;
+	window.scrollTo(Math.floor(x / speeding), Math.floor(y / speeding));
+  
+   // 如果距离不为零, 继续调用函数
+	var timer=setTimeout(function(){
+		if(x > 0 || y > 0) {
+			gotoTop(acceleration,stime);
+		}		
+	}, stime);
+	
+	//tool fn:获得当前视图所在位置[x,y]
+	function getXY(){
+		var x1 = 0;
+		var y1 = 0;
+		var x2 = 0;
+		var y2 = 0;
+		var x3 = 0;
+		var y3 = 0;
+		if (document.documentElement) {
+		   x1 = document.documentElement.scrollLeft || 0;
+		   y1 = document.documentElement.scrollTop || 0;
+		}
+		if (document.body) {
+		   x2 = document.body.scrollLeft || 0;
+		   y2 = document.body.scrollTop || 0;
+		}
+		var x3 = window.scrollX || 0;
+		var y3 = window.scrollY || 0;
+
+		// 滚动条到页面顶部的水平距离
+		var x = Math.max(x1, Math.max(x2, x3));
+		// 滚动条到页面顶部的垂直距离
+		var y = Math.max(y1, Math.max(y2, y3));
+		return [x,y];
+	}
+}//end of gotoTop.
+

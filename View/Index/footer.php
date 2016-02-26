@@ -64,7 +64,7 @@
 </div>
 
 <div class="foot_top">
-	<a href="#" id="to_top">返回顶部</a>
+	<a href="#" id="to_top" onclick='gotoTop();return false;'>返回顶部</a>
 	<a href="#footer" id="to_top">下到底部</a>
 </div>
 
