@@ -1,3 +1,10 @@
+<style>
+.ewm{float:right; margin: -40px 10px;}
+.ewm img{ width: 100px;}
+.ewm p{ text-align:center;}
+
+</style>
+
 
 <div class='footer'>
 	<a name='footer'></a>
@@ -48,6 +55,7 @@
 			<a href="http://ninghao.net/" target="blank" title='React，Bootstrap，Laravel 视频教程'>宁皓网</a> | 
 		</div>
 		
+		<div class=ewm><img src='data/erweima.png'><p>扫码登陆本站</p></div>
 		<div class='links'>
 			Copyright &copy; 2009 - 2016 DawnEve. All Rights Reserved. | 
 			<a target='_blank' href='https://github.com/DawnEve'>Folk me on Github</a> | 
