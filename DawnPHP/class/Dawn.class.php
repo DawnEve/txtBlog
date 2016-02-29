@@ -46,6 +46,9 @@ class Dawn{
 		die('Invalid visit.<br><a href="index.php">返回首页</a>');
 	}
 	
+	/*
+	* txt解析器v0.2
+	*/
 	public static function showTxt($filename){
 	    //1.确定文件存在，否则提示
 	    if(!file_exists($filename)){
@@ -57,8 +60,8 @@ class Dawn{
 	    $data=preg_replace('/</','&lt;',$data);
 	    $data=preg_replace('/>/','&gt;',$data);
 	    //对换行的========替换为<hr>
-	    $data=preg_replace('/={20,}/','<hr class=top><h4>',$data);
-	    $data=preg_replace('/\-{20,}/','</h4><hr class=under>',$data);
+	    $data=preg_replace('/={30,}/','<hr class=top><h4>',$data);
+	    $data=preg_replace('/\-{30,}/','</h4><hr class=under>',$data);
 	    
 	    
 	    //3.输出显示

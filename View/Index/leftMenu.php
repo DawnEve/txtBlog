@@ -34,6 +34,7 @@ for($i=0; $i<count($arrLeft['data']);$i++){
 			}
 			$trueFileName .= '.' . $fileType;
 			
+			
 			// 根据文件类型判断需要加载的组件
 			switch( $fileType ){
 				//如果是txt，则引入txt.js文件
