@@ -43,7 +43,31 @@ return array (
     ),
   ),
   
+  
+  array (
+    0 => 2,
+    1 => 'wordpress',
+    2 => 
+    array (
+      array('项目描述','wordpress001','html',),
+      array('高级教程','wordpress004','txt'),
+    ),
+  ),
+  
+      
 
+
+  array (
+    0 => 2,
+    1 => 'phpCMS',
+    2 => 
+    array (
+      array('项目描述','phpCMS001','html',),
+      array('参考资料','phpCMS002','html'),
+      array('FAQ','phpCMS003','html'),
+    ),
+  ),
+  
   
 
   array (
@@ -58,19 +82,6 @@ return array (
   ),
   
   
-
-  array (
-    0 => 2,
-    1 => 'phpCMS',
-    2 => 
-    array (
-      array('项目描述','phpCMS001','html',),
-      array('参考资料','phpCMS002','html'),
-      array('FAQ','phpCMS003','html'),
-    ),
-  ),
-  
-      
   
 
   array (
