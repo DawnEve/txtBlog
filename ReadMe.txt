@@ -1,115 +1,47 @@
+txtBlog v0.3.9.1
 ===============================
-本文按时间【倒序】排列。
-===============================
-git remote add origin git@github.com:DawnEve/txtBlog.git
-git push -u origin master
-===============================
-
-项明名：txtBlog
-devLog.txt 记录版本详细变化。
-访问地址：http://blog.dawneve.cc/index.php?k=PHP
+	-- A simple yet powerful php blog system for reading and organizing txt files. 
 目的：建立一个能组织和阅读txt文件的博客系统。
 
-项目要具有如下特性：
-	可移动性：主体文件夹可以移动位置且不出错（discuz就不行，移动位置后头像不显示）。
-	兼容性：主流浏览器（PC端的chrome和移动端UC、腾讯浏览器）
-	可扩展性：方便扩展模块和添加功能。
-
-================================================================
-[version 0.3] 14:45 2016/1/4
-准备：
-1.改名为txtBlog，因为内部使用的是txt文件。
-2.该项目独立用git跟踪。
-3.添加了博客描述。
-
-	
-	
-	
-footer效果：https://flowplayer.org/
-http://www.zixue.it/phpvideo
-footer鲜活：http://www.iisp.com/ztview/ID_18392.html
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-================================================================
-[version 0.2]（因为json不直观，不如用php数组直观！
-同时文件命名方式不合适！改用日期加时间。序号还是自动生成。）
-
-一个基于文件的博客。
-2015-12-31
-
-要完成的功能：
-
 用户方面：
 	1.单用户自用博客；其他人可以浏览。
 交互：
 	2.评论有待开发。前期采用多说。
 数据存储：
-	3.不用mysql，基于文件系统。用文件保存html，用array保存。
+	3.不用mysql，基于文件系统。目录用文件保存，采用array格式。
 		图片：
 		文本编辑器：
 		样式表：支持几种基本设置：标题、正文、段落、图片、代码、强调、
-	支持txt文本简单解析。
-	
-	
-UI布局：
-	4.顶部是自定义关键词（如js、php等），
-		左边是自定义菜单；
-			支持二级菜单；
-		右边是正文；
-
-系统架构：
-	5.采用MVC；
-	6.要扩展性强。
-	7.目录结构清晰。
-
-
-
-
-
-
-
-
-================================================================
-【作废】[version 0.1]一个基于json的博客。
-
-2015-12-30
-
-要完成的功能：
-
-用户方面：
-	1.单用户自用博客；其他人可以浏览。
-交互：
-	2.评论有待开发。前期采用多说。
-数据存储：
-	3.不用mysql，基于文件系统。用文件保存html，用json保存。
-		图片：
-		文本编辑器：
-		样式表：支持几种基本设置：标题、正文、段落、图片、代码、强调、
+		支持txt文本简单解析
+		markdown格式解析和样式表
 		
 UI布局：
 	4.顶部是自定义关键词（如js、php等），
 		左边是自定义菜单；
-		支持二级菜单；
+		[todo]支持二级菜单；
 		右边是正文；
+
 系统架构：
 	5.采用MVC；
-	6.要扩展性强。
+	6.要扩展性强：可以自动生成应用目录、管理多个记事本
 	7.目录结构清晰。
-===============================================
+兼容性：
+	8.主流浏览器（PC端的chrome/IE9，移动端UC、腾讯浏览器）
+
+
+	
+	
+``````
+添加$ git remote add origin git@github.com:DawnEve/txtBlog.git
+首次$ git push -u origin master
+推送$ git push origin master
+
+合并$ git merge --no-ff -m'some comments' otherBranch
+``````
+
+
+
+参考资料：
+footer效果：https://flowplayer.org/
+http://www.zixue.it/phpvideo
+footer鲜活：http://www.iisp.com/ztview/ID_18392.html
