@@ -8,7 +8,7 @@ return array (
     array (
       array('项目描述','git001','html',),
       array('参考资料','git002','html'),
-      array('FAQ','git003','html'),
+      array('About Me','aboutMe','md'),
 
     ),
   ),
@@ -17,7 +17,7 @@ return array (
   
   array (
     0 => 2,
-    1 => 'txtBlog进度',
+    1 => 'txtBlog发布笔记',
     2 => 
     array (
 	  array('release0.3.3','txtBlog001', ),

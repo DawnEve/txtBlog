@@ -9,7 +9,7 @@ return array (
       array('项目描述','javaEE001','html',),
       array('参考资料','javaEE002','html'),
       array('FAQ','javaEE003','html'),
-      array('JavaEE大纲','javaEE101','txt'),
+      array('OOP理论','oop001','md',),
 
     ),
   ),
@@ -32,7 +32,7 @@ return array (
     1 => 'JavaEE',
     2 => 
     array (
-      array('项目描述','javaEE101','html',),
+      array('JavaEE大纲','javaEE001','txt'),
     ),
   ),
   
