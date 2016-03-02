@@ -6,10 +6,10 @@ return array (
     1 => '前言与资料',
     2 => 
     array (
-      array('项目描述','git001','html',),
-      array('参考资料','git002','html'),
-      array('About Me','aboutMe','md'),
-
+		array('项目描述','git001','html',),
+		array('参考资料','git002','html'),
+		array('About Me','aboutMe','md'),
+		array('博客使用手册','txtBlog000Example','html'),
     ),
   ),
 

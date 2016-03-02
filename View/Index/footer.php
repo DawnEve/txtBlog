@@ -133,7 +133,10 @@ function print_links($links){
 			
 		</div>
 		
-		<div class=ewm><img src='data/erweima.png'><p>扫码登陆本站</p></div>
+		
+		<div class=ewm><img src='public/images/erweima.png'><p>扫码登陆本站</p></div>
+		
+		
 		<div class='links'>
 			Copyright &copy; 2009 - 2016 DawnEve. All Rights Reserved. | 
 			<a target='_blank' href='https://github.com/DawnEve'>Folk me on Github</a> | 
@@ -141,6 +144,7 @@ function print_links($links){
 			<a href='http://pan.baidu.com/s/1i3imHpF' title='密码:qa53'>web tools</a>
 		</div>
 
+		
 		<div class='small fade'>
 			♥ Do have faith in what you're doing. 
 			[<?php echo date('Y-m-d H:i:s',time());?>] 
@@ -148,6 +152,8 @@ function print_links($links){
 		</div>
 	</div>
 </div>
+
+
 
 <div class="foot_top">
 	<a href="#" id="to_top" onclick='gotoTop();return false;'>返回顶部</a>

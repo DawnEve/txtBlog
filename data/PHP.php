@@ -8,7 +8,6 @@ return array (
       array('项目描述','PHP001','html',),
       array('参考资料','PHP002','html'),
       array('FAQ','PHP20160105-003','html'),
-      array('博客示例','PHP000Example','html'),
       array('语言之争','PHP003-1','txt'),
     ),
   ),
