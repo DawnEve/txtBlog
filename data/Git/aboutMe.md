@@ -6,7 +6,7 @@
 - 性别: M  
 - 网名: 	Dawn
 - 现居: 	郑州-高新区
-- 技术偏好:	倾向于后端技术，熟练javascript/php/mysql，正在学java/Android。了解php扩展和高并发的解决办法。
+- 技术偏好:	倾向于后端技术，熟练js/jQuery/php/thinkPHP/mysql，正在学java。了解php扩展和高并发的解决办法。
 
 ## 联系方式  
 
@@ -26,15 +26,15 @@
 
 ## 技能清单    
 
-其中`重点标注的`为熟练，其他为了解。  
-
+其中`重点标注的`为熟练，其他为了解。 
 
 - web前端: `html`/`css`/`javascript`/`jQuery`/underscore/Dojo/   
-- web后端: `php`/java/node/python/Hack/Node  
-- Web框架: `ThinkPHP3.2`/`codeigniter3`/Yaf/Yii/Lavaral/LazyPHP
-- 开源程序: `phpCMS`/ecShop/Discuz/wordPress/eduShop  
+- web后端: `php`/java/node/python/C/Node  
+- Web框架: `ThinkPHP3.2`/`codeigniter3`/Symfony3/Yaf/Yii/Lavaral/LazyPHP
+- 开源程序: `phpCMS`/ecShop/Discuz/`wordPress`/eduShop  
 - 设计软件: `photoshop`/`illustrator`
- 
+
+
 - 前端框架: `Bootstrap`/AngularJS/EmberJS/HTML5/Cocos2dJS/ionic  
 - 前端工具: Bower/`Gulp`/SaSS/`Less`/PhoneGap  
 - 数据库相关: `MySQL`/PgSQL/PDO/SQLite  
@@ -71,16 +71,14 @@
 - 接口隔离原则  
 - 组合/聚合复用原则  
 - “迪米特”法则  
-- 单一直则原则  
+- 单一职责原则  
 
 ```
 可靠性，健壮性，可扩展性，可重用性！这四点是软件四大支柱，所以写代码的时候一定要注意这几点。
-
-
-可靠性：代表你写的代码是可靠的，不会出现Exception；
-健壮性：代表你程序的容错机制不错；
-可扩展性：代表，适当的业务修改是可以快速完成的，不需要大量修改；
-可重用性：相信知道继承的同学都知道可重用性，对于相同的业务逻辑要进行封装，不要重复书写，这点和函数作用类似。。。
+	- 可靠性：代表你写的代码是可靠的，不会出现Exception；
+	- 健壮性：代表你程序的容错机制不错；
+	- 可扩展性：代表，适当的业务修改是可以快速完成的，不需要大量修改；
+	- 可重用性：相信知道继承的同学都知道可重用性，对于相同的业务逻辑要进行封装，不要重复书写，这点和函数作用类似。。。
 ```
 
 

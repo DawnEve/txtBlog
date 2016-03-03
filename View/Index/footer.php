@@ -12,30 +12,7 @@
 		<div class='fade'>
 			
 	<?php //友情链接
-/**
-* 根据友情链接数组，输出拼接好的字符串
-* 输入link数组
-*/
-function print_links($links){
-	$str='';
-	for($i=0; $i<count($links); $i++){
-		//获取单个数组
-		$arr=$links[$i];
-		
-		//拼接注释
-		$title='';
-		if(isset($arr[2])){
-			$title=' title="'.$arr[2].'"';
-		}
-		//拼接链接
-		$str .= "<a href='". $arr[0] ."' target='_blank'".$title.">". $arr[1] ."</a>";
-		//如果不是结尾，增加|
-		if($i!= (count($links)-1) ) $str .=  ' | ';
-		//如果是结尾，换行
-		if( ($i!=0) && ($i%15==0) ) $str .=  '<br />';
-	}
-	return $str;
-}
+
 
 		//计算机技术类============================工具类
 		$links_IT_tools=array(
@@ -58,7 +35,8 @@ function print_links($links){
 			array('http://www.bootcss.com/','bootstrap'),
 			array('http://www.shejidaren.com/free-bootstrap-ui-kits.html','设计达人'),
 		);
-		echo '<br />友情链接[IT Tools]: ', print_links($links_IT_tools);
+		echo '<br />友情链接[IT Tools]: ';
+		print_links($links_IT_tools);
 		
 		
 		//计算机技术类============================后端资料类
@@ -75,7 +53,8 @@ function print_links($links){
 			array('http://gaodc.com/','8年php高东臣博客'),
 			array('http://www.shouce.ren/api/index','在线手册下载'),
 		);
-		echo '<br />后端资料: ', print_links($links_Back);
+		echo '<br />后端资料: ';
+		print_links($links_Back);
 		
 		//计算机技术类============================前端资料类
 		$links_Front=array(
@@ -111,7 +90,8 @@ function print_links($links){
 			array('http://segmentfault.com/','segmentfault', '中文编程问答'),
 			array('http://www.kancloud.cn/explore','看云文档'),
 		);
-		echo '<br />前端技术: ', print_links($links_Front);
+		echo '<br />前端技术: ';
+		print_links($links_Front);
 		
 		
 		// 视频资源类
@@ -123,7 +103,8 @@ function print_links($links){
 			array('http://edu.ibeifeng.com/list-index-is_key-is_new.html','北风网'),
 			array("http://www.caopeng.com/",'曹鹏编程之邦'), 			
 		);
-		echo '<br />视频: ', print_links($links_video);
+		echo '<br />视频: ';
+		print_links($links_video);
 ?>		
 			
 
