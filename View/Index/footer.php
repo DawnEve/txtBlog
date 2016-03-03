@@ -10,59 +10,122 @@
 	<a name='footer'></a>
 	<div class=wrap>
 		<div class='fade'>
-			友情链接:
-			<a target='_blank' href='http://www.ruanyifeng.com/' title='Alipay.com as an Node/JavaScript engineer.'>阮一峰</a> | 
-			<a target='_blank' href='http://www.liaoxuefeng.com/'>廖雪峰</a> | 
-			<a target='_blank' href='http://www.zhangxinxu.com/' title='腾讯ISUX。欢迎与我一同交流web前端方面的东西！'>张鑫旭</a> | 
-			<a target='_blank' href='http://www.nowamagic.net/' title='其实每个程序员都是魔法师。'>简明现代魔法</a> | 
-			<a target='_blank' href='http://www.ycku.com/course/' title='瓢城Web俱乐部'>李炎恢</a> | 
-			<a target='_blank' href='http://limingyang2012.github.io/blog/' title='前端博客'>李明洋</a> | 
-			<a target='_blank' href='http://www.bluesdream.com/blog/' title='前端博客'>BlueDream</a> | 
-			<a target='_blank' href='http://ideazhao.com/' title='生活琐碎、前端杂谈、诗情画意、随心笔记'>灵感的小窝</a> | 
+			
+	<?php //友情链接
 
-				
-				
-				
-				<a href="http://fequan.com/" target="blank">前端圈</a> | 
-				<a href="http://www.75team.com/" target="blank">齐舞团</a> | 
-				<a href="http://f2e.im/" target="blank">F2E</a> | 
-				<a href="http://www.html-js.com/" target="blank">前端乱炖</a> | 
-				<a href="https://www.shiyanlou.com/" target="blank" title='第一家以实验为核心的IT在线教育平台'>实验楼</a> | 
-				
-				
-				<a href="http://www.w3.org/" target="blank">W3C</a> | 
-				<a target='_blank' href='http://www.w3school.com.cn/' title=''>w3school</a> | 
-				<a href="http://www.w3ctech.com/" target="blank">w3ctech</a>  | 
-				<a href="http://www.w3cplus.com/" target="blank">w3cplus</a>  | 
-					
-					
-			<a target='_blank' href='http://www.runoob.com/' title=''>菜鸟教程网</a> | 
-			<a target='_blank' href='https://www.v2ex.com/' title='V2EX 是一个关于分享和探索的地方。创意工作者们的社区'>v2ex</a> | 
-			<a target='_blank' href='http://tool.oschina.net/apidocs' title='oschina编程API手册'>API手册</a> | 
-			<a href="http://stackoverflow.com/" target="blank">Stack Overflow</a> | 
-			<a target='_blank' href='http://segmentfault.com/' title='中文编程问答'>segmentfault</a> | 
-			<a target='_blank' href='http://www.kancloud.cn/explore' title=''>看云文档</a> | 
+
+		//计算机技术类============================工具类
+		$links_IT_tools=array(
+			//api手册
+			array('http://jsbin.com/','jsbin','练习前端的好工具！'),
+			array('http://jquery.cuishifeng.cn/','jQuery手册'),
+			array('http://www.php100.com/manual/css3_0/media-20queries.shtml','css3手册'),
+			array('http://www.w3school.com.cn/','w3school'),
+			array('http://miostudio.sinaapp.com/','mySinaapp'),
+			array('http://php.net/','PHP'),
+			array('http://www.sqlite.org/','sqlite'),
+			array('https://openresty.org/download/agentzh-nginx-tutorials-zhcn.html','Nginx教程(版本2015.03.19)'),
+			array('http://fex.baidu.com/ueditor/#start-config','uEditor','百度富文本编辑器'),
+			//
+			array('http://aibusy.com/blog/?p=226','Sublime插件'),
+			array('http://www.uimaker.com/member/reg_new.php','UI制造者'),
+			array('http://bonsaiden.github.io/JavaScript-Garden/zh/#function.closures','js秘密花园'),
+			array('http://www.qietu.com/','切图网'),
+			array('http://www.php100.com/','php100'),
+			array('http://www.bootcss.com/','bootstrap'),
+			array('http://www.shejidaren.com/free-bootstrap-ui-kits.html','设计达人'),
+		);
+		echo '<br />友情链接[IT Tools]: ';
+		print_links($links_IT_tools);
+		
+		
+		//计算机技术类============================后端资料类
+		$links_Back=array(
+			array('http://www.imeixue.cn/','每学网'),// 韩顺平的作品？
+			array('http://www.css88.com/archives/1706','前端'),
+
+			array('http://www.shejipi.com/12931.html','设计癖'),
+			array('http://www.w3cfuns.com/article-1306-1.html','响应式布局'),
+			array('http://code.csdn.net/news/2819417','25个前端框架'),
+			array('http://aibusy.com/course_list.html','前端大纲'),
+			array('http://www.cnblogs.com/ljchow/archive/2010/06/09/1754352.html','js动画原理'),
+			array('http://www.blogdaren.com/','php博客花园'),
+			array('http://gaodc.com/','8年php高东臣博客'),
+			array('http://www.shouce.ren/api/index','在线手册下载'),
+		);
+		echo '<br />后端资料: ';
+		print_links($links_Back);
+		
+		//计算机技术类============================前端资料类
+		$links_Front=array(
+			//前端名人
+			array('http://www.ruanyifeng.com/','阮一峰','Alipay.com as an Node/JavaScript engineer.'),
+			array('http://www.liaoxuefeng.com/','廖雪峰'),
+			array('http://www.zhangxinxu.com/','张鑫旭', '腾讯ISUX。欢迎与我一同交流web前端方面的东西！'),
+			array('http://www.nowamagic.net/','简明现代魔法','其实每个程序员都是魔法师'),
+			array('http://www.ycku.com/course/','李炎恢','瓢城Web俱乐部'),
+			array('http://limingyang2012.github.io/blog/','李明洋', '前端博客'),
+			array('http://www.bluesdream.com/blog/','BlueDream','前端博客'),
+			array('http://ideazhao.com/', '灵感的小窝','生活琐碎、前端杂谈、诗情画意、随心笔记'),
+			array('http://www.dyike.com/index.php/aboutme', '一刻笔记','生活琐碎、前端杂谈、诗情画意、随心笔记'),
 			
+			//前端团队博客 
+			array("http://fequan.com/",'前端圈'),
+			array("http://www.75team.com/",'齐舞团'),
+			array("http://f2e.im/",'F2E'),
+			array("http://www.html-js.com/",'前端乱炖'),
+			array("https://www.shiyanlou.com/",'实验楼','第一家以实验为核心的IT在线教育平台'),
 			
+			//
+			array("http://www.w3.org/",'W3C'),
+			array('http://www.w3school.com.cn/','w3school'),
+			array("http://www.w3ctech.com/",'w3ctech'),
+			array("http://www.w3cplus.com/",'w3cplus'),
 			
+			array('http://web.jobbole.com/85160/','伯乐在线'),
+			array('http://www.runoob.com/','菜鸟教程网'),
+			array('https://www.v2ex.com/', 'v2ex', 'V2EX 是一个关于分享和探索的地方。创意工作者们的社区'),
+			array('http://tool.oschina.net/apidocs', 'API手册', 'oschina编程API手册'),
+			array('http://stackoverflow.com/','Stack Overflow'),
+			array('http://segmentfault.com/','segmentfault', '中文编程问答'),
+			array('http://www.kancloud.cn/explore','看云文档'),
+		);
+		echo '<br />前端技术: ';
+		print_links($links_Front);
+		
+		
+		// 视频资源类
+		$links_video=array(
+			array("http://www.imooc.com/",'慕课网'),
+			array('http://study.163.com/','网易云课堂'),
+			array("http://ninghao.net/",'宁皓网','React，Bootstrap，Laravel 视频教程'),
+			
+			array('http://edu.ibeifeng.com/list-index-is_key-is_new.html','北风网'),
+			array("http://www.caopeng.com/",'曹鹏编程之邦'), 			
+		);
+		echo '<br />视频: ';
+		print_links($links_video);
+?>		
+			
+
 			<br />导航:			
 			<a href="http://f2er.club/" target="blank">醉牛前端导航</a> | 
 			<a href="http://caibaojian.com/links" target="blank">前端网址导航</a> | 
 			
-			<br />视频:		
-			<a href="http://www.imooc.com/" target="blank">慕课网</a> | 
-			<a href="http://www.caopeng.com/" target="blank">曹鹏编程之邦</a> | 
-			<a href="http://ninghao.net/" target="blank" title='React，Bootstrap，Laravel 视频教程'>宁皓网</a> | 
 		</div>
 		
-		<div class=ewm><img src='data/erweima.png'><p>扫码登陆本站</p></div>
+		
+		<div class=ewm><img src='public/images/erweima.png'><p>扫码登陆本站</p></div>
+		
+		
 		<div class='links'>
 			Copyright &copy; 2009 - 2016 DawnEve. All Rights Reserved. | 
 			<a target='_blank' href='https://github.com/DawnEve'>Folk me on Github</a> | 
-			<a class=red href='index.php?k=PHP'>Contact me</a> | 
+			<a class=red href='index.php?k=Git&id=0_2'>Contact me</a> | 
 			<a href='http://pan.baidu.com/s/1i3imHpF' title='密码:qa53'>web tools</a>
 		</div>
 
+		
 		<div class='small fade'>
 			♥ Do have faith in what you're doing. 
 			[<?php echo date('Y-m-d H:i:s',time());?>] 
@@ -70,6 +133,8 @@
 		</div>
 	</div>
 </div>
+
+
 
 <div class="foot_top">
 	<a href="#" id="to_top" onclick='gotoTop();return false;'>返回顶部</a>
