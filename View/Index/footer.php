@@ -129,7 +129,7 @@
 		<div class='small fade'>
 			♥ Do have faith in what you're doing. 
 			[<?php echo date('Y-m-d H:i:s',time());?>] 
-			Powered by <a target='_blank' href='https://github.com/DawnEve/txtBlog' title='txtBlog(A simple yet powerful php blog system for reading and organizing txt files.)'>txtBLog v0.3</a>
+			Powered by <a target='_blank' href='https://github.com/DawnEve/txtBlog' title='txtBlog(A simple yet powerful php blog system for reading and organizing txt files.)'>txtBLog v0.4</a>
 		</div>
 	</div>
 </div>

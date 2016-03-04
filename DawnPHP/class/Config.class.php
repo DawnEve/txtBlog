@@ -60,4 +60,3 @@ class Config{
 		file_put_contents($file, $str);
 	}
 }
-?>
