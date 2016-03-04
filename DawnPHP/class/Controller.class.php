@@ -1,10 +1,28 @@
 <?php
+/**=============================================
+ * Controller 控制器基类
+ *
+ * 用于系统初始化、资源调用等
+ * 类名时驼峰法，方法名是下划线法。
+ *
+ * @version		v1.0.1
+ * @revise		2015.10.08
+ * @date		2015.10.06
+ * @author		Dawn
+ * @email		JimmyMall@live.com
+ * @link		https://github.com/DawnEve/DawnPHPTools
+ =============================================*/
+ 
 class Controller{
 	//从php到模板传值。
 	public $data;
 	
 	function __construct(){
-		//啥也没做
+		//记录日志
+		Log::myLog();
+		//缓存文件
+		
+		
 	}
 	
 	function loadModel($class){
