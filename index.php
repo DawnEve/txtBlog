@@ -21,4 +21,4 @@ ob_start();//开启缓存
 	$controller->$a($k,$id);
 
 
-$cache->page_cache(60);//一般是最后一行 
+$cache->page_cache(60);//一般是最后一行,页面缓存结束
