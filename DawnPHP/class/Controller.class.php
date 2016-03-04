@@ -20,9 +20,6 @@ class Controller{
 	function __construct(){
 		//记录日志
 		Log::myLog();
-		//缓存文件
-		
-		
 	}
 	
 	function loadModel($class){
