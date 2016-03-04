@@ -1,6 +1,7 @@
-txtBlog v0.3.9.1
+txtBlog v0.4.1
 ===============================
 	-- A simple yet powerful php blog system for reading and organizing txt files. 
+
 目的：建立一个能组织和阅读txt文件的博客系统。
 
 用户方面：
@@ -25,10 +26,12 @@ UI布局：
 	5.采用MVC；
 	6.要扩展性强：可以自动生成应用目录、管理多个记事本
 	7.目录结构清晰。
+
 兼容性：
 	8.主流浏览器（PC端的chrome/IE9，移动端UC、腾讯浏览器）
 
-
+优化：
+	9.全站缓存60s。
 	
 	
 ``````

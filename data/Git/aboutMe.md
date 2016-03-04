@@ -32,7 +32,7 @@
 - web后端: `php`/java/node/python/C/Node  
 - Web框架: `ThinkPHP3.2`/`codeigniter3`/Symfony3/Yaf/Yii/Lavaral/LazyPHP
 - 开源程序: `phpCMS`/ecShop/Discuz/`wordPress`/eduShop  
-- 设计软件: `photoshop`/`illustrator`
+- 设计软件: `photoshop`/`illustrator`/CorelDraw/
 
 
 - 前端框架: `Bootstrap`/AngularJS/EmberJS/HTML5/Cocos2dJS/ionic  
