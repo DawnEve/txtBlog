@@ -83,5 +83,16 @@ Symfony作为一种技术文化，已经对整个PHP社区产生深远的影响�
 
 
 
+# 翻译的基本md文件结构:
+
+```
+Symfony versus Flat PHP
+================================
+
+from: http://symfony.com/doc/current/book/from_flat_php_to_symfony2.html
 
 
+
+
+> The End.  Create:2016.3.7 V0.1 
+```

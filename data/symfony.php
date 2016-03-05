@@ -18,6 +18,8 @@ return array (
     1 => 'Symfony Book',
     2 => array (
       array('入门教程','symfonyB101','txt',),
+      array('sf和HTTP继承','sfB001','md',),
+      array('sf和原生PHP','sfB002','md',),
 
     ),
   ),

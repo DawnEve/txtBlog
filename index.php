@@ -9,9 +9,10 @@ $k=Dawn::get('k','PHP');//关键词
 $id=Dawn::get('id','0_0');//关键词下的页面，由页面序号索引到文件名
 
 //实例化缓存
-$cache=new Cache();
+$inEdit=array('symfony');//传入正在编辑的关键词，不缓存这些部分
+$cache=new Cache( $inEdit );
 $cache->page_init();//页面缓存初始化 
-ob_start();//开启缓存     
+     
 
 
 	//实例化控制器
