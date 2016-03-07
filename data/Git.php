@@ -20,7 +20,8 @@ return array (
     1 => 'txtBlog发布笔记',
     2 => 
     array (
-	  array('release0.3.3','txtBlog001', ),
+	  array('release0.3.3','txtBlog001','html'),
+	  array('release0.4','txtBlog002','html'),
 
     ),
   ),
