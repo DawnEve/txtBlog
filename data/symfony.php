@@ -9,6 +9,7 @@ return array (
       array('参考资料','symfony002','html'),
       array('FAQ','symfony003','html'),
       array('翻译计划','symfony000','md',),
+      array('快乐sf开发','joyfullSF001','md',),
     ),
   ),
   
@@ -19,7 +20,7 @@ return array (
     2 => array (
       array('入门教程','symfonyB101','txt',),
       array('sf和HTTP继承','sfB001','md',),
-      array('sf和原生PHP','sfB002','md',),
+      array('sf V.S.原生PHP','sfB002','md',),
 
     ),
   ),

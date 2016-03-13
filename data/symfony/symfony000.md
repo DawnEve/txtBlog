@@ -3,6 +3,8 @@ Symfony3文档翻译计划
 
 2016年2月28日，Symfony3.0.3发布了。出于学习英语的态度，决定翻译一下sf3的文档，顺便学习一下sf3框架。
 
+其他翻译者： [只翻译了book](http://www.newlifeclan.com/symfony/archives/category/the-symfony-book/book-2-6) |  [全部翻译](http://symfony.cn/docs/book/http_fundamentals.html)
+
 参考网站:
 	- [官方网站（2.x版本）](http://www.symfony.com/)  
 	- [官方网站（1.x版本，功能已冻结）](http://www.symfony-project.org/)    
@@ -90,7 +92,6 @@ Symfony versus Flat PHP
 ================================
 
 from: http://symfony.com/doc/current/book/from_flat_php_to_symfony2.html
-
 
 
 
