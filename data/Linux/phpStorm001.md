@@ -106,7 +106,7 @@ In Preferences, search for Symfony and click the plugins option. From here, clic
 
 > 插件生效：菜单栏File -> Setting -> Languages & Frameworks -> Symfony选项下：勾选enable plugin for this project。
 
-
+  
 
 
 
