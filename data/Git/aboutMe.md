@@ -26,19 +26,20 @@
 
 ## 技能清单    
 
-其中`重点标注的`为熟练，其他为了解。 
+其中`重点标注的`为熟练，其他为了解(目标)。 
 
 - web前端: `html`/`css`/`javascript`/`jQuery`/underscore/Dojo/   
-- web后端: `php`/java/node/python/C/Node  
-- Web框架: `ThinkPHP3.2`/`codeigniter3`/Symfony3/Yaf/Yii/Lavaral/LazyPHP
-- 开源程序: `phpCMS`/ecShop/Discuz/`wordPress`/eduShop  
 - 设计软件: `photoshop`/`illustrator`/CorelDraw/
-
+- web后端: `php`/java/node/python/C/Node  
+- Web框架: `ThinkPHP3.2`/`codeigniter3`/Symfony3/Yaf/Yii2/Lavaral/LazyPHP
+- 开源程序: `phpCMS`/ecShop/Discuz/`wordPress`/eduShop  
+- 服务器: `apatch`/`Ubuntu`/nginx/`docker`/virtualBox/     
+<br>
 
 - 前端框架: `Bootstrap`/AngularJS/EmberJS/HTML5/Cocos2dJS/ionic  
 - 前端工具: Bower/`Gulp`/SaSS/`Less`/PhoneGap  
-- 数据库相关: `MySQL`/PgSQL/PDO/SQLite  
-- 版本管理、文档和自动化部署工具: Svn/``Git``/PHPDoc/Phing/Composer  
+- 数据库相关: `MySQL`/PgSQL/PDO/SQLite/mongoDB/redis/  
+- 版本管理、文档和自动化部署工具: Svn/`Git`/PHPDoc/Phing/Composer/gulp  
 - 单元测试: PHPUnit/SimpleTest/Qunit  
 - 云和开放平台: SAE/BAE/AWS/微博开放平台/`微信应用开发`  
 - 支付功能: 中国银联/支付宝/微信支付  
@@ -58,7 +59,7 @@
 
 - [我的新浪云页面](http://miostudio.sinaapp.com/ "sina app")
 - [某制冷公司网站](http://www.wllwzl.com/ "企业站")
-- 开源项目[txtBlog](http://blog.dawnEve.cc/ "博客框架和内容纯手工打造。")，用以管理庞杂的web知识  
+- 开源项目[txtBlog](http://blog.dawnEve.cc/ "博客框架和内容纯手工打造。")，用于管理庞杂的web知识  
 - [微信订阅号：miostudio]  
 
 
@@ -102,7 +103,7 @@
 	* msql优化 索引 只会memcache不行哦 还要学redis msql 备份 shell编程 搭建调试liunx lamp nginx 负载均衡
 	* 博客点赞功能：cookie或者memcache都可以
 	
+- DRY的三重境界：function, class, plugin  	
 	
-	
-> 更新日期: 20160301
+> 更新日期: 201603010  
 

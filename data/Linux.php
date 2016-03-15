@@ -20,6 +20,8 @@ return array (
 	  array('十大常用命令','Linux101', 'txt'),
 	  array('VIM常用命令','vim001', 'txt'),
 	  array('sublime编辑器','sublime001', 'html'),
+	  array('用户管理','linux102', 'txt'),
+	  array('phpStorm','phpStorm001', 'md'),
     ),
   ),
   
@@ -32,6 +34,7 @@ return array (
     2 => 
     array (
 	  array('iptables安全防护','Linux201','txt' ),
+	  array('科学上网','crackTheWall','html' ),
     ),
   ),
   
@@ -55,8 +58,27 @@ return array (
     array (
 	  array('htaccess配置规则','apache001','txt' ),
 	  array('虚拟域名和二级域名配置','apache002','txt' ),
+	  array('nginx服务器快速入门','nginx001','md' ),
+	  array('域名售卖系统whmcs','whmcs','txt' ),
 
     ),
   ),
+  
+  
+  
+  array (
+    0 => 2,
+    1 => '虚拟机和docker',
+    2 => 
+    array (
+	  array('VirtualBox','VirtualBox001','md' ),
+	  array('docker快速入门','docker001','md' ),
+	  array('docker官方简介','docker002','md' ),
+	  array('创建docker镜像','docker003','md' ),
+
+    ),
+  ),
+  
+  
   
 );

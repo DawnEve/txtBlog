@@ -1,3 +1,5 @@
+Gulp start up
+=====================
 
 ## 为什么使用gulp？  
 
@@ -265,8 +267,4 @@ gulp.task('default', ['connect', 'watch']);
 - 但是，更新index.html文件内容后，只有命令行在变化，网页没更新！！（暂时没找到原因）
 
 
-============  
-the end.   
-
-
-also at: http://miostudio.blog.163.com/blog/static/220765129201611784748444/
+> the end. Also at: http://miostudio.blog.163.com/blog/static/220765129201611784748444/

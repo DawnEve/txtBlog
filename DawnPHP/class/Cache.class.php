@@ -5,7 +5,7 @@
  * 文件缓存类
  * 类名时驼峰法，方法名是下划线法。
  *
- * @version		v0.0.1
+ * @version		v0.0.2
  * @revise		2016.03.04
  * @date		2016.03.04
  * @author		Dawn
@@ -27,14 +27,22 @@ class Cache{
 	private $_k;
 	private $_id;
 	private $_uri;
+	private $edit=array(); // 正在更新的关键词
 	
-	function __construct(){
+	function __construct($edit=array()){
 		$this->_c=strtolower($GLOBALS['c']);
 		$this->_a=strtolower($GLOBALS['a']);
 		$this->_uri=strtolower( $this->_c . '_' . $this->_a);
 		
 		$this->_k=strtolower($GLOBALS['k']);
 		$this->_id=strtolower($GLOBALS['id']);
+		
+		//忽略大小写
+		for($i=0; $i<count($edit); $i++){
+			$edit[$i]=strtolower( $edit[$i] );
+		}
+		
+		$this->edit=$edit;//正在更新的数组。
 	}
 	
 	
@@ -67,11 +75,22 @@ class Cache{
 			Log::mylog('cache');
 			exit(0); 
 		}
-		return true;
+		//return true;
+		
+		if( !in_array($this->_k, $this->edit)){
+			ob_start();//开启缓存
+		}
 	}
+	
+	
 	
 	function page_cache($ttl = 0) 
 	{
+		//如果在编辑，则啥也不做
+		if( in_array($this->_k , $this->edit) ){
+			return;
+		}
+		
 		$ttl = $ttl ? $ttl : $this->cacheLimitTime;//缓存时间，默认3600s 
 		$contents = ob_get_contents();//从缓存中获取内容 
 		$contents = "<!--page_ttl:" . (time() + $ttl) . "-->n" . $contents; 

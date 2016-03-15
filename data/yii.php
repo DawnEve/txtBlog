@@ -11,6 +11,15 @@ return array (
     ),
   ),
   
+  array (
+    0 => 1,
+    1 => 'composer',
+    2 => array (
+      array('composer入门','composer001','html',),
+
+    ),
+  ),
+  
   
   
   
