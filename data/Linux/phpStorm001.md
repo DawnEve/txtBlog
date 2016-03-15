@@ -104,11 +104,176 @@ In Preferences, search for Symfony and click the plugins option. From here, clic
 
 安装完毕，重启 PhpStorm，插件即可生效。
 
-> 插件生效：菜单栏File -> Setting -> Languages & Frameworks -> Symfony选项下：勾选enable plugin for this project。
+> 插件生效：菜单栏File -> Setting -> Languages & Frameworks -> Symfony选项下：勾选enable plugin for this project。修改前两行的app为var。
 
   
+1.自动命名空间，使用settings-directories.[NO]
 
 
+
+
+<br>
+<br>
+<br>
+<br>
+===============
+
+# 学习怎么使用phpstorm10
+http://knpuniversity.com/screencast/phpstorm
+
+
+
+## 1.设置：
+如何打开：菜单 File->setting；
+快捷键：ctrl+alt+S;
+
+### 1.1设置主题  
+可以在 appearance 设置主题，推荐使用更漂亮更护眼的主题。
+
+### 1.2设置字体   
+搜索font，找到如何设置字体大小(editor->colors & fonts->font)。注意：改变之前先另存为主题，再修改字体。
+	也可以修改行间距line spacing.
+
+
+	
+	
+
+## 2.在编辑器包含或者不包含文件夹
+右击文件夹->mark directory as->excluded.
+点击project files就可以看到所有结果。
+点击project就可以看到隐藏后的文件结构。
+
+## 3.安装插件
+在设置中选plugins，点击下面的的browse repositories，然后输入需要的插件的名字，右边有install 按钮。
+
+推荐安装 symfony plugin，对sf很有用。
+另一个php annotations，也很好用。
+
+## 4.注释annotation
+右击src文件夹，选择mark directory as -> source Root.
+展开src文件夹，展开AppBundle，展开Controller，看到DefaultController.php.
+右击Controller文件夹，选择new->php class，在name中输入UserController，确定。
+
+```
+    /**
+     * @Route("/show")
+     */
+    function show(){
+        return new Response("this is the show user method.");
+    }
+```  
+
+注意：输入注释/**回车就生成注释框架，删除其他注释，只留下 * @，然后接着写Rou差不多就出现提示了，使用上下箭头选择合适的提示，回车或tab就完成了use的自动添加。
+
+注释中一定要用双引号！
+
+
+
+
+## 5.查看源码
+按住ctrl键，鼠标单击注释中的Route，就可以打开Route类。
+
+
+
+
+## 6.模板twig
+展开/app/Resources/views，右击views，新建文件夹user。
+右击user文件夹，新建文件new.html.twig
+```
+{% extends 'base.html.twig' %}
+
+{% block body %}
+    <h1>new user page</h1>
+
+{% endblock %}
+```
+
+
+
+
+然后在src/AppBundel/Controller/UserController.php中添加：
+
+```
+use Symfony\Bundle\FrameworkBundle\Controller\Controller;
+use Symfony\Component\HttpFoundation\Response;
+use Symfony\Component\Routing\Annotation\Route;
+    /**
+     * @Route("/user/new",name="edit_user")   
+	 * //这里一定要用双引号！
+     */
+    function new2Action(){
+        return $this->render("user/new.html.twig",array());
+    }
+```
+
+
+
+
+
+
+
+### 向模板传递参数：
+```
+在控制器中写参数id：
+    /**
+     * @Route("/user/new",name="edit_user")
+     * //这里一定要用双引号！
+     */
+    function new2Action(){
+        return $this->render("user/new.html.twig",array(
+            'id'=>'a001'
+        ));
+    }
+在模板中引用：
+{% extends 'base.html.twig' %}
+
+{% block body %}
+    <h1>new user page</h1>
+    {{ id }}
+{% endblock %}
+```
+
+浏览器访问：http://localhost:8000/user/new
+即可看到输出：
+new user page
+a001
+
+
+
+
+
+
+
+
+### 模板中使用过滤器
+
+模板中：
+
+```
+{% extends 'base.html.twig' %}
+
+{% block body %}
+    <h1>new user page</h1>
+    <p>{{ id }}
+    <p>{{ id | upper }}
+    <p>{{ 'now'|date }}
+    <p>today is {{ 'now'|date("Y-m-d H:i:s") }}
+{% endblock %}
+```
+
+访问时显示：
+new user page
+a001
+A001
+March 14, 2016 17:37
+today is 2016-03-14 17:37:35
+
+想查看某个过滤器的具体实现，请按住ctrl键，并单击过滤器（比如upper）。
+
+
+
+### 快速建立form表单
+在app/Resources/views/user/下建立文件_form.html.twig，然后输入form，接着按tab健，即可生成<form action=""></form>
 
 
 
