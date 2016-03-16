@@ -233,6 +233,8 @@ use Symfony\Component\Routing\Annotation\Route;
 {% endblock %}
 ```
 
+运行symfony的server：`$ php bin/console server:run`
+
 浏览器访问：http://localhost:8000/user/new
 即可看到输出：
 new user page
@@ -275,16 +277,43 @@ today is 2016-03-14 17:37:35
 ### 快速建立form表单
 在app/Resources/views/user/下建立文件_form.html.twig，然后输入form，接着按tab健，即可生成<form action=""></form>
 
+```
+<form action="" method="POST">
+    User Name: <input type="text" name="username" /><br>
+    Email: <input type="text" name="email" /><br>
+    <button type="submit">Save</button>
+</form>
+
+在其他页面中引用该表单：
+    {{ include("user/_form.html.twig") }}
+```
 
 
 
 
+## 7.命名空间namespace  
+
+	1. 菜单 file - settings，输入 directories，搜索;
+	1. 点击左侧的Project:myApp 下的 Directories；
+	1. 点击中间一列的 src文件夹，点击顶部的mark as: sources；
+	1. 点击右侧的src右侧的很小的p字母，添加Package prefix；
+	1. 再次在src/controller/下新建php类时，出现了含有前缀的命名空间 `miostudio\AppBundle\Controller`。
 
 
 
 
+**自动命名空间的添加**
+
+	- 但是我们一般不需要添加前缀，只需要定义src为source文件夹即可。
+	- 我们单击src/AppBundel，新建文件夹Entity，右击建立php class文件Movie.php，发现成功自动添加的命名空间 namespace AppBundle\Entity;
+	- 当我们回到src/Controller时，在某个控制器方法中写 `$movie=new Movie();` ，phpstorm会自动在顶部添加命名空间`use AppBundle\Entity\Movie;`。  
 
 
+
+
+**手动添加命名空间**
+	- 如果某些原因没有自动添加命名空间，则可以手动添加。
+	- 光标移动到 `$movie=new Movie();` 的Move上，然后 `Alt + Enter`即可手动添加命名空间。
 
 
 

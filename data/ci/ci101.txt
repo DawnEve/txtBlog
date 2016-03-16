@@ -1,7 +1,9 @@
-ci3框架学习笔记
+ci3框架基础教程
 
 data:2016-2-23
 refer:兄弟连 -> 邹义良(weibo.com/it266)
+
+data/ci/ci101.txt [lastModified: 2016-02-29 07:41:14]
 
 主要内容：
 	ci简介
@@ -200,11 +202,13 @@ echo 'text from user->index view';
 
 
 ========================================
-移除url中的index.php
+ci的url中移除index.php 
 ----------------------------------------
-
 1. Apache 服务器启用 mod_rewrite； 
-2. 在根目录添加一个.htaccess 文件，其中使用了 "否定条件" 来排除某些不需要重定向的项目：
+	httpd.conf文件中去掉rewrite前的分号;
+	重启apache。
+
+2. 在web根目录添加一个.htaccess 文件，其中使用了 "否定条件" 来排除某些不需要重定向的项目：
 
 RewriteEngine On
 RewriteCond %{REQUEST_FILENAME} !-f
@@ -221,6 +225,7 @@ RewriteRule ^(.*)$ index.php/$1 [L]
 
 添加 URL 后缀
 在你的 config/config.php 文件中你可以指定一个后缀。
+	$config['url_suffix'] = '.html';
 如：.html ，这样页面可以同时被如下url访问：
 http://wjl.com/ci3/user/index3
 http://wjl.com/ci3/user/index3.html
@@ -937,23 +942,433 @@ ci中的模型
 
 
 ========================================
-ci中的url相关函数
+ci辅助函数库：url相关函数
 ----------------------------------------
-生成或获取目录。
+辅助函数库是ci对php的扩展函数，需要先加载库文件再使用。
+加载后就像使用php原生函数一样直接使用。
+
+url辅助函数库用于生成或获取目录的url。
+
+使用方法：
+	1.加载url辅助函数库；
+	2.使用函数，常用的是
+		site_url('控制器/方法');//返回该控制器中方法的url
+		base_url();//返回根目录url
+		base_url('public/images/xx.png');//一个图片的绝对路径。
+
+有两个场景需要使用：
+	1. 表格提交到哪里(某个控制器)？
+	2. 获取某个目录下的资源文件（img/css/js）？
+
+例1：提交表单。
+	1)user控制器中写一个add方法(application/controllers/User.php)
+	//显示添加用户的视图
+	function add(){
+		$this->load->helper('url');//加载辅助函数
+		$this->load->view('User/add');//加载视图
+	}
+	
+	2)添加视图文件application/views/User/add.php，使用url函数；
+<form action='<?php echo site_url('user/insert'); ?>' method='post'>
+	username:<input type=text name=username /><br />
+	password:<input type=password name=password /><br />
+	email:<input type=text name=email /><br />
+	<input type=submit value='sgin up now!' />
+</form>
+	3)在控制器中添加insert方法接收数据：
+	// 接收数据
+	function insert(){
+		echo $this->input->post('username');
+		echo $this->input->post('password');
+		echo $this->input->post('email');
+	}
+	
+访问 http://ci.com/user/add， 发现form的action中已经生成url:
+	<form action='http://ci.com/index.php/user/insert.html' method='post'>
+填写表单，点击提交后跳转到 http://ci.com/index.php/user/insert.html，并显示刚才输入的信息。
 
 
+例2：获取静态资源。
+在上例中的视图文件中写入
+<img src='<?php echo base_url();?>public/images/xx.png' width='200'>
+结果输出后为：
+<img src='http://ci.com/public/images/xx.png' width='200'>
+
+
+<script src='<?php echo base_url('public/js/common.js');?>'></script>
+输出后为：
+<script src='http://ci.com/public/js/common.js'></script>
+
+
+注释：
+1)如果使用辅助函数次数较多，可以使用自动载入。
+	设置方式：application/config/autoload.php中，
+	$autoload['helper'] = array('url');
+	就不用在控制器中写 $this->load->helper('url');
+	
+但是自动载入的文件过多会拖累系统的速度。
+
+2)更多url相关函数请参考url辅助库文档：
+http://ci.com/user_guide_cn/url_helper.html#site_url
 
 
 
 ========================================
+ci中的路由与伪静态
 ----------------------------------------
+ci中的uri路由文档：http://ci.com/user_guide_cn/routing.html
+路由规则支持字符串、通配符、正则表达式等，目标可以是存在的控制器和方法，也可以是匿名函数。
+
+伪静态就是动态生成的页面，但是url中后缀是htm、html、shtml等。
+
+1.修改默认控制器
+	application/config/routers.php中修改默认控制器名字：
+	$route['default_controller'] = 'welcome';//比如改为'article'
+
+2.路由规则实现伪静态，可以把url映射到任意已知的控制器和方法中：
+	在application/config/routers.php中添加路由规则：
+		$route['my/([\d]+)(\.html){0,1}']='user/show/$1';
+	则以下url都可以访问到user控制器的show方法，并且传递id参数：
+		http://ci.com/index.php/user/show/20
+		http://ci.com/user/show/20 (如何去掉url中的index.php请看 ci的url中移除index.php 章节)
+		http://ci.com/my/22
+		http://ci.com/my/22.html
+		
+[?]注意：url后缀不能和config/config.php中的 
+	$config['url_suffix'] = '.html'; 
+指定的后缀重复，否则会找不到页面。
+[肯定是一个bug，找了好久才发现是这个问题！]
+本例中该设置为空： $config['url_suffix'] = '';
+
+
+
+例2：设置网站常用栏目‘关于我’的短网址：
+只需要设置路由规则：
+	$route['about'] = 'user/about';
+如果访问 ci.com/about 页面，其实访问的是user控制器下的about方法。
+
+========================================
+ci中的分页
+----------------------------------------
+分页类文档：http://ci.com/user_guide_cn/pagination.html
+100%可定制：可以通过动态的参数， 也可以通过保存在配置文件中的参数。
+
+有一定难度，主要是几点比较怪异。但是貌似也没更好地处理方式。
+
+控制器中：
+	//分页效果
+	function page(){
+		//载入类库
+		$this->load->library('pagination');
+		//$this->load->helper('url');//我们配置过自动加载，此处省略该载入
+		//配置文件
+		// $config['base_url'] = site_url( 'user/page' );//怎么去掉index.php呢？
+		// $config['base_url'] = 'http://ci.com/user/page';//写死了不好
+		//echo base_url(),'<hr>'; // http://wjl.com/ci3/
+		$config['base_url'] = base_url() . 'user/page';//这样写不错
+		$page_size=15;
+		$config['total_rows'] = 200;//总数据
+		$config['per_page'] = $page_size;//每页条数
+		
+		
+		//定制
+		$config['first_link'] = '首页';
+		$config['last_link'] = '尾页';
+		$config['prev_link'] = '上一页';
+		$config['next_link'] = '下一页';
+		
+		
+		//访问 http://ci.com/user/page
+		// 默认传递的是开始id，如 http://ci.com/user/page/10
+		$offset=intval( $this->uri->segment(3) );//如果没有值则为0
+		//这个第三段取决于$config['base_url']的字段数
+		
+		$sql="select * from blog_user limit $offset, $page_size";
+		
+		echo $sql,'<hr>';
+		
+		// 初始化
+		$this->pagination->initialize($config);
+		// 显示连接		
+		$data['links'] = $this->pagination->create_links();
+		//分配变量
+		$this->load->view('user/page',$data);
+		
+		/*
+		 * 难点：
+		 * 	1.配置文件，之后记得初始化
+		 *  2.分页类传出的偏移量！不是页码。
+		 *  3.获取偏移量的字段位置要根据base_url确定，如果不是第三位，则要配置
+		 * 		$config['uri_segment'] = 4;
+		 *  4.确定base_url时，建议base_url()函数结合字符串，能去掉url中的index.php；
+		 */
+	}
+视图文件：
+<?php
+echo $links;
+
+如下地址都可以访问：
+	http://wjl.com/ci3/user/page/
+	http://ci.com/user/page
+输出：
+	select * from blog_user limit 0, 15
+	123下一页尾页
+
+点击页面中的下一页链接，跳转到 http://ci.com/user/page/15 ，页面内容：
+	select * from blog_user limit 15, 15
+	上一页1234下一页尾页
+
+	
+========================================
+ci中的文件上传
+----------------------------------------
+文档：http://ci.com/user_guide_cn/file_uploading.html
+
+1.先在视图中写上传表单views/upload_form.php 
+	<?php echo $error;?>
+
+	<?php echo form_open_multipart('upload/do_upload');?>
+	<!--
+	<form method='post' action='<?php echo site_url('upload/do_upload');?>' enctype='multipart/form-data'>
+	-->
+		选择图片：<input type='file' name=userfile><br>
+		文件名：<input type='text' name=newname><br>
+		<input type='submit' value='submit now'>
+	</form>
+
+2.接着写上传成功后的表单views/upload_form.php
+<html>
+<head>
+	<title>Upload Form</title>
+</head>
+
+<body>
+<h3>Your file was successfully uploaded!</h3>
+
+<ul>
+<?php foreach ($upload_data as $item => $value):?>
+	<li><?php echo $item;?>: <?php echo $value;?></li>
+<?php endforeach; ?>
+</ul>
+
+<p>预览图如下：</p>
+<img src='<?php echo base_url(), 'uploads/', $upload_data["file_name"]?>' height='100'>
+<!--上述文件路径有一条(uploads)写死了，不好！-->
+
+<p><?php echo anchor('upload', 'Upload Another File!'); ?></p>
+
+</body>
+</html>
+
+3.添加控制器controllers/Upload.php 
+<?php
+class Upload extends CI_Controller{
+	
+	//一定要注意构造方法，默认是和类同名的方法。这个点引发很多问题！
+	//__construct方法比同名构造方法优先级更高
+	function __construct(){
+		parent::__construct();
+		//加载类库
+		$this->load->helper('form');//输出表单
+		$this->load->helper('url');
+	}
+
+	//文件上传-视图
+	function index(){
+		$this->load->view('upload/upload_form', array('error'=>' '));
+	}
+	
+	//文件上传-执行
+	function do_upload(){
+		//配置文件
+		$config['upload_path']          = './uploads/';//上传路径
+        $config['allowed_types']        = 'gif|jpg|png';//
+        $config['max_size']             = 1000;//单位是kb
+        $config['max_width']            = 1024;
+        $config['max_height']           = 768;
+		
+        //$config['file_name']           = 'AB-'.uniqid();//重新命名
+		//如果不进行重命名，则使用原来的文件名。
+
+		//载入上传类库
+        $this->load->library('upload', $config);
+		//执行上传
+        if ( ! $this->upload->do_upload('userfile')){
+                $error = array('error' => $this->upload->display_errors());
+                $this->load->view('upload/upload_form', $error);
+        }else{
+                $data = array('upload_data' => $this->upload->data());
+                $this->load->view('upload/upload_success', $data);
+        }
+		
+		// 上传后的数据都在$this->upload->data()中
+		echo '<hr><pre>';
+		print_r($this->upload->data());
+		echo '</pre>';
+	}
+	
+}
+
+访问 http://ci.com/index.php/upload ，可看到文件上传表单。
+选择图片，点击提交，如果出错则提示。
+如果没出错则跳转到 http://ci.com/index.php/upload/do_upload ，显示各种信息，并展示预览图。
+
+[?][bug]看来不能处理中文文件名的图片。
+A problem was encountered while attempting to move the uploaded file to the final destination.
+
+
+========================================
+ci3中的session
+----------------------------------------
+文档：http://ci.com/user_guide_cn/sessions.html
+
+ci2中的session是保存到cookie中的，一个方法中设置，需要到另一个方法中才能调用。
+	很不方便。	
+	必须在配置文件中设置唯一校验码。
+	可以选择对cookie进行整体加密。
+	还提供了一次性使用数据支持flashdata。
+
+好消息是，ci3中完全重写了session类，而且与时俱进的自带了几个存储 session 的驱动：
+	文件（默认的，基于文件系统）
+	数据库
+	Redis
+	Memcached
+另外，你也可以基于其他的存储机制来创建你自己的自定义 session 存储驱动， 使用自定义的驱动，同样也可以使用 Session 类提供的那些功能。
+
+坏消息是，ci3不能直接使用$_SESSION数组，除非导入了session库。
+	//保存验证码到session中
+	$this->load->library('session');
+	$_SESSION['cpatcha']=$cap['word'];
+
+'userdata'是上一版保留下来的称谓，这一版的session中还会多次出现。
+
+
+	function login(){
+		//加载session类
+		$this->load->library('session');
+		
+		//验证过程省略...
+		
+		//添加普通session
+		$_SESSION['user_name']='dawn';
+		$this->session->email='xx@xx.com';
+		$this->session->set_userdata('group', 'admin');
+		
+		//使用session
+		echo $_SESSION['user_name'],'<hr>';
+		
+		//删除session
+		unset($_SESSION['some_name']);
+		
+		
+		//添加一次性数据flashdata(值是new则保留并改为old，是old则删除)
+		$_SESSION['item'] = 'value';
+		$this->session->mark_as_flash('item');
+		$this->session->set_flashdata('item2','value2');
+		
+		//添加周期销毁的数据，10s后销毁
+		$this->session->mark_as_temp('item', 10);
+		
+		echo '<pre>';
+		print_r($this->session);
+	}
+	
+	//查看session
+	function session(){
+		//加载session类
+		$this->load->library('session');
+		
+		echo '<pre>';
+		print_r($this->session);
+	}		
+
+默认是文件驱动，这也是最快的方式。
+如果想使用其他驱动或者自定义驱动，请参考文档。
+
+	
+========================================
+ci中的验证码
+----------------------------------------
+验证码辅助类：http://ci.com/user_guide_cn/captcha_helper.html
+
+1.入口文件手工创建一个文件夹，放验证码
+2.导入captcha辅助库
+3.设置有效时间，返回验证字符手工放到session中；
+4.验证时刻也是直接和session中的记录比较。
+5.通过设置word为数字字符串、中文字符串等。
+
+
+	// 带验证码的登陆
+	function login2(){
+		//引入验证码库
+		$this->load->helper('captcha');
+		//设置参数, 只有 img_path 和 img_url 这两个参数是必须的。
+		$vals = array(
+		        //'word'          => 'Random word',
+		        'img_path'      => './captcha/',
+		        'img_url'       => base_url() . 'captcha/',
+		        'font_path'     => './fonts/fangzheng_lishu.ttf',
+		        'img_width'     => '150',
+		        'img_height'    => 30,
+		        'expiration'    => 10,//60s过期足够了
+		        'word_length'   => 4,//字符长度，建议4-8
+		        'font_size'     => 20,
+		        //font_size 默认值为 16，GD 库的字体对大小有限制，
+		        //如果字体大小需要更大一点的话可以设置一种 TRUE TYPE 字体。
+		        'img_id'        => 'Imageid',
+		        'pool'          => '0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ',
+				// 'pool' => '0123456789',
+				//'pool' => '我是中国人不三四天气挺好的',//对中文支持的不好
+		        // White background and border, black text and red grid
+		        'colors'        => array(
+		                'background' => array(255, 255, 255),
+		                'border' => array(255, 255, 255),
+		                'text' => array(0, 0, 0),
+		                'grid' => array(255, 40, 40)
+		        )
+		);
+		//生成验证码
+		$cap = create_captcha($vals);
+		
+		//echo '<pre>'; var_dump($cap); echo '</pre>';
+		//保存到session中
+		$this->load->library('session');//必须引入session库
+		echo $_SESSION['cpatcha']=$cap['word'];//放到session中
+		
+		echo $cap['image'];
+	}
+	//显示当前session，查看验证码
+	function session2(){
+		//加载session类
+		$this->load->library('session');
+		
+		echo '<pre>';
+		print_r($_SESSION);
+	}
+
+
+========================================
+ci中的表单验证类
+----------------------------------------
+CodeIgniter 提供了一个全面的表单验证和数据预处理类可以帮你少写很多代码。
+
+1.写一个表单
+2.引入表单验证类
+	$this->load->library('form_validation');
+	$this->load->helper(array('form', 'url'));
+
+3.验证规则set_rules()
+4.调用验证run()方法，返回布尔值
+5.放到if中，
+	如果成功，则保持到数据库
+		
+	失败，显示错误信息，可以直接在源代码页面显示错误信息。
+		11“00简体中文的配置文件。
+	18；05 验证规则，可以放到数组中，数组放到config/application-form.php中。
+
+ 	
+前后台都要验证！
+	一般前端提示更友好，后端验证只要保证信息足够即可，可以一次性输出。
 
 ========================================
 ----------------------------------------
-
-========================================
-----------------------------------------
-
-========================================
-----------------------------------------
-
