@@ -62,6 +62,8 @@
 			array('http://www.ruanyifeng.com/','阮一峰','Alipay.com as an Node/JavaScript engineer.'),
 			array('http://www.liaoxuefeng.com/','廖雪峰'),
 			array('http://www.zhangxinxu.com/','张鑫旭', '腾讯ISUX。欢迎与我一同交流web前端方面的东西！'),
+			array('http://rapheal.sinaapp.com/about/','拉风博客', '腾讯广州研发部，微信产品部门'),
+			array('http://www.cnblogs.com/jikey/p/4426105.html','豪情的博客', '高级qq群'),
 			array('http://www.nowamagic.net/','简明现代魔法','其实每个程序员都是魔法师'),
 			array('http://www.ycku.com/course/','李炎恢','瓢城Web俱乐部'),
 			array('http://limingyang2012.github.io/blog/','李明洋', '前端博客'),

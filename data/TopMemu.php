@@ -19,4 +19,7 @@ return array (
   'symfony' => '很经典的设计，被Laravel借鉴了好多。',
   'Laravel' => '巨匠级的php开发框架',
   //'ZF' => 'ZendFramework很重，耦合度很低。',
+  
+  'English' => '英语学习，输入和输出',
+  'NGS' => '二代测序技术：建库、测序和数据分析、算法、解读',
 );
