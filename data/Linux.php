@@ -35,6 +35,7 @@ return array (
     array (
 	  array('iptables安全防护','Linux201','txt' ),
 	  array('科学上网','crackTheWall','html' ),
+	  array('路由器设置','Route','txt' ),
     ),
   ),
   
@@ -75,6 +76,19 @@ return array (
 	  array('docker快速入门','docker001','md' ),
 	  array('docker官方简介','docker002','md' ),
 	  array('创建docker镜像','docker003','md' ),
+
+    ),
+  ),
+  
+    
+  
+  array (
+    0 => 2,
+    1 => '测序及软件',
+    2 => 
+    array (
+	  array('测序扫盲贴','seq001','md' ),
+
 
     ),
   ),

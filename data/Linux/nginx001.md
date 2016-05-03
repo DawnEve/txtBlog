@@ -887,3 +887,14 @@ php5-fpm的安装主要参考：http://www.cnblogs.com/Bonker/p/4252588.html
 
 [1]入门 http://www.chinaz.com/web/2015/0424/401323.shtml
 ```
+
+
+
+
+
+
+## 适用于Symfony的nginx配置  
+
+https://www.nginx.com/resources/wiki/start/topics/recipes/symfony/
+
+
