@@ -34,6 +34,13 @@ function addContents(){
 }
 
 //风险：修改的时候防止被覆盖！
+/*
 window.onload=function(){
 	addContents();
 }
+*/
+//这是比较安全的绑定方式
+addEvent(window, 'load', function(){
+	addContents();
+});
+
