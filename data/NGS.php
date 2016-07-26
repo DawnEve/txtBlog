@@ -17,6 +17,14 @@ return array (
     2 => array (
       array('陈巍学基因','NGS004','txt'),
     ),
+  ),  
+  
+  array (
+    0 => 1,
+    1 => '质控QC',
+    2 => array (
+      array('实时荧光定量PCR','qrtPCR','txt'),
+    ),
   ),
   
   
