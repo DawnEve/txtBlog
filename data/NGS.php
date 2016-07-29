@@ -16,6 +16,7 @@ return array (
     1 => '测序流程',
     2 => array (
       array('陈巍学基因','NGS004','txt'),
+      array('RNA-Seq','rnaSeq01','txt'),
     ),
   ),  
   
