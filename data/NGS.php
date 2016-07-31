@@ -28,5 +28,12 @@ return array (
     ),
   ),
   
+  array (
+    0 => 1,
+    1 => '数据分析',
+    2 => array (
+      array('每种应用的分析方法概述','analysis01','txt'),
+    ),
+  ),
   
 );
