@@ -146,3 +146,47 @@ function gotoTop(acceleration,stime) {
 	}
 }//end of gotoTop.
 
+
+
+//给obj增加事件的自定义函数：兼容IE/chrome/ff
+function addEvent(obj,ev,fn){
+	if(obj.addEventListener){
+		//ff:addEventListener
+		obj.addEventListener(ev,fn,false);
+	}else{
+		//IE:attachEvent
+		obj.attachEvent('on'+ev,fn);
+	}
+}
+/*
+实例：
+addEvent(oBtn,'click',function(){
+		alert('c');
+	});
+*/
+
+
+//获得中文人类友好时间格式
+function getHumanDate(date){
+	var weekCN=["日", "一", "二", "三", "四", "五", "六"];
+	var nDate=date || new Date();
+	var dateStamp = 
+	nDate.getFullYear() + '年' +
+	(nDate.getMonth()+1) + '月' + 
+	nDate.getDate() + '日' + 
+	" 星期"+ weekCN[nDate.getDay()] + ' '+
+	nDate.toString().substring(16,24);
+	return dateStamp;
+}
+//console.log( getHumanDate() );  
+
+
+
+//绑定事件
+addEvent(window, 'load', function(){
+	//右上角添加时间
+	var oWeek=createElement('div',{'style':'float:right; line-height:30px; color:#ccc;'},getHumanDate())
+	var oNav=document.getElementsByClassName('nav')[0];
+	oNav.appendChild(oWeek);
+});
+

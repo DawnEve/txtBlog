@@ -33,6 +33,11 @@ UI布局：
 优化：
 	9.全站缓存60s。
 	
+
+事故：2017-4-13之后，80端口被封，该网站变成了局域网。
+		怎么能突破局域网的限制？
+		- 花生壳？
+	
 	
 ``````
 添加$ git remote add origin git@github.com:DawnEve/txtBlog.git

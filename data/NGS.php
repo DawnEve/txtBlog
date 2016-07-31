@@ -16,8 +16,24 @@ return array (
     1 => '测序流程',
     2 => array (
       array('陈巍学基因','NGS004','txt'),
+      array('RNA-Seq','rnaSeq01','txt'),
+    ),
+  ),  
+  
+  array (
+    0 => 1,
+    1 => '质控QC',
+    2 => array (
+      array('实时荧光定量PCR','qrtPCR','txt'),
     ),
   ),
   
+  array (
+    0 => 1,
+    1 => '数据分析',
+    2 => array (
+      array('每种应用的分析方法概述','analysis01','txt'),
+    ),
+  ),
   
 );
