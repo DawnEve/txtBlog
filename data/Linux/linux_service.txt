@@ -1,0 +1,389 @@
+linux服务
+
+
+https://www.digitalocean.com/community/tutorials/how-to-configure-bind-as-a-private-network-dns-server-on-ubuntu-16-04
+
+
+========================================
+Linux系统服务基础(test with Ubuntu1604)
+----------------------------------------
+1.
+服务（Service）是运行在操作系统后台的一个或多个程序。一般是给用户或者其他机器提供服务。
+服务通常不中断运行、随时接收请求、提供某项服务。
+
+服务分为本地服务和网络服务。
+
+用户、计算机通过访问固定的IP和端口号访问服务器的某项网络服务。
+	- http服务默认80端口。
+常见其他服务：
+	- 邮件服务mail
+	- 文件共享： ftp、SMB、HTTP
+	- 网游
+	- 域名服务DNS
+
+
+
+2.
+System V是早期AT&T的操作系统，现今linux的服务管理体系就是沿用System V的服务管理系统。
+	7个运行级别。默认3是命令行，5是图形界面。
+	System V定义的运行级别的概念
+		- 0 关机
+		- 3 多用户模式
+		- 5 X11图形化概念
+		- 6 重新启动
+	每个级别下都有对应启动和不启动的服务。
+	
+	System V定义init为系统启动的第一个进程，pid=1,init查看/etc/inittab中默认运行级别启动对应的服务。对应/etc/init.d/文件夹下的脚本。
+	
+	
+	service命令可以控制这些服务：
+		service 服务名 [start|stop|restart|status]
+	比如：
+		service networking restart
+		service sshd status 
+	也可以用ps命令查找某个服务是否正在运行：
+$ ps -e | grep sshd
+1865 ? 00:00:00 sshd
+或者
+$ ps -aux | grep sshd
+
+
+
+3.
+怎么确定哪个服务可以开机运行？
+
+由运行级别定义，对应的文件/etc/rt[0-6].d文件夹。
+$ runlevel 
+N 5 #当前运行级别是5
+
+$cd /etc/rc5.d/
+$ls -l  
+里面都是链接。命名规范：
+	- 首字母是S表示启动，是K表示不启动。
+	- 接着是数字，是启动顺序。
+	- 然后是程序名，和链接是一样的。
+可以通过修改文件名，确定是否开机启动。
+但是直接改文件名太麻烦，更方便的是使用chkconfig命令：
+	chkconfig 服务名 [on|off]
+	比如：
+	chkconfig cups on  #文件打印共享服务
+	chkconfig cups off
+	chkconfig --list
+
+在ubuntu10.04之前的版本都是使用chkconfig来进行管理，而在之后的版本就没有了，如果想继续使用chkconfig命令，只好自己apt-get install下了。
+	$ sudo apt-get install chkconfig  
+在这里我给大家介绍另两个命令来配置ubuntu的启动服务，sysv-rc-conf和update-rc.d
+
+3.
+除了常驻运行的系统service之外，还有部分服务是由xinetd进行控制的。
+xinetd控制那些不会常驻的、功能较为简单的服务。
+xinetd本身是一个service。
+xinetd太古老了，现在已经慢慢淡出了。
+
+
+========================================
+DNS服务及域名系统架构
+----------------------------------------
+1.
+IP地址往往难以记忆，所以通常使用域名进行管理。
+
+2.
+DNS客户端解析方法
+	文件（/etc/hosts、/etc/networks）
+	DNS服务器（定义在 /etc/resolve.conf）
+	NIS（用的少，基本被淘汰）
+可以通过配置文件/etc/nsswitch.conf控制查询顺序。
+	hosts:files dns 
+	
+3.	
+DNS专用查询命令
+
+host命令用于DNS查询
+$ host 163.com
+163.com has address 123.58.180.8
+163.com has address 123.58.180.7
+163.com mail is handled by 10 163mx01.mxmail.netease.com.
+163.com mail is handled by 50 163mx00.mxmail.netease.com.
+163.com mail is handled by 10 163mx03.mxmail.netease.com.
+163.com mail is handled by 10 163mx02.mxmail.netease.com.
+
+dig命令获取更详细的dns信息：
+$ dig tool.biomooc.com
+
+; <<>> DiG 9.10.3-P4-Ubuntu <<>> tool.biomooc.com
+;; global options: +cmd
+;; Got answer:
+;; ->>HEADER<<- opcode: QUERY, status: NOERROR, id: 12567
+;; flags: qr rd ra; QUERY: 1, ANSWER: 2, AUTHORITY: 0, ADDITIONAL: 0
+
+;; QUESTION SECTION:
+;tool.biomooc.com.	IN	A
+
+;; ANSWER SECTION:
+tool.biomooc.com.	600	IN	CNAME	w39.en.tm.
+w39.en.tm.	600	IN	A	103.231.13.94
+
+;; Query time: 152 msec
+;; SERVER: 127.0.1.1#53(127.0.1.1)
+;; WHEN: Sun Aug 14 14:35:09 CST 2016
+;; MSG SIZE rcvd: 73
+
+这两个命令都不会使用/etc/nsswitch.conf的配置，只会通过/etc/resolv.conf进行dns查询。
+
+4.
+dns域名是一个树状结构，查询的时候根据域名从右向左查询，域名每一级由独立的一个或多个服务器。
+域名最后一位还有个点号，指的是根服务器，一般省略。
+
+使用 $ dig +trace 域名 获得更详细的域名追踪流程。
+
+
+$ dig +trace tool.biomooc.com
+
+; <<>> DiG 9.10.3-P4-Ubuntu <<>> +trace tool.biomooc.com
+;; global options: +cmd
+.			86400	IN	NS	a.root-servers.net.
+.			86400	IN	NS	b.root-servers.net.
+.			86400	IN	NS	c.root-servers.net.
+.			86400	IN	NS	d.root-servers.net.
+.			86400	IN	NS	e.root-servers.net.
+.			86400	IN	NS	f.root-servers.net.
+.			86400	IN	NS	g.root-servers.net.
+.			86400	IN	NS	h.root-servers.net.
+.			86400	IN	NS	i.root-servers.net.
+.			86400	IN	NS	j.root-servers.net.
+.			86400	IN	NS	k.root-servers.net.
+.			86400	IN	NS	l.root-servers.net.
+.			86400	IN	NS	m.root-servers.net.
+.			86400	IN	RRSIG	NS 8 0 518400 20160823050000 20160813040000 46551 . EZZnj84yvOUKWIqVBGk1ecaAm6hQ6s0txTkSGe/dAKpp0ZiVhEjRpRqv k4qwJ6Rz3sHlQa1mh7S3VZXYeZlxTRNyu+Su6fjfmEIoktroaYqi5yGs T29a7JZiPDO4HoQV6zUAssriISIGA/MX5AAsN1u+qSbFM6h3xRccUUhB nHM=
+;; Received 927 bytes from 127.0.1.1#53(127.0.1.1) in 2 ms
+
+com.			172800	IN	NS	a.gtld-servers.net.
+com.			172800	IN	NS	b.gtld-servers.net.
+com.			172800	IN	NS	c.gtld-servers.net.
+com.			172800	IN	NS	d.gtld-servers.net.
+com.			172800	IN	NS	e.gtld-servers.net.
+com.			172800	IN	NS	f.gtld-servers.net.
+com.			172800	IN	NS	g.gtld-servers.net.
+com.			172800	IN	NS	h.gtld-servers.net.
+com.			172800	IN	NS	i.gtld-servers.net.
+com.			172800	IN	NS	j.gtld-servers.net.
+com.			172800	IN	NS	k.gtld-servers.net.
+com.			172800	IN	NS	l.gtld-servers.net.
+com.			172800	IN	NS	m.gtld-servers.net.
+com.			86400	IN	DS	30909 8 2 E2D3C916F6DEEAC73294E8268FB5885044A833FC5459588F4A9184CF C41A5766
+com.			86400	IN	RRSIG	DS 8 1 86400 20160824050000 20160814040000 46551 . Oh8qMtS8xTpWJnOICFpnQAwAUtiEEkDcMvZ3k0PxlGIdWHusOjHfn26R Li8lEIWUF/kBYeIyF03a8JMcwA/9O03BnaQYUmTvFGUFz1bcr6cjf63t a2RuVqKNYuBBafHW2DCXltnEJnK1a3BIamkkMG6sQ/0lWHpPpBSeHE+u uGI=
+;; Received 740 bytes from 192.58.128.30#53(j.root-servers.net) in 122 ms
+
+biomooc.com.		172800	IN	NS	dns9.hichina.com.
+biomooc.com.		172800	IN	NS	dns10.hichina.com.
+CK0POJMG874LJREF7EFN8430QVIT8BSM.com. 86400 IN NSEC3 1 1 0 - CK0Q1GIN43N1ARRC9OSM6QPQR81H5M9A NS SOA RRSIG DNSKEY NSEC3PARAM
+CK0POJMG874LJREF7EFN8430QVIT8BSM.com. 86400 IN RRSIG NSEC3 8 2 86400 20160818045655 20160811034655 27452 com. Rrrm+OShYYnljJ2KF6wqUFtdG8V58fnX/gs/rvF/TSktkGbQ0PSbEOej mgmtmBVIykd+wR9UePlwFNIvA/WjSjgNX+FCMC8lB66Q4pGAZgqwsgxK ZtCrJXbS8vdBwHc1qUuTBo0iDfkcba/UTnnajE/KZlrxuS4llZ1KDWOb b08=
+230945AV9C19LKS36UGG5LDOKH0A1U4H.com. 86400 IN NSEC3 1 1 0 - 230C435M65C5MMK36130U5G6T5D7RCQM NS DS RRSIG
+230945AV9C19LKS36UGG5LDOKH0A1U4H.com. 86400 IN RRSIG NSEC3 8 2 86400 20160819051104 20160812040104 27452 com. gwdr5VpFZF1jjo03FwYkdKizMRJXrZOWrh3qQ64UHK3FWbqneFcglnW2 3Gv7TQirM4s/2ibWaMO+5qlY/h7YG+JF1/3DBPf4B5f0wLrutj6+xBPq 1jiwNuFZdolb/KTwjqhFzQvaVhCDOEJSALa715crOO8WSZ04CsxX9JRf dgQ=
+;; Received 673 bytes from 192.42.93.30#53(g.gtld-servers.net) in 213 ms
+
+tool.biomooc.com.	600	IN	CNAME	w39.en.tm.
+;; Received 68 bytes from 140.205.228.13#53(dns9.hichina.com) in 46 ms
+
+先查询., 然后是.com.，接着是 biomooc.com.，最后是 tool.biomooc.com.
+
+
+5.
+DNS查询方式：
+1）迭代查询 iterative query; 
+2）递归查询 recursive query；
+
+实际使用的时候，是同时使用的。
+
+6.
+DNS服务器上保存的信息
+RR，resource record，除了域名到IP信息，还有很多其他信息。
+
+资源记录（RR，resource record）常用属性有：
+	- NAME 名称
+	- CLASS 类别
+	- TYPE 类型
+	- RDATA 数据
+如：
+	NAME 	CLASS 	TYPE 	RDATA
+	www 	IN	A 	192.168.1.1 
+	mail	IN	A 	192.168.1.1 
+	server1	IN	CNAME 	www 
+			IN 	MX 10 mail.xxxx.net.
+cname是别名，表明前后是一样的。
+
+Type	意义
+A 	IPv4地址
+AAAA	IPv6地址
+MX 	邮件记录
+CNAME 	别名
+PTR 	指针（逆向解析）
+SRV		服务资源
+
+
+7.
+DNS服务器类型，一般有三种
+1）Pramary DNS Server(Master)
+	一个域的主服务器保存该域的zone配置文件，该域所有的配置、更改都在该服务器上进行。
+
+2）Secondary DNS Server(Slave)
+	从服务器一般作为冗余负载使用，一个域的从服务器从该域的主服务器上抓取zone配置文件，从服务器不进行信息修改，所有的修改与主服务器同步。
+
+3）Caching only Server
+	DNS缓存服务器不存在任何zone文件，仅仅依靠缓存为客户端提供服务，通常用于负载均衡及加速访问。一般局域网要配置一台缓存服务器，可以对整个局域网加速。
+	
+8.
+zone文件
+
+在dns服务器中，一般一个域通过一个zone文件保存该域的相关信息。
+zone文件的格式是标准化的。一个典型的zone配置文件内容如下。
+
+STTL	ID
+@	IN SOA @ RNAME.iNVALID.(
+		0 	;serial #序列号，每次修改增加1
+		1D 	;refresh #刷新次数1天
+		1H	;retry
+		1W	;expire
+		JH); minimum
+		NS @
+		MX 10 mail.xxxx.net.
+	www IN A 192.168.1.100 
+	mail IN A 192.168.1.200 
+	
+	
+9.
+dig命令的高级查询
+1）
+$ dig -t MX gmail.com
+
+; <<>> DiG 9.10.3-P4-Ubuntu <<>> -t MX gmail.com
+;; global options: +cmd
+;; Got answer:
+;; ->>HEADER<<- opcode: QUERY, status: NOERROR, id: 29669
+;; flags: qr rd ra; QUERY: 1, ANSWER: 5, AUTHORITY: 0, ADDITIONAL: 0
+
+;; QUESTION SECTION:
+;gmail.com.			IN	MX
+
+;; ANSWER SECTION:
+gmail.com.		3600	IN	MX	40 alt4.gmail-smtp-in.l.google.com.
+gmail.com.		3600	IN	MX	30 alt3.gmail-smtp-in.l.google.com.
+gmail.com.		3600	IN	MX	5 gmail-smtp-in.l.google.com.
+gmail.com.		3600	IN	MX	10 alt1.gmail-smtp-in.l.google.com.
+gmail.com.		3600	IN	MX	20 alt2.gmail-smtp-in.l.google.com.
+
+;; Query time: 95 msec
+;; SERVER: 127.0.1.1#53(127.0.1.1)
+;; WHEN: Sun Aug 14 15:13:12 CST 2016
+;; MSG SIZE  rcvd: 150
+
+发现gmail的邮件服务器还是挺多的。MX后面的数字式优先级。
+
+
+
+
+$ dig -t cname tool.biomooc.com
+
+; <<>> DiG 9.10.3-P4-Ubuntu <<>> -t cname tool.biomooc.com
+;; global options: +cmd
+;; Got answer:
+;; ->>HEADER<<- opcode: QUERY, status: NOERROR, id: 19822
+;; flags: qr rd ra; QUERY: 1, ANSWER: 1, AUTHORITY: 0, ADDITIONAL: 2
+
+;; OPT PSEUDOSECTION:
+; EDNS: version: 0, flags:; udp: 4000
+;; QUESTION SECTION:
+;tool.biomooc.com.		IN	CNAME
+
+;; ANSWER SECTION:
+tool.biomooc.com.	600	IN	CNAME	w39.en.tm.
+
+;; ADDITIONAL SECTION:
+w39.en.tm.		600	IN	A	103.231.13.94
+
+;; Query time: 105 msec
+;; SERVER: 127.0.1.1#53(127.0.1.1)
+;; WHEN: Sun Aug 14 15:15:06 CST 2016
+;; MSG SIZE  rcvd: 84
+
+2）逆向解析，就是从ip地址到域名的解析：
+$ dig -x tool.dawneve.cc 
+
+一般不需要。
+
+
+3）查询soa信息，就是查询zone文件中的soa信息
+
+$ dig -t soa baidu.com
+
+; <<>> DiG 9.10.3-P4-Ubuntu <<>> -t soa baidu.com
+;; global options: +cmd
+;; Got answer:
+;; ->>HEADER<<- opcode: QUERY, status: NOERROR, id: 8496
+;; flags: qr rd ra; QUERY: 1, ANSWER: 1, AUTHORITY: 0, ADDITIONAL: 2
+
+;; OPT PSEUDOSECTION:
+; EDNS: version: 0, flags:; udp: 4000
+;; QUESTION SECTION:
+;baidu.com.			IN	SOA
+
+;; ANSWER SECTION:
+baidu.com.		7200	IN	SOA	dns.baidu.com. sa.baidu.com. 2012132640 300 300 2592000 7200
+
+;; ADDITIONAL SECTION:
+dns.baidu.com.		28205	IN	A	202.108.22.220
+
+;; Query time: 15 msec
+;; SERVER: 127.0.1.1#53(127.0.1.1)
+;; WHEN: Sun Aug 14 15:26:24 CST 2016
+;; MSG SIZE  rcvd: 97
+
+
+
+	
+========================================
+DNS服务器基础及域主服务器配置
+----------------------------------------
+1.
+bind（Berkeley Internet Name Domain）是现今使用最广泛的dns服务器。
+bind服务的名称称之为named。
+我们可以通过以下命令安装bind。
+	yum install -y bind bind-chroot bind-utils
+DNS默认使用UDP、TCP协议，使用端口为53（domain）、953（mdc）
+
+2.
+域主服务器（master）是这个域的信息的权威服务器，所有这个域的信息都是由域的主服务器控制，配置一个域的主服务器需要以下几个步骤：
+1）在bind的主配置文件中添加该域的定义
+	/var/named/chroot/etc/named.conf 
+	
+2）在/var/named/chroot/var/named中创建该域的zone文件
+3）编辑zone文件，添加需要的信息
+4）启动bind服务或使bind刷新配置
+5）使用host或dig命令检测域信息是否正常。
+
+
+
+
+
+
+
+
+========================================
+----------------------------------------
+
+
+
+========================================
+----------------------------------------
+
+
+
+========================================
+----------------------------------------
+
+
+
+========================================
+----------------------------------------
+
+
