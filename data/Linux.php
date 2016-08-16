@@ -36,6 +36,7 @@ return array (
 	  array('iptables安全防护','Linux201','txt' ),
 	  array('科学上网','crackTheWall','html' ),
 	  array('路由器设置','Route','txt' ),
+	  array('Linux服务','linux_service','txt' ),
     ),
   ),
   
