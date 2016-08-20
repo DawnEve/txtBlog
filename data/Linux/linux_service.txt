@@ -8,8 +8,18 @@ https://www.isc.org/downloads/bind/
 
 Bind9: https://wiki.debian.org/Bind9
 
+https://help.ubuntu.com/community/BIND9ServerHowto?_ga=1.92154330.1762401746.1471129044
+https://help.ubuntu.com/lts/serverguide/dns-configuration.html?_ga=1.92154330.1762401746.1471129044
+
+http://blog.sina.com.cn/s/blog_6151984a0100f1f3.html
+
+(test with Ubuntu1604 is not OK yet.)
+(test with CentOS6.8)
+
+
+
 ========================================
-Linux系统服务基础(test with Ubuntu1604)
+Linux系统服务基础
 ----------------------------------------
 1.
 服务（Service）是运行在操作系统后台的一个或多个程序。一般是给用户或者其他机器提供服务。
@@ -43,8 +53,9 @@ System V是早期AT&T的操作系统，现今linux的服务管理体系就是沿
 	service命令可以控制这些服务：
 		service 服务名 [start|stop|restart|status]
 	比如：
-		service networking restart
-		service sshd status 
+		wjl@ubuntu$ service networking restart
+		wjl@centOS$ service network restart
+		$ service sshd status 
 	也可以用ps命令查找某个服务是否正在运行：
 $ ps -e | grep sshd
 1865 ? 00:00:00 sshd
@@ -56,7 +67,7 @@ $ ps -aux | grep sshd
 3.
 怎么确定哪个服务可以开机运行？
 
-由运行级别定义，对应的文件/etc/rt[0-6].d文件夹。
+由运行级别定义，对应的文件/etc/rc[0-6].d文件夹。
 $ runlevel 
 N 5 #当前运行级别是5
 
@@ -417,6 +428,10 @@ chroot是通过将相关文件封装在一个伪根目录内，达到安全防�
 	
 3.
 域主服务器（master）是这个域的信息的权威服务器，所有这个域的信息都是由域的主服务器控制，配置一个域的主服务器需要以下几个步骤：
+
+帮助文档提供了一份样本，在 /usr/share/doc/bind-9.8.2/sample/下面。
+
+
 1）在bind的主配置文件中添加该域的定义
 	/var/named/chroot/etc/named.conf 
 	options{
@@ -429,11 +444,13 @@ chroot是通过将相关文件封装在一个伪根目录内，达到安全防�
 		type master;
 		file "dawneve.com.zone";
 	};
-2）在/var/named/chroot/var/named中创建该域的zone文件
-	/var/named/dawneve.com.zone
+2）在/var/named/chroot/var/named中创建该域的zone文件，
+	/var/named/dawneve.com.zone，文件很复杂，一般使用named.localhost作为模板。
+	需要root用户操作这些文件。
 	
-/var/named/
-$ cat dawneve.com.zone 
+# cd /var/named/
+# cp named.localhost dawneve.com.zone 
+# vim dawneve.com.zone 
 
 $TTL    604800
 @       IN      SOA     localhost. root.localhost. (
@@ -448,7 +465,10 @@ $TTL    604800
 	            AAAA    ::1             ; delete this line
 		IN MX 10 mail.dawneve.com.
 www 	IN 	A 	192.168.1.100 
-mail 	IN 	A 	192.168.1.222
+mail 	IN 	A 	192.168.1.200
+tool 	IN 	A 	192.168.1.222
+
+一定要注意：mail.dawneve.com. 最后还有一个点号不能省略！
 
 
 3）编辑zone文件，添加需要的信息
@@ -459,16 +479,20 @@ mail 	IN 	A 	192.168.1.222
 
 5）使用host或dig命令检测域信息是否正常。
 
+一般的错误，要么是语法错误。要么是权限错误。要保证都有读权限！
 
 语法检查：
-named-checkconf /etc/named.conf 
-named-checkzone dawneve.com.zone 
+检查主配置文件：
+$ named-checkconf /etc/named.conf 
+检查zone配置文件：
+$ named-checkzone dawneve.com /var/named/dawneve.com.zone 
 
 例如：
 $ named-checkconf /etc/named.conf 
 wangjl@Ubuntu1604:/var/named$ named-checkzone dawneve.com dawneve.com.zone
 zone dawneve.com/IN: loaded serial 2
 OK
+
 
 
 
@@ -487,7 +511,63 @@ dig www.dawneve.com
 
 
 ========================================
+BIND配置排错方法
 ----------------------------------------
+1.
+是否启动服务
+# service named status 
+
+2.
+53号端口是DNS服务使用的，你启动了DNS服务，自然就会监听53号端口。
+查看53端口号是否启动：
+$ netstat -utln
+$ netstat -utln | grep 53 #查看53端口是否开放？
+
+3.
+防火墙是否打开了53端口：
+可以关掉防火墙。如果想打开防火墙，仅打开53端口的话，这样：
+iptables -A INPUT -p tcp --dport 53 -j ACCEPT
+iptables -A INPUT -p udp --dport 53 -j ACCEPT
+
+4.
+检查 /var/log/messages 的内容，检查错误提示： 
+# tail -n 15 /var/log/messages 
+# tail -n 15 /var/log/messages | grep named 
+
+
+5.
+检查文件权限：注意文件所属组都要是named，否则报错。
+	- 文件包括主配置文件 /etc/named.conf ,域配置文件 /var/named/xx.com.zone 等。
+	- 所以使用ls -l检查所属组。
+	- 使用cp aa.com.zone bb.com.zone -a #加上-a参数能复制全部信息，包括权限。
+
+	
+6.客户机是否使用了默认DNS服务器？
+	> ipconfig /all #windows查看dns服务器
+	如果使用了特定DNS，请修改为默认DNS。
+
+7.window下是否清楚了dns缓存？
+	> ipconfig /flushdns #清理dns缓存
+
+	
+========================================
+BIND从服务器及缓存服务器配置（从服务器及缓存服务器）
+----------------------------------------
+
+1.域从服务器
+一个域的从服务器（slave）通常是为了备份及负载均衡使用，所有这个域的信息都是由域的主服务器控制，域slave服务器启动时会从域的主服务器master上抓取指定域的zone配置文件，域slave服务器的配置如下：
+1）在bind的主配置文件中添加该域的定义；
+2）启动bind服务或使bind刷新配置；
+3）查看域的zone文件是否正常抓取到/var/named/slaves目录中；
+4）使用host或dig命令检测域信息是否正常。
+
+
+
+
+
+
+
+
 
 
 
