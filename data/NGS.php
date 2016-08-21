@@ -33,6 +33,7 @@ return array (
     1 => '数据分析',
     2 => array (
       array('每种应用的分析方法概述','analysis01','txt'),
+      array('R语言与bioconductor','bioconductor01','txt'),
     ),
   ),
   

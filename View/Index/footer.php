@@ -107,6 +107,12 @@
 		);
 		echo '<br />视频: ';
 		print_links($links_video);
+		
+		echo '<br />生物信息学: ';
+		print_links(array(
+			array('http://blog.shenwei.me/about/','shenwei的生信博客'),
+			//array('',''),
+		));
 ?>		
 			
 

@@ -23,6 +23,7 @@ docker 快速入门——“Docker 是一个便携的应用容器”
  - [docker简介](https://segmentfault.com/a/1190000003073069), 
  - [Docker 学习笔记](https://segmentfault.com/a/1190000002902909), 
  - [Docker与Vagrant的简单区别](http://dockone.io/article/271)
+ - [容器虚拟化——docker详解](http://www.mamicode.com/info-detail-1300101.html)
 
 
 
