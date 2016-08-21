@@ -1,6 +1,6 @@
 <?php
 return array (
-  0 => 
+
   array (
     0 => 1,
     1 => '前言与资料',
@@ -11,9 +11,9 @@ return array (
     ),
   ),
   
-  1 => 
+
   array (
-    0 => 2,
+    0 => 1,
     1 => 'Linux常用操作',
     2 => 
     array (
@@ -27,7 +27,7 @@ return array (
   
   
   
-    2 => 
+
   array (
     0 => 2,
     1 => 'Linux网络专题',
@@ -35,15 +35,15 @@ return array (
     array (
 	  array('iptables安全防护','Linux201','txt' ),
 	  array('科学上网','crackTheWall','html' ),
-	  array('路由器设置','Route','txt' ),
+	  array('IP与路由设置','Route','txt' ),
 	  array('Linux服务','linux_service','txt' ),
     ),
   ),
   
   
-    3 => 
+
   array (
-    0 => 2,
+    0 => 3,
     1 => 'Android专题',
     2 => 
     array (
