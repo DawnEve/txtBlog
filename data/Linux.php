@@ -21,6 +21,7 @@ return array (
 	  array('VIM常用命令','vim001', 'txt'),
 	  array('sublime编辑器','sublime001', 'html'),
 	  array('用户管理','linux102', 'txt'),
+	  array('磁盘管理','linux103', 'txt'),
 	  array('phpStorm','phpStorm001', 'md'),
     ),
   ),
