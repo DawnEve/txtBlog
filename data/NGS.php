@@ -35,6 +35,16 @@ return array (
       array('每种应用的分析方法概述','analysis01','txt'),
       array('R语言与bioconductor','bioconductor01','txt'),
     ),
+  ),  
+  
+  array (
+    0 => 1,
+    1 => '基因组分析',
+    2 => array (
+      array('igenome','genome','txt'),
+      //array('R语言与bioconductor','bioconductor01','txt'),
+    ),
   ),
+  
   
 );
