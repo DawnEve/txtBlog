@@ -606,14 +606,166 @@ for ($i=1;$i<100;$i+=1){
 ========================================
 476.ThinkPHP--标签库
 ----------------------------------------
-加载标签库。
+标签库主要用于html中显示data，比如view中的<volist>等tp框架定义的标签。还可以自定义标签。
+	- 加载标签库。
+	- 自定义标签库。
 
-自定义标签库。
+标签库请放置 ThinkPHP\Library\Think\Template\TagLib 目录下，若需要存放在指定位置，请在加载标签库配置时使用命名空间，如 
+<taglib name="Home\\TagLib\\MyTag"/>
+
+配置文件中打开trace：'SHOW_PAGE_TRACE' =>true, 
+
+1.先定义自定义标签文件Library/think/Template/TagLib/Mytag.class.php
+<?php
+//自定义标签
+namespace Think\Template\TagLib;
+use Think\Template\TagLib;
+/**
+ * Mytag标签库驱动
+ */
+class Mytag extends TagLib{
+    // 标签定义
+    protected $tags   =  array(
+        // 标签定义： attr 属性列表 close 是否闭合（0 或者1 默认1） alias 标签别名 level 嵌套层次
+        'read'     => array('attr'=>'name,id,style','close'=>1),
+    );
+		
+    public function _read($tag,$content) {
+        $id			=	!empty($tag['id'])?$tag['id']: '_read';
+        $name   	=	$tag['name'];
+        $style   	=	$tag['style'];
+        $parseStr="<div id='".$id."' style='".$style."'>" . $content . '</div>';
+        return $parseStr;
+    }
+}
+
+2.控制器中赋值和引用：
+	//自定义标签库
+	function tag2(){
+		$data['name']='Jimmy';
+		$data['email']='jimmymall@163.com';
+		$this->assign('data',$data);
+		$this->display();
+	}
+3.视图中引用库，然后才可以使用read方法
+<taglib name="html,mytag" />
+注意：taglib标签只能解析一次，也就是说引用多个库时只能写到一个taglib标签中，而且用英文逗号隔开，并且不能出现空格！
+
+<html:editor name="hello" id="data" style="background:red;width:200px;height:200px;">
+	{$data.name}:{$data.email}
+</html:editor>
+
+<hr>
+
+<Mytag:read name="hello" id="data" style="border:1px solid red;">{$data.name}:{$data.email}</Mytag:read>
+
+4.访问 http://tp.com/user/tag2 即可查看解析后的效果。
+
+
+5.也可以使用配置文件引入标签库。语法请查看手册。
+
+
+
+实例2：
+加载自定义标签库Mytag.class.php 
+<taglib name="Home\\TagLib\\Mytag"/>
+
+配置文件加载方式：
+'TAGLIB_PRE_LOAD' => 'TagLib\Migo',// 预先加载标签 
+'TAGLIB_BUILD_IN' => 'cx,TagLib\Migo',// 定义成内置标签
+
+[bug]标签库 
+<taglib name="Home\\TagLib\\Mytag" /> 报错 实例化一个不存在的类！:Home\\TagLib\\Mytag
+错误位置
+
+// 配置文件可以
+'TAGLIB_PRE_LOAD' => 'Home\\TagLib\\Mytag',
+
+缺点：如果放到配置文件，则每个view都要加载，而很多view没有用到自定义标签，这很影响效率。
+[/bug]
 
 
 
 
 
+实例：自定义标签read、select辅助标签html_options
+（1）
+暂时解决办法：定义到tp框架中：
+Library/Think/Template/TagLib/Mytag.class.php 
+
+<?php
+//自定义标签
+namespace Think\Template\TagLib;
+use Think\Template\TagLib;
+
+defined('THINK_PATH') or exit();
+
+/**
+ * Mytag标签库驱动
+ */
+class Mytag extends TagLib{
+    // 标签定义
+    protected $tags   =  array(
+        // 标签定义： attr 属性列表 close 是否闭合（0不闭合 或者1闭合 默认1） alias 标签别名 level 嵌套层次
+        'read'     => array('attr'=>'name,id,style','close'=>1),
+        'html_options'     => array('attr'=>'id,options','close'=>0),
+    );
+    
+    //读取并格式化显示闭合标签中的文本
+    public function _read($tag,$content) {
+        $id         =   !empty($tag['id'])?$tag['id']: '_read';
+        $name       =   $tag['name'];
+        $style      =   $tag['style'];
+        $parseStr="<div id='".$id."' style='".$style."'>" . $content . '</div>';
+        return $parseStr;
+    }
+
+    //显示array(1=>'',2="")一维数组为select中的options
+    public function _html_options($tag,$content) {
+    	//接收参数
+        $options    =   $tag['options'];
+        $selected   =   $tag['selected'];
+        //处理数据
+        $parseStr   =   '<?php if(is_array($'.$options.')): foreach($'.$options.' as $k=>$v):';
+        $parseStr  .=   ' $sel_text="";if($k==$'. $selected .'){ $sel_text=" selected=selected "; }';
+        $parseStr  .=   ' echo "<option $sel_text value =$k>$v</option>\n";';
+        $parseStr  .=   ' endforeach; endif; ?>';
+        //返回
+        if(!empty($parseStr)) {
+            return $parseStr;
+        }
+        return ;
+    }
+}
+
+（2）Goods控制器中
+    //自定义标签库
+    function tag2(){      
+        $data=array(
+            1=>'股东',
+            2=>'老板',
+            30=>'经理',
+            4=>'员工',
+        );
+        $this->assign('data',$data);
+        //选择的部分
+        $this->assign('sel',4);
+        $this->display();
+    }
+（3）视图中
+<taglib name="Mytag" />
+
+<select name='role_name'>
+    <Mytag:html_options options="data" selected="sel" />
+</select>
+
+（4）访问 http://tp.dawneve.cc/Goods/tag2
+select name='role_name'>
+    <option  value =1>股东</option>
+	<option  value =2>老板</option>
+	<option  value =30>经理</option>
+	<option  selected=selected  value =4>员工</option>
+</select>
 
 
 
@@ -627,14 +779,25 @@ http://tp.dawneve.cc/new/12
 
         
 ========================================
-478.ThinkPHP--URL操作
+478.ThinkPHP--URL操作与U()方法 
 ----------------------------------------
 
+1.在视图中生成链接
+{:U("Admin/login")}
+
+array(     
+	array(验证字段1,验证规则,错误提示,[验证条件,附加规则,验证时间]),     
+	array(验证字段2,验证规则,错误提示,[验证条件,附加规则,验证时间]),     
+	......
+);
+
+
+2.
 //URL地址大小写不敏感设置
 'URL_CASE_INSENSITIVE'=>true,
 为什么不起作用？
 
-
+3.
 //显示系统当前定义的常量。true参数表示按照分组显示
 dump(get_defined_constants(true));
 		
@@ -736,7 +899,7 @@ TP框架执行流程分析
 
 
 ========================================
-模型中直接返回数据
+多层模型：模型中直接返回数据
 ----------------------------------------
 //模型就是为了返回数据，可以从数据库中来，也可以直接返回。
 但是tp中都需要查询数据库。
