@@ -41,8 +41,9 @@ return array (
     0 => 1,
     1 => '基因组分析',
     2 => array (
-      array('igenome','genome','txt'),
-      //array('R语言与bioconductor','bioconductor01','txt'),
+      array('文件格式','NGS_format','txt'),
+      array('db_参考基因组_在线工具','genome401','txt'),
+      array('本地生信软件','genome402','txt'),
     ),
   ),
   
