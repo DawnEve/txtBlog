@@ -13,7 +13,7 @@ return array (
   
   array (
     0 => 1,
-    1 => '测序流程',
+    1 => '测序流程与建库',
     2 => array (
       array('陈巍学基因','NGS004','txt'),
       array('RNA-Seq','rnaSeq01','txt'),
@@ -41,8 +41,10 @@ return array (
     0 => 1,
     1 => '基因组分析',
     2 => array (
-      array('igenome','genome','txt'),
-      //array('R语言与bioconductor','bioconductor01','txt'),
+      array('文件格式','NGS_format','txt'),
+      array('统计与统计参数','NGS_statistics','txt'),
+      array('db_参考基因组_在线工具','genome401','txt'),
+      array('本地生信软件','genome402','txt'),
     ),
   ),
   

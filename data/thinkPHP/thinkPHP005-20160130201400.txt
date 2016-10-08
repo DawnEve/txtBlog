@@ -1,620 +1,8 @@
 
-thinkPHP3.2.3 笔记 深入篇
+thinkPHP3.2.3 笔记 进阶篇
 
 D() 使用模型。
 M() 不使用模型。
-
-========================================
-466. thinkPHP的CURD操作（上）
-----------------------------------------
-给zend studio安装aptana插件，需要先卸载并清除zend的各种痕迹。
-
-文档：http://www.kancloud.cn/manual/thinkphp/1758
-1.数据创建：create方法
-随便新建一个html文件：
-<meta charset='utf-8'>
-<form method='post' action='http://tp.dawneve.cc/user/create'>
-	<p>用户:<input type='text' name='user' /><p>
-	<p>邮箱:<input type='text' name='email' /><p>
-	<p>生日:<input type='text' name='birthday' /><p>
-	<input type='submit' value='提交' />
-</form>
-
-指向的user控制器下的create操作：
-	function create(){
-	    $u=M('User');
-	    dump( $u->create() );
-	}
-结果在表格中填写完点击提交之后，没有birthday的值：
-array(2) {
-  ["user"] => string(3) "sfd"
-  ["email"] => string(3) "sof"
-}
-说明：create仅对mysql表中字段做收集，对于字段不存在的部分忽视。
-这是和post不同的地方。
-
-我们熟悉的令牌验证、自动验证和自动完成功能，其实都必须通过create方法才能生效。
-
-
-2.数据写入：add方法
-
-
-
-
-
-========================================
-467. thinkPHP的CURD操作（下）
-----------------------------------------
-
-save()方法更新。
-
-
-========================================
-468. thinkPHP自动验证（上）
-----------------------------------------
-	必须是D方法，才会有效。M方法不会触发自动验证。
-	
-数据验证有两种方式：
-	静态方式：在模型类里面通过$_validate属性定义验证规则。 
-	动态方式：使用模型类的validate方法动态创建自动验证规则。 
-
-无论是什么方式，验证规则的定义是统一的规则，定义格式为：
-array(
-    array(验证字段1,验证规则,错误提示,[验证条件,附加规则,验证时间]),   
-    array(验证字段2,验证规则,错误提示,[验证条件,附加规则,验证时间]), 
-    ......
-);
-
-
-其中，验证条件（可选）包含下面几种情况：
-	self::EXISTS_VALIDATE 或者0 存在字段就验证（默认） 
-	self::MUST_VALIDATE 或者1 必须验证 
-	self::VALUE_VALIDATE或者2 值不为空的时候验证 
-
-	//定义自动验证
-	protected $_validate=array(
-		array('user','require','用户名必须填写',1),
-		array('email','require','邮箱必须填写',1),
-		array('add_time','require','添加时间必须填写',1), //如果不填写1，则默认为0，不存在该字段就不验证。
-	);
-
-	
-
-	
-========================================
-469. thinkPHP自动验证（下）
-----------------------------------------
-	array('num','/^\d{2,5}$/','必须是2-5位的数字',0,'regex'), //使用正则表达式作为验证条件
-	array('num','123456','传递过来的值不相等',0,'equal'), //必须与传递过来的值相等
-	array('psw','repsw','密码不一致',0,'confirm'),  //验证密码是否一致
-	array('user','张三,李四,王五', '不在给定的范围内！',0,'in'), //值必须在给定范围
-	array('psw','6,8', '密码必须6-8位',0,'length'), //密码必须是6-8位长度
-	
-//array('psw',array(6,8), '密码必须6-8位',0,'between',3), //密码必须是6-8位长度. 不起作用【失败】??
-	
-	array('email', '', '邮箱已经存在！', 1, 'unique', 3), // email唯一
-	array('user', '202.196.120.202', '您的IP没有被允许！', 1, 'ip_allow'), // IP访问权限
-    array('user', '202.196.120.202', '您的IP被禁止！', 1, 'ip_deny'), // IP访问权限
-	
-	
-自定义规则：使用callback 或 function。
-callback是调用的模型的方法。
-	protected $_validate=array(
-	    array('psw', 'checkLength', '密码至少6位！', 0, 'callback', 3), // callback验证
-	}
-	protected function checkLength($str){
-	   if( strlen($str) < 6){
-	       return false;
-	   }
-	   return true;
-	}
-	
-
-function需要定义在公共函数库：
-	protected $_validate=array(
-		array('psw', 'checkLength2', '密码至少6位！', 0, 'function', 3), // function验证
-	}
-其中，函数checkLength2定义在Apps/Home/Common/function.php中：
-	//目的：User模型中的自动验证
-	function checkLength2($str){
-		if( strlen($str) < 6){
-			return false;
-		}
-		return true;
-	}
-	
-	
-	
-	
-如果有很多错误，但是只想一次提示完，怎么做？
-	在模型中增加一条：
-	protected $patchValidate = true; //默认是false
-	
-	//错误输出为数组，格式类似：
-	array(2) {
-	  ["email"] => string(18) "邮箱必须填写"
-	  ["psw"] => string(19) "密码至少6位！"
-	}
-	
-	
-也可以把错误提示输出成json，交给前端处理：
-	 $this->ajaxReturn($user->getError());
-	 //{"email":"\u90ae\u7bb1\u5fc5\u987b\u586b\u5199","psw":"\u5bc6\u7801\u81f3\u5c116\u4f4d\uff01"}
-	
-	//完整形式示例
-	$User = D("User"); // 实例化User对象
-	if (!$User->create()){     
-		// 如果创建失败 表示验证没有通过 输出错误提示信息     
-		$this->ajaxReturn($User->getError());
-	}else{     
-		// 验证通过 可以进行其他数据操作
-	}
-	
-	
-	
-	
-动态验证，就是控制器中做验证，比较灵活。但是规范的写法是：把验证写到模型中。
-	//动态验证
-    function valid3(){
-        $user=M('User');//可以使用M()方法
-        //制定规则
-        $rules=array(
-            array('user','require','用户名必须填写',1),
-            array('email','require','邮箱必须填写',1),
-        );
-        //模拟表单数据
-        $data=array(
-           'user'=>'张三2',
-           //'email'=>'Jimmy2@163.com',
-        );
-        $rs=$user->validate($rules)->create($data);//在create前使用validate方法验证，传入规则
-        if(!$rs){
-            dump($user->getError());
-        }else{
-            echo '所有数据都通过验证了~~';
-        } 
-    }	
-	
-========================================
-470. thinkPHP自动完成
-----------------------------------------
-自动完成通常用来完成默认字段写入，安全字段过滤以及业务逻辑的自动处理等。
-
-两种自动完成方式：
-	1.静态方式：在模型类里面通过$_auto属性定义处理规则。 
-	2.动态方式：使用模型类的auto方法动态创建自动处理规则。 
-
-两种方式的定义规则都采用：
-	array(
-		array(完成字段1,完成规则,[完成条件,附加规则]),
-		array(完成字段2,完成规则,[完成条件,附加规则]),
-		......
-	);
-
-
-
-http://tp.dawneve.cc/user/auto2
-控制器中：
-    //自动完成
-    function auto2(){
-        $user=D('User');
-        $data=array('user'=>'Tomcat' );
-        if($user->create($data)){ //从模型中自动完成：添加当前时间
-           dump($user->add());//返回插入行的主键
-        }else{
-            echo '自动完成失败';
-        }
-    }
-
-模型中：
-	//定义自动完成
-	protected $_auto=array(
-		//array('user','sha1',3,'function'),
-		array('add_time','time',1,'function'),
-	);
-
-访问：http://tp.dawneve.cc/user/auto2
-	string(2) "25"
-	
-	
-用邮箱当用户名：
-	array('user','email',3,'field'), //field 用其它字段填充，表示填充的内容是一个其他字段的值 
-	
-
-自动完成的自定义：callback：
-	//定义自动完成
-	protected $_auto=array(
-		array('user','addPrefix',3,'callback','wjl_'),//callback调用模型方法 
-	);
-	
-	function addPrefix($str,$prefix){
-	   return '2016_' . $prefix . $str;
-	}
-	
-
-	
-	
-修改密码时，如果密码留空表示不修改密码：
-控制器中：
-    //自动完成
-    function auto2(){
-        $user=D('User');
-        $data=array('id'=>31, 'user'=>'', 'email'=>'tc2@qq.com', 'modi_time'=>time() );
-        if($user->create($data)){
-            dump($user->save());//使用场景：更新时如果密码为空则不修改密码
-        }else{
-            echo '自动完成失败';
-        }
-    }
-模型中ignore的使用：
-	//定义自动完成
-	protected $_auto=array(
-		//array('modi_time','time',1,'function'),//更新的时候这一句不起作用？因为1表示（默认）新增数据时起作用
-		array('modi_time','time',3,'function'), //参数3表示新增或修改都起作用
-		array('user','',2,'ignore');//用户如果忽略
-	);
-	
-
-	
-	
-	
-动态完成：
-$rules = array (
-     array('status','1'),  // 新增的时候把status字段设置为1
-	 array('password','md5',3,'function') , // 对password字段在新增和编辑的时候使md5函数处理
-	 array('update_time','time',2,'function'), // 对update_time字段在更新的时候写入当前时间戳);
-	 $User = M('User');
-	 $User->auto($rules)->create()->add();
-	
-	
-========================================
-471. thinkPHP视图
-----------------------------------------
-
-默认的视图目录是模块的View目录（模块可以有多个视图文件目录，这取决于你的应用需要），框架的默认视图文件后缀是.html。 新版模板主题默认是空（表示不启用模板主题功能）。
-
-
-模板主题：
-// 在控制器中动态改变模板主题$this->theme('blue')->display('add');
-
-
-
-模板赋值：
-$this->assign('name',$value);// 下面的写法是等效的
-$this->name = $value;
-//然后分配到视图中
-$this->assign($array);
-视图中如下使用：{$name}
-
-
-渲染模板：
-$this->display();
-$this->display('edit'); // 指定模板输出
-$this->display('Member:read'); //调用Member模块下面的read模板
-
-
-获取模板地址：
-T([资源://][模块@][主题/][控制器/]操作,[视图分层])
-T('Public/menu');
-T('Admin@Public/menu');// 返回 Admin/View/Public/menu.html
-
-在display方法中直接使用T函数：
-$this->display(T('Admin@Public/menu'));
-
-
-
-获取内容：
-$content = $this->fetch('Member:edit');
-和display方法完全一样，区别就在于fetch方法渲染后不是直接输出，而是返回渲染后的内容。
-
-渲染内容：
-$this->show($content);
-
-display方法就是fetch和display的结合。
-
-========================================
-472.ThinkPHP--模版基础[上]
-----------------------------------------
-使用内置的模板引擎来定义模板文件，以及使用加载文件、模板布局和模板继承等高级功能。
-
-1.变量输出：
-控制器：
-	function view1(){
-		$data['name']='Dawn';
-		$data['email']='JimmyMall@163.com';
-		
-		$this->assign('user',$data);
-		$this->display();
-	}
-视图：
-	name:{$user["name"]} <br>
-	email:{$user.email}
-访问：http://tp.dawneve.cc/news/view1
-显示：
-name:Dawn 
-email:JimmyMall@163.com
-
-
-
-如果是对象：
-   //对象形式的数据
-    function view2(){
-        $user=new \stdClass();
-        $user->name = 'Dawn';
-        $user->email = 'JimmyMall@163.com';
-        
-        $this->assign('user',$user);
-        $this->display();
-    }
-视图中只能用指向符号：
-view2<hr />
-name:{$user->name} <br>
-email:{$user->email}
-
-
-
-
-2.系统变量
-view3<hr />
-{$Think.server.script_name} | /index.php <br >
-{$Think.const.MODULE_NAME} | Home <br >
-{$Think.config.db_charset}  | utf8 <br >
-{$Think.lang.page_error}  |PAGE_ERROR<br >
-
-
-
-3.使用函数
-{$data.name|md5} 
-更简单粗暴的是采用php的语法：
-{:substr(strtoupper(md5($name)),0,3)}
-
-4.默认值输出：
-{$Think.get.name|default="这家伙很懒，什么也没留下"}
-
-
-5.使用运算符：
-{$user['score']+10} //正确的
-
-6.标签库： 不懂 不理解？？??
-
-
-========================================
-473.ThinkPHP--模版基础[下]
-----------------------------------------
-7.模板继承
-<extend name="base" /> 这个结尾一定要有斜线和大于号！！！
-
-<block name="menu">view4菜单</block>
-<block name="left">view4左边分栏</block>
-
-8.三元运算符
-{$status?'正常':'错误'}
-
-9.包含文件：
-<include file='模版表达式或者模版文件1,模版表达式或者模版文件2,...' />
-模版表达式的定义规则为：模块@主题/控制器/操作
-
-<include file="Public/header" /> // 包含头部模版View/Public/header.html
-<include file="Public/menu" /> // 包含菜单模版menu
-<include file="Blue/Public/menu" /> // 包含blue主题下面的menu模版
-
-10.模板注释
-{/* 注释内容 */ } 或 {// 注释内容 } 
-模板注释支持多行，模板注释在生成编译缓存文件后会自动删除，这一点和Html的注释不同。
-
-
-11.模板布局 
-第一种方式：全局配置方式
-1).在配置文件（/Home/Conf/config.php）中添加
-	'LAYOUT_ON'=>true, //打开布局
-	'LAYOUT_NAME'=>'layout', //设置布局入口文件名
-2).在View/下添加配置文件指定的布局文件layout.html:
-<include file="Public:header" /> //会自动添加/View/Public/header.html文件
-{__CONTENT__}
-<include file="Public:footer" />
-3).在视图文件/View/News/view5.html中：
-view5.html
-4).访问http://tp.dawneve.cc/news/view5，显示：
-this is header
-view5.html
-this is footer
-
-视图渲染顺序：
-读取layout布局之后，会再解析News/view5.html 模板文件，并把解析后的内容替换到layout布局模板文件的{__CONTENT__}特定字符串。
-
-
-
-
-第二种方式：模板标签方式
-
-这种布局模板不需要在配置文件中设置任何参数，也不需要开启LAYOUT_ON（记得首先关闭前面的LAYOUT_ON设置，否则可能出现布局循环）.
-
-<layout name="layout" />
-
-表示当前模板文件需要使用View/layout.html 布局模板文件，而布局模板文件的写法和上面第一种方式是一样的。当渲染User/add.html 模板文件的时候，如果读取到layout标签，则会把当前模板的解析内容替换到layout布局模板的{__CONTENT__} 特定字符串。
-
-一个模板文件中只能使用一个布局模板，如果模板文件中没有使用任何layout标签则表示当前模板不使用任何布局。
-
-如果需要使用其他的布局模板，可以改变layout的name属性，replace也可以替换，例如：
-<layout name="Layout/newlayout"  replace="{__REPLACE__}" />
-
-
-
-
-
-第三种方式：控制器中使用layout控制模板布局
-布局文件View/layout.html 
-	<include file="Public:header" /> 
-	{__CONTENT__}
-	<include file="Public:footer" />
-
-News控制器中： 
-    function view7(){
-    	//在控制器中使用布局
-        layout(true);
-    	//layout('News/base'); //动态的指定布局模板名称
-        $this->display();
-    }
-
-view7.html只有一行：
-	view7.html
-访问：http://localhost/think/news/view7
-显示：
-	this is header
-	view7.html
-	this is footer
-
-不需要布局功能的时候，还可以在全局布局开启的情况下，关闭某个页面的布局。
-控制器方法中：
-	 layout(false); // 临时关闭当前模板的布局功能
-
-
-12.模板替换
-在进行模板渲染之前，系统还会对读取的模板内容进行一些特殊字符串替换操作，也就是实现了模板输出的替换和过滤。该替换操作仅针对内置的模版引擎。
-
-默认的替换规则有：
-	__ROOT__： 会替换成当前网站的地址（不含域名） 
-	__APP__： 会替换成当前应用的URL地址 （不含域名）
-	__MODULE__：会替换成当前模块的URL地址 （不含域名）
-	__CONTROLLER__（__或者__URL__ 兼容考虑）： 会替换成当前控制器的URL地址（不含域名）
-	__ACTION__：会替换成当前操作的URL地址 （不含域名）
-	__SELF__： 会替换成当前的页面URL
-	__PUBLIC__：会被替换成当前网站的公共目录 通常是 /Public/
-
-严格区别大小写。
-必要时可以更改。
-
-	 
-========================================
-474.ThinkPHP--内置标签[上]
-----------------------------------------
-标签式模板中使用的。
-
-1.比较
-eq或者 equal 等于 
-neq 或者notequal 不等于 
-gt 大于 
-egt 大于等于 
-lt 小于 
-elt 小于等于 
-heq 恒等于 
-nheq 不恒等于 
-
-比如：
-<if condition="($name eq 1) OR ($name gt 100) "> 
-	value1
-<elseif condition="$name eq 2"/>
-	value2
-<else />
-	value3
-</if>
-
-2.范围判断标签  in notin
-<in name="id" value="1,2,3">id在范围内</in>
-
-3.BETWEEN 和 NOTBETWEEN
-可以使用between标签来判断变量是否在某个区间范围内，可以使用：
-<between name="id" value="1,10">输出内容1</between>
-
-
-4.present标签用于判断某个变量是否已经定义，用法：
-<present name="name">name已经赋值</present>
-起始就是isset()函数。
-
-5.empty标签用于判断某个变量是否为空
-<empty name="name">name为空值</empty>
-
-6.DEFINED标签用于判断某个常量是否有定义，用法如下：
-<defined name="NAME">NAME常量已经定义</defined>
-
-
-
-
-========================================
-475.ThinkPHP--内置标签[下]
-----------------------------------------
-循环标签：volist、foreach、for标签。
-
-
-1.控制器中：
-$User = M('User');
-$list = $User->limit(10)->select();
-$this->assign('list',$list);
-
-模板中：
-<volist name="list" id="vo">
-	{$vo.id}:{$vo.name}<br/>
-</volist>
-
-为空的时候输出提示：
-<volist name="list" id="vo" empty="暂时没有数据" >
-	{$vo.id}|{$vo.name}
-</volist>
-
-
-
-2.foreach标签类似与volist标签，只是更加简单
-<foreach name="list" item="vo" >
-    {$key}|{$vo.id}:{$vo.name}
-</foreach>
-
-
-3.For标签
-<for start="开始值" end="结束值" comparison="" step="步进值" name="循环变量名" >
-</for>
-
-比如：
-<for start="1" end="100">
-{$i}
-</for>
-
-解码后：
-for ($i=1;$i<100;$i+=1){    
-	echo $i;
-} 
-
-
-4.js和css文件的引入
-直接写：
-<script type='text/javascript' src='/Public/Js/Util/Array.js'>
-<link rel="stylesheet" type="text/css" href="/App/Tpl/default/Public/css/style.css" />
-
-
-简化写法：
-<import type='js' file="Js.Util.Array" />
-<import type='css' file="Css.common" />
-
-另一种简写：
-<load href="/Public/Js/Common.js" />
-<load href="/Public/Css/common.css" />
-
-标签js和css分别引入对应的文件：
-<js href="/Public/Js/Common.js" />
-<css href="/Public/Css/common.css" />
-
-5.使用PHP代码
-第一种：使用php标签
-例如：<php>echo 'Hello, world!';</php>
-
-第二种：使用原生php代码
-<?php echo 'Hello, world!'; ?>
-
-注意：在PHP标签里面不能再使用PHP本身不支持的代码。
-
-
-
-========================================
-476.ThinkPHP--标签库
-----------------------------------------
-加载标签库。
-
-自定义标签库。
-
-
-
-
-
-
 
 
 ========================================
@@ -622,25 +10,486 @@ for ($i=1;$i<100;$i+=1){
 ----------------------------------------
 http://tp.dawneve.cc/new/12
 
+ThinkPHP3.2采用的URL规则是：
+http://serverName/module/controller/action/param/value/...
+
+1.一般在模块下设置路由规则，比如commen中。
+//开启路由功能
+	'URL_ROUTER_ON'   => true, 
+	//配置路由规则
+	'URL_ROUTE_RULES'=>array(
+		'u'=> 'User/index', //静态路由
+	),
+访问 http://tp.com/u ，作用和 http://tp.com/user/index 是一样的。
+
+2.动态路由，接收参数id：
+	'URL_ROUTE_RULES'=>array(
+		//'u'=> 'User/index', //静态路由
+		'u/:id'=> 'User/index', //动态路由
+	),
+没有控制器，只有视图：
+	this is user-index<hr>
+	{$Think.get.id}
+
+访问 http://tp.com/u/6 效果同 http://tp.com/user/index/id/6 
+
+
+3.动态和静态路由结合使用：
+
+	'URL_ROUTE_RULES'=>array(
+		//'u'=> 'User/index', //静态路由
+		//'u/:id'=> 'User/index', //动态路由
+		'u/:id/:name/:title'=> 'User/index', //动态和静态混合使用
+	),
+
+视图：
+this is user-index<hr>
+{$Think.get.id} | 
+{$Think.get.name} | 
+{$Think.get.title}
+
+访问 http://tp.com/u/5/jimmy/CTO 等同于 http://tp.com/user/index/id/5/name/jimmy/title/CTO 
+
+
+4.限制必须为数字
+如果路由是：
+	'URL_ROUTE_RULES'=>array(
+		'u/:id'=> 'User/index', //动态路由
+	),
+访问 http://tp.com/u/a 也不报错。
+
+怎么限制id必须是数字呢？正则规则\d：
+	'u/:id\d'=> 'User/index', 
+
+	
+5.可选参数 'u/[:id\d]'=> 'User/index', 
+	http://tp.com/u/5 	或者 http://tp.com/u 都不会报错
+
+6.强行禁止链接后面有东西，$符号：
+	'u/:id\d$'=> 'User/index',
+访问 http://tp.com/u/5 正常，而 http://tp.com/u/5/a 会报错。
+
+
+7.正则表达式路由
+	'/^u\/(\d{2})$/'=>'User/index?id=:1',
+访问 http://tp.com/u/50 正常，而访问 http://tp.com/u/500 则报错。
+
+如果写成 '/^u_(\d{2})$/'=>'User/index?id=:1', 则可以使用 http://tp.com/u_50 访问。
+
+
+8.支持静态路由 
+'u/i'=>'User/index',
+访问 http://tp.com/u/i ，等同于 http://tp.com/user/index
+
+
+9.闭包支持 
+'URL_ROUTE_RULES'=>array(
+		//'u/i'=>'User/index',
+		
+		'about' =>  function(){
+			echo 'something about me!';
+		},
+	),
+访问 http://tp.com/about ，得到 something about me!
+
+闭包传递参数：
+'hello/:name' =>     function($name){ echo 'Hello,'.$name;    }
+
+访问 http://tp.com/hello/jimmy ， 显示：
+Hello,jimmy
 
 
 
         
 ========================================
-478.ThinkPHP--URL操作
+478.ThinkPHP--URL操作与U()方法 
 ----------------------------------------
+要点：
+1.URL大小写；
+2.URL伪静态；
+3.URL生成；
+4.模板中的U()方法；
 
+
+1.在视图中生成链接
+{:U("Admin/login")}
+
+array(     
+	array(验证字段1,验证规则,错误提示,[验证条件,附加规则,验证时间]),     
+	array(验证字段2,验证规则,错误提示,[验证条件,附加规则,验证时间]),     
+	......
+);
+
+
+2.
 //URL地址大小写不敏感设置
 'URL_CASE_INSENSITIVE'=>true,
 为什么不起作用？
 
-
+3.
 //显示系统当前定义的常量。true参数表示按照分组显示
 dump(get_defined_constants(true));
 		
 
-		
+        
+========================================
+479.ThinkPHP--控制器（上）
+----------------------------------------	
+1.二级控制器
 
+2.before or after
+
+3.控制器跳转
+success 和 error 方法。
+
+redirect方法，也有一个函数形式。地址传递方式不同。
+
+字段过滤。
+
+
+4.请求类型
+get or post?
+
+	
+
+        
+========================================
+480.ThinkPHP--控制器（中）
+----------------------------------------
+5.空操作： _empty()方法。
+
+6.空控制器
+	EmptyController控制器。
+
+        
+========================================
+481.ThinkPHP--控制器（下）
+----------------------------------------
+7.操作绑定到类。
+	把每个操作方法定位到一个类的功能，即把层次分的更清楚。
+	只有在单个方法代码特别长的时候使用。
+	
+1）配置文件中添加：（原来的形式都不能用了）
+	"ACTION_BIND_CLASS"=>True, //操作绑定到类 
+2）新建文件夹（控制器名），里面建立class文件（方法名），文件内容是类，但是只有run方法，_before_run，_after_run方法可以执行。
+
+        
+========================================
+482.session和cookie
+----------------------------------------
+
+session(name,value); //设置session信息
+session(name); //读取
+session(name,null); //删除
+session(null);//销毁整个session
+		  
+		
+========================================
+483.图像处理
+----------------------------------------
+/Think/Library/Think/Image.class.php 
+
+裁切、缩放、水印
+
+
+
+        
+========================================
+484.验证码生成与验证
+----------------------------------------
+验证码图片是用在视图中的。
+本身验证码加密后保存在Session中。
+验证码类Think\Verify类提供了验证码图片生成entry()和验证check()的方法。
+
+1.Blog控制器中
+	//验证码图片生成
+	function verifyIMG(){
+	   $config=array(
+	       //'imageW'=>120, 
+	       //'imageH'=>30, 
+	       //'fontSize'=>14, 
+	       'length'=>4,
+	       'fontttf'=>'4.ttf',
+	       //'useImgBg '=>false,
+	       //'useZh '=>true, //为什么数组中定义没用？
+	   );
+	   $vr=new \Think\Verify($config);
+
+	   //开启验证码背景图片功能 随机使用 ThinkPHP/Library/Think/Verify/bgs 目录下面的图片
+	   $vr->useImgBg = false;
+	   
+	   // 验证码字体使用 ThinkPHP/Library/Think/Verify/ttfs/5.ttf
+	   //$vr->useZh = true; 
+	   
+	   ob_clean();
+	   $vr->entry(1);//传入为验证码id 
+	}
+	
+	
+	//验证码图片生成
+    function verify($code, $id =1){
+         $verify = new \Think\Verify(); 
+         $rs = $verify->check($code, $id);
+         dump( $rs);
+    }
+	
+2.View/Blog/index.html视图中
+<h1>Blog->index.html</h1>
+
+<form action='{:U("Blog/verify")}' method='get'>
+        请输入如下验证码：
+    <input type='text' name='code'><br><br>    
+    <img src='{:U("Blog/verifyIMG")}'><br>
+    <input type='submit' name='sd'>
+</form>
+
+3.访问 http://tp.dawneve.cc/Blog/
+即可看到输入验证码表单。
+最终提交后会显示是否成功的布尔值。
+
+
+        
+========================================
+485.文件上传
+----------------------------------------
+
+单个、多个文件的上传。
+文档位置：专题-文件上传
+
+显示显示上传页面upload.html：
+upload page.<hr>
+
+<form action="__CONTROLLER__/do_upload" enctype="multipart/form-data" method="post">
+	<input type="file" name='file' /> <br />
+	<input type="submit" value="上传文件" />
+</form>
+
+
+控制器中操作上传：
+	function do_upload(){
+		$upload = new \Think\Upload();// 实例化上传类    
+		$upload->maxSize   =     3145728 ;// 设置附件上传大小    
+		$upload->exts      =     array('jpg', 'gif', 'png', 'jpeg');// 设置附件上传类型    
+		$upload->savePath  =      '/Public/Uploads/'; // 设置附件上传目录    
+
+		//$upload->savePath  =      './Public/Uploads/'; // 设置附件上传目录 
+
+		// 上传文件
+		$info   =   $upload->upload();
+		
+		if(!$info) {
+			// 上传错误提示错误信息
+			$this->error($upload->getError());
+		}else{
+			// 上传成功        
+			//$this->success('上传成功！');
+			//打印每个文件路径
+			echo '<a href="./upload">返回</a><hr />';
+			foreach($info as $file){
+				$file_path= $file['savepath'] . $file['savename'];
+				echo '<img src="/Uploads' . $file_path . '" /><br />';
+				echo '保存路径: ' . $file_path . '<br />';
+				echo '原始名字: ' . $file['name'] . '<hr />';
+				
+				
+				echo 'key 附件上传的表单名称:'.$file['key'].'<br>';
+				echo 'savepath 上传文件的保存路径:'.$file['savepath'].'<br>';
+				echo 'name 上传文件的原始名称:'.$file['name'].'<br>';
+				echo 'savename 上传文件的保存名称:'.$file['savename'].'<br>';
+				echo 'size 上传文件的大小:'.$file['size'].'<br>';
+				echo 'type 上传文件的MIME类型:'.$file['type'].'<br>';
+				echo 'ext 上传文件的后缀类型:'.$file['ext'].'<br>';
+				echo 'md5 上传文件的md5哈希验证字符串 仅当hash设置开启后有效:'.$file['md5'].'<br>';
+				echo 'sha1 上传文件的sha1哈希验证字符串 仅当hash设置开启后有效:'.$file['sha1'].'<br>';								
+			}
+		}
+	}
+提前在根目录建立文件夹Uploads，然后访问：http://tp.com/User/upload
+即可点击选择文件，点击上传即显示上传文件的信息，可以在 \thinkPHP\Uploads\Public\Uploads\2016-08-21\57b90e89761a6.jpg 看到图片。
+
+
+多文件上传，以上代码只需要修改上传页面upload.html：增加上传控件至多个，上传控件的name改成数组形式。
+upload page.<hr>
+<form action="__CONTROLLER__/do_upload" enctype="multipart/form-data" method="post">
+	<input type="file" name='photo[]' /> <br />
+	<input type="file" name='photo[]' /> <br />
+	<input type="file" name='photo[]' /> <br />
+	<input type="submit" value="上传文件" />
+</form>
+
+
+
+上传成功后的信息可以保存到数据表中：
+例如，下面表示把上传信息保存到数据表的字段：
+
+DROP TABLE IF EXISTS `think_photo`;
+CREATE TABLE `think_photo` (  
+    `id` mediumint(8) unsigned NOT NULL AUTO_INCREMENT,  
+    `title` char(80) NOT NULL DEFAULT '',  
+    `file_path` char(80) NOT NULL DEFAULT '',  
+    
+    `create_time` char(20) NOT NULL DEFAULT '',  
+    `condition` char(100) NOT NULL DEFAULT '1',#正常为1，进回收站为0，回收站内可删除或恢复
+    PRIMARY KEY (`id`),
+	UNIQUE KEY `file_path` (`file_path`)
+) ENGINE=MyISAM  DEFAULT CHARSET=utf8;
+
+
+	//保存到数据表中（放到do_upload方法的foreach循环尾部）
+	$model = M('Photo');// 取得成功上传的文件信息
+	$info = $upload->upload();// 保存当前数据对象
+	$data['title'] = $file['name'];
+	$data['file_path'] = $file_path;
+	$data['create_time'] = NOW_TIME;
+	$model->add($data);
+				
+[bug]:Library/Think/Upload.class.php Line170:建议加个if判断。
+/* 调用回调函数检测文件是否存在 */
+if($this->callback){
+	$data = call_user_func($this->callback, $file);        	
+}
+
+
+
+
+	//查看已经上传的图片
+	function photo($id=-1){
+		if($id>0){
+			$photos=M("Photo")->where("`condition`=1 AND id=$id")->select();		
+		}else{
+			$photos=M("Photo")->where('`condition`=1')->select();		
+		}
+		//
+		
+		foreach($photos as $photo){
+			//dump($photo);
+			echo '<div style="border:5px solid #ddd; margin:5px;float:left;">';
+			echo "<img src='/Uploads" . $photo['file_path'] . "' />";
+			echo '<br />Name: '.$photo['title']; 
+			echo '<br />create at '.date('Y-m-d H:i:s',$photo['create_time']);
+			
+			echo '</div>';
+		}
+	}
+
+
+
+========================================
+486.多语言
+----------------------------------------
+
+
+========================================
+487.auth权限控制
+----------------------------------------
+
+--
+视图中生成地址：{:U("Admin/login")}
+--
+判断数组是否为空？
+$login=array();
+if(count($login)){echo '1-ok';}
+$login['uid']=200;
+if(count($login)){echo '2-ok';}
+
+--
+auth.class.php 的位置：
+ThinkPHP/Library/Think/Auth.class.php 
+
+/**
+ * 权限认证类
+ * 功能特性：
+ * 1，是对规则进行认证，不是对节点进行认证。用户可以把节点当作规则名称实现对节点进行认证。
+ *      $auth=new Auth();  $auth->check('规则名称','用户id')
+ * 2，可以同时对多条规则进行认证，并设置多条规则的关系（or或者and）
+ *      $auth=new Auth();  $auth->check('规则1,规则2','用户id','and') 
+ *      第三个参数为and时表示，用户需要同时具有规则1和规则2的权限。 当第三个参数为or时，表示用户值需要具备其中一个条件即可。默认为or
+ * 3，一个用户可以属于多个用户组(think_auth_group_access表 定义了用户所属用户组)。我们需要设置每个用户组拥有哪些规则(think_auth_group 定义了用户组权限)
+ * 
+ * 4，支持规则表达式。
+ *      在think_auth_rule 表中定义一条规则时，如果type为1， condition字段就可以定义规则表达式。 如定义{score}>5  and {score}<100  表示用户的分数在5-100之间时这条规则才会通过。
+ */
+
+
+
+-- ----------------------------
+-- think_auth_rule，规则表，（认证规则表）
+-- id:主键，name：规则唯一标识, title：规则中文名称 status 状态：为1正常，为0禁用，condition：规则表达式，为空表示存在就验证，不为空表示按照条件验证
+-- ----------------------------
+ DROP TABLE IF EXISTS `think_auth_rule`;
+CREATE TABLE `think_auth_rule` (  
+    `id` mediumint(8) unsigned NOT NULL AUTO_INCREMENT,  
+    `name` char(80) NOT NULL DEFAULT '',  
+    `title` char(20) NOT NULL DEFAULT '',  
+    `type` tinyint(1) NOT NULL DEFAULT '1',    
+    `status` tinyint(1) NOT NULL DEFAULT '1',  
+    `condition` char(100) NOT NULL DEFAULT '',  # 规则附件条件,满足附加条件的规则,才认为是有效的规则
+    PRIMARY KEY (`id`),  
+    UNIQUE KEY `name` (`name`)
+) ENGINE=MyISAM  DEFAULT CHARSET=utf8;
+-- ----------------------------
+-- think_auth_group 用户组表， 
+-- id：主键， title:用户组中文名称， rules：用户组拥有的规则id， 多个规则","隔开，status 状态：为1正常，为0禁用
+-- ----------------------------
+ DROP TABLE IF EXISTS `think_auth_group`;
+CREATE TABLE `think_auth_group` ( 
+    `id` mediumint(8) unsigned NOT NULL AUTO_INCREMENT, 
+    `title` char(100) NOT NULL DEFAULT '', 
+    `status` tinyint(1) NOT NULL DEFAULT '1', 
+    `rules` char(80) NOT NULL DEFAULT '', 
+    PRIMARY KEY (`id`)
+) ENGINE=MyISAM  DEFAULT CHARSET=utf8;
+-- ----------------------------
+-- think_auth_group_access 用户组明细表 （用户组和权限对应表）
+-- uid:用户id，group_id：用户组id
+-- ----------------------------
+DROP TABLE IF EXISTS `think_auth_group_access`;
+CREATE TABLE `think_auth_group_access` (  
+    `uid` mediumint(8) unsigned NOT NULL,  
+    `group_id` mediumint(8) unsigned NOT NULL, 
+    UNIQUE KEY `uid_group_id` (`uid`,`group_id`),  
+    KEY `uid` (`uid`), 
+    KEY `group_id` (`group_id`)
+) ENGINE=MyISAM DEFAULT CHARSET=utf8;
+
+
+1.跨模块调用：
+	public function index(){
+    	//echo C('AUTH_ON');
+    	
+    	//跨模块调用
+    	//$m=new \Home\Model\UserModel(); dump($m);
+    	//$m=new \Home\Controller\UserController();$m->index();
+    	$m=new \Admin\Controller\AuthController();$m->index();
+    	//new Auth();
+        echo "<hr>this is App->Admin module";
+    }
+
+2.如果调用失败，请再次检查命名空间是否正确！
+
+
+
+========================================
+----------------------------------------
+
+
+
+
+========================================
+----------------------------------------
+
+
+========================================
+----------------------------------------
+
+
+========================================
+----------------------------------------
+
+	
+	
+	
+	
 ========================================
 TP框架执行流程分析
 ----------------------------------------
@@ -681,6 +530,163 @@ TP框架执行流程分析
 		
 		
 
+
+
+
+========================================
+用户登录的逻辑
+----------------------------------------
+1.用户登录。
+防止注入，一般都是分两步，
+第一步，按照用户名查找记录数组；
+第二步，从记录数组中提取密码，和用户输入并加密后的密码进行比较；
+成功则返回true，否则全部返回false。
+
+2.如果都正确，写入session。
+
+3.跳转到首页
+
+
+代码实现：
+用户表
+CREATE TABLE `think_user` (
+  `id` int(10) NOT NULL AUTO_INCREMENT,
+  `user` varchar(20) DEFAULT NULL,
+  `passwd` char(35) DEFAULT 'e10adc3949ba59abbe56e057f20f883e',
+  `email` varchar(100) DEFAULT NULL,
+  `add_time` varchar(30) DEFAULT NULL,
+  `modi_time` varchar(30) DEFAULT NULL,
+  PRIMARY KEY (`id`)
+) ENGINE=InnoDB AUTO_INCREMENT=0 DEFAULT CHARSET=utf8;
+
+mysql> select * from think_user where id=7;
++----+-------+----------------------------------+-----------------+------------+-----------+
+| id | user  | passwd                           | email           | add_time   | modi_time |
++----+-------+----------------------------------+-----------------+------------+-----------+
+|  7 | timoc | e10adc3949ba59abbe56e057f20f883e | timoc@yahoo.com | 1451294972 | NULL      |
++----+-------+----------------------------------+-----------------+------------+-----------+
+1 row in set (0.00 sec)
+
+
+
+（1）blog控制器中
+//登录检测
+    public function login(){
+    	//1.验证用户名和密码是否正确
+		$m=new \Home\Model\UserModel();
+		//$m = D('User');
+		$rs = $m->checkLogin('Timoc','123456');
+		if($rs===false){
+            echo '用户名或密码错误！';
+		}else{
+            echo '登录成功';
+            //2.登录信息持久化
+            session('user',$rs);
+            $id=$rs['id'];
+            
+		    //dump(session('user'));
+		    //3.跳转到首页
+		    //方法1 使用函数，url需要时U方法生成的，或绝对地址
+		    redirect(U('Blog/index',array('uid'=>$id)),3,'正在跳转到后台！(function)'); 
+		    //方法2 使用方法，url只需要使用控制器和操作
+		    //$this->redirect('Blog/index',array('uid'=>$id),3,'正在跳转到后台！(method)'); 
+		}
+	}
+
+	
+（2）user模型中
+    function checkLogin($user='Tom',$passwd=''){
+        $info = $this->getByUser($user);
+        if($info != null){
+            if(md5($passwd) == $info['passwd']){
+            	unset($info['passwd']);//防止密码泄露
+                return $info;
+            }else{
+                return false;
+            }
+        }else{
+            return false;
+        }
+    }
+
+	
+(3)index控制器
+    public function index(){
+		$u=session('user');
+		if($u!=null){
+		   echo '登录名： ' . $u['user'];
+		   echo ' | <a href="'.U('logout').'">'."退出" . '</a>';
+		}else{
+	        echo '请登录!';
+    		$this->display();
+		}
+
+		//D('User'); //实例化UserModel
+		//D('User','Logic'); //实例化UserLogic
+	}
+	
+	//退出logotu
+	function logout(){
+	   session(null);
+	   redirect(U('index'));
+	}
+
+	//查看session
+	function session(){
+	   dump(session('user'));
+	}
+	
+(4)index视图
+<h1>Blog->index.html</h1>
+
+<form action='{:U("Blog/verify")}' method='get'>
+        请输入如下验证码：
+    <input type='text' name='code'><br><br>    
+    <img src='{:U("Blog/verifyIMG")}'><br>
+    <input type='submit' name='sd'>
+</form>
+
+(5)验证码生成和验证方法
+	//验证码图片生成
+	function verifyIMG(){
+	   $config=array(
+	       //'imageW'=>120, 
+	       //'imageH'=>30, 
+	       //'fontSize'=>14, 
+	       'length'=>4,
+	       'fontttf'=>'4.ttf',
+	       //'useImgBg '=>false,
+	       //'useZh '=>true, //为什么数组中定义没用？
+	   );
+	   $vr=new \Think\Verify($config);
+
+	   //开启验证码背景图片功能 随机使用 ThinkPHP/Library/Think/Verify/bgs 目录下面的图片
+	   $vr->useImgBg = false;
+	   
+	   // 验证码字体使用 ThinkPHP/Library/Think/Verify/ttfs/5.ttf
+	   //$vr->useZh = true; 
+	   
+	   ob_clean();
+	   $vr->entry(1);
+	}
+	
+	
+	//验证码图片生成
+    function verify($code, $id =1){
+         $verify = new \Think\Verify(); 
+         $rs = $verify->check($code, $id);
+         dump( $rs);
+         //return $rs;
+    }
+
+
+
+
+
+		  
+			
+			
+
 ========================================
 ----------------------------------------
 
@@ -689,16 +695,8 @@ TP框架执行流程分析
 ----------------------------------------
 
 
-
 ========================================
 ----------------------------------------
 
-
-========================================
-----------------------------------------
-
-
-========================================
-----------------------------------------
 
 

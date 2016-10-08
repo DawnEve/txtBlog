@@ -314,30 +314,307 @@ http://www.thinkphp.cn/topic/1752.html
 
 
 ========================================
+加载自定义的类
 ----------------------------------------
+1.新建文件夹/Home/Component/Page.class.php 
+<?php  
+namespace Home\Component;
+
+class Page{
+    function index(){
+        echo 'Page-index';
+    }
+}
+
+
+
+2.在Blog控制器中实例化并调用
+    function page2(){
+        $m=new \Home\Component\Page();
+        $m->index();
+    }
+
+3.访问 http://tp.dawneve.cc/blog/page2 ，可见：
+Page-index
+
+
+
+
+4.实现机制：
+自动加载方法 Library/Think/Think.class.php 
+autoload()方法。
+
+
+或者定义为跨模块的应用。
+（1）和Home与Admin并列 /Component/Page.class.php 
+<?php  
+namespace Component;
+
+class Page{
+    function index(){
+        echo 'Page-index';
+    }
+}
+
+（2）在Home/Blog控制器中
+    function page2(){
+        $m=new \Component\Page();
+        $m->index();
+    }
+
+(3)访问	http://tp.dawneve.cc/blog/page2。
+
+
+	
+========================================
+在模型中直接返回数据，不经过数据库
+----------------------------------------
+1.在Model文件夹平齐位置新建文件夹Logic/UserLogic.class.php 
+<?php
+namespace Home\Logic;
+//use Think\Model;
+
+//class UserLogic extends Model{
+class UserLogic{
+	function getdata(){
+	   return 'UserLogic->index() data here';
+    }
+}
+
+2.在Blog控制器调用 
+    //从logic层直接获取数据，不经过数据库
+    function test2(){
+        $user=A('User','Logic');
+        echo $user->getdata();
+    }
+3.访问 http://tp.dawneve.cc/blog/test2
+显示 UserLogic->index() data here
+
+
+========================================
+分页效果
+----------------------------------------
+有两种方法分页，自定义分页类，和tp内置分页类。
+
+原理：
+直接读取数据库，使用limit限定offset total。
+分页类输出底部显示栏。
+
+
+1.控制器中：
+
+//分页1
+    function showlist(){
+    	$wb=D('Weibo');
+        //1.获取总条目
+        $total=$wb->count();
+        //2.实例化分页对象
+        $per=5;
+        $page=new \Component\Page($total,$per);//自定义分页类
+        //3.拼装sql语句
+        $sql="select * from think_weibo ". $page->limit;
+        $info=$wb->query($sql);
+        //4.获得页码代码
+        $pagelist=$page->fpage(); //自定义分页类
+        //5.模板显示
+        $this->assign('info',$info);
+        $this->assign('pagelist',$pagelist);
+        $this->display();
+    }
+    
+    //分页2
+    function showlist2($p=1){
+        $wb=D('Weibo');
+        //1.获取总条目
+        $total=$wb->count();
+        //2.实例化分页对象
+        $per=5;
+        $page=new \Think\Page($total, $per);//tp内置分页类
+        
+        //3.拼装sql语句,来分页
+        //$sql="select * from think_weibo limit ". $p*$per .','.$per;
+        //$info=$wb->query($sql);
+        
+        $info=$wb->page($p.','.$per)->select();
+        
+        //4.获得页码代码
+        $pagelist=$page->show();//tp内置分页类
+        //5.模板显示
+        $this->assign('info',$info);
+        $this->assign('pagelist',$pagelist);
+        $this->display('showlist');
+    }
+	
+2.视图：
+<style>
+html,body,div,p{margin:0;padding:0;}
+body{background:#efeeef; font-family:'微软雅黑'}
+.wrap{width:1200px; margin:0 auto;}
+.box{border:1px solid #aaa; margin:10px; padding:10px; background:#fff;}
+.box p.title{color:#0096ff; background:#fff;}
+.pagelist{background:#aaa;padding:3px;}
+.pagelist a{padding:5px;}
+
+.footer{background:#000;color:#fff;padding:20px 5px; margin-top:20px;}
+</style>
+
+<div class=wrap>
+<h1>分页</h1>
+
+<volist name="info" id="vo">
+	<div class='box'>
+	    <p class=title>#{$vo.id} | {$vo.add_time|date="Y-m-d H:i:s",###}</p>
+	    <p>{$vo.content|nl2br}</p>
+	</div>
+</volist>
+<div class='pagelist'>{$pagelist}</div>
+</div>
+
+
+<div class='footer'>
+    <div class=wrap>
+        &copy;2016
+    </div>
+</div>
 
 
 
 ========================================
+上传图片、添加水印、缩略图
 ----------------------------------------
+实现图片上传，并把路径保存到数据库中。
+
+Tp3.2 图片上传+水印+缩略图 多图和单图： http://www.thinkphp.cn/code/1190.html
+
+原理：
+利用已有图片创建一个画板。
+把画板给缩小一点imagecopyresampled
+imagepng($im, 路径名); 保存到系统一个指定目录
+open()打开一个图像资源
+thumb()制作缩略图
+save()保存图像，设置图像的宽度、高度、达到制作缩略图的效果
 
 
+1.控制器 
+	//上传附件
+	function add(){
+       if(!empty($_POST)){
+           $goods=D('Goods');
+           //判断附件是否上传，
+           //如果有附件则实例化upload(),把附件上传到指定位置
+           //然后把附件的路径名获得，保存到$_POST中
+           if(!empty($_FILES)){
+            //dump($_FILES['goods_big_img']);
+            /*
+array(5) {
+  ["name"] => string(26) "QQ图片20160605182806.jpg"
+  ["type"] => string(10) "image/jpeg"
+  ["tmp_name"] => string(24) "F:\xampp\tmp\php2C80.tmp"
+  ["error"] => int(0)
+  ["size"] => int(254691)
+}
+             * */
+           	    //实例化类
+           	    $config=array(
+           	        'rootPath'=>'./Public/',
+           	        'savePath'=>'Upload/',
+           	        'subName'       =>  array('date', 'Ymd'),
+           	    );
+           	    $upload=new \Think\Upload($config);
+           	    //执行上传
+           	    $z=$upload->uploadOne($_FILES['goods_big_img']);
+           	        /*
+dump($z);
+array(9) {
+  ["name"] => string(26) "QQ图片20160605182806.jpg"
+  ["type"] => string(10) "image/jpeg"
+  ["size"] => int(254691)
+  ["key"] => int(0)
+  ["ext"] => string(3) "jpg"
+  ["md5"] => string(32) "2ee1bc65a552a90ee8431696eb4107f9"
+  ["sha1"] => string(40) "6393a860ff70080fb9c9c678a0db6f5262ae33bc"
+  ["savename"] => string(17) "57d259a6a1b2d.jpg"
+  ["savepath"] => string(18) "Upload/2016-09-09/"
+}
+           	         * */
+           	    //判断上传是否成功
+           	    if(!$z){
+           	        die( $upload->getError() );
+           	    }else{
+           	    	//拼接图片路径，并添加到$_POST中
+           	    	$img_url = $z['savepath'] . $z['savename'];
+           	        //dump($img_url);//string(35) "Upload/2016-09-09/57d25a40285bd.jpg"
+           	        $_POST['goods_big_img']=$img_url;
+           	    }
+           }
+           
+           $goods->create();//收集数据
+           $goods->goods_create_time=time();
+           $r=$goods->add();
+           if($r){
+                echo 'success';
+           }else{
+                echo 'error~~~';
+           }
+       }else{
+           $this->display();
+       }
+    }
+	
+2.视图 Goods/add.html 
+
+<h1>提交数据</h1>
+<form method="post" action="{:U('add')}" enctype="multipart/form-data">
+		<p>名字：<input type="text" name="goods_name" /></p>
+		<p>重量：<input type="text" name="goods_weight" /></p>
+		<p>价格：<input type="text" name="goods_price" /></p>
+		<p>数量：<input type="text" name="goods_number" /></p>
+		<p>类别：<input type="text" name="goods_category_id" /></p>
+		<p><input type="file" name="goods_big_img" /></p>
+		<p><input id="upload_btn" type="submit" value="提交" />
+</form>
+
+3.访问 http://tp.dawneve.cc/goods/add.html
+
+4.缩略图生成 
+
+//生成缩略图
+$bigimg = $upload->rootPath . $img_url;
+$image=new \Think\Image();
+$small_img_url = $upload->rootPath . $z['savepath'] .'small_'. $z['savename'];
+$image->open($bigimg)->thumb(150,150)->save($small_img_url);
+$_POST['goods_small_img']=$small_img_url;
 
 
 
 ========================================
+登录的方法名字校验
 ----------------------------------------
+1.新建通用文件 /Admin/Common/AdminController.class.php 
+<?php
+namespace Admin\Common;
+use Think\Controller;
 
+class AdminController extends Controller {
+    public function _initialize(){
+        $name = CONTROLLER_NAME.'-'.ACTION_NAME;
+        echo $name;
+    }
+}
 
-========================================
-----------------------------------------
+2.在Order控制器中调用 
+<?php
+namespace Admin\Controller;
+use Admin\Common\AdminController;
 
+class OrderController extends AdminController {
+    public function showlist(){
+        //
+    }
+}
 
-
-========================================
-----------------------------------------
-
-
+3.访问 http://seq.dawneve.cc/Admin/Order/showlist
+Order-showlist
 
 
 

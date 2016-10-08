@@ -12,6 +12,7 @@ return array (
   'JavaEE' => '从javaSE到javaEE和Android',
   'Linux' => 'Linux操作系统、服务器软件等',
   'c' => 'C语言在学习-linux环境下',
+  'Python' => 'Python3与爬虫',
   
 	'yii' => '美国人写的框架',
   //暂时没有内容
