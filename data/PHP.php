@@ -66,7 +66,7 @@ return array (
     array (
       array('项目描述','phpCMS001','html',),
       array('参考资料','phpCMS002','html'),
-      array('FAQ','phpCMS003','html'),
+      array('phpCMS开发入门','phpCMS003','txt'),
     ),
   ),
   
