@@ -83,16 +83,7 @@ return array (
   ),
   
     
-  
-  array (
-    0 => 2,
-    1 => '测序及软件',
-    2 => 
-    array (
-	  array('测序扫盲贴','seq001','md' ),
 
-
-    ),
   ),
   
   

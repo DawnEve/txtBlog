@@ -8,6 +8,7 @@ return array (
       array('项目描述','NGS001','html',),
       array('参考资料','NGS002','html'),
       array('FAQ','NGS003','html'),
+	  array('测序扫盲贴','seq001','md' ),
     ),
   ),
   
