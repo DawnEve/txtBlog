@@ -14,10 +14,10 @@ return array (
   'c' => 'C语言在学习-linux环境下',
   'Python' => 'Python3与爬虫',
   
-	'yii' => '美国人写的框架',
+	'yii' => '美国人写的框架yii和 很经典的设计、被Laravel借鉴了好多法国人写的symfony。',
   //暂时没有内容
   //  'phpCMS' => '一个流行的MVC内容管理系统',
-  'symfony' => '很经典的设计，被Laravel借鉴了好多。',
+  'FrameWork' => 'php常用框架如: 商城ecshop',
   'Laravel' => '巨匠级的php开发框架',
   //'ZF' => 'ZendFramework很重，耦合度很低。',
   
