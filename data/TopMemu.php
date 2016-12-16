@@ -17,8 +17,8 @@ return array (
 	'yii' => '美国人写的框架yii和 很经典的设计、被Laravel借鉴了好多法国人写的symfony。',
   //暂时没有内容
   //  'phpCMS' => '一个流行的MVC内容管理系统',
-  'FrameWork' => 'php常用框架如: 商城ecshop',
   'Laravel' => '巨匠级的php开发框架',
+  'FrameWork' => 'php常用框架如: 商城ecshop',
   //'ZF' => 'ZendFramework很重，耦合度很低。',
   
   'English' => '英语学习，输入和输出',
