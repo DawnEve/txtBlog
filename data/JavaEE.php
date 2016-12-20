@@ -33,7 +33,8 @@ return array (
     2 => 
     array (
       array('JavaEE大纲','javaEE001','txt'),
-      array('Servlet','javaEE_Servlet','txt'),
+      array('JDBC','javaEE002-JDBC','txt'),
+      array('Servlet','javaEE003-Servlet','txt'),
     ),
   ),
     
