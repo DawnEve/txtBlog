@@ -52,6 +52,7 @@
 			array('http://www.blogdaren.com/','php博客花园'),
 			array('http://gaodc.com/','8年php高东臣博客'),
 			array('http://www.shouce.ren/api/index','在线手册下载'),
+			array('http://cmsblogs.com/?page_id=488','cmsblogs(Java)'),
 		);
 		echo '<br />后端资料: ';
 		print_links($links_Back);

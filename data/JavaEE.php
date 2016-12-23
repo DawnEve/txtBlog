@@ -22,7 +22,7 @@ return array (
     2 => 
     array (
       array('javaSE描述','javaSE001','html',),
-      array('入门：数据类型-运算-控制','javaSE002','txt',),
+      array('javaSE入门到精通','javaSE002','txt',),
     ),
   ),
     
@@ -33,6 +33,9 @@ return array (
     2 => 
     array (
       array('JavaEE大纲','javaEE001','txt'),
+      array('JDBC','javaEE002-JDBC','txt'),
+      array('Servlet','javaEE003-Servlet','txt'),
+      array('JSP','javaEE004-JSP','txt'),
     ),
   ),
     
