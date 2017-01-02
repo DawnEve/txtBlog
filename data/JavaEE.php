@@ -36,6 +36,7 @@ return array (
       array('JDBC','javaEE102-JDBC','txt'),
       array('Servlet','javaEE103-Servlet','txt'),
       array('JSP','javaEE104-JSP','txt'),
+      array('struts2','javaEE105-struts2','txt'),
     ),
   ),
     
@@ -45,6 +46,16 @@ return array (
     2 => 
     array (
       array('Marven','Marven','txt'),
+    ),
+  ),    
+  
+  
+  array (
+    0 => 1,
+    1 => 'Android',
+    2 => 
+    array (
+      array('Android简介','Android001','html'),
     ),
   ),
   

@@ -45,6 +45,7 @@ return array (
       array('文件格式','NGS_format','txt'),
       array('统计与统计参数','NGS_statistics','txt'),
       array('db_参考基因组_在线工具','genome401','txt'),
+      array('FAQ of TCGA','FAQ_TCGA','txt'),
       array('本地生信软件','genome402','txt'),
     ),
   ),
