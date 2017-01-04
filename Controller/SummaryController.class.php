@@ -5,9 +5,9 @@ class SummaryController extends Controller{
 		parent::__construct();
 	}
 	
-	function index($id=''){
-		if($id=='')return;
-		$year=$id;
+	function index($k=''){
+		if($k=='')return;
+		$year=$k;
 	
 		//1.获得数据
 		//1.1 获得顶部导航
