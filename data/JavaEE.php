@@ -36,6 +36,14 @@ return array (
       array('JDBC','javaEE102-JDBC','txt'),
       array('Servlet','javaEE103-Servlet','txt'),
       array('JSP','javaEE104-JSP','txt'),
+    ),
+  ),
+      
+  array (
+    0 => 1,
+    1 => 'Java框架',
+    2 => 
+    array (
       array('struts2','javaEE105-struts2','txt'),
     ),
   ),
