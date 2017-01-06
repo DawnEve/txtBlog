@@ -194,11 +194,11 @@ addEvent(window, 'load', function(){
 	//如果太窄，则不显示。
 	var clientWidth=document.documentElement.clientWidth;
 	//console.log(clientWidth)
-	if(clientWidth>1270){
-		//var oWeek=createElement('div',{'style':'float:right; line-height:30px; color:#ccc;'},getHumanDate())
-		var oWeek=createElement('div',{'style':'float:right; line-height:30px; color:#ccc;'},getHumanDate())
-		var oNav=document.getElementsByClassName('nav')[0];
-		oNav.appendChild(oWeek);
-	}
+	//if(1 || clientWidth>1270){
+	//var oWeek=createElement('div',{'style':'float:right; line-height:30px; color:#ccc;'},getHumanDate())
+	var oWeek=createElement('div',{'style':'float:right; line-height:30px; color:#ccc;','id':'topTime'},getHumanDate())
+	var oNav=document.getElementsByClassName('nav')[0];
+	oNav.appendChild(oWeek);
+	//}
 });
 
