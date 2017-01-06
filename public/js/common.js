@@ -68,14 +68,20 @@ function getElementsByClassName(className,ele,tagName){//通过类名获取元�
 }
 
 
-//创建新dom
+/** 返回创建的dom元素
+* 只有第一个参数是必须的。
+* 其余2个参数可选。
+*/
 function createElement(tag, json, innerHTML){
 	var json=json||{};
 	var dom=document.createElement(tag);
 	
-	for(var key in json){
-		dom.setAttribute(key,json[key]);
+	if(json!=undefined){
+		for(var key in json){
+			dom.setAttribute(key,json[key]);
+		}
 	}
+	
 	if(innerHTML!=undefined){
 		dom.innerHTML=innerHTML;
 	}
@@ -185,8 +191,14 @@ function getHumanDate(date){
 //绑定事件
 addEvent(window, 'load', function(){
 	//右上角添加时间
-	var oWeek=createElement('div',{'style':'float:right; line-height:30px; color:#ccc;'},getHumanDate())
-	var oNav=document.getElementsByClassName('nav')[0];
-	oNav.appendChild(oWeek);
+	//如果太窄，则不显示。
+	var clientWidth=document.documentElement.clientWidth;
+	//console.log(clientWidth)
+	if(clientWidth>1270){
+		//var oWeek=createElement('div',{'style':'float:right; line-height:30px; color:#ccc;'},getHumanDate())
+		var oWeek=createElement('div',{'style':'float:right; line-height:30px; color:#ccc;'},getHumanDate())
+		var oNav=document.getElementsByClassName('nav')[0];
+		oNav.appendChild(oWeek);
+	}
 });
 
