@@ -5,14 +5,17 @@
  * 文件缓存类
  * 类名时驼峰法，方法名是下划线法。
  *
- * @version		v0.0.3
- * @revise		2017.01.01 改为发现更新内容时更新缓存。
+ * @version		v0.0.4
+ * @revise		2017.01.05 
  * @date		2016.03.04
  * @author		Dawn
  * @email		JimmyMall@live.com
  * @link		https://github.com/DawnEve/DawnPHPTools
  =============================================*/
- 
+ /**
+ v0.0.3 改为发现更新内容时更新缓存。
+ v0.0.4 修复找不到文件还缓存的报错bug
+ */
  //针对本博客做了优化，以后要写的更通用
  //参照 http://www.poluoluo.com/jzxy/201501/333293.html
  
@@ -71,7 +74,13 @@ class Cache{
 		
 		//读出原始文件的创建日期
 		//filemtime() 函数返回文件内容上次的修改时间。
-		$file_time=filemtime($this->getFilePath($this->_c,$this->_k,$this->_id));
+		$file_name=$this->getFilePath($this->_c,$this->_k,$this->_id);
+		if(file_exists($file_name)){
+			$file_time=filemtime($file_name);
+		}else{
+			return;
+			//$file_time=time();
+		}
 		
 		// echo $file_time; 
 		// echo date("Y-m-d H:i:s",1453350412);
@@ -121,7 +130,13 @@ class Cache{
 		$contents = ob_get_contents();//从缓存中获取内容 
 		
 		//获取数据文件创建时间
-		$file_time=filemtime($this->getFilePath($this->_c,$this->_k,$this->_id));
+		$file_name=$this->getFilePath($this->_c,$this->_k,$this->_id);
+		if(file_exists($file_name)){
+			$file_time=filemtime($file_name);
+		}else{
+			return;
+			//$file_time=time();
+		}
 		
 		//$contents = "<!--page_ttl:" . (time() + $ttl) . "-->n" . $contents; 
 		$contents = "<!--page_ttl:" . $file_time . "-->n" . $contents; 
