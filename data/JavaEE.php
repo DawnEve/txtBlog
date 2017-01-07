@@ -64,6 +64,8 @@ return array (
     2 => 
     array (
       array('Android简介','Android001','html'),
+	  array('Android开发入门','Android002','txt' ),
+	  array('Android模拟器','Android003','html' ),
     ),
   ),
   
