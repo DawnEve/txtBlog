@@ -4,7 +4,7 @@ txtBlog v0.4.1
 
 目的：建立一个能组织和阅读txt文件的博客系统。  
 
-![image](public\images\screenShot0.4.6.jpg)
+![image](./public/images/screenShot0.4.6.jpg)
 
 
 用户方面：  
