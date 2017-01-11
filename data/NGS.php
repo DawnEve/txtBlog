@@ -50,5 +50,14 @@ return array (
     ),
   ),
   
+    
+  array (
+    0 => 1,
+    1 => '练习题',
+    2 => array (
+      array('生信编程必练200题','practise501','txt'),
+    ),
+  ),
+  
   
 );
