@@ -31,10 +31,12 @@ return array (
   
   array (
     0 => 1,
-    1 => '数据分析',
+    1 => '数据分析语言',
     2 => array (
       array('每种应用的分析方法概述','analysis01','txt'),
-      array('R语言与bioconductor','bioconductor01','txt'),
+      array('R语言基础','R01','txt'),
+      array('bioconductor基础','bioconductor01','txt'),
+      array('perl基础','lang-Perl','txt'),
     ),
   ),  
   
@@ -47,6 +49,15 @@ return array (
       array('db_参考基因组_在线工具','genome401','txt'),
       array('FAQ of TCGA','FAQ_TCGA','txt'),
       array('本地生信软件','genome402','txt'),
+    ),
+  ),
+  
+    
+  array (
+    0 => 1,
+    1 => '练习题',
+    2 => array (
+      array('生信编程必练200题','practise501','txt'),
     ),
   ),
   

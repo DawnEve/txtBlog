@@ -41,18 +41,6 @@ return array (
     ),
   ),
   
-  
-
-  array (
-    0 => 3,
-    1 => 'Android专题',
-    2 => 
-    array (
-	  array('Android开发入门1','Android001','html' ),
-	  array('Android开发入门2','Android002','txt' ),
-	  array('Android模拟器','Android003','html' ),
-    ),
-  ),  
 
   array (
     0 => 2,
