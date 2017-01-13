@@ -31,11 +31,12 @@ return array (
   
   array (
     0 => 1,
-    1 => '数据分析',
+    1 => '数据分析语言',
     2 => array (
       array('每种应用的分析方法概述','analysis01','txt'),
       array('R语言基础','R01','txt'),
       array('bioconductor基础','bioconductor01','txt'),
+      array('perl基础','lang-Perl','txt'),
     ),
   ),  
   

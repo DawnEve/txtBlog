@@ -6,6 +6,8 @@ class IndexController extends Controller{
 	}
 	
 	public function index($k='',$id=''){
+		global $web_status;//怎么传递config中的外部变量到index方法中呢？
+
 		if($k=='')return;
 		if($id=='')return;
 	
