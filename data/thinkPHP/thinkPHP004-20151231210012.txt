@@ -12,7 +12,7 @@ http://study.163.com/course/introduction/702007.htm#/courseDetail
 个人使用的优势：1.效率高；2.安全性高；3.稳定性好；
 	新手需要基础扎实。需要修改，不好用的时候扩充。
 企业团队和公司使用框架的优势：
-		1.团队协作能力强；2.降低培训成本；3.去技术人员化；4.
+		1.团队协作能力强；2.降低培训成本；3.去技术人员化；4.便于维护；  
 
 		学习原生、框架、二次开发。自己制作框架。是个递进的过程。
 
@@ -105,9 +105,25 @@ REWRITE模式是在PATHINFO模式的基础上添加了重写规则的支持，�
 		
 	其他服务器：iis和Nginx可以参考手册。
 3 兼容模式：用不成pathinfo模式的情况，一般不用。
- 	
-----------------------------------------
-
+ 
+ 
+4.测试URL模式是如何影响U方法生成URL的格式的。
+现在Home/Conf/config.php中设置
+	//URL的模式
+	'URL_MODEL'=>0,
+	
+再在控制器中定义BlogController.class.php 
+	function login(){
+		//C('URL_MODEL', 0);
+		echo C('URL_MODEL') . ' - ';
+	    echo U('User/login');
+	}
+访问 http://tp.dawneve.cc/blog/login后结果分别是：
+	//0 - /index.php?m=&c=user&a=login
+	//1 - /index.php/user/login.html
+	//2 - /user/login.html
+	//3 - /index.php?s=/user/login.html
+	
 
 
 
@@ -304,6 +320,13 @@ SELECT * FROM `think_user` [ RunTime:0.0000s ]
 发现没有触发构造函数，但是有sql语句。说明执行的Model基类。
 
 5. 如果跨模块调用Model怎么办呢？
+	1).原始方法
+	//跨模块调用
+	//$m=new \Home\Model\UserModel(); dump($m);
+	//$m=new \Home\Controller\UserController();$m->index();
+	$m=new \Admin\Controller\AuthController();$m->index();
+
+	2).封装方法
 如前台模块想调用后台模块的Model:
 Admin模块下有：
 <?php
@@ -453,6 +476,46 @@ array(4) {
 }
 
 11.我们重新回到调试模式。
+
+
+========================================
+461.1 多层模型：模型中直接返回数据
+----------------------------------------
+//模型就是为了返回数据，可以从数据库中来，也可以直接返回。
+但是tp中都需要查询数据库。
+
+1.先定义模型 /home/Model/BlogModel.class.php 
+<?php
+namespace Home\Model;
+use Think\Model;
+
+//模型就是为了返回数据，可以从数据库中来，也可以直接返回
+class BlogModel extends Model{
+    public function output(){
+        return 123;
+    }       
+}
+
+2.在控制器中调用
+<?php
+namespace Home\Controller;
+use Think\Controller;
+
+class BlogController extends Controller {
+    //测试模型2
+    public function index2(){
+		$m=new \Home\Model\BlogModel();
+		dump($m->output());
+
+		//$this->display();
+		//D('User'); //实例化UserModel
+		//D('User','Logic'); //实例化UserLogic
+	}
+}
+
+3.访问 http://tp.dawneve.cc/Blog/index2 即可看到输出 
+int(123)
+
 
 
 ========================================
@@ -1151,4 +1214,777 @@ SELECT * FROM `think_news` ORDER BY `add_time` DESC LIMIT 2 [ RunTime:0.0000s ]
 
 
 
+========================================
+466. thinkPHP的CURD操作（上）
+----------------------------------------
+给zend studio安装aptana插件，需要先卸载并清除zend的各种痕迹。
 
+文档：http://www.kancloud.cn/manual/thinkphp/1758
+1.数据创建：create方法
+随便新建一个html文件：
+<meta charset='utf-8'>
+<form method='post' action='http://tp.dawneve.cc/user/create'>
+	<p>用户:<input type='text' name='user' /><p>
+	<p>邮箱:<input type='text' name='email' /><p>
+	<p>生日:<input type='text' name='birthday' /><p>
+	<input type='submit' value='提交' />
+</form>
+
+指向的user控制器下的create操作：
+	function create(){
+	    $u=M('User');
+	    dump( $u->create() );
+	}
+结果在表格中填写完点击提交之后，没有birthday的值：
+array(2) {
+  ["user"] => string(3) "sfd"
+  ["email"] => string(3) "sof"
+}
+说明：create仅对mysql表中字段做收集，对于字段不存在的部分忽视。
+这是和post不同的地方。
+
+我们熟悉的令牌验证、自动验证和自动完成功能，其实都必须通过create方法才能生效。
+
+
+2.数据写入：add方法
+
+
+
+
+
+========================================
+467. thinkPHP的CURD操作（下）
+----------------------------------------
+
+save()方法更新。
+
+
+========================================
+468. thinkPHP自动验证（上）
+----------------------------------------
+	必须是D方法，才会有效。M方法不会触发自动验证。
+	
+数据验证有两种方式：
+	静态方式：在模型类里面通过$_validate属性定义验证规则。 
+	动态方式：使用模型类的validate方法动态创建自动验证规则。 
+
+无论是什么方式，验证规则的定义是统一的规则，定义格式为：
+array(
+    array(验证字段1,验证规则,错误提示,[验证条件,附加规则,验证时间]),   
+    array(验证字段2,验证规则,错误提示,[验证条件,附加规则,验证时间]), 
+    ......
+);
+
+
+其中，验证条件（可选）包含下面几种情况：
+	self::EXISTS_VALIDATE 或者0 存在字段就验证（默认） 
+	self::MUST_VALIDATE 或者1 必须验证 
+	self::VALUE_VALIDATE或者2 值不为空的时候验证 
+
+	//定义自动验证
+	protected $_validate=array(
+		array('user','require','用户名必须填写',1),
+		array('email','require','邮箱必须填写',1),
+		array('add_time','require','添加时间必须填写',1), //如果不填写1，则默认为0，不存在该字段就不验证。
+	);
+
+	
+
+	
+========================================
+469. thinkPHP自动验证（下）
+----------------------------------------
+	array('num','/^\d{2,5}$/','必须是2-5位的数字',0,'regex'), //使用正则表达式作为验证条件
+	array('num','123456','传递过来的值不相等',0,'equal'), //必须与传递过来的值相等
+	array('psw','repsw','密码不一致',0,'confirm'),  //验证密码是否一致
+	array('user','张三,李四,王五', '不在给定的范围内！',0,'in'), //值必须在给定范围
+	array('psw','6,8', '密码必须6-8位',0,'length'), //密码必须是6-8位长度
+	
+//array('psw',array(6,8), '密码必须6-8位',0,'between',3), //密码必须是6-8位长度. 不起作用【失败】??
+	
+	array('email', '', '邮箱已经存在！', 1, 'unique', 3), // email唯一
+	array('user', '202.196.120.202', '您的IP没有被允许！', 1, 'ip_allow'), // IP访问权限
+    array('user', '202.196.120.202', '您的IP被禁止！', 1, 'ip_deny'), // IP访问权限
+	
+	
+自定义规则：使用callback 或 function。
+callback是调用的模型的方法。
+	protected $_validate=array(
+	    array('psw', 'checkLength', '密码至少6位！', 0, 'callback', 3), // callback验证
+	}
+	protected function checkLength($str){
+	   if( strlen($str) < 6){
+	       return false;
+	   }
+	   return true;
+	}
+	
+
+function需要定义在公共函数库：
+	protected $_validate=array(
+		array('psw', 'checkLength2', '密码至少6位！', 0, 'function', 3), // function验证
+	}
+其中，函数checkLength2定义在Apps/Home/Common/function.php中：
+	//目的：User模型中的自动验证
+	function checkLength2($str){
+		if( strlen($str) < 6){
+			return false;
+		}
+		return true;
+	}
+	
+	
+	
+	
+如果有很多错误，但是只想一次提示完，怎么做？
+	在模型中增加一条：
+	protected $patchValidate = true; //默认是false
+	
+	//错误输出为数组，格式类似：
+	array(2) {
+	  ["email"] => string(18) "邮箱必须填写"
+	  ["psw"] => string(19) "密码至少6位！"
+	}
+	
+	
+也可以把错误提示输出成json，交给前端处理：
+	 $this->ajaxReturn($user->getError());
+	 //{"email":"\u90ae\u7bb1\u5fc5\u987b\u586b\u5199","psw":"\u5bc6\u7801\u81f3\u5c116\u4f4d\uff01"}
+	
+	//完整形式示例
+	$User = D("User"); // 实例化User对象
+	if (!$User->create()){     
+		// 如果创建失败 表示验证没有通过 输出错误提示信息     
+		$this->ajaxReturn($User->getError());
+	}else{     
+		// 验证通过 可以进行其他数据操作
+	}
+	
+	
+	
+	
+动态验证，就是控制器中做验证，比较灵活。但是规范的写法是：把验证写到模型中。
+	//动态验证
+    function valid3(){
+        $user=M('User');//可以使用M()方法
+        //制定规则
+        $rules=array(
+            array('user','require','用户名必须填写',1),
+            array('email','require','邮箱必须填写',1),
+        );
+        //模拟表单数据
+        $data=array(
+           'user'=>'张三2',
+           //'email'=>'Jimmy2@163.com',
+        );
+        $rs=$user->validate($rules)->create($data);//在create前使用validate方法验证，传入规则
+        if(!$rs){
+            dump($user->getError());
+        }else{
+            echo '所有数据都通过验证了~~';
+        } 
+    }	
+	
+========================================
+470. thinkPHP自动完成
+----------------------------------------
+自动完成通常用来完成默认字段写入，安全字段过滤以及业务逻辑的自动处理等。
+
+两种自动完成方式：
+	1.静态方式：在模型类里面通过$_auto属性定义处理规则。 
+	2.动态方式：使用模型类的auto方法动态创建自动处理规则。 
+
+两种方式的定义规则都采用：
+	array(
+		array(完成字段1,完成规则,[完成条件,附加规则]),
+		array(完成字段2,完成规则,[完成条件,附加规则]),
+		......
+	);
+
+
+
+http://tp.dawneve.cc/user/auto2
+控制器中：
+    //自动完成
+    function auto2(){
+        $user=D('User');
+        $data=array('user'=>'Tomcat' );
+        if($user->create($data)){ //从模型中自动完成：添加当前时间
+           dump($user->add());//返回插入行的主键
+        }else{
+            echo '自动完成失败';
+        }
+    }
+
+模型中：
+	//定义自动完成
+	protected $_auto=array(
+		//array('user','sha1',3,'function'),
+		array('add_time','time',1,'function'),
+	);
+
+访问：http://tp.dawneve.cc/user/auto2
+	string(2) "25"
+	
+	
+用邮箱当用户名：
+	array('user','email',3,'field'), //field 用其它字段填充，表示填充的内容是一个其他字段的值 
+	
+
+自动完成的自定义：callback：
+	//定义自动完成
+	protected $_auto=array(
+		array('user','addPrefix',3,'callback','wjl_'),//callback调用模型方法 
+	);
+	
+	function addPrefix($str,$prefix){
+	   return '2016_' . $prefix . $str;
+	}
+	
+
+	
+	
+修改密码时，如果密码留空表示不修改密码：
+控制器中：
+    //自动完成
+    function auto2(){
+        $user=D('User');
+        $data=array('id'=>31, 'user'=>'', 'email'=>'tc2@qq.com', 'modi_time'=>time() );
+        if($user->create($data)){
+            dump($user->save());//使用场景：更新时如果密码为空则不修改密码
+        }else{
+            echo '自动完成失败';
+        }
+    }
+模型中ignore的使用：
+	//定义自动完成
+	protected $_auto=array(
+		//array('modi_time','time',1,'function'),//更新的时候这一句不起作用？因为1表示（默认）新增数据时起作用
+		array('modi_time','time',3,'function'), //参数3表示新增或修改都起作用
+		array('user','',2,'ignore');//用户如果忽略
+	);
+	
+
+	
+	
+	
+动态完成：
+$rules = array (
+     array('status','1'),  // 新增的时候把status字段设置为1
+	 array('password','md5',3,'function') , // 对password字段在新增和编辑的时候使md5函数处理
+	 array('update_time','time',2,'function'), // 对update_time字段在更新的时候写入当前时间戳);
+	 $User = M('User');
+	 $User->auto($rules)->create()->add();
+	
+	
+========================================
+471. thinkPHP视图
+----------------------------------------
+
+默认的视图目录是模块的View目录（模块可以有多个视图文件目录，这取决于你的应用需要），框架的默认视图文件后缀是.html。 新版模板主题默认是空（表示不启用模板主题功能）。
+
+
+模板主题：
+// 在控制器中动态改变模板主题$this->theme('blue')->display('add');
+
+
+
+模板赋值：
+$this->assign('name',$value);// 下面的写法是等效的
+$this->name = $value;
+//然后分配到视图中
+$this->assign($array);
+视图中如下使用：{$name}
+
+
+渲染模板：
+$this->display();
+$this->display('edit'); // 指定模板输出
+$this->display('Member:read'); //调用Member模块下面的read模板
+
+
+获取模板地址：
+T([资源://][模块@][主题/][控制器/]操作,[视图分层])
+T('Public/menu');
+T('Admin@Public/menu');// 返回 Admin/View/Public/menu.html
+
+在display方法中直接使用T函数：
+$this->display(T('Admin@Public/menu'));
+
+
+
+获取内容：
+$content = $this->fetch('Member:edit');
+和display方法完全一样，区别就在于fetch方法渲染后不是直接输出，而是返回渲染后的内容。
+
+渲染内容：
+$this->show($content);
+
+display方法就是fetch和display的结合。
+
+========================================
+472.ThinkPHP--模版基础[上]
+----------------------------------------
+使用内置的模板引擎来定义模板文件，以及使用加载文件、模板布局和模板继承等高级功能。
+
+1.变量输出：
+控制器：
+	function view1(){
+		$data['name']='Dawn';
+		$data['email']='JimmyMall@163.com';
+		
+		$this->assign('user',$data);
+		$this->display();
+	}
+视图：
+	name:{$user["name"]} <br>
+	email:{$user.email}
+访问：http://tp.dawneve.cc/news/view1
+显示：
+name:Dawn 
+email:JimmyMall@163.com
+
+
+
+如果是对象：
+   //对象形式的数据
+    function view2(){
+        $user=new \stdClass();
+        $user->name = 'Dawn';
+        $user->email = 'JimmyMall@163.com';
+        
+        $this->assign('user',$user);
+        $this->display();
+    }
+视图中只能用指向符号：
+view2<hr />
+name:{$user->name} <br>
+email:{$user->email}
+
+
+
+
+2.系统变量
+view3<hr />
+{$Think.server.script_name} | /index.php <br >
+{$Think.const.MODULE_NAME} | Home <br >
+{$Think.config.db_charset}  | utf8 <br >
+{$Think.lang.page_error}  |PAGE_ERROR<br >
+
+
+
+3.使用函数
+{$data.name|md5} 
+更简单粗暴的是采用php的语法：
+{:substr(strtoupper(md5($name)),0,3)}
+
+4.默认值输出：
+{$Think.get.name|default="这家伙很懒，什么也没留下"}
+
+
+5.使用运算符：
+{$user['score']+10} //正确的
+
+6.标签库： 不懂 不理解？？??
+
+
+========================================
+473.ThinkPHP--模版基础[下]
+----------------------------------------
+7.模板继承
+<extend name="base" /> 这个结尾一定要有斜线和大于号！！！
+
+<block name="menu">view4菜单</block>
+<block name="left">view4左边分栏</block>
+
+8.三元运算符
+{$status?'正常':'错误'}
+
+9.包含文件：
+<include file='模版表达式或者模版文件1,模版表达式或者模版文件2,...' />
+模版表达式的定义规则为：模块@主题/控制器/操作
+
+<include file="Public/header" /> // 包含头部模版View/Public/header.html
+<include file="Public/menu" /> // 包含菜单模版menu
+<include file="Blue/Public/menu" /> // 包含blue主题下面的menu模版
+
+10.模板注释
+{/* 注释内容 */ } 或 {// 注释内容 } 
+模板注释支持多行，模板注释在生成编译缓存文件后会自动删除，这一点和Html的注释不同。
+
+
+11.模板布局 
+第一种方式：全局配置方式
+1).在配置文件（/Home/Conf/config.php）中添加
+	'LAYOUT_ON'=>true, //打开布局
+	'LAYOUT_NAME'=>'layout', //设置布局入口文件名
+2).在View/下添加配置文件指定的布局文件layout.html:
+<include file="Public:header" /> //会自动添加/View/Public/header.html文件
+{__CONTENT__}
+<include file="Public:footer" />
+3).在视图文件/View/News/view5.html中：
+view5.html
+4).访问http://tp.dawneve.cc/news/view5，显示：
+this is header
+view5.html
+this is footer
+
+视图渲染顺序：
+读取layout布局之后，会再解析News/view5.html 模板文件，并把解析后的内容替换到layout布局模板文件的{__CONTENT__}特定字符串。
+
+
+
+
+第二种方式：模板标签方式
+
+这种布局模板不需要在配置文件中设置任何参数，也不需要开启LAYOUT_ON（记得首先关闭前面的LAYOUT_ON设置，否则可能出现布局循环）.
+
+<layout name="layout" />
+
+表示当前模板文件需要使用View/layout.html 布局模板文件，而布局模板文件的写法和上面第一种方式是一样的。当渲染User/add.html 模板文件的时候，如果读取到layout标签，则会把当前模板的解析内容替换到layout布局模板的{__CONTENT__} 特定字符串。
+
+一个模板文件中只能使用一个布局模板，如果模板文件中没有使用任何layout标签则表示当前模板不使用任何布局。
+
+如果需要使用其他的布局模板，可以改变layout的name属性，replace也可以替换，例如：
+<layout name="Layout/newlayout"  replace="{__REPLACE__}" />
+
+
+
+
+
+第三种方式：控制器中使用layout控制模板布局
+布局文件View/layout.html 
+	<include file="Public:header" /> 
+	{__CONTENT__}
+	<include file="Public:footer" />
+
+News控制器中： 
+    function view7(){
+    	//在控制器中使用布局
+        layout(true);
+    	//layout('News/base'); //动态的指定布局模板名称
+        $this->display();
+    }
+
+view7.html只有一行：
+	view7.html
+访问：http://localhost/think/news/view7
+显示：
+	this is header
+	view7.html
+	this is footer
+
+不需要布局功能的时候，还可以在全局布局开启的情况下，关闭某个页面的布局。
+控制器方法中：
+	 layout(false); // 临时关闭当前模板的布局功能
+
+
+12.模板替换
+在进行模板渲染之前，系统还会对读取的模板内容进行一些特殊字符串替换操作，也就是实现了模板输出的替换和过滤。该替换操作仅针对内置的模版引擎。
+
+默认的替换规则有：
+	__ROOT__： 会替换成当前网站的地址（不含域名） 
+	__APP__： 会替换成当前应用的URL地址 （不含域名）
+	__MODULE__：会替换成当前模块的URL地址 （不含域名）
+	__CONTROLLER__（__或者__URL__ 兼容考虑）： 会替换成当前控制器的URL地址（不含域名）
+	__ACTION__：会替换成当前操作的URL地址 （不含域名）
+	__SELF__： 会替换成当前的页面URL
+	__PUBLIC__：会被替换成当前网站的公共目录 通常是 /Public/
+
+严格区别大小写。
+必要时可以更改。
+
+	 
+========================================
+474.ThinkPHP--内置标签[上]
+----------------------------------------
+标签式模板中使用的。
+
+1.比较
+eq或者 equal 等于 
+neq 或者notequal 不等于 
+gt 大于 
+egt 大于等于 
+lt 小于 
+elt 小于等于 
+heq 恒等于 
+nheq 不恒等于 
+
+比如：
+<if condition="($name eq 1) OR ($name gt 100) "> 
+	value1
+<elseif condition="$name eq 2"/>
+	value2
+<else />
+	value3
+</if>
+
+2.范围判断标签  in notin
+<in name="id" value="1,2,3">id在范围内</in>
+
+3.BETWEEN 和 NOTBETWEEN
+可以使用between标签来判断变量是否在某个区间范围内，可以使用：
+<between name="id" value="1,10">输出内容1</between>
+
+
+4.present标签用于判断某个变量是否已经定义，用法：
+<present name="name">name已经赋值</present>
+起始就是isset()函数。
+
+5.empty标签用于判断某个变量是否为空
+<empty name="name">name为空值</empty>
+
+6.DEFINED标签用于判断某个常量是否有定义，用法如下：
+<defined name="NAME">NAME常量已经定义</defined>
+
+
+
+
+========================================
+475.ThinkPHP--内置标签[下]
+----------------------------------------
+循环标签：volist、foreach、for标签。
+
+
+1.控制器中：
+$User = M('User');
+$list = $User->limit(10)->select();
+$this->assign('list',$list);
+
+模板中：
+<volist name="list" id="vo">
+	{$vo.id}:{$vo.name}<br/>
+</volist>
+
+为空的时候输出提示：
+<volist name="list" id="vo" empty="暂时没有数据" >
+	{$vo.id}|{$vo.name}
+</volist>
+
+
+
+2.foreach标签类似与volist标签，只是更加简单
+<foreach name="list" item="vo" >
+    {$key}|{$vo.id}:{$vo.name}
+</foreach>
+
+
+3.For标签
+<for start="开始值" end="结束值" comparison="" step="步进值" name="循环变量名" >
+</for>
+
+比如：
+<for start="1" end="100">
+{$i}
+</for>
+
+解码后：
+for ($i=1;$i<100;$i+=1){    
+	echo $i;
+} 
+
+
+4.js和css文件的引入
+直接写：
+<script type='text/javascript' src='/Public/Js/Util/Array.js'>
+<link rel="stylesheet" type="text/css" href="/App/Tpl/default/Public/css/style.css" />
+
+
+简化写法：
+<import type='js' file="Js.Util.Array" />
+<import type='css' file="Css.common" />
+
+另一种简写：
+<load href="/Public/Js/Common.js" />
+<load href="/Public/Css/common.css" />
+
+标签js和css分别引入对应的文件：
+<js href="/Public/Js/Common.js" />
+<css href="/Public/Css/common.css" />
+
+5.使用PHP代码
+第一种：使用php标签
+例如：<php>echo 'Hello, world!';</php>
+
+第二种：使用原生php代码
+<?php echo 'Hello, world!'; ?>
+
+注意：在PHP标签里面不能再使用PHP本身不支持的代码。
+
+
+
+========================================
+476.ThinkPHP--标签库和自定义标签
+----------------------------------------
+标签库主要用于html中显示data，比如view中的<volist>等tp框架定义的标签。还可以自定义标签。
+	- 加载标签库。
+	- 自定义标签库。
+
+标签库请放置 ThinkPHP\Library\Think\Template\TagLib 目录下，若需要存放在指定位置，请在加载标签库配置时使用命名空间，如 
+<taglib name="Home\\TagLib\\MyTag"/>
+
+配置文件中打开trace：'SHOW_PAGE_TRACE' =>true, 
+
+1.先定义自定义标签文件Library/think/Template/TagLib/Mytag.class.php
+<?php
+//自定义标签
+namespace Think\Template\TagLib;
+use Think\Template\TagLib;
+/**
+ * Mytag标签库驱动
+ */
+class Mytag extends TagLib{
+    // 标签定义
+    protected $tags   =  array(
+        // 标签定义： attr 属性列表 close 是否闭合（0 或者1 默认1） alias 标签别名 level 嵌套层次
+        'read'     => array('attr'=>'name,id,style','close'=>1),
+    );
+		
+    public function _read($tag,$content) {
+        $id			=	!empty($tag['id'])?$tag['id']: '_read';
+        $name   	=	$tag['name'];
+        $style   	=	$tag['style'];
+        $parseStr="<div id='".$id."' style='".$style."'>" . $content . '</div>';
+        return $parseStr;
+    }
+}
+
+2.控制器中赋值和引用：
+	//自定义标签库
+	function tag2(){
+		$data['name']='Jimmy';
+		$data['email']='jimmymall@163.com';
+		$this->assign('data',$data);
+		$this->display();
+	}
+3.视图中引用库，然后才可以使用read方法
+<taglib name="html,mytag" />
+注意：taglib标签只能解析一次，也就是说引用多个库时只能写到一个taglib标签中，而且用英文逗号隔开，并且不能出现空格！
+
+<html:editor name="hello" id="data" style="background:red;width:200px;height:200px;">
+	{$data.name}:{$data.email}
+</html:editor>
+
+<hr>
+
+<Mytag:read name="hello" id="data" style="border:1px solid red;">{$data.name}:{$data.email}</Mytag:read>
+
+4.访问 http://tp.com/user/tag2 即可查看解析后的效果。
+
+
+5.也可以使用配置文件引入标签库。语法请查看手册。
+
+
+
+实例2：
+加载自定义标签库Mytag.class.php 
+<taglib name="Home\\TagLib\\Mytag"/>
+
+配置文件加载方式：
+'TAGLIB_PRE_LOAD' => 'TagLib\Migo',// 预先加载标签 
+'TAGLIB_BUILD_IN' => 'cx,TagLib\Migo',// 定义成内置标签
+
+[bug]标签库 
+<taglib name="Home\\TagLib\\Mytag" /> 报错 实例化一个不存在的类！:Home\\TagLib\\Mytag
+错误位置
+
+// 配置文件可以
+'TAGLIB_PRE_LOAD' => 'Home\\TagLib\\Mytag',
+
+缺点：如果放到配置文件，则每个view都要加载，而很多view没有用到自定义标签，这很影响效率。
+[/bug]
+
+
+
+
+
+实例：自定义标签read、select辅助标签html_options
+（1）
+暂时解决办法：定义到tp框架中：
+Library/Think/Template/TagLib/Mytag.class.php 
+
+<?php
+//自定义标签
+namespace Think\Template\TagLib;
+use Think\Template\TagLib;
+
+defined('THINK_PATH') or exit();
+
+/**
+ * Mytag标签库驱动
+ */
+class Mytag extends TagLib{
+    // 标签定义
+    protected $tags   =  array(
+        // 标签定义： attr 属性列表 close 是否闭合（0不闭合 或者1闭合 默认1） alias 标签别名 level 嵌套层次
+        'read'     => array('attr'=>'name,id,style','close'=>1),
+        'html_options'     => array('attr'=>'id,options','close'=>0),
+    );
+    
+    //读取并格式化显示闭合标签中的文本
+    public function _read($tag,$content) {
+        $id         =   !empty($tag['id'])?$tag['id']: '_read';
+        $name       =   $tag['name'];
+        $style      =   $tag['style'];
+        $parseStr="<div id='".$id."' style='".$style."'>" . $content . '</div>';
+        return $parseStr;
+    }
+
+    //显示array(1=>'',2="")一维数组为select中的options
+    public function _html_options($tag,$content) {
+    	//接收参数
+        $options    =   $tag['options'];
+        $selected   =   $tag['selected'];
+        //处理数据
+        $parseStr   =   '<?php if(is_array($'.$options.')): foreach($'.$options.' as $k=>$v):';
+        $parseStr  .=   ' $sel_text="";if($k==$'. $selected .'){ $sel_text=" selected=selected "; }';
+        $parseStr  .=   ' echo "<option $sel_text value =$k>$v</option>\n";';
+        $parseStr  .=   ' endforeach; endif; ?>';
+        //返回
+        if(!empty($parseStr)) {
+            return $parseStr;
+        }
+        return ;
+    }
+}
+
+（2）Goods控制器中
+    //自定义标签库
+    function tag2(){      
+        $data=array(
+            1=>'股东',
+            2=>'老板',
+            30=>'经理',
+            4=>'员工',
+        );
+        $this->assign('data',$data);
+        //选择的部分
+        $this->assign('sel',4);
+        $this->display();
+    }
+（3）视图中
+<taglib name="Mytag" />
+
+<select name='role_name'>
+    <Mytag:html_options options="data" selected="sel" />
+</select>
+
+（4）访问 http://tp.dawneve.cc/Goods/tag2
+select name='role_name'>
+    <option  value =1>股东</option>
+	<option  value =2>老板</option>
+	<option  value =30>经理</option>
+	<option  selected=selected  value =4>员工</option>
+</select>
+
+
+
+
+tp内置的html标签库
+refer:http://doc.thinkphp.cn/manual/taglib.html
+其实tp内置的html标签库Library/Think/Template/TagLib/Html.class.php 也有若干标签可以使用。
+<taglib name="html" />
+<html:select name='role_name' options="data" selected="sel" />
+
+视图中会生成：
+<select id="" name="role_name" onchange="" ondblclick="" class="" ><option value="1">股东</option><option value="2">老板</option><option value="30">经理</option><option selected="selected" value="4">员工</option></select>

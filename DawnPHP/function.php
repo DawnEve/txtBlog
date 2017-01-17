@@ -85,4 +85,3 @@ function get_link($arr){
 	//返回结果
 	return $str;
 }
-

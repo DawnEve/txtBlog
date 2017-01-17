@@ -22,7 +22,7 @@ return array (
     2 => 
     array (
       array('javaSE描述','javaSE001','html',),
-      array('入门：数据类型-运算-控制','javaSE002','txt',),
+      array('javaSE入门到精通','javaSE002','txt',),
     ),
   ),
     
@@ -32,7 +32,19 @@ return array (
     1 => 'JavaEE',
     2 => 
     array (
-      array('JavaEE大纲','javaEE001','txt'),
+      array('JavaEE大纲','javaEE101','txt'),
+      array('JDBC','javaEE102-JDBC','txt'),
+      array('Servlet','javaEE103-Servlet','txt'),
+      array('JSP','javaEE104-JSP','txt'),
+    ),
+  ),
+      
+  array (
+    0 => 1,
+    1 => 'Java框架',
+    2 => 
+    array (
+      array('struts2','javaEE105-struts2','txt'),
     ),
   ),
     
@@ -42,6 +54,18 @@ return array (
     2 => 
     array (
       array('Marven','Marven','txt'),
+    ),
+  ),    
+  
+  
+  array (
+    0 => 1,
+    1 => 'Android',
+    2 => 
+    array (
+      array('Android简介','Android001','html'),
+	  array('Android开发入门','Android002','txt' ),
+	  array('Android工具软件','Android003','html' ),
     ),
   ),
   

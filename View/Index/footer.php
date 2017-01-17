@@ -52,6 +52,7 @@
 			array('http://www.blogdaren.com/','php博客花园'),
 			array('http://gaodc.com/','8年php高东臣博客'),
 			array('http://www.shouce.ren/api/index','在线手册下载'),
+			array('http://cmsblogs.com/?page_id=488','cmsblogs(Java)'),
 		);
 		echo '<br />后端资料: ';
 		print_links($links_Back);
@@ -120,7 +121,11 @@
 			<a href="http://f2er.club/" target="blank">醉牛前端导航</a> | 
 			<a href="http://caibaojian.com/links" target="blank">前端网址导航</a> |
 
-<script type="text/javascript">var cnzz_protocol = (("https:" == document.location.protocol) ? " https://" : " http://");document.write(unescape("%3Cspan id='cnzz_stat_icon_1257823738'%3E%3C/span%3E%3Cscript src='" + cnzz_protocol + "s4.cnzz.com/stat.php%3Fid%3D1257823738%26show%3Dpic' type='text/javascript'%3E%3C/script%3E"));</script>			
+<?php if($web_status==1){?>
+<script type="text/javascript">
+var cnzz_protocol = (("https:" == document.location.protocol) ? " https://" : " http://");document.write(unescape("%3Cspan id='cnzz_stat_icon_1257823738'%3E%3C/span%3E%3Cscript src='" + cnzz_protocol + "s4.cnzz.com/stat.php%3Fid%3D1257823738%26show%3Dpic' type='text/javascript'%3E%3C/script%3E"));
+</script>
+<?php }?>
 			
 		</div>
 		
@@ -129,10 +134,10 @@
 		
 		
 		<div class='links'>
-			Copyright &copy; 2009 - 2016 DawnEve. All Rights Reserved. | 
+			Copyright &copy; 2009 - 2017 DawnEve. All Rights Reserved. | 
 			<a target='_blank' href='https://github.com/DawnEve'>Folk me on Github</a> | 
 			<a class=red href='index.php?k=Git&id=0_2'>Contact me</a> | 
-			<a href='http://pan.baidu.com/s/1i3imHpF' title='密码:qa53'>web tools</a>
+			<a target='_blank' href='http://pan.baidu.com/s/1i3imHpF' title='密码:qa53'>web tools</a>
 		</div>
 
 		

@@ -5,14 +5,17 @@
  * 文件缓存类
  * 类名时驼峰法，方法名是下划线法。
  *
- * @version		v0.0.2
- * @revise		2016.03.04
+ * @version		v0.0.4
+ * @revise		2017.01.05 
  * @date		2016.03.04
  * @author		Dawn
  * @email		JimmyMall@live.com
  * @link		https://github.com/DawnEve/DawnPHPTools
  =============================================*/
- 
+ /**
+ v0.0.3 改为发现更新内容时更新缓存。
+ v0.0.4 修复找不到文件还缓存的报错bug
+ */
  //针对本博客做了优化，以后要写的更通用
  //参照 http://www.poluoluo.com/jzxy/201501/333293.html
  
@@ -68,9 +71,26 @@ class Cache{
 		if(file_exists($this->cacheFileName)){
 			$contents = file_get_contents( $this->cacheFileName );//读出
 		}
+		
+		//读出原始文件的创建日期
+		//filemtime() 函数返回文件内容上次的修改时间。
+		$file_name=$this->getFilePath($this->_c,$this->_k,$this->_id);
+		if(file_exists($file_name)){
+			$file_time=filemtime($file_name);
+		}else{
+			return;
+			//$file_time=time();
+		}
+		
+		// echo $file_time; 
+		// echo date("Y-m-d H:i:s",1453350412);
+		// die();
+	 
+	 
+	 
 	 
 		//对应page_cache()函数中加上的自定义头部 
-		if($contents && substr($contents, 13, 10) > time() ){ 
+		if($contents && substr($contents, 13, 10) == $file_time ){ 
 			echo substr($contents, 27); 
 			Log::mylog('cache');
 			exit(0); 
@@ -82,10 +102,25 @@ class Cache{
 		}
 	}
 	
+	//获取不同控制器下的文件路径。就是index控制器，其他控制器。
+	function getFilePath($c,$k,$id){
+		if($c=="index"){
+			$config=include("data/".$k.'.php');
+			$arr=explode("_",$id);
+			
+			$file_arr=$config[$arr[0]][2][$arr[1]];
+			$file_name=$file_arr[1].'.'.$file_arr[2];
+			return "data/".$this->_k.'/'.$file_name;
+		}else{
+			return "View/".ucfirst($c)."/".$this->_k.".html";
+		}
+		//http://blog.dawneve.com/index.php?c=outline
+		//http://blog.dawneve.com/index.php?c=outline&k=php
+		//http://blog.dawneve.com/index.php?c=summary&k=2015
+	}
 	
 	
-	function page_cache($ttl = 0) 
-	{
+	function page_cache($ttl = 0){
 		//如果在编辑，则啥也不做
 		if( in_array($this->_k , $this->edit) ){
 			return;
@@ -93,11 +128,20 @@ class Cache{
 		
 		$ttl = $ttl ? $ttl : $this->cacheLimitTime;//缓存时间，默认3600s 
 		$contents = ob_get_contents();//从缓存中获取内容 
-		$contents = "<!--page_ttl:" . (time() + $ttl) . "-->n" . $contents; 
+		
+		//获取数据文件创建时间
+		$file_name=$this->getFilePath($this->_c,$this->_k,$this->_id);
+		if(file_exists($file_name)){
+			$file_time=filemtime($file_name);
+		}else{
+			return;
+			//$file_time=time();
+		}
+		
+		//$contents = "<!--page_ttl:" . (time() + $ttl) . "-->n" . $contents; 
+		$contents = "<!--page_ttl:" . $file_time . "-->n" . $contents; 
 		//加上自定义头部：过期时间=生成时间+缓存时间 
 		file_put_contents( $this->cacheFileName, $contents); //写入缓存文件中 
 		ob_end_flush();//释放缓存 
 	}
-
-	
 }

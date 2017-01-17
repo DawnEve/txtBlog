@@ -26,6 +26,8 @@ return array (
 
       array('smarty3简介','smarty001','html',),
       array('smarty3入门','smarty102','txt'),
+	  
+      array('php基础知识','PHP106','txt'),
     ),
   ),
   
@@ -64,7 +66,7 @@ return array (
     array (
       array('项目描述','phpCMS001','html',),
       array('参考资料','phpCMS002','html'),
-      array('FAQ','phpCMS003','html'),
+      array('phpCMS开发入门','phpCMS003','txt'),
     ),
   ),
   
