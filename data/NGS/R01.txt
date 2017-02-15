@@ -1097,7 +1097,139 @@ y=1/(1+e^(-x))
 
 
 ========================================
+R通过ODBC连接数据库
 ----------------------------------------
+以下的实验环境是在windows7-64操作系统下进行
+1、下载（mySQL-connector-odbc-5.3.7-win64.msi）
+     下载地址：http://dev.mysql.com/downloads/connector/odbc (8.2 MB) 
+2、安装Mysql的RODBC：mysql-connector-odbc-5.3.2-win64.msi
+3、配置datasource
+
+(1)找到C:\Windows\System32\odbcad32.exe
+(2)左侧点击 添加 ，选择MySQL ODBC ANSI Driver，点击完成；
+(3)填写表格，名字、描述随便写，建议用英文，填写mysql用户名和密码，选择数据库，点击OK。
+(4)回到ODBC数据源管理器，选择mySqlODBC，点击确定。
+
+4.R软件访问mysql数据库
+(1)安装及加载RODBC
+install.packages("RODBC")
+library(RODBC)
+
+(2) 与mysql建立连接
+channel=odbcConnect("mysqlodbc", uid="root", pwd="")
+
+（3）查询该数据库下都有哪些数据库表
+
+> sqlTables(channel)
+  TABLE_CAT TABLE_SCHEM   TABLE_NAME TABLE_TYPE REMARKS
+1      test                       aa      TABLE        
+2      test              first_table      TABLE        
+3      test             second_table      TABLE        
+4      test                 students      TABLE 
+5      test                 orders      TABLE   
+
+（4）查询某个表中的数据返回给数据框
+> orders=sqlFetch(channel,"orders")
+> orders
+ order_id order_name order_unit order_quantity order_price order_note order_time
+1 1  2500ml95%酒精  桶  17 12  NA 1464
+
+（5）条件查询
+orders2=sqlQuery(channel,"select order_name,order_price from orders order by order_id desc");
+
+（6）将数据框中的数据保存到数据库表中
+USArrests #这是R的默认内置数据，是一个数据框
+
+数据框的首列没有列名，所以在保存之前需要指定列名
+sqlSave(channel, USArrests, rownames = "state", addPK = TRUE)
+
+cmd打开数据库查看test库，多了usarrests表，里面正是数据框中的内容。可见数据框能正确的保存到mysql数据库中去了
+
+添加一条数据
+rs3=sqlQuery(channel,"insert into usarrests(state,murder,assault,urbanpop,rape)values('noplace',0,0,0,0)");
+发现数据已经在了。
+
+（7）在R软件将刚才添加到mysql数据库中的表删除掉
+sqlDrop(channel,"usarrests")
+
+（8）关闭连接资源
+odbcClose(channel)
+
+（9）通过RODBC进行数据存取的主要函数
+函数名字	函数描述
+odbcConnect(dsn,uid="",pwd="")  #建立并打开连接
+sqlFetch(channel,sqtable) #从数据库读取数据表，并返回一个数据框对象
+sqlQuery(channel,query) #想数据库提交一个sql查询，并返回结果（'data.frame'格式）
+sqlSave(channel,mydf,tablename=sqtable,append=FALSE) #将一个数据框写入或更新(append=True)到数据库
+sqlDrop(channel,sqtable) #从数据库删除一个表
+sqlClear(channel,sqltable) #删除表中内容
+sqlTable(channel) #返回数据库中表的信息
+sqlColumns(chanel,sqltable) #返回数据库表sqltable列的信息
+close(channel) #关闭连接
+
+操作步骤：
+建立DSN
+打开连接
+数据操作
+关闭连接 
+
+
+实例1
+#加载包
+library(RODBC)
+
+#创建连接
+channel<-odbcConnect("BITEST",uid="dw",psw="dw")
+
+#执行查询
+org1<-sqlFetch(channel,'DIM.DIM_ORGANIZATION') #这是oracle数据库
+org2<-sqlQuery(channel,"select * from DIM.DIM_ORGANIZATION")
+
+#关闭连接
+odbcClose(channel)
+
+#使用数据
+head(org1)
+head(org2)
+
+
+
+实例2 通过RODBC将数据写入oracle
+
+library(RODBC)
+channel<-odbcConnect("BITEST",uid="dw",psw="dw")
+#创建数据，待写入对象
+mydata<-sqlQuery(channel,'select * from DIM.DIM_ORGANIZATION')
+
+#写入数据库，并读取结果
+sqlSave(channel,mydata,"NEW_TABLE_NAME", append=FALSE)
+mydata2=sqlQuery(channel,'select * from NEW_TABLE_NAME')
+
+#更新数据库，并读取结果
+sqlSave(channel,mydata,"NEW_TABLE_NAME", append=TRUE)
+mydata3=sqlQuery(channel,'select * from NEW_TABLE_NAME')
+
+#删除刚刚建立的数据表NEW_TABLE_NAME
+sqlDrop(channel,"NEW_TABLE_NAME")
+odbcClose(channel)
+
+#查看执行结果
+head(mydata,n=30)
+head(mydata2,n=30)
+head(mydata3,n=30)
+
+
+refer:
+http://wenku.baidu.com/link?url=PtNUOCT66CzajvN_uM_4FaCloQffW8HzaE1PMlOg3UqyXwpZNbT3DC1URy-tsLqQRIeW_DJhxBsS06QsY99OjKSq_BV7--vj1zWhtga7k1_
+
+http://blog.csdn.net/hongweigg/article/details/49779943
+
+http://www.dataguru.cn/thread-289411-1-1.html
+
+
+
+
+
 
 ========================================
 ----------------------------------------
