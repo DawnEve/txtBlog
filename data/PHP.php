@@ -53,20 +53,6 @@ return array (
     ),
   ),
   
-      
-
-
-  array (
-    0 => 2,
-    1 => 'phpCMS',
-    2 => 
-    array (
-      array('项目描述','phpCMS001','html',),
-      array('参考资料','phpCMS002','html'),
-      array('phpCMS开发入门','phpCMS003','txt'),
-    ),
-  ),
-  
   
 
   array (
@@ -74,9 +60,9 @@ return array (
     1 => 'cakephp',
     2 => 
     array (
-      array('项目描述','PHP001','html',),
-      array('参考资料','PHP002','html'),
-      array('FAQ','PHP20160105','html'),
+      array('项目描述','cakePHP001','html',),
+      array('参考资料','cakePHP002','html'),
+      array('FAQ','cakePHP003','html'),
     ),
   ),
   
@@ -88,9 +74,9 @@ return array (
     1 => 'zend',
     2 => 
     array (
-      array('项目描述','PHP001','html',),
-      array('参考资料','PHP002','html'),
-      array('FAQ','PHP20160105','html'),
+      array('项目描述','zendPHP001','html',),
+      array('参考资料','zendPHP002','html'),
+      array('FAQ','zendPHP003','html'),
     ),
   ),
   
