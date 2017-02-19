@@ -44,7 +44,8 @@ return array (
     1 => 'Java框架',
     2 => 
     array (
-      array('struts2','javaEE105-struts2','txt'),
+      array('struts1.3.10','javaEE105-struts1','txt'),
+      array('struts2.5.8','javaEE105-struts2','txt'),
     ),
   ),
     
