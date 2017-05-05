@@ -195,9 +195,8 @@ wget http://www.openssl.org/source/openssl-1.0.1c.tar.gz
 tar -zxvf openssl-1.0.1c.tar.gz
 
 
-
-(一直不成功，剩下的没做)
 cd openssl-1.0.1c/
+./Configure
 ./config   
 
 显示 Configured for linux-x86_64.

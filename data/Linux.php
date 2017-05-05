@@ -51,7 +51,7 @@ return array (
 	  array('htaccess配置规则','apache001','txt' ),
 	  array('虚拟域名和二级域名配置','apache002','txt' ),
 	  array('nginx服务器快速入门','nginx001','md' ),
-	  array('nginx服务器win','nginx002','txt' ),
+	  array('nginx服务器','nginx002','txt' ),
 	  array('域名售卖系统whmcs','whmcs','txt' ),
 
     ),

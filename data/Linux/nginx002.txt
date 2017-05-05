@@ -1,6 +1,8 @@
-nginx
+nginx(win + linux)
 
-http://nginx.org/en/docs/
+文档：http://nginx.org/en/docs/
+一键安装包：https://github.com/lj2007331/oneinstack
+win下nginx很多功能用不成，强烈推荐在linux下运行nginx。
 
 ========================================
 win7 64bits系统安装nginx
@@ -208,15 +210,148 @@ nginx -s reopen 打开日志文件
 
 
 ========================================
+nginx在linux下的集成安装包
 ----------------------------------------
+https://github.com/lj2007331/oneinstack
+
+恭喜您，OneinStack 安装成功！
+
+OneinStack Linux+Nginx/Tengine+MySQL/MariaDB/Percona+PHP
++Pureftpd+phpMyAdmin+redis+memcached+jemalloc脚本中用到的软件包大多最新稳定版本,修复了一些安全性问题。
+
+查看本地环境:  探针 phpinfo Opcache phpMyAdmin(为了更安全，建议重命名 phpMyAdmin 目录！)
+创建 WEB 虚拟主机执行脚本:  ./vhost.sh
+创建 FTP 虚拟账号执行脚本:  ./pureftpd_vhost.sh
+Github 项目地址:  https://github.com/lj2007331/oneinstack
+OneinStack 官网:  https://oneinstack.com
+QQ 群:  558540514(付费千人群) 535783209(新)
+
+mysql用户名和密码：
+GRANT ALL PRIVILEGES ON *.* TO '用户名'@'%' IDENTIFIED BY '我的密码';
+FLUSH PRIVILEGES;
+
+（1）OneinStack如何配置MySQL远程连接？
+https://oneinstack.com/question/oneinstack-how-to-configure-mysql-remote-connection/
+# iptables -I INPUT 4 -p tcp -m state --state NEW -m tcp --dport 3306 -j ACCEPT
+# service iptables save #保存iptables规则
+
+（2）没有ssl怎么办？没法做ab测试。
+安装ssl（某些vps默认没装ssl)。使用root账号：
+wget https://www.openssl.org/source/openssl-1.1.0e.tar.gz
+tar -zxvf openssl-1.1.0e.tar.gz
+cd openssl-0.9.8r
+./Configure
+./config
+make  #等待很久
+make install
+
+检测版本号
+# openssl version
+还是报错 openssl: error while loading shared libraries: libssl.so.1.1: cannot open shared object file: No such file or directory
+
+发现有这个文件啊
+[root@iZm5ej0xncw7iyb3abhlkqZ lib]# find / -name "*libssl.so.1.1*"
+/usr/local/lib64/libssl.so.1.1
+/root/openssl-1.1.0e/libssl.so.1.1
+
+安装正确：
+[root@iZm5ej0xncw7iyb3abhlkqZ bin]# rpm -qa | grep openssl
+openssl-1.0.1e-48.el6_8.4.x86_64
+openssl-devel-1.0.1e-48.el6_8.4.x86_64
+
+
+做一个软链接 
+# ln -s /usr/local/lib64/libssl.so.1.1 /lib/libssl.so.1.1  不行
+
+# cd /usr/lib64
+# ln -s  libssl.so.1.0.1e libssl.so.1.1 不行
+# ln -s  /usr/local/lib64/libssl.so.1.1 libssl.so.1.1 
+
+(没搞定。。。)
 
 
 ========================================
+ningx + apache配置网址
 ----------------------------------------
+1.网站的文件放在：/data/wwwlogs/blog2.biomooc.com（IP：139.129.233.213）
+2.用用apache监听88端口，负责解析php。
+3.用nginx监听80端口，并代理到本地的88端口。
+
+
+1.配置apache
+/usr/local/apache/conf/httpd.conf 文件末尾要包含一句 
+Include conf/vhost/*.conf
+
+/usr/local/apache/conf/vhost/blog2.biomooc.com.conf 
+<VirtualHost *:88>
+  ServerAdmin admin@example.com
+  DocumentRoot "/data/wwwroot/blog2.biomooc.com"
+  ServerName blog2.biomooc.com
+
+
+  ErrorLog "/data/wwwlogs/blog2.biomooc.com_error_apache.log"
+  CustomLog "/data/wwwlogs/blog2.biomooc.com_apache.log" common
+<Directory "/data/wwwroot/blog2.biomooc.com">
+  SetOutputFilter DEFLATE
+  Options FollowSymLinks ExecCGI
+  Require all granted
+  AllowOverride All
+  Order allow,deny
+  Allow from all
+  DirectoryIndex index.html index.php
+</Directory>
+</VirtualHost>
+
+
+2.配置nginx
+/usr/local/nginx/conf/nginx.conf中http{}内的最后加上
+  include vhost/*.conf;
+
+
+/usr/local/nginx/conf/vhost/blog2.biomooc.com.conf
+server {
+  listen 80;
+  server_name blog2.biomooc.com;
+  access_log /data/wwwlogs/blog2.biomooc.com.log combined;
+  index index.html index.htm index.php;
+  root /data/wwwroot/blog2.biomooc.com;
+
+
+  location / {
+    try_files $uri @apache;
+  }
+  location @apache {
+    proxy_pass http://127.0.0.1:88;
+    include proxy.conf;
+  }
+  location ~ .*\.(php|php5|cgi|pl)?$ {
+    proxy_pass http://127.0.0.1:88;
+    include proxy.conf;
+  }
+  location ~ .*\.(gif|jpg|jpeg|png|bmp|swf|flv|mp4|ico)$ {
+    expires 30d;
+    access_log off;
+  }
+  location ~ .*\.(js|css)?$ {
+    expires 7d;
+    access_log off;
+  }
+  location ~ /\.ht {
+    deny all;
+  }
+}
+
+
+
 
 ========================================
+重启服务常用命令
 ----------------------------------------
+service nginx restart
+service httpd restart
 
+service memcached restart
+service redis-server restart
 
 
 ========================================
