@@ -21,7 +21,7 @@
 			array('http://jquery.cuishifeng.cn/','jQuery手册'),
 			array('http://www.php100.com/manual/css3_0/media-20queries.shtml','css3手册'),
 			array('http://www.w3school.com.cn/','w3school'),
-			array('http://miostudio.sinaapp.com/','mySinaapp'),
+			array('http://mioweb.biomooc.com/','miostudio'),
 			array('http://php.net/','PHP'),
 			array('http://www.sqlite.org/','sqlite'),
 			array('https://openresty.org/download/agentzh-nginx-tutorials-zhcn.html','Nginx教程(版本2015.03.19)'),
@@ -50,7 +50,7 @@
 			array('http://aibusy.com/course_list.html','前端大纲'),
 			array('http://www.cnblogs.com/ljchow/archive/2010/06/09/1754352.html','js动画原理'),
 			array('http://www.blogdaren.com/','php博客花园'),
-			array('http://gaodc.com/','8年php高东臣博客'),
+			//array('http://gaodc.com/','8年php高东臣博客'),
 			array('http://www.shouce.ren/api/index','在线手册下载'),
 			array('http://cmsblogs.com/?page_id=488','cmsblogs(Java)'),
 		);
@@ -70,12 +70,12 @@
 			array('http://limingyang2012.github.io/blog/','李明洋', '前端博客'),
 			array('http://www.bluesdream.com/blog/','BlueDream','前端博客'),
 			array('http://ideazhao.com/', '灵感的小窝','生活琐碎、前端杂谈、诗情画意、随心笔记'),
-			array('http://www.dyike.com/index.php/aboutme', '一刻笔记','生活琐碎、前端杂谈、诗情画意、随心笔记'),
+			// array('http://www.dyike.com/index.php/aboutme', '一刻笔记','生活琐碎、前端杂谈、诗情画意、随心笔记'),
 			
 			//前端团队博客 
 			array("http://fequan.com/",'前端圈'),
 			array("http://www.75team.com/",'齐舞团'),
-			array("http://f2e.im/",'F2E'),
+			//array("http://f2e.im/",'F2E'),
 			array("http://www.html-js.com/",'前端乱炖'),
 			array("https://www.shiyanlou.com/",'实验楼','第一家以实验为核心的IT在线教育平台'),
 			

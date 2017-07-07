@@ -19,9 +19,9 @@ return array (
     array (
 	  array('十大常用命令','Linux101', 'txt'),
 	  array('VIM常用命令','vim001', 'txt'),
-	  array('sublime编辑器','sublime001', 'html'),
 	  array('用户管理','linux102', 'txt'),
 	  array('磁盘管理','linux103', 'txt'),
+	  array('sublime编辑器','sublime001', 'html'),
 	  array('phpStorm','phpStorm001', 'md'),
     ),
   ),
@@ -34,6 +34,7 @@ return array (
     1 => 'Linux网络专题',
     2 => 
     array (
+	  array('webTools','webTools', 'txt'),
 	  array('iptables安全防护','Linux201','txt' ),
 	  array('科学上网','crackTheWall','html' ),
 	  array('IP、路由与wifi','Route','txt' ),
@@ -50,6 +51,7 @@ return array (
 	  array('htaccess配置规则','apache001','txt' ),
 	  array('虚拟域名和二级域名配置','apache002','txt' ),
 	  array('nginx服务器快速入门','nginx001','md' ),
+	  array('nginx服务器','nginx002','txt' ),
 	  array('域名售卖系统whmcs','whmcs','txt' ),
 
     ),

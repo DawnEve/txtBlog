@@ -15,7 +15,7 @@
 - QQ: 469004330  
 - weibo: 	http://weibo.com/wangjunliangvip
 - GitHub: https://github.com/DawnEve
-- blog: 	blog.dawneve.cc
+- blog: 	blog.biomooc.com
 - 百度贴吧: [亲自走路吧](http://tieba.baidu.com/f?kw=%C7%D7%D7%D4%D7%DF%C2%B7&fr=index)
 
 - 地址: 河南省郑州市科学大道100号郑州大学新校区    
@@ -57,10 +57,11 @@
 
 ## 项目经历
 
-- [我的新浪云页面](http://miostudio.sinaapp.com/ "sina app")
+- [米欧互联](http://mioweb.biomooc.com/ "mio web")
 - [某制冷公司网站](http://www.wllwzl.com/ "企业站")
-- 开源项目[txtBlog](http://blog.dawnEve.cc/ "博客框架和内容纯手工打造。")，用于管理庞杂的web知识  
-- [微信订阅号：miostudio]  
+- [某蜂蜜电商网站维护](http://shop.xingyuan58.com/ "蜂蜜网上商店")
+- 开源项目[txtBlog](http://blog.biomooc.com/ "博客框架和内容纯手工打造。")，用于管理庞杂的web知识  
+- [微信订阅号：miostudio, 拂晓学术, 英语读报]  
 
 
 
@@ -105,5 +106,5 @@
 	
 - DRY的三重境界：function, class, plugin  	
 	
-> 更新日期: 201603010  
+> 更新日期: 20170303  
 

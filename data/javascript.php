@@ -46,7 +46,7 @@ return array (
     2 => 
     array (
 	  array('jQuery简介','jQuery001','html' ),
-	  array('jQuery教程','jQuery002','md' ),
+	  array('jQuery教程','jQuery002','txt' ),
 	  array('underscore教程','underscore001','md' ),
 	  array('mooltools教程','mooltools001','md' ),
 	  array('prototype教程','prototype001','md' ),

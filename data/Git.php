@@ -33,8 +33,8 @@ return array (
     1 => 'git专题',
     2 => 
     array (
-	  array('git常用命令和场景','Git101','txt' ),
-	  array('git merge','Git102','txt' ),
+	  array('git常用命令','Git101','txt' ),
+	  array('git场景','Git102','txt' ),
 	  array('SVN版本管理','svn103','txt' ),
 
     ),
