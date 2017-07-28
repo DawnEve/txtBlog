@@ -19,6 +19,7 @@ return array (
     array (
 	  array('十大常用命令','Linux101', 'txt'),
 	  array('VIM常用命令','vim001', 'txt'),
+	  array('字符awk/sed/shell','string_process', 'txt'),
 	  array('用户管理','linux102', 'txt'),
 	  array('磁盘管理','linux103', 'txt'),
 	  array('sublime编辑器','sublime001', 'html'),

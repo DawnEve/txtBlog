@@ -158,21 +158,35 @@ For more examples and ideas, visit: | 分享镜像，自动工作流，以及更
  https://docs.docker.com/userguide/
 
 ```
+
 我们试试docker推荐的命令：
 ```
-root@wjl-VirtualBox:~# docker run -it ubuntu
-root@b1e4a37c9ac4:/# pwd
+root@ubt16:~# docker run -it ubuntu
+Unable to find image 'ubuntu:latest' locally
+latest: Pulling from library/ubuntu
+e0a742c2abfd: Pulling fs layer
+e0a742c2abfd: Pull complete
+486cb8339a27: Pull complete
+dc6f0d824617: Pull complete
+4f7a5649a30e: Pull complete
+672363445ad2: Pull complete
+Digest: sha256:84c334414e2bfdcae99509a6add166bbb4fa4041dc3fa6af08046a66fed3005f
+Status: Downloaded newer image for ubuntu:latest
+
+root@bf835331c62c:/# pwd
 /
-root@b1e4a37c9ac4:/# 
+root@bf835331c62c:/#
 ```
-经过一些列的安装...
+经过一些列的下载安装（本地找不到就找远程的，下载需要几分钟，取决于网速）......
+
 注意，#前的主机名已经变了！我们进入了一个虚拟机~~
+
 新打开一个终端，使用命令 `docker -ps` 可见正在运行的容器。
+
 ```
-root@wjl-VirtualBox:~# docker ps 
+root@ubt16:~# docker ps
 CONTAINER ID        IMAGE               COMMAND             CREATED             STATUS              PORTS               NAMES
-b1e4a37c9ac4        ubuntu              "/bin/bash"         2 minutes ago       Up 2 minutes                            grave_visvesvaraya
-root@wjl-VirtualBox:~# 
+bf835331c62c        ubuntu              "/bin/bash"         5 minutes ago       Up 5 minutes                            frosty_cori
 ```
 
 
@@ -199,11 +213,9 @@ cat xxx.tar.gz | docker import - name:tag
 http://www.docker.org.cn/book/docker/prepare-docker-5.html
 docker包括服务器和客户机，一般是在一台电脑上。
 
-目标：
-检查docker的版本，这样可以用来确认docker服务在运行并可通过客户端链接。
+目标：检查docker的版本，这样可以用来确认docker服务在运行并可通过客户端链接。
 
-提示：
-可以通过在终端输入docker命令来查看所有的参数。
+提示：可以通过在终端输入docker命令来查看所有的参数。
 官网的在线模拟器只提供了有限的命令，无法保证所有的命令可以正确执行。
 
 正确的命令：
@@ -233,13 +245,11 @@ Server:
 
 
 ### 搜索可用docker镜像
-使用docker最简单的方式莫过于从现有的容器镜像开始。Docker官方网站专门有一个页面来存储所有可用的镜像，网址是：index.docker.io。你可以通过浏览这个网页来查找你想要使用的镜像，或者使用命令行的工具来检索。
+使用docker最简单的方式莫过于从现有的容器镜像开始。Docker官方网站专门有一个页面来存储所有可用的镜像，网址是：hub.docker.com。你可以通过浏览这个网页来查找你想要使用的镜像，或者使用命令行的工具来检索。
 
-目标：
-学会使用命令行的工具来检索名字叫做tutorial的镜像。
+目标：学会使用命令行的工具来检索名字叫做tutorial的镜像。
 
-提示：
-命令行的格式为：docker search 镜像名字
+提示：命令行的格式为：docker search 镜像名字
 
 正确的命令：
 ```
@@ -261,16 +271,13 @@ http://www.docker.org.cn/book/docker/docker-download-image-7.html
 下载镜像的命令非常简单，使用docker pull命令即可。(译者按：docker命令和git有一些类似的地方）。在docker的镜像索引网站上面，镜像都是按照`用户名/镜像名`的方式来存储的。有一组比较特殊的镜像，比如ubuntu这类基础镜像，经过官方的验证，值得信任，可以直接用`镜像名`来检索到。
 
 
-目标：
-通过docker命令下载tutorial镜像。
+目标：通过docker命令下载tutorial镜像。
 
-提示：
-执行pull命令的时候要写完整的名字，比如"learn/tutorial"。
+提示：执行pull命令的时候要写完整的名字，比如"learn/tutorial"。
 
 正确的命令：
 ```
 #docker pull learn/tutorial
-
 Using default tag: latest
 latest: Pulling from learn/tutorial
 271134aeb542: Pull complete 
@@ -278,9 +285,7 @@ Digest: sha256:2933b82e7c2a72ad8ea89d58af5d1472e35dacd5b7233577483f58ff8f9338bd
 Status: Downloaded newer image for learn/tutorial:latest
 
 
-
 #docker pull google/nodejs
-
 Using default tag: latest
 latest: Pulling from google/nodejs
 a3ed95caeb02: Pull complete 
@@ -302,17 +307,14 @@ Status: Downloaded newer image for google/nodejs:latest
 
 docker容器可以理解为在沙盒中运行的进程。这个沙盒包含了该进程运行所必须的资源，包括文件系统、系统类库、shell 环境等等。但这个沙盒默认是不会运行任何程序的。你需要在沙盒中运行一个进程来启动某一个容器。这个进程是该容器的唯一进程，所以当该进程结束的时候，容器也会完全的停止。
 
-目标：
-在我们刚刚下载的镜像中输出"hello word"。为了达到这个目的，我们需要在这个容器中运行"echo"命令，输出"hello word"。
+目标：在我们刚刚下载的镜像中输出"hello word"。为了达到这个目的，我们需要在这个容器中运行"echo"命令，输出"hello word"。
 
-提示：
-docker run命令有两个参数，一个是镜像名，一个是要在镜像中运行的命令。
+提示：docker run命令有两个参数，一个是镜像名，一个是要在镜像中运行的命令。
 
 正确的命令：
 ```
 # docker run learn/tutorial echo "hello world"
 hello world
-
 
 # docker run google/nodejs npm -v
 2.14.7
@@ -331,11 +333,9 @@ v4.2.3
 下一步我们要做的事情是在容器里面安装一个简单的程序(ping)。我们之前下载的tutorial镜像是基于ubuntu的，所以你可以使用ubuntu的apt-get命令来安装ping程序：`apt-get install -y ping`。
 备注：apt-get 命令执行完毕之后，容器就会停止，但对容器的改动不会丢失。
 
-目标：
-在learn/tutorial镜像里面安装ping程序。
+目标：在learn/tutorial镜像里面安装ping程序。
 
-提示：
-在执行apt-get 命令的时候，要带上-y参数。如果不指定-y参数的话，apt-get命令会进入交互模式，需要用户输入命令来进行确认，但在docker环境中是无法响应这种交互的。
+提示：在执行apt-get 命令的时候，要带上-y参数。如果不指定-y参数的话，apt-get命令会进入交互模式，需要用户输入命令来进行确认，但在docker环境中是无法响应这种交互的。
 
 正确的命令：
 ```
@@ -352,8 +352,7 @@ $docker run learn/tutorial apt-get install -y ping
 
 当你对某一个容器做了修改之后（通过在容器中运行某一个命令），可以把对容器的修改保存下来，这样下次可以从保存后的最新状态运行该容器。docker中保存状态的过程称之为committing，它保存的新旧状态之间的区别，从而产生一个新的版本。
 
-目标：
-首先使用`docker ps -l`命令获得安装完ping命令之后容器的id。然后把这个镜像保存为learn/ping。
+目标：首先使用`docker ps -l`命令获得安装完ping命令之后容器的id。然后把这个镜像保存为learn/ping。
 
 提示：
 
