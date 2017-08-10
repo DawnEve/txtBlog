@@ -68,7 +68,8 @@ return array (
 	  array('VirtualBox','VirtualBox001','md' ),
 	  array('docker快速入门','docker001','md' ),
 	  array('docker官方简介','docker002','md' ),
-	  array('创建docker镜像','docker003','md' ),
+	  array('Dockerfile','docker003','md' ),
+	  array('docker笔记','docker_note','txt' ),
 
     ),
   ),
