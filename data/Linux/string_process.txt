@@ -507,8 +507,100 @@ Count= 2
 
 
 
-6.内置函数与自定义函数
-打印超过18个字符的行
+6.内置函数、自定义函数与系统命令
+AWK提供了很多方便的内建函数供编程人员使用。最好先知道大概，使用的时候再查手册。
+https://www.gnu.org/software/gawk/manual/gawk.html#Built_002din
+
+数学函数
+	atan2(y, x)
+	cos(expr)
+	exp(expr)
+	int(expr)
+	log(expr)
+	rand
+	sin(expr)
+	sqrt(expr)
+	srand([expr])
+
+字符串函数
+	asort(arr [, d [, how] ])
+	asorti(arr [, d [, how] ])
+	gsub(regex, sub, string)
+	index(str, sub)
+	length(str)
+	match(str, regex)
+	split(str, arr, regex)
+	sprintf(format, expr-list)
+	strtonum(str)
+	sub(regex, sub, string)
+	substr(str, start, l)
+	tolower(str)
+	toupper(str)
+
+时间函数
+	systime
+	mktime(datespec)
+	strftime([format [, timestamp[, utc-flag]]])
+
+字节操作函数
+	and
+	compl
+	lshift
+	rshift
+	or
+	xor
+
+其它
+	close(expr) 关闭管道文件
+
+
+例1: 使用command | getline var可以实现将命令的输出写入到变量var。
+$ awk 'BEGIN {
+     "date" | getline current_time
+     close("date")
+     print "Report printed on " current_time
+}'
+
+只能读取一行，其中command是linux命令。
+$ awk 'BEGIN{"ls"|getline txts; close("ls"); print txts}'
+Desktop
+
+
+函数是程序基本的组成部分，AWK允许我们自己创建自定义的函数。一个大型的程序可以被划分为多个函数，每个函数之间可以独立的开发和测试，提供可重用的代码。
+
+下面是用户自定义函数的基本语法
+function function_name(argument1, argument2, ...) { 
+   function body
+}
+return 用于用户自定义函数的返回值。
+
+
+例2:自定义加法
+首先，创建一个functions.awk文件，包含下面的awk命令
+$ cat awk_2.cmd
+function addition(num1, num2) {
+   result = num1 + num2
+   return result
+}
+BEGIN {
+   res = addition(10, 20)
+   print "10 + 20 = " res
+}
+
+$ awk -f awk_2.cmd
+10 + 20 = 30
+
+
+例3:执行系统命令
+system函数用于执行操作系统命令并且返回命令的退出码到awk。
+END {
+     system("date | mail -s 'awk run done' root")
+}
+
+$ awk 'BEGIN{system("date")}'
+2017年 08月 12日 星期六 06:37:36 CST
+$ awk 'BEGIN{system("date | tr [A-Z] [a-z]")}'
+2017年 08月 12日 星期六 06:37:50 cst
 
 
 
@@ -516,11 +608,16 @@ Count= 2
 
 
 
+7.文件操作：拆分文件、重定向与管道
 
-
-
-7.拆分文件
 awk拆分文件很简单，使用重定向就好了。
+重定向操作符跟在print和printf函数的后面，与shell中的用法基本一致。
+	print DATA > output-file #覆盖式写入
+	print DATA >> output-file #追加到文件结尾
+
+例如，下面两条命令输出是一致的
+$ echo "Hello, World !!!" > /tmp/message.txt
+$ awk 'BEGIN { print "Hello, World !!!" > "/tmp/message.txt" }'
 
 例1：按第6例分隔文件，相当的简单（其中的NR!=1表示不处理表头,$6!=""表示如果第六行是空则忽略掉）。
 $ awk 'NR!=1 && $6!="" {print>$6}' netstat.txt
@@ -563,6 +660,25 @@ udp6       0      0 :::5353                 :::*
 raw6       0      0 :::58                   :::*   
 
 
+
+例4:管道
+除了将输出重定向到文件之外，我们还可以将输出重定向到其它程序，与shell中一样，我们可以使用管道操作符|。
+r$ echo "hello"|tr [a-z] [A-Z]
+HELLO
+$ awk 'BEGIN { print "hello, world !!!" | "tr [a-z] [A-Z]" }'
+HELLO, WORLD !!!
+
+
+例5:双向连接
+AWK中可以使用|&进行双向连接，那么什么是双向连接呢？一种常见的场景是我们发送数据到另一个程序处理，然后读取处理结果，这种场景下就需要打开一个到另外一个进程的双向管道了。第二个进程会与gawk程序并行执行，这里称其为 协作进程。与单向连接使用|操作符不同的是，双向连接使用|&操作符。
+
+do {
+    print data |& "subprogram"
+    "subprogram" |& getline results
+} while (data left to process)
+close("subprogram")
+
+第一次I/O操作使用了|&操作符，gawk会创建一个到运行其它程序的子进程的双向管道，print的输出被写入到了subprogram的标准输入，而这个subprogram的标准输出在gawk中使用getline函数进行读取。
 
 
 
@@ -721,6 +837,8 @@ seq 9 | sed 'H;g' | awk -v RS='' '{for(i=1;i<=NF;i++)printf("%dx%d=%d%s", i, NR,
 正则表达式，参看：http://www.gnu.org/software/gawk/manual/gawk.html#Regexp
 
 https://segmentfault.com/a/1190000007338373
+http://www.gnu.org/software/gawk/manual/gawk.html
+https://www.gnu.org/software/gawk/manual/gawk.html
 
 
 
@@ -729,11 +847,25 @@ https://segmentfault.com/a/1190000007338373
 ========================================
 sed(关键字: 编辑) 以行为单位的文本编辑工具 
 ----------------------------------------
-sed - stream editor for filtering and transforming text 用于过滤和转换文本的流编辑器。特色是该编辑器能用于pipeline中。
+1.定义与作用
+sed - stream editor for filtering and transforming text 
+用于过滤和转换文本的流编辑器。特色是该编辑器能用于pipeline中。
+
+sed全名叫stream editor，流编辑器，用程序的方式来编辑文本（非交互式的），相当的hacker啊。
+sed基本上就是玩正则模式匹配，所以，玩sed的人，正则表达式一般都比较强。
 
 sed可以直接修改档案, 不过一般不推荐这么做, 可以分析 standard input
 
-基本工作方式: sed [-nef] '[动作]' [输入文本]
+文档： 
+	man: http://www.gnu.org/software/sed/manual/sed.html
+	https://www.gnu.org/software/sed/
+	list: http://sed.sourceforge.net/
+	detail: http://www.grymoire.com/Unix/Sed.html
+
+
+
+
+2.基本工作方式: sed [-nef] '[动作]' [输入文本]
 	-n : 安静模式, 一般sed用法中, 来自stdin的数据一般会被列出到屏幕上, 如果使用-n参数后, 只有经过sed处理的那一行被列出来.
 	-e : 多重编辑, 比如你同时又想删除某行, 又想改变其他行, 那么可以用 sed -e '1,5d' -e 's/abc/xxx/g' filename
 	-f : 首先将 sed的动作写在一个档案内, 然后通过 sed -f scriptfile 就可以直接执行 scriptfile 内的sed动作。
@@ -755,7 +887,7 @@ thwas was a book
 	[line-address]w file, 匹配到的行写入某文件  例如: sed -n '/m/w qqq' abc , 从abc中读取带m的行写到qqq文件中, 注意, 这个写入带有覆盖性.
 
 
-举例:
+常用例子:
 sed '1d' abc 删除 abc 档案里的第一行, 注意, 这时会显示除了第一行之外的所有行, 因为第一行已经被删除了(实际文件并没有被删除,而只是显示的时候被删除了)
 
 sed -n '1d' abc 什么内容也不显示, 因为经过sed处理的行, 是个删除操作, 所以不显示.
@@ -764,13 +896,93 @@ sed '2,$d' abc 删除abc中从第二行到最后一行所有的内容, 注意, $
 
 sed '$d' abc 只删除了最后一行, 因为并没有指定是那行末尾, 就认为是最后一行末尾
 
-sed '/test/d' abc 文件中所有带 test 的行, 全部删除
+sed '/test/d' abc 删除文件中所有带 test 的行
 
 sed '/test/a RRRRRRR' abc 将 RRRRRRR 追加到所有的带 test 行的下一行 
 
 sed '1,5c RRRRRRR' abc 从1到5行被 RRRRRRR 替换
 
 sed '/test/c RRRRRRR' abc 将 RRRRRRR 替换所有带 test 的行, 当然, 这里也可以是通过行来进行替换, 比如 sed '1,5c RRRRRRR' abc
+
+
+
+3.用s命令替换
+(1)一般替换
+$ cat out.txt #原文
+this is a linux system.
+line2
+Ubuntu is a release of linux.
+
+$ sed 's/is/are/' out.txt #把is用are替换
+thare is a linux system.
+line2
+Ubuntu are a release of linux.
+
+$ sed 's/is/are/g' out.txt #/g 表示一行上的替换所有的匹配
+thare are a linux system.
+line2
+Ubuntu are a release of linux.
+
+$ sed '1s/linux/Unix/g' out.txt #1s表示只替换第一行。
+this is a Unix system.
+line2
+Ubuntu is a release of linux.
+
+
+上面的sed并没有对文件的内容改变，只是把处理过后的内容输出，如果你要写回文件，你可以使用重定向。
+$ sed '1s/linux/Unix/g' out.txt >out2.txt
+或者使用-i参数（不推荐）直接修改原文件
+$ sed -i 's/linux/Windows/g' out2.txt
+wangjl@ubt16:~/str$ cat out2.txt
+this is a Unix system.
+line2
+Ubuntu is a release of Windows.
+
+
+在每一行最前面加注释符#：
+$ sed 's/^/#/g' out.txt
+#this is a linux system.
+#line2
+#Ubuntu is a release of linux.
+
+在每一行最后面加上英文分号;
+$ sed 's/$/;/g' out.txt
+this is a linux system.;
+line2;
+Ubuntu is a release of linux.;
+
+(2)多条替换
+同时在行首加上#，行尾加上;
+$ sed -e 's/^/#/g' -e 's/$/;/g' out.txt
+#this is a linux system.;
+#line2;
+#Ubuntu is a release of linux.;
+
+(3)正则表达式的一些最基本的东西：
+	^ 表示一行的开头。如：/^#/ 以#开头的匹配。
+	$ 表示一行的结尾。如：/}$/ 以}结尾的匹配。
+	\< 表示词首。 如：\<abc 表示以 abc 为首的詞。
+	\> 表示词尾。 如：abc\> 表示以 abc 結尾的詞。
+	. 表示任何单个字符。
+	* 表示某个字符出现了0次或多次。
+	[ ] 字符集合。 如：[abc] 表示匹配a或b或c，还有 [a-zA-Z] 表示匹配所有的26个字符。如果其中有^表示反，如 [^a] 表示非a的字符
+	
+例:去掉某html中的tags：
+index.html
+<b>This</b> is what <span style="text-decoration: underline;">the Boss</span> meant. Understand?
+
+# 如果你这样搞的话，就会有问题
+$ sed 's/<.*>//g' index.html
+ meant. Understand?
+
+# 要解决上面的那个问题，就得像下面这样。
+# 其中的'[^>]' 指定了非>的字符重复0次或多次。
+$ sed 's/<[^>]*>//g' index.html
+This is what the Boss meant. Understand?
+
+
+(4)替换每一行的第一个匹配项
+
 
 
 
