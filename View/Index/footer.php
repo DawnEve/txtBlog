@@ -19,7 +19,7 @@
 			//api手册
 			array('http://jsbin.com/','jsbin','练习前端的好工具！'),
 			array('http://jquery.cuishifeng.cn/','jQuery手册'),
-			array('http://www.php100.com/manual/css3_0/media-20queries.shtml','css3手册'),
+
 			array('http://www.w3school.com.cn/','w3school'),
 			array('http://mioweb.biomooc.com/','miostudio'),
 			array('http://php.net/','PHP'),
@@ -31,7 +31,7 @@
 			array('http://www.uimaker.com/member/reg_new.php','UI制造者'),
 			array('http://bonsaiden.github.io/JavaScript-Garden/zh/#function.closures','js秘密花园'),
 			array('http://www.qietu.com/','切图网'),
-			array('http://www.php100.com/','php100'),
+
 			array('http://www.bootcss.com/','bootstrap'),
 			array('http://www.shejidaren.com/free-bootstrap-ui-kits.html','设计达人'),
 		);
@@ -67,7 +67,7 @@
 			array('http://www.cnblogs.com/jikey/p/4426105.html','豪情的博客', '高级qq群'),
 			array('http://www.nowamagic.net/','简明现代魔法','其实每个程序员都是魔法师'),
 			array('http://www.ycku.com/course/','李炎恢','瓢城Web俱乐部'),
-			array('http://limingyang2012.github.io/blog/','李明洋', '前端博客'),
+
 			array('http://www.bluesdream.com/blog/','BlueDream','前端博客'),
 			array('http://ideazhao.com/', '灵感的小窝','生活琐碎、前端杂谈、诗情画意、随心笔记'),
 			// array('http://www.dyike.com/index.php/aboutme', '一刻笔记','生活琐碎、前端杂谈、诗情画意、随心笔记'),
@@ -104,7 +104,7 @@
 			array("http://ninghao.net/",'宁皓网','React，Bootstrap，Laravel 视频教程'),
 			
 			array('http://edu.ibeifeng.com/list-index-is_key-is_new.html','北风网'),
-			array("http://www.caopeng.com/",'曹鹏编程之邦'), 			
+			
 		);
 		echo '<br />视频: ';
 		print_links($links_video);
@@ -134,7 +134,7 @@ var cnzz_protocol = (("https:" == document.location.protocol) ? " https://" : " 
 		
 		
 		<div class='links'>
-			Copyright &copy; 2009 - 2017 DawnEve. All Rights Reserved. | 
+			Copyright &copy; 2009 - 2018 DawnEve. All Rights Reserved. | 
 			<a target='_blank' href='https://github.com/DawnEve'>Folk me on Github</a> | 
 			<a class=red href='index.php?k=Git&id=0_2'>Contact me</a> | 
 			<a target='_blank' href='http://pan.baidu.com/s/1i3imHpF' title='密码:qa53'>web tools</a>
