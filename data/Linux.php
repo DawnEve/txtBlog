@@ -6,8 +6,8 @@ return array (
     1 => '前言与资料',
     2 => array (
       array('项目描述','Linux001','html',),
-      array('参考资料','PHP002','html'),
-      array('FAQ','PHP20160105','html'),
+      array('参考资料','Linux002','html'),
+      array('FAQ','Linux003','html'),
     ),
   ),
   
