@@ -1,6 +1,6 @@
 scSeq-10xGenomics
 
-
+CentOS6.8 with 40cores,128GMem.
 
 ========================================
 数据下载data download: PBMC下机数据
@@ -79,24 +79,142 @@ Loupe Cell Browser file	62.55 MB	97f948d068fbdd1e3bfa9d0c567060db
 
 
 ========================================
-第一步分析 Cell Ranger和参考基因组
+第一步分析 Cell Ranger软件及其工作原理
 ----------------------------------------
 
 https://support.10xgenomics.com/single-cell-gene-expression/software/pipelines/latest/what-is-cell-ranger
 
 
-1. Cell Ranger - 2.1.0 软件下载：
+1. Cell Ranger - 2.1.0 软件下载和安装：
 https://support.10xgenomics.com/single-cell-gene-expression/software/downloads/latest
 
+(1)
 Linux 64-bit – 683 MB – md5sum: 3c2dc932df69982c45c0843ee9110e0c
 wget -O cellranger-2.1.0.tar.gz "http://cf.10xgenomics.com/releases/cell-exp/cellranger-2.1.0.tar.gz?Expires=1515516131&Policy=eyJTdGF0ZW1lbnQiOlt7IlJlc291cmNlIjoiaHR0cDovL2NmLjEweGdlbm9taWNzLmNvbS9yZWxlYXNlcy9jZWxsLWV4cC9jZWxscmFuZ2VyLTIuMS4wLnRhci5neiIsIkNvbmRpdGlvbiI6eyJEYXRlTGVzc1RoYW4iOnsiQVdTOkVwb2NoVGltZSI6MTUxNTUxNjEzMX19fV19&Signature=JAvAcnyi1UrvD1bXlwDoScrz3WjbxsHqIeAsqXo29jI3n~RsiR5zG5-ZwXaMbp3Ll5gy~518Dyp1ctTpqqSai01wFEQPykFWTOSse0EhNr9nI5sAWe22fdJ3bfbyhg3ZR-MUea2HjzM0J-C~qG4ncHEYIPN8MwsjI0a1gDskgn4obpHakhT5STka1q2GMpTHKPM6V2sa0~VFd~VlH5jdfIhEEYlw65B46KEFQJ4v53ItbtmNavFxwzmt6aFbfY9CV1oE7IMiQg~R2Bnq081TyyLKkPp9vUiNAidxsRgL7Q7wpGQrA5f24Fw9Swc0TQc4H9ULxUH0HJlZThtdLGDVaA__&Key-Pair-Id=APKAI7S6A5RYOXBWRPDA"
 
+(2)安装依赖的blc2fastq软件
+refer: https://support.10xgenomics.com/single-cell-gene-expression/software/overview/system-requirements
+In addition, Cell Ranger must be run on a system with the following software pre-installed:
+Illumina bcl2fastq: https://support.illumina.com/sequencing/sequencing_software/bcl2fastq-conversion-software.html 
+
+bcl2fastq 2.17 or higher is preferred and supports most sequencers running RTA version 1.18.54 or higher. If you are using a NovaSeq, please use version 2.20 or higher. If your sequencer is running an older version of RTA, then bcl2fastq 1.8.4 is required by Illumina.
+由于v2.20是最新的，安装了该版本。
+
+下载rpm文件(2M)：
+$ wget https://support.illumina.com/content/dam/illumina-support/documents/downloads/software/bcl2fastq/bcl2fastq2-v2-20-0-linux-x86-64.zip
+解压缩
+$ unzip bcl2fastq2-v2-20-0-linux-x86-64.zip
+安装
+$ sudo rpm -i bcl2fastq2-v2.20.0.422-Linux-x86_64.rpm
+安装位置
+$ whereis bcl2fastq
+bcl2fastq: /usr/local/bin/bcl2fastq
+版本号查询
+$ bcl2fastq --version
+BCL to FASTQ file converter
+bcl2fastq v2.17.1.14
+Copyright (c) 2007-2015 Illumina, Inc.
 
 
 
 
-2.参考基因组
 
+
+
+
+2. 管线概念
+(1) Pipelines 管线包括4个主要基因表达管线
+Cell Ranger includes four main gene expression pipelines:
+
+1)cellranger mkfastq 
+wraps Illumina's bcl2fastq to correctly demultiplex Chromium-prepared sequencing samples and to convert barcode and read data to FASTQ files.
+包含 Illumina的bcl2fastq，来准确多路区分多个Chromium预制测序样本，然后转换barcode和read数据位fastq文件。
+
+2)cellranger count 
+takes FASTQ files from cellranger mkfastq and performs alignment, filtering, and UMI counting. It uses the Chromium cellular barcodes to generate gene-barcode matrices and perform clustering and gene expression analysis. 
+使用mkfastq产生的fastq文件来进行比对、过滤和UMI计数。它使用Chromium细胞barcode来产生gene-barcode矩阵，进行聚类和基因表达分析。
+
+count can take input from multiple sequencing runs on the same library.
+count模块可以输入同一个文库的多次测序结果。
+
+
+3)cellranger aggr 
+aggregates outputs from multiple runs of cellranger count, normalizing those runs to the same sequencing depth and then recomputing the gene-barcode matrices and analysis on the combined data. 
+聚集cellranger count的多个run的输出结果，标准化这些run到同样的测序深度，然后重新计算gene-barcode矩阵，对组合后的数据进行分析。
+
+aggr can be used to combine data from multiple samples into an experiment-wide gene-barcode matrix and analysis.
+aggr模块可以用于把多样本的数据，组合成一个experiment-wide gene-barcode矩阵，进而分析。
+
+
+4)cellranger reanalyze 
+takes gene-barcode matrices produced by cellranger count or cellranger aggr and reruns the dimensionality reduction, clustering, and gene expression algorithms using tunable parameter settings.
+使用cellranger count 或 cellranger aggr产生的gene-barcode矩阵，使用可调整的参数设置，重新运行降维、聚类和基因表达算法。
+
+These pipelines combine Chromium-specific algorithms with the widely used RNA-seq aligner STAR. 
+这些管线组合了Chromium-specific算法和广泛用于RNA-seq比对的STAR。
+
+Output is delivered in standard BAM, MEX, CSV, HDF5 and HTML formats that are augmented with cellular information.
+输出是带有细胞信息的标准的BAM, MEX, CSV, HDF5 和 HTML格式的文件。
+
+
+
+(2) 相关名词 Terminology
+Throughout the documentation, you will see references to samples, libraries and sequencing runs. 
+本文档定义的samples, libraries and sequencing runs. 
+We define these as follows:
+
+样本Sample: A cell suspension extracted from a single biological source (blood, tissue, etc).
+单个生物来源（血液、组织等）提取的细胞悬液。
+
+文库Library: A 10x-barcoded sequencing library prepared from a single sample, corresponding to a single chip channel of a 10x Chromium Controller run.
+从一个样本制备的一个10x-barcoded测序文库，对应着一个10x Chromium Controller run的单芯片通道。
+
+测序运行 Sequencing Run / Flowcell: A flowcell containing data from one sequencing instrument run. The sequencing data can be further addressed by lane and by one or more sample indices.
+一个芯片包含一个run的测序数据。该测序数据可以进一步按照lane研究，或者按照1个或多个样本index研究。
+
+
+
+这几个名词的关系 The relationship between these terms can be complex:
+A single sample may be prepared into multiple libraries; this is commonly done to achieve higher cell counts without overloading a single 10x Chromium Controller run.
+一个单样本可制备为多个文库；这样不用重复加10x Chromium Controller run就能获得更多细胞数。
+
+A single library may be sequenced across multiple flowcells, and then combined as if all the reads came from one sequencing run.
+一个单文库可以被多个芯片测序，然后合并，就像这些read是从一次run获得的。
+
+A single flowcell may contain multiple libraries, separated using different lanes and / or sample indices.
+一个芯片可以包含多个文库，按照lane区分，和/或按照样本index区分。
+
+The definition of "library" makes no distinction between two channels of the same physical 10x chip, versus the same channel of two different chips.
+"文库"的定义并没有差别：1.同一个10x chip的2个channel; 2.两个不同芯片的同一个channel。
+
+
+
+
+
+(3) Workflows 工作流程  //todo
+The Cell Ranger workflow always starts with running cellranger mkfastq on each flowcell directory, as described in Generating FASTQs. 
+
+The subsequent steps vary depending on how many samples, libraries and flowcells you have. We will describe them in order of increasing complexity:
+
+
+Single Sample, Library, and Flowcell
+
+One Library, Multiple Flowcells
+
+One Sample, Multiple Libraries
+
+Multiple Biological Samples
+
+One or more 5′ Gene Expression and V(D)J Enriched Libraries from the Same Biological Sample
+
+
+
+
+
+========================================
+Cell Ranger的参考基因组
+----------------------------------------
+1. 参考基因组
 (1)Linux 64-bit – 11 GB – md5sum: c3a4812f7fdb7ba84429a404ba478acf
 wget http://cf.10xgenomics.com/supp/cell-exp/refdata-cellranger-GRCh38-1.2.0.tar.gz
 
@@ -113,7 +231,7 @@ wget http://cf.10xgenomics.com/supp/cell-exp/refdata-cellranger-ercc92-1.2.0.tar
 
 
 
-3. Other Downloads
+2. Other Downloads
 Sample Index Set Sequences
 
 Chromium Single Cell 3' v2 – CSV | JSON
