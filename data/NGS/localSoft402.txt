@@ -1,0 +1,773 @@
+本地生信软件
+	- 本地运行的生信软件
+	- 包括可以下载安装的tool/VM/docker等
+
+========================================
+测序数据质控 fastqc
+----------------------------------------
+1.download and install(for centOS7 no root)
+http://www.bioinformatics.babraham.ac.uk/projects/fastqc/
+http://www.bioinformatics.babraham.ac.uk/projects/download.html#fastqc
+
+(1)
+$ wget http://www.bioinformatics.babraham.ac.uk/projects/fastqc/fastqc_v0.11.7.zip
+$ unzip fastqc_v0.11.7.zip
+$ cd FastQC
+#添加运行权限
+$ sudo chmod 755 fastqc
+#添加软连接
+$ ln -s /home/wangjl/software/FastQC/fastqc /home/wangjl/bin/fastqc
+
+$ fastqc -v
+FastQC v0.11.7
+OK now.
+
+安装：http://www.bioinformatics.babraham.ac.uk/projects/fastqc/INSTALL.txt
+README：http://www.bioinformatics.babraham.ac.uk/projects/fastqc/README.txt
+
+(2) 更多选项
+$ fastqc --help  帮助
+FastQC - A high throughput sequence QC analysis tool
+
+ --outdir=/some/other/dir/ 指定输出文件位置
+
+
+$ nohup fastqc -o . -t 5 -f fastq SRR3101251.fastq &
+-o . 表示输出文件位置，输出到fastq文件所在目录时可以忽略该参数
+-t 5：表示开5个线程运行。每个thread分配250MB内存。32位系统最多6threads。
+-f fastq 表示使用的输入文件格式，支持Valid formats are bam,sam,bam_mapped,sam_mapped and fastq
+
+
+
+	
+	
+========================================
+测序文件预处理:质控fastqc、切除cutadapt
+----------------------------------------
+
+1) Remove adapter sequences using fastX toolkit
+2) Run fastQC to identify read quality and trim accordingly
+3) Run Deconseq to remove contaminants
+4) Remove short reads (<10nt)
+5) Assemble using bowtie2 against reference (nb our strain is not exactly the reference but should similar enough)
+
+
+
+没必要去除polyA，因为不比对到任何地方
+https://www.biostars.org/p/148743/
+Have you tried mapping the RNA-seq data yet? It may not be necessary to remove polyA stretches because they won't map to a unique location and you may already have enough reads to not worry about it. 
+
+
+
+
+1.概述
+In addition, poly(A) (or poly(T) on the reverse strands) could also be removed by cutadapt or FASTXToolkit. 
+
+Tools to remove adapter sequences from next-generation sequencing data
+http://bioscholar.com/genomics/tools-remove-adapter-sequences-next-generation-sequencing-data/
+
+https://www.biostars.org/p/98707/
+
+
+
+
+
+
+2.FASTXToolkit(http://hannonlab.cshl.edu/fastx_toolkit/)
+https://github.com/DawnEve/NGS_training/blob/master/day3.markdown
+说明书： http://hannonlab.cshl.edu/fastx_toolkit/commandline.html
+
+
+下载和安装(http://hannonlab.cshl.edu/fastx_toolkit/install_centos.txt) 
+http://hannonlab.cshl.edu/fastx_toolkit/download.html
+$ axel -n 20 http://hannonlab.cshl.edu/fastx_toolkit/fastx_toolkit_0.0.13_binaries_Linux_2.6_amd64.tar.bz2
+$ tar -xjvf fastx_toolkit_0.0.13_binaries_Linux_2.6_amd64.tar.bz2
+添加路径：将fastx_toolkit的路径加入.bashrc最后一行。并执行source ~/.bashrc 使配置立即生效
+export PATH=/home/wangjl/software/fastx_toolkit/bin/:$PATH
+
+
+
+#数据过滤
+$ fastq_quality_filter -q 30 -p 100 -i test_1.fq -o test_1_filter.fq -Q 33
+$ fastq_quality_filter -q 30 -p 100 -i test_2.fq -o test_2_filter.fq -Q 33
+-q 30 最低质量分数是30才保留该碱基
+-p 80 是最低合格的百分比，Minimum percent of bases that must have [-q] quality.这个地方有问题//todo
+
+-Q 33防止报错。因为默认使用的phred64，而很多使用的是phred33。
+
+不能输入.gz格式的文件！！变通方式：
+$ zcat /home/wangjl/data/scFQ/c12_A1.fa.gz | fastq_quality_filter -q 25 -p 60 -z -o /home/wangjl/data/scFQ_filtered/c12_A1_filtered.fq.gz -Q 33
+
+再次fastqc，
+$ fastqc -o ./ -t 15 c12_A1_filtered.fq.gz
+发现超过100区域碱基不平衡。
+问题：Total Sequences（也就是reads数）从3132226减少到1591872。
+
+怎么去除polyA尾巴？
+
+
+
+
+
+
+3.cutadapt
+https://cutadapt.readthedocs.io/en/stable/
+
+(1)使用pip安装：
+$ pip install --user --upgrade cutadapt
+检查版本号：
+$ cutadapt --version
+1.14
+
+
+(2)按照碱基质量剪切：
+$ cutadapt -q 10 -o output.fastq input.fastq
+
+去除polyA尾巴 For poly-A trimming, for example, you would write:
+$ cutadapt -a "A{20}" -o output.fastq input.fastq
+
+--minimum-length LENGTH or -m LENGTH
+Discard processed reads that are shorter than LENGTH. Reads that are too short even before adapter removal are also discarded. Without this option, reads that have a length of zero (empty reads) are kept in the output.
+
+
+举例：
+$ cutadapt -q 25 -m 90 -o /home/wangjl/data/scFQ_filtered/c12_A1_filtered.fastq.gz /home/wangjl/data/scFQ/c12_A1.fq.gz
+要求结尾必须是fq，fastq或者fq.gz，fastq.gz，不能是fa.gz，否则报错。
+
+$ cutadapt -a "A{20}" -o output.fastq input.fastq
+
+
+
+(3)测试 cutadapt 中去除polyA尾巴的参数
+$ cutadapt -a "A{10}" -q 25 -m 30 -o filteredA10_c12_A1.fq.gz /home/wangjl/data/scFQ/c12_A1.fq.gz
+$ cutadapt -a "A{20}" -q 25 -m 30 -o filteredA20_c12_A1.fq.gz /home/wangjl/data/scFQ/c12_A1.fq.gz
+$ cutadapt -a "A{30}" -q 25 -m 30 -o filteredA30_c12_A1.fq.gz /home/wangjl/data/scFQ/c12_A1.fq.gz
+$ cutadapt -a "A{100}" -q 25 -m 30 -o filteredA100_c12_A1.fq.gz /home/wangjl/data/scFQ/c12_A1.fq.gz
+
+NofA	reads
+10	2930148
+20	2942041
+30	2943094
+100	2985093
+
+这个N越小保留下的reads越少。
+
+
+
+
+
+========================================
+RNAseq的比对 STAR: ultrafast universal RNA-seq aligner 
+----------------------------------------
+RNA-seq比对算法开发了STAR（Spliced Transcripts Alignments to a Reference，STAR）.
+该算法使用了未压缩后缀阵列中的连续最大可比对种子搜索，接着种子聚类和缝合过程。
+
+1.paper:https://academic.oup.com/bioinformatics/article/29/1/15/272537
+Published: 25 October 2012
+STAR被实现为一个单机C++代码。
+
+rna call varients时gatk推荐工具，broad institute都推荐了，还是encode计划时冷泉港内部开发的，特点：超级快速（8min map完6gb的reads）、as支持性好、支持长reads、全转录本、发现嵌合转录本等，有理由看一下。
+
+STAR, 很犀利, ENCODE专属RNA-seq工具. 在准度和时间消耗上, 效果拔群. 因为STAR, 了解一下啥是suffix array. 原来做mapping的, 真的就是ctrl+F的工作... 只是, 这个字符串寻找比较麻烦, 既要容错(insertion/deletion/mismatch), 又要考虑到RNA splicing而导致的genomic gap. 
+
+容错的这个还好, 因为DNA-seq已经打下了夯实基础; 反倒是splicng带来的splicing junction detection问题, 是RNA-seq里专属. 所以在处理DNA-seq和RNA-seq数据做mapping时, 真的不一样. 比如bowtie是unspliced mapper, tophat是spliced mapper, 也难怪bowtie多用于DNA-seq而tophat多用于RNA-seq的mapping步骤. 
+
+STAR 吐槽现有的RNA-seq工具都是DNA-seq工具的延伸, 并非量身打造. 从其算法里的mapping一步来看, 应该属于spliced mapper, 但又不同于把reads打断成k-mer形式. 
+
+
+
+
+Popular short read aligners
+http://homer.ucsd.edu/homer/basicTutorial/mapping.html
+more: https://en.wikipedia.org/wiki/List_of_sequence_alignment_software#Short-Read_Sequence_Alignment
+Most Popular:
+bowtie : fast, works well
+bowtie2 : fast, can perform local alignments too
+BWA - Fast, allows indels, commonly used for genome/exome resequencing
+Subread - Very fast, (also does splice alignment)
+STAR - Extremely fast (also does splice alignment, requires at least 30 Gb memory)
+To be honest, I would probably recommend STAR for almost any application at this point if you have the memory (see below)
+
+
+
+
+
+2. download and install
+https://github.com/alexdobin/STAR
+
+find one on the server:
+$ find / -name '*STAR*'
+/share/apps/genomics/STAR-2.5.2b
+
+use it directly:
+$ cd /home/wangjl/bin/
+$ ln -s /share/apps/genomics/STAR-2.5.2b/bin/Linux_x86_64/STAR
+[wangjl@nih_jin bin]$ ls
+STAR
+$ STAR --version
+STAR_2.5.2b
+
+STAR command line format:
+STAR --option1-name option1-value(s)--option2-name option2-value(s)
+
+
+
+
+3.generating genome index
+STAR --runThreadN 20 --runMode genomeGenerate --genomeDir /home/wangjl/index/STAR/ --genomeFastaFiles /share/reference/genome/hg19/hg19.fa --sjdbGTFfile /share/reference/genome/hg19/hg19_ucsc_genes.gtf --sjdbOverhang 100
+
+很费时，占用CPU很严重，建议晚上进行。小心被骂。
+Jan 17 21:18:32 ..... started STAR run
+Jan 17 21:18:32 ... starting to generate Genome files
+Jan 17 21:19:47 ... starting to sort Suffix Array. This may take a long time...
+Jan 17 21:20:03 ... sorting Suffix Array chunks and saving them to disk...
+Jan 17 21:32:57 ... loading chunks from disk, packing SA...
+Jan 17 21:34:13 ... finished generating suffix array
+Jan 17 21:34:13 ... generating Suffix Array index
+Jan 17 21:37:29 ... completed Suffix Array index
+Jan 17 21:37:29 ..... processing annotations GTF
+Jan 17 21:37:35 ..... inserting junctions into the genome indices
+Jan 17 21:39:49 ... writing Genome to disk ...
+Jan 17 21:39:50 ... writing Suffix Array to disk ...
+Jan 17 21:40:02 ... writing SAindex to disk
+Jan 17 21:40:04 ..... finished successfully
+
+
+server上本来就有该STAR可用的hg19索引:
+/data1/hou/RNA/refs/hg19_ERCC92
+/data1/hou/RNA/refs/hg19_ERCC92/index/star
+
+
+
+
+
+4.Running mapping jobs.
+
+test data
+[wangjl@nih_jin test3]$ ls -lth /home/wangjl/data/test
+total 2.5G
+-rwxr-xr-x. 1 wangjl user 287M Jan 17 21:59 c16_A1.fa.gz
+-rwxr-xr-x. 1 wangjl user 1.5G Jan 17 21:59 c15_A1.fa.gz
+-rwxr-xr-x. 1 wangjl user 100M Jan 17 21:59 c14_A1.fa.gz
+-rwxr-xr-x. 1 wangjl user 365M Jan 17 21:59 c13_A1.fa.gz
+-rwxr-xr-x. 1 wangjl user 261M Jan 17 21:59 c12_A1.fa.gz
+
+$ STAR --runThreadN 5 --genomeDir /data1/hou/RNA/refs/hg19_ERCC92/index/star --readFilesIn /home/wangjl/data/test/c13_A1.fa.gz --readFilesCommand gunzip -c --outFileNamePrefix /home/wangjl/data/afterMapping/test3/c14_A1_
+
+Jan 17 22:14:40 ..... started STAR run
+Jan 17 22:14:40 ..... loading genome
+Jan 17 22:15:10 ..... started mapping
+Jan 17 22:17:03 ..... finished successfully
+
+获得文件: c14_A1_Aligned.out.sam
+
+建议添加保留基因组选项（--genomeLoad LoadAndKeep），对于共用一套index的多个比对，能节省很多时间。
+该测序read最长150bp。
+$ STAR --runThreadN 10 \
+--genomeDir /data1/hou/RNA/refs/hg19_ERCC92/index/star \
+--readFilesIn /home/wangjl/data/test/c13_A1.fa.gz \
+--readFilesCommand gunzip \
+-c --outFileNamePrefix /home/wangjl/data/afterMapping/test3/c14_A1_ \
+--genomeLoad LoadAndKeep \
+--sjdbOverhang 149
+
+
+$ STAR --runThreadN 10 --genomeDir /data1/hou/RNA/refs/hg19_ERCC92/index/star --readFilesIn /home/wangjl/data/test/c13_A1.fa.gz --readFilesCommand gunzip -c --outFileNamePrefix /home/wangjl/data/afterMapping/test3/c14_A1_ --genomeLoad LoadAndKeep --sjdbOverhang 149
+
+
+Note, if the spike-ins are used, the reference sequence should be augmented with the DNA sequence of the spike-in molecules prior to mapping.
+注意：如果有spike-ins，参考序列也应该用spike-in分子DNA序列先扩容。
+
+Note, when UMIs are used, their barcodes should be removed from the read sequence. A common practice is to add the barcode to the read name.
+注意：使用UMI时，需要去除barcode。通常做法是把barcode加到read的名字上。
+
+
+
+
+
+
+
+
+
+5. 查看输出文件
+log、sam、剪切点注释 三类文件，需要注意的是，sam里第五列 uniquely mapping reads的map质量值是255。
+
+
+$ ls -lth
+total 1.2G
+-rw-r--r--. 1 wangjl user 1.9K Jan 17 22:17 c14_A1_Log.final.out
+-rw-r--r--. 1 wangjl user  22K Jan 17 22:17 c14_A1_Log.out
+-rw-r--r--. 1 wangjl user  364 Jan 17 22:17 c14_A1_Log.progress.out
+-rw-r--r--. 1 wangjl user 351K Jan 17 22:17 c14_A1_SJ.out.tab
+-rw-r--r--. 1 wangjl user 1.2G Jan 17 22:17 c14_A1_Aligned.out.sam
+
+(1)3个log文件
+
+Log.out: 主要的log文件，对排错和debug很重要。
+Log.progress.out: 报告该运行的统计结果，比如处理了多少reads，map上的占百分比。改文件每1min更新一次。
+Log.final.out: mapping结束后的map统计结果，对质控很重要。对每个read（单个或双端）分别做统计，然后对全部reads汇总、求平均。
+注意：STAR把一个paired-end read计为一个read，不像samtools agstat/idxstats是对每个mate分别计数。
+大多信息是关于UNIQUE mappers的，不像samtools agstat/idxstats不区分unique or multi-mappers。
+每个splicing都在splices数中计数，这和SJ.out.tab中的汇总一致。
+
+mismatch/indel error rates是按照每个碱基统计的，比如 
+total number of mismatches/indels in all unique mappers 除以total number of mapped bases.
+
+
+
+(2)1个sam文件
+Aligned.out.sam - alignments in standard SAM format.
+
+ - 为了使sam结果和下游Cufflinks or StringTie兼容，要设置 --outSAMattrIHstart 0.(默认是1)
+run Cufflinks with the library option --library-type options.
+
+For example, 
+$ cufflinks ... --library-type fr-firststrand 
+should be used for the standard dUTP protocol, including
+Illumina's stranded Tru-Seq. This option has to be used only for Cufflinks runs and not for STAR
+runs.
+In addition, it is recommended to remove the non-canonical junctions for Cufflinks runs using
+ --outFilterIntronMotifs RemoveNoncanonical.
+
+ 
+
+
+
+
+
+
+
+
+refer:
+STAR:
+https://www.cnblogs.com/Dicor/p/4004819.html
+http://www.mamicode.com/info-detail-1163133.html
+http://www.bio-info-trainee.com/727.html
+d:/ STARmanual.pdf
+
+
+========================================
+RSeQC比对质控 Mapping QC: An RNA-seq Quality Control Package --todo
+----------------------------------------
+1.目的： 
+There are many ways to measure the mapping quality, including: amount of reads mapping to rRNA/tRNAs, proportion of uniquely mapping reads, reads mapping across splice junctions, read depth along the transcripts. 
+Reference: * RSeQC: quality control of RNA-seq experiments Bioinformatics (2012) 28 (16): 2184-2185. doi: 10.1093/bioinformatics/bts356
+
+2.安装
+$ wget -b https://sourceforge.net/projects/rseqc/files/RSeQC-2.6.4.tar.gz
+安装报错，需要python2。算了，还是使用conda切换为python2.7环境，然后
+$ pip install RSeQC
+
+
+3.使用：
+http://dldcc-web.brc.bcm.edu/lilab/liguow/CGI/rseqc/_build/html/
+
+python <RSeQCpath>/geneBody_coverage.py -i input.bam -r genome.bed -o output.txt
+python <RSeQCpath>/bam_stat.py -i input.bam -r genome.bed -o output.txt
+python <RSeQCpath>/split_bam.py -i input.bam -r rRNAmask.bed -o output.txt
+
+(1)geneBody_coverage.py
+
+
+
+
+
+
+========================================
+定量比对结果 HTseq-count
+----------------------------------------
+1. 概述
+https://www.cnblogs.com/timeisbiggestboss/p/7171535.html
+
+HTSeq:一个用于处理高通量数据（High-throughout sequencing)的python包。
+HTSeq包有很多功能类，熟悉python脚本的可以自行编写数据处理脚本。
+另外，HTSeq也提供了两个脚本文件能够直接处理数据:htseq-qa(检测数据质量)和htseq-count（reads计数）。
+
+文档：http://htseq.readthedocs.io/
+
+
+
+
+2.下载和安装
+$ pip -V
+pip 9.0.1 from /home/wangjl/software/anoconda3/lib/python3.6/site-packages (python 3.6)
+
+$ pip insatll htseq
+几秒钟后安装好了。
+
+
+
+
+3. 用法：
+$ htseq-count -h
+usage: htseq-count [options] alignment_file gff_file
+...
+<alignment_file> :contains the aligned reads in the SAM format.
+	Make sure to use a splicing-aware aligner such as TopHat.
+	To read from standard input, use - as <alignment_file>.
+
+$ cd /home/wangjl/data/afterMapping/quantify
+$ htseq-count /home/wangjl/data/afterMapping/c12_A1_Aligned.out.sam /data1/hou/RNA/refs/hg19_ERCC92/UCSC_hg19_geneid.gtf > htseq_c12_A1.sam.count 2>htseq_c12_A1.sam.count.log
+$ ls -lth
+total 276K
+-rw-r--r--. 1 wangjl user 270K Jan 19 16:58 htseq_c12_A1.sam.count
+-rw-r--r--. 1 wangjl user 1.8K Jan 19 16:58 htseq_c12_A1.sam.count.log
+
+
+
+
+http://www.bio-info-trainee.com/244.html
+
+
+
+========================================
+定量比对结果 featureCounts: a ultrafast and accurate read summarization program
+----------------------------------------
+1. featurecounts具有count速度快，兼容性好的特点。
+http://blog.sciencenet.cn/home.php?mod=space&uid=2609994&do=blog&id=985692
+
+发现Subread是个功能很全面的软件，而且还有相对应的R包Rsubread。二进制包直接可用。
+http://www.360doc.com/content/18/0112/01/50153987_721213961.shtml
+
+
+软件的作者认为其软件的优点在于（我就复制黏贴了）：
+
+It carries out precise and accurate read assignments by taking care of indels, junctions and structural variants in the reads
+It takes only half a minute to summarize 20 million reads（真是快。。。）
+It supports GTF and SAF format annotation
+It supports strand-specific read counting
+It can count reads at feature (eg. exon) or meta-feature (eg. gene) level
+Highly flexible in counting multi-mapping and multi-overlapping reads. Such reads can be excluded, fully counted or fractionally counted（这点跟HTSeq-count不一样了，其对于多重比对的reads并不是只采用全部丢弃的策略，按照其说法是更加灵活的对待）
+It gives users full control on the summarization of paired-end reads, including allowing them to check if both ends are mapped and/or if the fragment length falls within the specified range（可让使用者更加个性化的使用）
+Reduce ambuiguity in assigning read pairs by searching features that overlap with both reads from the pair
+It allows users to specify whether chimeric fragments should be counted（考虑的有点周到）
+Automatically detect input format (SAM or BAM)
+Automatically sort paired-end reads. Users can provide either location-sorted or namesorted bams files to featureCounts. Read sorting is implemented on the fly and it only incurs minimal time cost
+
+
+2. 可用性和实现：featureCounts作为Subread（http://www.sourceforge.net/projects/subread）或Rsubread（http://www.bioconductor.org/packages/release/bioc/html/Rsubread.html）软件包的一部分
+https://sourceforge.net/projects/subread/
+
+$ wget -b https://sourceforge.net/projects/subread/files/subread-1.6.0/subread-1.6.0-Linux-x86_64.tar.gz/download
+$ mv download subread-1.6.0-Linux-x86_64.tar.gz
+$ tar zxvf subread-1.6.0-Linux-x86_64.tar.gz
+$ vim ~/.bashrc 
+在该文件结尾增加一行
+export PATH=/home/wangjl/software/subread-1.6.0-Linux-x86_64/bin:$PATH
+保存后加载改文件，使其生效。
+$ source ~/.bashrc
+
+$ featureCounts -v
+featureCounts v1.6.0
+
+
+3. 使用：
+$ featureCounts -h 参数有点多。
+
+官方简单教程如下：
+$featureCounts -T 6 -p -t exon -g gene_id -a ~/annotation/mm10/gencode.vM13.annotation.gtf -o SRR3589959_featureCounts222.txt SRR3589959.bam
+
+主要的参数：
+-a 输入GTF/GFF基因组注释文件
+-p 这个参数是针对paired-end数据
+-F 指定-a注释文件的格式，默认是GTF
+-g 从注释文件中提取Meta-features信息用于read count，默认是gene_id
+-t 跟-g一样的意思，其是默认将exon作为一个feature
+-o 输出文件
+-T 多线程数
+
+其他参数介绍只能看文档了，不常用的话也是记不住的，要用时再去翻就行
+运行中和运行后有两张图可以看看，主要讲了其运行中的一些信息，如下：
+
+
+
+
+例子：
+# include multimapping
+<featureCounts_path>/featureCounts -O -M -Q 30 -p -a genome.gtf -o outputfile input.bam
+# exclude multimapping
+<featureCounts_path>/featureCounts -Q 30 -p -a genome.gtf -o outputfile input.bam
+
+
+
+
+测试：
+$ featureCounts -O -M -Q 30 -p -a genome.gtf -o outputfile input.bam
+-O Assign reads to all their overlapping meta-features (or features if -f is specified).
+-M Multi-mapping reads will also be counted. For a multi-mapping read, all its reported alignments will be counted. The 'NH' tag in BAM/SAM input is used to detect multi-mapping reads.
+-Q <int>    The minimum mapping quality score a read must satisfy in order to be counted. For paired-end reads, at least one end should satisfy this criteria. 0 by default.
+-p        If specified, fragments (or templates) will be counted instead of reads. This option is only applicable for paired-end reads.
+-a <string>   Name of an annotation file. GTF/GFF format by default.
+        See -F option for more format information. Inbuilt annotations (SAF format) is available in 'annotation' directory of the package.
+
+
+$ featureCounts -T 5 -O -M -a /data1/hou/RNA/refs/hg19_ERCC92/UCSC_hg19_geneid.gtf -o /home/wangjl/data/afterMapping/quantify2/fC_c12_A1.sam.count ../c12_A1_Aligned.out.sam 2>fC_c12_A1.sam.count.log
+
+输出文件的解释：
+[wangjl@nih_jin quantify2]$ ls -lth
+total 19M
+-rw-r--r--. 1 wangjl user  19M Jan 19 21:54 fC_c12_A1.sam.count
+-rw-r--r--. 1 wangjl user 3.6K Jan 19 21:54 fC_c12_A1.sam.count.log
+-rw-r--r--. 1 wangjl user  330 Jan 19 21:54 fC_c12_A1.sam.count.summary
+
+(1).从log也就是屏幕输出可见，输出为
+[wangjl@nih_jin quantify2]$ cat *log
+
+        ==========     _____ _    _ ____  _____  ______          _____
+        =====         / ____| |  | |  _ \|  __ \|  ____|   /\   |  __ \
+          =====      | (___ | |  | | |_) | |__) | |__     /  \  | |  | |
+            ====      \___ \| |  | |  _ <|  _  /|  __|   / /\ \ | |  | |
+              ====    ____) | |__| | |_) | | \ \| |____ / ____ \| |__| |
+        ==========   |_____/ \____/|____/|_|  \_\______/_/    \_\_____/
+          v1.6.0
+
+//  featureCounts setting  \\
+||                                                                            ||
+||             Input files : 1 SAM file                                       ||
+||                           S ../c12_A1_Aligned.out.sam                      ||
+||                                                                            ||
+||             Output file : /home/wangjl/data/afterMapping/quantify2/fC_ ... ||
+||                 Summary : /home/wangjl/data/afterMapping/quantify2/fC_ ... ||
+||              Annotation : /data1/hou/RNA/refs/hg19_ERCC92/UCSC_hg19_ge ... ||
+||      Dir for temp files : /home/wangjl/data/afterMapping/quantify2         ||
+||                                                                            ||
+||                 Threads : 5                                                ||
+||                   Level : meta-feature level                               ||
+||              Paired-end : no                                               ||
+||         Strand specific : no                                               ||
+||      Multimapping reads : counted                                          ||
+|| Multi-overlapping reads : counted                                          ||
+||   Min overlapping bases : 1                                                ||
+||                                                                            ||
+\\  http://subread.sourceforge.net/  //
+
+//  Running  \\
+||                                                                            ||
+|| Load annotation file /data1/hou/RNA/refs/hg19_ERCC92/UCSC_hg19_geneid. ... ||
+||    Features : 742585                                                       ||
+||    Meta-features : 28610                                                   ||
+||    Chromosomes/contigs : 152                                               ||
+||                                                                            ||
+|| Process SAM file ../c12_A1_Aligned.out.sam...                              ||
+||    Single-end reads are included.                                          ||
+||    Assign reads to features...                                             ||
+||    Total reads : 3353091                                                   ||
+||    Successfully assigned reads : 2732203 (81.5%)                           ||
+||    Running time : 0.04 minutes                                             ||
+||                                                                            ||
+||                         Read assignment finished.                          ||
+||                                                                            ||
+|| Summary of counting results can be found in file "/home/wangjl/data/after  ||
+|| Mapping/quantify2/fC_c12_A1.sam.count.summary"                             ||
+||                                                                            ||
+\\  http://subread.sourceforge.net/  //
+
+Successfully assigned reads : 2732203 (81.5%)  说明有81.5%定位到基因上了。
+其余的为什么没有定位上？请看summary文件。
+
+(2) $ cat *summary
+Status  ../c12_A1_Aligned.out.sam
+Assigned        2732203
+Unassigned_Unmapped     0
+Unassigned_MappingQuality       0
+Unassigned_Chimera      0
+Unassigned_FragmentLength       0
+Unassigned_Duplicate    0
+Unassigned_MultiMapping 0
+Unassigned_Secondary    0
+Unassigned_Nonjunction  0
+Unassigned_NoFeatures   620888
+Unassigned_Overlapping_Length   0
+Unassigned_Ambiguity    0
+
+(3)运行速度？没的说，仅仅Running time : 0.04 minutes！比HTseq快了一个数量级。
+fC_c12_A1.sam.count 文件包含了很多杂乱的信息，如果想了解每个基因上的count数，则只需要提取出第1列和第7列的信息
+$ cut -f 1,7 fC_c12_A1.sam.count |grep -v '^#' >fC_c12_A1.sam.count.lite
+
+
+
+
+
+
+
+
+========================================
+定量比对结果 RSEM --todo
+----------------------------------------
+RSEM: accurate transcript quantification from RNA-Seq data with or without a reference genome
+https://bmcbioinformatics.biomedcentral.com/articles/10.1186/1471-2105-12-323
+
+
+http://deweylab.github.io/RSEM/
+
+
+========================================
+使用Salmon对RNAseq进行直接定量 --todo How?
+----------------------------------------
+无需mapping，直接对RNA结果fq文件进行定量。
+手册：https://combine-lab.github.io/salmon/getting_started/
+
+
+
+使用 salmon 直接对 fq 进行定量。
+注意：salmon 产生估计的read计数和估计的转录本每百万( transcripts per million (tpm))，
+按照我们的经验，后者过于纠正scRNASeq中的长基因的表达，所以推荐使用read计数。
+
+$ cd /home/wangjl/data/afterMapping/quantify2
+
+
+
+1. Salmon is a tool for wicked-fast transcript quantification from RNA-seq data. 
+官网：https://combine-lab.github.io/salmon/
+文档：http://salmon.readthedocs.io/en/latest/salmon.html
+
+$ cd /home/wangjl/software
+$ wget -b https://github.com/COMBINE-lab/salmon/releases/download/v0.9.1/Salmon-0.9.1_linux_x86_64.tar.gz
+$ tar xzvf Salmon-0.9.1_linux_x86_64.tar.gz
+$ vim ~/.bashrc
+结尾增加一行：
+export PATH=/home/wangjl/software/Salmon-latest_linux_x86_64/bin:$PATH
+保存后执行该文件：
+$ source ~/.bashrc 
+
+$ salmon -h
+Salmon v0.9.1
+
+Usage:  salmon -h|--help or
+        salmon -v|--version or
+        salmon -c|--cite or
+        salmon [--no-version-check] <COMMAND> [-h | options]
+
+Commands:
+     index Create a salmon index
+     quant Quantify a sample
+     swim  Perform super-secret operation
+     quantmerge Merge multiple quantifications into a single file
+
+例子1：
+$ salmon quant -i salmon_transcript_index -1 reads1.fq.gz -2 reads2.fq.gz -p #threads -l A -g genome.gtf --seqBias --gcBias --posBias
+
+
+例子2：
+#!/bin/bash
+for fn in data/DRR0161{25..40};
+do
+samp=`basename ${fn}`
+echo "Processing sample ${samp}"
+salmon quant -i athal_index -l A \
+         -1 ${fn}/${samp}_1.fastq.gz \
+         -2 ${fn}/${samp}_2.fastq.gz \
+         -p 8 -o quants/${samp}_quant
+done 
+其中
+-i 是index位置
+-l A 是自动判断文库类型（链特异与否）
+-p 指定线程
+-o 输出文件位置
+输入read文件：-r, -1, -2
+
+
+(1)生成索引
+$ salmon index -t athal.fa.gz -i athal_index
+
+找不到人的transcriptome，没法生成索引。
+https://github.com/COMBINE-lab/salmon/issues/186
+作者留言说怎么下载。
+
+1).表达组 human transcriptome 下载 
+https://www.gencodegenes.org/releases/current.html
+我提的github issue: https://github.com/COMBINE-lab/salmon/issues/186
+
+$ wget -c ftp://ftp.sanger.ac.uk/pub/gencode/Gencode_human/release_27/gencode.v27.transcripts.fa.gz
+不要用axel多线程下载，这个网站太敏感，会禁止访问，欧洲人就是没有美国人大气。
+
+
+
+
+
+
+========================================
+bedtools : a powerful toolset for genome arithmetic 强有力的基因组算法瑞士军刀
+----------------------------------------
+最新版的官网：
+http://bedtools.readthedocs.io/en/latest/index.html
+
+旧版本的pdf：
+https://insidedna.me/tool_page_assets/pdf_manual/bedtools.pdf
+
+Collectively, the bedtools utilities are a swiss-army knife of tools for a wide-range of genomics analysis tasks. The most widely-used tools enable genome arithmetic: that is, set theory on the genome. For example, bedtools allows one to intersect, merge, count, complement, and shuffle genomic intervals from multiple files in widely-used genomic file formats such as BAM, BED, GFF/GTF, VCF. While each individual tool is designed to do a relatively simple task (e.g., intersect two interval files), quite sophisticated analyses can be conducted by combining multiple bedtools operations on the UNIX command line.
+
+bedtools is developed in the Quinlan laboratory at the University of Utah and benefits from fantastic contributions made by scientists worldwide.
+
+
+
+安装方法：
+#apt-get install bedtools #Debian/Ubuntu. 
+#yum install BEDTools #Fedora/Centos
+
+或者：
+$ wget https://github.com/arq5x/bedtools2/releases/download/v2.25.0/bedtools-2.25.0.tar.gz
+$ tar -zxvf bedtools-2.25.0.tar.gz
+$ cd bedtools2
+$ make
+
+查看版本号：
+bedtools -version 
+查看帮助：
+bedtools -help 
+
+
+使用方法：
+
+# bedtools sorted
+$ bedtools intersect \
+           -a ccds.exons.bed -b aln.bam.bed \
+           -c \
+           -sorted
+
+# bedtools unsorted
+$ bedtools intersect \
+           -a ccds.exons.bed -b aln.bam.bed \
+           -c
+
+# bedmap (without error checking)
+$ bedmap --echo --count --bp-ovr 1 \
+         ccds.exons.bed aln.bam.bed
+
+# bedmap (no error checking)
+$ bedmap --ec --echo --count --bp-ovr 1 \
+         ccds.exons.bed aln.bam.bed
+
+更多用法：
+http://bedtools.readthedocs.io/en/latest/content/example-usage.html
+高级用法：
+http://bedtools.readthedocs.io/en/latest/content/advanced-usage.html
+
+Report the number of genes that each alignment overlaps.
+$ bedtools intersect -a reads.bed -b genes.bed -c
+
+
+========================================
+----------------------------------------
+
+
+
+
+========================================
+----------------------------------------
+
+
+========================================
+----------------------------------------
+
+
+
+
+========================================
+----------------------------------------
+
+
+========================================
+----------------------------------------
+
+

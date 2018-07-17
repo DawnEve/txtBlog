@@ -56,6 +56,4 @@ txtBlog v0.4.1
 
 
 ## 参考资料：  
-footer效果：https://flowplayer.org/  
-http://www.zixue.it/phpvideo  
 footer鲜活：http://www.iisp.com/ztview/ID_18392.html  
