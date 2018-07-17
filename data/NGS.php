@@ -28,10 +28,8 @@ return array (
     1 => '数据分析语言',
     2 => array (
       array('每种应用的分析方法概述','analysis01','txt'),
-      array('R语言基础','R01','txt'),
-      array('R语言进阶','R02','txt'),
-      array('bioconductor基础','bioconductor01','txt'),
-      array('ggplot2绘图','ggplot2','txt'),
+
+
       array('perl基础','lang-Perl','txt'),
     ),
   ),  
@@ -44,7 +42,7 @@ return array (
       array('统计与统计参数','NGS_statistics','txt'),
       array('db_参考基因组_在线工具','genome401','txt'),
       array('FAQ of TCGA','FAQ_TCGA','txt'),
-      array('本地生信软件','genome402','txt'),
+      array('本地生信软件','localSoft402','txt'),
       array('circos','circos','txt'),
     ),
   ),

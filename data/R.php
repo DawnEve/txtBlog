@@ -12,6 +12,29 @@ return array (
   ),
   
   
+  array (
+    0 => 1,
+    1 => 'R语言',
+    2 => array (
+      array('R语言基础','R01','txt'),
+      array('R语言进阶','R02','txt'),
+	  
+      array('bioconductor基础','bioconductor01','txt'),
+    ),
+  ),
+  
+
+  
+  
+  array (
+    0 => 1,
+    1 => 'ggplot2',
+    2 => array (
+      array('ggplot2绘图','ggplot2','txt'),
+    ),
+  ),
+  
+
   
   
 );
