@@ -46,7 +46,6 @@ return array (
       array('FAQ of TCGA','FAQ_TCGA','txt'),
       array('本地生信软件','genome402','txt'),
       array('circos','circos','txt'),
-      array('scSeq-10xGenomics','scSeq-10xGenomics','txt'),
     ),
   ),
   
