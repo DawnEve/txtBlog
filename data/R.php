@@ -17,8 +17,8 @@ return array (
     1 => 'R语言',
     2 => array (
       array('R语言基础','R01','txt'),
-      array('R进阶-data frame','R02-data.frame','txt'),
-      array('R进阶-apply','R03-apply','txt'),
+      array('R进阶-data frame等','R02-data.frame','txt'),
+      array('R进阶-杂项','R03-adv','txt'),
 	  
       array('bioconductor基础','bioconductor01','txt'),
     ),
