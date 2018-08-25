@@ -20,20 +20,15 @@
 			array('http://jsbin.com/','jsbin','练习前端的好工具！'),
 			array('http://jquery.cuishifeng.cn/','jQuery手册'),
 
+			array('http://www.runoob.com/','菜鸟教程网'),
 			array('http://www.w3school.com.cn/','w3school'),
 			array('http://mioweb.biomooc.com/','miostudio'),
 			array('http://php.net/','PHP'),
 			array('http://www.sqlite.org/','sqlite'),
-			array('https://openresty.org/download/agentzh-nginx-tutorials-zhcn.html','Nginx教程(版本2015.03.19)'),
+			array('http://nginx.org/en/docs/','Nginx'),
 			array('http://fex.baidu.com/ueditor/#start-config','uEditor','百度富文本编辑器'),
 			//
 			array('http://aibusy.com/blog/?p=226','Sublime插件'),
-			array('http://www.uimaker.com/member/reg_new.php','UI制造者'),
-			array('http://bonsaiden.github.io/JavaScript-Garden/zh/#function.closures','js秘密花园'),
-			array('http://www.qietu.com/','切图网'),
-
-			array('http://www.bootcss.com/','bootstrap'),
-			array('http://www.shejidaren.com/free-bootstrap-ui-kits.html','设计达人'),
 		);
 		echo '<br />友情链接[IT Tools]: ';
 		print_links($links_IT_tools);
@@ -67,6 +62,8 @@
 			array('http://www.cnblogs.com/jikey/p/4426105.html','豪情的博客', '高级qq群'),
 			array('http://www.nowamagic.net/','简明现代魔法','其实每个程序员都是魔法师'),
 			array('http://www.ycku.com/course/','李炎恢','瓢城Web俱乐部'),
+			array('http://bonsaiden.github.io/JavaScript-Garden/zh/#function.closures','js秘密花园'),
+			array('http://www.bootcss.com/','bootstrap'),
 
 			array('http://www.bluesdream.com/blog/','BlueDream','前端博客'),
 			array('http://ideazhao.com/', '灵感的小窝','生活琐碎、前端杂谈、诗情画意、随心笔记'),
@@ -80,18 +77,21 @@
 			array("https://www.shiyanlou.com/",'实验楼','第一家以实验为核心的IT在线教育平台'),
 			
 			//
-			array("http://www.w3.org/",'W3C'),
-			array('http://www.w3school.com.cn/','w3school'),
-			array("http://www.w3ctech.com/",'w3ctech'),
-			array("http://www.w3cplus.com/",'w3cplus'),
-			
+			//array("http://www.w3.org/",'W3C'),
+			//array("http://www.w3ctech.com/",'w3ctech'),
+			//array("http://www.w3cplus.com/",'w3cplus'),
 			array('http://web.jobbole.com/85160/','伯乐在线'),
-			array('http://www.runoob.com/','菜鸟教程网'),
 			array('https://www.v2ex.com/', 'v2ex', 'V2EX 是一个关于分享和探索的地方。创意工作者们的社区'),
 			array('http://tool.oschina.net/apidocs', 'API手册', 'oschina编程API手册'),
-			array('http://stackoverflow.com/','Stack Overflow'),
-			array('http://segmentfault.com/','segmentfault', '中文编程问答'),
+			array('http://stackoverflow.com/','StackOverflow'),
+			array('http://segmentfault.com/','SegmentFault', '中文编程问答'),
 			array('http://www.kancloud.cn/explore','看云文档'),
+			
+			//切图
+			array('http://www.uimaker.com/member/reg_new.php','UI制造者'),
+			array('http://www.qietu.com/','切图网'),
+
+			array('http://www.shejidaren.com/free-bootstrap-ui-kits.html','设计达人'),
 		);
 		echo '<br />前端技术: ';
 		print_links($links_Front);

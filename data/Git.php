@@ -52,5 +52,16 @@ return array (
     ),
   ),
   
+    
+  array (
+    0 => 5,
+    1 => '文本编辑器IDE',
+    2 => 
+    array (
+	  array('sublime编辑器','sublime001', 'html'),
+	  array('phpStorm','phpStorm001', 'md'),
+    ),
+  ),
+  
   
 );
