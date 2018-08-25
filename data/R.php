@@ -10,22 +10,24 @@ return array (
       array('FAQ','R003','html'),
     ),
   ),
-  
-  
+
+
   array (
     0 => 1,
     1 => 'R语言',
     2 => array (
       array('R语言基础','R01','txt'),
-      array('R语言进阶','R02','txt'),
+      array('R进阶-data frame等','R02-data.frame','txt'),
+      array('R进阶-杂项','R03-adv','txt'),
 	  
       array('bioconductor基础','bioconductor01','txt'),
     ),
   ),
-  
 
-  
-  
+
+
+
+
   array (
     0 => 1,
     1 => 'ggplot2',

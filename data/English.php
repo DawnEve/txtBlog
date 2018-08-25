@@ -10,8 +10,22 @@ return array (
       array('FAQ','en003','html'),
     ),
   ),
-  
-  
-  
-  
+
+
+
+  array (
+    0 => 2,
+    1 => '日语资料',
+    2 => array (
+      array('日语资料1','jp001','html',),
+      array('日语资料2','jp002','txt'),
+    ),
+  ),
+
+
+
+
+
+
+
 );

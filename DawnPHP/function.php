@@ -59,7 +59,7 @@ function print_links($links,$name='',$title=''){
 			//如果不是结尾，增加|
 			if($i!= (count($links)-1) ) $str .=  ' | ';
 			//如果是结尾，换行
-			if( ($i!=0) && ($i%15==0) ) $str .=  '<br />';
+			//if( ($i!=0) && ($i%15==0) ) $str .=  '<br />';
 		}
 	}else{
 		//如果是一级数组

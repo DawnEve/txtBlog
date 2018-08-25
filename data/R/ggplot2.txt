@@ -2,6 +2,60 @@ ggplot2
 
 
 
+
+
+========================================
+ggplot2 书中缺少的资源
+----------------------------------------
+
+1. movies 数据集(P129) 
+
+gplot2movies: Movies Data
+A dataset about movies. This was previously contained in ggplot2, but has been moved its own package to reduce the download size of ggplot2.
+https://cran.r-project.org/web/packages/ggplot2movies/index.html
+原本包含在ggplot2中的数据集，为了减少ggplot2的体积，现在该数据集已去掉。
+
+> install.packages("ggplot2movies")
+
+
+
+
+========================================
+资源 todo
+----------------------------------------
+ggplot2等 http://www.cookbook-r.com/Graphs/
+
+http://blog.rstudio.com/2016/11/14/ggplot2-2-2-0/
+
+https://www.cnblogs.com/nxld/p/6059603.html
+
+
+ggplot2例子：
+http://r-statistics.co/Top50-Ggplot2-Visualizations-MasterList-R-Code.html
+
+
+如何用ggplot2画经济学人上的插图
+http://tutorials.iq.harvard.edu/R/Rgraphics/Rgraphics.html#orgheadline17
+哈佛大学数据课程 http://tutorials.iq.harvard.edu
+
+
+========================================
+ggplot2默认主题怎么设置？
+----------------------------------------
+1.设置默认主题
+#Cowplot made ggplot2 theme disappear / How to see current ggplot2 theme, and restore the default?
+#https://stackoverflow.com/questions/41096293/cowplot-made-ggplot2-theme-disappear-how-to-see-current-ggplot2-theme-and-res
+#library(cowplot)
+theme_set(theme_grey())
+
+
+2.如何选择其他主题
+g=ggplot(...) #画图命令
+g + theme_gray() #添加主题
+
+
+
+
 ========================================
 ggplot2画errorbar
 ----------------------------------------
@@ -142,6 +196,191 @@ http://stackoverflow.com/questions/12033319/plot-mean-and-sd-of-dataset-per-x-va
 a <- data.frame(x=rep(c(1,2,3,5,7,10,15,20), 5),
     y=rnorm(40, sd=2) + rep(c(4,3.5,3,2.5,2,1.5,1,0.5), 5))
 ggplot(a, aes(x=x,y=y)) + geom_point() +geom_smooth()
+
+
+
+
+========================================
+柱状图(高度均值,带error bar)+散点图 done
+----------------------------------------
+效果图：http://tool.biomooc.com/R_scripts/index.html
+
+library(ggplot2)
+library(reshape2)
+
+#示例数据：某基因在对照和肿瘤样本中的表达量。
+d1=data.frame(
+  control=c(10,20,30,40,30,60,20,40,20,20,10,20,30,40,30,40,20,40,20,20),
+  tumor=c(50,70,40,60,80,90,40,50,70,80,50,70,40,60,80,90,40,50,70,80)
+);
+
+# 数据框重塑，数据合并为一列，添加分类列
+d2=melt(d1,
+	variable.name="type",#新变量的名字
+	value.name="value" #值得名字
+);
+d2
+
+
+
+######## 开始画图1 箱线图 + 散点图 done
+ggplot(d2,aes(factor(type), value))+
+  geom_boxplot()+
+  geom_jitter()
+
+
+######## 开始画图2 带误差bar的柱状图 + 散点图 done
+#http://www.cookbook-r.com/Manipulating_data/Summarizing_data/
+## Summarizes data.
+## Gives count, mean, standard deviation, standard error of the mean, and confidence interval (default 95%).
+##   data: a data frame.
+##   measurevar: the name of a column that contains the variable to be summariezed
+##   groupvars: a vector containing names of columns that contain grouping variables
+##   na.rm: a boolean that indicates whether to ignore NA's
+##   conf.interval: the percent range of the confidence interval (default is 95%)
+summarySE <- function(data=NULL, measurevar, groupvars=NULL, na.rm=FALSE,
+                      conf.interval=.95, .drop=TRUE) {
+  library(plyr)
+  
+  # New version of length which can handle NA's: if na.rm==T, don't count them
+  length2 <- function (x, na.rm=FALSE) {
+    if (na.rm) sum(!is.na(x))
+    else       length(x)
+  }
+  
+  # This does the summary. For each group's data frame, return a vector with
+  # N, mean, and sd
+  datac <- ddply(data, groupvars, .drop=.drop,
+	 .fun = function(xx, col) {
+	   c(N    = length2(xx[[col]], na.rm=na.rm),
+		 mean = mean   (xx[[col]], na.rm=na.rm),
+		 sd   = sd     (xx[[col]], na.rm=na.rm)
+	   )
+	 },
+	 measurevar
+  )
+
+  # Rename the "mean" column    
+  datac <- rename(datac, c("mean" = measurevar))
+
+  datac$se <- datac$sd / sqrt(datac$N)  # Calculate standard error of the mean
+
+  # Confidence interval multiplier for standard error
+  # Calculate t-statistic for confidence interval: 
+  # e.g., if conf.interval is .95, use .975 (above/below), and use df=N-1
+  ciMult <- qt(conf.interval/2 + .5, datac$N-1)
+  datac$ci <- datac$se * ciMult
+
+  return(datac)
+}
+
+
+# http://www.cookbook-r.com/Graphs/Plotting_means_and_error_bars_(ggplot2)/
+d3 <- summarySE(d2, measurevar="value", groupvars=c("type"))
+d3
+
+ggplot(d3, aes(x=type, y=value)) + 
+  geom_bar(aes(fill=type),position=position_dodge(), stat="identity", width=0.5) +
+  geom_errorbar(aes(ymin=value-ci, ymax=value+ci),
+	width=.2, # Width of the error bars
+	position=position_dodge(.9))+
+  geom_jitter(data=d2,aes(type,value), width=0.15) +
+  ylab( expression(paste( italic("Sox2")," Expression(normalization)") ) )
+  #ylab("Sox2 Expression\n(normalization)") 
+
+
+
+========================================
+ggplot2坐标轴控制
+----------------------------------------
+1.隐藏x轴上的标签文字。
+scale_x_continuous(labels = NULL)
+
+
+2.更多控制选项
+ggplot(readsCounts_df, aes(cell_id, mean, fill=factor(type)))+
+  geom_histogram(stat='identity', position="dodge")+ #identity用数量作为柱子高度。dodge表并列
+  scale_fill_hue("Type", breaks=c("h","nh","all"))+ #图例标题，图例顺序，图例重命名用labels=c()
+  labs(x="Cell ID", y="Mean read counts")+ #坐标轴重命名
+  scale_x_discrete(limits=tmp2$cell_id, labels = NULL) #对x坐标进行重排序
+
+
+3.图例
+  # scale_color_hue("Type",breaks=c("h","nh","all"))+ #修改图例顺序
+  theme(legend.position="none") + #隐藏图例
+
+
+4.标记p值
+# 做t检验
+p_h_nh=t.test(mean_h, mean_nh)$p.value;p_h_nh
+p_h_all=t.test(mean_h, mean_all)$p.value;p_h_all
+#保留2位有效数字
+p_h_nh=formatC(p_h_nh, format = "e", digits = 2)
+p_h_all=formatC(p_h_all, format = "e", digits = 2)
+
+  #画线，在线上标记p值
+g+geom_segment(aes(x=1, y=155, xend=2, yend=155))+ #横线
+  annotate("text", x=1.5, y=160, label=p_h_nh, size=3) +#annotate函数也可以添加标签
+  geom_segment(aes(x=1, y=165, xend=3, yend=165))+ #横线
+  annotate("text", x=2, y=170, label=p_h_all, size=3)
+  
+5.坐标轴标签60度转向，同时一次显示两张图。
+  #数据宽变长
+  library(reshape2)
+  #画图1 raw counts
+  g1=ggplot(melt(exp_df_cell1,id.vars="geneSymbol", measure.vars=c("APA_1","APA_2")), aes(geneSymbol, value,fill=variable))+
+    geom_histogram(stat="identity")+
+    #geom_histogram(stat="identity", position="fill")+
+    theme(  axis.text.y=element_text(angle=90, hjust=1,size=8),legend.position="top" )+
+    labs(title=s1)+ylab("Read counts")+#xlab("Gene Symbols")+
+    scale_x_discrete(limits=o_gs, name=NULL, labels=NULL) +
+    theme(axis.title.x=element_blank(),plot.margin=unit(x=c(2,5,0,5),units="mm"))+
+    scale_fill_discrete("Type")
+  #画图2 percentage
+  g2=ggplot(melt(exp_df_cell1,id.vars="geneSymbol", measure.vars=c("APA_1p","APA_2p")), aes(geneSymbol, value,fill=variable))+
+    geom_histogram(stat="identity")+
+    #geom_histogram(stat="identity", position="fill")+
+    theme(axis.text.x=element_text(angle=60, hjust=1,size=8,color="grey50"), #坐标轴刻度旋转60度。
+          axis.text.y=element_text(angle=90, hjust=1,size=8),
+          plot.margin=unit(x=c(0,5,2,5),units="mm"), legend.position="none")+#guides(fill=FALSE)+
+    ylab("Percentage")+#xlab("Gene Symbols")+
+    scale_x_discrete(name="Gene Symbols", limits=o_gs)
+  library(scater)
+  multiplot(g1,g2)
+  # #这就是需要的效果
+  
+========================================
+----------------------------------------
+
+
+
+========================================
+----------------------------------------
+
+
+
+========================================
+----------------------------------------
+
+
+
+========================================
+----------------------------------------
+
+
+
+========================================
+----------------------------------------
+
+
+
+========================================
+----------------------------------------
+
+
+
+========================================
+----------------------------------------
 
 
 

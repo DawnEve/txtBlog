@@ -18,6 +18,7 @@ return array (
       array('Python准备','Python100','txt',),
       array('Python快速入门','Python101','txt',),
       array('Python基础详解','Python102','txt',),
+      array('Python片段','Python103-pieces','txt',),
     ),
   ),
   
