@@ -10,15 +10,24 @@ return array (
       array('FAQ','Python003','html'),
     ),
   ),
-  
+
   array (
-    0 => 1,
+    0 => 2,
     1 => 'Python语法',
     2 => array (
       array('Python准备','Python100','txt',),
       array('Python快速入门','Python101','txt',),
       array('Python基础详解','Python102','txt',),
       array('Python片段','Python103-pieces','txt',),
+    ),
+  ),
+  
+   
+  array (
+    0 => 3,
+    1 => '机器学习ML',
+    2 => array (
+      array('机器学习概述','MachineLearning-01','txt',),
     ),
   ),
   

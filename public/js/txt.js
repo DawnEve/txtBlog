@@ -17,11 +17,15 @@ function addContents(){
 			var oH4 = aH4[i];
 			oH4.parentNode.insertBefore( createElement('a',{'class':'smallA', 'name':i}, '[Section '+(i+1)+']'), oH4 ); //显示从1开始，而不是0.
 			
+			//li中添加span,span中添加text
+			var innerSpan = createElement('span',{},text );
+			var innerLi = createElement('li',{'class':'text_menu'} );
+			
 			// 添加点击锚点
-			var innerLi = createElement('li',{'class':'text_menu'},text );
+			var innerA = createElement('a',{'href':'#'+i});
 			
 			// 装载锚点 
-			var innerA = createElement('a',{'href':'#'+i});
+			innerLi.appendChild(innerSpan);
 			innerA.appendChild(innerLi);
 			oUl.appendChild( innerA );
 		}

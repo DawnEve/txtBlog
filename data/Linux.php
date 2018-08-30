@@ -6,16 +6,15 @@ return array (
     1 => '前言与资料',
     2 => array (
       array('项目描述','Linux001','html',),
-      array('FAQ','Linux003','html'),
+      array('FAQ','Linux002','html'),
     ),
   ),
   
 
   array (
-    0 => 1,
+    0 => 2,
     1 => 'Linux常用操作',
-    2 => 
-    array (
+    2 => array (
 	  array('十大常用命令','Linux101', 'txt'),
 	  //array('VIM常用命令','vim001', 'txt'),
 	  array('字符awk/sed/shell','string_process', 'txt'),
@@ -29,10 +28,9 @@ return array (
   
 
   array (
-    0 => 2,
+    0 => 3,
     1 => '网络服务',
-    2 => 
-    array (
+    2 => array (
 	  //array('webTools','webTools', 'txt'),
 	  //array('iptables安全防护','Linux201','txt' ),
 	  //array('科学上网','crackTheWall','html' ),
@@ -52,10 +50,9 @@ return array (
   
   
   array (
-    0 => 2,
+    0 => 4,
     1 => '虚拟机和docker',
-    2 => 
-    array (
+    2 => array (
 	  array('VirtualBox','VirtualBox001','md' ),
 	  array('docker笔记','docker_note','txt' ),
 	  array('docker快速入门','docker001','md' ),
