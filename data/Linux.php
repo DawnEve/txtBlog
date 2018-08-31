@@ -7,6 +7,7 @@ return array (
     2 => array (
       array('项目描述','Linux001','html',),
       array('FAQ','Linux002','html'),
+      array('windows','windows','txt'),
     ),
   ),
   
@@ -16,6 +17,8 @@ return array (
     1 => 'Linux常用操作',
     2 => array (
 	  array('十大常用命令','Linux101', 'txt'),
+	  array('系统与磁盘维护','LinuxBase01', 'txt'),
+	  array('bash和shell编程','LinuxBase02-shell', 'txt'),
 	  //array('VIM常用命令','vim001', 'txt'),
 	  array('字符awk/sed/shell','string_process', 'txt'),
 	  array('用户管理','linux102', 'txt'),

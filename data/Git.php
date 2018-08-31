@@ -48,6 +48,7 @@ return array (
     array (
 	  array('软件研发管理','mg_201_soft','txt' ),
 	  array('人员管理','mg_202_man','txt' ),
+	  array('科研经验','mg_203_research','txt' ),
 
     ),
   ),

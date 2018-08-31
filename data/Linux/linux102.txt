@@ -1,13 +1,27 @@
 Ubuntu下的用户管理与远程登录
 
 
+linux简介3|用户与权限管理, 增加sudo权限
+
 emacs 编辑器：http://www.gnuemacs.org/
 DB7DW3TQ17
 
 ========================================
-添加新用户
+添加新用户、删除用户
 ----------------------------------------
-添加用户
+建立用户的步骤：http://www.2cto.com/os/201211/167632.html
+1).增加用户useradd, 设置密码 passwd; 2).创建家目录 -d 3). 指定shell位置 -s
+
+一步搞定[推荐方式]：
+# useradd -s /bin/bash -d /usr/sam  -m sam
+# passwd sam
+
+
+
+1. Ubuntu下带导引的创建用户方式：$ sudo adduser wangjl
+
+
+2. 添加用户
 $ sudo useradd -m -s /bin/bash steven
 然后设置密码： 
 $ sudo passwd
@@ -17,6 +31,151 @@ $ sudo passwd
 
 refer:
 http://blog.csdn.net/bxyill/article/details/8076846
+
+
+3.更多用户操作
+删除用户：
+语法：userdel [-r] [要删除的用户的名称] 
+例如：# userdel -r tete
+
+切换用户
+su - wangjl
+输入密码即可。
+
+
+退出登录
+logout
+
+修改密码：
+passwd
+修改自己的密码。
+
+
+
+
+
+========================================
+[批量]添加与删除用户名和密码
+----------------------------------------
+场景：很多学生要使用机器，需要批量添加用户名，并设置随机密码。
+OS: Ubuntu1604
+您需要root权限/sudo权限才能进行本文的操作。
+
+已知学生们的学号：
+注意一定要删除最后一行的空行！！
+$ cat stu_id.txt
+2097471001
+2097471002
+2097471003
+2097471004
+2097471005
+2097471006
+2097471007
+2097471008
+2097471009
+2097471010
+
+检查/home/目录：
+$ ls /home/
+lost+found  songj  wangjl  wjl  www
+
+要点：使用chpasswd更改用户密码
+chpasswd是一个批量更改用户密码的命令，它是先读取一个文件，然后根据文件的内容，然后更改密码。
+文件内容格式如下：USERNAME:PASS WORD
+
+1. 批量添加用户、添加家目录、设置登录的shell
+$ head -n 10 stu_id.txt|awk '{print "sudo useradd -d /home/"$1" -s /bin/bash -m "$1}'
+sudo useradd -d /home/2017471001 -s /bin/bash -m 2097471001
+sudo useradd -d /home/2017471002 -s /bin/bash -m 2097471002
+...
+
+$ head -n 10 stu_id.txt|awk '{print "sudo useradd -d /home/"$1" -s /bin/bash -m "$1}' | bash
+
+检查密码表尾部，确实添加了10个新用户
+$ tail -n 11 /etc/passwd
+
+检查home目录，确实添加了10个新文件夹
+$ ls /home/
+
+
+
+
+2.批量生成随机密码
+$ cat create.sh
+#!/bin/bash
+
+n=1
+total=10
+
+while(($n<=$total));
+        do
+			echo $n|md5sum |head -c 6
+			echo ""
+			let "n++"
+        done
+
+$ chmod u+x create.sh
+$ ./create.sh > random.txt
+$ cat random.txt
+b02632
+26ab0d
+...
+
+
+3.为用户设置新密码
+合并用户名和随机密码，用:隔开
+$ paste -d ':' stu_id.txt random.txt
+2097471001:b02632
+2097471002:26ab0d
+...
+
+$ paste -d ':' stu_id.txt random.txt >mima.log
+
+批量导入密码
+$ sudo chpasswd<mima.log
+
+密码设置到此结束。
+
+
+此时，可以尝试使用mima.log中的用户名和密码登录系统了。
+2097471008@xxxx:~$ pwd
+/home/2097471008
+
+
+
+4.批量删除用户
+课程结束，需要删除学生用户名和相应的文件。
+
+删除用户
+$ awk '{print "sudo userdel "$1}' stu_id.txt |bash
+删除家目录文件夹数据
+$ awk '{print "sudo rm -fR /home/"$1}' stu_id.txt|bash
+
+
+或者：
+userdel -r username   
+-r表示连主目录一起删除。
+
+检查删除效果：
+$ tail -n 2 /etc/passwd
+
+$ ls /home
+
+
+5.more：
+如何定期自动更新用户密码？
+如何强制删除还在使用的用户账户？
+如何对学生用户分组进行管理？限制CPU和内存用量？
+	useradd -g test phpq //新建phpq用户并增加到test工作组
+
+
+
+refer
+1. #使用date 生成随机字符串  
+date +%s%N | md5sum | head -c 10  
+
+2. 批量新增用户 http://blog.csdn.net/yanzengzeng/article/details/50529310
+3. linux用户管理 http://www.cnblogs.com/xd502djj/archive/2011/11/23/2260094.html
 
 
 
@@ -180,6 +339,270 @@ wangjl      ALL=(ALL:ALL)   ALL
 然后就行了。
 
 
+
+
+========================================
+Linux用户与组基础
+----------------------------------------
+
+用户与组：便于管理；
+用户ID为32位，从0开始，为了兼容，ID限制在60000以下；
+用户分为3中：
+	-root用户 ID为0；
+	-系统用户 1-499
+	-普通用户 500以上
+id命令显示用户ID等信息；
+passwd命令可以修改当前密码；
+
+
+用户相关信息：/etc/下的三个文件：
+	passwd（用户信息） 
+	shadow（用户密码，加密后的）  
+	group（组信息）
+
+查看登陆的用户（命令越长，信息越少。。。）
+	whoami 显示当前用户
+	who显示那些用户已经登陆系统
+	w 显示那些用户已经登陆，并且在干什么
+
+创建用户
+	useradd newUSR		#会复制/etc/skel/中的文件复制到新用户家目录中；
+	支持如下参数：
+		-d 家目录
+		-s 登陆shell
+		-u userid
+		-g 主族
+		-G 附属组（最多31个附属组）
+修改用户	usermod命令	
+删除用户	userdel newUSER		#-r 参数删除家目录
+
+
+组 - 一般是按照部门分组
+创建组	groupadd linux
+修改组	groupmod
+删除组	groupdel
+
+查看自己的组：groups
+
+例子：
+groupadd manage	#创建manage组
+useradd -G manage david 	#创建新用户并指定组
+
+
+========================================
+Linux权限机制
+----------------------------------------
+http://blog.chinaunix.net/uid-20422917-id-1682726.html
+
+ls -l出来的东西：
+权限	此文件的用户	此文件的用户组	大小	时间	文件夹名字
+drwxr-x--- 2 root GroupA 4096  5月 19 10:10 wangjl
+
+
+权限三种：读r、写w、执行x;（目录必须有x权限，否则无法查看其内容。）
+三种用户区别对待(UGO模型)：权限的UGO模型：user、group、other3组，
+	用户u、组g、其他用户o
+每三个一组，共9个选项；（第一个d表示是文件夹）
+（-r递归的修改文件权限。）
+
+
+命令chown用以改变文件的所属用户：
+	chown linuxUsr mydir 
+	-R 参数递归的修改目录下的所有文件的所属用户；
+	
+命令chgrp用以改变文件的所属组，chgrp oldGroup newGroup 如：
+	chgrp groupA GroupDir
+	-R 参数递归的修改目录下的所有文件的所属组；
+
+
+
+
+
+
+#############
+问题1：
+#############
+用root登陆时创建用户，
+useradd wjl
+然后修改密码：
+passwd wjl
+输入2遍后即可使用；
+
+用新用户登陆：
+su wjl
+
+输入密码，发现没有家目录？ 用-d指定家目录。
+
+
+
+1.增加用户组
+groupadd remoteUser
+
+2.增加新用户，能分组，没有家目录
+useradd -G remoteUser wangjl
+
+删除用户：
+userdel 选项 用户名
+ - 常用的选项是-r，它的作用是把用户的主目录一起删除。
+ - 此命令删除用户sam在系统文件中（主要是/etc/passwd, /etc/shadow, /etc/group等）的记录，同时删除用户的主目录。
+
+root@ubuntu:/home# usermod -s /bin/wangjl -d /home/wangjl -m wangjl
+
+增加新用户，不能分组，有家目录
+root@ubuntu:/usr# useradd -d /home/zhuyj -m zhuyj
+
+增加新用户，能分组，有家目录
+root@ubuntu:/usr# useradd -d /home/zhuyj -m -G remoteUser zhuyj
+
+
+
+
+
+#############
+问题2：不能使用TAB键、上下键，命令行不显示当前路径的解决
+#############
+http://www.2cto.com/os/201211/167632.html
+
+因默认ubuntu创建的普通帐号，默认shell为/bin/sh，而这不支持tab等键的，所以将「指定用户」帐号的shell改为/bin/bash就可以了。
+ 
+1).查看当前的shell：
+# echo $SHELL
+/bin/sh
+
+2).修改shell为/bin/bash：
+# usermod -s /bin/bash 用户名
+
+一步到位的方法是加上 -s /bin/bash 参数。
+
+
+
+
+
+
+修改权限：
+	chmod 模式 文件
+模式如下：
+ugo分别代表用户、组和其他；
+a可以代指ugo；
++ -代表加入或删除相应权限；
+r w x代表三种权限；
+
+模式实例：
+chmod u+rw wjl
+chmod g-x wjl
+chmod go+r wjl
+chmod a-x wjl
+
+chmod也支持以数字方式修改权限，三个权限分别为：
+r =4(2^2)
+w =2(2^1)
+r =1(2^0)
+
+使用数字权限时，没组权限分别为对应数字之和：
+rw=4+2=6
+rwx=4+2+1=7
+r-w=4+1=5
+
+所以，使用数字表示ugo权限使用如下方式表示：
+chmod 660 wjl		==	rw-rw---
+chmod 775 wjl		==	rwxrwxr-x
+
+
+
+
+显示所有已有组
+groupmod <连按三次tab键>
+
+这会列出现在你系统上的所有用户组，现在添加用户到已存在的组吧，运行下列命令：
+sudo adduser 用户名 组名
+
+例如，如果你想添加Richard到sudo组，运行下列命令：
+sudo adduser richard sudo
+
+好了，去验证用户的相关组，运行下列命令：
+id richard
+
+http://www.linuxidc.com/Linux/2013-10/91947.htm
+
+
+
+
+
+========================================
+【实例】要求为各部门、员工建立相应的工作文件夹
+----------------------------------------
+1.所有目录、文件在一个文件夹下；
+2.每个部门之间不可访问各自的文件夹；
+3.每个员工在本部门文件夹下有一个所属文件夹；
+4.同部门员工可以查看，但不能修改，用户仅能修改自己的文件夹；
+
+
+创建组：groupadd gf
+创建用户：useradd -G gf zyj
+	useradd -G gf dgy
+home下创建文件夹：mkdir girl
+修改对应组到对应文件夹：chgrp gf girl
+不同组不能访问，则去掉o中的权限：
+	chmod o-rx girl
+	chmod o-rx boy
+设置密码：passwd wjl
+	passwd zyj
+	
+登陆其中一个用户：发现确实无法cd进入；
+
+在boy中建立文件夹：mkdir wjl
+修改所属用户：chown wjl wjl
+去掉o权限：chmod o-rx wjl
+修改所属组：chgrp bf wjl
+
+
+
+
+
+========================================
+Linux扩展权限
+----------------------------------------
+除了普通权限外，还有三个特殊权限。
+########################################################################
+权限	对文件的影响					对目录的影响
+suid	以文件的所属用户身份执行，而非执行文件的用户；	无
+sgid	以文件所属组身份执行	在该目录中创建的任意新文件的所属组与该目录的所属组相同
+sticky	无		对目录拥有写入权限的用户仅可以删除其拥有的文件，无法删除其他用户所拥有的文件
+########################################################################
+
+设置suid		chmod u+s linuxdir
+设置sgid		chmod g+s linuxdir
+设置sticky	chmod o+t linuxdir
+
+与普通权限一样，特殊权限也可以使用数字方式表示：
+	- SUID =4
+	- SGID = 2
+	- Sticky = 1
+所以，我们可以通过以下命令设置：
+chmod 4755 linuxdir
+
+
+========================================
+把已有用户wangjl添加到已有的组docker中
+----------------------------------------
+$ sudo usermod -a -G docker wangjl
+然后切换用户为自己就可以使用docker了
+$ su wangjl
+$ docker images
+$ docker version
+
+
+
+========================================
+让普通用户拥有root的权限
+----------------------------------------
+1.root登录
+2.adduser 用户名
+3.passwd 用户名
+确定密码
+4.修改/etc/passwd即可，把用户名的ID和ID组修改成0。
+
+
 ========================================
 ----------------------------------------
 
@@ -187,6 +610,7 @@ wangjl      ALL=(ALL:ALL)   ALL
 
 ========================================
 ----------------------------------------
+
 
 
 
