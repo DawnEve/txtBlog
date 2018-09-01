@@ -17,12 +17,12 @@ return array (
     1 => 'Linux常用操作',
     2 => array (
 	  array('十大常用命令','Linux101', 'txt'),
-	  array('系统与磁盘维护','LinuxBase01', 'txt'),
+	  array('系统_磁盘_软件','LinuxBase01', 'txt'),
 	  array('bash和shell编程','LinuxBase02-shell', 'txt'),
 	  //array('VIM常用命令','vim001', 'txt'),
-	  array('字符awk/sed/shell','string_process', 'txt'),
-	  array('用户管理','linux102', 'txt'),
-	  array('磁盘管理','linux103', 'txt'),
+	  array('字符grep/awk/sed','string_process', 'txt'),
+	  array('用户管理','linux102-user', 'txt'),
+	  array('网络与iptables','linux103-net', 'txt'),
 
     ),
   ),

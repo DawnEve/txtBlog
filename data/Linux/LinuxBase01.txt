@@ -2,7 +2,8 @@ Linux简介1|Linux系统的安装与维护
 
 linux简介1|ubuntu 12.04（win7双系统）安装与配置
 linux简介2|常见bash命令-磁盘管理-获取帮助
-
+linux简介7|系统启动和系统安全
+linux简介8|RPM软件包管理
 
  - 启动终端：快捷键ctrl + alt + t
 
@@ -135,7 +136,7 @@ Password: (在此输入你上面设置的密码）
 
 
 ========================================
-磁盘基本管理
+磁盘管理基本概念
 ----------------------------------------
 磁盘基本概念：
 -柱面 cylinder
@@ -195,16 +196,13 @@ GPT（GUID Partition Table）是一个较新的分区机制， 解决了很多MB
 	
 
 ========================================
-使用fdisk进行磁盘管理
+磁盘管理: fdisk 是一款强大的磁盘操作工具
 ----------------------------------------
 fdisk -l 显示分区信息；
 
 fdisk是来自IBM的老牌分区工具，支持绝大所数系统。
 几乎所有的Linux发行版都装有fdisk，包括在linux的rescue模式下的依然能够使用。
-
 	- fdisk是一个基于MBR的分区工具。所以如果需要使用GPT，则无法使用fdisk进行分区。
-	
-	
 
  - fdisk命令只有具有超级用户权限才能运行。
  - 使用fdisk -l可以列出所有安装的磁盘及其分区信息。
@@ -218,8 +216,82 @@ fdisk是来自IBM的老牌分区工具，支持绝大所数系统。
  - 分区之后需要使用partprobe命令让内核更新分区信息，否则需要重启才能识别新的分区。
  - /proc/partitions文件也可以用来查看分区信息。
 
-
 分区创建好并不能直接使用，还需要在分区内创建文件系统。
+
+
+
+1.
+fdisk 是一款强大的磁盘操作工具，来自util-linux软件包，我们在这里只说他如何查看磁盘分区表及分区结构；参数 -l ，通过-l 参数，能获得机器中所有的硬盘的分区情况；
+
+root@iZ25oz0wv4kZ:/dev# fdisk -l
+Disk /dev/vda: 42.9 GB, 42949672960 bytes
+255 heads, 63 sectors/track, 5221 cylinders, total 83886080 sectors
+Units = sectors of 1 * 512 = 512 bytes
+Sector size (logical/physical): 512 bytes / 512 bytes
+I/O size (minimum/optimal): 512 bytes / 512 bytes
+Disk identifier: 0x000da36d
+
+   Device Boot      Start         End      Blocks   Id  System
+/dev/vda1   *        2048    83884031    41940992   83  Linux
+
+Disk /dev/vdb: 53.7 GB, 53687091200 bytes
+255 heads, 63 sectors/track, 6527 cylinders, total 104857600 sectors
+Units = sectors of 1 * 512 = 512 bytes
+Sector size (logical/physical): 512 bytes / 512 bytes
+I/O size (minimum/optimal): 512 bytes / 512 bytes
+Disk identifier: 0xf08d9718
+
+   Device Boot      Start         End      Blocks   Id  System
+/dev/vdb1            2048   104855551    52426752    7  HPFS/NTFS/exFAT
+
+
+2.
+fdisk -l 能列出机器中所有磁盘的个数，也能列出所有磁盘分区情况.
+
+
+# fdisk -l /dev/vda1
+
+Disk /dev/vda1: 42.9 GB, 42947575808 bytes
+16 heads, 63 sectors/track, 83216 cylinders, total 83881984 sectors
+Units = sectors of 1 * 512 = 512 bytes
+Sector size (logical/physical): 512 bytes / 512 bytes
+I/O size (minimum/optimal): 512 bytes / 512 bytes
+Disk identifier: 0x00000000
+
+Disk /dev/vda1 doesn't contain a valid partition table
+第一个磁盘没有分区。
+
+第二个磁盘系统未知。
+# fdisk -l /dev/vdb1
+
+Disk /dev/vdb1: 53.7 GB, 53684994048 bytes
+16 heads, 63 sectors/track, 104021 cylinders, total 104853504 sectors
+Units = sectors of 1 * 512 = 512 bytes
+Sector size (logical/physical): 512 bytes / 512 bytes
+I/O size (minimum/optimal): 512 bytes / 512 bytes
+Disk identifier: 0x73736572
+
+This doesn't look like a partition table
+Probably you selected the wrong device.
+
+     Device Boot      Start         End      Blocks   Id  System
+/dev/vdb1p1      1920221984  3736432267   908105142   72  Unknown
+/dev/vdb1p2   ?  1936028192  3889681299   976826554   6c  Unknown
+/dev/vdb1p3   ?           0           0           0    0  Empty
+/dev/vdb1p4        27722122    27722568         223+   0  Empty
+
+
+准备换文件格式：
+
+确定是2个硬盘：
+/dev# ls -l vd*
+brw-rw---- 1 root disk 253,  0 Aug 27 20:28 vda
+brw-rw---- 1 root disk 253,  1 Aug 28 18:45 vda1
+brw-rw---- 1 root disk 253, 16 Aug 27 20:28 vdb
+brw-rw---- 1 root disk 253, 17 Aug 28 18:45 vdb1
+
+
+
 
 ========================================
 Linux文件系统
@@ -484,7 +556,879 @@ Disk /dev/sdb1: 2006 MB, 2006458463 bytes
 
 
 ========================================
+查看磁盘剩余空间: df命令
 ----------------------------------------
+一、df 命令；
+df 是来自于coreutils 软件包，系统安装时，就自带的；我们通过这个命令可以查看磁盘的使用情况以及文件系统被挂载的位置；
+
+举例：
+[root@localhost beinan]# df -lh
+
+	Filesystem 容量 已用 可用 已用% 挂载点
+	/dev/hda8 11G 6.0G 4.4G 58% /
+	/dev/shm 236M 0 236M 0% /dev/shm
+	/dev/sda1 56G 22G 35G 39% /mnt/sda1
+
+我们从中可以看到,系统安装在/dev/hda8 ；还有一个56G的磁盘分区/dev/sda1挂载在 /mnt/sda1中；
+其它的参数请参考 man df
+
+
+
+========================================
+查看当前目录下的文件夹大小: du 命令
+----------------------------------------
+du -sh *   查看当前目录下的文件夹大小
+
+du 命令
+
+用途: 概述磁盘使用。
+
+语法
+du [ -a | -s ] [ -k ] [ -m ] [ -g ][ -l ] [ -r ] [ -x ] [ -H | -L ][ File ... ]
+
+描述
+du命令显示用于文件的块的数量。如果指定的File参数实际上是一个目录，就要报告该目录内的所有文件。如果没有提供 File参数，du命令使用当前目录内的文件。
+
+如果File参数是一个目录，那么报告的块的数量就是分配到目录中文件以及分配到目录自身的块之和。
+
+指定-a标志，报告个体文件中块数量。不管是否使用了-a标志，由File参数指定的个体文件总是要列出。
+指定-s标志，报告用于所有指定文件和目录中所有文件的全部块。
+
+块计数包括每个文件的间接块。块计数是通过 512 字节单位计算的，它与系统使用的群集大小无关。指定-k标志，通过 1024 字节单位计算块数。
+
+
+注:
+具有多个链接的文件只为一个条目计数和书写。
+由于块计数只基于文件大小，所以在报告的块数中，未分配的块是没有包含进去的。
+如果du得不到文件属性，或者无法读取目录，它就报告一个错误，并且会影响命令的退出状态。
+
+标志
+
+-a	为每个指定文件显示磁盘使用情况，或者为目录中每个文件显示各自磁盘使用情况。将该标志与-s标志进行对比。
+-g	用 GB 单位计算块数，而不是用缺省的 512 字节单位。对磁盘使用情况的输出值要用浮点数，这是因为如果用字节为单位的话，值会非常大。
+-H	如果在命令行指定了符号链接，du 命令将统计链接引用的文件或文件层次结构的大小。
+-k	用 1024 字节单位计算块数，而不是用缺省的 512 字节单位。
+-l	在文件链接和多链接之间均匀地分配块。根据缺省值，有两个或者更多链接的文件只计数一次。
+-L	如果在命令行指定了符号链接或者在文件层次结构的遍历中多次遇到符号链接，则 du 命令应统计链接引用的文件或文件层次结构的大小。
+-m	用 MB 单位计算块数，而不是用缺省的 512 字节单位。对磁盘使用情况的输出值要用浮点数，这是因为如果用字节为单位的话，值会非常大。
+-r	报告不可访问的文件或者目录名。此为缺省设置。
+-s	为所有指定文件显示整个磁盘使用情况，或者为一个目录中的所有文件显示总的磁盘使用情况。将该标志与-a标志进行对比。
+-x	在评估文件大小时，只评估那些与File参数指定的文件或者目录驻留在相同设备上的文件。例如，您可以指定一个在多个设备上包含文件的目录。这种情况下，-x标志就为与目录驻留在相同设备的所有文件显示块的大小。
+如果指定了全部-k、-m和-g标志，或者是其中任意两个，最后指定的那个起作用。用标志-m和-g输出磁盘使用情况就会近似成最接近的第二位十进制数。
+
+
+退出状态
+
+此命令返回下列出口值:
+
+
+0	成功结束。
+>0	发生错误。
+
+示例
+要概述一个目录树及其每个子树的磁盘使用情况，请输入：
+du /home/fran
+这在/home/fran目录及其每个子目录中显示了磁盘块数。
+
+要通过 1024 字节块概述一个目录树及其每个子树的磁盘使用情况，请输入：
+du -k /home/fran
+这在/home/fran目录及其每个子目录中显示了 1024 字节磁盘块数。
+要通过 MB 磁盘块概述一个目录树及其每个子树的磁盘使用情况，请输入：
+du -m /home/fran
+这在/home/fran目录及其每个子目录中显示了 MB 磁盘块数（近似到最接近的第二位十进制数）。
+要通过 GB 块概述一个目录树及其每个子树的磁盘使用情况，请输入：
+du -g /home/fran
+这在/home/fran目录及其每个子目录中显示了 GB 磁盘块数（近似到最接近的第二位十进制数）。
+要显示每个文件磁盘使用情况，请输入：
+du  -a /home/fran
+这显示了包含在每个文件以及目录/home/fran的子目录中的磁盘块数。在目录旁的数字就是该目录树的磁盘使用情况。在常规文件旁的数字就是该文件单独的磁盘使用情况。
+要只显示一个目录树的全部磁盘使用情况，请输入：
+du  -s /home/fran
+-s标志控制du命令，只显示/home/fran目录和其中包含的文件的磁盘使用情况的总和。通过缺省值，如果du命令无法读取一个文件或者目录，就显示一条错误消息。
+除了在 /home/fran 的遍历中找到的常规文件，还要显示所有符号链接引用的文件或文件层次结构的磁盘使用，请输入：
+du -L /home/fran
+要报告符号链接 mylink 引用的文件或文件层次结构的磁盘使用，请输入：
+du -H mylink
+文件
+/usr/bin/du	包含命令du。
+相关信息
+df命令:
+
+df命令用来检查linux文件系统的磁盘空间占用情况，所有用户均有使用df命令的权限。
+
+语法格式
+df [参数]
+
+主要参数
+-s：对每个Names参数只给出占用的数据块总数。
+-a：递归地显示指定目录中各文件及子目录中各文件占用的数据块数。若既不指定-s，也不指定-a，则只显示Names中的每一个目录及其中的各子目录所占的磁盘块数。
+-k：以1024字节为单位列出磁盘空间使用情况。
+-x：跳过在不同文件系统上的目录不予统计。
+-l：计算所有的文件大小，对硬链接文件则计算多次。
+-i：显示inode信息而非块使用量。
+-h：以容易理解的格式印出文件系统大小，例如124KB、345MB、46GB。
+-P：使用POSIX输出格式。
+-T：显示文件系统类型。
+
+《AIX 5L V5.2 系统用户指南：操作系统与设备》中的『目录概述』解释了对目录和路径名字的处理。
+
+《AIX 5L V5.2 系统用户指南：操作系统与设备》中的『文件概述』提供了处理文件的信息
+
+
+http://blog.163.com/fly_sky_java/blog/static/140422234201172933910730/
+
+
+
+
+========================================
+在virtualbox中装好Ubuntu后，发现硬盘空间太小，怎样才能增加硬盘容量？那就是再建一个硬盘
+----------------------------------------
+  在virtualbox中装好Ubuntu后，发现硬盘空间太小，怎样才能增加硬盘容量？那就是再建一个硬盘：
+1. 添加新硬盘
+     设置 -> Storage -> SATA控制器->右击，选择&ldquo;添加虚拟硬盘&rdquo;
+     然后，根据需求创建合适的硬盘
+2. 重启虚拟机
+     查看现有系统的磁盘空间
+        sudo fdisk -l
+     可看到新加的虚拟硬盘，一般名为：Disk /dev/sdb
+3. 给新加的硬盘分区
+        fdisk /dev/sdb
+     键入m,可看到帮助信息
+        command (m for help):m
+
+
+执行上面的命令后，会进入输入模式，分别选择 n ,p, ....中间默认，最后别忘了输入 w 保存分区。
+磁盘分区成功后，再次使用 fdisk 命令查看，可以看到多了一个 SDB1 磁盘分区。
+# fdisk -l
+
+        
+     增加新分区
+        command (m for help):n  
+     选择基本分区，输入：p
+     建一个分区
+        Partition number(1-4):1 
+     回车
+        First cylinder (1-15908,default 1):Enter
+     写入并退出
+        command (m for help):w
+4. 格式化磁盘分区
+     用ext4格式对/dev/sdb1进入格式化
+        sudo mkfs.ext4 /dev/sdb1
+		
+        我用的是：# mkfs -t ext4 /dev/sdb1
+		
+		
+		
+5. 挂载分区
+将新的磁盘存储空间挂载到一个空目录下，最好是新建的空目录，不然原来目录上的文件会消失。
+
+     创建新的挂载点
+        sudo mkdir /work
+     将新磁盘分区挂载到/work目录下
+        sudo mount -t ext4 /dev/sdb1 /work
+     查看挂载
+        df -h
+     可以看到新加的硬盘：/dev/sdb1
+     通过 $du -sh /work 命令查看，也发现新挂载的目录有足够大的空间了。
+
+$ df -lhT
+/dev/sdb1      ext4      197G   37G  151G  20% /work
+
+
+6. 开机自动挂载
+     修改文件
+            sudo vim /etc/fstab
+     在最后一行加入：
+            /dev/sdb1 /work ext4 errors=remount-ro 0 1
+            我用的： 
+            /dev/sdb1 /work ext4 defaults 0 0
+     完成!
+ 
+refer: http://blog.csdn.net/langxianwenye/article/details/50828289
+
+
+https://blog.lmlphp.com/archives/118/How_to_expand_Ubuntu_disk_in_VirtualBox_virtual_machine
+
+========================================
+系统启动和系统安全
+----------------------------------------
+系统启动流程
+	BIOS
+	MBR: Boot Code
+	执行引导程序-GRUB
+	加载内核
+	执行init
+	runlevel
+
+建议：同时使用CentOS和Ubuntu系统学习本章节。因为有很大的不同点。
+
+
+1.BIOS(Basic Input Output System)基本输入输出系统。
+一般保存在主板上的BIOS芯片中。
+计算机启动的时候第一个运行的就是BIOS，负责检查硬件并且查找可启动设备；
+可启动设备在BIOS设置中进行定义，如USB、CDROM、HD
+
+2.MBR
+BIOS找到启动设备后执行其引导代码。
+	第一个扇区512字节的最后两个字节是55AA。
+引导代码为MBR的前446字节。
+	一般的PC引导机制都是MBR。
+	高级的设备如Mac等可能是EFI硬件，则引导格式可能不同。
+
+3.GRUB
+Grub是现在Linux使用的主流引导程序。
+可以用来引导现在几乎所有的操作系统: linux, Mac, Windows。
+Grub的相关文件保存在/boot/grub目录中。
+Grub配置文件为/boot/grub/grub.conf  (Ubuntu中是 /boot/grub/grub.cfg)
+配置格式：Ubuntu和CentOS有一定区别。
+
+export linux_gfx_mode
+if [ "${linux_gfx_mode}" != "text" ]; then load_video; fi
+menuentry 'Ubuntu, with Linux 3.11.0-15-generic' --class ubuntu --class gnu-linux --class gnu --class os {
+        recordfail
+        gfxmode $linux_gfx_mode
+        insmod gzio
+        insmod part_msdos
+        insmod ext2
+        set root='(hd0,msdos1)'
+        search --no-floppy --fs-uuid --set=root 889007c7-3c15-4a45-afea-0c22022b7493
+        linux   /boot/vmlinuz-3.11.0-15-generic root=UUID=889007c7-3c15-4a45-afea-0c22022b7493 ro   quiet splash $vt_handoff
+        initrd  /boot/initrd.img-3.11.0-15-generic
+}
+
+
+
+4.Kernel
+	MBR的引导代码将负责找到并加载Linux内核。
+	Linux内核保存在/boot/vmlinuz-3.11.0-15-generic
+		5962944 Feb  4  2014 vmlinuz-3.11.0-15-generic
+
+	一般还会加载内核模块打包文件：/boot/initrd.img-3.11.0-15-generic
+	Linux为保持kernel的精简，将一些不常用的驱动、功能编译成为模块，在需要的时候动态加载，而这些模块被打包保存为一个initramfs文件。
+	早期版本Linux使用initrd文件，initramfs是initrd的替代优化版本，比initrd更加节省空间、更加灵活。
+	命令dmesg可以查看本次启动时内核的输出信息。（对应的文件是 /var/log/dmesg文件 ）
+
+5.INIT
+	init是Linux系统中运行的第一个进程。
+		当使用top命令的时候，发现一个pid（进程id，按照启动顺序排序）为1的进程，名字是init。是所有进程的父进程。
+	调用/etc/rc.d/rc.sysinit（名字不完全相同）负责对系统进行初始化，挂载文件系统，而且根据运行级别启动相应服务。
+
+
+6.Linux运行级别(run level)：
+	0	关机
+	1	单用户模式
+	2	不带网络的多用户模式
+	3	多用户模式	
+	4	未使用
+	5	XII图形化模式
+	6	重新启动
+用的最多的是3和5，区别仅是前者无图形界面。
+
+	可以通过/etc/inittab（Ubuntu没有找到，很可能是/etc/init/rc-sysinit.conf）配置文件修改默认的运行级别（env DEFAULT_RUNLEVEL=2）。
+	每个级别对应的启动服务保存在/etc/rc.d/rc[0123456].d中。
+	命令runlevel可以显示当前及上一个运行级别。 $ runlevel  #N 2 为什么是2呢？
+
+	命令init可以用以改变当前运行级别，需要root权限。
+	# init 3  #进入命令行多用户界面；
+	$ runlevel #3 5 #显示当前和上一个运行级别。
+
+
+
+
+wangjl@ubuntu:/etc$ pwd
+/etc
+wangjl@ubuntu:/etc$ ls | grep rc #
+bash.bashrc
+drirc
+inputrc
+nanorc
+rc0.d
+rc1.d
+rc2.d
+rc3.d
+rc4.d
+rc5.d
+rc6.d
+rc.local
+rcS.d
+wgetrc
+wangjl@ubuntu:/etc$ locate rc0.d
+/etc/rc0.d  #定位文件位置
+
+
+wangjl@ubuntu:/etc/init$ pwd
+/etc/init
+wangjl@ubuntu:/etc/init$ cat control-alt-delete.conf 
+# control-alt-delete - emergency keypress handling
+#
+# This task is run whenever the Control-Alt-Delete key combination is
+# pressed, and performs a safe reboot of the machine.
+
+description	"emergency keypress handling"
+author		"Scott James Remnant <scott@netsplit.com>"
+
+start on control-alt-delete
+
+task
+exec shutdown -r now "Control-Alt-Delete pressed" #建议注释掉这一行，防止意外重启服务器（win是调出任务管理器，linux是直接重启！）。
+
+
+
+
+========================================
+[CentOS]单用户修改root密码(忘记root密码了>.<)
+----------------------------------------
+如果root管理员忘了密码怎么办？只有一种方法，就是进入运行级别1.
+	- 为内核传递参数"1"（数字1）或"single"使系统进入单用户模式。
+	- 单用户模式下不启动任何服务；
+	- 单用户模式直接以root用户登录，并且不需要密码；
+	- 可以使用passwd修改root密码。
+
+
+(1)启动时不停地按上下键，使启动界面卡住：
+(2)按下字母e，进入启动配置项：
+(3)光标移动到kernel条目上，再按下字母e，进入编辑界面，添加一个空格和数字1，回车。
+按下字母b启动系统。内核以运行级别1运行。
+现在是root用户登录的，而且不需要密码！
+
+(4)使用passwd命令修改密码即可。
+输入exit命令，系统会自动正常运行起来。
+
+
+
+缺陷：只要有人能物理的接触到主机，即可修改root密码！只需要重启，并给内核一个1参数。
+应对策略：Grub加密
+通过在/boot/grub/grub.conf中的启动配置（需要root登录才能编辑）中加入如下参数即可对grub进行加密：
+	password --md5 $1$jKbvp$FAbq8vBZYH.2eG.tZoAj20
+
+######
+# grub-md5-crypt  #通过这个命令生成密码（比如123456会生成如下密码）
+Password: 
+Retype password: 
+$1$jKbvp$FAbq8vBZYH.2eG.tZoAj20 #注意不要多或者少拷贝字符，不要漏了.号，不要在末尾多拷贝空格。
+######
+
+
+这时，如果按下字母e想修改，需要按下p输入密码，密码正确后才可以解锁字母e，才能编辑！
+
+如果你把Grub的密码也忘了，那么...
+只好把硬盘卸下来，修改文件后重新启动。
+
+还是有物理机器或硬件被盗而数据泄露的风险，还可以对根分区加密。
+不让无关人员接近物理主机！防止启动、盗窃硬盘等。
+
+
+
+
+
+========================================
+RPM软件包管理(CentOS)
+----------------------------------------
+RPM(Redhat Package manager)是针对CentOS系统的软件包格式。
+此外，还有yum和源代码格式管理软件。
+Ubuntu下是apt-get。CentOS下是yum。
+
+	绝大多数开源软件都是直接以源代码形式发布的。源代码一般会被打包成tar.gz的归档压缩文件。程序源代码需要编译成为二进制形式之后才能运行使用。
+
+Linux软件安装
+对于绝大部分软件安装,使用如下步骤即可: 
+	1) tar -zxvf ab.tar.gz 或者 tar -jxvf ab.tar.bz2 #解压
+	2)cd ab #进入文件夹
+
+	3)./configure [—prefix=] #配置安装环境 
+	4)make #编译 
+	5)make install #安装
+	
+?对于一些小部分软件安装,需要使用其他方法安装,如:需要使用cmake安 装、直接使用make安装等等
+?安装软件前,最好先阅读README && INSTALL两个文件
+?遇到不会安装的：可以求助社区或者作者
+
+	源代码基本编译流程：
+	1.	./configure	检查编译环境、相关库文件以及配置参数并生成makefile
+	2.	make	对源代码进行编译，生成可执行文件。
+	3.	make install	将生成的可执行文件安装到当前计算机中。
+
+	源代码形式的软件使用起来较为麻烦，但是兼容性及可控制性较好。（看着只有三步，但是大多数第一步就进行不下去了！需要大量的经验，主要是依赖关系一般很复杂。即便顺利，一个10M的软件需要编译十几分钟。太漫长了，于是亟待简化Linux下软件安装这个问题！）
+	开源软件一般会大量使用其他开源软件的功能，所以开源软件会有大量的依赖关系（使用某软件需要先安装其他软件）。
+
+	使用RPM软件包管理软件
+	源代码形式的缺点：操作复杂、编译时间较长、极容易出现错误！
+	源代码形式的优点：使用所有系统、可定制。
+	为了方便使用，Erik Troan 和 Marc Ewing开发了RPM(redhat Package Manager)。RPM通过将源代码基于特定平台系统编译为可执行文件，并保存依赖关系，来简化开源软件的安装管理。
+
+	RPM设计目标如下：
+	- 使用简单
+	- 使用单一软件包格式发布文件（rpm文件）
+	- 可升级
+	- 追踪软件依赖关系
+	- 基本信息查询
+	- 软件验证功能
+	- 支持多平台
+	
+
+
+rpm包有一个约定的命名规范：
+	softName-1.2.0-30.el6.i686.rpm
+		softName：软件名。
+		1.2.0-30：版本号。
+		el6：针对red hat enterprize release 6编译的。
+		i686：针对32位系统。 x86_64是针对64位的。
+	特别注意平台和bits。	
+		
+rpm基础命令：
+	安装命令：rpm -i software.rpm 
+	卸载软件：rpm -e software 
+	升级形式安装：rpm -U software-new.rpm 
+	rpm支持通过http、ftp协议安装软件
+	rpm -ivh http://www.xxx.net/software.rpm 
+可以加入以下参数：
+	-v 显示相关信息
+	-h 显示进度条
+	
+
+RPM会保存软件相关的很多信息，所以支持很多查询功能。
+	rpm -qa 列出所有安装的rp软件 
+	rpm -qi desktop-effect	软件信息，安装日期、版本号等
+	rpm -ql	desktop-effect 列出属于某软件的文件
+	rpm -qf /usr/share/doc/desktop-effects-0.8.4 查询某个文件属于哪个软件包
+	
+	查询安装之前的rpm信息加参数p即可：
+	rpm -qip ncbi-blast-2.4.0+-2.x86_64.rpm		安装之前rpm包的信息
+	rpm -qlp ncbi-blast-2.4.0+-2.x86_64.rpm 	查询安装之后可能添加的文件。
+
+	
+RPM验证：
+防止传播过程中的恶意修改，为了安全现代系统都加入了对软件完整性的校验。
+验证一般使用非对称加密算法，所以需要一个秘钥。
+
+导入秘钥：
+rpm --import RPM-GPG-KEY-CentOS-6 
+
+验证rpm文件：
+rpm -K software.rpm 
+例子：$ rpm -K ncbi-blast-2.4.0+-2.x86_64.rpm 
+ncbi-blast-2.4.0+-2.x86_64.rpm: sha1 md5 OK
+
+验证已安装的软件是否被修改过：
+rpm -V software 
+
+
+========================================
+Yum(Yellowdog Updater, Modified)解决依赖关系
+----------------------------------------
+rpm软件包形式管理软件虽然方便，但是需要手工解决软件包的依赖关系。很多时候安装一个软件需要首先安装一个或多个（有时多达上百个）其他软件，手工解决时很复杂。使用YUM可以解决这个问题。
+
+Yum(Yellowdog Updater, Modified)是一个rpm的前端程序，主要目的是设计用来自动解决rpm的依赖关系问题。其特点如下：
+	- 自动解决依赖关系
+	- 可以对rpm进行分组，并基于组进行安装操作
+	- 引入仓库概念，支持多个仓库
+	- 配置简单
+
+
+
+###
+仓库概念
+yum引入了仓库（repo）的概念，仓库用来存放所有现有的rpm软件包，当使用yum安装一个rpm软件的时候，如果存在依赖关系，会自动在仓库中查找依赖软件并安装。
+
+仓库可以是本地的，也可以通过http、ftp或nfs形式使用集中地、统一的网络仓库。
+
+
+
+
+###
+yum仓库的配置
+yum使用仓库保存管理rpm软件包，仓库的配置文件保存在/etc/yum.repos.d/目录下，格式如下：
+
+[zzuRepo]
+name=This is zzu rpm soft repo
+mirrorlist=http://mirrors.zzu.edu.cn/centos/
+#baseurl=http://mirror.centos.org/centos/
+enabled=1
+gpgcheck=1
+gpgkey=file:///etc/pki/rpm-gpg/RPM-GPG-KEY-CentOS-6
+这里有完整版本：http://mirrors.zzu.edu.cn/wiki/centos/download/CentOS6-Base-zzu.repo
+
+[base]
+name=CentOS-$releasever - Base
+mirrorlist=http://mirrorlist.centos.org/?release=$releasever&arch=$basearch&repo=os&infra=$infra
+#baseurl=http://mirror.centos.org/centos/$releasever/os/$basearch/
+gpgcheck=1
+gpgkey=file:///etc/pki/rpm-gpg/RPM-GPG-KEY-CentOS-6
+	- 仓库可以使用file、http、ftp、nfs方式。
+	- yum配置文件必须以.repo结尾，名字随便起。
+	- 一个配置文件内可以保存多个仓库的配置信息。
+	- /etc/yum.repos.d/目录下可以存在多个配置文件。
+	
+
+
+###
+更换repo的方法：
+参考
+# http://blog.chinaunix.net/uid-23683795-id-3477603.html
+# http://jingyan.baidu.com/article/e8cdb32b634c8637052bad04.html
+# http://mirrors.zzu.edu.cn/wiki/centos.html
+切换root用户，首先备份/etc/yum.repos.d/CentOS-Base.repo 
+# cd /etc/yum.repos.d/
+# mv CentOS-Base.repo CentOS-Base.repo.backup
+
+下载对应版本repo文件, 放入/etc/yum.repos.d/,并改名为CentOS-Base.repo(操作前请做好相应备份)
+# wget http://mirrors.zzu.edu.cn/wiki/centos/download/CentOS6-Base-zzu.repo
+# mv CentOS6-Base-zzu.repo CentOS-Base.repo
+
+运行以下命令生成缓存
+# yum clean all # 清除YUM缓存： /var/cache/yum目录。
+# yum makecache
+
+
+
+
+
+
+###
+yum基本命令
+	yum install software-name	安装指定如软件
+	yum remove software-name	卸载指定如软件
+	yum update software-name	升级指定如软件
+
+比如：安装一个vnc的客户端：
+yum install tigervnc
+可以通过 vncviewer 命令启动该vnc客户端。
+
+查看一下刚安装软件的信息：
+rpm -qi tigervnc
+
+删除该软件：
+yum remove tigervnc
+
+
+yum查询：如果没有记住名字全称
+	yum search keyword	搜索
+	yum list (all|installed|recent|updates) 列出全部、安装的、最近的、软件更新
+	yum info packageName 显示指定软件的信息(和rpm -qi tigervnc 一样，)
+
+	yum whatprovides filename	查询哪个rpm软件包包含目标文件filename
+
+[wangjl@centOS6 ~]$ yum search vnc
+
+[wangjl@centOS6 ~]$  yum whatprovides /etc/ethers 
+
+
+
+
+
+
+
+###
+创建yum仓库
+
+可以通过以下方式手工创建yum仓库：
+	1.将所有rpm文件拷贝到一个文件夹中；
+		# mkdir /linux-yum
+		# cp -rv /media/CentOS_6.7_Final/Packages/* /linux-yum/ 
+		# ls| wc #统计文件个数
+		
+	2.通过rpm命令手工安装createrepo软件；
+		# rpm -ivh createrepo #发现在CentOS_6.7_Final的光盘中已经没有这个包了。
+		# yum install createrepo #通过远端安装
+
+	3.运行命令createrepo -v /rpm-directory
+		# createrepo -v /linux-yum/ #会自动创建索引文件/repodata/
+		# cd ./repodata/ 
+		# ls #可以查看产生的索引文件
+		
+	在/etc/yum.repos.d/目录下新建.repo文件
+	# cd /etc/yum.repos.d/ 
+	# vim CentOS-Disk.repo 
+	写入如下文本
+[Local]
+name=local
+baseurl=file:///linux-yum/ 
+enabled=1
+gpgcheck=0
+	通常还需要运行一下清除缓存：
+	# yum clean all #每次运行安装或者查询命令会重建yum缓存。
+	# yum list #就会列出现有的rpm包。
+
+
+
+
+
+	4.如果有分组信息，则在运行命令的时候使用-g参数指定分组文件
+		createrepo -g /tmp/*comps.xml /rpm-directory
+	CentOS/RHEL的分组信息保存在光盘repodata/目录下，文件名以comps.xml结尾的xml文件
+	
+	创建好之后本机可以通过file方式直接使用，如果需要作为对外的yum仓库服务器，可以通过http、ftp或nfs协议共享除去。
+	
+	
+	图形界面安装程序：CentOS右上角 系统-管理-添加删除程序，也是使用的yum来管理软件的。
+
+
+	
+========================================
+linux软件的安装/卸载/升级/添加环境变量(Ubuntu)
+----------------------------------------
+安装ssh服务
+sudo apt install openssh-server
+查看服务是否开启
+ps -e|grep ssh
+如果有sshd说明服务已经开启。
+
+
+软件名字查找
+sudo apt search 软件关键词
+
+
+软件安装
+sudo apt-get install 软件名字
+
+
+查找软件安装位置：
+wangjl@Ubuntu1404:~$ whereis mysql
+mysql: /etc/mysql /usr/include/mysql
+wangjl@Ubuntu1404:~$ whereis php
+php:
+wangjl@Ubuntu1404:~$ whereis R
+R: /usr/bin/R /usr/lib/R /etc/R /usr/local/lib/R /usr/share/R /usr/share/man/man1/R.1.gz
+
+查找软件运行目录：
+$ which ssh
+/usr/bin/ssh
+
+
+
+
+
+
+========================================
+linux软件添加环境变量或软链接(Ubuntu)
+----------------------------------------
+诸如bowtie、bismark等程序，只能在其目录下使用，不能再其他目录下使用，这样很不方便。
+想在任何目录下使用该软件，有两种方式：添加环境变量或软链接。
+
+
+
+# 方法1：添加环境变量
+
+Ubuntu下设置环境变量有三种方法，一种用于当前终端，一种用于当前用户，一种用于所有用户。
+最后一种需要root权限。
+
+(1)用于当前终端：
+在当前终端中输入：export PATH=$PATH:<你的要加入的路径>
+不过上面的方法只适用于当前终端，一旦当前终端关闭或在另一个终端中，则无效。
+  export NDK_ROOT=/home/jiang/soft/Android-ndk-r8e 只能在当前终端使用。
+
+(2)[推荐]用于当前用户：
+在用户主目录下有一个 .bashrc 隐藏文件，可以在此文件中加入 PATH 的设置如下：
+vi ~/.bashrc
+加入：
+export PATH=<你的要加入的路径>:$PATH
+
+如果要加入多个路径，只要：
+export PATH=<你要加入的路径1>:<你要加入的路径2>: ...... :$PATH
+当中每个路径要以冒号分隔。
+这样每次登录都会生效。
+
+
+本例推荐使用该方法：在当前用户的主目录下找到隐藏文件“.profile”或类似文件，在这个文件的末尾增加2行，把bowtie所在的目录加到变量PATH中，比如我增加的两行是：
+
+export PATH=PATH:/home/clever/tools/bowtie2-2.2.6/
+export PATH=PATH:/home/clever/tools/bismark_v0.14.5/
+
+注销一下，这样就可以在当前用户的主目录下的任何目录下使用bismark和bowtie2了。
+
+(3)用于所有用户：
+sudo vi /etc/profile 
+
+加入：
+export PATH=<你要加入的路径>:$PATH
+就可以了。
+
+终端输入：echo $PATH 可以查看环境变量
+
+注意，修改环境变量后，除了第一种方法立即生效外，第二第三种方法要立即生效，可以
+$ source ~/.bashrc
+或者注销再次登录后就可以了！
+
+
+
+# 方法2：添加软连接
+先查看当前环境变量查找的地点：
+wangjl@ubt16:~$ echo $PATH
+/home/wangjl/bin:/home/wangjl/.local/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/usr/games:/usr/local/games:/snap/bin
+
+当输入命令时，这些bin文件夹下的可执行文件会被依次查找。
+当前用户可用的程序就可以放到/home/wangjl/bin下，全部用户都可见的一般都是安装在到/usr/share和/usr/local/bin中。
+$ ln -s /path/to/fastQC/fastqc /home/wangjl/bin/fastqc
+
+
+
+
+方法3：修改PATH文件【不推荐，需要root权限】
+添加系统级环境变量 https://jingyan.baidu.com/article/db55b609a3f6274ba30a2fb8.html
+$ sudo vim /etc/environment
+后引号的前面加上
+:/home/wangjl/Soft/sratoolkit.2.8.2-1-ubuntu64/bin
+$source /etc/environment
+
+这样以后PATH变量都会改变为修改后的。
+
+
+
+
+环境变量：http://blog.csdn.net/z1002137615/article/details/50174567
+
+
+
+
+
+
+
+========================================
+JKD和eclipse安装
+----------------------------------------
+(1)Java JDK
+https://www.digitalocean.com/community/articles/how-to-install-java-on-ubuntu-with-apt-get
+
+sudo apt-get install default-jdk
+老版本jdk6：sudo apt-get install oracle-java6-installer
+
+(2)eclipse
+方法一：(缺点是安装时附加openjdk等大量程序并无法去除，优点是安装简单)
+$ sudo apt-get install eclipse
+方法二：(优点是安装内容清爽，缺点是配置麻烦)
+
+
+========================================
+CentOS下的htop命令
+----------------------------------------
+htop比top命令更直观的显示cpu和内存的状态，并能显示完整命令。
+Ubuntu下直接apt-get install htop 即可安装htop命令。而CentOS下并没有如此简洁的安装方法。
+
+本文CentOS版本号为6.7。
+
+#一个可选的方法是：图形化监视界面	
+$ gnome-system-monitor
+
+一般开源项目托管在sourceforge上面，当然也有些托管在github上，但github最近才火起来，所以sourceforge上多一些成熟的项目。
+第一步、找到sourceforge上的htop页面。
+第二步、找到文件所在的目录，复制地址，使用wget命令下载。
+
+
+###########################################
+# 请使用root安装程序包
+###########################################
+# 安装htop命令 http://www.sanduoyun.com/vpshj/htop.html
+# download:https://sourceforge.net/projects/htop/
+wget http://heanet.dl.sourceforge.net/project/htop/htop/1.0.2/htop-1.0.2.tar.gz
+
+#解压缩
+tar -xzvf htop-1.0.2.tar.gz
+
+#配置
+cd htop-1.0.2
+./configure
+
+# 失败！！ 提示需要安装依赖包libncursesw (ncurses:http://invisible-island.net/ncurses/announce.html)
+wget ftp://invisible-island.net/ncurses/ncurses.tar.gz
+tar -xzvf ncurses.tar.gz
+cd ncurses-5.9
+./configure
+make 
+make install
+
+# 再次安装htop
+cd htop-1.0.2
+./configure --disable-unicode
+make 
+make install
+
+# 安装完毕，应清除编译过程中产生的临时文件和配置过程中产生的文件。键入如下命令：
+make clean   
+#make distclean   
+至此，软件的安装结束
+
+
+
+
+
+如果您想每次使用top命令直接打开htop。
+#vi  /root/.bashrc
+if [ -f /usr/local/htop/bin/htop ]; then
+  alias top='/usr/local/htop/bin/htop'
+fi
+#source /root/.bashrc
+
+
+
+$ htop #即可查看
+
+常用选项：
+	-C –no-color 使用一个单色的配色方案。
+	-d –delay=DELAY 设置延迟更新时间，单位秒。
+	-h –help 显示htop命令帮助信息。
+	-u –user=USERNAME 只显示一个给定的用户的过程。
+	-v –version 显示版本信息
+
+建议man一下，man很详细。
+
+另外还在使用时
+/:搜索字符
+h:显示某个用户的进程，在左侧可以选项
+t:显示树形结构
+h ： 显示帮助
+H ： 显示/隐藏用户线程
+K ： 显示/隐藏内核线程
+
+选择某一进程，按s:用strace追踪进程的系统调用
+
+P、T、M和top下是一样的，按CPU,Time+、Memory使用排序。
+
+下面有F1~F10的功能和对应的字母快捷键。
+Shortcut Key	Function Key	Description
+h	F1	Invoke htop Help
+S	F2	Htop Setup Menu
+/	F3	Search for a Process
+I	F4	Invert Sort Order
+t	F5	Tree View
+>	F6	Sort by a column
+[	F7	Nice - (change priority)
+]	F8	Nice + (change priority)
+k	F9	Kill a Process
+q	F10	Quit htop
+
+
+
+
+refer: 
+http://blog.sina.com.cn/s/blog_9f1c09310101aa5z.html
+http://www.centoscn.com/image-text/install/2014/0609/3112.html
+
+========================================
+----------------------------------------
+
+
+========================================
+----------------------------------------
+
+
+
+
+========================================
+----------------------------------------
+
+
+========================================
+----------------------------------------
+
+
+========================================
+----------------------------------------
+
+
+========================================
+----------------------------------------
+
+
 
 
 ========================================

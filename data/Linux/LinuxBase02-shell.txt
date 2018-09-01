@@ -1,10 +1,12 @@
 LinuxBase02-shell
 
+linux简介5|多命令协作：管道及重定向  
 
 ========================================
 Linux下获取帮助
 ----------------------------------------
 没有必要记住所有东西。linux有非常详细的文档和帮助工具。
+
 help: 几乎所有的命令都可以通过 -h和--help获得使用方法、参数信息等。
 man: 最为常用的linux帮助命令，获得详细描述。9中命令类型。如 man 1 ls
 	man -k 关键字 可以用来查询包含该关键字的文档；
@@ -561,11 +563,243 @@ http://blog.chinaunix.net/uid-20332519-id-3498113.html
 
 
 ========================================
+多命令协作：管道及重定向
 ----------------------------------------
+1. 开源文化的核心理念之一：不要重复发明轮子；
+很多开源软件都是现有软件、代码、功能的重新组合，就好像通过零件装配机器一样，源代码的开放和共享让这成为了可能，同时也大大的提高了效率和生产力。
+业界著名的开源网站是github，如果想用的流畅，你需要先学习如何使用git进行版本管理。
+
+linux系统中，大多数命令都很简单，基本上一个命令完成一个功能。
+复杂功能，可以通过简单功能的叠加来实现。
+linux的命令行（CLI）为我们提供了管道和重定向机制，来完成多命令协作。让前一个的输出直接成为后一个的输入。
+
+
+
+
+2.命令行shell的数据流有以下定义：
+名称	说明	编号	默认
+STDIN	标准输入	0	键盘
+STDOUT	标准输出	1	终端
+STDERR	标准错误	2	终端
+命令行通过STDIN接收参数或数据，通过STDOUT输出结果或通过STDERR输出错误。
+
+
+
+
+3. 通过管道和重定向我们可以控制CLI的数据流的。
+重定向(使用cat .out.txt查看文件中的内容)
+	关键字	实例		作用	
+	>	$ ls > a.txt	#把ls的标准输出保存到a.txt文件中。其中>是1>的简写。
+	>>	$ pwd >>a.txt	#把pwd 的标准输出追加到a.txt文件尾部
+	2>	$ ls nowhere 2> out.txt	#把STDERR写入到out.txt文件，创建日志挺有用！
+	2>&1 $ ls nowhere >out3.txt 2>&1 #把STDERR和STDOUT结合，同时保存正常结果和报错信息到out3.txt中。
+	<	$ grep wang < /etc/passwd
+#用文件/etc/passwd作为内容作为标准输入，不再使用键盘，使用grep命令查找带有wang关键字的信息。不常见。
+
+
+
+
+4. 可以根据以上规则进行组合：
+1>&2  正确返回值传递给2输出通道 &2表示2输出通道 
+如果此处错写成 1>2, 就表示把1输出重定向到文件2中. 
+2>&1 错误返回值传递给1输出通道, 同样&1表示1输出通道. 
+
+举个例子. 
+$ ls a.txt b.txt 1>file.out 2>&1 
+$ cat file.out 
+ls: b.txt: No such file or directory 
+a.txt 
+
+现在, 正确的输出和错误的输出都定向到了file.out这个文件中, 而不显示在前端. 
+补充下, 输出不只1和2, 还有其他的类型, 这两种只是最常用和最基本的.
+
+$ ls nowhere 2>> out.txt	#表示追加错误输入到文件
+$ w 2>> out4.txt 1>&2	#把w命令的标准输出合并到标准错误中。
+$ ls 1>>std.out 2>>std.err #分别输出STDOUT和STDERR到文件std.out和std.err中。
+
+$ grep wang < /etc/passwd
+wangjl:x:1001:1002::/home/wangjl:/bin/bash
+wangbl:x:1008:1009:,,,:/home/wangbl:/bin/bash
+
+
+
+
+
+5. 后台运行
+一般形式为：
+$ nohup command & 
+　　如果使用nohup命令提交作业，那么在缺省情况下该作业的所有输出都被重定向到一个名为nohup.out的文件中，除非另外指定了输出文件： 
+$ nohup command > myout.file 2>&1 & 
+　　在上面的例子中，输出被重定向到myout.file文件中。
+
+
+
+6. 管道（｜）
+多命令协作最常用的方式就是管道。
+管道操作符是“|”，它可以将前面一个命令的标准输出 (stdout)传递给后面一个命令，作为后面命令的标准输入(stdin)。
+注意它仅能传递标准输出，而不能传递错误输出(stderr)给后面的命令。 
+当然如果想传递错误输出, 可以使用重定向指令实现 command1 2>&1 |command2
+
+$ ls -l | grep txt
+-rwxrwxr-x 1 wangjl wangjl     3173 Jun 10 19:33 a.txt
+-rw-rw-r-- 1 wangjl wangjl     7575 Dec 27 01:25 data.txt
+-rw-rw-r-- 1 wangjl wangjl      177 Jun 10 19:46 out2.txt
+-rw-rw-r-- 1 wangjl wangjl       53 Jun 10 19:48 out3.txt
+-rw-rw-r-- 1 wangjl wangjl      416 Jun 10 19:55 out4.txt
+-rw-rw-r-- 1 wangjl wangjl      184 Jun 10 19:58 out.txt
+-rw-rw-r-- 1 wangjl wangjl        0 Jun 10 20:16 txt.out
+
+
+$ find / -user wangjl | grep mysql >mysql.out
+在整个系统中(/)查找用户名为wangjl的文件，且包含mysql关键字，输出到mysql.out文件中。
+
+$ find / -user wangjl 2> /dev/null | grep xampp
+/home/wangjl/xampp.out
+#输出到/dev/null设备的内容自动被丢弃。
+
+
+
+
+7. 管道和重定向小结
+管道通常用来组合不同的命令，以实现一个复杂的功能。
+重定向通常用来保存某命令的输出信息或错误信息，可以用来记录执行结果或保存错误信息到一个指定的文件。
+
+
+
+refer:
+苏勇linux视频：http://study.163.com/course/courseLearn.htm?courseId=232007#/learn/video?lessonId=340069&courseId=232007
+http://study.163.com/course/introduction/221001.htm#/courseDetail
+标准输入、输出、错误：http://www.360doc.com/content/15/0319/09/19443956_456354803.shtml
+
+
+
+
+
+
+========================================
+shell脚本|概述
+----------------------------------------
+1. 概述
+shell提供了对UNIX系统的接口。收集输入，并根据输入执行程序。当一个程序执行完毕后，它会显示该程序的输出。
+ 
+shell是一个环境，我们可以运行我们的命令，程序和shell脚本。shell有不同的风格，就像有不同风格的操作系统。每个的shell的风格，有它自己的一套识别的命令和功能。
+
+shell它交互式解释和执行用户输入的命令或者自动地解释和执行预先设定好的一连串的命令；
+作为程序设计语言，它定义了各种变量和参数，并提供了许多在高级语言中才具有的控制结构，包括循环和分支。
+
+(1)资源：
+	http://www.yiibai.com/shell/
+	http://www.runoob.com/linux/
+	http://www.itshouce.com.cn/linux/linux-shell.html
+	编写Shell脚本的最佳实践 http://kb.cnblogs.com/page/574767/
+	菜鸟教程 http://www.runoob.com/linux/linux-shell.html
+
+(2)分类
+Shell 编程跟 java、php 编程一样，只要有一个能编写代码的文本编辑器和一个能解释执行的脚本解释器就可以了。
+Linux 的 Shell 种类众多，常见的有：
+	Bourne Shell（/usr/bin/sh或/bin/sh）
+	Bourne Again Shell（/bin/bash）
+	C Shell（/usr/bin/csh）
+	K Shell（/usr/bin/ksh）
+	Shell for Root（/sbin/sh）
+	……
+	
+本教程关注的是 Bash，也就是 Bourne Again Shell，由于易用和免费，Bash 在日常工作中被广泛使用。同时，Bash 也是大多数Linux 系统默认的 Shell。
+
+在一般情况下，人们并不区分 Bourne Shell 和 Bourne Again Shell，所以，像 #!/bin/sh，它同样也可以改为 #!/bin/bash。
+#! 告诉系统其后路径所指定的程序即是解释此脚本文件的 Shell 程序。
+
+
+
+2. hello world 
+(1)编写
+第一个shell脚本
+打开文本编辑器(可以使用 vi/vim 命令来创建文件)，新建一个文件 test.sh，扩展名为 sh（sh代表shell），扩展名并不影响脚本执行，见名知意就好，如果你用 php 写 shell 脚本，扩展名就用 php 好了。
+输入一些代码，第一行一般是这样：
+
+#!/bin/bash
+echo "Hello World !"
+
+(2)运行 
+运行方法1：添加可执行权限
+$ chmod +x ./test.sh  #使脚本具有执行权限
+$ ./test.sh  #执行脚本
+
+注意，一定要写成 ./test.sh，而不是 test.sh
+
+运行方式2：作为解释器参数
+$/bin/sh test.sh
+或简写 $sh test.sh
+
+这种方式运行的脚本，不需要在第一行指定解释器信息，写了也没用。
+
+
+
+========================================
+shell脚本|变量与数组
+----------------------------------------
+
+
+
+========================================
+shell脚本|运算符
+----------------------------------------
+
+
+
+
+========================================
+shell脚本|流程控制
+----------------------------------------
+(1).选择
+
+
+
+
+(2).循环
+for i in `ls ../*count`
+do 
+	#语句块
+	ls -lth $i 
+done
+
+可以在中间加入功能：获取细胞id列表
+cell_id=`ls ../*count | sed -e 's/..\/htseq_//' -e 's/.sam.count//'`
+echo $cell_id|head
+
+
+
+
+========================================
+shell脚本|函数与参数传递
+----------------------------------------
+
+
+
+
+========================================
+shell脚本|输入与输出I/O
+----------------------------------------
+
+
+
+
+
+========================================
+shell脚本|shell文件包含
+----------------------------------------
+
+
+
+
+
 
 
 ========================================
 ----------------------------------------
+
+
+
 
 
 ========================================
