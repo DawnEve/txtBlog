@@ -180,6 +180,11 @@ To generate this message, Docker took the following steps:
 To try something more ambitious, you can run an Ubuntu container with:
  $ docker run -it ubuntu bash
 
+参数说明：
+ -i : –interactive，交互界面。
+ -t : –tty，伪终端界面。
+
+
 Share images, automate workflows, and more with a free Docker ID:
  https://cloud.docker.com/
 
@@ -899,7 +904,134 @@ https://docs.docker.com/get-started/
 
 
 ========================================
+安装docker版的wordpress
 ----------------------------------------
+https://hub.docker.com/r/library/wordpress/
+
+
+1.拉取镜像 
+$ sudo docker pull wordpress:latest
+
+
+
+2.准备数据库
+
+登录上述docker版的mysql数据库
+G:\xampp\mysql\bin> mysql -h y.biomooc.com -P 7070 -u root -p
+
+新建 wordpress数据库；
+> create database wordpress;
+
+如果你想允许用户wp从ip为任何的主机连接到mysql服务器，并使用123456作为密码
+> GRANT ALL PRIVILEGES ON *.* TO 'wp'@'%' IDENTIFIED BY '123456' WITH GRANT OPTION;
+> flush privileges;
+
+
+
+3.启动wordpress容器
+$ sudo docker run -it --name some-wordpress -e WORDPRESS_DB_HOST=y.biomooc.com:7070 -e WORDPRESS_DB_USER=root -e WORDPRESS_DB_PASSWORD=123456 -p 8080:80 -d wordpress
+秒退。
+
+$ sudo docker ps #发现这些容器都刚运行就退出了
+$ sudo docker ps -a|grep Exited #查询容器ID
+批量删除Docker中已停止的容器
+$ sudo docker ps -a|grep Exited | cut -d" " -f 1 | xargs sudo docker rm
+
+最后加一个长期执行的命令就可以了，bash：
+$ sudo docker run -it --name some-wordpress -e WORDPRESS_DB_HOST=y.biomooc.com:7070 -e WORDPRESS_DB_USER=root -e WORDPRESS_DB_PASSWORD=123456 -p 8080:80 -d wordpress bash
+
+进入docker内部
+$ sudo docker exec -it 716c bash
+启动apache服务器
+# service apache2 restart 
+
+# pwd
+/var/www/html
+# rm -rf *
+# cp -r /usr/src/wordpress/* . #复制wordpress文件到www目录
+
+浏览器打开 y.biomooc.com:8080
+
+填写数据库信息：
+DB: wordpress
+usr: root 
+psw: xxx
+host: 192.168.2.120:7070
+table_prefix:wp_
+
+使用head/tail/cat命令修改 wp-config.php中数据库一行，改为：
+define('DB_HOST', 'p:192.168.2.120:7070');
+
+可以正常访问web页面。
+
+
+
+
+
+
+4.排错
+(1)使用p解决频繁链接失败的问题。
+https://stackoverflow.com/questions/3210270/php-mysqli-connection-randomly-fails-with-cannot-assign-requested-address
+
+<?php
+$link = mysqli_connect('p:192.168.2.120:7070', 'wp', '123456');
+if (!$link) {
+die('Could not connect: ' . mysqli_error());
+}
+echo 'Connected successfully';
+mysqli_close($link);
+?>
+
+
+
+(2)ERR_CONNECTION_RESET 连接已重置
+https://blog.csdn.net/y472360651/article/details/79127285
+
+尝试修改 C:\windows\system32\drivers\etc\hosts
+
+加上服务器ip 域名，例如 
+74.125.39.99 chrome.google.com
+然后，访问就没问题了！
+
+
+
+
+
+5.设置wordpress的尝试过程
+进入docker内部
+$ sudo docker exec -it 0e027 bash
+
+(1)# find / -name "*wordpress*" 2>/dev/null
+/usr/src/wordpress
+...
+
+(2)# find / -name "*apache*" 2>/dev/null
+/etc/apache2
+/etc/apache2/apache2.conf
+...
+
+
+(3)# service apache2 status #原来是apache服务没开
+# service apache2 restart
+
+再次访问y.biomooc.com:8080 ，提示
+Forbidden
+You don't have permission to access / on this server.
+Apache/2.4.25 (Debian) Server at y.biomooc.com Port 8080
+
+然后用cat命令新建一个/var/www/html/index.html文件，访问y.biomooc.com:8080显示该index.html文件。
+
+
+(4)docker系统竟然没有文本编辑器，也安装不上去，有博客说需要更新系统
+https://www.cnblogs.com/zr520/p/6083436.html
+
+# apt-get update #这个命令的作用是：同步 /etc/apt/sources.list 和 /etc/apt/sources.list.d 中列出的源的索引，这样才能获取到最新的软件包。等更新完毕以后再敲命令：apt-get install vim
+总是更新失败。
+没办法，用head和cat命令编辑文件吧。。。
+
+文件在本机读写出现问题，所以不能文件映射！//todo
+
+
 
 
 
