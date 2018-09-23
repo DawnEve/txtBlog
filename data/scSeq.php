@@ -15,6 +15,7 @@ return array (
     0 => 4,
     1 => 'scRNAseq',
     2 => array (
+      array('scSeq002-methods','scSeq002-methods','txt'),
       array('scSeq-10xGenomics','scSeq-10xGenomics','txt'),
       array('scSeq-c1-RNA','scSeq-c1-RNA','txt'),
     ),
