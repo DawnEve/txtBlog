@@ -30,6 +30,7 @@ return array (
       array('每种应用的分析方法概述','analysis01','txt'),
 
 
+      array('测序分析shell语句','shell-in-seq','txt'),
       array('perl基础','lang-Perl','txt'),
     ),
   ),  
