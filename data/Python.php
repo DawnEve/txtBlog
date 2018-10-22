@@ -29,6 +29,7 @@ return array (
     1 => '机器学习ML',
     2 => array (
       array('机器学习概述','MachineLearning-01','txt',),
+      array('python爬虫','webSpider','txt',),
     ),
   ),
   
