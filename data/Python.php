@@ -19,6 +19,7 @@ return array (
       array('Python快速入门','Python101','txt',),
       array('Python基础详解','Python102','txt',),
       array('Python片段','Python103-pieces','txt',),
+      array('Python数据处理包','Python104-packages','txt',),
     ),
   ),
   
@@ -28,6 +29,7 @@ return array (
     1 => '机器学习ML',
     2 => array (
       array('机器学习概述','MachineLearning-01','txt',),
+      array('python爬虫','webSpider','txt',),
     ),
   ),
   

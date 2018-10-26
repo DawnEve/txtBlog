@@ -22,8 +22,8 @@ return array (
       array('海报-插画-UI图标','Illustrator103','txt'),
     ),
   ),
-  
-  
+
+
   array (
     0 => 1,
     1 => 'AI小专题',
@@ -31,5 +31,20 @@ return array (
       array('选择与形状','Illustrator201','html'),
     ),
   ),
-  
+
+
+
+
+
+  array (
+    0 => 1,
+    1 => 'Maya',
+    2 => array (
+      array('maya入门','maya_001','html'),
+    ),
+  ),
+
+
+
+
 );
