@@ -44,11 +44,12 @@ return array (
       array('db_参考基因组_在线工具','genome401','txt'),
       array('FAQ of TCGA','FAQ_TCGA','txt'),
       array('本地生信软件','localSoft402','txt'),
+      array('外显子WES分析','NGS_exon','txt'),
       array('circos','circos','txt'),
     ),
   ),
-  
-    
+
+
   array (
     0 => 5,
     1 => '练习题',

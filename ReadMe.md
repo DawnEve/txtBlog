@@ -42,9 +42,32 @@ txtBlog v0.4.1
 ## 事故：
 	2016-4-13之后，80端口被封，该网站变成了局域网。  
 		怎么能突破局域网的限制？  
-		- 花生壳？  
-	
-	
+		- 花生壳？ 
+
+
+
+
+
+# 部署到阿里云虚拟主机(2018.11.7)
+	1.先把blog二级域名解析到空间，再绑定到阿里云空间
+	2.子域名指向子目录：在根目录htdocs下创建文件.htaccess，内容如下。
+```
+RewriteEngine On
+RewriteBase /
+# 绑定 blog.applymed.cn 到子目录 txtBlog
+RewriteCond %{HTTP_HOST} ^blog.applymed.cn$ [NC]
+RewriteCond %{REQUEST_URI} !^/txtBlog/
+RewriteRule ^(.*)$ /txtBlog/$1 [L,QSA]
+#可以绑定多个，只需要重复以上三行代码，并更改一下域名、目录名 就好了
+```		
+	3.折腾了半天无法显示，最后发现是缓存实现不了。先注释掉index.php中的两行缓存后，一切正常显示了。
+	4.网址： http://blog.applymed.cn/txtBlog/
+
+
+
+
+
+
 ``````
 添加$ git remote add origin git@github.com:DawnEve/txtBlog.git
 首次$ git push -u origin master
