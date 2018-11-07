@@ -61,22 +61,21 @@ RewriteRule ^(.*)$ /txtBlog/$1 [L,QSA]
 #可以绑定多个，只需要重复以上三行代码，并更改一下域名、目录名 就好了
 ```		
 	3.折腾了半天无法显示，最后发现是缓存实现不了。先注释掉index.php中的两行缓存后，一切正常显示了。
-	4.网址： http://blog.applymed.cn/txtBlog/
+	4.网址： http://blog.applymed.cn/
 
 
-
-
-
-
-``````
-添加$ git remote add origin git@github.com:DawnEve/txtBlog.git
-首次$ git push -u origin master
-推送$ git push origin master
-
-合并$ git merge --no-ff -m'some comments' otherBranch
-``````
 
 
 
 ## 参考资料：  
 footer鲜活：http://www.iisp.com/ztview/ID_18392.html  
+
+``````
+添加$ git remote add origin git@github.com:DawnEve/txtBlog.git
+首次$ git push -u origin master
+
+$ git branch
+$ git checkout master
+合并$ git merge --no-ff -m'some comments' otherBranch
+推送$ git push origin master
+``````
