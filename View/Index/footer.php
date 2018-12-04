@@ -36,6 +36,7 @@
 		
 		//计算机技术类============================后端资料类
 		$links_Back=array(
+			array('http://mingxinglai.com/','Linux命令博客','赖明星，网易/腾讯db工程师(厦门大学数据库实验室林子雨老师的学生http://dblab.xmu.edu.cn/)'),
 			array('http://www.imeixue.cn/','每学网'),// 韩顺平的作品？
 			array('http://www.css88.com/archives/1706','前端'),
 
