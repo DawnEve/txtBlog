@@ -1136,9 +1136,184 @@ https://software.broadinstitute.org/gatk/best-practices/
 https://software.broadinstitute.org/gatk/documentation/quickstart.php
 
 
+========================================
+gatk4.0 实践 (hg19) 当前主流
+----------------------------------------
+主要参考： https://www.plob.org/article/11698.html
+	https://cloud.tencent.com/developer/news/180158
+其他参考： http://starsyi.github.io/2016/05/25/%E5%8F%98%E5%BC%82%E6%A3%80%E6%B5%8B%EF%BC%88BWA-SAMtools-picard-GATK%EF%BC%89/
+
+
+############
+[hg19版本]对于外显子测序分析，下载hg19数据吧，GATK官方建议
+############
+
+
+0.准备数据
+
+##0.1 下载参考数据
+For Best Practices short variant discovery in exome and other targeted sequencing: b37/hg19
+(https://software.broadinstitute.org/gatk/download/bundle 2018.12.5)
+
+链接ftp后下载：
+location: ftp.broadinstitute.org/bundle
+username: gsapubftp-anonymous
+password:
+
+
+输入如下命令： $ lftp ftp.broadinstitute.org -u gsapubftp-anonymous
+回车后键入空格，便可进入resource bundle。进入其中名为bundle的目录，找到最新版的hg19目录。
+
+
+$ cd /home/data/GATK/resources/bundle/hg19
+## ftp://ftp.broadinstitute.org/bundle/hg19/ #11:12
+wget -b ftp://gsapubftp-anonymous@ftp.broadinstitute.org/bundle/hg19/ucsc.hg19.fasta.gz &
+wget -b ftp://gsapubftp-anonymous@ftp.broadinstitute.org/bundle/hg19/ucsc.hg19.dict.gz & 
+wget -b ftp://gsapubftp-anonymous@ftp.broadinstitute.org/bundle/hg19/ucsc.hg19.fasta.fai.gz & 
+
+wget -b ftp://gsapubftp-anonymous@ftp.broadinstitute.org/bundle/hg19/dbsnp_138.hg19.vcf.gz & 
+wget -b ftp://gsapubftp-anonymous@ftp.broadinstitute.org/bundle/hg19/dbsnp_138.hg19.vcf.idx.gz & 
+
+wget -b ftp://gsapubftp-anonymous@ftp.broadinstitute.org/bundle/hg19/Mills_and_1000G_gold_standard.indels.hg19.sites.vcf.gz & 
+wget -b ftp://gsapubftp-anonymous@ftp.broadinstitute.org/bundle/hg19/Mills_and_1000G_gold_standard.indels.hg19.sites.vcf.idx.gz & 
+
+wget -b ftp://gsapubftp-anonymous@ftp.broadinstitute.org/bundle/hg19/1000G_phase1.snps.high_confidence.hg19.sites.vcf.gz & 
+wget -b ftp://gsapubftp-anonymous@ftp.broadinstitute.org/bundle/hg19/1000G_phase1.snps.high_confidence.hg19.sites.vcf.idx.gz & 
+
+wget -b ftp://gsapubftp-anonymous@ftp.broadinstitute.org/bundle/hg19/hapmap_3.3.hg19.sites.vcf.gz & 
+wget -b ftp://gsapubftp-anonymous@ftp.broadinstitute.org/bundle/hg19/hapmap_3.3.hg19.sites.vcf.idx.gz & 
+
+注意下载文件均为压缩文件，需要解压才能使用。
+解压：
+$ gunzip ucsc.hg19.fasta.gz
+$ gunzip *gz
+
+##0.2 建立bwa索引文件
+$ mkdir bwa_index 
+$ cd bwa_index
+$ 
+$ bwa index -a bwtsw \
+	-p gatk_hg19 ../ucsc.hg19.fasta \
+	1>hg19.bwa_index.log 2>&1 &
+## 耗时 main] Real time: 4507.269 sec; CPU: 4451.448 sec
+
+
+
+
+
+
+
+
+1.开始比对：map to reference[工具:BWA, MergeBamAlignments]
+$ pwd
+/home/data/ex23/wangjl_bwa
+
+##1.1设定参考基因组，样本名
+$ INDEX="/home/data/GATK/resources/bundle/hg19/bwa_index/gatk_hg19"
+$ sample="EX23"
+
+
+#使用raw reads进行mapping，由于该样本测了2个lane（每个R1、R2两个文件，共4个文件），每个lane分别map，最后合并sam文件。
+$ bwa mem -t 6 -M -R "@RG\tID:$sample\tSM:$sample\tLB:WES\tPL:Illumina" $INDEX ../../RawData/B18091902001/B18091902001_NDHE06390-A25-A29_AHF3VNDMXX-new_L1_1.fq.gz ../../RawData/B18091902001/B18091902001_NDHE06390-A25-A29_AHF3VNDMXX-new_L1_2.fq.gz >${sample}_L1.sam
+$ bwa mem -t 6 -M -R "@RG\tID:$sample\tSM:$sample\tLB:WES\tPL:Illumina" $INDEX ../../RawData/B18091902001/B18091902001_NDHE06390-A25-A29_AHF3VNDMXX-new_L2_1.fq.gz ../../RawData/B18091902001/B18091902001_NDHE06390-A25-A29_AHF3VNDMXX-new_L2_2.fq.gz >${sample}_L2.sam
+
+也可以先合并文件，https://sourceforge.net/p/bio-bwa/mailman/message/31053122/
+示例：bwa mem '<zcat R1_001.fastq.gz R1_002.fastq.gz R1_003.fastq.gz' '<zcat R2_001.fastq.gz R2_002.fastq.gz R2_003.fastq.gz' > out.sam
+$ bwa mem -t 6 -M -R "@RG\tID:$sample\tSM:$sample\tLB:WES\tPL:Illumina" $INDEX '<zcat ../../RawData/B18091902001/B18091902001_NDHE06390-A25-A29_AHF3VNDMXX-new_L1_1.fq.gz ../../RawData/B18091902001/B18091902001_NDHE06390-A25-A29_AHF3VNDMXX-new_L2_1.fq.gz' '<zcat ../../RawData/B18091902001/B18091902001_NDHE06390-A25-A29_AHF3VNDMXX-new_L1_2.fq.gz ../../RawData/B18091902001/B18091902001_NDHE06390-A25-A29_AHF3VNDMXX-new_L2_2.fq.gz' >${sample}.sam
+[main] Real time: 4452.334 sec; CPU: 26123.824 sec
+
+
+
+
+
+2.标记重复：Mark Duplicates[工具: MarkDuplicates, SortSam]
+
+#2.1sort by coordinate, 对sam文件进行进行重新排序（reorder）
+$ gatk --java-options "-Xmx12G -Djava.io.tmpdir=./" SortSam -SO coordinate -I $sample.sam -O $sample.bam 1>gatk_SortSam.log 2>&1 &
+#生成 EX23.bam #这个新生成的bam文件真小，只有16%(6.9G Bam/41G Sam)
+## real    81m29.543s
+
+
+#2.2 统计比对情况(可选)
+做到这一步需要对序列比对情况进行统计，如果比对情况很差需要查找原因。
+## sudo yum install gnuplot #需要依赖画图
+
+samtools index -@ 6 $sample.bam  #-@ 6 线程数
+
+samtools flagstat -@ 6 $sample.bam > ${sample}.alignment.flagstat 
+samtools stats -@ 6 $sample.bam > ${sample}.alignment.stat
+plot-bamstats -p ${sample}_QC ${sample}.alignment.stat #好几个图
+
+
+#2.3 标记重复，主要是去掉PCR带来的重复。
+nohup gatk --java-options "-Xmx12G -Djava.io.tmpdir=./" MarkDuplicates -I $sample.bam -O ${sample}_marked.bam -M $sample.metrics 1>log.mark 2>&1 &
+##11:19->11:38
+
+查看被标记重复的reads数。网站上sam文件flag的解释：1024表示是PCR重复Reads。
+$ samtools view -f 1024 EX23_marked.bam|wc
+17753967 320890672 8235579827
+
+为wes.sorted.MarkDuplicates.bam创建索引文件，它的作用能够让我们可以随机访问这个文件中的任意位置，而且后面的步骤也要求这个BAM文件一定要有索引.
+samtools index -@ 6 ${sample}_marked.bam  #-@ 6 线程数
+
+
+//todo 
+#步骤FixMateInformation有必要吗？貌似不必要了。
+nohup gatk --java-options "-Xmx12G -Djava.io.tmpdir=./" FixMateInformation -I ${sample}_marked.bam -O ${sample}_marked_fixed.bam -SO coordinate 1>log.fix 2>&1 &
+
+
+
+
+#2.4 Base (Quality Score) Recalibration[工具: BaseRecalibrator, Apply Recalibration, AnalyzeCovariates (optional)]
+GATK4在核心算法层面并没太多的修改，但参数设置还是有些改变的，并且取消了RealignerTargetCreator、IndelRealigner，应该是HaplotypeCaller继承了这部分功能。
+
+
+局部比对 Local relignment(可选)
+(https://gatkforums.broadinstitute.org/gatk/discussion/1247/what-should-i-use-as-known-variantssites-for-running-tool-x)
+It is recommended on GATK website that indelrealigner step could safely be ignored if haplotype caller is to be used for variant calling. 
+也就是说接下来一步中用haplotype caller的话，就不需要再用indelrealigner步骤了。
+
+1000G_phase1.indels.b37.vcf和Mills_and_1000G_gold_standard.indels.b37.vcf 这两个文件来自千人基因组和Mills项目，里面记录了那些项目中检测到的人群Indel区域。
+
+
+
+
+
+3.变异检测：使用GATK的HaplotypeCaller命令
+HaplotypeCaller: Call germline SNPs and indels via local re-assembly of haplotypes
+
+The HaplotypeCaller is capable of calling SNPs and indels simultaneously via local de-novo assembly of haplotypes in an active region.
+
+
+HaplotypeCaller和那些直接应用贝叶斯推断的算法有所不同，它会先推断群体的单倍体组合情况，计算各个组合的几率，然后根据这些信息再反推每个样本的基因型组合。因此它不但特别适合应用到群体的变异检测中，而且还能够依据群体的信息更好地计算每个个体的变异数据和它们的基因型组合。
+
+一般来说，在实际的WGS流程中对HaplotypeCaller的应用有两种做法，差别只在于要不要在中间生成一个gVCF：
+
+（1）直接进行HaplotypeCaller，这适合于单样本，或者那种固定样本数量的情况，也就是执行一次HaplotypeCaller之后就老死不相往来了。否则你会碰到仅仅只是增加一个样本就得重新运行这个HaplotypeCaller的坑爹情况（即，N+1难题），而这个时候算法需要重新去读取所有人的BAM文件，这将会是一个很费时间的痛苦过程；
+
+（2）每个样本先各自生成gVCF，然后再进行群体joint-genotype。这其实就是GATK团队为了解决（1）中的N+1难题而设计出来的模式。gVCF全称是genome VCF，是每个样本用于变异检测的中间文件，格式类似于VCF，它把joint-genotype过程中所需的所有信息都记录在这里面，文件无论是大小还是数据量都远远小于原来的BAM文件。这样一旦新增加样本也不需要再重新去读取所有人的BAM文件了，只需为新样本生成一份gVCF，然后重新执行这个joint-genotype就行了。
+
+
+本例就一个病人样本，就使用单样本模式。
+
+## 首先设置好软件地址
+GENOME=/home/data/GATK/resources/bundle/hg19/ucsc.hg19.fasta
+DBSNP=/home/data/GATK/resources/bundle/hg19/dbsnp_138.hg19.vcf
+
+nohup gatk --java-options "-Xmx12G -Djava.io.tmpdir=./" HaplotypeCaller \
+	-R $GENOME -I ${sample}_marked.bam --dbsnp $DBSNP -O ${sample}_raw.vcf 1>log.HC 2>&1 &
+##18:50
+
+
+
+
+
+
+
+
 
 ========================================
-gatk4.0 实践 
+gatk4.0 实践 (hg38) 未来趋势
 ----------------------------------------
 主要参考： http://www.bio-info-trainee.com/3144.html
 其他参考： https://www.plob.org/article/7009.html
@@ -1204,6 +1379,8 @@ $ sample="WES01_2"
 #使用raw reads进行mapping
 $ bwa mem -t 6 -M -R "@RG\tID:$sample\tSM:$sample\tLB:WES\tPL:Illumina" $INDEX ../0_fastqc/B1709060700_NDHE00383-A84-A68_AH7277CCXY_L7_1.fq ../0_fastqc/B1709060700_NDHE00383-A84-A68_AH7277CCXY_L7_2.fq >$sample.sam ##WES01_2.sam
 [main] Real time: 3044.140 sec; CPU: 17879.608 sec
+
+
 
 
 
@@ -1279,8 +1456,7 @@ total 110G
 1)Count variants:
 $ grep -v "#" WES01_2_raw.vcf | wc
 
-2)Extract sites located between positons 10000 and 20000 on chromosome chr2 and save them in a new VCF
-file:
+2)Extract sites located between positons 10000 and 20000 on chromosome chr2 and save them in a new VCF file:
 $ head -1000 WES01_2_raw.vcf | grep "#" > new_file.vcf 
 $ grep -v "#" WES01_2_raw.vcf | \
 	awk '{if($1=="chr2" && $2 >=10000 && $2 <=20000) print}' >> new_file.vcf
