@@ -1302,11 +1302,92 @@ DBSNP=/home/data/GATK/resources/bundle/hg19/dbsnp_138.hg19.vcf
 
 nohup gatk --java-options "-Xmx12G -Djava.io.tmpdir=./" HaplotypeCaller \
 	-R $GENOME -I ${sample}_marked.bam --dbsnp $DBSNP -O ${sample}_raw.vcf 1>log.HC 2>&1 &
-##18:50
+##18:50-2:39 Elapsed time: 468.53 minutes(7.8h).
+Running:
+    java -Dsamjdk.use_async_io_read_samtools=false -Dsamjdk.use_async_io_write_samtools=true -Dsamjdk.use_async_io_write_tribble=false -Dsamjdk.compression_level=2 -Xmx12G -Djava.io.tmpdir=./ -jar /home/wangjl/Soft/gatk-4.0.11.0/gatk-package-4.0.11.0-local.jar HaplotypeCaller -R /home/data/GATK/resources/bundle/hg19/ucsc.hg19.fasta -I EX23_marked.bam --dbsnp /home/data/GATK/resources/bundle/hg19/dbsnp_138.hg19.vcf -O EX23_raw.vcf
+
+
+最后得到的vcf文件如下：
+$ ls -lth
+total 55G
+-rw-rw-r--. 1 wangjl wangjl 278K Dec  8 02:39 log.HC
+-rw-rw-r--. 1 wangjl wangjl 5.7M Dec  8 02:39 EX23_raw.vcf.idx
+-rw-rw-r--. 1 wangjl wangjl 116M Dec  8 02:39 EX23_raw.vcf
 
 
 
 
+
+4.变异质控和过滤
+Filter Variants by Variant (Quality Score) Recalibration[工具: VariantRecalibrator, ApplyRecalibration]
+
+(1)
+https://cloud.tencent.com/developer/news/180158
+https://software.broadinstitute.org/gatk/best-practices/workflow?id=11145
+
+高灵敏度来避免漏掉稀有突变，但是需要过滤来减低大量的假阳性。
+已经建立的功率raw variant的方法是VQSR（variant quality score recalibration），用机器学习识别稀有位点，为其分配一个比QUAL靠谱的VQSLOD分。
+然后就可以用这个分来过滤结果，产生一个符合我们期待质量水品的子集，平衡特异性和敏感性。
+
+接下来的recalibration 算法需要高质量的变异集合来训练和作为真集合，很多物种没有该数据。
+也需要很多数据来学习profiles of good vs. bad variants，所以对于一个或少量样本不适用，也不适用于on targeted sequencing data, on RNAseq, and on non-model organisms。
+这样就要使用hard-filtering了。为具体的注释设置阈值，并平等的应用到所有的变异上。查看方法学文章和相关FAQ。
+
+我们现在正在尝试基于神经网络的更强大、更灵活的方法，来替代VQSR。
+
+
+(2)执行硬过滤
+https://gatkforums.broadinstitute.org/gatk/discussion/39/variant-quality-score-recalibration-vqsr
+要注意的是，VQSR只适用于samples数目大于30的exome sequencing或者whole genome sequenicing。如果sample数目不够或者capture region过小，请参考http://www.broadinstitute.org/gatk/guide/topic?name=best-practices中对于此类问题的解决方法建议。一般是使用VariantFiltration进行hard filter。
+
+$ pwd
+/home/data/ex23/wangjl_bwa/3_callSNP
+
+(1)# 使用SelectVariants，选出SNP(time=1.2min)
+time gatk SelectVariants \
+    -select-type SNP \
+    -V ../2_mapping/${sample}_raw.vcf \
+    -O ${sample}.snp.vcf.gz
+
+# 为SNP作硬过滤(time=1.26min)
+time gatk VariantFiltration \
+    -V ${sample}.snp.vcf.gz \
+    --filter-expression "QD < 2.0 || MQ < 40.0 || FS > 60.0 || SOR > 3.0 || MQRankSum < -12.5 || ReadPosRankSum < -8.0" \
+    --filter-name "PASS" \
+    -O ${sample}.snp.filter.vcf.gz
+
+
+
+(2)# 使用SelectVariants，选出Indel(time=1.06min)
+time gatk SelectVariants \
+    -select-type INDEL \
+    -V ../2_mapping/${sample}_raw.vcf \
+    -O ${sample}.indel.vcf.gz
+
+# 为Indel作过滤(time=1.03min)
+time gatk VariantFiltration \
+    -V ${sample}.indel.vcf.gz \
+    --filter-expression "QD < 2.0 || FS > 200.0 || SOR > 10.0 || MQRankSum < -12.5 || ReadPosRankSum < -8.0" \
+    --filter-name "PASS" \
+    -O ${sample}.indel.filter.vcf.gz
+
+
+
+(3) # 重新合并过滤后的SNP和Indel
+time gatk MergeVcfs \
+    -I ${sample}.snp.filter.vcf.gz \
+    -I ${sample}.indel.filter.vcf.gz \
+    -O ${sample}.filter.vcf.gz
+
+# 删除无用中间文件
+## $ rm -f ${sample}.snp.vcf.gz* ${sample}.snp.filter.vcf.gz* ${sample}.indel.vcf.gz* ${sample}.indel.filter.vcf.gz*
+
+
+(4) 查看结果文件
+$ zcat EX23.filter.vcf.gz|grep -v "#"|head
+
+$ zcat EX23.filter.vcf.gz|grep -v "#"|wc
+627989 6279890 123423242
 
 
 
