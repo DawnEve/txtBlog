@@ -97,4 +97,8 @@ for(var i=0;i<aTitle.length;i++){
 	}
 }
 
+
+
+//为html的title添加文件名 $trueFileName
+document.title += " |<?php echo $trueFileName;?>"
 </script>
