@@ -1066,6 +1066,11 @@ html=getHtml('http://y.biomooc.com/wangjl/test.html')
 print(html.decode("utf-8")) #为什么？
 #getHtml('https://www.baidu.com').decode("utf-8")
 
+#如果"utf-8"报错：UnicodeDecodeError: 'utf-8' codec can't decode byte 0xc8 in position 0
+#则改为"gb18030"
+print(html.decode("gb18030"))
+
+
 
 其中：
 Urllib 模块提供了读取web页面数据的接口，我们可以像读取本地文件一样读取www和ftp上的数据。首先，我们定义了一个getHtml()函数:
@@ -1308,6 +1313,264 @@ if __name__ == '__main__':
     pOut.terminate(); #终止死循环
 
 print(time.time()-start,'s', '='*10, "End of main process", os.getpid())
+
+
+========================================
+实例：多线程下载沪深股市行情信息（上市公司/csv）[urllib.request.urlopen, shell, file]
+----------------------------------------
+
+1. 多线程下载信息
+# 多线程，下载股票数据
+
+################
+# on linux only.
+# v0.2
+################ 
+
+## 任务：从爬虫获取股票id，作为参数传给下载进程们。
+# 多线程下载 多文件
+## 一个进程记录数据，一个进程池 众多线程下载和保存数据。
+## 读、写进程之间用queue通信。
+
+
+import urllib.request
+import re
+ 
+##def downback(a,b,c):
+##    ''''
+##    a:已经下载的数据块
+##    b:数据块的大小
+##    c:远程文件的大小
+##   '''
+##    per = 100.0 * a * b / c
+##    if per > 100 :
+##        per = 100
+##    print('%.2f%%' % per)
+stock_CodeUrl = 'http://quote.eastmoney.com/stocklist.html'
+
+ 
+# 获取股票代码列表
+def urlTolist(url):
+    allCodeList = []
+    html = urllib.request.urlopen(url).read()
+    html = html.decode('gbk')
+    s = r'<li><a target="_blank" href="http://quote.eastmoney.com/\S\S(.*?).html">'
+    pat = re.compile(s)
+    code = pat.findall(html)
+    for item in code:
+        if item[0] == '6' or item[0] == '3' or item[0] == '0':
+            allCodeList.append(item)
+    return allCodeList
+ 
+ 
+allCodelist = urlTolist(stock_CodeUrl)
+len(allCodelist) #3689
+
+
+import os
+import re
+import requests
+
+
+############################
+##part 1 配置文件:
+############################
+os.chdir('/home/wangjl/web/all_stock_data') #设置项目目录
+print(os.getcwd())
+
+#需要新建文件夹 xx
+pname="20181210";
+
+
+with open(pname+'.id','w') as f:
+    for code in allCodelist:
+        f.write(code+"\n")
+
+############################
+#part 2 工作函数
+############################
+def getHtml(url):
+    page=urllib.request.urlopen(url)
+    html=page.read().decode("gb18030")
+    return html
+#fun: 根据id下载文件
+def download(code):
+    if code[0] == '6':
+        url = 'http://quotes.money.163.com/service/chddata.html?code=0' + code + \
+              '&end=20181210&fields=TCLOSE;HIGH;LOW;TOPEN;LCLOSE;CHG;PCHG;TURNOVER;VOTURNOVER;VATURNOVER;TCAP;MCAP'
+    else:
+        url = 'http://quotes.money.163.com/service/chddata.html?code=1' + code + \
+              '&end=20181210&fields=TCLOSE;HIGH;LOW;TOPEN;LCLOSE;CHG;PCHG;TURNOVER;VOTURNOVER;VATURNOVER;TCAP;MCAP'
+    #发出请求,写入二进制文件
+    html=getHtml(url)
+    with open( pname+"/"+code + '.csv','w') as f:
+        f.write(html)
+    return code;
+
+download("600000")
+
+print("==2end=============")
+
+############################
+#part 3 多线程
+############################
+import time,multiprocessing,os,random,re,sys
+from multiprocessing import Queue
+from multiprocessing import Process
+
+#start time
+start=time.time()
+print('='*10, "Begin of main process", os.getpid(), "[child pid by parent ppid]")
+
+# 读和处理数据
+def worker(id):
+    #一个很耗时的计算
+    rs=download(id) #该函数在上一个cell定义的
+    q.put(rs) #结果输出到管道
+    #print(id+" done.")
+
+#保存的线程1个
+def worker_out():
+    i=0
+    with open(pname+'.done', 'w') as f:
+        while True:
+            i+=1
+            if i%200==0: #进度条
+                #pass 
+                print(str(i)+" files have been done.  Elapse = "+ str(time.time()-start) +'s' )
+            
+            rs=q.get() #waite while q is empty
+            #print(rs)
+            f.write(rs+"\n") #写入文件
+            f.flush() #刷新缓存，一次性输出到文件
+
+
+# 主进程
+if __name__ == '__main__':
+    q=Queue(200) #会超标，但是不会超出太多
+    
+    # 声明进程池对象
+    pool = multiprocessing.Pool(processes = 100)
+
+    #文件读取，分配任务给进程
+    fr=open(pname+".id",'r')
+
+    # 向进程池中提交任务
+    i=0
+    for lineR in fr.readlines():
+        i+=1
+        if i>500:
+            pass;
+            #break; #测试用语句
+
+        line=lineR.strip()
+        pool.apply_async( worker,args=(line,) )
+    fr.close() #关闭文件
+
+    #分完任务，开始启动保存进程
+    pOut = Process(target=worker_out)
+    pOut.start()
+
+    #等待读进程结束
+    pool.close()
+    pool.join()
+
+    #主线程查看队列，决定是否关掉写循环
+    while not q.empty():
+        time.sleep(1)#每一秒检查一次队列是否为空
+
+    pOut.terminate(); #终止死循环
+
+print(time.time()-start,'s', '='*10, "End of main process", os.getpid())
+
+
+
+2.检查出下载失败的id
+# 检测下载个数和结果的差别。
+fda1=[]
+fda2=[]
+#文件读取
+def file2Arr(fname):
+    fr1=open(fname,'r')
+
+    i=0
+    arr=[]
+    for lineR in fr1.readlines():
+        i+=1
+        if i>10:
+            pass;
+            #break; #测试用语句
+
+        line=lineR.strip()
+        arr.append(line)
+    fr1.close();
+    return arr;
+
+fda1=file2Arr("/home/wangjl/web/all_stock_data/20181210.id")
+fda2=file2Arr("/home/wangjl/web/all_stock_data/file")
+
+for id in fda1:
+    if id not in fda2:
+        print(id)
+
+
+
+3.整合出来某一天的所有上市公司的信息
+import pandas as pd
+
+# 从文件获取某一天的信息
+id="600001"
+
+def getByID_Date(id,date):
+    #使用pandas读取txt文件，默认分隔符是逗号。
+    df=pd.read_csv("20181210/"+id+'.csv',sep=",", index_col="日期")
+    
+    #pandas 如果不存在某一行
+    if date in df.index:
+        return df.loc[[date]] #某一行
+    else:
+        return df[1:1]
+
+#getByID_Date(id,"2018-12-07")
+
+#合并两条信息
+#t1=getByID_Date('000001',"2018-12-07")
+#t2=getByID_Date('000002',"2018-12-07")
+#t1.append(t2)
+
+#读取code列表
+ids=[]
+f=open("/home/wangjl/web/all_stock_data/20181210.id",'r')
+for code in f.readlines():
+    ids.append( code.strip() )
+f.close()
+print( len(ids) )
+
+
+#同过循环读取所有的code的第一行
+today=""
+i=0
+for code in ids:
+    i+=1
+    if i%300==0:
+        print(i, ' processing ', code )
+
+    row=getByID_Date(code,"2018-12-07")
+    if i==1:
+        today=row
+    else:
+        today=today.append(row)
+print("==end==")
+
+pring( today )
+
+data2=today[["股票代码","名称","总市值"]]
+data2.to_csv("data2.csv")
+
+import os
+os.getcwd()
+#'/home/wangjl/web/all_stock_data' 到R中用ggplot2画图。
+
 
 
 
