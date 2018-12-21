@@ -38,8 +38,9 @@ return array (
 
   array (
     0 => 1,
-    1 => 'Maya',
+    1 => '3D建模',
     2 => array (
+      array('blender','blender_001','html'),
       array('maya入门','maya_001','html'),
     ),
   ),
