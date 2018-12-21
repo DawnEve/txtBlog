@@ -15,7 +15,8 @@ WES数据一般用于SNP和Indel分析，不能用于CNA和SA的分析。
 参考GATK Germline Best Practice
 
 
-
+一文囊括全基因组测序各步骤工具
+https://mp.weixin.qq.com/s/ONl1UuY3EC3eJG94SKDHAg#rd
 
 
 2.SNP分析所需软件(来自诺禾致源的说明书)
@@ -246,9 +247,6 @@ $ cutadapt -a ADAPTER_FWD -A ADAPTER_REV -o out.1.fastq -p out.2.fastq reads.1.f
 -p is the short form of --paired-output. 
 
 
-看图，需要除掉低质量的碱基。
-$ cutadapt -e 0.1 -j 5 -q 32 -m 100 --pair-filter=both -o out.1.fastq -p out.2.fastq ../0_fastqc/B1709060700_NDHE00383-A84-A68_AH7277CCXY_L7_1.fq ../0_fastqc/B1709060700_NDHE00383-A84-A68_AH7277CCXY_L7_2.fq
-
 
 要用PE模式来去除接头，保证过滤后的reads还是数量继续平衡的。
 --pair-filter=both
@@ -256,6 +254,7 @@ $ cutadapt -e 0.1 -j 5 -q 32 -m 100 --pair-filter=both -o out.1.fastq -p out.2.f
  WARNING: Legacy mode is enabled. Read modification and filtering options *ignore* the second read. To switch to regular paired-end mode, provide the --pair-filter=any option or use any of the -A/-B/-G/-U/--interleaved options.
 
 --max-n=COUNT  Discard reads with more than COUNT 'N' bases. If COUNT在0和1之间，则为比例。
+	--max-n=10 最多10个N碱基，否则舍弃；
 -e 0.1 错误率超过10%舍弃。-e 引物匹配允许错误率，我调置0.15，一般引物20bp长允许3个错配，为了尽量把引物切干净 
 -j N 或者--cores=N 多核
 -O 5 Require MINLENGTH overlap between read and adapter for an adapter to be found. Default: 3
@@ -264,29 +263,33 @@ $ cutadapt -e 0.1 -j 5 -q 32 -m 100 --pair-filter=both -o out.1.fastq -p out.2.f
 -o 输出文件
 -p 另一个输出文件
 
+看图，需要除掉低质量的碱基。
+$ cutadapt --max-n=10 -e 0.1 -j 5 -q 30 -m 100 --pair-filter=both -o outN.1.fastq -p outN.2.fastq ../0_fastqc/B1709060700_NDHE00383-A84-A68_AH7277CCXY_L7_1.fq ../0_fastqc/B1709060700_NDHE00383-A84-A68_AH7277CCXY_L7_2.fq
 
-$ cutadapt -e 0.1 -j 5 -q 32 -m 100 --pair-filter=both -o out.1.fastq -p out.2.fastq ../0_fastqc/B1709060700_NDHE00383-A84-A68_AH7277CCXY_L7_1.fq ../0_fastqc/B1709060700_NDHE00383-A84-A68_AH7277CCXY_L7_2.fq
+Finished in 454.01 s (11 us/read; 5.30 M reads/minute).
 
-Finished in 443.18 s (11 us/read; 5.43 M reads/minute).
 === Summary ===
 
 Total read pairs processed:         40,082,567
   Read 1 with adapter:                       0 (0.0%)
   Read 2 with adapter:                       0 (0.0%)
-Pairs that were too short:           1,112,243 (2.8%)
-Pairs written (passing filters):    38,970,324 (97.2%)
+Pairs that were too short:             626,386 (1.6%)
+Pairs with too many N:                     811 (0.0%)
+Pairs written (passing filters):    39,455,370 (98.4%)
 
 Total basepairs processed: 12,024,770,100 bp
   Read 1: 6,012,385,050 bp
   Read 2: 6,012,385,050 bp
-Quality-trimmed:             731,635,203 bp (6.1%)
-  Read 1:   254,589,325 bp
-  Read 2:   477,045,878 bp
-Total written (filtered):  11,201,702,911 bp (93.2%)
-  Read 1: 5,704,317,713 bp
-  Read 2: 5,497,385,198 bp
--
+Quality-trimmed:             509,713,908 bp (4.2%)
+  Read 1:   163,408,047 bp
+  Read 2:   346,305,861 bp
+Total written (filtered):  11,454,864,271 bp (95.3%)
+  Read 1: 5,813,730,111 bp
+  Read 2: 5,641,134,160 bp
 
+
+
+可以删除那些原始fq数据了，保留一份fq.gz即可。
 
 
 
@@ -399,8 +402,26 @@ if (algo_type == "auto") {
 
 
 
-(2)比对
-BWA-MEM
+(2)比对：bwa mem 或者 bwa aln 哪个好呢？
+$ bwa mem ref.fa read1.fq read2.fq > aln-pe.sam
+-t 5 线程
+-M            mark shorter split hits as secondary
+-R STR        read group header line such as '@RG\tID:foo\tSM:bar' [null]
+  定义头文件 -R '@RG\tID:foo\tSM:bar'，如果在此步骤不进行头文件定义，在后续GATK分析中还是需要重新增加头文件。
+
+示例代码
+$ bwa mem -t 8 -M -R '@RG\tID:${name}\tLB:${name}\tPL:ILLUMINA\tPM:X10\tSM:${name}' ${INDEX} ${RAW_DATA}/${name}_1.fastq ${RAW_DATA}/${name}_2.fastq > ${WORKING_DIR}/2018rerun/processed_bam/${name}.sam
+
+
+实际代码
+$ INDEX="/home/data/Homo_sapiens/UCSC/hg38/Sequence/BWAIndex/genome.fa"
+$ bwa mem -t 6 -M ${INDEX} ../1_cleanData/outN.1.fastq ../1_cleanData/outN.2.fastq > processed.sam
+20:52 to 21:50
+
+[main] Version: 0.7.17-r1188
+[main] CMD: bwa mem -t 6 -M /home/data/Homo_sapiens/UCSC/hg38/Sequence/BWAIndex/genome.fa ../1_cleanData/outN.1.fastq ../1_cleanData/outN.2.fastq
+[main] Real time: 3491.090 sec(0.96hour); CPU: 20559.125 sec
+
 
 
 
@@ -672,20 +693,34 @@ Starting from Control-FREEC v10.6, Control-FREEC can work on exome-seq data with
 
 
 ========================================
-变异功能注释 ANNOVAR
+变异注释-基因频率数据库
 ----------------------------------------
-1. ANNOVAR简介(邮件注册才能下载)
-官网 http://annovar.openbioinformatics.org/en/latest/
-ANNOVAR是由王凯编写的一个注释软件，可以对SNP和indel进行注释，也可以进行变异的过滤筛选。
+如何挖掘外显子变异频率信息： https://www.jianshu.com/p/4278896661f2
+http://www.omicsclass.com/article/463
 
-ANNOVAR能够利用最新的数据来分析各种基因组中的遗传变异。主要包含三种不同的注释方法，Gene-based Annotation（基于基因的注释）、Region-based Annotation（基于区域的注释）、Filter-based Annotation（基于筛选的注释）。
-
-ANNOVAR由Perl编写。
-优点：提供多个数据可直接下载、支持多种格式、注释直观；
-缺点：没有数据库的物种无法注释。
+千人基因组计划 http://www.internationalgenome.org/category/population/
 
 
-2.安装
+
+1.为达到变异筛选目的，我们一般会在几个大型的外显子变异数据库中对新发现的突变进行注释，了解其突变频率等情况。常用的数据库有dbSNP、Hapmap、COSMIC、1000Genomes projects千人基因组计划（根据人种来源，分为全部人种、东亚人、美洲人等不同子数据库）、ESP6500外显子计划、ExAC（根据人种来源，分为全部人种、东亚人等不同子数据库）。
+
+Population Code	Population Description	Super Population Code
+CHB	Han Chinese in Beijing, China	EAS
+CDX	Chinese Dai in Xishuangbanna, China	EAS
+
+
+2.目标变异筛选（基于变异频率）
+结合以上数据库，通过特定的阈值筛选，我们可以过滤很多无效变异。例如，可以过滤千人基因组数据库中频率大于0.01变异位点，以得到真正可能致病的罕见突变（rare）。也可以联合多个数据库对突变频率进行过滤，或者同时参考dbSNP中记录的SNP信息，初步判断数据库中不存在的变异为新发现变异，以增加研究价值。
+
+不过值得注意的是，在dbSNP中没有记录的变异，有可能是新变异，也有可能是旧的符合条件的变异，更有可能是测序错误。因此在判断某一变异的价值的时候，需要结合其位置信息以及蛋白突变有害性等信息进行判断。
+
+
+
+
+
+
+
+
 
 
 
@@ -693,39 +728,76 @@ ANNOVAR由Perl编写。
 
 
 ========================================
-gatk
+gatk--Variant Discovery in High-Throughput Sequencing Data
 ----------------------------------------
 参考全文 https://www.cnblogs.com/nkwy2012/p/6322775.html
 
-
 1.官网： https://software.broadinstitute.org/gatk/
-
 Genome Analysis Toolkit
 Variant Discovery in High-Throughput Sequencing Data
 
-如何安装：https://www.jianshu.com/p/825e7d618838
+
+(1)如何安装：https://www.jianshu.com/p/825e7d618838
 $ wget https://github.com/broadinstitute/gatk/releases/download/4.0.11.0/gatk-4.0.11.0.zip
+$ unzip gatk-4.0.11.0.zip
+$ tree -L 1 gatk-4.0.11.0
+gatk-4.0.11.0
+├── gatk
+├── gatk-completion.sh
+├── gatkcondaenv.intel.yml
+├── gatkcondaenv.yml
+├── GATKConfig.EXAMPLE.properties
+├── gatkdoc
+├── gatk-package-4.0.11.0-local.jar
+├── gatk-package-4.0.11.0-spark.jar
+├── gatkPythonPackageArchive.zip
+├── README.md
+└── scripts
 
-(2)下载序列
-https://gatkforums.broadinstitute.org/gatk/discussion/1215/how-can-i-access-the-gsa-public-ftp-server
+解压缩之后，可以看到两个后缀为.jar的文件，local用于本地运行，spark用于在spark集群上运行。实际使用时，直接用gatk这个可执行文件就行了。
 
-用浏览器登陆 ftp://ftp.broadinstitute.org/bundle
+建立软链接
+$ cd /home/wangjl/bin
+$ ln -s ~/Soft/gatk-4.0.11.0/gatk   
 
+通过一个简单的命令，查看程序是否正确安装
+$ gatk --list
+这个命令能够打印出所有的子命令(估计有几百个)，如果打印出来结果，说明程序安装正确。部分子命令截图如下
+USAGE:  <program name> [-h]
 
+Available Programs:
+----- ----- ----- ----- ----- ----- ----- ----- ----- 
+Base Calling:                                    Tools that process sequencing machine data, e.g. Illumina base calls, and detect sequencing level attributes, e.g. adapters
+    CheckIlluminaDirectory (Picard)              Asserts the validity for specified Illumina basecalling data.
+    CollectIlluminaBasecallingMetrics (Picard)   Collects Illumina Basecalling metrics for a sequencing run.
+    CollectIlluminaLaneMetrics (Picard)          Collects Illumina lane metrics for the given BaseCalling analysis directory.
+    ExtractIlluminaBarcodes (Picard)             Tool determines the barcode for each read in an Illumina lane.
+    CollectIlluminaLaneMetrics (Picard)          Collects Illumina lane metrics for the given BaseCalling analysis directory.                                                                                                                             [252/1916]
+    ExtractIlluminaBarcodes (Picard)             Tool determines the barcode for each read in an Illumina lane.
+    IlluminaBasecallsToFastq (Picard)            Generate FASTQ file(s) from Illumina basecall read data.
+    IlluminaBasecallsToSam (Picard)              Transforms raw Illumina sequencing data into an unmapped SAM or BAM file.
+    MarkIlluminaAdapters (Picard)                Reads a SAM or BAM file and rewrites it with new adapter-trimming tags.
 
+----- ----- ----- ----- ----- ----- ----- ----- ----- 
+Copy Number Variant Discovery:                   Tools that analyze read coverage to detect copy number variants.
+    AnnotateIntervals                            (BETA Tool) Annotates intervals with GC content, mappability, and segmental-duplication content
+    CallCopyRatioSegments                        (BETA Tool) Calls copy-ratio segments as amplified, deleted, or copy-number neutral
+    CollectAllelicCountsSpark                    Collects ref/alt counts at sites.
+    CombineSegmentBreakpoints                    (EXPERIMENTAL Tool) Combine the breakpoints of two segment files and annotate the resulting intervals with chosen columns from each file.
+    CreateReadCountPanelOfNormals                (BETA Tool) Creates a panel of normals for read-count denoising
+    DenoiseReadCounts                            (BETA Tool) Denoises read counts to produce denoised copy ratios
+    DetermineGermlineContigPloidy                (BETA Tool) Determines the baseline contig ploidy for germline samples given counts data
+    FilterIntervals                              (BETA Tool) Filters intervals based on annotations and/or count statistics
+...
 
+子命令后面如果有(picard), 说明这个功能是继承于picard软件，从这里也可以看出，GATK4集成了picard软件的功能。再不需要像之前版本一样，混合使用picard 和 gatk 了。
 
-
-
-
-2.GATK Best Practices
-https://software.broadinstitute.org/gatk/best-practices/
 GATK4 的最佳实践给出了5套pipeline
-Germline SNPs + Indels
-Somatic SNVs + Indels
-RNAseq SNPs + Indels
-Germline CNVs
-Somatic CNVs
+1)Germline SNPs + Indels
+2)Somatic SNVs + Indels
+3)RNAseq SNPs + Indels
+4)Germline CNVs
+5)Somatic CNVs
 
 以上五套pipeline 可以根据研究对象是DNA还是RNA进行划分：DNA 测序（包含1,2,4,5）和RNA 测序（3）。可以看到，GATK 更多的是倾向于DNA 测序数据的分析。对于DNA测序而言，主要识别SNP和CNV 两大类型的变异，每种变异类型又有Germline和Somatic的区别。
 
@@ -740,14 +812,772 @@ GATK4整合了picard软件，在算法上进行了优化，新增了许多新的
 
 
 
+(2)下载参考数据
+https://gatkforums.broadinstitute.org/gatk/discussion/1215/how-can-i-access-the-gsa-public-ftp-server
+
+
+GATK在进行BQSR和VQSR的过程中会使用到R软件绘制一些图，因此，在运行GATK之前最好先检查一下是否正确安装了R和所需要的包，所需要的包大概包括ggplot2、gplots、bitops、caTools、colorspace、gdata、gsalib、reshape、RColorBrewer等。如果画图时出现错误，会提示需要安装的包的名称。
+
+
+
+用浏览器登陆 ftp://ftp.broadinstitute.org/bundle/
+annovar/humandb folder will have its own dbnsfp file eg hg38_dbnsfp*.txt.
+
+
+
+2.GATK Best Practices
+https://software.broadinstitute.org/gatk/best-practices/
+
+
+
 3.Quick Start Guide:Take a brief orientation tour and get started today
 https://software.broadinstitute.org/gatk/documentation/quickstart.php
+
+
+========================================
+gatk4.0 实践 (hg19) 当前主流
+----------------------------------------
+主要参考： https://www.plob.org/article/11698.html
+	https://cloud.tencent.com/developer/news/180158
+其他参考： http://starsyi.github.io/2016/05/25/%E5%8F%98%E5%BC%82%E6%A3%80%E6%B5%8B%EF%BC%88BWA-SAMtools-picard-GATK%EF%BC%89/
+
+
+############
+[hg19版本]对于外显子测序分析，下载hg19数据吧，GATK官方建议
+############
+
+
+0.准备数据
+
+##0.1 下载参考数据
+For Best Practices short variant discovery in exome and other targeted sequencing: b37/hg19
+(https://software.broadinstitute.org/gatk/download/bundle 2018.12.5)
+
+链接ftp后下载：
+location: ftp.broadinstitute.org/bundle
+username: gsapubftp-anonymous
+password:
+
+
+输入如下命令： $ lftp ftp.broadinstitute.org -u gsapubftp-anonymous
+回车后键入空格，便可进入resource bundle。进入其中名为bundle的目录，找到最新版的hg19目录。
+
+
+$ cd /home/data/GATK/resources/bundle/hg19
+## ftp://ftp.broadinstitute.org/bundle/hg19/ #11:12
+wget -b ftp://gsapubftp-anonymous@ftp.broadinstitute.org/bundle/hg19/ucsc.hg19.fasta.gz &
+wget -b ftp://gsapubftp-anonymous@ftp.broadinstitute.org/bundle/hg19/ucsc.hg19.dict.gz & 
+wget -b ftp://gsapubftp-anonymous@ftp.broadinstitute.org/bundle/hg19/ucsc.hg19.fasta.fai.gz & 
+
+wget -b ftp://gsapubftp-anonymous@ftp.broadinstitute.org/bundle/hg19/dbsnp_138.hg19.vcf.gz & 
+wget -b ftp://gsapubftp-anonymous@ftp.broadinstitute.org/bundle/hg19/dbsnp_138.hg19.vcf.idx.gz & 
+
+wget -b ftp://gsapubftp-anonymous@ftp.broadinstitute.org/bundle/hg19/Mills_and_1000G_gold_standard.indels.hg19.sites.vcf.gz & 
+wget -b ftp://gsapubftp-anonymous@ftp.broadinstitute.org/bundle/hg19/Mills_and_1000G_gold_standard.indels.hg19.sites.vcf.idx.gz & 
+
+wget -b ftp://gsapubftp-anonymous@ftp.broadinstitute.org/bundle/hg19/1000G_phase1.snps.high_confidence.hg19.sites.vcf.gz & 
+wget -b ftp://gsapubftp-anonymous@ftp.broadinstitute.org/bundle/hg19/1000G_phase1.snps.high_confidence.hg19.sites.vcf.idx.gz & 
+
+wget -b ftp://gsapubftp-anonymous@ftp.broadinstitute.org/bundle/hg19/hapmap_3.3.hg19.sites.vcf.gz & 
+wget -b ftp://gsapubftp-anonymous@ftp.broadinstitute.org/bundle/hg19/hapmap_3.3.hg19.sites.vcf.idx.gz & 
+
+注意下载文件均为压缩文件，需要解压才能使用。
+解压：
+$ gunzip ucsc.hg19.fasta.gz
+$ gunzip *gz
+
+##0.2 建立bwa索引文件
+$ mkdir bwa_index 
+$ cd bwa_index
+$ 
+$ bwa index -a bwtsw \
+	-p gatk_hg19 ../ucsc.hg19.fasta \
+	1>hg19.bwa_index.log 2>&1 &
+## 耗时 main] Real time: 4507.269 sec; CPU: 4451.448 sec
+
+
+
+
+
+
+
+
+1.开始比对：map to reference[工具:BWA, MergeBamAlignments]
+$ pwd
+/home/data/ex23/wangjl_bwa
+
+##1.1设定参考基因组，样本名
+$ INDEX="/home/data/GATK/resources/bundle/hg19/bwa_index/gatk_hg19"
+$ sample="EX23"
+
+
+#使用raw reads进行mapping，由于该样本测了2个lane（每个R1、R2两个文件，共4个文件），每个lane分别map，最后合并sam文件。
+$ bwa mem -t 6 -M -R "@RG\tID:$sample\tSM:$sample\tLB:WES\tPL:Illumina" $INDEX ../../RawData/B18091902001/B18091902001_NDHE06390-A25-A29_AHF3VNDMXX-new_L1_1.fq.gz ../../RawData/B18091902001/B18091902001_NDHE06390-A25-A29_AHF3VNDMXX-new_L1_2.fq.gz >${sample}_L1.sam
+$ bwa mem -t 6 -M -R "@RG\tID:$sample\tSM:$sample\tLB:WES\tPL:Illumina" $INDEX ../../RawData/B18091902001/B18091902001_NDHE06390-A25-A29_AHF3VNDMXX-new_L2_1.fq.gz ../../RawData/B18091902001/B18091902001_NDHE06390-A25-A29_AHF3VNDMXX-new_L2_2.fq.gz >${sample}_L2.sam
+
+也可以先合并文件，https://sourceforge.net/p/bio-bwa/mailman/message/31053122/
+示例：bwa mem '<zcat R1_001.fastq.gz R1_002.fastq.gz R1_003.fastq.gz' '<zcat R2_001.fastq.gz R2_002.fastq.gz R2_003.fastq.gz' > out.sam
+$ bwa mem -t 6 -M -R "@RG\tID:$sample\tSM:$sample\tLB:WES\tPL:Illumina" $INDEX '<zcat ../../RawData/B18091902001/B18091902001_NDHE06390-A25-A29_AHF3VNDMXX-new_L1_1.fq.gz ../../RawData/B18091902001/B18091902001_NDHE06390-A25-A29_AHF3VNDMXX-new_L2_1.fq.gz' '<zcat ../../RawData/B18091902001/B18091902001_NDHE06390-A25-A29_AHF3VNDMXX-new_L1_2.fq.gz ../../RawData/B18091902001/B18091902001_NDHE06390-A25-A29_AHF3VNDMXX-new_L2_2.fq.gz' >${sample}.sam
+[main] Real time: 4452.334 sec; CPU: 26123.824 sec
+
+
+
+
+
+2.标记重复：Mark Duplicates[工具: MarkDuplicates, SortSam]
+
+#2.1sort by coordinate, 对sam文件进行进行重新排序（reorder）
+$ gatk --java-options "-Xmx12G -Djava.io.tmpdir=./" SortSam -SO coordinate -I $sample.sam -O $sample.bam 1>gatk_SortSam.log 2>&1 &
+#生成 EX23.bam #这个新生成的bam文件真小，只有16%(6.9G Bam/41G Sam)
+## real    81m29.543s
+
+
+#2.2 统计比对情况(可选)
+做到这一步需要对序列比对情况进行统计，如果比对情况很差需要查找原因。
+## sudo yum install gnuplot #需要依赖画图
+
+samtools index -@ 6 $sample.bam  #-@ 6 线程数
+
+samtools flagstat -@ 6 $sample.bam > ${sample}.alignment.flagstat 
+samtools stats -@ 6 $sample.bam > ${sample}.alignment.stat
+plot-bamstats -p ${sample}_QC ${sample}.alignment.stat #好几个图
+
+
+#2.3 标记重复，主要是去掉PCR带来的重复。
+nohup gatk --java-options "-Xmx12G -Djava.io.tmpdir=./" MarkDuplicates -I $sample.bam -O ${sample}_marked.bam -M $sample.metrics 1>log.mark 2>&1 &
+##11:19->11:38
+
+查看被标记重复的reads数。网站上sam文件flag的解释：1024表示是PCR重复Reads。
+$ samtools view -f 1024 EX23_marked.bam|wc
+17753967 320890672 8235579827
+
+为wes.sorted.MarkDuplicates.bam创建索引文件，它的作用能够让我们可以随机访问这个文件中的任意位置，而且后面的步骤也要求这个BAM文件一定要有索引.
+samtools index -@ 6 ${sample}_marked.bam  #-@ 6 线程数
+
+
+//todo 
+#步骤FixMateInformation有必要吗？貌似不必要了。
+nohup gatk --java-options "-Xmx12G -Djava.io.tmpdir=./" FixMateInformation -I ${sample}_marked.bam -O ${sample}_marked_fixed.bam -SO coordinate 1>log.fix 2>&1 &
+
+
+
+
+#2.4 Base (Quality Score) Recalibration[工具: BaseRecalibrator, Apply Recalibration, AnalyzeCovariates (optional)]
+GATK4在核心算法层面并没太多的修改，但参数设置还是有些改变的，并且取消了RealignerTargetCreator、IndelRealigner，应该是HaplotypeCaller继承了这部分功能。
+
+
+局部比对 Local relignment(可选)
+(https://gatkforums.broadinstitute.org/gatk/discussion/1247/what-should-i-use-as-known-variantssites-for-running-tool-x)
+It is recommended on GATK website that indelrealigner step could safely be ignored if haplotype caller is to be used for variant calling. 
+也就是说接下来一步中用haplotype caller的话，就不需要再用indelrealigner步骤了。
+
+1000G_phase1.indels.b37.vcf和Mills_and_1000G_gold_standard.indels.b37.vcf 这两个文件来自千人基因组和Mills项目，里面记录了那些项目中检测到的人群Indel区域。
+
+
+
+
+
+3.变异检测：使用GATK的HaplotypeCaller命令
+HaplotypeCaller: Call germline SNPs and indels via local re-assembly of haplotypes
+
+The HaplotypeCaller is capable of calling SNPs and indels simultaneously via local de-novo assembly of haplotypes in an active region.
+
+
+HaplotypeCaller和那些直接应用贝叶斯推断的算法有所不同，它会先推断群体的单倍体组合情况，计算各个组合的几率，然后根据这些信息再反推每个样本的基因型组合。因此它不但特别适合应用到群体的变异检测中，而且还能够依据群体的信息更好地计算每个个体的变异数据和它们的基因型组合。
+
+一般来说，在实际的WGS流程中对HaplotypeCaller的应用有两种做法，差别只在于要不要在中间生成一个gVCF：
+
+（1）直接进行HaplotypeCaller，这适合于单样本，或者那种固定样本数量的情况，也就是执行一次HaplotypeCaller之后就老死不相往来了。否则你会碰到仅仅只是增加一个样本就得重新运行这个HaplotypeCaller的坑爹情况（即，N+1难题），而这个时候算法需要重新去读取所有人的BAM文件，这将会是一个很费时间的痛苦过程；
+
+（2）每个样本先各自生成gVCF，然后再进行群体joint-genotype。这其实就是GATK团队为了解决（1）中的N+1难题而设计出来的模式。gVCF全称是genome VCF，是每个样本用于变异检测的中间文件，格式类似于VCF，它把joint-genotype过程中所需的所有信息都记录在这里面，文件无论是大小还是数据量都远远小于原来的BAM文件。这样一旦新增加样本也不需要再重新去读取所有人的BAM文件了，只需为新样本生成一份gVCF，然后重新执行这个joint-genotype就行了。
+
+
+本例就一个病人样本，就使用单样本模式。
+
+## 首先设置好软件地址
+GENOME=/home/data/GATK/resources/bundle/hg19/ucsc.hg19.fasta
+DBSNP=/home/data/GATK/resources/bundle/hg19/dbsnp_138.hg19.vcf
+
+nohup gatk --java-options "-Xmx12G -Djava.io.tmpdir=./" HaplotypeCaller \
+	-R $GENOME -I ${sample}_marked.bam --dbsnp $DBSNP -O ${sample}_raw.vcf 1>log.HC 2>&1 &
+##18:50-2:39 Elapsed time: 468.53 minutes(7.8h).
+Running:
+    java -Dsamjdk.use_async_io_read_samtools=false -Dsamjdk.use_async_io_write_samtools=true -Dsamjdk.use_async_io_write_tribble=false -Dsamjdk.compression_level=2 -Xmx12G -Djava.io.tmpdir=./ -jar /home/wangjl/Soft/gatk-4.0.11.0/gatk-package-4.0.11.0-local.jar HaplotypeCaller -R /home/data/GATK/resources/bundle/hg19/ucsc.hg19.fasta -I EX23_marked.bam --dbsnp /home/data/GATK/resources/bundle/hg19/dbsnp_138.hg19.vcf -O EX23_raw.vcf
+
+
+最后得到的vcf文件如下：
+$ ls -lth
+total 55G
+-rw-rw-r--. 1 wangjl wangjl 278K Dec  8 02:39 log.HC
+-rw-rw-r--. 1 wangjl wangjl 5.7M Dec  8 02:39 EX23_raw.vcf.idx
+-rw-rw-r--. 1 wangjl wangjl 116M Dec  8 02:39 EX23_raw.vcf
+
+
+
+
+
+4.变异质控和过滤
+Filter Variants by Variant (Quality Score) Recalibration[工具: VariantRecalibrator, ApplyRecalibration]
+
+(1)
+https://cloud.tencent.com/developer/news/180158
+https://software.broadinstitute.org/gatk/best-practices/workflow?id=11145
+
+高灵敏度来避免漏掉稀有突变，但是需要过滤来减低大量的假阳性。
+已经建立的功率raw variant的方法是VQSR（variant quality score recalibration），用机器学习识别稀有位点，为其分配一个比QUAL靠谱的VQSLOD分。
+然后就可以用这个分来过滤结果，产生一个符合我们期待质量水品的子集，平衡特异性和敏感性。
+
+接下来的recalibration 算法需要高质量的变异集合来训练和作为真集合，很多物种没有该数据。
+也需要很多数据来学习profiles of good vs. bad variants，所以对于一个或少量样本不适用，也不适用于on targeted sequencing data, on RNAseq, and on non-model organisms。
+这样就要使用hard-filtering了。为具体的注释设置阈值，并平等的应用到所有的变异上。查看方法学文章和相关FAQ。
+
+我们现在正在尝试基于神经网络的更强大、更灵活的方法，来替代VQSR。
+
+
+(2)执行硬过滤
+https://gatkforums.broadinstitute.org/gatk/discussion/39/variant-quality-score-recalibration-vqsr
+要注意的是，VQSR只适用于samples数目大于30的exome sequencing或者whole genome sequenicing。如果sample数目不够或者capture region过小，请参考http://www.broadinstitute.org/gatk/guide/topic?name=best-practices中对于此类问题的解决方法建议。一般是使用VariantFiltration进行hard filter。
+
+$ pwd
+/home/data/ex23/wangjl_bwa/3_callSNP
+
+(1)# 使用SelectVariants，选出SNP(time=1.2min)
+time gatk SelectVariants \
+    -select-type SNP \
+    -V ../2_mapping/${sample}_raw.vcf \
+    -O ${sample}.snp.vcf.gz
+
+# 为SNP作硬过滤(time=1.26min)
+time gatk VariantFiltration \
+    -V ${sample}.snp.vcf.gz \
+    --filter-expression "QD < 2.0 || MQ < 40.0 || FS > 60.0 || SOR > 3.0 || MQRankSum < -12.5 || ReadPosRankSum < -8.0" \
+    --filter-name "PASS" \
+    -O ${sample}.snp.filter.vcf.gz
+
+
+
+(2)# 使用SelectVariants，选出Indel(time=1.06min)
+time gatk SelectVariants \
+    -select-type INDEL \
+    -V ../2_mapping/${sample}_raw.vcf \
+    -O ${sample}.indel.vcf.gz
+
+# 为Indel作过滤(time=1.03min)
+time gatk VariantFiltration \
+    -V ${sample}.indel.vcf.gz \
+    --filter-expression "QD < 2.0 || FS > 200.0 || SOR > 10.0 || MQRankSum < -12.5 || ReadPosRankSum < -8.0" \
+    --filter-name "PASS" \
+    -O ${sample}.indel.filter.vcf.gz
+
+
+
+(3) # 重新合并过滤后的SNP和Indel
+time gatk MergeVcfs \
+    -I ${sample}.snp.filter.vcf.gz \
+    -I ${sample}.indel.filter.vcf.gz \
+    -O ${sample}.filter.vcf.gz
+
+# 删除无用中间文件
+## $ rm -f ${sample}.snp.vcf.gz* ${sample}.snp.filter.vcf.gz* ${sample}.indel.vcf.gz* ${sample}.indel.filter.vcf.gz*
+
+
+(4) 查看结果文件
+$ zcat EX23.filter.vcf.gz|grep -v "#"|head
+
+$ zcat EX23.filter.vcf.gz|grep -v "#"|wc
+627989 6279890 123423242
+
 
 
 
 
 ========================================
-Picard
+gatk4.0 实践 (hg38) 未来趋势
+----------------------------------------
+主要参考： http://www.bio-info-trainee.com/3144.html
+其他参考： https://www.plob.org/article/7009.html
+GATK4最佳实践-数据预处理篇 https://www.jianshu.com/p/e306dc2307e5
+
+GATK4 最佳实践-生殖细胞突变的检测与识别 https://www.jianshu.com/p/6f3198b7a070
+
+官方推的GATK4教程：https://drive.google.com/drive/folders/1U6Zm_tYn_3yeEgrD1bdxye4SXf5OseIt
+
+
+
+
+
+
+0.准备数据
+##0.1 下载参考数据
+$ mkdir -p /home/data/GATK/resources/bundle/hg38
+$ cd /home/data/GATK/resources/bundle/hg38
+## ftp://ftp.broadinstitute.org/bundle/hg38/
+nohup wget ftp://gsapubftp-anonymous@ftp.broadinstitute.org/bundle/hg38/dbsnp_146.hg38.vcf.gz 2>dbsnp_146.hg38.vcf.gz.log & 
+#nohup wget ftp://gsapubftp-anonymous@ftp.broadinstitute.org/bundle/hg38/dbsnp_146.hg38.vcf.gz.tbi & 
+nohup wget ftp://gsapubftp-anonymous@ftp.broadinstitute.org/bundle/hg38/Mills_and_1000G_gold_standard.indels.hg38.vcf.gz 2>Mills_and_1000G_gold_standard.indels.hg38.vcf.gz.log & 
+nohup wget ftp://gsapubftp-anonymous@ftp.broadinstitute.org/bundle/hg38/Mills_and_1000G_gold_standard.indels.hg38.vcf.gz.tbi 2>Mills_and_1000G_gold_standard.indels.hg38.vcf.gz.tbi.log & 
+#nohup wget ftp://gsapubftp-anonymous@ftp.broadinstitute.org/bundle/hg38/Homo_sapiens_assembly38.fasta.gz & 
+nohup wget ftp://gsapubftp-anonymous@ftp.broadinstitute.org/bundle/hg38/Homo_sapiens_assembly38.fasta.fai 2>Homo_sapiens_assembly38.fasta.fai.log & 
+#nohup wget ftp://gsapubftp-anonymous@ftp.broadinstitute.org/bundle/hg38/Homo_sapiens_assembly38.dict & 
+nohup wget ftp://gsapubftp-anonymous@ftp.broadinstitute.org/bundle/hg38/1000G_phase1.snps.high_confidence.hg38.vcf.gz 2>1000G_phase1.snps.high_confidence.hg38.vcf.gz.log & 
+nohup wget ftp://gsapubftp-anonymous@ftp.broadinstitute.org/bundle/hg38/1000G_phase1.snps.high_confidence.hg38.vcf.gz.tbi 2>1000G_phase1.snps.high_confidence.hg38.vcf.gz.tbi.log & 
+
+##0.2 建立bwa索引文件
+$ mkdir bwa_index 
+$ cd bwa_index
+$ bwa index -a bwtsw \
+	-p gatk_hg38 ../Homo_sapiens_assembly38.fasta \
+	1>hg38.bwa_index.log 2>&1 &
+##-p STR    prefix of the index [same as fasta name]
+##[main] Real time: 4686.724 sec; CPU: 4628.838 sec
+
+
+
+
+
+
+
+
+
+1.开始比对：map to reference
+
+##1.1设定参考基因组，样本名
+$ INDEX="/home/data/GATK/resources/bundle/hg38/bwa_index/gatk_hg38"
+$ sample="WES01_2"
+
+#1.2开始比对
+#使用clean data进行mapping
+## bwa mem -t 6 -M -R "@RG\tID:$sample\tSM:$sample\tLB:WES\tPL:Illumina" $INDEX ../1_cleanData/outN.1.fastq ../1_cleanData/outN.2.fastq >$sample.sam #WES01.sam
+
+
+是否需要在第一步做fastqc和cutadapt过滤？
+如果过滤，则不容易mark duplicate。
+因为mark是比对5'和3'端，一样就认为重复。
+
+
+#使用raw reads进行mapping
+$ bwa mem -t 6 -M -R "@RG\tID:$sample\tSM:$sample\tLB:WES\tPL:Illumina" $INDEX ../0_fastqc/B1709060700_NDHE00383-A84-A68_AH7277CCXY_L7_1.fq ../0_fastqc/B1709060700_NDHE00383-A84-A68_AH7277CCXY_L7_2.fq >$sample.sam ##WES01_2.sam
+[main] Real time: 3044.140 sec; CPU: 17879.608 sec
+
+
+
+
+
+
+
+
+
+2.对bam进行clean：Mark Duplicates
+#2.1sort by coordinate
+$ gatk --java-options "-Xmx12G -Djava.io.tmpdir=./" SortSam -SO coordinate -I $sample.sam -O $sample.bam 1>log.sort 2>&1 &
+#生成 WES01_2.bam #这个新生成的bam文件真小，只有10%多点(4.1G Bam/34G Sam)
+
+
+#2.2 索引和统计
+$ sudo yum install gnuplot #需要依赖画图
+
+samtools index $sample.bam
+# -@ 6 线程数
+samtools flagstat -@ 6 $sample.bam > ${sample}.alignment.flagstat 
+samtools stats -@ 6 $sample.bam > ${sample}.alignment.stat
+echo plot-bamstats -p ${sample}_QC ${sample}.alignment.stat ##？没有看到图//todo
+
+
+#2.3 标记重复
+nohup gatk --java-options "-Xmx12G -Djava.io.tmpdir=./" MarkDuplicates -I $sample.bam -O ${sample}_marked.bam -M $sample.metrics 1>log.mark 2>&1 &
+##11:19->11:38
+
+nohup gatk --java-options "-Xmx12G -Djava.io.tmpdir=./" FixMateInformation -I ${sample}_marked.bam -O ${sample}_marked_fixed.bam -SO coordinate 1>log.fix 2>&1 &
+
+samtools index ${sample}_marked_fixed.bam
+
+
+为了节省磁盘空间，最后只需要留学一个bam文件即可.
+
+
+3.Base(Quality Score) Recalibration(optional)
+??
+
+
+
+
+4.直接找变异：使用GATK的HaplotypeCaller命令
+
+## 首先设置好软件地址
+GENOME=/home/data/GATK/resources/bundle/hg38/Homo_sapiens_assembly38.fasta
+DBSNP=/home/data/GATK/resources/bundle/hg38/dbsnp_146.hg38.vcf.gz
+
+nohup gatk --java-options "-Xmx12G -Djava.io.tmpdir=./" HaplotypeCaller \
+	-R $GENOME -I ${sample}_marked_fixed.bam --dbsnp $DBSNP -O ${sample}_raw.vcf 1>log.HC 2>&1 &
+##14:03->
+## Elapsed time: 492.58 minutes.(8Hours)
+
+Running:
+    java -Dsamjdk.use_async_io_read_samtools=false -Dsamjdk.use_async_io_write_samtools=true -Dsamjdk.use_async_io_write_tribble=false -Dsamjdk.compression_level=2 -Xmx12G -Djava.io.tmpdir=./ -jar /home/wangjl/Soft/gatk-4.0.11.0/gatk-package-4.0.11.0-local.jar HaplotypeCaller -R /home/data/GATK/resources/bundle/hg38/Homo_sapiens_assembly38.fasta -I WES01_2_marked_fixed.bam --dbsnp /home/data/GATK/resources/bundle/hg38/dbsnp_146.hg38.vcf.gz -O WES01_2_raw.vcf
+
+
+最后得到的vcf文件如下；
+$ ls -lth
+total 110G
+-rw-rw-r--. 1 wangjl wangjl 323K Nov  9 22:15 log.HC
+-rw-rw-r--. 1 wangjl wangjl 2.3M Nov  9 22:15 WES01_2_raw.vcf.idx
+-rw-rw-r--. 1 wangjl wangjl 185M Nov  9 22:15 WES01_2_raw.vcf
+
+这些VCF格式的变异记录该如何理解，以及GATK的每一个步骤是否仍然必须?
+
+
+
+
+
+############################
+对vcf文件的常用统计和处理
+############################
+1)Count variants:
+$ grep -v "#" WES01_2_raw.vcf | wc
+
+2)Extract sites located between positons 10000 and 20000 on chromosome chr2 and save them in a new VCF file:
+$ head -1000 WES01_2_raw.vcf | grep "#" > new_file.vcf 
+$ grep -v "#" WES01_2_raw.vcf | \
+	awk '{if($1=="chr2" && $2 >=10000 && $2 <=20000) print}' >> new_file.vcf
+
+3)Extract variants with quality (QUAL) greater than 100 (the resulting file will have no header!):
+$ grep -v "#" WES01_2_raw.vcf | awk '{if($6>100) print}' > good_variants
+
+
+
+
+
+
+
+
+5.获取的snp和indel文件，并使用硬过滤的策略
+GATK4.0和全基因组数据分析实践（下）
+原创： 矿工  碱基矿工  2018.3月23日
+
+(1)
+# 使用SelectVariants，选出SNP
+time gatk SelectVariants \
+    -select-type SNP \
+    -V ../2_mapping/WES01_2_raw.vcf \
+    -O WES01_2_.snp.vcf.gz
+
+# 为SNP作硬过滤
+time gatk VariantFiltration \
+    -V WES01_2_.snp.vcf.gz \
+    --filter-expression "QD < 2.0 || MQ < 40.0 || FS > 60.0 || SOR > 3.0 || MQRankSum < -12.5 || ReadPosRankSum < -8.0" \
+    --filter-name "PASS" \
+    -O WES01_2_.snp.filter.vcf.gz
+	
+(2)
+# 使用SelectVariants，选出Indel
+time gatk SelectVariants \
+    -select-type INDEL \
+    -V ../2_mapping/WES01_2_raw.vcf \
+    -O WES01_2_.indel.vcf.gz
+
+# 为Indel作过滤
+time gatk VariantFiltration \
+    -V WES01_2_.indel.vcf.gz \
+    --filter-expression "QD < 2.0 || FS > 200.0 || SOR > 10.0 || MQRankSum < -12.5 || ReadPosRankSum < -8.0" \
+    --filter-name "PASS" \
+    -O WES01_2_.indel.filter.vcf.gz
+
+(3)
+# 重新合并过滤后的SNP和Indel
+time gatk MergeVcfs \
+    -I WES01_2_.snp.filter.vcf.gz \
+    -I WES01_2_.indel.filter.vcf.gz \
+    -O WES01_2_.filter.vcf.gz
+
+# 删除无用中间文件
+$ rm -f WES01_2_.snp.vcf.gz* WES01_2_.snp.filter.vcf.gz* WES01_2_.indel.vcf.gz* WES01_2_.indel.filter.vcf.gz*
+
+
+
+https://biohpc.cornell.edu/lab/doc/Variant_workshop_Part1.pdf
+https://biohpc.cornell.edu/lab/doc/Variant_workshop_Part2.pdf
+
+
+
+
+
+========================================
+Workflow Description Language (WDL)语言
+----------------------------------------
+1.简介
+http://www.openwdl.org/
+
+语法方便人读写的指定数据处理流程的方法。The Workflow Description Language (WDL) is a way to specify data processing workflows with a human-readable and -writeable syntax. 
+
+直接定义任务，链接起来，并行处理。WDL makes it straightforward to define analysis tasks, chain them together in workflows, and parallelize their execution. 
+
+The language makes common patterns simple to express, while also admitting uncommon or complicated behavior; and strives to achieve portability not only across execution platforms, but also different types of users. Whether one is an analyst, a programmer, an operator of a production system, or any other sort of user, WDL should be accessible and understandable.
+
+
+2.Getting Started 快速入门教程
+https://software.broadinstitute.org/wdl/documentation/quickstart
+
+(1)基本结构 Base Structure
+https://software.broadinstitute.org/wdl/documentation/structure.php
+https://blog.csdn.net/theomarker/article/details/79627804
+
+WDL有5个基本成分： workflow, task, call, command and output. 
+没有明确的input定义组件；输入参数（指定参数，包括输入和输出文件名）。
+还有些可选组件可以指定运行时参数（环境条件，比如Docker image），作者和邮件等meta信息，输入和输出的parameter_meta 描述——但现在我们已经不再担心这些了。
+
+在一个小型的WDL脚本中，一个叫做 myWorkflowName 的workflow，和两个tasks(task_A和task_B)
+
+
+
+
+
+
+
+(2)添加变量 Add Variables: 外部设定输入文件、参数
+(3)添加管道 Add Plumbing: 把组件组合成管线pipeline
+(4)验证语法 Validate Syntax: 防止少了一个分号之类的错误
+
+
+3.Running a WDL
+产生一个JSON模板，指定输入（很简单）。
+执行WDL脚本的选项，我们用的引擎是Cromwell.
+
+(1)Specify Inputs
+
+(2)Execute!
+
+
+
+4.When you're ready
+(1) WDLTool: https://github.com/broadinstitute/wdltool/releases
+wget https://github.com/broadinstitute/wdltool/releases/download/0.14/wdltool-0.14.jar
+(2) Text editor:用的 vim
+(3) Cromwell: 可以执行WDL，描述数据处理和分析流程，包含命令行工具(比如执行 Variant Discovery的GATK管线)
+如果你熟悉GATK，可能听过用Qscripts写的叫做Queue的执行引擎。Cromwell and WDL 是 Queue and Qscripts的一个用户友好的替代.
+
+https://github.com/broadinstitute/cromwell/releases
+$ wget https://github.com/broadinstitute/cromwell/releases/download/36/cromwell-36.jar
+$ java -jar cromwell.jar #Cromwell是一个开源的由Java编写支持WDL的执行工具，需要java8环境。
+
+下载jar包，并放到路径中。
+
+Running WDL on Cromwell locally
+$ java -jar Cromwell.jar run myWorkflow.wdl --inputs myWorkflow_inputs.json
+
+
+
+(4) java8
+https://www.oracle.com/technetwork/java/javase/downloads/jdk8-downloads-2133151.html
+
+$ java --version
+openjdk 10.0.2 2018-07-17
+OpenJDK Runtime Environment (build 10.0.2+13-Ubuntu-1ubuntu0.18.04.3)
+OpenJDK 64-Bit Server VM (build 10.0.2+13-Ubuntu-1ubuntu0.18.04.3, mixed mode)
+
+(5) Docker (optional)
+https://docs.docker.com/install/
+
+
+(6) Programs to be pipelined 需要流程化的程序 
+我们的教程使用GATK和Picard工具展示如何写WDL脚本。首先安装这俩工具，按照GATK即可。
+此外还推荐安装R包gsalib。
+
+
+
+
+
+
+
+========================================
+用vcftools来处理vcf文件（centOS6.8安装失败）
+----------------------------------------
+1.概述
+https://vcftools.github.io/index.html
+VCFtools is a program package designed for working with VCF files, such as those generated by the 1000 Genomes Project. The aim of VCFtools is to provide easily accessible methods for working with complex genetic variation data in the form of VCF files.
+
+http://www.1000genomes.org/ 改名为 http://www.internationalgenome.org/
+
+
+This toolset can be used to perform the following operations on VCF files:
+
+过滤 Filter out specific variants
+比较 Compare files
+汇总 Summarize variants
+转换 Convert to different file types
+验证合并 Validate and merge files
+求交集 Create intersections and subsets of variants
+
+VCFtools consists of two parts, a perl module and a binary executable. 
+The perl module is a general Perl API for manipulating VCF files, whereas the binary executable provides general analysis routines.
+
+
+
+
+2.下载与安装
+https://vcftools.github.io/downloads.html
+
+(1)用yum安装吧：
+$ sudo yum install vcftools
+$ vcftools
+VCFtools (v0.1.11)
+
+使用的时候报错
+Error:VCF version must be v4.0 or v4.1:
+You are using version VCFv4.2
+说明必须安装新版本
+sudo yum remove vcftools
+
+
+
+(2)尝试安装
+$ git clone https://github.com/vcftools/vcftools.git
+需要环境中有perl
+cd vcftools
+./autogen.sh  报错1
+$ sudo yum install install autoconf automake libtool #解决报错1
+
+./configure
+make 
+make install #依旧报错
+
+
+$ wget https://github.com/vcftools/vcftools/releases/download/v0.1.16/vcftools-0.1.16.tar.gz
+$ tar zxvf vcftools-0.1.16.tar.gz
+$ cd vcftools-0.1.16 
+./configure
+make ##报错 bgzf.h:33:10: fatal error: zlib.h: No such file or directory
+make install
+
+
+## 无效 download from : 
+wget https://github.com/madler/zlib/blob/master/zlib.h
+## put the file in the same folder as your project file. 放在平级目录中。
+
+
+
+(3)重启，再次make时又有新的报错：
+vcftools-bcf_file.o: In function `bcf_file::open_gz()':                                                                                  │
+/home/wangjl/Soft/vcftools/src/cpp/bcf_file.cpp:88: undefined reference to `gzbuffer'
+解决不了
+
+
+
+(4)回到压缩包内
+[wangjl@NGSZD vcftools-0.1.16]$ whereis zlib.h
+zlib: /usr/include/zlib.h /usr/share/man/man3/zlib.3.gz
+
+
+这里说 https://github.com/alexdobin/STAR/issues/142 可能是gcc找不到.h文件，
+it looks like gcc cannot find zlib.h . Please check that /usr/include/ appears in the list of standard include directories with
+$ gcc -xc -E -v -
+$ gcc -xc++ -E -v -
+
+
+
+看来是需要设置gcc的头文件自动搜索路径
+【1】include头文件路径
+除了默认的/usr/include, /usr/local/include等include路径外，还可以通过设置环境变量来添加系统include的路径：
+# C
+export C_INCLUDE_PATH=XXXX:$C_INCLUDE_PATH
+# CPP
+export CPLUS_INCLUDE_PATH=XXX:$CPLUS_INCLUDE_PATH
+以上修改可以直接命令行输入（一次性），可以在/etc/profile中完成（对所有用户生效），也可以在用户home目录下的.bashrc或.bash_profile中添加（针对某个用户生效），修改完后重新登录即生效。
+原文：https://blog.csdn.net/allenlinrui/article/details/21483617 
+
+
+
+ghc-zlib-devel.x86_64 : Haskell compression and decompression library development files
+zlib-devel.i686 : Header files and libraries for Zlib development
+zlib-devel.x86_64 : Header files and libraries for Zlib development
+
+
+结论：最终在centOS6.8上也没有安装成功新版本的vcftools，旧版本已经不支持该vcf 4.2标准。
+
+
+
+
+(5)使用ubuntu1604安装试试(192.168.1.115)
+很顺利的make通过了。
+$ vcftools --version
+VCFtools (0.1.16)
+
+
+
+
+
+
+3.使用案例
+bcftools或vcftools提取指定区段的vcf文件（extract specified position）
+http://www.cnblogs.com/chenwenyan/p/9213394.html
+https://www.biostars.org/p/162872/
+
+
+如果只想提取指定位置（specific position）的基因型（genotypes），则可以用到vcftools工具
+
+$ vcftools --gzvcf file.vcf.gz --positions specific_position.txt --recode --out specific_position.vcf
+
+specific_position.txt的输入格式如下：
+1 842013
+1 891021
+1 903426
+1 949654
+1 1018704
+
+
+
+
+========================================
+用bcftools来call variation
+----------------------------------------
+
+1.安装
+Variant Call Format (VCF) and its binary counterpart BCF.
+https://mp.weixin.qq.com/s?__biz=MzAxMDkxODM1Ng==&mid=2247483812&idx=1&sn=c3f7ce44a4f164f0d5549e11a22e702f&chksm=9b48411fac3fc8093925fbad417636544ea9af0c58ee9f4f31d1fa1fc2c80af610a835d09311&scene=21#wechat_redirect
+
+
+
+
+http://samtools.github.io/bcftools/
+## 下载安装
+git clone git://github.com/samtools/htslib.git
+git clone git://github.com/samtools/bcftools.git
+cd bcftools
+## The following is optional: 
+## autoheader && autoconf && ./configure --enable-libgsl --enable-perl-filters
+sudo make #第一次出错，用 make clean后再次sudo make通过了。
+sudo make install 
+
+
+$ bcftools
+## Version: 1.9-67-g626e46b (using htslib 1.9-63-gd7922af) 
+
+
+为了使用BCFtools plugins，需要设置环境变量：
+export BCFTOOLS_PLUGINS=/path/to/bcftools/plugins
+
+
+
+
+2.使用
+bcftools — utilities for variant calling and manipulating VCFs and BCFs.
+https://samtools.github.io/bcftools/bcftools.html
+
+对排序好的bam数据用samtools生成bcf文件：
+$ samtools mpileup -ugf ../hs38DH.fa hs2.sort.bam  >hs2.bcf
+
+由于生成的是二进制格式的数据，需要进行解析或者转换成vcf：
+$ bcftools view hs2.bcf >hs2.vcf
+
+
+(2)bcftools合并vcf文件
+$ bcftools merge A.vcf.gz B.vcf.gz C.vcf.gz -Oz -o ABC.vcf.gz
+
+https://www.cnblogs.com/chenwenyan/p/9273726.html
+
+
+
+========================================
+Picard: 对sam文件进行进行重新排序（reorder）
 ----------------------------------------
 1.官网： A set of command line tools (in Java) for manipulating high-throughput sequencing (HTS) data and formats such as SAM/BAM/CRAM and VCF.
 
@@ -756,7 +1586,633 @@ http://broadinstitute.github.io/picard/
 
 2.下载
 $ wget https://github.com/broadinstitute/picard/releases/download/2.18.15/picard.jar
+$ vim ~/.bashrc #添加一行
+	PICARD="/home/wangjl/Soft/picard.jar"
+$ source ~/.bashrc
 
+
+3.使用Picard排序：比对是按照字典顺序1,10,2,改为1,2,10
+
+$ java -Xmx20g -jar $PICARD SortSam SORT_ORDER=coordinate INPUT=${WORKING_DIR}/2018rerun/processed_bam/${name}.sam OUTPUT=${WORKING_DIR}/2018rerun/processed_bam/${name}.bam
+
+
+
+
+
+
+========================================
+变异功能注释 ANNOVAR (hg19)
+----------------------------------------
+
+将原始fq文件通过FastQC-bwa-samtools|GATK等流程最终得到vcf文件，也就是记录某些位点变异的文本文件。但只是通过看vcf文件我们是不知道些变异位点到底是位于基因的exon、intron、UTR等的哪些区域的。所以我们需要对vcf文件也就是这些变异位点进行注释。
+
+https://www.jianshu.com/p/6284f57664b9
+目前对于variant进行注释的软件主要有4个: Annovar,  SnpEff, VEP(variant Effect Predictor), Oncotator[没听说过]。
+最常用的vcf注释软件有annovar和snpEff。
+
+
+
+1. ANNOVAR简介(邮件注册才能下载)
+ANNOVAR是由王凯编写的一个注释软件，可以对SNP和indel进行注释，也可以进行变异的过滤筛选。
+官网 http://annovar.openbioinformatics.org/en/latest/
+
+ANNOVAR能够利用最新的数据来分析各种基因组中的遗传变异。主要包含三种不同的注释方法，Gene-based Annotation（基于基因的注释）、Region-based Annotation（基于区域的注释）、Filter-based Annotation（基于筛选的注释）。
+
+ANNOVAR由Perl编写。
+优点：提供多个数据可直接下载、支持多种格式、注释直观；
+缺点：没有数据库的物种无法注释。
+
+
+软件新闻请关注谷歌小组： 
+https://groups.google.com/forum/#!forum/annovar
+
+
+
+
+
+2.安装 https://www.jianshu.com/p/b2b70202d7f2
+$ tar zxvf annovar.latest.tar.gz ##解压 
+解压后生成annovar文件夹，里面有6个perl脚本程序和两个文件夹，其中一个是example文件夹，另一个是已经建立好的hg19或者GRCh37的humandb的数据库文件夹，可用于人的注释。
+
+加入到path中
+$ vim ~/.bashrc 
+##末尾加入
+export PATH=/home/wangjl/Soft/annovar/:$PATH 
+
+$ source ~/.bashrc
+then typing annotate_variation.pl would be okay instead of typing perl annotate_variation.pl). 
+
+First, we need to download appropriate database files using annotate_variation.pl, 
+and next we will run the table_annovar.pl program to annotate the variants in the example/ex1.avinput file.
+
+
+
+
+
+
+
+
+3.使用Annovar建库[hg19]
+Function: annotate a list of genetic variants against genome annotation databases stored at local disk. 
+人的注释方法，官网介绍的很详细，但仅仅有人的数据库肯定是满足不了大家的需求。
+
+先在annovar文件夹里面创建 humandb19 文件夹（名字可自取），命令
+$ cd /home/wangjl/Soft/annovar/
+$ mkdir humandb19
+
+然后一个一个执行命令：使用annovar文件夹下的perl程序annotate_variation.pl
+## --downdb                    download annotation database 
+## --webfrom <string>          specify the source of database (ucsc or annovar or URL) (downdb operation)  
+
+## --thread <int>              use multiple threads for filter-based annotation
+# --maxgenethread <int>       max number of threads for gene-based annotation (default: 6)
+
+
+(1)$ annotate_variation.pl -buildver hg19 -downdb -webfrom annovar refGene humandb19/
+这个命令是下载 hg19 的refGene的文件，保存在 humandb19 文件下，自动解压后文件名为 hg19_refGene.txt。
+total 218M
+-rw-rw-r--. 1 wangjl wangjl  993 Dec 10 10:47 annovar_downdb.log
+-rw-rw-r--. 1 wangjl wangjl 200M Jun  2  2017 hg19_refGeneMrna.fa
+-rw-rw-r--. 1 wangjl wangjl  18M Jun  2  2017 hg19_refGene.txt
+-rw-rw-r--. 1 wangjl wangjl 808K Jun  2  2017 hg19_refGeneVersion.txt
+
+(2)$ annotate_variation.pl -buildver hg19 -downdb cytoBand humandb19/
+-rw-rw-r--. 1 wangjl wangjl  31K Jun 15  2009 hg19_cytoBand.txt
+
+(3)$ annotate_variation.pl -buildver hg19 -downdb -webfrom annovar exac03 humandb19/ 
+-rw-rw-r--. 1 wangjl wangjl  23M Nov 30  2015 hg19_exac03.txt.idx
+-rw-rw-r--. 1 wangjl wangjl 601M Nov 30  2015 hg19_exac03.txt
+
+(4) 有两个分别是20160606和20170929发布的。
+$ annotate_variation.pl -buildver hg19 -downdb -webfrom annovar avsnp147 humandb19/
+-rw-rw-r--. 1 wangjl wangjl 885M Jun  7  2016 hg19_avsnp147.txt.idx
+-rw-rw-r--. 1 wangjl wangjl 5.9G Jun  7  2016 hg19_avsnp147.txt
+
+$ annotate_variation.pl -buildver hg19 -downdb -webfrom annovar avsnp150 humandb19/
+-rw-rw-r--. 1 wangjl wangjl 916M Sep 30  2017 hg19_avsnp150.txt.idx
+-rw-rw-r--. 1 wangjl wangjl  13G Sep 30  2017 hg19_avsnp150.txt
+
+(5)
+whole-exome SIFT, PolyPhen2 HDIV, PolyPhen2 HVAR, LRT, MutationTaster, MutationAssessor, FATHMM, MetaSVM, MetaLR, VEST, CADD, GERP++, DANN, fitCons, PhyloP and SiPhy scores from dbNSFP version 3.0a
+$ annotate_variation.pl -buildver hg19 -downdb -webfrom annovar dbnsfp30a humandb19/
+
+$ annotate_variation.pl -buildver hg19 -downdb -webfrom annovar dbnsfp35c humandb19/
+## same as above, suitable for commercial use
+hg19_dbnsfp35c.txt.gz   20181119        4245316428
+hg19_dbnsfp35c.txt.idx.gz       20181119        5084100
+
+前五个命令下载一堆注释文件到 humandb19/
+
+
+
+
+
+
+####1. 尝试下载数据库。官方下载数据库到底有多少？
+http://annovar.openbioinformatics.org/en/latest/user-guide/download/ 直接在这个目录搜索hg19下的数据库名字。
+或
+$ annotate_variation.pl -buildver hg19 -downdb -webfrom annovar avdblist humandb19/
+则在 humandb19 目录下下载一个文本文件hg19_avdblist.txt，包含现有的 hg19 的数据库320行。
+用grep查找相关库的名字 $ cat humandb19/hg19_avdblist.txt|grep exac
+
+
+###2. 该选择哪些数据库？
+https://doc-openbio.readthedocs.io/projects/annovar/en/latest/user-guide/filter/#summary-of-databases
+
+For frequency of variants in whole-genome data:
+
+1000g2015aug: latest 1000 Genomes Project dataset with allele frequencies in six populations including ALL, AFR (African), AMR (Admixed American), EAS (East Asian), EUR (European), SAS (South Asian). These are whole-genome variants.
+kaviar_20150923: latest Kaviar database with 170 million variants from 13K genomes and 64K exomes.
+hrcr1: latest Haplotype Reference Consortium database with 40 million variants from 32K samples in haplotype reference consortium
+cg69: allele frequency in 69 human subjects sequenced by Complete Genomics. useful to exclude platform specific variants.
+gnomad_genome: allele frequency in gnomAD database whole-genome sequence data on multiple populations.
+For frequency of variants in whole-exome data:
+
+exac03: latest Exome Aggregation Consortium dataste with allele frequencies in ALL, AFR (African), AMR (Admixed American), EAS (East Asian), FIN (Finnish), NFE (Non-finnish European), OTH (other), SAS (South Asian).
+esp6500siv2: latest NHLBI-ESP project with 6500 exomes. Three separate key words are used for 3 population groupings: esp6500siv2_all, esp6500siv2_ea, esp6500siv2_aa.
+gnomad_exome: allele frequency in gnomAD database whole-exome sequence data on multiple populations.
+
+
+(6)$ annotate_variation.pl -buildver hg19 -downdb -webfrom annovar snp142 humandb19/
+-rw-rw-r--. 1 wangjl wangjl 104M Jan 24  2016 hg19_snp142.txt.idx
+-rw-rw-r--. 1 wangjl wangjl  20G Jan 24  2016 hg19_snp142.txt
+
+
+(7)$ annotate_variation.pl -buildver hg19 -downdb -webfrom annovar 1000g2015aug humandb19/
+
+分为sas 南亚 ，eas 东亚 等好几个文件。 
+-rw-r--r--. 1 wangjl wangjl  89M Aug 26  2015 hg19_ALL.sites.2015_08.txt.idx
+-rw-r--r--. 1 wangjl wangjl 3.2G Aug 26  2015 hg19_ALL.sites.2015_08.txt
+-rw-r--r--. 1 wangjl wangjl  87M Aug 26  2015 hg19_AFR.sites.2015_08.txt.idx
+-rw-r--r--. 1 wangjl wangjl  85M Aug 26  2015 hg19_AMR.sites.2015_08.txt.idx
+-rw-r--r--. 1 wangjl wangjl  85M Aug 26  2015 hg19_SAS.sites.2015_08.txt.idx
+-rw-r--r--. 1 wangjl wangjl  85M Aug 26  2015 hg19_EUR.sites.2015_08.txt.idx
+-rw-r--r--. 1 wangjl wangjl 1.5G Aug 26  2015 hg19_AFR.sites.2015_08.txt
+-rw-r--r--. 1 wangjl wangjl  85M Aug 26  2015 hg19_EAS.sites.2015_08.txt.idx
+-rw-r--r--. 1 wangjl wangjl 1.1G Aug 26  2015 hg19_AMR.sites.2015_08.txt
+-rw-r--r--. 1 wangjl wangjl 968M Aug 26  2015 hg19_SAS.sites.2015_08.txt
+-rw-r--r--. 1 wangjl wangjl 879M Aug 26  2015 hg19_EUR.sites.2015_08.txt
+-rw-r--r--. 1 wangjl wangjl 857M Aug 26  2015 hg19_EAS.sites.2015_08.txt
+
+
+
+(8)见(4) 
+(9)$ annotate_variation.pl -buildver hg19 -downdb -webfrom annovar clinvar_20180603 humandb19/
+CLINVAR database with Variant Clinical Significance (unknown, untested, non-pathogenic, probable-non-pathogenic, probable-pathogenic, pathogenic, drug-response, histocompatibility, other) and Variant disease name
+hg19|clinvar_20180603|Clinvar version 20180603 with separate columns (CLNALLELEID CLNDN CLNDISDB CLNREVSTAT CLNSIG)|20180708
+-rw-rw-r--. 1 wangjl wangjl 1.3M Nov 20 12:08 hg19_clinvar_20180603.txt.idx
+-rw-rw-r--. 1 wangjl wangjl  72M Nov 20 12:08 hg19_clinvar_20180603.txt
+
+(10)$ annotate_variation.pl -buildver hg19 -downdb -webfrom annovar cosmic70 humandb19/
+-rw-rw-r--. 1 wangjl wangjl 6.6M Sep 12  2014 hg19_cosmic70.txt.idx
+-rw-rw-r--. 1 wangjl wangjl  87M Sep 12  2014 hg19_cosmic70.txt
+
+
+(11)
+$ annotate_variation.pl -buildver hg19 -downdb -webfrom annovar esp6500siv2_all humandb19/
+$ annotate_variation.pl -buildver hg19 -downdb -webfrom annovar esp6500siv2_ea humandb19/
+
+alternative allele frequency in All subjects in the NHLBI-ESP project with 6500 exomes, including the indel calls and the chrY calls. This is lifted over from hg19 by myself.
+
+-rw-rw-r--. 1 wangjl wangjl  88M Dec 23  2014 hg19_esp6500siv2_all.txt
+-rw-rw-r--. 1 wangjl wangjl  17M Dec 23  2014 hg19_esp6500siv2_all.txt.idx
+
+-rw-rw-r--. 1 wangjl wangjl  57M Dec 23  2014 hg19_esp6500siv2_ea.txt
+-rw-rw-r--. 1 wangjl wangjl  15M Dec 23  2014 hg19_esp6500siv2_ea.txt.idx
+
+(12)$ annotate_variation.pl -buildver hg19 -downdb -webfrom annovar ljb26_all humandb19/
+ljb26_all: whole-exome SIFT, PolyPhen2 HDIV, PolyPhen2 HVAR, LRT, MutationTaster, MutationAssessor, FATHMM, MetaSVM, MetaLR, VEST, CADD, GERP++, PhyloP and SiPhy scores from dbNSFP version 2.6
+
+-rw-rw-r--. 1 wangjl wangjl  11G Sep 25  2014 hg19_ljb26_all.txt
+-rw-rw-r--. 1 wangjl wangjl  18M Sep 25  2014 hg19_ljb26_all.txt.idx
+
+
+
+
+
+
+
+
+
+4.使用 table_annovar 注释[hg19] 
+annovar有三种注释方式Gene-based Annotation(基于基因的注释)，Region-based Annotation（基于区域的注释），Filter-based Annotation（基于过滤的注释）。看起来很复杂实际做起来很简单，用table_annovar.pl进行注释，可一次性完成三种类型的注释。
+
+
+(1)注释语句实例
+1)annovar 官方句子
+$ table_annovar.pl example/ex1.avinput humandb38/ -buildver hg38 -out myanno -remove -protocol refGene,cytoBand,exac03,avsnp147,dbnsfp30a -operation g,r,f,f,f -nastring . -csvout -polish --xreffile example/gene_xref.txt 
+
+#最后用 --xreffile 和 -xref 有啥区别？应该没啥区别，尽量用全长。 
+--xreffile <file>           specify a cross-reference file for gene-based annotation 
+
+该一个命令使用 table_annovar ，使用 ExAC version 0.3 (referred to as exac03) dbNFSP version 3.0a (referred to as dbnsfp30a), dbSNP version 147 with left-normalization (referred to as avsnp147) databases 并删除临时文件, 生成的输出文件为 myanno.hg19_multianno.txt.
+ 
+没有注释信息的用点号.填充。前面的注释行用#开头。交叉引用的文件包含了15个类的基因注释。
+也可以用gene_fullxref.txt代替gene_xref.txt，可以从这里下载：
+
+支持直接输入vcf文件 table_annovar.pl can directly support input and output of VCF files (the annotation will be written to the INFO field of the output VCF file). Let's try this:
+$ table_annovar.pl example/ex2.vcf humandb38/ -buildver hg38 -out myanno3 -remove -protocol refGene,cytoBand,exac03,avsnp147,dbnsfp30a -operation g,r,f,f,f -nastring . -vcfinput
+
+Similarly, if you generated variant calls from human GRCh38 coordinate, add -buildver hg38 in every command, 
+
+
+
+
+2)诺禾致源给的csv报告中的频率
+#[25] "X1000g2015aug_Chinese"(x) "X1000g2015aug_eas"     "X1000g2015aug_all"    
+#[28] "esp6500siv2_all"       "ExAC_ALL"(x)              "ExAC_EAS"(x) 
+
+http://annovar.openbioinformatics.org/en/latest/user-guide/download/
+hg19|1000g2015aug (6 data sets)|The 1000G team fixed a bug in chrX frequency calculation. Based on 201508 collection v5b (based on 201305 alignment)	|20150824
+hg19|esp6500siv2_ea|alternative allele frequency in European American subjects in the NHLBI-ESP project with 6500 exomes, including the indel calls and the chrY calls. This is lifted over from hg19 by myself|20141222
+hg19|exac03|ExAC 65000 exome allele frequency data for ALL, AFR (African), AMR (Admixed American), EAS (East Asian), FIN (Finnish), NFE (Non-finnish European), OTH (other), SAS (South Asian)). version 0.3. Left normalization done.|20151129
+
+-rw-r--r--. 1 wangjl wangjl 3.2G Aug 26  2015 hg19_ALL.sites.2015_08.txt
+-rw-r--r--. 1 wangjl wangjl 857M Aug 26  2015 hg19_EAS.sites.2015_08.txt
+-rw-rw-r--. 1 wangjl wangjl  88M Dec 23  2014 hg19_esp6500siv2_all.txt
+-rw-rw-r--. 1 wangjl wangjl  57M Dec 23  2014 hg19_esp6500siv2_ea.txt
+-rw-rw-r--. 1 wangjl wangjl 601M Nov 30  2015 hg19_exac03.txt
+
+
+ExAC数据库简介：https://www.jianshu.com/p/da8ddd7e4903
+
+
+
+3)公众号见到的，使用了更多的库
+table_annovar.pl example/ex1.avinput humandb/ -buildver hg19 -out myanno -remove -protocol refGene,cytoBand,genomicSuperDups,esp6500siv2_all,1000g2014oct_all,1000g2014oct_afr,1000g2014oct_eas,1000g2014oct_eur,snp138,ljb26_all -operation g,r,r,f,f,f,f,f,f,f -nastring . -csvout
+
+# -buildver hg38 表示使用hg38版本
+# -out myanno 表示输出文件的前缀为myanno
+# -remove 表示删除注释过程中的临时文件
+# -protocol 表示注释使用的数据库，用逗号隔开，且要注意顺序
+# -operation 表示对应顺序的数据库的类型（g代表gene-based、r代表region-based、f代表filter-based），用逗号隔开，注意顺序
+# -nastring . 表示用点号替代缺省的值
+# -csvout 表示最后输出.csv文件
+
+# --polish   polish the protein notation for indels (such as p.G12Vfs*2)
+# --xreffile <file>     specify a cross-reference file for gene-based annotation
+
+
+4) csdn博客中的例子
+https://blog.csdn.net/theomarker/article/details/82872201
+$ annovar2table_annovar.pl CJ-258-candidate.vcf annovar2/humandb/hg19/ -buildver hg19 -out anno/CJ-258-candidate -remove -protocol refGene,genomicSuperDups,phastConsElements46way,esp6500siv2_all,exac03,1000g2014oct_eas,1000g2014oct_all,avsnp142,clinvar_20180603,scsnv,revel,mcap,cosmic68wgs,ljb26_all -operation g,r,r,f,f,f,f,f,f,f,f,f,f,f -nastring . -vcfinput
+
+
+原文：https://blog.csdn.net/theomarker/article/details/82873582 
+$ table_annovar.pl diabetes-candidate.vcf /hg19/ -buildver hg19 -out anno/diabetes-candidate -remove -protocol refGene,genomicSuperDups,phastConsElements46way,esp6500siv2_all,exac03,1000g2014oct_eas,1000g2014oct_all,gnomad_exome,avsnp142,clinvar_20170130,scsnv,revel,mcap,cosmic68wgs,ljb26_all -operation g,r,r,f,f,f,f,f,f,f,f,f,f,f,f -nastring . -vcfinput
+
+
+
+
+
+(2) vcf文件位置：/home/data/ex23/wangjl_bwa/3_callSNP/EX23.filter.vcf.gz
+
+1)预处理：
+转化gatk输出为annovar输入:
+$ perl convert2annovar.pl infile.vcf -format vcf4 > outfile
+
+$ zcat EX23.filter.vcf.gz|wc
+ 628110 6280582 123434549
+$ zcat EX23.filter.vcf.gz|grep -v "^#" |wc
+ 627989 6279890 123423242
+$ convert2annovar.pl EX23.filter.vcf.gz -format vcf4 > outfile
+NOTICE: Finished reading 628110 lines from VCF file
+NOTICE: A total of 627989 locus in VCF file passed QC threshold, representing 544359 SNPs (377176 transitions and 167183 transversions) and 84378 indels/substitutions
+NOTICE: Finished writing 544359 SNP genotypes (377176 transitions and 167183 transversions) and 84378 indels/substitutions for 1 sample
+WARNING: 256 invalid alternative alleles found in input file
+
+行数基本没有变化：行数反而多了？
+$ wc outfile
+628993  5031944 25837245 outfile
+
+每行丢失的信息太多了。
+之前：chrM    152     rs117135796     T       C       139.03  PASS    AC=2;AF=1.00;AN=2;DB;DP=4;ExcessHet=3.0103;FS=0.000;MLEAC=2;MLEAF=1.00;MQ=60.00;QD=34.76;SOR=0.693      GT:AD:DP:GQ:PL  1/1:0,4:4:12:167,12,0
+之后：chrM    152     152     T       C       hom     139.03  4 
+
+$ mv outfile outfile EX23.filter.vcf.avinput
+$ head /home/data/ex23/wangjl_bwa/3_callSNP/EX23.filter.vcf.avinput
+chrM    152     152     T       C       hom     139.03  4
+chrM    195     195     C       T       hom     127.03  4
+chrM    303     304     CC      -       hom     146.87  5
+chrM    410     410     A       T       hom     222.80  7
+
+
+
+2)运行注释
+
+##run_A
+$ table_annovar.pl /home/data/ex23/wangjl_bwa/3_callSNP/EX23.filter.vcf.avinput humandb19/ -buildver hg19 -out EX23_ -remove -protocol refGene,cytoBand,1000g2015aug_all,1000g2015aug_eas,esp6500siv2_all,exac03,snp142,avsnp150,ljb26_all,clinvar_20180603,dbnsfp30a -operation g,r,f,f,f,f,f,f,f,f,f -nastring . -csvout
+## time 10:35-10:57
+# 漏掉2个下载好的库，再来一遍。
+
+
+i)For functional prediction of variants in whole-exome data:
+dbnsfp30a: this dataset already includes SIFT, PolyPhen2 HDIV, PolyPhen2 HVAR, LRT, MutationTaster, MutationAssessor, FATHMM, MetaSVM, MetaLR, VEST, CADD, GERP++, DANN, fitCons, PhyloP and SiPhy scores, but ONLY on coding variants
+
+Clinvar version 20180603 with separate columns (CLNALLELEID CLNDN CLNDISDB CLNREVSTAT CLNSIG)
+
+具体小库怎么指定？难道要用：ExAC_ALL所有人群，ExAC_EAS东亚人？看来不行，除了1000g之外，其他库名都要和文件名一致。
+Error: the required database file humandb19/hg19_exac03_eas.txt does not exist.
+hg19_1000g2015aug_Chinese.txt does not exist.
+
+
+##run_B
+$ nohup table_annovar.pl /home/data/ex23/wangjl_bwa/3_callSNP/EX23.filter.vcf.avinput humandb19/ -buildver hg19 -out EX23_B -remove -protocol refGene,cytoBand,1000g2015aug_eas,1000g2015aug_all,esp6500siv2_ea,esp6500siv2_all,exac03,snp142,avsnp150,ljb26_all,clinvar_20180603,dbnsfp30a,dbnsfp35c -operation g,r,f,f,f,f,f,f,f,f,f,f,f -nastring . -csvout &
+
+
+##run_C
+$ nohup table_annovar.pl /home/data/ex23/wangjl_bwa/3_callSNP/EX23.filter.vcf.gz humandb19/ -buildver hg19 -out EX23_C -remove -protocol refGene,cytoBand,1000g2015aug_eas,1000g2015aug_all,esp6500siv2_ea,esp6500siv2_all,exac03,snp142,avsnp150,ljb26_all,clinvar_20180603,dbnsfp30a,dbnsfp35c -operation g,r,f,f,f,f,f,f,f,f,f,f,f -nastring . -vcfinput &
+
+
+
+
+
+
+
+(3)致病基因的筛选
+https://blog.csdn.net/theomarker/article/details/82872201
+1)筛选标准：
+
+对于得到的结果，筛选方式：基于ExAC、1000G MAF<0.01/0.005过滤 --> CLINSIG/CLINVAR挑选致病和可能致病的位点
+–> 若CLINVAR注释上，根据ACMG评估
+–> 若CLINVAR没有注释上，选择nonsynonymous SNV（这里表示错义突变，非同义还包括其他类型）+ scSNV≠0的位点（可预测可变剪切）–> genomimcsuperdups>0表示位于同源区，过滤掉
+
+自己的想法：以上是一种筛选方式，自己在做的方法（参考）：对SNV，nonsynonymous -> exonic/splicing -> exclude MAF > 0.01 in union(1000G, ExAC, dbsnp138nonflag) -> exlude dups -> prediction tools (SIFT, PolyPhen2, metaSVM等等）留下damaging的位点。
+
+对indel，exonic/splicing -> frameshift + stop change -> exlcude variant databases -> exclude dups -> select protein damaging loci。
+
+注：LoF (frameshift, stop gain/loss, nonsense) + missense
+经筛选之后，对于得到的位点对应的gene list，可以有2个工具对疾病和表型找找关联已经基因间相互关系。这里两个工具更多是对单基因病。
+工具一：panelAPP(https://panelapp.genomicsengland.co.uk/panels/) 目前包含了222个panel的基因资料
+工具二：phenolyzer(http://phenolyzer.wglab.org/) 输入表型/疾病 + gene list + email可得到基因间关系，基因重要性等信息。有网页和本地版本。
+
+
+2) task 3 CNV分析建议
+筛选过程过，波动特别大的外显子，去掉。对>100kb的CNV，基本比较确信。
+DiagnoseTargets工具可以给定区域平均深度。
+
+
+
+
+3)筛选工具：pyhton-pandas包。
+
+
+
+
+
+
+
+========================================
+变异功能注释 ANNOVAR (hg38)
+----------------------------------------
+
+B3.使用Annovar建库[hg38]
+
+先在annovar文件夹里面创建 humandb38 文件夹（名字可自取），命令
+$ cd /home/wangjl/Soft/annovar/
+$ mkdir humandb38
+
+然后一个一个执行命令：使用annovar文件夹下的perl程序annotate_variation.pl
+(1)$ annotate_variation.pl -buildver hg38 -downdb -webfrom annovar refGene humandb38/
+这个命令是下载 hg38 的refGene的文件，保存在 humandb38 文件下，自动解压后文件名为 hg38_refGene.txt。
+total 235M
+-rw-rw-r--. 1 wangjl wangjl  993 Nov 13 16:17 annovar_downdb.log
+-rw-rw-r--. 1 wangjl wangjl 216M Jun  2  2017 hg38_refGeneMrna.fa
+-rw-rw-r--. 1 wangjl wangjl  19M Jun  2  2017 hg38_refGene.txt
+-rw-rw-r--. 1 wangjl wangjl 810K Jun  2  2017 hg38_refGeneVersion.txt
+
+(2)$ annotate_variation.pl -buildver hg38 -downdb cytoBand humandb38/
+-rw-rw-r--. 1 wangjl wangjl  45K Aug 11  2014 hg38_cytoBand.txt
+
+(3)$ annotate_variation.pl -buildver hg38 -downdb -webfrom annovar exac03 humandb38/ 
+-rw-rw-r--. 1 wangjl wangjl  23M Nov 30  2015 hg38_exac03.txt.idx
+-rw-rw-r--. 1 wangjl wangjl 600M Nov 30  2015 hg38_exac03.txt
+
+(4)$ annotate_variation.pl -buildver hg38 -downdb -webfrom annovar avsnp147 humandb38/
+-rw-rw-r--. 1 wangjl wangjl 5.9G Jun  2  2016 hg38_avsnp147.txt
+-rw-rw-r--. 1 wangjl wangjl 884M Jun  2  2016 hg38_avsnp147.txt.idx
+
+(5)$ annotate_variation.pl -buildver hg38 -downdb -webfrom annovar dbnsfp30a humandb38/
+-rw-rw-r--. 1 wangjl wangjl  14G Oct 16  2015 hg38_dbnsfp30a.txt
+-rw-rw-r--. 1 wangjl wangjl  18M Nov 17  2015 hg38_dbnsfp30a.txt.idx
+前五个命令下载一堆注释文件到 humandb38/。
+
+
+
+## --downdb                    download annotation database 
+## --webfrom <string>          specify the source of database (ucsc or annovar or URL) (downdb operation)  
+
+## --thread <int>              use multiple threads for filter-based annotation
+# --maxgenethread <int>       max number of threads for gene-based annotation (default: 6)
+
+
+
+#### 尝试下载其他数据库？官方下载数据库
+http://annovar.openbioinformatics.org/en/latest/user-guide/download/
+
+$ annotate_variation.pl -buildver hg38 -downdb -webfrom annovar avdblist humandb38/
+则在 humandb38 目录下下载一个文本文件，包含现有的 hg38 的数据库92行。
+
+
+该选择哪些数据库？
+https://doc-openbio.readthedocs.io/projects/annovar/en/latest/user-guide/filter/#summary-of-databases
+
+
+vcf 文件的说明和什么是 Left-normalization ：
+http://annovar.openbioinformatics.org/en/latest/articles/VCF/
+
+
+
+(7)$ annotate_variation.pl -buildver hg38 -downdb -webfrom annovar 1000g2015aug humandb38/
+-rw-r--r--. 1 wangjl wangjl 3.2G Aug 26  2015 hg38_ALL.sites.2015_08.txt
+-rw-r--r--. 1 wangjl wangjl 1.5G Aug 26  2015 hg38_AFR.sites.2015_08.txt
+分为sas 南亚 ，eas 东亚 等好几个文件。 
+
+https://www.jianshu.com/p/4278896661f2
+千人基因组计划（http://www.internationalgenome.org/）。通过注释，可以知道该变异在全部参与千人基因组计划人群中的突变频率，参与人群来自于非洲AFR（African），美洲AMR（Admixed American），东亚EAS（EastAsian），欧洲EUR（European），南亚SAS（South Asian）等区域。
+
+
+
+(8)$ annotate_variation.pl -buildver hg38 -downdb -webfrom annovar avsnp150 humandb38/
+## hg38	avsnp150	dbSNP150 with allelic splitting and left-normalization	20170929
+-rw-rw-r--. 1 wangjl wangjl  13G Sep 30  2017 hg38_avsnp150.txt
+-rw-rw-r--. 1 wangjl wangjl 918M Sep 30  2017 hg38_avsnp150.txt.idx
+
+
+(9)$ annotate_variation.pl -buildver hg38 -downdb -webfrom annovar clinvar_20180603 humandb38/
+CLINVAR database with Variant Clinical Significance (unknown, untested, non-pathogenic, probable-non-pathogenic, probable-pathogenic, pathogenic, drug-response, histocompatibility, other) and Variant disease name
+Clinvar version 20180603 with separate columns (CLNALLELEID CLNDN CLNDISDB CLNREVSTAT CLNSIG)
+hg38	clinvar_20180603	same as above	20180708
+
+-rw-rw-r--. 1 wangjl wangjl  72M Jul  9 11:50 hg38_clinvar_20180603.txt
+-rw-rw-r--. 1 wangjl wangjl 1.3M Jul  9 11:50 hg38_clinvar_20180603.txt.idx
+
+
+(10)$ annotate_variation.pl -buildver hg38 -downdb -webfrom annovar cosmic70 humandb38/
+
+COSMIC database version 70? on WGS data
+hg38	cosmic70	same as above	20150428
+
+-rw-rw-r--. 1 wangjl wangjl  87M Apr 29  2015 hg38_cosmic70.txt
+-rw-rw-r--. 1 wangjl wangjl 6.6M Apr 29  2015 hg38_cosmic70.txt.idx
+
+
+
+(11)$ annotate_variation.pl -buildver hg38 -downdb -webfrom annovar esp6500siv2_all humandb38/
+alternative allele frequency in All subjects in the NHLBI-ESP project with 6500 exomes, including the indel calls and the chrY calls. This is lifted over from hg19 by myself.
+-rw-rw-r--. 1 wangjl wangjl  88M Dec 23  2014 hg38_esp6500siv2_all.txt
+
+
+(12)$ annotate_variation.pl -buildver hg38 -downdb -webfrom annovar ljb26_all humandb38/
+ljb26_all: whole-exome SIFT, PolyPhen2 HDIV, PolyPhen2 HVAR, LRT, MutationTaster, MutationAssessor, FATHMM, MetaSVM, MetaLR, VEST, CADD, GERP++, PhyloP and SiPhy scores from dbNSFP version 2.6
+
+-rw-rw-r--. 1 wangjl wangjl  11G May 21  2015 hg38_ljb26_all.txt
+
+
+
+
+
+
+
+
+B4.使用 table_annovar 注释 
+
+(1) 官方句子
+$ table_annovar.pl example/ex1.avinput humandb38/ -buildver hg38 -out myanno -remove -protocol refGene,cytoBand,exac03,avsnp147,dbnsfp30a -operation gx,r,f,f,f -nastring . -csvout -polish --xreffile example/gene_xref.txt #最后用 --xreffile 和 -xref 有啥区别？ 
+
+该一个命令使用 table_annovar ，使用 ExAC version 0.3 (referred to as exac03) dbNFSP version 3.0a (referred to as dbnsfp30a), dbSNP version 147 with left-normalization (referred to as avsnp147) databases 并删除临时文件, 生成的输出文件为 myanno.hg19_multianno.txt.
+ 
+没有注释信息的用点号.填充。
+The header line starts with #. The cross-reference file then contains 15 types of annotations for genes. 
+
+You can run the same command above but change -xref file from gene_xref.txt to gene_fullxref.txt, and the result file can be downloaded from here. 
+
+支持直接输入vcf文件 table_annovar.pl can directly support input and output of VCF files (the annotation will be written to the INFO field of the output VCF file). Let's try this:
+$ table_annovar.pl example/ex2.vcf humandb38/ -buildver hg38 -out myanno3 -remove -protocol refGene,cytoBand,exac03,avsnp147,dbnsfp30a -operation g,r,f,f,f -nastring . -vcfinput
+
+Similarly, if you generated variant calls from human GRCh38 coordinate, add -buildver hg38 in every command, 
+
+
+(2)公众号见到的，使用了更多的库
+table_annovar.pl example/ex1.avinput humandb/ -buildver hg19 -out myanno -remove -protocol refGene,cytoBand,genomicSuperDups,esp6500siv2_all,1000g2014oct_all,1000g2014oct_afr,1000g2014oct_eas,1000g2014oct_eur,snp138,ljb26_all -operation g,r,r,f,f,f,f,f,f,f -nastring . -csvout
+
+# -buildver hg38 表示使用hg38版本
+# -out myanno 表示输出文件的前缀为myanno
+# -remove 表示删除注释过程中的临时文件
+# -protocol 表示注释使用的数据库，用逗号隔开，且要注意顺序
+# -operation 表示对应顺序的数据库的类型（g代表gene-based、r代表region-based、f代表filter-based），用逗号隔开，注意顺序
+# -nastring . 表示用点号替代缺省的值
+# -csvout 表示最后输出.csv文件
+
+# --polish   polish the protein notation for indels (such as p.G12Vfs*2)
+# --xreffile <file>     specify a cross-reference file for gene-based annotation
+
+
+(3)诺禾致源给的csv报告中的频率
+#[25] "X1000g2015aug_Chinese"(x) "X1000g2015aug_eas"     "X1000g2015aug_all"    
+#[28] "esp6500siv2_all"       "ExAC_ALL"(x)              "ExAC_EAS"(x) 
+
+-rw-r--r--. 1 wangjl wangjl 3.2G Aug 26  2015 hg38_ALL.sites.2015_08.txt
+-rw-r--r--. 1 wangjl wangjl 856M Aug 26  2015 hg38_EAS.sites.2015_08.txt
+-rw-rw-r--. 1 wangjl wangjl  88M Dec 23  2014 hg38_esp6500siv2_all.txt
+-rw-rw-r--. 1 wangjl wangjl 600M Nov 30  2015 hg38_exac03.txt
+
+$ grep 1000g2015 humandb38/hg38_avdblist.txt
+## hg38_1000g2015aug.zip   20150826        2732158830
+
+$ grep ljb26 humandb38/hg38_avdblist.txt
+## hg38_ljb26_all.txt.gz   20150520        2311601075
+
+
+自己整合一个句子
+报错1: Error in argument: -csvout is not compatible with -vcfinput， 其实还是希望能输出csv的。
+$ time table_annovar.pl /home/data/example201710/wangjl_bwa/3_callSNP/1WES01_2_.filter.vcf humandb38/ -buildver hg38 -out 2WES01_ -remove -protocol refGene,cytoBand,esp6500siv2_all,ALL.sites.2015_08,EAS.sites.2015_08,exac03,avsnp147,avsnp150,dbnsfp30a,ljb26_all -operation g,r,f,f,f,f,f,f,f,f -nastring . -vcfinput -xreffile example/gene_fullxref.txt
+
+
+报错2: annovar Argument "T" isn't numeric in numeric eq (==) at annotate_variation.pl line 2583, <DB> line 2169376.
+
+Try using '-protocol 1000g2015aug_all' in your command, and let us know if that solves your problem or not.
+
+<annotate_variation.pl -filter -dbtype ljb26_all -buildver hg38 -outfile 3WES01csv_ 2WES01_.avinput humandb38/ -otherinfo>
+
+
+
+
+
+
+
+
+//todo
+(1) ## 使用第一次执行的中间文件 37min.
+$ time table_annovar.pl 2WES01_.avinput humandb38/ -buildver hg38 -out 3WES01csv_ -remove -protocol refGene,cytoBand,esp6500siv2_all,ALL.sites.2015_08,EAS.sites.2015_08,exac03,avsnp147,avsnp150,dbnsfp30a,ljb26_all -operation g,r,f,f,f,f,f,f,f,f -nastring . -csvout -xreffile example/gene_fullxref.txt
+
+
+
+(2)先转化为.avinput
+$ convert2annovar.pl -format vcf4 example/ex2.vcf > ex2wjl.avinput
+# -format vcf4 指定格式为vcf
+
+$ convert2annovar.pl -format vcf4 1WES01_2_.filter.vcf > 1WES01_2_.filter.avinput
+转换失败，没报错，但是结果好像不像。
+
+$ time table_annovar.pl /home/data/example201710/wangjl_bwa/3_callSNP/1WES01_2_.filter.avinput humandb38/ -buildver hg38 -out 4WES01aviinput_ -remove -protocol refGene,cytoBand,esp6500siv2_all,ALL.sites.2015_08,EAS.sites.2015_08,exac03,avsnp147,avsnp150,dbnsfp30a,ljb26_all -operation g,r,f,f,f,f,f,f,f,f -nastring . -csvout -xreffile example/gene_fullxref.txt
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+5.Annovar 软件注释流程介绍
+https://www.cnblogs.com/zkkaka/p/6146137.html
+
+
+
+
+能用的
+$ table_annovar.pl example/ex2.vcf humandb38/ -buildver hg38 -out my3 -remove -protocol refGene,cytoBand,exac03,avsnp147,dbnsfp30a -operation g,r,f,f,f -nastring . -vcfinput
+
+
+正常样本
+$ table_annovar.pl /home/data/example201710/wangjl_bwa/2_mapping/test.vcf humandb38/ -buildver hg38 -out test1 -remove -protocol refGene,cytoBand,exac03,avsnp147,dbnsfp30a -operation g,r,f,f,f -nastring . -vcfinput
+
+过滤后的数据样本
+$ table_annovar.pl /home/data/example201710/wangjl_bwa/3_callSNP/test.vcf humandb38/ -buildver hg38 -out testF -remove -protocol refGene,cytoBand,exac03,avsnp147,dbnsfp30a -operation g,r,f,f,f -nastring . -vcfinput
+
+
+过滤后的数据 全部
+$ time table_annovar.pl /home/data/example201710/wangjl_bwa/3_callSNP/1WES01_2_.filter.vcf humandb38/ -buildver hg38 -out 1WES01_2 -remove -protocol refGene,cytoBand,exac03,avsnp147,dbnsfp30a -operation g,r,f,f,f -nastring . -vcfinput
+
+
+
+
+
+
+
+
+
+
+#####
+$ sed "s/^chr//" test.csv > test2.csv
+
+$ table_annovar.pl /home/data/example201710/wangjl_bwa/2_mapping/test2.vcf humandb38/ -buildver hg38 -out WEStest2_ -remove -protocol refGene,cytoBand,exac03,avsnp147,dbnsfp30a -operation gx,r,f,f,f -nastring . -csvout -polish -xref example/gene_xref.txt
+
+
+
+
+annotate_variation.pl -geneanno -dbtype refGene -buildver hg38  -out test01_ example/ex1.avinput humandb38/
+
+annotate_variation.pl -buildver hg38 ex1.avinput humandb38/
 
 
 

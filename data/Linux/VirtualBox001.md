@@ -13,6 +13,18 @@ VirtualBox v5.0.14
 > 解决方案参考：http://blog.sina.com.cn/s/blog_4dc988240102vj8a.html
 
 
+# 报错 VirtualBox安装问题--错误码0x80004002
+之前一直都是用真机测试，然而想跑下模拟器，上genymotion官网安装遇到问题。
+
+解决方案 修改注册表
+1.Win+R     输入regedit打开注册表   
+2.找到 HKEY_CLASSES_ROOT\CLSID\{00020420-0000-0000-C000-000000000046}\InprocServer32   把默认值修改为C:\Windows\System32\oleaut32.dll
+3.找到 HKEY_CLASSES_ROOT\CLSID\{00020424-0000-0000-C000-000000000046}\InprocServer32   把默认值修改为C:\Windows\System32\oleaut32.dll
+
+然后重新打开VirtualBox
+
+
+
 
 # 安装Ubuntu 1404系统
 

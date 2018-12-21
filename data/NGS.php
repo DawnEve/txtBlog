@@ -55,6 +55,8 @@ return array (
     1 => '练习题',
     2 => array (
       array('生信编程必练200题','practise501','txt'),
+      array('肿瘤基础理论','cancer_basis','txt'),
+      array('精编免疫学','immunology_basis','txt'),
     ),
   ),
   

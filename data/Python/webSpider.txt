@@ -5,8 +5,8 @@ webSpider
 python爬虫大纲与教程
 ----------------------------------------
 1.爬虫主要由以下几个功能部分组成
-(1).访问网址，获取数据: 使用requests包、
-(2).解析数据(难点): 正则re、xpath等
+(1).访问网址，获取数据: 使用requests、urllib.request 库；
+(2).解析数据(难点): 正则re、Xpath、Beautiful Soup等
 (3).存储数据: 文件存储、数据库存储
 
 
@@ -17,12 +17,38 @@ python爬虫大纲与教程
 XPath解析数据 https://blog.csdn.net/u013332124/article/details/80621638
 	lxml.etree 
 	lxml.html
-高级解析器： BeautifulSoup
-cookie模拟登陆
+高级解析器： 经典的 BeautifulSoup 网页解析库 
+cookie模拟登陆:
+	神奇的 fake-useragent 这个随机生成各种 User-Agent 的库 
 
 
 requests 比 urllib 人性化。
 使用 selenium  吧 ，好用多了。
+
+
+关于Requests库
+Requests库官方的介绍有这么一句话:Requests 唯一的一个非转基因的 Python HTTP 库,人类可以安全享用。这句话直接并霸气地宣示了 Requests 库是 python 最好的一个HTTP库。
+requests.get()获取html网页的主要方法，对应于http的get.
+requests.post() 向html网页提交post请求的方法，对应于http的post.
+
+
+
+常见的网页解析方法:
+正则表达式使用比较困难,学习成本较高
+BeautifulSoup 性能较慢,相对于 Xpath 较难,在某些特定场景下有用
+Xpath 使用简单,速度快(Xpath是lxml里面的一种),是入门最好的选择
+
+
+
+关于解析神器 XpathXpath 
+即为 XML 路径语言(XML Path Language),它是一种用来确定 XML 文档中某部分位置的语言。Xpath 基于 XML 的树状结构,提供在数据结构树中找寻节点的能力。
+Xpath解析网页的流程:
+1.首先通过Requests库获取网页数据
+2.通过网页解析,得到想要的数据或者新的链接
+3.网页解析可以通过 Xpath 或者其它解析工具进行,Xpath 在是一个非常好用的网页解析工具
+
+
+
 
 
 
@@ -1066,6 +1092,11 @@ html=getHtml('http://y.biomooc.com/wangjl/test.html')
 print(html.decode("utf-8")) #为什么？
 #getHtml('https://www.baidu.com').decode("utf-8")
 
+#如果"utf-8"报错：UnicodeDecodeError: 'utf-8' codec can't decode byte 0xc8 in position 0
+#则改为"gb18030"
+print(html.decode("gb18030"))
+
+
 
 其中：
 Urllib 模块提供了读取web页面数据的接口，我们可以像读取本地文件一样读取www和ftp上的数据。首先，我们定义了一个getHtml()函数:
@@ -1160,10 +1191,466 @@ for i in range(1,178):  # 爬取全部177页数据
 
 
 ========================================
+【难点】多线程、多线程之间的通信
 ----------------------------------------
+1.队列 Queue 能实现子进程之间的通信
+
+
+
+2.主进程和子进程之间怎么通信？
+
 
 
 ========================================
+实例：多线程下载ZINC小分子数据库(防止直接用wget并发太大被屏蔽)[requests,shell,file]
+----------------------------------------
+
+#1.下载csv文件：
+#http://zinc15.docking.org/catalogs/fda/substances/
+# (1) 关键词搜索 fda/specsnp/molportnp等   http://zinc15.docking.org/catalogs/
+# (2) 点击右侧的 Browse Substances， 
+# (3) 点击中间的下载按钮，选择 csv格式的。      
+#        
+#2.shell 语句处理成单列，并去掉第一行表头
+#$ awk -F"," '{print $1}' fda-substances.csv >fda.id
+#$ sed -i '1d' fda.id
+#
+#3. 用python多线程下载，同时下载好的id记录到done文件中
+#
+
+
+################
+# on linux only.
+# v0.2
+################ 
+
+## 任务：从文件读取一行小分子 id，作为参数传给下载进程们。
+# 多线程下载 多文件
+## 一个进程记录数据，一个进程池 众多线程下载和保存数据。
+## 读、写进程之间用queue通信。
+
+#问题： 为什么不能在子进程中完整保存呢？因为没有flush文件。
+
+import os
+import re
+import requests
+
+
+############################
+##part 1 配置文件:
+############################
+os.chdir('/home/wangjl/Download/py/') #设置项目目录
+print(os.getcwd())
+
+#需要新建文件夹 xx，并在文件夹同级放xx.id文件
+pname="molportnp";
+#"fda"  #"specsnp" #项目名字project name
+
+
+
+
+############################
+#part 2 工作函数
+############################
+#fun: 根据id下载文件
+def download(id):
+    #发出请求
+    # "http://zinc15.docking.org/substances/ZINC000000000018.sdf"
+    rs=requests.get("http://zinc15.docking.org/substances/"+id+".sdf")
+    #写入二进制文件
+    with open(pname+"/"+id+'.sdf','wb') as f:
+        f.write(rs.content)
+    return id;
+#download("ZINC000000001368")
+
+
+
+############################
+#part 3 多线程
+############################
+import time,multiprocessing,os,random,re,sys
+from multiprocessing import Queue
+from multiprocessing import Process
+
+#start time
+start=time.time()
+print('='*10, "Begin of main process", os.getpid(), "[child pid by parent ppid]")
+
+# 读和处理数据
+def worker(id):
+    #一个很耗时的计算
+    rs=download(id) #该函数在上一个cell定义的
+    q.put(rs) #结果输出到管道
+    #print(id+" done.")
+
+#保存的线程1个
+def worker_out():
+    i=0
+    with open(pname+'.done', 'w') as f:
+        while True:
+            i+=1
+            if i%200==0: #进度条
+                #pass 
+                print(str(i)+" files have been done.  Elapse = "+ str(time.time()-start) +'s' )
+            
+            rs=q.get() #waite while q is empty
+            #print(rs)
+            f.write(rs+"\n") #写入文件
+            f.flush() #刷新缓存，一次性输出到文件
+
+
+# 主进程
+if __name__ == '__main__':
+    q=Queue(30) #会超标，但是不会超出太多
+    
+    # 声明进程池对象
+    pool = multiprocessing.Pool(processes = 12)
+
+    #文件读取，分配任务给进程
+    fr=open(pname+".id",'r')
+
+    # 向进程池中提交任务
+    i=0
+    for lineR in fr.readlines():
+        i+=1
+        if i>1000:
+            pass;
+            #break; #测试用语句
+
+        line=lineR.strip()
+        #print('>>>>>>to worker:',line)
+        #arr=re.split(' ',line)
+        #print("start new process", line) #任务是一次发送完的
+        pool.apply_async( worker,args=(line,) )
+    fr.close() #关闭文件
+
+    #分完任务，开始启动保存进程
+    pOut = Process(target=worker_out)
+    pOut.start()
+
+    #等待读进程结束
+    pool.close()
+    pool.join()
+
+    #主线程查看队列，决定是否关掉写循环
+    while not q.empty():
+        time.sleep(1)#每一秒检查一次队列是否为空
+
+    pOut.terminate(); #终止死循环
+
+print(time.time()-start,'s', '='*10, "End of main process", os.getpid())
+
+
+========================================
+实例：多线程下载沪深股市行情信息（上市公司/csv）[urllib.request.urlopen, shell, file]
+----------------------------------------
+
+1. 多线程下载信息
+# 多线程，下载股票数据
+
+################
+# on linux only.
+# v0.2
+################ 
+
+## 任务：从爬虫获取股票id，作为参数传给下载进程们。
+# 多线程下载 多文件
+## 一个进程记录数据，一个进程池 众多线程下载和保存数据。
+## 读、写进程之间用queue通信。
+
+
+import urllib.request
+import re
+ 
+##def downback(a,b,c):
+##    ''''
+##    a:已经下载的数据块
+##    b:数据块的大小
+##    c:远程文件的大小
+##   '''
+##    per = 100.0 * a * b / c
+##    if per > 100 :
+##        per = 100
+##    print('%.2f%%' % per)
+stock_CodeUrl = 'http://quote.eastmoney.com/stocklist.html'
+
+ 
+# 获取股票代码列表
+def urlTolist(url):
+    allCodeList = []
+    html = urllib.request.urlopen(url).read()
+    html = html.decode('gbk')
+    s = r'<li><a target="_blank" href="http://quote.eastmoney.com/\S\S(.*?).html">'
+    pat = re.compile(s)
+    code = pat.findall(html)
+    for item in code:
+        if item[0] == '6' or item[0] == '3' or item[0] == '0':
+            allCodeList.append(item)
+    return allCodeList
+ 
+ 
+allCodelist = urlTolist(stock_CodeUrl)
+len(allCodelist) #3689
+
+
+import os
+import re
+import requests
+
+
+############################
+##part 1 配置文件:
+############################
+os.chdir('/home/wangjl/web/all_stock_data') #设置项目目录
+print(os.getcwd())
+
+#需要新建文件夹 xx
+pname="20181210";
+
+
+with open(pname+'.id','w') as f:
+    for code in allCodelist:
+        f.write(code+"\n")
+
+############################
+#part 2 工作函数
+############################
+def getHtml(url):
+    page=urllib.request.urlopen(url)
+    html=page.read().decode("gb18030")
+    return html
+#fun: 根据id下载文件
+def download(code):
+    if code[0] == '6':
+        url = 'http://quotes.money.163.com/service/chddata.html?code=0' + code + \
+              '&end=20181210&fields=TCLOSE;HIGH;LOW;TOPEN;LCLOSE;CHG;PCHG;TURNOVER;VOTURNOVER;VATURNOVER;TCAP;MCAP'
+    else:
+        url = 'http://quotes.money.163.com/service/chddata.html?code=1' + code + \
+              '&end=20181210&fields=TCLOSE;HIGH;LOW;TOPEN;LCLOSE;CHG;PCHG;TURNOVER;VOTURNOVER;VATURNOVER;TCAP;MCAP'
+    #发出请求,写入二进制文件
+    html=getHtml(url)
+    with open( pname+"/"+code + '.csv','w') as f:
+        f.write(html)
+    return code;
+
+download("600000")
+
+print("==2end=============")
+
+############################
+#part 3 多线程
+############################
+import time,multiprocessing,os,random,re,sys
+from multiprocessing import Queue
+from multiprocessing import Process
+
+#start time
+start=time.time()
+print('='*10, "Begin of main process", os.getpid(), "[child pid by parent ppid]")
+
+# 读和处理数据
+def worker(id):
+    #一个很耗时的计算
+    rs=download(id) #该函数在上一个cell定义的
+    q.put(rs) #结果输出到管道
+    #print(id+" done.")
+
+#保存的线程1个
+def worker_out():
+    i=0
+    with open(pname+'.done', 'w') as f:
+        while True:
+            i+=1
+            if i%200==0: #进度条
+                #pass 
+                print(str(i)+" files have been done.  Elapse = "+ str(time.time()-start) +'s' )
+            
+            rs=q.get() #waite while q is empty
+            #print(rs)
+            f.write(rs+"\n") #写入文件
+            f.flush() #刷新缓存，一次性输出到文件
+
+
+# 主进程
+if __name__ == '__main__':
+    q=Queue(200) #会超标，但是不会超出太多
+    
+    # 声明进程池对象
+    pool = multiprocessing.Pool(processes = 100)
+
+    #文件读取，分配任务给进程
+    fr=open(pname+".id",'r')
+
+    # 向进程池中提交任务
+    i=0
+    for lineR in fr.readlines():
+        i+=1
+        if i>500:
+            pass;
+            #break; #测试用语句
+
+        line=lineR.strip()
+        pool.apply_async( worker,args=(line,) )
+    fr.close() #关闭文件
+
+    #分完任务，开始启动保存进程
+    pOut = Process(target=worker_out)
+    pOut.start()
+
+    #等待读进程结束
+    pool.close()
+    pool.join()
+
+    #主线程查看队列，决定是否关掉写循环
+    while not q.empty():
+        time.sleep(1)#每一秒检查一次队列是否为空
+
+    pOut.terminate(); #终止死循环
+
+print(time.time()-start,'s', '='*10, "End of main process", os.getpid())
+
+
+
+2.检查出下载失败的id
+# 检测下载个数和结果的差别。
+fda1=[]
+fda2=[]
+#文件读取
+def file2Arr(fname):
+    fr1=open(fname,'r')
+
+    i=0
+    arr=[]
+    for lineR in fr1.readlines():
+        i+=1
+        if i>10:
+            pass;
+            #break; #测试用语句
+
+        line=lineR.strip()
+        arr.append(line)
+    fr1.close();
+    return arr;
+
+fda1=file2Arr("/home/wangjl/web/all_stock_data/20181210.id")
+fda2=file2Arr("/home/wangjl/web/all_stock_data/file")
+
+for id in fda1:
+    if id not in fda2:
+        print(id)
+
+
+
+3.整合出来某一天的所有上市公司的信息
+import pandas as pd
+
+# 从文件获取某一天的信息
+id="600001"
+
+def getByID_Date(id,date):
+    #使用pandas读取txt文件，默认分隔符是逗号。
+    df=pd.read_csv("20181210/"+id+'.csv',sep=",", index_col="日期")
+    
+    #pandas 如果不存在某一行
+    if date in df.index:
+        return df.loc[[date]] #某一行
+    else:
+        return df[1:1]
+
+#getByID_Date(id,"2018-12-07")
+
+#合并两条信息
+#t1=getByID_Date('000001',"2018-12-07")
+#t2=getByID_Date('000002',"2018-12-07")
+#t1.append(t2)
+
+#读取code列表
+ids=[]
+f=open("/home/wangjl/web/all_stock_data/20181210.id",'r')
+for code in f.readlines():
+    ids.append( code.strip() )
+f.close()
+print( len(ids) )
+
+
+#同过循环读取所有的code的第一行
+today=""
+i=0
+for code in ids:
+    i+=1
+    if i%300==0:
+        print(i, ' processing ', code )
+
+    row=getByID_Date(code,"2018-12-07")
+    if i==1:
+        today=row
+    else:
+        today=today.append(row)
+print("==end==")
+
+pring( today )
+
+data2=today[["股票代码","名称","总市值"]]
+data2.to_csv("data2.csv")
+
+import os
+os.getcwd()
+#'/home/wangjl/web/all_stock_data' 到R中用ggplot2画图。
+
+
+
+
+https://m.weibo.cn/search?containerid=100103type%3D1%26q%3D%E4%B8%87%E7%A7%91&display=0&retcode=6102
+https://m.weibo.cn/api/container/getIndex?type=all&queryVal=000063&featurecode=20000320&luicode=10000011&lfid=106003type%3D1&title=000063&containerid=100103type%3D1%26q%3D000063&page='+str(i)
+
+
+https://m.weibo.cn/api/container/getIndex?type=all&queryVal=000063&featurecode=20000320&luicode=10000011&lfid=106003type%3D1&title=000063&containerid=100103type%3D1%26q%3D000063&page=1
+
+
+var='带着微博去日本'
+var=urllib.request.quote(var)
+url='https://m.weibo.cn/api/container/getIndex?type=all&queryVal='+var+'&featurecode=20000320&luicode=10000011&lfid=106003type%3D1&title='+var+'&containerid=100103type%3D1%26q%3D'+var+'&page=1'
+
+
+
+
+
+========================================
+Python 爬虫基础Selenium库的使用【测试用的，对爬虫作用不大】
+----------------------------------------
+Selenium是一个用于测试网站的自动化测试工具，支持各种浏览器包括Chrome、Firefox、Safari等主流界面浏览器，同时也支持phantomJS无界面浏览器。
+
+
+1.安装
+$ pip install --user selenium
+
+
+2.测试例子
+打开百度页面并在输入框输入搜索内容（默认为firework）
+注意：Selenium 2.53支持Firefox47版本及以下，记得去掉“浏览器更新”，要不报错
+不要随便升级Firefox！！
+
+# 1. Selenium默认为Firefox。验证
+from selenium import webdriver
+
+driver = webdriver.Firefox()
+# 将控制的webdriver的Firefox赋值给driver；获得了浏览器对象才可以启动浏览器，打开网址，操作页面
+
+driver.get("http://www.baidu.com")
+# 获得浏览器对象后，通过get()方法，可以向浏览器发送网址
+
+driver.find_element_by_id('kw').send_keys('hello')
+# 这里通过 id = kw 定位到搜索框，并通过键盘方法send_keys向输入框里输入'hello'
+
+driver.find_element_by_id('kw').submit()
+driver.close()
+
+
+
+
+
+========================================
+### 附录 ###
 ----------------------------------------
 
 
@@ -1189,6 +1676,20 @@ def getFileName():
     dirname = time.strftime('%Y%m%d',time.localtime(time.time()))
     dirname+='sh'
     return  dirname
+
+
+
+2. 为了做到随机时间段后执行，做成随机函数
+
+import time,random
+for i in range(10): #随机时间段后[2s,12s]执行
+    pause=2+10*random.random()
+    print(str(i)+' '+str(pause))
+    time.sleep(pause)
+
+
+-
+
 
 
 

@@ -4,6 +4,46 @@ CentOS6.8 with 40cores,128GMem.
 
 10XQC: http://10xqc.com/
 
+
+
+========================================
+遗留问题
+----------------------------------------
+1.作 UMI per cell 的柱状图，舍弃小于300的一个峰后，
+发现一个2k-7k的主峰，然后还有很低的频数的7k-80k的，后面这一部分怎么处理？
+
+10x代理公司工程师建议做个多核检测，虽然不靠谱。
+google: doublet cells detection
+
+GitHub - JonathanShor/DoubletDetection: Doublet detection in single ...
+https://github.com/JonathanShor/DoubletDetection
+Doublet detection in single-cell RNA-seq data. Contribute to JonathanShor/DoubletDetection development by creating an account on GitHub.
+
+DoubletFinder: Doublet detection in single-cell RNA sequencing data ...
+https://www.biorxiv.org/content/early/2018/06/26/352484
+by CS McGinnis - ‎2018 - ‎Cited by 1 - ‎Related articles
+Jun 26, 2018 - Neighborhood detection in gene expression space then identifies sequenced cells with increased probability of being doublets based on their ...
+
+Detecting doublets in single-cell RNA-seq data - Bioconductor
+https://www.bioconductor.org/packages/devel/.../simpleSingleCell/.../work-6-doublet.ht...
+In single-cell RNA sequencing (scRNA-seq) experiments, doublets are artifactual libraries generated from two cells. They typically arise due to errors in cell ...
+
+
+
+
+
+2.两个10x库合起来怎么分析？
+
+
+3.两个库分出来bam做表达聚类，合直接用10x的cellranger分析bam做表达聚类结果有啥异同？
+
+
+
+
+
+
+
+
 ========================================
 数据下载data download: PBMC下机数据
 ----------------------------------------
@@ -381,6 +421,9 @@ t-SNE http://lvdmaaten.github.io/tsne/
 R包 https://cran.r-project.org/web/packages/tsne/
 
 
+tSNE描述
+http://bindog.github.io/blog/2016/06/04/from-sne-to-tsne-to-largevis/
+
 
 
 
@@ -388,8 +431,6 @@ R包 https://cran.r-project.org/web/packages/tsne/
 ========================================
 运行 cellranger mkfastq
 ----------------------------------------
-
-
 cellranger mkfastq recognizes two file formats for describing samples: 
  - a simple, three-column CSV format, 
  - and the Illumina Experiment Manager (IEM) sample sheet format, the same format used by bcl2fastq. 
@@ -491,8 +532,93 @@ $ cellranger mkfastq --id=tiny-bcl \
 
 
 
+
+
 ========================================
+Seurat包扩展: 画PCA的3D散点图: 从R中生成png，在linux中合并为gif，如何添加表示分类的颜色？
 ----------------------------------------
+3D图能很直观的理解类群，在PPT中效果比2D图好太多。
+不过生成过程比较麻烦，建议：尽量在本地R中好好优化后再启动生成gif流程。
+
+
+0.如果数据太大，下载不方便，则可以考虑只提取画图必要的部分。
+#获取pca数据
+df=data.frame(
+  pc_1=pbmc9@dr$pca@cell.embeddings[,1],
+  pc_2=pbmc9@dr$pca@cell.embeddings[,2],
+  pc_3=pbmc9@dr$pca@cell.embeddings[,3],
+  ident=pbmc9@ident
+)
+saveRDS(df, file = "10x_B116_TSENPlot_9_PC1-6_r0.6_DF.rds")
+
+
+
+
+
+1. PCA 3d plot图，一般是黑白的
+#########
+# R中, win10
+#########
+setwd("D:\\Temp\\10xB116\\tmp_plot")
+pbmc5=readRDS("10x_B116_TSENPlot_9_again.rds")
+
+#获取pca数据
+pc_1=pbmc5@dr$pca@cell.embeddings[,1]
+pc_2=pbmc5@dr$pca@cell.embeddings[,2]
+pc_3=pbmc5@dr$pca@cell.embeddings[,3]
+
+library(rgl) #可以鼠标旋转的3D图
+plot3d(pc_1, pc_2, pc_3)
+
+#install.packages("magick")
+library(magick) #生成gif图所需的原材料 若干png
+movie3d(spin3d(axis=c(0,0,1),rpm=3), type = "gif",duration=3,fps=10,convert=F)
+#位置在临时文件夹中 C:\Users\admin\AppData\Local\Temp\RtmpOqAa3k ，zip打包上传到linux中。
+#注意：利用movie3d函数保存动画，其实是生成一些列的.png格式的图面文件，每个文件代表一帧，然后利用ImageMagick软件提供的convert命令将这些文件合并成为gif格式的动画文件。所以要想让动画动起来是一定要安装ImageMagick软件的。输出的动画会被放在一个临时文件夹中，地址名会在R窗口中输出。如果不想利用ImageMagick软件，可以设置convert=F，然后其他软件会将这一系列的.png文件转换为动画。
+
+
+
+#########
+# linux中,Ubuntu 18.04.1 LTS
+#########
+$ unzip RtmpOqAa3k.zip -d gif/
+$ cd gif
+
+convert -delay 0 *.png ~/web/a1.gif
+convert ~/web/a1.gif -coalesce -reverse -quiet -layers OptimizePlus -loop 0 ~/web/a2.gif
+convert ~/web/a1.gif ~/web/a2.gif ~/web/a3.gif
+
+
+
+
+
+
+2.如果多个样本怎么用颜色或形状区分呢？
+如何加上彩色？加上tSNE的分类颜色：1获取tSNE图的颜色；2.为PCA 3D图加上这些颜色。
+
+
+#如何获取TSNEPlot中表示分类的颜色 https://github.com/satijalab/seurat/issues/257
+identities <- levels(pbmc5@ident) # Create vector with levels of object@ident
+require(scales)
+my_color_palette <- hue_pal()(length(identities)) # Create vector of default ggplot2 colors
+# Plot the tSNE plot with the default ggplot2 colors
+#TSNEPlot(object = pbmc5, do.return = T) + 
+#  scale_color_manual(values = my_color_palette)
+#The colour codes can be found in my_color_palette.
+
+#my_color_palette是一个长度为10的数组，怎么转换为一个factor的值？
+ident=pbmc5@ident
+t1=factor(ident,labels = my_color_palette)
+
+
+#可以画3D图了
+library(rgl) #可以鼠标旋转的3D图
+plot3d(pc_1, pc_2, pc_3, col= t1,size=4)
+
+接着使用movie3d函数生成一堆png，然后用linux下的convert生成gif文件。
+
+
+
 
 
 
