@@ -106,12 +106,14 @@
 			
 			array('http://edu.ibeifeng.com/list-index-is_key-is_new.html','北风网'),
 			
+			array('https://www.ted.com/','TED视频'),
 		);
 		echo '<br />视频: ';
 		print_links($links_video);
 		
 		echo '<br />生物信息学: ';
 		print_links(array(
+			array('http://www.bioinfo-scrounger.com/','生信笔记'),
 			array('http://blog.shenwei.me/about/','shenwei的生信博客'),
 			//array('',''),
 		));
