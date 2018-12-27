@@ -40,8 +40,9 @@ return array (
     0 => 1,
     1 => '3D建模',
     2 => array (
-      array('blender','blender_001','html'),
       array('maya入门','maya_001','html'),
+      array('blender简介','blender_001','html'),
+      array('blender教程','blender_002','txt'),
     ),
   ),
 
