@@ -20,6 +20,7 @@ return array (
       array('Python基础详解','Python102','txt',),
       array('Python片段','Python103-pieces','txt',),
       array('Python数据处理包','Python104-packages','txt',),
+      array('Python Web','Python105-web','txt',),
     ),
   ),
   
