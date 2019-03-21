@@ -30,9 +30,10 @@ return array (
 
   array (
     0 => 1,
-    1 => 'ggplot2',
+    1 => '常用R包',
     2 => array (
       array('ggplot2绘图','ggplot2','txt'),
+      array('分析差异基因','pkg-DEG','txt'),
     ),
   ),
   

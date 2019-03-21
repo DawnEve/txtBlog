@@ -1,0 +1,250 @@
+分析差异表达基因的包 limma, edgeR, DESeq2
+
+Other Bioconductor packages with similar aims are edgeR, limma, DSS, EBSeq, and baySeq.
+
+
+========================================
+limma包是GEO2R使用的差异基因分析包
+----------------------------------------
+
+
+
+
+
+
+http://www.bio-info-trainee.com/bioconductor_China/software/limma.html
+
+差异分析是否需要比较矩阵
+https://github.com/bioconductor-china/basic/blob/master/makeContrasts.md
+
+
+
+
+
+
+========================================
+DESeq2包适合count矩阵的分析
+----------------------------------------
+官方教程: Analyzing RNA-seq data with DESeq2
+http://www.bioconductor.org/packages/devel/bioc/vignettes/DESeq2/inst/doc/DESeq2.html
+
+A basic task in the analysis of count data from RNA-seq is the detection of differentially expressed genes. The count data are presented as a table which reports, for each sample, the number of sequence fragments that have been assigned to each gene. Analogous data also arise for other assay types, including comparative ChIP-Seq, HiC, shRNA screening, mass spectrometry. An important analysis question is the quantification and statistical inference of systematic changes between conditions, as compared to within-condition variability. The package DESeq2 provides methods to test for differential expression by use of negative binomial generalized linear models(负二项广义线性模型); the estimates of dispersion(离散) and logarithmic fold changes incorporate data-driven prior distributions.
+
+This vignette explains the use of the package and demonstrates typical workflows. An RNA-seq workflow[http://www.bioconductor.org/help/workflows/rnaseqGene/] on the Bioconductor website covers similar material to this vignette but at a slower pace, including the generation of count matrices from FASTQ files. DESeq2 package version: 1.23.8
+
+
+
+
+
+
+1.
+差异分析的套路都是差不多的，大部分设计思想都是继承limma这个包，DESeq2也不例外。
+
+DESeq2是DESeq包的更新版本，看样子应该不会有DESeq3了，哈哈，它的设计思想就是针对count类型的数据。
+
+可以是任意features的count数据，比如对各个基因的count，或者外显子，或者CHIP-seq的一些feature，都可以用来做差异分析。
+
+
+使用这个包也是需要三个数据：
+	表达矩阵
+	分组矩阵
+	差异比较矩阵
+
+总结起来三个步骤，我下面会一一讲解
+	重点就是构造一个dds的对象，
+	然后直接用DESeq函数进行normalization处理即可，
+	处理之后用results函数来提取差异比较结果
+
+
+
+
+
+2.步骤
+第一步在你的PC或者MAC上安装Rstudio
+第二步安装deseq2工具并载入
+source("https://bioconductor.org/biocLite.R")
+biocLite("DESeq2")
+library(DESeq2)
+
+然后是读取数据，在这里需要说明一下
+1、读取的数据结构应该是
+
+横行为基因（图示为ENSGxxx），列为样本。
+
+	
+
+2、数据可以从txt或者csv等文件直接用read.table/csv读取
+# setwd("~/data")
+data <- read.table("ehbio_trans.Count_matrix.xls", header=T, row.names=1, com='', quote='', check.names=F, sep="\t")
+
+
+# 撇掉在多于两个样本中count<1的值，如果样本数多，这个数值可以适当增加
+# 排除极低表达基因的干扰
+data <- data[rowSums(data)>2,]
+head(data)
+
+	
+
+3、当然如果你看了下面的教程，你会得到data.out这个数据框，按照下面的命令即可得到用于deseq2分析的原始文件
+# data.out1<-data.out[-(1:4),-2]
+# raw.data<-data.out1[,-1]
+
+
+
+进行条件设置
+condition<-c(rep('Tumor',50),rep('Normal',50))
+coldata<- data.frame(row.names=colnames(raw.count), condition)
+此处要注意raw.count的排序需要与condition顺序一致
+
+# 读入分组信息
+#sample <- read.table("sampleFile", header=T, row.names=1, com='',
+#    quote='', check.names=F, sep="\t", colClasses="factor")
+# sample <- sample[match(colnames(data), rownames(sample)),, drop=F]
+# sample_rowname <- rownames(sample)
+# 下面的可以忽略，如果没遇到错误不需要执行
+# 目的是做因子转换
+#sample <- data.frame(lapply(sample, function(x) factor(x, levels=unique(x))))
+#rownames(sample) <- sample_rowname
+#sample
+
+
+DESeq2包采用DESeqDataSet存储原始的read count和中间计算的统计量。
+
+构建deseq2对象
+dds <- DESeqDataSetFromMatrix(countData = raw.count, #表达矩阵
+	colData = coldata, #样品分组信息表
+	design = ~ condition) #实验设计信息，conditions必须是colData中的一列
+
+设置对照
+# ddscondition<−relevel(ddscondition,'Normal')
+
+计算开始，样本量大的话，可以先去干点别的
+dds2 <- DESeq(dds)
+
+
+
+
+# ?counts查看此函数功能
+# normalized=T, 返回标准化的数据
+normalized_counts <- counts(dds2, normalized=TRUE)
+head(normalized_counts)
+
+根据基因在不同的样本中表达变化的差异程度mad值对数据排序，差异越大的基因排位越前。
+normalized_counts_mad <- apply(normalized_counts, 1, mad)
+normalized_counts <- normalized_counts[order(normalized_counts_mad, decreasing=T), ]
+
+get结果
+res <- results(dds2)
+
+设置cutoff
+resSig <- subset(res, abs(log2FoldChange)>1 & padj < 0.01)
+
+输出结果
+resSig<-data.frame(resSig)
+write.csv(resSig,file="DEG.csv")
+
+
+
+
+如果input没有gene symbol，则这个时候依旧是没有基因名字的，你需要参考下面的教程进行注释。
+生信干货~ID(ENSGxx)转Gene name的方法~
+R代码包与练习文件请到Chris生信初级教程中下载
+
+
+
+
+refer:
+#(推荐)  DESeq2差异基因分析和批次效应移除
+https://mp.weixin.qq.com/s?__biz=MzI5MTcwNjA4NQ%3D%3D&mid=2247485368&idx=1&sn=12b20487e9014ce2e69f01d3efbc6ce8&scene=45
+
+用DESeq2包来对RNA-seq数据进行差异分析
+http://www.bio-info-trainee.com/bioconductor_China/software/DESeq2.html
+
+
+
+
+========================================
+ID转换 
+----------------------------------------
+很多时候你得到的是GENCODE的ID，比如ENSGxxx之类的，怎样转换成gene symbol呢？往下看
+
+https://mp.weixin.qq.com/s?__biz=MzI3MTM4NTAzOQ==&mid=2247483831&idx=1&sn=e53f0896514c3785c38773435a74e9af
+
+
+
+
+========================================
+WGCNA包:加权基因共表达网络分析 (WGCNA, Weighted correlation network analysis)
+----------------------------------------
+WGCNA是用来描述不同样品之间基因关联模式的系统生物学方法
+
+
+
+
+refer:
+WGCNA分析，简单全面的最新教程
+https://mp.weixin.qq.com/s?__biz=MzI5MTcwNjA4NQ==&mid=2247485220&idx=1&sn=007188964e7c43d75dcd0b11b880bbfa
+
+
+========================================
+----------------------------------------
+
+
+========================================
+----------------------------------------
+
+========================================
+----------------------------------------
+
+========================================
+----------------------------------------
+
+
+========================================
+----------------------------------------
+
+========================================
+----------------------------------------
+
+========================================
+----------------------------------------
+
+
+========================================
+----------------------------------------
+
+========================================
+----------------------------------------
+
+========================================
+----------------------------------------
+
+
+========================================
+----------------------------------------
+
+========================================
+----------------------------------------
+
+========================================
+----------------------------------------
+
+
+========================================
+----------------------------------------
+
+========================================
+----------------------------------------
+
+========================================
+----------------------------------------
+
+
+========================================
+----------------------------------------
+
+========================================
+----------------------------------------
+
+========================================
+----------------------------------------
