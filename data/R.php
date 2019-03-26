@@ -34,6 +34,7 @@ return array (
     2 => array (
       array('ggplot2绘图','ggplot2','txt'),
       array('分析差异基因','pkg-DEG','txt'),
+      array('数据框清理','pkg-dplyr','txt'),
     ),
   ),
   
