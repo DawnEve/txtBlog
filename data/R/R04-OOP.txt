@@ -1,0 +1,941 @@
+R04-OOP
+
+每一次的需求变化，只需要修改传入的参数即可，其他代码无需变动，这是不是很理想？
+这就需要代码的逐步抽象化，第一步是函数化，第二步是面向对象化。
+
+S4权威教程
+《Advanced R》 by Hadley Wickham （旧版）http://adv-r.had.co.nz/S4.html
+	第二版 https://adv-r.hadley.nz/s4.html
+《R in a Nutshell》 by Joseph Adler
+
+
+========================================
+面向对象(OOP)思想概述
+----------------------------------------
+1.面向对象编程（Object Oriented Programming，OOP，面向对象程序设计）是一种计算机编程架构。OOP 的一条基本原则是计算机程序是由单个能够起到子程序作用的单元或对象组合而成。
+
+OOP（面向对象程序设计）使软件编写和维护容易了，程序可靠性也提高，但程序的易用性降低，对用户素质的要求高了很多。所以，OOP不只是程序员的事情，使用者也多少得有些了解，尤其是R的使用者。
+
+以Bioconductor为例，当前版本（2013.9.23同步的2.13版)中定义S4类有13190个，而函数则多大106939个。有些软件包从专用文件读取数据直接生成类对象，数据的结构被包装得严严实实的，用户根本看不见里面的实际东西；如果没使用指定的实验仪器获得相应的数据文件，不了解数据结构和OOP的方法就根本没办法应用这些软件。学OOP，是用好R应用软件包的又一个门槛，跨吧。
+
+
+当R语言被大家所看好的同时，我们也要开始思考，如何才能让R成为工业界的开发语言？应用如何构建非统计计算的项目？如何用R有效的编写10万行以上的代码？
+
+面向对象编程大大提高了代码编写的效率，防止代码一盘散沙而只能小打小闹，严格的OOP有助于构建大工程，有利于团队合作和社区分享。可以说OOP的使用程度标志着一门语言的成熟和值钱程度。广泛使用的Java和JavaScript都是这样一路走向OOP的怀抱的。
+
+
+
+
+2. 
+R语言的OOP经历了好几代版本，各有优劣，现在基本上共存。
+
+S3很不严谨，所以S4就诞生了。
+S4对象系统具有明显的结构化特征，更适合面向对象的程序设计。Bioconductor社区，以S4对象系统做为基础架构，只接受符合S4定义的R包。
+
+
+R core们宣布自R 3.0版后弃用S4类定义setClass函数的representation参数，改用slots和contains参数。
+https://github.com/hadley/adv-r/issues/884
+
+
+
+
+
+3.对象管理
+
+ls() #列出所有对象
+rm() #删除对象 rm(list=ls()) #删除当前空间的全部对象
+save() #保存，将对象写入硬盘
+exists()#查看对象是否存在
+
+
+
+========================================
+R语言OOP特性：封装、继承、多态 概念
+----------------------------------------
+R语言是面向对象的语言，支持 封装、多态、继承；
+- 封装：把独立但相关的数据项目打包成一个类的实例；
+- 多态：相同的函数使用不同类的对象时可以调用不同的操作；具有多态性的函数，
+成为泛型函数，如plot()和print()
+- 继承：允许把一个给定的类的性质自动赋予其下属的更特殊化的类。
+
+
+
+1. 对象和类
+
+1.1 对象和类
+“对象”，英文是Object，物体，就是很具体的一个物件。推而广之，只要是能对它做点什么的东西都叫对象。
+“类”（CLASS），有共同特性的一组对象，但在编程中要反过来，指的是对象共有的那些特性。在OOP语言中，所有对象都属于某个或某些类。
+
+
+1.2 继承
+鼠娃继承鼠爸的特性，会打洞，这是遗传性继承。然而编程中的继承更像进化上的继承，是在“类”的继承，不是“对象”的继承。比如Biostrings定义的类XString，它有XRaw等4个父/母类和BString等4个子类：
+
+
+1.3 类的层次
+R语言中S3 OOP的类层次很简单，因为“类”是存在class属性的一个向量，向量是线性的，所以类的层次也是线性的，越靠后“关系”越疏远。这种关系直接影响到泛型函数对方法的选择。
+
+而S4 OOP由于允许多重继承（一个类可以有多个父/母类），所以层次关系非常复杂，一个类转来转去搞不好自己的祖父又成了自己的孙子。
+
+下面是Biostring定义的类的网络，算法从XString类开始，上下只延伸了4层关系就已经很复杂了（蓝色为没有父/子类，绿色为只有一个父/子类，黄-橙-红表示父/子类数量递增）：图略。
+
+
+
+
+
+2 方法、泛型函数和多态性
+
+2.1 方法
+方法是处理对象的动作，在R语言里面就是指函数，比如获取矩阵数据概貌的函数summary.matrix和获取因子型数据概貌的函数summary.factor：
+
+2.2 泛型函数
+让用户在使用过程中根据数据类型选择函数是很麻烦也很容易出错的，最好把这工作交给程序自动处理。这个过程可以通过泛型函数实现。获取数据的概貌的泛型函数是summary，由它根据数据的类型来选择合适的方法，而用户只需要使用泛型函数：
+
+summary(x)
+上面的summary是S3 OOP中的泛型函数，S4的泛型函数在细节上跟它有很大差异，这里先了解概念。
+
+
+(1)泛型实例
+#泛型是强类型程序设计语言的一种特性。
+#泛型类是引用类型，是堆对象，主要是引用了类型参数这个概念。
+
+x=c(1,2,3)
+y=c(1,3,8)
+lmot=lm(y~x)
+class(lmot)#lm
+mode(lmot)#list
+str(lmot) #查看所有细节
+lmot
+#事实上，由于R的解释器发现lmot是lm类的对象，自动调用了print.lm()
+print.lm(lmot) #难道print()已经被改写了？不再有print.lm()
+
+
+#去掉类属性，打印的结果将会有所不同
+unclass(lmot)
+#显然，print.lm()的显示结果更加简练。
+
+
+2.3 多态性
+泛型函数根据数据的“类”来选择方法。由于数据类型很多，方法也会不少，比如summary泛型函数能够支配的方法包括：
+
+## 代码的运行结果会根据载入的软件包不同而有差异
+methods("summary")
+
+上面体现的就是方法的“多态性”，相似的summary功能由不同的方法来实现。
+
+2.4 方法的调度/派遣/分发（dispatch）
+泛型函数在方法选择过程中所做的事情是比较复杂的，S3和S4差别很大，这将在以后学习。
+
+
+
+
+
+
+
+
+3 获取类和方法的帮助信息
+
+由于S3 OOP系统相对简单，R语言提供的用于S3类和方法检索的手段相当少。目前没有办法知道一个软件包中定义了哪些S3类，只能通过对象查询它所属的类属性；方法的检索使用methods函数，可以查询类或泛型函数的方法：
+> class(airquality)
+[1] "data.frame"
+
+> methods("plot")
+# [1] plot,ANY,ANY-method     plot,PairComp,missing-method ...
+# see '?methods' for accessing help and source code
+
+> methods(class = "glm")
+# [1] add1	anova	coerce  ...
+
+
+
+使用methods函数检索泛型函数可用“方法”的方式是非常原始的，它仅根据函数名的组成进行判断。如果养成了下面这种函数命名习惯，不知道什么时候就可能会出问题：
+
+plot.xxx <- function(x) return(NULL)
+x <- methods("plot")
+x[grep("xxx", x)]
+## [1] plot.xxx
+
+
+
+
+
+S4的类定义比S3正式多了，所以获取类相关信息也较容易，工具函数相对多。如果知道类名称（使用class函数获取对象的类），可以使用showClass/getClass显示类的信息。一些软件包比如RBioinfo还提供了superClassNames和subClassNames等函数供使用（例子）。
+
+考虑兼容性问题，S4之前定义的一些类现在也被用类似S4的方法进行了处理，所以完全可用使用S4的方式获取S3类或隐含类的信息：
+
+获取S4泛型函数可用方法的函数是getMethods/showMethods。
+
+
+
+
+
+
+
+4 源代码获取和学习软件
+
+BioC全部软件包的源代码可以在Linux下通过 rsync 命令获得，也可以从BioC的HTTP站点一个个下载。学习源代码还是推荐使用Emacs+etags/rtags。R和Emacs有很多相似的地方，如：两者都有非常出色的可扩展性，程序作者多数也都是程序的最终用户等；但两者的学习曲线都相当复杂，同时学这两个工具对谁都是一个很大挑战。
+
+
+
+
+
+
+
+========================================
+编写S3类
+----------------------------------------
+1. S3类的定义
+1.1 多态
+j=list(name="Joe", salary=55000, union=T)
+class(j) #"list"
+class(j)="employee" #把j改为emplyee类
+class(j)
+str(j)
+attributes(j)
+j
+
+
+#自定义打印方法
+print.employee=function(wrkr){
+  cat(wrkr$name, "\n")
+  cat("salary", wrkr$salary, "\n")
+  cat("union member", wrkr$union, "\n")
+}
+j
+#Joe 
+#salary 55000 
+#union member TRUE
+
+
+
+1.2 继承
+kl=list(name="Kate", salary=68000,union=F, hrsthismonth=2)
+class(kl)=c("hrlyemployee")
+kl #原始打印
+
+k=list(name="Kate", salary=68000,union=F, hrsthismonth=2)
+class(k)=c("hrlyemployee","employee")#继承employee，包括其打印样式
+k #自定义打印
+
+#Kate 
+#salary 68000 
+#union member FALSE
+
+
+
+
+
+1.3 较复杂的S3类的定义
+# 定义Human类
+human <- function(lastname, firstname, gender) {
+    ans <- list(lastname = lastname, firstname = firstname, gender = gender)
+    class(ans) <- "Human"
+    ans
+}
+# 使用Human类
+somebody <- human("XXX", "YYY", "M")
+class(somebody)
+## [1] "Human"
+
+上面的Human类定义了吗？定义了，但严格说它又没有定义。下面的x“是”Human类，但它并不是你想要的东西：
+(x <- human(1:10, c("XXX", "YYY", "ZZZ"), "dog"))
+
+S3 OOP对用户的类不设置任何的类型检查机制，用户得对自己的数据类型负责。但对于简单的应用来说这就足够了，因为程序作者就是使用者，他/她不至于蠢到给自己设置麻烦的地步。为了让他人使用或者防止自己忘记后发生愚蠢的事情，就自己设置类型检查。
+
+
+
+
+1.4 为了彻底的OOP
+
+为了向后兼容但不至于伤筋动骨，老的“类”都使用oldClass进行了设置，类定义放到了R基本安装包的methods包里面，并明确了它们的继承关系，也可以用getClass函数获取类信息。
+
+但这些类没有slots，仍然不能做类型检查，是伪S4类。
+
+> getClass("integer")
+# Class "integer" [package "methods"]
+# 
+# No Slots, prototype of class "integer"
+# 
+# Extends: 
+# Class "numeric", directly
+# Class "vector", directly
+# ...
+# Known Subclasses: 
+# Class "factor", from data part
+
+
+> showClass("array")
+# Class "array" [package "methods"]
+# 
+# No Slots, prototype of class "array"
+# 
+# Extends: 
+# Class "structure", directly
+# Class "vector", by class "structure", distance 2, with explicit coerce
+# Class "listI", by class "vector", distance 3, with explicit coerce
+# Class "output", by class "vector", distance 3, with explicit coerce
+# 
+# Known Subclasses: 
+# Class "matrix", directly
+# Class "mts", by class "matrix", distance 2
+
+
+
+========================================
+ |--2. S3泛型函数和方法: UseMethod, NextMethod 
+----------------------------------------
+
+2.1 UseMethod 函数
+
+“方法”在R里面就是指函数，S3中OOP“方法”是通过泛型函数（generic function）实现的。概念很抽象，但实现方式很简单，先看一个小例子：
+
+## 第一步：定义一个泛型函数，这个函数的函数体只有一个固定的语句
+doit <- function(...) UseMethod("doit")
+
+## 第二步：设置针对特定CLASS的动作函数
+doit.character <- function(...) {
+    cat("With STRING class attribute\n")
+}
+doit.integer <- function(...) {
+    cat("With INTEGER class attribute\n")
+}
+doit.God <- function(...) {
+    cat("With God class attribute\n")
+}
+### 第三步：设置一个默认的动作函数
+doit.default <- function(...) {
+    cat("UNKNOWN class attribute\n")
+}
+
+
+上面三个步骤就完成了doit泛型函数的设置。看看效果吧：
+
+a <- "ABCDE"
+
+doit(a)
+## With STRING class attribute
+
+attr(a, "class") <- "integer"
+class(a) #[1] "integer"
+doit(a)
+## With INTEGER class attribute
+
+attr(a, "class") <- "God"
+doit(a)
+## With God class attribute
+
+a <- as.factor(a)
+doit(a)
+## UNKNOWN class attribute
+
+
+注意几点：
+ - 在函数定义部分定义了5个函数，doit函数为“泛型函数”，其他函数为“方法”
+ - 泛型函数有一个关键的语句：调用UseMethod函数
+ - 除泛型函数外其他函数名称的前缀（如果可以这么叫的话）都是和泛型函数相同，名称的后缀为CLASS名或default，用点号相连
+ - 使用的时候可以只使用不带点号的doit函数，泛型函数根据其参数的class属性选择合适的“方法”函数
+
+这里面还有一个问题：针对特定类型的动作函数并没有用于识别数据类型的代码，函数调用的形式都是一样的，doit函数怎么知道该执行那个操作？关键就在于UseMethod这个函数。这个函数只能在函数体内使用，它可以有两个参数：
+
+UseMethod(generic, object)
+
+generic 是泛型函数的名称（字符串）， object 是用于确定动作函数的对象，如果缺省将使用泛型函数的第一个参数，UseMethod取其CLASS属性。如果要用其他参数进行类型判断，只需修改泛型函数。下面修改后的泛型函数使用第二个参数进行动作函数选择：
+
+doit("abc", 1:10)
+## With STRING class attribute
+
+doit(1:10, "abc")
+## With INTEGER class attribute
+
+doit <- function(...) {
+    xx <- list(...)
+    UseMethod("doit", xx[[2]])
+}
+# 注意下面结果与修改泛型函数前的差别
+doit(1:10, "abc")
+## With STRING class attribute
+
+
+
+generic 参数只说是泛型函数的名称，但没有限制必需和UseMethod调用者的函数名称相同。summary是R定义的最常用泛型函数之一，下面代码中的doit函数把summary函数的全部用法都偷过来了。如果你老记不住summary这个名称的写法，不妨试试这种用法：
+
+> doit <- function(...) UseMethod("summary")
+> doit(1:10)
+#   Min. 1st Qu.  Median    Mean 3rd Qu.    Max. 
+#   1.00    3.25    5.50    5.50    7.75   10.00
+
+> doit(airquality)
+# airquality是R基本安装包datasets下的一组数据。
+
+
+
+
+
+
+
+2.2 NextMethod 函数
+
+这是一个非常特殊的函数。《R Language Definition》中的说法是这样的： Methods invoked as a result of a call to NextMethod behave as if they had been invoked from the previous method.
+
+太高深了，一头雾水。还是用代码来看看：
+
+
+doit <- function(...) UseMethod("doit")
+doit.character <- function(...) {
+    cat("With STRING class attribute\n")
+    NextMethod()
+}
+
+doit.integer <- function(...) {
+    cat("With INTEGER class attribute\n")
+    NextMethod()
+}
+
+doit.God <- function(...) {
+    cat("With God class attribute\n")
+    NextMethod()
+}
+
+doit.default <- function(...) {
+    cat("UNKNOWN class attribute\n")
+}
+
+## 多CLASS属性对象
+x <- "abc"
+class(x) <- c("UNKNOWN", "integer", "character", "God")
+doit(x)
+# With INTEGER class attribute
+# With STRING class attribute
+# With God class attribute
+# UNKNOWN class attribute
+
+原来如此。如果在方法中都加入NextMethod函数，泛型函数会按照CLASS属性对所有方法都应用一遍。
+
+但奇怪的是：x变量的CLASS属性第一个是位置类型UNKNOWN，doit泛型函数首先会使用它，但default方法中并没有使用NextMethod函数，运行完doit.default函数应该结束了，为什么有那么多输出呢？这就是《R Language Definition》天书中说的 as if 的意思：含有NextMethod函数的方法“似乎”都被幽灵一样的“前一种方法”调用了！
+
+但这还不是全部。如果每种方法都使用NextMethod函数，程序运行将进入循环，对class属性向量的循环。这也不是简单的循环，是嵌套的：
+
+
+doit <- function(...) UseMethod("doit")
+doit.a1 <- function(...) {
+    cat("Loop 1 begin\n")
+    NextMethod()
+    cat("Loop 1 end\n")
+}
+doit.a2 <- function(...) {
+    cat("Loop 2 begin\n")
+    NextMethod()
+    cat("Loop 2 end\n")
+}
+doit.default <- function(...) {
+    cat("DEFAULT method goes here ...\n")
+}
+class(x) <- c("unknown", "a1", "a2")
+doit(x)
+# Loop 1 begin
+# Loop 2 begin
+# DEFAULT method goes here ...
+# Loop 2 end
+# Loop 1 end
+
+class(x) <- c("a1", "unknown", "a2")
+doit(x)
+# Loop 1 begin
+# Loop 2 begin
+# DEFAULT method goes here ...
+# Loop 2 end
+# Loop 1 end
+
+class(x) <- c("unknown", "a2", "a1")
+doit(x)
+# Loop 2 begin
+# Loop 1 begin
+# DEFAULT method goes here ...
+# Loop 1 end
+# Loop 2 end
+
+class(x) <- c("a1", "a2", "unknown1", "unknown2")
+doit(x)
+# Loop 1 begin
+# Loop 2 begin
+# DEFAULT method goes here ...
+# Loop 2 end
+# Loop 1 end
+
+从上面代码的运行结果可以看出：
+ - 循环最外层从CLASS属性向量第一个“已知”类属性开始，依次嵌套
+ - default方法在循环最内层，而且不管有几个“未知”类属性，它只执行一次
+ - 循环层次和“未知”类属性的位置无关
+
+隐含的意思还包括：如果你在default方法中放入NextMethod函数，程序将进入死循环（还好R有预防措施）。其他更深层次的用法自己揣摩。
+
+
+ 
+
+
+
+
+refer:
+S3: http://blog.csdn.net/u014801157/article/details/24372551
+
+
+========================================
+编写S4类
+----------------------------------------
+S4类更像主流语言的OOP。
+#定义类：用setClass()函数
+#创建对象：用new()函数
+
+##S4 OOP (NOT RUN) （非运行代码）
+setClass(Class, representation, prototype, contains = character(), validity,
+    access, where, version, sealed, package, S3methods = FALSE, slots)
+
+
+1.S4类的定义和使用
+定义类(以后不要使用representation，使用slots替代（后文有实例），这里是为了让读者碰到类似代码能看懂)
+setClass("employee", 
+	representation(
+		name="character",
+		salary="numeric",
+		union="logical")
+)
+#########
+#注意！From setClass help page,
+representation, access, version, S3methods : All these arguments are deprecated from version 3.0.0 of R and should be avoided.
+‘representation’ is an argument inherited from S that included both ‘slots’ and ‘contains’, but the use of the latter two arguments is clearer and recommended.
+#########
+
+
+#实例化类
+joe=new("employee", name="Joe",salary=55000,union=T)
+joe
+
+#成员符号为slot，引用符号为@，也可以通过slot()函数查询对象；
+joe@salary
+slot(joe,"salary")
+
+#也可以重新赋值
+joe@salary=60000
+joe
+
+
+mode(joe) #[1] "S4"， 而S3的本质是 "list"
+> str(joe)
+Formal class 'employee' [package ".GlobalEnv"] with 3 slots
+  ..@ name  : chr "Joe"
+  ..@ salary: num 55000
+  ..@ union : logi TRUE
+
+
+
+(1)S4类最基本的设置：Class和slots
+提倡使用slots定义类变量：
+Somebody <- setClass(Class = "Somebody", slots = c(name = "character", gender = "factor"))
+#1) 定义类的时候可以有返回值，使用获得的构造函数实例化对象
+
+someone <- Somebody(name = "Adam", gender = factor("M"))
+someone
+# An object of class "Somebody"
+# Slot "name":
+# [1] "Adam"
+# 
+# Slot "gender":
+# [1] M
+# Levels: M
+
+# setClass赋值的作用事实上就是产生了一个调用new函数的函数：
+Somebody
+# 程辑包"‘.GlobalEnv’"里用于"“Somebody”"这一类的类生成函数
+# function (...) 
+# new("Somebody", ...)
+# <bytecode: 0x0000000030e03958>
+
+
+
+#2) 或者不使用返回值，则需要使用new来实例化对象。
+rm(Anybody)
+setClass(Class = "Anybody", slots = c(name = "character", gender = "factor"))
+## 错，类定义并没有赋值，没有产生Anybody构造函数
+Anybody(name = "Adam", gender = factor("M"))
+new(Class = "Anybody", name = "Adam", gender = factor("M"))
+
+
+从R语言的根本上来看（不涉及任何OOP概念），slots和CLASS一样，都是数据的属性而已，只是换了个名称：
+# str(attributes(someone))
+# List of 3
+#  $ name  : chr "Adam"
+#  $ gender: Factor w/ 1 level "M": 1
+#  $ class : chr "Somebody"
+#   ..- attr(*, "package")= chr ".GlobalEnv"
+
+
+
+
+(2)S4类的继承：contains
+contains 用于设置新类中包含（即继承）的其他已定义类（父类），其作用是把父类中的slots包含进来：
+showClass("Somebody")
+# Class "Somebody" [in ".GlobalEnv"]
+# 
+# Slots:
+#                           
+# Name:       name    gender
+# Class: character    factor
+
+
+contains可以包含多个类，继承多个父类的slots：
+Diet=setClass("Diet") #一个空类
+Anybody <- setClass("Anybody", contains = c("Somebody", "Diet"), slots = c(skin = "character"))
+showClass("Anybody")
+# Class "Anybody" [in ".GlobalEnv"]
+# 
+# Slots:
+#                                     
+# Name:       skin      name    gender
+# Class: character character    factor
+# 
+# Extends: "Somebody", "Diet"
+
+
+
+
+(3)S4类 原型设置：prototype
+prototype 原型，即类对象初始化（新建对象）时slots中的默认数据，相当于函数的默认参数。这是一个有名列表，不能用有名向量。
+Somebody <- setClass(Class = "Somebody", slots = c(name = "character", gender = "factor"),
+    prototype = list(name = "Adam", gender = factor("M")))
+str(Somebody())
+## Formal class 'Somebody' [package ".GlobalEnv"] with 2 slots
+##   ..@ name  : chr "Adam"
+##   ..@ gender: Factor w/ 1 level "M": 1
+
+
+创建新类时如果使用contains，新类的构造函数将自动父类的原型设置
+Anybody <- setClass("Anybody", contains = c("Somebody", "Diet"), slots = c(skin = "character"),
+    prototype = list(skin = character()))
+str(Anybody())
+
+
+
+
+
+(4)S4类型检查：validity
+定义S4新类时本身就已经具备类型检查的能力，如果给对象提供的数据类型不正确就直接出错而不是警告：
+## 下面的skin不是字符型，不能通过类型检查
+Anybody(skin = 1)
+## Error: .. got class "numeric", should be or extend class "character"
+a2=Anybody(skin = "Yellow"); a2 #不报错，正常打印
+
+
+
+然而，这种检查能力还是相当有限的，编程过程中往往需要对数据进行更严格的审查，比如对数据进行进行数量和取值的限定。这可以通过validity参数设置类型检查函数来实现。
+Anybody <- setClass("Anybody", contains = c("Somebody", "Diet"), slots = c(skin = "character"),
+    prototype = list(skin = character()), validity = function(object) {
+        if (length(object@skin) != 1)
+            return("\"skin\" must be length of 1.")
+        if (!object@skin %in% c("W", "Y", "B"))
+            return("Invalid \"skin\" type.")
+        return(TRUE)
+    })
+## 正确设置可以通过类型检查
+(xx <- Anybody(skin = "Y"))
+
+## validity设置了skin只能是‘W’，‘Y’，‘B’中的一个，设置其他值或长度不为1都出错
+Anybody(skin = c("Y", "W")) #Error
+Anybody(skin = "Black") #Error
+
+
+
+
+
+
+
+
+
+(5)S4类 setClass函数的其他参数
+除以上参数外，类定义函数setClass还可以设置的参数有：
+ - where 用于指定类定义存储的环境（命名空间），如果在软件包里面定义类，类默认存储到软件包的命名空间
+ - package 此参数极少使用，作用和where类似
+ - sealed 是否封装（TRUE/FALSE）。如果设为TRUE，已经用setClass定义过的类（名称）就不能用setClass再定义，防止误操作
+
+下面的参数在R 3.0.0版以后都被弃用了，虽仍可用但应尽量避免：
+S3methods
+representation
+access
+version
+
+
+
+
+(6)通过读取数据产生S4类对象
+这是考虑用户层次和使用体验的内容，对R软件开发者来说也相当简单：编写几个函数，通过读取不同类型的文件返回S4类对象。一般软件包都会替用户考虑这点很起码的要求。比如Affy包，用ReadAffy函数就获得了AffyBatch类对象，不用关心AffyBatch类是个什么东西。很多人可能根本就不想知道S3或S4是什么玩意，伤脑筋。
+
+
+
+
+
+
+
+2. S4类的优点是安全。 
+#假如不小心拼写错误：
+joe@salar=6000
+#报错 Error in checkSlotAssignment(object, name, value) : 
+#  'salar'is not a slot in class "employee?
+#3.5.2的报错 Error: no slot of name "salar" for this object of class "employee"
+
+
+#在S3中，不会有报错信息，因为S3类是列表，可以随时添加新的组件，
+#会把我们的拼写错误当做新添加的组件。
+
+#S3和S4的区别就在于安全性和方便性，前者更加便捷，随时可以添加组件；后者更安全。目前S3和S4是主流。
+
+
+
+
+3 虚拟类
+
+
+
+
+4 类联合
+
+
+
+
+
+========================================
+ |-- 5 S4泛型函数和方法
+----------------------------------------
+5.1 定义的一般过程
+
+(1) S4的泛型函数通过调用setGeneric函数产生，该函数的用法如下：
+## NOT RUN
+setGeneric(name, def = , group = list(), valueClass = character(), where = ,
+    package = , signature = , useAsDefault = , genericFunction = , simpleInheritanceOnly = )
+
+参数虽然很多，但常用两个：
+ - name: 表示泛型函数名称的字符串。这个函数必需已经定义，它将被转成泛型函数（如果它还不是泛型函数），而且该函数将被设为默认方法
+ - def: 这是可选项。如果name参数没有对应的已有函数，这一项必需提供。如果name已经有对应的函数，使用def项可以指定其他的函数作为泛型函数（偷梁换柱）。
+
+
+(2)泛型函数的方法使用setMethod函数进行定义：
+## NOT RUN
+setMethod(f, signature = character(), definition, where = topenv(parent.frame()),
+    valueClass = NULL, sealed = FALSE)
+
+ - f：泛型函数名称
+ - signature：识别指纹，即对象的类名称
+
+在R终端输入变量名后回车会得到变量的内容，其实质是调用show函数显示变量。下面通过设置泛型函数及其方法重定义show函数输出Anybody类对象的内容：
+
+## 重定义前show函数输出的内容
+xx=Anybody(name="Tom", gender=factor("F"), skin="Y"); xx
+## An object of class "Anybody"
+## Slot "skin":
+## [1] "Y"
+## 
+## Slot "name":
+## [1] "Tom"
+## 
+## Slot "gender":
+## [1] F
+## Levels: F
+
+
+setGeneric(name="show")
+setMethod("show", signature = "Anybody", function(object) show(object@name))
+## 重定义后show函数输出的内容
+xx
+## [1] "Tom"
+
+
+
+
+
+
+5.2 设置获取类对象内容的辅助函数
+
+#查看Anybody类中有没有show方法
+> existsMethod("show","Anybody")
+[1] TRUE
+> existsMethod("show2","Anybody")
+[1] FALSE
+
+
+#查看show函数的现实定义
+> showMethods(show)
+Function: show (package methods)
+object="abIndex"
+object="ANY"
+object="Anybody"
+
+#查看Anybody中的show方法的实现
+> selectMethod("show", "Anybody")
+> getMethod("show", "Anybody")
+## Method Definition:
+## 
+## function (object) 
+## show(object@name)
+## <bytecode: 0x00000000309864e0>
+## 
+## Signatures:
+##         object   
+## target  "Anybody"
+## defined "Anybody"
+
+
+
+
+5.3 设置S4类对象赋值（内容替换）方法
+
+
+
+
+
+
+5.4 类转换
+用于S4类转换的函数是as。如果定义新类时使用了contains获得了继承关系，那么就可以用as函数将一个对象强制转换为其父类对象，对象的内容是父类定应的相应部分内容：
+class(xx)
+## [1] "Anybody"
+## attr(,"package")
+## [1] ".GlobalEnv"
+
+as(xx, "Diet")
+## [1] "Tom"
+
+as(xx, "Somebody")
+# An object of class "Somebody"
+# Slot "name":
+# [1] "Tom"
+# 
+# Slot "gender":
+# [1] F
+# Levels: F
+
+
+
+
+
+
+
+
+setRefClass()
+
+查看setRefClass的函数定义。
+setRefClass(Class, fields = , contains = , methods =, where =, ...)
+
+
+
+
+refer:
+more: https://adv-r.hadley.nz/s4.html
+S4: http://blog.csdn.net/u014801157/article/details/24372557
+
+
+========================================
+ |--6 S4对象的使用 实例
+----------------------------------------
+https://www.cnblogs.com/awishfullyway/p/6485240.html
+
+6.1 任务一：定义图形库的数据结构和计算函数
+
+假设最Shape为图形的基类，包括圆形(Circle)和椭圆形(Ellipse)，并计算出它们的面积(area)和周长(circum)。
+ - 定义图形库的数据结构
+ - 定义圆形的数据结构，并计算面积和周长
+ - 定义椭圆形的数据结构，并计算面积和周长
+
+
+定义基类Shape 和 圆形类Circle
+
+#################
+# 定义基类Shape
+> setClass("Shape",slots=list(name="character"))
+
+# 定义圆形类Circle，继承Shape，属性radius默认值为1
+> setClass("Circle",contains="Shape",slots=list(radius="numeric"),prototype=list(radius = 1))
+
+# 验证radius属性值要大等于0
+> setValidity("Circle",function(object) {
+     if (object@radius <= 0) stop("Radius is negative.")
+ })
+#Class "Circle" [in ".GlobalEnv"]
+#Slots:
+#Name:     radius      name
+#Class:   numeric character
+#Extends: "Shape"
+
+# 创建两个圆形实例
+> c1<-new("Circle",name="c1")
+> c2<-new("Circle",name="c2",radius=5)
+
+
+#################
+
+
+
+
+
+
+
+
+
+
+========================================
+----------------------------------------
+
+
+
+========================================
+----------------------------------------
+
+
+
+========================================
+----------------------------------------
+
+
+
+========================================
+----------------------------------------
+
+
+
+========================================
+----------------------------------------
+
+
+========================================
+----------------------------------------
+
+
+
+========================================
+----------------------------------------
+
+
+
+========================================
+----------------------------------------
+
+
+
+========================================
+----------------------------------------
+
+
+
+========================================
+----------------------------------------
+
+
+
+========================================
+----------------------------------------
+
+
+
+========================================
+----------------------------------------
+
+
+
+========================================
+----------------------------------------
+

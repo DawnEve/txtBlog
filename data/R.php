@@ -19,7 +19,8 @@ return array (
       array('R语言基础','R01','txt'),
       array('R进阶-data frame等','R02-data.frame','txt'),
       array('R进阶-杂项','R03-adv','txt'),
-	  
+      array('R进阶-OOP面向对象','R04-OOP','txt'),
+
       array('bioconductor基础','bioconductor01','txt'),
     ),
   ),
