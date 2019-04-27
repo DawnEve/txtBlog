@@ -21,6 +21,7 @@ return array (
       array('R进阶-高级话题','R03-adv','txt'),
       array('R进阶-OOP面向对象','R04-OOP','txt'),
       array('R基础-机器学习','R05-MachineLearning','txt'),
+      array('R基础-可视化','R06-visualization','txt'),
 
       array('bioconductor基础','bioconductor01','txt'),
     ),
@@ -36,7 +37,7 @@ return array (
     2 => array (
       array('ggplot2绘图','ggplot2','txt'),
       array('分析差异基因','pkg-DEG','txt'),
-      array('数据框清理','pkg-dplyr','txt'),
+      array('数据框清理dplyr','pkg-dplyr','txt'),
     ),
   ),
   
