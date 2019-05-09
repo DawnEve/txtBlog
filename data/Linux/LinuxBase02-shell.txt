@@ -1,8 +1,8 @@
 LinuxBase02-shell
 
 linux简介5|多命令协作：管道及重定向  
-
 http://man.linuxde.net/xargs
+https://www.tutorialspoint.com/unix/unix-what-is-shell.htm
 
 
 
@@ -75,6 +75,51 @@ bash作业管理：
 	jobs 查看 
 	bg 后台作业
  	fg 前台作业
+
+
+
+
+========================================
+非root权限安装tmux
+----------------------------------------
+1.源码的下载
+wget https://github.com/tmux/tmux/releases/download/2.2/tmux-2.2.tar.gz
+wget https://github.com/libevent/libevent/releases/download/release-2.0.22-stable/libevent-2.0.22-stable.tar.gz
+wget http://ftp.gnu.org/gnu/ncurses/ncurses-6.0.tar.gz
+
+
+2.软件的解压
+
+
+3.软件的安装(以我下载的版本为例)
+#libevent
+./configure --prefix=$HOME/.local --disable-shared
+make
+make install
+
+
+#ncurses
+./configure --prefix=$HOME/.local
+make
+make install
+
+
+#tmux
+./configure CFLAGS="-I$HOME/.local/include -I$HOME/.local/include/ncurses" LDFLAGS="-L$HOME/.local/lib -L$HOME/.local/include/ncurses -L$HOME/.local/include" CPPFLAGS="-I$HOME/.local/include -I$HOME/.local/include/ncurses" LDFLAGS="-static -L$HOME/.local/include -L$HOME/.local/include/ncurses -L$HOME/.local/lib" 
+#我这边在tmux目录下配置需要去掉 CPPFLAGS 及其后的东西，并加上prefix
+./configure --prefix=/home/chuchu/bin/tmux CFLAGS="-I$HOME/.local/include" LDFLAGS="-L$HOME/.local/lib"
+
+make
+cp tmux $HOME/bin
+
+
+
+
+#环境变量设置(如果PATH中已经有该路径，即可省略如下步骤)
+#将下面的语句添加到.bashrc中
+export $PATH="$HOME/.local/bin:$PATH"
+#重载环境
+source .bashrc
 
 
 
@@ -827,33 +872,142 @@ http://study.163.com/course/introduction/221001.htm#/courseDetail
 
 
 ========================================
-xargs - build and execute command lines from standard input
+xargs 从std input 构建和执行命令(build and execute command lines from standard input)
 ----------------------------------------
-从std input 构建和执行命令。
-默认用空格(可以用单引号、双引号、反斜线保护)、换行分割。
-输出命令默认是echo。
+由于很多命令不支持|管道来传递参数，而日常工作中有有这个必要，所以xargs命令就派上了用场。
+xargs是构建单行命令的重要组件之一。
+
+它擅长将标准输入数据转换成命令行参数，xargs能够处理管道或者stdin并将其转换成特定命令的命令参数。 
+xargs也可以将单行或多行文本输入转换为其他格式，例如多行变单行，单行变多行。
+xargs的默认命令是echo，空格是默认定界符(可以用单引号、双引号、反斜线保护)、换行分割。这意味着通过管道传递给xargs的输入将会包含换行和空白，不过通过xargs的处理，换行和空白将被空格取代。
 
 
-1. echo '--help' | cat 
+
+1.命令格式 http://man.linuxde.net/xargs
+$ somecommand |xargs -item  command
+参数：
+-d delim 分隔符，默认的xargs分隔符是回车，argument的分隔符是空格，这里修改的是xargs的分隔符。
+-n num 后面加次数，表示命令在执行的时候一次用的argument的个数，默认是用所有的。
+-i 或者是-I，这得看linux支持了，将xargs的每项名称，一般是一行一行赋值给 {}，可以用 {} 代替。
+-t 表示先打印命令，然后再执行。
+-p 当每次执行一个argument的时候询问一次用户。(相当于-t的交互版)
+-e flag ，注意有的时候可能会是-E，flag必须是一个以空格分隔的标志，当xargs分析到含有flag这个标志的时候就停止。
+
+-a file 从文件中读入作为sdtin
+-r no-run-if-empty 当xargs的输入为空的时候则停止xargs，不用再去执行了。
+-s num 命令行的最大字符数，指的是 xargs 后面那个命令的最大命令行字符数。
+-L num 从标准输入一次读取 num 行送给 command 命令。
+-l 同 -L。
+-x exit的意思，主要是配合-s使用。。
+-P 修改最大的进程数，默认是1，为0时候为as many as it can ，这个例子我没有想到，应该平时都用不到的吧。
+
+
+
+
+
+
+2. xargs是什么，与管道有什么不同？
+通道符“|“:是将前一个命令的输出做为后一个命令的标准输入。注意：这里的标准输入指的是：通道符右侧命令的处理内容，也就是说左侧的标准输出不能作为右侧命令的参数，只能作为命令的处理对象。
+简单讲：只有通道符时，右侧命令将左侧输出作为处理内容。加上xargs后，将左侧输出作为参数。具体看下面wc命令的执行，就明白了。
+
+(1) 把管道符左侧作为参数而不是输入
+echo '--help' | cat 
 输出：--help
+实际上就是echo命令的输出通过管道定向到cat的输入了
+
 
 echo '--help' | xargs cat 
 输出：很多内容，其实就是 cat --help 的输出。
+--help 做成cat的一个命令参数来运行cat命令
 
 
+
+(2)读取文件内容
 假如你有一个文件包含了很多你希望下载的URL，你能够使用xargs下载所有链接：
 cat url-list.txt | xargs wget -c
 
+想读取文件内容
+$ echo 'aa.txt' |cat #不行。相当于左侧是一个文本输入给右侧，文本内容就是'aa.txt'
+aa.txt
+$ echo 'aa.txt' | xargs cat #可以；相当于cat aa.txt；引号加不加都行。
+this is line 1
+line2
+another line.3
+
+
+(3)很多程序是不处理标准输入的，例如 kill , rm
+echo '516' | kill #这种命里是不能执行的。
+echo 'test' | rm -f #也无效
+
+1)通过 kill `ps -ef | grep 'ddd'`    
+#这种形式，这个时候实际上等同于拼接字符串得到的命令，其效果类似于  kill $pid
+
+2) for procid in $(ps -aux | grep "some search" | awk '{print $2}'); do kill -9 $procid; done   
+#其实与第一种原理一样，只不过需要多次kill的时候是循环处理的，每次处理一个
+
+3) ps -ef | grep 'ddd' | xargs kill  #该命令会报错。
+$ ps -ef | grep 'nginx'| awk '{print $2}'|xargs kill
+#OK，使用了xargs命令，铺垫了这么久终于铺到了主题上。
+xargs命令可以通过管道接受字符串，并将接收到的字符串通过空格分割成许多参数(默认情况下是通过空格分割) 然后将参数传递给其后面的命令，作为后面命令的命令行参数
+
+
+(4)批量查文件行数
+$ cat fname.txt 
+aa
+bb
+$ cat fname.txt |awk '{print $1".txt"}' #拼接成文件名
+aa.txt
+bb.txt
+$ cat fname.txt |awk '{print $1".txt"}' |wc -l #结果是2个文件名
+2
+$ cat fname.txt |awk '{print $1".txt"}' |xargs wc -l #是2个文件的行数
+ 3 aa.txt
+ 4 bb.txt
+ 7 total
+
+(5)查看/sbin下other组可写文件的大小
+$ find /sbin -perm -o=w |xargs ls -lth #指定u/g/o，前面有-则表示匹配，没有则表示只匹配
+lrwxrwxrwx 1 root root 14 Mar 30 00:40 /sbin/halt -> /bin/systemctl
+lrwxrwxrwx 1 root root 20 Mar 30 00:40 /sbin/init -> /lib/systemd/systemd
 
 
 
+(6)xargs和find命令
+1)在当前目录下查找所有用户具有读、写和执行权限的文件，并收回相应的写权限：
+$ chmod 777 fname.txt
+$ find . -perm -7 -print | xargs chmod o-w
 
-2. 有用的参数
-(1)-d 指定分隔符
+2)查找系统中的每一个普通文件，然后使用xargs命令来测试它们分别属于哪类文件
+$ find . -type f -print | xargs file
+./fname.txt:    ASCII text
+
+3)尝试用rm 删除太多的文件，你可能得到一个错误信息：/bin/rm Argument list too long. 用xargs 去避免这个问题
+示例 find ~ -name '*.log' -print0 | xargs -i -0 rm -f {}
+
+$ find ~ -name '.*' 2>/dev/null | xargs -n1 -i cp {} . #先把这些配置文件复制过来
+$ find . -name '.*' -print|xargs -n1 -i rm -f {} #再全部删除掉
+
+4)查找所有的jpg 文件，并且压缩它
+# find / -name *.jpg -type f -print | xargs tar -cvzf images.tar.gz
+
+5)拷贝所有的图片文件到一个外部的硬盘驱动 
+# ls *.jpg | xargs -n1 -i cp {} /external-hard-drive/directory
+
+ 
+
+
+ 
+
+
+
+3. 有用的参数
+(1)-d 指定分隔符。
+默认情况下xargs将其标准输入中的内容以空白(包括空格、Tab、回车换行等)分割成多个之后当作命令行参数传递给其后面的命令，并运行之。
+
 $ ls | xargs
 facebook.txt out.txt passwd regFile xxx.bed
 
-$ ls | xargs -d \.
+$ ls | xargs -d \. #把点号当做分隔符了。
 facebook txt
 out txt
 passwd
@@ -861,27 +1015,121 @@ regFile
 xxx bed
 
 
+$ echo '11@22@33'|xargs
+11@22@33
+
+$ echo '11@22@33'|xargs -d '@'
+11 22 33
+
+
+
+
 (2) -n 一行多少个
+xargs 用作替换工具，读取输入数据重新格式化后输出。
+
 $ ls | xargs -n2
 facebook.txt out.txt
 passwd regFile
 xxx.bed
 
-(3)-0 选项表示以 '\0' 为分隔符，一般与find结合使用
--0 Input items are terminated by a null  character  instead  of  by whitespace,  and the quotes and backslash are not special (every character is taken literally).
 
+
+(3) -I 指定一个替换字符串 {}，这个字符串在 xargs 扩展时会被替换掉，当 -I 与 xargs 结合使用，每一个参数命令都会被执行一次：
+参考格式： cat arg.txt | xargs -I {} ./sk.sh -p {} -l
+
+1)使用echo命令
+$ cat fname.txt 
+aa
+bb
+
+$ cat fname.txt |xargs -I {} echo man {} --version
+man aa --version
+man bb --version
+
+
+2)复制所有txt文件到 ./text 目录下：
+$ ls *.jpg | xargs -n1 -I cp {} /data/images
+
+$ ls *.txt|xargs -n1 
+aa.txt
+bb.txt
+fname.txt
+
+$ mkdir text
+$ ls *.txt|xargs -n1 -I {} cp {} ./text #把txt文件复制到text文件夹中
+$ ls text/
+aa.txt  bb.txt  fname.txt
+
+
+与具体的支持有关
+$ find ./ -maxdepth 2 -name "*txt*" -print|xargs -t -I{} sed '1i\=====' {} #大写I需要指定{}
+sed 1i\===== ./fname.txt 
+=====
+aa
+bb
+$ find ./ -maxdepth 2 -name "*txt*" -print|xargs -t -I[ sed '1i\=====' [ #也可以自己指定，比如[
+sed 1i\===== ./fname.txt 
+=====
+aa
+bb
+$ find ./ -maxdepth 2 -name "*txt*" -print|xargs -t -i sed '1i\=====' {} #小写i默认指定为{}
+sed 1i\===== ./fname.txt 
+=====
+aa
+bb
+
+
+
+(4)-0 选项表示以 '\0' 为分隔符，一般与find结合使用
+-0 Input items are terminated by a null  character  instead  of  by whitespace,  and the quotes and backslash are not special (every character is taken literally).
 
 find . -name "*.txt" -print0
 输出：./2.txt./3.txt./1.txt     => 加上 -print0 参数表示find输出的每条结果后面加上 '\0' 而不是换行
 
 
-$ find . -type f -name "*.jpg" -print0 | xargs -0 wc
-    8    48  3173 ./R/x86_64-pc-linux-gnu-library/3.4/RCurl/examples/logo.jpg
-  130   753 31473 ./web/gettyimages-1006034670-800x533.jpg
-    3     5   331 ./.local/lib/python3.6/site-packages/IPython/core/tests/2x2.jpg
-  141   806 34977 total
+统计一个源代码目录中所有 txt 文件的行数：
+$ find . -type f -name "*.txt" -print0|xargs -0 wc -l
+ 2 ./fname.txt
+ 3 ./aa.txt
+ 4 ./bb.txt
+ 9 total
+$ find . -type f -name "*.txt" |xargs wc -l #或者完全不带0的
+ 2 ./fname.txt
+ 3 ./aa.txt
+ 4 ./bb.txt
+ 9 total
 
--
+查找所有的 jpg 文件，并且压缩它们：
+$ find . -type f -name "*.txt"|xargs tar -czvf text.tar.gz
+$ find . -type f -name "*.txt" -print|xargs tar -czvf text2.tar.gz
+生成的文件大小一样，但是md5sum结果不一样，奇怪//todo 
+
+
+
+
+(5) -t打印出要执行的命令， -p(-t的交互版)询问是否执行该命令
+使用-t选项之后xargs并不会马上执行其后面的命令，而是输出即将要执行的完整的命令(包括命令以及传递给命令的命令行参数)，然后再执行。
+$ echo '11@22@33' | xargs -t -d '@'  echo 
+echo 11 22 33
+11 22 33
+
+而-p也输出命令，但是会询问是否执行，输入 y 才继续执行，否则不执行。
+$ echo '11@22@33' | xargs -p -d '@'  echo 
+输出：
+echo 11 22 33
+ ?...y      ==>这里询问是否执行命令 echo 11 22 33 输入y并回车，则显示执行结果，否则不执行
+ 11 22 33   ==>执行结果
+
+
+(6) -E 选项，有的系统的xargs版本可能是-e  eof-str
+注意：-E只有在xargs不指定-d的时候有效，如果指定了-d则不起作用，而不管-d指定的是什么字符，空格也不行。
+
+正常情况下有3个命令行参数 11、22、33 由于使用了-E '33' 表示在将命令行参数 33 之前的参数传递给执行的命令，33本身不传递。等价于 echo 11 22 这里-E实际上有搜索的作用，表示只取xargs读到的命令行参数前面的某些部分给命令执行。
+$ echo '11 22 33' | xargs -E '33' echo 
+输出：
+11 22
+
+
 
 
 

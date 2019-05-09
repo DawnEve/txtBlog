@@ -67,8 +67,43 @@ $ fastqc /path_to_fq/*.fq -o fastqc_out_dir/
 fastqc结果该怎么看及切割接头：
 http://www.huangshujia.me/2017/08/25/2017-08-25-Begining-WGS-Data-Analysis-Fastq-Data-Quality-Control.html
 
-	
-	
+
+
+
+========================================
+MultiQC: 批量显示QC结果的利器
+----------------------------------------
+
+1.安装
+pip3 install multiqc
+multiqc --help
+$ multiqc --version
+multiqc, version 1.7
+
+
+
+2.使用 
+#单个文件：
+$ fastqc untreated.fq -o fastqc_out_dir/
+
+#批量化 先获取QC结果 *gz
+ls ../R2_left/*.fastq | while read id; do fastqc -t 4 $id -o .; done
+
+# multiqc
+multiqc *fastqc.zip --pdf #需要提前安装某些包
+# or
+multiqc *fastqc.zip -o /path/to/store/
+
+
+
+refer:
+https://blog.csdn.net/ada0915/article/details/77201871
+
+
+
+
+
+
 ========================================
 测序文件预处理:质控fastqc、切除cutadapt
 ----------------------------------------
@@ -183,6 +218,116 @@ NofA	reads
 100	2985093
 
 这个N越小保留下的reads越少。
+
+
+
+
+
+========================================
+Bowtie2: A fast and sensitive gapped read aligner
+----------------------------------------
+
+1.安装
+https://github.com/BenLangmead/bowtie2
+https://anaconda.org/bioconda/bowtie2
+
+$ conda install -c bioconda bowtie2 
+需要安装和更新很多包。
+
+
+
+2. 文档 https://github.com/BenLangmead/bowtie2
+https://blog.csdn.net/u011262253/article/details/79833969
+
+(1)建立索引
+# Building a small index
+bowtie2-build example/reference/lambda_virus.fa example/index/lambda_virus
+# Building a large index
+bowtie2-build --large-index example/reference/lambda_virus.fa example/index/lambda_virus
+
+建立6文件索引：
+$ bowtie2-build mm9.fa bowtie2/mm9 --threads 50 #bowtie2/mm9 中mm9是前缀，留空不好查看文件
+
+/home/wangjl/data/ref/human
+$ bowtie2-build hg19.fa bowtie2/hg19 --threads 90 #使用90个线程
+
+
+
+(2)开始mapping
+# Aligning unpaired reads
+bowtie2 -x example/index/lambda_virus -U example/reads/longreads.fq
+# Aligning paired reads
+bowtie2 -x example/index/lambda_virus -1 example/reads/reads_1.fq -2 example/reads/reads_2.fq
+
+
+我的是单端测序：
+$ bowtie2 -p 6 --local -x /home/wangjl/data/ref/mouse/bowtie2/mm9 -U /home/wangjl/data/c1_2019APA/sc/combine/sc_fq/R2_left/c2_ROW01_R2.fastq -S /home/wangjl/data/c1_2019APA/sc/combine/sc_fq/mapping/bowtie2_mouse/c2_ROW01_R2.sam
+ -p 6 使用6个线程
+ -S 指定输出文件
+ --local	在这种模式下，Bowtie 2不要求整个读取从一端到另一端对齐。相反，为了达到最大可能的对齐分数，可以从末端省略一些字符（“软裁剪”）
+
+$ bowtie2 -p 60 --local -x /home/wangjl/data/ref/human/bowtie2/hg19 -U /home/wangjl/data/c1_2019APA/sc/combine/sc_fq/R2_left/c2_ROW01_R2.fastq -S /home/wangjl/data/c1_2019APA/sc/combine/sc_fq/mapping/bowtie2_human/c2_ROW01_R2.sam
+
+
+结论：bowtie2的--local选项，有助于提高比对比率。可能是能去除两端残留的建库index。
+
+
+
+
+
+========================================
+trim galore 自动检测adapter的质控软件
+----------------------------------------
+https://www.jianshu.com/p/7a3de6b8e503
+
+1. Trim galore简介
+
+Trim Galore是对FastQC和Cutadapt的包装。适用于所有高通量测序，包括RRBS(Reduced Representation Bisulfite-Seq ), Illumina、Nextera 和smallRNA测序平台的双端和单端数据。主要功能包括两步：
+第一步首先去除低质量碱基，然后去除3' 末端的adapter, 如果没有指定具体的adapter，程序会自动检测前1million的序列，然后对比前12-13bp的序列是否符合以下类型的adapter:
+
+Illumina:   AGATCGGAAGAGC
+Small RNA:  TGGAATTCTCGG
+Nextera:    CTGTCTCTTATA
+
+
+
+
+2. 下载安装软件 trim galore
+$ conda install -c bioconda trim-galore
+
+或者下载安装包安装：
+解压，配置下环境变量就可以使用。
+https://github.com/FelixKrueger/TrimGalore
+
+
+# Check that cutadapt is installed
+cutadapt --version
+# Check that FastQC is installed
+fastqc -v
+# Install Trim Galore
+curl -fsSL https://github.com/FelixKrueger/TrimGalore/archive/0.6.0.tar.gz -o trim_galore.tar.gz
+tar xvzf trim_galore.tar.gz
+# Run Trim Galore
+~/TrimGalore-0.6.0/trim_galore
+
+
+
+
+3.
+echo "Trim galore reads"
+# ls *.gz | while read id; do echo "Trim ${id}"; trim_galore --quality 25 --phred33 --stringency 3 --length 30 --gzip  --fastqc_args "-t 15" --output_dir trim_galore $id; done
+参数解释
+	--quality 25 #设定Phred quality score阈值，默认为20。
+	--phred33  #选择-phred33或者-phred64，表示测序平台使用的Phred quality score。
+	--stringency 3 #设定可以忍受的前后adapter重叠的碱基数，默认为1（非常苛刻）。可以适度放宽，因为后一个adapter几乎不可能被测序仪读到。
+	--length 30 #设定输出reads长度阈值，小于设定值会被抛弃。
+	--gzip  #--gzip和--dont_gzip：清洗后的数据zip打包或者不打包。
+	--fastqc_args "-t 15" # 线程数量
+	--output_dir #输出目录。需要提前建立目录，否则运行会报错。
+#
+
+
+
 
 
 
@@ -378,12 +523,17 @@ http://www.bio-info-trainee.com/727.html
 d:/ STARmanual.pdf
 
 
+
 ========================================
-RSeQC比对质控 Mapping QC: An RNA-seq Quality Control Package --todo
+用RSeQC对比对后的转录组数据进行质控 Mapping QC: An RNA-seq Quality Control Package
 ----------------------------------------
+RSeQC包是一个python软件
+
+
 1.目的： 
 There are many ways to measure the mapping quality, including: amount of reads mapping to rRNA/tRNAs, proportion of uniquely mapping reads, reads mapping across splice junctions, read depth along the transcripts. 
 Reference: * RSeQC: quality control of RNA-seq experiments Bioinformatics (2012) 28 (16): 2184-2185. doi: 10.1093/bioinformatics/bts356
+
 
 2.安装
 $ wget -b https://sourceforge.net/projects/rseqc/files/RSeQC-2.6.4.tar.gz
@@ -391,8 +541,9 @@ $ wget -b https://sourceforge.net/projects/rseqc/files/RSeQC-2.6.4.tar.gz
 $ pip install RSeQC
 
 
-3.使用：
-http://dldcc-web.brc.bcm.edu/lilab/liguow/CGI/rseqc/_build/html/
+3.使用(输入bam格式)：http://dldcc-web.brc.bcm.edu/lilab/liguow/CGI/rseqc/_build/html/
+中文教程： https://www.jianshu.com/p/f9da70fcaf8d
+
 
 python <RSeQCpath>/geneBody_coverage.py -i input.bam -r genome.bed -o output.txt
 python <RSeQCpath>/bam_stat.py -i input.bam -r genome.bed -o output.txt
@@ -400,8 +551,24 @@ python <RSeQCpath>/split_bam.py -i input.bam -r rRNAmask.bed -o output.txt
 
 (1)geneBody_coverage.py
 
+参考基因组bed文件下载 https://www.jianshu.com/p/e0676631bd35
+
+为了保证染色体名字一致(主要是chr1和1的区别)，要下载参考基因组fa来源一致的bed文件。
+一共三家UCSC，NCBI，ensemble。
+比如从UCSC下载hg19的bed文件：
+https://genome.ucsc.edu/cgi-bin/hgTables
 
 
+运行：
+$ geneBody_coverage.py -r hg19.refseq.bed  -i Pairend_nonStrandSpecific_36mer_Human_hg19.bam -o output
+	-r 参考基因组bed格式[required]
+	-i Alignment file in BAM or SAM format
+	-o Prefix of output files(s). [required]
+
+geneBody_coverage.py -r /data/jinwf/wangjl/ref/human/hg19_ucsc_genes-20190506.bed  -i /home/wangjl/data/c1_2019APA/sc/combine/sc_fq/mapping/bamR2Lh/c2_ROW02.sorted.bam  -o /home/wangjl/data/c1_2019APA/sc/combine/sc_fq/mapping/mappingQC_human/c2_ROW02
+
+
+geneBody_coverage.py -r /data/jinwf/wangjl/ref/human/hg19_ucsc_genes-20190506.bed  -i /home/wangjl/data/c1_2019APA/sc/combine/sc_fq/mapping/bamR2Lh/c2_ROW01.sorted.bam,/home/wangjl/data/c1_2019APA/sc/combine/sc_fq/mapping/bamR2Lh/c2_ROW02.sorted.bam  -o /home/wangjl/data/c1_2019APA/sc/combine/sc_fq/mapping/mappingQC_human/c2_ROW0102
 
 
 
@@ -628,9 +795,25 @@ $ cut -f 1,7 fC_c12_A1.sam.count |grep -v '^#' >fC_c12_A1.sam.count.lite
 ----------------------------------------
 1. RSEM: accurate transcript quantification from RNA-Seq data with or without a reference genome
 https://bmcbioinformatics.biomedcentral.com/articles/10.1186/1471-2105-12-323
-
-
 https://deweylab.github.io/RSEM/
+
+安装
+wget https://github.com/deweylab/RSEM/archive/v1.3.1.tar.gz
+mv v1.3.1.tar.gz RSEM-v1.3.1.tar.gz
+tar zxvf RSEM-v1.3.1.tar.gz
+cd RSEM-1.3.1/
+#To compile RSEM, simply run
+make
+#To install RSEM, simply put the RSEM directory in your environment's PATH variable. Alternatively, run
+make install
+or 
+#make install DESTDIR=/home/my_name prefix=/software #will install RSEM executables to /home/my_name/software/bin.
+make install DESTDIR=/home/ prefix=/wangjl #$ ls ~/bin 已经安装了
+rsem-calculate-expression #- Estimate gene and isoform expression from RNA-Seq data.
+
+
+docs: https://github.com/deweylab/RSEM
+
 
 
 
@@ -798,18 +981,64 @@ Report the number of genes that each alignment overlaps.
 $ bedtools intersect -a reads.bed -b genes.bed -c
 
 
-========================================
-samtools用法
-----------------------------------------
 
+========================================
+samtools用法 – Utilities for the Sequence Alignment/Map (SAM) format
+----------------------------------------
+代码： https://github.com/samtools/samtools
+文档： http://www.htslib.org/doc/samtools.html
+
+
+1.安装
+
+(1)第一步，从github下载所需版本samtools软件包
+https://sourceforge.net/projects/samtools/files/samtools/1.5/
+
+第二部，解压，此处以目前最新版samtools-1.5为例：
+tar -jxf samtools-1.5.tar.bz2
+cd samtools-1.5
+
+第三步，编译，安装：
+make
+make prefix=/opt/biosoft/samtools-1.5 install
+
+第四步，加入环境变量
+echo 'export PATH=$PATH:/opt/biosoft/samtools-1.5/bin' >> /etc/profile
+
+现在你已经不需要刚刚下载和解压的软件包了，愉快的删除吧。
+cd ../ && rm -rf samtools-1.5 samtools-1.5.tar.bz2
+
+bcftools安装几乎完全一样。需要注意的是，此处我用了root账户。对于普通用户，可以把软件安装在自己有读写权限的目录下，也就是说，要更改prefix=xxx和/etc/profile至你自己的文件目录和文件。
+https://samtools.github.io/bcftools/howtos/install.html
+
+
+
+(2)亲测可用
+从github获取最新版本的包
+git clone git://github.com/samtools/samtools.git
+git clone https://github.com/samtools/htslib.git #并列放到同一个文件夹下
+
+进入samtools文件夹，执行命令：
+autoheader            # Build config.h.in (this may generate a warning about
+                      # AC_CONFIG_SUBDIRS - please ignore it).
+autoconf -Wno-syntax  # Generate the configure script
+./configure           # Needed for choosing optional functionality #如果samtool并列没有HTSlib会报错。
+make
+##make install #error install: cannot create regular file ‘/usr/local/bin/samtools’: Permission denied
+make prefix=~/ install #或在~/bin建软链接
+
+检查版本号：
+$ samtools --version
+samtools 1.9-69-gb217a91
+
+
+
+
+
+2.sam 和 bam 格式转换
 https://www.cnblogs.com/emanlee/p/4316581.html
 
-1.sam 和 bam 格式转换
-BAM转换为SAM
-samtools view -h -o out.sam input.bam 
-samtools view -h NA12878.bam >NA12878_2.sam
-
-SAM转换为BAM
+(1)SAM转换为BAM
 samtools view -bS input.sam >out.bam
 samtools view -b -S NA12878.sam > NA12878_2.bam
 
@@ -818,6 +1047,18 @@ samtools view -b -S NA12878.sam > NA12878_2.bam
 所以如果没有@SQ
 samtools faidx ref.fa
 samtools view -bt ref.fa.fai out.sam > out.bam
+
+
+(2)BAM转换为SAM
+samtools view -h -o out.sam input.bam 
+samtools view -h NA12878.bam >NA12878_2.sam
+
+
+
+
+3.排序和建索引
+samtools sort -T /tmp/aln.sorted -o aln.sorted.bam aln.bam
+samtools index aln.sorted.bam
 
 
 
@@ -932,13 +1173,150 @@ print("===the End===")
 
 
 ========================================
+利用clusterProfiler进行富集分析
 ----------------------------------------
+clusterProfiler 是业界大神Y叔写的一个R包，可以用来做各种富集分析，如GO、KEGG、DO（Disease Ontology analysis）、Reactome pathway analysis以及GSEA富集分析等。而除了富集分析，他还可以非常方便的对富集分析结果进行可视化。
+这里使用clusterProfiler进行GO、KEGG以及GSEA富集分析。
+
+#还是不知道怎么用DAVID做GO分析？
+特雷西  猫头鹰教室  1月8日
+
+#
+
+
+
+
+========================================
+去东方，最好用的在线GO富集分析工具
+----------------------------------------
+https://mp.weixin.qq.com/s?__biz=MzI5MTcwNjA4NQ==&mid=2247484456&idx=1&sn=bbcd0b5d10ba9312d92b7baae777ccde
+GOEAST，访问网站是http://omicslab.genetics.ac.cn/GOEAST/index.php
+
+
+
+========================================
+KEGG上色
+----------------------------------------
+#KEGG Pathway 中基因的颜色怎么简单的标记上去
+biocc  生信人  2017-07-22
+
+1.有一个genelist
+
+2.把symbol转为
+https://www.uniprot.org/uploadlists/ 做idmapping
+
+from: Gene name, To: UniProtKB, Organism:human; 提交。
+新页面点击左侧的Reviewed, 右侧表格上方点Download excel格式。
+
+解压打开，第二列Entry，加上颜色(如 red)提交到KEGG:https://www.genome.jp/kegg/tool/map_pathway2.html
+P36956	red
+O95785	red
+O43405	red
+P50454	red
+顶部 Search against填写hsa，Primary ID选择Uniprot，点击底部的Exec。
+
+
+至于高级复杂版可以从两个角度去实现批量化，一个是KEGG API，一个是构建url，当然也可以使用程序绘图直接绘制上去，这里就不做介绍了，还有就是对于未知的物种该如何做，首先是进行比对，具体工具有KOBAS、KAAS等。
+
+
+
+
+========================================
+GSEA富集分析 - 界面操作-命令行操作
+----------------------------------------
+https://mp.weixin.qq.com/s?__biz=MzI5MTcwNjA4NQ==&mid=2247484582&idx=1&sn=1e01276e1216c91bd6e1e08db15bd905
+
+Gene Set Enrichment Analysis (基因集富集分析)用来评估一个预先定义的基因集的基因在与表型相关度排序的基因表中的分布趋势，从而判断其对表型的贡献。其输入数据包含两部分，一是已知功能的基因集 (可以是GO注释、MsigDB的注释或其它符合格式的基因集定义)，一是表达矩阵，软件会对基因根据其于表型的关联度(可以理解为表达值的变化)从大到小排序，然后判断基因集内每条注释下的基因是否富集于表型相关度排序后基因表的上部或下部，从而判断此基因集内基因的协同变化对表型变化的影响。
+
+(The gene sets are defined based on prior biological knowledge, e.g., published information about biochemical pathways or coexpression in previous experiments. The goal of GSEA is to determine whether members of a gene set S tend to occur toward the top (or bottom) of the list L, in which case the gene set is correlated with the phenotypic class distinction.)
+判断基因集S在列表L中处于头部或尾部的显著程度。
+
+
+这与之前讲述的GO富集分析不同。GO富集分析是先筛选差异基因，再判断差异基因在哪些注释的通路存在富集；这涉及到阈值的设定，存在一定主观性并且只能用于表达变化较大的基因，即我们定义的显著差异基因。而GSEA则不局限于差异基因，从基因集的富集角度出发，理论上更容易囊括细微但协调性的变化对生物通路的影响。
+
+软件和基因集下载
+(http://software.broadinstitute.org/gsea/downloads.jsp)
+
+运行GSEA (若每组样品都有多于7个样品，则Permutation type选择phenotype，结果理论上更好；否则选择gene_set)
+如果样品数目少，而且选择了gene_set作为Permumation type则需要使用更为严格的标准，比如FDR<0.05。
+
+
+
+1.学习官网
+http://software.broadinstitute.org/gsea/index.jsp
+Gene Set Enrichment Analysis (GSEA) is a computational method that determines whether an a priori defined set of genes shows statistically significant, concordant differences between two biological states (e.g. phenotypes). 
+基因集富集分析(GSEA)是一种计算方法，它确定一个预先定义的基因集在两种生物状态之间是否具有统计上显著的、一致的差异(如表型)。
+
+对于绝大多数研究者，推荐下载桌面版的软件。
+
+教程：http://software.broadinstitute.org/gsea/doc/desktop_tutorial.jsp
+
+输入数据格式： http://software.broadinstitute.org/cancer/software/gsea/wiki/index.php/Data_formats
+常规需要两个文件：
+(1)txt文件，行为基因名，列为细胞名字。
+如果是R保存的带行列标题的表达数据，添加第一列的标题Name，添加第二列description（内容为na即可），保存为tab分割的文件。
+(2)表型数据文件CLS: Categorical (e.g tumor vs normal) class file format (*.cls)。
+一共三行的文本文件，第一行是样本数字\t条件个数\t最后一个数字总是1; 第二行是第一行提到的三个变量；第三行则是和表达数据列标题对应的分类。
+9	3	1
+#KARAS_MUT	WT	MYC_MUT
+KMUT	KMUT	KMUT	WT	WT	WT	myc	myc	myc
+
+怎么看结果：http://www.gsea-msigdb.org/gsea/doc/GSEAUserGuideFrame.html?_Interpreting_GSEA_Results
+
+
+
+需要标记到GSEA图上的几个关键概念：NES, Pval, FDR
+
+
+java -Xmx512m xtools.gsea.Gsea -res F:\Temp\DESeq2\hela.count.nons_sync.txt -cls F:\Temp\DESeq2\type.cls#nonS_versus_sync -gmx gseaftp.broadinstitute.org://pub/gsea/gene_sets_final/c7.all.v6.2.symbols.gmt -collapse false -mode Max_probe -norm meandiv -nperm 1000 -permute phenotype -rnd_type no_balance -scoring_scheme weighted -rpt_label my_analysisC7 -metric Signal2Noise -sort real -order descending -create_gcts false -create_svgs false -help false -include_only_symbols true -make_sets true -median false -num 100 -plot_top_x 20 -rnd_seed timestamp -save_rnd_lists false -set_max 500 -set_min 15 -zip_report false -out C:\Users\admin\gsea_home\output\mar18 -gui false
+
 
 
 
 
 ========================================
 ----------------------------------------
+
+
+
+========================================
+----------------------------------------
+
+
+
+
+
+========================================
+----------------------------------------
+
+
+
+
+
+========================================
+----------------------------------------
+
+
+
+========================================
+----------------------------------------
+
+
+
+
+
+========================================
+----------------------------------------
+
+
+
+
+
+========================================
+----------------------------------------
+
+
+
 
 
 ========================================
