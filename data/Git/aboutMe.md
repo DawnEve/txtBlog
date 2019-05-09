@@ -4,22 +4,23 @@
 
 - 姓名: 王军亮  
 - 性别: M  
-- 网名: 	Dawn
+- 网名: 	George
 - 现居: 	郑州-高新区
-- 技术偏好:	倾向于后端技术，熟练js/jQuery/php/thinkPHP/mysql，正在学java。了解php扩展和高并发的解决办法。
+- 技术偏好:	肿瘤免疫方向，单细胞转录组分析。熟悉Python3/R/shell/js/jQuery/php/thinkPHP/mysql/java，常用python3/R/bash shell。了解python高并发，Python OOP，R S4等。
 
 ## 联系方式  
 
 - 电话: 15890149335  
-- 邮箱:	JimmyMall[at]live.com (记得替换[at])
+- 邮箱:	JimmyMall[at]live.com (记得替换[at]) or 163.com
 - QQ: 469004330  
 - weibo: 	http://weibo.com/wangjunliangvip
 - GitHub: https://github.com/DawnEve
-- blog: 	blog.biomooc.com
+- blog: 	http://www.biomooc.com
 - 百度贴吧: [亲自走路吧](http://tieba.baidu.com/f?kw=%C7%D7%D7%D4%D7%DF%C2%B7&fr=index)
 
 - 地址: 河南省郑州市科学大道100号郑州大学新校区    
-- `js/php熟手交流群：369578518` (欢迎新老朋友加入)
+- `生物信息与R语言交流群: 187923577` (欢迎新老朋友加入)
+- js/php熟手交流群: 369578518
 
 
 
@@ -28,12 +29,15 @@
 
 其中`重点标注的`为熟练，其他为了解(目标)。 
 
-- web前端: `html`/`css`/`javascript`/`jQuery`/underscore/Dojo/   
+- 生信: `shell`/`python`/`R`/`ggplot2`/lattice/
+<br>
+
+- web前端: `html`/`css`/`javascript`/`jQuery`/underscore/Dojo/
 - 设计软件: `photoshop`/`illustrator`/CorelDraw/
-- web后端: `php`/java/node/python/C/Node  
+- web后端: `php`/java/node/python/C/Node
 - Web框架: `ThinkPHP3.2`/`codeigniter3`/Symfony3/Yaf/Yii2/Lavaral/LazyPHP
-- 开源程序: `phpCMS`/ecShop/Discuz/`wordPress`/eduShop  
-- 服务器: `apatch`/`Ubuntu`/nginx/`docker`/virtualBox/     
+- 开源程序: `phpCMS`/ecShop/Discuz/`wordPress`/eduShop
+- 服务器: `apatch`/`Ubuntu`/nginx/`docker`/virtualBox/
 <br>
 
 - 前端框架: `Bootstrap`/AngularJS/EmberJS/HTML5/Cocos2dJS/ionic  
@@ -41,27 +45,23 @@
 - 数据库相关: `MySQL`/PgSQL/PDO/SQLite/mongoDB/redis/  
 - 版本管理、文档和自动化部署工具: Svn/`Git`/PHPDoc/Phing/Composer/gulp  
 - 单元测试: PHPUnit/SimpleTest/Qunit  
-- 云和开放平台: SAE/BAE/AWS/微博开放平台/`微信应用开发`  
+- 云和开放平台: SAE/BAE/AWS/微博开放平台/微信应用开发  
 - 支付功能: 中国银联/支付宝/微信支付  
 
 
-## 技术博客  
+## 技术博客(网易博客关停了)  
 
-- [我的前端博客](http://poster469.blog.163.com/ "最早的PS到后来的JS,服务器设置")  
-- [javascript研究所](http://miostudio.blog.163.com/ "javascript的地位空前高涨，值得独立研究")  
-- [php/mysql](http://firecloudphp.blog.163.com/ "php和mysql是黄金搭档")  
-- [java EE/java设计模式](http://zhengzhi2014.blog.163.com/ "java的思想是横强大的")  
+- [我的前端博客](http://poster469.blog.163.com/ "最早的PS到后来的JS,服务器设置") / [javascript研究所](http://miostudio.blog.163.com/ "javascript的地位空前高涨，值得独立研究")  / [php-mysql](http://firecloudphp.blog.163.com/ "php和mysql是黄金搭档")  / [java EE/java设计模式](http://zhengzhi2014.blog.163.com/ "java的思想是横强大的")  
 
 
 
 
 ## 项目经历
 
-- [米欧互联](http://mioweb.biomooc.com/ "mio web")
-- [某制冷公司网站](http://www.wllwzl.com/ "企业站")
-- [某蜂蜜电商网站维护](http://shop.xingyuan58.com/ "蜂蜜网上商店")
-- 开源项目[txtBlog](http://blog.biomooc.com/ "博客框架和内容纯手工打造。")，用于管理庞杂的web知识  
-- [微信订阅号：miostudio, 拂晓学术, 英语读报]  
+- 开源项目[txtBlog](http://blog.biomooc.com/ "博客框架和内容纯手工打造。")，用于管理庞杂的IT知识点。  
+- [生物慕课网](http://www.biomooc.com/R/R-draw-sketch.html) 展示需要大量图片的教程，是txtBlog的有效补充。  
+- 微信订阅号： 拂晓学术, 生物慕课; [英语读报](http://ielts.biomooc.com/en/); 米欧互联;  
+- Others: [米欧互联](http://mioweb.biomooc.com/ "mio web")、[某制冷公司网站](https://www.wllwzl.com/ "企业站")
 
 
 
@@ -106,7 +106,9 @@
 	
 - DRY的三重境界：function, class, plugin  	
 	
-> 更新日期: 20170303  
+> 更新日期: 20170303   
+
+> 更新日期: 20190509 update   
 
 
 

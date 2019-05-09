@@ -133,11 +133,11 @@ var cnzz_protocol = (("https:" == document.location.protocol) ? " https://" : " 
 		</div>
 		
 		
-		<div class=ewm><img src='public/images/erweima.png'><p>扫码登陆本站</p></div>
+		<div class=ewm><img src='public/images/erweima.png'><p>扫码关注</p></div>
 		
 		
 		<div class='links'>
-			Copyright &copy; 2009 - 2018 DawnEve. All Rights Reserved. | 
+			Copyright &copy; 2009 - 2019 DawnEve. All Rights Reserved. | 
 			<a target='_blank' href='https://github.com/DawnEve'>Folk me on Github</a> | 
 			<a class=red href='index.php?k=Git&id=0_2'>Contact me</a> | 
 			<a target='_blank' href='http://pan.baidu.com/s/1i3imHpF' title='密码:qa53'>web tools</a>
@@ -147,7 +147,7 @@ var cnzz_protocol = (("https:" == document.location.protocol) ? " https://" : " 
 		<div class='small fade'>
 			♥ Do have faith in what you're doing. 
 			[<?php echo date('Y-m-d H:i:s',time());?>] 
-			Powered by <a target='_blank' href='https://github.com/DawnEve/txtBlog' title='txtBlog(A simple yet powerful php blog system for reading and organizing txt files.)'>txtBLog v0.4</a>
+			Powered by <a target='_blank' href='https://github.com/DawnEve/txtBlog' title='txtBlog(A simple yet powerful php blog system for reading and organizing txt files.)'>txtBLog v0.5</a>
 		</div>
 	</div>
 </div>

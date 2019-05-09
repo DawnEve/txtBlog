@@ -1,4 +1,4 @@
-txtBlog v0.4.1
+txtBlog v0.5
 ===============================
 	-- A simple yet powerful blog system for reading and organizing txt files based on PHP. 
 
@@ -68,7 +68,8 @@ RewriteRule ^(.*)$ /txtBlog/$1 [L,QSA]
 
 
 ## 参考资料：  
-footer鲜活：http://www.iisp.com/ztview/ID_18392.html  
+Markdown解析器: HyperDown(https://github.com/SegmentFault/HyperDown)
+
 
 ``````
 添加$ git remote add origin git@github.com:DawnEve/txtBlog.git

@@ -21,7 +21,7 @@ return array (
     2 => 
     array (
 	  array('release0.3.3','txtBlog001','html'),
-	  array('release0.4','txtBlog002','html'),
+	  array('release0.5','txtBlog002','html'),
 
     ),
   ),
