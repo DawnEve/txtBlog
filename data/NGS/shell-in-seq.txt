@@ -2,6 +2,22 @@ shell-in-seq
 
 
 ========================================
+1. 使用find和grep做关键词文件文本搜索，高亮显示
+----------------------------------------
+1.关键词搜索
+$ find . -name "*sh"|xargs grep "hg19_mm10" --color=auto
+
+
+2.使用正则表达式搜索
+$ find . -name "*sh"|xargs grep "drop.*seq" --color=auto
+##./procedure/1208/mef_filterBAM_20180322.sh:# Using drop-seq tools to split bam -> hg19, mm10, and calculate species 
+##./procedure/1208/mef_filterBAM_20180322.sh:	java -jar /home/hou/data/apa/p2/procedure/1208/Drop-seq_tools-1.13/jar/dropseq.jar FilterBAM INPUT=$files OUTPUT=hg19/${files%%.*}_$TargetFile.bam REF_SOFT_MATCHED_RETAINED=HUMAN
+
+
+
+
+
+========================================
 查看fastq文件的常用语句
 ----------------------------------------
 
@@ -104,7 +120,127 @@ refer: https://www.jianshu.com/p/f9da70fcaf8d
 
 
 ========================================
+新建文件夹，如果有就删除再建
 ----------------------------------------
+
+TargetFile=mm10
+if [ ! -d $TargetFile ]; then ##如果有同名文件怎么办？ todo
+    mkdir $TargetFile
+else
+      rm -rf $TargetFile
+      mkdir $TargetFile
+fi
+
+
+
+
+
+========================================
+脚本欣赏1：复制部分文件到指定文件夹(for循环变量从文件读取、字符串的截取)
+----------------------------------------
+#!/bin/bash
+# Using drop-seq tools to split bam -> hg19, mm10, and calculate species 
+# human 108052
+# version 0.1
+
+bamFiles=`cat mouse_cells.txt` #先引用本地文件
+# echo $bamFiles
+
+cd /home/hou/data/apa/p2/procedure/1208/mef/demultiplex/R2/trim_galore/hg19_mm10/mm10 #接下来都在这个目录下
+
+# mm10_clean
+
+# TargetFile=mm10
+# if [ ! -d $TargetFile ]; then
+#     mkdir $TargetFile
+# else
+#       rm -rf $TargetFile
+#       mkdir $TargetFile
+# fi
+
+#循环内复制文件，从当前mm10目录下把部分bam文件复制到mm10_clean下。
+for files in $bamFiles
+do
+	cp $files*.bam mm10_clean/${files%%_*}.bam
+	# echo $files*.bam 
+	echo "Finish " $files #复制一个提醒一次
+done
+
+
+
+========================================
+脚本欣赏2：移动文件(shell数组、循环)
+----------------------------------------
+#!/bin/bash
+
+
+file_list=( "c12_B4" "c12_C3" "c12_C4" "c12_D3" "c12_E2" "c12_E3" "c13_A5" "c13_C1" "c13_C3" "c13_C4" "c13_D5" "c13_E4" "c13_F1" "c13_G1" "c13_H4" "c13_H5" "c14_C1" "c14_C3" "c14_G2" "c15_A2" "c15_C1" "c15_C5" "c16_A2" "c16_A4" "c16_C3" "c16_D4" "c19_A1" "c19_C1" "c19_G3"  )
+
+for f in ${file_list[@]}
+do 
+    mv $f*.gz needstar
+done
+
+
+
+========================================
+使用管道输入STAR文件名
+----------------------------------------
+./procedure/1208/reame.sh:
+
+ls *.gz |while read id;do STAR --runThreadN 12 --outSAMtype BAM SortedByCoordinate --genomeDir /home/hou/data/RNA/refs/hg19_mm10_transgenes_reference/starIndex --readFilesIn $id --readFilesCommand zcat --outFileNamePrefix  hg19_mm10/${id%%.*}_; done
+
+
+
+
+========================================
+使用star比对，并统计结果到文件
+----------------------------------------
+
+#!/bin/bash
+##########################
+## c3
+cd /home/hou/data/apa/p2/CHG011307/combine/c3/trimed && mkdir -p star/hg19 star/mm10
+
+##run together
+ls *.gz |while read id;do STAR --runThreadN 24 --genomeDir /home/hou/data/RNA/refs/hg19_ERCC92/index/star --readFilesIn $id --readFilesCommand zcat --outFileNamePrefix  star/hg19/${id%%.*}_ ; done
+
+##run together
+ls *.gz |while read id;do STAR --runThreadN 24 --genomeDir /home/hou/data/RNA/refs/mm10_ERCC92/index/star --readFilesIn $id --readFilesCommand zcat --outFileNamePrefix  star/mm10/${id%%.*}_ ; done
+
+ls star/mm10/*_Log.final.out | while read id; do  echo $id >> star/mm10/mm10_mapping_ratio; grep Uniquely $id | awk -F '|' '{print $2}' | awk '{print $1}' >> star/mm10/mm10_mapping_ratio ; done
+
+ls star/hg19/*_Log.final.out | while read id; do  echo $id >> star/hg19/hg19_mapping_ratio; grep Uniquely $id | awk -F '|' '{print $2}' | awk '{print $1}' >> star/hg19/hg19_mapping_ratio ; done
+
+##########################
+## c6
+cd /home/hou/data/apa/p2/CHG011307/combine/c6/trimed && mkdir -p star/hg19 star/mm10
+
+##run together
+ls *.gz |while read id;do STAR --runThreadN 24 --genomeDir /home/hou/data/RNA/refs/hg19_ERCC92/index/star --readFilesIn $id --readFilesCommand zcat --outFileNamePrefix  star/hg19/${id%%.*}_ ; done
+
+##run together
+ls *.gz |while read id;do STAR --runThreadN 24 --genomeDir /home/hou/data/RNA/refs/mm10_ERCC92/index/star --readFilesIn $id --readFilesCommand zcat --outFileNamePrefix  star/mm10/${id%%.*}_ ; done
+
+ls star/mm10/*_Log.final.out | while read id; do  echo $id >> star/mm10/mm10_mapping_ratio; grep Uniquely $id | awk -F '|' '{print $2}' | awk '{print $1}' >> star/mm10/mm10_mapping_ratio ; done
+
+ls star/hg19/*_Log.final.out | while read id; do  echo $id >> star/hg19/hg19_mapping_ratio; grep Uniquely $id | awk -F '|' '{print $2}' | awk '{print $1}' >> star/hg19/hg19_mapping_ratio ; done
+
+
+
+========================================
+参考基因组文件夹怎么组织最好？
+----------------------------------------
+$cd /home/hou/data/RNA/refs
+里面放置
+mm10 
+hg19/里面放hg19.fa,hg19_ucsc_genes.gtf 
+
+
+
+========================================
+----------------------------------------
+
 
 
 ========================================

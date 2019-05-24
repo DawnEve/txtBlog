@@ -48,14 +48,28 @@ README：http://www.bioinformatics.babraham.ac.uk/projects/fastqc/README.txt
 $ fastqc --help  帮助
 FastQC - A high throughput sequence QC analysis tool
 
- --outdir=/some/other/dir/ 指定输出文件位置
+fastqc [-o output dir] [--(no)extract] [-f fastq|bam|sam] [-c contaminant file] seqfile1 .. seqfileN
+
+-o用来指定输出文件的所在目录，注意是不能自动新建目录的。
+	输出的结果是.zip文件，默认自动解压缩，命令里加上--noextract则不解压缩。
+	--outdir=/some/other/dir/ 指定输出文件位置
+-f用来强制指定输入文件格式，默认会自动检测。
+-c用来指定一个contaminant文件，fastqc会把overrepresented sequences往这个
+contaminant文件里搜索。contaminant文件的格式是"Name\tSequences"，#开头的行是注释。
+加上 -q 会进入沉默模式，即不出现下面的提示：
+Started analysis of target.fq
+Approx 5% complete for target.fq
+Approx 10% complete for target.fq
 
 
+如果输入的fastq文件名是target.fq，fastqc的输出的压缩文件将是target.fq_fastqc.zip。解压后，查看html格式的结果报告
+
+
+(3) 常用命令
 $ nohup fastqc -o . -t 5 -f fastq SRR3101251.fastq &
 -o . 表示输出文件位置，输出到fastq文件所在目录时可以忽略该参数
 -t 5：表示开5个线程运行。每个thread分配250MB内存。32位系统最多6threads。
 -f fastq 表示使用的输入文件格式，支持Valid formats are bam,sam,bam_mapped,sam_mapped and fastq
-
 
 简单用法：
 $ fastqc untreated.fq -o fastqc_out_dir/
@@ -63,9 +77,43 @@ $ fastqc untreated.fq -o fastqc_out_dir/
 当fastq文件比较多时，也可以批量执行：
 $ fastqc /path_to_fq/*.fq -o fastqc_out_dir/
 
+或者后台执行
+$ nohup fastqc -t 10 ../fastq/19C001854_WES001_CapNGS_R1.fq -o fastqc_out/ >R1.log 2>&1 &
+
+
+2)输入bam文件呢？
+$ fastqc  -t 5 -o hg19_mm10_rmdup_QC/ -f bam hg19_mm10_rmdup/c01_ROW01.rmdup.bam
+
+
 
 fastqc结果该怎么看及切割接头：
 http://www.huangshujia.me/2017/08/25/2017-08-25-Begining-WGS-Data-Analysis-Fastq-Data-Quality-Control.html
+
+
+
+
+
+
+2.Ubuntu1804 报错处理
+(1)$ fastqc *.fastq &
+Analysis complete for 19C001854_WES001_CapNGS_R1.fq
+Exception in thread "Thread-1" java.awt.AWTError: Assistive Technology not found: org.GNOME.Accessibility.AtkWrapper
+        at java.awt.Toolkit.loadAssistiveTechnologies(Toolkit.java:807)
+        at java.awt.Toolkit.getDefaultToolkit(Toolkit.java:886)
+        at sun.swing.SwingUtilities2.getSystemMnemonicKeyMask(SwingUtilities2.java:2020)
+        at javax.swing.plaf.basic.BasicLookAndFeel.initComponentDefaults(BasicLookAndFeel.java:1158)
+
+解决方法:
+$ sed -i 's/^assistive_technologies=/#&/' /etc/java-8-openjdk/accessibility.properties
+Or just comment out below line in  /etc/java-8-openjdk/accessibility.properties
+assistive_technologies=org.GNOME.Accessibility.AtkWrapper
+
+
+
+
+
+
+
 
 
 
@@ -99,6 +147,91 @@ multiqc *fastqc.zip -o /path/to/store/
 refer:
 https://blog.csdn.net/ada0915/article/details/77201871
 
+
+
+========================================
+去除接头 trim_galore
+----------------------------------------
+
+1.简介
+
+_Trim Galore_ is a wrapper around [Cutadapt](https://github.com/marcelm/cutadapt) and [FastQC](http://www.bioinformatics.babraham.ac.uk/projects/fastqc/) to consistently apply adapter and quality trimming to FastQ files, with extra functionality for RRBS data.
+
+Trim Galore是对FastQC和Cutadapt的包装。适用于所有高通量测序，包括RRBS(Reduced Representation Bisulfite-Seq ), Illumina、Nextera 和smallRNA测序平台的双端和单端数据。主要功能包括两步：
+第一步首先去除低质量碱基，然后去除3' 末端的adapter, 如果没有指定具体的adapter，程序会自动检测前1million的序列，然后对比前12-13bp的序列是否符合以下类型的adapter:
+
+Illumina:   AGATCGGAAGAGC
+Small RNA:  TGGAATTCTCGG
+Nextera:    CTGTCTCTTATA
+
+
+
+
+
+2. 安装
+$ git clone https://github.com/FelixKrueger/TrimGalore.git
+然后里面有二进制文件，就可以用了。
+在~/bin下新建软链接：
+$ ln -s /home/wangjl/software/TrimGalore/trim_galore
+$ trim_galore -v
+version 0.6.2
+
+
+官方安装步骤:
+```bash
+# Check that cutadapt is installed
+cutadapt --version
+# Check that FastQC is installed
+fastqc -v
+# Install Trim Galore
+curl -fsSL https://github.com/FelixKrueger/TrimGalore/archive/0.6.0.tar.gz -o trim_galore.tar.gz
+tar xvzf trim_galore.tar.gz
+# Run Trim Galore
+~/TrimGalore-0.6.0/trim_galore
+
+
+
+
+
+3.使用
+
+# 处理双端测序结果
+echo " trim_galore cut adapters started at $(date)"
+trim_galore -q 20 --phred33 --stringency 3 --length 20 -e 0.1 \
+            --paired $dir/cmp/01raw_data/$fq1 $dir/cmp/01raw_data/$fq2  \
+            --gzip -o $input_data
+echo "trim_galore cut adapters finished at $(date)"
+
+
+# 单端测序结果
+$ trim_galore --quality 25 --phred33 --stringency 3 --length 30 --gzip  --fastqc_args "-t 15" --output_dir trim_galore xx.fastq
+
+
+参数解释
+$ trim_galore --help
+--quality：设定Phred quality score阈值，默认为20。
+--phred33：：选择-phred33或者-phred64，表示测序平台使用的Phred quality score。
+--adapter：输入adapter序列。也可以不输入，Trim Galore!会自动寻找可能性最高的平台对应的adapter。自动搜选的平台三个，也直接显式输入这三种平台，即--illumina、--nextera和--small_rna。
+--stringency：设定可以忍受的前后adapter重叠的碱基数，默认为1（非常苛刻）。可以适度放宽，因为后一个adapter几乎不可能被测序仪读到。
+--length：设定输出reads长度阈值，小于设定值会被抛弃。
+--paired：对于双端测序结果，一对reads中，如果有一个被剔除，那么另一个会被同样抛弃，而不管是否达到标准。
+--retain_unpaired：对于双端测序结果，一对reads中，如果一个read达到标准，但是对应的另一个要被抛弃，达到标准的read会被单独保存为一个文件。
+--gzip和--dont_gzip：清洗后的数据zip打包或者不打包。
+--output_dir：输入目录。需要提前建立目录，否则运行会报错。
+	-o：输出文件路径
+-- trim-n : 移除read一端的reads
+-e：允许的错误率
+
+
+
+4.质控
+$ cd /home/wangjl/data/c1_2019APA/sc/combine/sc_fq/trim/galore
+$ multiqc *fastqc.zip -o /home/wangjl/data/c1_2019APA/sc/combine/sc_fq/
+
+
+
+refer:
+https://www.jianshu.com/p/7a3de6b8e503
 
 
 
@@ -293,13 +426,11 @@ Nextera:    CTGTCTCTTATA
 
 
 2. 下载安装软件 trim galore
-$ conda install -c bioconda trim-galore
-
-或者下载安装包安装：
-解压，配置下环境变量就可以使用。
-https://github.com/FelixKrueger/TrimGalore
+#不推荐！会在路径提示符前面添加(base)，洁癖的人不要尝试: conda install -c bioconda trim-galore 
 
 
+推荐下载安装包安装，解压，配置下环境变量就可以使用：https://github.com/FelixKrueger/TrimGalore
+官方给的流程：
 # Check that cutadapt is installed
 cutadapt --version
 # Check that FastQC is installed
@@ -309,6 +440,7 @@ curl -fsSL https://github.com/FelixKrueger/TrimGalore/archive/0.6.0.tar.gz -o tr
 tar xvzf trim_galore.tar.gz
 # Run Trim Galore
 ~/TrimGalore-0.6.0/trim_galore
+
 
 
 
@@ -334,7 +466,7 @@ echo "Trim galore reads"
 
 
 ========================================
-RNAseq的比对 STAR: ultrafast universal RNA-seq aligner 
+RNAseq的比对工具 STAR: ultrafast universal RNA-seq aligner 
 ----------------------------------------
 RNA-seq比对算法开发了STAR（Spliced Transcripts Alignments to a Reference，STAR）.
 该算法使用了未压缩后缀阵列中的连续最大可比对种子搜索，接着种子聚类和缝合过程。
@@ -391,7 +523,12 @@ STAR --option1-name option1-value(s)--option2-name option2-value(s)
 
 
 3.generating genome index
-STAR --runThreadN 20 --runMode genomeGenerate --genomeDir /home/wangjl/index/STAR/ --genomeFastaFiles /share/reference/genome/hg19/hg19.fa --sjdbGTFfile /share/reference/genome/hg19/hg19_ucsc_genes.gtf --sjdbOverhang 100
+STAR --runMode genomeGenerate  \
+	--runThreadN 20  \
+	--genomeDir /home/wangjl/index/STAR/  \
+	--genomeFastaFiles /share/reference/genome/hg19/hg19.fa  \
+	--sjdbGTFfile /share/reference/genome/hg19/hg19_ucsc_genes.gtf  \
+	--sjdbOverhang 100
 
 很费时，占用CPU很严重，建议晚上进行。小心被骂。
 Jan 17 21:18:32 ..... started STAR run
@@ -410,6 +547,10 @@ Jan 17 21:40:02 ... writing SAindex to disk
 Jan 17 21:40:04 ..... finished successfully
 
 
+选择最新的gtf注释文件，人类和小鼠常在http://www.gencodegenes.org下载，植物的可信基因组见http://plants.ensembl.org
+
+
+
 server上本来就有该STAR可用的hg19索引:
 /data1/hou/RNA/refs/hg19_ERCC92
 /data1/hou/RNA/refs/hg19_ERCC92/index/star
@@ -418,8 +559,8 @@ server上本来就有该STAR可用的hg19索引:
 
 
 
-4.Running mapping jobs.
-
+4.Run mapping jobs. 推荐直接用(3)
+(1)
 test data
 [wangjl@nih_jin test3]$ ls -lth /home/wangjl/data/test
 total 2.5G
@@ -429,27 +570,42 @@ total 2.5G
 -rwxr-xr-x. 1 wangjl user 365M Jan 17 21:59 c13_A1.fa.gz
 -rwxr-xr-x. 1 wangjl user 261M Jan 17 21:59 c12_A1.fa.gz
 
-$ STAR --runThreadN 5 --genomeDir /data1/hou/RNA/refs/hg19_ERCC92/index/star --readFilesIn /home/wangjl/data/test/c13_A1.fa.gz --readFilesCommand gunzip -c --outFileNamePrefix /home/wangjl/data/afterMapping/test3/c14_A1_
+$ STAR --runThreadN 5  \
+	--genomeDir /data1/hou/RNA/refs/hg19_ERCC92/index/star  \
+	--readFilesIn /home/wangjl/data/test/c13_A1.fa.gz  \
+	--readFilesCommand gunzip -c  \
+	--outFileNamePrefix /home/wangjl/data/afterMapping/test3/c14_A1_
 
 Jan 17 22:14:40 ..... started STAR run
 Jan 17 22:14:40 ..... loading genome
 Jan 17 22:15:10 ..... started mapping
 Jan 17 22:17:03 ..... finished successfully
+参数解释：
+	--runThreadN 线程数
+	--genomeDir 基因组index路径
+	--readFilesIn 带路径名的fq测序文件
+	--readFilesCommand gunzip -c  读取文件的解压命令和参数
+	--outFileNamePrefix 输出文件的前缀，默认是./
+建议增加 --outSAMtype BAM SortedByCoordinate 输出格式为BAM并排序过
+
 
 获得文件: c14_A1_Aligned.out.sam
 
-建议添加保留基因组选项（--genomeLoad LoadAndKeep），对于共用一套index的多个比对，能节省很多时间。
+(2)建议添加保留基因组选项（--genomeLoad LoadAndKeep），对于共用一套index的多个比对，能节省很多时间。
 该测序read最长150bp。
 $ STAR --runThreadN 10 \
---genomeDir /data1/hou/RNA/refs/hg19_ERCC92/index/star \
---readFilesIn /home/wangjl/data/test/c13_A1.fa.gz \
---readFilesCommand gunzip \
--c --outFileNamePrefix /home/wangjl/data/afterMapping/test3/c14_A1_ \
---genomeLoad LoadAndKeep \
---sjdbOverhang 149
+	--genomeDir /data1/hou/RNA/refs/hg19_ERCC92/index/star \
+	--readFilesIn /home/wangjl/data/test/c13_A1.fa.gz \
+	--readFilesCommand gunzip -c \
+	--outFileNamePrefix /home/wangjl/data/afterMapping/test3/c14_A1_ \
+	--genomeLoad LoadAndKeep \
+	--outSAMtype BAM SortedByCoordinate \
+	--sjdbOverhang 149
 
-
-$ STAR --runThreadN 10 --genomeDir /data1/hou/RNA/refs/hg19_ERCC92/index/star --readFilesIn /home/wangjl/data/test/c13_A1.fa.gz --readFilesCommand gunzip -c --outFileNamePrefix /home/wangjl/data/afterMapping/test3/c14_A1_ --genomeLoad LoadAndKeep --sjdbOverhang 149
+##
+--readFilesIn sample_r1.fq.gz sample_r2.fq.gz \#对于PE序列
+--readFilesCommand zcat \#如果是gz文件，也可以这样解压缩
+--outBAMsortingThreadN 10 \#输出bam的线程数
 
 
 Note, if the spike-ins are used, the reference sequence should be augmented with the DNA sequence of the spike-in molecules prior to mapping.
@@ -461,6 +617,27 @@ Note, when UMIs are used, their barcodes should be removed from the read sequenc
 
 
 
+(3)推荐直接输出bam文件，适合py并发使用。
+$ STAR --runThreadN 30  \
+	--outSAMtype BAM SortedByCoordinate  \
+	--genomeDir /home/wangjl/data/ref/hg19_mm10_transgenes/starIndex  \
+	--readFilesIn /home/wangjl/data/apa/190515/trim_galore/c2_ROW01_R2_trimmed.fq.gz  \
+	--readFilesCommand zcat  \
+	--genomeLoad LoadAndKeep \  #单一会报错
+	--limitBAMsortRAM 20000000000 \ #加入这一行就不报错了
+	--outFileNamePrefix  /home/wangjl/data/apa/190515/hg19_mm10/c2_ROW01_
+
+
+(4)更多参数
+除了上面常用的一些参数外，STAR的可选参数其实非常多.
+
+输出BAM文件时，STAR还可以对BAM进行一些预处理，"--bamRemoveDuplicatesType"用于去重("UniqueIdentical","UniqueIdenticalNotMulti")
+
+如果你希望输出信号文件(Wig格式),那么需要额外增加 --outWigType参数，如 --outWigType wiggle read2, 还可以用 --outWigStrand指定是否将两条链合并(Stranded, Unstranded), 默认 --outWigNorm RPM，也就是用RPM进行标准化，可以选择None.
+
+如果你在建立索引或者比对的时候增加了注释信息，那么STAR还能帮你进行基因计数。参数为 --quantMode, 分为转录本水平(TranscriptomeSAM)和基因水平(GeneCounts)，在计数的时候还允许指定哪些哪些read不参与计数，"IndelSoftclipSingleend"和"Singleend"
+
+对于非链特异性RNA-seq，同时为了保证能和Cufflinks兼容，需要添加 --outSAMstrandField intronMotif在SAM中增加XS属性，并且建议加上 --outFilterIntronMotifsRemoveNoncanonical。如果是链特异性数据，那么就不需要特别的参数，Cufflinks用 --library-type声明类型即可=
 
 
 
@@ -479,7 +656,7 @@ total 1.2G
 -rw-r--r--. 1 wangjl user 1.2G Jan 17 22:17 c14_A1_Aligned.out.sam
 
 (1)3个log文件
-
+1)
 Log.out: 主要的log文件，对排错和debug很重要。
 Log.progress.out: 报告该运行的统计结果，比如处理了多少reads，map上的占百分比。改文件每1min更新一次。
 Log.final.out: mapping结束后的map统计结果，对质控很重要。对每个read（单个或双端）分别做统计，然后对全部reads汇总、求平均。
@@ -489,6 +666,31 @@ Log.final.out: mapping结束后的map统计结果，对质控很重要。对每�
 
 mismatch/indel error rates是按照每个碱基统计的，比如 
 total number of mismatches/indels in all unique mappers 除以total number of mapped bases.
+
+
+2)
+#目的：(python on Linux)从star结果文件获取Uniq比对reads数和百分比
+import subprocess
+
+#要点： 使用id拼接linux命令。建议都用绝对路径。
+def doLinuxCMD(id):
+    #cmd1
+    cmd="grep 'Uniquely mapped reads number' /home/wangjl/data/apa/190517R/hg19/"+id+"_Log.final.out|cut -d '\t' -f2"
+    (status, output)=subprocess.getstatusoutput(cmd)
+    rs=str(status)+" "+output;
+    
+    #cmd2
+    cmd2="grep 'Uniquely mapped reads %' /home/wangjl/data/apa/190517R/hg19/"+id+"_Log.final.out|cut -d '\t' -f2"
+    (status2, output2)=subprocess.getstatusoutput(cmd2)
+    rs2=str(status2)+" "+output2;
+
+    return id+" "+rs+" "+rs2 #返回状态码status2=0表示命令正常执行，其他表示异常，需要查看output推测具体原因
+
+#test 测试
+doLinuxCMD('c12_ROW02')  #只需要传入细胞名字即可
+##'c12_ROW02 0 2187377 0 72.56%'
+
+
 
 
 
@@ -507,6 +709,20 @@ In addition, it is recommended to remove the non-canonical junctions for Cufflin
  --outFilterIntronMotifs RemoveNoncanonical.
 
  
+(3) "SJ.out.tab"存放的高可信的剪切位点，每一列的含义如下
+第一列: 染色体
+第二列: 内含子起始（以1为基）
+第三列: 内含子结束（以1为基）
+第四列：所在链，1(+)，2(-)
+第五列: 内含子类型，0表示不是下面的任何一种功能，1表示GT/AG, 2表示:GT/AC,3表示GC/AG,4表示GT/GC,5表示AT/GC,6表示GT/AT
+第六列: 是否是已知的注释
+第七列: 有多少唯一联配支持
+第八列: 有多少多重联配支持
+第九列: maximum spliced alignment overhang, 这个比较难以翻译，指的是当短读比对到剪切位点时，中间会被分开，另一边能和基因组匹配的数目，例如ACGTACGT----------ACGT，就是4或者8，取决于方向。
+
+控制过滤的参数为 --outSJfilter*系列，其中 --outSJfilterCountUniqueMin3111表示4类内含子唯一匹配的read支持数至少为3,1,1,1, 而 --outSJfilterCountTotalMin3111则表示4类内含子唯一匹配和多重匹配read的支持数和，至少为3,1,1,1。如果你设置的 --outSJfilterReadsUnique，那么上面两者是等价的，当然默认情况下是 All
+
+
 
 
 
@@ -541,7 +757,7 @@ $ wget -b https://sourceforge.net/projects/rseqc/files/RSeQC-2.6.4.tar.gz
 $ pip install RSeQC
 
 
-3.使用(输入bam格式)：http://dldcc-web.brc.bcm.edu/lilab/liguow/CGI/rseqc/_build/html/
+3.使用(输入bam格式，要先samtools index产生.bai文件)：http://dldcc-web.brc.bcm.edu/lilab/liguow/CGI/rseqc/_build/html/
 中文教程： https://www.jianshu.com/p/f9da70fcaf8d
 
 
@@ -563,12 +779,13 @@ https://genome.ucsc.edu/cgi-bin/hgTables
 $ geneBody_coverage.py -r hg19.refseq.bed  -i Pairend_nonStrandSpecific_36mer_Human_hg19.bam -o output
 	-r 参考基因组bed格式[required]
 	-i Alignment file in BAM or SAM format
-	-o Prefix of output files(s). [required]
+	-o Prefix of output files(s). [required] 必须要设置前缀
 
-geneBody_coverage.py -r /data/jinwf/wangjl/ref/human/hg19_ucsc_genes-20190506.bed  -i /home/wangjl/data/c1_2019APA/sc/combine/sc_fq/mapping/bamR2Lh/c2_ROW02.sorted.bam  -o /home/wangjl/data/c1_2019APA/sc/combine/sc_fq/mapping/mappingQC_human/c2_ROW02
+$ geneBody_coverage.py -r /data/jinwf/wangjl/ref/human/hg19_ucsc_genes-20190509.bed  -i /home/wangjl/data/c1_2019APA/sc/combine/sc_fq/mapping/bamR2Lh/c2_ROW02.sorted.bam  -o /home/wangjl/data/c1_2019APA/sc/combine/sc_fq/mapping/mappingQC_human/c2_ROW02
 
-
-geneBody_coverage.py -r /data/jinwf/wangjl/ref/human/hg19_ucsc_genes-20190506.bed  -i /home/wangjl/data/c1_2019APA/sc/combine/sc_fq/mapping/bamR2Lh/c2_ROW01.sorted.bam,/home/wangjl/data/c1_2019APA/sc/combine/sc_fq/mapping/bamR2Lh/c2_ROW02.sorted.bam  -o /home/wangjl/data/c1_2019APA/sc/combine/sc_fq/mapping/mappingQC_human/c2_ROW0102
+多个bam文件时，文件之间用逗号隔开:
+$ cd /home/wangjl/data/c1_2019APA/sc/combine/sc_fq/mapping/bamR2Lh/
+$ geneBody_coverage.py -r /data/jinwf/wangjl/ref/human/hg19_ucsc_genes-20190506.bed  -i c2_ROW01.sorted.bam,c2_ROW02.sorted.bam  -o ../mappingQC_human/c2_ROW0102
 
 
 
@@ -594,6 +811,53 @@ pip 9.0.1 from /home/wangjl/software/anoconda3/lib/python3.6/site-packages (pyth
 $ pip insatll htseq
 几秒钟后安装好了。
 
+版本号
+$ htseq-count -h
+...
+version 0.11.2.
+
+
+(2) 下载gtf数据
+https://htseq.readthedocs.io/en/release_0.11.1/count.html
+Q: I have used a GTF file generated by the Table Browser function of the UCSC Genome Browser, and most reads are counted as ambiguous. Why?
+A: In these files, the gene_id attribute incorrectly contains the same value as the transcript_id attribute and hence a different value for each transcript of the same gene. Hence, if a read maps to an exon shared by several transcripts of the same gene, this will appear to htseq-count as and overlap with several genes. Therefore, these GTF files cannot be used as is. Either correct the incorrect gene_id attributes with a suitable script, or use a GTF file from a different source.
+
+从UCSC Table Browser下载的gtf文件不能直接用到htseq-count中，因为gene_id和transcript_id一样，导致同一个gene有不同的value。所以，如果一个read map到多个转录本共享的exon上时，htseq-count就认为和几个基因重叠了。所以，这些gtf文件不能直接使用，要么使用脚本纠正错误的gene_id，或者从不同的途径下载GTF文件。
+
+chr1    hg19_knownGene  exon    13221   14409   0.000000        +       .       gene_id "uc001aaa.3"; transcript_id "uc001aaa.3"; 
+chr1    hg19_knownGene  exon    11874   12227   0.000000        +       .       gene_id "uc010nxr.1"; transcript_id "uc010nxr.1"; 
+chr1    hg19_knownGene  exon    12646   12697   0.000000        +       .       gene_id "uc010nxr.1"; transcript_id "uc010nxr.1"; 
+chr1    hg19_knownGene  exon    13221   14409   0.000000        +       .       gene_id "uc010nxr.1"; transcript_id "uc010nxr.1"; 
+chr1    hg19_knownGene  start_codon     12190   12192   0.000000        +       .       gene_id "uc010nxq.1"; transcript_id "uc010nxq.1"; 
+
+修改为：
+chr1	stdin	transcript	11874	14409	.	+	.	gene_id "uc001aaa.3"; transcript_id "uc001aaa.3"; 
+chr1	stdin	exon	11874	12227	.	+	.	gene_id "uc001aaa.3"; transcript_id "uc001aaa.3"; exon_number "1"; exon_id "uc001aaa.3.1";
+chr1	stdin	exon	12613	12721	.	+	.	gene_id "uc001aaa.3"; transcript_id "uc001aaa.3"; exon_number "2"; exon_id "uc001aaa.3.2";
+chr1	stdin	exon	13221	14409	.	+	.	gene_id "uc001aaa.3"; transcript_id "uc001aaa.3"; exon_number "3"; exon_id "uc001aaa.3.3";
+chr1	stdin	transcript	11874	14409	.	+	.	gene_id "DDX11L1"; transcript_id "uc010nxr.1"; 
+chr1	stdin	exon	11874	12227	.	+	.	gene_id "DDX11L1"; transcript_id "uc010nxr.1"; exon_number "1"; exon_id "uc010nxr.1.1";
+
+
+(2.1)怎么修改？
+
+
+
+
+
+
+
+(2.2)
+https://www.gencodegenes.org/human/release_30lift37.html
+下载gtf文件和Gene symbol吧。
+
+如何修改gtf文件？
+https://www.gencodegenes.org/pages/data_format.html
+python版： https://github.com/openvax/gtfparse
+
+
+
+
 
 
 
@@ -613,9 +877,13 @@ total 276K
 -rw-r--r--. 1 wangjl user 1.8K Jan 19 16:58 htseq_c12_A1.sam.count.log
 
 
+警告！如果是bam文件，一定要加-f bam ，否则获得的表达数据全是0！
+
 
 
 http://www.bio-info-trainee.com/244.html
+
+
 
 
 
@@ -712,13 +980,13 @@ total 19M
 (1).从log也就是屏幕输出可见，输出为
 [wangjl@nih_jin quantify2]$ cat *log
 
-        ==========     _____ _    _ ____  _____  ______          _____
-        =====         / ____| |  | |  _ \|  __ \|  ____|   /\   |  __ \
-          =====      | (___ | |  | | |_) | |__) | |__     /  \  | |  | |
-            ====      \___ \| |  | |  _ <|  _  /|  __|   / /\ \ | |  | |
-              ====    ____) | |__| | |_) | | \ \| |____ / ____ \| |__| |
-        ==========   |_____/ \____/|____/|_|  \_\______/_/    \_\_____/
-          v1.6.0
+==========     _____ _    _ ____  _____  ______          _____
+=====         / ____| |  | |  _ \|  __ \|  ____|   /\   |  __ \
+  =====      | (___ | |  | | |_) | |__) | |__     /  \  | |  | |
+    ====      \___ \| |  | |  _ <|  _  /|  __|   / /\ \ | |  | |
+      ====    ____) | |__| | |_) | | \ \| |____ / ____ \| |__| |
+==========   |_____/ \____/|____/|_|  \_\______/_/    \_\_____/
+  v1.6.0
 
 //  featureCounts setting  \\
 ||                                                                            ||
@@ -989,12 +1257,19 @@ samtools用法 – Utilities for the Sequence Alignment/Map (SAM) format
 文档： http://www.htslib.org/doc/samtools.html
 
 
+常用语句：
+samtools view -bS input.sam >out.bam #1.转换为bam
+samtools sort -o aln.sorted.bam aln.bam #2.排序
+samtools index aln.sorted.bam #3.建索引
+
+
 1.安装
 
-(1)第一步，从github下载所需版本samtools软件包
+(1) 不一定work...
+第一步，从github下载所需版本samtools软件包
 https://sourceforge.net/projects/samtools/files/samtools/1.5/
 
-第二部，解压，此处以目前最新版samtools-1.5为例：
+第二步，解压，此处以目前最新版samtools-1.5为例：
 tar -jxf samtools-1.5.tar.bz2
 cd samtools-1.5
 
@@ -1008,12 +1283,14 @@ echo 'export PATH=$PATH:/opt/biosoft/samtools-1.5/bin' >> /etc/profile
 现在你已经不需要刚刚下载和解压的软件包了，愉快的删除吧。
 cd ../ && rm -rf samtools-1.5 samtools-1.5.tar.bz2
 
+
 bcftools安装几乎完全一样。需要注意的是，此处我用了root账户。对于普通用户，可以把软件安装在自己有读写权限的目录下，也就是说，要更改prefix=xxx和/etc/profile至你自己的文件目录和文件。
 https://samtools.github.io/bcftools/howtos/install.html
 
 
 
-(2)亲测可用
+
+(2)CentOS 亲测可用
 从github获取最新版本的包
 git clone git://github.com/samtools/samtools.git
 git clone https://github.com/samtools/htslib.git #并列放到同一个文件夹下
@@ -1030,6 +1307,24 @@ make prefix=~/ install #或在~/bin建软链接
 检查版本号：
 $ samtools --version
 samtools 1.9-69-gb217a91
+
+
+(3) Ubuntu上安装 https://blog.csdn.net/cuicanlianyue/article/details/79458594
+
+git clone git://github.com/samtools/samtools.git
+git clone https://github.com/samtools/htslib.git
+
+需要先安装两个库
+sudo apt-get install libbz2-dev #进行编译时出现error：建立HTSlib需要libbzip2文件，需要安装
+sudo apt-get install liblzma-dev #进行编译时出现error：需要liblzma文件
+
+然后安装hslib
+autoheader
+autoconf
+./configure 
+make
+make prefix=~/ install
+然后同样命令安装samtools
 
 
 
@@ -1056,9 +1351,122 @@ samtools view -h NA12878.bam >NA12878_2.sam
 
 
 
+
+
 3.排序和建索引
 samtools sort -T /tmp/aln.sorted -o aln.sorted.bam aln.bam
 samtools index aln.sorted.bam
+
+
+
+
+4. tview 直观显示reads比对到基因组的情况，和基因组浏览器有点类似。
+-d display		输出类型
+-p chr:pos 		直接定位到该位置
+-s STR		只显示该sample或group的reads
+
+利用sort进行排序，再利用index建立索引后 samtools tview xx.sort.bam 
+
+
+
+
+
+5.flagstat 对reads的比对情况统计
+
+samtools flagstat xx.sort.bam 
+
+
+6.depth 每个碱基位点的测序深度
+-a 输出所有的碱基深度，包括0
+-b/-r 控制深度的范围(后面跟染色体)
+-f bam文件名字
+-l 设置read长度阈值
+-d/-m 最大覆盖深度
+-q 碱基质量阈值
+-Q 比对质量阈值
+
+samtools depth -a -r chr3 x.sort.bam 
+#显示chr3染色体上所有碱基的测序深度，
+第一列chr名字，第二列碱基位置，第三列测序深度。
+
+
+7.mpileup 对参考基因组每个位点做碱基堆积，用于call SNP和INDEL。主要是生成BCF、VCF文件或者pileup一个或多个bam文件。比对记录以在@RG中的样本名作为区分标识符。如果样本标识符缺失，那么每一个输入文件则视为一个样本。
+
+用法：
+生成一个简单的vcf文件
+samtools mpileup -vu test.sort.bam
+
+如果有参考基因组的话
+samtools mpileup -vuf genome.fasta  test.sort.bam
+
+
+
+7.dict 建立参考基因组字典
+samtools dict  test.sort.bam sequences.fa 
+
+
+8.fastq bam文件转换为fastq
+samtools fastq test.bam
+
+
+
+9.idxstats 检索和打印与输入文件相对应的index file里的统计信息
+Usage: samtools idxstats <in.bam>
+
+用法：
+samtools idxstats test.sort.bam
+结果返回一个表格，4列。
+第一列：染色体名
+第二列：序列长度
+第三列：比对上的reads数
+第四列：未比对数目
+
+
+
+10. stats 对bam文件做详细统计,其统计结果可用mics/plot-bamstats作图
+samtools stats test.bam
+
+输出的信息比较多，部分如下：
+Summary Numbers，raw total sequences，filtered sequences, reads mapped, reads mapped and paired,reads properly paired等信息
+Fragment Qualitites：根据cycle统计每个位点上的碱基质量分布
+Coverage distribution：深度为1，2，3，，，的碱基数目
+ACGT content per cycle：ACGT在每个cycle中的比例
+Insert sizes：插入长度的统计
+Read lengths：read的长度分布
+
+
+
+
+
+
+11.rmdup 将由PCR duplicates 获得的reads去掉，并保留高比对质量的reads
+-s    rmdup for SE reads
+-S    treat PE reads as SE in rmdup (force -s)
+用法：
+samtools rmdup -sS test.bam  output.bam
+
+单端测序结果去除PCR重复
+$ samtools rmdup -s tmp.sorted.bam tmp.rmdup.bam
+
+仔细探究samtools的rmdup是如何行使去除PCR重复reads功能的
+http://www.bio-info-trainee.com/2003.html
+
+只需要开始-s的标签， 就可以对单端测序进行去除PCR重复。其实对单端测序去除PCR重复很简单的~，因为比对flag情况只有0,4,16，只需要它们比对到染色体的起始终止坐标一致即可，flag很容易一致。
+
+但是对于双端测序就有点复杂了~
+
+很明显可以看出，去除PCR重复不仅仅需要它们比对到染色体的起始终止坐标一致，尤其是flag，在双端测序里面一大堆的flag情况，所以我们的94741坐标的5个reads，一个都没有去除！
+
+这样的话，双端测序数据，用samtools rmdup效果就很差，所以很多人建议用picard工具的MarkDuplicates 功能~~~
+The optimal solution depends on many factors - the consensus seems to be the the picard markduplicates could be the best current solution.
+最优的方案依赖很多因素，最一致的似乎就是picard markduplicates 可以达到目前最好的结果。
+
+The appropriateness of duplicate removal depends on coverage - one would want to only remove artificial duplicates and keep the natural duplicates.
+去除重复的适当性取决于覆盖度——人们只希望去除人工重复并保留自然重复。
+
+MarkDuplicates is "more correct" in the strict sense. Rmdup is more efficient simply because it does handle those tough cases. Rmdup works for single-end, too, but it cannot do paired-end and single-end at the same time. It does not work properly for mate-pair reads if read lengths are different.
+MarkDuplicates功能在严格模式下更“正确”，rmdup更高效仅仅是因为它确实处理这些事情。rmdup对于SE数据有效，但是对于同时有PE和SE的无效，对于长度不等的 mate-pair数据也无效。
+
 
 
 

@@ -8,8 +8,136 @@ linux简介8|RPM软件包管理
  - 启动终端：快捷键ctrl + alt + t
 
 
+
+
 ========================================
-WIN7下 怎么双系统安装ubuntu 12.04？
+系统启动和系统安全
+----------------------------------------
+系统启动流程
+	BIOS
+	MBR: Boot Code
+	执行引导程序-GRUB
+	加载内核
+	执行init
+	runlevel
+
+建议：同时使用CentOS和Ubuntu系统学习本章节。因为有很大的不同点。
+
+
+1.BIOS(Basic Input Output System)基本输入输出系统。
+一般保存在主板上的BIOS芯片中。
+计算机启动的时候第一个运行的就是BIOS，负责检查硬件并且查找可启动设备；
+可启动设备在BIOS设置中进行定义，如USB、CDROM、HD
+
+2.MBR
+BIOS找到启动设备后执行其引导代码。
+	第一个扇区512字节的最后两个字节是55AA。
+引导代码为MBR的前446字节。
+	一般的PC引导机制都是MBR。
+	高级的设备如Mac等可能是EFI硬件，则引导格式可能不同。
+
+3.GRUB
+Grub是现在Linux使用的主流引导程序。
+可以用来引导现在几乎所有的操作系统: linux, Mac, Windows。
+Grub的相关文件保存在/boot/grub目录中。
+Grub配置文件为/boot/grub/grub.conf  (Ubuntu中是 /boot/grub/grub.cfg)
+配置格式：Ubuntu和CentOS有一定区别。
+
+export linux_gfx_mode
+if [ "${linux_gfx_mode}" != "text" ]; then load_video; fi
+menuentry 'Ubuntu, with Linux 3.11.0-15-generic' --class ubuntu --class gnu-linux --class gnu --class os {
+        recordfail
+        gfxmode $linux_gfx_mode
+        insmod gzio
+        insmod part_msdos
+        insmod ext2
+        set root='(hd0,msdos1)'
+        search --no-floppy --fs-uuid --set=root 889007c7-3c15-4a45-afea-0c22022b7493
+        linux   /boot/vmlinuz-3.11.0-15-generic root=UUID=889007c7-3c15-4a45-afea-0c22022b7493 ro   quiet splash $vt_handoff
+        initrd  /boot/initrd.img-3.11.0-15-generic
+}
+
+
+
+4.Kernel
+	MBR的引导代码将负责找到并加载Linux内核。
+	Linux内核保存在/boot/vmlinuz-3.11.0-15-generic
+		5962944 Feb  4  2014 vmlinuz-3.11.0-15-generic
+
+	一般还会加载内核模块打包文件：/boot/initrd.img-3.11.0-15-generic
+	Linux为保持kernel的精简，将一些不常用的驱动、功能编译成为模块，在需要的时候动态加载，而这些模块被打包保存为一个initramfs文件。
+	早期版本Linux使用initrd文件，initramfs是initrd的替代优化版本，比initrd更加节省空间、更加灵活。
+	命令dmesg可以查看本次启动时内核的输出信息。（对应的文件是 /var/log/dmesg文件 ）
+
+5.INIT
+	init是Linux系统中运行的第一个进程。
+		当使用top命令的时候，发现一个pid（进程id，按照启动顺序排序）为1的进程，名字是init。是所有进程的父进程。
+	调用/etc/rc.d/rc.sysinit（名字不完全相同）负责对系统进行初始化，挂载文件系统，而且根据运行级别启动相应服务。
+
+
+6.Linux运行级别(run level)：
+	0	关机
+	1	单用户模式
+	2	不带网络的多用户模式
+	3	多用户模式	
+	4	未使用
+	5	XII图形化模式
+	6	重新启动
+用的最多的是3和5，区别仅是前者无图形界面。
+
+	可以通过/etc/inittab（Ubuntu没有找到，很可能是/etc/init/rc-sysinit.conf）配置文件修改默认的运行级别（env DEFAULT_RUNLEVEL=2）。
+	每个级别对应的启动服务保存在/etc/rc.d/rc[0123456].d中。
+	命令runlevel可以显示当前及上一个运行级别。 $ runlevel  #N 2 为什么是2呢？
+
+	命令init可以用以改变当前运行级别，需要root权限。
+	# init 3  #进入命令行多用户界面；
+	$ runlevel #3 5 #显示当前和上一个运行级别。
+
+
+
+
+wangjl@ubuntu:/etc$ pwd
+/etc
+wangjl@ubuntu:/etc$ ls | grep rc #
+bash.bashrc
+drirc
+inputrc
+nanorc
+rc0.d
+rc1.d
+rc2.d
+rc3.d
+rc4.d
+rc5.d
+rc6.d
+rc.local
+rcS.d
+wgetrc
+wangjl@ubuntu:/etc$ locate rc0.d
+/etc/rc0.d  #定位文件位置
+
+
+wangjl@ubuntu:/etc/init$ pwd
+/etc/init
+wangjl@ubuntu:/etc/init$ cat control-alt-delete.conf 
+# control-alt-delete - emergency keypress handling
+#
+# This task is run whenever the Control-Alt-Delete key combination is
+# pressed, and performs a safe reboot of the machine.
+
+description	"emergency keypress handling"
+author		"Scott James Remnant <scott@netsplit.com>"
+
+start on control-alt-delete
+
+task
+exec shutdown -r now "Control-Alt-Delete pressed" #建议注释掉这一行，防止意外重启服务器（win是调出任务管理器，linux是直接重启！）。
+
+
+
+
+========================================
+|-- WIN7下 怎么双系统安装ubuntu 12.04？
 ----------------------------------------
 [win7 32bits, ubuntu 12.04 32bits]
 
@@ -24,7 +152,94 @@ WIN7下 怎么双系统安装ubuntu 12.04？
 
 
 ========================================
-ubuntu ssh服务的安装
+|-- Ubuntu下修改主机名称
+----------------------------------------
+http://blog.csdn.net/simplty/article/details/9371103
+
+1.$su root   //或者以下命令使用sudo执行
+
+2.#vim /etc/hostname  /将里面的名字改为你想改的名字，例如myname
+vim不会用的参考百度：    [Linux/Ubuntu] vi/vim 使用方法讲解
+
+3.先查看/etc/hostname里的内容，这是你ubuntu的hostname
+    然后编辑/etc/hosts文件，
+    在终端里输入：sudo vim /etc/hosts 
+    在127.0.0.1 localhost下面输入：127.0.1.1 myname    
+
+4.重启reboot后即可见到新主机名字。
+
+ps:出现ubuntu unable to resolve host xxx  错误的时候也可用第3步解决  
+
+
+========================================
+|-- [CentOS]单用户修改root密码(忘记root密码了>.<)
+----------------------------------------
+如果root管理员忘了密码怎么办？只有一种方法，就是进入运行级别1.
+	- 为内核传递参数"1"（数字1）或"single"使系统进入单用户模式。
+	- 单用户模式下不启动任何服务；
+	- 单用户模式直接以root用户登录，并且不需要密码；
+	- 可以使用passwd修改root密码。
+
+
+(1)启动时不停地按上下键，使启动界面卡住：
+(2)按下字母e，进入启动配置项：
+(3)光标移动到kernel条目上，再按下字母e，进入编辑界面，添加一个空格和数字1，回车。
+按下字母b启动系统。内核以运行级别1运行。
+现在是root用户登录的，而且不需要密码！
+
+(4)使用passwd命令修改密码即可。
+输入exit命令，系统会自动正常运行起来。
+
+
+
+缺陷：只要有人能物理的接触到主机，即可修改root密码！只需要重启，并给内核一个1参数。
+应对策略：Grub加密
+通过在/boot/grub/grub.conf中的启动配置（需要root登录才能编辑）中加入如下参数即可对grub进行加密：
+	password --md5 $1$jKbvp$FAbq8vBZYH.2eG.tZoAj20
+
+######
+# grub-md5-crypt  #通过这个命令生成密码（比如123456会生成如下密码）
+Password: 
+Retype password: 
+$1$jKbvp$FAbq8vBZYH.2eG.tZoAj20 #注意不要多或者少拷贝字符，不要漏了.号，不要在末尾多拷贝空格。
+######
+
+
+这时，如果按下字母e想修改，需要按下p输入密码，密码正确后才可以解锁字母e，才能编辑！
+
+如果你把Grub的密码也忘了，那么...
+只好把硬盘卸下来，修改文件后重新启动。
+
+还是有物理机器或硬件被盗而数据泄露的风险，还可以对根分区加密。
+不让无关人员接近物理主机！防止启动、盗窃硬盘等。
+
+
+
+========================================
+|-- UBUNTU中如何获得root权限
+----------------------------------------
+From URL: http://www.cnblogs.com/wuxinrui/archive/2011/03/26/1996565.html
+
+在终端中输入：
+sudo passwd root
+  Enter new UNIX password: (在这输入你的密码）
+  Retype new UNIX password: (确定你输入的密码）
+  passwd: password updated successfully
+
+以后，如果在想获得root权限，只需进行如下的操作：
+su root
+Password: (在此输入你上面设置的密码）
+
+如果要再次禁用 root 帐号，
+那么可以执行 sudo passwd -l root
+
+想退出就切换用户。
+
+
+
+
+========================================
+|-- ubuntu ssh服务的安装
 ----------------------------------------
 1. Ubuntu 下安装 OpenSSH Server 是无比轻松的一件事情，需要的命令只有一条：
 　　$ sudo apt-get install openssh-server   （注意这里是openssh-server哦，不是client）
@@ -91,46 +306,6 @@ ls rm rmdir mkdir 这些命令都可以使用。同理调用本机都是加 l , 
 
 
 
-========================================
-Ubuntu下修改主机名称
-----------------------------------------
-http://blog.csdn.net/simplty/article/details/9371103
-
-1.$su root   //或者以下命令使用sudo执行
-
-2.#vim /etc/hostname  /将里面的名字改为你想改的名字，例如myname
-vim不会用的参考百度：    [Linux/Ubuntu] vi/vim 使用方法讲解
-
-3.先查看/etc/hostname里的内容，这是你ubuntu的hostname
-    然后编辑/etc/hosts文件，
-    在终端里输入：sudo vim /etc/hosts 
-    在127.0.0.1 localhost下面输入：127.0.1.1 myname    
-
-4.重启reboot后即可见到新主机名字。
-
-ps:出现ubuntu unable to resolve host xxx  错误的时候也可用第3步解决  
-
-
-========================================
-UBUNTU中如何获得root权限
-----------------------------------------
-From URL: http://www.cnblogs.com/wuxinrui/archive/2011/03/26/1996565.html
-
-在终端中输入：
-sudo passwd root
-  Enter new UNIX password: (在这输入你的密码）
-  Retype new UNIX password: (确定你输入的密码）
-  passwd: password updated successfully
-
-以后，如果在想获得root权限，只需进行如下的操作：
-su root
-Password: (在此输入你上面设置的密码）
-
-如果要再次禁用 root 帐号，
-那么可以执行 sudo passwd -l root
-
-想退出就切换用户。
-
 
 
 
@@ -195,8 +370,164 @@ GPT（GUID Partition Table）是一个较新的分区机制， 解决了很多MB
 	- Windows7 64bit、windowsServer2008 64bit支持GPT
 	
 
+
+
 ========================================
-磁盘管理: fdisk 是一款强大的磁盘操作工具
+|-- 查看磁盘剩余空间: df命令
+----------------------------------------
+常用命令 
+$ df -h  #查看哪个盘还有空间，还有多少空间
+
+
+
+
+
+一、df 命令；
+df 是来自于coreutils 软件包，系统安装时，就自带的；我们通过这个命令可以查看磁盘的使用情况以及文件系统被挂载的位置；
+
+
+1.举例：
+[root@localhost beinan]# df -lh
+
+	Filesystem 容量 已用 可用 已用% 挂载点
+	/dev/hda8 11G 6.0G 4.4G 58% /
+	/dev/shm 236M 0 236M 0% /dev/shm
+	/dev/sda1 56G 22G 35G 39% /mnt/sda1
+
+我们从中可以看到,系统安装在/dev/hda8 ；还有一个56G的磁盘分区/dev/sda1挂载在 /mnt/sda1中；
+其它的参数请参考 man df
+
+
+
+
+2.相关信息
+df命令: df命令用来检查linux文件系统的磁盘空间占用情况，所有用户均有使用df命令的权限。
+
+语法格式
+df [参数]
+
+主要参数
+-s：对每个Names参数只给出占用的数据块总数。
+-a：递归地显示指定目录中各文件及子目录中各文件占用的数据块数。若既不指定-s，也不指定-a，则只显示Names中的每一个目录及其中的各子目录所占的磁盘块数。
+-k：以1024字节为单位列出磁盘空间使用情况。
+-x：跳过在不同文件系统上的目录不予统计。
+-l：计算所有的文件大小，对硬链接文件则计算多次。
+-i：显示inode信息而非块使用量。
+-h：以容易理解的格式印出文件系统大小，例如124KB、345MB、46GB。
+-P：使用POSIX输出格式。
+-T：显示文件系统类型。
+
+
+
+
+
+========================================
+|-- 查看当前目录下的文件夹大小: du 命令
+----------------------------------------
+常用命令
+$ du ./* -s | sort -k1nr #查看当前文件夹下的文件和文件夹大小，按照从大到小的顺序排列
+
+
+
+
+
+1.
+du -sh *   查看当前目录下的文件夹大小
+
+du 命令
+用途: 概述磁盘使用。
+
+语法
+du [ -a | -s ] [ -k ] [ -m ] [ -g ][ -l ] [ -r ] [ -x ] [ -H | -L ][ File ... ]
+
+描述
+du命令显示用于文件的块的数量。如果指定的File参数实际上是一个目录，就要报告该目录内的所有文件。如果没有提供 File参数，du命令使用当前目录内的文件。
+
+如果File参数是一个目录，那么报告的块的数量就是分配到目录中文件以及分配到目录自身的块之和。
+
+指定-a标志，报告个体文件中块数量。不管是否使用了-a标志，由File参数指定的个体文件总是要列出。
+指定-s标志，报告用于所有指定文件和目录中所有文件的全部块。
+
+块计数包括每个文件的间接块。块计数是通过 512 字节单位计算的，它与系统使用的群集大小无关。指定-k标志，通过 1024 字节单位计算块数。
+
+
+注:
+具有多个链接的文件只为一个条目计数和书写。
+由于块计数只基于文件大小，所以在报告的块数中，未分配的块是没有包含进去的。
+如果du得不到文件属性，或者无法读取目录，它就报告一个错误，并且会影响命令的退出状态。
+
+标志
+
+-a	为每个指定文件显示磁盘使用情况，或者为目录中每个文件显示各自磁盘使用情况。将该标志与-s标志进行对比。
+-g	用 GB 单位计算块数，而不是用缺省的 512 字节单位。对磁盘使用情况的输出值要用浮点数，这是因为如果用字节为单位的话，值会非常大。
+-H	如果在命令行指定了符号链接，du 命令将统计链接引用的文件或文件层次结构的大小。
+-k	用 1024 字节单位计算块数，而不是用缺省的 512 字节单位。
+-l	在文件链接和多链接之间均匀地分配块。根据缺省值，有两个或者更多链接的文件只计数一次。
+-L	如果在命令行指定了符号链接或者在文件层次结构的遍历中多次遇到符号链接，则 du 命令应统计链接引用的文件或文件层次结构的大小。
+-m	用 MB 单位计算块数，而不是用缺省的 512 字节单位。对磁盘使用情况的输出值要用浮点数，这是因为如果用字节为单位的话，值会非常大。
+-r	报告不可访问的文件或者目录名。此为缺省设置。
+-s	为所有指定文件显示整个磁盘使用情况，或者为一个目录中的所有文件显示总的磁盘使用情况。将该标志与-a标志进行对比。
+-x	在评估文件大小时，只评估那些与File参数指定的文件或者目录驻留在相同设备上的文件。例如，您可以指定一个在多个设备上包含文件的目录。这种情况下，-x标志就为与目录驻留在相同设备的所有文件显示块的大小。
+如果指定了全部-k、-m和-g标志，或者是其中任意两个，最后指定的那个起作用。用标志-m和-g输出磁盘使用情况就会近似成最接近的第二位十进制数。
+
+
+退出状态
+	此命令返回下列出口值:
+	0	成功结束。
+	>0	发生错误。
+
+示例
+要概述一个目录树及其每个子树的磁盘使用情况，请输入：
+du /home/fran
+这在/home/fran目录及其每个子目录中显示了磁盘块数。
+
+要通过 1024 字节块概述一个目录树及其每个子树的磁盘使用情况，请输入：
+du -k /home/fran
+这在/home/fran目录及其每个子目录中显示了 1024 字节磁盘块数。
+
+
+要通过 MB 磁盘块概述一个目录树及其每个子树的磁盘使用情况，请输入：
+du -m /home/fran
+这在/home/fran目录及其每个子目录中显示了 MB 磁盘块数（近似到最接近的第二位十进制数）。
+
+
+要通过 GB 块概述一个目录树及其每个子树的磁盘使用情况，请输入：
+du -g /home/fran
+这在/home/fran目录及其每个子目录中显示了 GB 磁盘块数（近似到最接近的第二位十进制数）。
+
+
+要显示每个文件磁盘使用情况，请输入：
+du  -a /home/fran
+这显示了包含在每个文件以及目录/home/fran的子目录中的磁盘块数。在目录旁的数字就是该目录树的磁盘使用情况。在常规文件旁的数字就是该文件单独的磁盘使用情况。
+
+
+
+要只显示一个目录树的全部磁盘使用情况，请输入：
+du  -s /home/fran
+-s标志控制du命令，只显示/home/fran目录和其中包含的文件的磁盘使用情况的总和。通过缺省值，如果du命令无法读取一个文件或者目录，就显示一条错误消息。
+
+
+除了在 /home/fran 的遍历中找到的常规文件，还要显示所有符号链接引用的文件或文件层次结构的磁盘使用，请输入：
+du -L /home/fran
+
+
+要报告符号链接 mylink 引用的文件或文件层次结构的磁盘使用，请输入：
+du -H mylink
+
+文件
+/usr/bin/du	包含命令du。
+
+
+
+《AIX 5L V5.2 系统用户指南：操作系统与设备》中的『目录概述』解释了对目录和路径名字的处理。
+《AIX 5L V5.2 系统用户指南：操作系统与设备》中的『文件概述』提供了处理文件的信息
+
+http://blog.163.com/fly_sky_java/blog/static/140422234201172933910730/
+
+
+
+========================================
+|-- 磁盘管理: fdisk 是一款强大的磁盘操作工具
 ----------------------------------------
 fdisk -l 显示分区信息；
 
@@ -382,7 +713,7 @@ fsck修复
 
 
 ========================================
-Linux文件系统挂载管理 - CentOS6.8 挂载3T新硬盘
+|-- Linux文件系统挂载管理 - CentOS6.8 挂载3T新硬盘
 ----------------------------------------
 
 http://blog.sina.com.cn/s/blog_6594d5d30101kjhs.html
@@ -439,7 +770,7 @@ http://www.mamicode.com/info-detail-1977427.html
 
 
 ========================================
-Linux文件系统挂载管理 - 系统自动加载
+|-- Linux文件系统挂载管理 - 系统自动加载
 ----------------------------------------
 1.格式化后系统需要挂载到一个目录才能够使用。
 linux需要手工进行挂载操作 或 配置系统进行自动挂载。
@@ -461,7 +792,7 @@ mount -a #-a, --all   Mount all filesystems (of the given types) mentioned in fs
 
 
 ========================================
-实战：有一个windows重装成了Linux了，结果磁盘还是NTFS格式的。于是决定转化为ext4格式。
+|-- 实战：有一个windows重装成了Linux了，结果磁盘还是NTFS格式的。于是决定转化为ext4格式。
 ----------------------------------------
 
 问题：有一个windows重装成了Linux了，结果磁盘还是NTFS格式的。于是决定转化为ext4格式。
@@ -580,7 +911,7 @@ http://blog.csdn.net/nianhongmin/article/details/27818195
 
 
 ========================================
-Ubuntu下挂载U盘或Windows系统下其他盘符的操作方法
+|-- Ubuntu下挂载U盘或Windows系统下其他盘符的操作方法
 ----------------------------------------
 
 1.查看当前所有磁盘信息，找到U盘的设备标示，例如：/dev/sdb
@@ -614,151 +945,10 @@ Disk /dev/sdb1: 2006 MB, 2006458463 bytes
 （注意：此时不能够在media/u目录下输入前面的卸载命令，否则系统会认为你的“设备忙”而拒绝U盘的卸载）。
 
 
-========================================
-查看磁盘剩余空间: df命令
-----------------------------------------
-一、df 命令；
-df 是来自于coreutils 软件包，系统安装时，就自带的；我们通过这个命令可以查看磁盘的使用情况以及文件系统被挂载的位置；
-
-
-1.举例：
-[root@localhost beinan]# df -lh
-
-	Filesystem 容量 已用 可用 已用% 挂载点
-	/dev/hda8 11G 6.0G 4.4G 58% /
-	/dev/shm 236M 0 236M 0% /dev/shm
-	/dev/sda1 56G 22G 35G 39% /mnt/sda1
-
-我们从中可以看到,系统安装在/dev/hda8 ；还有一个56G的磁盘分区/dev/sda1挂载在 /mnt/sda1中；
-其它的参数请参考 man df
-
-
-
-
-2.相关信息
-df命令: df命令用来检查linux文件系统的磁盘空间占用情况，所有用户均有使用df命令的权限。
-
-语法格式
-df [参数]
-
-主要参数
--s：对每个Names参数只给出占用的数据块总数。
--a：递归地显示指定目录中各文件及子目录中各文件占用的数据块数。若既不指定-s，也不指定-a，则只显示Names中的每一个目录及其中的各子目录所占的磁盘块数。
--k：以1024字节为单位列出磁盘空间使用情况。
--x：跳过在不同文件系统上的目录不予统计。
--l：计算所有的文件大小，对硬链接文件则计算多次。
--i：显示inode信息而非块使用量。
--h：以容易理解的格式印出文件系统大小，例如124KB、345MB、46GB。
--P：使用POSIX输出格式。
--T：显示文件系统类型。
-
-
-
 
 
 ========================================
-查看当前目录下的文件夹大小: du 命令
-----------------------------------------
-
-1.
-du -sh *   查看当前目录下的文件夹大小
-
-du 命令
-用途: 概述磁盘使用。
-
-语法
-du [ -a | -s ] [ -k ] [ -m ] [ -g ][ -l ] [ -r ] [ -x ] [ -H | -L ][ File ... ]
-
-描述
-du命令显示用于文件的块的数量。如果指定的File参数实际上是一个目录，就要报告该目录内的所有文件。如果没有提供 File参数，du命令使用当前目录内的文件。
-
-如果File参数是一个目录，那么报告的块的数量就是分配到目录中文件以及分配到目录自身的块之和。
-
-指定-a标志，报告个体文件中块数量。不管是否使用了-a标志，由File参数指定的个体文件总是要列出。
-指定-s标志，报告用于所有指定文件和目录中所有文件的全部块。
-
-块计数包括每个文件的间接块。块计数是通过 512 字节单位计算的，它与系统使用的群集大小无关。指定-k标志，通过 1024 字节单位计算块数。
-
-
-注:
-具有多个链接的文件只为一个条目计数和书写。
-由于块计数只基于文件大小，所以在报告的块数中，未分配的块是没有包含进去的。
-如果du得不到文件属性，或者无法读取目录，它就报告一个错误，并且会影响命令的退出状态。
-
-标志
-
--a	为每个指定文件显示磁盘使用情况，或者为目录中每个文件显示各自磁盘使用情况。将该标志与-s标志进行对比。
--g	用 GB 单位计算块数，而不是用缺省的 512 字节单位。对磁盘使用情况的输出值要用浮点数，这是因为如果用字节为单位的话，值会非常大。
--H	如果在命令行指定了符号链接，du 命令将统计链接引用的文件或文件层次结构的大小。
--k	用 1024 字节单位计算块数，而不是用缺省的 512 字节单位。
--l	在文件链接和多链接之间均匀地分配块。根据缺省值，有两个或者更多链接的文件只计数一次。
--L	如果在命令行指定了符号链接或者在文件层次结构的遍历中多次遇到符号链接，则 du 命令应统计链接引用的文件或文件层次结构的大小。
--m	用 MB 单位计算块数，而不是用缺省的 512 字节单位。对磁盘使用情况的输出值要用浮点数，这是因为如果用字节为单位的话，值会非常大。
--r	报告不可访问的文件或者目录名。此为缺省设置。
--s	为所有指定文件显示整个磁盘使用情况，或者为一个目录中的所有文件显示总的磁盘使用情况。将该标志与-a标志进行对比。
--x	在评估文件大小时，只评估那些与File参数指定的文件或者目录驻留在相同设备上的文件。例如，您可以指定一个在多个设备上包含文件的目录。这种情况下，-x标志就为与目录驻留在相同设备的所有文件显示块的大小。
-如果指定了全部-k、-m和-g标志，或者是其中任意两个，最后指定的那个起作用。用标志-m和-g输出磁盘使用情况就会近似成最接近的第二位十进制数。
-
-
-退出状态
-	此命令返回下列出口值:
-	0	成功结束。
-	>0	发生错误。
-
-示例
-要概述一个目录树及其每个子树的磁盘使用情况，请输入：
-du /home/fran
-这在/home/fran目录及其每个子目录中显示了磁盘块数。
-
-要通过 1024 字节块概述一个目录树及其每个子树的磁盘使用情况，请输入：
-du -k /home/fran
-这在/home/fran目录及其每个子目录中显示了 1024 字节磁盘块数。
-
-
-要通过 MB 磁盘块概述一个目录树及其每个子树的磁盘使用情况，请输入：
-du -m /home/fran
-这在/home/fran目录及其每个子目录中显示了 MB 磁盘块数（近似到最接近的第二位十进制数）。
-
-
-要通过 GB 块概述一个目录树及其每个子树的磁盘使用情况，请输入：
-du -g /home/fran
-这在/home/fran目录及其每个子目录中显示了 GB 磁盘块数（近似到最接近的第二位十进制数）。
-
-
-要显示每个文件磁盘使用情况，请输入：
-du  -a /home/fran
-这显示了包含在每个文件以及目录/home/fran的子目录中的磁盘块数。在目录旁的数字就是该目录树的磁盘使用情况。在常规文件旁的数字就是该文件单独的磁盘使用情况。
-
-
-
-要只显示一个目录树的全部磁盘使用情况，请输入：
-du  -s /home/fran
--s标志控制du命令，只显示/home/fran目录和其中包含的文件的磁盘使用情况的总和。通过缺省值，如果du命令无法读取一个文件或者目录，就显示一条错误消息。
-
-
-除了在 /home/fran 的遍历中找到的常规文件，还要显示所有符号链接引用的文件或文件层次结构的磁盘使用，请输入：
-du -L /home/fran
-
-
-要报告符号链接 mylink 引用的文件或文件层次结构的磁盘使用，请输入：
-du -H mylink
-
-文件
-/usr/bin/du	包含命令du。
-
-
-
-《AIX 5L V5.2 系统用户指南：操作系统与设备》中的『目录概述』解释了对目录和路径名字的处理。
-《AIX 5L V5.2 系统用户指南：操作系统与设备》中的『文件概述』提供了处理文件的信息
-
-http://blog.163.com/fly_sky_java/blog/static/140422234201172933910730/
-
-
-
-
-
-========================================
-在virtualbox中装好Ubuntu后，发现硬盘空间太小，怎样才能增加硬盘容量？那就是再建一个硬盘
+|-- 在virtualbox中装好Ubuntu后，发现硬盘空间太小，怎样才能增加硬盘容量？那就是再建一个硬盘
 ----------------------------------------
   在virtualbox中装好Ubuntu后，发现硬盘空间太小，怎样才能增加硬盘容量？那就是再建一个硬盘：
 1. 添加新硬盘
@@ -826,173 +1016,7 @@ refer: http://blog.csdn.net/langxianwenye/article/details/50828289
 
 https://blog.lmlphp.com/archives/118/How_to_expand_Ubuntu_disk_in_VirtualBox_virtual_machine
 
-========================================
-系统启动和系统安全
-----------------------------------------
-系统启动流程
-	BIOS
-	MBR: Boot Code
-	执行引导程序-GRUB
-	加载内核
-	执行init
-	runlevel
 
-建议：同时使用CentOS和Ubuntu系统学习本章节。因为有很大的不同点。
-
-
-1.BIOS(Basic Input Output System)基本输入输出系统。
-一般保存在主板上的BIOS芯片中。
-计算机启动的时候第一个运行的就是BIOS，负责检查硬件并且查找可启动设备；
-可启动设备在BIOS设置中进行定义，如USB、CDROM、HD
-
-2.MBR
-BIOS找到启动设备后执行其引导代码。
-	第一个扇区512字节的最后两个字节是55AA。
-引导代码为MBR的前446字节。
-	一般的PC引导机制都是MBR。
-	高级的设备如Mac等可能是EFI硬件，则引导格式可能不同。
-
-3.GRUB
-Grub是现在Linux使用的主流引导程序。
-可以用来引导现在几乎所有的操作系统: linux, Mac, Windows。
-Grub的相关文件保存在/boot/grub目录中。
-Grub配置文件为/boot/grub/grub.conf  (Ubuntu中是 /boot/grub/grub.cfg)
-配置格式：Ubuntu和CentOS有一定区别。
-
-export linux_gfx_mode
-if [ "${linux_gfx_mode}" != "text" ]; then load_video; fi
-menuentry 'Ubuntu, with Linux 3.11.0-15-generic' --class ubuntu --class gnu-linux --class gnu --class os {
-        recordfail
-        gfxmode $linux_gfx_mode
-        insmod gzio
-        insmod part_msdos
-        insmod ext2
-        set root='(hd0,msdos1)'
-        search --no-floppy --fs-uuid --set=root 889007c7-3c15-4a45-afea-0c22022b7493
-        linux   /boot/vmlinuz-3.11.0-15-generic root=UUID=889007c7-3c15-4a45-afea-0c22022b7493 ro   quiet splash $vt_handoff
-        initrd  /boot/initrd.img-3.11.0-15-generic
-}
-
-
-
-4.Kernel
-	MBR的引导代码将负责找到并加载Linux内核。
-	Linux内核保存在/boot/vmlinuz-3.11.0-15-generic
-		5962944 Feb  4  2014 vmlinuz-3.11.0-15-generic
-
-	一般还会加载内核模块打包文件：/boot/initrd.img-3.11.0-15-generic
-	Linux为保持kernel的精简，将一些不常用的驱动、功能编译成为模块，在需要的时候动态加载，而这些模块被打包保存为一个initramfs文件。
-	早期版本Linux使用initrd文件，initramfs是initrd的替代优化版本，比initrd更加节省空间、更加灵活。
-	命令dmesg可以查看本次启动时内核的输出信息。（对应的文件是 /var/log/dmesg文件 ）
-
-5.INIT
-	init是Linux系统中运行的第一个进程。
-		当使用top命令的时候，发现一个pid（进程id，按照启动顺序排序）为1的进程，名字是init。是所有进程的父进程。
-	调用/etc/rc.d/rc.sysinit（名字不完全相同）负责对系统进行初始化，挂载文件系统，而且根据运行级别启动相应服务。
-
-
-6.Linux运行级别(run level)：
-	0	关机
-	1	单用户模式
-	2	不带网络的多用户模式
-	3	多用户模式	
-	4	未使用
-	5	XII图形化模式
-	6	重新启动
-用的最多的是3和5，区别仅是前者无图形界面。
-
-	可以通过/etc/inittab（Ubuntu没有找到，很可能是/etc/init/rc-sysinit.conf）配置文件修改默认的运行级别（env DEFAULT_RUNLEVEL=2）。
-	每个级别对应的启动服务保存在/etc/rc.d/rc[0123456].d中。
-	命令runlevel可以显示当前及上一个运行级别。 $ runlevel  #N 2 为什么是2呢？
-
-	命令init可以用以改变当前运行级别，需要root权限。
-	# init 3  #进入命令行多用户界面；
-	$ runlevel #3 5 #显示当前和上一个运行级别。
-
-
-
-
-wangjl@ubuntu:/etc$ pwd
-/etc
-wangjl@ubuntu:/etc$ ls | grep rc #
-bash.bashrc
-drirc
-inputrc
-nanorc
-rc0.d
-rc1.d
-rc2.d
-rc3.d
-rc4.d
-rc5.d
-rc6.d
-rc.local
-rcS.d
-wgetrc
-wangjl@ubuntu:/etc$ locate rc0.d
-/etc/rc0.d  #定位文件位置
-
-
-wangjl@ubuntu:/etc/init$ pwd
-/etc/init
-wangjl@ubuntu:/etc/init$ cat control-alt-delete.conf 
-# control-alt-delete - emergency keypress handling
-#
-# This task is run whenever the Control-Alt-Delete key combination is
-# pressed, and performs a safe reboot of the machine.
-
-description	"emergency keypress handling"
-author		"Scott James Remnant <scott@netsplit.com>"
-
-start on control-alt-delete
-
-task
-exec shutdown -r now "Control-Alt-Delete pressed" #建议注释掉这一行，防止意外重启服务器（win是调出任务管理器，linux是直接重启！）。
-
-
-
-
-========================================
-[CentOS]单用户修改root密码(忘记root密码了>.<)
-----------------------------------------
-如果root管理员忘了密码怎么办？只有一种方法，就是进入运行级别1.
-	- 为内核传递参数"1"（数字1）或"single"使系统进入单用户模式。
-	- 单用户模式下不启动任何服务；
-	- 单用户模式直接以root用户登录，并且不需要密码；
-	- 可以使用passwd修改root密码。
-
-
-(1)启动时不停地按上下键，使启动界面卡住：
-(2)按下字母e，进入启动配置项：
-(3)光标移动到kernel条目上，再按下字母e，进入编辑界面，添加一个空格和数字1，回车。
-按下字母b启动系统。内核以运行级别1运行。
-现在是root用户登录的，而且不需要密码！
-
-(4)使用passwd命令修改密码即可。
-输入exit命令，系统会自动正常运行起来。
-
-
-
-缺陷：只要有人能物理的接触到主机，即可修改root密码！只需要重启，并给内核一个1参数。
-应对策略：Grub加密
-通过在/boot/grub/grub.conf中的启动配置（需要root登录才能编辑）中加入如下参数即可对grub进行加密：
-	password --md5 $1$jKbvp$FAbq8vBZYH.2eG.tZoAj20
-
-######
-# grub-md5-crypt  #通过这个命令生成密码（比如123456会生成如下密码）
-Password: 
-Retype password: 
-$1$jKbvp$FAbq8vBZYH.2eG.tZoAj20 #注意不要多或者少拷贝字符，不要漏了.号，不要在末尾多拷贝空格。
-######
-
-
-这时，如果按下字母e想修改，需要按下p输入密码，密码正确后才可以解锁字母e，才能编辑！
-
-如果你把Grub的密码也忘了，那么...
-只好把硬盘卸下来，修改文件后重新启动。
-
-还是有物理机器或硬件被盗而数据泄露的风险，还可以对根分区加密。
-不让无关人员接近物理主机！防止启动、盗窃硬盘等。
 
 
 
@@ -1091,7 +1115,7 @@ rpm -V software
 
 
 ========================================
-Yum(Yellowdog Updater, Modified)解决依赖关系
+|-- Yum(Yellowdog Updater, Modified)解决依赖关系
 ----------------------------------------
 rpm软件包形式管理软件虽然方便，但是需要手工解决软件包的依赖关系。很多时候安装一个软件需要首先安装一个或多个（有时多达上百个）其他软件，手工解决时很复杂。使用YUM可以解决这个问题。
 
@@ -1242,7 +1266,7 @@ gpgcheck=0
 
 	
 ========================================
-linux软件的安装/卸载/升级/添加环境变量(Ubuntu)
+|-- linux软件的安装/卸载/升级/添加环境变量(Ubuntu)
 ----------------------------------------
 安装ssh服务
 sudo apt install openssh-server
@@ -1277,7 +1301,7 @@ $ which ssh
 
 
 ========================================
-linux软件添加环境变量或软链接(Ubuntu)
+|-- linux软件添加环境变量或软链接(Ubuntu)
 ----------------------------------------
 诸如bowtie、bismark等程序，只能在其目录下使用，不能再其他目录下使用，这样很不方便。
 想在任何目录下使用该软件，有两种方式：添加环境变量或软链接。
@@ -1360,27 +1384,164 @@ $source /etc/environment
 
 
 
+
+
 ========================================
-JKD和eclipse安装
+linux程序前后台切换、查看、关闭
 ----------------------------------------
-(1)Java JDK
-https://www.digitalocean.com/community/articles/how-to-install-java-on-ubuntu-with-apt-get
 
-https://www.oracle.com/technetwork/java/javase/downloads/jdk8-downloads-2133151.html
+1.后台运行
+
+(1)如果程序在前台运行中，可以通过ctrl + z来把程序暂停，然后用bg %[number]命令把这个程序放到后台运行 
+$ sleep 10
+^Z
+[1]+  Stopped                 sleep 10
+#ctrl+z 挂起当前任务
+
+$ bg %1
+[1]+ sleep 10 &
+
+
+(2)&命令
+&是指在后台运行，但当用户退出(挂起)的时候，命令自动也跟着退出。
+
+功能：加在一个命令的最后，可以把这个命令放在后台执行，返回pid，可以通过 ps -ef|grep PID号 查看命令运行状态。 
+$ sleep 10 &
+[1] 15514
 
 
 
-sudo apt-get install default-jdk
-老版本jdk6：sudo apt-get install oracle-java6-installer
+(3)nohup命令
+功能：不挂断的运行命令，但是无法立刻获得shell的交互能力
+$ nohup --help
+Usage: nohup COMMAND [ARG]...
+  or:  nohup OPTION
+Run COMMAND, ignoring hangup signals.
 
-(2)eclipse
-方法一：(缺点是安装时附加openjdk等大量程序并无法去除，优点是安装简单)
-$ sudo apt-get install eclipse
-方法二：(优点是安装内容清爽，缺点是配置麻烦)
+
+那么，我们可以巧妙的吧他们结合起来用，这样就能立刻获得shell交互，同时使命令永久的在后台执行。
+用户登出再连接，使用ps -ef发现它还在运行。
+长命令必须写在shell文件中，否则nohup不起作用
+nohup执行会产生日志文件 nohup.out，默认在当前目录，如果当前目录不可写，那么自动保存到家目录中。也可以自定义位置。
+
+常用格式：
+$ nohup COMMAND & #一般格式
+$ nohup python3 test_nohup.py > logfile.log &  #自定义日志文件名字，错误输出到哪？ //todo
+$ nohup command > myout.file 2>&1 & //log输出到myout.file，并将标准错误输出重定向到标准输出，再被重定向到myout.file
+或者 
+$ nohup bash xx.sh > myout.file 2>error.log &
+
+
+
+实例
+$ cat a.sh
+sleep 5
+date
+$ bash a.sh
+## Fri May 10 14:39:13 CST 2019
+$ nohup bash a.sh >sleep.log &  #后台永续运行
+[1] 31727
+$ nohup: ignoring input and redirecting stderr to stdout
+一段时间后运行结束
+[1]+  Done                    nohup bash a.sh > sleep.log
+日志文件 sleep.log 内容是 Fri May 10 14:39:37 CST 2019
+
+
+
+
+
+
+
+2.查看后台运行的程序
+两个命令可以用，jobs和ps,区别是jobs用于查看当前终端后台运行的任务，换了终端就看不到了。而ps命令用于查看瞬间进程的动态，可以看到别的终端运行的后台进程。
+
+(1)jobs命令： 查看当前终端后台运行的任务
+$ sleep 10 &
+[1] 16015
+$ jobs
+[1]+  Running                 sleep 10 &
+
+
+jobs -l选项可显示当前终端所有任务的PID，jobs的状态可以是running，stopped，Terminated。+ 号表示当前任务，- 号表示后一个任务。
+-l参数 lists process IDs in addition to the normal information
+#好像-l参数没啥用，加和没加没啥区别。
+
+
+$ jobs #带+表示最新的jobs；带-表示次新的jobs；其他jobs不带符号
+[2]   Done                    sleep 20
+[3]   Running                 sleep 20 &
+[4]   Running                 sleep 20 &
+[5]-  Running                 sleep 20 &
+[6]+  Running                 sleep 20 &
+
+
+
+(2)ps命令：查看当前的所有进程
+ps -aux | grep "test.sh"  
+-a:显示所有程序;  -u:以用户为主的格式来显示;   -x:显示所有程序，不以终端机来区分
+-e:Select all processes.  Identical to -A;
+-f:Do full-format listing.
+
+$ sleep 120 &
+[1] 6164
+
+$ ps -aux |grep "sleep 120"
+wangjl    6164  0.0  0.0   6176   736 pts/3    S    14:56   0:00 sleep 120
+
+$ ps -ef|grep "sleep" #可以按照命令关键词查进程
+$ ps -ef|grep 6164 #也可以按照进程号查进程
+wangjl    6164 10693  0 14:56 pts/3    00:00:00 sleep 120
+
+
+
+
+
+
+3.fg将程序放到前台运行
+$ sleep 10 &
+[1] 16426
+$ fg %1
+sleep 10
+
+
+
+
+
+4.kill 终止程序运行
+(1)通过jobs命令查看后台运行的jobnum，然后执行 kill %jobnum
+(2)通过ps命令查看进程号PID，然后执行 kill PID 或  kill -9 PID
+(3)前台进程的终止: Ctrl+c
+
+$ jobs
+[1]-  Running                 sleep 20 &
+[2]+  Running                 sleep 30 &
+
+$ kill %1
+$ jobs
+[1]-  Terminated              sleep 20
+[2]+  Running                 sleep 30 &
+
+$ ps -aux |grep sleep
+wangjl   11752  0.0  0.0   6176   760 pts/3    S    15:19   0:00 sleep 100
+$ kill -9 11752
+[1]+  Killed                  sleep 100 #kill -9 PID
+
+
+
+
+另外有两个常用的ftp工具ncftpget和ncftpput，可以实现后台的ftp上传和下载，这样我就可以利用这些命令在后台上传和下载文件了。
+
+refer:
+https://blog.csdn.net/luckywang1103/article/details/80984985
+
+
+
+
+
 
 
 ========================================
-CentOS下的htop命令
+|-- CentOS下的htop命令
 ----------------------------------------
 htop比top命令更直观的显示cpu和内存的状态，并能显示完整命令。
 Ubuntu下直接apt-get install htop 即可安装htop命令。而CentOS下并没有如此简洁的安装方法。
@@ -1454,7 +1615,7 @@ $ htop #即可查看
 
 另外还在使用时
 /:搜索字符
-h:显示某个用户的进程，在左侧可以选项
+u:显示某个用户的进程，在左侧可以选项
 t:显示树形结构
 h ： 显示帮助
 H ： 显示/隐藏用户线程
@@ -1484,8 +1645,110 @@ refer:
 http://blog.sina.com.cn/s/blog_9f1c09310101aa5z.html
 http://www.centoscn.com/image-text/install/2014/0609/3112.html
 
+
 ========================================
+|-- linux下杀死进程（kill）的N种方法、杀掉僵死进程
 ----------------------------------------
+http://blog.csdn.net/andy572633/article/details/7211546
+
+1.常规篇：
+　首先，用ps查看进程，方法如下：
+
+$ ps -ef
+
+……
+smx       1822     1  0 11:38 ?        00:00:49 gnome-terminal
+smx       1823  1822  0 11:38 ?        00:00:00 gnome-pty-helper
+smx       1824  1822  0 11:38 pts/0    00:00:02 bash
+smx       1827     1  4 11:38 ?        00:26:28 /usr/lib/firefox-3.6.18/firefox-bin
+
+或者：
+
+$ ps -aux
+
+……
+
+smx       1822  0.1  0.8  58484 18152 ?        Sl   11:38   0:49 gnome-terminal
+smx       1823  0.0  0.0   1988   712 ?        S    11:38   0:00 gnome-pty-helper
+smx       1827  4.3  5.8 398196 119568 ?       Sl   11:38  26:13 /usr/lib/firefox-3.6.18/firefox-bin
+
+此时如果我想杀了火狐的进程就在终端输入：
+
+$ kill -s 9 1827
+
+其中-s 9 制定了传递给进程的信号是９，即强制、尽快终止进程。各个终止信号及其作用见附录。
+1827则是上面ps查到的火狐的PID。
+
+简单吧，但有个问题，进程少了则无所谓，进程多了，就会觉得痛苦了，无论是ps -ef 还是ps -aux，每次都要在一大串进程信息里面查找到要杀的进程，看的眼都花了。
+
+
+
+
+2.进阶篇：
+
+把ps的查询结果通过管道给grep查找包含特定字符串的进程。管道符“|”用来隔开两个命令，管道符左边命令的输出会作为管道符右边命令的输入。
+
+$ ps -ef | grep firefox
+smx       1827     1  4 11:38 ?        00:27:33 /usr/lib/firefox-3.6.18/firefox-bin
+smx      12029  1824  0 21:54 pts/0    00:00:00 grep --color=auto firefox
+
+这次就清爽了。然后就是
+
+$kill -s 9 1827
+
+
+
+
+3.僵尸进程: 就是先于父进程结束的子进程，父进程又不管。
+通过top命令可以监视僵尸进程的数量。
+或者
+$ ps -aux |grep Z 
+#wangjl   411451  0.0  0.0      0     0 ?        Z    16:07   0:00 [ZMQbg/45] <defunct>
+
+
+僵尸进程不能被直接杀掉，要不然也不叫僵尸进程了。
+kill -9 411451
+
+
+查找其父进程
+$ ps -ef | grep 411451
+#wangjl   411451   1988  0 16:07 ?        00:00:00 [ZMQbg/45] <defunct>
+其父进程pid号为1988，
+$ ps -ef|grep 1988|head
+wangjl     1988   1376  3 May06 ?        02:49:33 /home/wangjl/software/anaconda3/bin/python -m ipykernel_launcher -f /run/user/1012/jupyter/kernel-fadf192b-d7bd-48b6-b926-df62432c2bb0.json
+
+发现其父进程是一个python jupyter进程，由于没有运行，所以直接杀掉该进程？
+kill -9 1988 #发现僵尸进程也消失了。
+
+
+批量杀死僵尸进程的父进程：
+ps -A -o stat,ppid,pid,cmd | grep -e '^[Zz]' | awk '{print $2}' | xargs kill -9
+
+
+
+https://www.cnblogs.com/reality-soul/p/6343339.html
+
+
+
+
+========================================
+JKD和eclipse安装
+----------------------------------------
+(1)Java JDK
+https://www.digitalocean.com/community/articles/how-to-install-java-on-ubuntu-with-apt-get
+
+https://www.oracle.com/technetwork/java/javase/downloads/jdk8-downloads-2133151.html
+
+
+
+sudo apt-get install default-jdk
+老版本jdk6：sudo apt-get install oracle-java6-installer
+
+(2)eclipse
+方法一：(缺点是安装时附加openjdk等大量程序并无法去除，优点是安装简单)
+$ sudo apt-get install eclipse
+方法二：(优点是安装内容清爽，缺点是配置麻烦)
+
 
 
 ========================================

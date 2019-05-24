@@ -70,10 +70,12 @@ https://genomebiology.biomedcentral.com/articles/10.1186/s13059-017-1248-5
 
 
 
-
+========================================
+c1单细胞测序基本概念
+----------------------------------------
 
 ========================================
-c1测序技术官网主页
+|-- c1测序技术官网主页
 ----------------------------------------
 http://cn.fluidigm.com/products/c1-system
 
@@ -92,10 +94,139 @@ The C1™ mRNA Sequencing High Throughput Demultiplexer Perl script application 
 
 
 
+========================================
+|-- c1芯片 - IFC Chip (C1™ Single-Cell Auto Prep Integrated Fluidic Circuit)
+----------------------------------------
+
+2. c1, Fluidigm
+http://cn.fluidigm.com/
+
+(1)c1芯片
+http://cn.fluidigm.com/reagents/genomics/101-4982-c1-single-cell-mrna-seq-ht-ifc-10-17um-5ifcs
+
+C1™ Single-Cell mRNA Seq HT 10-17 µm—5 IFCs (Replaces product 101-0222)
+Five C1 Single-Cell mRNA Seq HT IFC for capture, lysis, reverse transcription and cell multiplexing of 800 individual medium cells (10–17 µm).
+
+Reagents sold separately. Replaces product 101-0222.
+
+(2) 标准品
+C1™ RNA Standard Assays
+Primers for 3 internal RNA spike control assays sufficient for 50 C1 IFCs.
+
+
+(3)c1 单细胞测序的技术噪声
+https://www.nature.com/articles/nmeth.2645
+
+Cell capture and library preparation for mouse cells using the Fluidigm C1 system.
+用96孔板捕获单细胞，显微镜镜检有不是单细胞的去掉。
+2,000 cells were loaded onto a 10- to 17-μm C1 Single-Cell Auto Prep IFC (Fluidigm), and cell capture was performed according to the manufacturer's instructions. The capture efficiency was inspected using a microscope, and there were single cells in 93 positions and two cells in three positions. These three positions were noted, and the data from these cells were subsequently removed from analysis.
+
+细胞裂解，加入ERCC内参，合成cDNA，PCR扩增。
+Upon capture, reverse transcription and cDNA preamplification were performed in the 10- to 17-μm C1 Single-Cell Auto Prep IFC using the SMARTer PCR cDNA Synthesis kit (Clontech) and the Advantage 2 PCR kit (Clontech). 1 μl of the ERCC Spike-In Control Mix (Ambion) in a 1:400 dilution in C1 Loading Reagent was added to the lysis mix.
+
+
+稀释cDNA，Nextera建库。混库，在HiSeq上8通道PE75测序。
+cDNA was harvested and diluted to a range of 0.1–0.3 ng/μl, and Nextera libraries were prepared using the Nextera DNA Sample Preparation Kit and the Nextera Index Kit (Illumina) by following the instructions in the Fluidigm manual “Using the C1 Single-Cell Auto Prep System to Generate mRNA from Single Cells and Libraries for Sequencing.” Libraries were pooled, and paired-end 75-bp sequencing was performed on eight lanes of an Illumina HiSeq. All experiments involving mice were approved by the local ethical review committee, and a certificate of designation from the UK Home Office (the national authority for animal experimentation) was obtained.
+
+
+
+
+比对和标准化 Mapping of reads and normalization for the mouse data set (91 cells).
+PE读段用GSNAP(版本号2013-02-05)软件map到38.70鼠基因组和ERCC上，默认参数。有两个reads数太少去掉了，剩下91个细胞。随后操作和A. thaliana数据一样。
+Paired-end reads were mapped simultaneously to the M. musculus genome (Ensembl version 38.70) and the ERCC sequences using GSNAP (version 2013-02-05)17 with default parameters. Two cells were removed at this stage owing to very low numbers of reads mapping to these libraries, which left 91 cells in total. From here we proceeded as described for the A. thaliana data.
+
+
+
 
 
 ========================================
-细胞系
+|-- ERCC spike-ins(Ambion)
+----------------------------------------
+https://www.biostars.org/p/217961/
+
+Hello!
+
+I apologise if I am asking a basic question but I was wondering if someone here could clue me in about the role of ERCC spike-in for RNA-Seq?
+
+I've been given a few sets of RNA-Seq data to align to a reference genome and do differential gene expression analysis. I was going to do this via mapping to the reference as opposed to de novo.
+
+I noticed when blasting my over-represented sequences generated from FASTQC that in one sample, I had an over-represented sequence caused by the ERCC spike in. I've tried to understand the role of this in differential gene expression analysis but I'm struggling a bit.
+
+My questions are:
+
+1)Is it normal to present as an over-represented sequence in 1 sample only? 2) Do I need to remove it for mapping and differential expression analysis? 3) If I need to remove it, what's the best way of going about it?
+
+Thank you very much in advance,
+
+Gill
+
+
+
+
+========================================
+|-- UMI
+----------------------------------------
+1.  UMI(4-10bp)是反转录时添加上的。方便去除扩增噪音干扰。
+barcodes (4^N, where N is the length of UMI) 数目远小于一个细胞内的分子数，所以鉴定unique分子，要同时使用barcode and mapping location (transcript)。
+当使用UMI时，一般只测有UMI的一端（通常是3'端）。
+
+2.步骤
+第一步是map UMI reads，推荐使用STAR，因为它快速且输出高质量BAM比对文件。另外，mapping location也很有用，比如识别转录本的不良注释的3'端UTR。
+
+UMI测序通常使用PE测序，一端捕获cell和UMI barcode，另一端测序外显子序列。
+注意： 推荐trimming and/or filtering 含有polyA的reads，防止他们含有内部polyA/polyT导致mapping error。
+
+处理过UMI实验的reads后，通常还要：
+1)UMI加到另一个配对read的名字上；
+2)reads通过cell barcode分到不同的文件中。
+	对于特别大量、浅数据集，cell barcode也可以加到read name上，来避免过多文件。
+
+
+3.对barcode计数
+实际上不是每个UMI对应一个分子，因为：
+1）不同的UMI不一定就是不同的分子：UMI有可能扩增时出错。
+2）不同的转录本不一定就是不同的分子：比对错误以及multimapping导致错误。
+3）相同UMI不一定意味着同一个分子：UMI有编好，可能一个UMI结合到不同mRNA分子上。
+
+4.矫正UMI错误的方法
+1).UMI-tools’ directional-adjacency method implements a procedure which considers both the number of mismatches and the relative frequency of similar UMIs to identify likely PCR/sequencing errors.
+2).Currently an open question. The problem may be mitigated by removing UMIs with few reads to support their association with a particular transcript, or by removing all multi-mapping reads.
+3).Simple saturation (aka “collision probability”) correction proposed by Grun, Kester and van Oudenaarden (2014) to estimate the true number of molecules  
+M
+
+可视化检测方法：做log2(UMIs)-log2(Reads)图.
+
+如何最佳的处理UMI是生信学术界一个热点。当前已经开发的方法包括：
+	UMI-tools
+	PoissonUMIs
+	zUMIs
+	dropEst
+
+5.下游处理方法
+当前UMI平台(DropSeq, InDrop, ICell8)的捕获效率很低、且变异很大。
+
+
+实例：
+Exercise 1 We have provided you with UMI counts and read counts from induced pluripotent stem cells generated from three different individuals (Tung et al. 2017) (see: Chapter 3.8 for details of this dataset)
+http://hemberg-lab.github.io/scRNA.seq.course/construction-of-expression-matrix.html#ref-Tung2017-ba
+
+6.
+read QC or mapping QC 不合格的细胞都要remove。否则会干扰下游分析。
+因为没有同意的标准，所以我们的QC都是和大多数比剔除离群值。
+
+有一个c1平台测序的数据集：
+http://hemberg-lab.github.io/scRNA.seq.course/construction-of-expression-matrix.html#expression-qc-reads
+中的3.8.2部分。
+
+
+
+
+
+
+
+
+========================================
+|-- 细胞系(MDA-MB-468细胞系和HeLa细胞系)
 ----------------------------------------
 1.细胞系
 (1)小鼠胚胎成纤维细胞；MEF细胞
@@ -147,76 +278,12 @@ Although the tissue donor was heterozygous for the G6PD alleles, the cell line c
 
 
 
-========================================
-c1芯片 - IFC Chip (C1™ Single-Cell Auto Prep Integrated Fluidic Circuit)
-----------------------------------------
-
-2. c1, Fluidigm
-http://cn.fluidigm.com/
-
-(1)c1芯片
-http://cn.fluidigm.com/reagents/genomics/101-4982-c1-single-cell-mrna-seq-ht-ifc-10-17um-5ifcs
-
-C1™ Single-Cell mRNA Seq HT 10-17 µm—5 IFCs (Replaces product 101-0222)
-Five C1 Single-Cell mRNA Seq HT IFC for capture, lysis, reverse transcription and cell multiplexing of 800 individual medium cells (10–17 µm).
-
-Reagents sold separately. Replaces product 101-0222.
-
-(2) 标准品
-C1™ RNA Standard Assays
-Primers for 3 internal RNA spike control assays sufficient for 50 C1 IFCs.
-
-
-(3)c1 单细胞测序的技术噪声
-https://www.nature.com/articles/nmeth.2645
-
-Cell capture and library preparation for mouse cells using the Fluidigm C1 system.
-用96孔板捕获单细胞，显微镜镜检有不是单细胞的去掉。
-2,000 cells were loaded onto a 10- to 17-μm C1 Single-Cell Auto Prep IFC (Fluidigm), and cell capture was performed according to the manufacturer's instructions. The capture efficiency was inspected using a microscope, and there were single cells in 93 positions and two cells in three positions. These three positions were noted, and the data from these cells were subsequently removed from analysis.
-
-细胞裂解，加入ERCC内参，合成cDNA，PCR扩增。
-Upon capture, reverse transcription and cDNA preamplification were performed in the 10- to 17-μm C1 Single-Cell Auto Prep IFC using the SMARTer PCR cDNA Synthesis kit (Clontech) and the Advantage 2 PCR kit (Clontech). 1 μl of the ERCC Spike-In Control Mix (Ambion) in a 1:400 dilution in C1 Loading Reagent was added to the lysis mix.
-
-
-稀释cDNA，Nextera建库。混库，在HiSeq上8通道PE75测序。
-cDNA was harvested and diluted to a range of 0.1–0.3 ng/μl, and Nextera libraries were prepared using the Nextera DNA Sample Preparation Kit and the Nextera Index Kit (Illumina) by following the instructions in the Fluidigm manual “Using the C1 Single-Cell Auto Prep System to Generate mRNA from Single Cells and Libraries for Sequencing.” Libraries were pooled, and paired-end 75-bp sequencing was performed on eight lanes of an Illumina HiSeq. All experiments involving mice were approved by the local ethical review committee, and a certificate of designation from the UK Home Office (the national authority for animal experimentation) was obtained.
-
-
-
-
-比对和标准化 Mapping of reads and normalization for the mouse data set (91 cells).
-PE读段用GSNAP(版本号2013-02-05)软件map到38.70鼠基因组和ERCC上，默认参数。有两个reads数太少去掉了，剩下91个细胞。随后操作和A. thaliana数据一样。
-Paired-end reads were mapped simultaneously to the M. musculus genome (Ensembl version 38.70) and the ERCC sequences using GSNAP (version 2013-02-05)17 with default parameters. Two cells were removed at this stage owing to very low numbers of reads mapping to these libraries, which left 91 cells in total. From here we proceeded as described for the A. thaliana data.
-
-
-
-========================================
-ERCC spike-ins(Ambion)
-----------------------------------------
-https://www.biostars.org/p/217961/
-
-Hello!
-
-I apologise if I am asking a basic question but I was wondering if someone here could clue me in about the role of ERCC spike-in for RNA-Seq?
-
-I've been given a few sets of RNA-Seq data to align to a reference genome and do differential gene expression analysis. I was going to do this via mapping to the reference as opposed to de novo.
-
-I noticed when blasting my over-represented sequences generated from FASTQC that in one sample, I had an over-represented sequence caused by the ERCC spike in. I've tried to understand the role of this in differential gene expression analysis but I'm struggling a bit.
-
-My questions are:
-
-1)Is it normal to present as an over-represented sequence in 1 sample only? 2) Do I need to remove it for mapping and differential expression analysis? 3) If I need to remove it, what's the best way of going about it?
-
-Thank you very much in advance,
-
-Gill
-
 
 
 
 
 ========================================
-细胞同步
+|-- 细胞同步
 ----------------------------------------
 
 3.细胞同步 胸苷法
@@ -244,8 +311,6 @@ http://www.dxy.cn/bbs/topic/329264
 
 
 
-========================================
-----------------------------------------
 
 
 
@@ -319,6 +384,84 @@ $ head -n 1200 13_R1.fastq | awk -F "TTTTTT" '{if(NR%4==1||NR%4==2) print $1}' >
 
 
 不再做，接着分好的细胞做，mapping、counting和Seurat软件包。
+
+
+
+
+
+========================================
+[官方脚本 mRNASeqHT_demultiplex.pl ] 按照每行的index把总fq文件分成细胞的fq文件
+----------------------------------------
+
+一、先做个大概的自检：检测不同barcode的read数量
+1.查看前8行
+$ zcat c2_R1.fastq.gz|head -n 8
+
+2.sed每隔4行取出来一行序列
+$ zcat c2_R1.fastq.gz|head -n 8|sed -n '2~4p'
+
+3.取出序列的前6个字符
+zcat c2_R1.fastq.gz|head -n 12|sed -n '2~4p'|cut -c1-6
+
+4.前6个字符的频率
+$ zcat c2_R1.fastq.gz|head -n 400|sed -n '2~4p'|cut -c1-6|sort | uniq -c
+
+5.按照频率排序
+$ zcat c2_R1.fastq.gz|head -n 4000|sed -n '2~4p'|cut -c1-6|sort | uniq -c|sort -k 1nr
+
+6.对整个文件统计，输出结果到文件
+$ zcat c2_R1.fastq.gz|sed -n '2~4p'|cut -c1-6|sort | uniq -c|sort -k 1nr >rowCount.c2_R1
+
+
+7.批量化
+$ vim getRowCount.sh
+for i in `ls *_R1.fastq.gz`;
+do
+	zcat ${i}|sed -n '2~4p'|cut -c1-6|sort | uniq -c|sort -k 1nr >rowCount/${i}.rc &
+done;
+
+
+
+
+二、官方脚本
+
+1.官方的index列表
+http://cn.fluidigm.com/search?query=demultiplex&submit-search=Refine
+http://cn.fluidigm.com/software
+
+C1 mRNA Seq HT Demultiplex Script   v2.0.1   Updated 五月 16, 2018
+The C1™ mRNA Sequencing High Throughput Demultiplexer Perl script application programming interface (API) allows automatic demultiplexing of individual single-cell samples from each column using the cell barcodes on the R1 reads. The API also automatically separates the large FASTQ file generated from each column pool into 40 pairs. This enables your C1 medium-cell HT IFC data to be preprocessed in a more efficient way.
+
+
+使用mRNASeqHT_demultiplex.pl脚本，把每一列按照R1的barcode分成40个细胞。
+
+
+
+
+2.测试脚本
+./mRNASeqHT_demultiplex.pl -i /home/wangjl/data/c1_2019APA/sc/combine/test/ -o /home/wangjl/data/c1_2019APA/sc/combine/test_out/
+
+输入文件名字要成对，类似：R1基本上只提供cell barcode，R2用于后续分析。 
+c01_R1.fastq 
+c01_R2.fastq
+
+
+
+
+3.使用脚本，批量执行
+$ pwd
+/home/wangjl/data/c1_2019APA/sc/combine
+$ mkdir sc_fq
+$ cd /home/wangjl/data/c1_2019APA
+$ ./mRNASeqHT_demultiplex.pl -i /home/wangjl/data/c1_2019APA/sc/combine/ -o /home/wangjl/data/c1_2019APA/sc/combine/sc_fq/
+
+单细胞的fq文件都在这里了。
+
+
+
+
+4.根据脚本产生的表格(demultiplex_report.xls)画出log10(Read)热图：40row x 12column
+R Script: /30_RE_cell_line/a01_visualReadsPerCell-after-mRNASeqHT_demultiplex.R
 
 
 
@@ -648,67 +791,6 @@ $ grep -i uhrf ../htseq_c19_H4.sam.count
 
 
 
-========================================
-UMI
-----------------------------------------
-1.  UMI(4-10bp)是反转录时添加上的。方便去除扩增噪音干扰。
-barcodes (4^N, where N is the length of UMI) 数目远小于一个细胞内的分子数，所以鉴定unique分子，要同时使用barcode and mapping location (transcript)。
-当使用UMI时，一般只测有UMI的一端（通常是3'端）。
-
-2.步骤
-第一步是map UMI reads，推荐使用STAR，因为它快速且输出高质量BAM比对文件。另外，mapping location也很有用，比如识别转录本的不良注释的3'端UTR。
-
-UMI测序通常使用PE测序，一端捕获cell和UMI barcode，另一端测序外显子序列。
-注意： 推荐trimming and/or filtering 含有polyA的reads，防止他们含有内部polyA/polyT导致mapping error。
-
-处理过UMI实验的reads后，通常还要：
-1)UMI加到另一个配对read的名字上；
-2)reads通过cell barcode分到不同的文件中。
-	对于特别大量、浅数据集，cell barcode也可以加到read name上，来避免过多文件。
-
-
-3.对barcode计数
-实际上不是每个UMI对应一个分子，因为：
-1）不同的UMI不一定就是不同的分子：UMI有可能扩增时出错。
-2）不同的转录本不一定就是不同的分子：比对错误以及multimapping导致错误。
-3）相同UMI不一定意味着同一个分子：UMI有编好，可能一个UMI结合到不同mRNA分子上。
-
-4.矫正UMI错误的方法
-1).UMI-tools’ directional-adjacency method implements a procedure which considers both the number of mismatches and the relative frequency of similar UMIs to identify likely PCR/sequencing errors.
-2).Currently an open question. The problem may be mitigated by removing UMIs with few reads to support their association with a particular transcript, or by removing all multi-mapping reads.
-3).Simple saturation (aka “collision probability”) correction proposed by Grun, Kester and van Oudenaarden (2014) to estimate the true number of molecules  
-M
-
-可视化检测方法：做log2(UMIs)-log2(Reads)图.
-
-如何最佳的处理UMI是生信学术界一个热点。当前已经开发的方法包括：
-	UMI-tools
-	PoissonUMIs
-	zUMIs
-	dropEst
-
-5.下游处理方法
-当前UMI平台(DropSeq, InDrop, ICell8)的捕获效率很低、且变异很大。
-
-
-实例：
-Exercise 1 We have provided you with UMI counts and read counts from induced pluripotent stem cells generated from three different individuals (Tung et al. 2017) (see: Chapter 3.8 for details of this dataset)
-http://hemberg-lab.github.io/scRNA.seq.course/construction-of-expression-matrix.html#ref-Tung2017-ba
-
-6.
-read QC or mapping QC 不合格的细胞都要remove。否则会干扰下游分析。
-因为没有同意的标准，所以我们的QC都是和大多数比剔除离群值。
-
-有一个c1平台测序的数据集：
-http://hemberg-lab.github.io/scRNA.seq.course/construction-of-expression-matrix.html#expression-qc-reads
-中的3.8.2部分。
-
-
-
-
-
-
-
 
 ========================================
 提取polyA尾巴位点的方法
@@ -735,156 +817,404 @@ Quantifying your RNA-seq data with salmon is that simple (and fast). Once you ha
 
 
 
-========================================
-下游分析开源R包 Seurat包
-----------------------------------------
-[10xG官方推荐]Seurat is an R package designed for QC, analysis, and exploration of single cell RNA-seq data. 
-http://satijalab.org/seurat/
-推荐页：https://support.10xgenomics.com/single-cell-gene-expression/software/pipelines/latest/rkit
-
-
-
-========================================
-Seurat包：画DotPlot图
-----------------------------------------
-
-####replot markergenes
-# v2.0新增2个filter
-DotPlotPDF=function(genelist,prefix="",width=26,height=10){
-  #filter1:保证基因唯一性
-  genelist=unique(genelist)
-  #filter2:保证基因在数据中存在
-  gene.exist=rownames(br10@data)#有的基因名字
-  #打印出不存在的基因
-  gene.reserve=c()
-  for(g in genelist){
-    if(g %in% gene.exist){
-      gene.reserve=c(gene.reserve, g)
-    }else{
-      print(g)
-    }
-  }
-  #开始画图
-  CairoPDF( paste0(prefix,"_DotPlot.pdf") , width = width, height = height)
-  #控制x坐标循序，可以把x逆序，如rev(genelist)
-  #怎么控制y坐标顺序？
-  marker_dot_plot <- DotPlot(object = br10, genes.plot = gene.reserve, plot.legend = TRUE,
-                             cols.use = c("black","red"), x.lab.rot = T,dot.scale = 10, do.return=T)
-  marker_dot_plot <- marker_dot_plot + theme(axis.text.x = element_text(angle = 60, vjust = 1, hjust = 1))
-  print(marker_dot_plot)
-  dev.off()
-}
-
-
-# 查看几个level，也就是几个分类
-levels(br10@ident)
-table(br10@ident)
-
-getwd()
-DotPlotPDF(rev(tmp$gene),"adjP0.05",width=28,height=4.5) #75个
-DotPlotPDF(top5$gene,"top5",width=5,height=4.5) #5*4=20个
-
-markers=readLines("marker_list/8.txt") #读取每行，生成数组
-DotPlotPDF(markers,"top5",width=5,height=4.5)
-#
-
 
 
 
 
 ========================================
-Seurat包：用tsne画不同批次的细胞的点图
+--|--(基于抽样的，不靠谱)曾使用fastQ screen软件区分序列来源
+----------------------------------------
+http://www.bioinformatics.babraham.ac.uk/projects/fastq_screen/
+
+FastQ Screen allows you to screen a library of sequences in FastQ format against a set of sequence databases so you can see if the composition of the library matches with what you expect.
+
+依赖$ bwa
+Program: bwa (alignment via Burrows-Wheeler transformation)
+Version: 0.7.17-r1188
+$ bwa index -a bwtsw ../hg19.fa
+
+#to human
+$ bwa mem -t 10 /home/wangjl/data/ref/human/BWA/hg19.fa /home/wangjl/data/c1_2019APA/sc/combine/sc_fq/R2_left/c2_ROW01_R2.fastq > /home/wangjl/data/c1_2019APA/sc/combine/sc_fq/mapping/BWA_human/c2_ROW01_bwa.sam
+
+#to mouse
+bwa mem -t 10 /home/wangjl/data/ref/mouse/BWA/mm9.fa /home/wangjl/data/c1_2019APA/sc/combine/sc_fq/R2_left/c2_ROW01_R2.fastq > /home/wangjl/data/c1_2019APA/sc/combine/sc_fq/mapping/BWA_mouse/c2_ROW01_bwa.sam
+
+fastQ screen下载页
+http://www.bioinformatics.babraham.ac.uk/projects/download.html#fastqscreen
+下载： http://www.bioinformatics.babraham.ac.uk/projects/fastq_screen/fastq_screen_v0.13.0.tar.gz
+文档：http://www.bioinformatics.babraham.ac.uk/projects/fastq_screen/_build/html/index.html
+
+
+配置文件：
+fastq_screen.conf.example 
+Rename the file to fastq_screen.conf after you have finished editing.
+设置bwa位置，human和mouse的index位置，线程数。
+
+$ fastq_screen /home/wangjl/data/c1_2019APA/sc/combine/sc_fq/R2_left/c2_ROW01_R2.fastq --outdir /home/wangjl/data/c1_2019APA/sc/combine/sc_fq/mapping/BWA_screen
+
+
+安装了bowtie2
+$ bowtie2 -p 6 -3 5 --local -x mm10 -1 example_1.fastq -2 example_2.fastq -S SRR3208744.bam
+
+$ bowtie2 -p 60 --local -x /home/wangjl/data/ref/human/bowtie2/hg19 -U /home/wangjl/data/c1_2019APA/sc/combine/sc_fq/R2_left_trim/c2_ROW01_R2.fastq -S /home/wangjl/data/c1_2019APA/sc/combine/sc_fq/mapping/bowtie2_human/c2_ROW01_R2.sam
+
+
+$ bowtie2 -p 60 --local -x /home/wangjl/data/ref/human/bowtie2/hg19 -U /home/wangjl/data/c1_2019APA/sc/combine/sc_fq/R2_left_trim/c2_ROW01_.fastq -S /home/wangjl/data/c1_2019APA/sc/combine/sc_fq/mapping/bowtie2_human/c2_ROW01_R2.sam
+
+
+aligned exactly 1 time: counts and pct.
+	         no --local | with --local
+没trim：  96580 (2.67%) | 366968 (10.14%)
+trim过： 179779 (5.39%) | 451462 (13.54%)
+
+结论：bowtie2的--local选项，有助于提高比对比率。
+做trim也能提高比对counts数。
+可能是去除两端残留的建库index，有助于精确比对。
+
+
+
+
+重新设置bowtie2位置，human和mouse的index位置，线程数。
+可以使用 --threads 设置线程数。
+$ fastq_screen /home/wangjl/data/c1_2019APA/sc/combine/sc_fq/R2_left_trim/c2_ROW01_.fastq --outdir /home/wangjl/data/c1_2019APA/sc/combine/sc_fq/mapping/bowtie2_screen
+
+$ fastq_screen /home/wangjl/data/c1_2019APA/sc/combine/sc_fq/R2_left/c2_ROW01_R2.fastq --outdir /home/wangjl/data/c1_2019APA/sc/combine/sc_fq/mapping/bowtie2_screen
+
+感觉fastq_screen不靠谱，它依赖于每次抽样0.1M reads，然后比对的结果，不如完全比对来的直接。
+
+
+
+========================================
+基本流程
 ----------------------------------------
 
-#
-mef=br10
-
-#分离分类变量
-cn=colnames(mef@data)
-end=regexpr('\\.',cn)
-#end=unlist(end[1:60])
-end;table(end)
-#pop= sapply(cn,substr,rep(1,60),end,USE.NAMES=F)
-pop=c()
-for(i in c(1:60)){
-  pop=c(pop,substr(cn[i], 1, end[i]-1))
-}
-pop
-table(pop)
 
 
-#TSNE plot for batches
-#pop<-rep(1,28)#bc
-#pop<-c(pop,rep(2,32))#mef
-#pop
-length(pop);table(pop)
-#pop<-rep(1,73)
-#pop<-c(pop,rep(2,26))
-#pop<-c(pop,rep(3,76))
+========================================
+fastQC与multiqc
+----------------------------------------
+1. 版本号
+$ fastqc --version
+FastQC v0.11.7
 
-coordx<-mef@dr$tsne@cell.embeddings[,1]
-coordy<-mef@dr$tsne@cell.embeddings[,2]
-df1<-data.frame(coordx=coordx,coordy=coordy,pop=pop)
-df1$pop<-as.factor(df1$pop)
-#pdf(paste(path_out,"5.pdf",sep=""))
-par(mai=c(1,1,0.2,0.5));
-pl<-ggplot(data=df1,aes(x=coordx,y=coordy,colour=factor(pop)))+
-  geom_point(size=2,alpha=1)+
-  #   guides(fill=guide_legend(title="test1"))+
-  labs(x="tSNE 1",y="tSNE 2")+theme_bw()+
-  theme(
-    panel.grid.major = element_blank(),
-    panel.grid.minor = element_blank(),
-    #    panel.border = element_blank(),
-    panel.background = element_blank())
-#pl+scale_colour_discrete(name="sample",labels=c("bc","mef"))
+$ multiqc --version
+multiqc, version 1.7
 
-pl+scale_color_discrete(name="Sample")
-#dev.off()
-############################
+
+
+2.基本命令
+$ pwd
+/home/wangjl/data/c1_2019APA/sc/combine/sc_fq/R2_left_QC
+$ ls ../R2_left/c2_ROW01_R2.fastq | while read id; do fastqc -t 40 $id -o ./; done
+
+
+###原始reads的
+多进程
+fastqc -t 4 /home/wangjl/data/c1_2019APA/sc/combine/sc_fq/R2_left/c2_ROW02_R2.fastq -o /home/wangjl/data/c1_2019APA/sc/combine/sc_fq/R2_left_QC/
+
+###trimming后的reads的
+fastqc -t 4 /home/wangjl/data/c1_2019APA/sc/combine/sc_fq/R2_left_trim/c2_ROW02_.fastq -o /home/wangjl/data/c1_2019APA/sc/combine/sc_fq/R2_left_trim_QC/
+
+
+# multiqc 批量生成报告
+multiqc *fastqc.zip -o /data/jinwf/wangjl/c1_2019APA/sc/combine/sc_fq/
+
+
+
+
+========================================
+使用trim_galore预处理
+----------------------------------------
+
+$ trim_galore --quality 25 --phred33 --stringency 3 --length 30 --gzip  --fastqc_args "-t 15" --output_dir /home/wangjl/data/c1_2019APA/sc/combine/sc_fq/trim/galore/ /home/wangjl/data/c1_2019APA/sc/combine/sc_fq/R2_left/c2_ROW01_R2.fastq
+
+
+$ cd /home/wangjl/data/c1_2019APA/sc/combine/sc_fq/trim/galore
+$ multiqc *fastqc.zip -o /home/wangjl/data/c1_2019APA/sc/combine/sc_fq/
+
+
 
 
 
 
 
 ========================================
-Seurat包：multidimensional scaling (MDS)多维尺度分析分析
+预处理工具cutadapt
 ----------------------------------------
-Seurat - Dimensional Reduction Vignette
-https://satijalab.org/seurat/dim_reduction_vignette.html
 
-MDS降维原理：
-https://blog.csdn.net/yang_xian521/article/details/7301121
-https://www.cnblogs.com/lochan/p/6627511.html
+安装python3:
+https://mirrors.tuna.tsinghua.edu.cn/anaconda/archive/Anaconda3-5.3.1-Linux-x86_64.sh
+$ pip install --user --upgrade cutadapt
+$ cutadapt --version
+2.3
 
 
-# Before running MDS, we first calculate a distance matrix between all pairs
-# of cells.  Here we use a simple euclidean distance metric on all genes,
-# using object@scale.data as input
-pbmc=br10
-d <- dist(x = t(x = pbmc@scale.data))
-# Run the MDS procedure, k determines the number of dimensions
-mds <- cmdscale(d = d, k = 2)
-# cmdscale returns the cell embeddings, we first label the columns to ensure
-# downstream consistency
-colnames(x = mds) <- paste0("MDS", 1:2)
-# We will now store this as a new dimensional reduction called 'mds'
-pbmc <- SetDimReduction(object = pbmc, reduction.type = "mds", slot = "cell.embeddings", 
-                        new.data = mds)
-pbmc <- SetDimReduction(object = pbmc, reduction.type = "mds", slot = "key", 
-                        new.data = "MDS")
+cutadapt要求文件名结尾必须是fq，fastq或者fq.gz，fastq.gz，不能是fa.gz，否则报错。
+http://cutadapt.readthedocs.io/en/stable/guide.html
 
-# We can now use this as you would any other dimensional reduction in all
-# downstream functions (similar to PCAPlot, but generalized for any
-# reduction)
-DimPlot(object = pbmc, reduction.use = "mds", pt.size = 2) #0.5
-DimPlot(object = pbmc, pt.size = 2)
 
-pop2=rep(0,28);pop2=c(pop2, rep(1,32));pop2
-DimPlot(object = pbmc, reduction.use = "mds", pt.size = 2) + 
-  geom_point(aes(colour=factor(pop2)) )
-  
-#
+$ pwd
+/home/wangjl/data/c1_2019APA/sc/combine/sc_fq
+$ mkdir R2_left_trim
+
+
+获取左侧240个文件的ID
+$ pwd
+/home/wangjl/data/c1_2019APA/sc/combine/sc_fq
+$ ls R2_left|cut -c1-8>left.ID
+$ wc left.ID 
+ 240  240 2160 left.ID
+$ head left.ID 
+c2_ROW01
+c2_ROW02
+...
+
+
+切除质量低于25的碱基，去除polyA尾巴，去掉长度少于30的read。
+# 基本语句 
+$ cutadapt -a "A{20}" -q 25 -m 30 -o /home/wangjl/data/c1_2019APA/sc/combine/sc_fq/R2_left_trim/trim-c3_ROW01.fastq /home/wangjl/data/c1_2019APA/sc/combine/sc_fq/R2_left/c3_ROW01_R2.fastq 1>/home/wangjl/data/c1_2019APA/sc/combine/sc_fq/R2_left_trim/c3_ROW01.log
+
+
+多线程执行 cutadapt 代码: \30_RE_cell_line/a02_cutadapt_multyThread.py
+输出结果：/home/wangjl/data/c1_2019APA/sc/combine/sc_fq/R2_left_trim
+
+
+
+
+
+========================================
+准备STAR软件
+----------------------------------------
+1.资源:下载基因组的fasta文件和gtf注释文件
+参考基因组 http://hgdownload.cse.ucsc.edu/goldenPath/hg19/bigZips/
+jinlab: $ ls /data1/hou/RNA/refs/hg19
+
+
+1.1 下载方式1
+axel -n 30 http://hgdownload.cse.ucsc.edu/goldenPath/hg19/bigZips/hg19.fa.gz
+
+1.2 下载方法2
+axel -n 40 http://hgdownload.cse.ucsc.edu/goldenPath/hg19/bigZips/chromFa.tar.gz
+tar -zxvf chromFa.tar.gz
+cd chroms
+cat *.fa >hg19.fa
+
+
+下载老鼠mm9基因组
+axel -n 20 http://hgdownload.cse.ucsc.edu/goldenPath/mm9/bigZips/mm9.2bit
+
+
+(1)怎么把2bit转变成fasta？使用twoBitToFa工具
+https://blog.csdn.net/weixin_40099163/article/details/86151988
+
+mm9.2bit - contains the complete mm9 Mouse Genome
+    in the 2bit format.  A utility program, twoBitToFa (available from our src tree), can be used to extract .fa file(s) from this file.  See also:
+        http://genome.ucsc.edu/admin/cvs.html - CVS access to the source tree
+        http://genome.ucsc.edu/admin/jk-install.html - building the utilities
+A pre-compiled version of the command line tool can be found at: http://hgdownload.soe.ucsc.edu/admin/exe/linux.x86_64/
+
+下载
+$ axel -n 30 http://hgdownload.soe.ucsc.edu/admin/exe/linux.x86_64/twoBitToFa
+$ chmod +x twoBitToFa
+添加到~/bin下。
+
+运行该软件：
+$ twoBitToFa mm9.2bit mm9.fa
+
+
+#下载mm10  http://hgdownload.cse.ucsc.edu/goldenPath/mm10/bigZips/
+cd /home/wangjl/data/ref/mm10
+$ axel -n 80 http://hgdownload.cse.ucsc.edu/goldenPath/mm10/bigZips/mm10.2bit
+#下载mm10 gtf和bed文件
+
+
+
+(2)从UCSC下载gtf注释文件
+
+
+
+
+2. 比对软件 STAR
+(1)安装star 2.7：https://github.com/alexdobin/STAR
+# Get latest STAR source from releases
+wget https://github.com/alexdobin/STAR/archive/2.7.0f.tar.gz
+tar -xzf 2.7.0f.tar.gz
+cd STAR-2.7.0f
+
+#编译 Compile under Linux
+cd STAR/source
+make STAR
+
+#然后在~/bin下添加快捷方式
+$ ln -s /home/wangjl/data/software/STAR-2.7.0f/source/STAR
+
+#查看版本号
+$ STAR --version
+2.7.0f
+
+
+最后使用的是(lab上一致的)老版本：
+https://github.com/alexdobin/STAR/archive/2.5.2b.tar.gz
+
+
+
+
+(2)使用
+51页手册STARmanual.pdf： https://github.com/alexdobin/STAR/blob/master/doc/STARmanual.pdf
+
+1)生成人的基因组STAR index（放在 nohup CMD & 中运行的）
+STAR --runThreadN 50 --runMode genomeGenerate --genomeDir /home/wangjl/data/ref/human/STAR/  --genomeFastaFiles /home/wangjl/data/ref/human/hg19.fa --sjdbGTFfile /home/wangjl/data/ref/human/hg19_ucsc_genes-20190506.gtf --sjdbOverhang 100
+[11:00 - 11:19]
+参数解释：
+	runThreadN 线程数
+	runMode 运行模式，genomeGenerate 选项用来产生index;
+	genomeDir 指定生成的index保存的位置
+	genomeFastaFiles 输入的参考基因组文件fasta
+	sjdbGTFfile 注释gtf文件
+	sjdbOverhang : specifies the length of the genomic sequence around the annotated junction
+to be used in constructing the splice junctions database. max(ReadLength)-1 或者默认100.
+
+
+2)生成小鼠的基因组STAR index（放在 nohup CMD & 中运行的）
+STAR --runThreadN 50 --runMode genomeGenerate --genomeDir /home/wangjl/data/ref/mouse/STAR/  --genomeFastaFiles /home/wangjl/data/ref/mouse/mm9.fa --sjdbGTFfile /home/wangjl/data/ref/mouse/mm9_ucsc_genes-20190506.gtf --sjdbOverhang 100
+[11:05 - 11:21]
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+2. 使用STAR做mapping
+$ ls /home/wangjl/data/c1_2019APA/sc/combine/sc_fq/trim/galore/|head
+#c2_ROW01_R2.fastq_trimming_report.txt
+#c2_ROW01_R2_trimmed_fastqc.html
+#c2_ROW01_R2_trimmed_fastqc.zip
+#c2_ROW01_R2_trimmed.fq.gz
+
+###基本语句to hg19
+STAR --runThreadN 10 --readFilesCommand zcat --genomeDir /home/wangjl/data/ref/human/STAR --readFilesIn /home/wangjl/data/c1_2019APA/sc/combine/sc_fq/trim/galore/c2_ROW01_R2_trimmed.fq.gz --outFileNamePrefix /home/wangjl/data/c1_2019APA/sc/combine/sc_fq/mapping/galore_human/c2_ROW01_ --genomeLoad LoadAndKeep
+
+参数解释：
+	runThreadN 线程数
+	genomeDir 基因组index路径
+	readFilesIn 带路径名的测序文件
+	outFileNamePrefix 输出文件的前缀，默认是./
+	--outSAMtype BAM SortedByCoordinate 输出格式为BAM并排序
+如果加上这个参数，就直接是排序后的bam文件了。
+
+由于上文没有这个设置该参数，需要使用samtools做三步：
+samtools view -bS input.sam >out.bam #1.转换为bam
+samtools sort -o aln.sorted.bam aln.bam #2.排序
+samtools index aln.sorted.bam #3.建索引	
+
+
+转为bam并排序索引：
+cd /home/wangjl/data/c1_2019APA/sc/combine/sc_fq/mapping/galore_mouse/; \
+samtools view -bS c2_ROW01_Aligned.out.sam >c2_ROW01.n.bam; \
+samtools sort -o c2_ROW01.sorted.bam c2_ROW01.n.bam; \
+samtools index c2_ROW01.sorted.bam
+
+
+[shell 10个线程，py并发10线程]
+#for mouse 
+    cmd="cd /home/wangjl/data/c1_2019APA/sc/combine/sc_fq/mapping/galore_mouse/; \
+samtools view -@ 10 -bS "+id+"_Aligned.out.sam >../bamR2Lm/"+id+".n.bam; \
+samtools sort -@ 10 -o ../bamR2Lm/"+id+".sorted.bam ../bamR2Lm/"+id+".n.bam; \
+samtools index -@ 10 ../bamR2Lm/"+id+".sorted.bam";
+#for human
+    cmd="cd /home/wangjl/data/c1_2019APA/sc/combine/sc_fq/mapping/galore_human/; \
+samtools view -@ 10 -bS "+id+"_Aligned.out.sam >../bamR2Lh/"+id+".n.bam; \
+samtools sort -@ 10 -o ../bamR2Lh/"+id+".sorted.bam ../bamR2Lh/"+id+".n.bam; \
+samtools index -@ 10 ../bamR2Lh/"+id+".sorted.bam";
+
+
+
+
+
+========================================
+geneBody_coverage 做mapping的QC
+----------------------------------------
+
+对第二列(c2)的mapping做QC
+$ cd /home/wangjl/data/c1_2019APA/sc/combine/sc_fq/mapping/bamR2Lh
+$ geneBody_coverage.py -r /data/jinwf/wangjl/ref/human/hg19_ucsc_genes-20190509.bed -i c2_ROW01.sorted.bam,c2_ROW02.sorted.bam,c2_ROW03.sorted.bam,c2_ROW04.sorted.bam,c2_ROW05.sorted.bam,c2_ROW06.sorted.bam,c2_ROW07.sorted.bam,c2_ROW08.sorted.bam,c2_ROW09.sorted.bam,c2_ROW10.sorted.bam,c2_ROW11.sorted.bam,c2_ROW12.sorted.bam,c2_ROW13.sorted.bam,c2_ROW14.sorted.bam,c2_ROW15.sorted.bam,c2_ROW16.sorted.bam,c2_ROW17.sorted.bam,c2_ROW18.sorted.bam,c2_ROW19.sorted.bam,c2_ROW20.sorted.bam,c2_ROW21.sorted.bam,c2_ROW22.sorted.bam,c2_ROW23.sorted.bam,c2_ROW24.sorted.bam,c2_ROW25.sorted.bam,c2_ROW26.sorted.bam,c2_ROW27.sorted.bam,c2_ROW28.sorted.bam,c2_ROW29.sorted.bam,c2_ROW30.sorted.bam,c2_ROW31.sorted.bam,c2_ROW32.sorted.bam,c2_ROW33.sorted.bam,c2_ROW34.sorted.bam,c2_ROW35.sorted.bam,c2_ROW36.sorted.bam,c2_ROW37.sorted.bam,c2_ROW38.sorted.bam,c2_ROW39.sorted.bam,c2_ROW40.sorted.bam -o /home/wangjl/data/c1_2019APA/sc/combine/sc_fq/mapping/mappingQC_human/galore_human_c2_
+
+
+
+
+
+
+========================================
+统计学参数
+----------------------------------------
+
+
+
+========================================
+|-- MAD(中位数绝对偏差)
+----------------------------------------
+
+MAD 定义为，一元序列 Xi 同其中位数偏差的绝对值的中位数（deviation，偏差本身有正有负）；
+MAD=median(|Xi−median(X)|)
+
+
+MAD 的方法相对于分位数方法的一大优势即在于 MAD 方法对样本大小是不敏感也即是稳定的鲁棒的一种评价指标。
+
+
+
+https://blog.csdn.net/lanchunhui/article/details/80381516
+
+
+
+
+
+
+========================================
+|-- 阈值 median-3 x MAD
+----------------------------------------
+threshold=median(df2$counts)-mad(df2$counts)*3;threshold
+
+Low-quality cells were discarded if the cell library size or the number of expressed genes(counts larger than 0) was smaller than pre-defined thresholds, which were the medians of all cells minus 3x median absolute deviation.[zhang zemin,2018,NM]
+
+在衍生一个上限？
+threshold2=median(df2$counts) + mad(df2$counts)*3;threshold2
+
+
+
+========================================
+----------------------------------------
+
+
+
+
+========================================
+----------------------------------------
+
+
+
+========================================
+----------------------------------------
+
+
+
+========================================
+----------------------------------------
+
+
+
+
+========================================
+----------------------------------------
 
 
 
@@ -900,62 +1230,6 @@ Event: Koret-Berkeley-Tel Aviv Initiative in Computational Biology and Bioinform
 Rani Elkon (Tel Aviv University)
 https://www.cs.tau.ac.il/~ranel/
 http://www.elkonlab.tau.ac.il/
-
-
-
-========================================
-----------------------------------------
-
-
-
-
-========================================
-----------------------------------------
-
-
-
-
-========================================
-----------------------------------------
-
-
-
-========================================
-----------------------------------------
-
-
-
-========================================
-----------------------------------------
-
-
-
-
-========================================
-----------------------------------------
-
-
-
-
-========================================
-----------------------------------------
-
-
-
-========================================
-----------------------------------------
-
-
-
-========================================
-----------------------------------------
-
-
-
-
-========================================
-----------------------------------------
-
 
 
 

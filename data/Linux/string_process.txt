@@ -4,6 +4,7 @@ linux简介6|命令行文本处理工具
 
 
 awk和sed简明教程  http://agetouch.blog.163.com/blog/static/228535090201732824532207/
+教材： O'Reilly 出版的 sed & awk, 2nd Edition http://shop.oreilly.com/product/9781565922259.do
 
 
 linux shell文本处理三大利器：
@@ -11,6 +12,16 @@ grep 查找
 sed 行编辑器
 awk 列文本处理工具
 一行指令，轻松搞定。
+
+
+IBM sed实例(sed 轻量级流编辑器)
+https://www.ibm.com/developerworks/cn/linux/shell/sed/sed-1/  还有2和3.
+
+IBM awk实例(awk 适合于文本处理和报表生成。一旦学会就会成为您战略代码库的重要部分的语言)
+https://www.ibm.com/developerworks/cn/linux/shell/awk/awk-1/ 还有2和3.
+https://www.ibm.com/developerworks/cn/education/aix/au-gawk/index.html
+
+
 
 ========================================
 目录、文件基本命令
@@ -95,6 +106,214 @@ $ locate rc-sysinit.conf #定位文件绝对路径
 
 
 ========================================
+命令find详解: 最常见和强大的查找命令
+----------------------------------------
+命令格式 find <path> < expression > < cmd >
+参数介绍
+path： 所要搜索的目录及其所有子目录。默认为当前目录。
+expression： 所要搜索的文件的特征。
+cmd： 对搜索结果进行特定的处理。
+如果什么参数也不加，find 默认搜索当前目录及其子目录，并且不过滤任何结果（也就是返回所有文件），将它们全都显示在屏幕上。
+
+
+大概可以归类为以下几种：
+(1).根据文件(名称、类型、深度、大小)或正则表达式进行匹配。
+(2).根据日期和时间查找。
+(3).根据文件权限(所属组，拥有者)查找。
+(4).借助-exec与其他命令结合使用。
+
+
+
+
+1.根据文件(名称、类型、深度、大小)或正则表达式进行匹配。
+(1)列出当前目录及子目录下所有文件和文件夹  find .
+./c2_ROW02_R2_trimmed.fq.gz
+./text
+./text/aa.txt
+
+(2).在/home下查找以.txt结尾的文件名 find /home -name "*.txt"
+(3).在/home下查找以.txt结尾的文件名 但忽略大小写。 find /home -iname "*.txt"
+(4) 查找当前目录及子目录下所有以.txt和.pdf结尾的文件
+$ find . -name "*.txt" -o -name "*.pdf" #或者
+$ find . \( -name "*.txt" -o -name "*.pdf" \)
+##./c2_ROW02_R2.fastq_trimming_report.txt
+##./text/aa.txt
+##./word.pdf
+
+要查找所有隐藏的文件
+$ find ~ -name ".*" |head
+
+
+(5)匹配文件路径或文件 find /usr/ -path "*local"
+$ find . -path "*bb*"
+
+(6)基于正则表达式匹配文件路径 
+$ find . -regex ".*\.(txt|pdf)$"  #不能匹配
+$ find . -regex ".*\.\(txt\|pdf\)$" #需要添加转义符，把()|等特殊字符转义
+##./c2_ROW02_R2.fastq_trimming_report.txt
+##./text/aa.txt
+##./word.pdf
+
+
+(7)找出/home/wangjl/test 路径下不是以.txt结尾的文件
+$ find /home/wangjl/test ! -name "*.txt"
+##/home/wangjl/test
+##/home/wangjl/test/c2_ROW02_R2_trimmed_fastqc.html
+##/home/wangjl/test/c2_ROW02_R2_trimmed_fastqc.zip
+
+(8)根据文件类型查找
+$ find . -type f #文件
+$ find . -type l #链接
+$ find . -type d #文件夹
+
+$ find . -type f -name *.R |head #在当前文件夹内查找后缀是.R的文件
+$ find . -type d -name test* #在当前目录查找开头是test的文件夹
+
+
+(9)最大-最小文件深度
+$ find ~ -maxdepth 2 -type f
+$ find ~ -mindepth 10 -type f
+## /home/wangjl/R/x86_64-redhat-linux-gnu-library/3.5/Rcpp/include/Rcpp/api/meat/module/Module.h
+
+
+
+
+(10)根据文件大小进行匹配
+文件大小单元： b 块（512字节）, c 字节, w字（2字节）, k千字节, M兆字节, G吉字节
+
+`b' for 512-byte blocks (this is the default if no suffix is used)
+`c' for bytes
+`w' for two-byte words
+`k' for Kibibytes (KiB, units of 1024 bytes)
+`M' for Mebibytes (MiB, units of 1024 * 1024 = 1048576 bytes)
+`G' for Gibibytes (GiB, units of 1024 * 1024 * 1024 = 1073741824 bytes)
+
+
+查找大于10k的文件 $ find . -type f -size +10k
+查找小于10K的文件 $ find . -type f -size -10k
+找到大于50MB且小于100MB的所有文件 $ find /home/wangjl/data/ref/ -type f -size +50M -size -100M |xargs ls -lth
+$ find . -type f -size +40c -size -100c |xargs ls -lth
+
+
+
+
+
+
+
+
+2.根据日期和时间查找。
+UNIX/Linux文件系统每个文件都有三种时间戳： 
+访问时间（-atime/天，-amin/分钟）：用户最近一次访问时间。 
+修改时间（-mtime/天，-mmin/分钟）：文件最后一次修改时间。 
+变化时间（-ctime/天，-cmin/分钟）：文件数据元（例如权限等）最后一次修改时间。
+
+(1) 搜索最近2天访问过的文件 $ find . -type f -atime -2
+查找超过2天访问的文件(近两天没有访问过) $ find . -type f -atime +2
+恰好2天前访问的文件 $ find . -type f -atime 2 
+
+(2)查找访问时间超过10分钟的文件 $ find . -type f -amin +10
+查找最近1小时内更改的所有文件 $ find . -cmin -60 #能查到权限变动等
+
+(3)查找最后2-50天修改的文件 $ find . -type f -mtime +2 -mtime -50 | xargs ls -lth
+
+(4)找出比test.cpp修改时间更长的文件 $ find . -type f -newer test.cpp
+否定是!: $ find . ! -newer cc.txt
+
+
+
+
+
+
+3.根据文件权限(所属组，拥有者)查找。
+(1)rwx权限
+1)查找文件权限为777的文件 find . -type f -perm 777
+2)查找文件权限不是644的文件 $ find . -type f ! -perm  644
+
+3)查找只读文件 $ find / -type f -perm /u=r |head
+$ find / -type f -perm /u=r 2>/dev/null/ #为什么过滤语句报错？//todo
+4)查找可执行py文件 $ find . -type f -name "*.py" -perm /a=x
+
+
+(2)ACL权限
+1)查找所有SUID文件 $ find / -perm /u=s 2>/dev/null | head
+2)查找权限为644的所有SGID为文件 $ find / -perm 2644
+$ find / -perm 2644 2>/dev/null #过滤掉报错行，主要是 Permission denied
+3)找到具有551权限的粘滞位文件(Sticky Bit) $ find / -perm 1551 2>/dev/null
+4)查找所有SGID文件 $ find / -perm /g=s 2>/dev/null | head
+
+(3)所有者
+1)当前文件夹内，所有者为wangjl的文件或目录  $ find . -user wangjl
+2)查找属于组root的所有文件 $ find ~ -group root
+3)-nogroup 查找无有效所属组的文件，即该文件所属的组在 / etc/groups 中不存在。
+$ find / -nogroup 2>/dev/null
+
+4)-nouser 查找无有效属主的文件，即该文件的属主在 / etc/passwd 中不存在。
+$ find / -nouser 2>/dev/null
+
+
+
+4.借助-exec与其他命令结合使用。
+(1)查找到拥有者为wangjl 的文件，并将它的拥有者改为hou 
+$ find . -type f -user wangjl -exec chown hou {} \; #整个命令前加sudo才能执行
+
+(2)查找所有以.txt文件结尾的文件，并把它写到all.txt文件中去
+$ find . -type f -name "*.txt" -exec cat {} \; >all.txt
+## cat: ./all.txt: input file is output file
+
+(3)列出所有长度为0 
+$ find . -empty
+$ find . -type f -empty #查找空文件
+$ find . -type d -empty #查找空白文件夹
+
+(4)查找所有777个权限文件，并使用chmod命令将权限设置为644
+$ find . -type f -perm 0777 -print -exec chmod 644 {} \;
+
+(5)查找并删除1个或多个文件
+查找和删除多个文件，如.mp3或.txt，然后使用。 
+$ find -type f -name "*.py" -exec rm -f {} \;
+
+
+
+
+
+
+
+5.疑难杂症
+(1) 删除匹配文件: 在查找命令后加上 -delete
+删除以.txt结尾的文件 $ find . -type f -name "*.TXT" -delete
+
+
+(2)find命令-prune用法很严格！
+-prune 使用这一选项可以使 find 命令不在当前指定的目录中查找，如果同时使用 - depth 选项，那么 - prune 将被 find 命令忽略。
+#在当前目录下查找文件，但不希望在./text目录下查找
+$ find . -path ./text -prune -o -name "*.txt"
+严格的用法：find 查找文件的目录 -path 需要排除的目录 -prune -o -name 需要查询的内容
+注意事项：
+1)-prune 必须和 -path， -o 一起使用
+2）-prune -o 的顺序不 能调换
+3）-name等必须放在-prune -o后面才能使用
+
+如果不做名字筛选，也可以直接打印text目录外的所有文件： $ find . -path ./text -prune -o -print
+
+-o 是or的意思。这里解释不通，why?//todo
+
+
+(3)-newer file1 ! file2 查找更改时间比文件 file1 新但比文件 file2 旧的文件。
+$ find . -newer aa.txt \! \( -newer cc.txt \) #结果不清不楚的 todo
+
+
+
+
+
+refer:
+https://blog.csdn.net/z_xiao_xue/article/details/53925680
+https://www.cnblogs.com/Ido-911/p/9638612.html
+
+
+
+
+
+========================================
 字符处理命令概述及资源
 ----------------------------------------
 gerp 查找, awk 根据内容分析并处理, sed 编辑.
@@ -116,6 +335,9 @@ sed 简明教程: http://coolshell.cn/articles/9104.html
 [论坛]awk,sed,grep,cut等文本操作命令: http://bbs.chinaunix.net/forum-24-1.html
 
 
+How to Use AWK
+http://sparky.rice.edu/~hartigan/awk.html
+http://sparky.rice.edu/~hartigan/sed.html
 
 
 ========================================
@@ -1253,6 +1475,38 @@ seq 9 | sed 'H;g' | awk -v RS='' '{for(i=1;i<=NF;i++)printf("%dx%d=%d%s", i, NR,
 
 
 
+
+11.经典案例
+
+(1)awk选取该文件表头为name的那一列数据
+$ head gwas.bed
+chrom	chromStart	chromEnd	name
+chr1	161475749	161475750	rs10494360
+chr1	194329560	194329561	rs10921544
+chr1	9408958	9408959	rs11121380
+chr1	117280695	117280696	rs112300936
+chr1	44558671	44558672	rs114940806
+chr1	55505646	55505647	rs11591147
+chr1	117751364	117751365	rs12046117
+chr1	162449408	162449409	rs12047961
+
+$ awk 'NR==1{for(i=1;i<=NF;i++)a[$i]=i;next}{print $a["name"]}' gwas.bed 
+rs10494360
+rs10921544
+rs11121380
+rs112300936
+rs114940806
+rs11591147
+rs12046117
+rs12047961
+
+分析: 
+一共两句，第一句是处理第一行，第二句是处理之后的所有行。
+重点是a这个数组，第一句定义 a["chrom"]=1, a["chromStart"]=2, a["chromEnd"]=3, a["name"]=4.
+第二句引用a["name"]=4，所以print $a["name"]就是print $4
+
+
+
 结束语： awk 是相当复杂的工具, 真正使用时, 再细看man awk吧. 
 内建变量，参看：http://www.gnu.org/software/gawk/manual/gawk.html#Built_002din-Variables
 流控方面，参看：http://www.gnu.org/software/gawk/manual/gawk.html#Statements
@@ -1822,7 +2076,7 @@ $ wc ID
 $ cat ID | sort -k 2,2 -u > ID.one
 $ wc ID.one
   60461  483688 5452889 ID.one
--
+
 
 第二步：用cut切出来第2和第6列，用sed替换其中的"和;符号。
 $ cat ID.one | cut -d " " -f 2,6 |sed -e "s/\"//g" -e "s/;//g" >ID.end
@@ -1845,7 +2099,6 @@ gene_id "ENSG00000000003.14_2"; gene_name "TSPAN6"
 gene_id "ENSG00000000005.5_2"; gene_name "TNMD"
 gene_id "ENSG00000000419.12_2"; gene_name "DPM1"
 gene_id "ENSG00000000457.13_2"; gene_name "SCYL3"
-
 
 $ head ID.one|cut -d ";" -f 1,3|sed -e "s/;//g" -e "s/gene_id //g" -e "s/gene_name //g" -e "s/\"//g"
 ENSG00000000003.14_2 TSPAN6
