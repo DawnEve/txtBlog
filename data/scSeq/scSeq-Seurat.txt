@@ -127,6 +127,159 @@ ScaleData(): Scaling the data and removing unwanted sources of variation。
 
 
 ========================================
+下游分析开源R包 Seurat包
+----------------------------------------
+[10xG官方推荐]Seurat is an R package designed for QC, analysis, and exploration of single cell RNA-seq data. 
+http://satijalab.org/seurat/
+推荐页：https://support.10xgenomics.com/single-cell-gene-expression/software/pipelines/latest/rkit
+
+
+
+========================================
+Seurat包：画DotPlot图
+----------------------------------------
+
+####replot markergenes
+# v2.0新增2个filter
+DotPlotPDF=function(genelist,prefix="",width=26,height=10){
+  #filter1:保证基因唯一性
+  genelist=unique(genelist)
+  #filter2:保证基因在数据中存在
+  gene.exist=rownames(br10@data)#有的基因名字
+  #打印出不存在的基因
+  gene.reserve=c()
+  for(g in genelist){
+    if(g %in% gene.exist){
+      gene.reserve=c(gene.reserve, g)
+    }else{
+      print(g)
+    }
+  }
+  #开始画图
+  CairoPDF( paste0(prefix,"_DotPlot.pdf") , width = width, height = height)
+  #控制x坐标循序，可以把x逆序，如rev(genelist)
+  #怎么控制y坐标顺序？
+  marker_dot_plot <- DotPlot(object = br10, genes.plot = gene.reserve, plot.legend = TRUE,
+                             cols.use = c("black","red"), x.lab.rot = T,dot.scale = 10, do.return=T)
+  marker_dot_plot <- marker_dot_plot + theme(axis.text.x = element_text(angle = 60, vjust = 1, hjust = 1))
+  print(marker_dot_plot)
+  dev.off()
+}
+
+
+# 查看几个level，也就是几个分类
+levels(br10@ident)
+table(br10@ident)
+
+getwd()
+DotPlotPDF(rev(tmp$gene),"adjP0.05",width=28,height=4.5) #75个
+DotPlotPDF(top5$gene,"top5",width=5,height=4.5) #5*4=20个
+
+markers=readLines("marker_list/8.txt") #读取每行，生成数组
+DotPlotPDF(markers,"top5",width=5,height=4.5)
+#
+
+
+
+
+
+========================================
+Seurat包：用tsne画不同批次的细胞的点图
+----------------------------------------
+
+#
+mef=br10
+
+#分离分类变量
+cn=colnames(mef@data)
+end=regexpr('\\.',cn)
+#end=unlist(end[1:60])
+end;table(end)
+#pop= sapply(cn,substr,rep(1,60),end,USE.NAMES=F)
+pop=c()
+for(i in c(1:60)){
+  pop=c(pop,substr(cn[i], 1, end[i]-1))
+}
+pop
+table(pop)
+
+
+#TSNE plot for batches
+#pop<-rep(1,28)#bc
+#pop<-c(pop,rep(2,32))#mef
+#pop
+length(pop);table(pop)
+#pop<-rep(1,73)
+#pop<-c(pop,rep(2,26))
+#pop<-c(pop,rep(3,76))
+
+coordx<-mef@dr$tsne@cell.embeddings[,1]
+coordy<-mef@dr$tsne@cell.embeddings[,2]
+df1<-data.frame(coordx=coordx,coordy=coordy,pop=pop)
+df1$pop<-as.factor(df1$pop)
+#pdf(paste(path_out,"5.pdf",sep=""))
+par(mai=c(1,1,0.2,0.5));
+pl<-ggplot(data=df1,aes(x=coordx,y=coordy,colour=factor(pop)))+
+  geom_point(size=2,alpha=1)+
+  #   guides(fill=guide_legend(title="test1"))+
+  labs(x="tSNE 1",y="tSNE 2")+theme_bw()+
+  theme(
+    panel.grid.major = element_blank(),
+    panel.grid.minor = element_blank(),
+    #    panel.border = element_blank(),
+    panel.background = element_blank())
+#pl+scale_colour_discrete(name="sample",labels=c("bc","mef"))
+
+pl+scale_color_discrete(name="Sample")
+#dev.off()
+############################
+
+
+
+
+
+========================================
+Seurat包：multidimensional scaling (MDS)多维尺度分析分析
+----------------------------------------
+Seurat - Dimensional Reduction Vignette
+https://satijalab.org/seurat/dim_reduction_vignette.html
+
+MDS降维原理：
+https://blog.csdn.net/yang_xian521/article/details/7301121
+https://www.cnblogs.com/lochan/p/6627511.html
+
+
+# Before running MDS, we first calculate a distance matrix between all pairs
+# of cells.  Here we use a simple euclidean distance metric on all genes,
+# using object@scale.data as input
+pbmc=br10
+d <- dist(x = t(x = pbmc@scale.data))
+# Run the MDS procedure, k determines the number of dimensions
+mds <- cmdscale(d = d, k = 2)
+# cmdscale returns the cell embeddings, we first label the columns to ensure
+# downstream consistency
+colnames(x = mds) <- paste0("MDS", 1:2)
+# We will now store this as a new dimensional reduction called 'mds'
+pbmc <- SetDimReduction(object = pbmc, reduction.type = "mds", slot = "cell.embeddings", 
+                        new.data = mds)
+pbmc <- SetDimReduction(object = pbmc, reduction.type = "mds", slot = "key", 
+                        new.data = "MDS")
+
+# We can now use this as you would any other dimensional reduction in all
+# downstream functions (similar to PCAPlot, but generalized for any
+# reduction)
+DimPlot(object = pbmc, reduction.use = "mds", pt.size = 2) #0.5
+DimPlot(object = pbmc, pt.size = 2)
+
+pop2=rep(0,28);pop2=c(pop2, rep(1,32));pop2
+DimPlot(object = pbmc, reduction.use = "mds", pt.size = 2) + 
+  geom_point(aes(colour=factor(pop2)) )
+  
+#
+
+
+
+========================================
 ----------------------------------------
 
 

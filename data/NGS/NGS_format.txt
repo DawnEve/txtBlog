@@ -294,6 +294,109 @@ Col	Field	Type	Brief Description
 10	SEQ	String	segment SEQuence
 11	QUAL	String	ASCII of Phred-scaled base QUALity+33
 
+查看命令
+$ samtools view hg19_mm10/c01_ROW02_Aligned.sortedByCoord.out.bam|head -n 200|awk '{print $5}'|sort|uniq -c
+
+
+主体部分有11个主列和1个可选列
+(1)QNAME	比对的序列名称	例如：M04650:84:000000000-B837R:1:1101:22699:1759（一条测序reads的名称）
+(2)FLAG	Bwise FLAG（表明比对类型：paring，strand，mate strand等）	例如：99
+数值结果如下：
+1（1）该read是成对的paired reads中的一个
+2（10）paired reads中每个都正确比对到参考序列上
+4（100）该read没比对到参考序列上
+8（1000）与该read成对的matepair read没有比对到参考序列上
+16（10000）该read其反向互补序列能够比对到参考序列
+32（100000）与该read成对的matepair read其反向互补序列能够比对到参考序列
+64（1000000）在paired reads中，该read是与参考序列比对的第一条
+128（10000000）在paired reads中，该read是与参考序列比对的第二条
+256（100000000）该read是次优的比对结果
+512（1000000000）该read没有通过质量控制
+1024（10000000000）由于PCR或测序错误产生的重复reads
+2048（100000000000）补充匹配的read
+具体的flag值的解释，可以参考samtools软件提供的结果
+
+通过这个和可以直接推断出匹配的情况。假如说标记不是以上列举出的数字，比如说83=（64+16+2+1），就是这几种情况值和。
+
+//todo 那么0是什么意思？
+
+
+(3)RENAME	比对上的参考序列名	例如：chr1 染色体名字
+表示read比对的那条序列的序列名称（名称与头部的@SQ相对应），如果这列是“*”，可以认为这条read没有比对上的序列，则这一行的第四，五，八，九 列是“0”，第六，七列与该列是相同的表示方法
+
+
+
+(4)POS	1-Based的比对上的最左边的定位	例如：124057649
+表示read比对到RNAME这条序列的最左边的位置，如果该read能够完全比对到这条序列（CIGAR string为M）则这个位置是read的第一个碱基比对的位置，如果该read的反向互补序列比对到这条序列，则这个位置是read的反向互补序列的第一个碱基比对的位置，所以无论该read是正向比对到该序列，或是其反向互补序列比对到该序列，比对结果均是最左端的比对位置
+
+
+(5)MAPQ	比对质量	例如：60
+表示为mapping的质量值，mapping Quality, It equals -10log10Pr{mapping position is wrong}, rounded to the nearest integer, A value 255 indicates that the mapping quality is not available. 该值的计算方法是mapping的错误率的-10log10值，之后四舍五入得到的整数，如果值为255表示mapping值是不可用的，如果是unmapped read则MAPQ为0，一般在使用bwa mem或bwa aln（bwa 0.7.12-r1039版本）生成的sam文件，第五列为60表示mapping率最高，一般结果是这一列的数值是从0到60，且0和60这两个数字出现次数最多
+
+STAR出来的bam结果255最多。
+    169 0
+    111 1
+   1535 255 
+    185 3
+#sam文件说A value 255 indicates that the mapping quality is not available.
+但是STAR说明书说到： The mapping quality MAPQ (column 5) is 255 for uniquely mapping reads, and int(-10*log10(1-1/Nmap)) for multi-mapping reads.
+
+
+#tophat1是255,tophat2是50；http://blog.sina.com.cn/s/blog_86c8fc120102uz5o.html
+在需要用到uniquely mapped reads时，可以参考上表，为了保险起见，NH这个tag是统一的，不随tophat版本变化。
+注意：如果是直接grep NH:i:1的话，一定要用grep "NH:i:1\b"，否则会把NH:i:10这类的也抓下来！（切身教训）
+
+另外，注意unmapped.bam 的MAPQ为255，这和其他软件的MAPQ值都不太一样，注意后续质控软件统计的方法，以免出问题。
+例如，STAR 的比对unique 比对的MAPQ为255，和Tophat不一样。
+
+
+
+
+(6)CIGAR	Extended CIGAR string（操作符：MIDNSHP）比对结果信息；匹配碱基数，可变剪接等	例如：87M
+CIGAR string，可以理解为reads mapping到第三列序列的mapping状态，对于mapping状态可分为以下几类：
+
+M：alignment match (can be a sequence match or mismatch)
+表示read可mapping到第三列的序列上，则read的碱基序列与第三列的序列碱基相同，表示正常的mapping结果，M表示完全匹配，但是无论reads与序列的正确匹配或是错误匹配该位置都显示为M
+
+I：insertion to the reference
+表示read的碱基序列相对于第三列的RNAME序列，有碱基的插入
+
+D：deletion from the reference
+表示read的碱基序列相对于第三列的RNAME序列，有碱基的删除
+
+N：skipped region from the reference
+表示可变剪接位置
+
+P：padding (silent deletion from padded reference)
+S：soft clipping (clipped sequences present in SEQ)
+H：hard clipping (clipped sequences NOT present in SEQ)
+clipped均表示一条read的序列被分开，之所以被分开，是因为read的一部分序列能匹配到第三列的RNAME序列上，而被分开的那部分不能匹配到RNAME序列上。
+"="表示正确匹配到序列上
+"X"表示错误匹配到序列上
+
+而H只出现在一条read的前端或末端，但不会出现在中间，S一般会和H成对出现，当有H出现时，一定会有一个与之对应的S出现
+
+
+(7)MRNM	相匹配的另外一条序列，比对上的参考序列名。
+实际上就是mate比对到的染色体号，若是没有mate，则是*；
+(8)MPOS	1-Based leftmost Mate Position	（相比于MRNM列来讲意思和POS差不多）	例如：124057667
+第八列：mate position，mate比对到参考序列上的第一个碱基位置，若无mate,则为0；
+(9)ISIZE	插入片段长度	例如：200
+ISIZE，Inferred fragment size.详见Illumina中paired end sequencing 和 mate pair sequencing，是负数，推测应该是两条read之间的间隔(待查证)，若无mate则为0；
+
+(10)SEQ	Sequence，就是read的碱基序列，如果是比对到互补链上则是reverse completed   eg.CGTTTCTGTGGGTGATGGGCCTGAGGGGCGTTCTCN 
+
+(11)QUAL	比对序列的质量（ASCII-33=Phred base quality）reads碱基质量值	例如：-8CCCGFCCCF7@E-
+
+
+(12)12列及之后是可选的列，以TAG：TYPE：VALUE的形式提供额外的信息
+比较重要的是 NH:i:1 表示number of hit 是整数1，就是uniq mapping.
+
+
+
+
+
+
 
 
 
