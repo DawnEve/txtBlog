@@ -15,6 +15,10 @@ GRCh37 (hg19): ENSEMBL release_59/61/64/68/69/75.
 GRCh38 (hg38): ENSEMBL  release_76/77/78/80/81/82
 
 
+gtf文件下载：
+https://www.gencodegenes.org/
+
+
 
 #https://github.com/griffithlab/rnaseq_tutorial_v1/wiki/Indexing
 #following this page to index genome seq
@@ -95,7 +99,7 @@ https://blog.csdn.net/herokoking/article/details/78292616
 
 
 ========================================
-GTF格式的refGene如何在Ensembl及UCSC下载
+|-- GTF格式的refGene如何在Ensembl及UCSC下载
 ----------------------------------------
 1. 从UCSC genome browser中下载GTF格式的refGene, 方法如下:
 
@@ -130,6 +134,100 @@ Homo_sapiens.GRCh37.68.gtf.gz是直接从Ensembl的FTP上下载的.
 3) 点击get output即可.
 
 
+
+
+========================================
+|-- 注释gtf文件(为gene_id注释gene_name) //todo
+----------------------------------------
+##总行数18万
+$ wc /data/jinwf/wangjl/ref/hg19/gencode.v30lift37.metadata.HGNC
+180303  360606 4471232 /data/jinwf/wangjl/ref/hg19/gencode.v30lift37.metadata.HGNC
+
+
+##基因symbol有多少？3.7万
+$ awk '{print $2}' /data/jinwf/wangjl/ref/hg19/gencode.v30lift37.metadata.HGNC |sort|uniq -c |sort -k 1nr|head -n 10
+    192 MAPK10
+    170 PCBP1-AS1
+    142 MUC20-OT1
+    106 LINC00511
+    103 TEX41
+     99 SGCE
+     96 SPG7
+     93 KCNMA1
+     90 SOX2-OT
+     90 TCF4
+$ awk '{print $2}' /data/jinwf/wangjl/ref/hg19/gencode.v30lift37.metadata.HGNC |sort|uniq -c |sort -k 1nr|wc
+37409   74818  586179
+
+
+
+#uniq第一列比总行数少303-257=46，说明也有重复
+$ awk '{print $1}' /data/jinwf/wangjl/ref/hg19/gencode.v30lift37.metadata.HGNC |sort|uniq|wc
+180257  180257 3249096
+#重复的en gene_id共35个
+$ awk '{print $1}' /data/jinwf/wangjl/ref/hg19/gencode.v30lift37.metadata.HGNC |sort|uniq -c |awk '$1>1{print $0}'|wc
+35      70     910
+#分别是：
+$ awk '{print $1}' /data/jinwf/wangjl/ref/hg19/gencode.v30lift37.metadata.HGNC |sort|uniq -c |sort -k 1nr|head -n 35
+4 ENST00000422679.1
+4 ENST00000559045.1
+4 ENST00000561145.1
+4 ENST00000582320.2
+3 ENST00000579193.1
+3 ENST00000584066.1
+3 ENST00000584879.1
+2 ENST00000344636.5
+2 ENST00000390137.2
+...
+2 ENST00000635520.1
+2 ENST00000635545.1
+2 ENST00000638590.1
+2 ENST00000647865.1
+$ awk '{print $1}' /data/jinwf/wangjl/ref/hg19/gencode.v30lift37.metadata.HGNC |sort|uniq -c |sort -k 1nr|head -n 35|awk '{c+=$1}END{print c}'
+## 81
+
+抽检：
+#都是miRNA?
+$ grep "ENST00000422679.1" /data/jinwf/wangjl/ref/hg19/gencode.v30lift37.metadata.HGNC
+ENST00000422679.1       MIR1302-10
+ENST00000422679.1       MIR1302-11
+ENST00000422679.1       MIR1302-2
+ENST00000422679.1       MIR1302-9
+#也有基因名，要不要35个逐个纠正一下？
+$ grep "ENST00000647865.1" /data/jinwf/wangjl/ref/hg19/gencode.v30lift37.metadata.HGNC
+ENST00000647865.1       C12orf74
+ENST00000647865.1       PLEKHG7
+
+整理gtf的注释文件，需要看81行，其余行则不需要整理。
+1)uniq_enid共
+$ awk '{print $1}' /data/jinwf/wangjl/ref/hg19/gencode.v30lift37.metadata.HGNC |sort|uniq -c |wc
+180257  360514 4691152
+
+2)占了超过1行的uniq_enid 35个，在原注释文件中占了81行。
+$ awk '{print $1}' /data/jinwf/wangjl/ref/hg19/gencode.v30lift37.metadata.HGNC |sort|uniq -c |sort -k 1nr|head -n 35|awk '{print $2}'>notOneLine_Uniq.enid
+
+3)占了一行的uniq_enid 180222个。
+$ awk '{print $1}' /data/jinwf/wangjl/ref/hg19/gencode.v30lift37.metadata.HGNC |sort|uniq -c |awk '$1==1{print $2}'>oneLine_Uniq.enid
+$ wc *enid
+     35      35     630 notOneLine_Uniq.enid
+ 180222  180222 3248466 oneLine_Uniq.enid
+
+4)怎么从原文匹配出占了一行或多行的row？
+
+#取出仅占一行的
+$ cat oneLine_Uniq.enid |xargs -I{} grep {}  gencode.v30lift37.metadata.HGNC |wc
+180222  360444 4468991 #相当慢！大约十几分钟
+#或者反向删除
+$ cp ../gencode.v30lift37.metadata.HGNC gtf.ann  #180303
+$ cat notOneLine_Uniq.enid |xargs -I{} sed -i "/{}/d" gtf.ann #180222
+$ mv gtf.ann oneLine.anno
+
+#
+#取出占了多行的
+$ cat notOneLine_Uniq.enid |xargs -I{} grep {}  gencode.v30lift37.metadata.HGNC |wc
+81     162    2241
+$ cat notOneLine_Uniq.enid |xargs -I{} grep {}  gencode.v30lift37.metadata.HGNC >notOneLine_Uniq.anno
+# 使用sed和grep，以及notOneLine_Uniq.enid文件(35个uniq_enid)、genenames网站进行整理
 
 
 

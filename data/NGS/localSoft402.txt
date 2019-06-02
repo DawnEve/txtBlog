@@ -798,8 +798,15 @@ https://www.cnblogs.com/timeisbiggestboss/p/7171535.html
 HTSeq:一个用于处理高通量数据（High-throughout sequencing)的python包。
 HTSeq包有很多功能类，熟悉python脚本的可以自行编写数据处理脚本。
 另外，HTSeq也提供了两个脚本文件能够直接处理数据:htseq-qa(检测数据质量)和htseq-count（reads计数）。
-
 文档：http://htseq.readthedocs.io/
+
+htseq-count用于reads计数的轻便软件。貌似所有能转换为sam格式文件的输出都可以用htseq-count计数。
+
+htseq-count的输入文件
+输入为sam/bam格式的文件，如果是paired-end数据必须按照reads名称排序（sort by name）。官方推荐了msort，不过我用起来感觉不是很方便（也可能是使用方法不当），于是我采用了samtools先对bam文件（tophat2的输出结果为bam）排序，再转换为sam。
+命令：samtools sort -n file.bam #sort bam by name
+      samtools view -h bamfile.bam>samfile.sam
+其实 htseq-count 加上 -f bam 参数就可以使用bam格式的输入。
 
 
 
@@ -862,6 +869,7 @@ python版： https://github.com/openvax/gtfparse
 
 
 3. 用法：
+(1)常用
 $ htseq-count -h
 usage: htseq-count [options] alignment_file gff_file
 ...
@@ -870,7 +878,7 @@ usage: htseq-count [options] alignment_file gff_file
 	To read from standard input, use - as <alignment_file>.
 
 $ cd /home/wangjl/data/afterMapping/quantify
-$ htseq-count /home/wangjl/data/afterMapping/c12_A1_Aligned.out.sam /data1/hou/RNA/refs/hg19_ERCC92/UCSC_hg19_geneid.gtf > htseq_c12_A1.sam.count 2>htseq_c12_A1.sam.count.log
+$ htseq-count ../c12_A1_Aligned.out.sam /data1/hou/RNA/refs/hg19_ERCC92/UCSC_hg19_geneid.gtf > htseq_c12_A1.sam.count 2>htseq_c12_A1.sam.count.log
 $ ls -lth
 total 276K
 -rw-r--r--. 1 wangjl user 270K Jan 19 16:58 htseq_c12_A1.sam.count
@@ -878,6 +886,69 @@ total 276K
 
 
 警告！如果是bam文件，一定要加-f bam ，否则获得的表达数据全是0！
+
+
+(2)更多参数
+usage: htseq-count [options] alignment_file gff_file
+
+-f {sam,bam}  (default: sam)
+-r {pos,name}  (default: name) 比对文件的排序方式。PE数据必须按照pos或者name排序，且必须明确指定。SE忽略该设置。
+-s {yes,no,reverse}  (default: yes) reads是否匹配到同一条链上。 #此处关于选项-s为我自己的认识，不一定对
+    #数据是否来源于链特异性测序，链特异性是指在建库测序时，只测mRNA反转录出的cDNA序列，而不测该cDNA序列反向互补的另一条DNA序列；换句话说就是，链特异性能更准确反映出mRNA的序列信息
+    #我们知道在gff/gtf中第7列是+-信息，+表示来源于参考基因组序列正链，-表示参考基因组序列的反向互补链
+    #sam/bam文件的第2列是flag信息，也可以看出比对到正链还是负链
+    #stranded=no，无链特异性，一条reads通过flag列知道比对到+还是-链后，不管是不是和gff/gtf相匹配，都算是这个feature中的
+    #stranded=yes, 且se测序，要和gff/gtf相匹配，才算是这个feature中的
+    #stranded=yes, 且pe测序，要和gff/gtf相匹配，才算是这个feature中的
+    #stranded=reverse，是yes的相反，这时不是和gff/gtf相匹配了，而是恰好相反，可能源于另一种链特异性，只测cDNA序列反向互补的另一条DNA序列
+-a MINAQUAL (default: 10)
+    #忽略比对质量低于此值的比对结果
+-t feature type 外显子为最小的定义单位，对基因计数，只需要将包含的外显子计数相加即可。 
+    #feature type (3rd column in GFF file) to be used, all features of other type are ignored (default, suitable for Ensembl GTF files: exon)
+    #没想到这个还能自己设置
+-i IDATTR 最终的计数单位，一般为基因。 默认为：gene_id   也可以设置转录本，但由于模型问题，计数效果不佳。
+    #GFF attribute to be used as feature ID (default, suitable for Ensembl GTF files: gene_id)
+-m {union,intersection-strict,intersection-nonempty} (default: union) 计数模型，统计reads的时候对一些比较特殊的reads定义是否计入。具体说明如官网图所示。
+
+
+note:
+加上 -i gene_name 是不是就可以输出gene symbol了？测试一下，确实可以。
+然后使用 gencode.v30lift37.metadata.HGNC 第二列的HGNC基因3.7万个取交集： awk '{print $2}' gencode.v30lift37.metadata.HGNC|sort|uniq -c|wc
+37409   74818  586179
+
+
+
+
+
+4.输出结果
+$ ls *count
+SRR3286802.count  SRR3286803.count  SRR3286804.count  SRR3286805.count  SRR3286806.count  SRR3286807.count
+
+#基于相同gff/gtf得到的计数文件，行数相同，第一列（基因名）相同
+$ wc -l *count
+  37889 SRR3286802.count
+  37889 SRR3286803.count
+  37889 SRR3286804.count
+  37889 SRR3286805.count
+  37889 SRR3286806.count
+  37889 SRR3286807.count
+
+#且最后5列统计了整个计数过程没有使用到的reads
+$ tail -n 5 SRR3286802.count
+__no_feature    237560
+__ambiguous 1846779
+__too_low_aQual 0
+__not_aligned   1323985
+__alignment_not_unique  2015872
+
+####
+their alignment did not overlap any gene (no_feature).
+their alignment overlapped with more than one gene (ambiguous);
+their alignment quality was lower than the user-specified threshold (too_low_aQual);
+they did not align at all (not_aligned);
+based on the NH tag in the BAM file, they aligned to more than one place in the reference genome (alignment_not_unique);
+
+
 
 
 
