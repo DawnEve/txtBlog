@@ -115,6 +115,7 @@
 		print_links(array(
 			array('http://www.bioinfo-scrounger.com/','生信笔记'),
 			array('http://blog.shenwei.me/about/','shenwei的生信博客'),
+			array('http://www.dengfeilong.com/post/aboutUs.html','邓飞龙的生信博客'),
 			//array('',''),
 		));
 ?>		
