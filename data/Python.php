@@ -21,6 +21,7 @@ return array (
       array('Python片段','Python103-pieces','txt',),
       array('Python数据处理包','Python104-packages','txt',),
       array('Python Web','Python105-web','txt',),
+      array('Python标准库','Python106-Standard_lib','txt',),
     ),
   ),
   
@@ -31,6 +32,7 @@ return array (
     2 => array (
       array('机器学习概述','MachineLearning-01','txt',),
       array('python爬虫','webSpider','txt',),
+      array('python财经','stocks','txt',),
     ),
   ),
   

@@ -62,7 +62,7 @@ Hello world.
 
 
 ========================================
-3.数据类型：列表(数组)、字典、集合
+3.数据类型：普通变量、列表(数组)、字典、集合
 ----------------------------------------
 
 Python具有列表（list）、元组（tuple）和字典（dictionaries）三种基本的数据结构，而集合(sets)则包含在集合库中(但从Python2.5版本开始正式成为Python内建类型)。
@@ -76,6 +76,13 @@ Python具有列表（list）、元组（tuple）和字典（dictionaries）三�
 (1)str跟int的转换
 字符串str转换成int: int_value = int(str_value)
 int转换成字符串str: str_value = str(int_value)
+
+
+(2)四舍五入保留小数点后3位
+x=3.14159265358989
+print(x)
+round(x,3) #3.142
+
 
 
 
@@ -727,7 +734,7 @@ https://www.cnblogs.com/asis/p/6842996.html
 
 
 ========================================
-13. 正则表达式
+13. 正则表达式 regExp
 ----------------------------------------
 1.正则分割
 import re 
@@ -950,109 +957,123 @@ Python中常用的几个并发工具：http://mingxinglai.com/cn/2016/09/python-
 ################
 # on linux only.
 ################ 
-
 ## 任务：从文件读取一行cell id，作为参数传给处理进程们。
 ## 一个进程写数据，一个进程池 众多线程读和处理数据。
 ## 读、写进程之间用queue通信。
 
-#问题： 为什么不能在子进程中完整保存呢？因为没有flush文件。
+#遇到过的问题：
+#Q: 为什么不能在子进程中完整保存呢？ A: 因为没有flush文件。
+#Q: 为什么把main中的包装成函数，就阻塞了？ A: 没解决 todo
+#v0.3 新增日志时间戳
 
-#part 1
+
+################################
+#part 1 定义路径
+################################
 import os
-os.chdir('/data4/wangjl/B116B117/01getAPA_matrix')
+os.chdir('/home/wangjl/data/apa/190528L/') #定义工作目录，仅对python有效。对linux命令建议都使用绝对路径。
 os.getcwd()
 
-#part 2
-import pysam
-#fun: 统计多少行的函数，输入cb，返回行数
-def getLineNumber(cb):
-    fname='bamFiles_B117_batch/B117_'+cb+'_batch.bam';
-    bf = pysam.AlignmentFile(fname, 'rb')
-    LineNumber=0
-    for line in bf:
-       LineNumber+=1
-    bf.close()
-    return LineNumber
+################################
+#part 2 定义linux命令
+################################
+import subprocess
+
+#目的：需要平行处理的linux命令。if the function can run on one id, it can run on the batch of ids.
+#要点： 使用id拼接linux命令。建议都用绝对路径。
+def doLinuxCMD(id):
+    #构建命令
+    cmd="samtools view /home/wangjl/data/apa/190528L/hg19/"+id+"_Aligned.sortedByCoord.out.bam|wc"
+    #执行linux命令
+    (status, output)=subprocess.getstatusoutput(cmd)
+    #print(output) #查看linux命令输出到屏幕上的文字
+    rs=str(status)+" "+output;
+    return rs #返回状态码status，0表示命令正常执行，其他表示异常，需要查看output推测具体原因
 #test
-#getLineNumber('AAACCTGAGGCCATAG-1') #1764
+#doLinuxCMD('c01_ROW07') #3929403 58941045 1511774483
 
 
-#part 3
-import time,multiprocessing,os,random,re,sys
+################################
+#part 3 并行执行
+################################
+import time,multiprocessing,os,re #random
 from multiprocessing import Queue
 from multiprocessing import Process
 
+#=====================
+#settings
+id_list="/home/wangjl/data/apa/190515/syncHeLa_13.id"
+#输入文件名关键词列表，一个id一行，用于在doLinuxCMD命令中构建linux命令。表示本脚本要多线程处理这么多文件。
+#一下采用默认值即可
+core=13 #使用的CPU逻辑核心数。该数字 x linux命令使用的线程数 要小于硬件CPU逻辑核心数
+hint_n=5 #默认给出20个进度提示
+log_file_name='logs.txt' #uniq-count-FROM-star.final.207.log
+#输出日志的文件名，内容是： id号 运行状态(0表示正常，否则表示异常) 
+#=====================
+##这个文件名要加上时间戳，防止忘了修改日志文件名而被覆盖掉
+timsString=time.strftime("%Y%m%d-%H%M%S", time.localtime()) 
+log_file_name=log_file_name + timsString
 
-path_cb_list="B117_CellBarCode_list.txt" # cell barcode路径
 
-#start time
-start=time.time()
-print('='*10, "Begin of main process", os.getpid(), "[child pid by parent ppid]")
-
-
-# 读和处理数据
+#读和处理数据，并行
 def worker(cb):
     #一个很耗时的计算
-    rs=cb+"\t"+str( getLineNumber(cb) ) #该函数在上一个cell定义的
+    rs=cb+"\t"+str( doLinuxCMD(cb) ) #part2 中定义的
     q.put(rs)   #结果输出到管道
 
-
 #保存的线程1个
-def worker_out():
+def writer(log_file_name,ID_total,hint_n=20):
+    breaks=int(ID_total/hint_n) #显示20次进度提示
     i=0
-    with open('oB117_.check', 'w') as f:
+    with open(log_file_name, 'w') as f: #这里不能是变量名？
         while True:
             i+=1
-            if i%1000==0:
-                pass 
-                #print(i)
-            
+            if i%breaks==0: #进度条
+                print(i," items processed in ", time.time()-start," seconds",sep="")
             rs=q.get() #waite while q is empty
-            #print(rs)
             f.write(rs+"\n") #写入文件
             f.flush() #刷新缓存，一次性输出到文件
 
 
+#start time
+start=time.time()
+print('='*10, ">Begin of main process[", os.getpid(), "][child pid by parent ppid]", sep="")
 
 # 主进程
-if __name__ == '__main__':
-    q=Queue(60) #会超标，但是不会超出太多
-    
-    # 声明进程池对象
-    pool = multiprocessing.Pool(processes = 32)
+if __name__ == '__main__': 
+    q=Queue(core+10) #创建队列
+    pool = multiprocessing.Pool(processes = core)# 声明进程池对象
 
-    #文件读取，分配任务给进程
-    fr=open(path_cb_list,'r')
-
-    # 向进程池中提交任务
+    # 向进程池中提交任务，交给并行的worker()来处理
+    fr=open(id_list,'r')#读取id_list文件，分配任务给进程
     i=0
     for lineR in fr.readlines():
         i+=1
-        if i>10:
-            pass;
+        #if i>100:
+        #    pass;
             #break; #测试用语句
 
         line=lineR.strip()
-        arr=re.split(' ',line)
-        #print("start new process", line) #任务是一次发送完的
+        arr=re.split(' ',line) ##print("start new process", line) #任务是一次发送完的
         pool.apply_async( worker,args=(arr[0],) )
     fr.close() #关闭文件
 
-    #分完任务，开始启动保存进程
-    pOut = Process(target=worker_out)
+    #分完任务，开始启动保存进程，由writer()函数来处理
+    pOut = Process(target=writer, args=(log_file_name,i,hint_n,)) # args：元组参数，如果参数就一个，记得加逗号’，’
     pOut.start()
 
-    #等待读进程结束
+    #等待读进程worker()全部结束
     pool.close()
     pool.join()
 
-    #主线程查看队列，决定是否关掉写循环
+    #主线程查看队列，决定是否关掉写writer()循环
+    ##todo 这里有风险，会不会执行不完就被关掉了呢？虽然目前还没有遇到过
     while not q.empty():
         time.sleep(1)#每一秒检查一次队列是否为空
-
     pOut.terminate(); #终止死循环
 
-print(time.time()-start,'s', '='*10, "End of main process", os.getpid())
+print(time.time()-start,'s <', '='*10, "End of main process[", os.getpid(),']', sep="")
+print("#"*40,"\nLog file: "+ os.getcwd()+"/"+log_file_name)
 
 
 
