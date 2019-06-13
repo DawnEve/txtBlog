@@ -116,6 +116,112 @@ XPATH返回的不一定就是唯一的节点，而是符合条件的所有节点
 
 
 ========================================
+【重点】requests包获取网页
+----------------------------------------
+
+import requests
+
+response  = requests.get("https://www.baidu.com")
+print(type(response))
+print(response.status_code)
+print(type(response.text))
+print(response.text)
+print(response.cookies)
+print(response.content)
+print(response.content.decode("utf-8"))
+
+
+关于请求乱码问题：
+    不管是通过response.content.decode("utf-8)的方式
+    还是通过response.encoding="utf-8"的方式都可以避免乱码的问题发生
+	
+请求：
+	GET请求：URL查询字符串传递数据，通常我们会通过httpbin.org/get?key=val方式传递
+		data = {
+		"name":"zhaofan",
+		"age":22
+	}
+	response = requests.get("http://httpbin.org/get",params=data)
+
+	注：如果字典中的参数为None则不会添加到url上
+
+	解析json:
+			requests里面集成的json其实就是执行了json.loads()方法，两者的结果是一样的
+
+	获取二进制数据：
+			在上面提到了response.content，这样获取的数据是二进制数据，同样的这个方法
+			也可以用于下载图片以及视频资源
+
+	添加请求头（headers）：
+			headers = {
+
+				"User-Agent":"Mozilla/5.0 (Macintosh; Intel Mac OS X 10_12_4) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/58.0.3029.110 Safari/537.36"
+			}
+			response =requests.get("https://www.zhihu.com",headers=headers)
+
+	基本POST请求：
+
+			通过在发送post请求时添加一个data参数，这个data参数可以通过字典构造成，这样
+			对于发送post请求就非常方便。
+
+	响应：
+		可以通过response获得很多属性
+		 response.status_code 状态码
+		 response.headers  请求头
+		 response.cookies  cookie
+		 response.url
+		 response.history
+
+requests高级用法
+	文件上传
+		files= {"files":open("git.jpeg","rb")}
+		response = requests.post("http://httpbin.org/post",files=files)
+	获取cookie
+		for key,value in response.cookies.items():
+		 print(key+"="+value)
+	会话维持
+		s = requests.Session()
+		s.get("http://httpbin.org/cookies/set/number/123456")
+		response = s.get("http://httpbin.org/cookies")
+	证书验证
+		现在的很多网站都是https的方式访问，所以这个时候就涉及到证书的问题
+		利用：verify=False
+		response = requests.get("https://www.12306.cn",verify=False)
+	代理设置
+		proxies= {
+			"http":"http://127.0.0.1:9999",
+			"https":"http://127.0.0.1:8888"
+		}
+		response  = requests.get("https://www.baidu.com",proxies=proxies)
+		如果代理需要设置账户名和密码,只需要将字典更改为如下：
+		proxies = {
+		"http":"http://user:password@127.0.0.1:9999"
+		}
+		如果你的代理是通过sokces这种方式则需要pip install "requests[socks]"
+		proxies= {
+		"http":"socks5://127.0.0.1:9999",
+		"https":"sockes5://127.0.0.1:8888"
+		}
+	超时设置
+		通过timeout参数可以设置超时的时间
+	认证设置（碰到需要认证的网站）
+		from requests.auth import HTTPBasicAuth
+		response = requests.get("http://120.27.34.24:9001/",auth=HTTPBasicAuth("user","123"))
+
+		或者
+		response = requests.get("http://120.27.34.24:9001/",auth=("user","123"))
+	异常处理
+
+
+
+refer:
+https://www.cnblogs.com/wanmudong/p/8073822.html
+
+
+
+
+
+========================================
 实例: 下载视频的简单爬虫：[requests,re,file]
 ----------------------------------------
 #下载视频
@@ -1759,6 +1865,66 @@ print(sum) #710
 
 
 
+========================================
+【难点】 怎么模拟真实用户访问
+----------------------------------------
+
+很多网站的反爬虫机制都设置了访问间隔时间，一个IP如果短时间内超过了指定的次数就会进入“冷却CD”，所以除了轮换IP和user_agent，可以设置访问的时间间间隔长一点，比如没抓取一个页面休眠一个随机时间。
+
+ - 随机访问间隔
+ - 轮换IP
+ - 构造合理的HTTP请求头
+ - 设置Cookie的学问
+ - 可以考虑多进程（随机下载，之后再按照顺序合并）
+
+
+
+1. 爬虫设置随机访问时间间隔
+
+import time,random
+for i in range(10): #随机时间段后[2s,12s]执行
+    pause=2+10*random.random()
+    print(str(i)+' '+str(pause))
+    time.sleep(pause)
+
+感觉极限做到3+10*rand就可以了，时间再长就太浪费时间了。
+更精简的版本
+import time,random
+time.sleep(random.random()*3)
+
+
+
+
+2.怎么随机替换 header头呢？
+
+(1)Upgrade-Insecure-Requests：参数为1。该指令用于让浏览器自动升级请求从http到https,用于大量包含http资源的http网页直接升级到https而不会报错。简洁的来讲,就相当于在http和https之间起的一个过渡作用。就是浏览器告诉服务器，自己支持这种操作，我能读懂你服务器发过来的上面这条信息，并且在以后发请求的时候不用http而用https；
+(2)User-Agent：有一些网站不喜欢被爬虫程序访问，所以会检测连接对象，如果是爬虫程序，也就是非人点击访问，它就会不让你继续访问，所以为了要让程序可以正常运行，我们需要设置一个浏览器的User-Agent；
+(3)Accept：浏览器可接受的MIME类型，可以根据实际情况进行设置；
+(4)Accept-Encoding：浏览器能够进行解码的数据编码方式，比如gzip。Servlet能够向支持gzip的浏览器返回经gzip编码的HTML页面。许多情形下这可以减少5到10倍的下载时间；
+(5)Accept-Language：浏览器所希望的语言种类，当服务器能够提供一种以上的语言版本时要用到；
+(6)Cookie：这是最重要的请求头信息之一。中文名称为“小型文本文件”或“小甜饼“，指某些网站为了辨别用户身份而储存在用户本地终端（Client Side）上的数据（通常经过加密）。定义于RFC2109。是网景公司的前雇员卢·蒙特利在1993年3月的发明。
+
+
+headers = {
+  'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_13_2) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/65.0.3325.162 Safari/537.36',
+  'Referer': 'https://github.com/'
+}
+requests.get(url, headers=headers)
+
+
+
+
+3. 创建自己的代理IP池
+
+https://www.xicidaili.com/nn/1
+https://www.xicidaili.com/nn/2
+
+
+
+
+
+
+
 
 ========================================
 ### 附录 ###
@@ -1790,13 +1956,6 @@ def getFileName():
 
 
 
-2. 为了做到随机时间段后执行，做成随机函数
-
-import time,random
-for i in range(10): #随机时间段后[2s,12s]执行
-    pause=2+10*random.random()
-    print(str(i)+' '+str(pause))
-    time.sleep(pause)
 
 
 -
@@ -1806,16 +1965,31 @@ for i in range(10): #随机时间段后[2s,12s]执行
 
 
 
-========================================
-----------------------------------------
 
 
 ========================================
+模拟登陆
 ----------------------------------------
+
+模拟登录拉钩网
+https://blog.csdn.net/kuangshp128/article/details/83302574
+
+
+
+
 
 
 ========================================
+爬虫代理IP（代理池）的使用方法
 ----------------------------------------
+
+https://blog.csdn.net/weixin_42575020/article/details/88826472
+
+第一种：selenium加上代理，selenium主要是实现自动化登录验证等操作
+第二种：requests调用代理
+第三种：urllib调用代理
+
+
 
 
 ========================================
