@@ -19,8 +19,10 @@ http://www.bioinfo-scrounger.com/archives/683
 
 
 
+
+
 ========================================
-测序数据质控 fastqc
+测序数据质控 fastqc 及报告解读
 ----------------------------------------
 1.download and install(for centOS7 no root)
 http://www.bioinformatics.babraham.ac.uk/projects/fastqc/
@@ -77,8 +79,13 @@ $ fastqc untreated.fq -o fastqc_out_dir/
 当fastq文件比较多时，也可以批量执行：
 $ fastqc /path_to_fq/*.fq -o fastqc_out_dir/
 
+#多线程
+$ fastqc -t 20 /home/wangjl/data/apa/fq_files/bc/c19_ROW13_R2.fastq -o /home/wangjl/data/apa/190610APA/QC_before_trim/
+
 或者后台执行
 $ nohup fastqc -t 10 ../fastq/19C001854_WES001_CapNGS_R1.fq -o fastqc_out/ >R1.log 2>&1 &
+
+
 
 
 2)输入bam文件呢？
@@ -86,15 +93,43 @@ $ fastqc  -t 5 -o hg19_mm10_rmdup_QC/ -f bam hg19_mm10_rmdup/c01_ROW01.rmdup.bam
 
 
 
+
+
+
+
+
+2.fastqc结果报告怎么看？
 fastqc结果该怎么看及切割接头：
 http://www.huangshujia.me/2017/08/25/2017-08-25-Begining-WGS-Data-Analysis-Fastq-Data-Quality-Control.html
+https://www.plob.org/article/5987.html
+
+
+
+(4) Per Base Sequence Content
+对所有reads的每一个位置，统计ATCG四种碱基（正常情况）的分布：
+
+横轴为位置，纵轴为百分比。 正常情况下四种碱基的出现频率应该是接近的，而且没有位置差异。因此好的样本中四条线应该平行且接近。当部分位置碱基的比例出现bias时，即四条线在某些位置纷乱交织，往往提示我们有overrepresented sequence的污染。当所有位置的碱基比例一致的表现出bias时，即四条线平行但分开，往往代表文库有bias (建库过程或本身特点)，或者是测序中的系统误差。
+当任一位置的A/T比例与G/C比例相差超过10%，报"WARN"；当任一位置的A/T比例与G/C比例相差超过20%，报"FAIL"。
+
+
+(9) Duplicate Sequences
+统计序列完全一样的reads的频率。测序深度越高，越容易产生一定程度的duplication，这是正常的现象，但如果duplication的程度很高，就提示我们可能有bias的存在（如建库过程中的PCR duplication）。
+
+
+(10) Overrepresented Sequences
+如果有某个序列大量出现，就叫做over-represented。fastqc的标准是占全部reads的0.1%以上。和上面的duplicate analysis一样，为了计算方便，只取了fq数据的前200,000条reads进行统计，所以有可能over-represented reads不在里面。而且大于75bp的reads也是只取50bp。如果命令行中加入了-c contaminant file，出现的over-represented sequence会从contaminant_file里面找匹配的hit（至少20bp且最多一个mismatch），可以给我们一些线索。
+当发现超过总reads数0.1%的reads时报”WARN“，当发现超过总reads数1%的reads时报"FAIL"。
+
+建库接头序列 https://github.com/csf-ngs/fastqc/blob/master/Contaminants/contaminant_list.txt
 
 
 
 
 
 
-2.Ubuntu1804 报错处理
+
+
+3.Ubuntu1804 报错处理
 (1)$ fastqc *.fastq &
 Analysis complete for 19C001854_WES001_CapNGS_R1.fq
 Exception in thread "Thread-1" java.awt.AWTError: Assistive Technology not found: org.GNOME.Accessibility.AtkWrapper
@@ -119,7 +154,7 @@ assistive_technologies=org.GNOME.Accessibility.AtkWrapper
 
 
 ========================================
-MultiQC: 批量显示QC结果的利器
+|-- MultiQC: 批量显示QC结果的利器
 ----------------------------------------
 
 1.安装
@@ -149,96 +184,9 @@ https://blog.csdn.net/ada0915/article/details/77201871
 
 
 
-========================================
-去除接头 trim_galore
-----------------------------------------
-
-1.简介
-
-_Trim Galore_ is a wrapper around [Cutadapt](https://github.com/marcelm/cutadapt) and [FastQC](http://www.bioinformatics.babraham.ac.uk/projects/fastqc/) to consistently apply adapter and quality trimming to FastQ files, with extra functionality for RRBS data.
-
-Trim Galore是对FastQC和Cutadapt的包装。适用于所有高通量测序，包括RRBS(Reduced Representation Bisulfite-Seq ), Illumina、Nextera 和smallRNA测序平台的双端和单端数据。主要功能包括两步：
-第一步首先去除低质量碱基，然后去除3' 末端的adapter, 如果没有指定具体的adapter，程序会自动检测前1million的序列，然后对比前12-13bp的序列是否符合以下类型的adapter:
-
-Illumina:   AGATCGGAAGAGC
-Small RNA:  TGGAATTCTCGG
-Nextera:    CTGTCTCTTATA
-
-
-
-
-
-2. 安装
-$ git clone https://github.com/FelixKrueger/TrimGalore.git
-然后里面有二进制文件，就可以用了。
-在~/bin下新建软链接：
-$ ln -s /home/wangjl/software/TrimGalore/trim_galore
-$ trim_galore -v
-version 0.6.2
-
-
-官方安装步骤:
-```bash
-# Check that cutadapt is installed
-cutadapt --version
-# Check that FastQC is installed
-fastqc -v
-# Install Trim Galore
-curl -fsSL https://github.com/FelixKrueger/TrimGalore/archive/0.6.0.tar.gz -o trim_galore.tar.gz
-tar xvzf trim_galore.tar.gz
-# Run Trim Galore
-~/TrimGalore-0.6.0/trim_galore
-
-
-
-
-
-3.使用
-
-# 处理双端测序结果
-echo " trim_galore cut adapters started at $(date)"
-trim_galore -q 20 --phred33 --stringency 3 --length 20 -e 0.1 \
-            --paired $dir/cmp/01raw_data/$fq1 $dir/cmp/01raw_data/$fq2  \
-            --gzip -o $input_data
-echo "trim_galore cut adapters finished at $(date)"
-
-
-# 单端测序结果
-$ trim_galore --quality 25 --phred33 --stringency 3 --length 30 --gzip  --fastqc_args "-t 15" --output_dir trim_galore xx.fastq
-
-
-参数解释
-$ trim_galore --help
---quality：设定Phred quality score阈值，默认为20。
---phred33：：选择-phred33或者-phred64，表示测序平台使用的Phred quality score。
---adapter：输入adapter序列。也可以不输入，Trim Galore!会自动寻找可能性最高的平台对应的adapter。自动搜选的平台三个，也直接显式输入这三种平台，即--illumina、--nextera和--small_rna。
---stringency：设定可以忍受的前后adapter重叠的碱基数，默认为1（非常苛刻）。可以适度放宽，因为后一个adapter几乎不可能被测序仪读到。
---length：设定输出reads长度阈值，小于设定值会被抛弃。
---paired：对于双端测序结果，一对reads中，如果有一个被剔除，那么另一个会被同样抛弃，而不管是否达到标准。
---retain_unpaired：对于双端测序结果，一对reads中，如果一个read达到标准，但是对应的另一个要被抛弃，达到标准的read会被单独保存为一个文件。
---gzip和--dont_gzip：清洗后的数据zip打包或者不打包。
---output_dir：输入目录。需要提前建立目录，否则运行会报错。
-	-o：输出文件路径
--- trim-n : 移除read一端的reads
--e：允许的错误率
-
-
-
-4.质控
-$ cd /home/wangjl/data/c1_2019APA/sc/combine/sc_fq/trim/galore
-$ multiqc *fastqc.zip -o /home/wangjl/data/c1_2019APA/sc/combine/sc_fq/
-
-
-
-refer:
-https://www.jianshu.com/p/7a3de6b8e503
-
-
-
-
 
 ========================================
-测序文件预处理:质控fastqc、切除cutadapt
+测序文件预处理:切除cutadapt
 ----------------------------------------
 
 1) Remove adapter sequences using fastX toolkit
@@ -248,9 +196,10 @@ https://www.jianshu.com/p/7a3de6b8e503
 5) Assemble using bowtie2 against reference (nb our strain is not exactly the reference but should similar enough)
 
 
+去接头的软件包括 Trimmomatic、cutadapt、fastx_toolkit、fastp 等。
+
 
 Trimmomatic（也是一个java程序）
-
 
 
 没必要去除polyA，因为不比对到任何地方
@@ -320,25 +269,58 @@ $ cutadapt --version
 1.14
 
 
+
+$ cutadapt --help
+cutadapt version 2.3 #2019.6.15
+#示例
+$ cutadapt -a ADAPTER [options] [-o output.fastq] input.fastq
+-j CORES, --cores CORES   指定cpu数量
+--trim-n              Trim N's on ends of reads. 感觉应该先去两端的N
+
+-a ADAPTER, --adapter ADAPTER
+	Sequence of an adapter ligated to the 3' end (paired data: of the first read). 
+	The adapter and subsequent bases are trimmed. 
+	If a '$' character is appended ('anchoring'), the adapter is only found if it is a suffix of the read.
+	去除3'端接头及之后的序列。如果加上$后缀，则只在接头是后缀时去除。
+-g ADAPTER, --front ADAPTER
+	Sequence of an adapter ligated to the 5' end (paired data: of the first read). 
+	The adapter and any preceding bases are trimmed. Partial matches at the 5' end are allowed. 
+	If a '^' character is prepended ('anchoring'), the adapter is only found if it is a prefix of the read.
+	去除5'端接头及之前的序列。允许5'端部分匹配。如果有^前缀，则只在接头是前缀时去除。
+-b ADAPTER, --anywhere ADAPTER
+	如果第一个碱基和接头匹配，则和-g参数类似，否则和-a参数类似。常用语挽救失败的文库，如果你知道接头位置，不要使用该参数！
+
+-e RATE, --error-rate RATE
+	Maximum allowed error rate as value between 0 and 1	(no. of errors divided by length of matching region).Default: 0.1 (=10%)
+	最大允许错误，0到1之间，默认0.1
+-n COUNT, --times COUNT
+    Remove up to COUNT adapters from each read. Default: 1
+	每个序列最多去除几个接头？默认是1
+
+-q [5'CUTOFF,]3'CUTOFF, --quality-cutoff [5'CUTOFF,]3'CUTOFF
+	Trim low-quality bases from 5' and/or 3' ends of each read before adapter removal. Applied to both reads if data is paired. 
+	If one value is given, only the 3' end is trimmed. 
+	If two comma-separated cutoffs are given, the 5' end is trimmed with the first cutoff, the 3' end with the second.
+	去除质量分数低的序列。如果只给一个值，则只去除3'端。如果逗号隔开的2个值，则第一个过滤5'端，第二个过滤3'端。
+
+-m LEN[:LEN2], --minimum-length LEN[:LEN2]
+    Discard reads shorter than LEN. Default: 0
+	丢弃长度太短的序列，默认0不丢弃
+
+
+
 (2)按照碱基质量剪切：
+要求结尾必须是fq，fastq或者fq.gz，fastq.gz，不能是fa.gz，否则报错。
 $ cutadapt -q 10 -o output.fastq input.fastq
 
-去除polyA尾巴 For poly-A trimming, for example, you would write:
-$ cutadapt -a "A{20}" -o output.fastq input.fastq
-
---minimum-length LENGTH or -m LENGTH
-Discard processed reads that are shorter than LENGTH. Reads that are too short even before adapter removal are also discarded. Without this option, reads that have a length of zero (empty reads) are kept in the output.
-
-
-举例：
 $ cutadapt -q 25 -m 90 -o /home/wangjl/data/scFQ_filtered/c12_A1_filtered.fastq.gz /home/wangjl/data/scFQ/c12_A1.fq.gz
-要求结尾必须是fq，fastq或者fq.gz，fastq.gz，不能是fa.gz，否则报错。
-
-$ cutadapt -a "A{20}" -o output.fastq input.fastq
-
+#3'端去掉质量分数小于25的碱基，舍弃小于90bp的序列。
 
 
 (3)测试 cutadapt 中去除polyA尾巴的参数
+去除polyA尾巴 For poly-A trimming, for example, you would write:
+$ cutadapt -a "A{20}" -o output.fastq input.fastq
+
 $ cutadapt -a "A{10}" -q 25 -m 30 -o filteredA10_c12_A1.fq.gz /home/wangjl/data/scFQ/c12_A1.fq.gz
 $ cutadapt -a "A{20}" -q 25 -m 30 -o filteredA20_c12_A1.fq.gz /home/wangjl/data/scFQ/c12_A1.fq.gz
 $ cutadapt -a "A{30}" -q 25 -m 30 -o filteredA30_c12_A1.fq.gz /home/wangjl/data/scFQ/c12_A1.fq.gz
@@ -354,10 +336,188 @@ NofA	reads
 
 
 
+(4) 去除5'端接头
+$ cutadapt -g AGATCGGAAGAGCGTCGTGTAGGGAAAGAGTGTAGATCTCGGTGGTCGCCGTATCATT -q 25 -m 20 -o dAdapter1_CutA_c16_ROW17.fq ../polyA_fq/CutA_c16_ROW17.fq >c16_ROW17.log
+如果是另一端的PCR引物测穿了，需要使用其反向互补序列。
+
+
+
+
+
 
 
 ========================================
-Bowtie2: A fast and sensitive gapped read aligner
+|-- 建库接头序列 contaminant_list.txt
+----------------------------------------
+
+This file contains a list of potential contaminants which are frequently found in high throughput sequencing reactions.  
+These are mostly sequences of adapters / primers used in the various sequencing chemistries.
+该文件包含高通量测序常见的污染源，通常是各种测序试剂中的adapters 和 primers。
+
+Please DO NOT rely on these sequences to design your own oligos, some of them are truncated at ambiguous positions, and none of them are definitive sequences from the manufacturers so don't blame us if you try to use them and they don't work.
+不要依靠这些序列设计自己的oligo，有些在不明确的位置被删减了，这些都不是厂家给定义的序列，所以如果做不出来不要责怪我们。
+
+You can add more sequences to the file by putting one line per entry and specifying a name[tab]sequence.  
+If the contaminant you add is likely to be of use to others please consider sending it to the FastQ authors, either via a bug report at www.bioinformatics.bbsrc.ac.uk/bugzilla/ or by directly emailing simon.andrews@bbsrc.ac.uk so other users of the program can benefit.
+
+Illumina Single End Adapter 1  ACACTCTTTCCCTACACGACGCTGTTCCATCT
+Illumina Single End Adapter 2  CAAGCAGAAGACGGCATACGAGCTCTTCCGATCT
+Illumina Single End PCR Primer 1  AATGATACGGCGACCACCGAGATCTACACTCTTTCCCTACACGACGCTCTTCCGATCT
+Illumina Single End PCR Primer 2  CAAGCAGAAGACGGCATACGAGCTCTTCCGATCT
+Illumina Single End Sequencing Primer  ACACTCTTTCCCTACACGACGCTCTTCCGATCT
+	
+Illumina Paired End Adapter 1   ACACTCTTTCCCTACACGACGCTCTTCCGATCT
+Illumina Paired End Adapter 2   CTCGGCATTCCTGCTGAACCGCTCTTCCGATCT
+Illumina Paried End PCR Primer 1   AATGATACGGCGACCACCGAGATCTACACTCTTTCCCTACACGACGCTCTTCCGATCT
+Illumina Paired End PCR Primer 2   CAAGCAGAAGACGGCATACGAGATCGGTCTCGGCATTCCTGCTGAACCGCTCTTCCGATCT
+Illumina Paried End Sequencing Primer 1		ACACTCTTTCCCTACACGACGCTCTTCCGATCT
+Illumina Paired End Sequencing Primer 2		CGGTCTCGGCATTCCTACTGAACCGCTCTTCCGATCT
+
+
+
+
+more: https://github.com/csf-ngs/fastqc/blob/master/Contaminants/contaminant_list.txt
+
+
+
+========================================
+|-- 去除接头 trim_galore: 自动检测adapter的质控软件
+----------------------------------------
+
+1.简介
+
+_Trim Galore_ is a wrapper around [Cutadapt](https://github.com/marcelm/cutadapt) and [FastQC](http://www.bioinformatics.babraham.ac.uk/projects/fastqc/) to consistently apply adapter and quality trimming to FastQ files, with extra functionality for RRBS data.
+
+Trim Galore是对FastQC和Cutadapt的包装。适用于所有高通量测序，包括RRBS(Reduced Representation Bisulfite-Seq ), Illumina、Nextera 和smallRNA测序平台的双端和单端数据。主要功能包括两步：
+第一步首先去除低质量碱基，然后去除3' 末端的adapter, 如果没有指定具体的adapter，程序会自动检测前1million的序列，然后对比前12-13bp的序列是否符合以下类型的adapter:
+
+Illumina:   AGATCGGAAGAGC
+Small RNA:  TGGAATTCTCGG
+Nextera:    CTGTCTCTTATA
+
+
+
+
+
+
+2. 下载和安装
+(1)#不推荐！会在路径提示符前面添加(base)，洁癖的人不要尝试: conda install -c bioconda trim-galore 
+
+
+(2)[推荐] 下载安装包安装，解压，配置下环境变量就可以使用：https://github.com/FelixKrueger/TrimGalore
+$ git clone https://github.com/FelixKrueger/TrimGalore.git
+然后里面有二进制文件，就可以用了。
+在~/bin下新建软链接：
+$ ln -s /home/wangjl/software/TrimGalore/trim_galore
+$ trim_galore -v
+version 0.6.2
+
+
+官方安装步骤:
+```bash
+# Check that cutadapt is installed
+cutadapt --version
+# Check that FastQC is installed
+fastqc -v
+# Install Trim Galore
+curl -fsSL https://github.com/FelixKrueger/TrimGalore/archive/0.6.0.tar.gz -o trim_galore.tar.gz
+tar xvzf trim_galore.tar.gz
+# Run Trim Galore
+~/TrimGalore-0.6.0/trim_galore
+
+
+
+
+
+
+
+
+
+
+
+3.使用
+
+(1)示例
+# 处理双端测序结果
+echo " trim_galore cut adapters started at $(date)"
+trim_galore -q 20 --phred33 --stringency 3 --length 20 -e 0.1 \
+            --paired $dir/cmp/01raw_data/$fq1 $dir/cmp/01raw_data/$fq2  \
+            --gzip -o $input_data
+echo "trim_galore cut adapters finished at $(date)"
+
+
+# 单端测序结果
+$ trim_galore --quality 25 --phred33 --stringency 3 --length 30 --gzip  --fastqc_args "-t 15" --output_dir trim_galore xx.fastq
+
+参数解释(部分参数解释见(2))
+$ trim_galore --help
+--adapter：输入adapter序列。也可以不输入，Trim Galore!会自动寻找可能性最高的平台对应的adapter。自动搜选的平台三个，也直接显式输入这三种平台，即--illumina、--nextera和--small_rna。
+
+--paired：对于双端测序结果，一对reads中，如果有一个被剔除，那么另一个会被同样抛弃，而不管是否达到标准。
+--retain_unpaired：对于双端测序结果，一对reads中，如果一个read达到标准，但是对应的另一个要被抛弃，达到标准的read会被单独保存为一个文件。
+--gzip和--dont_gzip：清洗后的数据zip打包或者不打包。
+
+-- trim-n : 移除read一端的reads
+-e：允许的错误率
+
+
+
+
+(2) 批量模式
+echo "Trim galore reads"
+# ls *.gz | while read id; do echo "Trim ${id}"; trim_galore --quality 25 --phred33 --stringency 3 --length 30 --gzip  --fastqc_args "-t 15" --output_dir trim_galore $id; done
+参数解释
+	--quality 25 #设定Phred quality score阈值，默认为20。
+	--phred33  #选择-phred33或者-phred64，表示测序平台使用的Phred quality score。
+	--stringency 3 #设定可以忍受的前后adapter重叠的碱基数，默认为1（非常苛刻）。可以适度放宽，因为后一个adapter几乎不可能被测序仪读到。
+	--length 30 #设定输出reads长度阈值，小于设定值会被抛弃。
+	--gzip  #--gzip和--dont_gzip：清洗后的数据zip打包或者不打包。
+	--fastqc_args "-t 15" # 线程数量
+	--output_dir #输出目录。需要提前建立目录，否则运行会报错。
+		-o：输出文件路径
+#
+
+
+
+
+4.质控
+$ cd /home/wangjl/data/c1_2019APA/sc/combine/sc_fq/trim/galore
+$ multiqc *fastqc.zip -o /home/wangjl/data/c1_2019APA/sc/combine/sc_fq/
+
+
+
+refer:
+https://www.jianshu.com/p/7a3de6b8e503
+
+
+
+
+
+
+
+
+
+========================================
+比对工具: RNA Mapper
+----------------------------------------
+
+Popular short read aligners
+http://homer.ucsd.edu/homer/basicTutorial/mapping.html
+more: https://en.wikipedia.org/wiki/List_of_sequence_alignment_software#Short-Read_Sequence_Alignment
+
+Most Popular:
+bowtie : fast, works well
+bowtie2 : fast, can perform local alignments too
+BWA - Fast, allows indels, commonly used for genome/exome resequencing
+Subread - Very fast, (also does splice alignment)
+STAR - Extremely fast (also does splice alignment, requires at least 30 Gb memory)
+To be honest, I would probably recommend STAR for almost any application at this point if you have the memory (see below)
+
+
+
+
+========================================
+|-- Bowtie2: A fast and sensitive gapped read aligner
 ----------------------------------------
 
 1.安装
@@ -408,66 +568,16 @@ $ bowtie2 -p 60 --local -x /home/wangjl/data/ref/human/bowtie2/hg19 -U /home/wan
 
 
 
-========================================
-trim galore 自动检测adapter的质控软件
-----------------------------------------
-https://www.jianshu.com/p/7a3de6b8e503
-
-1. Trim galore简介
-
-Trim Galore是对FastQC和Cutadapt的包装。适用于所有高通量测序，包括RRBS(Reduced Representation Bisulfite-Seq ), Illumina、Nextera 和smallRNA测序平台的双端和单端数据。主要功能包括两步：
-第一步首先去除低质量碱基，然后去除3' 末端的adapter, 如果没有指定具体的adapter，程序会自动检测前1million的序列，然后对比前12-13bp的序列是否符合以下类型的adapter:
-
-Illumina:   AGATCGGAAGAGC
-Small RNA:  TGGAATTCTCGG
-Nextera:    CTGTCTCTTATA
-
-
-
-
-2. 下载安装软件 trim galore
-#不推荐！会在路径提示符前面添加(base)，洁癖的人不要尝试: conda install -c bioconda trim-galore 
-
-
-推荐下载安装包安装，解压，配置下环境变量就可以使用：https://github.com/FelixKrueger/TrimGalore
-官方给的流程：
-# Check that cutadapt is installed
-cutadapt --version
-# Check that FastQC is installed
-fastqc -v
-# Install Trim Galore
-curl -fsSL https://github.com/FelixKrueger/TrimGalore/archive/0.6.0.tar.gz -o trim_galore.tar.gz
-tar xvzf trim_galore.tar.gz
-# Run Trim Galore
-~/TrimGalore-0.6.0/trim_galore
-
-
-
-
-
-3.
-echo "Trim galore reads"
-# ls *.gz | while read id; do echo "Trim ${id}"; trim_galore --quality 25 --phred33 --stringency 3 --length 30 --gzip  --fastqc_args "-t 15" --output_dir trim_galore $id; done
-参数解释
-	--quality 25 #设定Phred quality score阈值，默认为20。
-	--phred33  #选择-phred33或者-phred64，表示测序平台使用的Phred quality score。
-	--stringency 3 #设定可以忍受的前后adapter重叠的碱基数，默认为1（非常苛刻）。可以适度放宽，因为后一个adapter几乎不可能被测序仪读到。
-	--length 30 #设定输出reads长度阈值，小于设定值会被抛弃。
-	--gzip  #--gzip和--dont_gzip：清洗后的数据zip打包或者不打包。
-	--fastqc_args "-t 15" # 线程数量
-	--output_dir #输出目录。需要提前建立目录，否则运行会报错。
-#
-
-
-
-
-
 
 
 
 ========================================
-RNAseq的比对工具 STAR: ultrafast universal RNA-seq aligner 
+|-- RNAseq的比对工具 STAR: ultrafast universal RNA-seq aligner 
 ----------------------------------------
+
+STAR is recommended by the ENCODE project, definitely should be your best option(among Bowtie2,).
+
+
 RNA-seq比对算法开发了STAR（Spliced Transcripts Alignments to a Reference，STAR）.
 该算法使用了未压缩后缀阵列中的连续最大可比对种子搜索，接着种子聚类和缝合过程。
 
@@ -483,19 +593,6 @@ STAR, 很犀利, ENCODE专属RNA-seq工具. 在准度和时间消耗上, 效果�
 
 STAR 吐槽现有的RNA-seq工具都是DNA-seq工具的延伸, 并非量身打造. 从其算法里的mapping一步来看, 应该属于spliced mapper, 但又不同于把reads打断成k-mer形式. 
 
-
-
-
-Popular short read aligners
-http://homer.ucsd.edu/homer/basicTutorial/mapping.html
-more: https://en.wikipedia.org/wiki/List_of_sequence_alignment_software#Short-Read_Sequence_Alignment
-Most Popular:
-bowtie : fast, works well
-bowtie2 : fast, can perform local alignments too
-BWA - Fast, allows indels, commonly used for genome/exome resequencing
-Subread - Very fast, (also does splice alignment)
-STAR - Extremely fast (also does splice alignment, requires at least 30 Gb memory)
-To be honest, I would probably recommend STAR for almost any application at this point if you have the memory (see below)
 
 
 
@@ -741,7 +838,7 @@ d:/ STARmanual.pdf
 
 
 ========================================
-用RSeQC对比对后的转录组数据进行质控 Mapping QC: An RNA-seq Quality Control Package
+|-- Mapping QC: 用RSeQC对比对后的转录组数据进行质控(An RNA-seq Quality Control Package)
 ----------------------------------------
 RSeQC包是一个python软件
 
@@ -787,10 +884,21 @@ $ geneBody_coverage.py -r /data/jinwf/wangjl/ref/human/hg19_ucsc_genes-20190509.
 $ cd /home/wangjl/data/c1_2019APA/sc/combine/sc_fq/mapping/bamR2Lh/
 $ geneBody_coverage.py -r /data/jinwf/wangjl/ref/human/hg19_ucsc_genes-20190506.bed  -i c2_ROW01.sorted.bam,c2_ROW02.sorted.bam  -o ../mappingQC_human/c2_ROW0102
 
+输入-i也可以提供包含bam文件的文件夹：
+$ geneBody_coverage.py -r /home/wangjl/data/ref/hg19/hg19_ucsc_genes-20190509.bed -i ./ -o ./test_
+
+
+运行需要的时间很长，一般要过夜。为防止以外中断，请在tmux内运行。
+
+
 
 
 ========================================
-定量比对结果 HTseq-count
+RNA表达量的定量
+----------------------------------------
+
+========================================
+|-- 定量比对结果 HTseq-count
 ----------------------------------------
 1. 概述
 https://www.cnblogs.com/timeisbiggestboss/p/7171535.html
@@ -959,7 +1067,7 @@ http://www.bio-info-trainee.com/244.html
 
 
 ========================================
-定量比对结果 featureCounts: a ultrafast and accurate read summarization program
+|-- 定量比对结果 featureCounts: a ultrafast and accurate read summarization program
 ----------------------------------------
 1. featurecounts具有count速度快，兼容性好的特点。
 http://blog.sciencenet.cn/home.php?mod=space&uid=2609994&do=blog&id=985692
@@ -1130,7 +1238,7 @@ $ cut -f 1,7 fC_c12_A1.sam.count |grep -v '^#' >fC_c12_A1.sam.count.lite
 
 
 ========================================
->>定量比对结果 RSEM --todo1
+|-- 定量比对结果 RSEM //todo1
 ----------------------------------------
 1. RSEM: accurate transcript quantification from RNA-Seq data with or without a reference genome
 https://bmcbioinformatics.biomedcentral.com/articles/10.1186/1471-2105-12-323
@@ -1175,7 +1283,7 @@ http://www.bioinfo-scrounger.com/archives/482
 
 
 ========================================
-使用Salmon对RNAseq进行直接定量 --todo How?
+|-- 使用Salmon对RNAseq进行直接定量 //todo How?
 ----------------------------------------
 无需mapping，直接对RNA结果fq文件进行定量。
 手册：https://combine-lab.github.io/salmon/getting_started/
@@ -1283,15 +1391,18 @@ $ wget https://github.com/arq5x/bedtools2/releases/download/v2.25.0/bedtools-2.2
 $ tar -zxvf bedtools-2.25.0.tar.gz
 $ cd bedtools2
 $ make
+$ make prefix=~/ install #安装到家目录下的bin文件夹中。
+
 
 查看版本号：
-bedtools -version 
+$ bedtools -version 
+## bedtools v2.25.0
+
 查看帮助：
-bedtools -help 
+$ bedtools -help 
 
 
 使用方法：
-
 # bedtools sorted
 $ bedtools intersect \
            -a ccds.exons.bed -b aln.bam.bed \
@@ -1311,6 +1422,12 @@ $ bedmap --echo --count --bp-ovr 1 \
 $ bedmap --ec --echo --count --bp-ovr 1 \
          ccds.exons.bed aln.bam.bed
 
+# bam to bed(bed文件比bam文件坐标小1)
+$ bedtools bamtobed -i reads.bam | head -3
+
+
+
+
 更多用法：
 http://bedtools.readthedocs.io/en/latest/content/example-usage.html
 高级用法：
@@ -1326,12 +1443,6 @@ samtools用法 – Utilities for the Sequence Alignment/Map (SAM) format
 ----------------------------------------
 代码： https://github.com/samtools/samtools
 文档： http://www.htslib.org/doc/samtools.html
-
-
-常用语句：
-samtools view -bS input.sam >out.bam #1.转换为bam
-samtools sort -o aln.sorted.bam aln.bam #2.排序
-samtools index aln.sorted.bam #3.建索引
 
 
 1.安装
@@ -1401,6 +1512,33 @@ make prefix=~/ install
 
 
 
+========================================
+|-- samtools常用功能：sam-bam格式转化、排序索引
+----------------------------------------
+
+常用语句：
+samtools view -bS input.sam >aln.bam 	#1.转换为bam
+samtools sort -o aln.sorted.bam aln.bam #2.排序
+samtools index aln.sorted.bam 		#3.建索引
+
+常用参数: 
+-@ 20 使用20个线程
+
+
+$ samtools view -@ 10 -bS -F 4 input.sam > aln.bam
+## -F INT   only include reads with none of the FLAGS in INT present [0]
+
+$ samtools depth aln.sorted.bam >depth_reads.txt
+$ wc -l depth_reads.txt > Coverage-aln_reads.txt
+
+
+更多命令：http://www.htslib.org/doc/samtools.html
+
+
+
+
+
+
 2.sam 和 bam 格式转换
 https://www.cnblogs.com/emanlee/p/4316581.html
 
@@ -1408,29 +1546,45 @@ https://www.cnblogs.com/emanlee/p/4316581.html
 samtools view -bS input.sam >out.bam
 samtools view -b -S NA12878.sam > NA12878_2.bam
 
--b 意思使输出使BAM format
--S 意思使输入使SAM，如果@SQ 缺省， 要写-t 
+-b 输出BAM format
+-S 输入格式自动检查(比如SAM)。 如果@SQ 缺省， 要写-t (?)
+-t FILE:  FILE listing reference names and lengths (see long help) [null]
+
 所以如果没有@SQ
 samtools faidx ref.fa
 samtools view -bt ref.fa.fai out.sam > out.bam
 
 
 (2)BAM转换为SAM
-samtools view -h -o out.sam input.bam 
+samtools view -h -o out.sam input.bam
 samtools view -h NA12878.bam >NA12878_2.sam
+# 参数
+ -h       include header in SAM output
+ -H       print SAM header only (no alignments)
 
-
+ -@, --threads INT:  Number of additional threads to use [0]
+ -o FILE  output file name [stdout] 输出文件名字[默认是输出到屏幕]
+ -O, --output-fmt FORMAT[,OPT[=VAL]]...
+        Specify output format (SAM, BAM, CRAM) 指定输出文件的格式
 
 
 
 
 3.排序和建索引
-samtools sort -T /tmp/aln.sorted -o aln.sorted.bam aln.bam
-samtools index aln.sorted.bam
+$ samtools sort -T /tmp/aln.sorted -o aln.sorted.bam aln.bam
+# -T 是指定临时文件
+
+
+$ samtools index aln.sorted.bam
 
 
 
 
+
+
+========================================
+|-- samtools其他功能: 可视化、统计、去重
+----------------------------------------
 4. tview 直观显示reads比对到基因组的情况，和基因组浏览器有点类似。
 -d display		输出类型
 -p chr:pos 		直接定位到该位置
@@ -1544,7 +1698,7 @@ MarkDuplicates功能在严格模式下更“正确”，rmdup更高效仅仅是�
 
 
 ========================================
-pysam: htslib(samtools) interface for python
+|-- Python包pysam: htslib(samtools) interface for python
 ----------------------------------------
 https://pysam.readthedocs.io/en/latest/index.html
 Pysam is a python module for reading, manipulating and writing genomic data sets.
@@ -1651,8 +1805,14 @@ print("===the End===")
 
 
 
+
 ========================================
-利用clusterProfiler进行富集分析
+GO/KEGG 基因富集分析
+----------------------------------------
+
+
+========================================
+|-- 利用clusterProfiler进行富集分析
 ----------------------------------------
 clusterProfiler 是业界大神Y叔写的一个R包，可以用来做各种富集分析，如GO、KEGG、DO（Disease Ontology analysis）、Reactome pathway analysis以及GSEA富集分析等。而除了富集分析，他还可以非常方便的对富集分析结果进行可视化。
 这里使用clusterProfiler进行GO、KEGG以及GSEA富集分析。
@@ -1666,7 +1826,7 @@ clusterProfiler 是业界大神Y叔写的一个R包，可以用来做各种富�
 
 
 ========================================
-去东方，最好用的在线GO富集分析工具
+|-- 去东方，最好用的在线GO富集分析工具
 ----------------------------------------
 https://mp.weixin.qq.com/s?__biz=MzI5MTcwNjA4NQ==&mid=2247484456&idx=1&sn=bbcd0b5d10ba9312d92b7baae777ccde
 GOEAST，访问网站是http://omicslab.genetics.ac.cn/GOEAST/index.php
@@ -1674,7 +1834,7 @@ GOEAST，访问网站是http://omicslab.genetics.ac.cn/GOEAST/index.php
 
 
 ========================================
-KEGG上色
+|-- KEGG上色
 ----------------------------------------
 #KEGG Pathway 中基因的颜色怎么简单的标记上去
 biocc  生信人  2017-07-22
@@ -1701,7 +1861,7 @@ P50454	red
 
 
 ========================================
-GSEA富集分析 - 界面操作-命令行操作
+|-- GSEA富集分析 - 界面操作-命令行操作
 ----------------------------------------
 https://mp.weixin.qq.com/s?__biz=MzI5MTcwNjA4NQ==&mid=2247484582&idx=1&sn=1e01276e1216c91bd6e1e08db15bd905
 
@@ -1754,15 +1914,213 @@ java -Xmx512m xtools.gsea.Gsea -res F:\Temp\DESeq2\hela.count.nons_sync.txt -cls
 
 
 ========================================
+提取参考基因组某位置的碱基： 根据基因组坐标获得碱基序列
 ----------------------------------------
+
+1. 利用samtools faidx
+samtools faidx 常常用来对参考基因组建立索引，但它还有个鲜为人知的功能，就是序列提取，如下：
+
+
+(1)实例1：获得bam文件后面的几个碱基
+$ bedtools bamtobed -i h_c16_ROW17.rmdup.bam |head -n 20000|tail
+chr12	95907992	95908092	E00300:157:HWCKKCCXX:6:2108:1499:29859	255	+
+
+#
+$ samtools view h_c16_ROW17.rmdup.bam |head -n 20000|tail
+E00300:157:HWCKKCCXX:6:2108:1499:29859	0	chr12	95907993	255	1S100M	*	0	0	NATATTGCCATATTCTTACTTGAATGCTTTGAATGACTACATCCAGTTCTGCACCTATACCCTCTGGTGTTGCTTTTTAACCTTCCTGGAATCCATTTTCT	#AAFFKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKFKKKKKKKKKKKKKKKFKKKKKKKKKKKKKKKKKKKKKKKKKKKKAKKKKKKF<KKKKFKKKKKK	NH:i:1	HI:i:1	AS:i:98	nM:i:0
+
+
+#根据坐标获取序列
+$ samtools faidx /home/wangjl/data/ref/hg19/hg19.fa chr12:95907992-95908092
+>chr12:95907992-95908092
+TATATTGCCATATTCTTACTTGAATGCTTTGAATGACTACATCCAGTTCTGCACCTATAC
+CCTCTGGTGTTGCTTTTTAACCTTCCTGGAATCCATTTTCT
+
+
+除了第一个序列，和bam文件中的目标序列一致: (去掉换行符和第一行，多行变一行)
+$ samtools faidx /home/wangjl/data/ref/hg19/hg19.fa chr12:95907992-95908092 | grep -v ">" | awk BEGIN{RS=EOF}'{gsub(/\n/,"");print}' 
+TATATTGCCATATTCTTACTTGAATGCTTTGAATGACTACATCCAGTTCTGCACCTATACCCTCTGGTGTTGCTTTTTAACCTTCCTGGAATCCATTTTCT
+
+$ samtools faidx /home/wangjl/data/ref/hg19/hg19.fa chr12:95908092-95908096 | grep -v ">" | awk BEGIN{RS=EOF}'{gsub(/\n/,"");print}' 
+TAAAA #不能包含这个上一个的结束，此后的序列，则应该末尾坐标+1。
+
+$ samtools faidx /home/wangjl/data/ref/hg19/hg19.fa chr12:95908093-95908113 | grep -v ">" | awk BEGIN{RS=EOF}'{gsub(/\n/,"");print}'
+AAAAAATAAAGACATTTTCAG
+该位置后面基因组上还真是有6个A，也就是不该在这里断开的。
+
+
+
+
+(2)实例2：获得bam文件后面的几个碱基
+$ head -n 1272166 c16_ROW17.fq|tail -n 1
+GTAGATGCTATAATAAAAATAGCTGTTTGGTAACCATAGTTTCACTTGTTCAAAGCTGTGTAATCGTGGGGGTACCATCTCAACTGCTTTTGTATTCATTGTATTAAAAGAATCTGTTTAAACAACAAAAAAAAAAAAAAAAAAAAAAAA
+[wangjl@bio_svr1 polyA_fq]$ head -n 1272165 c16_ROW17.fq|tail -n 1
+@E00300:165:H3CMMALXX:4:2209:10774:12666 2:N:0:TAGGCATG
+
+$ grep E00300:165:H3CMMALXX:4:2209:10774:12666 2:N:0:TAGGCATG  c16_ROW17.sam
+grep: 2:N:0:TAGGCATG: No such file or directory #说明到空格name就断开了
+c16_ROW17.sam:E00300:165:H3CMMALXX:4:2209:10774:12666	0	chr5	10265001	255	126M	*	0	0	GTAGATGCTATAATAAAAATAGCTGTTTGGTAACCATAGTTTCACTTGTTCAAAGCTGTGTAATCGTGGGGGTACCATCTCAACTGCTTTTGTATTCATTGTATTAAAAGAATCTGTTTAAACAAC	AAFFFKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKFKKKKKKKKKKKKKKKKKKKKKKKKKKFKKKKKKKKKKKKKKKKKAFKKKK	NH:i:1	HI:i:1	AS:i:124	nM:i:0
+
+$ grep E00300:165:H3CMMALXX:4:2209:10774:12666 h_c16_ROW17.bed 
+chr5	10265000	10265126	E00300:165:H3CMMALXX:4:2209:10774:12666	255	+
+这样看，bed文件是0based，而且包含左边，不包含右边，因为长度是126M。[10265000,10265126)
+
+$ samtools faidx /home/wangjl/data/ref/hg19/hg19.fa chr5:10265001-10265127 | grep -v ">" | awk BEGIN{RS=EOF}'{gsub(/\n/,"");print}'
+GTAGATGCTATAATAAAAATAGCTGTTTGGTAACCATAGTTTCACTTGTTCAAAGCTGTGTAATCGTGGGGGTACCATCTCAACTGCTTTTGTATTCATTGTATTAAAAGAATCTGTTTAAACAACC #末尾比原始序列多了一个碱基。
+#
+$ samtools faidx /home/wangjl/data/ref/hg19/hg19.fa chr5:10265001-10265126 | grep -v ">" | awk BEGIN{RS=EOF}'{gsub(/\n/,"");print}'
+GTAGATGCTATAATAAAAATAGCTGTTTGGTAACCATAGTTTCACTTGTTCAAAGCTGTGTAATCGTGGGGGTACCATCTCAACTGCTTTTGTATTCATTGTATTAAAAGAATCTGTTTAAACAAC #和bam文件完全一致了
+
+向后延伸序列：
+$ samtools faidx /home/wangjl/data/ref/hg19/hg19.fa chr5:10265127-10265130 | grep -v ">" | awk BEGIN{RS=EOF}'{gsub(/\n/,"");print}'
+CTTT #和RNA的不一样，因为RNA的是polyA
+
+
+
+
+
+
+2. 利用bedtools getfasta (只能输出到文件，但可以批量处理)
+bedtools说明文档中对getfasta的描述是“Extract DNA sequences into a fasta file based on feature coordinates.”显而易见，bedtools getfasta的功能就是根据坐标信息提取序列信息。操作如下：
+
+需要准备bed文件，至少三列chr start end:
+$ cat pos.bed 
+chr5	10265000	10265126	E00300:165:H3CMMALXX:4:2209:10774:12666	255	+
+
+$ bedtools getfasta -fi /home/wangjl/data/ref/hg19/hg19.fa -bed pos.bed -fo result.txt
+bedtools getfasta有三个必选参数：
+-fi即参考基因组fasta文件；
+-bed即需要提取的位置坐标信息，格式：chr\tstart\tend；
+-fo：输出文件。
+
+有一点需要说明，bedtools接收的是bed文件，而bed文件时0-based，因此我们要提取chr5:10265001-10265126 位置的碱基，输入文件pos.bed中需要写入：chr5\t10265001\t10265126
+
+$ cat result.txt 
+>chr5:10265000-10265126
+GTAGATGCTATAATAAAAATAGCTGTTTGGTAACCATAGTTTCACTTGTTCAAAGCTGTGTAATCGTGGGGGTACCATCTCAACTGCTTTTGTATTCATTGTATTAAAAGAATCTGTTTAAACAAC
+
+
+(2)如果位置文件有很多行bed格式数据，则能批量获取reads。
+
+
+
+
+
+
+
+3. 利用Python3的pysam模块
+import pysam 
+ref=pysam.FastaFile("/home/wangjl/data/ref/hg19/hg19.fa")
+chr,start,end='chr5','10265000','10265126' #如果是bed文件坐标，则直接用；如果是sam文件坐标，start要减1。
+print(ref.fetch(chr)[int(start)-0: int(end)])
+
+## GTAGATGCTATAATAAAAATAGCTGTTTGGTAACCATAGTTTCACTTGTTCAAAGCTGTGTAATCGTGGGGGTACCATCTCAACTGCTTTTGTATTCATTGTATTAAAAGAATCTGTTTAAACAAC
+
+
+
+
+
+4.使用web接口
+http://genome.ucsc.edu/cgi-bin/das/hg19/dna?segment=chr5:10265001,10265126
+说明： 使用的起始位置是bam文件中的，比bed文件大1
+
+
+去除空格后，和上文序列一致。
+gtagatgctataataaaaatagctgtttggtaaccatagtttcacttgttcaaagctgtgtaatcgtgggggtaccatctcaactgcttttgtattcattgtattaaaagaatctgtttaaacaac
+
+
+
+
+
+
+5. 性能比较
+三种方法耗时如下：
+ 	  samtools	bedtools	python
+time	0.002s	0.034s	2.077s
+可以看出，samtools和bedtools的性能很好，python的性能就比较尴尬了。
+
+其实，个人比较推荐bedtools，比较容易进行批量处理，把想处理的位置信息写到输出文件，然后就可以轻松的进行序列提取。
+
+
+
+refer: https://blog.csdn.net/whenfree/article/details/85305616
+
 
 
 
 ========================================
+IGV 判断测序文库的链特异性
 ----------------------------------------
 
+1.官网
+http://www.igv.org/
+http://software.broadinstitute.org/software/igv/
+
+官方培训文档： http://www.igv.org/workshops/
 
 
+2. 安装 
+略
+
+
+
+
+3.首先，需要辨明正反链，正义/反义链，编码链，模板链的概念。
+
+DNA 的正链和负链，就是那两条反向互补的链。参考基因组给出的那个链就是所谓的正链（forword），另一条链是反链（reverse）。但是这正反一定不能和正义链（sense strand）反义链（antisense strand）混淆，两条互补的DNA链其中一条携带编码蛋白质信息的链称为正义链，另一条与之互补的称为反义链。但是携带编码信息的正义链不是模板，只是因为它的序列和RNA相同，正义链也是编码链。而反义链虽然和RNA反向互补，但它可是真正给RNA当模板的链，因此反义链也是模板链。
+
+总结两点
+- 正义链（sense strand）= 编码链（coding strand）= 非模板链
+- forword strand 上可以同时有sense strand 和 antisense strand。因为这完全是两个不同的概念。
+
+
+(2)最后谈谈正链和正义链。
+正链一般是固定的，DNA双链中上面这条链就是正链（+）。
+正义链是相对的，它是依据基因的转录方向看的，向右转录（👉）的基因，正链即是它的正义链或有义链或非模板链，向左转录（👈）的基因，负链即是它的正义链。
+
+
+
+
+
+4.操作步骤
+(1).使用star比对获得bam文件
+然后对bam文件 sort和index。
+
+(2).使用IGV看比对结果
+1) 向IGV中导入参考基因组
+Genomes -> Creat a .genome file…
+在弹出窗口中加入基因组序列fasta文件与基因组结构注释gff/gtf文件
+
+2)导入比对文件
+File -> Load from File…
+比对的bam/sam文件需要具有索引
+
+
+3)检验转录组文库是否具有链特异性
+
+(右键track, 选color alignments by | read strand )
+在IGV的Read strand模式中，显示的reads分为红蓝两色，其中红色代表read方向与DNA正链方向相同(5’ -> 3’)，蓝色代表read方向与DNA正链方向相反
+
+
+如果是双端测序：在First-of-pair strand模式中，红色代表成对的reads中，第一链的方向与正链相同(5’ -> 3’)，蓝色代表成对的reads中，第一链的方向与正链相反(5’ -> 3’)。这对于展示链特异性的文库特别有帮助。
+也就是说双末端测序，第一次测得是反义链，第二次测得是正义链。这应该就是链特异性建库。
+
+
+
+### For a given transcript, non-directional libraries will show a mix of red and blue reads aligning to the locus.
+Directional libraries will show reads of one color in the direction matching the transcript orientation.
+### 对于非链特异性的文库，匹配到同一个基因的reads会表现出红蓝混合的情况；
+### 对于链特异性的文库，匹配到同一个基因的reads则会表现出与转录本方向相匹配的颜色。
+
+
+
+
+refer:
+https://sr-c.github.io/2018/11/06/STAR/
+http://www.omicsclass.com/article/300
+
+
+什么是链特异性建库？https://www.jianshu.com/p/a63595a41bed
 
 
 ========================================

@@ -5,6 +5,18 @@ py进行量化投资
 ========================================
 现有平台
 ----------------------------------------
+
+1. 官方渠道
+证券交易所
+上海：http://www.sse.com.cn/market/price/report/ 只能API下载
+	序号	证券代码	证券简称	类型	最新	涨跌幅	涨跌	成交量(手)	成交额(万元)	前收	开盘	最高	最低	振幅
+深圳：http://www.szse.cn/market/trend/index.html 提供下载xlsx 000和300 共2207个。
+	交易日期	证券代码	证券简称	前收	今收	升跌(%)	成交金额(元)	市盈率
+
+
+
+
+2.
 其实目前国内有很多开源的第三方量化平台，比如聚宽、米筐、Mindgo，在这些平台上进行写策略的话，就比较方便
 
 
@@ -22,11 +34,15 @@ https://blog.csdn.net/DlMmU/article/details/81022954
 # 深市利润计算公式：(卖出股票后资金-(投入本金+印花税+佣金))/投入本金
 # 其中：
 #  投入本金=SUM(一次买入股票数*一次买入股票单价)
-#  印花税=投入本金*0.001
+#  印花税=投入本金*0.001, 卖出收取。
 #  佣金=投入本金*0.0015>5?投入本金*0.0015:5
+#
 #  过户费=买卖股票数*0.001>1?买卖股票数*0.001:1
 
 #
+######################
+#1.high price model
+######################
 def r(n):
     return round(n,3)
 
@@ -40,6 +56,38 @@ sell=(p+x)*n*(0.0015+0.001)
 get=a-buy-sell
 print("Total=",n*p," sellAt=",p+x,' | ', r(a),' - ',r(buy),' - ',r(sell)," = ",r(get),' (',r(get/500),")",sep="")
 ## Total=9000 sellAt=30.3 | 90.0 - 13.5 - 22.725 = 53.775 (0.108)
+
+
+
+
+
+#
+######################
+#2. low price model
+######################
+def r(n):
+    return round(n,3)
+
+#settings
+n=2000 #share
+p=3.66 #price
+x=0.02 #差价
+#
+yj=0.0015/2 #佣金比
+print("ratio:", yj*1000,'/1000')
+
+#detail
+a=x*n
+buy_fee=p*n*yj
+sell_fee=(p+x)*n*(yj+0.001)
+#
+buy_fee=buy_fee if buy_fee>5 else 5
+sell_fee=sell_fee if sell_fee>5 else 5
+
+get=a-buy_fee-buy_fee
+print("Total=",n*p," sellAt=",p+x,' | ', r(a),' - ',r(buy_fee),' - ',r(sell_fee)," = ",r(get),' (',r(get/n/p*100),"%)",sep="")
+#ratio: 0.75 /1000
+#Total=7320.0 sellAt=3.68 | 40.0 - 5.49 - 12.88 = 29.02 (0.396%)
 
 
 
@@ -216,8 +264,100 @@ show(elements[0]+":"+elements[3]+" ("+elements[4]+"-"+elements[5]+")" + elements
 
 另外最重要的一点是自己的心态，看到时机来临要果断出击，随后静立不动，等待下一个机会，就像壁虎的捕食一样。
 
+
 ========================================
+从上交所下载当天数据
 ----------------------------------------
+
+###########################
+# 1.获取json格式的上交所交易数据
+###########################
+import time
+timestamp=str(round(time.time()*1000))
+begin=str(0)
+end=str(1515)
+
+# http://www.sse.com.cn/market/price/report/
+url="http://yunhq.sse.com.cn:32041/v1/sh1/list/exchange/equity?callback=jQuery111208015895779126387_1560941576071&select=code%2Cname%2Copen%2Chigh%2Clow%2Clast%2Cprev_close%2Cchg_rate%2Cvolume%2Camount%2Ctradephase%2Cchange%2Camp_rate&order=&begin="+begin+"&end="+end+"&_="+timestamp;
+print("url=", url)
+
+headers = {
+  'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_13_2) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/65.0.3325.162 Safari/537.36',
+  'Referer': 'http://www.sse.com.cn/market/price/report/'
+}
+
+import requests
+r = requests.get(url, headers=headers) #, auth=('user', 'pass')
+#rs1=r.status_code #200
+#rs2=r.headers['content-type'] #'text/html; charset=utf-8'
+#rs3=r.encoding #'utf-8' 编码，修改编码
+rs4=r.text
+#r.json() #只有r.headers['content-type']为json时才能用。否则报错。
+print(rs1,rs2,rs3,"\n")
+rs4 #现在是字符串格式
+
+
+#获取json格式
+import json,re
+#json
+rs=re.sub(r"jQuery111208015895779126387_1560941576071\(", "", rs4)
+rs=re.sub(r"\)$", "", rs)
+rs=eval(rs)
+print( len(rs['list']) )  #25
+rs
+
+
+
+
+###########################
+# 2.解析每一条的字段意义
+###########################
+# select: code,name,open,high,low,last,prev_close,chg_rate,volume,amount,tradephase,change,amp_rate
+print('code,name,open,high,low,last,prev_close,chg_rate,volume,amount,tradephase,change,amp_rate')
+titles='code,name,open,high,low,last,prev_close,chg_rate,volume,amount,tradephase,change,amp_rate'.split(",")
+
+#data
+alists=rs['list']
+#len(alist) #1515
+print(alists[0])
+
+alist=alists[0]
+for i in range(len(titles)):
+    print(i, titles[i], "=", alist[i])
+
+#序号	证券代码 证券简称	最新	涨跌幅	  涨跌	成交量(手)	成交额(万元) 	前收	 开盘	    最高	  最低	振幅
+# 1	  600000   浦发银行  11.88  0.51%	 0.06	449277	    53733.98    	11.82	12.04	12.07	11.81	2.20％
+
+#解析
+#序号	 证券代码 证券简称	
+#最新	5 last = 11.88
+# 涨跌幅	 0.06/11.82*100=0.507 change/prev_close*100
+#涨跌	11 change = 0.06
+
+#成交量(手)	 44927745/100   8 volume/100
+#成交额(万元) 	 537339845/10000=53733.98  amount/10000   9
+#前收	 6 prev_close = 11.82
+#开盘	 2 open = 12.04   
+#最高	  3 high = 12.07
+#最低	4 low = 11.81
+#振幅12 amp_rate = 2.2
+
+
+
+
+
+###########################
+# 3.逐条输出6开头的股票
+###########################
+i=0
+for alist in alists:
+    i+=1
+    if re.match("^6",alist[0]):
+        print(i, alist) #6开头的1465个
+#
+
+怎么保存这些json数据？还不会。
+要求尽量通用，其他程序也能读懂。json格式。
 
 
 ========================================
