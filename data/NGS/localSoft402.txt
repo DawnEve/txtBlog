@@ -2,6 +2,11 @@
 	- 本地运行的生信软件
 	- 包括可以下载安装的tool/VM/docker等
 
+生物信息学常见1000个软件的安装代码
+http://www.360doc.com/content/17/1014/11/42030643_694826019.shtml
+
+
+
 ========================================
 Galaxy生信分析平台-搭建（本地化）
 ----------------------------------------
@@ -15,6 +20,8 @@ Galaxy is an open source, web-based platform for data intensive biomedical resea
 
 2.在本地搭建
 http://www.bioinfo-scrounger.com/archives/683
+
+
 
 
 
@@ -1914,47 +1921,99 @@ java -Xmx512m xtools.gsea.Gsea -res F:\Temp\DESeq2\hela.count.nons_sync.txt -cls
 
 
 ========================================
-提取参考基因组某位置的碱基： 根据基因组坐标获得碱基序列
+提取参考基因组某位置的碱基： 根据基因组坐标获得碱基序列(注意bed文件是0-based)
 ----------------------------------------
+
+
 
 1. 利用samtools faidx
 samtools faidx 常常用来对参考基因组建立索引，但它还有个鲜为人知的功能，就是序列提取，如下：
+-i, --reverse-complement Reverse complement sequences. 反向互补
 
 
-(1)实例1：获得bam文件后面的几个碱基
-$ bedtools bamtobed -i h_c16_ROW17.rmdup.bam |head -n 20000|tail
-chr12	95907992	95908092	E00300:157:HWCKKCCXX:6:2108:1499:29859	255	+
-
-#
-$ samtools view h_c16_ROW17.rmdup.bam |head -n 20000|tail
-E00300:157:HWCKKCCXX:6:2108:1499:29859	0	chr12	95907993	255	1S100M	*	0	0	NATATTGCCATATTCTTACTTGAATGCTTTGAATGACTACATCCAGTTCTGCACCTATACCCTCTGGTGTTGCTTTTTAACCTTCCTGGAATCCATTTTCT	#AAFFKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKFKKKKKKKKKKKKKKKFKKKKKKKKKKKKKKKKKKKKKKKKKKKKAKKKKKKF<KKKKFKKKKKK	NH:i:1	HI:i:1	AS:i:98	nM:i:0
+(1)实例1：(+链上)获得bam文件后面的几个碱基
+$ samtools view rmdup_c16_ROW17.bam |head -n 25008|tail -n 1
+E00300:165:H3CMMALXX:5:1118:27082:64896	0	chr14	56078824	255	115M	*	0	0	GTAATTTTCCTCTTCTTCTGGCTTTTCATGAAAGAAACATTATATGATGAAGTTCTTGCAAAACAGAAAAGAGAACAAAAGCTTATTCCTACCAAAACAGATAAAAAGAAAGCAG	AAFFFKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKFFKKKKKKKFKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKK	NH:i:1	HI:i:1	AS:i:113	nM:i:0
 
 
-#根据坐标获取序列
-$ samtools faidx /home/wangjl/data/ref/hg19/hg19.fa chr12:95907992-95908092
->chr12:95907992-95908092
-TATATTGCCATATTCTTACTTGAATGCTTTGAATGACTACATCCAGTTCTGCACCTATAC
-CCTCTGGTGTTGCTTTTTAACCTTCCTGGAATCCATTTTCT
+$ bedtools bamtobed -i rmdup_c16_ROW17.bam |head -n 25008|tail -n 1
+chr14	56078823	56078938	E00300:165:H3CMMALXX:5:1118:27082:64896	255	+
 
-
-除了第一个序列，和bam文件中的目标序列一致: (去掉换行符和第一行，多行变一行)
-$ samtools faidx /home/wangjl/data/ref/hg19/hg19.fa chr12:95907992-95908092 | grep -v ">" | awk BEGIN{RS=EOF}'{gsub(/\n/,"");print}' 
-TATATTGCCATATTCTTACTTGAATGCTTTGAATGACTACATCCAGTTCTGCACCTATACCCTCTGGTGTTGCTTTTTAACCTTCCTGGAATCCATTTTCT
-
-$ samtools faidx /home/wangjl/data/ref/hg19/hg19.fa chr12:95908092-95908096 | grep -v ">" | awk BEGIN{RS=EOF}'{gsub(/\n/,"");print}' 
-TAAAA #不能包含这个上一个的结束，此后的序列，则应该末尾坐标+1。
-
-$ samtools faidx /home/wangjl/data/ref/hg19/hg19.fa chr12:95908093-95908113 | grep -v ">" | awk BEGIN{RS=EOF}'{gsub(/\n/,"");print}'
-AAAAAATAAAGACATTTTCAG
-该位置后面基因组上还真是有6个A，也就是不该在这里断开的。
+结论： bed的坐标是0-based，比原始bam文件(和genome坐标)小1。 
 
 
 
+#samtools根据sam坐标获取序列：起点bed比bam小1， 终点56078824+115-1=56078938 同bed。
+$ samtools faidx /home/wangjl/data/ref/hg19/hg19.fa chr14:56078824-56078938
+>chr14:56078824-56078938
+GTAATTTTCCTCTTCTTCTGGCTTTTCATGAAAGAAACATTATATGATGAAGTTCTTGCA
+AAACAGAAAAGAGAACAAAAGCTTATTCCTACCaaaacagataaaaagaaagcag
+##去掉换行符和第一行，多行变一行。和bam文件中的目标序列一致: 
+$ samtools faidx /home/wangjl/data/ref/hg19/hg19.fa chr14:56078824-56078938 | grep -v ">" | awk BEGIN{RS=EOF}'{gsub(/\n/,"");print}' 
+GTAATTTTCCTCTTCTTCTGGCTTTTCATGAAAGAAACATTATATGATGAAGTTCTTGCAAAACAGAAAAGAGAACAAAAGCTTATTCCTACCaaaacagataaaaagaaagcag
 
-(2)实例2：获得bam文件后面的几个碱基
+查看下游10nt在genome上是什么碱基？(start=oldEnd 算一个， end=start+10-1)
+$ samtools faidx /home/wangjl/data/ref/hg19/hg19.fa chr14:56078938-56078947 | grep -v ">" | awk BEGIN{RS=EOF}'{gsub(/\n/,"");print}' 
+gaaaagaaaa #不能包含这个上一个的结束，此后的序列，则应该末尾坐标+1。
+
+#start=oldEnd+1; end=start+10-1
+$ samtools faidx /home/wangjl/data/ref/hg19/hg19.fa chr14:56078939-56078948 | grep -v ">" | awk BEGIN{RS=EOF}'{gsub(/\n/,"");print}'
+aaaagaaaaa  #该位置后面在基因组上有4个A。
+
+
+
+2)搜索原始RNAseq raw data，发现该序列后面是polyA。不过polyA前面多事GA或TA，而refer后面也有A，不过没有RNA那么多，也就是无法判断从哪里断开的。
+$ grep -i GTAATTTTCCTCTTCTTCTGGCTTTTCATGAAAGAAACATTATATGATGAAGTTCTTGCAAAACAGAAAAGAGAACAAAAGCTTATTCCTACCaaaacagataaaaagaaagcag c16_ROW17.10A.fq 
+CCTTCAATAGTTATTACAGTAATTTTCCTCTTCTTCTGGCTTTTCATGAAAGAAACATTATATGATGAAGTTCTTGCAAAACAGAAAAGAGAACAAAAGCTTATTCCTACCAAAACAGATAAAAAGAAAGCAGAAAAAAAAAAAAAAAAA
+GTAATTTTCCTCTTCTTCTGGCTTTTCATGAAAGAAACATTATATGATGAAGTTCTTGCAAAACAGAAAAGAGAACAAAAGCTTATTCCTACCAAAACAGATAAAAAGAAAGCAGAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAGAAGG
+GTAATTTTCCTCTTCTTCTGGCTTTTCATGAAAGAAACATTATATGATGAAGTTCTTGCAAAACAGAAAAGAGAACAAAAGCTTATTCCTACCAAAACAGATAAAAAGAAAGCAGTAAAAAAAAAAAAAAAATAAAAATAAAAAAAATTT
+AGTTATTACAGTAATTTTCCTCTTCTTCTGGCTTTTCATGAAAGAAACATTATATGATGAAGTTCTTGCAAAACAGAAAAGAGAACAAAAGCTTATTCCTACCAAAACAGATAAAAAGAAAGCAGTAAAAAAAAAAAAAAAAAAAAAAAA
+CAGTAATTTTCCTCTTCTTCTGGCTTTTCATGAAAGAAACATTATATGATGAAGTTCTTGCAAAACAGAAAAGAGAACAAAAGCTTATTCCTACCAAAACAGATAAAAAGAAAGCAGTAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+
+
+
+
+
+(2)实例2：(-链上)获得bam文件后面的几个碱基
+$ samtools view rmdup_c16_ROW17.bam |head -n 10000|tail -n 1
+E00300:165:H3CMMALXX:5:1110:4208:28294	16	chr11	65651393	255	49M	*	0	0	CCAAACTCAGAGCAACTTTATTGTCAGCATGGGCGGAGCGTTGGGAGGC	KKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKFFFAA	NH:i:1	HI:i:1	AS:i:46	nM:i:1
+[wangjl@bio_svr1 MAPQ255]$
+
+$ bedtools bamtobed -i rmdup_c16_ROW17.bam |head -n 10000|tail -n 1
+chr11	65651392	65651441	E00300:165:H3CMMALXX:5:1110:4208:28294	255	-
+
+#samtools根据sam坐标获取序列：起点bed比bam小1， 终点 65651393+49-1=65651441 同bed。
+$ samtools faidx /home/wangjl/data/ref/hg19/hg19.fa chr11:65651393-65651441
+>chr11:65651393-65651441
+CCAAACTCAGAGCAACTTTATTGTCAGCGTGGGCGGAGCGTTGGGAGGC
+
+CCAAACTCAGAGCAACTTTATTGTCAGCA (from RNA seq). RNA结果其实和refer相差一个碱基
+
+
+查看下游10nt在genome上(因为是负链，其实是genome上游)是什么碱基？(end=oldStart-1, start=start-10+1)
+$ samtools faidx /home/wangjl/data/ref/hg19/hg19.fa chr11:65651389-65651398 | grep -v ">" | awk BEGIN{RS=EOF}'{gsub(/\n/,"");print}'
+GTCTCCAAAC #测试发现向右多延伸5个碱基，出现CCAAAC结尾，3'端多6个碱基。
+
+$ samtools faidx /home/wangjl/data/ref/hg19/hg19.fa chr11:65651383-65651392 | grep -v ">" | awk BEGIN{RS=EOF}'{gsub(/\n/,"");print}'
+GGACCAGTCT
+#右端没有出现genomic polyT。
+
+
+2)bam是按照refer的顺序写的RNA序列，序列保留了RNA的突变信息。+基因和RNA相同，-链基因则和RNA序列反向互补。
+搜原始RNA raw data时，需要求bam序列的反向互补序列。
+$ grep GCCTCCCAACGCTCCGCCCATGCTGACAATAAAGTTGCTCTGAGTTTGG c16_ROW17.10A.fq 
+GCCTCCCAACGCTCCGCCCATGCTGACAATAAAGTTGCTCTGAGTTTGGAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAATCGGCAGATGCAGATGGGAAGAGCGTCGGGTGGGGAAAGAGTGTAGATCTCGGTGGTCGCCGTATCATTA
+
+
+
+
+
+
+
+(3)根据 序列ID 查找序列(fq/sam/bed)
 $ head -n 1272166 c16_ROW17.fq|tail -n 1
 GTAGATGCTATAATAAAAATAGCTGTTTGGTAACCATAGTTTCACTTGTTCAAAGCTGTGTAATCGTGGGGGTACCATCTCAACTGCTTTTGTATTCATTGTATTAAAAGAATCTGTTTAAACAACAAAAAAAAAAAAAAAAAAAAAAAA
-[wangjl@bio_svr1 polyA_fq]$ head -n 1272165 c16_ROW17.fq|tail -n 1
+$ head -n 1272165 c16_ROW17.fq|tail -n 1
 @E00300:165:H3CMMALXX:4:2209:10774:12666 2:N:0:TAGGCATG
 
 $ grep E00300:165:H3CMMALXX:4:2209:10774:12666 2:N:0:TAGGCATG  c16_ROW17.sam
@@ -1963,17 +2022,11 @@ c16_ROW17.sam:E00300:165:H3CMMALXX:4:2209:10774:12666	0	chr5	10265001	255	126M	*
 
 $ grep E00300:165:H3CMMALXX:4:2209:10774:12666 h_c16_ROW17.bed 
 chr5	10265000	10265126	E00300:165:H3CMMALXX:4:2209:10774:12666	255	+
-这样看，bed文件是0based，而且包含左边，不包含右边，因为长度是126M。[10265000,10265126)
 
-$ samtools faidx /home/wangjl/data/ref/hg19/hg19.fa chr5:10265001-10265127 | grep -v ">" | awk BEGIN{RS=EOF}'{gsub(/\n/,"");print}'
-GTAGATGCTATAATAAAAATAGCTGTTTGGTAACCATAGTTTCACTTGTTCAAAGCTGTGTAATCGTGGGGGTACCATCTCAACTGCTTTTGTATTCATTGTATTAAAAGAATCTGTTTAAACAACC #末尾比原始序列多了一个碱基。
-#
-$ samtools faidx /home/wangjl/data/ref/hg19/hg19.fa chr5:10265001-10265126 | grep -v ">" | awk BEGIN{RS=EOF}'{gsub(/\n/,"");print}'
-GTAGATGCTATAATAAAAATAGCTGTTTGGTAACCATAGTTTCACTTGTTCAAAGCTGTGTAATCGTGGGGGTACCATCTCAACTGCTTTTGTATTCATTGTATTAAAAGAATCTGTTTAAACAAC #和bam文件完全一致了
 
-向后延伸序列：
-$ samtools faidx /home/wangjl/data/ref/hg19/hg19.fa chr5:10265127-10265130 | grep -v ">" | awk BEGIN{RS=EOF}'{gsub(/\n/,"");print}'
-CTTT #和RNA的不一样，因为RNA的是polyA
+
+
+
 
 
 
@@ -1983,21 +2036,24 @@ CTTT #和RNA的不一样，因为RNA的是polyA
 2. 利用bedtools getfasta (只能输出到文件，但可以批量处理)
 bedtools说明文档中对getfasta的描述是“Extract DNA sequences into a fasta file based on feature coordinates.”显而易见，bedtools getfasta的功能就是根据坐标信息提取序列信息。操作如下：
 
-需要准备bed文件，至少三列chr start end:
-$ cat pos.bed 
-chr5	10265000	10265126	E00300:165:H3CMMALXX:4:2209:10774:12666	255	+
 
-$ bedtools getfasta -fi /home/wangjl/data/ref/hg19/hg19.fa -bed pos.bed -fo result.txt
+需要准备bed文件，至少三列chr start end。
+$ cat pos.bed 
+chr14	56078823	56078938	E00300:165:H3CMMALXX:5:1118:27082:64896	255	+
+
+$ bedtools getfasta -fi /home/wangjl/data/ref/hg19/hg19.fa -bed pos.bed -s -fo result.txt
 bedtools getfasta有三个必选参数：
 -fi即参考基因组fasta文件；
 -bed即需要提取的位置坐标信息，格式：chr\tstart\tend；
 -fo：输出文件。
-
-有一点需要说明，bedtools接收的是bed文件，而bed文件时0-based，因此我们要提取chr5:10265001-10265126 位置的碱基，输入文件pos.bed中需要写入：chr5\t10265001\t10265126
+-s	Force strandedness. If the feature occupies the antisense, strand, the sequence will be reverse complemented. 根据第六列信息，如果是-则给出反向互补序列。
+	- By default, strand information is ignored. 
+	不加-s则默认忽略掉链方向，也就是都按照+处理。
+有一点需要说明，bedtools接收的是bed文件，而bed文件是0-based。
 
 $ cat result.txt 
->chr5:10265000-10265126
-GTAGATGCTATAATAAAAATAGCTGTTTGGTAACCATAGTTTCACTTGTTCAAAGCTGTGTAATCGTGGGGGTACCATCTCAACTGCTTTTGTATTCATTGTATTAAAAGAATCTGTTTAAACAAC
+>chr14:56078823-56078938(+)
+GTAATTTTCCTCTTCTTCTGGCTTTTCATGAAAGAAACATTATATGATGAAGTTCTTGCAAAACAGAAAAGAGAACAAAAGCTTATTCCTACCaaaacagataaaaagaaagcag
 
 
 (2)如果位置文件有很多行bed格式数据，则能批量获取reads。
@@ -2008,25 +2064,32 @@ GTAGATGCTATAATAAAAATAGCTGTTTGGTAACCATAGTTTCACTTGTTCAAAGCTGTGTAATCGTGGGGGTACCATCT
 
 
 
+
+
 3. 利用Python3的pysam模块
 import pysam 
 ref=pysam.FastaFile("/home/wangjl/data/ref/hg19/hg19.fa")
-chr,start,end='chr5','10265000','10265126' #如果是bed文件坐标，则直接用；如果是sam文件坐标，start要减1。
+chr,start,end='chr14','56078823','56078938' #如果是bed文件坐标，则直接用；如果是sam文件坐标，start要减1。
 print(ref.fetch(chr)[int(start)-0: int(end)])
 
-## GTAGATGCTATAATAAAAATAGCTGTTTGGTAACCATAGTTTCACTTGTTCAAAGCTGTGTAATCGTGGGGGTACCATCTCAACTGCTTTTGTATTCATTGTATTAAAAGAATCTGTTTAAACAAC
+## 
+GTAATTTTCCTCTTCTTCTGGCTTTTCATGAAAGAAACATTATATGATGAAGTTCTTGCAAAACAGAAAAGAGAACAAAAGCTTATTCCTACCaaaacagataaaaagaaagcag
 
 
 
 
 
-4.使用web接口
-http://genome.ucsc.edu/cgi-bin/das/hg19/dna?segment=chr5:10265001,10265126
-说明： 使用的起始位置是bam文件中的，比bed文件大1
 
+
+
+4.使用UCSC的web接口
+http://genome.ucsc.edu/cgi-bin/das/hg19/dna?segment=chr14:56078824,56078938
+说明： 使用的起始位置是bam文件中的，比bed文件大1。end=start+115-1，和bed一致。
 
 去除空格后，和上文序列一致。
-gtagatgctataataaaaatagctgtttggtaaccatagtttcacttgttcaaagctgtgtaatcgtgggggtaccatctcaactgcttttgtattcattgtattaaaagaatctgtttaaacaac
+gtaattttcctcttcttctggcttttcatgaaagaaacattatatgatgaagttcttgcaaaacagaaaagagaacaaaagcttattcctaccaaaacagataaaaagaaagcag
+
+
 
 
 
@@ -2040,7 +2103,6 @@ time	0.002s	0.034s	2.077s
 可以看出，samtools和bedtools的性能很好，python的性能就比较尴尬了。
 
 其实，个人比较推荐bedtools，比较容易进行批量处理，把想处理的位置信息写到输出文件，然后就可以轻松的进行序列提取。
-
 
 
 refer: https://blog.csdn.net/whenfree/article/details/85305616
@@ -2057,6 +2119,12 @@ http://www.igv.org/
 http://software.broadinstitute.org/software/igv/
 
 官方培训文档： http://www.igv.org/workshops/
+
+
+
+
+#IGV color: A(009600)green; T(FF0000)red; G(D17105)orange; C(0000FF)blue
+
 
 
 2. 安装 
@@ -2085,6 +2153,8 @@ DNA 的正链和负链，就是那两条反向互补的链。参考基因组给�
 4.操作步骤
 (1).使用star比对获得bam文件
 然后对bam文件 sort和index。
+如果是star获得的sort过的bam，只需要再用samtools index即可。
+
 
 (2).使用IGV看比对结果
 1) 向IGV中导入参考基因组
@@ -2094,6 +2164,7 @@ Genomes -> Creat a .genome file…
 2)导入比对文件
 File -> Load from File…
 比对的bam/sam文件需要具有索引
+左侧右键，勾上“show coverage track”，即可看到比对上的reads数目和方向。
 
 
 3)检验转录组文库是否具有链特异性
@@ -2124,9 +2195,84 @@ http://www.omicsclass.com/article/300
 
 
 ========================================
+MEME 查找motif
 ----------------------------------------
 
+1.安装
+http://meme-suite.org/doc/download.html
 
+
+(1).下载
+$ wget http://meme-suite.org/meme-software/5.0.5/meme-5.0.5.tar.gz
+$ axel -n 10 http://meme-suite.org/meme-software/Databases/motifs/motif_databases.12.18.tgz
+$ axel -n 10 http://meme-suite.org/meme-software/Databases/gomo/gomo_databases.3.2.tgz
+$ axel -n 10 http://meme-suite.org/meme-software/Databases/cismapper/cismapper_databases.1.tgz
+
+
+(2).安装
+http://meme-suite.org/doc/install.html?man_type=web
+MEME套装包含几个命令行工具，和一个可选的web服务。web需要  批处理器 batch scheduler: SGE and PBS
+
+tar zxf meme-5.0.5.tar.gz
+cd meme-5.0.5
+./configure --prefix=$HOME/meme --with-url=http://meme-suite.org/ --enable-build-libxml2 --enable-build-libxslt
+make
+make test
+make install
+
+
+(3). 添加路径
+edit ~/.bashrc to add the following line:
+$ export PATH=$HOME/meme/bin:$PATH 
+
+以上只安装了命令行工具。
+输出的html文件中有指向官网的链接。
+The --enable-build-libxml2 --enable-build-libxslt flags use the bundled versions of libxml2, libxslt and libexslt. You can omit these flags and use the system installed copies but ensure that they are compatible as otherwise linker errors will occur.
+如果报错，可能是缺少必须的软件： http://meme-suite.org/doc/install.html?man_type=web#prerequisite
+
+$ source ~/.bashrc
+$ meme -version
+5.0.5
+
+
+
+(4)安装motif数据库
+1)下载 见上文url
+2)解压缩 tar xzf motif_databases.X.tgz #X是版本号
+$ tar xzf motif_databases.12.18.tgz 
+
+3)
+默认的数据库目录在 安装目录/db/fasta_databases
+mv motif_databases ~/meme/db/motif_databases
+
+
+
+
+
+2. 运行 Starting meme
+$ meme c12_ROW03.40ntUP.fasta -dna -oc . -nostatus -time 18000 -mod zoops -nmotifs 3 -minw 6 -maxw 50 -objfun classic -revcomp -markov_order 0
+
+参数意义：
+[-oc <output dir>]	输出文件夹 name of directory for output files, will replace existing directory
+[-nostatus]		不要在终端输出进度 do not print progress reports to terminal
+[-time <t>]		quit before <t> CPU seconds consumed
+[-mod oops|zoops|anr]	distribution of motifs
+[-nmotifs <nmotifs>]	最多找几个？ maximum number of motifs to find
+[-minw <minw>]		最小宽度 minimum motif width
+[-maxw <maxw>]		最大宽度 maximum motif width
+[-objfun classic|de|se|cd|ce]	objective function (default: classic)
+[-revcomp]		allow sites on + or - DNA strands
+[-markov_order <order>]	最多使用几个马尔科夫模型？(maximum) order of Markov model to use or create
+
+$ cd /home/wangjl/data/apa/190610APA/03_fasta
+$ meme c12_ROW03.40ntUP.fasta -dna -oc ./meme -mod zoops -nmotifs 3 -minw 6 -maxw 20 -objfun classic -revcomp -markov_order 0
+
+
+
+
+报错： Can't locate XML/Parser/Expat.pm in @INC (you may need to install the XML::Parser::Expat module) 
+可能需要root运行
+# cpan -i XML::Parser::Expat
 
 
 
