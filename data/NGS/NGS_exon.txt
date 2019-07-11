@@ -3,6 +3,9 @@
 
 WES数据一般用于SNP和Indel分析，不能用于CNA和SA的分析。
 
+参考: 
+https://mp.weixin.qq.com/s/gyIiOvod05N5fU7GXdQHnw
+
 
 
 ========================================
@@ -736,6 +739,13 @@ CDX	Chinese Dai in Xishuangbanna, China	EAS
 gatk--Variant Discovery in High-Throughput Sequencing Data
 ----------------------------------------
 参考全文 https://www.cnblogs.com/nkwy2012/p/6322775.html
+
+
+GATK4全基因组数据分析最佳实践 ，我以这篇文章为标志，终结当前WGS系列数据分析的流程主体问题 | 完全代码
+原创： 矿工  碱基矿工  2018-05-11
+
+
+
 
 1.官网： https://software.broadinstitute.org/gatk/
 Genome Analysis Toolkit
@@ -1635,6 +1645,7 @@ https://groups.google.com/forum/#!forum/annovar
 
 
 
+
 2.安装 https://www.jianshu.com/p/b2b70202d7f2
 $ tar zxvf annovar.latest.tar.gz ##解压 
 解压后生成annovar文件夹，里面有6个perl脚本程序和两个文件夹，其中一个是example文件夹，另一个是已经建立好的hg19或者GRCh37的humandb的数据库文件夹，可用于人的注释。
@@ -1984,10 +1995,91 @@ DiagnoseTargets工具可以给定区域平均深度。
 
 
 
+========================================
+|-- 注释的解读：
+----------------------------------------
+http://annovar.openbioinformatics.org/en/latest/user-guide/gene/
+
+1.统计数值文件的位置频率
+$ awk -F"," '{print $6}' 19C001854_WES001_CapNGS.filter_B_.hg19_multianno.csv|sort|uniq -c |sort -k 1nr
+ 222124 "intronic"
+ 190721 "intergenic"
+  37504 "ncRNA_intronic"
+  24512 "exonic"
+  18021 "ncRNA_exonic"
+  14195 "UTR3"
+   8980 "upstream"
+   6660 "downstream"
+   4849 "UTR5"
+    476 "upstream;downstream"
+    216 "splicing"
+    103 "ncRNA_splicing"
+     50 "exonic;splicing"
+     12 "UTR5;UTR3"
+      9 "ncRNA_exonic;splicing"
+      2 "ncRNA_UTR5"
+      1 Func.refGene
+#
+2.解释这些位置的意义：
+(1)第一列的可能值及其意义：
+Value	/Default precedence	/Explanation	/Sequence Ontology
+exonic	/1/	variant overlaps a coding	/exon_variant (SO:0001791)
+splicing	/1/	variant is within 2-bp of a splicing junction (use -splicing_threshold to change this)	/splicing_variant (SO:0001568)
+ncRNA	2	variant overlaps a transcript without coding annotation in the gene definition (see Notes below for more explanation)	non_coding_transcript_variant (SO:0001619)
+UTR5	3	variant overlaps a 5' untranslated region	5_prime_UTR_variant (SO:0001623)
+UTR3	3	variant overlaps a 3' untranslated region	3_prime_UTR_variant (SO:0001624)
+intronic	4	variant overlaps an intron	intron_variant (SO:0001627)
+upstream	5	variant overlaps 1-kb region upstream of transcription start site	upstream_gene_variant (SO:0001631)
+downstream	5	variant overlaps 1-kb region downtream of transcription end site (use -neargene to change this)	downstream_gene_variant (SO:0001632)
+intergenic	6	variant is in intergenic region	intergenic_variant (SO:0001628)
+
+
+(2)对上表的解释：
+The value of the first column takes the following precedence (as of December 2010 and later version of ANNOVAR): exonic = splicing > ncRNA> > UTR5/UTR3 > intron > upstream/downstream > intergenic. The precedence defined above is used to decide what function to print out when a variant fit multiple functional categories. Note that:
+
+1)the "exonic" here refers only to coding exonic portion , but not UTR portion, as there are two keywords (UTR5, UTR3) that are specifically reserved for UTR annotations.
+这里 外显子 仅仅指的是编码部分的外显子，不包含UTR部分（被统计到UTR5和UTR3中了）。
+
+2)"splicing" in ANNOVAR is defined as variant that is within 2-bp away from an exon/intron boundary by default, but the threshold can be changed by the --splicing_threshold argument. Before Feb 2013, if "exonic,splicing" is shown, it means that this is a variant within exon but close to exon/intron boundary; this behavior is due to historical reason, when a user requested that exonic variants near splicing sites be annotated with splicing as well. However, I continue to get user emails complaining about this behavior despite my best efforts to put explanation in the ANNOVAR website with details. Therefore, starting from Feb 2013 , "splicing" only refers to the 2bp in the intron that is close to an exon, and if you want to have the same behavior as before, add -exonicsplicing argument.
+可剪切位点在ANNOVAR默认定义为在exon/intron边界2bp范围内，可以通过--splicing_threshold参数修改。
+在2013年2月前，"exonic,splicing"值的是在exon内但是靠近exon/intron边界；这是历史原因，当时用户希望splicing位点附近的外显子也注释为同时splicing。然而，虽然网站上写的很细致，但是我还是经常受到邮件抱怨这个。
+所以2013年2月之后，splicing仅仅指的是intron区内靠近exon 2bp的位点，如果想使用之前的行为，加上-exonicsplicing 参数。
+
+
+3)If a variant is located in both 5' UTR and 3' UTR region (possibly for two different genes), then the "UTR5,UTR3" will be printed as the output.
+如果一个位点同时位于5' UTR and 3' UTR区域（可能是不同基因），则会被注释为"UTR5,UTR3"。
+
+4)The term "upstream" and "downstream" is defined as 1-kb away from transcription start site or transcription end site, respectively, taking in account of the strand of the mRNA; the --neargene threshold can be used to adjust this threshold.
+"upstream" and "downstream"指的是转录本TSS上游、TES下游1kb的部分，考虑mRNA链的方向；
+--neargene threshold 可以调整这个值。
+
+
+5)If a variant is located in both downstream and upstream region (possibly for 2 different genes), then the "upstream,downstream" will be printed as the output. In 2011 June version of ANNOVAR, the splicing annotation is improved. If the splicing site is in intron, then all isoforms and the corresponding base change will be printed. For example,
+如果一个位点同时在downstream and upstream区域（可能是2个基因），将注释成"upstream,downstream"。
+在2011年6月的ANNOVAR，splicing注释改进了。如果splicing位点在intron中，所有的变体和相应的碱基改变都会打印出来。
+
+splicing SMS(NM_004595:c.447+2T>G) X 21895357 21895357 T G hetero 8 15
+splicing DMD(NM_004011:c.48+1A>C) X 31803228 31803228 T G homo 117 30
+splicing BAGE(NM_001187:c.14+1A>G),BAGE4(NM_181704:c.14+1A>G),BAGE5(NM_182484:c.14+1A>G) 21 10120594 10120594 T C hetero 66 53
+
+
+Several technical notes are discussed below. 几个技术问题：
+
+Technical Notes: ncRNA above refers to RNA without coding annotation. It does not mean that this is a RNA that will never be translated; it merely means that the user-selected gene annotation system was not able to give a coding sequence annotation. It could still code protein products and may have such annotations in future versions of gene annotation or in another gene annotation system. For example, BC039000 is regarded as ncRNA by ANNOVAR when using UCSC Known Gene annotation, but it is regarded as a protein-coding gene by ANNOVAR when using ENSEMBL annotation. If the goal of the user is to find known (well-annotated) microRNA or other known (well-annotated) non-coding RNA, then the region-based annotation should be used and the wgRNA track should be selected. Read instructions here.
+
+Technical Notes: if the first codon of a transcript is deleted, it will be reported as wholegene deletion by ANNOVAR because the gene cannot be translated.
+
+
+如图所示：
+In the figure above, SNP1 is an intergenic variant, as it is >1kb away from any gene, SNP2 is a downstream variant, as it is 1kb from the 3'end of the NADK gene; SNP3 is a UTR3 variant; SNP4 is an intronic variant; SNP5 is an exonic variant.
+
+
+
+
 
 
 ========================================
-变异功能注释 ANNOVAR (hg38)
+|-- 变异功能注释 ANNOVAR (hg38)
 ----------------------------------------
 
 B3.使用Annovar建库[hg38]
@@ -2248,9 +2340,14 @@ annotate_variation.pl -buildver hg38 ex1.avinput humandb38/
 
 
 
+========================================
+各种培训班
+----------------------------------------
+
+
 
 ========================================
-[大纲]第十八期临床遗传病生信实操培训班（上海班）
+|-- [大纲]第十八期临床遗传病生信实操培训班（上海班）
 ----------------------------------------
 基因游侠  基因检测与解读  2018.10月15日
 
@@ -2294,7 +2391,7 @@ annotate_variation.pl -buildver hg38 ex1.avinput humandb38/
 
 
 ========================================
-[大纲]遗传病测序数据分析解读科普系列 第2期 生信分析基础：了解数据处理过程
+|-- [大纲]遗传病测序数据分析解读科普系列 第2期 生信分析基础：了解数据处理过程
 ----------------------------------------
 原创： 熊吉的熊  瀚垚生物医学  2018.8月2日
 
@@ -2331,7 +2428,7 @@ bam文件对很多人的印象可能是
 
 
 ========================================
-[大纲]逸仙生信临床解读培训班第二天
+|-- [大纲]逸仙生信临床解读培训班第二天
 ----------------------------------------
 廖健伟  逸仙细胞分子论坛  2018.9月9日
 
@@ -2359,7 +2456,7 @@ bam文件对很多人的印象可能是
 
 
 ========================================
-[大纲]儿童遗传分子诊断技术质控及数据一体化信息管理——新华医院的经验探索尝试
+|-- [大纲]儿童遗传分子诊断技术质控及数据一体化信息管理——新华医院的经验探索尝试
 ----------------------------------------
 聚道科技GeneDock  聚道科技GeneDock  2018.6月22日
 

@@ -33,6 +33,7 @@ return array (
       array('机器学习概述','MachineLearning-01','txt',),
       array('python爬虫','webSpider','txt',),
       array('python财经','stocks','txt',),
+	  array('微信小程序','little_Program','txt'),
     ),
   ),
   
