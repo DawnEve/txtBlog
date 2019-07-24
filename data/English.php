@@ -12,13 +12,24 @@ return array (
   ),
 
 
+  array (
+    0 => 1,
+    1 => '英语读报',
+    2 => array (
+      array('英语资源代码','en101-code','txt'),
+      array('英语读报-统计','statistics','txt'),
+      array('学术英语','academicEnglish','txt'),
+    ),
+  ),
+
+
 
   array (
     0 => 2,
     1 => '日语资料',
     2 => array (
-      array('日语资料1','jp001','html',),
-      array('日语资料2','jp002','txt'),
+      array('日语资料','jp001','html',),
+      array('日语入门','jp002','txt'),
     ),
   ),
 

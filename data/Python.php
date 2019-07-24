@@ -7,7 +7,8 @@ return array (
     2 => array (
       array('项目描述','Python001','html',),
       array('参考资料','Python002','html'),
-      array('FAQ','Python003','html'),
+      //array('FAQ','Python003','html'),
+      array('Python准备','Python100','txt',),
     ),
   ),
 
@@ -15,12 +16,12 @@ return array (
     0 => 2,
     1 => 'Python语法',
     2 => array (
-      array('Python准备','Python100','txt',),
       array('Python快速入门','Python101','txt',),
       array('Python基础详解','Python102','txt',),
-      array('Python片段','Python103-pieces','txt',),
+      array('Python OOP','Python103-OOP','txt',),
       array('Python数据处理包','Python104-packages','txt',),
       array('Python Web','Python105-web','txt',),
+      array('Python标准库','Python106-Standard_lib','txt',),
     ),
   ),
   
@@ -31,6 +32,8 @@ return array (
     2 => array (
       array('机器学习概述','MachineLearning-01','txt',),
       array('python爬虫','webSpider','txt',),
+      array('python财经','stocks','txt',),
+	  array('微信小程序','little_Program','txt'),
     ),
   ),
   

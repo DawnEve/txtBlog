@@ -1,0 +1,456 @@
+en101-code
+英语学习过程中是用到的代码
+
+目标: 微信小程序，写一个基于期刊文章数据库的例句词典。
+
+
+
+========================================
+1.经济学人目录美化
+----------------------------------------
+梯子爬 https://www.economist.com/printedition
+格式是混乱的，需要稍微美化一下。
+
+
+<base href="https://www.economist.com/" />
+<base target="_blank" />
+
+<style>
+*{font-family:Arial,Verdana;}
+a {display:block; text-decoration: none;}
+a:hover {text-decoration: underline;}
+
+img{padding:100px;border:1px solid red;}
+span{padding-left:10px;}
+a{color: darkblue;  }
+span.print-edition__link-flytitle{    font-weight: bold;}
+</style>
+
+后面是梯子显示的其他内容
+
+//todo
+
+
+========================================
+从微信下载文章目录信息(url/title/readNum等)
+----------------------------------------
+需要登录，配置好cookie信息。
+
+import re,os
+import requests
+import time,random
+import datetime
+
+
+###############
+#part 1 获取1页的目录信息
+###############
+#get method
+def getURL(url):
+    #设置 headers信息，模拟真实用户访问
+    headers={}
+    headers['Accept']='text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3'
+    headers['Accept-Encoding']='gzip, deflate, br'
+    headers['Accept-Language']='zh-CN,zh;q=0.9,en;q=0.8'
+    headers['Cache-Control']='max-age=0'
+    headers['Connection']='keep-alive'
+    headers['Host']='mp.weixin.qq.com'
+    headers['Upgrade-Insecure-Requests']='1'
+    headers['User-Agent']='Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/74.0.3729.169 Safari/537.36'
+    # 有这一对cookie 才能正常访问
+    cookies={'ua_id': 'Xm1KD4F6R7QsXiwDAAAAAIN4ElaGwHvY5I_a35JmCOM=',
+        'mm_lang': 'zh_CN',
+        'pgv_pvi': '4462950400',
+        'pgv_pvid': '3691230498',
+        'RK': 'dRSsGPjle2',
+        'ptcz': '4d6674eaae060082e9dd23c4dcb5be5e35bfb68fb580ad9e4c3d646fca9919b3',
+        'ts_uid': '1473981184',
+        'tvfe_boss_uuid': '107c1a140bd510c1',
+        'o_cookie': '469004330',
+        'pac_uid': '1_469004330',
+        'pgv_si': 's7429627904',
+        'rewardsn': '',
+        'wxtokenkey': '777',
+        'cert': '7kPbM_JrsT532DIHCSRhLRk21eqqtT84',
+        'noticeLoginFlag': '1',
+        'remember_acct': 'post_master_v1%40163.com',
+        'openid2ticket_oICWNxHPgv2OlFhNxaUfSXJMcbFA': '4BxmPBpgwMLyi9apNE/Gc3uSVlls7+qOPW/d9Jfu7/o=',
+        'uuid': '96735d3444c8d6b89dbaf018ac760b81',
+        'data_bizuin': '3297584416',
+        'bizuin': '3244717792',
+        'data_ticket': 'w9cc28H/fFiSH4BmmMXXXht+W8tzSBxe/WYEyIWmVoFGntaLwghqXJNJ+IN6se5H',
+        'slave_sid': 'NmRKSXEydWxDaWRSYWdLS2xyTXpyYzFxdHFUM1A0blJCeTNKSXlHU0dNdU55VXFvR0l2bmk3UUFick9UM0VYY3F1QUYwZEExb0M5eWRxdlRCR0kzYXZwMlk4Q3ZRV20xSEcwYlBvQVUydjVpS1hSaFp0NDJ3Y29ET0dKWWdUUFZCaU91SWd3SEFET1IwMFlB',
+        'slave_user': 'gh_7177736af7e2',
+        'xid': 'b6ec883094bed132f8bc7251976aa4fe',
+    }
+    #发出请求
+    #respose=requests.get(url,headers)
+    respose=requests.get(url,headers=headers,cookies=cookies,verify=False)
+    assert respose.status_code==200,'Error: requests.get'
+    #获取编码方式
+    codeType=respose.apparent_encoding #GB2312 编码方式
+    html_content = respose.content#以二进制编码读出页面源码    
+    html = html_content.decode(codeType)#指定编码
+    return html
+#2.获取当前日期和时间:
+print("loading function getURL(), done at", datetime.datetime.now())
+
+
+#test
+#page=1
+#url="https://mp.weixin.qq.com/cgi-bin/newmasssendpage?count=7&begin="+str(page*7)+"&token=1998518622&lang=zh_CN&token=1998518622&lang=zh_CN&f=json&ajax=1"
+#json2=getURL(url)
+#json2
+
+
+
+###############
+#part 2 #批量执行 获取每页的目录
+###############
+import json,random
+psgs=[] #所有文章目录保存到这里
+pages=83 #总页码
+for page in range(pages): #[0-83)
+    #构建目录
+    url="https://mp.weixin.qq.com/cgi-bin/newmasssendpage?count=7&begin="+str(page*7)+"&token=1998518622&lang=zh_CN&token=1998518622&lang=zh_CN&f=json&ajax=1"
+    json2=getURL( url )
+    
+    #休眠随机时间
+    pause=0.5+3*random.random()
+    time.sleep(pause) 
+    #
+    json3=json.loads(json2)
+    l2=json3['sent_list']
+    #
+    for i in range(len(l2)):
+        #新年祝词可以省略了
+        numADay=len(l2[i]["appmsg_info"])
+        if numADay==0:
+            continue;
+        for num in range(numADay): #如果一天有多篇文章
+            msg=l2[i]["appmsg_info"][num]
+            msg['time']=l2[i]['sent_info']['time']
+            psgs.append(msg)
+    
+    print(page,"/",pages,'; passages=',len(psgs), '; sleep',pause,'s\n',)
+#
+
+len(psgs) # 没有考虑一天多篇幅的:578
+#考虑一天多篇幅后 624 
+
+
+# 保存这一批json文件
+import json
+with open("web/wechatContent20190626-.json","w") as f:
+    json.dump(psgs,f)
+    print("写入文件完成...")
+# 读文件
+with open("web/wechatContent20190626.json",'r') as load_f:
+    load_jn = json.load(load_f)
+    print(type(load_jn),len(load_jn), load_jn[0]) #<class 'list'> 578
+#
+
+
+
+
+###############
+# part3 写成html 格式的目录
+###############
+
+fw=open('web/wcContent2.html','w',encoding="utf-8")
+fw.write('<html>\n<head><meta http-equiv=Content-Type content="text/html;charset=utf-8"></head>'+"\n"+'<body><ul>'+"\n")
+
+for psg in psgs:
+    #psg=psgs[0]
+    url2=re.sub("^http","https",psg['content_url'])
+    rd=str(psg['read_num'])
+    
+    line="<li><span>"+time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(psg['time'])) + \
+        "</span> <span title='阅读数'>["+rd+"]</span>"+ \
+        " <a target='_blank' href='"+url2+"'>"+psg['title']+"</a></li>"
+    #print(line)
+    fw.write(line+"\n")
+print("done==")
+
+js="""
+<script>
+function sortByRead(){
+	var oUl=document.getElementsByTagName('ul')[0];
+	var aList = oUl.getElementsByTagName("li");
+	var aSpan;
+	
+	var arr = [];
+	var len = aList.length;
+
+	for(var i=0;i<len;i++){
+		aSpan =aList[i].getElementsByTagName("span");
+		strs=aSpan[1].innerHTML
+		//
+		aList[i].id=strs.substr(1,strs.length-2)
+		arr.push(aList[i]);
+	};
+
+	arr.sort(function(a,b){
+		return b.id - a.id;
+	});
+	//console.log(arr);
+
+	oUl.innerHTML=""
+	for(i=0;i<len;i++){
+		oUl.append(arr[i])
+	}
+};
+
+sortByRead();
+</script>
+"""
+
+fw.write("</ul>\n"+js+"</body></html>")
+fw.close()
+
+
+进一步修改js代码，变得更好用，最后效果见：
+http://ielts.biomooc.com/en/contents.html
+
+
+
+========================================
+将网址用js编码成ascii传递，在server端再还原成url
+----------------------------------------
+########################
+将字母转为ascii的方法：
+var str = "A";
+str.charCodeAt();  // 65
+
+将ascii码转为对应字母的方法：
+var num = 97;
+String.fromCharCode(num);  // 'a'
+########################
+
+<?php 
+$str2=ord('S'); //将字母转为ascii的方法：
+echo $str2; //返回值为83 
+
+$str1=chr(88); //将ascii码转为对应字母的方法：
+echo $str1; //返回值为X  
+?> 
+########################
+
+
+1.ascii 范围
+控制字符是 0-31,127 共33个字符。
+32 是空格？
+
+for(var i=0;i<128;i++){
+        str=String.fromCharCode(i); 
+        document.write(i+" "+str+"<br>")
+}
+
+编码  字符
+33 !
+34 "
+35 #
+36 $
+37 %
+38 &
+39 '
+40 (
+41 )
+42 *
+43 +
+44 ,
+45 -
+46 .
+47 /
+###############0-9
+48 0
+49 1
+50 2
+51 3
+52 4
+53 5
+54 6
+55 7
+56 8
+57 9
+
+58 :
+59 ;
+60 <
+61 =
+62 >
+63 ?
+64 @
+
+###############A-Z
+65 A
+66 B
+67 C
+68 D
+69 E
+70 F
+71 G
+72 H
+73 I
+74 J
+75 K
+76 L
+77 M
+78 N
+
+79 O
+80 P
+81 Q
+82 R
+83 S
+84 T
+85 U
+86 V
+87 W
+88 X
+89 Y
+90 Z
+
+91 [
+92 \
+93 ]
+94 ^
+95 _
+96 `
+
+###############a-z
+97 a
+98 b
+99 c
+100 d
+101 e
+102 f
+103 g
+104 h
+105 i
+106 j
+107 k
+108 l
+109 m
+110 n
+111 o
+112 p
+113 q
+114 r
+115 s
+116 t
+117 u
+118 v
+119 w
+120 x
+121 y
+122 z
+
+
+123 {
+124 |
+125 }
+126 ~
+127
+
+
+2. js编码url为ascii码
+url1="http://www.baidu.com"
+url2="https://ichef.bbc.co.uk/wwhp/144/cpsprodpb/17206/production/_107962749_lowry_getty.jpg"
+
+function string2ascii(str){
+        num=[]
+        for(var i=0;i<str.length;i++){
+                num.push(str.charCodeAt(i))
+        }
+        return(num.join('_') )
+}
+string2ascii(url2)
+##
+"104_116_116_112_115_58_47_47_105_99_104_101_102_46_98_98_99_46_99_111_46_117_107_47_119_119_104_112_47_49_52_52_47_99_112_115_112_114_111_100_112_98_47_49_55_50_48_54_47_1
+12_114_111_100_117_99_116_105_111_110_47_95_49_48_55_57_54_50_55_52_57_95_108_111_119_114_121_95_103_101_116_116_121_46_106_112_103"
+
+
+
+
+
+
+3.在php中接收ascii码，还原为url
+
+<?php
+echo "<pre>";
+$ascii_url=$_GET['url'];
+print_r($ascii_url);
+
+echo "<br>";
+
+// 
+function ascii2str($ascii_url){
+        $arr=explode("_",$ascii_url);
+        #print_r($arr);
+        
+        $url="";
+        for ($x=0; $x<count($arr); $x++) {
+                $url.=chr($arr[$x]);
+        }
+        //echo "url=$str<br>";
+        return $url;
+}
+var_dump( ascii2str($ascii_url) );
+
+访问：
+http://localhost/index.php?url=104_116_116_112_115_58_47_47_105_99_104_101_102_46_98_98_99_46_99_111_46_117_107_47_119_119_104_112_47_49_52_52_47_99_112_115_112_114_111_100
+_112_98_47_49_55_50_48_54_47_112_114_111_100_117_99_116_105_111_110_47_95_49_48_55_57_54_50_55_52_57_95_108_111_119_114_121_95_103_101_116_116_121_46_106_112_103
+
+页面返回：
+string(86) "https://ichef.bbc.co.uk/wwhp/144/cpsprodpb/17206/production/_107962749_lowry_getty.jpg"
+
+已经在php上还原结果。
+
+
+
+
+
+========================================
+----------------------------------------
+
+
+========================================
+----------------------------------------
+
+
+========================================
+----------------------------------------
+
+
+========================================
+----------------------------------------
+
+
+========================================
+----------------------------------------
+
+
+========================================
+----------------------------------------
+
+
+========================================
+----------------------------------------
+
+
+========================================
+----------------------------------------
+
+
+========================================
+----------------------------------------
+
+
+========================================
+----------------------------------------
+
+
+========================================
+----------------------------------------
+

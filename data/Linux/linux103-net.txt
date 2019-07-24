@@ -691,7 +691,14 @@ password
 如上直接运行的缺点是,如果关掉窗口,就是关掉了natapp程序,所以会掉线.
 建议改为后台运行。
 
-4b. 后台运行
+
+4b. 最好是在tmux中运行。
+$ tmux
+$ ./natapp -authtoken=xxxx
+
+
+
+4c. 后台运行（不推荐）
 nohup ./natapp -authtoken=xxxx -log=stdout &
 注意一定要加上 -log=stdout
 
@@ -708,12 +715,300 @@ nohup ./natapp -authtoken=xxx -log=stdout -loglevel=ERROR &
 
 
 ========================================
+通信安全与gpg加密
 ----------------------------------------
+
+1.对称加密和解密
+这里，先简单介绍使用gpg进行对称加密和解密，后面重点介绍公钥加密和数字验证。 
+*对称加密myfile： 
+$ gpg -c myfile 
+这样，会提示你输入两次密码，然后生成myfile的加密文件myfile.gpg,注意不能对目录加密,可以用-o选项指定输出文件名称。 
+
+
+解密对称加密的文件： 
+$ gpg -o mydecrypt -d myfile.gpg 
+这样，会提示你输入解密密码，输入之后，将会解密相应的文件，通过-o指定生成的解密文件，-d指定被解密过的文件。 
+
+
+
+
+
+2.非对称加密（也叫公钥加密）
+
+(1)生成钥匙对： 
+$ gpg --gen-key 
+## gpg (GnuPG) 2.2.4; Copyright (C) 2017 Free Software Foundation, Inc.
+输入姓名和邮箱，设置密码后产生key。 
+
+gpg: /home/wangjl/.gnupg/trustdb.gpg: trustdb created
+gpg: key 600247CD2973A676 marked as ultimately trusted
+gpg: directory '/home/wangjl/.gnupg/openpgp-revocs.d' created
+gpg: revocation certificate stored as '/home/wangjl/.gnupg/openpgp-revocs.d/F5369AFE4166801E40B2B9B8600247CD2973A676.rev'
+public and secret key created and signed.
+
+pub   rsa3072 2019-06-13 [SC] [expires: 2021-06-12]
+      F5369AFE4166801E40B2B9B8600247CD2973A676
+uid                      XXX <jXXXl@XX.com>
+sub   rsa3072 2019-06-13 [E] [expires: 2021-06-12]
+
+
+这里，首先要一个钥匙对才能公钥加密，这里根据系统情况不同，可能内容为英文。需要用户交互输入的地方，都通过"<====输入"这个标记指出来了。若对输入信息有所改动 ,可把 ~/.gnupg 目录下除 options 以外的文件删除 ,再运行 gpg --gen-key 命令 ,或者使用 gpg 的 edit 选项 .  钥匙对放在 ~/.gnupg 目录下 . 
+
+
+
+
+
+
+(2)查看已有的钥匙： 
+$ gpg --list-keys 
+
+/home/wangjl/.gnupg/pubring.kbx
+---- ---- ---
+pub   rsa3072 2019-06-13 [SC] [expires: 2021-06-12]
+      F5369AFE4166801E40B2B9B8600247CD2973A676
+uid           [ultimate] XXX <jXXXl@XX.com>
+sub   rsa3072 2019-06-13 [E] [expires: 2021-06-12]
+
+这里， 
+pub(公匙)
+sub(私匙)
+
+
+
+
+
+
+
+(3)使用gpg密钥进行加密和解密文件
+1)查看要加密的文件
+$ cat note.txt 
+We'll meet on the 1st day next month at Water Gate.
+Tom
+2019.6.13
+
+
+2)加密文件
+$ gpg -ea -r XXX note.txt 
+
+这里的XXX就是前面设置的你的名字。我们可以使用"gpg --list-keys"来查看我们可以选择用来加密的公钥。
+选项"-e"实际就是"--encrypt"表示加密数据
+"-a"表示创建ASCII的输出(可以不用这个选项,这样生成的文件就不是ASCII的内容了，并且文件后缀是*.gpg)
+"-r"指定加密的用户id名称。 
+
+3) 查看加密之后的文件： 
+$ ls -l
+total 4632
+-rw-rw-r-- 1 wangjl wangjl      66 Jun 13 19:40 note.txt
+-rw-rw-r-- 1 wangjl wangjl     785 Jun 13 19:43 note.txt.asc #文件增大了十倍。
+
+$ cat note.txt.asc 
+-----BEGIN PGP MESSAGE-----
+
+hQGMA/s5kKzjTDH9AQwAnG6sIAxucafO8lNJkyUtZaEK4ROyMPMU3T71/6gZ1saf
+T0a/zztIgPdmuTO01dtSXcuXcjygrdRN3Bt8Mdjg5zH2sfnZqBV/nT3AlvFDzgjV
+NrnJ/uOJA6GlnA6F9zIzrvLg7R9B1EYurr/1TrDSKwQJH3ulcxBKCFRGV3Nscqna
+LAmZpltC+3ToV7mIgq7RLb6W7vx3pU7iSLFCfNDQaTWyHkIT+XlNcw+xXOF3wphq
+d4/awzFOwMX5b+HIakZmjihZUt5LnqXzXxinkA1eeOTmQFJZxlo4zIuQwJoLYkCa
+4Q5Xx3t522aEmshQ/sNLyhhMYQscq7/AozL2nBjf8uferbTgY9oYquTDH7u8LOhl
+eD30uSHpFFGIZK1Za5PgXsFDtaijklFTaKpCCsT4Ju9SUPFd3M5nNN2McRFG85vO
+p/tFGExqzi3iCa/0R754ZHd7eCLQTE6XM+ZK/9PF4GcTIdpc7elRK4eaA4l9mXYL
+evplhYMB4MwYCPgCFS0C0oQBBEpB73HfTzSRRL0KF2RUmYjJZ5GJ+IsP/yi3UltQ
+7fF1KTqITckduLC2mjfXDXOCMA0+JXoeH9qTt+AjBXh3FkMxZ9/4loKrN+Q1c2yb
+Cd2GIbF1ie5fwA1xhTrbI/T8VM8FXfEwYLm95eiyaHpF/oUglBwG6Yl2bLfEG8iH
+necgtdQ=
+=mPcF
+-----END PGP MESSAGE-----
+
+
+4)公钥解密过程 
+$ gpg -o note_2.txt --decrypt note.txt.asc
+ -o 指定解密文件名
+
+	x Please enter the passphrase to unlock the OpenPGP secret key:  x
+	x "XXX <jXXXl@XXX.com>"  x
+	x 3072-bit RSA key, ID FB3990ACE34C31FD,  x #私钥号
+	x created 2019-06-13 (main key ID 600247CD2973A676). #主钥号
+输入刚才设置的密码，才能解开这个用户的私钥。
+gpg: encrypted with 3072-bit RSA key, ID FB3990ACE34C31FD, created 2019-06-13
+      "XXX <jXXXl@XXX.com>"
+
+如果不在同一台机器上解密，则需要把本地私钥导出，放到待解密的机器上。
+如果想要别人和你使用这个加密的方法通信，需要把你的公钥导出，发给别人，然后他们把这个公钥导入，在使用前面加密的方法用这个公钥加密数据并且发送给你，你再用你自己的私钥解密，得到解密后的原始数据,这也是公钥加密通信使用的常用方法。
+后面会详细讲述如何导出本地的公钥和私钥，以及如何在其它机器上面导入之前导出的密钥。 
+
+
+5)查看解密后的文件
+内容是真的一模一样：
+$ md5sum note*txt
+63adefb2e879374c6ceff5d1d6359a03  note_2.txt
+63adefb2e879374c6ceff5d1d6359a03  note.txt
+
+
+6)导出（备份）公钥： gpg -o keyfilename --export KeyID
+$ gpg -o mypubkey --export F5369AFE4166801E40B2B9B8600247CD2973A676 
+-o指定生成的导出文件名称，
+--export指定想要导出的密钥ID, 如果没有KeyID则是备份所有的公钥.
+如果加上-a的参数则输出文本格式的信息，否则输出的是二进制格式信息
+
+
+导出的公钥，可以发布，其它人只要导入你发布的公钥，就能用这个公钥加密数据并且发送给你，
+你再用你自己的私钥解密，得到解密后的原始数据。
+这也是公钥加密通信使用的常用方法。 
+
+
+7)以文本方式导出公钥
+$ gpg -o mypubkey2 -a --export F5369AFE4166801E40B2B9B8600247CD2973A676 
+
+
+
+8)导出（备份）私钥
+$ gpg -o mysubkey --export-secret-keys 600247CD2973A676 
+如果没KeyID则是备份所有的私钥，
+-o表示输出到文件mysubkey中，
+如果加上-a的参数则输出文本格式的信息，否则输出的是二进制格式信息。 
+
+输入密码就可以导出了。
+$ ls -l
+-rw------- 1 wangjl wangjl 3.7K Jun 13 20:08 mysubkey
+
+
+9)导入私钥: 
+$ gpg --import mysubkey 
+gpg: key 600247CD2973A676: "XXX <jXXXl@XXX.com>" not changed
+gpg: key 600247CD2973A676: secret key imported
+gpg: Total number processed: 1
+gpg:              unchanged: 1
+gpg:       secret keys read: 1
+gpg:  secret keys unchanged: 1
+
+
+如果导入公钥命令是一样的，不过指定的文件应该是"mypubkey"了。
+这个命令是另外一台机器上运行的，导入私钥之后那个机器就可以使用这个私钥解密数据了。
+一般来说我们都是发布公钥让人导入，而不是导入私钥匙。 
+
+
+
+
+
+
+
+
+
+(4)签名与验证
+签名作用是验证明文、加密文件、密钥是来自正确的发送者的，没经过其它人的修改。签名使用的也是密钥对，与加密操作相同。只是在结果上，点不同。它只是在文件最后添上加密的验证信息（签名）。一旦文件有所改变，签名验证就会出错。
+
+1)查看文件
+$ cat note_2.txt
+We'll meet on the 1st day next month at Water Gate.
+Tom
+2019.6.13
+
+
+2)生成签名
+$ gpg -o note_2.txt.sig -s note_2.txt
+输入密码，解开私钥，加密获得文件，含有乱码头尾。.sig包含了原文件和签名。
+-rw-rw-r-- 1 wangjl wangjl  544 Jun 13 20:17 note_2.txt.sig
+
+
+产生文本格式的签名 
+$ gpg -o note_2.txt.sig2 --clearsign note_2.txt 
+该文件上边是原文本信息，下面是ascii码。
+
+
+3)验证签名
+$ gpg --verify note_2.txt.sig2
+gpg: Signature made Thu 13 Jun 2019 08:21:20 PM CST
+gpg:                using RSA key F5369AFE4166801E40B2B9B8600247CD2973A676
+gpg: Good signature from "XXX <jXXXl@XXX.com>" [ultimate] #结论是 完好的签名。
+
+这里，在验证之前，必须导入文件作者的公钥，对于分离式签名最后还要加上原文件参数(后面会讲到)。 
+
+
+4)将签名文件恢复 
+$ gpg -o note_3.txt --decrypt note_2.txt.sig
+note_3.txt和原文件完全一样。
+
+
+
+
+
+
+
+
+
+(5)签名并加密
+$ gpg -o note_decrypt.sig -ser XXX note.txt 
+## -rw-rw-r-- 1 wangjl wangjl  991 Jun 13 20:28 note_decrypt.sig
+
+这里，无法直接通过"gpg --verify mydecrypt.sig"对文件mydecrypt.sig进行验证。而是在解密恢复文件的时候直接验证了
+
+
+2)恢复加密的签名文件
+
+$ gpg -o note_4.txt --decrypt note_decrypt.sig 
+输出 Good signature。内容和原文件一样。
+
+
+
+
+
+
+
+
+(6)分离式签名
+$ gpg -o mydecrypt.sig -ab note.txt 
+# -rw-rw-r-- 1 wangjl wangjl  659 Jun 13 20:33 mydecrypt.sig
+mydecrypt.sig仅包含签名，分离式签名的意思是原文件和签名是分开的。
+b选项表示分离式签名detach-sign. 
+
+2)对分离的签名进行验证
+$ gpg --verify mydecrypt.sig note.txt 
+# Good signature
+因为是分离的，所以要指定签名文件和原始文件。
+
+
+
+
+
+
+(7)编辑公钥，不知道有啥用？
+
+$ gpg --edit-key someone
+someone是别人的用户id,输入之后，出现命令提示符号，进入交互模式。 
+>fpr <===输入这个表示查看someone的指纹，核对信息真实性，这样之后签署。 
+>sign <===输入这个签署公钥，这样以后再使用它加密的时候不会产生警告了。 
+>check <===输入这个，检查someone已有的钥匙的签名。 
+>quit <===输入这个，退出交互，可能会提示你保存之前的设置。
+
+
+
+
+
+
+
+参考： 
+refer: https://blog.csdn.net/xueye3000/article/details/51691720
+http://blog.chinaitlab.com/html/57/340757-64526.html 
+http://blog.sina.com.cn/s/blog_44abafb201008zjo.html 
+http://wiki.ubuntu.org.cn/GPG/PGP 
+
+
+白话GPG加密的应用场景、加密通信的理论过程 https://www.jianshu.com/p/671ebeddcf60
 
 
 
 ========================================
+如何监控主机的资源(CPU、内存、网络)使用情况 //todo
 ----------------------------------------
+
+1.监视CPU，可以使用top的空闲idle百分比看，越小表示主机越忙。
+$ top -d 10 |grep Cpu  #-d指定多久记录一次
+%Cpu(s):  2.1 us,  0.6 sy,  0.0 ni, 96.8 id,  0.4 wa,  0.0 hi,  0.0 si,  0.0 st
+
+
+
+2.可视化，定期调用R刷新image。
+
 
 
 ========================================

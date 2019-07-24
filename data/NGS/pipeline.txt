@@ -1,0 +1,986 @@
+构建生信分析流程，能大大提高生产力！
+
+
+本文从理论和技术上描述如何构建生信分析流程。
+
+难点是：脚本和编程语言之间的交互调用，及反馈。
+
+
+========================================
+生信分析流程pipeline概述
+----------------------------------------
+在生信公司里，有相当一部分人都是负责编写流程和维护流程。好的流程，能大大降低使用难度，进而节约人力成本。
+
+流程pipeline，就是让用户（前端）在填写配置文件后能够一键运行的脚本，最终自动得出结果，并生成报告，有的公司还会将结果上传。
+
+
+我觉得一个好的流程一定得模块化, 各个功能之间相互独立, 大问题划分为小问题, 这样在写代码、调试和以后流程修改时就非常简单和方便，效率大大的提高了。 
+
+一个好的生物信息分析流程可以让你事倍功半，有效减负，同时也有利于他人重复你的数据分析结果。
+别人要干一个季度的事，我一个月就可以搞定。
+
+
+
+1.已有的生信分析流程开发方案，五花八门。
+其中，使用统一的管道（pipeline）、工作流程（workflow）就是其中最重要的一环。
+根据生信信息学数据分析流程（管道、工作流程序）构建的风格和方式，大致有以下几大流派
+
+	脚本语言流
+	Common Workflow language 语言流
+	Makefile流
+	配置文件流
+	Jupyter notebook和R markdown流 //这个可以自动执行吗？
+	……
+
+A review of bioinformatics pipeline framework (https://www.ncbi.nlm.nih.gov/pubmed/27013646) 的作者对已有的工具进行很好的分类
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+脚本语言流，主要是通过简单的脚本语言（如shell，R，Python，Perl）运行各类命令行脚本/程序。常见的几种工作模式：
+	1)单个脚本就是一整个流程
+	2)多个脚本组成一个流程
+	3)封装成可以输入参数的命令行程序
+	4)封装成函数/模块/包（包含示例文件、文档和测试）
+
+前两种（1和2）是大多数生物信息学初学者（不具备封装和打包能力）最早开始接触生信分析流程的方式。
+后两种（3和4）是专业人员开发新工具、新流程的必备技能。
+
+使用和开发这类工具/流程的主要原因：
+	只需要掌握原生编程语言的语法和命令行工具的用法就可以开始构建工具/流程
+	其他流程化语言/框架也可以直接调用这些脚本/函数/模块/包/命令行程序
+	封装和打包可以减少代码的冗余程度、降低维护难度
+	通过使用各类编程语言自带的包管理器解决依赖问题，便于其他用户安装和调用
+
+我目前主要是R语言、Python写命令行程序、函数、R包/模块。
+
+
+基于shell的pipleline实例：
+史上最快的转录组定量流程 https://mp.weixin.qq.com/s?__biz=MzAxMDkxODM1Ng==&mid=2247485134&idx=1&sn=396fb3826573fbc5a9b0ea33695ef764
+
+
+
+
+2. 生信分析流程开发方案选择策略
+	模块化：方便调试，改进
+	配置文件化：方便统一配置软件和库的路径。
+	绝对路径：软件、输入、输出都使用绝对路径，方便管理，提高可移植性。
+	有反馈可控：如果调用失败，要及时暂停脚本，并通知用户检查错误原因
+	可视化报告：方便阅读、交付。
+	可重复制图： 可视化之前要保存中间数据文件，便于快速美化图片；
+	日志文件：记录执行状态，执行起止时间（年月日、时分秒）
+	版本管理： 有版本管理，记录每次修改
+	使用简单： 按照说明，配置好路径等，运行启动脚本，就可以等着收结果了。
+
+高级性能：
+	断点重启：断电，或者意外出问题，可以排错后继续
+	并发执行：可配置并发执行，缩短时间
+	打包：逐步抽象成函数、类、库、模块等。
+
+
+
+
+3. 自动化pipeline必须具备的功能：
+	读取配置文件，生成相应的待执行的脚本
+	按照先后逻辑关系依次向集群投递任务
+	能将大任务分割成小的任务，并行执行，缩短项目周期
+ 
+
+4. 必须使用的工具：
+	一门脚本语言，Shell、Perl 或 Python
+	集群调度系统工具，SGE 或 monitor
+	工具必须都使用绝对路径，因为这脚本是给同部门的人用的，如果你要提高可移植性，可以将工具路径写到配置文件里。
+	写流程前，最好先画出 pipeline 的分析流程图
+	配置好软件工具及库的路径
+
+
+
+
+5.实现手段
+留言： 我们采用argo来做workflow引擎，运行在k8s里面，可以做到系统高度弹性。
+
+
+
+结论：
+使用shell写流程，不方便记录日志，所以决定使用python，主要还是因为我对python相对比较熟悉吧，有安全感。
+
+
+
+
+refer:
+1.李剑峰的博客：
+生信分析流程构建的几大流派  https://life2cloud.com/cn/2018/11/pipelines-styles/
+影响生信分析流程开发方案选择的几大因素 https://life2cloud.com/cn/2019/02/how-to-choose-the-way-of-bioinformatics-pipeline/
+
+2.部署一个简单的生信分析流程  https://www.cnblogs.com/leezx/p/6109911.html
+
+
+
+
+
+
+========================================
+基于python的流程构建
+----------------------------------------
+用python调用python、R和shell，并传入参数，接收返回值。
+
+
+========================================
+|-- py调用系统命令 os.system()和os.popen()
+----------------------------------------
+1. 使用os模块
+Python调用Shell，有两种方法：os.system(cmd)或os.popen(cmd)脚本执行过程中的输出内容。实际使用时视需求情况而选择。
+
+两者的区别是：
+	os.system(cmd)的返回值是脚本的退出状态码，只会有0(成功),1,2
+	os.popen(cmd)返回脚本执行的输出内容作为返回值
+
+比较：
+	os.system() 是将执行结果在 Shell 中执行后，将执行后的状态码返回，0 表示为执行成功。
+	os.popen()  是将执行结果直接返回，返回的是一个内存地址，用 read() 将内存地址中的数据解析。（PS：地址或者叫对象，C 程序员比较能理解地址这类说法）
+
+
+
+
+(1)如果需要传参数，就用os.system()；
+import os
+os.system("python filename.py arg1")
+
+示例：
+>>> os.system('md5sum /root/all.sql')
+7735d611ebce91ebb4c7acc4747a8b67  /root/all.sql
+0      #返回的信号代码  0(成功)
+
+
+
+
+(2)如果还想获得这个文件的输出，就用os.popen();
+这种调用方式是通过管道的方式来实现，函数返回一个file-like的对象，里面的内容是脚本输出的内容（可简单理解为echo输出的内容）。
+
+示例：
+>>> md5_value = os.popen('md5sum /root/all.sql')    #将结果赋值给变量
+>>> print(type(md5_value))          #查看类型
+<class 'os._wrap_close'>
+>>> print(md5_value.read().split()[0])         #取值
+7735d611ebce91ebb4c7acc4747a8b67
+
+
+明显地，像调用”ls”这样的shell命令，应该使用popen的方法来获得内容
+
+
+
+
+
+
+(3) 不好用，不推荐：execfile('xx.py')，括号内为py文件路径；
+python3 删去了 execfile()，代替方法如下：
+with open('test1.py','r') as f:
+    exec(f.read())
+#能逐行执行，不能给被调用脚本传递参数。
+
+
+
+https://blog.csdn.net/yilovexing/article/details/77981576
+https://www.cnblogs.com/xhyan/p/8383814.html
+
+
+
+
+========================================
+|-- py使用os.system调用其他脚本(py, R 和shell)，并传入参数
+----------------------------------------
+1.py脚本中使用sys.argv接收参数
+py下标从0开始，第0个是脚本文件名本身，第1个是第1个参数。
+
+(1)$ cat b2.py
+import sys
+print("from b2.py, paras = ",sys.argv)
+
+$ python b2.py "path/to/fastq/xx.fq"
+from b2.py, paras =  ['b2.py', 'path/to/fastq/xx.fq']
+
+#sys.argv是一个数组，内容是字符串。
+#sys.argv[0] 类似于shell中的$0,是脚本名称  
+#sys.argv[1] 表示传入的第一个参数
+
+(2)py调用py，并传递参数
+$ cat a3.py
+import os
+keyword="aKeyWord"
+os.system("python b2.py paras from a3 "+keyword)
+print("py3 end==")
+
+$ python a3.py
+from b2.py, paras =  ['b2.py', 'paras', 'from', 'a3', 'aKeyWord']
+py3 end==
+
+
+
+
+2.R脚本使用commandArgs(TRUE) 接收参数
+R的下标从1开始，第一个就是第一个参数。
+
+(1)$ cat my2.R 
+#获取命令行参数
+myArgs<-commandArgs(TRUE)
+
+#myArgs是所有参数的特征向量
+print(myArgs) 
+print(class(myArgs))
+myArgs[1]
+myArgs[2]
+
+
+直接执行
+$ Rscript my2.R 10 25
+[1] "10" "25"
+[1] "character"
+[1] "10"
+[1] "25"
+
+
+(2)py调用R，并传递参数
+$ cat a4.py 
+import os
+keyword="aKeyWord"
+os.system("Rscript my2.R paras from a3 "+keyword)
+print("py3 end==")
+
+
+$ python a4.py
+[1] "paras"    "from"     "a3"       "aKeyWord"
+[1] "character"
+[1] "paras"
+[1] "from"
+py3 end==
+
+
+
+
+3.shell脚本使用 $0(脚本文件名本身), $1(第一个参数), $2 接收参数
+(1)$ cat my3.sh
+echo "p0=$0, p1=$1, p2=$2";
+
+$ bash my3.sh 1 2 good
+p0=my3.sh, p1=1, p2=2
+
+
+(2)py调用shell，并传递参数
+$ cat a5.py 
+import os
+keyword="aKeyWord"
+os.system("bash my3.sh paras from a3 "+keyword)
+print("py3 end==")
+
+
+$ python a5.py
+p0=my3.sh, p1=paras, p2=from
+py3 end==
+
+
+
+
+========================================
+|-- py使用os.popen()调用其他脚本、传入参数，并接收返回值
+----------------------------------------
+os.popen() 方法用于从一个命令打开一个管道。
+
+语法格式：os.popen(command[, mode[, bufsize]])
+参数
+	command -- 使用的命令。
+	mode -- 模式权限可以是 'r'(默认) 或 'w'。
+	bufsize -- 指明了文件需要的缓冲大小：0意味着无缓冲；1意味着行缓冲；其它正值表示使用参数大小的缓冲（大概值，以字节为单位）。负的bufsize意味着使用系统的默认值，一般来说，对于tty设备，它是行缓冲；对于其它文件，它是全缓冲。如果没有改参数，使用系统的默认值。
+
+#
+
+仅就py调用shell举例
+$ cat a1.py 
+import os
+rs1=os.system("ls -lth");
+rs2=os.popen("ls -lth");
+
+print("rs1=", rs1);
+print("rs2=", rs2);
+
+#
+print(type(rs2) );
+
+ss=rs2.read();
+print(ss);
+print( ss.split() );
+
+
+运行后的输出结果：
+$ python a1.py
+total 12K
+-rw-rw-r-- 1 wangjl wangjl 172 Jul 22 14:57 a1.py
+-rw-rw-r-- 1 wangjl wangjl  97 Jul 22 14:17 a5.py
+-rw-rw-r-- 1 wangjl wangjl  28 Jul 22 14:08 my3.sh
+rs1= 0
+rs2= <os._wrap_close object at 0x7fb24b4a5860>
+<class 'os._wrap_close'>  #type
+total 12K
+-rw-rw-r-- 1 wangjl wangjl 172 Jul 22 14:57 a1.py
+-rw-rw-r-- 1 wangjl wangjl  97 Jul 22 14:17 a5.py
+-rw-rw-r-- 1 wangjl wangjl  28 Jul 22 14:08 my3.sh
+
+['total', '12K', '-rw-rw-r--', '1', 'wangjl', 'wangjl', '172', 'Jul', '22', '14:57', 'a1.py', '-rw-rw-r--', '1', 'wangjl', 'wangjl', '97', 'Jul', '22', '14:17', 'a5.py', '-rw-rw-r--', '1', 'wangjl', 'wangjl', '28', 'Jul', '22', '14:08', 'my3.sh']
+
+
+
+
+
+
+
+
+========================================
+|-- Python执行shell脚本的几种方式（最好用 subprocess.Popen 来替代os.system）
+----------------------------------------
+1. Python3中subprocess.Popen与os.popen的区别 https://blog.csdn.net/Ls4034/article/details/89386857
+os.popen其实只是对subprocess.Popen的封装。
+多个os.popen共同执行，还不能保证谁先执行完。
+具体看文章： 
+
+
+
+
+2.subprocess模块
+
+subprocess，译作“子进程”。在运行Python程序时，都是在创建并运行一个进程。在Python中，可通过标准库的subprocess模块 来fork一个子进程，并运行一个外部程序（如执行一条cmd命令）。
+
+subprocess模块是Python 2.4新增的一个模块，它允许生成新的进程（子进程），连接到它们的input、output、error管道，并获取它们的返回（状态）码。subprocess模块的目的：替换几个旧的模块和方法（如os.system()、os.spawn*()，甚至os.popen，当然commands更是舍弃了）。
+
+subprocess模块中定义了数个创建子进程的函数，这些函数分别以不同的方式创建子进程，可根据需要进行选取。subprocess还提供了管理标准流（standard stream）和管道（pipe）的工具，从而在进程之间使用文本通信。
+
+
+结论：
+The recommended approach to invoking subprocesses is to use the run() function for all use cases it can handle. For more advanced use cases, the underlying Popen interface can be used directly.
+
+1).若使用的是Python >=3.5，Python官方给出的建议是尽量使用subprocess.run()函数。
+2).当subprocess.call()、subprocess.check_call()、subprocess.check_output()、subprocess.run()这些高级函数无法满足需求时，可使用subprocess.Popen类来实现所需要的复杂功能。
+
+3).个人感觉，还是 subprocess.getstatusoutput 方法使用比较便捷。
+
+import subprocess
+fastaPath="/home/wangjl/data/apa/190610APA/bed/all/bed/pas_bed/"
+
+cmd1="bedtools getfasta -fi /home/wangjl/data/ref/hg19/hg19.fa -bed "+fastaPath+cid+".up101_down100.bed -s -fo "+fastaPath+cid+".201.fasta"
+print(cmd1)
+
+(status1, output1)=subprocess.getstatusoutput(cmd1)
+
+
+
+
+
+
+
+refer:
+https://docs.python.org/3.6/library/subprocess.html
+https://blog.csdn.net/weixin_38256474/article/details/83117270
+
+
+
+========================================
+|-- python 读写配置文件 conf.ini (configparser包)
+----------------------------------------
+1. 配置文件 
+$cat conf.ini
+[info] 
+age = 21
+name = chen
+gender = male
+
+[file]
+in=raw/data1/r1.fq
+out= map/data1/r1.bam
+
+[token]
+cookies = 46ca47ffbb06ebea09f8b9d812d1a7d3
+
+
+
+2. 读取配置文件：
+$ cat b1.py 
+import configparser,os
+ 
+base_dir = str(os.path.dirname(os.path.dirname(__file__)))
+base_dir = base_dir.replace('\\', '/')
+file_path = base_dir + "./config/conf.ini"
+print("file_path=", file_path);
+
+ 
+cf = configparser.ConfigParser()   # configparser类来读取config文件
+cf.read(file_path)
+
+cookies = cf.get("token", "cookies")
+print(cookies)
+
+age=cf.get('info', 'age');
+print('age=', age)
+
+
+# 运行结果：
+$ python b1.py 
+file_path= ./config/conf.ini
+46ca47ffbb06ebea09f8b9d812d1a7d3
+age= 21
+
+
+
+3. 写配置文件
+$ cat b2.py
+import configparser,os
+# 获取token写入配置文件
+base_dir = str(os.path.dirname(os.path.dirname(__file__)))
+base_dir = base_dir.replace('\\', '/')
+file_path = base_dir + "./config/conf2.ini"
+print(file_path)
+
+# 写token
+config = configparser.ConfigParser()
+config.add_section("mysql")
+config.set('mysql', 'host', "192.168.1.105")
+with open(file_path, 'w')as conf:
+	config.write(conf)
+
+
+# 需要先提前建立空文件
+$ touch config/conf2.ini 
+# 运行结果：
+$ python b2.py 
+./config/conf2.ini
+
+确实已经添加上了
+$ head config/conf2.ini 
+[mysql]
+host = 192.168.1.105
+
+
+注意：写的句子必须是字符，支持空字符。默认覆盖掉同名旧值，相当于改写更新。
+config.set('mysql', 'usr','root')
+config.set('mysql', 'passwd', '')
+config.set('mysql', 'port', '21') #must be string
+
+
+
+https://blog.csdn.net/ezreal_tao/article/details/84840679
+
+
+
+
+========================================
+|-- Python3脚本中使用另一个py中的函数
+----------------------------------------
+
+1.同一个目录下的调用
+(1). 定义函数库
+$ cat fn_add.py 
+def add(a,b):
+        return a+b;
+
+(2). 同一个目录下，直接import文件名，引用函数时要加上文件名前缀
+$ cat a1.py 
+import fn_add
+print( fn_add.add(2,4) );
+
+运行
+$ python a1.py 
+6
+
+(3)如果想直接使用函数名，则需要重命名：
+$ cat a2.py 
+import fn_add
+add=fn_add.add
+print( add(2,4) );
+
+或者使用 
+$ cat a3.py 
+from fn_add import add
+print( add(2,4) );
+
+
+
+2. 调用不同目录下文件
+$ cat t.py
+from pipeline.my_fn import getNow
+print(getNow() );
+
+在当前py脚本并列的文件夹pipeline内，有一个my_fn.py,其中定义了getNow()函数。 
+
+./t.py
+./pipeline/my_fn.py  #其中定义的函数
+
+
+https://www.cnblogs.com/arkenstone/p/5609063.html
+
+
+========================================
+----------------------------------------
+
+
+
+========================================
+----------------------------------------
+
+
+========================================
+----------------------------------------
+
+
+
+========================================
+----------------------------------------
+
+
+
+
+========================================
+使用Snakemake(一个基于Python3写的DSL流程框架)搭建生信分析流程
+----------------------------------------
+我们都知道ATAC-seq是探索染色体开放程度的一项非常重要的技术，比如我们要分析ATAC-seq的数据（注：ATAC-seq的原理请移步 ATAC-seq - Wikipedia），根据ENCODE的建议，ATAT-seq数据分析往往会分成下面几个步骤：
+raw FASTQ cut adapter
+mapping to the reference with aligner like bowtie2
+sort alignment result (BAM files)
+remove BAM file duplications
+peak-calling with MACS2
+
+如果有50个样品需要跑这样重复的流程，使用shell去写循环提交任务当然可以。但是在提交的时候，我们需要考虑前后生成文件的逻辑，需要考虑整体使用的CPU核心数目，需要考虑如果任务从中间断掉之后怎么去恢复之前的文件状态。还需要考虑，如果生成的文件不完整怎么办等等。
+
+此外，除去这些问题，下次我们再跑一个ChIP-seq的数据，虽然也是类似的流程，就需要再次重新构建一个pipeline，费事费力。那么这个时候就需要请出我们今天的主角——Snakemake！
+
+
+什么是Snakemake？
+Snakemake是一款基于Python3的软件，在它的帮助下，我们不但可以快速搭建流程，还可以实现包括并不限于下列功能的流程控制：
+1支持并行运算；
+2支持断点运行；
+3支持流程控制；
+4支持内存控制；
+5支持CPU核心控制；
+6支持运行时间控制；
+7支持向大型计算机集群提交任务；
+8…… ……
+
+
+同时，在Snakemake的帮助下，我们可以生成数据运行的网络拓扑图，就比如我们前文提到的ATAC-seq的数据分析。假设我们有2个重复的ATAC-seq的数据需要分析，那么使用Snakemake搭建出的流程就类似于， 图略；
+在运行的时候，我们还可以自动生成运行逻辑拓扑图，图略；
+
+
+
+refer:
+1.文本 https://www.jianshu.com/p/ab9b9c3370af 
+  视频 https://www.bilibili.com/video/av45832590  ATAC-seq分析示例
+
+2.视频 https://www.bilibili.com/video/av15908415  以转录组分析为例
+
+3. snakemake--我最喜欢的流程管理工具  https://www.jianshu.com/p/8e57fd2b81b2
+4.snakemake搭建生信分析流程  原创： 林行众  生信技能树  2017-11-17
+
+
+
+========================================
+|-- snakemake包简介、安装与使用
+----------------------------------------
+官方文档： https://snakemake.readthedocs.io/en/latest/
+
+支持并行运算、断点运行、流程控制、内存控制、CPU控制等。
+自动生成流程拓扑图。
+
+
+
+1.安装 snakemake包
+(1)$ pip3 -V
+pip 19.1.1 from /home/wangjl/software/anaconda3/lib/python3.7/site-packages/pip (python 3.7)
+
+$ pip3 install --user snakemake
+连接不上
+
+或
+$ conda create --name py3F python=3.7.3
+## 需要安装很多包，时间取决于网速（使用中科大或清华的源）
+#
+# To activate this environment, use:
+# > conda activate py3F
+#
+# To deactivate an active environment, use:
+# > conda deactivate
+
+
+#激活环境
+$ source activate py3F
+
+# 添加Anaconda的TUNA镜像
+(py3F)$ conda config --add channels https://mirrors.tuna.tsinghua.edu.cn/anaconda/pkgs/free/
+(py3F)$ conda config --add channels https://mirrors.tuna.tsinghua.edu.cn/anaconda/pkgs/main/
+
+# 设置搜索时显示通道地址
+(py3F)$ conda config --set show_channel_urls yes
+
+(py3F)$ conda search snakemake
+搜索包
+
+(py3F)$ conda install snakemake #时间取决于网速
+还是失败：PackagesNotFoundError
+查官网，建议使用bioconda频道。
+(py3F)$ conda install -c bioconda snakemake 
+还是失败： ConnectionError
+
+
+
+
+
+
+(2)也可以从源文件安装:
+$ git clone https://bitbucket.org/snakemake/snakemake.git
+$ cd snakemake
+
+#创建虚拟环境
+$ virtualenv -p python3 .venv
+$ source .venv/bin/activate
+(.venv)$ python setup.py install  #带前缀的虚拟环境
+
+
+#检查是否安装成功
+$ snakemake -h
+usage: snakemake [-h] [--dryrun] [--profile PROFILE] [--snakefile FILE]
+                 [--cores [N]] [--local-cores N]
+                 [--resources [NAME=INT [NAME=INT ...]]]
+                 [--config [KEY=VALUE [KEY=VALUE ...]]] [--configfile FILE]
+
+# 退出当前的venv环境，使用deactivate命令：
+(.venv) [wangjl@bio_svr1 snakemake]$ deactivate
+[wangjl@bio_svr1 snakemake]$ 
+
+
+
+virtualenv是如何创建“独立”的Python运行环境的呢？原理很简单，就是把系统Python复制一份到virtualenv的环境，用命令source venv/bin/activate进入一个virtualenv环境时，virtualenv会修改相关环境变量，让命令python和pip均指向当前的virtualenv环境。
+
+
+
+
+
+2. 简单执行shell命令
+(1)再次进入虚拟环境：
+$ source /home/wangjl/software/snakemake/.venv/bin/activate
+
+(2)创建两个文本文件1.txt, 2.txt，内容分别是hello和world，作为输入文件。
+$ cat Snakefile
+rule test_cat:
+    input:
+        "1.txt",
+        "2.txt"
+    output:
+        "hebing.txt"
+    shell:
+        "cat  {input}  >> {output}"
+#
+这里有四个参数:
+rule: 是名称, 这里命名为test_cat
+Input: 输入文件, 这里是”1.txt”, “2.txt”
+Output: 输出文件, 这里是”hebing.txt”
+Shell: 这里是要执行的脚本, 输入文件是{input}, 输出文件是{output}
+
+
+(3)查看任务内容 
+$ snakemake -np
+这里不执行程序，而是把相关的脚本打印出来，同时还有任务统计信息
+
+
+(4)执行命令
+snakemake默认执行的文件名是: Snakefile, 如果想要指定自己编写的文件名, 可以加上参数: —snakefile
+比如: 文件名为a.snake
+snakemake --snakefile a.snake
+
+果文件名是默认的Snakemake, 不用加参数, 直接运行snakemake即可直接执行.
+$ snakemake
+	Building DAG of jobs...
+	Using shell: /usr/bin/bash
+	Provided cores: 1
+	Rules claiming more threads will be scaled down.
+	Job counts:
+		count	jobs
+		1	test_cat
+		1
+
+	[Sat Jul 20 07:57:17 2019]
+	rule test_cat:
+		input: 1.txt, 2.txt
+		output: hebing.txt
+		jobid: 0
+
+	[Sat Jul 20 07:57:17 2019]
+	Finished job 0.
+	1 of 1 steps (100%) done
+	Complete log: /data/jinwf/wangjl/software/snakemake/.snakemake/log/2019-07-20T075717.160781.snakemake.log
+#
+
+(5)查看结果:
+(.venv) [wangjl@bio_svr1 snakemake]$ cat hebing.txt 
+hello, 
+from another file.
+
+可以看到, 使用snakemake, 成功的将1.txt 和2.txt 合并为hebing.txt.
+
+
+(6)运行成功, 重新运行时
+显示Nothing to be done, 即不会执行.
+
+(.venv) [wangjl@bio_svr1 snakemake]$ snakemake
+Building DAG of jobs...
+Nothing to be done.
+Complete log: /data/jinwf/wangjl/software/snakemake/.snakemake/log/2019-07-20T075923.589548.snakemake.log
+
+如果heibng.txt文件被删掉了, 会重新执行.
+
+
+
+(7)查看日志文件是啥
+(.venv) [wangjl@bio_svr1 snakemake]$ cat /data/jinwf/wangjl/software/snakemake/.snakemake/log/2019-07-20T075923.589548.snakemake.log
+Building DAG of jobs...
+Nothing to be done.
+Complete log: /data/jinwf/wangjl/software/snakemake/.snakemake/log/2019-07-20T075923.589548.snakemake.log
+
+好吧，就是屏幕上输出的内容~
+
+
+
+
+
+3. snakmake更高级的特性，也就是为每个rule定义专门的运行环境
+参考： https://www.jianshu.com/p/8e57fd2b81b2
+
+
+
+
+
+
+refer:
+1.snakemake 教程： https://blog.csdn.net/u012110870/article/details/85330457
+2. https://www.jianshu.com/p/14b9eccc0c0e
+
+
+
+
+
+========================================
+|-- snakefile实例分析
+----------------------------------------
+1. 比对并保存bam文件
+rule bwa_map:
+    input:
+        "data/genome.fa",
+        "data/samples/A.fastq"
+    output:
+        "mapped_reads/A.bam"
+    shell:
+        "bwa mem {input} | samtools view -Sb - > {output}"
+#
+
+
+
+
+2. 
+$ cat snakefile
+SAMPLES = ['Sample1', 'Sample2']
+rule all:
+    input:
+        expand('{sample}.txt', sample=SAMPLES)
+
+rule quantify_genes:
+    input:
+        genome = 'genome.fa',
+        r1 = 'fastq/{sample}.R1.fastq.gz',
+        r2 = 'fastq/{sample}.R2.fastq.gz'
+    output:
+        '{sample}.txt'
+    shell:
+        'echo {input.genome} {input.r1} {input.r2} > {output}'
+
+#
+
+
+
+
+
+========================================
+|-- 使用snakemake构建 ATAC-seq 分析流程
+----------------------------------------
+1. snakemake 的基础教学：
+	conda 虚拟环境（本文使用的virtualenv虚拟环境）
+#
+ATAC-seq 就是越松散的genome区域，测得的reads越多。该区域基因表达量比较多。
+
+五个大步骤：
+raw FASTQ cut adapter
+mapping to the reference with aligner like bowtie2
+sort alignment result (BAM files)
+remove BAM file duplications
+peak-calling with MACS2
+
+
+测序数据文件是两个重复的双端测序：
+ATAC_seq_rep1_R1.fq.gz ATAC_seq_rep2_R1.fq.gz 
+ATAC_seq_rep1_R2.fq.gz ATAC_seq_rep2_R2.fq.gz 
+
+
+
+
+
+2. snakefile 的基本单元是 rule，每个rule有input、output和shell命令，还可以在run中添加python脚本。
+
+重新进入环境： 
+$ source /home/wangjl/software/snakemake/.venv/bin/activate
+(.venv)$ snakemake -h #正常
+
+## 一会结束，想退出环境，使用 deactivate 即可。这时候snakemake -h 就报错，command not found...
+
+
+开始按照步骤写规则：
+snakemake.ATAC.py
+## step1 
+
+rule all: ##第一步先空着，后续回来填
+	input:
+		""
+
+rule cutadapt:
+	input:
+		"raw.fastq/ATAC_seq_{rep}_R1.fq.gz",
+		"raw.fastq/ATAC_seq_{rep}_R2.fq.gz"
+	output:
+		"fix.fastq/ATAC_seq_{rep}_R1.fq.gz", #如果文件夹不存在，则会自动创建
+		"fix.fastq/ATAC_seq_{rep}_R2.fq.gz"
+	log:
+		"fix.fastq/ATAC_seq_{rep}_cutadapt.log"
+	shell:
+		"cutadapt -j 4 --time 1 -e 0.1 -O 3 --quality-cutoff 25 \
+		-m 50 -a "
+
+
+# -O MINLENGTH, --overlap MINLENGTH
+#       Require MINLENGTH overlap between read and adapter for an adapter to be found. Default: 3
+#-q [5'CUTOFF,]3'CUTOFF, --quality-cutoff [5'CUTOFF,]3'CUTOFF
+#		Trim low-quality bases from 5' and/or 3' ends of each read before adapter removal. Applied to both reads if
+#		data is paired. If one value is given, only the 3' end is trimmed. If two comma-separated cutoffs are given,
+#		the 5' end is trimmed with the first cutoff, the 3' end with the second.
+#-m LEN[:LEN2], --minimum-length LEN[:LEN2]
+#         Discard reads shorter than LEN. Default: 0
+#-a ADAPTER, --adapter ADAPTER
+#		Sequence of an adapter ligated to the 3' end (paired data: of the first read). The adapter and subsequent
+#		bases are trimmed. If a '$' character is appended ('anchoring'), the adapter is only found if it is a
+#		suffix of the read.
+
+
+
+
+refer:
+https://www.bilibili.com/video/av45832590?p=6
+
+
+
+========================================
+配置文件格式优缺点：ini, JSON or YAML-formatted configuration files //todo
+----------------------------------------
+
+
+
+
+
+https://www.cnblogs.com/linkenpark/p/8899165.html
+
+
+
+========================================
+可视化报告的生成技术
+----------------------------------------
+1.生成jpg图片，还是生成pdf图像？
+
+
+首先保证网页不能乱码:
+<meta http-equiv=Content-Type content="text/html;charset=utf-8">
+
+
+
+
+========================================
+|-- 网页嵌入pdf
+----------------------------------------
+<embed src="all.100ntUD-1S_gt5_with4A.pdf" type="application/pdf"  height="350px">
+        <p><a href="all.100ntUD-1S_gt5_with4A.pdf">Download PDF</a></p>
+</embed>
+
+
+
+
+
+
+========================================
+|-- 网页中嵌入另一个网页，带滚动条
+----------------------------------------
+
+<iframe src="meme/meme.html" width="1000" frameborder="1" scrolling="auto"> </iframe>
+
+
+
+========================================
+----------------------------------------
+
+
+
+========================================
+----------------------------------------
+
+
+
+========================================
+----------------------------------------
+
+
+========================================
+----------------------------------------
+
+
+
+========================================
+----------------------------------------
+
+
+========================================
+----------------------------------------
+
+
+
+========================================
+----------------------------------------
+
+
+
+========================================
+----------------------------------------
+
+
+========================================
+----------------------------------------
+
+
+
+========================================
+----------------------------------------
+
+
+========================================
+----------------------------------------
+
+
+
