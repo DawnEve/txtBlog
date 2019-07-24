@@ -27,8 +27,9 @@
 			array('http://www.sqlite.org/','sqlite'),
 			array('http://nginx.org/en/docs/','Nginx'),
 			array('http://fex.baidu.com/ueditor/#start-config','uEditor','百度富文本编辑器'),
+			array('http://www.shouce.ren/api/index','在线手册下载'),
 			//
-			array('http://aibusy.com/blog/?p=226','Sublime插件'),
+			//array('http://aibusy.com/blog/?p=226','Sublime插件'), 打不开了
 		);
 		echo '<br />友情链接[IT Tools]: ';
 		print_links($links_IT_tools);
@@ -37,21 +38,16 @@
 		//计算机技术类============================后端资料类
 		$links_Back=array(
 			array('http://mingxinglai.com/','Linux命令博客','赖明星，网易/腾讯db工程师(厦门大学数据库实验室林子雨老师的学生http://dblab.xmu.edu.cn/)'),
-			array('http://www.imeixue.cn/','每学网'),// 韩顺平的作品？
-			array('http://www.css88.com/archives/1706','前端'),
+			//array('http://www.imeixue.cn/','每学网'),// 韩顺平的作品？ 打不开了
 
-			array('http://www.shejipi.com/12931.html','设计癖'),
-			array('http://www.w3cfuns.com/article-1306-1.html','响应式布局'),
-			array('http://code.csdn.net/news/2819417','25个前端框架'),
-			array('http://aibusy.com/course_list.html','前端大纲'),
-			array('http://www.cnblogs.com/ljchow/archive/2010/06/09/1754352.html','js动画原理'),
 			array('http://www.blogdaren.com/','php博客花园'),
-			//array('http://gaodc.com/','8年php高东臣博客'),
-			array('http://www.shouce.ren/api/index','在线手册下载'),
+			//array('http://gaodc.com/','8年php高东臣博客'), //域名过期
 			array('http://cmsblogs.com/?page_id=488','cmsblogs(Java)'),
+			array("https://www.shiyanlou.com/",'实验楼','第一家以实验为核心的IT在线教育平台'),
 		);
 		echo '<br />后端资料: ';
 		print_links($links_Back);
+
 		
 		//计算机技术类============================前端资料类
 		$links_Front=array(
@@ -75,7 +71,6 @@
 			array("http://www.75team.com/",'齐舞团'),
 			//array("http://f2e.im/",'F2E'),
 			array("http://www.html-js.com/",'前端乱炖'),
-			array("https://www.shiyanlou.com/",'实验楼','第一家以实验为核心的IT在线教育平台'),
 			
 			//
 			//array("http://www.w3.org/",'W3C'),
@@ -88,11 +83,24 @@
 			array('http://segmentfault.com/','SegmentFault', '中文编程问答'),
 			array('http://www.kancloud.cn/explore','看云文档'),
 			
-			//切图
+			//前端技术 js
+			array('http://www.cnblogs.com/ljchow/archive/2010/06/09/1754352.html','js动画原理'),
+			array('http://www.css88.com/archives/1706','前端js'),
+			array('http://aibusy.com/','爱前端js'),
+
+
+			//切图 网页设计
 			array('http://www.uimaker.com/member/reg_new.php','UI制造者'),
 			array('http://www.qietu.com/','切图网'),
 
+			array('http://www.shejipi.com/','设计癖'),
 			array('http://www.shejidaren.com/free-bootstrap-ui-kits.html','设计达人'),
+			//array('http://code.csdn.net/news/2819417','25个前端框架'),//404 2019.7
+			//array('http://www.w3cfuns.com/article-1306-1.html','响应式布局'), //关停2019.7
+
+			//导航
+			array('http://f2er.club/','醉牛前端导航'),
+			array('http://caibaojian.com/links','前端网址导航'),
 		);
 		echo '<br />前端技术: ';
 		print_links($links_Front);
@@ -114,16 +122,16 @@
 		echo '<br />生物信息学: ';
 		print_links(array(
 			array('http://www.bioinfo-scrounger.com/','生信笔记'),
-			array('http://blog.shenwei.me/about/','shenwei的生信博客'),
-			array('http://www.dengfeilong.com/post/aboutUs.html','邓飞龙的生信博客'),
+			array('https://www.cnblogs.com/leezx/tag/单细胞/','单细胞'),
+			array('https://face2ai.com/Math-Probability-5-5-The-Negative-Binomial-Distribution/','谭升(统计/书list)'),
+			array('https://life2cloud.com/cn/2018/11/pipelines-styles/','李剑峰(生信流程)'),
+			
+			array('http://blog.shenwei.me/about/','shenwei(微生物)'),
 			//array('',''),
+			// array('http://www.dengfeilong.com/post/aboutUs.html','邓飞龙'), //空间过期
 		));
 ?>		
 			
-
-			<br />导航:			
-			<a href="http://f2er.club/" target="blank">醉牛前端导航</a> | 
-			<a href="http://caibaojian.com/links" target="blank">前端网址导航</a> |
 
 <?php if($web_status==1){?>
 <script type="text/javascript">

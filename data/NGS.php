@@ -26,11 +26,12 @@ return array (
     0 => 3,
     1 => '数据分析语言',
     2 => array (
-      array('每种应用的分析方法概述','analysis01','txt'),
-
-
       array('测序分析shell语句','shell-in-seq','txt'),
+      array('构建分析流程 pipeline','pipeline','txt'),
       array('perl基础','lang-Perl','txt'),
+
+
+      array('每种应用的分析方法概述','analysis01','txt'),
     ),
   ),  
   
