@@ -16,6 +16,7 @@ return array (
     1 => '语法',
     2 => array (
       array('C语言入门教程','c101','txt',),
+      array('数据结构与算法','c102-data_structures_algorithm','txt',),
 
     ),
   ),
