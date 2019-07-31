@@ -40,7 +40,7 @@ return array (
 	  //array('域名售卖系统whmcs','whmcs','txt' ),
 	  
 	  array('IP、路由与wifi','Route_Net','txt' ),
-	  array('Linux网络服务','linux_service','txt' ),
+	  array('Linux服务','linux_service','txt' ),
 	  
 	  array('htaccess配置规则','apache001','txt' ),
 	  array('虚拟域名和二级域名配置','apache002','txt' ),

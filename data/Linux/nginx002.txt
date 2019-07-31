@@ -360,7 +360,7 @@ service redis-server restart
 
 
 ========================================
-如何在Ubuntu1604下配置nginx服务器子目录
+如何在Ubuntu1604/1804 下配置nginx服务器子目录
 ----------------------------------------
 
 nginx是一个很好用的服务器软件，是apache的有力竞争者。
@@ -487,6 +487,81 @@ agetouch blog:http://agetouch.blog.163.com/blog/static/228535090201791881025259/
 
 
 
+
+
+
+========================================
+|-- 端口转发
+----------------------------------------
+https://www.cnblogs.com/zhaoyingjie/p/7248678.html
+端口转发指的是由软件统一监听某个域名上的某个端口（一般是80端口），当访问服务器的域名和端口符合要求时，就按照配置转发给指定的 Tomcat 服务器处理。我们常用的 Nginx 也有端口转发功能。
+
+
+
+1.在nginx配置文件中添加几行
+$ sudo vim /etc/nginx/sites-available/default
+
+#Demo1负载均衡池
+upstream py3_pool{
+    server 192.168.2.120:8000;
+}
+
+#Demo1端口转发
+server {
+    listen       8080;
+    server_name  y.biomooc.com;
+#    access_log logs/y.biomooc.com.log;
+#    error_log logs/y.biomooc.com.error;
+
+    #将所有请求转发给demo_pool池的应用处理
+    location / {
+        proxy_set_header Host $host;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_pass http://py3_pool;
+    }
+}
+
+
+python的Flask的web端口是8000，可以通过
+http://y.biomooc.com:8000/x?name=test 访问，F12能看到Response中Server: Werkzeug/0.14.1 Python/3.6.3
+
+现在使用nginx把端口8080的请求转发给8000，则访问 http://y.biomooc.com:8080/x?name=test 时，实际上后台响应的还是pyhton，但是F12能看到的Response中Server: nginx/1.14.0 (Ubuntu)
+
+重复以上过程，即可完成不同URL转发到不同内部端口。
+比如访问 book.biomooc.com 的8080，则自动转向内部的80端口等。
+
+
+
+
+
+
+2. 附录：py开启简易服务器脚本
+$ cat hello.py
+from flask import Flask, escape, request
+
+app = Flask(__name__)
+@app.route('/')
+def hello_world():
+    return "hello world. http://y.biomooc.com:8000/x?name=test "
+
+@app.route('/x')
+def hello():
+    name = request.args.get("name", "World")
+    return f'Hello, {escape(name)}!'
+
+
+if __name__=='__main__':
+    app.run(host="192.168.2.120",port=8000)
+
+# 启服务器
+$ python hello.py
+ * Serving Flask app "hello" (lazy loading)
+ * Environment: production
+   WARNING: Do not use the development server in a production environment.
+   Use a production WSGI server instead.
+ * Debug mode: off
+ * Running on http://192.168.2.120:8000/ (Press CTRL+C to quit)
+#
 
 
 
