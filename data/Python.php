@@ -17,7 +17,7 @@ return array (
     1 => 'Python语法',
     2 => array (
       array('Python快速入门','Python101','txt',),
-      array('Python基础详解','Python102','txt',),
+      array('Python基础详解','Python102-more','txt',),
       array('Python OOP','Python103-OOP','txt',),
       array('Python数据处理包','Python104-packages','txt',),
       array('Python Web','Python105-web','txt',),

@@ -127,6 +127,7 @@
 			array('https://life2cloud.com/cn/2018/11/pipelines-styles/','李剑峰(生信流程)'),
 			
 			array('http://blog.shenwei.me/about/','shenwei(微生物)'),
+			array('https://qinqianshan.com/math/probability_distribution/','SAM NOTE(统计等)'),
 			//array('',''),
 			// array('http://www.dengfeilong.com/post/aboutUs.html','邓飞龙'), //空间过期
 		));
