@@ -22,8 +22,6 @@ return array (
 	  //array('VIM常用命令','vim001', 'txt'),
 	  array('字符grep/awk/sed','string_process', 'txt'),
 	  array('用户和权限管理','linux102-user', 'txt'),
-	  array('网络与iptables','linux103-net', 'txt'),
-
     ),
   ),
   
@@ -38,8 +36,9 @@ return array (
 	  //array('iptables安全防护','Linux201','txt' ),
 	  //array('科学上网','crackTheWall','html' ),
 	  //array('域名售卖系统whmcs','whmcs','txt' ),
+	  //array('IP、路由与wifi','Route_Net','txt' ),
+	  array('网络与iptables','linux103-net', 'txt'),
 	  
-	  array('IP、路由与wifi','Route_Net','txt' ),
 	  array('Linux服务','linux_service','txt' ),
 	  
 	  array('htaccess配置规则','apache001','txt' ),
@@ -48,10 +47,9 @@ return array (
 	  array('nginx服务器','nginx002','txt' ),
     ),
   ),
-  
 
-  
-  
+
+
   array (
     0 => 4,
     1 => '虚拟机和docker',
@@ -59,8 +57,8 @@ return array (
 	  array('VirtualBox','VirtualBox001','md' ),
 	  array('docker笔记','docker_note','txt' ),
 	  array('docker快速入门','docker001','md' ),
-	  array('docker官方简介','docker002','md' ),
-	  array('Dockerfile','docker003','md' ),
+	  //array('docker官方简介','docker002','md' ),
+	  //array('Dockerfile','docker003','md' ),
 
     ),
   ),
