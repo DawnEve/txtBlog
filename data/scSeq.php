@@ -7,7 +7,7 @@ return array (
     2 => array (
       array('项目描述','scSeq001','html',),
       array('参考资料','scSeq002','html'),
-      array('FAQ','scSeq003','html'),
+      //array('FAQ','scSeq003','html'),
     ),
   ),
 
@@ -15,7 +15,7 @@ return array (
     0 => 2,
     1 => 'scRNAseq技术',
     2 => array (
-      array('scSeq002-methods','scSeq002-methods','txt'),
+      array('scSeq方法学','scSeq101-methods','txt'),
       array('scSeq-10xGenomics','scSeq-10xGenomics','txt'),
       array('scSeq-c1-RNA','scSeq-c1-RNA','txt'),
     ),

@@ -18,16 +18,16 @@
 		$links_IT_tools=array(
 			//api手册
 			array('http://jsbin.com/','jsbin','练习前端的好工具！'),
+			array('https://tool.lu/','在线工具'),
+
 			array('http://jquery.cuishifeng.cn/','jQuery手册'),
+			array('http://css.cuishifeng.cn/','css手册'),
 
 			array('http://www.runoob.com/','菜鸟教程网'),
 			array('http://www.w3school.com.cn/','w3school'),
 			array('http://mioweb.biomooc.com/','miostudio'),
-			array('http://php.net/','PHP'),
-			array('http://www.sqlite.org/','sqlite'),
-			array('http://nginx.org/en/docs/','Nginx'),
-			array('http://fex.baidu.com/ueditor/#start-config','uEditor','百度富文本编辑器'),
 			array('http://www.shouce.ren/api/index','在线手册下载'),
+			array('http://tool.chinaz.com/tools/jsformat.aspx','html/js格式化','代码美化'),
 			//
 			//array('http://aibusy.com/blog/?p=226','Sublime插件'), 打不开了
 		);
@@ -38,12 +38,19 @@
 		//计算机技术类============================后端资料类
 		$links_Back=array(
 			array('http://mingxinglai.com/','Linux命令博客','赖明星，网易/腾讯db工程师(厦门大学数据库实验室林子雨老师的学生http://dblab.xmu.edu.cn/)'),
+			array("http://www.zsythink.net/archives/tag/awk/",'linux/awk等','运维 朱双印个人日志'),
 			//array('http://www.imeixue.cn/','每学网'),// 韩顺平的作品？ 打不开了
 
+			array('http://nginx.org/en/docs/','Nginx'),
+			array('http://php.net/','PHP'),
 			array('http://www.blogdaren.com/','php博客花园'),
+			array('http://www.sqlite.org/','sqlite'),
+
 			//array('http://gaodc.com/','8年php高东臣博客'), //域名过期
 			array('http://cmsblogs.com/?page_id=488','cmsblogs(Java)'),
 			array("https://www.shiyanlou.com/",'实验楼','第一家以实验为核心的IT在线教育平台'),
+			
+			array('http://fex.baidu.com/ueditor/#start-config','uEditor','百度富文本编辑器'),
 		);
 		echo '<br />后端资料: ';
 		print_links($links_Back);
@@ -119,7 +126,7 @@
 		echo '<br />视频: ';
 		print_links($links_video);
 		
-		echo '<br />生物信息学: ';
+		echo '<br />生信: ';
 		print_links(array(
 			array('http://www.bioinfo-scrounger.com/','生信笔记'),
 			array('https://www.cnblogs.com/leezx/tag/单细胞/','单细胞'),

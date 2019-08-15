@@ -1,12 +1,13 @@
 function addContents(){
-	//获取目录dom
-	 aH4=document.getElementsByTagName('h4')
+	//get dom: h4 node
 	var	oContent=getElementsByClassName('content')[0],
 		oPre=oContent.getElementsByTagName('pre')[0],
+		aH4=oPre.getElementsByTagName('h4'),
 		
 		oDiv=createElement('div'),
 		oUl=createElement('ol');
-	//添加标题、日期
+
+	//add h2 title
 	oDiv.appendChild( createElement('h2',{},'目录' ) );
 	//oDiv.appendChild( createElement('p',{}, 'lastModified: ' + document.lastModified ) );
 	//添加内容

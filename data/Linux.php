@@ -32,11 +32,6 @@ return array (
     0 => 3,
     1 => '网络服务',
     2 => array (
-	  //array('webTools','webTools', 'txt'),
-	  //array('iptables安全防护','Linux201','txt' ),
-	  //array('科学上网','crackTheWall','html' ),
-	  //array('域名售卖系统whmcs','whmcs','txt' ),
-	  //array('IP、路由与wifi','Route_Net','txt' ),
 	  array('网络与iptables','linux103-net', 'txt'),
 	  
 	  array('Linux服务','linux_service','txt' ),
@@ -57,8 +52,6 @@ return array (
 	  array('VirtualBox','VirtualBox001','md' ),
 	  array('docker笔记','docker_note','txt' ),
 	  array('docker快速入门','docker001','md' ),
-	  //array('docker官方简介','docker002','md' ),
-	  //array('Dockerfile','docker003','md' ),
 
     ),
   ),

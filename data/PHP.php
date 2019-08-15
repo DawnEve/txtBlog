@@ -36,9 +36,9 @@ return array (
     2 => 
     array (
 		array('mysql简介','mysql001','html',),
-		array('mysql常用操作','mysql101', 'txt'),
-		array('Mysql权限管理grant','mysql102','txt' ),
-		array('Mysql优化指南','mysql103', 'txt'),
+		array('mysql常用操作','mysql101-basic', 'txt'),
+		array('Mysql高级话题','mysql102-adv','txt' ),
+		array('Mysql优化指南','mysql103-opt', 'txt'),
     ),
   ),
   
