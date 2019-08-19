@@ -1,5 +1,6 @@
 /* 添加目录
-*v 0.3
+*v0.3
+*v0.4 https://blog.csdn.net/weixin_41728561/article/details/86524574 锚点定位被导航栏遮住了
 */
 function addContents(){
 	//get dom: h4 node
@@ -14,9 +15,12 @@ function addContents(){
 		var text=aH4[i].innerHTML;
 		if(trim(text)!=''){
 			//1.1 添加锚定a标签到h4标签前面，包含显示编号
-			var oH4 = aH4[i], oHr=oH4.previousSibling;
-			oHr.parentNode.insertBefore( createElement('a',{'name':i}, ''), oHr ); //hr.top前加锚点,无显示
-			oH4.parentNode.insertBefore( createElement('a',{'class':'smallA'}, '[Section '+(i+1)+']'), oH4 ); //h4前显示section，从1开始，而不是0.
+			var oH4 = aH4[i]
+			oH4.parentNode.insertBefore( createElement('a',{
+				'class':'smallA',
+				'name':i, 
+				'style':"margin-top:-33px; padding-top:33px;"
+			}, '[Section '+(i+1)+']'), oH4 ); //h4前显示section，从1开始，而不是0.
 			
 			//1.2 li中添加span,span中添加text
 			var innerSpan = createElement('span',{},text );

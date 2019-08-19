@@ -19,10 +19,10 @@ return array (
     2 => 
     array (
 	  array('js core 快速入门','js101-basic','txt' ),
-	  array('js函数、闭包与高阶函数','js102-adv','txt' ),
+	  array('js函数、闭包、原型','js102-adv','txt' ),
 	  //array('字符串处理','js201','txt' ),
 
-	  array('浏览器','js103-browser','txt' ),
+	  array('浏览器-DOM-BOM','js103-browser','txt' ),
 	  array('js OOP','js104-OOP','txt' ),
 
 	  array('写类库 dawnJS','dawnJS001','txt' ),

@@ -8,6 +8,7 @@ return array (
       array('项目描述','css001','html',),
       array('快速入门','css002','txt'),
       array('FAQ','css003','html'),
+      array('css常用效果','css101','txt'),
     ),
   ),
   
