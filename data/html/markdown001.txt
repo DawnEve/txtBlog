@@ -8,6 +8,10 @@ markdown简介
 - 最好有一个支持的js所见即所得编辑器，方便编辑。
 
 
+GitHub Flavored Markdown
+https://github.com/guodongxiaren/README#%E4%BB%A3%E7%A0%81%E9%AB%98%E4%BA%AE
+
+
 
 ========================================
 见识见识md
@@ -323,9 +327,142 @@ mistune.markdown('I am using **mistune markdown parser**')
 # output: <p>I am using <strong>mistune markdown parser</strong></p>
 
 
-
-
 只需要从github扒下来一套皮肤样式。
+
+
+
+========================================
+|-- 扩展 mistune 子类，markdown后台转html时跳过LaTex代码片段的解析
+----------------------------------------
+md文档后台用mistune转html，前台用MathJax.js把LaTex公式可视化，发现mistune把_转为了<em>或</em>，导致很多公式可视化失败。
+后来发现该包可以扩展，就参考官方文档扩展了一个子类，后台转换md为html时，碰到$$包起来的部分啥都不做。
+
+
+1. md文件，含LaTex代码
+$$
+\varGamma(x)=\frac{\int_{\alpha}^{\beta}g(t)(x-t)^2\text{d}t}{\phi(x)\sum_{i=0}^{N-1}\omega_i}\tag{2}
+$$
+
+$\alpha+\beta=\gamma$
+
+
+
+
+
+2. python会把md转为LaTex
+import re
+from mistune import Renderer, Markdown, InlineLexer
+
+# define new sub class
+#让mistune不后台处理$$和$$之间的LaTex代码，交给前台的js处理成数学公式
+class LaTexRenderer(Renderer):
+    #def LaTex(self, alt, link):
+    def LaTex(self, text):
+        return '$$%s$$' % (text)
+
+class LaTexInlineLexer(InlineLexer):
+    def enable_LaTex(self):
+        # add LaTex rules
+        self.rules.LaTex = re.compile(
+            r'\$\$'                   # $$
+            r'([\s\S]+?)'   # ***
+            r'\$\$(?!\])'             # $$
+        )
+
+        # Add LaTex parser to default rules
+        # you can insert it some place you like
+        # but place matters, maybe 3 is not good
+        self.default_rules.insert(3, 'LaTex')
+
+    def output_LaTex(self, m):
+        text = m.group(1)
+        #alt, link = text.split('|')
+        # you can create an custom render
+        # you can also return the html if you like
+        #return self.renderer.LaTex(alt, link)
+        return self.renderer.LaTex(text)
+# the end of sub class
+#
+def md2html(md):
+	renderer = LaTexRenderer()
+	inline = LaTexInlineLexer(renderer)
+	# enable the feature
+	inline.enable_LaTex()
+	markdown = Markdown(renderer, inline=inline)
+	return markdown(md)
+#
+
+#读取md文件
+fpath="../data/Python/ReadMe.markdown";
+fr=open(fpath, 'r', encoding="utf-8")
+text=fr.read()
+fr.close()
+
+
+#md to html(leave LaTex alone)
+md=md2html(text)
+
+
+rs=md;
+#html to LaTex
+js3='<script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/mathjax/2.7.5/MathJax.js?config=TeX-MML-AM_CHTML"></script>';
+js3+='<script src="../static/js/showLaTex.js"></script>\n\n';
+rs=rs+js3;
+fw=open("index4.html",'w',encoding="utf-8")
+fw.write(rs);
+fw.close();
+
+print("end", len(rs));
+
+
+
+
+
+
+
+3.那个showLaTex.js文件是设置文件：
+
+/*
+* name showLaTex.js
+* 依赖于  MathJax.js
+* varsion: v0.1
+*ES6*/
+let isMathjaxConfig = false; // 防止重复调用Config，造成性能损耗
+
+const initMathjaxConfig = () => {
+  if (!window.MathJax) {
+    return;
+  }
+  window.MathJax.Hub.Config({
+    showProcessingMessages: false, //关闭js加载过程信息
+    messageStyle: "none", //不显示信息
+    jax: ["input/TeX", "output/HTML-CSS"],
+    tex2jax: {
+      inlineMath: [["$", "$"], ["\\(", "\\)"]], //行内公式选择符
+      displayMath: [["$$", "$$"], ["\\[", "\\]"]], //段内公式选择符
+      skipTags: ["script", "noscript", "style", "textarea", "pre", "code", "a"] //避开某些标签
+    },
+    "HTML-CSS": {
+      availableFonts: ["STIX", "TeX"], //可选字体
+      showMathMenu: false //关闭右击菜单显示
+    }
+  });
+  isMathjaxConfig = true; // 
+};
+
+
+if (isMathjaxConfig === false) { // 如果：没有配置MathJax
+  initMathjaxConfig();
+}
+
+// 如果，不传入第三个参数，则渲染整个document
+window.MathJax.Hub.Queue(["Typeset", MathJax.Hub]);
+// 因为使用的Vuejs，所以指明#app，以提高速度
+//window.MathJax.Hub.Queue(["Typeset", MathJax.Hub, document.getElementById('app')]);
+
+
+
+alse at https://blog.csdn.net/wangjunliang/article/details/100038819
 
 
 ========================================
@@ -455,7 +592,96 @@ refer: https://jiub.ren/2246.html
 
 
 ========================================
-|-- 为markdown生成toc（Table of Content）
+|-- 使用 MathJax.js 在markdown和html中解析 Latex
+----------------------------------------
+https://www.jianshu.com/p/03a7bb984a1d
+
+1. 使用cdn资源
+<style>
+/* MathJax v2.7.5 from 'cdnjs.cloudflare.com' */
+.mjx-chtml {
+  outline: 0;
+}
+.MJXc-display {
+  overflow-x: auto;
+  overflow-y: hidden;
+}
+
+</style>
+
+<div id=app>
+$$c = \sqrt{a^2 + b^2}$$
+
+$$\Gamma(n) = (n-1)!\quad\forall n\in\mathbb N$$。
+
+
+$$
+\varGamma(x)=\frac{\int_{\alpha}^{\beta}g(t)(x-t)^2\text{d}t}{\phi(x)\sum_{i=0}^{N-1}\omega_i}\tag{2}
+$$
+
+$$\alpha+\beta=\gamma$$
+
+$$\alpha+\beta=\gamma$$
+
+$$\int_{0}^{1}f(x)dx \sum_{1}^{2}\int_{0}^{1}f(x)dx \sum_{1}^{2}\int_{0}^{1}f(x)dx \sum_{1}^{2}\int_{0}^{1}f(x)dx \sum_{1}^{2}\int_{0}^{1}f(x)dx \sum_{1}^{2}\int_{0}^{1}f(x)dx \sum_{1}^{2}\int_{0}^{1}f(x)dx \sum_{1}^{2}\int_{0}^{1}f(x)dx \sum_{1}^{2}\int_{0}^{1}f(x)dx \sum_{1}^{2}\int_{0}^{1}f(x)dx \sum_{1}^{2}$$
+</div>
+
+
+<script type="text/javascript" async src="https://cdnjs.cloudflare.com/ajax/libs/mathjax/2.7.5/MathJax.js?config=TeX-MML-AM_CHTML"></script>
+
+<script>
+//ES6
+let isMathjaxConfig = false; // 防止重复调用Config，造成性能损耗
+
+const initMathjaxConfig = () => {
+  if (!window.MathJax) {
+    return;
+  }
+  window.MathJax.Hub.Config({
+    showProcessingMessages: false, //关闭js加载过程信息
+    messageStyle: "none", //不显示信息
+    jax: ["input/TeX", "output/HTML-CSS"],
+    tex2jax: {
+      inlineMath: [["$", "$"], ["\\(", "\\)"]], //行内公式选择符
+      displayMath: [["$$", "$$"], ["\\[", "\\]"]], //段内公式选择符
+      skipTags: ["script", "noscript", "style", "textarea", "pre", "code", "a"] //避开某些标签
+    },
+    "HTML-CSS": {
+      availableFonts: ["STIX", "TeX"], //可选字体
+      showMathMenu: false //关闭右击菜单显示
+    }
+  });
+  isMathjaxConfig = true; // 
+};
+
+
+if (isMathjaxConfig === false) { // 如果：没有配置MathJax
+  initMathjaxConfig();
+}
+
+// 如果，不传入第三个参数，则渲染整个document
+window.MathJax.Hub.Queue(["Typeset", MathJax.Hub]);
+// 因为使用的Vuejs，所以指明#app，以提高速度
+//window.MathJax.Hub.Queue(["Typeset", MathJax.Hub, document.getElementById('app')]);
+
+</script>
+
+
+
+
+
+2. 使用本地资源
+下载 mathjax库 解压到本地，http://localhost/mathjax/2.7.2
+https://codeload.github.com/mathjax/MathJax/zip/2.7.5
+https://cdnjs.com/libraries/mathjax/2.7.5
+
+
+失败。。。文件太多，不熟悉前段构建工具，还没做到js完全本地化。
+
+
+
+========================================
+|-- 为markdown生成toc（Table of Content）顶部目录
 ----------------------------------------
 https://ruby-china.org/topics/17028
 效果图: http://i5ting.github.io/i5ting_ztree_toc/build/jquery.plugin.html
