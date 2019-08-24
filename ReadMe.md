@@ -1,4 +1,4 @@
-txtBlog v0.5
+txtBlog v0.6
 ===============================
 	-- A simple yet powerful blog system for reading and organizing txt files based on PHP. 
 
@@ -19,7 +19,7 @@ txtBlog v0.5
 		文本编辑器：  
 		样式表：支持几种基本设置：标题、正文、段落、图片、代码、强调、  
 		支持txt文本简单解析、自动生成标题  
-		markdown格式解析和样式表  
+		markdown格式解析和样式表，代码自动高亮，自动生成标题，左下角目录响应滚轮  
 		
 ## UI布局：  
 	4.顶部是自定义关键词（如js、php等），  
@@ -33,11 +33,14 @@ txtBlog v0.5
 	7.目录结构清晰。  
 
 ## 兼容性：  
-	8.主流浏览器（PC端的chrome/IE9，移动端UC、腾讯浏览器）  
+	8.主流浏览器（PC端的chrome，移动端UC、腾讯浏览器）  
 
 ## 优化：  
-	9.全站缓存60s。  
+	9.全站缓存60s。 已取消缓存，没必要; 
 	
+## 
+#
+
 
 ## 事故：
 	2016-4-13之后，80端口被封，该网站变成了局域网。  
@@ -68,7 +71,8 @@ RewriteRule ^(.*)$ /txtBlog/$1 [L,QSA]
 
 
 ## 参考资料：  
-Markdown解析器: HyperDown(https://github.com/SegmentFault/HyperDown)
+Markdown解析器: [HyperDown](https://github.com/SegmentFault/HyperDown)  
+代码高亮: [highlight.js](https://github.com/andris9/highlight)  
 
 
 ``````

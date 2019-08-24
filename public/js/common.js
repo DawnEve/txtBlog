@@ -38,6 +38,15 @@ var getElementsByClassName2 = function (searchClass, node,tag) {
 }
 
 
+
+//通过id获取dom
+function $(o){
+	if(typeof o=="object") return o;
+	return document.getElementById(o);
+}
+
+
+
 /**
 	目的：兼容IE8。解决IE8不支持getElementsByClassName
 	通过类名来获取一组元素的方法
