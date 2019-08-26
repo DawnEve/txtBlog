@@ -48,7 +48,7 @@ return array (
     0 => 1,
     1 => 'ci框架',
     2 => array (
-      array('ci间介','ci001','html',),
+      array('ci简介','ci001','html',),
       //array('参考资料','ci002','html'),
       //array('FAQ','ci003','html'),
       array('MVC简介与ci','ci101','txt',),
@@ -66,7 +66,7 @@ return array (
     2 => array (
       array('项目描述','ecshop001','html',),
       array('参考资料','ecshop002','html'),
-      array('FAQ','ecshop003','html'),
+      //array('FAQ','ecshop003','html'),
       array('ecshop二次开发','ecshop101','txt'),
       array('shopNC二次开发','shopnc101','txt'),
     ),

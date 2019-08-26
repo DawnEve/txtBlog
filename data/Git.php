@@ -9,23 +9,12 @@ return array (
 		array('项目描述','git001','html',),
 		array('参考资料','git002','html'),
 		array('About Me','aboutMe','md'),
+		
 		array('博客使用手册','txtBlog000Example','html'),
+		array('ReleaseNote','txtBlog_history','html'),
     ),
   ),
 
-    
-  
-  array (
-    0 => 2,
-    1 => 'txtBlog发布笔记',
-    2 => 
-    array (
-	  array('release0.3.3','txtBlog001','html'),
-	  array('release0.5','txtBlog002','html'),
-
-    ),
-  ),
-  
   
   
   array (

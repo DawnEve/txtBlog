@@ -611,7 +611,7 @@ latest: digest: sha256:4ce09a01b4193e90d1314b470fc30e670ed619de5b5deb6d148294f10
 
 
 
-<a name='summary'>
+<a name='summary'></a>
 <br>
 ----------------------------------
 
@@ -710,7 +710,7 @@ docker rmi $(docker images -q)
 
 
 
-<a name='examples'>
+<a name='examples'></a>
 <br>
 
 -----------------------
@@ -838,7 +838,7 @@ cf2616975b4a        3 weeks ago         /bin/sh -c #(nop) MAINTAINER Jérôme Pe
 
 
 
-<a name='mysql'>
+<a name='mysql'></a>
 <br>
 ----------------------------------
 

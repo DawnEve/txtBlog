@@ -7,7 +7,7 @@ return array (
   'PHP' => 'php基础知识',
   'thinkPHP' => '第一个框架',
   //'ci' => '第二个框架', to thinkPHP
-	'yii' => '美国人写的框架yii和 很经典的设计、被Laravel借鉴了好多法国人写的symfony。',
+	//'yii' => '美国人写的框架yii和 很经典的设计、被Laravel借鉴了好多法国人写的symfony。',
 
   'Illustrator' => '矢量图插画师',
 

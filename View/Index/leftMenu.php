@@ -36,15 +36,18 @@ for($i=0; $i<count($arrLeft['data']);$i++){
 			
 			
 			// 根据文件类型判断需要加载的组件
-			switch( $fileType ){
+			switch( strtolower($fileType) ){
 				//如果是txt，则引入txt.js文件
 				case 'txt':
 					echo '<script type="text/javascript" src="/public/js/txt.js"></script>';
+					echo '<link rel="stylesheet" type="text/css" href="/public/css/txt.css">';
 					break;
 				//如果是markdown，则引入md的样式表
 				case 'md':
 				case 'markdown':
-					echo '<link rel="stylesheet" type="text/css" href="/public/css/MarkDown.css">';//温和的样式表
+					echo '<script type="text/javascript" src="/public/js/startMove.js"></script>';
+					echo '<script type="text/javascript" src="/public/js/markdown.js"></script>';
+					echo '<link rel="stylesheet" type="text/css" href="/public/css/MarkDown3.css">';//温和的样式表
 					//echo '<link rel="stylesheet" type="text/css" href="/public/css/MarkDown2.css">';//原始txt样的md
 					break;
 			}

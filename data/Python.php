@@ -17,7 +17,7 @@ return array (
     1 => 'Python语法',
     2 => array (
       array('Python快速入门','Python101','txt',),
-      array('Python基础详解','Python102','txt',),
+      array('Python基础详解','Python102-more','txt',),
       array('Python OOP','Python103-OOP','txt',),
       array('Python数据处理包','Python104-packages','txt',),
       array('Python Web','Python105-web','txt',),
@@ -30,7 +30,7 @@ return array (
     0 => 3,
     1 => '机器学习ML',
     2 => array (
-      array('机器学习概述','MachineLearning-01','txt',),
+      array('机器学习概述 ML AI','MachineLearning-01','txt',),
       array('python爬虫','webSpider','txt',),
       array('python财经','stocks','txt',),
 	  array('微信小程序','little_Program','txt'),

@@ -13,7 +13,7 @@ VirtualBox v5.0.14
 > 解决方案参考：http://blog.sina.com.cn/s/blog_4dc988240102vj8a.html
 
 
-# 报错 VirtualBox安装问题--错误码0x80004002
+## 报错 VirtualBox安装问题--错误码0x80004002
 之前一直都是用真机测试，然而想跑下模拟器，上genymotion官网安装遇到问题。
 
 解决方案 修改注册表
@@ -26,7 +26,17 @@ VirtualBox v5.0.14
 
 
 
+
+
+
 # 安装Ubuntu 1404系统
+
+1. Ctrl+Alt+T 调出ubuntu的命令行窗口；
+2. 安装ssh服务: $ sudo apt-get install openssh-server (如果版本太古老，可能需要更新 sudo apt upgrade 和 sudo apt-get update 或重装新版本)
+3. 查看是否启动了ssh服务: $ ps -e | grep ssh 
+4. 查看IP的命令: $ ifconfig, 可以看到 HWaddr 08:00:27:a3:9d:85 是网卡MAC， inet addr:192.168.2.203 是IP地址；
+5. 然后就可以局域网内部ssh登录了。 
+6. 如果想让虚拟机有独立IP，则需要设置虚拟机为桥接网络(点击该虚拟机，点击顶部设置(S),选择左侧 网络，右侧 连接方式选择 桥接网卡)。
 
 > 错误提示: "No root file system is defined, please correct this from the partitioning menu"。 参照 [这样划分硬盘](http://www.cnblogs.com/zhcncn/p/3987301.html)
 
@@ -39,14 +49,25 @@ free space	78MB
 ```
 
 
+## Ubuntu1804 iso下载地址
+
+1. 清华镜像 https://mirror.tuna.tsinghua.edu.cn/ubuntu-releases/18.04.3/ubuntu-18.04.3-desktop-amd64.iso
+2. 交大镜像 http://ftp.sjtu.edu.cn/ubuntu-cd/18.04.3/ubuntu-18.04.3-desktop-amd64.iso
+3. 修改下载源 https://blog.csdn.net/qq_39263240/article/details/79342582
+
+
+
+
+
+
 # FAQ
 
-### VirtualBox主机与虚拟机不能复制粘贴的解决办法
+## VirtualBox主机与虚拟机不能复制粘贴的解决办法
 http://jingyan.baidu.com/article/574c521917db806c8d9dc18c.html
 常规高级里共享粘贴板已经选中双向，但还是不能复制粘贴，这时到虚拟机设置-存储-控制器SATA-勾选"使用主机输入输出(I/O)缓存"，再同样在存储-控制器SATA-点击***.vdi-勾选"固态驱动器"，重启虚拟机就可以了～
 
 
-### 修复 VirtualBox 下 Ubuntu 14.10 屏幕分辨率问题
+## 修复 VirtualBox 下 Ubuntu 14.10 屏幕分辨率问题
 http://www.oschina.net/question/12_178184
 你需要安装一个 VirtualBox 的额外组件到你的 Ubuntu-Guest 中，可运行如下命令：
 `sudo apt-get install virtualbox-guest-dkms`
@@ -54,7 +75,7 @@ http://www.oschina.net/question/12_178184
 
 
 
-### 怎么让virtualBox中的Ubuntu和win7物理机共享文件夹？
+## 怎么让virtualBox中的Ubuntu和win7物理机共享文件夹？
 http://jingyan.baidu.com/article/2fb0ba40541a5900f2ec5f07.html
 1.打开ubuntu系统，虚拟机菜单 设备-安装增强功能，输入root密码后安装；
 2.物理机上新建文件夹bdshare（名字可以自定义）作为共享文件夹，右击设置为共享；
@@ -78,7 +99,7 @@ http://jingyan.baidu.com/article/2fb0ba40541a5900f2ec5f07.html
  
 
  
-### oracle virtualbox如何移动虚拟机目录？
+## oracle virtualbox如何移动虚拟机目录？
 默认是在c盘的，会越来越大，怎么处理？移动到另一个打的盘上。
 (1)菜单——管理——全局设定 ，常规：更改 默认虚拟电脑位置。
 
@@ -89,6 +110,10 @@ http://jingyan.baidu.com/article/2fb0ba40541a5900f2ec5f07.html
 
 
 
+
+
+## 安装后，怎么样才能有独立IP？让虚拟机像一台物理机一样。
+点击该虚拟机，点击顶部设置(S),选择左侧 网络，右侧 连接方式选择 桥接网卡。OK确定。
 
 
 
