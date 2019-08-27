@@ -36,7 +36,7 @@ return array (
     1 => '常用R包',
     2 => array (
       array('ggplot2绘图','ggplot2','txt'),
-      array('分析差异基因','pkg-DEG','txt'),
+      array('分析差异表达基因 DEG','pkg-DEG','txt'),
       array('数据框清理dplyr','pkg-dplyr','txt'),
     ),
   ),

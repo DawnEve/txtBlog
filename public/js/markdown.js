@@ -88,7 +88,8 @@ addEvent(window, 'load', function(){
 * name: 为顶部生成目录
 * version: 0.1
 * version: 0.2 修正点击锚点错位一行的问题
-# 
+* version: 0.3 修正目录计数，都从1开始；准确定位URL中锚点位置；
+*
 */
 function addContents(){
 	var oMd=document.getElementsByClassName("markdown")[0],
@@ -103,6 +104,7 @@ function addContents(){
 	oContent.append(createElement('h2',{},'Contents' ))
 		
 	for(var i=0;i<aH.length;i++){
+		var j=i+1;
 		var oH=aH[i],
 			text=oH.innerText,  //"5.启动nginx"
 			tagName=oH.tagName;  //"H3"
@@ -113,7 +115,7 @@ function addContents(){
 			//1. add anchor
 			//console.log(i,tagName, text,  aH[i])
 			//oH.parentNode.insertBefore( createElement('p',{}, ''), oH);//占位置
-			oH.parentNode.insertBefore( createElement('a',{'name':i,
+			oH.parentNode.insertBefore( createElement('a',{'name':j,
 				'my-data':'anchor',
 				'style':"margin-top:-1px; padding-top:1px; border:1px solid rgba(0,0,0,0.0);"
 			},), oH ); //h前添加锚点,无显示
@@ -122,7 +124,7 @@ function addContents(){
 			var innerSpan = createElement('span',{},text );
 			var innerLi = createElement('li',{'class':'text_menu '+indentNum} );
 			// 添加点击锚点
-			var innerA = createElement('a',{'href':'#'+i, 'title':tagName+": "+text}); //鼠标悬停提示文字
+			var innerA = createElement('a',{'href':'#'+j, 'title':tagName+": "+text}); //鼠标悬停提示文字
 			// 装载锚点 
 			innerLi.appendChild(innerSpan);
 			innerA.appendChild(innerLi);
@@ -143,6 +145,7 @@ function addContents(){
 // 挂载函数到load事件
 addEvent(window, 'load', function(){
 	addContents();
+	locateURLAnchor();//定位URL中的锚点
 });
 
 

@@ -211,3 +211,35 @@ addEvent(window, 'load', function(){
 	//}
 });
 
+
+
+
+/* 使用的异步，使url中的锚点能在页面中(使用带name的a空标签)正确定位，而不是向下偏移。
+* 测试：刷新和输入url都能准确定位，上面有js生成的长度不定的dom，依旧能准确定位。
+* version 0.2 抽象成函数，在onload中调用; 要在js生成dom后调用;
+*/
+function locateURLAnchor(){
+	var url = window.location.toString();//获取url
+    var id = url.split("#")[1];//获取url#后的部分
+	//如果链接含有锚点，则定位；否则啥也不做；
+    if(id){
+		//定位锚点所在的a标签，遍历获得该dom对象
+        var aA=document.querySelectorAll("a[name]");
+		for(var i=0;i<aA.length;i++){
+			if(id==aA[i].name)
+				break;
+		}
+		//console.log("id=",id,"; i=",i)
+		if(i<aA.length){
+			//aA[i].scrollIntoView(true)//放这里就不行
+			//console.log("01 before setTimeout i=",i, aA[i].offsetTop)
+			setTimeout(function(){
+				//console.log("02 after setTimeout offsetTop", aA[i].offsetTop)
+				//异步的代码总是最后才执行
+				wjl=aA[i]
+				//aA[i].scrollIntoView(true)//放这里就好使，可能会闪一下
+				window.scroll(0, aA[i].offsetTop);//换更兼容的方法
+			}, 0)
+		}
+    }
+}
