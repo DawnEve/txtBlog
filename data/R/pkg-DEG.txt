@@ -1,7 +1,9 @@
 分析差异表达基因的包 limma, edgeR, DESeq2
 
-Other Bioconductor packages with similar aims are edgeR, limma, DSS, EBSeq, and baySeq.
 
+
+使用limma、Glimma和edgeR，RNA-seq数据分析易如反掌
+https://www.cnblogs.com/wangprince2017/p/9937080.html
 
 
 
@@ -16,6 +18,9 @@ StringTie's output can be processed by specialized software like Ballgown, Cuffd
 After quantification
 Quantifying your RNA-seq data with salmon is that simple (and fast). Once you have your quantification results you can use them for downstream analysis with differential expression tools like DESeq2, edgeR, limma, or sleuth. 
 定量后做差异表达分析：DESeq2, edgeR, limma, or sleuth. 
+
+
+(3)Other Bioconductor packages with similar aims are edgeR, limma, DSS, EBSeq, and baySeq.
 
 
 
@@ -41,6 +46,7 @@ limma包以前只支持microarray的表达数据。考虑到大家都熟悉了�
 
 
 
+
 2.使用
 (1)安装
 > source("http://bioconductor.org/biocLite.R")
@@ -48,6 +54,219 @@ limma包以前只支持microarray的表达数据。考虑到大家都熟悉了�
 #
 > library(limma)
 > limmaUsersGuide()
+打开pdf手册。
+关于RNAseq的在chapter15，例子在chapter18.
+
+In the limma approach to RNA-seq, read counts are converted to log2-counts-per-million (logCPM) and the mean-variance relationship is modelled either with precision weights or with an empirical Bayes prior trend.
+read计数转换为logCPM，mean-variance的关系使用精确权重或者经验贝叶斯先验趋势建模。
+
+The precision weights approach is called "voom" and the prior trend approach is called "limma-trend"[15].
+精确权重方法叫Voom，先验趋势方法叫做Limma趋势。
+
+In either case, the RNA-seq data can be analyzed as if it was microarray data. This means that any of the linear modelling or gene set testing methods in the limma package can be applied to RNA-seq data.
+
+
+
+(2) 建立count矩阵
+Read map到exon或者gene上，获得counts矩阵。
+这一步可以用Rsubread包，方便而且快。
+其他流行方法包括 RSEM和HTseq，featureCounts等。
+一个例子subread-featureCounts-limma: http://bioinf.wehi.edu.au/RNAseqCaseStudy
+
+
+RNA-Seq of PRMT1 overexpression ECA109 cells
+https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc=GSE128913
+下载一个细胞系过表达与对照，各3个重复。
+
+#读取矩阵
+exprSet2=read.table("F://Temp/data/GSE128913_All.counts.txt",header=T,row.names = 1)
+dim(exprSet2) #[1] 54261     6
+head(exprSet2, n=10)
+# 实验设计，前3列是对照，后三列是过表达
+group_list2=c(rep("NC",3), rep('OE',3))
+group_list2=factor(group_list2);group_list2
+#
+# 第一步：构建分组矩阵
+library(limma)
+design <- model.matrix(~factor(group_list))
+colnames(design)=levels(factor(group_list))
+rownames(design)=colnames(exprSet)
+design
+##           NC OE
+## LV.GFP1    1  0
+## LV.GFP2    1  0
+## LV.GFP3    1  0
+## LV.PRMT1A  1  1
+## LV.PRMT1B  1  1
+## LV.PRMT1C  1  1
+
+
+
+
+
+
+(3) Normalization and fltering
+输入read counts矩阵，行为gene列为sample，使用edgeR包创建DGEList对象：
+> dge <- DGEList(counts=counts)
+
+接着去除全是0或者很少counts的行。
+> keep <- filterByExpr(dge, design)
+> dge <- dge[keep,,keep.lib.sizes=FALSE]
+这就过滤好了。
+
+
+接着应用scale normalization to RNA-seq read counts, 以及在比较研究中表现很好的TMM标准化方法。
+> dge <- calcNormFactors(dge)
+
+
+
+(4) Differential expression: limma-trend
+如果各个样品中测序深度比较一致，最简单、健壮的方法是使用limma-trend。
+该方法在library size(max/min)<3倍时表现不错。
+
+在limma-trend方法中，使用edgeR的cpm函数转换counts为logCPM：
+> logCPM <- cpm(dge, log=TRUE, prior.count=3)
+prior count是为了丢弃低counts的算法变异。
+
+这个logCPM值可以被用于任何标准limma管线，运行eBayes或者treat时加上trend=T参数：
+> fit <- lmFit(logCPM, design)
+> fit <- eBayes(fit, trend=TRUE)
+> topTable(fit, coef=ncol(design))
+
+
+或者，在基因排序时给fold-change更多权重：
+fit <- lmFit(logCPM, design)
+> fit <- treat(fit, lfc=log2(1.2))
+> topTreat(fit, coef=ncol(design))
+
+
+
+
+(5) Dfferential expression: voom
+不同样本库容量差异很大时，理论上voom方法比limma-trend要更强大。
+该方法中，voom转换是使用到表转化、过滤过的DEGList对象上的：
+v <- voom(dge, design, plot=TRUE)
+voom转换使用实验设计矩阵，产生一个EList对象。
+
+
+也可以不用TMM表转化，直接给voom一个counts矩阵：
+> v <- voom(counts, design, plot=TRUE)
+如果数据噪声大，可以采用和芯片相同的、样本间标准化方法：
+> v <- voom(counts, design, plot=TRUE, normalize="quantile")
+
+这之后，可以使用常规limma管线了：
+> fit <- lmFit(v, design)
+> fit <- eBayes(fit)
+> topTable(fit, coef=ncol(design))
+
+或者，在基因排序时给fold-change更多权重：
+> fit <- treat(fit, lfc=log2(1.2))
+> topTreat(fit, coef=ncol(design))
+
+
+
+
+(6) Voom with sample quality weights
+如果multi-dimensional scaling plot显示RNAseq数据有离群样本，可能要结合(用于voom的)观察水平的权重策略，和样品特异的质量权重(在上文芯片质量权重Array Quality Weights讲过)，来给离群样本去权重。实现于voomWithQualityWeights函数中。
+
+接下来的例子展示了，淋巴瘤细胞系(GSE64099)中表观调控子Smchd1敲除后RNAseq数据集。
+总的来说，结合这个合并的权重策略我们获得了更多的差异表达，且被敲除的Smchd1基因的原始p值、FDR都变小了。
+
+> plotMDS(x, labels=1:7, col=as.numeric(genotype), main="MDS plot")
+> legend("topright", legend=c("WT", "KO"), col=1:2, pch=15)
+
+图 MDS plot.
+
+> # Analysis with voom only
+> des[1:7,]
+# (Intercept) Smchd1nullvsWt
+# 1 1 1
+# 2 1 1
+# 3 1 1
+# 4 1 1
+# 5 1 0
+# 6 1 0
+# 7 1 0
+> v <- voom(x, design=des)
+> plotMDS(v, labels=1:7, col=as.numeric(genotype))
+> vfit <- lmFit(v)
+> vfit <- eBayes(vfit)
+> options(digits=3)
+> topTable(vfit,coef=2,sort.by="P")
+## 	GeneID Symbols logFC AveExpr t P.Value adj.P.Val B
+## 74355 74355 Smchd1 -3.12 6.067 -23.35 2.16e-08 0.000266 9.97
+## 18028 18028 Nfib 8.98 1.714 12.60 2.17e-06 0.013355 3.15
+## 75605 75605 Kdm5b -3.55 3.618 -11.75 3.62e-06 0.014857 5.06
+## 667435 667435 Igkv17-121 -5.35 -1.435 -10.22 9.95e-06 0.025513 2.57
+## 381126 381126 Garem 6.17 0.113 10.08 1.10e-05 0.025513 2.35
+## 381413 381413 Gpr176 -4.02 1.328 -9.90 1.25e-05 0.025513 3.39
+## 75033 75033 Mei4 6.44 0.259 9.69 1.45e-05 0.025513 2.23
+## 69136 69136 Tusc1 5.67 -0.184 8.90 2.67e-05 0.040995 1.87
+## 233552 233552 Gdpd5 -2.82 1.948 -8.56 3.49e-05 0.042754 2.81
+## 80890 80890 Trim2 -1.43 4.491 -8.40 4.00e-05 0.042754 2.72
+
+
+
+> top <- topTable(vfit,coef=2,number=Inf,sort.by="P")
+> sum(top$adj.P.Val<0.05)
+[1] 12
+> # Analysis with combined voom and sample quality weights
+> vwts <- voomWithQualityWeights(x, design=des, normalization="none", plot=TRUE)
+> vfit2 <- lmFit(vwts)
+> vfit2 <- eBayes(vfit2)
+> topTable(vfit2,coef=2,sort.by="P")
+## GeneID Symbols logFC AveExpr t P.Value adj.P.Val B
+## 74355 74355 Smchd1 -3.17 6.067 -28.5 1.61e-09 1.98e-05 12.57
+## 18028 18028 Nfib 9.23 1.714 19.0 4.44e-08 2.73e-04 6.91
+## 381126 381126 Garem 6.45 0.113 15.9 1.85e-07 7.58e-04 6.02
+## 75033 75033 Mei4 6.56 0.259 15.0 2.84e-07 8.73e-04 5.83
+## 69136 69136 Tusc1 5.88 -0.184 13.6 6.16e-07 1.11e-03 5.31
+## 54354 54354 Rassf5 5.74 4.554 13.6 6.26e-07 1.11e-03 6.63
+## 75605 75605 Kdm5b -3.80 3.618 -13.5 6.53e-07 1.11e-03 6.67
+## 58998 58998 Pvrl3 7.69 0.961 13.1 8.46e-07 1.11e-03 5.33
+## 320398 320398 Lrig3 7.39 1.584 13.1 8.49e-07 1.11e-03 5.32
+## 17069 17069 Ly6e 2.63 7.605 13.0 9.01e-07 1.11e-03 6.26
+
+> top2 <- topTable(vfit2,coef=2,number=Inf,sort.by="P")
+> sum(top2$adj.P.Val<0.05)
+## [1] 1478
+
+
+图 voom:Mean-variance trend 
+图 Sample-specific weights
+
+
+
+
+
+
+(7) Differential splicing
+差异化选择性剪切
+需要exon水平的表达矩阵，一行是exon上的read counts，一列是一个样本。
+
+> dge <- DGEList(counts=counts)
+> dge$genes$GeneID <- GeneID
+counts是一个exon水平的矩阵，GeneID描述了exon属于哪个基因。
+
+接着过滤和标准化：Then filter and normalize:
+> A <- rowSums(dge$counts)
+> dge <- dge[A>10,, keep.lib.sizes=FALSE]
+> dge <- calcNormFactors(dge)
+
+Then apply the voom transformation and fit a linear model:
+> v <- voom(dge, design, plot=TRUE)
+> fit <- lmFit(v, design)
+
+Now we can test for differential splicing associated with any coeficient in the linear model. First
+run the diffSplice function:
+> ex <- diffSplice(fit, geneid="GeneID")
+Then
+> topSplice(ex, coef=2, test="simes")
+将显示线性模型中和第二个coefficient相关的差异剪切的证据。
+输出和limma的topTable函数类似。更详细的：
+> topSplice(ex, coef=2, test="t")
+将会展示同一个基因中，相对于其他外显子被富集或者删除的外显子。
+> plotSplice(ex)
 
 
 
@@ -55,19 +274,75 @@ limma包以前只支持microarray的表达数据。考虑到大家都熟悉了�
 
 
 
-
-
+refer:
 https://www.plob.org/article/9966.html
-
-
-
-
-
 
 http://www.bio-info-trainee.com/bioconductor_China/software/limma.html
 
 差异分析是否需要比较矩阵
 https://github.com/bioconductor-china/basic/blob/master/makeContrasts.md
+
+
+
+
+
+========================================
+|--|-- 例子: 18章 RNA-Seq Case Studies
+----------------------------------------
+
+1. 研究目的和数据(Yoruba HapMap Data)
+研究某地男女之间差异表达的基因。需要limma 3.9.19+, 现在用的是3.36.5
+
+原始数据 
+http://eqtl.uchicago.edu/RNA_Seq_data/unmapped_reads/ in FASTQ format, 46bp reads.
+
+
+[这个数据现在没有性别了]Sample information are recorded at Pritchard Lab's eQTL resources at http://eqtl.uchicago.edu/RNA_Seq_data/list_lanes_pickrell_2010_plosgenetics.
+
+Genders of the individuals are available at the International HapMap Project NHGRI Repository at http://ccr.coriell.org/.
+
+性别从哪里下载？
+https://www.coriell.org/Search?q=Yoruba%20HapMap%20Data&grid=0
+
+
+
+
+(2) 推荐跳过map，直接下载中间数据 http://bioinf.wehi.edu.au/limma/
+load("F:\\Temp\\data\\Yoruba.RData")
+dim(y) #[1] 25702    86
+names(y) #[1] "counts"  "samples" "genes"  
+
+
+
+2.
+
+
+chrom <- fit$genes$Chr
+plotMD(fit, column=5, status=chrom, values=c("X", "Y", "X|Y"),
+       hl.col=c("red","blue", "green3"), 
+       main="Male vs Female",legend="bottomright")
+abline(h=0,col="darkgrey")
+
+参数解释
+- object: an RGList, MAList, EList, ExpressionSet or MArrayLM object. Alternatively a numeric matrix.
+
+- column: integer, column of object to be plotted.
+对象的哪一个列，用来画图？
+
+
+- status: character vector giving the control status of each point, of same length as x and y. If NULL, then all points are plotted in the background color, symbol and size.
+给点按照该属性设置颜色。如果为空，则所有点都是同样的背景色、符号的大小。
+
+- values: character vector giving values of status to be highlighted on the plot. Defaults to unique values of status in decreasing order of frequency, with the most frequent value set as the background value. Ignored if there is no status vector.
+按照status，选择特定value的值设置颜色等。默认是按照频率设置不同的值，最高频率的设置为背景值。没有status则忽略values的设置。
+
+- hl.pch: vector of plotting characters for highlighted points, either of unit length or of same length as values. Ignored is there is no status vector.
+高亮显示点的符号。
+
+- hl.col: vector of colors for highlighted points, either of unit length or of same length as values. Defaults to 1+1:length(values). Ignored if there is no status vector.
+高亮显示点的颜色。
+
+
 
 
 

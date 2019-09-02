@@ -1895,9 +1895,16 @@ samtools view -bS input.sam >aln.bam 	#1.转换为bam
 samtools sort -o aln.sorted.bam aln.bam #2.排序
 samtools index aln.sorted.bam 		#3.建索引
 
-常用参数: 
--@ 20 使用20个线程
 
+适用于1.3及之后的版本。一步sam转bam并排序。老版本需要2步：1先转bam，2再排序。
+$ nohup samtools sort -@ 8 -o ERR188044_chrX.bam ERR188044_chrX.sam 2>ERR188044_sam.err &
+
+
+常用参数: 
+$ samtools sort --help
+Usage: samtools sort [options...] [in.bam]
+-@, --threads INT     线程数 Number of additional threads to use [0]
+-o FILE    Write final output to FILE rather than standard output 输出文件
 
 
 
@@ -1906,6 +1913,7 @@ Usage:   samtools sort [options] <in.bam> <out.prefix>
 最后一个是参数是输出文件的前缀，如：
 $ samtools sort c12_ROW03.Mm.bam c12_ROW03.Mm.s
 吐槽：CentOS7自带的软件版本都太古老！可靠===过时，不适用于追新的科研。还是用Ubuntu省劲，源都比较新。
+
 
 
 
@@ -1931,9 +1939,13 @@ https://www.cnblogs.com/emanlee/p/4316581.html
 samtools view -bS input.sam >out.bam
 samtools view -b -S NA12878.sam > NA12878_2.bam
 
+$ samtools view -bS ../c12_A1_Aligned.out.sam -o c12_A1.bam -@ 10
+
 -b 输出BAM format
--S 输入格式自动检查(比如SAM)。 如果@SQ 缺省， 要写-t (?)
+-S 输入格式自动检查(sam,bam,cram)。 如果@SQ 缺省， 要写-t (?)
 -t FILE:  FILE listing reference names and lengths (see long help) [null]
+-o File 输出文件名
+-@ 额外使用的线程数
 
 所以如果没有@SQ
 samtools faidx ref.fa
@@ -1955,13 +1967,37 @@ samtools view -h NA12878.bam >NA12878_2.sam
 
 
 
-3.排序和建索引
+3.排序
+$ samtools sort c12_A1.bam -o c12_A1.sorted.bam -@ 10
 $ samtools sort -T /tmp/aln.sorted -o aln.sorted.bam aln.bam
+
 # -T 是指定临时文件
+-o File 输出到文件而不是标准输出
+-@ 线程数
 
 
+4.建索引
 $ samtools index aln.sorted.bam
 
+或者批量化
+$ head getIndex.sh
+for id in `cat id.txt`
+do
+  samtools index ${id}.sorted.bam;
+done
+
+
+
+
+
+5. 找snp
+对于sort和index过的bam文件
+$ samtools pileup -vcf  ref.fa  aln.bam | tee raw.txt | samtools.pl varFilter -D100 > flt.txt
+以上命令是寻找最大深度为100的SNP，raw.txt是原始SNP的文件
+
+The -D option of varFilter controls the maximum read depth
+$ awk '($3=="*"&&$6>=50)||($3!="*"&&$6>=20)' flt.txt > final.txt
+以上是根据sam文件的第三列和第六例进行质量控制。这个根据自己设定的阈值，进行筛选。
 
 
 
@@ -1986,6 +2022,9 @@ $ samtools index aln.sorted.bam
 samtools flagstat xx.sort.bam 
 
 
+
+
+
 6.depth 每个碱基位点的测序深度
 -a 输出所有的碱基深度，包括0
 -b/-r 控制深度的范围(后面跟染色体)
@@ -1998,6 +2037,9 @@ samtools flagstat xx.sort.bam
 samtools depth -a -r chr3 x.sort.bam 
 #显示chr3染色体上所有碱基的测序深度，
 第一列chr名字，第二列碱基位置，第三列测序深度。
+
+
+
 
 
 7.mpileup 对参考基因组每个位点做碱基堆积，用于call SNP和INDEL。主要是生成BCF、VCF文件或者pileup一个或多个bam文件。比对记录以在@RG中的样本名作为区分标识符。如果样本标识符缺失，那么每一个输入文件则视为一个样本。
@@ -2013,6 +2055,8 @@ samtools mpileup -vuf genome.fasta  test.sort.bam
 
 7.dict 建立参考基因组字典
 samtools dict  test.sort.bam sequences.fa 
+
+
 
 
 8.fastq bam文件转换为fastq

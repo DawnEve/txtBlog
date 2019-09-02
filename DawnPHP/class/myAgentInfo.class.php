@@ -453,6 +453,14 @@ class myAgentInfo{
 		elseif (preg_match('/win/i',$Agent) && preg_match('/nt/i',$Agent)) {
 			$browserplatform="Windows NT";
 		}
+		
+		elseif (preg_match('/Kindle/i',$Agent)) {
+			$version='';
+			preg_match( '/Kindle\/(\d\.\d){1}/',$Agent,$version);
+			//MyDebug::f($version);die();
+			$browserplatform="Kindle" .' '. $version[1];
+		}
+		
 		elseif (preg_match('/Android/i',$Agent)) {
 			$version='';
 			//preg_match( '/Android\s{1}\/(\d+\.\d+\.\d+)\s/',$Agent,$version);

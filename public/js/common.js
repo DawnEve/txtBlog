@@ -1,3 +1,8 @@
+/*
+* v0.2.1 滚动到顶部，则url的hash清空
+*/
+
+
 //兼容IE8。解决IE8不支持getElementsByClassName
 //这个有点长，暂时没用到
 var getElementsByClassName2 = function (searchClass, node,tag) { 
@@ -129,6 +134,9 @@ function gotoTop(acceleration,stime) {
   
    // 如果距离不为零, 继续调用函数
 	var timer=setTimeout(function(){
+		if(y==0){
+			document.location.hash="0"
+		}
 		if(x > 0 || y > 0) {
 			gotoTop(acceleration,stime);
 		}		
