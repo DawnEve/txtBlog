@@ -48,6 +48,7 @@ return array (
     1 => '文本编辑器IDE',
     2 => 
     array (
+	  array('notepad++','npp', 'html'),
 	  array('sublime编辑器','sublime001', 'html'),
 	  array('phpStorm','phpStorm001', 'md'),
     ),

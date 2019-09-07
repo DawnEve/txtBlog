@@ -4,6 +4,10 @@
 
 使用limma、Glimma和edgeR，RNA-seq数据分析易如反掌
 https://www.cnblogs.com/wangprince2017/p/9937080.html
+原版：https://www.bioconductor.org/packages/devel/workflows/vignettes/RNAseq123/inst/doc/limmaWorkflow_CHN.html
+
+
+limma包使用到edgeR DGEList object作为输入。
 
 
 
@@ -25,8 +29,424 @@ Quantifying your RNA-seq data with salmon is that simple (and fast). Once you ha
 
 
 
+
+
+2. 理论基础：线性模型， 设计矩阵和比较矩阵
+
+基本上，统计课都会介绍如何使用t检验用来比较两个样本之间的差异，然后在样本比较多的时候使用方差分析确定样本间是否有差异。当然前是样本来自于正态分布的群体，或者随机独立大量抽样。
+
+对于基因芯片的差异表达分析而言，由于普遍认为其数据是服从正态分布，因此差异表达分析无非就是用t检验和或者方差分析应用到每一个基因上。高通量一次性找的基因多，于是就需要对多重试验进行矫正，控制假阳性。目前在基因芯片的分析用的最多的就是limma。
+
+但是，高通量测序(HTS)的read count普遍认为是服从泊松分布（当然有其他不同意见），不可能直接用正态分布的t检验和方差分析。 当然我们可以简单粗暴的使用对于的非参数检验的方法，但是统计力不够，结果的p值矫正之估计一个差异基因都找不到。老板花了一大笔钱，结果却说没有差异基因，是个负结果，于是好几千经费打了水漂，他肯定是不乐意的。因此，还是得要用参数检验的方法，于是就要说到方差分析和线性模型之间的关系了。
+
+(1)
+线性回归和方差分析是同一时期发展出的两套方法。在我本科阶段的田间统计学课程中就介绍用方差分析（ANOVA）分析不同肥料处理后的产量差异，实验设计如下
+肥料	重复1	重复2	重复3	重复4
+A1	...	...	...	...
+A2	...	...	...	...
+A3	...	... ...	...
+
+这是最简单的单因素方差分析，每一个结果都可以看成 yij = ai + u + eij， 其中u是总体均值，ai是每一个处理的差异，eij是随机误差。
+
+
+注：方差分析(Analysis of Variance, ANAOVA)名字听起来好像是检验方差，但其实是为了判断样本之间的差异是否真实存在，为此需要证明不同处理内的方差显著性大于不同处理间的方差。
+
+
+(2)
+线性回归 一般是用于量化的预测变量来预测量化的响应变量。比如说体重与身高的关系建模：
+图 略。
+
+当然线性回归也可用处理名义型或有序型因子（也就是离散变量）作为预测变量，如果要画图的话，就是下面这个情况。
+图 略。
+
+如果我们需要通过一个实验找到不同处理后对照组和控制组的基因变化，那么基因表达可以简单写成， y = a + b · treament + e。 和之前的 yij = ai + u + eij 相比，你会发现公式是如此的一致。 这是因为线性模型和方差分析都是广义线性模型(generalizing linear models, GLM)在正态分布的预测变量的特殊形式。而GLM本身只要采用合适的连接函数是可以处理对任意类型的变量进行建模的。
+
+
+目前认为read count之间的差异是符合负二项分布，也叫gamma-Possion分布。那么问题来了，如何用GLM或者LM分析两个处理件的差异呢？其实可以简单的用上图的拟合直线的斜率来解释，如果不同处理之间存在差异，那么这个拟合线的斜率必定不为零，也就是与X轴平行。但是这是一种便于理解的方式（虽然你也未必能理解），实际更加复杂，考虑因素更多。
+
+注1 负二向分布有两个参数，均值(mean)和离散值（dispersion). 离散值描述方差偏离均值的程度。泊松分布可以认为是负二向分布的离散值为1，也就是均值等于方差（mean=variance）的情况。
+
+注2 这部分涉及大量的统计学知识，不懂就用维基百科一个个查清楚。
+
+
+
+(3)
+聊完了线性模型和方差分析，下面的设计矩阵（design matrix）就很好理解了， 其实就是用来告诉不同的差异分析函数应该如何对待变量。比如说我们要研究的KD和control之间变化，设计矩阵就是
+
+样本	处理
+sample1	control
+sample2	control
+sample3	KD
+sample4	KD
+
+
+(4)
+那么比较矩阵（contrast matrix)就是告诉差异分析函数应该如何对哪个因素进行比较， 这里就是比较不同处理下表达量的变化。
+
+
+
+
+(5)
+标准化一二事
+其实read count如何标准化的方法有很多，最常用的是FPKM和RPKM，虽然它们其实是错的--FPKM/RPKM是错的(https://www.plob.org/article/11531.html 我不太认同这篇解释)。
+
+
+我推荐阅读 Comparing the normalization methods for the differential analysis of Illumina high-throughput RNA-Seq data , 了解不同标准化方法之间的差异。
+
+
+有一些方法是要求原始数据，有一些则要求经过某类标准化后的数据，记得区分。
+
+
+
+
+
+
+
+
+
+3. 探索性分析一二事
+
+(1) 使用DESeq2进行差异基因分析
+关于DESeq2分析差异表达基因，其实在https://www.bioconductor.org/help/workflows/rnaseqGene/ 里面介绍的非常清楚了。
+
+我们已经准备好了count matrix，接下来就是把数据导入DESeq2。DESeq2导入数据的方式有如下4种，基本覆盖了主流read count软件的结果。
+
+注 DESeq2要求的数据是raw count， 没必要进行FPKM/TPM/RPFKM/TMM标准化。
+function	|package	|framework	|output	|DESeq2 input function
+summarizeOverlaps	|GenomicAlignments	|R/Bioconductor	|SummarizedExperiment	|DESeqDataSet
+featureCounts	|Rsubread	|R/Bioconductor	|matrix	|DESeqDataSetFromMatrix
+tximport	|tximport	|R/Bioconductor	|list of matrices	|DESeqDataSetFromTximport
+htseq-count	|HTSeq	|Python	|files	|DESeqDataSetFromHTSeq
+
+
+本来我们是可以用DESeq2为htseq-count专门提供的 DESeqDataSetFromHTSeq ，然而很尴尬数据不够要自己凑数，所以只能改用 DESeqDataSetFromMatrix了
+
+导入数据，构建 DESeq2 所需的 DESeqDataSet 对象
+
+library(DESeq2)
+countData <- raw_count_filt[,2:5]
+condition <- factor(c("control","KD","KD","control"))
+dds <- DESeqDataSetFromMatrix(countData, DataFrame(condition), design= ~ condition )
+
+注： 这一步到下一步之间可以过滤掉一些low count数据，节省内存，提高运行速度
+nrow(dds)
+dds <- dds[ rowSums(counts(dds)) > 1, ]
+nrow(dds)
+
+
+使用DESeq进行差异表达分析： DESeq包含三步，
+estimation of size factors（estimateSizeFactors)， 
+estimation of dispersion（estimateDispersons)， 
+Negative Binomial GLM fitting and Wald statistics（nbinomWaldTest），
+可以分布运行，也可用一步到位，最后返回 results可用的DESeqDataSet对象。
+
+dds <- DESeq(dds)
+# 出现如下提示信息，说明运行成功
+# estimating size factors
+# estimating dispersions
+# gene-wise dispersion estimates
+# mean-dispersion relationship
+# final dispersion estimates
+# fitting model and testing
+
+用results获取结果： results的参数非常的多，这里不好具体展开，但是你们会自己看的吧
+res <- results()
+
+我们可用mcols查看每一项结果的具体含义，比如说log2FoldChange 表示倍数变化取log2结果，还能画个火山图。一般简单粗暴的用2到3倍作为阈值，但是对于低表达的基因，3倍也是噪音，那些高表达的基因，1.1倍都是生物学显著了。更重要的没有考虑到组内变异，没有统计学意义。padj 就是用BH对多重试验进行矫正。
+
+mcols(res, use.names = TRUE)
+## DataFrame with 6 rows and 2 columns
+##                        type                                     description
+##                 <character>                                     <character>
+## baseMean       intermediate       mean of normalized counts for all samples
+## log2FoldChange      results log2 fold change (MLE): condition KD vs control
+## lfcSE               results         standard error: condition KD vs control
+## stat                results         Wald statistic: condition KD vs control
+## pvalue              results      Wald test p-value: condition KD vs control
+## padj                results                            BH adjusted p-values
+
+
+用summary看描述性的结果，大致是上调的基因占总体的11%，下调的是7.1%（KD vs control）
+summary(res)
+out of 29469 with nonzero total read count
+adjusted p-value < 0.1
+LFC > 0 (up)     : 3154, 11%
+LFC < 0 (down)   : 2095, 7.1%
+outliers [1]     : 0, 0%
+low counts [2]   : 15111, 51%
+(mean count < 22)
+[1] see 'cooksCutoff' argument of ?results
+[2] see 'independentFiltering' argument of ?results
+
+
+
+画个MA图，还能标注p值最小的基因。
+
+An MA plot is an application of a Bland–Altman plot for visual representation of genomic data. The plot visualises the differences between measurements taken in two samples, by transforming the data onto M (log ratio) and A (mean average) scales, then plotting these values. Though originally applied in the context of two channel DNA microarray gene expression data, MA plots are also used to visualise high-throughput sequencing analysis --From wikipeida
+M表示log fold change，衡量基因表达量变化，上调还是下调。A表示每个基因的count的均值。根据summary可知，low count的比率很高，所以大部分基因表达量不高，也就是集中在0的附近（log2(1)=0，也就是变化1倍）.提供了模型预测系数的分布总览。
+
+
+下图是没有经过 statistical moderation平缓log2 fold changes的情况
+
+plotMA(res, ylim = c(-5,5))
+topGene <- rownames(res)[which.min(res$padj)]
+with(res[topGene, ], {
+  points(baseMean, log2FoldChange, col="dodgerblue", cex=2, lwd=2)
+  text(baseMean, log2FoldChange, topGene, pos=2, col="dodgerblue")
+})
+
+图 略 logFC - Mean of normalized counts.
+
+
+
+如果经过lfcShrink 收缩log2 fold change， 结果会好看很多
+
+res.shrink <- lfcShrink(dds, contrast = c("condition","KD","control"), res=res)
+plotMA(res.shrink, ylim = c(-5,5))
+topGene <- rownames(res)[which.min(res$padj)]
+with(res[topGene, ], {
+  points(baseMean, log2FoldChange, col="dodgerblue", cex=2, lwd=2)
+  text(baseMean, log2FoldChange, topGene, pos=2, col="dodgerblue")
+})
+
+图 略 logFC - Mean of normalized counts.
+
+
+当然还有火山图，不过留给其他方法作图，我们先把差异表达的基因找出来。
+
+res.deseq2 <- subset(res, padj < 0.05)
+
+一般p value 小于0.05就是显著了, 显著性不代表结果正确，只用于给后续的富集分析和GSEA提供排序标准和筛选而已。关于P值的吐槽简直无数， 请多注意。
+
+
+
+
+
+
+
+
+
+(2)使用edgeR进行差异基因分析
+
+edgeR在函数说明中称其不但可以分析SAGE， CAGE的RNA-Seq，Tag-RNA，或RNA-seq， 也能分析ChIP-Seq和CRISPR得到的read counts数据。嗯，我信了。
+
+edgeR使用DGEList函数读取count matrix数据，也就说你需要提供一个现成的matrix数据，而不是指望它能读取单独的文件，然后进行合并(当然机智的我发现，其实可以用 tximport 或 DESeqDataSetFromHTSeq 读取单独的文件，然后传递给DGEList)
+
+
+第一步： 构建DGEList对象
+
+library(edgeR)
+group <- factor(c("control","KD","KD","control"))
+genelist <- DGEList(counts=raw_count_filt[,2:5], group = group)
+
+
+
+第二步： 过滤 low counts数据。
+与DESeq2的预过滤不同，DESeq2的预过滤只是为了改善后续运算性能，在运行过程中依旧会自动处理low count数据，edgeR需要在分析前就要排除那些low count数据，而且非常严格。从生物学角度，有生物学意义的基因的表达量必须高于某一个阈值。从统计学角度上， low count的数据不太可能有显著性差异，而且在多重试验矫正阶段还会拖后腿。 综上所诉，放心大胆的过滤吧。
+
+根据经验（又是经验）， 基因至少在某一些文库的count超过10 ~ 15 才被认为是表达。这一步全靠尝试， 剔除太多就缓缓，剔除太少就严格点。 我们可以简单的对每个基因的raw count进行比较，但是建议用CPM（count-per-million)标准化 后再比较，避免了文库大小的影响。
+
+# 简单粗暴的方法
+keep <- rowSums(genelist$count) > 50
+# 利用CPM标准化
+keep <- rowSums(cpm(genelist) > 0.5 ) >=2
+table(keep)
+genelist.filted <- genelist[keep, ,keep.lib.sizes=FALSE]
+
+这里的0.5(即阈值）等于 10/(最小的文库的 read count数 /1000000)，keep.lib.size=FALSE表示重新计算文库大小。
+
+
+
+第三步： 根据组成偏好(composition bias)标准化。edgeR的calcNormFactors函数使用TMM算法对DGEList标准化
+
+genelist.norm <- calcNormFactors(genelist.filted)
+
+注 大部分的mRNA-Seq数据分析用TMM标准化就行了，但是也有例外，比如说single-cell RNA-Seq(Lun, Bach, and Marioni 2016), 还有就是global differential expression， 基因组一半以上的基因都是差异表达的，请尽力避免，(D. Wu et al. 2013)， 不然就需要用到内参进行标准化了(Risso et al. 2014).
+
+
+
+第四步： 实验设计矩阵(Design matrix)， 类似于DESeq2中的design参数。 edgeR的线性模型和差异表达分析需要定义一个实验设计矩阵。很直白的就能发现是1vs0
+
+design <- model.matrix(~0+group)
+colnames(design) <- levels(group)
+design
+  control KD
+1       1  0
+2       0  1
+3       0  1
+4       1  0
+
+
+
+
+第五步： 估计离散值（Dispersion）。前面已经提到负二项分布（negative binomial，NB)需要均值和离散值两个参数。edgeR对每个基因都估测一个经验贝叶斯稳健离散值（empirical Bayes moderated dispersion），还有一个公共离散值（common dispersion，所有基因的经验贝叶斯稳健离散值的均值）以及一个趋势离散值
+
+genelist.Disp <- estimateDisp(genelist.norm, design, robust = TRUE)
+plotBCV(genelist.Disp)
+
+
+还可以进一步通过quasi-likelihood (QL)拟合NB模型，用于解释生物学和技术性导致的基因特异性变异 (Lund et al. 2012; Lun, Chen, and Smyth 2016).
+
+fit <- glmQLFit(genelist.Disp, design, robust=TRUE)
+head(fit$coefficients)
+
+注1 估计离散值这个步骤其实有许多estimate*Disp函数。当不存在实验设计矩阵(design matrix)的时候，estimateDisp 等价于 estimateCommonDisp 和 estimateTagwiseDisp 。而当给定实验设计矩阵(design matrix)时， estimateDisp 等价于 estimateGLMCommonDisp, estimateGLMTrendedDisp 和 estimateGLMTagwiseDisp。 其中tag与gene同义。
+
+注2 其实这里的第三， 四， 五步对应的就是DESeq2的DESeq包含的2步，标准化和离散值估测。
+
+
+
+
+
+
+第六步: 差异表达检验（1）。这一步主要构建比较矩阵，类似于DESeq2中的results函数的 contrast 参数。
+
+cntr.vs.KD <- makeContrasts(control-KD, levels=design)
+res <- glmQLFTest(fit, contrast=cntr.vs.KD)
+ig.edger <- res$table[p.adjust(res$table$PValue, method = "BH") < 0.01, ]
+
+这里用的是glmQLFTest而不是glmLRT是因为前面用了glmQLTFit进行拟合，所以需要用QL F-test进行检验。如果前面用的是glmFit，那么对应的就是glmLRT. 作者称QL F-test更加严格。多重试验矫正用的也是BH方法。
+
+后续就是提取显著性差异的基因用作下游分析，做一些图看看
+
+topTags(res,n=10)
+is.de <- decideTestsDGE(res)
+summary(is.de)
+plotMD(res, status=is.de, values=c(1,-1), col=c("red","blue"),
+       legend="topright")
+# 图略
+
+
+
+第六步：差异表达检验（2）。上面找到的显著性差异的基因，没有考虑效应值，也就是具体变化了多少倍。我们也可用找表达量变化比较大的基因，对应的函数是 glmTreat。
+
+tr <- glmTreat(fit, contrast=B.LvsP, lfc=log2(1.5))
+s
+# 图略 
+
+
+
+
+
+
+
+
+(3)使用limma进行差异分析
+
+经过上面两个方法的洗礼，基本上套路你也就知道了，我先简单小结一下，然后继续介绍limma包的 voom 。
+
+1)导入read count， 保存为专门的对象用于后续分析
+2)原始数据过滤，根据标准化read count 或者 raw count 作为筛选标准
+3)raw read count 标准化
+4)通过各种算法（如经验贝叶斯，EM）预测disperion离散值
+5)广义线性模型拟合数据
+6)差异分析，也就是统计检验部分
+
+
+
+Limma原先用于处理基因表达芯片数据，可是说是这个领域的老大。如果你仔细看edgeR导入界面，你就会发现，edgeR有一部分功能依赖于limma包。Limma采用经验贝叶斯模型（ Empirical Bayesian model）让结果更稳健。
+
+在处理RNA-Seq数据时，raw read count先被转成log2-counts-per-million (logCPM)，然后对mean-variance关系建模。建模有两种方法：
+- 精确权重法（precision weights）也就是“voom"
+- 经验贝叶斯先验趋势（empirical Bayes prior trend），也就是”limma-trend“
+
+数据预处理： Limma使用edgeR的DGEList对象，并且过滤方法都是一致的，对应edgeR的第一步,第二步， 第三步
+
+library(edgeR)
+library(limma)
+group <- factor(c("control","KD","KD","control"))
+genelist <- DGEList(counts=raw_count_filt[,2:5], group = group)
+ 
+### filter base  use CPM
+keep <- rowSums(cpm(genelist) > 0.5 ) >=2
+table(keep)
+genelist.filted <- genelist[keep, ,keep.lib.sizes=FALSE]
+### normalizaition
+x <- calcNormFactors(x, method = "TMM")
+
+
+# 差异表达分析: 使用”limma-trend“
+design <- model.matrix(~0+group)
+colnames(design) <- levels(group)
+logCPM <- cpm(genelist.norm, log=TRUE, prior.count=3)
+fit <- lmFit(logCPM, design)
+fit <- eBayes(fit, trend=TRUE)
+topTable(fit, coef=ncol(design))
+
+
+# 差异表达分析: 使用”limma-voom“
+### DGE with voom
+v <- voom(genelist.norm, design, plot=TRUE)
+#v <- voom(counts, design, plot=TRUE)
+fit <- lmFit(v, design)
+fit <- eBayes(fit)
+all <- topTable(fit, coef=ncol(design), number=10000)
+sig.limma <- all[all$adj.P.Val < 0.01, ]
+fit <- treat(fit, lfc=log2(1.2))
+topTreat(fit, coef=ncol(design))
+
+如果分析基因芯片数据，必须好好读懂LIMMA包。
+
+
+
+
+
+
+4. 不同软件包分析结果比较
+基本上每一个包，我都提取了各种的显著性基因，比较就需要用韦恩图了，但是我偏不，我要用UpSetR.
+
+library(UpSetR)
+input <- fromList(list(edgeR=rownames(sig.edger), DESeq2=rownames(sig.deseq2), limma=rownames(sig.limma)))
+
+图略
+
+感觉limma的结果有点奇怪，有生之年在折腾吧。
+
+
+
+
+5. 使用GFOLD进行无重复样本的差异基因分析
+参考文件
+[1] Comparing the normalization methods for the differential analysis of Illumina high-throughput RNA-Seq data
+
+
+
+
+
+refer:
+https://www.plob.org/article/11506.html
+
+
+
+
 ========================================
-limma 是GEO2R使用的筛选差异表达基因的包 (limma-voom方法支持RNAseq的count数据)
+|-- 是否需要(差异比较矩阵) makeContrasts函数？
+----------------------------------------
+
+做差异分析，需要三个数据：
+- 表达矩阵
+- 分组矩阵
+- 差异比较矩阵
+
+前面两个肯定是必须的，有表达矩阵，样本必须进行分组，才能分析，但是我看到过好几种例子，有的有差异比较矩阵，有的没有。
+后来我仔细研究了一下limma包的说明书，发现这其实是一个很简单的问题。
+
+design=model.matrix(~factor(sCLLex$Disease))
+design=model.matrix(~0+factor(sCLLex$Disease))
+有本质的区别！！！
+
+前面那种方法已经把需要比较的组做出到了一列，需要比较多次，就有多少列，第一列是截距不需要考虑，第二列开始往后用coef这个参数可以把差异分析结果一个个提取出来。 
+
+而后面那种方法，仅仅是分组而已，组之间需要如何比较，需要自己再制作差异比较矩阵，通过makeContrasts函数来控制如何比较！
+
+
+
+refer:
+答读者问第一弹:R里面差异分析的limma包用法细节 原创： jimmy  生信技能树  2017-06-01
+
+
+========================================
+limma 是GEO2R使用的筛选差异表达基因的包 (limma-voom方法支持RNAseq的count数据) 经验贝叶斯方法是limma的核心方法
 ----------------------------------------
 
 1. Linear Models for Microarray Data
@@ -41,9 +461,19 @@ limma包以前只支持microarray的表达数据。考虑到大家都熟悉了�
 1.表达矩阵
 2.分组矩阵
 3.差异比较矩阵
-用法与limma一模一样的，只是多了一个normalization而已。
+用法与limma分析芯片一模一样的，只是多了一个normalization而已。
+
+总共只有三个步骤：
+lmFit
+eBayes
+topTable
+(基因芯片的做法见：https://www.plob.org/article/9963.html)
 
 
+Limma-voom强大在于三个方面：
+- False discovery rate比较低（准确性），异常值影响小
+- 假阳性控制不错
+- 运算很快
 
 
 
@@ -149,6 +579,21 @@ v <- voom(dge, design, plot=TRUE)
 voom转换使用实验设计矩阵，产生一个EList对象。
 
 
+# voom到底做了什么转换？
+- 首先原始counts转换成log2的CPM（counts per million reads ），这里的per million reads是根据之前calcNormFactors计算的norm.factors进行规定的；
+- 然后根据每个基因的log2CPM制作了线性模型，并计算了残差 ；
+- 然后利用了平均表达量（红线）拟合了sqrt(residual standard deviation)；
+- 最后得到的平滑曲线可以用来得到每个基因和样本的权重
+#
+limma-voom method assumes that rows with zero or very low counts have been removed
+如果横坐标接近0的位置出现迅速上升，说明low counts数比较多
+
+Whether your data are "good" or not cannot be determined from this plot
+
+
+
+
+
 也可以不用TMM表转化，直接给voom一个counts矩阵：
 > v <- voom(counts, design, plot=TRUE)
 如果数据噪声大，可以采用和芯片相同的、样本间标准化方法：
@@ -156,6 +601,7 @@ voom转换使用实验设计矩阵，产生一个EList对象。
 
 这之后，可以使用常规limma管线了：
 > fit <- lmFit(v, design)
+## makeContrasts() https://www.jianshu.com/p/dee7346482e5 
 > fit <- eBayes(fit)
 > topTable(fit, coef=ncol(design))
 
@@ -215,7 +661,7 @@ voom转换使用实验设计矩阵，产生一个EList对象。
 > vfit2 <- lmFit(vwts)
 > vfit2 <- eBayes(vfit2)
 > topTable(vfit2,coef=2,sort.by="P")
-## GeneID Symbols logFC AveExpr t P.Value adj.P.Val B
+##       GeneID Symbols logFC AveExpr t P.Value adj.P.Val B
 ## 74355 74355 Smchd1 -3.17 6.067 -28.5 1.61e-09 1.98e-05 12.57
 ## 18028 18028 Nfib 9.23 1.714 19.0 4.44e-08 2.73e-04 6.91
 ## 381126 381126 Garem 6.45 0.113 15.9 1.85e-07 7.58e-04 6.02
@@ -231,9 +677,27 @@ voom转换使用实验设计矩阵，产生一个EList对象。
 > sum(top2$adj.P.Val<0.05)
 ## [1] 1478
 
+#可能还要过滤na值
+> DEG <- na.omit(top2)
+> head(DEG, 5)
+#
+# 如果以logFC=2，Pvalue=0.05为阈值进行过滤
+> length(which(DEG$adj.P.Val < 0.05 & abs(DEG$logFC)>2 ))
+
 
 图 voom:Mean-variance trend 
 图 Sample-specific weights
+
+
+
+Tips:
+
+怎么区分logFC正负的和样本的关系？cancer-normal(基准)中，logFC为正，则表示在cancer中高表达。
+基准呢，看Levels部分哪个样本先出现，哪个就是基准。
+
+如果想要改变reference组，可以用relevel()函数
+
+还包括t检验数据、P值（P.Value 对于多组比较未校正）、校正的P值（adj.P.Val 默认使用Benjamini-Horchberg方法对多组进行P值校正）
 
 
 
@@ -275,19 +739,17 @@ Then
 
 
 refer:
-https://www.plob.org/article/9966.html
-
 http://www.bio-info-trainee.com/bioconductor_China/software/limma.html
 
 差异分析是否需要比较矩阵
 https://github.com/bioconductor-china/basic/blob/master/makeContrasts.md
 
 
-
+更复杂的模型：多组比较，批次效应 https://www.jianshu.com/p/dee7346482e5
 
 
 ========================================
-|--|-- 例子: 18章 RNA-Seq Case Studies
+|-- 例子: 18章 RNA-Seq Case Studies
 ----------------------------------------
 
 1. 研究目的和数据(Yoruba HapMap Data)
@@ -314,9 +776,9 @@ names(y) #[1] "counts"  "samples" "genes"
 
 
 
+
+
 2.
-
-
 chrom <- fit$genes$Chr
 plotMD(fit, column=5, status=chrom, values=c("X", "Y", "X|Y"),
        hl.col=c("red","blue", "green3"), 
@@ -327,7 +789,7 @@ abline(h=0,col="darkgrey")
 - object: an RGList, MAList, EList, ExpressionSet or MArrayLM object. Alternatively a numeric matrix.
 
 - column: integer, column of object to be plotted.
-对象的哪一个列，用来画图？
+对象的哪一个列，用来画图？head(fit$coefficients) #上文说的column就是这个的列
 
 
 - status: character vector giving the control status of each point, of same length as x and y. If NULL, then all points are plotted in the background color, symbol and size.
@@ -345,12 +807,744 @@ abline(h=0,col="darkgrey")
 
 
 
+========================================
+|-- 用limma包的voom方法来做RNA-seq 差异分析(果蝇)
+----------------------------------------
+https://www.plob.org/article/9966.html
+
+需要3个矩阵：
+表达矩阵
+分组矩阵
+差异比较矩阵
+
+
+1. 输入数据
+(1)表达矩阵
+library("limma")
+library("edgeR")
+library(pasilla)
+print(data(package='pasilla'))
+data(pasillaGenes)
+dim(pasillaGenes)
+# Features  Samples 
+#14470        7 
+str(pasillaGenes)
+exprSet=counts(pasillaGenes)
+head(exprSet)  ##表达矩阵如下。前3列处理过，后4列没处理过;
+#            treated1fb treated2fb treated3fb untreated1fb untreated2fb untreated3fb untreated4fb
+#FBgn0000003          0          0          1            0            0            0            0
+#FBgn0000008         78         46         43           47           89           53           27
+#FBgn0000014          2          0          0            0            0            1            0
+#FBgn0000015          1          0          1            0            1            1            2
+#FBgn0000017       3187       1672       1859         2445         4615         2063         1711
+
+
+(2)分组数据
+group_list=pasillaGenes$condition; group_list
+#[1] treated   treated   treated   untreated untreated untreated untreated
+#Levels: treated untreated
+##这是分组信息，7个样本，3个处理的，4个未处理的对照！
+
+
+
+
+
+
+2. 开始比较
+(1)构建分组矩阵
+design <- model.matrix(~factor(group_list))
+colnames(design)=levels(factor(group_list))
+rownames(design)=colnames(exprSet)
+design
+##              treated untreated
+## treated1fb         1         0
+## treated2fb         1         0
+## treated3fb         1         0
+## untreated1fb       1         1
+## untreated2fb       1         1
+## untreated3fb       1         1
+## untreated4fb       1         1
+## attr(,"assign")
+## [1] 0 1
+## attr(,"contrasts")
+## attr(,"contrasts")$`factor(group_list)`
+## [1] "contr.treatment"
+
+
+
+
+(2)根据分组信息和表达矩阵进行normalization
+这里构建了一个对象 An object of class “EList”
+
+v <- voom(exprSet,design,normalize="quantile")
+
+
+## 下面的代码如果你不感兴趣不需要运行，免得误导你
+## 就是看看normalization前面的数据分布差异
+#png("RAWvsNORM.png")
+exprSet_new=v$E
+par(cex = 0.7)
+n.sample=ncol(exprSet)
+if(n.sample>40) par(cex = 0.5); cols <- rainbow(n.sample*1.2); par(mfrow=c(2,2))
+#
+boxplot(exprSet, col = cols,main="expression value",las=2) #pic1
+boxplot(exprSet_new, col = cols,main="expression value",las=2) pic2
+hist(exprSet) #pic3
+hist(exprSet_new) #pic3
+#dev.off()
+图：略4个。
+可以很明显看到normalization前后数据分布差异非常大！
+
+
+
+(3) 做差异分析，提取差异分析结果
+这里不需要差异比较矩阵了，因为我的分组矩阵表明样本就分成两组，直接提取coef=2的数据即可
+
+fit <- lmFit(v,design)
+fit2 <- eBayes(fit)
+tempOutput = topTable(fit2, coef=2, n=Inf)
+DEG_voom = na.omit(tempOutput)
+
+head(DEG_voom)
+##                  logFC  AveExpr         t      P.Value    adj.P.Val        B
+## FBgn0029167  2.1608689 7.880589  41.19142 5.195806e-08 0.0007518331 9.065020
+## FBgn0003137 -0.9560776 8.421903 -29.97211 2.920473e-07 0.0021129620 7.800063
+## FBgn0003748 -1.0385933 6.395990 -23.78787 1.020682e-06 0.0049230892 6.652695
+
+
+
+(4)设置条件，筛选差异表达基因(adj.p<0.05, FC>2或<1/2)，画火山图
+library('dplyr')
+DEG_voom$gid=row.names(DEG_voom)
+head(DEG_voom)
+rs1=DEG_voom %>% 
+  filter(adj.P.Val < 0.05 & abs(logFC) > 1) %>%
+  arrange(adj.P.Val, desc(abs(logFC)))
+
+dim(rs1) #[1] 98  7
+rs1
+##        logFC    AveExpr          t      P.Value    adj.P.Val            B                     gid
+## 1   2.160869  7.8805889  41.191418 5.195806e-08 0.0007518331  9.065020493             FBgn0029167
+## 2  -1.038593  6.3959898 -23.787871 1.020682e-06 0.0049230892  6.652694753             FBgn0003748
+## 3   4.480423  4.8386244  19.672363 2.844952e-06 0.0058809216  5.231714840             FBgn0039155
+## 4   2.519026  5.2211825  21.013389 1.993995e-06 0.0058809216  5.870584692             FBgn0035085
+## 5  -1.104098  3.9224377 -19.969538 2.624231e-06 0.0058809216  5.557559868             FBgn0015568
+
+
+火山图，显著差异基因高亮，同时标注部分基因名称。
+library(ggplot2)
+diff=DEG_voom
+##Highlight genes that have an absolute fold change > 2 and a p-value < Bonferroni cut-off
+diff$threshold = as.factor( abs(diff$logFC) > 1 & diff$adj.P.Val< 0.05 )
+table(diff$threshold)
+
+##Construct the plot object
+g = ggplot(data=diff, aes(x=logFC, y=-log10(adj.P.Val), colour=threshold)) +
+  geom_point(alpha=0.4, size=1.75) +
+  # opts(legend.position = "none") + 
+  #xlim(c(-10, 10)) + ylim(c(0, 15)) +
+  xlab("log2 fold change") + ylab("-log10 p-value")
+g
+
+
+#只标注显著基因的基因名
+# 选出一部分基因：FC大且p小的基因
+dd_text = diff[(abs(diff$logFC) > 2) & (diff$adj.P.Val < 0.05),] #更严格一些，标注几个基因名字
+head(dd_text)
+
+#添加文字-基因名
+g + geom_text(data=dd_text, aes(x=logFC, y=-log10(adj.P.Val), label=dd_text$gid), colour="black")
+
+
+
+
+
+
+
+(5)基因注释：怎么注释上 gene Symbol呢？
+在NCBI搜索 FBgn0029167，https://www.ncbi.nlm.nih.gov/search/all/?term=FBgn0029167
+得到这是fruit fly的基因名字: Dmel\Hml，又外链到 http://flybase.org/
+果蝇的，不深究了。
+
+
+
+
+
+
+
 
 
 
 ========================================
-|-- edgeR //todo
+|-- 使用limma、Glimma和edgeR，RNA-seq数据分析易如反掌
 ----------------------------------------
+https://www.bioconductor.org/packages/devel/workflows/vignettes/RNAseq123/inst/doc/limmaWorkflow_CHN.html
+
+
+
+
+
+
+
+
+
+========================================
+|-- 一套limma、edgeR的实战(小鼠3种类型的乳腺癌细胞)
+----------------------------------------
+http://www.imooc.com/article/269226
+https://www.jianshu.com/p/f4b618354dc2
+
+1. 概述
+们通过分析来自小鼠乳腺的RNA测序数据，示范了如何使用流行的edgeR包载入、整理、过滤和归一化数据，然后用limma包的voom方法、线性模型和经验贝叶斯调节（empirical Bayes moderation）来评估差异表达并进行基因集检验。通过使用Glimma包，此流程得到了增进，实现了结果的互动探索，使用户得以查看单个样本与基因。 这三个软件包提供的完整分析突出了研究人员可以使用Bioconductor轻松地从RNA测序实验的原始计数揭示生物学意义。
+
+
+对于RNA-seq数据，来自Bioconductor项目(Huber et al. 2015)的 edgeR (Robinson, McCarthy, and Smyth 2010)和limma包 (Ritchie et al. 2015)提供了一套用于处理此问题的完善的统计学方法。
+
+
+在这篇文章中，我们描述了一个用于分析RNA-seq数据的edgeR - limma工作流程，使用基因水平计数作为输入，经过预处理和探索性数据处理，然后得到差异表达（DE）基因和基因表达特征（gene signatures）的列表。Glimma包(Su et al. 2017)提供的交互式图表可以同时呈现整体样本和单个基因水平的数据，使得我们相对静态的R图表而言，可以探索更多的细节。
+
+
+
+
+
+
+
+2. 数据准备
+(1)背景
+选用GEO数据：GSE63310
+
+Sheridan等（2015）(Sheridan et al. 2015)，从雌性小鼠乳腺中提取了三个细胞群，即基底（basal）、管腔祖细胞（liminal progenitor, LP）和成熟管腔（mature luminal, ML），各三个重复。
+RNA利用Hiseq 2000+100bp单端测序；参考基因组选择mm10，Rsubread比对（具体而言，先使用align函数(Liao, Smyth, and Shi 2013)，然后使用featureCounts (Liao, Smyth, and Shi 2014)进行基因水平定量，利用其内置的mm10基于RefSeq的注释。
+
+查看实验设计和样品制备信息： https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc=GSE63310
+转录组表达数据地址：http://www.ncbi.nlm.nih.gov/geo/download/?acc=GSE63310&format=file
+
+
+浏览器下载并上传到linux
+$ tar xvf GSE63310_RAW.tar
+$ gunzip *.gz ### 设置好rstudio 的project
+$ head GSM1545545_JMS9-P8c.txt
+## EntrezID	GeneLength	Count
+## 497097	3634	0
+## 100503874	3259	0
+## 100038431	1634	0
+
+每一个文本文件均包含一个给定样品的原始基因水平计数。
+需要注意的是，我们的分析仅包含了此实验中的basal、LP和ML样品（请查看下方相关文件名）。
+
+## 转到R中
+setwd("/home/wangjl/data/DEG_demo/") ##修改位置
+files <- c("GSM1545535_10_6_5_11.txt", "GSM1545536_9_6_5_11.txt", "GSM1545538_purep53.txt","GSM1545539_JMS8-2.txt", "GSM1545540_JMS8-3.txt","GSM1545541_JMS8-4.txt", "GSM1545542_JMS8-5.txt","GSM1545544_JMS9-P7c.txt", "GSM1545545_JMS9-P8c.txt")
+read.delim(files[1], nrow=5)
+##   EntrezID GeneLength Count
+##1    497097       3634     1
+##2 100503874       3259     0
+##3 100038431       1634     0
+##4     19888       9747     0
+##5     20671       3130     1
+
+
+# 尽管这九个文本文件可以分别读入R然后合并为一个计数矩阵，edgeR提供了更方便的途径，使用readDGE函数即可一步完成。
+#接下来利用edgeR的readDEG将所有表达矩阵读入并且组合成一个大的矩阵
+#得到的DGEList对象中包含一个计数矩阵，它的27179行分别对应唯一的Entrez基因标识（ID），九列分别对应此实验中的每个样品。
+
+library(limma)
+library(Glimma)
+library(edgeR)
+library(Mus.musculus)
+
+x <- readDGE(files, columns=c(1,3)) # 只要它的Entrez ID 和count值
+dim(x) # x中有表达量和样本信息，样本信息又包括了group、libsize、lane等信息
+#[1] 27179     9
+class(x)
+## [1] "DGEList"
+## attr(,"package")
+## [1] "edgeR"
+# 如果一开始所有的表达量都存在一个矩阵中，那么直接用DEGList()转换该矩阵为一个DGEList对象。
+
+
+
+
+
+(2)整理样本分组信息: 对DEGList x的列进行操作
+为进行下游分析，与实验设计有关的样品水平信息需要与计数矩阵的列关联。
+这里需要包括各种对表达水平有影响的实验变量，无论是生物变量还是技术变量。
+例如，
+细胞类型（在这个实验中是basal、LP和ML），
+基因型（野生型、敲除），
+表型（疾病状态、性别、年龄），
+样品处理（用药、对照）和
+批次信息（如果样品是在不同时间点进行收集和分析的，记录进行实验的时间）
+测序日期、测序lane等。
+
+这里的DEGList中包含的样本信息有：细胞类型group、批次信息（测序的lane），每种信息都包含三个不同的水平。
+需要注意的是，在x$samples中，程序会自动计算每个样品的文库大小，归一化系数会被设置为1。 
+
+# 先简化GEO的ID名称，也就是把GSM去掉
+samplenames <- substring(colnames(x), 12, nchar(colnames(x)))
+samplenames
+##[1] "10_6_5_11" "9_6_5_11"  "purep53"  
+##[4] "JMS8-2"    "JMS8-3"    "JMS8-4"   
+##[7] "JMS8-5"    "JMS9-P7c"  "JMS9-P8c" 
+colnames(x) <- samplenames
+
+#然后我们可以自己设计分组信息
+group <- as.factor(c("LP", "ML", "Basal", "Basal", "ML", "LP",
+		"Basal", "ML", "LP"))
+x$samples$group <- group
+#自己添加lane 信息
+lane <- as.factor(rep(c("L004","L006","L008"), c(3,4,2)))
+x$samples$lane <- lane
+x$samples
+##                             files group lib.size norm.factors lane
+##10_6_5_11 GSM1545535_10_6_5_11.txt    LP 32863052            1 L004
+##9_6_5_11   GSM1545536_9_6_5_11.txt    ML 35335491            1 L004
+##purep53     GSM1545538_purep53.txt Basal 57160817            1 L004
+##JMS8-2       GSM1545539_JMS8-2.txt Basal 51368625            1 L006
+##JMS8-3       GSM1545540_JMS8-3.txt    ML 75795034            1 L006
+##JMS8-4       GSM1545541_JMS8-4.txt    LP 60517657            1 L006
+##JMS8-5       GSM1545542_JMS8-5.txt Basal 55086324            1 L006
+##JMS9-P7c   GSM1545544_JMS9-P7c.txt    ML 21311068            1 L008
+##JMS9-P8c   GSM1545545_JMS9-P8c.txt    LP 19958838            1 L008
+
+
+
+
+
+(3)整理基因注释信息: 对DEGList x的行进行操作
+我们的DGEList对象中的第二个数据框名为genes，用于存储与计数矩阵的行相关联的基因水平的信息。 为检索这些信息，我们可以使用包含特定物种信息的包，
+比如小鼠的Mus.musculus (Bioconductor Core Team 2016b)
+或人类的Homo.sapiens (Bioconductor Core Team 2016a)；
+或者也可以使用biomaRt 包 (Durinck et al. 2005, 2009)，它通过接入Ensembl genome数据库来进行基因注释。
+
+可以检索的信息类型包括基因符号（gene symbols）、基因名称（gene names）、染色体名称和位置（chromosome names and locations）、Entrez基因ID（Entrez gene IDs）、Refseq基因ID（Refseq gene IDs）和Ensembl基因ID（Ensembl gene IDs）等。
+biomaRt主要使用Ensembl基因ID进行检索，而由于Mus.musculus包含多种不同来源的信息，它允许用户从多种不同基因ID中选取检索键。
+
+我们使用Mus.musculus包，利用我们数据集中的Entrez基因ID来检索相关的基因符号和染色体信息。
+
+
+# 安装包
+#source("https://bioconductor.org/biocLite.R")
+#options(BioC_mirror="http://mirrors.ustc.edu.cn/bioc/")
+#biocLite("Mus.musculus")
+
+报错：installation of package ‘RMySQL’ had non-zero exit status
+因为需要安装mysql 
+安装mysql类库
+~ sudo apt-get install libdbd-mysql libmysqlclient-dev
+再安装 biocLite("RMySQL") 已经正常了。
+
+
+
+# 开始注释
+library(Mus.musculus)
+geneid <- rownames(x)
+genes <- select(Mus.musculus, keys=geneid, columns=c("SYMBOL", "TXCHROM"),
+                keytype="ENTREZID") #转换基因id，用clusterProfiler的bitr函数也可以;另外这个还增加了染色体信息
+##报错： 'select()' returned 1:many mapping between keys and columns
+# select则是根据你提供的key值去查找注释数据库，返回你需要的columns信息。
+head(genes)
+##   ENTREZID  SYMBOL TXCHROM
+##1    497097    Xkr4    chr1
+##2 100503874 Gm19938    <NA>
+##3 100038431 Gm10568    <NA>
+##4     19888     Rp1    chr1
+##5     20671   Sox17    chr1
+##6     27395  Mrpl15    chr1
+#基因注释资源(1) https://blog.csdn.net/weixin_39211343/article/details/83389249
+#【Bioconductor系列】如何用Bioconductor对基因组注释 https://www.jianshu.com/p/ae94178918bc
+#Bioconductor没想象的那么简单-part8-注释信息必知必会 https://www.jianshu.com/p/8f7f20371116
+
+
+
+需要注意的是：Entrez ID可能并不是和基因信息一一匹配的，可能同样的ID会匹配到不同染色体，因此需要检查有没有重复出现的Entrez ID，以保证注释和我们的DEGList之间的基因顺序是一致的。
+
+length(geneid) #[1] 27179
+dim(genes)     #[1] 27220 3 这里面有重复行 220-179=41
+
+我们的基因注释中包含28个匹配到不同染色体的基因（比如基因Gm1987关联于染色体chr4和chr4_JH584294_random，小RNA Mir5098关联于chr2，chr5，chr8，chr11和chr17）。 为了处理重复的基因ID，我们可以合并来自多重匹配基因的所有染色体信息，比如将基因Gm1987分配到chr4 and chr4_JH584294_random，或选取其中一条染色体来代表具有重复注释的基因。为了简单起见，我们选择后者，保留每个基因ID第一次出现的信息。
+
+genes2 <- genes[!duplicated(genes$ENTREZID),]
+dim(gene2) #[1] 27179     3
+
+在此例子中，注释与数据对象中的基因顺序是相同的。如果由于缺失和／或重新排列基因ID导致其顺序不一致，可以用match来正确排序基因。然后将基因注释的数据框加入数据对象，数据即被整洁地整理入一个DGEList对象中，它包含原始计数数据和相关的样品信息和基因注释。
+
+x$genes <- genes2
+x
+## An object of class "DGEList"
+## $samples
+##                              files group lib.size norm.factors lane
+## 10_6_5_11 GSM1545535_10_6_5_11.txt    LP 32863052            1 L004
+## 9_6_5_11   GSM1545536_9_6_5_11.txt    ML 35335491            1 L004
+## purep53     GSM1545538_purep53.txt Basal 57160817            1 L004
+## JMS8-2       GSM1545539_JMS8-2.txt Basal 51368625            1 L006
+## JMS8-3       GSM1545540_JMS8-3.txt    ML 75795034            1 L006
+## JMS8-4       GSM1545541_JMS8-4.txt    LP 60517657            1 L006
+## JMS8-5       GSM1545542_JMS8-5.txt Basal 55086324            1 L006
+## JMS9-P7c   GSM1545544_JMS9-P7c.txt    ML 21311068            1 L008
+## JMS9-P8c   GSM1545545_JMS9-P8c.txt    LP 19958838            1 L008
+## 
+## $counts
+##            Samples
+## Tags        10_6_5_11 9_6_5_11 purep53 JMS8-2 JMS8-3 JMS8-4 JMS8-5 JMS9-P7c JMS9-P8c
+##   497097            1        2     342    526      3      3    535        2        0
+##   100503874         0        0       5      6      0      0      5        0        0
+##   100038431         0        0       0      0      0      0      1        0        0
+##   19888             0        1       0      0     17      2      0        1        0
+##   20671             1        1      76     40     33     14     98       18        8
+## 27174 more rows ...
+## 
+## $genes
+##    ENTREZID  SYMBOL TXCHROM
+## 1    497097    Xkr4    chr1
+## 2 100503874 Gm19938    <NA>
+## 3 100038431 Gm10568    <NA>
+## 4     19888     Rp1    chr1
+## 5     20671   Sox17    chr1
+## 27174 more rows ...
+
+
+
+
+#*** begin: 下面这个去重也行，就是太繁琐了
+dup <- genes$ENTREZID[duplicated(genes$ENTREZID)]
+genes[genes$ENTREZID %in% dup,][1:5,]
+# 果然发现了不同染色体上重复的ID
+##       ENTREZID    SYMBOL TXCHROM
+##5360  100316809 Mir1906-1   chr12
+##5361  100316809 Mir1906-1    chrX
+##9563      12228      Btg3   chr16
+##9564      12228      Btg3   chr17
+##11350    433182     Eno1b    chr4
+#
+# 然后把重复的基因挑出来【重复的只统计一次】
+mat <- match(geneid, genes$ENTREZID)
+genes <- genes[mat,]
+genes[genes$ENTREZID %in% dup,][1:5,]
+#这时在看x这个DEGList，就是一个标准的包含原始count数据、样本信息的表达量矩阵
+# end ***#
+
+
+
+
+
+
+
+
+
+3. 数据预处理 
+
+(1)原始数据尺度转换
+
+进行差异表达一般都不会用raw counts的，因为存在测序深度、文库大小的差别，这样的结果是不准确的。
+
+一般的做法是：利用标准化算法，如CPM（counts per million), log-CPM (log2-counts per million), RPKM (reads per kilobase of transcript per million), FPKM(fragments per kilobase of transcript per million)等去除文库大小、深度的影响。和RPKM、FPKM不同的是，CPM和log-CPM不需要考虑feature length的差异，也就是说基因长度在统计时被当成常数，只考虑不同处理下的不同，而不会受长度的影响
+
+
+尽管CPM和log-CPM转换并不像RPKM和FPKM那样考虑到基因长度区别的影响，但在我们的分析中经常会用到它们。虽然也可以使用RPKM和FPKM，但CPM和log-CPM只使用计数矩阵即可计算，且已足以满足我们所关注的比较的需要。
+
+假设不同条件之间剪接异构体（isoform）的使用没有差别，差异表达分析研究同一基因在不同条件下的表达差异，而不是比较多个基因之间的表达或测定绝对表达量。换而言之，基因长度在我们关注的比较中始终不变，且任何观测到的差异是来自于条件的变化而不是基因长度的变化。
+
+
+使用edgeR中的cpm函数将原始计数转换为CPM和log-CPM值。如果可以提供基因长度信息，可以使用edgeR中的rpkm函数计算RPKM值，就像计算CPM值那样简单。
+
+# cpm使用cpm()函数；RPKM使用rpkm函数，都属于edegR
+cpm <- cpm(x)
+lcpm <- cpm(x, log=TRUE, prior.count=2)
+
+
+对于一个基因，CPM值为1相当于在测序深度最低的样品中（JMS9-P8c, 序列数量约2千万）有20个计数，或者在测序深度最高的样品中（JMS8-3，序列数量约7.6千万）有76个计数。
+
+log-CPM值将被用于探索性图表中。当设置log=TRUE时，cpm函数会在进行log2转换前给CPM值加上一个弥补值。默认的弥补值是2/L，其中2是“预先计数”，而L是样本总序列数（以百万计）的平均值，所以log-CPM值是根据CPM值通过log2(CPM + 2/L)计算得到的。这样的计算方式可以确保任意两个具有相同CPM值的序列片段计数的log-CPM值也相同。弥补值的使用可以避免对零取对数，并能使所有样本间的log倍数变化（log-fold-change）向0推移而减小低表达基因间微小计数变化带来的巨大的伪差异性，这对于绘制探索性图表很有用。
+
+在这个数据集中，平均的样本总序列数是4.55千万，所以L约等于45.5，且每个样本中的最小log-CPM值为log2(2/45.5) = -4.51。换而言之，在加上了预先计数弥补值后，此数据集中的零表达计数对应的log-CPM值为-4.51：
+
+L <- mean(x$samples$lib.size) * 1e-6
+M <- median(x$samples$lib.size) * 1e-6
+c(L, M)
+## [1] 45.5 51.4
+summary(lcpm)
+##   10_6_5_11          9_6_5_11          purep53             JMS8-2            JMS8-3       
+## Min.   :-4.5074   Min.   :-4.5074   Min.   :-4.50743   Min.   :-4.5074   Min.   :-4.5074  
+## 1st Qu.:-4.5074   1st Qu.:-4.5074   1st Qu.:-4.50743   1st Qu.:-4.5074   1st Qu.:-4.5074  
+## Median :-0.6847   Median :-0.3589   Median :-0.09513   Median :-0.0901   Median :-0.4281  
+## Mean   : 0.1714   Mean   : 0.3312   Mean   : 0.43559   Mean   : 0.4089   Mean   : 0.3225  
+## 3rd Qu.: 4.2913   3rd Qu.: 4.5601   3rd Qu.: 4.60081   3rd Qu.: 4.5475   3rd Qu.: 4.5772  
+## Max.   :14.7632   Max.   :13.4952   Max.   :12.95700   Max.   :12.8513   Max.   :12.9578  
+##     JMS8-4            JMS8-5            JMS9-P7c          JMS9-P8c      
+## Min.   :-4.5074   Min.   :-4.50743   Min.   :-4.5074   Min.   :-4.5074  
+## 1st Qu.:-4.5074   1st Qu.:-4.50743   1st Qu.:-4.5074   1st Qu.:-4.5074  
+## Median :-0.4064   Median :-0.07152   Median :-0.1704   Median :-0.3300  
+## Mean   : 0.2529   Mean   : 0.40428   Mean   : 0.3708   Mean   : 0.2749  
+## 3rd Qu.: 4.3199   3rd Qu.: 4.42513   3rd Qu.: 4.6031   3rd Qu.: 4.4355  
+## Max.   :14.8520   Max.   :13.19491   Max.   :12.9413   Max.   :14.0102
+
+在下游的线性模型分析中，使用limma的voom函数时也会用到log-CPM值，但voom会默认使用更小的预先计数重新计算自己的log-CPM值。
+
+
+
+
+
+
+
+
+
+
+
+(2)去掉不感兴趣的基因
+所有的数据集中都会存在表达的和不表达的基因，我们感兴趣的是在一个条件下表达，另一个条件不表达的。
+实际上，这个数据集中19%的基因在所有九个样品中的计数都是零。
+
+#看下有多少基因在所有样本中表达量都为0
+table(rowSums(x$counts==0)==9)
+## FALSE TRUE
+## 22026 5153
+
+对log-CPM值的分布绘制的图表显示每个样本中很大一部分基因都是不表达或者表达程度相当低的，它们的log-CPM值非常小甚至是负的（下图A部分）。
+
+
+在任何样本中都没有足够多的序列片段的基因应该从下游分析中过滤掉。这样做的原因有好几个。 从生物学的角度来看，在任何条件下的表达水平都不具有生物学意义的基因都不值得关注，因此最好忽略。 从统计学的角度来看，去除低表达计数基因使数据中的均值 - 方差关系可以得到更精确的估计，并且还减少了在观察差异表达的下游分析中需要进行的统计检验的数量。
+
+
+##1) edgeR包中的filterByExpr函数提供了自动过滤基因的方法，可保留尽可能多的有足够表达计数的基因。
+keep.exprs <- filterByExpr(x, group=group)
+x <- x[keep.exprs,, keep.lib.sizes=FALSE]
+dim(x) ## [1] 16624     9
+
+
+此函数默认选取最小的组内的样本数量为最小样本数，保留至少在这个数量的样本中有10个或更多序列片段计数的基因。对基因表达量进行过滤时使用CPM值而不是表达计数，以避免对总序列数大的样本的偏向性。在这个数据集中，总序列数的中位数是5.1千万，且10/51约等于0.2，所以filterByExpr函数保留在至少三个样本中CPM值大于等于0.2的基因。
+
+此处，一个具有生物学意义的基因需要在至少三个样本中表达，因为三种细胞类型组内各有三个重复。所使用的阈值取决于测序深度和实验设计。如果样本总表达计数量增大，那么可以选择更低的CPM阈值，因为更大的总表达计数量提供了更好的分辨率来探究更多表达水平更低的基因。
+
+使用这个标准，基因的数量减少到了16624个，约为开始时数量的60%。过滤后的log-CPM值显示出每个样本的分布基本相同（下图B部分）。需要注意的是，从整个DGEList对象中取子集时同时删除了被过滤的基因的计数和其相关的基因信息。过滤后的DGEList对象为留下的基因保留了相对应的基因信息和计数。
+
+
+##2) 另一种规则更明确的过滤基因的方法，标准就是cpm至少一组或整个实验中有三个样本大于1。但是过滤掉的也更多了。
+#keep.exprs <- rowSums(cpm>1)>=3
+#x <- x[keep.exprs,, keep.lib.sizes=FALSE]
+#dim(x) ##[1] 14165     9
+
+
+
+
+
+
+#作图检查：虚线就是cpm为1（即log cpm为0的时候）作为判断阈值，看超过这个线的有几个
+lcpm.cutoff <- log2(10/M + 2/L)
+
+library(RColorBrewer)
+nsamples <- ncol(x)
+col <- brewer.pal(nsamples, "Paired")
+
+par(mfrow=c(1,2))
+#pic1
+plot(density(lcpm[,1]), col=col[1], lwd=2, ylim=c(0,0.21), las=2,
+     main="", xlab="")
+title(main="A. Raw data", xlab="Log-cpm")
+#abline(v=0, lty=3)
+abline(v=lcpm.cutoff, lty=3)
+for (i in 2:nsamples){
+  den <- density(lcpm[,i])
+  lines(den$x, den$y, col=col[i], lwd=2)
+}
+legend("topright", samplenames, text.col=col, bty="n")
+#pic2
+lcpm <- cpm(x, log=TRUE)
+plot(density(lcpm[,1]), col=col[1], lwd=2, ylim=c(0,0.21), las=2,
+     main="", xlab="")
+title(main="B. Filtered data", xlab="Log-cpm")
+#abline(v=0, lty=3)
+abline(v=lcpm.cutoff, lty=3)
+for (i in 2:nsamples){
+  den <- density(lcpm[,i])
+  lines(den$x, den$y, col=col[i], lwd=2)
+}
+legend("topright", samplenames, text.col=col, bty="n")
+#
+# 图略 2个密度分布图
+
+# Figure 1: 每个样本过滤前的原始数据（A）和过滤后（B）的数据的log-CPM值密度。竖直虚线标出了过滤步骤中所用阈值（相当于CPM值为约0
+2）。
+
+
+
+
+
+
+
+
+
+(3)归一化基因表达分布
+
+在准备试验样品或者测序的过程中，外界因素非常可能会引入误差，影响样本的基因表达水平。比如：第一批测序的样本可能比第二批测序的深度要深。标准化就是为了让每个样本的表达量分布在整个实验中是相似的。
+
+
+- 如何判断是否标准了呢？
+可以通过密度图density或者箱线图boxplot，比如上图就是密度分布，其中B图的log-CPM分布就比较一致，并且都在阈值的右侧
+
+- 如何标准化？
+尽管如此，我们依然需要使用edgeR中的calcNormFactors()函数，用TMM(trimmed mean of M-values)算法(Robinson and Oshlack 2010)方法进行归一化。
+
+此处计算得到的归一化系数被用作文库大小的缩放系数。
+当我们使用DGEList对象时，这些归一化系数normalisation factors 被自动存储在x$samples$norm.factors。
+对此数据集而言，TMM归一化的作用比较温和，这体现在所有的缩放因子都相对接近1。
+
+x <- calcNormFactors(x, method = "TMM")
+x$samples$norm.factors
+## [1] 0.896 1.035 1.044 1.041 1.032 0.922 0.984 1.083 0.979
+
+
+
+
+
+
+#画一个箱线图可以看到标准化前后差异【模拟数据】
+# 为了更好地可视化表现出归一化的影响，我们复制了数据并进行了调整，使得第一个样品的计数减少到了其原始值的5%，而第二个样品增大到了5倍。
+#模拟一个数据
+x2 <- x
+x2$samples$norm.factors <- 1
+x2$counts[,1] <- ceiling(x2$counts[,1]*0.05) #第一个样本count缩小到原来5%
+x2$counts[,2] <- x2$counts[,2]*5 # 第二个样本扩大到原来5倍
+
+#画图
+par(mfrow=c(1,2))
+lcpm <- cpm(x2, log=TRUE)
+boxplot(lcpm, las=2, col=col, main="")
+title(main="A. Example: Unnormalised data",ylab="Log-cpm")
+x2 <- calcNormFactors(x2)
+x2$samples$norm.factors
+## [1] 0.0547 6.1306 1.2293 1.1705 1.2149 1.0562 1.1459 1.2613 1.1170
+lcpm <- cpm(x2, log=TRUE)
+boxplot(lcpm, las=2, col=col, main="")
+title(main="B. Example: Normalised data",ylab="Log-cpm")
+
+# 下图显示了没有经过归一化的与经过了归一化的数据的样本的表达分布，
+# 其中归一化前的分布显然不同，而归一化后比较相似。此处，第一个样品的TMM缩放系数0.06非常小，而第二个样品的缩放系数6.08很大，它们都并不接近1。
+
+
+
+
+
+========================================
+|-- limma/voom，edgeR，DESeq2分析注意事项，差异分析表达矩阵与分组信息(万字长文)
+----------------------------------------
+https://cloud.tencent.com/developer/article/1492130
+
+
+
+
+
+三、总结
+limma，edgeR，DESeq2三大包基本是做转录组差异分析的金标准，大多数转录组的文章都是用这三个R包进行差异分析。
+edgeR差异分析速度快，得到的基因数目比较多，假阳性高（实际不差异结果差异）。
+DESeq2差异分析速度慢，得到的基因数目比较少，假阴性高（实际差异结果不差异）。
+需要注意的是制作分组信息的因子向量是，因子水平的前后顺序，在R的很多模型中，默认将因子向量的第一个水平看作对照组。
+
+
+
+
+
+
+
+========================================
+|-- 熟悉又陌生的limma (原创： shuang  生信人  2018-08-27)
+----------------------------------------
+对于每个基因g，我们有一个基因表达值的矢量（yg）和一个设计矩阵X，它将这些值与一些感兴趣的系数（g）联系起来。
+
+limma包包括统计方法，其中
+（i）利用经验贝叶斯方法促进信息借用以获得后验方差估计，
+（ii）结合观察权重（wgj，其中j指样本）以允许数据质量的变化， 
+（iii）允许方差建模以适应可能存在的技术或生物异质性，以及
+（iv）预处理方法，例如方差稳定以减少噪声。
+这些方法都有助于在小实验中改善基因和基因集水平的推断。
+
+
+第一步：数据导入
+
+
+
+第二步：预处理及质量评估
+
+1、预处理RNA-seq和其他测序数据
+
+limma以读数计数矩阵的形式接受RNA-seq数据，其中行为基因组特征和列为RNA样本，或者接受edgeR包中的DGEList对象。运用voom的算法处理后，RNAseq数据的后续分析即可与任何其他技术相同。
+
+2、预处理microarray数据
+
+limma可以接受多方microarray数据，如来自其他Bioconductor包的表达式数据的数据对象，来自marray包的marrayNormobjects，来自affyPLM包的PLMset对象，来自vsn包的vsn对象或继承自ExpressionSet的任何类的对象。或者，表达数据可以作为数字矩阵提供。当读取microarray图像时，通常读取每个探针的前景和背景强度，并进行背景矫正和归一化。
+
+同时用户直观地检查来自设计实验的数据，以便识别潜在的质量问题，例如降级的样品，或由于阵列处理或样品处理而出现的问题。同时还可以揭示在后续分析之前应该去除的系统偏差。
+
+图：limma的诊断图， log2(countsize+0.5) - sqrt(standard deviation), MAplot, PCA样本分析(看批次效应)。
+
+
+
+
+
+第三步：寻找差异表达基因
+
+limma包的核心组件是能够将基因方式的线性模型拟合到基因表达数据，以评估差异表达分析。基本思想是同时估计两个或多个靶RNA样品之间的对数比（对于双通道数据）或对数强度（对于单通道数据）。每个分析都以表达水平矩阵开始，行中的探针/基因/外显子和列中的不同样品（生物学/技术重复）。线性建模以行方式执行，回归系数和标准误差直接估计感兴趣的比较或通过对比。获得基因排序的测试统计，其可以在基因集水平进一步概括以进行基因标记/途径水平排序。线性建模方法的灵活性允许处理几乎任何实验设计。
+
+使用lmFit函数可以对两个或多个组以及内部控制的实验进行建模和总结。一旦拟合了线性模型，makeContrasts函数就可用于形成对比矩阵，拟合模型对象和对比矩阵用于对比，拟合log2倍数变化和t-统计的感兴趣对比，这允许进行治疗之间的所有可能的成对比较。
+
+为了可视化单个或多个对比的差异分析分析结果，limma提供了许多绘图选项。
+
+图：
+A、火山图显示单一条件下的差异分析结果；
+B、维恩图显示多个实验条件下差异表达基因的数量；
+C、富集图突出显示差异表达分析中的特定基因特征。
+
+同时，当外显子水平表达数据可用时，limma的线性模型框架也可以检测microarray或者RNA-seq的外显子差异剪接事件。
+
+
+
+
+
+========================================
+edgeR //todo
+----------------------------------------
+1. 用途
+(1)细胞特异性基因是用edgeR识别的。
+The cell-specific genes between ESC and NIH-3T3 were identified using EdgeR (FDR < 0.05; fold change > 1.5 or greater than two-thirds)34.
+
+(2)正常、肿瘤细胞特异性DHS是用edgeR识别的。
+The normal- and tumourcell- specific DHSs were identified using EdgeR.
+
+(3)paper: 
+34. Robinson, M. D., McCarthy, D. J. & Smyth, G. K. edgeR: a Bioconductor package for differential expression analysis of digital gene expression data. Bioinformatics 26, 139–140 (2010).
+
+
+官网
+http://www.bioconductor.org/packages/release/bioc/html/edgeR.html
+Differential expression analysis of RNA-seq expression profiles with biological replication. Implements a range of statistical methodology based on the negative binomial distributions, including empirical Bayes estimation, exact tests, generalized linear models and quasi-likelihood tests. As well as RNA-seq, it be applied to differential signal analysis of other types of genomic data that produce counts, including ChIP-seq, SAGE and CAGE.
+带有生物学重复的RNA-seq表达谱差异表达分析。实现了一系列基于负二项分布统计方法，包括经验贝叶斯估计，精确检验，广义线性模型和quasi-likelihood检验。和RNA-seq一样，适用于其他产生counts的基因组数据的差异信号分析，包括ChIP-seq，SAGE和CAGE。
+
+
+The package is especially suitable for analysing designed experiments with multiple experimental factors but possibly small numbers of replicates. It has unique abilities to model transcript specific variation even in small samples, a capability essential for prioritizing genes or transcripts that have consistent effects across replicates.
+该包特别适合分析多个实验因子但是很少重复的实验设计。独有的从少量样本建模出特有转录变体，必要的排序重复之间有稳定效应的基因和转录本的能力。
+
+
+查看帮助文档edgeRUsersGuide.pdf ：
+> library(edgeR)
+> edgeRUsersGuide()
+at the R prompt to open the User’s Guide in a pdf viewer.
+
+
+
+
+2. 
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -400,13 +1594,10 @@ biocLite("DESeq2")
 library(DESeq2)
 
 然后是读取数据，在这里需要说明一下
-1、读取的数据结构应该是
-
+1)、读取的数据结构应该是
 横行为基因（图示为ENSGxxx），列为样本。
 
-	
-
-2、数据可以从txt或者csv等文件直接用read.table/csv读取
+2)、数据可以从txt或者csv等文件直接用read.table/csv读取
 # setwd("~/data")
 data <- read.table("ehbio_trans.Count_matrix.xls", header=T, row.names=1, com='', quote='', check.names=F, sep="\t")
 
@@ -416,9 +1607,8 @@ data <- read.table("ehbio_trans.Count_matrix.xls", header=T, row.names=1, com=''
 data <- data[rowSums(data)>2,]
 head(data)
 
-	
 
-3、当然如果你看了下面的教程，你会得到data.out这个数据框，按照下面的命令即可得到用于deseq2分析的原始文件
+3)、当然如果你看了下面的教程，你会得到data.out这个数据框，按照下面的命令即可得到用于deseq2分析的原始文件
 # data.out1<-data.out[-(1:4),-2]
 # raw.data<-data.out1[,-1]
 

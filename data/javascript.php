@@ -45,6 +45,7 @@ return array (
 	  array('prototype教程','prototype001','md' ),
 	  array('Dojo教程','dojo001','md' ),
 	  //array('YUI教程','YUI001','md' ),
+	  array('Vue.js','VueJS','md' ),
     ),
   ),
 
