@@ -12,7 +12,7 @@ limma包使用到edgeR DGEList object作为输入。
 
 
 ========================================
-RNAseq差异表达基因分析方法 Limma, DEseq2, edgeR, 
+RNAseq差异表达基因分析方法 limma/voom, DEseq2, edgeR, 
 ----------------------------------------
 1. 做差异基因分析的方法
 (1) https://ccb.jhu.edu/software/stringtie/index.shtml
@@ -25,6 +25,31 @@ Quantifying your RNA-seq data with salmon is that simple (and fast). Once you ha
 
 
 (3)Other Bioconductor packages with similar aims are edgeR, limma, DSS, EBSeq, and baySeq.
+
+
+(4) 归一化方法
+早期用于归一化的方法就是RPKM，但这种方法现在已经淘汰，它已经被那些能够校正样本之间更细微差异的方法所取代，例如四分位数法或中位数归一法。
+
+
+基因水平的工具通常依赖于比对好的读长数目，使用广义线性模型(Generalized Linear Models)处理这些数据，从而能够评估复杂的实验设计。这些工具包括edgeR，DESeq2以及limma+voom，这些工具能够进行有效地计算，并提供比较结果。
+
+
+
+(5)
+- limma fits a so-called linear model; examples of linear models are (1) linear regression, (2) multiple linear regression and (3) analysis of variance.
+
+- edgeR, DESeq and DESeq2 fits generalized linear models, specifically models based on the negative binomial distribution.
+
+Extremely simplified, limma is useful for continuous data such as microarray data and edgeR / DESeq / DESeq2 are useful for count data such as high-throughput sequencing. But that is a very simplified statement.
+
+
+https://kasperdanielhansen.github.io/genbioconductor/html/limma.html
+
+
+
+
+(6) limma/voom，edgeR，DESeq2分析注意事项，差异分析表达矩阵与分组信息(万字长文)
+https://cloud.tencent.com/developer/article/1492130
 
 
 
@@ -106,7 +131,13 @@ sample4	KD
 
 3. 探索性分析一二事
 
-(1) 使用DESeq2进行差异基因分析
+
+
+
+========================================
+|-- (1) 使用DESeq2进行差异基因分析
+----------------------------------------
+
 关于DESeq2分析差异表达基因，其实在https://www.bioconductor.org/help/workflows/rnaseqGene/ 里面介绍的非常清楚了。
 
 我们已经准备好了count matrix，接下来就是把数据导入DESeq2。DESeq2导入数据的方式有如下4种，基本覆盖了主流read count软件的结果。
@@ -226,7 +257,10 @@ res.deseq2 <- subset(res, padj < 0.05)
 
 
 
-(2)使用edgeR进行差异基因分析
+
+========================================
+|-- (2)使用edgeR进行差异基因分析
+----------------------------------------
 
 edgeR在函数说明中称其不但可以分析SAGE， CAGE的RNA-Seq，Tag-RNA，或RNA-seq， 也能分析ChIP-Seq和CRISPR得到的read counts数据。嗯，我信了。
 
@@ -331,7 +365,10 @@ s
 
 
 
-(3)使用limma进行差异分析
+
+========================================
+|-- (3)使用limma进行差异分析
+----------------------------------------
 
 经过上面两个方法的洗礼，基本上套路你也就知道了，我先简单小结一下，然后继续介绍limma包的 voom 。
 
@@ -341,6 +378,20 @@ s
 4)通过各种算法（如经验贝叶斯，EM）预测disperion离散值
 5)广义线性模型拟合数据
 6)差异分析，也就是统计检验部分
+
+
+
+
+# 第一步
+vfit <- lmFit(v, design)
+# 第二步
+vfit <- contrasts.fit(vfit, contrasts=contr.matrix)
+efit <- eBayes(vfit)
+# 第三步
+ofit <- topTable(efit, coef=1, n=Inf)
+DEG <- na.omit(ofit)
+head(DEG)
+
 
 
 
@@ -392,7 +443,10 @@ topTreat(fit, coef=ncol(design))
 
 
 
-4. 不同软件包分析结果比较
+
+========================================
+|-- 4. 不同软件包分析结果比较
+----------------------------------------
 基本上每一个包，我都提取了各种的显著性基因，比较就需要用韦恩图了，但是我偏不，我要用UpSetR.
 
 library(UpSetR)
@@ -408,6 +462,66 @@ input <- fromList(list(edgeR=rownames(sig.edger), DESeq2=rownames(sig.deseq2), l
 5. 使用GFOLD进行无重复样本的差异基因分析
 参考文件
 [1] Comparing the normalization methods for the differential analysis of Illumina high-throughput RNA-Seq data
+
+
+
+
+
+三、总结
+limma，edgeR，DESeq2三大包基本是做转录组差异分析的金标准，大多数转录组的文章都是用这三个R包进行差异分析。
+
+edgeR差异分析速度快，得到的基因数目比较多，假阳性高（实际不差异结果差异）。
+
+DESeq2差异分析速度慢，得到的基因数目比较少，假阴性高（实际差异结果不差异）。
+
+需要注意的是制作分组信息的因子向量是，因子水平的前后顺序，在R的很多模型中，默认将因子向量的第一个水平看作对照组。
+
+
+
+四、假如是多个分组呢
+比如，大家都知道，TCGA的乳腺癌可以分成PAM50的5类，那么差异分析就复杂了。
+
+这个时候有两个策略来做差异分析，当然，分组比较多的时候，差异分析并不是最好的策略啦，WGCNA等其它算法更好！
+
+
+
+策略1：在分组信息里面挑选 
+参考代码 https://github.com/jmzeng1314/my-R/tree/master/10-RNA-seq-3-groups
+
+group_list
+cont.matrix=makeContrasts(contrasts=c('treat_12-control','treat_2-control'),levels = design)
+fit2=contrasts.fit(fit,cont.matrix)
+fit2=eBayes(fit2)
+
+tempOutput = topTable(fit2, coef='treat_12-control', n=Inf)
+DEG_treat_12_limma_voom = na.omit(tempOutput)
+write.csv(DEG_treat_12_limma_voom,"DEG_treat_12_limma_voom.csv",quote = F)
+
+tempOutput = topTable(fit2, coef='treat_2-control', n=Inf)
+DEG_treat_2_limma_voom = na.omit(tempOutput)
+write.csv(DEG_treat_2_limma_voom,"DEG_treat_2_limma_voom.csv",quote = F)
+
+
+
+使用WGCNA发表的文章：
+[5.68] https://www.ncbi.nlm.nih.gov/pubmed/31382519
+[2.53] https://www.ncbi.nlm.nih.gov/pmc/articles/PMC6639467/
+
+
+
+
+
+
+策略2：提取子矩阵和子分组信息 
+这个很容易理解了，把表达矩阵根据自己想要进行的两两比对来筛选即可，这样就可以多次做差异分析啦，而且保证每次都只有两个分组。
+
+
+
+
+
+
+
+
 
 
 
@@ -1876,23 +1990,6 @@ sessionInfo()
 
 
 
-========================================
-limma/voom，edgeR，DESeq2分析注意事项，差异分析表达矩阵与分组信息(万字长文)
-----------------------------------------
-https://cloud.tencent.com/developer/article/1492130
-
-
-
-
-
-
-三、总结
-limma，edgeR，DESeq2三大包基本是做转录组差异分析的金标准，大多数转录组的文章都是用这三个R包进行差异分析。
-edgeR差异分析速度快，得到的基因数目比较多，假阳性高（实际不差异结果差异）。
-DESeq2差异分析速度慢，得到的基因数目比较少，假阴性高（实际差异结果不差异）。
-需要注意的是制作分组信息的因子向量是，因子水平的前后顺序，在R的很多模型中，默认将因子向量的第一个水平看作对照组。
-
-
 
 
 
@@ -2053,6 +2150,9 @@ This vignette explains the use of the package and demonstrates typical workflows
 
 
 
+https://mp.weixin.qq.com/s/Vmhx_TGxNkQzkekf93Xl4w
+DESeq2差异基因分析和批次效应移除
+原创： 易生信  生信宝典  2018-05-29
 
 
 
@@ -2073,6 +2173,55 @@ DESeq2是DESeq包的更新版本，看样子应该不会有DESeq3了，哈哈，
 	重点就是构造一个dds的对象，
 	然后直接用DESeq函数进行normalization处理即可，
 	处理之后用results函数来提取差异比较结果
+
+(2) 数据预处理
+采用DESeq2对表达量进行PCA和聚类分析 原创： lzyg  生信修炼手册  2018-09-25
+
+得到基因/转录本的表达量之后，通常会通过以下三种类型的图表来检验和分析生物学样本和实验设计间关系。
+- 样本的聚类树： 理论上如果样本和实验操作都没有问题，那么属于同一组的生物学重复样本会聚到一起
+- PCA图：不同条件的样本区分的很明显，而生物学重复之间距离较近，表明生物学重复的一致性和不同分组的差异性较好。
+- 热图： 相比样本的聚类树，热图可以直观的展示不同分组间表达量的差异
+
+只要有样本的表达量矩阵，DESeq2可以轻松的画出以上3种图表。但是我们应该选择原始的表达量矩阵，还是归一化之后的表达量矩阵来画呢？或者有没有其他的选择呢？
+
+输入的矩阵不同，得出的结论也会不同。由于基因的表达水平在不同样本间本身就存在一定的差异，所以无论是采用原始的还是归一化之后的表达量矩阵，效果都不理想。
+针对这一问题，DESeq2提出了两种count值的转换算法，rlog和VST转换。
+
+rld <- rlog(dds) #rlog 转换
+vsd <- vst(dds) #VST 转换
+两种转换本质上是在降低生物学重复之间的差异，使得样本聚类和PCA分析的效果更好。转换之后的表达量数据可以采用assay函数进行提取，代码如下
+
+> head(assay(rld)[, 1:2])
+       sample1   sample2
+gene1 2.049029 1.6828707
+gene2 8.151262 6.8552583
+gene3 0.818971 0.2964686
+gene4 5.340361 4.4766682
+gene5 6.316175 6.8345783
+gene6 2.157821 1.9264385
+
+对于raw count定量表格，建议采用rlog或者VST转换之后的数据去进行PCA和聚类分析，效果会更好。
+
+利用DESeq2提供的示例数据pasilla，分别用原始的count, 归一化之后的count, rlog, vst 转换的count 进行PCA分析，代码如下
+
+使用DESeqDataSetFromMatrix建立对象之后：
+## 接下来，分别使用两种vlog类型
+dds3 <- estimateSizeFactors(dds)
+raw <- SummarizedExperiment(counts(dds3, normalized=FALSE), colData=colData(dds3))
+nor <- SummarizedExperiment(counts(dds3, normalized=TRUE), colData=colData(dds3))
+vsd <- vst(dds3)
+rld <- rlog(dds3)
+pdf("PCA_condition.pdf")
+#cond=c("condition", "type");
+cond=c("condition");
+plotPCA( DESeqTransform(raw), intgroup=cond)
+plotPCA( DESeqTransform(nor), intgroup=cond )
+plotPCA(vsd, intgroup=cond)
+plotPCA(rld, intgroup=cond)
+dev.off()
+
+可以很明显看出，原始的count和归一化之后的count, 其PCA图是杂乱无序的，没什么明显规律，而VST和rlog转换之后，生物学重复之间更佳的接近，不同分组也区分的较为明显。
+
 
 
 
@@ -2123,18 +2272,153 @@ coldata<- data.frame(row.names=colnames(raw.count), condition)
 #sample
 
 
+
+
+
+
+
+####################
+# 数据实例：DESeq2自带的果蝇的RNAseq counts数据
+####################
+## 自于pasilla数据包，函数system.file告诉我们数据文件保存的路径。
+library(DESeq2)
+library(pasilla)
+datafile = system.file( "extdata/pasilla_gene_counts.tsv", package="pasilla" );datafile
+## [1] "/home/wangjl/R/x86_64-pc-linux-gnu-library/3.6/pasilla/extdata/pasilla_gene_counts.tsv"
+# 在R中读取这个文件，使用read.table函数。
+pasillaCountTable = read.table( datafile, header=TRUE, row.name=1);head( pasillaCountTable )
+##             untreated1 untreated2 untreated3 untreated4 treated1 treated2 treated3
+## FBgn0000003          0          0          0          0        0        0        1
+## FBgn0000008         92        161         76         70      140       88       70
+## FBgn0000014          5          1          0          0        4        0        0
+raw.count=pasillaCountTable
+
+#加载条件
+data(pasillaGenes)
+dim(pasillaGenes)
+## Features  Samples 
+## 14470        7
+
+# 进行条件设置
+# 此处要注意raw.count的排序需要与condition顺序一致
+##元数据可以分为三组，分别是样本(行名)，特征(列)和整个实验的信息。
+pasillaDesign = data.frame(
+  names = colnames( pasillaCountTable ),
+  condition = pasillaGenes$condition,
+  libType = pasillaGenes$type,
+  row.names = 1
+)
+pasillaDesign
+##            condition     libType
+## untreated1   treated single-read
+## untreated2   treated  paired-end
+## untreated3   treated  paired-end
+## untreated4 untreated single-read
+## treated1   untreated single-read
+## treated2   untreated  paired-end
+## treated3   untreated  paired-end
+coldata=pasillaDesign
+# data prepare end.
+
+
+
+
+
+
+####################
+# 开始使用DESeq2
+####################
 DESeq2包采用DESeqDataSet存储原始的read count和中间计算的统计量。
 
 构建deseq2对象
 dds <- DESeqDataSetFromMatrix(countData = raw.count, #表达矩阵
 	colData = coldata, #样品分组信息表
-	design = ~ condition) #实验设计信息，conditions必须是colData中的一列
+	design = ~ condition) #实验设计信息，conditions必须是colData中的一列的colname
 
 设置对照
-# ddscondition<−relevel(ddscondition,'Normal')
+dds$condition<−relevel(dds$condition,'Normal')  
+
+#dds$condition <- relevel(dds$condition,'untreated')
+dds$condition #level中的两项，第一个是对照。
+
 
 计算开始，样本量大的话，可以先去干点别的
 dds2 <- DESeq(dds)
+## estimating size factors
+## estimating dispersions
+## gene-wise dispersion estimates
+## mean-dispersion relationship
+## final dispersion estimates
+## fitting model and testing
+#
+## 1.estimation of size factors: estimateSizeFactors
+## 2.estimation of dispersion: estimateDispersions
+## 3.Negative Binomial GLM fitting and Wald statistics: nbinomWaldTest
+
+### more todo at last.
+
+
+get结果
+res <- results(dds2)
+head(res) # log2 fold change (MLE): condition treated vs untreated 果然是对的
+## 校正后p-value为NA的赋值为1
+#res$padj[is.na(res$padj)] = 1
+# 按pvalue排序, 把差异大的基因放前面
+res <- res[order(res$pvalue),]  #order函数是给出从小到大排序后的位置，默认decreasing = FALSE
+
+
+#设置cutoff
+resSig <- subset(res, abs(log2FoldChange)>1 & padj < 0.05) #需要先替换NA为0吧？不用NA替换为1，NA都会被过滤掉的。
+dim(resSig) #[1] 44  6
+head(resSig)
+
+
+#输出结果
+resSig<-data.frame(resSig)
+write.csv(resSig,file="DESeq2_DEG.csv")
+
+#end
+
+
+
+
+
+
+
+############
+#(可选) log2FC(LFC) vs lfcShrink
+# 为何采用lfcShrink？log2FC estimates do not account for the large dispersion we observe with low read counts.
+#因此，两种数据特别需要：低表达量占比高的；数据特别分散的
+#As with the shrinkage of dispersion estimates, LFC shrinkage uses information 
+# from all genes to generate more accurate estimates.
+
+#
+## 即使两个基因的标准化count值相似，但也可能存在不同的LFC shrinkage
+#注意：Shrinking the log2 fold changes不会改变显著差异的基因总数
+#例如，如果要根据LFC值提取差异基因，需要shrunken values
+#另外，进行功能分析例如GSEA时，需要提供shrunken values
+
+# 作者还是非常推荐使用lfcShrink的https://support.bioconductor.org/p/95695/
+# 对于新版本而言，可以这样手动操作
+resultsNames(dds2) ## [1] "Intercept"  "condition_treated_vs_untreated" #coef的参数
+#BiocManager::install("apeglm")
+library(apeglm)
+#resLFC <- lfcShrink(dds, coef="condition_treated_vs_untreated", type="apeglm")
+resLFC <- lfcShrink(dds2,coef="condition_treated_vs_untreated", type="apeglm")
+# 选择的apeglm参数(Zhu, Ibrahim, and Love 2018)进行effect size shrinkage,which improves on the previous estimator
+
+# 发现shrink前后少了一列stat
+names(resLFC)
+#[1] "baseMean"       "log2FoldChange" "lfcSE"          "pvalue"       "padj"          
+names(res)
+#[1] "baseMean"       "log2FoldChange" "lfcSE"          "stat"         "pvalue"         "padj" 
+
+
+
+
+
+
+
 
 
 
@@ -2148,20 +2432,14 @@ head(normalized_counts)
 normalized_counts_mad <- apply(normalized_counts, 1, mad)
 normalized_counts <- normalized_counts[order(normalized_counts_mad, decreasing=T), ]
 
-get结果
-res <- results(dds2)
-
-设置cutoff
-resSig <- subset(res, abs(log2FoldChange)>1 & padj < 0.01)
-
-输出结果
-resSig<-data.frame(resSig)
-write.csv(resSig,file="DEG.csv")
 
 
 
 
-如果input没有gene symbol，则这个时候依旧是没有基因名字的，你需要参考下面的教程进行注释。
+
+
+
+如果input没有gene symbol，则这个时候依旧是没有基因名字的，你需要参考下面的教程进行注释。果蝇的基因，不做了。
 生信干货~ID(ENSGxx)转Gene name的方法~
 R代码包与练习文件请到Chris生信初级教程中下载
 

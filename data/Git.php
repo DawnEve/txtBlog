@@ -50,6 +50,7 @@ return array (
     array (
 	  array('notepad++','npp', 'html'),
 	  array('sublime编辑器','sublime001', 'html'),
+	  array('vs code','vsCode', 'txt'),
 	  array('phpStorm','phpStorm001', 'md'),
     ),
   ),

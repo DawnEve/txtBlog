@@ -1472,10 +1472,11 @@ conn.close()
 ========================================
 15. 多进程
 ----------------------------------------
-Python中常用的几个并发工具：http://mingxinglai.com/cn/2016/09/python-concurrent/
+Python2 中常用的几个并发工具：http://mingxinglai.com/cn/2016/09/python-concurrent/
+
+
 
 例：启动2个子进程，并打印子进程和父进程的id。
-
 #!/usr/bin/python3
 # -*- coding: utf-8 -*-
 
@@ -1515,6 +1516,108 @@ I am always here:pid = 11824
 I am always here:ppid = 24272
 [Finished in 0.4s]
 """
+
+
+
+
+2. Python 进程池在面向对象过程中，进程池无法调用实例方法
+
+例1：bad:  https://www.v2ex.com/t/453232
+import time
+from multiprocessing.pool import Pool
+
+class Test:
+    def __init__(self):
+        self.pool = Pool(5)
+
+    def func(self):
+        time.sleep(0.2)
+        print("1")
+
+    def run(self):
+        for i in range(10):
+            self.pool.apply_async(self.func)  # 这里的 func 为什么不能进入执行？
+
+        time.sleep(3)
+        self.pool.close()
+        self.pool.join()
+
+if __name__ == '__main__':
+    t = Test()
+    t.run()
+#
+####
+# 改进后可以正常运行了：#进程池Pool不能放到self上，否则无法进入要并发运行的函数
+import time
+#from multiprocessing.pool import Pool #这个Pool也行
+from multiprocessing import Pool #这个Pool也行
+#import multiprocessing
+
+class Test():
+    def __init__(self):
+        #self.pool = multiprocessing.Pool(5) #进程池不能放到self上，否则无法进入要并发运行的函数
+        pass
+    def func(self, n):
+        time.sleep(0.2)
+        print(">>", n)
+
+    def run(self):
+        #pool=multiprocessing.Pool(5)
+        pool=Pool(5)
+        for i in range(10):
+            pool.apply_async(self.func, args=(i,))  # 这里的 func 为什么不能进入执行？
+        #time.sleep(3)
+        pool.close()
+        pool.join()
+    def runIt(self):
+        self.run();
+
+if __name__ == '__main__':
+    t = Test()
+    t.runIt()
+    print('end')
+
+###
+
+
+
+
+
+
+
+例2： ok(https://ask.csdn.net/questions/702827?sort=comments_count)
+import multiprocessing
+import time
+
+class Test(object):
+    def fun(self,n):
+        time.sleep(0.2)
+        print('----', n) #可以打印
+
+    def run(self):
+        p = multiprocessing.Pool(4)
+        for i in range(4):
+            p.apply_async(self.fun, args=(i,))
+        p.close()
+        p.join()
+        print('end')
+
+if __name__ == '__main__':
+    a = Test()
+    a.run()
+#
+
+
+
+
+
+3. Python3之无法在进程池中使用队列Queue的解决方案
+https://blog.csdn.net/qq_33733970/article/details/77832685
+https://blog.csdn.net/zbrj12345/article/details/79766895
+
+self.queue=multiprocessing.Manager().Queue();
+
+
 
 
 
@@ -1643,6 +1746,208 @@ if __name__ == '__main__':
 
 print(time.time()-start,'s <', '='*10, "End of main process[", os.getpid(),']', sep="")
 print("#"*40,"\nLog file: "+ os.getcwd()+"/"+log_file_name)
+
+
+
+
+========================================
+|-- 多进程实例2: OOP版并行运行Linux命令 ParallelMe.py
+----------------------------------------
+第1小结是该类的定义。具体使用方法，请参考本文第2小结。
+
+
+使用方法简单，只需要import引用，定义好
+1)单个id可运行的自定义函数，返回需要的结果，或者直接函数内部做IO，返回空字符串或者返回id；建议用绝对路径;
+2)id列表文件
+3)定义好输出日志，里面记录着id和自定义函数的返回值。
+
+难点：自定义函数的定义。
+易错点：自定义函数是否需要临时文件夹？如果需要，还需要继续编码解决该问题，否则还会混乱。
+
+
+
+1. 自定义类 ParallelMe.py
+
+# define a class: ParallelMe[Run on Linux only!]
+# version: 0.2.1
+import subprocess
+import time,multiprocessing,os,re,random,datetime
+
+class ParallelMe(object):    
+    #初始化属性
+    def __init__(self, doLinuxCMD_fn, id_list_file, core=3, hint_n=5,log_file_name='logs.txt',uniqLogName=False):
+        """
+        待批量处理的函数 doLinuxCMD_fn 仅仅依赖一个id，然后id的list在文件 id_list_file 中提供。
+        if hint_n定义几次，就出几次进度提示，默认提示5次,最小是1次;
+        uniqLogName==True时，会对log文件加时间戳后缀，默认不加时间戳;
+        """
+        # 必选值
+        self.doLinuxCMD=doLinuxCMD_fn
+        self.id_list_file=id_list_file
+        #默认值
+        self.core=core #使用的CPU逻辑核心数。该数字 x linux命令使用的线程数 要小于硬件CPU逻辑核心数
+        self.hint_n=hint_n;
+        self.log_file_name=log_file_name; #输出日志的文件名，内容是： id号 运行状态(0表示正常，否则表示异常) 
+        #需要处理
+        #self.uniqLogName=uniqLogName;#这个文件名要加上时间戳，防止忘了修改日志文件名而被覆盖掉
+        if uniqLogName:
+            timsString=time.strftime("%Y%m%d-%H%M%S", time.localtime()) 
+            self.log_file_name=log_file_name + timsString
+        #
+        #self.q=Queue(core+5) #创建队列
+        self.queue=multiprocessing.Manager().Queue(core+5);
+    
+    #定义worker: 读和处理数据，并行
+    def worker(self, cb):
+        #print("worker===> ",cb, os.getpid() );
+        #一个很耗时的计算
+        rs=str(cb)+"\t"+str( self.doLinuxCMD(cb) ) #part2 中定义的
+        self.queue.put(rs)   #结果输出到管道
+    
+    #保存的线程1个
+    def writer(self,log_file_name,ID_total,hint_n=10):
+        hit_n=int(hint_n);
+        if hint_n<1:
+            hint_n=1;
+        breaks=int(ID_total/hint_n) #显示hint_n次进度提示
+        i=0
+        with open(log_file_name, 'w') as f: #这里不能是变量名？
+            while True:
+                if i%breaks==0 or i==ID_total: #进度条
+                    print(i," items processed in ", round(time.time()-self.start, 2)," seconds",sep="")
+                # 如果所有条目都保存过了，则退出死循环                
+                if(i==ID_total):
+                    break;
+                i+=1
+                rs=self.queue.get() #waite while queue is empty
+                f.write(rs+"\n") #写入文件
+                f.flush() #刷新缓存，一次性输出到文件
+    
+    #主进程: 向进程池中提交任务，交给并行的worker()来处理
+    def main(self):
+        #1. 声明进程池对象
+        pool=multiprocessing.Pool(self.core)
+        #2. 读取id_list_file文件，分配任务给进程
+        fr=open(self.id_list_file,'r')
+        lines=fr.readlines();
+        ID_total=len(lines);
+        for lineR in lines:
+            line=lineR.strip()
+            arr=re.split(' ',line) ##print("start new process", line) #任务是一次发送完的
+            pool.apply_async( self.worker, args=(arr[0],) )
+        fr.close() #关闭文件
+
+        #3. 分完任务，开始启动保存进程，由writer()函数来处理
+        pOut = multiprocessing.Process(target=self.writer, args=(self.log_file_name,ID_total,self.hint_n,)) # args：元组参数，如果参数就一个，记得加逗号’，’
+        pOut.start()
+
+        #4. 等待读进程worker()全部结束
+        pool.close()
+        pool.join()
+        #5. 等待写循环结束
+        pOut.join()
+    
+    #运行
+    def run(self):
+        #输出运行参数
+        self.start=time.time();#启动时的时间
+        print("function name:", self.doLinuxCMD);
+        print("id list file:", self.id_list_file);
+        print('CPU core number:', self.core);
+        print('hint number:', self.hint_n);
+        print('log_file_name:', self.log_file_name);
+        #
+        print("#"*40,'\n',datetime.datetime.now(),"\n","#"*40, sep="")
+        print('='*10, ">Begin of main process[", os.getpid(), "][child pid by parent ppid]", sep="")
+        self.main(); #开启多进程
+        print(time.time()-self.start,'s <', '='*10, "End of main process[", os.getpid(),']', sep="")
+        print("#"*40,"\nLog file: "+ os.getcwd()+"/"+self.log_file_name,"\n","#"*40, sep="")
+# end of class
+
+
+
+
+
+2. 测试 demo.py
+
+from ParallelMe import ParallelMe
+################################
+#使用三部曲
+################################
+import os,subprocess,random
+
+##part 1 定义路径
+print('Step1> define path: ',os.getcwd())
+os.chdir('/home/wangjl/test') #定义工作目录，仅对python有效。对linux命令建议都使用绝对路径。
+
+
+#part 2 定义linux命令，返回字符串，会被记录到日志文件中。
+print("Step2> define the function to be run parallelly: doLinuxCMD(id)")
+#目的：需要平行处理的linux命令。if the function can run on one id, it can run on a list of ids.
+#要点： 使用id拼接linux命令。建议都用绝对路径。
+def doLinuxCMD(id):
+    #构建命令，很复杂的linux命令
+    cmd="sleep "+str(random.randint(0,4)); #这个linux命令为休眠一段时间。可以是linux脚本，有输入和输出，建议用绝对路径。
+    #执行linux命令
+    (status, output)=subprocess.getstatusoutput(cmd)
+    #print(output) #查看linux命令输出到屏幕上的文字
+    rs=str(status)+"\t"+output# +"\t"+str(os.getpid())+"\t"+str(os.getppid());
+    return rs #返回状态码status，0表示命令正常执行，其他表示异常，需要查看output推测具体原因
+#test
+#doLinuxCMD(1) #status output pid ppid
+
+
+#part 3 批量运行该linux命令
+print("Step3> run the function parallelly");
+#doLinuxCMD为函数，要有str返回值
+#id_list为id列表文本文件名，一个id一行。建议用绝对路径
+#core为并行个数(默认是3)，要小于CPU个数，但是超过id总个数也没有意义;
+id_list="/home/wangjl/test/a.txt"
+myTasks=ParallelMe(doLinuxCMD, id_list, core=55);
+myTasks.run()
+
+
+
+
+
+
+
+3. 运行和输出结果
+id list就是一行一个id号即可
+$ head /home/wangjl/test/a.txt
+1
+2
+3
+或者字符串。
+
+
+$ python demo.py
+Step1> define path:  /home/wangjl/test
+Step2> define the function to be run parallelly: doLinuxCMD(id)
+Step3> run the function parallelly
+function name: <function doLinuxCMD at 0x7ffb11f8b1e0>
+id list file: /home/wangjl/test/a.txt
+CPU core number: 55
+hint number: 5
+log_file_name: logs.txt
+########################################
+2019-09-14 13:14:29.823499
+########################################
+==========>Begin of main process[381837][child pid by parent ppid]
+0 items processed in 0.12 seconds
+10 items processed in 1.09 seconds
+20 items processed in 2.09 seconds
+30 items processed in 2.12 seconds
+40 items processed in 3.11 seconds
+50 items processed in 4.13 seconds
+4.265288829803467s <==========End of main process[381837]
+########################################
+Log file: /home/wangjl/test/logs.txt
+########################################
+
+
+
+
 
 
 

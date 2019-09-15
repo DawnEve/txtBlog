@@ -1649,12 +1649,21 @@ browseVignettes("DEXSeq") #弹出网页包含pdf文档和示例代码。由于�
 
 
 2.sam文件转换成counts数据
+#第一步：计数
+
 (1)把gtf文件转为gff文件
+# 找到DEXSeq提供的python角本的路径。
+system.file('python_scripts', package='DEXSeq')
+# [1] "/home/wangjl/R/x86_64-pc-linux-gnu-library/3.6/DEXSeq/python_scripts"
+#$ python ~/projects/RLib.3.01/DEXSeq/python_scripts/dexseq_prepare_annotation.py Homo_sapiens.GRCh37.75.fixed.gtf DEXSeq.hg19.gene.gff
+## # 注意的是，gtf文件必须与mapping的基因组一致，尤其是染色体的名字要一致，注意mapping的bam文件和gtf中是chr1还是1.
+
 > pythonScriptsDir = system.file( "python_scripts", package="DEXSeq" )
 > list.files(pythonScriptsDir)
 ## [1] "dexseq_count.py"              "dexseq_prepare_annotation.py"
 
 官方推荐句子：python /path/to/library/DEXSeq/python_scripts/dexseq_prepare_annotation.py Drosophila_melanogaster.BDGP5.72.gtf Dmel.BDGP5.25.62.DEXSeq.chr.gff
+
 
 因为一直报错，有人说是版本问题，就改用py2试试。需要重新安装py2的HTSeq包。
 $ pip2 install --user HTSeq
@@ -1666,17 +1675,29 @@ $ python2 /data/software/bcbio/anaconda/lib/R/library/DEXSeq/python_scripts/dexs
 
 
 (2).而后使用dexseq_count.py来计数每个exon上的reads数。 Counting reads
+#$ python ~/projectGREEN/RLib.3.01/DEXSeq/python_scripts/dexseq_count.py \
+#    -p no -s yes -a 10 -f bam ~/DEXSeq/DEXSeq.hg19.gene.gff bam.file out.counts
+#参数-p指出mapping文件是否是pair end文件，默认no。
+#参数-s表示是否是stranded，默认为yes。
+#-f指输入文件的格式，默认为sam。bam需要安装 pysam包。
+# -a to specify the minimum alignment quality，sam文件第五列。跳过低于该值的。
+
+# 在运行计数结束之后，需要检查一下最后四行，看看empty的多不多，如果超过20%，可能需要检查一下mapping的结果
+#，当然也可能是计数文件准备错误，比如mapping结果没有index等等。如果以上都不是，那可能是polyA太多了。
+
+
+
+
 $ cd /home/wangjl/data/apa/190705PAS/test/
 $ samtools view -h c01_ROW07.bam >c01_ROW07.sam
 $ python2 /data/software/bcbio/anaconda/lib/R/library/DEXSeq/python_scripts/dexseq_count.py -p no -s yes -a 10 \
 /home/wangjl/data/ref/hg19/gencode.v30lift37.annotation.gff  c01_ROW07.sam c01_ROW07.counts
 
-在这里，参数-p指出mapping文件是否是pair end文件，默认no。
-参数-s表示是否是stranded，默认为yes。
--f指输入文件的格式，默认为sam。
 
 
-(3)批量化
+
+
+(3)批量化计数
 /home/wangjl/data/apa/190705PAS/MAPQ255/c01_ROW07.bam 
 
 同步化的syncHeLa:
@@ -1697,31 +1718,173 @@ python2 /data/software/bcbio/anaconda/lib/R/library/DEXSeq/python_scripts/dexseq
 
 
 
-3.读入R环境中
-library("DEXSeq") ## suppressPackageStartupMessages(library("DEXSeq"))
-#BiocManager::install("pasilla")
-library("pasilla")
-library("DEXSeq")
 
+
+
+
+
+
+
+3.读入R环境中
+# 在R中读入计数数据，需要准备好计数文件，实验设计，以及前面用到的gff文件。
+#在这里，我们使用Bioconductor中已有的pasilla数据来示例。
+library("DEXSeq")
+#1.count file names
 inDir <- system.file("extdata", package="pasilla")
 countFiles <- list.files(inDir, pattern="fb.txt$", full.names=TRUE)
 basename(countFiles)
+## [1] "treated1fb.txt"   "treated2fb.txt"   "treated3fb.txt"   "untreated1fb.txt" "untreated2fb.txt" 
+## [6] "untreated3fb.txt" "untreated4fb.txt"
+
+
+#2.gff
+gffFile <- list.files(inDir, pattern="gff$", full.names=TRUE) #Dmel.BDGP5.25.62.DEXSeq.chr.gff
+##注意，如果是自己的数据的话，比如之前示例使用的是DEXSeq.hg19.gene.gff，这里就用DEXSeq.hg19.gene.gff
+
+##实验设计
+sampleTable <- data.frame(row.names=c(paste("treated", 1:3, sep=""), paste("untreated", 1:4, sep="")),
+                          condition=rep(c("knockdown", "control"), c(3, 4)))
+sampleTable
+##            condition
+## treated1   knockdown
+## treated2   knockdown
+## treated3   knockdown
+## untreated1   control
+## untreated2   control
+## untreated3   control
+## untreated4   control
+
+
+dxd <- DEXSeqDataSetFromHTSeq(
+  countFiles,
+  sampleData=sampleTable,
+  design= ~sample + exon + condition:exon,
+  flattenedfile=gffFile)
+## converting counts to integer mode
+dim(dxd) #[1] 70463    14
+head(dxd)
+
+#查看矩阵
+dim(featureCounts(dxd)) #[1] 70463     7
+head( featureCounts(dxd), 5 )
+
+
+# 第三步：获得差异表达数据
+#只需要一步
+dxr <- DEXSeq(dxd) #耗时
+head(dxr)
+
+## 对于结果dxr，可以直接视为data.frame来操作。也可以使用as.data.frame来转换它。
+## 结合使用plotDEXSeq就可以查看自己感兴趣的目标基因中的exon的表达情况。
+head(unique(dxr$groupID))
+plotDEXSeq(dxr, geneID='FBgn0000014')
+plotDEXSeq(dxr, geneID='FBgn0010909')
+plotDEXSeq( dxr, "FBgn0010909", displayTranscripts=TRUE, legend=TRUE, cex.axis=1.2, cex=1.3, lwd=2 )
 
 
 
-> gffFile <- list.files(inDir, pattern="gff$", full.names=TRUE) ##注意，如果是自己的数据的话，比如之前示例使用的是DEXSeq.hg19.gene.gff，这里就用DEXSeq.hg19.gene.gff
+#
+########################begin 可选的三步法
+## 同DESeq一样，它分为三个步骤：normalization, Dispersion estimation 以及 testing for differential exon usage。
+dxd2 <- estimateSizeFactors(dxd) #第一步
+dxd3 <- estimateDispersions(dxd2) #第二步，耗时。此时可以使用plotDispEsts(dxd)来观察离散情况
+plotDispEsts(dxd3)
+## Figure 1: Fit Diagnostics
+## The initial per-exon dispersion estimates (shown by black points), the fitted 
+## mean-dispersion values function (red line), and the shrinked values in blue
+dxd4 <- testForDEU(dxd3) #第三步: differential exon usage (DEU)
+#dxd5 <- estimateExonFoldChanges(dxd4, fitExptoVar="condition")
+##  Error in estimateExonFoldChanges(dxd4, fitExptoVar = "condition") : 
+## unused argument (fitExptoVar = "condition")
+dxd5 <- estimateExonFoldChanges(dxd4)
+dxr2 <- DEXSeqResults(dxd5) #可以使用plotMA(dxr1)来查看结果
+head(dxr2)
+#
+dxr[1:4,1:4]
+dxr2[1:4,1:4] #一模一样
+########################end
 
-> ##实验设计
-> sampleTable <- data.frame(row.names=c(paste("treated", 1:3, sep=""), paste("untreated", 1:4, sep="")),
-+ condition=rep(c("knockdown", "control"), c(3, 4)))
->
-> dxd <- DEXSeqDataSetFromHTSeq(
-+ countFiles,
-+ sampleData=sampleTable,
-+ design= ˜ sample + exon + condition:exon,
-+ flattenedfile=gffFile)
 
 
+
+plotMA(dxr2)
+mcols(dxr2)$description #描述意义
+
+#  how many exonic regions are significant with a false discovery rate of 10%:
+table ( dxr2$padj < 0.1 )
+## FALSE  TRUE 
+## 42985   233
+
+##may also ask how many genes are affected
+table ( tapply( dxr2$padj < 0.1, dxr2$groupID, any ) )
+## FALSE  TRUE 
+## 5220   166
+
+plotMA( dxr2, cex=0.8 ) ## Figure 2: MA plot
+## Mean expression versus log2 fold change plot. Significant hits at an FDR=0.1 are coloured in red.
+
+#查看样本注释信息
+sampleAnnotation(dxd)
+
+## 其他技术和实验因素 6
+
+
+#具体基因外显子的可视化
+plotDEXSeq( dxr2, "FBgn0010909", legend=TRUE, cex.axis=1.2, cex=1.3, lwd=2 ) ## Figure 3: Fitted expression
+## The plot represents the expression estimates from a call to testForDEU(). 
+##  Shown in red is the exon that showed significant differential exon usage.
+
+# 每个样品 with normalized count values of each exon in each of the samples.
+plotDEXSeq( dxr2, "FBgn0010909", expression=FALSE, norCounts=TRUE, 
+            legend=TRUE, cex.axis=1.2, cex=1.3, lwd=2 )
+
+# after subtraction of overall changes in gene expression.
+plotDEXSeq( dxr2, "FBgn0010909", expression=FALSE, splicing=TRUE,
+            legend=TRUE, cex.axis=1.2, cex=1.3, lwd=2 )
+#
+#把所有的显著性差异的基因的相关图片全部画一遍
+DEXSeqHTML( dxr, FDR=0.1, color=c("#FF000080", "#0000FF80") )
+getwd()
+
+
+
+
+
+
+
+
+# 不知道干啥用的
+wh = (dxr2$groupID=="FBgn0010909")
+stopifnot( sum(dxr2$padj[wh] < formals(plotDEXSeq)$FDR)==1 )
+
+
+##
+# 查看gene
+head( geneIDs(dxd) )
+## [1] "FBgn0000003" "FBgn0000008" "FBgn0000008" "FBgn0000008" "FBgn0000008" "FBgn0000008"
+
+# 查看外显子
+head( exonIDs(dxd) )
+## [1] "E001" "E001" "E002" "E003" "E004" "E005"
+
+
+## Overlap operations
+interestingRegion = GRanges( "chr2L", IRanges(start=3872658, end=3875302) )
+subsetByOverlaps( x=dxr, ranges=interestingRegion )
+#
+#This functions could be useful for further downstream analysis.
+findOverlaps( query=dxr2, subject=interestingRegion )
+## queryLength: 70463 / subjectLength: 1
+
+
+
+
+#
+library(ggplot2)
+ggplot(as.data.frame(dxr2), aes( log10(exonBaseMean), log2fold_knockdown_control) )+ geom_point()
+
+library(ggplot2)
+ggplot(as.data.frame(dxr2), aes( log10(exonBaseMean), dispersion) )+ geom_point()
 
 
 
@@ -1734,6 +1897,15 @@ refer:
 2.http://www.bio-info-trainee.com/bioconductor_China/software/DEXSeq.html
 3.http://www.biotrainee.com/thread-1220-1-1.html
 
+4. #软件工具#使用DEXSeq分析NGS数据中的exon表达差异 泊客  云生信学生物信息学  2016-10-26
+
+
+
+
+========================================
+|-- 加权基因共表达网络分析 (WGCNA, Weighted correlation network analysis)
+----------------------------------------
+https://mp.weixin.qq.com/s?__biz=MzI5MTcwNjA4NQ==&mid=2247485220&idx=1&sn=007188964e7c43d75dcd0b11b880bbfa&scene=21#wechat_redirect
 
 
 
@@ -2293,7 +2465,17 @@ P50454	red
 ========================================
 |-- GSEA富集分析 - 界面操作-命令行操作
 ----------------------------------------
+GSEA富集分析 - 界面操作  生信宝典  2017-10-14
 https://mp.weixin.qq.com/s?__biz=MzI5MTcwNjA4NQ==&mid=2247484582&idx=1&sn=1e01276e1216c91bd6e1e08db15bd905
+
+一文掌握GSEA，超详细教程  生信宝典  2019.4月26日
+https://mp.weixin.qq.com/s?__biz=MzI5MTcwNjA4NQ==&mid=2247488358&idx=1&sn=4c1c15b6467ff7f8bd7fe95400bbc1df
+
+GO、GSEA富集分析一网打进
+https://mp.weixin.qq.com/s?__biz=MzI5MTcwNjA4NQ==&mid=2247484594&idx=1&sn=77c8a84ceaae6b672f198ebd531c21e4
+
+
+
 
 Gene Set Enrichment Analysis (基因集富集分析)用来评估一个预先定义的基因集的基因在与表型相关度排序的基因表中的分布趋势，从而判断其对表型的贡献。其输入数据包含两部分，一是已知功能的基因集 (可以是GO注释、MsigDB的注释或其它符合格式的基因集定义)，一是表达矩阵，软件会对基因根据其于表型的关联度(可以理解为表达值的变化)从大到小排序，然后判断基因集内每条注释下的基因是否富集于表型相关度排序后基因表的上部或下部，从而判断此基因集内基因的协同变化对表型变化的影响。
 
@@ -2353,8 +2535,6 @@ java -Xmx512m xtools.gsea.Gsea -res F:\Temp\DESeq2\hela.count.nons_sync.txt -cls
 ========================================
 提取参考基因组某位置的碱基(4种方法)： 根据基因组坐标获得碱基序列(注意bed文件是0-based)
 ----------------------------------------
-
-
 
 1. 利用samtools faidx
 samtools faidx 常常用来对参考基因组建立索引，但它还有个鲜为人知的功能，就是序列提取，如下：
