@@ -250,6 +250,7 @@ $ awk '{print $1}' /data/jinwf/wangjl/ref/hg19/gencode.v30lift37.metadata.HGNC |
 $ awk '{print $1}' /data/jinwf/wangjl/ref/hg19/gencode.v30lift37.metadata.HGNC |sort|uniq -c |sort -k 1nr|head -n 35|awk '{c+=$1}END{print c}'
 ## 81
 
+
 抽检：
 #都是miRNA?
 $ grep "ENST00000422679.1" /data/jinwf/wangjl/ref/hg19/gencode.v30lift37.metadata.HGNC
@@ -292,6 +293,399 @@ $ cat notOneLine_Uniq.enid |xargs -I{} grep {}  gencode.v30lift37.metadata.HGNC 
 81     162    2241
 $ cat notOneLine_Uniq.enid |xargs -I{} grep {}  gencode.v30lift37.metadata.HGNC >notOneLine_Uniq.anno
 # 使用sed和grep，以及notOneLine_Uniq.enid文件(35个uniq_enid)、genenames网站进行整理
+
+
+
+
+
+
+
+========================================
+|-- 初步了解 gencode hg19 gtf注释文件的内容
+----------------------------------------
+1.从 gencode 下载的hg19的gtf
+
+$ wc gencode.v30lift37.annotation.gtf
+2,782,644  117102114 1475050053 gencode.v30lift37.annotation.gtf
+278万行
+
+$ head gencode.v30lift37.annotation.gtf
+#description: evidence-based annotation of the human genome, version 30 (Ensembl 96), mapped to GRCh37 with gencode-backmap
+#provider: GENCODE
+#contact: gencode-help@ebi.ac.uk
+#format: gtf
+#date: 2019-04-02
+chr1	HAVANA	gene	11869	14409	.	+	.	gene_id "ENSG00000223972.5_2"; gene_type "transcribed_unprocessed_pseudogene"; gene_name "DDX11L1"; level 2; havana_gene "OTTHUMG00000000961.2_2"; remap_status "full_contig"; remap_num_mappings 1; remap_target_status "overlap";
+chr1	HAVANA	transcript	11869	14409	.	+	.	gene_id "ENSG00000223972.5_2"; transcript_id "ENST00000456328.2_1"; gene_type "transcribed_unprocessed_pseudogene"; gene_name "DDX11L1"; transcript_type "processed_transcript"; transcript_name "DDX11L1-202"; level 2; transcript_support_level 1; tag "basic"; havana_gene "OTTHUMG00000000961.2_2"; havana_transcript "OTTHUMT00000362751.1_1"; remap_num_mappings 1; remap_status "full_contig"; remap_target_status "overlap";
+chr1	HAVANA	exon	11869	12227	.	+	.	gene_id "ENSG00000223972.5_2"; transcript_id "ENST00000456328.2_1"; gene_type "transcribed_unprocessed_pseudogene"; gene_name "DDX11L1"; transcript_type "processed_transcript"; transcript_name "DDX11L1-202"; exon_number 1; exon_id "ENSE00002234944.1_1"; level 2; transcript_support_level 1; tag "basic"; havana_gene "OTTHUMG00000000961.2_2"; havana_transcript "OTTHUMT00000362751.1_1"; remap_original_location "chr1:+:11869-12227"; remap_status "full_contig";
+
+
+$ cat gencode.v30lift37.annotation.gtf |grep -v '^#' | head
+过滤掉前面#开头的注释行
+
+
+
+
+
+
+2. 逐列统计频数
+(1)第一列：有哪些染色体？
+$ cat gencode.v30lift37.annotation.gtf |grep -v '^#' | awk '{print $1}'|sort | uniq
+加上一列计数信息：
+$ cat gencode.v30lift37.annotation.gtf |grep -v '^#' | awk '{print $1}'|sort | uniq -c | sort -k 1nr
+ 253720 chr1
+ 207187 chr2
+ 175335 chr3
+ 172471 chr17
+ 170340 chr19
+ 169221 chr11
+ 161081 chr12
+ 132731 chr7
+ 132517 chr16
+ 126051 chr6
+ 122586 chr5
+ 110668 chr4
+ 102978 chr10
+ 101377 chr15
+  99878 chr8
+  98565 chr9
+  97617 chr14
+  91658 chrX
+  62301 chr20
+  61307 chr22
+  49028 chr18
+  43805 chr13
+  29946 chr21
+   9548 chrY
+    288 GL000195.1
+    143 chrM
+     98 GL000220.1
+     73 GL000212.1
+     33 GL000193.1
+     27 GL000205.1
+     24 GL000228.1
+     11 GL000241.1
+      9 GL000204.1
+      6 GL000202.1
+      4 GL000192.1
+      4 GL000237.1
+      3 GL000199.1
+
+(2)第二列: 信息来源
+$ cat gencode.v30lift37.annotation.gtf |grep -v '^#' | awk '{print $2}'|sort | uniq -c | sort -k 1nr
+2532349 HAVANA
+ 250290 ENSEMBL
+
+#HAVANA是啥？
+http://www.bio-info-trainee.com/1991.html
+该基因的记录，发现竟然有HAVANA和ENSEMBL的区别~~~
+HAVANA 是一个验证团队 the Human and Vertebrate Analysis and Annotation (HAVANA) team 
+For human, mouse, zebrafish, rat and pig, Ensembl not only shows transcripts that are annotated automatically using the Ensembl genebuild pipeline, but also transcripts that are manually annotated by the HAVANA team. 
+https://www.sanger.ac.uk/science/groups/vertebrate-annotation
+
+
+
+(3)第三列：注释类型
+$ cat gencode.v30lift37.annotation.gtf |grep -v '^#' | awk '{print $3}'|sort | uniq -c | sort -k 1nr
+1283656 exon
+ 754117 CDS
+ 307067 UTR
+ 210425 transcript
+  87203 start_codon
+  79422 stop_codon
+  60627 gene
+    122 Selenocysteine
+按条目数量排序：外显子>转录本>基因。后面我们只关心6万行的gene注释行：
+$ cat gencode.v30lift37.annotation.gtf |grep -v '^#' | awk '$3=="gene"{print $3}'|sort | uniq -c | sort -k 1nr
+  60627 gene
+#
+
+# Selenocysteine ##硒代半胱氨酸，忽略吧，比较少。
+$ head gencode.v30lift37.annotation.gtf -n 100000000|grep -v "^#"| awk '$3=="Selenocysteine"{print $0}'|head
+chr1	HAVANA	Selenocysteine	26128584	26128586	.	+	.	gene_id "ENSG00000162430.17_6"; transcript_id "ENST00000361547.7_2"; gene_type "protein_coding"; gene_name "SELENON"; transcript_type "protein_coding"; transcript_name "SELENON-202"; level 2; protein_id "ENSP00000355141.2"; transcript_support_level 1; tag "basic"; tag "MANE_Select"; tag "appris_principal_4"; tag "CCDS"; tag "seleno"; ccdsid "CCDS41282.1"; havana_gene "OTTHUMG00000007375.5_6"; havana_transcript "OTTHUMT00000019314.3_2"; remap_original_location "chr1:+:25802093-25802095"; remap_status "full_contig";
+chr1	HAVANA	Selenocysteine	26139280	26139282	.	+	.	gene_id "ENSG00000162430.17_6"; transcript_id "ENST00000361547.7_2"; gene_type "protein_coding"; gene_name "SELENON"; transcript_type "protein_coding"; transcript_name "SELENON-202"; level 2; protein_id "ENSP00000355141.2"; transcript_support_level 1; tag "basic"; tag "MANE_Select"; tag "appris_principal_4"; tag "CCDS"; tag "seleno"; ccdsid "CCDS41282.1"; havana_gene "OTTHUMG00000007375.5_6"; havana_transcript "OTTHUMT00000019314.3_2"; remap_original_location "chr1:+:25812789-25812791"; remap_status "full_contig";
+chr1	HAVANA	Selenocysteine	54370377	54370379	.	+	.	gene_id "ENSG00000211452.10_4"; transcript_id "ENST00000529589.5_1"; gene_type "protein_coding"; gene_name "DIO1"; transcript_type "protein_coding"; transcript_name "DIO1-211"; level 2; protein_id "ENSP00000432797.1"; transcript_support_level 3; tag "mRNA_end_NF"; tag "cds_end_NF"; tag "seleno"; havana_gene "OTTHUMG00000008435.5_4"; havana_transcript "OTTHUMT00000388166.2_1"; remap_original_location "chr1:+:53904704-53904706"; remap_status "full_contig";
+
+
+
+(4)接着
+第4列 start坐标， 
+第5列end坐标，
+第6列、8列在(第三列==)gene行全是.号：
+$ cat gencode.v30lift37.annotation.gtf |grep -v '^#' | awk '$3=="gene"{print $6}'|sort | uniq -c | sort -k 1nr
+  60627 .
+#
+第7列是 strand信息:
+$ cat gencode.v30lift37.annotation.gtf |grep -v '^#' | awk '$3=="gene"{print $7}'|sort | uniq -c | sort -k 1nr
+  30490 +
+  30137 -
+#
+第9列是最多信息的，要指定用\t做分隔符：
+$ cat gencode.v30lift37.annotation.gtf |grep -v '^#' | awk -F '\t' '$3=="gene"{print $9}'|head
+gene_id "ENSG00000223972.5_2"; gene_type "transcribed_unprocessed_pseudogene"; gene_name "DDX11L1"; level 2; havana_gene "OTTHUMG00000000961.2_2"; remap_status "full_contig"; remap_num_mappings 1; remap_target_status "overlap";
+gene_id "ENSG00000227232.5_2"; gene_type "unprocessed_pseudogene"; gene_name "WASH7P"; level 2; havana_gene "OTTHUMG00000000958.1_2"; remap_status "full_contig"; remap_num_mappings 1; remap_target_status "overlap";
+gene_id "ENSG00000243485.5_5"; gene_type "lincRNA"; gene_name "MIR1302-2HG"; level 2; tag "ncRNA_host"; havana_gene "OTTHUMG00000000959.2_5"; remap_status "full_contig"; remap_num_mappings 1; remap_target_status "overlap";
+gene_id "ENSG00000237613.2_2"; gene_type "lincRNA"; gene_name "FAM138A"; level 2; havana_gene "OTTHUMG00000000960.1_2"; remap_status "full_contig"; remap_num_mappings 1; remap_target_status "overlap";
+
+
+(5) 对gene行第9列统计gene_type类型
+$ cat gencode.v30lift37.annotation.gtf |grep -v '^#' | awk -F '\t' '$3=="gene"{print $9}'|awk -F'; ' '{print $2}'|awk -F' ' '$1=="gene_type"{print $2}'|wc
+  60627   60627  980399
+# 确实取出来了所有gene行的gene_type属性值。
+
+
+接着看这些属性值的频数：
+$ cat gencode.v30lift37.annotation.gtf |grep -v '^#' | awk -F '\t' '$3=="gene"{print $9}'|awk -F'; ' '{print $2}'|awk -F' ' '$1=="gene_type"{print $2}'|sort|uniq -c |sort -k 1nr
+  20124 "protein_coding"
+  10100 "processed_pseudogene"
+   7754 "lincRNA"
+   5623 "antisense"
+   3043 "miRNA"
+   2537 "unprocessed_pseudogene"
+   2032 "misc_RNA"
+   1914 "snRNA"
+   1458 "snoRNA"
+   1022 "TEC"
+    898 "sense_intronic"
+    857 "transcribed_unprocessed_pseudogene"
+    619 "processed_transcript"
+    495 "rRNA_pseudogene"
+    481 "transcribed_processed_pseudogene"
+    402 "pseudogene"
+    191 "IG_V_pseudogene"
+    182 "sense_overlapping"
+    142 "IG_V_gene"
+    124 "transcribed_unitary_pseudogene"
+     96 "unitary_pseudogene"
+     94 "TR_V_gene"
+     87 "bidirectional_promoter_lncRNA"
+     73 "TR_J_gene"
+     47 "rRNA"
+     40 "polymorphic_pseudogene"
+     37 "IG_D_gene"
+     33 "3prime_overlapping_ncRNA"
+     33 "TR_V_pseudogene"
+     22 "Mt_tRNA"
+     18 "IG_J_gene"
+     14 "IG_C_gene"
+      9 "IG_C_pseudogene"
+      5 "TR_C_gene"
+      5 "TR_J_pseudogene"
+      4 "TR_D_gene"
+      3 "IG_J_pseudogene"
+      2 "Mt_rRNA"
+      2 "translated_processed_pseudogene"
+      1 "IG_pseudogene"
+      1 "macro_lncRNA"
+      1 "non_coding"
+      1 "scRNA"
+      1 "vaultRNA"
+#
+
+
+
+
+3. 获取主流gene name列表
+  20124 "protein_coding"
+  10100 "processed_pseudogene" #处理的假基因
+   7754 "lincRNA"
+   5623 "antisense"
+   3043 "miRNA"
+   2537 "unprocessed_pseudogene" #未处理的假基因
+   2032 "misc_RNA"
+   1914 "snRNA"
+   1458 "snoRNA"
+#
+(1)"protein_coding"
+$ cat gencode.v30lift37.annotation.gtf |grep -v '^#' | awk -F '\t' '$3=="gene"{print $0}'| grep '"protein_coding"'|wc
+  20124  496806 5165682
+#行数够了，上面这一行可以直接转存成子gtf文件。
+$ cat gencode.v30lift37.annotation.gtf |grep -v '^#' | awk -F '\t' '$3=="gene"{print $9}'| grep '"protein_coding"'|awk -F'; gene_name "' '{print $2}'|awk -F'"' '{print $1}'>protein_coding.hg19.gene_name
+$ wc protein_coding.hg19.gene_name
+## 20124  20124 133777 protein_coding.gene_name
+$ head protein_coding.hg19.gene_name
+OR4F5
+AL627309.1
+OR4F29
+OR4F16
+SAMD11
+NOC2L
+KLHL17
+PLEKHN1
+PERM1
+HES4
+
+#
+$ cat protein_coding.hg19.gene_name |sort|uniq |wc
+  20083   20083  133495
+#还真的有41个重复：
+$ cat protein_coding.hg19.gene_name |sort|uniq -c |sort -k 1nr | awk '$1>1{print $0}'
+      2 ABCF2
+      2 AC020922.1
+      2 AC093323.1
+      2 AHRR
+      2 AKAP17A
+      2 AL357673.1
+      2 AL590560.1
+      2 AL645922.1
+      2 ASMT
+      2 ASMTL
+      2 ATF7
+      2 ATXN7
+      2 CD99
+      2 CRLF2
+      2 CSF2RA
+      2 DHRSX
+      2 DIABLO
+      2 GGT1
+      2 GTPBP6
+      2 HIST2H2AA4
+      2 HSPA14
+      2 IGF2
+      2 IL3RA
+      2 IL9R
+      2 MAGEA9B
+      2 MATR3
+      2 P2RY8
+      2 PDE11A
+      2 PINX1
+      2 PLCXD1
+      2 POLR2J3
+      2 PPP2R3B
+      2 PRSS50
+      2 SCO2
+      2 SHOX
+      2 SLC25A6
+      2 SOD2
+      2 SPRY3
+      2 TBCE
+      2 VAMP7
+      2 ZBED1
+#
+
+抽检原因？
+$ awk '$3=="gene"{print $0}' gencode.v30lift37.annotation.gtf |grep '"ABCF2"'
+chr7	HAVANA	gene	150904923	150924252	.	-	.	gene_id "ENSG00000285292.1_3"; gene_type "protein_coding"; gene_name "ABCF2"; level 2; tag "overlapping_locus"; havana_gene "OTTHUMG00000154570.4_3"; remap_status "full_contig"; remap_num_mappings 1; remap_target_status "overlap";
+chr7	HAVANA	gene	150908570	150924291	.	-	.	gene_id "ENSG00000033050.9_4"; gene_type "protein_coding"; gene_name "ABCF2"; level 2; tag "overlapping_locus"; havana_gene "OTTHUMG00000192398.2_4"; remap_status "full_contig"; remap_num_mappings 1; remap_target_status "overlap";
+
+这明明是2个转录本，注释成基因，我认为gtf这点是错的！
+$ awk '$3=="transcript"{print $0}' gencode.v30lift37.annotation.gtf |grep '"ABCF2"'
+
+
+
+#编号是什么意思？ENSEMBL和HAVANA都有，取哪个？感觉level 3舍弃。
+$ awk '$3=="gene"{print $0}' gencode.v30lift37.annotation.gtf |grep '"AC020922.1"'
+chr19	ENSEMBL	gene	55851254	55856561	.	+	.	gene_id "ENSG00000267531.1"; gene_type "protein_coding"; gene_status "NOVEL"; gene_name "AC020922.1"; level 3; remap_substituted_missing_target "V19";
+chr19	HAVANA	gene	55863669	55870884	.	-	.	gene_id "ENSG00000267706.3_7"; gene_type "protein_coding"; gene_name "AC020922.1"; level 2; tag "overlapping_locus"; havana_gene "OTTHUMG00000180784.4_7"; remap_status "full_contig"; remap_num_mappings 1; remap_target_status "overlap";
+
+后续需要手动处理这些重复的行。
+
+
+
+
+
+(2)  10100 "processed_pseudogene"
+假基因的产生方式
+复制(未加工假基因)：即复制后基因发生序列变化而失去功能，这样产生的假基因带有内含子，称为non-processed或duplicated pseudogenes
+反座(已加工假基因)：即mRNA转录本经过反转录为cDNA，再插入基因组，由于插入位点不合适或序列发生变化而导致失去功能。这种类型的假基因不含内含子，被称为processed pseudogenes，或retropseudogene。
+
+##
+# https://weibo.com/p/2304188088f3700102wdh2
+加工型假基因(Processed pseudogene)：由mRNA转录本逆转录成cDNA后随机整合到基因组，由于插入位点不合适或者序列发生突变而失去正常功能而形成的假基因。
+未加工型假基因(Unprocessed pseudogene)：它们都是直接由DNA序列演化而来，具有内含子-外显子的结构和调控元件。
+	未加工型假基因(Unprocessed pseudogene)又被称为复制型假基因和单一型假基因：
+	- 复制型假基因(Duplicated pseudogene):复制型假基因是基因组DNA串联复制或者染色体不均等交换过程中基因编码区或调控区发生突变，导致复制后的基因失去正常功能而成为假基因。
+	- 单一型假基因(Unitary pseudogene):单一型假基因是原本具有功能的单一拷贝基因在编码区或调控区发生自发突变(Spontaneous mutations)，导致该基因无法转录和翻译而成为假基因。
+#
+
+在Swiss-Prot/TrEMBL收录的编码蛋白质的将近25500个基因序列中，约10%在基因组中有一个或多个近全长已加工假基因。其余的功能基因都没有已加工假基因。
+  20124 "protein_coding"
+  10100 "processed_pseudogene"
+    481 "transcribed_processed_pseudogene"
+      2 "translated_processed_pseudogene"
+
+#
+核糖体蛋白基因具有最多数量的已加工假基因，约有1700个（占已加工假基因数的22%），少数基因，如cyclophilinA、肌动蛋白（actin）、角蛋白（keratin）、GAPDH、细胞色素C（cytochromec）和nucleophosmin等则有很多份已加工假基因。
+
+$ cat gencode.v30lift37.annotation.gtf |grep -v '^#' | awk -F '\t' '$3=="gene"{print $0}'| grep '"processed_pseudogene"'|wc
+## 10100  261552 2814398 #行数够了
+$ cat gencode.v30lift37.annotation.gtf |grep -v '^#' | awk -F '\t' '$3=="gene"{print $9}'| grep '"processed_pseudogene"'|awk -F'; gene_name "' '{print $2}'|awk -F'"' '{print $1}'>processed_pseudogene.hg19.gene_name
+
+$ head processed_pseudogene.hg19.gene_name 
+CICP27
+AL627309.6
+AL627309.7
+WBP1LP6
+CICP3
+AL645608.3
+NDUFB4P8
+AL691432.3
+EEF1DP6
+AL591866.1
+
+$ cat processed_pseudogene.hg19.gene_name |sort|uniq |wc
+# 10093   10093   97144 #有重复
+$ cat processed_pseudogene.hg19.gene_name |sort|uniq -c |sort -k 1nr | awk '$1>1{print $0}'
+      2 AMD1P2
+      2 DPH3P2
+      2 ELOCP24
+      2 FABP5P13
+      2 KRT18P53
+      2 RPL14P5
+      2 TRPC6P
+#
+
+
+
+
+
+
+
+(3)"lincRNA"
+$ cat gencode.v30lift37.annotation.gtf |grep -v '^#' | awk -F '\t' '$3=="gene"{print $0}'| grep '"lincRNA"'|wc
+## 7,754  188292 1924115
+## 行数够了
+$ cat gencode.v30lift37.annotation.gtf |grep -v '^#' | awk -F '\t' '$3=="gene"{print $9}'| grep '"lincRNA"'|awk -F'; gene_name "' '{print $2}'|awk -F'"' '{print $1}'>lincRNA.hg19.gene_name
+
+$ head lincRNA.hg19.gene_name
+$ head lincRNA.hg19.gene_name
+MIR1302-2HG
+FAM138A
+AL627309.1
+AL627309.3
+AL627309.4
+AP006222.2
+RP4-669L17.2
+RP5-857K21.15
+AC114498.1
+RP11-206L10.3
+$ cat lincRNA.hg19.gene_name |sort|uniq |wc
+   7747    7747   82216
+# 有重复
+
+$ cat lincRNA.hg19.gene_name |sort|uniq -c |sort -k 1nr | awk '$1>1{print $0}'
+      2 AL672277.1
+      2 AL683807.1
+      2 AL683807.2
+      2 AL732314.4
+      2 LINC00102
+      2 LINC00106
+      2 LINC01505
+#
+抽检原因？
+$ awk '$3=="gene"{print $0}' gencode.v30lift37.annotation.gtf |grep '"LINC00102"'
+chrX	HAVANA	gene	2531029	2533388	.	-	.	gene_id "ENSG00000230542.6_4"; gene_type "lincRNA"; gene_name "LINC00102"; level 2; havana_gene "OTTHUMG00000021072.1_4"; remap_status "full_contig"; remap_num_mappings 1; remap_target_status "overlap";
+chrY	HAVANA	gene	2481029	2483388	.	-	.	gene_id "ENSG00000230542.6_4_PAR_Y"; gene_type "lincRNA"; gene_name "LINC00102"; level 2; tag "PAR"; havana_gene "OTTHUMG00000021072.1_4"; remap_status "full_contig"; remap_num_mappings 1; remap_target_status "overlap";
+
+为什么同一个基因，染色体(chrX、chrY)都不一样呢？
+
+
+
+
+
+(4)
+
+
 
 
 
@@ -435,6 +829,34 @@ In most scenarios, we have known genome positions in NCBI build 36 (UCSC hg 18) 
 (2) Convert dbSNP rs number from one build to another
 (3) Convert both genome position and dbSNP rs number over different versions
 It is likely to see such type of data in Merlin/PLINK format.
+
+
+========================================
+肿瘤细胞系表达数据库 CCLE(Broad Institute Cancer Cell Line Encyclopedia)
+----------------------------------------
+
+1. 因为如果该细胞有某种表型B比如增殖能力强，和对照细胞相比，其A基因明显高表达，那我们就有理由推测A基因和B表现可能有关。
+有时候我们也要知道某个基因在某个细胞系的基础表达量
+.....
+总之，了解某一个细胞系的基因表达量对科研方向和思路非常重要！
+但是是不是要通过自己跑细胞的PCR来知道呢？
+
+完全不需要，下面的网址就可以了！
+
+https://portals.broadinstitute.org/ccle
+
+
+2.使用：
+目前，该数据库已经收录1100多种细胞系的基因信息，并实现了可视化，包含拷贝数，mRNA表达（Affy），RPPA，RRBS和mRNA表达（RNAseq）...
+直接输入你想查的Genes或者细胞系，
+比如我在框里输入 NEAT1 这个基因，可以看 拷贝数、甲基化程度、RNA(芯片)、RNA(测序)。
+
+
+
+
+
+
+
 
 
 ========================================
@@ -1768,19 +2190,228 @@ http://slidebase.binf.ku.dk/human_enhancers/
 
 
 ========================================
+顺式作用元件、反式调控因子
 ----------------------------------------
+1.顺式[作用]元件 cis-element;cisacting element
+DNA、RNA或者蛋白质中的一些特殊的核酸或氨基酸残基序列，只作用于与其连接在一起的靶，而不作用于不与其相连的靶。
+
+
+cis-regulatory 顺式调控元件，比如增强子、启动子
+
+
+2.
+trans- 反式作用因子，比如TF
+
+
+
+
+
 
 ========================================
+增强子 GeneHancer: genome-wide integration of enhancers and target genes in GeneCards
 ----------------------------------------
+几个概念什么意思？谁结合谁？
+
+https://www.genecards.org/cgi-bin/carddisp.pl?gene=GATA3
+(1)GeneHancer (GH) Identifier: GH10J008050 是增强子名字
+(2)Transcription Factor Binding Sites:(2) EZH2 CHD1
+(3)Gene targets for GeneHancer:(4) GATA3 ENSG00000232638 GC10M008036 GC10M008037
+
+TF(2)结合到增强子(1)上，调节基因(3)的表达。
+同一套TF和enhencer调控的基因集合(3)，功能是否有相关性呢？很有可能！
+
+
+
+增强子(enhancer)是DNA上一小段可与蛋白质结合的区域，与蛋白质结合之后，基因的转录作用将会加强。
+增强子可能位于基因上游，也可能位于下游。且不一定接近所要作用的基因，甚至不一定与基因位于同一染色体。这是因为染色质的缠绕结构，使序列上相隔很远的位置也有机会相互接触。
+
+增强子怎么起作用？
+    增强子是通过enhancer loop起作用，涉及到粘合蛋白的辅助作用。增强子可以位于目标基因上游或者下游，而且可以位于基因的内含子，而且一个增强子存在调控多个基因的情况；
+#
+
+增强子如何影响表达？
+     增强子能促进基因更高地表达。近来一些研究结果表明，绝缘子CTCF和粘合蛋白致使enhancer–promoter 互作。通过增强子的定位来影响转录复合物。
+#
+
+增强子的变异如何影响基因表达？
+	大约85%的人类基因组进化保守的序列是非蛋白编码序列。已经有很多研究证明增强子区域的变异导致了疾病的发生。大约85%的GWAS显著关联位点是非编码区的变异位点。调控序列的变异通常导致比较小的表型变异，与编码蛋白区域的变异导致的大效应不同。
+#
+
+增强子其活性对生长发育、基因表达多样性、进化及人类疾病发生起到关键的调控作用，了解增强子的功能特性不仅有利于理解基因表达的时空特异性，也有助于最终揭示细胞分化、物种进化及非编码区域变异导致疾病等关键的生物学问题。
+
+
+怎样找enhancer？
+读Review，总结了1种预测方法和6种实验方法，优点、缺点和参考文献，见 http://www.360doc.com/content/18/0411/16/19913717_744767606.shtml
+- Computational Analysis of Conservation and TF-Binding Motifs
+- Regulator Binding. p300 ChIP-seq
+- Chromatin Accessibility. DNase-seq, FAIRE, ATAC-seq
+- Histone Modifications. H3K4me1, H3K27ac
+- Chromosomal Interaction. ChIA-PET
+- Functional Enhancer Screening by Reporter Assay
+- eRNA-Based Detection
+
+怎样找active enhancer？
+	用其中的第7种方法，特异性的找到active enhancer。
+#
+
+7种方法各有所长，我喜欢把目标细胞类型里所有已发表数据都找出来，放在一起看。
+- 用H3K4me1和H3K27ac找到一大片结合信号；
+- 用p300、PolII、DNase/ATAC-seq提高resolution；
+- 用ChIA-PET/Hi-C找enhancer结合的是哪个基因的promoter；
+- 用eRNA区分 active 和 poised enhancer；
+如果目标组织特别难获取，1-4步所需的数据有限，就用基于motif和保守性的纯分析方法做预测；
+锁定几个目标，用3C、Reporter Assay验证。
+最后画出《他中了国自然，因为最后一周补了这张图》(https://mp.weixin.qq.com/s?__biz=MzAxMjQ3MTU5Mg==&mid=2650657014&idx=1&sn=151505936b84f94f9f7bccc688425b31)里的神图，放在文章里，作为key figure。
+
+
+找到active enhancer有何用？
+	基因受哪些转录因子调控？有近距离的promoter调控，也有远距离enhancer调控。
+	特别是组织特异性表达的基因，往往精准的受到众多转录因子的远距离调控。
+	找出哪些转录因子结合这个enhancer，从而远距离调控我们心仪的基因！
+
+
+
+1.
+看这篇文章 https://cdn.genecards.org/papers/Database-2017-Fishilevich-GH.pdf
+
+First, we integrated a total of 434 000 reported enhancers from four different genome-wide databases: 
+- the Encyclopedia of DNA Elements (ENCODE), 
+- the Ensembl regulatory build, 
+- the functional annotation of the mammalian genome (FANTOM) project
+- and the VISTA Enhancer Browser
+
+
+
+(1)Enhancers are distant-acting transcription factor (TF)-binding elements able to modulate target gene expression in a precise spatiotemporal specific manner.
+
+增强子是远端调控TF结合的元件，能够用精确的时空特异的方式调控基因的表达。
+
+根据这句话推测：TF 结合到 enhencer区域，来调节靶基因表达。
+
+(2)
+An example of this is seen with LEF1, an enhancer binding TF associated with several malignant diseases such as leukemia.
+LEF1 是一个结合增强子的TF，和很多恶性疾病有关，比如白血病。
+
+
+(3).GeneHancer subsequently links enhancers to genes, using: 
+- tissue co-expression correlation between genes and enhancer RNAs, 
+- as well as enhancer-targeted transcription factor genes; 
+- expression quantitative trait loci for variants within enhancers; 
+- and capture Hi-C, a promoter-specific genome conformation assay.
+
+GeneHancer 数据库随后把 enhancers 和genes关联起来，关联方法：
+- gene和enhancer RNA的组织共表达相关性，
+- 以及 enhancer靶向的转录因子基因;
+- 增强子内的，变体的表达数量性状位点；
+- 捕获Hi-C，启动子特异的基因结构试验。
+
+“enhancer expression”是啥？
+2010年的Nature，Kim等人发现：基因转录时，不仅promoter附近转录出mRNA，enhancer区域也转录出RNA，也就是enhancer RNA（eRNA）。eRNA预示着active enhancer。
+
+
+
+(4).TF co-expression. 
+This method focused on TFs that have binding sites determined by ChIP-seq analysis within a candidate enhancer (Supplementary Figures S5 and S6). We sought statistically significant correlations between the expression of such TFs and that of potential target genes for the candidate enhancers.
+候选enhancer内的，ChIP-seq分析有结合位点的TF。看该TF表达量和候选增强子的潜在靶基因表达量之间相关的显著程度。
+
+This method supported associations between 24 569 candidate enhancers and 10 040 genes, averaging 4.7165.33 genes per candidate enhancer. This approach was validated by two independent paths (see Supplementary Methods), each comparing pairwise cross-tissue expression correlations between a set of known TF-target gene pairs and random controls (Supplementary Figure
+
+
+(5).Comparison to single-enhancer experimental studies
+Our analyses encompassed three groups of such cases: 
+
+(i) a set of 132 non-coding regulatory regions that harbor variants associated with Mendelian diseases, identified by manual curation of the literature (48) (Supplementary Table S3); 
+
+(ii) a set of 22 in vivo validated heart enhancers and target genes from the cardiac enhancer catalogue (49);
+
+and (iii) our own literature sampling, with 21 cases of experimentally identified enhancers and their gene targets
+通过文献抽样，有21例是实验确认的 enhancers 它的 gene targets。
+
+
+
+
+
+
+2. 文献综述
+(1)文献：The chromatin accessibility landscape of primary human cancers
+主要内容：利用ATAC-seq的peaks预测增强子位点
+实验设计：
+     23种癌症类型共410个组织样本的ATAC-seq数据，通过这个群体开放染色质特征数据推导peak与目标基因的关系，再通过CRISPR技术验证。结合公开的HiChIP和eQTL数据，进一步提高预测增强子的准确度。也利用WGS数据识别增强子的等位变异。
+重要结论：
+
+ATAC-seq识别得到的调控成分主要富集于增强子和启动子区域。癌症类型平均有169,822个peaks。
+
+MYC位点显现染色质可及性的多样性。通过关联分析，发现远端的调控成分可及性与癌症类型存在更强的关联，而启动子区域的可及性与癌症类型存在更弱的关联。
+
+
+
+
+(2). eRNA
+Enhancer RNA也就是eRNA，是一种在基因的enhancer区域双向表达的一种lncRNA，可以对基因进行顺式或者反式的调控。
+
+2017年综述，主要探讨的主题是：增强子RNA（enhancer RNA，eRNA）和转录如何调控基因组稳定性和拓扑结构。
+http://www.360doc.com/content/18/1212/12/61186495_801259401.shtml
+Lingering Questions about Enhancer RNA and Enhancer Transcription-Coupled Genomic Instability.Trends Genet. 2017 02;33(2)
+
+增强子RNA（enhancer RNA，eRNA），是由增强子转录产生的RNA。eRNAs可以激活增强子活性，也能与其它蛋白质因子结合促进增强子启动子环的形成，从而激活下游基因的表达,它还可能以独立的形式发挥某些生物学功能。
+
+增强子RNA（eRNA）的产生和不同作用方式。
+
+
+
+
+
+(3)Enhancer Logic and Mechanics in Development and Disease.Trends Cell Biol. 2018 Aug;28(8)
+在这篇文章中，主要从发育和疾病的角度介绍了增强子的研究方法和作用机制，比如增强子鉴定的各种方法，比如STARR-seq,3C,4C,5C等：
+
+
+(4)Enhancer dysfunction in leukemia.Blood 2018 Apr 19;131(16)
+这篇综述主要介绍的是白血病中增强子的功能异常，比如增强子的改变研究：
+增强子异常调控的机制: 3号染色体翻转或转位导致增强子异常促进AML
+
+
+
+
+refer:
+http://www.360doc.com/content/18/1212/12/61186495_801259401.shtml
+
 
 
 ========================================
+ENCODE项目：ChIP-seq数据。转录因子调控了谁？谁调控了我感兴趣的基因？
 ----------------------------------------
+《哪个蛋白质调控我感兴趣的基因？》Plan ABC https://mp.weixin.qq.com/s?__biz=MzAxMjQ3MTU5Mg==&mid=2650655129&idx=1&sn=53465f19d8da67b518061e495681792e
+《转录因子调控了谁？》Plan ABCD https://mp.weixin.qq.com/s?__biz=MzAxMjQ3MTU5Mg==&mid=2650656317&idx=1&sn=3352ade8fc7ba0f70b938d034ca9342e
 
+
+- 收录ChIP-seq数据最全的数据库Cistrome Data Browser，需要一点点linux基础，批量下载和处理Cistrome Data Browser数据；
+- ChIP实验质量最好的ENCODE项目。
+
+
+
+1. Cistrome Data Browser
+Cistrome Data Browser收录了目前已发表的2万多套人和小鼠的ChIP-seq、DNase-seq、ATAC-seq数据。可以单个查看某个转录因子调控的靶基因，详见转录因子调控了谁？
+
+CistromeDB数据库，http://cistrome.org/db/，收录了已发表的人和小鼠2万多套ChIP-seq、DNase-seq和ATAC-seq数据，不断更新收录新数据。
+
+http://cistrome.org/db/#/tutorial 视频教程
+
+
+
+2.
+ENCODE项目进展到今天已经产生了7813套ChIP-seq数据，其中人的5568套，小鼠1086套。
+
+人，除组蛋白以外，转录因子等factor的ChIP-seq数据2191套，包含620个factor。
 
 
 ========================================
+motif数据库？
 ----------------------------------------
+“问题1：怎样找TF的motif？”
+
+JASPAR数据库http://jaspar.genereg.net/收录的TF motif信息全、质量好。查询感兴趣的TF CEBPB，Search
+
+
 
 ========================================
 ----------------------------------------

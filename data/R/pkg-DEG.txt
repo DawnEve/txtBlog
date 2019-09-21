@@ -137,6 +137,17 @@ sample4	KD
 ========================================
 |-- (1) 使用DESeq2进行差异基因分析
 ----------------------------------------
+DESeq2差异基因分析和批次效应移除  原创： 易生信  生信宝典  2018-05-29
+https://mp.weixin.qq.com/s?__biz=MzI5MTcwNjA4NQ==&mid=2247485368&idx=1&sn=12b20487e9014ce2e69f01d3efbc6ce8&scene=21
+
+
+注意：
+DESeq2只能输入原始counts矩阵，不能是标准化后的！所有基于负二项分布模型的都不能使用标准化后的矩阵作为input。
+DESeq2 doesn’t actually use normalized counts, rather it uses the raw counts and models the normalization inside the Generalized Linear Model (GLM). These normalized counts will be useful for downstream visualization of results, but cannot be used as input to DESeq2 or any other tools that peform differential expression analysis which use the negative binomial model.
+https://www.jianshu.com/p/e2fae0f3db1a
+
+
+
 
 关于DESeq2分析差异表达基因，其实在https://www.bioconductor.org/help/workflows/rnaseqGene/ 里面介绍的非常清楚了。
 
@@ -261,7 +272,6 @@ res.deseq2 <- subset(res, padj < 0.05)
 ========================================
 |-- (2)使用edgeR进行差异基因分析
 ----------------------------------------
-
 edgeR在函数说明中称其不但可以分析SAGE， CAGE的RNA-Seq，Tag-RNA，或RNA-seq， 也能分析ChIP-Seq和CRISPR得到的read counts数据。嗯，我信了。
 
 edgeR使用DGEList函数读取count matrix数据，也就说你需要提供一个现成的matrix数据，而不是指望它能读取单独的文件，然后进行合并(当然机智的我发现，其实可以用 tximport 或 DESeqDataSetFromHTSeq 读取单独的文件，然后传递给DGEList)
@@ -369,7 +379,6 @@ s
 ========================================
 |-- (3)使用limma进行差异分析
 ----------------------------------------
-
 经过上面两个方法的洗礼，基本上套路你也就知道了，我先简单小结一下，然后继续介绍limma包的 voom 。
 
 1)导入read count， 保存为专门的对象用于后续分析
@@ -382,6 +391,7 @@ s
 
 
 
+###################
 # 第一步
 vfit <- lmFit(v, design)
 # 第二步
@@ -395,6 +405,68 @@ head(DEG)
 
 
 
+
+###################
+1.  读取文件
+读取基因在所有样本中的表达量文件，示例如下
+gene_id ctrl-1 ctrl-2 ctrl-3 case-1 case-2 case-3
+geneA 14  0  11  4  0  12
+geneB 125 401 442 175 59 200
+每一行为一个基因，每一列代表一个样本。读取数据的代码如下
+# 读取表达量的表格
+counts <- read.table(
+  "gene.counts.tsv",
+  header=T,
+  sep="\t",
+  row.names=1,
+  comment.char="",
+  check.names=F)
+
+# 设置样本分组
+group <- factor(rep(c("control", "case"), each = 3))
+design <- model.matrix(~group)
+
+# 构建edgeR中的对象
+library(edgeR)
+y <- DGEList(counts=count)
+之所以采用edgeR来读取数据，是为了方便后续的预处理和归一化。
+
+
+2. 过滤count数很低的基因
+和edgeR中的预处理过程类似，根据CPM表达量对基因进行过滤，代码如下
+keep <- rowSums(cpm(y)>1) >= 2
+y <- y[keep, , keep.lib.sizes=FALSE]
+
+3. 归一化
+默认采用TMM归一化算法，计算每个样本的 sizefactor, 代码如下
+y <- calcNormFactors(y)
+
+4. 表达量转换
+在进行差异分析前，需要对表达量进行转换，有以下两种选择
+logCPM
+voom
+
+第一种转换就是计算logCPM值，第二种转换适用于样本间sizaFactors差异较大的情况。转换的代码如下
+# logCPM
+logCPM <- cpm(dge, log=TRUE, prior.count=3)
+# voom
+v <- voom(dge, design, plot=TRUE)
+
+5. 差异分析
+转换之后的表达量就可以进行差异分析了，代码如下
+fit <- lmFit(logCPM, design)
+fit <- eBayes(fit, trend=TRUE)
+res<- topTable(fit, coef=ncol(design))
+上述代码采用的是logCPM值，当然也可以采用voom转换后的值，当采用voom转换时，注意trend参数为FALSE。
+
+这里只是介绍了最简单的用法，更多复杂案例，比如多个分组，时间序列的差异分析等，请参考官方文档。
+
+
+
+
+
+
+###################
 Limma原先用于处理基因表达芯片数据，可是说是这个领域的老大。如果你仔细看edgeR导入界面，你就会发现，edgeR有一部分功能依赖于limma包。Limma采用经验贝叶斯模型（ Empirical Bayesian model）让结果更稳健。
 
 在处理RNA-Seq数据时，raw read count先被转成log2-counts-per-million (logCPM)，然后对mean-variance关系建模。建模有两种方法：
