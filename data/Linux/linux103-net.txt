@@ -909,6 +909,11 @@ $ w
 直接报错，而-c修改为5的时候就正常了。
 
 
+
+
+
+
+
 3.学习iptables的意义
 1）如何用iptables搭建一套实际使用的防火墙；
 2）如何用iptables进行防攻击；
@@ -918,23 +923,64 @@ $ w
 
 4.Netfilter
 Netfilter是linux操作系统核心层内部的一个数据包处理模块；
-什么是Hook point？数据包在Netfilter中的挂载点共5个：
+什么是Hook point？数据包在Netfilter中的挂载点共5个(防火墙“四表五链”中的五链)：
 	PRE_ROUTING/ INPUT/ OUTPUT/ FORWARD/ POST_ROUTING
 
 用户层的iptables命令是调用内核层的Netfilter，通过挂载点Hook point操作数据包的。
+
+这5个钩子函数，用来抓取数据包，并把数据包的信息拿来匹配各个链位置在对应表中的规则，匹配之后，进行对应的accept、drop等。
+
+
 
 
 
 5.iptables规则组成 
 (1)组成部分：四张表 + 五条链 +规则
-四张表：filter表、nat表、 mangle表、raw表
-五条链：PREROUTING/ INPUT/ OUTPUT/ FORWARD/  POSTROUTING
+四张表table(保存规则)：filter表、nat表、 mangle表、raw表
+五条链chain(钩子位置)：进路由之前PREROUTING/ 进系统INPUT/ 转发FORWARD/ 出系统OUTPUT/  出路由(发送到网卡之前)POSTROUTING
 
-mangle表：修改数据包，改变包头中的内容（TTL, TOS, MARK）
-raw表：
+
+(用户层) 应用层 |  iptables命令
+___________________________________
+(内核层)
+传输层：TCP UDP  | Filter表  NAT表  Mangle表
+网络层   | NetFilter
+网络接口层 | 
+
+
+1)表就是存储的规则；数据包到了该链处，会去对应表中查询设置的规则，然后决定是否放行、丢弃、转发还是修改等等操作。
+
+如果要访问某台主机上面的http服务，必须先经过那台主机的内核允许，才可以进行访问
+防火墙其实也是在内核上面开启的一个服务。防火墙里面有表格，写一些规则，允许哪个主机访问什么服务，这个表格由iptables进行控制
+有两种规则：iptables 与 firewalld 
+第一张表：filter表：放的是经过内核的ip,可使用的链：  input output forward 
+第二张表：nat表：放的不是经过内核的服务，可使用的链： input output postrouting prerouting 
+第三张表：备用表格mangle：可使用的链： input output forward postrouting prerouting
+
+
+表名称/	功能/	内核模块
+filter/	负责过滤功能，防火墙/	iptables_filter
+nat(Network Address Translation)/	网络地址转换/	iptables_net
+mangle/	拆解报文，修改，重新封装/	iptables_mangle
+	mangle表：修改数据包，改变包头中的内容（TTL, TOS, MARK）
+raw表：关闭nat表上启用的链接追踪机制
 
 
 最常用的表是： filter表（访问控制）和nat（转发）表。
+Filter表：用来处理是否放行
+NAT表：实现数据包转发，修改源地址 端口 目标地址 端口，实现地址转换
+
+
+2)
+PREROUTING是不经过内核路由之前的信息
+INPUT和OUTPUT均包括经过内核和不经过内核的信息
+FORWARD是经过内核的路由转发信息
+POSTROUTING是不经过内核路由之后的信息
+
+
+
+
+
 
 (2)iptable规则的组成
 
@@ -945,23 +991,74 @@ raw表：
 DROP没有返回消息，而REJECT给客户端有返回消息。
 SNAT是对发起端地址改写，DNAT对目标地址改写。
 
-命令：
--L和-n一般连用。
--F对现有规则进行清理。
--P设置默认iptables规则。
+
+iptables命令常用方法: 
+iptables [-p table] 链管理 chain
+-t table : filter,nat,mangle,raw (默认为 filter)
+
+链管理：
+-F : 清空规则链
+-N：创建新的自定义规则链
+-X : drop 删除用户自定义的规则链
+-P : Policy 为指定链设置默认策略；iptables -t filter -P FORWARD DROP
+	-P设置默认iptables规则。
+-E：重命令自定义链
+
+
+规则管理：
 -A在末尾添加规则。
 -I在开头插入规则。
 -D删除规则
+-R：替代指定链上的规则
+
+查看：
+-L：列表，列出指定链上的指定的规则
+-n -v –line-numbers -x 等参数
+-L和-n一般连用。
 
 
-参数：
--p 连接类型
--s 发起源有哪些
--d 目标地址
---sport 源端口
---dport 目标端口
---dports 端口段
+匹配条件 - 基本匹配：
+-s 原地址IP。-s 发起源有哪些
+-d 目的IP。-d 目标地址
+-p 协议{tcp|udp|icmp}。-p 连接类型
+-i 数据报文的流入接口
+-o 数据报文的流出接口
+
+匹配条件 - 扩展匹配：-m match_name
 -m 在原有基础上做个补充，tcp, state, multiport
+--dport PORT:目标端口，可以是单个端口
+--dports 端口段
+--sport PORT:源端口
+-p udp|tcp|icmp
+–icmp-type
+0 : echo-reply
+8 : echo-request
+
+目标：
+-j TARGET：jump至指定的TARGET
+- ACCEPT 接受
+- DROP 丢弃
+- REJECT 拒绝访问
+- RETURN 返回调用链
+
+
+
+
+
+
+2)防火墙常用的行为动作
+动作	说明
+ACCEPT	允许数据包通过
+DROP	直接丢弃数据包，不给任何回应，此时客户端会不停地去向服务器发送数据包，发送超时才会有反应
+REJECT	拒绝数据包通过，必要时会给数据发送端一个响应信息，如果客户端的请求被拒绝，就会收到拒绝的信息
+SNAT	源地址转换，解决内网用户用同一个公网地址上网的问题
+MASQUERADE	是SNAT的一种特殊形式，适用于动态的，临时会变的ip上
+DNAT	目的地址转换
+
+
+
+refer:
+https://blog.csdn.net/u011456940/article/details/52634184
 
 
 
@@ -1383,8 +1480,121 @@ $ ~$ iptables -h
 ========================================
 |-- CentOS7中iptables常用设置
 ----------------------------------------
-
 https://blog.csdn.net/qzc70919700/article/details/79784566
+
+#查看规则
+sudo iptables -L -n --line-numbers |less
+
+
+#插入规则，插入第一条
+# sudo iptables -I INPUT -p tcp --dport 10007 -j ACCEPT
+
+
+删除规则
+# sudo iptables -D INPUT -p tcp --dport 10007 -j ACCEPT
+// 把第一条规则删除
+# sudo iptables -D INPUT 1 
+
+
+
+
+========================================
+centOS7 中的防火墙
+----------------------------------------
+Linux中存在iptables和firewalld两种防火墙
+iptables：更接近数据的原始操作，精度更高
+firewalld：更易操作
+
+
+
+
+1.查看防火墙状态 systemctl status firewalld
+
+开启防火墙 systemctl start firewalld  
+关闭防火墙 systemctl stop firewalld
+开启防火墙 service firewalld start 
+若遇到无法开启
+先用：systemctl unmask firewalld.service 
+然后：systemctl start firewalld.service
+
+
+关闭防火墙
+如果要开放的端口太多，嫌麻烦，可以关闭防火墙，安全性自行评估
+systemctl stop firewalld.service
+
+
+systemctl disable firewalld.service #禁止firewall开机启动
+
+firewall-cmd --state ##查看默认防火墙状态（关闭后显示notrunning，开启后显示running）
+
+
+
+2.查看对外开放的端口状态
+查询已开放的端口 netstat -anp
+查看监听的端口 netstat -lnpt
+
+查询指定端口是否已开 firewall-cmd --query-port=10007/tcp
+提示 yes，表示开启；no表示未开启。
+
+firewall-cmd --list-ports ##查看已经开放的端口
+firewall-cmd --zone=public --list-ports ##查看防火墙所有开放的端口
+
+
+
+
+
+3.开启端口
+firewall-cmd --zone=public --add-port=10007/tcp --permanent   # 开放端口
+firewall-cmd --zone=public --remove-port=10007/tcp --permanent  #关闭端口
+firewall-cmd --reload   # 配置立即生效
+命令含义：
+–zone #作用域
+–add-port=80/tcp #添加端口，格式为：端口/通讯协议
+–permanent #永久生效，没有此参数重启后失效
+
+
+firewall-cmd --get-active-zones #运行完成之后，可以看到zone名称
+## public
+##  interfaces: em1
+
+
+
+4.杀掉占用端口的进程
+
+检查端口被哪个进程占用 sudo netstat -lnpt |grep 10007
+tcp        0      0 10.20.57.27:10007       0.0.0.0:*               LISTEN      115213/python
+
+查看进程的详细信息 ps 115213
+115213 pts/22   S+     0:01 /home/hou/anaconda3/bin/python /home/hou/anaconda3/bin/jupyter-notebook --no-browser --port 10007 --ip=10.20.57.27
+
+中止进程
+kill -9 115213
+
+
+
+
+5.查看端口是否开启
+win下 > telnet  192.168.xx.xx 6379
+linux下 $ sudo nmap -sS -p 0-1000 192.168.xx.xx
+
+
+6.firewalld的域，类似于win的组概念
+trusted 信任： 可接受所有网络连接
+home 家庭：用于家庭网络，仅接受ssh/mdns/ipp-client/samba-client/dhcpv6-client服务连接
+internal 内部：用于内部网络，仅接受ssh/mdns/ipp-client/samba-client/dhcpv6-client服务连接
+work 工作：用于工作区，仅接受ssh/ipp-client或dhcpv6-client服务连接
+public 公共：在公共区域呢使用，仅接受ssh/dhcpv6-client服务连接，为firewalld的默认区域
+external 外部：出去的ipv4网络连接通过此区域伪装和转发，仅接受ssh服务连接
+dmz 非军事区：仅接受ssh服务连接
+block 限制：拒绝所有网络连接
+drop 丢弃：任何接收的网络数据包都被丢弃，没有任何回复
+
+
+
+
+refer:
+https://blog.csdn.net/qq_28426351/article/details/52249710
+https://blog.csdn.net/weixin_44224288/article/details/88136383
 
 
 
