@@ -64,23 +64,23 @@ Docker 前景很明确，采用 Docker 只会让开发变得更方便。
 
 # Docker快速扫盲
 
-### Docker是什么
+## Docker是什么
 Docker是一个改进的容器技术。具体的“改进”体现在，Docker为容器引入了镜像，使得容器可以从预先定义好的模版（images）创建出来，并且这个模版还是分层的。
 
-### Docker经常被提起的特点：
+## Docker经常被提起的特点：
 	- 轻量，体现在内存占用小，高密度
 	- 快速，毫秒启动
 	- 隔离，沙盒技术更像虚拟机
 	
 	
-### Docker技术的基础：
+## Docker技术的基础：
 	- namespace，容器隔离的基础，保证A容器看不到B容器. 6个名空间：User,Mnt,Network,UTS,IPC,Pid
 	- cgroups，容器资源统计和隔离。主要用到的cgroups子系统：cpu,blkio,device,freezer,memory
 	- unionfs，典型：aufs/overlayfs，分层镜像实现的基础
 
 
 
-### Docker组件：
+## Docker组件：
 	- docker Client客户端————>向docker服务器进程发起请求，如:创建、停止、销毁容器等操作
 	- docker Server服务器进程—–>处理所有docker的请求，管理所有容器
 	- docker Registry镜像仓库——>镜像存放的中央仓库，可看作是存放二进制的scm
@@ -209,7 +209,7 @@ cat xxx.tar.gz | docker import - name:tag
 
 
 
-### 查找版本号
+## 查找版本号
 http://www.docker.org.cn/book/docker/prepare-docker-5.html
 docker包括服务器和客户机，一般是在一台电脑上。
 
@@ -244,7 +244,7 @@ Server:
 
 
 
-### 搜索可用docker镜像
+## 搜索可用docker镜像
 使用docker最简单的方式莫过于从现有的容器镜像开始。Docker官方网站专门有一个页面来存储所有可用的镜像，网址是：hub.docker.com。你可以通过浏览这个网页来查找你想要使用的镜像，或者使用命令行的工具来检索。
 
 目标：学会使用命令行的工具来检索名字叫做tutorial的镜像。
@@ -263,7 +263,7 @@ monostream/nodejs-gulp-bower             nodejs-gulp-bower                      
 
 
 
-### 下载容器镜像
+## 下载容器镜像
 http://www.docker.org.cn/book/docker/docker-download-image-7.html
 
 学会使用docker命令来下载镜像
@@ -303,7 +303,7 @@ Status: Downloaded newer image for google/nodejs:latest
 
 
 
-### 在docker容器中运行hello world!
+## 在docker容器中运行hello world!
 
 docker容器可以理解为在沙盒中运行的进程。这个沙盒包含了该进程运行所必须的资源，包括文件系统、系统类库、shell 环境等等。但这个沙盒默认是不会运行任何程序的。你需要在沙盒中运行一个进程来启动某一个容器。这个进程是该容器的唯一进程，所以当该进程结束的时候，容器也会完全的停止。
 
@@ -328,7 +328,7 @@ v4.2.3
 
 
 
-### 在容器中安装新的程序
+## 在容器中安装新的程序
 
 下一步我们要做的事情是在容器里面安装一个简单的程序(ping)。我们之前下载的tutorial镜像是基于ubuntu的，所以你可以使用ubuntu的apt-get命令来安装ping程序：`apt-get install -y ping`。
 备注：apt-get 命令执行完毕之后，容器就会停止，但对容器的改动不会丢失。
@@ -348,7 +348,7 @@ $docker run learn/tutorial apt-get install -y ping
 
 
 
-### 保存对容器的修改
+## 保存对容器的修改
 
 当你对某一个容器做了修改之后（通过在容器中运行某一个命令），可以把对容器的修改保存下来，这样下次可以从保存后的最新状态运行该容器。docker中保存状态的过程称之为committing，它保存的新旧状态之间的区别，从而产生一个新的版本。
 
@@ -408,7 +408,7 @@ $ docker commit -m "Added json gem" -a "Kate Smith" \
 
 
 
-### 运行新的镜像
+## 运行新的镜像
 
 ok，到现在为止，你已经建立了一个完整的、自成体系的docker环境，并且安装了ping命令在里面。它可以在任何支持docker环境的系统中运行啦！(译者按：是不是很神奇呢？)让我们来体验一下吧！
 
@@ -442,7 +442,7 @@ rtt min/avg/max/mdev = 12.419/12.773/13.708/0.540 ms
 
 
 
-### 检查运行中的镜像
+## 检查运行中的镜像
 
 现在你已经运行了一个docker容器，让我们来看下正在运行的容器。
 使用`docker ps`命令可以查看所有正在运行中的容器列表，使用`docker inspect`命令我们可以查看更详细的关于某一个容器的信息。
@@ -504,7 +504,7 @@ $ docker inspect 98dd
 
 
 
-### 发布docker镜像
+## 发布docker镜像
 http://www.docker.org.cn/book/docker/docker-push-image-13.html
 
 现在我们已经验证了新镜像可以正常工作，下一步我们可以将其发布到官方的索引网站。还记得我们最开始下载的learn/tutorial镜像吧，我们也可以把我们自己编译的镜像发布到索引页面，一方面可以自己重用，另一方面也可以分享给其他人使用。
@@ -532,7 +532,7 @@ unauthorized: access to the requested resource is not authorized
 
 继续找官方文档。https://docs.docker.com/engine/reference/commandline/login/
 
-#### 看来需要先登录：
+### 看来需要先登录：
 ```
 root@wjl-VirtualBox:~# docker login -u dawneve -p yourPassWord
 Email: jimmyMall@live.com
@@ -540,7 +540,7 @@ WARNING: login credentials saved in /root/.docker/config.json
 Login Succeeded
 ```
 
-#### 查看所有镜像
+### 查看所有镜像
 ```
 root@wjl-VirtualBox:~# docker images
 REPOSITORY          TAG                 IMAGE ID            CREATED             SIZE
@@ -553,7 +553,7 @@ learn/tutorial      latest              a7876479f1aa        2 years ago         
 root@wjl-VirtualBox:~# 
 ```
 
-#### 重新命名docker镜像  
+### 重新命名docker镜像  
 
 ```
 root@wjl-VirtualBox:~# docker run learn/ping echo "hi"
@@ -577,7 +577,7 @@ hello-world         latest              690ed74de00f        4 months ago        
 learn/tutorial      latest              a7876479f1aa        2 years ago         128 MB
 ```
 
-#### 执行上传  
+### 执行上传  
 ```
 root@wjl-VirtualBox:~# docker push dawneve/ping
 The push refers to a repository [docker.io/dawneve/ping]

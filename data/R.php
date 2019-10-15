@@ -16,7 +16,7 @@ return array (
     0 => 1,
     1 => 'R语言',
     2 => array (
-      array('R语言基础','R01','txt'),
+      array('R语言基础','R01-basic','txt'),
       array('R进阶-数据框data.frame','R02-data.frame','txt'),
       array('R进阶-统计学','R03-statistics','txt'),
       array('R进阶-OOP面向对象','R04-OOP','txt'),

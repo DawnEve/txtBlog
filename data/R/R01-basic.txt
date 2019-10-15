@@ -2500,10 +2500,12 @@ https://stackoverflow.com/questions/20535247/seeking-functions-in-an-r-package
 
 
 
-
+========================================
+R操作mysql数据库
+----------------------------------------
 
 ========================================
-R通过ODBC连接数据库
+|-- R通过ODBC连接数据库(win)
 ----------------------------------------
 以下的实验环境是在windows7-64操作系统下进行
 1、下载（mySQL-connector-odbc-5.3.7-win64.msi）
@@ -2627,12 +2629,235 @@ head(mydata3,n=30)
 
 refer:
 http://wenku.baidu.com/link?url=PtNUOCT66CzajvN_uM_4FaCloQffW8HzaE1PMlOg3UqyXwpZNbT3DC1URy-tsLqQRIeW_DJhxBsS06QsY99OjKSq_BV7--vj1zWhtga7k1_
-
 http://blog.csdn.net/hongweigg/article/details/49779943
-
 http://www.dataguru.cn/thread-289411-1-1.html
 
 
+
+
+
+========================================
+|-- R通过RMySQL包操作mysql数据库(linux)
+----------------------------------------
+test: 2019.10
+mysql on docker ubuntu1806;
+Rstudio on centOS7
+
+
+1.Rmysql库安装
+注意: Rmysql库依赖DBI库
+
+install.packages("DBI")
+install.packages("RMySQL") 或 install.packages('RMySQL',type='source')
+
+查看已安装的包：
+.packages(all.available=TRUE)
+
+至此安装完毕,如果中间过程还出问题,可能底层C++环境欠缺
+参考:https://www.jianshu.com/p/d57355c57876
+
+
+
+
+
+
+2.
+另外R连接mysql会出现中文乱码变问号情况，查到COS上一个贴子，解决方案如下：
+在MySQL的配置文件/etc/mysql/my.cnf中[client]标签下加default-character-set=utf8 
+
+这个我试了，总是报错。我用的docker版的mysql，是这个原因吗？
+后面避免读写中文乱码，使用的是sql语句。
+
+library(DBI)
+library(RMySQL)
+con<-dbConnect(MySQL(),user='root', password='123456',dbname='wang',host='y.biomooc.com',
+               port=7070, DBMsencoding='utf8')
+dbSendQuery(con,'SET NAMES utf8;') #读取防中文乱码
+query<-dbSendQuery(con,'alter database wang character set utf8;') #写入防中文乱码
+#
+query<-dbSendQuery(con,'select * from fruits;')
+data=fetch(query);
+data #获得数据框
+
+
+
+
+
+3. 在R中使用RMySQL
+library(DBI)
+library(RMySQL)
+#help(package="RMySQL") #查看说明文档
+
+##连接数据库
+con<-dbConnect(MySQL(),user='root', password='123456',dbname='wang',host='y.biomooc.com',port=7070, DBMsencoding='utf8')
+## 连接linux本地的mysql不需要输入host，默认port=3306。
+
+##关闭数据库
+## dbDisconnect(con) 
+
+
+
+
+(1)查询：dbSendQuery的使用 
+dbSendQuery返回的MySQLResult类型，而dbGetQuery直接返回数据框data.frame
+
+dbSendQuery(con,'SET NAMES utf8') #先执行这一句，防止中文显示乱码
+
+
+#i) 用sql语句查询，获得数据框，直接获得查询结果 
+dbGetQuery(con, "SELECT * FROM fruits limit 3")
+
+
+
+#ii) 用sql语句查询，获得数据框，两步法获取查询结果
+res <- dbSendQuery(con, "SELECT *FROM fruits")#获取前2条数据，n=-1时是获取所有数据  
+data <- dbFetch(res, n=2) #再获取余下几条数据
+data
+data <- dbFetch(res, n=-1) #取余下所有数据
+data
+
+dbClearResult(res)#清除查询结果
+
+#dbDisconnect(con)#断开连接  
+
+
+
+
+#iii) 用R函数，读整个数据表  
+tb=dbReadTable(con,"result")
+tb
+##   name subject score
+## 1 张三    数学    90
+## 2 张三    语文    50
+## 3 张三    地理    40
+## 4 李四    语文    55
+## 5 李四    政治    45
+## 6 王五    政治    30
+
+
+
+
+(2)查看状态
+> summary(con) #获取连接信息
+<MySQLConnection:0,0>
+  User:   root 
+  Host:   y.biomooc.com 
+  Dbname: wang 
+  Connection type: y.biomooc.com via TCP/IP 
+
+Results:
+<MySQLResult:0,0,0>
+  Statement: select * from cell_c1 limit 3; 
+  Has completed? yes 
+  Affected rows: -1 
+  Rows fetched: 3 
+NULL
+
+
+dbGetInfo(con) #获取连接信息
+dbListTables(con) #查看database下所有表格
+
+
+
+
+ii) 防止中文乱码
+mysql> show variables like "char%";
++------------ -------------+------------ ---------------+
+| Variable_name            | Value                      |
++----------- --------------+------------- --------------+
+| character_set_client     | utf8                       |
+| character_set_connection | utf8                       |
+| character_set_database   | latin1                     | #改为utf8写入才能避免R写入中文时乱码
+| character_set_filesystem | binary                     |
+| character_set_results    | utf8                       |
+| character_set_server     | latin1                     |
+| character_set_system     | utf8                       |
+| character_sets_dir       | /usr/share/mysql/charsets/ |
++----------- --------------+---------- -----------------+
+8 rows in set (0.01 sec)
+
+#防止写入中文时乱码
+dbSendQuery(con,'alter database wang character set utf8;') #数据库改为utf8，否则写入会中文乱码
+
+#查询字符集
+query<-dbSendQuery(con,'show variables like "char%";')
+df=fetch(query) #返回值是数据框
+
+
+
+
+
+
+(3)写数据库表: 创建新表，写入 
+#dbWriteTable(conn, "tablename", data) #写表
+
+#写表，把fruits写入水果数据表"fruits"
+fruits <-data.frame(id=1:5,name=c("苹果","香蕉","梨子","玉米","西瓜"),price=c(8.8,4.98,7.8,6,2.1),status=c("无","打折","无","售罄","批发"))  
+dbListTables(con)
+dbWriteTable(con,"fruits",fruits,row.names=F, fileEncoding="utf-8")  #写入中文乱码！编码一致就正常了
+dbListTables(con)
+
+
+#使用sql查询
+query<-dbSendQuery(con,'select * from fruits limit 3;')
+data<-fetch(query)
+
+#追加数据表，是否覆盖
+#new_info <- data.frame(user_id=6:7,user_name=c("小明","小红"),score = c(82,74))
+#dbWriteTable(conn,"student_info ",new_info, append=T,row.names=F) #追加数据
+#dbWriteTable(conn," student_info ",testB,overwrite=T,row.names=F)#覆盖数据
+
+new_info <- data.frame(id=6:7,name=c("水果1","水果2"),price = c(8.2,7.4),status=c("打折","批发"))
+dbWriteTable(con,"fruits",new_info,append=T,row.names=F) #追加数据
+dbWriteTable(con,"fruits",new_info,overwrite=T,row.names=F)#覆盖数据：以前的数据被清空，现在只有这个新增的数据了
+
+
+
+(4)删除表
+dbRemoveTable(con, "fruits")
+
+
+
+(5)其他方法
+summary(con) #连接信息
+
+dbGetInfo(con)
+
+dbListTables(con) #列出所有的表
+
+dbExistsTable(con,'table_name')#是否存在表
+
+dbListResults(con) #列出所有的结果
+
+dbClearResult(res) #清除结果
+
+
+
+
+
+
+附录：
+1. SQL语句语句特点：先全局选择，再局部选择
+Select * from sale where year=2010 and ...
+
+
+2.where后面可以接很多，有比较运算符，算数运算符，逻辑运算符。
+- 比较运算符号：=(等于，不是双引号)；!=（不等于）；>，<，>=，<=
+- 算数运算符：*，/，+，-
+- 逻辑运算符：&&(and,与)， ||（or，或） ，!（,not非）
+
+
+
+
+refer:
+https://blog.csdn.net/sinat_26917383/article/details/51601539
+
+
+
+
+========================================
+dplyr包与Mysql数据库 //todo
+----------------------------------------
 
 
 
@@ -2650,4 +2875,36 @@ http://www.dataguru.cn/thread-289411-1-1.html
 历史
 ----------------------------------------
 《数据分析简史》 https://www.douban.com/note/496070836/
+
+
+========================================
+----------------------------------------
+
+
+========================================
+----------------------------------------
+
+
+========================================
+----------------------------------------
+
+
+========================================
+----------------------------------------
+
+
+========================================
+----------------------------------------
+
+
+========================================
+----------------------------------------
+
+
+========================================
+----------------------------------------
+
+
+========================================
+----------------------------------------
 

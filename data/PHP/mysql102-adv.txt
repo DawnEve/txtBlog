@@ -1,4 +1,5 @@
-mysql高级话题：分区、表约束、
+mysql高级话题：(争取好用,高效,稳定,可靠)
+分区、表约束、
 触发器、游标、存储过程、访问控制、事务、
 视图、
 
@@ -16,10 +17,346 @@ https://juejin.im/post/5d4e7f496fb9a06afe128655
 
 
 ========================================
+key和index
+----------------------------------------
+1 索引分类
+主键索引（必须指定为“PRIMARY KEY”，没有PRIMARY Index）、
+唯一索引（unique index，一般写成unique key）、
+普通索引(index，只有这一种才是纯粹的index)等，也是基于是不是把index看作了key。
+           比如 create table t(id int, unique indexinx_tx_id (id));--index当作了key使用
+
+(2) 最重要的也就是，不管如何描述，需要理解index是纯粹的index（普通的key，或者普通索引index），还是被当作key（如：unique index、unique key和primary key），若当作key时则会有两种意义或起两种作用。
+
+
+
+
+2.MySQL Key值（PRI, UNI, MUL）的含义：
+PRI主键约束；
+UNI唯一约束；
+MUL可以重复。
+
+注：若是普通的key或者普通的index（实际上，普通的key与普通的index同义）。
+
+(2)desc tableName;
+我们看到Key那一栏，可能会有4种值，即'啥也没有','PRI','UNI','MUL'
+1). 如果Key是空的, 那么该列值的可以重复，表示该列没有索引, 或者是一个非唯一的复合索引的非前导列
+2). 如果Key是PRI,  那么该列是主键的组成部分
+3). 如果Key是UNI,  那么该列是一个唯一值索引的第一列(前导列)，且不能含有空值(NULL)
+4). 如果Key是MUL,  那么该列的值可以重复, 该列是一个非唯一索引的前导列(第一列)或者是一个唯一性索引的组成部分但是可以含有空值NULL
+
+注：
+1)、如果对于一个列的定义，同时满足上述4种情况的多种，比如一个列既是PRI，又是UNI（如果是PRI，则一定是UNI）
+那么"desc 表名"; 的时候，显示的Key值按照优先级来显示 PRI->UNI->MUL
+那么此时，显示PRI。
+
+2)、如果某列不能含有空值，同时该表没有主键，则一个唯一性索引列可以显示为PRI，
+
+3)、如果多列构成了一个唯一性复合索引，那么一个唯一性索引列可以显示为MUL。（因为虽然索引的多列组合是唯一的，比如ID+NAME是唯一的，但是每一个单独的列依然可以有重复的值，因为只要ID+NAME是唯一的即可）
+
+
+
+https://www.cnblogs.com/jpfss/p/8308656.html
+
+
+
+
+
+
+
+========================================
 分库分表 sharding 
 ----------------------------------------
 https://juejin.im/post/5d4b6dc1f265da03c1288332
 
+
+
+
+========================================
+加索引，能提高update语句的效率，至少一个数量级
+----------------------------------------
+
+直接创建索引
+CREATE INDEX index_name ON table(column(length))
+
+修改表结构的方式添加索引
+ALTER TABLE table_name ADD INDEX index_name ON (column(length))
+
+
+
+实例：
+> CREATE INDEX index_pasID ON feature_apa(pasID(200)) #实测，确实把update语句的执行时间从 33s/100条 降低到 0.5s/100条。
+> desc feature_apa;
++---------------+--------------+------+-----+---------+----------------+
+| Field         | Type         | Null | Key | Default | Extra          |
++---------------+--------------+------+-----+---------+----------------+
+| id            | int(4)       | NO   | PRI | NULL    | auto_increment |
+| pasID         | varchar(200) | NO   | MUL | NULL    |                |
+| chr           | varchar(100) | YES  |     | NULL    |                |
+| pos           | bigint(4)    | YES  |     | NULL    |                |
+| score         | int(10)      | YES  |     | NULL    |                |
+| strand        | char(1)      | YES  |     | NULL    |                |
+| baseD4        | char(4)      | YES  |     | NULL    |                |
+| existIn2Cells | int(2)       | YES  |     | 0       |                |
+| PY_gene       | varchar(50)  | YES  |     |         |                |
++---------------+--------------+------+-----+---------+----------------+
+9 rows in set (0.00 sec)
+
+
+# update2() end; i=150626; w=110897; 耗时914.14s; 20191008-110218 #之前，执行到中间加的索引，总时间应该比这个长。
+# update2() end; i=150626; w=110897; 耗时88.38s; 20191008-110649 #添加索引之后，有重复一次
+# update2() end; i=150626; w=110897; 耗时187.44s; 20191008-111911 #开启事务之后更慢了（耗时加倍），看来为保证都执行就要牺牲性能。
+
+
+
+这时给title字段添加一个BTREE索引：
+mysql> ALTER TABLE article ADD INDEX index_article_title ON title(200);
+
+
+
+========================================
+mysql拷贝表/复制表的几种方法：定期备份或破坏性操作前备份
+----------------------------------------
+1. 拷贝表结构到新表中。 （不会拷贝表中的数据）
+CREATE TABLE 新表 LIKE 旧表;<br>或<br>CREATE TABLE 新表 SELECT * FROM 旧表 WHERE 1=2;
+　　
+
+2. 拷贝数据到新表中。（新表不会有主键，索引）
+CREATE TABLE 新表 AS  
+(  
+    SELECT *  
+    FROM 旧表
+);
+　　
+
+3. 真正的复制一个表。可以用下面的语句。
+CREATE TABLE 新表 LIKE 旧表;  
+INSERT INTO 新表 SELECT * FROM 旧表;  <br>或<br>CREATE TABLE 新表 SELECT * FROM 旧表;
+　　
+
+4. 操作不同的数据库。
+CREATE TABLE 新表 LIKE 库1.旧表;  
+CREATE TABLE 库2.新表 LIKE 库1.旧表; 
+
+
+　　
+5. 拷贝一个表中其中的一些字段。
+CREATE TABLE 新表 AS  
+(  
+    SELECT 字段1, 字段2,... FROM 旧表
+);
+
+我们也可以拷贝一部分数据
+CREATE TABLE 新表 AS
+(
+	SELECT * FROM 旧表 WHERE LEFT(username,1) = 's'
+);
+
+
+
+复制旧表的数据到新表
+(假设两个表结构一样) 
+INSERT INTO 新表 SELECT * FROM 旧表;
+
+(假设两个表结构不一样)
+INSERT INTO 新表
+(
+　　字段1,字段2,.......
+) SELECT 
+　　字段1,字段2,...... 
+FROM 旧表;
+
+
+6. 将新建的表的字段改名。
+CREATE TABLE 新表 AS  
+(  
+    SELECT id, username AS uname, password AS pass FROM 旧表
+);
+
+
+7.将表1结构复制到表2
+SELECT * INTO 表2 FROM 表1 WHERE 1=2;
+
+将表1内容全部复制到表2 
+SELECT * INTO 表2 FROM 表1;
+
+
+8. 创建表的同时定义表中的字段信息。
+CREATE TABLE 新表
+(
+    id INTEGER NOT NULL AUTO_INCREMENT PRIMARY KEY
+)
+AS
+(
+    SELECT * FROM 旧表  
+);
+
+
+9. 显示旧表的创建命令
+show create table 旧表;
+
+
+
+
+
+拷贝表：
+https://www.cnblogs.com/lyjing/p/8483742.html
+
+
+
+
+
+
+========================================
+为一个有主键的表添加一个递增列 (拷贝表/复制表)
+----------------------------------------
+1.尝试1：失败
+
+(1)# 复制表的推荐方案：表结构、键、数据完全一样
+create table feature_gene2 like `feature_gene`; #复制表结构
+Insert into feature_gene2 select * from feature_gene; #复制表内容
+
+##CREATE TABLE feature_gene2 AS SELECT * FROM feature_gene; #没有主键
+
+## drop table feature_gene2;
+
+(2)直接插入递增列报错
+mysql> alter table feature_gene2
+    -> add id int auto_increment first;
+ERROR 1075 (42000): Incorrect table definition; there can be only one auto column and it must be defined as a key
+
+(3)再试，没报错，但是总数不对
+mysql> alter table feature_gene2
+   add id int unique key auto_increment first;
+#Query OK, 0 rows affected (3.08 sec)
+Records: 0  Duplicates: 0  Warnings: 0
+
+查看，已经新增了一列
+mysql> select * from feature_gene2 limit 5;
++----+------------ ---------+-------+--------+-----------+-----------+--------+------- --------+-------------+-----------+-------+------+
+| id | gene_id              | chr   | source | start     | end       | strand | gene_type      | gene_status | gene_name | level | tag  |
++----+----------- ----------+-------+--------+-----------+-----------+--------+-------- -------+-------------+-----------+-------+------+
+|  1 | ENSG00000000003.14_2 | chrX  | HAVANA |  99882106 |  99894988 | -      | protein_coding |             | TSPAN6    |     2 |      |
+|  2 | ENSG00000000005.6_3  | chrX  | HAVANA |  99839933 |  99854882 | +      | protein_coding |             | TNMD      |     2 |      |
+
+
+但是总共
+mysql> select count(*) from feature_gene2;
++----------+
+| count(*) |
++----------+
+|    60627 |
++----------+
+
+但是最后一行行号却很大：
+mysql> select id,gene_type,gene_name from feature_gene2 limit 60625, 20;
++-------+-----------+------------+
+| id    | gene_type | gene_name  |
++-------+-----------+------------+
+| 60631 | antisense | AC008945.2 |
+| 60632 | lincRNA   | AC093843.2 |
++-------+-----------+------------+
+
+经核实，有几个行号被跳过了，原因不明。反复试都这样。
+[1] 11257
+[1] 22650
+[1] 33285
+[1] 44131
+[1] 54953
+
+
+
+
+2. 方法2: 改进版，成功实现
+create table feature_gene3 like `feature_gene`; #创建表结构，保留字段、主键
+ALTER TABLE `feature_gene3` DROP PRIMARY KEY; #去掉新表主键
+alter table feature_gene3 add id int PRIMARY KEY auto_increment first; #为新表添加递增列
+
+## 为新表添加数据
+insert into feature_gene3(gene_id,chr,source,start,end,strand,gene_type,gene_status,gene_name,level,tag) select * from feature_gene;
+
+
+
+## 删除旧表
+## drop table feature_gene
+rename table feature_gene to feature_gene_h1; #备份历史1，没有id列
+## 重命名新表
+rename table feature_gene3 to feature_gene;
+
+
+
+
+3.这样也可行：创建新表，同时添加新列，插入旧表数据
+CREATE TABLE feature_gene2
+(
+    id INTEGER NOT NULL AUTO_INCREMENT PRIMARY KEY
+)
+AS
+(
+    SELECT * FROM feature_gene  
+);
+
+
+
+
+
+
+## 参考百度上两个回答：
+1.
+alter table feature_gene2
+add id int primary key auto_increment first;
+新建的字段，肯定是没有设置过主键的。
+add语句就可以解决。既然是id，所以建议放在第一列，因此最后可加first。
+
+已经有主键：
+alter table feature_gene2
+add id int auto_increment first;
+
+
+2.
+id不是主键的情况下，
+alter table temp 
+change id id int primary key auto_increment; 
+
+如果id已经是主键，
+alter table temp 
+change id id int auto_increment;
+
+
+
+
+
+========================================
+----------------------------------------
+
+
+
+========================================
+----------------------------------------
+
+
+
+========================================
+----------------------------------------
+
+
+
+========================================
+----------------------------------------
+
+
+
+========================================
+----------------------------------------
+
+
+
+========================================
+----------------------------------------
+
+
+
+========================================
+----------------------------------------
 
 
 

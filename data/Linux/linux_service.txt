@@ -580,8 +580,255 @@ BIND从服务器及缓存服务器配置（从服务器及缓存服务器）
 
 
 
+
+========================================
+系统资源监控 - centOS7 系统资源监控
+----------------------------------------
+1.
+$ sudo apt install glances 
+
+$ glances #将消耗最高系统资源的进程用红色标出
+
+
+(2)同时还可以远程监控：
+在服务器端启动
+$ glances -s -B 192.168.1.120
+
+$ glances -s -p 9000
+Glances XML-RPC server is running on 0.0.0.0:9000
+
+需要客户端连接？
+
+
+(3)同时还可以在web页面监控：//todo
+$ glances --export-graph --path-graph ./
+
+
+
+========================================
+|-- 内存
+----------------------------------------
+总体是先监控上，然后再可视化监控。
+
+
+1.查看内存使用情况
+$ free -m
+              total        used        free      shared  buff/cache   available
+Mem:          31848       20601        6958           9        4288       10777
+Swap:          2047         452        1595
+
+
+
+2.详细列出的进程情况，重点关注第10列内存使用占比：
+$ top
+top - 15:30:58 up 63 days, 23:30, 12 users,  load average: 0.08, 0.22, 0.16
+Tasks: 306 total,   1 running, 218 sleeping,   0 stopped,   0 zombie
+%Cpu(s):  0.6 us,  0.9 sy,  0.0 ni, 98.4 id,  0.0 wa,  0.0 hi,  0.0 si,  0.0 st
+KiB Mem : 32613176 total,  7125644 free, 21096460 used,  4391072 buff/cache
+KiB Swap:  2097148 total,  1633840 free,   463308 used. 11035752 avail Mem 
+
+  PID USER      PR  NI    VIRT    RES    SHR S  %CPU %MEM     TIME+ COMMAND         
+ 3785 root      20   0 1988144  11436    560 S  15.2  0.0  10472:27 teamviewerd     
+  927 avahi     20   0   53316   5900      0 S   1.0  0.0 392:50.44 avahi-daemon    
+ 1909 root      20   0 1629228   8992   2396 S   0.3  0.0 191:19.48 docker-containe 
+ 6826 wangjl    20   0  570760  11588    852 S   0.3  0.0 219:11.94 python          
+ 9745 root      20   0       0      0      0 I   0.3  0.0   0:00.01 kworker/6:2     
+ 9822 root      20   0       0      0      0 I   0.3  0.0   0:00.11 kworker/8:1     
+ 9828 wangjl    20   0   43052   4272   3384 R   0.3  0.0   0:00.08 top             
+22841 wangjl    20   0  374076  27964   6860 S   0.3  0.1   2:01.09 jupyter-noteboo 
+    1 root      20   0  225848   6832   4476 S   0.0  0.0 219:02.59 systemd         
+    2 root      20   0       0      0      0 S   0.0  0.0   0:02.60 kthreadd        
+    4 root       0 -20       0      0      0 I   0.0  0.0   0:00.00 kworker/0:0H    
+    6 root       0 -20       0      0      0 I   0.0  0.0   0:00.00 mm_percpu_wq
+#
+
+
+3.查看消耗内存最多的前5个进程：
+$ ps auxw|head -1;ps auxw|sort -rn -k4|head -5
+USER       PID %CPU %MEM    VSZ   RSS TTY      STAT START   TIME COMMAND
+wangjl    2007  0.1 62.4 22636272 20380768 ?   Ssl  Oct07   5:11 /home/wangjl/anaconda3/bin/python -m ipykernel_launcher -f /run/user/1001/jupyter/kernel-xxx.json
+rstudio+  3116  0.1  0.5 2064636 183256 pts/0  Ssl+ Aug08  92:00 mysqld
+root     20357  0.0  0.1 166984 48536 ?        S<s  Sep12   1:37 /lib/systemd/systemd-journald
+xrdp      1094  0.0  0.0  24808     0 ?        S    Aug06   0:00 /usr/sbin/xrdp
+www-data  8666  0.0  0.0 390052    24 ?        S    Sep11   0:00 /usr/sbin/apache2 -k start
+
+
+
+
+
+
+========================================
+|-- CPU
+----------------------------------------
+1. 
+Physical id 	#相同表示为同一个物理CPU
+Processor 	#逻辑CPU
+Cpu cores 	#CPU核数，内核个数
+Core id 	#内核id号
+Siblings 	#每个物理CPU里面的逻辑CPU个数
+
+
+查看CPU型号
+$ cat /proc/cpuinfo | grep name | cut -f2 -d: | uniq -c
+12  Intel(R) Xeon(R) W-2135 CPU @ 3.70GHz
+
+查看物理CPU个数
+$ cat /proc/cpuinfo | grep "physical id" | sort -u | wc -l  
+1
+
+查看逻辑CPU个数
+$ cat /proc/cpuinfo | grep "processor" | wc -l
+12
+
+查看CPU内核数
+$ cat /proc/cpuinfo | grep "cpu cores" | uniq  
+cpu cores	: 6
+
+查看单个物理CPU封装的逻辑CPU数量
+$ cat /proc/cpuinfo | grep "siblings" | uniq  
+siblings        : 12
+
+计算是否开启超线程
+逻辑CPU > 物理CPU x CPU核数 #开启超线程
+逻辑CPU = 物理CPU x CPU核数 #没有开启超线程或不支持超线程
+
+查看是否超线程
+$ cat /proc/cpuinfo | grep -e "cpu cores"  -e "siblings" | sort | uniq
+cpu cores	: 6
+siblings	: 12
+说明：如果cpu cores数量和siblings数量一致，则没有启用超线程，否则超线程被启用。
+
+
+脚本
+$ cat cpu.sh   
+#!/bin/bash
+cpuname=$(cat /proc/cpuinfo | grep name | cut -f2 -d: | uniq -c)
+physical=$(cat /proc/cpuinfo | grep "physical id" | sort -u | wc -l)
+processor=$(cat /proc/cpuinfo | grep "processor" | wc -l)
+cpucores=$(cat /proc/cpuinfo  | grep "cpu cores" | uniq)
+siblings=$(cat /proc/cpuinfo  | grep "siblings"  | uniq)
+
+echo "* * * * * CPU Information * * * * *"
+echo "（CPU型号）cpu name : $cpuname"
+echo "（物理CPU个数）physical id is : $physical"
+echo "（逻辑CPU个数）processor is : $processor"
+echo "（CPU内核数）cpu cores is : $cpucores"
+echo "（单个物理CPU的逻辑CPU数）siblings is : $siblings"
+#
+
+脚本运行效果
+$ sh cpu.sh 
+* * * * * CPU Information * * * * *
+（CPU型号）cpu name :      12  Intel(R) Xeon(R) W-2135 CPU @ 3.70GHz
+（物理CPU个数）physical id is : 1
+（逻辑CPU个数）processor is : 12
+（CPU内核数）cpu cores is : cpu cores	: 6
+（单个物理CPU的逻辑CPU数）siblings is : siblings	: 12
+
+
+
+
+
+2. vmstat是Linux系统监控工具，使用vmstat命令可以得到关于进程、内存、内存分页、堵塞IO、traps及CPU活动的信息。
+
+$ vmstat 1
+procs  -----------memory------------   --swap--   ---io---- -system-- ------cpu-----
+ r  b   swpd   free   buff    cache     si   so    bi    bo   in   cs us sy id wa st
+ 0  0 463308 7124444 1377552 3014080    0    0    26    33    0    0  1  1 98  0  0
+ 0  0 463308 7124436 1377552 3014116    0    0     0     0  774 9451  1  1 98  0  0
+ 0  0 463308 7124436 1377552 3014116    0    0     0     0  338  697  0  0 100  0  0
+ 0  0 463308 7124436 1377552 3014116    0    0     0     0  649 9562  1  1 98  0  0
+ 0  0 463308 7124436 1377552 3014116    0    0     0     0  374  686  0  0 100  0  0
+
+r：运行队列中的进程数；b：等待IO的进程数。
+swpd：已用虚拟内存大小（k）；free：空闲内存大小；buff：已用缓冲大小；cache：已用缓存大小。
+si：每秒从交换区写入内存的大小（kb/s）；so：每秒从内存写入交换分区的大小。
+
+bi：每秒读取的块数；bo每秒写入的块数。
+in：每秒中断数，包括时钟中断；cs：每秒上下文切换数。
+us(user time)：用户进程执行消耗cpu时间；sy(system time)：系统进程执行消耗cpu时间；id：空闲时间（包括IO等待时间）；wa：等待IO时间。
+
+
+(2) /proc/stat：
+这个文件包含了所有CPU活动的信息，该文件中的所有值都是从系统启动开始累计到当前时刻。可以利用其中信息计算cpu的利用率。
+$ cat /proc/stat
+cpu  85870228 93600 42725582 6489209034 9137121 0 421790 0 0 0
+cpu0 6602769 7449 3339631 541497724 761981 0 142049 0 0 0
+cpu1 6611019 7534 3375450 541922359 476956 0 11676 0 0 0
+cpu2 6445912 7690 3390426 541996062 566815 0 7825 0 0 0
+cpu3 6903904 4741 3354675 541637542 520768 0 5106 0 0 0
+cpu4 6398322 5495 3364155 542155286 493559 0 3780 0 0 0
+
+每行每个参数的意思为（以第一行为例，单位：jiffies，1jiffies=0.01秒）：
+user（6602769）：从系统启动开始累计到当前时刻，用户态的CPU1时间，不包含 nice值为负进程。
+nice（7449）：从系统启动开始累计到当前时刻。
+system（3339631）：从系统启动开始累计到当前时刻，nice值为负的进程所占用的CPU时间。
+idle（541497724）：从系统启动开始累计到当前时刻，除硬盘IO等待时间以外其它等待时间。
+iowait（761981）：从系统启动开始累计到当前时刻，硬盘IO等待时间。
+irq（0）：从系统启动开始累计到当前时刻，硬中断时间。
+softirq（142049）：从系统启动开始累计到当前时刻，软中断时间。
+CPU时间=user+nice+system+idle+iowait+irq+softirq。
+CPU利用率=(idle2-idle1)/(cpu2-cpu1)*100。
+
+
+(3)ps aux：
+显示其他用户启动的进程（a）
+查看系统中属于自己的进程（x）
+启动这个进程的用户和启动时间 （u）
+$ ps -aux | sort -k4nr | head -5
+wangjl    2007  0.1 62.4 22636272 20380768 ?   Ssl  Oct07   5:11 /home/wangjl/anaconda3/bin/python -m ipykernel_launcher -f /run/user/1001/jupyter/kernel-xx1.json
+rstudio+  3116  0.1  0.5 2064636 183256 pts/0  Ssl+ Aug08  92:01 mysqld
+wangjl    6111  0.0  0.2 1244588 77036 ?       Ssl  Oct08   0:05 /home/wangjl/anaconda3/bin/python -m ipykernel_launcher -f /run/user/1001/jupyter/kernel-xx2.json
+root     20357  0.0  0.1 166984 48560 ?        S<s  Sep12   1:37 /lib/systemd/systemd-journald
+wangjl   22934  0.0  0.1 644688 33040 ?        Ssl  Oct04   0:14 /home/wangjl/anaconda3/bin/python -m ipykernel_launcher -f /run/user/1001/jupyter/kernel-xx3.json
+
+
+
+
+
+========================================
+|-- 硬盘
+----------------------------------------
+1.硬盘查看
+$ sudo fdisk -l
+
+
+$ df -lh
+Filesystem      Size  Used Avail Use% Mounted on
+udev             16G     0   16G   0% /dev
+tmpfs           3.2G  1.8M  3.2G   1% /run
+/dev/sda2       234G  214G  8.3G  97% /
+/dev/sdb        3.6T  2.5T  990G  72% /data
+
+
+
+
+
 ========================================
 ----------------------------------------
+
+
+
+
+========================================
+----------------------------------------
+
+
+
+========================================
+----------------------------------------
+
+
+
+
+========================================
+----------------------------------------
+
+
+
+========================================
+----------------------------------------
+
 
 
 
