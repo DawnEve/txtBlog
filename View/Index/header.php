@@ -18,7 +18,7 @@
 
 
 <div class=nav>
-<b><a class='redBg' href='/index.php'>Dawn's Blog</a></b>
+<b><a class='redBg' href='/index.php'>txtBlog</a></b>
 <?php
 $keyword=$arrTop['keyword'];
 $top=$arrTop['data'];

@@ -41,10 +41,12 @@ return array (
 	  array('jQuery简介','jQuery001','html' ),
 	  array('jQuery教程','jQuery002','txt' ),
 	  array('underscore教程','underscore001','md' ),
-	  array('mooltools教程','mooltools001','md' ),
-	  array('prototype教程','prototype001','md' ),
-	  array('Dojo教程','dojo001','md' ),
-	  //array('YUI教程','YUI001','md' ),
+	  array('其他JS类库','otherJSLib','md' ),
+	  
+	  //array('prototype教程','prototype001','md' ),
+	  //array('Dojo教程','dojo001','md' ),
+	  array('VueJS.md','VueJS','md' ),
+	  array('VueJS.txt','VueJS','txt' ),
     ),
   ),
 

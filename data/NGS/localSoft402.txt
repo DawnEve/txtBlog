@@ -1613,22 +1613,13 @@ $ wget -c ftp://ftp.sanger.ac.uk/pub/gencode/Gencode_human/release_27/gencode.v2
 
 
 ========================================
-定量后的分析：差异表达 Limma, DEseq2, edgeR, 
+RNAseq分析: 使用 Limma, DEseq2, edgeR, 筛选差异表达基因DEG
 ----------------------------------------
-1.https://ccb.jhu.edu/software/stringtie/index.shtml
-StringTie's output can be processed by specialized software like Ballgown, Cuffdiff or other programs (DESeq2, edgeR, etc.).
 
-2. https://combine-lab.github.io/salmon/getting_started/
-After quantification
-Quantifying your RNA-seq data with salmon is that simple (and fast). Once you have your quantification results you can use them for downstream analysis with differential expression tools like DESeq2, edgeR, limma, or sleuth. 
-定量后做差异表达分析：DESeq2, edgeR, limma, or sleuth. 
+详情参考本博客专题 R / 分析差异表达基因DEG。
 
 
 
-
-========================================
-|-- DEseq2 //todo
-----------------------------------------
 
 
 
@@ -1658,12 +1649,21 @@ browseVignettes("DEXSeq") #弹出网页包含pdf文档和示例代码。由于�
 
 
 2.sam文件转换成counts数据
+#第一步：计数
+
 (1)把gtf文件转为gff文件
+# 找到DEXSeq提供的python角本的路径。
+system.file('python_scripts', package='DEXSeq')
+# [1] "/home/wangjl/R/x86_64-pc-linux-gnu-library/3.6/DEXSeq/python_scripts"
+#$ python ~/projects/RLib.3.01/DEXSeq/python_scripts/dexseq_prepare_annotation.py Homo_sapiens.GRCh37.75.fixed.gtf DEXSeq.hg19.gene.gff
+## # 注意的是，gtf文件必须与mapping的基因组一致，尤其是染色体的名字要一致，注意mapping的bam文件和gtf中是chr1还是1.
+
 > pythonScriptsDir = system.file( "python_scripts", package="DEXSeq" )
 > list.files(pythonScriptsDir)
 ## [1] "dexseq_count.py"              "dexseq_prepare_annotation.py"
 
 官方推荐句子：python /path/to/library/DEXSeq/python_scripts/dexseq_prepare_annotation.py Drosophila_melanogaster.BDGP5.72.gtf Dmel.BDGP5.25.62.DEXSeq.chr.gff
+
 
 因为一直报错，有人说是版本问题，就改用py2试试。需要重新安装py2的HTSeq包。
 $ pip2 install --user HTSeq
@@ -1675,17 +1675,29 @@ $ python2 /data/software/bcbio/anaconda/lib/R/library/DEXSeq/python_scripts/dexs
 
 
 (2).而后使用dexseq_count.py来计数每个exon上的reads数。 Counting reads
+#$ python ~/projectGREEN/RLib.3.01/DEXSeq/python_scripts/dexseq_count.py \
+#    -p no -s yes -a 10 -f bam ~/DEXSeq/DEXSeq.hg19.gene.gff bam.file out.counts
+#参数-p指出mapping文件是否是pair end文件，默认no。
+#参数-s表示是否是stranded，默认为yes。
+#-f指输入文件的格式，默认为sam。bam需要安装 pysam包。
+# -a to specify the minimum alignment quality，sam文件第五列。跳过低于该值的。
+
+# 在运行计数结束之后，需要检查一下最后四行，看看empty的多不多，如果超过20%，可能需要检查一下mapping的结果
+#，当然也可能是计数文件准备错误，比如mapping结果没有index等等。如果以上都不是，那可能是polyA太多了。
+
+
+
+
 $ cd /home/wangjl/data/apa/190705PAS/test/
 $ samtools view -h c01_ROW07.bam >c01_ROW07.sam
 $ python2 /data/software/bcbio/anaconda/lib/R/library/DEXSeq/python_scripts/dexseq_count.py -p no -s yes -a 10 \
 /home/wangjl/data/ref/hg19/gencode.v30lift37.annotation.gff  c01_ROW07.sam c01_ROW07.counts
 
-在这里，参数-p指出mapping文件是否是pair end文件，默认no。
-参数-s表示是否是stranded，默认为yes。
--f指输入文件的格式，默认为sam。
 
 
-(3)批量化
+
+
+(3)批量化计数
 /home/wangjl/data/apa/190705PAS/MAPQ255/c01_ROW07.bam 
 
 同步化的syncHeLa:
@@ -1706,31 +1718,173 @@ python2 /data/software/bcbio/anaconda/lib/R/library/DEXSeq/python_scripts/dexseq
 
 
 
-3.读入R环境中
-library("DEXSeq") ## suppressPackageStartupMessages(library("DEXSeq"))
-#BiocManager::install("pasilla")
-library("pasilla")
-library("DEXSeq")
 
+
+
+
+
+
+
+3.读入R环境中
+# 在R中读入计数数据，需要准备好计数文件，实验设计，以及前面用到的gff文件。
+#在这里，我们使用Bioconductor中已有的pasilla数据来示例。
+library("DEXSeq")
+#1.count file names
 inDir <- system.file("extdata", package="pasilla")
 countFiles <- list.files(inDir, pattern="fb.txt$", full.names=TRUE)
 basename(countFiles)
+## [1] "treated1fb.txt"   "treated2fb.txt"   "treated3fb.txt"   "untreated1fb.txt" "untreated2fb.txt" 
+## [6] "untreated3fb.txt" "untreated4fb.txt"
+
+
+#2.gff
+gffFile <- list.files(inDir, pattern="gff$", full.names=TRUE) #Dmel.BDGP5.25.62.DEXSeq.chr.gff
+##注意，如果是自己的数据的话，比如之前示例使用的是DEXSeq.hg19.gene.gff，这里就用DEXSeq.hg19.gene.gff
+
+##实验设计
+sampleTable <- data.frame(row.names=c(paste("treated", 1:3, sep=""), paste("untreated", 1:4, sep="")),
+                          condition=rep(c("knockdown", "control"), c(3, 4)))
+sampleTable
+##            condition
+## treated1   knockdown
+## treated2   knockdown
+## treated3   knockdown
+## untreated1   control
+## untreated2   control
+## untreated3   control
+## untreated4   control
+
+
+dxd <- DEXSeqDataSetFromHTSeq(
+  countFiles,
+  sampleData=sampleTable,
+  design= ~sample + exon + condition:exon,
+  flattenedfile=gffFile)
+## converting counts to integer mode
+dim(dxd) #[1] 70463    14
+head(dxd)
+
+#查看矩阵
+dim(featureCounts(dxd)) #[1] 70463     7
+head( featureCounts(dxd), 5 )
+
+
+# 第三步：获得差异表达数据
+#只需要一步
+dxr <- DEXSeq(dxd) #耗时
+head(dxr)
+
+## 对于结果dxr，可以直接视为data.frame来操作。也可以使用as.data.frame来转换它。
+## 结合使用plotDEXSeq就可以查看自己感兴趣的目标基因中的exon的表达情况。
+head(unique(dxr$groupID))
+plotDEXSeq(dxr, geneID='FBgn0000014')
+plotDEXSeq(dxr, geneID='FBgn0010909')
+plotDEXSeq( dxr, "FBgn0010909", displayTranscripts=TRUE, legend=TRUE, cex.axis=1.2, cex=1.3, lwd=2 )
 
 
 
-> gffFile <- list.files(inDir, pattern="gff$", full.names=TRUE) ##注意，如果是自己的数据的话，比如之前示例使用的是DEXSeq.hg19.gene.gff，这里就用DEXSeq.hg19.gene.gff
+#
+########################begin 可选的三步法
+## 同DESeq一样，它分为三个步骤：normalization, Dispersion estimation 以及 testing for differential exon usage。
+dxd2 <- estimateSizeFactors(dxd) #第一步
+dxd3 <- estimateDispersions(dxd2) #第二步，耗时。此时可以使用plotDispEsts(dxd)来观察离散情况
+plotDispEsts(dxd3)
+## Figure 1: Fit Diagnostics
+## The initial per-exon dispersion estimates (shown by black points), the fitted 
+## mean-dispersion values function (red line), and the shrinked values in blue
+dxd4 <- testForDEU(dxd3) #第三步: differential exon usage (DEU)
+#dxd5 <- estimateExonFoldChanges(dxd4, fitExptoVar="condition")
+##  Error in estimateExonFoldChanges(dxd4, fitExptoVar = "condition") : 
+## unused argument (fitExptoVar = "condition")
+dxd5 <- estimateExonFoldChanges(dxd4)
+dxr2 <- DEXSeqResults(dxd5) #可以使用plotMA(dxr1)来查看结果
+head(dxr2)
+#
+dxr[1:4,1:4]
+dxr2[1:4,1:4] #一模一样
+########################end
 
-> ##实验设计
-> sampleTable <- data.frame(row.names=c(paste("treated", 1:3, sep=""), paste("untreated", 1:4, sep="")),
-+ condition=rep(c("knockdown", "control"), c(3, 4)))
->
-> dxd <- DEXSeqDataSetFromHTSeq(
-+ countFiles,
-+ sampleData=sampleTable,
-+ design= ˜ sample + exon + condition:exon,
-+ flattenedfile=gffFile)
 
 
+
+plotMA(dxr2)
+mcols(dxr2)$description #描述意义
+
+#  how many exonic regions are significant with a false discovery rate of 10%:
+table ( dxr2$padj < 0.1 )
+## FALSE  TRUE 
+## 42985   233
+
+##may also ask how many genes are affected
+table ( tapply( dxr2$padj < 0.1, dxr2$groupID, any ) )
+## FALSE  TRUE 
+## 5220   166
+
+plotMA( dxr2, cex=0.8 ) ## Figure 2: MA plot
+## Mean expression versus log2 fold change plot. Significant hits at an FDR=0.1 are coloured in red.
+
+#查看样本注释信息
+sampleAnnotation(dxd)
+
+## 其他技术和实验因素 6
+
+
+#具体基因外显子的可视化
+plotDEXSeq( dxr2, "FBgn0010909", legend=TRUE, cex.axis=1.2, cex=1.3, lwd=2 ) ## Figure 3: Fitted expression
+## The plot represents the expression estimates from a call to testForDEU(). 
+##  Shown in red is the exon that showed significant differential exon usage.
+
+# 每个样品 with normalized count values of each exon in each of the samples.
+plotDEXSeq( dxr2, "FBgn0010909", expression=FALSE, norCounts=TRUE, 
+            legend=TRUE, cex.axis=1.2, cex=1.3, lwd=2 )
+
+# after subtraction of overall changes in gene expression.
+plotDEXSeq( dxr2, "FBgn0010909", expression=FALSE, splicing=TRUE,
+            legend=TRUE, cex.axis=1.2, cex=1.3, lwd=2 )
+#
+#把所有的显著性差异的基因的相关图片全部画一遍
+DEXSeqHTML( dxr, FDR=0.1, color=c("#FF000080", "#0000FF80") )
+getwd()
+
+
+
+
+
+
+
+
+# 不知道干啥用的
+wh = (dxr2$groupID=="FBgn0010909")
+stopifnot( sum(dxr2$padj[wh] < formals(plotDEXSeq)$FDR)==1 )
+
+
+##
+# 查看gene
+head( geneIDs(dxd) )
+## [1] "FBgn0000003" "FBgn0000008" "FBgn0000008" "FBgn0000008" "FBgn0000008" "FBgn0000008"
+
+# 查看外显子
+head( exonIDs(dxd) )
+## [1] "E001" "E001" "E002" "E003" "E004" "E005"
+
+
+## Overlap operations
+interestingRegion = GRanges( "chr2L", IRanges(start=3872658, end=3875302) )
+subsetByOverlaps( x=dxr, ranges=interestingRegion )
+#
+#This functions could be useful for further downstream analysis.
+findOverlaps( query=dxr2, subject=interestingRegion )
+## queryLength: 70463 / subjectLength: 1
+
+
+
+
+#
+library(ggplot2)
+ggplot(as.data.frame(dxr2), aes( log10(exonBaseMean), log2fold_knockdown_control) )+ geom_point()
+
+library(ggplot2)
+ggplot(as.data.frame(dxr2), aes( log10(exonBaseMean), dispersion) )+ geom_point()
 
 
 
@@ -1743,6 +1897,15 @@ refer:
 2.http://www.bio-info-trainee.com/bioconductor_China/software/DEXSeq.html
 3.http://www.biotrainee.com/thread-1220-1-1.html
 
+4. #软件工具#使用DEXSeq分析NGS数据中的exon表达差异 泊客  云生信学生物信息学  2016-10-26
+
+
+
+
+========================================
+|-- 加权基因共表达网络分析 (WGCNA, Weighted correlation network analysis)
+----------------------------------------
+https://mp.weixin.qq.com/s?__biz=MzI5MTcwNjA4NQ==&mid=2247485220&idx=1&sn=007188964e7c43d75dcd0b11b880bbfa&scene=21#wechat_redirect
 
 
 
@@ -1904,9 +2067,16 @@ samtools view -bS input.sam >aln.bam 	#1.转换为bam
 samtools sort -o aln.sorted.bam aln.bam #2.排序
 samtools index aln.sorted.bam 		#3.建索引
 
-常用参数: 
--@ 20 使用20个线程
 
+适用于1.3及之后的版本。一步sam转bam并排序。老版本需要2步：1先转bam，2再排序。
+$ nohup samtools sort -@ 8 -o ERR188044_chrX.bam ERR188044_chrX.sam 2>ERR188044_sam.err &
+
+
+常用参数: 
+$ samtools sort --help
+Usage: samtools sort [options...] [in.bam]
+-@, --threads INT     线程数 Number of additional threads to use [0]
+-o FILE    Write final output to FILE rather than standard output 输出文件
 
 
 
@@ -1915,6 +2085,7 @@ Usage:   samtools sort [options] <in.bam> <out.prefix>
 最后一个是参数是输出文件的前缀，如：
 $ samtools sort c12_ROW03.Mm.bam c12_ROW03.Mm.s
 吐槽：CentOS7自带的软件版本都太古老！可靠===过时，不适用于追新的科研。还是用Ubuntu省劲，源都比较新。
+
 
 
 
@@ -1940,9 +2111,13 @@ https://www.cnblogs.com/emanlee/p/4316581.html
 samtools view -bS input.sam >out.bam
 samtools view -b -S NA12878.sam > NA12878_2.bam
 
+$ samtools view -bS ../c12_A1_Aligned.out.sam -o c12_A1.bam -@ 10
+
 -b 输出BAM format
--S 输入格式自动检查(比如SAM)。 如果@SQ 缺省， 要写-t (?)
+-S 输入格式自动检查(sam,bam,cram)。 如果@SQ 缺省， 要写-t (?)
 -t FILE:  FILE listing reference names and lengths (see long help) [null]
+-o File 输出文件名
+-@ 额外使用的线程数
 
 所以如果没有@SQ
 samtools faidx ref.fa
@@ -1964,13 +2139,37 @@ samtools view -h NA12878.bam >NA12878_2.sam
 
 
 
-3.排序和建索引
+3.排序
+$ samtools sort c12_A1.bam -o c12_A1.sorted.bam -@ 10
 $ samtools sort -T /tmp/aln.sorted -o aln.sorted.bam aln.bam
+
 # -T 是指定临时文件
+-o File 输出到文件而不是标准输出
+-@ 线程数
 
 
+4.建索引
 $ samtools index aln.sorted.bam
 
+或者批量化
+$ head getIndex.sh
+for id in `cat id.txt`
+do
+  samtools index ${id}.sorted.bam;
+done
+
+
+
+
+
+5. 找snp
+对于sort和index过的bam文件
+$ samtools pileup -vcf  ref.fa  aln.bam | tee raw.txt | samtools.pl varFilter -D100 > flt.txt
+以上命令是寻找最大深度为100的SNP，raw.txt是原始SNP的文件
+
+The -D option of varFilter controls the maximum read depth
+$ awk '($3=="*"&&$6>=50)||($3!="*"&&$6>=20)' flt.txt > final.txt
+以上是根据sam文件的第三列和第六例进行质量控制。这个根据自己设定的阈值，进行筛选。
 
 
 
@@ -1988,11 +2187,50 @@ $ samtools index aln.sorted.bam
 
 
 
+(1) 截取bam子集
+view  从bam/sam文件中提取/打印部分比对结果。默认为所有的区域，也可以染色体区域（1-based，须sort并index）。
+例如：
+samtools view -bt ref_list.txt -o aln.bam aln.sam.gz
+samtools view aln.sorted.bam chr2:20,100,000-20,200,000
+samtools view aln.sorted.bam chr2:20,100,000-20,200,000 > sample.sam #到igv中查看
+
+例：
+samtools view -b -h B.addgroup.bam chr2 chr3 chr5 >B_others.bam
+以空格分隔要截取的染色体数据，这样，得到比对到chr2，chr3，和chr5的部分bam文件，保存在B_others.bam文件中。
+
+samtools view -b -h 225.sort.bam chr14 >sample.bam
+samtools view -b -h 225.sort.bam chr7 >sample.bam
+samtools index sample.bam 
+## 然后可以用IGV载入了。
+## 太慢了，可以考虑多线程 -@ 20
+
+
+
+(2)
+samtools tview -p B05:53425172 accepted_hits.bam Bju.genome.fa
+“.” 比对到正链;
+“，” 表示比对到负链;
+“<”或“>” 表示reference skip   RNA-seq当中内含子剪切;
+"ATCGN"  表示正向mismatch;
+"atcgn"  表示反向mismatch;
+‘+[0-9]+[ACGTNacgtn]+’ insertion;
+‘-[0-9]+[ACGTNacgtn]+’ 表示deletion;
+“^”标记reads起始;
+“$”标记reads segment结尾;
+
+实例
+
+
+
+
 
 
 5.flagstat 对reads的比对情况统计
 
 samtools flagstat xx.sort.bam 
+
+
+
 
 
 6.depth 每个碱基位点的测序深度
@@ -2009,6 +2247,9 @@ samtools depth -a -r chr3 x.sort.bam
 第一列chr名字，第二列碱基位置，第三列测序深度。
 
 
+
+
+
 7.mpileup 对参考基因组每个位点做碱基堆积，用于call SNP和INDEL。主要是生成BCF、VCF文件或者pileup一个或多个bam文件。比对记录以在@RG中的样本名作为区分标识符。如果样本标识符缺失，那么每一个输入文件则视为一个样本。
 
 用法：
@@ -2022,6 +2263,8 @@ samtools mpileup -vuf genome.fasta  test.sort.bam
 
 7.dict 建立参考基因组字典
 samtools dict  test.sort.bam sequences.fa 
+
+
 
 
 8.fastq bam文件转换为fastq
@@ -2258,7 +2501,17 @@ P50454	red
 ========================================
 |-- GSEA富集分析 - 界面操作-命令行操作
 ----------------------------------------
+GSEA富集分析 - 界面操作  生信宝典  2017-10-14
 https://mp.weixin.qq.com/s?__biz=MzI5MTcwNjA4NQ==&mid=2247484582&idx=1&sn=1e01276e1216c91bd6e1e08db15bd905
+
+一文掌握GSEA，超详细教程  生信宝典  2019.4月26日
+https://mp.weixin.qq.com/s?__biz=MzI5MTcwNjA4NQ==&mid=2247488358&idx=1&sn=4c1c15b6467ff7f8bd7fe95400bbc1df
+
+GO、GSEA富集分析一网打进
+https://mp.weixin.qq.com/s?__biz=MzI5MTcwNjA4NQ==&mid=2247484594&idx=1&sn=77c8a84ceaae6b672f198ebd531c21e4
+
+
+
 
 Gene Set Enrichment Analysis (基因集富集分析)用来评估一个预先定义的基因集的基因在与表型相关度排序的基因表中的分布趋势，从而判断其对表型的贡献。其输入数据包含两部分，一是已知功能的基因集 (可以是GO注释、MsigDB的注释或其它符合格式的基因集定义)，一是表达矩阵，软件会对基因根据其于表型的关联度(可以理解为表达值的变化)从大到小排序，然后判断基因集内每条注释下的基因是否富集于表型相关度排序后基因表的上部或下部，从而判断此基因集内基因的协同变化对表型变化的影响。
 
@@ -2318,8 +2571,6 @@ java -Xmx512m xtools.gsea.Gsea -res F:\Temp\DESeq2\hela.count.nons_sync.txt -cls
 ========================================
 提取参考基因组某位置的碱基(4种方法)： 根据基因组坐标获得碱基序列(注意bed文件是0-based)
 ----------------------------------------
-
-
 
 1. 利用samtools faidx
 samtools faidx 常常用来对参考基因组建立索引，但它还有个鲜为人知的功能，就是序列提取，如下：
@@ -2507,6 +2758,86 @@ refer: https://blog.csdn.net/whenfree/article/details/85305616
 
 
 ========================================
+IGV使用方法
+----------------------------------------
+IGV User Guide ： http://software.broadinstitute.org/software/igv/UserGuide
+
+目的：
+从gencode数据库下载基因注释文件，并且用IGV去查看你感兴趣的基因的结构，比如TP53,KRAS,EGFR等等。
+
+
+
+1.导入hg19参考基因组及注释文件
+(1)Genomes - load genoe fom file---选择上述生成的hg19.fa文件。
+
+
+(2)
+只能导入系统自带的，不能从外部导入gtf文件？
+
+
+向IGV导入gencode hg19 的 gtf文件
+https://software.broadinstitute.org/software/igv/GFF
+A General Feature Format (GFF) file is a simple tab-delimited text file for describing genomic features. There are several slightly but significantly different GFF file formats. IGV supports the GFF2, GFF3 and GTF file formats.
+
+GTF files must have a .gtf file extension for IGV. 要有.gtf后缀.
+See the Computational Genomics Laboratory web site (http://mblab.wustl.edu/GTF2.html) for a description of the GTF file format.
+
+
+
+### 看来这个载入方式不对？！
+1)打开IGV菜单Tools->igvtools, 
+command中先选择Sort，input中输入gtf绝对路径(gencode.v30lift37.annotation.gtf)，鼠标单击外面，自动生成output file，点击run按钮，大约1min后生成.sorted.gtf文件；
+然后使用command中的Index命令，input填写刚生成的gtf文件，点击run，1min后生成.idx文件。
+2)然后点击菜单Genome->Load genome from file， gencode.v30lift37.annotation.sorted.gtf，报错： Could not create index file: xx.gtf.fai  //todo 
+
+
+### IGV官方介绍怎么制作自己的参考文件：
+http://software.broadinstitute.org/software/igv/NewGenomeMgmt
+Creating a .genome File
+1)Click Genomes>Create .genome File. IGV displays the a window where you enter the information.
+2)填写一个名字geneCodeV30HG19，这个名字将会显示到IGV左上角。
+填写hg19.fa文件路径，gene栏填写对应的gtf文件路径，点击创建，选择地址保存。
+大概5min结束，能在硬盘上看到文件 geneCodeV30HG19.genome,54M.
+3)IGV左上角下拉框，选择刚生成的genome即可。
+但是，还是不行，loading Genome... 等了半天，没有报错，但是还是没载入。//todo2
+
+
+
+
+
+Feature display name: To override the default setting for which field is used to label the features in the IGV track, add the following line to the file:
+##displayName=<field name>
+
+Coloring features: To specify a color for a given feature, you can add this to the file as shown in the following example. Color values can be in either hexadecimal or RGB (r, g, b) format.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+========================================
+gtf文件结合 Gviz R包进行可视化 //todo
+----------------------------------------
+使用refGenome加上dplyr玩转gtf文件
+原创： 生信技能树  生信技能树  2018-12-05
+
+
+
+
+
+
+
+
+========================================
 判断测序文库的链特异性: IGV法, RSeQC统计法
 ----------------------------------------
 
@@ -2528,9 +2859,8 @@ http://software.broadinstitute.org/software/igv/
 
 
 2. 安装 
+(1)
 略
-
-
 
 
 3.首先，需要辨明正反链，正义/反义链，编码链，模板链的概念。
@@ -2638,6 +2968,15 @@ http://www.sohu.com/a/288877744_777125
 
 
 
+paper: http://genome.cshlp.org/content/14/6/1188.full.
+docs: http://weblogo.berkeley.edu/
+中文实例： http://www.dxy.cn/bbs/topic/11662491?from=recommend
+
+发现motif需要的软件： http://homer.ucsd.edu/homer/introduction/install.html
+
+
+
+
 ========================================
 |-- MEME 查找motif
 ----------------------------------------
@@ -2722,14 +3061,216 @@ $ meme c12_ROW03.40ntUP.fasta -dna -oc ./meme -mod zoops -nmotifs 3 -minw 6 -max
 
 
 ========================================
-|-- HOMER 查找motif //todo
+|-- HOMER 查找motif (Software for motif discovery and next-sequencing analysis) //todo
 ----------------------------------------
 http://homer.ucsd.edu/homer/
 
-1. HOMER (v4.10, 5-16-2018)
+1. HOMER (v4.10, 5-16-2018) 使用Perl和C++写的。
 Software for motif discovery and next generation sequencing analysis
 
 HOMER (Hypergeometric Optimization of Motif EnRichment) is a suite of tools for Motif Discovery and next-gen sequencing analysis.  It is a collection of command line programs for unix-style operating systems written in Perl and C++. HOMER was primarily written as a de novo motif discovery algorithm and is well suited for finding 8-20 bp motifs in large scale genomics data.  HOMER contains many useful tools for analyzing ChIP-Seq, GRO-Seq, RNA-Seq, DNase-Seq, Hi-C and numerous other types of functional genomics sequencing data sets.
+
+
+2. 安装
+http://homer.ucsd.edu/homer/introduction/install.html
+
+前置安装，需要sudo安装 
+gcc
+g++
+make
+perl
+zip/unzip
+gzip/gunzip
+wget
+
+需要NGS工具: 
+samtools
+R (with Bioconductor packages DESeq2, edgeR)
+HOMER no longer requires ghostscript and weblogo
+
+(1) 下载页
+http://homer.ucsd.edu/homer/download.html
+$ mkdir homer
+$ wget http://homer.ucsd.edu/homer/configureHomer.pl
+$ perl configureHomer.pl -install
+
+Software Installed.  If not done so already, add the homer programs to your executable path.
+Add this line to your .bash_profile or .bashrc file (or other depending on your shell):
+$ vim ~/.bashrc
+export PATH=$PATH:/home/wangjl/data/software/homer/.//bin/
+$ source ~/.bashrc
+
+Simply typing "findMotifs.pl" should work before running Homer.
+
+
+更新 perl configureHomer.pl -update
+改变目录 perl configureHomer.pl -install homer (this is good for forcing the software to reinstall - preferred if you think there is something wrong) 
+
+
+
+(2) 常用的配置命令
+perl /path-to-homer/configureHomer.pl [options]
+
+我们看下这些options都有哪些：
+
+-list 列出可用的包
+-install 安装homer需要用到的数据包
+-version 安装homer包时，可以指定包版本
+-remove 移除包
+-update 更新所有包到最新版本
+-reinstall 强制重新安装所有已经安装过的包
+-all 安装所有包
+-getFacts (add humor to HOMER - to remove delete contents of data/misc/)
+-check 检查第三方软件：samtools, DESeq2, edgeR
+-make 重新配置和编译可执行文件
+-sun SunOS系统，使用gmake 和 gtar代替make 和 tar
+-keepScript 不更新configureHomer.pl
+-url 安装时，使用的资源地址，默认：http://homer.ucsd.edu/homer/
+ Hubs & BigWig settings (with read existing settings from config.txt if upgrading):
+-bigWigUrl  (Setting for makeBigWigs.pl)
+-bigWigDir  (Setting for makeBigWigs.pl)
+-hubsUrl  (Setting for makeMultiWigHub.pl)
+-hubsDir  (Setting for makeMultiWigHub.pl)
+ Configuration files: 下载 update.txt，更新config.txt
+
+
+(3) 下载数据包
+$ pwd  # /home/wangjl/data/software/homer
+
+查询可用的包列表
+$ perl configureHomer.pl -list
+
+
+下载hg19的人类基因组
+$ perl configureHomer.pl -install hg19    (to download the hg19 version of the human genome)
+
+
+
+HOMER Known Motifs - Genome-wide predictions and UCSC Track
+Human hg19 UCSC BigBed Track 170917 (load as a custom track) - [primary BED file]
+http://homer.ucsd.edu/homer/data/motifs/homer.KnownMotifs.hg19.170917.bigBed.track.txt
+http://homer.ucsd.edu/homer/data/motifs/homer.KnownMotifs.hg19.170917.bed.gz
+
+
+
+
+3. 运行 Running findMotifs.pl with FASTA files:
+(1)找到的语句和用途
+1)
+语法 
+findMotifs.pl <targetSequences.fa> fasta <output directory> -fasta <background.fa> [options]
+第二个参数必须是物种, 不一定要和fasta文件匹配，甚至可以就是一个简单的占位符"fasta"。
+
+$ findMotifs.pl chuckNorrisGenes.fa human analysis_output/ -fasta normalHumanGenes.fa
+
+还有其他参数控制motif查找。 findMotifs.pl 将会进行GC标准化，默认是自动标准化。 
+$ findMotifs.pl lpsInducedGenes.pl mouse LPSMotifResults/ -start -400 -end 100 -len 8,10 -p 4 
+## This will search for motifs of length 8 and 10 from -400 to +100 relative to the TSS, using 4 threads (i.e. 4 CPUs)
+# 更多参数： http://homer.ucsd.edu/homer/microarray/index.html
+
+
+
+2)
+RNA Motif Analysis
+http://homer.ucsd.edu/homer/motif/rnaMotifs.html
+$ findMotifs.pl mir1-downregulated.genes.txt human-mRNA MotifOutput/ -rna -len 8
+
+
+
+(2) 输入bed文件
+$ findMotifsGenome.pl ChIP-Seq_H3K4Me3_1_homer.bed hg19 ChIP-Seq_H3K4Me3_1_motifDir/ -len 8,10,12
+# 参数解释
+-输入文件：awk处理好的Homer Peak/Positions file
+-参考基因组：这里是hg19
+-输出文件：给一个路径和输出文件的名字
+-len：motif大小设置，默认8,10,12；越大需要的计算资源越多
+
+上述命令（找motif）每一样品需要运行30-40分钟后，得到文件夹ChIP-Seq_H3K4Me3_1_motifDir,文件夹会有一个网页结果。
+
+常用参数：
+-bg：自定义背景序列；
+-size: 用于motif寻找得片段大小，默认200bp；-size given 设置片段大小为目标序列长度；越大需要得计算资源越多；
+-len：motif大小设置，默认8,10,12；越大需要得计算资源越多；
+-S：结果输出多少motifs, 默认25；
+-mis：motif错配碱基数，默认2bp；
+-norevopp：不进行反义链搜索motif；
+-nomotif：关闭重投预测motif；
+-rna: 输出RNA motif，使用RNA motif数据库；
+-h：使用超几何检验代替二项式分布；
+-N：用于motif寻找得背景序列数目，default=max(50k, 2x input)；耗内存参数
+
+
+2)使用 annotatePeaks.pl 对peaks进行注释
+annotatePeaks.pl <Homer Peak/Positions file> <genome>  1>output.peakAnn.xls 2>output.annLog.txt 
+
+使用实例：注释ChIP-Seq_H3K4Me3_1_homer.bed的 peaks 使用命令：
+$ annotatePeaks.pl ChIP-Seq_H3K4Me3_1_homer.bed hg19 1>ChIP-Seq_H3K4Me3_1_peakAnn.xls 2>$ChIP-Seq_H3K4Me3_1_annLog.txt 
+
+
+
+
+
+
+4.HOMER Motif 分析基本步骤和结果分析
+Homer主要被用于 ChIP-Seq 分析，但是核酸序列motif寻找问题都可以尝试使用。
+
+
+(1)预处理
+一  提取序列
+提供的数据是基因组位置信息，就需要提取对应的DNA信息；提供基因号时，需要选择启动子区域。对应着就是我们前面用awk 处理bed文件，最后得到要求的那四列。
+	第一列: 染色体
+	第二列: 起始位置
+	第三列: 终止位置
+	第四列: 链的方向(+/- or 0/1, where 0="+", 1="-")
+ 二  背景选择
+未指定背景序列时，HOMER 会自动选择。（上面chipseq处理的时候就没有指定背景序列）
+对基因组某些区域进行分析时，从基因组随机选择GC含量一致的序列作为背景序列。
+对启动子进行分析时，除用来分析外的所有启动子将被作为背景。
+自定义背景使用参数-bg
+ 三  GC 标准化
+目标序列（对应着上面的就是Homer Peak/Positions file）和背景序列会基于GC含量按5%作为bin 查看GC含量的分布。背景序列会得到权值，从而使得其GC含量分布与目标序列一致。
+ChIP-Seq 实验得到序列GC含量。
+ 四  自动标准化
+需要分析的序列除了GC含量会带来误差，其他的生物学现象，外显子中密码子偏好性或测序实验中偏好性都会影响分析。对于足够强的偏差，HOMER 会自动追踪目标序列和背景中显著差异的特征序列，并通过调整背景序列的权重来平衡输入数据和背景中短寡聚核酸序列不平衡。
+短寡聚核酸序列长度可以通过参数-nlen <#>指定。
+
+
+
+
+
+(2)重头预测Motifs
+默认情况下，HOMER 调用homer2 进行motif 分析；通过参数"-homer1" 可以指定老版本工具。
+
+一  将输入序列解析为寡聚核苷酸序列
+将输入序列按照motif 长度期望值解析为寡聚核苷酸序列，以及创建Oligo 数据表。Oligo 数据表中记录着每条oligo 在目标序列和背景中被发现的次数。
+
+二  Oligo 自动标准化
+
+三  全局搜索阶段
+Oligo 表格信息构建好之后，HOMER 对富集的Oligo 进行全局搜索。如果一个Motif是富集的，那么属于这个Motif的Oligo 也应该会富集。首先，HOMER 会搜索可能富集的Oligo 。HOMER 允许错配 。
+使用参数-mis <#> 调节允许的错配数目
+
+四  Mask and Repeat
+当最优oligo被优化成motif后，motif 对应的序列从要分析的数据中移除，接下来再分析最优的…..直到 25(默认值，"-S <#>")个motifs 被发现。
+比如，我们这里处理chipseq时的情况
+
+五   计算已知Motifs是否富集
+3.5.1 导入Motif库
+为了搜索输入数据中已知Motifs ，HOMER 可以输入已知Motifs 数据，可以使用HOMER 默认的 ("data/knownTFs/known.motifs")，也可以是自己构建("-mknown") 。
+
+3.5.2 筛选每一个Motif
+对于每个motif，HOMER 计算丰度（包含motif的序列/background sequences）， ZOOPS (zero or one occurence per sequence)计数以及使用超几何检验或二项式计算显著性。
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -2737,7 +3278,96 @@ HOMER (Hypergeometric Optimization of Motif EnRichment) is a suite of tools for 
 
 
 ========================================
+|-- 升级版Jaspar数据库: 转录因子与DNA结合位点motif最全面的公开数据
 ----------------------------------------
+
+https://mp.weixin.qq.com/s?__biz=MzI5MTcwNjA4NQ==&mid=2247486375&idx=1&sn=111912aa21e9cc8b09cd139d1a60c26e
+http://jaspar.genereg.net/
+
+
+========================================
+MACS(Model-based Analysis of ChIP-Seq) 的安装
+----------------------------------------
+
+1. MACS 1.4.2
+http://liulab.dfci.harvard.edu/MACS/Download.html
+
+
+
+2. MACS2
+(1)下载和安装
+https://pypi.org/project/MACS2/
+https://github.com/taoliu/MACS/releases
+
+好像可以用pip安装
+$ pip install MACS2 #报错，必须python2.7
+## 再试
+$ python2 -V ## Python 2.7.5
+$ pip2 install --user MACS2 ##Successfully installed MACS2-2.1.2
+
+查看版本号
+$ macs2 --version
+macs2 2.1.2
+
+
+
+(2)都是输入bam文件，能输入BED文件吗？可以
+The BED format can be found at [UCSC genome browser website](http://genome.ucsc.edu/FAQ/FAQformat#format1).
+
+chr7    127471196  127472363  Pos1  0  +
+chr7    127472363  127473530  Pos2  0  -
+
+
+The essential columns in BED format input are the 1st column "chromosome name", the 2nd "start position", the 3rd "end position", and the 6th, "strand".
+
+1) For BED format, the 6th column of strand information is required by MACS. And please pay attention that the coordinates in BED format is zero-based and half-open (http://genome.ucsc.edu/FAQ/FAQtracks#tracks1).
+bed的坐标是从0开始的，前闭后开区间。
+
+
+
+
+
+(3) 运行句子
+$ macs2 callpeak -t ChIP.bam -c Control.bam -f BAM -g hs -n test -B -q 0.05
+参数解释：
+-t/--treatment FILENAME
+这是MACS唯一必须的参数，文件可以是 --format 选项指定的任何格式。如果有多个比对文件，可以将它们指定为 -t A B C 。MACS 会将所有这些文件合并在一起。
+
+-c/--control
+	control 或 mock(非特异性抗体，如IgG)组
+	control: input DNA，没有经过免疫共沉淀处理；
+	mock: 1）未使用抗体富集与蛋白结合的DNA片段 2）非特异性抗体，如IgG
+-n/--name
+	MACS 输出文件名前缀。
+-f/--format FORMAT
+	声明输入文件的格式，目前 MACS 能够识别的格式有 ELAND、BED、ELANDMULTI、ELANDEXPORT、ELANDMULTIPET（双端测序）、SAM、BAM、BOWTIE、BAMPE、BEDPE。除了BAMPE和BEDPE需要额外声明，其他格式都可以用 AUTO 自动检测。
+-g/--gsize
+	有效基因组大小(可比对基因组大小)；基因组中有大量重复序列测序测不到，实际上可比对的基因组大小只有原基因组90% 或 70%；人类默认值是– 2.7e9（UCSC human hg18 assembly）
+-s/--tsize
+	测序读长；如果不设定，MACS 利用输入的 treatment 文件前10个序列自动检测；设定会覆盖自动检测的标签大小。
+-q/--qvalue
+	q 值（最小的 FDR）的阈值，默认是 0.05 。可以根据结果进行修正，q 值是 p 值经 Benjamini-Hochberg-Yekutieli 修正后的值。
+-p/--pvalue
+	p 值，如果 -p 设定，MACS2会使用 p 值代替 q 值。
+--verbose
+	隐藏MACS运行过程信息，设置0；想了解各条染色体peak信息，设置为3或>3的数。
+#
+https://github.com/taoliu/MACS/
+
+
+
+
+
+(4) 实战、输出解读
+https://www.jianshu.com/p/edfe4ac6b085
+
+macs2 callpeak -t pas.bed -f BED --outdir out_dir2 -n pas_ -g hs -q 0.05
+
+
+
+
+
+
 
 
 

@@ -35,3 +35,51 @@ ShopEx基于mootools框架自主封装研发的switchabl效果库更是集众千
 这可是九阳神功心法的精髓！
 
 
+
+
+
+
+
+
+
+
+
+
+
+prototype
+=============
+
+> prototype.js 是Sam Stephenson写的一个非常优雅的javascript基础类库，对javascript做了大量的扩展，而且很好的支持Ajax，国内外有多个基于此类库实现的效果库，也做得很棒。
+
+> prototype.js不仅是一个有很大实用价值的js库，而且有很高的学习价值。
+
+> site: http://prototypejs.org/
+
+## 入门
+
+参考 http://thinhunan.cnblogs.com/archive/2006/04/01/DeveloperNotesForPrototype.html
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+Dojo Toolkit 1.10
+===================
+
+> A JavaScript toolkit that saves you time and scales with your development process. Provides everything you need to build a Web app. Language utilities, UI components, and more, all in one place, designed to work together perfectly. 一个会为你的开发过程节省时间和规模的js工具箱。提供了构建web app所需要的一切。语言实用工具，UI组件以及更多，一起提供，绝妙配合。
+
+> site: http://dojotoolkit.org/
+
+
+
+
+

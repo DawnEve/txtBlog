@@ -15,7 +15,7 @@ return array (
     0 => 2,
     1 => '测序流程与建库',
     2 => array (
-	  array('测序扫盲贴','seq101-basic','txt' ),
+	  array('测序扫盲/分子生物学','seq101-basic','txt' ),
       array('陈巍学基因','NGS004','txt'),
       array('RNA-Seq及质控','rnaSeq01','txt'),
     ),
@@ -40,7 +40,6 @@ return array (
     1 => '基因组分析',
     2 => array (
       array('文件格式','NGS_format','txt'),
-      array('统计与统计参数','NGS_statistics','txt'),
       array('db_参考基因组_在线工具','genome401','txt'),
       array('FAQ of TCGA','FAQ_TCGA','txt'),
       array('本地生信软件','localSoft402','txt'),
@@ -57,6 +56,7 @@ return array (
       array('生信编程必练200题','practise501','txt'),
       array('肿瘤基础理论','cancer_basis','txt'),
       array('精编免疫学','immunology_basis','txt'),
+      array('统计与统计参数','NGS_statistics','txt'),
     ),
   ),
   

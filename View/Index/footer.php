@@ -126,15 +126,22 @@
 		echo '<br />视频: ';
 		print_links($links_video);
 		
+		echo '<br />数学: ';
+		print_links(array(
+			array('https://blog.csdn.net/hpdlzu80100','数学笔记(高数/线代/统计/)'),
+			array('https://face2ai.com/Math-Probability-5-5-The-Negative-Binomial-Distribution/','谭升(统计/书list)'),
+			array('https://qinqianshan.com/math/probability_distribution/','SAM NOTE(统计等)'),
+		));
+		
+		
 		echo '<br />生信: ';
 		print_links(array(
 			array('http://www.bioinfo-scrounger.com/','生信笔记'),
 			array('https://www.cnblogs.com/leezx/tag/单细胞/','单细胞'),
-			array('https://face2ai.com/Math-Probability-5-5-The-Negative-Binomial-Distribution/','谭升(统计/书list)'),
 			array('https://life2cloud.com/cn/2018/11/pipelines-styles/','李剑峰(生信流程)'),
 			
 			array('http://blog.shenwei.me/about/','shenwei(微生物)'),
-			array('https://qinqianshan.com/math/probability_distribution/','SAM NOTE(统计等)'),
+			array('http://kaopubear.top/','Fei Zhao(bioinfo)'),
 			//array('',''),
 			// array('http://www.dengfeilong.com/post/aboutUs.html','邓飞龙'), //空间过期
 		));
