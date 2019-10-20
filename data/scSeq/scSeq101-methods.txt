@@ -643,7 +643,7 @@ BASiCS 包：求高变基因 HVG
 首页： http://bioconductor.org/packages/release/bioc/html/BASiCS.html
 文档： http://bioconductor.org/packages/release/bioc/vignettes/BASiCS/inst/doc/BASiCS.html
 
-BASiCS: https://github.com/catavallejos/BASiCS
+github: https://github.com/catavallejos/BASiCS
 
 
 1.作用：
@@ -703,8 +703,188 @@ To use this feature, please set WithSpikes = FALSE as a function parameter in BA
 
 
 
+
+
 3. 使用 
+#得到的结果不满意，因为它HVG排名前10的基因基本都是只有2-5个细胞表达的。
+#而Seurat3给出的排名靠前的HVG则都是至少上百个细胞表达的，感觉更靠谱。
+
+
+#BiocManager::install("BASiCS")
 library(BASiCS)
+
+
+# step1 输入数据
+#https://github.com/catavallejos/BASiCS/wiki/2.-Input-preparation
+#整体batch
+query<-dbSendQuery(con, 'select cid,cellType,batch from cell_c1;' );
+batchR=fetch(query, n=-1);
+rownames(batchR)=sub('_','',batchR$cid)
+head(batchR)
+#
+br.data3=br.data2
+rn=colnames(br.data2)
+rn=sub('mix','',rn)
+rn=sub('sync','',rn)
+#rn
+colnames(br.data3)=rn
+
+batch=batchR[colnames(br.data3),]
+head(batch)
+#
+# Create SingleCellExperiment object containing batch information
+library(SingleCellExperiment)
+DataExample <- SingleCellExperiment(assays = list(counts = as.matrix(br.data3) ),
+                                    colData = data.frame(BatchInfo = batch$batch))
+#
+#step2: 耗时(N=1000,10min)
+# LARGER NUMBER OF ITERATIONS ARE USUALLY REQUIRED TO ACHIEVE CONVERGENCE. 
+# OUR RECOMMENDED SETTING IS N=20000, Thin=20 and Burn=10000.
+Chain <- BASiCS_MCMC(Data = DataExample, N = 10000, Thin = 20, Burn = 5000, 
+                     WithSpikes = FALSE,
+                     PrintProgress = T, Regression = TRUE)#N=10000,14:35(2.5h)->17:05
+str(Chain)
+#acceptance rates 要接近0.44，否则要提高N and Burn(burn通常是N的一半)
+# MCMC algorithm一定要收敛，才能进行下一步。
+#Typically, setting N=20000, Thin=20 and Burn=10000 leads to stable results.
+#https://github.com/catavallejos/TutorialBASiCS/blob/master/Material/TutorialMLPM2015_Convergence.pdf
+#
+#Minimum acceptance rate among mu[i]'s: 0.0468
+#Average acceptance rate among mu[i]'s: 0.453859
+#Maximum acceptance rate among mu[i]'s: 0.9398
+#
+#Minimum acceptance rate among delta[i]'s: 0.2422
+#Average acceptance rate among delta[i]'s: 0.45048
+#Maximum acceptance rate among delta[i]'s: 0.6214
+#
+#
+#检查收敛性，使用coda R包
+CairoPDF(file='BASiC_plot-chain.pdf',width=10,height=5)
+plot(Chain, Param = "mu", Gene = 2, log = "y")
+#plot(Chain, Param = "phi", Cell = 2)
+dev.off()
+#
+
+displayChainBASiCS(Chain, Param = "mu")[1:5,1:5]
+ChainSummary <- Summary(Chain)
+ChainSummary
+head(displaySummaryBASiCS(ChainSummary, Param = "mu"))
+#First column: posterior medians
+#Second column: lower limit of the 95% HPD interval
+#Third column: upper limit of the 95% HPD interval
+#            median     lower    upper
+# A1BG-AS1 2.0906366 1.1428834 4.030563
+# A2M      0.8055853 0.2817670 1.943634
+# A2M-AS1  1.0188817 0.2314853 2.473844
+save(Chain, file='HVG_BASiCS_Chain.rds')
+
+
+#step3(3.1) Analysis for a single group of cells
+par(mfrow = c(2,2))
+HVG <- BASiCS_DetectHVG(Chain, VarThreshold = 0.6, Plot = TRUE)
+LVG <- BASiCS_DetectLVG(Chain, VarThreshold = 0.2, Plot = TRUE)
+save(HVG, file='HVG_BASiCS_HVG.rds')
+save(LVG, file='HVG_BASiCS_LVG.rds')
+#
+head(HVG$Table)
+#229        229      ADAM20 1.341123 2.852403    1 TRUE
+#844        844 ARHGAP5-AS1 1.016198 2.613082    1 TRUE
+#2702      2702       CHST4 1.262379 3.120179    1 TRUE
+#4913      4913    FANCD2P2 1.716802 3.341589    1 TRUE
+#5622      5622       GLIS1 1.596360 3.226006    1 TRUE
+#5725      5725    GOLGA8EP 1.863771 4.254077    1 TRUE
+for(g in head(HVG$Table$GeneName,20)){
+  print( paste(g, sum(br.data2[g,]), sum(br.data2[g,]>0)  ) )
+}
+#gene /总counts数 /在几个细胞表达
+# [1] "ADAM20 622 5"
+#[1] "ARHGAP5-AS1 538 18"
+#[1] "CHST4 3 3"
+#[1] "FANCD2P2 4 2"
+#[1] "GLIS1 80 2"
+#[1] "GOLGA8EP 2 2"
+#[1] "HNRNPA1P55 2 2"
+#[1] "HOXD8 66 2"
+#[1] "ICAM2 48 2"
+#[1] "IDI2 2 2"
+#[1] "ILF2P1 2 2"
+#[1] "KDM5D 4 4"
+#[1] "KLK3 2 2"
+## 结论：这些高变基因，都是表达细胞比较少的基因？
+
+#
+head(LVG$Table)
+#  GeneIndex GeneName        Mu   Epsilon Prob  LVG
+#36         36    ABCA8 1.168386 -5.442292    1 TRUE
+#55         55    ABCD1 1.012398 -1.994452    1 TRUE
+#63         63    ABCG1 1.137015 -2.309389    1 TRUE
+#74         74   ABHD15 1.132363 -2.340396    1 TRUE
+#98         98 ABRAXAS1 2.380846 -1.957602    1 TRUE
+#100       100     ABT1 1.545265 -2.531951    1 TRUE
+for(g in head(LVG$Table$GeneName,20)){
+  print( paste(g, sum(br.data2[g,]), sum(br.data2[g,]>0)  ) )
+}
+#gene /总counts数 /在几个细胞表达
+# "ABCA8 1031 195"
+# "ABCD1 966 46"
+# "ABCG1 557 60"
+# "ABHD15 783 78"
+# "ABRAXAS1 2562 72"
+# "ABT1 1129 74"
+# "ADPGK 1435 86"
+# "AHCYL2 1425 72"
+# "AHDC1 1354 52"
+# "AIDA 729 39"
+# "AKT1 629 116"
+# "AKT1S1 3141 111"
+# "ALDH16A1 3344 102"
+# "ALKBH6 2047 84"
+
+#查看基因
+getGeneInList=function(g){
+  #g='MGP';
+  df=HVG$Table[which(HVG$Table$GeneName==g),]
+  df2=LVG$Table[which(LVG$Table$GeneName==g),]
+  df$ProbL=df2$Prob
+  df$LVG=df2$LVG
+  #
+  row.names(df)=g
+  df$totalReads=sum(br.data2[g,])
+  df$totalCell=sum(br.data2[g,]>0)
+  print(df)
+}
+getGeneInList('MGP')
+getGeneInList('NEAT1')
+getGeneInList('S100A7')
+getGeneInList("AZGP1")
+getGeneInList("ATP8B4")
+#     GeneIndex GeneName       Mu  Epsilon Prob  HVG ProbL   LVG totalReads totalCell
+#MGP      8858      MGP 1071.73 2.23532    1 TRUE     0 FALSE    1098578       214
+#NEAT1      9924    NEAT1 375.8503 2.175418    1 TRUE     0 FALSE     344963       222
+#S100A7     14098   S100A7 274.8956 1.994682 0.992 TRUE     0 FALSE     278314       204
+#AZGP1      1235    AZGP1 173.7354 1.180928    0 FALSE     0 FALSE     155031       200
+#ATP8B4      1195   ATP8B4 3.098955 -0.08324083    0 FALSE     0 FALSE       3522        30
+#
+#
+getGeneInList('ADGRE4P')
+getGeneInList('ABCA8')
+#         GeneIndex GeneName       Mu  Epsilon Prob  HVG ProbL   LVG totalReads totalCell
+#ADGRE4P       285  ADGRE4P 0.9836823 1.447095 0.316 FALSE     0 FALSE          3         2
+#ABCA8        36    ABCA8 1.168386 -5.442292    0 FALSE     1 TRUE       1031       195
+
+
+#
+#step3(3.2) Analysis for two groups of cells 
+#暂时就一组，没用这个。难道要两group间？
+Test <- BASiCS_TestDE(Chain1 = Chain, Chain2 = ChainRNA,
+                      GroupLabel1 = "SC", GroupLabel2 = "PaS",
+                      EpsilonM = log2(1.5), EpsilonD = log2(1.5),
+                      EFDR_M = 0.10, EFDR_D = 0.10,
+                      Offset = TRUE, PlotOffset = FALSE, Plot = TRUE)
+#
+
+
+
 
 
 
