@@ -644,6 +644,18 @@ $(function() {
 
 
 ========================================
+|-- python mysql 转义方法
+----------------------------------------
+
+python抓取的一些是数据放到mysql里去，但是有个问题，因为从外面抓取的数据有带'等其他的不规则的数据，如果你直接调用插入数据的方法会提示报错，这个时候就需要用到 python mysql 转义了。
+
+通过help方法和dir的方法终于找到了，原来是：escape_string
+
+如果你要用mysql转义字符串，那就可以看看下面的使用方法了：
+content = MySQLdb.escape_string(content)
+
+
+========================================
 |-- 从url获取参数，从mysql获取数据，以json格式返回
 ----------------------------------------
 1.hello3.py 
@@ -688,6 +700,185 @@ python hello3.py
 
 在浏览器输入 http://127.0.0.1:5000/about/30
 即可看到json格式的、从mysql返回的数据。
+
+
+
+
+========================================
+|-- flask 允许跨域请求 cors ：用make_response 设置 'Access-Control-Allow-Origin' header
+----------------------------------------
+
+1. 实例1：跨域请求文本文件，相当于py是一个静态文件服务器
+(1)py代码
+# https://gist.github.com/LtGlahn/f0cad0530b4b4298fa8c
+# https://www.pythonanywhere.com/forums/topic/2192/
+
+#
+#设置变量
+import sys
+env=sys.platform #"win32"测试环境;  "linux"生产环境
+#print('env=',env)
+if env=='linux':
+    rootPath="/home/wangjl/web/docs/" #ubuntu
+elif env=='win32':
+    rootPath="F://Temp/" #windows
+
+##############
+# 支持跨域访问
+# version: 0.2
+##############
+#路径名字不能是/static/,因为它是内部定义过的静态文件路径
+@server.route('/file/<path:filePath>', methods=['get'])
+def audio(filePath):
+    #fpath = request.values.get('path', '') #获取文件路径
+    #fname = request.values.get('filename', '')  #获取文件名
+    fpathT = os.path.join(rootPath, filePath) #真实路径
+    print(fpathT)
+    if filePath.strip():
+        if os.path.isfile(fpathT):
+            blob=''
+            try:
+                with open( fpathT, 'rb') as file:
+                    blob = file.read()
+            except Exception as e:
+                print(e)
+                pass
+            #
+            res = make_response(blob) #重点：自定义响应
+            res.mimetype='application/octet-stream'
+            res.headers['Access-Control-Allow-Origin'] = '*' #允许跨域请求
+            return res;
+        else:
+            return '{"msg2":"参数不正确"}path=%s, filename=%s;' %(fpathT, fname);
+    else:
+        return '{"msg1":"请输入参数"}'
+#ajax test OK: http://127.0.0.1:8005/file/tmp.R
+
+
+(2)测试：
+<html>
+<head>
+<!--
+  <script type="text/javascript" src="/html5/jquery-1.9.1.min.js"></script>
+-->
+<script src="http://libs.baidu.com/jquery/1.11.1/jquery.min.js"></script>
+<style>
+#show{border:1px solid red;}
+</style>
+<script type="text/javascript">
+$(document).ready(function(){
+  $("button").click(function(){
+    $.get('http://127.0.0.1:8005/file/tmp.R',function(res){
+      $('#show').html( res );
+    })
+  });
+});
+</script>
+</head>
+
+<body>
+  <button>click</button>
+  <pre id="show">xx</pre>
+</body>
+
+</html>
+
+
+
+2. 实例2： 返回json数据
+(1)app1.py
+from flask import jsonify,make_response
+
+#json Controler 不能跨域请求
+import time
+@app.route('/api/content/<date>')
+def content(date):
+    status=True
+    #time.sleep(2)
+    #从Mysql获取当天数据
+    content="<h1>some content from Mysql-Docker "+date+'</h1>'
+    
+    if content=="":
+        status=False
+    #返回json
+    return jsonify({'status':status,'date':date, 'content':content})
+
+#json Controler 允许跨域请求
+import time
+@app.route('/api/content2/<date>')
+def content2(date):
+    status=True
+    #time.sleep(2)
+    #从Mysql获取当天数据
+    content="<h1>some content2 from Mysql-Docker "+date+'</h1>'
+    
+    if content=="":
+        status=False
+    #构建自定义响应
+    json_data=jsonify({'status':status,'date':date, 'content':content})
+    res=make_response(json_data)
+    #允许跨域
+    res.headers['Access-Control-Allow-Origin']='*'
+    #返回json
+    return res
+
+
+#启动程序
+if __name__ == '__main__':
+    print("==> pls browse http://127.0.0.1:5000/api/content/2019")
+    app.run(debug=True)
+
+(2)测试 ajax2.html
+<html>
+<head>
+<script src="http://libs.baidu.com/jquery/1.11.1/jquery.min.js"></script>
+<style>
+#show{border:1px solid red;}
+</style>
+<script type="text/javascript">
+$(document).ready(function(){
+  $("#btn1").click(function(){
+      $.get('http://127.0.0.1:5000/api/content/2019', function(res){
+      $('#show').html( res );
+    })
+  });
+
+  $("#btn2").click(function(){
+    $.get('http://127.0.0.1:5000/api/content2/2019', function(res){
+      console.log(res)
+    })
+  })
+});
+</script>
+</head>
+
+<body>
+  <button id='btn1'>btn1</button>
+  <button id='btn2'>btn2</button>
+</body>
+</html>
+
+效果
+点击btn1，控制台：
+Access to XMLHttpRequest at 'http://127.0.0.1:5000/api/content/2019' from origin 'http://127.0.0.1' has been blocked by CORS policy: No 'Access-Control-Allow-Origin' header is present on the requested resource.
+jquery.min.js:4 Cross-Origin Read Blocking (CORB) blocked cross-origin response http://127.0.0.1:5000/api/content/2019 with MIME type application/json. See https://www.chromestatus.com/feature/5629709824032768 for more details.
+
+
+点击btn2，控制台：
+{content: "<h1>some content2 from Mysql-Docker 2019</h1>", date: "2019", status: true}
+
+
+
+
+3. 实例3：简化的返回json的方法
+@app.route('/your/route/<params>', methods=['GET'])
+def yourMethod(params):
+    response = jsonify({'some': 'data'})
+    response.headers.add('Access-Control-Allow-Origin', '*')
+    return response
+#测试也能通过
+
+
 
 
 

@@ -22,6 +22,7 @@ return array (
       array('R进阶-OOP面向对象','R04-OOP','txt'),
       array('R基础-机器学习','R05-MachineLearning','txt'),
       array('R基础-可视化','R06-visualization','txt'),
+      array('apply家族函数','R07-apply','md'),
 
       array('bioconductor基础','bioconductor01','txt'),
     ),

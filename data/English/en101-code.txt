@@ -722,7 +722,240 @@ i {
 
 
 ========================================
+|-- 爬虫抓取必应词典条目，插入数据库
 ----------------------------------------
+http://y.biomooc.com:7000/notebooks/web/getWords.ipynb
+
+
+1.爬虫抓取单词数据(音标、意思)，到本地文件
+import re
+import requests
+import random,time
+
+################
+# part1 给出单词，获取单词，并写下单词、音标、意思到文本文件
+################
+def scrawWord(word):
+    response=requests.get('https://cn.bing.com/dict/SerpHoverTrans?q='+word)
+    #print(response.status_code)# 响应的状态码 200
+    #print(response.content)  #返回字节信息
+    #response.text  #返回文本内容
+    
+    #正则解析内容
+    #音标
+    phoneticSymbol=re.findall(r'lang="en">(.*?)</span>',response.text,re.S)  #re.S 把文本信息转换成1行匹配
+    if len(phoneticSymbol)<1:
+        phoneticSymbol=''
+    else:
+        phoneticSymbol=phoneticSymbol[0]
+    #print(phoneticSymbol[0])
+
+    #意思
+    meaningArr=re.findall(r'<ul>(.*?)</ul>',response.text,re.S)  #re.S 把文本信息转换成1行匹配
+    meaning='<ul>'+'</ul><ul>'.join(meaningArr) +'</ul>';
+    #print( meaning )
+    
+    #拼接起来
+    arr=[word, phoneticSymbol.strip(), meaning]
+    wordStr='\t\t'.join(arr)
+    
+    #写入文件; 单词、音标，意思
+    fw=open('word_ms2.txt','a')
+    fw.write(wordStr+'\n')
+    fw.close()
+#test
+#word="profound"
+#scrawWord(word)
+
+
+################
+# part2 读取单词列表(cet6大概5k多个单词)，逐个进行
+################
+def now():
+    return time.strftime("%Y-%m-%d %H:%M:%S", time.localtime()) #'2018-09-27 21:15:01'
+#
+
+print('task begins:',now())
+fr2=open('/home/wangjl/web/docs/docs/words.js')
+lines=fr2.readlines();
+i=0
+for i in range(len(lines)):
+    lineR=lines[i]
+    if i>20:
+        #break;
+        pass
+    word=lineR.strip().strip(',').strip("'")
+    scrawWord(word)
+    #休眠，等待随机时间后执行函数
+    rt=0.5+3*random.random() #0-1之间
+    time.sleep(rt)
+    #进度条
+    if i%100==0:
+        print(i, '|'+word+"|", now(),rt)
+
+fr2.close()
+print('==end==')
+
+
+
+
+
+
+2. 插入数据库
+(1)创建数据库
+drop table if exists word_ms; 
+CREATE TABLE `word_ms` (
+  `id` int(10) NOT NULL AUTO_INCREMENT,
+  `word` varchar(50) DEFAULT NULL,
+  `phoneticSymbol` varchar(100) DEFAULT NULL,
+  `meaning` text,
+  `modi_time` varchar(30) DEFAULT NULL,
+  `add_time` varchar(30) DEFAULT NULL,
+  PRIMARY KEY (`id`),
+  #Unique KEY `word` (`word`)
+  KEY `word` (`word`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8;
+
+
+mysql> desc word_ms;
++----------------+--------------+------+-----+---------+----------------+
+| Field          | Type         | Null | Key | Default | Extra          |
++----------------+--------------+------+-----+---------+----------------+
+| id             | int(10)      | NO   | PRI | NULL    | auto_increment |
+| word           | varchar(50)  | YES  | UNI | NULL    |                |
+| phoneticSymbol | varchar(100) | YES  |     | NULL    |                |
+| meaning        | text         | YES  |     | NULL    |                |
+| modi_time      | varchar(30)  | YES  |     | NULL    |                |
+| add_time       | varchar(30)  | YES  |     | NULL    |                |
++----------------+--------------+------+-----+---------+----------------+
+6 rows in set (0.00 sec)
+
+
+
+
+
+
+(2)使用py插入数据
+#local_time=time.localtime(add_time) #这种格式太长了，没啥用
+##time.struct_time(tm_year=2019, tm_mon=10, tm_mday=26, tm_hour=18, tm_min=21, tm_sec=2, tm_wday=5, tm_yday=299, tm_isdst=0) 
+#human_time=time.strftime("%Y-%m-%d %H:%M:%S", local_time) #2019-10-26 18:21:02 显示格式
+#print(add_time, local_time, human_time)
+
+
+################
+# part3 插入数据库
+################
+import re
+
+#创建数据库 略
+
+#链接数据库
+import pymysql
+# 打开数据库连接
+db = pymysql.connect(host='y.biomooc.com',port=7070,user='root', password='123456', database='wang')
+# 使用cursor()方法获取操作游标 
+cursor = db.cursor()
+
+print('==begin==')
+#读取数据，拼接sql语句
+fr=open('word_ms2.txt','r')
+lines=fr.readlines();
+for i in range(len(lines)):
+    line=lines[i].strip()
+    if i>20:
+        #break;
+        pass
+    arr=re.split('\t\t',line)
+    
+    # SQL 语句
+    add_time=int(time.time()) #1572085262 数据库保存这种格式
+    #mysql 转义 content = db.escape_string(content)
+    sql="insert into word_ms(word,phoneticSymbol,meaning,add_time) values('%s','%s','%s',%d)" %  \
+    (arr[0],db.escape_string(arr[1]),db.escape_string(arr[2]), add_time)
+    #print(sql+'\n')
+    # 执行sql语句
+    rs=cursor.execute(sql)
+    if i%1000==0:
+        print(i,arr[0],rs)
+        pass
+
+#关闭文件
+fr.close()
+
+# 关闭数据库连接
+db.commit();
+cursor.close()
+db.close()
+
+print('==end==')
+
+
+
+缺点：对于大小写，mysql没有区分，貌似需要调节编码方式。
+May和may是不同的，但是目前无差别，甚至被认为是重复。
+//todo
+
+
+
+
+
+(3)web访问
+<script type="text/javascript">
+$(document).ready(function(){
+  $("#btn1").click(function(){
+      var word=$('#word').val()
+      $.get('http://127.0.0.1:5000/api/dict/'+word, function(res){
+        console.log(res)
+        $('#show').html( res.word +'<br>'+ res.phoneticSymbol +'<br>'+res.meaning);
+      })
+  });
+</script>
+
+web后台接口
+#字典查询后台接口
+@app.route('/api/dict/<word>', methods=['GET'])
+def getword(word):
+    #链接数据库
+    import pymysql
+    # 打开数据库连接
+    db = pymysql.connect(host='y.biomooc.com',port=7070,user='root', password='123456', database='wang',charset='utf8')
+    # 使用cursor()方法获取操作游标 
+    cursor = db.cursor()
+    #sql语句
+    sql='select * from word_ms where word="'+word+'";'
+    # 执行sql语句
+    cursor.execute(sql)
+    results = cursor.fetchall()
+    # 关闭数据库连接
+    cursor.close()
+    db.close()
+
+    result=results[0]
+    print(word, result)
+
+    #准备返回值
+    response = jsonify({
+        'word': result[1], 
+        'phoneticSymbol':result[2], 
+        'meaning':result[3]
+    })
+    #允许跨域访问
+    response.headers.add('Access-Control-Allow-Origin', '*')
+    return response
+#
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 ========================================
