@@ -8,6 +8,7 @@ return array (
       array('项目描述','en001','html',),
       array('参考资料','en002','html'),
       array('FAQ','en003','html'),
+      array('学英语方法论','en_method','txt'),
     ),
   ),
 
