@@ -709,8 +709,25 @@ python hello3.py
 ========================================
 |-- flask 允许跨域请求 cors ：用make_response 设置 'Access-Control-Allow-Origin' header
 ----------------------------------------
-
 1. 实例1：跨域请求文本文件，相当于py是一个静态文件服务器
+
+推荐方式
+#CORS (Cross-Origin Resource Sharing)
+def cors(arrOrStr):
+    res=jsonify(arrOrStr)
+    res.headers.add('Access-Control-Allow-Origin', '*')
+    res.headers.add('Backend', 'wjl_dawnDict_server/0.3')
+    res.headers.add('Email', 'jimmymall at 163 dot com')
+    return res;
+#
+
+
+使用：需要提供跨域访问的地方，把返回值包裹一下即可：
+return cors(arrayOrDict);
+
+
+
+
 (1)py代码
 # https://gist.github.com/LtGlahn/f0cad0530b4b4298fa8c
 # https://www.pythonanywhere.com/forums/topic/2192/
@@ -881,6 +898,292 @@ def yourMethod(params):
 #测试也能通过
 
 
+
+
+
+========================================
+flask 安全：cookie, session 和用户登录、退出
+----------------------------------------
+1.理论基础
+
+(1)cookie(保存在客户端的浏览器上)：
+在网站中，http请求是无状态的。也就是说即使第一次和服务器连接后并且登录成功后，第二次请求服务器依然不能知道当前请求是哪个用户。cookie的出现就是为了解决这个问题，第一次登录后服务器返回一些数据（cookie）给浏览器，然后浏览器保存在本地，当该用户发送第二次请求的时候，就会自动的把上次请求存储的cookie数据自动的携带给服务器，服务器通过浏览器携带的数据就能判断当前用户是哪个了。cookie存储的数据量有限，不同的浏览器有不同的存储大小，但一般不超过4KB。因此使用cookie只能存储一些小量的数据。
+
+(2)session(保存在服务器上):
+session和cookie的作用有点类似，都是为了存储用户相关的信息。不同的是，cookie是存储在本地浏览器，而session存储在服务器。存储在服务器的数据会更加的安全，不容易被窃取。但存储在服务器也有一定的弊端，就是会占用服务器的资源，但现在服务器已经发展至今，存一些session信息还是绰绰有余的。
+
+(3)cookie和session结合使用：
+web开发发展至今，cookie和session的使用已经出现了一些非常成熟的方案。在如今的市场或者企业里，一般有两种存储方式：
+
+1)存储在服务端：通过cookie存储一个session_id，然后具体的数据则是保存在session中。如果用户已经登录，则服务器会在cookie中保存一个session_id，下次再次请求的时候，会把该session_id携带上来，服务器根据session_id在session库中获取用户的session数据。就能知道该用户到底是谁，以及之前保存的一些状态信息。这种专业术语叫做server side session。
+
+2)将session数据加密，然后存储在cookie中。这种专业术语叫做client side session。flask采用的就是这种方式，但是也可以替换成其他形式。
+
+
+
+
+
+2.flask中使用cookie和session
+(1)cookies：
+在Flask中操作cookie，是通过response对象来操作，可以在response返回之前，通过response.set_cookie来设置，这个方法有以下几个参数需要注意：
+
+key：设置的cookie的key。
+value：key对应的value。
+max_age：改cookie的过期时间，如果不设置，则浏览器关闭后就会自动过期。
+expires：过期时间，应该是一个datetime类型。
+domain：该cookie在哪个域名中有效。一般设置子域名，比如cms.example.com。
+path：该cookie在哪个路径下有效。
+
+使用：
+  获取：request.cookies.get(key, '默认值')
+  设置：resp.set_cookie(key, value, max_age=整数)
+  删除：resp.delete_cookie(key)
+#
+
+##参考代码 not run;
+from flask import Flask,Blueprint,request,make_response
+
+app = Flask(__name__)
+
+#创建实例
+cookie=Blueprint('cookie', __name__)
+
+#获取cookie
+@cookie.route('/get/')
+def get():
+    return request.cookies.get('name','I am cookie001')
+
+#设置cookie
+@cookie.route('/set/')
+def set():
+    res=make_response('cookie 已设置')
+    #设置cookie，顺便指定有效期，默认为none，浏览器关闭就失效
+    #max_age: 一个整数，单位为s，即多少秒后过期
+    # expires: datetime类型，即指定日期后过期
+    res.set_cookie('name','I am another cookie002', max_age=30)
+    return res
+
+#删除cookie
+@cookie.route('/del/')
+def delete():
+    res=make_response('cookie 已删除')
+    res.delete_cookie('name')
+    return res
+
+#
+#启动后端程序
+if __name__ == '__main__':
+    app.run(debug=True, port=10001) 
+#
+
+
+
+
+
+(2)session：
+Flask中的session是通过from flask import session。然后添加值key和value进去即可。
+
+client side session：Flask中的session机制是将session信息加密，然后存储在cookie中。专业术语叫做client side session。
+server side session：存储在服务器，客户端保存的时session_id（通过cookie完成）
+
+使用：
+  获取：session.get(key, '默认值')
+设置：
+    session.permanent = True
+    session[key] = value  
+删除：
+指定删除：session.pop(key, None)
+清空所有：session.clear()
+
+
+设置session过期时间
+如果没有指定session的过期时间，默认是浏览器关闭后就自动结束
+设置了session的permanent属性为True，那么过期时间是31天（session.permanent = True）
+
+可以通过给app.config设置PERMANENT_SESSION_LIFETIME来更改过期时间，这个值的数据类型是datetime.timedelay类型。
+"""config.py"""
+from datetime import timedelta
+import os
+
+SECRET_KEY = os.urandom(24)         #生成一串随机24位的字符
+PERMANENT_SESSION_LIFETIME = timedelta(days=7)  #设置session7天有效
+#
+
+
+#
+##参考代码 not run;
+from flask import Blueprint,session
+
+sess=Blueprint('sess',__name__)
+
+#设置
+@sess.rout('/set/')
+def set():
+    #设置是否永久有效（必须放在请求上下文中），默认False，浏览器关闭失效
+    #设置为True，有效期由 app.config['PERMANENT_SESSION_LIFETIME']决定
+    #app.config[PERMANENT_SESSION_LIFETIME]默认为31天
+    session.permanent=True
+    session['name']='who are you'
+    return "session was set"
+
+#获取session
+@sess.route('/get/')
+def get():
+    return session.get('name','who are you?(default)')
+
+#删除
+@sess.route("/del/")
+def delete():
+    #删除指定的session，第二个参数设置为None，即使删除不存在的键也不报错
+    #session.pop('name',None)
+    #清空所有的session
+    session.clear()
+    return "session is deleted"
+#
+
+
+
+
+
+
+
+
+(3) manage.py 可运行的代码
+from flask import Flask, session,jsonify,make_response,request
+import os
+
+app=Flask(__name__)
+#app.config['SECRET_KEY']='123456' ## 一串随机字符串作为session的加密盐值
+app.config['SECRET_KEY']='1'
+app.config['PERMANENT_SESSION_LIFETIME']=20 #20s有效期 10天有效期，可以设置 10*24*365
+
+#操作session方法与操作字典相同
+
+@app.route('/')
+def index():
+    #设置是否永久有效（必须放在请求上下文中），默认False，浏览器关闭失效
+    #设置为True，有效期由 app.config['PERMANENT_SESSION_LIFETIME']决定
+    #app.config[PERMANENT_SESSION_LIFETIME]默认为31天
+    session.permanent=True
+    session['username']='Jim'
+    session['psw']='123456'
+
+    #for cookie:
+    res=make_response('hello, session test ~ cookie 已设置')
+    #设置cookie，顺便指定有效期，默认为none，浏览器关闭就失效
+    #max_age: 一个整数，单位为s，即多少秒后过期
+    # expires: datetime类型，即指定日期后过期
+    res.set_cookie('name','I am another cookie002', max_age=30)
+    res.set_cookie('book','js the good part', max_age=30)
+
+    return res
+#
+# 读取session
+@app.route('/get')
+def get():
+    #session['username']    # 方法一，如果内容不存在，将会报异常
+    username=session.get('username','')     # 方法二，如果内容不存在，将返回None。推荐使用
+    #return session.get('username','no session username')
+
+    #for cookie:
+    cookie=request.cookies.get('name','no cookie00_')
+    book=request.cookies.get('book','no book')
+
+    return jsonify({
+        'session':[username,session['psw'] ], 
+        'cookie':[cookie,book]
+    })
+#
+#删除 session
+@app.route('/delete/')
+def delete():
+    session.pop('username') #字典pop方法删除session指定键
+    #session.clear() #删除session所有值
+
+    #for cookie 
+    res=make_response('deleted!')
+    res.delete_cookie('book')
+
+    return res
+
+
+#启动后端程序
+if __name__ == '__main__':
+    app.run(debug=True, port=10001) 
+
+
+
+
+
+
+
+========================================
+flask 踩坑
+----------------------------------------
+
+========================================
+|-- 手动更新数据表，但是flask显示并没有更新
+----------------------------------------
+
+1.
+查询前先 `db.session.commit()` 将当前 session 对象里的缓存提交（清空缓存），查询时就直接从数据库中查询最新数据。
+https://www.cnblogs.com/huchong/p/9258458.html
+https://www.jianshu.com/p/c0a8275cce99
+
+https://www.v2ex.com/t/198981
+
+
+
+2.
+
+
+
+========================================
+|-- FLASK在其他文件中添加路由
+----------------------------------------
+应用文件为：app.py
+from flask import Flask
+app = Flask(__name__)
+
+@app.route("/")
+def hello():
+    return "Hello World!"
+
+if __name__ == '__main__':
+    app.run()
+
+如果不想在这个文件中添加新路由，怎么办？
+
+
+1.有个直观的办法, 新建test.py
+def  add_new_routes(app):
+    @app.route("/test")
+    def test():
+        return 'test'
+#
+
+然后在app.py中添加调用，
+from test import add_new_routes
+add_new_routes(app)
+
+前面的办法缩进有点多啊！
+
+
+
+2. 换个方法，将test.py的代码改为：
+
+def hello():
+    return 'hello world'
+
+def add_new_routes(app):
+    app.add_url_rule('/hello', view_func=hello)
+
+同理，在Blueprint中，也可以这么干。
+
+
+个人认为：方法2更好，适合很多函数的场景，代码改动很少。
+
+https://www.cnblogs.com/lyg-blog/p/9499227.html
 
 
 

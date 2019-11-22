@@ -15,9 +15,9 @@ return array (
     0 => 2,
     1 => '测序流程与建库',
     2 => array (
-	  array('测序扫盲/分子生物学','seq101-basic','txt' ),
-      array('陈巍学基因','NGS004','txt'),
       array('RNA-Seq及质控','rnaSeq01','txt'),
+	  array('测序分子生物学','seq101-basic','txt' ),
+      array('测序扫盲/陈巍学基因','NGS004','txt'),
     ),
   ),  
   
@@ -31,7 +31,7 @@ return array (
       array('perl基础','lang-Perl','txt'),
 
 
-      array('每种应用的分析方法概述','analysis01','txt'),
+      array('GO分析及可视化','GO_analysis01','txt'),
     ),
   ),  
   

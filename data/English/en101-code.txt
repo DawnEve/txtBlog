@@ -509,13 +509,32 @@ string(86) "https://ichef.bbc.co.uk/wwhp/144/cpsprodpb/17206/production/_1079627
 
 
 ========================================
+测试词汇量的网站
+----------------------------------------
+http://testyourvocab.com/
+
+
+
+
+========================================
 如何记忆单词？做一个艾宾浩斯记忆曲线背单词工具 //todo
 ----------------------------------------
-这个效果和配色挺好的：
+1.这个效果和配色挺好的：
 http://dict.bioon.com/word/8000.asp?c=81&t=1
 
 我做的版本：引用了百度翻译
 http://ielts.biomooc.com/wordKing/
+
+
+
+
+第一个复习周期：2天
+第二个复习周期：4天
+第三个复习周期：7天
+第四个复习周期：20天
+
+举个例子：假设今天新建的单词表为「List_20」,也就是说这份单词表要在建立日期后的第2天，第4天，第7天和第20天复习。
+
 
 
 
@@ -959,7 +978,211 @@ def getword(word):
 
 
 ========================================
-dawn语料库
+|-- 添加牛津3000-5000单词标签
+----------------------------------------
+1.来源：
+(1)
+下载： https://www.oxfordlearnersdictionaries.com/wordlists/oxford3000-5000
+
+
+(2)
+解释：https://www.oxfordlearnersdictionaries.com/about/wordlists/oxford3000-5000
+
+1)What is the Oxford 3000?
+The Oxford 3000 is a list of the 3,000 core words that every learner of English needs to know.
+
+The words have been chosen based on their frequency in the Oxford English Corpus and relevance to learners of English. Every word is aligned to the CEFR, guiding learners on the words they should know at A1-B2 level.
+
+
+2)
+What is the Oxford 5000?
+The Oxford 5000 is an expanded core word list for advanced learners of English.
+
+As well as the Oxford 3000 core word list, it includes an additional 2,000 words that are aligned to the CEFR, guiding advanced learners at B2-C1 level on the most useful high-level words to learn to expand their vocabulary.
+
+
+3)
+CEFR stands for the ‘Common European Framework of Reference’ for languages, which is a description of the language abilities of students at different levels of learning. The CEFR can be used to compare standards in language learning and create teaching programmes.
+
+It grades language skills at six levels:
+
+A1 and A2 indicate elementary and pre-intermediate levels of ability.
+B1and B2 indicate lower- and upper-intermediate levels.
+C1 indicates advanced level.
+C2 indicates complete proficiency in the language.
+
+
+
+(3) OX没有C2词汇
+https://tracktest.eu/english-levels-cefr/
+
+https://www.examenglish.com/CEFR/cefr.php
+https://www.examenglish.com/CEFR/C2.htm
+
+
+
+
+
+2.代码
+## add tag to db
+#step1 check if the word in DB
+import re,time,os
+import requests
+
+#需要跑很多遍，run=1,测试单词是否在db,需要至少跑两次；
+#run=2 测试单词是否完全相同，如有不同的，则修改
+#run=3 添加标签到db
+run=3
+
+fpath='/home/wangjl/web/docs/word/ox3000.txt'
+#fpath='/home/wangjl/web/docs/word/ox5000.txt'
+fr=open(fpath,'r')
+i=0
+mydb=DBUtil()
+for lineR in fr.readlines():
+    i+=1;
+    if i>10:
+        #break;
+        pass
+    line=lineR.strip();
+    arr=re.split('\s',line)
+    word=arr[0]
+    tag=arr[-1]
+    #print(line, '|',word, tag)
+    #查询是否有？
+    sql='select * from word_ms where word="'+word+'";';
+    rs=mydb.query(sql)
+    if len(rs)!=1:
+        url="http://10.21.127.192:20180/api/dict/"+word;
+        if run==1:
+            res=os.system("wget "+url)
+            time.sleep(0.5)
+        print('==============>',i,word, '|', len(rs),res )
+    else:
+        if run<2:
+            continue;
+        #有这个单词，且只有一个
+        word2=rs[0];
+        wid=int(word2[0])
+        if word2[1]!=word:
+            print('==Not equal===>',wid, word2[1],'|',word,tag)
+        
+        #
+        if run<3:
+            continue;
+        sql='update word_ms set tag_ox="%s" where id=%d;' %(tag,wid);
+        rs=mydb.execute(sql)
+        # 进度条
+        if i%100==0:
+            print(wid, word2[1],'|',word,tag,'|', rs)
+fr.close();
+print('end')
+
+
+
+
+========================================
+|-- 雅思单词表，及标签
+----------------------------------------
+1.
+雅思word list:
+https://github.com/woshichuanqilz/others/blob/master/WindowsConfig/IELTS
+
+
+添加新列，雅思词汇 tag_ielts: 第一批3000个标签为1, 默认是0；
+alter table word_ms add tag_ielts int(3) DEFAULT 0 comment '雅思词汇' after tag_ox;
+## ALTER TABLE word_ms DROP tag_ielts;
+
+
+
+
+
+2.代码（依赖python 自定义mysql类）
+## add tag to db
+#step1 check if the word in DB
+import re,time,os
+import requests
+
+#run=0 测试单词是否在db，没有则打印出来
+#需要跑很多遍，run=1,测试单词是否在db,如果没有，则添加到db，需要至少跑两次；
+
+#run=2 测试单词是否完全相同，如有不同的，则手动修改
+#run=3 添加标签到db
+run=3
+
+#fpath='/home/wangjl/web/docs/word/ox3000.txt'
+#fpath='/home/wangjl/web/docs/word/ox5000.txt'
+#fpath='/home/wangjl/web/docs/word/freq2000.txt'
+fpath='/home/wangjl/web/docs/word/ielts.txt'
+
+fr=open(fpath,'r')
+i=0
+mydb=DBUtil()
+for lineR in fr.readlines():
+    i+=1;
+    if i>100:
+        #break;
+        pass
+    line=lineR.strip();#空白行跳过
+    if len(line)==0:
+        continue;
+    
+    arr=re.split('\s',line)
+    word=arr[0]; word=word.strip('*');
+    tag=arr[-1]
+    #print(line, '|',word, tag)
+    #查询是否有？
+    sql='select * from word_ms where word="'+word+'";';
+    rs=mydb.query(sql)
+    #print(word, len(rs) )
+    if len(rs)!=1:
+        if run==0: 
+            if  len(rs)==0:#打印出不在数据库的单词
+                print('===0收录===>',word, len(rs) )
+
+            if len(rs) >0:#对于多个词条，跳过
+                print('==多个词条==>',word, len(rs) )
+            continue; 
+        url="http://10.21.127.192:20180/api/dict/"+word;
+        
+        if run==1:
+            res=os.system("wget "+url)
+            time.sleep(0.5)
+            print('======插入DB========>',i,word, '|', len(rs),res )
+    else:
+        if run<2:
+            continue;
+        #有这个单词，且只有一个
+        word2=rs[0];
+        wid=int(word2[0])
+        if word2[1]!=word and run==2:
+            print('==Not equal===>',wid, word2[1],'|',word,tag)
+        
+        #
+        tag='1'
+        if run<3:
+            continue;
+        sql='update word_ms set tag_ielts="%s" where id=%d;' %(tag,wid);
+        rs=mydb.execute(sql)
+        # 进度条
+        if i%100==0:
+            print(wid, word2[1],'|',word,tag,'|', rs)
+fr.close();
+print('==end==; run=',run, '; i=',i)
+
+
+
+
+3.统计个数
+mysql> select count(*) from word_ms where tag_ielts=1;
+## 3593
+
+
+
+
+
+========================================
+dawn语料库：最新已经有web版
 ----------------------------------------
 1.数据库设计
 dawn语料库，以行为单位保存(一行可能包含很多句子)

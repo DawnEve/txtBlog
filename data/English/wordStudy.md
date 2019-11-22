@@ -14,6 +14,8 @@
 - Protract, tractor, retract, distract, contract, extract, attract. 十几个即使都是生词，三分钟足够了。
 
 
+[4-6级考试大纲 - 附词汇(2016年修订版)](http://cet.neea.edu.cn/html1/folder/16113/1588-1.htm)
+
 
 
 #听写错的单词: 熟词写错 /听错的 /生词 
@@ -23,7 +25,10 @@
 查单词:  http://ielts.dawneve.cc/dict/
 录入单词: http://ielts.dawneve.cc/dict/addWord.html
 录入句子: http://ielts.dawneve.cc/dict/addSentence.html
+
 背单词: http://ielts.dawneve.cc/dict/recite.html
+刷单词: http://ielts.dawneve.cc/dict/scanWorld.html
+
 
 
 
@@ -181,6 +186,8 @@ urinal litmus masculinity paradigm stumble
 
 
 
+
+
 ## section 2 
 (1)
 写错的
@@ -195,18 +202,85 @@ tonsil anal penile
 swell 
 
 
-
-
-
-# to be put into DB
-## (n) todo
+(2)
 写错的
-
+commute inevitable behavior collide cooperative
+optimize 
 
 音节听错
+efficiently;
+might end up with traffic jam;
+various widths;
+feed
+
+生词
+mathematician gridlock clog meticulously congestion pheromone
+
+
+
+(3)
+写错的
+summit banquet mutual prominent exile integrate annoy surplus
+proposal collaboration military rapidly weapon alliance 
+partner audience controversial notably 
+shadow pact materialize pendulum ambassador unfortunately  
+
+音节听错
+asia; see;
+out of some 149m;
+a deepening partnership with Japan;
+tension;
+his visit;
+stance;
+rail links;
 
 
 生词
+metaphor strongman turf amble vestige pal irritant lifeline foe grate opposition blunt 
+rebuff insidious minuscule disparity outstrip  dollop indebt wary adversary shy 
+erratic unfetter assertive accountability signally 
+Hindu bilateral extradition elusive muddy pitch murky swing largesse playbook lament 
+
+
+
+(4)
+写错的
+temperature approximately occurring agency nutrition voluntarily
+
+音节听错
+802million;
+root cause;
+
+生词
+devastating successive compound displacement sanitation hygiene
+
+
+
+
+2.5
+写错的
+chef recipe Harvard vegetarian sour 
+
+音节听错
+He joins us on the line;
+in this area; 连读
+a limb in it;
+
+生词
+trio decipher stew oven beet domesticate encyclopedic unintelligible palate 
+
+
+
+
+2.6
+写错的
+
+音节听错
+
+生词
+
+
+
 
 
 
@@ -226,7 +300,7 @@ swell
 
 
 
-#专业词汇
+#专业词汇 (论文高逼格词汇)
 ## 名词
 ### mitosis 英 /maɪˈtəʊsɪs/  美 /maɪˈtoʊsɪs/
 N a method of cell division, in which the nucleus divides into daughter nuclei, each containing the same number of chromosomes as the parent nucleus 有丝分裂
@@ -249,33 +323,25 @@ adj.[usually before noun 一般用于名词前] 英 /'næsənt/ formal
 their nascent industries 他们的新兴行业
 
 
+### aberrant 英 [əˈberənt; ˈæbərənt]  美 [əˈberənt,ˈæbərənt] 
+adj. 异常的；畸变的；脱离常轨的；迷乱的
+
+
+
 
 
 ## 动词 
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-#生词与造句
-
-## 动词
 ### delineate /dɪ'lɪnieɪt,dɪˋlɪnɪ͵et/ v. [T ] 英 /dɪ'lɪnieɪt/ formal 【正式】
+vt. 描绘；描写；画…的轮廓
+1. V-T If you delineate something such as an idea or situation, you describe it or define it, often in a lot of detail. 描述 [正式]
+Biography must to some extent delineate characters. 在某种程度上，传记一定要描述人物。
+
 1.to describe or draw something carefully so that people can understand it
 说明，阐明，解释；详细绘明
 • The document delineates your rights and your obligations. 这份文件阐明了你的权利和义务。
+
+
 
 
 

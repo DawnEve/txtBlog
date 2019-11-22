@@ -126,7 +126,7 @@ cmd： 对搜索结果进行特定的处理。
 (1).根据文件(名称、类型、深度、大小)或正则表达式进行匹配。
 (2).根据日期和时间查找。
 (3).根据文件权限(所属组，拥有者)查找。
-(4).借助-exec与其他命令结合使用。
+(4).使用-exec或-ok来执行shell命令。
 
 
 
@@ -138,7 +138,14 @@ cmd： 对搜索结果进行特定的处理。
 ./text/aa.txt
 
 (2).在/home下查找以.txt结尾的文件名 find /home -name "*.txt"
+
 (3).在/home下查找以.txt结尾的文件名 但忽略大小写。 find /home -iname "*.txt"
+当前目录查找文件名以一个大写字母开头的文件：
+$ find . -maxdepth 1 -name "[A-Z]*" -print
+./Untitled1.ipynb
+./Download
+
+
 (4) 查找当前目录及子目录下所有以.txt和.pdf结尾的文件
 $ find . -name "*.txt" -o -name "*.pdf" #或者
 $ find . \( -name "*.txt" -o -name "*.pdf" \)
@@ -148,6 +155,9 @@ $ find . \( -name "*.txt" -o -name "*.pdf" \)
 
 要查找所有隐藏的文件
 $ find ~ -name ".*" |head
+
+
+
 
 
 (5)匹配文件路径或文件 find /usr/ -path "*local"
@@ -166,6 +176,8 @@ $ find /home/wangjl/test ! -name "*.txt"
 ##/home/wangjl/test
 ##/home/wangjl/test/c2_ROW02_R2_trimmed_fastqc.html
 ##/home/wangjl/test/c2_ROW02_R2_trimmed_fastqc.zip
+
+
 
 (8)根据文件类型查找
 $ find . -type f #文件
@@ -213,6 +225,8 @@ UNIX/Linux文件系统每个文件都有三种时间戳：
 修改时间（-mtime/天，-mmin/分钟）：文件最后一次修改时间。 
 变化时间（-ctime/天，-cmin/分钟）：文件数据元（例如权限等）最后一次修改时间。
 
+用减号-来限定更改时间在距今n日以内的文件，而用加号+来限定更改时间在距今n日以前的文件。
+
 (1) 搜索最近2天访问过的文件 $ find . -type f -atime -2
 查找超过2天访问的文件(近两天没有访问过) $ find . -type f -atime +2
 恰好2天前访问的文件 $ find . -type f -atime 2 
@@ -224,6 +238,24 @@ UNIX/Linux文件系统每个文件都有三种时间戳：
 
 (4)找出比test.cpp修改时间更长的文件 $ find . -type f -newer test.cpp
 否定是!: $ find . ! -newer cc.txt
+
+-newer file1 ! file2 查找更改时间比文件 file1 新但比文件 file2 旧的文件。
+$ find . -newer aa.txt \! \( -newer cc.txt \) #结果不清不楚的
+
+
+ubuntu测试结果符合描述：
+$ ls -lth
+-rw-rw-r-- 1 wangjl wangjl 334 Nov 15 18:57 unprecedented #新文件
+...
+-rw-rw-r-- 1 wangjl wangjl 326 Nov 15 17:20 backwards #老文件
+
+# 查找创建日期介于 backwards 之后，unprecedented之前的文件，限定是文件(type)，限定只在当前文件夹内(maxdepth)找：
+$ find /home/wangjl -maxdepth 1 -type f -newer backwards ! -newer unprecedented
+
+# 移动这些文件到文件夹 word_ms 中：
+$ find /home/wangjl -maxdepth 1 -type f -newer backwards ! -newer unprecedented -exec mv {} word_ms \;
+
+
 
 
 
@@ -238,6 +270,26 @@ UNIX/Linux文件系统每个文件都有三种时间戳：
 3)查找只读文件 $ find / -type f -perm /u=r |head
 $ find / -type f -perm /u=r 2>/dev/null/ #为什么过滤语句报错？//todo
 4)查找可执行py文件 $ find . -type f -name "*.py" -perm /a=x
+
+5)还有一种表达方法：在八进制数字前面要加一个横杠-，表示都匹配，如-007就相当于777，-006相当于666
+
+# ls -l
+-rwxrwxr-x   2 sam   adm        0 10月 31 01:01 http3.conf
+-rw-rw-rw-   1 sam   adm    34890 10月 31 00:57 httpd1.conf
+-rwxrwxr-x   2 sam   adm        0 10月 31 01:01 httpd.conf
+drw-rw-rw-   2 gem   group   4096 10月 26 19:48 sam
+-rw-rw-rw-   1 root  root    2792 10月 31 20:19 temp
+
+# find . -perm 006
+# find . -perm -006
+./sam
+./httpd1.conf
+./temp
+
+-perm mode:文件许可正好符合mode
+-perm +mode:文件许可部分符合mode
+-perm -mode: 文件许可完全符合mode
+
 
 
 (2)ACL权限
@@ -257,8 +309,22 @@ $ find / -nogroup 2>/dev/null
 $ find / -nouser 2>/dev/null
 
 
+为了查找属主帐户已经被删除的文件，可以使用-nouser选项。这样就能够找到那些属主在/etc/passwd文件中没有有效帐户的文件。在使用-nouser选项时，不必给出用户名； find命令能够为你完成相应的工作。
 
-4.借助-exec与其他命令结合使用。
+例如，希望在/home目录下查找所有的这类文件，可以用：
+$ find /home -nouser -print
+
+
+
+
+
+
+
+
+4.使用-exec或-ok执行其他shell命令。
+任何形式的命令都可以在-exec选项中使用。
+exec选项后面跟随着所要执行的命令或脚本，然后是一对儿{ }，一个空格和一个\，最后是一个分号。为了使用exec选项
+
 (1)查找到拥有者为wangjl 的文件，并将它的拥有者改为hou 
 $ find . -type f -user wangjl -exec chown hou {} \; #整个命令前加sudo才能执行
 
@@ -278,20 +344,48 @@ $ find . -type f -perm 0777 -print -exec chmod 644 {} \;
 查找和删除多个文件，如.mp3或.txt，然后使用。 
 $ find -type f -name "*.py" -exec rm -f {} \;
 
+记住：在shell中用任何方式删除文件之前，应当先查看相应的文件，一定要小心！当使用诸如mv或rm命令时，可以使用-exec选项的安全模式。它将在对每个匹配到的文件进行操作之前提示你。
+$ find -type f -name "*.py" -ok rm -f {} \;
+
+$ find . -maxdepth 1 -type f -name "*.py" -ok rm -f {} \;
+< rm ... ./b.py > ? y
+< rm ... ./a.py > ? n
+
+按y键删除文件，按n键不删除，直接回车也不删除。
+
+
+(6) find找到文件，使用grep搜索文件内容。
+find命令首先匹配所有文件名为“ passwd*”的文件，例如passwd、passwd.old、passwd.bak，
+然后执行grep命令看看在这些文件中是否存在一个sam用户。
+
+$ find /etc -name "passwd*" -exec grep "sam" {} \; 2>/dev/null
+sam:x:1002:1002::/usr/sam:/bin/bash
 
 
 
 
 
 
-5.疑难杂症
-(1) 删除匹配文件: 在查找命令后加上 -delete
+
+
+
+
+
+
+
+========================================
+|-- find 命令各种疑难杂症
+----------------------------------------
+1. 删除匹配文件: 在查找命令后加上 -delete
 删除以.txt结尾的文件 $ find . -type f -name "*.TXT" -delete
 
 
-(2)find命令-prune用法很严格！
+2. find命令-prune用法很严格！
 -prune 使用这一选项可以使 find 命令不在当前指定的目录中查找，如果同时使用 - depth 选项，那么 - prune 将被 find 命令忽略。
+
 #在当前目录下查找文件，但不希望在./text目录下查找
+希望在/apps目录下查找文件，但不希望在/apps/bin目录下查找: $ find /apps -path "/apps/bin" -prune -o -print
+
 $ find . -path ./text -prune -o -name "*.txt"
 严格的用法：find 查找文件的目录 -path 需要排除的目录 -prune -o -name 需要查询的内容
 注意事项：
@@ -304,8 +398,85 @@ $ find . -path ./text -prune -o -name "*.txt"
 -o 是or的意思。这里解释不通，why?//todo
 
 
-(3)-newer file1 ! file2 查找更改时间比文件 file1 新但比文件 file2 旧的文件。
-$ find . -newer aa.txt \! \( -newer cc.txt \) #结果不清不楚的 todo
+
+3. 逻辑运算
+(1)尝试解释： 避开多个文件夹
+比如要在/usr/sam目录下查找不在dir1子目录之内的所有文件
+$ find /usr/sam -path "/usr/sam/dir1" -prune -o -print
+
+  find [-path ..] [expression] 在路径列表的后面的是表达式
+-path "/usr/sam" -prune -o -print 是 -path "/usr/sam" -a -prune -o -print 的简写。
+表达式按顺序求值, -a 和 -o 都是短路求值，与 shell 的 && 和 || 类似如果 -path "/usr/sam" 为真，则求值 -prune , -prune 返回真，与逻辑表达式为真；否则不求值 -prune，与逻辑表达式为假。
+如果 -path "/usr/sam" -a -prune 为假，则求值 -print ，-print返回真，或逻辑表达式为真；否则不求值 -print，或逻辑表达式为真。
+
+这个表达式组合特例可以用伪码写为
+if -path "/usr/sam" then
+    -prune
+else
+    -print
+#
+
+
+(2) 避开多个文件夹
+find /usr/sam \( -path /usr/sam/dir1 -o -path /usr/sam/file1 \) -prune -o -print
+圆括号表示表达式的结合。
+
+\ 表示引用，即指示 shell 不对后面的字符作特殊解释，而留给 find 命令去解释其意义。
+查找某一确定文件，-name等选项加在-o 之后
+
+#find /usr/sam \(-path /usr/sam/dir1 -o -path /usr/sam/file1 \) -prune -o -name "temp" -print
+
+
+
+
+
+
+
+4. find---xargs以及find--- -exec结合使用
+xargs - build and execute command lines from standard input
+
+在使用find命令的-exec选项处理匹配到的文件时， find命令将所有匹配到的文件一起传递给exec执行。但有些系统对能够传递给exec的命令长度有限制，这样在find命令运行几分钟之后，就会出现 溢出错误。错误信息通常是“参数列太长”或“参数列溢出”。这就是xargs命令的用处所在，特别是与find命令一起使用。
+
+find命令把匹配到的文件传递给xargs命令，而xargs命令每次只获取一部分文件而不是全部，不像-exec选项那样。这样它可以先处理最先获取的一部分文件，然后是下一批，并如此继续下去。
+
+在有些系统中，使用-exec选项会为处理每一个匹配到的文件而发起一个相应的进程，并非将匹配到的文件全部作为参数一次执行；这样在有些情况下就会出现进程过多，系统性能下降的问题，因而效率不高；
+
+而使用xargs命令则只有一个进程。另外，在使用xargs命令时，究竟是一次获取所有的参数，还是分批取得参数，以及每一次获取参数的数目都会根据该命令的选项及系统内核中相应的可调参数来确定。
+
+来看看xargs命令是如何同find命令一起使用的，并给出一些例子。
+
+
+(1)下面的例子查找系统中的每一个普通文件，然后使用xargs命令来测试它们分别属于哪类文件
+
+#find . -type f -print | xargs file
+./num.txt:                                                 ASCII text
+./.kde/Autostart/Autorun.desktop: UTF-8 Unicode English text
+./.kde/Autostart/.directory:      ISO-8859 text\
+......
+
+
+(2)在整个系统中查找内存信息转储文件(core dump) ，然后把结果保存到/tmp/core.log 文件中：
+$ find / -name "core" -print 2>/dev/null | xargs echo "" >/tmp/core.log
+
+上面这个执行太慢，我改成在当前目录下查找
+#find . -name "file*" -print 2>/dev/null | xargs echo "" > /temp/core.log
+# cat /temp/core.log
+./file6
+
+
+(3)在当前目录下查找所有用户具有读、写和执行权限的文件，并收回相应的写权限：
+# find . -perm -7 -print | xargs chmod o-w
+
+(4)用grep命令在所有的普通文件中搜索hostname这个词：
+# find . -type f -print 2>/dev/null | xargs grep "hostname" --color=auto
+
+# 在当前目录下的所有普通文件中搜索hostnames：
+# find . -name \* -type f -print 2>/dev/null | xargs grep "hostname" --color=auto
+
+
+注意，在上面的例子中， \用来取消find命令中的*在shell中的特殊含义。
+
+find命令配合使用exec和xargs可以使用户对所匹配到的文件执行几乎所有的命令。
 
 
 
@@ -315,7 +486,7 @@ refer:
 https://blog.csdn.net/z_xiao_xue/article/details/53925680
 https://www.cnblogs.com/Ido-911/p/9638612.html
 
-
+linux下find---xargs以及find--- -exec结合使用: https://www.cnblogs.com/whiteprism/p/6599542.html
 
 
 
