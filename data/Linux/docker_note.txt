@@ -1551,6 +1551,94 @@ Go to Managing Data in Containers.
 
 
 ========================================
+|-- 容器之间的通信: 容器端口映射
+----------------------------------------
+端口映射的指令是什么？docker指令：docker run -p ip:hostPort:containerPort redis
+
+ref: https://yeasy.gitbooks.io/docker_practice/network/port_mapping.html#映射到指定地址的指定端口
+使用 ip::containerPort 绑定 localhost 的任意端口到容器的 5000 端口，本地主机会自动分配一个端口。
+$ docker run -d -p 127.0.0.1::5000 training/webapp python app.py
+
+
+
+
+1. 通过sudo docker ps 查看当前的进程
+
+
+2. 通过 sudo docker inspect <id> ；例如我上面的例子 sudo docker inspect 4efcb2f82953
+找到这个ip 
+
+"Ports": {
+	"3306/tcp": [ #2.那么容器的这个端口来响应
+		{
+			"HostIp": "0.0.0.0", #1.这里是如果用户访问宿主机IP和端口
+			"HostPort": "7070"
+		}
+	]
+},
+...
+"IPAddress": "172.17.0.2", ##就是这一行
+
+
+
+
+3. 第三步：设置端口映射  
+$ sudo  docker run -d -p 172.17.0.2::9090 training/webapp python app.py
+注意红色字体(172.17.0.2)前面是docker容器的ip地址，后面是我们需要映射的端口号(9090)
+
+绑定 已有容器172.17.0.2 的任意端口绑定到 将要新建的容器的9090端口，已有容器会自动分配一个端口。
+
+
+
+4. sudo docker ps 查看当前是不是映射成功
+
+出现0.0.0.0:7070->3306/tcp表示宿主机的7070端口映射到了虚拟机的3306端口。
+
+
+
+
+5. 也可以使用docker port NAME查看端口映射情况。
+$ sudo docker port agitated_hawking
+红色字体(agitated_hawking)指的是当前端口号的name。
+
+
+$ sudo docker port 740
+3306/tcp -> 0.0.0.0:7070
+
+表示虚拟机的3306端口映射到了主机的7070端口。
+如果没有任何回复，表示端口映射失败。
+
+
+
+
+https://blog.csdn.net/taowuhua0505/article/details/88255773
+
+
+
+
+========================================
+|-- 为运行中的容器添加端口映射 // todo 
+----------------------------------------
+1.方法1 容器打包成镜像，重新运行该镜像时添加端口映射
+$ docker ps
+
+$ docker run -it --name web_demo -p 8000:80  fanzone/aaa:v1  /bin/bash  # 添加了端口映射
+
+$ docker run -it --name web_demo -p 8000:80  fanzone/aaa:v1  bash
+
+
+
+2.修改容器的json文件：
+暂停容器，
+修改容器映射时只需要 修改hostconfig.json的PortBindings , 增加容器映射时还需要改config.v2.json的ExposedPorts
+
+重新运行容器。
+
+
+
+
+
+========================================
 把用户添加到docker组
 ----------------------------------------
 1.查看自己是否在docker分组
@@ -1567,12 +1655,214 @@ http://www.markjour.com/article/docker-no-root.html
 
 
 ========================================
+故障排除 troubleshooting
 ----------------------------------------
 
 
 
 ========================================
+|-- mysql 从容器外连不上怎么办？
 ----------------------------------------
+有人说改这个，没改，/etc/mysql/mysql.conf.d
+(1)在mysqld下添加skip-name-resolve
+(2)In my.cnf file, add:
+connect_timeout = 10
+table_open_cache = 900
+Restart MySQL.
+
+(3)It might be the firewall problem or maybe because the MySQL server is bound to the loop-back IP (127.0.0.1 / localhost) which effectively cuts you off from connecting from “outside”.
+
+
+
+感觉问题不在容器及内部的服务，在宿主机的端口不可访问，证据如下： 
+
+
+
+1. docker是正常运行的
+$ docker ps
+CONTAINER ID        IMAGE               COMMAND                  CREATED             STATUS              PORTS                    NAMES
+740797493b8c        dawneve/mysql       "docker-entrypoint.s…"   8 weeks ago         Up 9 minutes        0.0.0.0:7070->3306/tcp   loving_engelbart
+
+
+
+进入docker可以登录mysql，
+$ docker exec -it 740 bash
+root@740797493b8c:/# mysql -u root -p 
+Enter password: 
+Welcome to the MySQL monitor.  Commands end with ; or \g.
+Your MySQL connection id is 3
+
+也就是docker提供的mysql服务一直在，一直正常运行！
+
+
+
+
+
+2. 但是在docker外部怎么都无法连接mysql
+
+$ mysql -h 127.0.0.1 -P7070 -uroot -p
+Enter password: 
+ERROR 2013 (HY000): Lost connection to MySQL server at 'reading initial communication packet', system error: 0
+
+
+$ mysql -h192.168.2.120 -P 7070 -uroot -p
+Enter password: 
+ERROR 2003 (HY000): Can't connect to MySQL server on '192.168.2.120' (111)
+
+
+
+
+
+
+
+3. 使用telnet看端口，直接连不上。
+$ telnet y.biomooc.com 7070
+Trying 10.20.46.143...
+telnet: Unable to connect to remote host: Connection refused
+
+
+
+
+4.nmap扫描的结果是 filtered，
+$ sudo nmap -sS -p 7000-8000 192.168.2.120
+
+Starting Nmap 7.60 ( https://nmap.org ) at 2019-12-05 22:20 CST
+Nmap scan report for sustc-HG.lan (192.168.2.120)
+Host is up (0.000015s latency).
+Not shown: 998 closed ports
+PORT     STATE    SERVICE
+7000/tcp open     afs3-fileserver
+7070/tcp filtered realserver
+8000/tcp open     http-alt
+
+什么意思？
+(1)https://blog.csdn.net/lee244868149/article/details/39177669
+filtered(被过滤的)
+由于包过滤阻止探测报文到达端口， Nmap无法确定该端口是否开放。过滤可能来自专业的防火墙设备，路由器规则 或者主机上的软件防火墙。这样的端口让攻击者感觉很挫折，因为它们几乎不提供 任何信息。有时候它们响应ICMP错误消息如类型3代码13 (无法到达目标: 通信被管理员禁止)，但更普遍的是过滤器只是丢弃探测帧， 不做任何响应。 这迫使Nmap重试若干次以访万一探测包是由于网络阻塞丢弃的。 这使得扫描速度明显变慢。
+
+难道是防火墙？
+
+(2)
+https://blog.csdn.net/m0_37268841/article/details/80234365
+Filtered（过滤的）：由于报文无法到达指定的端口，nmap不能够决定端口的开放状态，这主要是由于网络或者主机安装了一些防火墙所导致的。当nmap收到icmp报文主机不可达报文（例如：type为3，code为13（communication administratively prohibit）报文）或者目标主机无应答，常常会将目标主机的状态设置为filtered。
+
+
+
+
+
+5. 监听端口
+http://www.kbase101.com/question/16413.html
+
+(1)
+$ sudo tcpdump -A 'udp and port 7070' -w tcpdump.out
+[sudo] password for wangjl: 
+tcpdump: listening on docker0, link-type EN10MB (Ethernet), capture size 262144 bytes
+^C0 packets captured
+0 packets received by filter
+0 packets dropped by kernel
+
+现在停止转储并检查是否有任何数据包在tcpdump.out中被捕获或者没有使用wireshark。
+
+
+(2)
+$ nc y.biomooc.com -u 7070
+如果没有捕获数据包，这意味着某些中间设备（防火墙）阻止了通信。否则，如果捕获，请检查服务器给出的回复以回复请求。如果它是带有某些错误代码的任何类型的ICMP回复，则表示存在一些阻塞的本地防火墙。
+
+
+那就是防火墙问题了？
+
+
+
+
+
+6. 关掉防火墙
+(1)
+$ sudo iptables -F
+清空iptables设置。
+
+
+(2)
+$ service ufw status
+$ service ufw stop
+
+$ netstat | grep 7070
+tcp        0      1 sustc-HG.lan:54550      10.20.46.143:7070       SYN_SENT   
+tcp        0      1 sustc-HG.lan:54548      10.20.46.143:7070       SYN_SENT
+
+
+这个用的 centos: https://blog.csdn.net/Blog_inG/article/details/88963043
+
+
+(3)
+关闭ubuntu的防火墙 ufw disable 开启防火墙 ufw enable
+https://www.jb51.net/article/138876.htm
+
+$ sudo ufw disable
+这个有用了。可以连接mysql了。
+不知道是不是因为这个？
+
+
+Ubuntu 防火墙更多命令：
+sudo ufw allow 80 允许外部访问80端口
+sudo ufw delete allow 80 禁止外部访问80 端口
+sudo ufw allow from 192.168.1.1 允许此IP访问所有的本机端口
+
+
+
+
+
+7.回测：
+步骤4和5的结果还是一样，没变化。
+
+步骤3 telnet端口，结果是：
+$ telnet y.biomooc.com 7070
+Trying 10.20.46.143...
+Connected to y.biomooc.com.
+Escape character is '^]'.
+J
+5.7.B8  1g<.rDA43X#r:mysql_native_password
+
+^CConnection closed by foreign host.
+
+
+
+
+
+
+8.更多端口查看方法
+(1)
+$ netstat -an|grep 7070
+tcp6       0      0 :::7070                 :::*                    LISTEN 
+
+
+(2)
+服务端查看所有开放端口：$ netstat -luntp
+
+$ netstat -luntp | head
+(Not all processes could be identified, non-owned process info
+ will not be shown, you would have to be root to see it all.)
+Active Internet connections (only servers)
+Proto Recv-Q Send-Q Local Address           Foreign Address         State       PID/Program name    
+tcp        0      0 127.0.0.1:43917         0.0.0.0:*               LISTEN      9690/python
+
+
+$ netstat -luntp | grep 7070
+(Not all processes could be identified, non-owned process info
+ will not be shown, you would have to be root to see it all.)
+tcp6       0      0 :::7070                 :::*                    LISTEN      -    
+
+
+
+(3)
+$ ss -tnl
+
+(4)
+$ curl -i http://y.biomooc.com:7070
+$ wget http://y.biomooc.com:7070
+
+
+
+https://blog.csdn.net/Blog_inG/article/details/88963043
 
 
 

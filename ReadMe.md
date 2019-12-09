@@ -83,4 +83,11 @@ $ git branch
 $ git checkout master
 合并$ git merge --no-ff -m'some comments' otherBranch
 推送$ git push origin master
+
+
+
+除了默认控制器，还有其他控制器：
+/index.php?c=outline&k=php&id=1_1  php的大纲
+/index.php?c=summary&k=2015 年度总结
+
 ``````

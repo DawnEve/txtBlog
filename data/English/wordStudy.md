@@ -14,11 +14,55 @@
 - Protract, tractor, retract, distract, contract, extract, attract. 十几个即使都是生词，三分钟足够了。
 
 
+## 单词分类
 [4-6级考试大纲 - 附词汇(2016年修订版)](http://cet.neea.edu.cn/html1/folder/16113/1588-1.htm)
+[最常见1000个单词](https://www.ef.com/wwen/english-resources/english-vocabulary/top-1000-words/)
+
+
+## 刷单词使用方法
+日常使用 aim1，刷掉生词，并提交；
+之后使用 aim2，复习生词，不提交;
 
 
 
-#听写错的单词: 熟词写错 /听错的 /生词 
+
+
+
+# scan word
+刷单词遇到的不会的单词
+每组放5行，每行5-20个难记的单词
+
+## group 1
+["bizarre", "pastime", "derive", "grief", "heritage", "marital", "ritual", "recall", "stab", "resolve", "pant", "reckless", "exhibit", "hurl", "eminent", "obstruct"]
+["persevere", "sane", "excerpt", "graze", "grease", "rob", "excess", "consent", "sophisticated"]
+["humble", "pickup", "reservoir", "deposit", "slap", "renaissance", "displace", "designate", "negligible", "mortal", "precedent", "dispose", "bleak", "outfit", "communism", "punch"]
+["symmetry", "tram", "poke", "hail", "tramp", "suspicion", "advent", "desolate", "ponder", "arithmetic", "feminine", "preach", "temperament", "accessory", "horizon", "shove"]
+["patron", "preceding", "conceive", "pray", "panorama", "scramble", "lateral", "dew", "perplex", "judicial", "repertoire", "allege"]
+
+## group 2
+["vest", "doctorate", "stalk", "constituent", "attendant", "breed", "symposium", "resolute", "solitary", "preface"]
+["resultant", "advisable", "remedy", "disposal", "divine", "spade", "scarf", "hum", "glare", "timid", "bullet"]
+["gallop", "tempt", "compassion", "orthodox", "commence", "lofty", "rally", "swamp"]
+["foul", "heroic", "canteen", "scrutiny", "diffuse", "restraint", "conspicuous", "prone", "mend", "orient", "clothe", "snatch"]
+["instantaneous", "portray", "patriotic", "stake", "mug", "constitute", "whirl", "qualify", "textile", "nap", "swarm", "retention", "linen", "menace"]
+
+## group 3
+["stain", "kin", "siege", "bolt", "costume", "staple", "inferior", "integrity", "plausible", "sham"]
+["sovereign", "stun", "descendant", "intricate", "lumber", "immerse", "aural", "assault", "rip"]
+["hypocrisy", "retrospect", "fable", "vein", "canal", "bewilder", "stumble", "circumference", "incur", "stool", "crust", "steak", "priest", "paradigm"]
+["literacy", "canoe", "cordial", "opponent", "grope", "meditate"]
+["ward", "overpass", "shed", "radiant", "deteriorate", "discreet"]
+
+## group 4
+["prey", "turbulent", "grieve", "upright", "reel", "revolve", "cart", "scrap", "bulb"]
+["conspiracy", "altitude", "distress", "solidarity", "mock", "sniff"]
+["slack", "cottage", "gymnasium", "plead", "liberate", "certify", "erroneous"]
+["porcelain", "freight", "withhold", "lodge", "appal", "turbine", "slum", "layoff", "magistrate", "lavatory", "obstruction", "spiral", "overhear", "transcend", "dine", "exquisite"]
+
+
+
+# Error in spelling
+听写错的单词: 熟词写错 /听错的 /生词 
 反复写错，一行10个抄写，死记硬背才能记得牢。
 输入数据库，每天至少一组，按照错误率复习。
 
@@ -274,11 +318,106 @@ trio decipher stew oven beet domesticate encyclopedic unintelligible palate
 
 2.6
 写错的
+despite kindergarten career businessman compulsory circumstance authorisation hers commonest pupil religious 
+urban liberal quitting 
+
+former ensure essential government illegally evidence lawyer nervous
+ 
 
 音节听错
+during the nine years of compulsory education;
+risk it;
+by far the commonest reason;
+some are inspired by ...;
+
+now that sb;
+a mix of ;
+see it as ...;
+
 
 生词
+townhouse withdraw wary tactic lifelong undeterred adulation swot contempt atheism 
+sympathise intent anecdotal prosecuted inculcate virtue socialist 
 
+
+2.7
+写错的
+mystery shoreline pollute emperor spill ceremony ceremonial 
+coral reef
+politician unity
+
+音节听错
+first story;
+largest;
+in the area;
+elected politicians;
+
+生词
+seep slick abdicate enthronement parliamentary constitutional monarchy
+
+
+
+2.8
+写错的
+symphony psychologist experience society perhaps 
+
+音节听错
+tens of;
+tone;
+therapeutic;
+
+生词
+skull venue orchestral cochlea cavity acoustical acoustic decibel resonant exclamation spectral 
+amplify damp broadband perceptual trivially 
+
+
+
+2.9
+写错的
+interior socialist 
+immense recede discomfort tinned correspondent sausage nuclear Moscow
+catastrophe approaching descend failure jam
+barely unprecedented seminar canning carbon retired incredible collapse comprise minimise quiet 
+
+音节听错
+awaiting;
+government installed them under public buildings;
+freeze-dried;
+electricity-grid failure;
+bucking that stereotype;
+customer base;
+it passed the 2-3% threshold that ...;
+selling essential oils;
+centred on;
+a solar-powered home;
+
+生词
+troglodyte apocalypse fallout fiat  sandblasted modular bulletproof hatch decontamination 
+attenuate twang 
+refurbish flog gourmet quail lukewarm apocalyptic hauntingly reminiscent doomsday
+martial irradiation panhandle redoubt waistband holster lubricate anarchy 
+pique downturn stall pharmacy pseudonymous bulldozer pastor imminent enthusiast 
+
+短语
+at the height of;
+wait out;
+plush couches;
+shotgun shells;
+
+
+2.10
+写错的
+fossil colleague penetrating imperceptible  beneath twelve visible dinosaur 
+
+
+音节听错
+sensor;
+in a grid pattern;
+during a hunt;
+
+生词
+archaeologist momentum sandal 
+sediment
 
 
 

@@ -1538,7 +1538,7 @@ R如何理解变量和环境的Lexical Scoping Rule  http://blog.csdn.net/stat_e
 	
 	
 ========================================
-|-- 三、自定义二元运算符
+|-- 三、自定义二元运算符: "%myname%"=function(){}
 ----------------------------------------
 #以为%开始和结束，函数的参数和返回值都是某种数据类型
 
@@ -2037,7 +2037,7 @@ http://blog.csdn.net/yitianguxingjian/article/details/51820758
 
 
 ========================================
-|-- split() 函数： Divide into Groups and Reassemble //todo
+|-- split() 函数： Divide into Groups and Reassemble
 ----------------------------------------
 Divide into Groups and Reassemble | 重新组合
 
@@ -2370,10 +2370,23 @@ setRepositories()
 2. 查看当前加载的包
 (.packages()) 
 
-
 ## To see the list of currently loaded packages use
 search() #相比上句少了几个
 
+
+
+(2) 卸除已加载的包
+如卸除RMySQL包
+>detach('package:RMySQL')
+
+
+注意是卸除，不是卸载，也就是说不是把包从R运行环境中彻底删除，只是不希望该包被加载使用。
+
+在包使用函数冲突，检验函数依赖时比较有用。
+
+
+>detach('package:ggplot2')
+在升级该包时，不能是加载状态，如果不想重启Rstudio，就可以先卸除该包，再执行安装命令，安装新包。
 
 
 
@@ -2468,6 +2481,51 @@ https://stackoverflow.com/questions/20535247/seeking-functions-in-an-r-package
 ========================================
 R操作mysql数据库
 ----------------------------------------
+
+1. 把mysql连接信息写到文件中。
+$ cat /home/wangjl/pylib/con_mysql.R
+library(DBI)
+library(RMySQL)
+con<-dbConnect(MySQL(),user='root', password='123456',dbname='wang',host='y.biomooc.com',
+               port=7070, DBMsencoding='utf8')
+dbSendQuery(con,'SET NAMES utf8;') #读取防乱码
+query<-dbSendQuery(con,'alter database wang character set utf8;') #写入防乱码
+#
+#query<-dbSendQuery(con,'select cid, cellType from cell_c1 where cellType="HeLa_sync"')
+#data=fetch(query, n=-1);
+#data
+
+
+
+
+2. 把数据查询写成函数
+#R语言的数据库链接
+rm(con)
+getDF_fromDB=function(sql){
+  source('/home/wangjl/pylib/con_mysql.R')
+  query<-dbSendQuery(con, sql );
+  data=fetch(query, n=-1);
+  #
+  print(dim(data))
+  print(head(data))
+  return(data)
+}
+
+
+
+# 获取编码基因，和非编码基因
+sql=paste0('select distinct gene_name,gene_type from feature_gene;');
+geneNames=getDF_fromDB(sql)
+# [1] 58692     2
+#   gene_name      gene_type
+# 1    TSPAN6 protein_coding
+# 2      TNMD protein_coding
+# 3      DPM1 protein_coding
+# 4     SCYL3 protein_coding
+
+
+
+
 
 ========================================
 |-- R通过ODBC连接数据库(win)
@@ -2816,6 +2874,115 @@ Select * from sale where year=2010 and ...
 
 refer:
 https://blog.csdn.net/sinat_26917383/article/details/51601539
+
+
+
+
+========================================
+|-- R操作sqlite
+----------------------------------------
+1. sqlite的优点就是既有数据库的sql操作灵活性（和mysql很类似），又有文件的存放便捷性(不需要连接数据库等操作)。
+缺点是只适用于小数据集。
+
+(1) 实例1
+# install.packages("RSQLite")
+library(RSQLite)
+
+#连接表，所有结果保存到一个文件中
+db = dbConnect(SQLite(), dbname="~/web/docs/your-db.sqlite")
+
+#之后和mysql操作一样了。
+
+# 创建表
+dbSendQuery(conn=db,
+   "CREATE TABLE SSGB_obs
+   (Date DATETIME,
+   Station TEXT,
+   Snowline TEXT,
+   PRIMARY KEY (Date, Station))
+")
+
+# List tables in your database
+dbListTables(db)
+ 
+# List columns in a table
+dbListFields(db, "SSGB_obs")
+
+
+#导入一批csv文件到db表：雪线的数据
+# List files
+f = list.files("./csv/clean/")
+# Read csvs
+# Format for database
+# Write to database
+for (i in f){
+  x = read.table(paste0("./csv/clean/", i), sep ="|", stringsAsFactors=F)
+  for (j in names(x[-1])){
+    Date = x[-1,1]
+    Station = x[1,j]
+    Snowline = x[-1,j]
+    data = cbind.data.frame(Date,Station,Snowline)
+    dbWriteTable(conn=db, name="SSGB_obs", data, append=T, row.names=F)
+  }
+}
+
+# 读出数据，得到的是数据框
+x = dbGetQuery(db, "
+   SELECT * FROM SSGB_obs
+")
+
+
+
+
+
+
+(2) 实例2
+library(RSQLite)
+sqlite    <- dbDriver("SQLite")
+con <- dbConnect(sqlite,"hg19_bioconductor.sqlite") # makes a new file
+
+#写入数据到db
+suppressMessages(library(org.Hs.eg.db))
+kegg2ID=toTable(org.Hs.egPATH)
+#[1] "gene_id" "path_id"
+dbWriteTable(con,'keggID2geneID',kegg2ID,row.name=F,overwrite=T)
+
+#读出db
+x = dbGetQuery(con, "
+   SELECT * FROM keggID2geneID
+")
+class(x) #[1] "data.frame"
+head(x)
+
+dbDisconnect(con) #关闭连接
+
+# 查文件大小
+system("ls -l hg19_bioconductor.sqlite", show=TRUE)
+# -rw-r--r--. 1 wangjl jinwf 290816 Nov 23 21:19 hg19_bioconductor.sqlite
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+ref:
+一个R语言package：https://cran.r-project.org/web/packages/RSQLite/RSQLite.pdf
+参考：https://scottishsnow.wordpress.com/2014/08/14/writing-to-a-database-r-and-sqlite/
+示例代码：http://faculty.washington.edu/kenrice/sisg-adv/exampleSQLite.R
+
+
+
+
+
+
 
 
 

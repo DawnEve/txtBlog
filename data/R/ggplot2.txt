@@ -610,23 +610,90 @@ ggplot2作图详解7：主题（theme）设置 //todo
 ----------------------------------------
 https://blog.csdn.net/u014801157/article/details/24372531
 
+1. element_text() 上按下f1帮助键
+ 
+element_blank: draws nothing, and assigns no space.
+element_rect: borders and backgrounds.
+element_line: lines.
+element_text: text.
+
+rel() is used to specify sizes relative to the parent, 
+margins() is used to specify the margins of elements.
+
+
+
+
+2.
+
+
+
 
 
 
 
 ========================================
-|-- 去除背景色和网格
+|-- 去除 ggplot2 背景色和网格
 ----------------------------------------
 
-方法一：
-> sp + theme(panel.grid.major =element_blank(), panel.grid.minor = element_blank(),
-+ panel.background = element_blank(),axis.line = element_line(colour = "black"))
+推荐方式：
+
+#提前定义好空白主题样式
+theme_blank=theme_bw() +
+  theme(panel.border = element_blank(),
+        panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),
+        axis.line = element_line(colour = "black"))
+g #
+g+theme_blank #直接用
+
+
+
+
+
+1. 去掉背景
+blank_theme <- theme_bw()+ #保留边框
+  #theme_minimal()+ #连边框都没有
+  theme(
+    #axis.title.x = element_blank(), #去 x坐标标题
+    #axis.title.y = element_blank(), 
+    #
+    #axis.text.x = element_blank(), #x坐标刻度文字
+    #axis.text.y = element_blank(),
+    #axis.ticks = element_blank(), #坐标轴刻度
+    
+    panel.border = element_blank(), #去 外边框
+    #axis.line = element_line(colour = "red",size=3), #坐标轴的颜色，线条粗细
+    axis.line = element_line(colour = "black"), #要坐标轴
+    
+    panel.background = element_blank(), #去背景色
+    panel.grid=element_blank(), #去背景网格
+    #panel.grid.major = element_blank(), #去背景网格 主线
+    #panel.grid.minor = element_blank(), #去背景网格 虚线
+    
+    plot.title=element_text(size=14, face="bold") #最顶上的标题(main)
+  )
+a=ggplot(mtcars, aes( factor(gear), mpg, fill=factor(gear) ))+geom_boxplot();a #默认效果
+a+blank_theme+labs(title='This is title') #干净背景
+
+
+
+方法一：推荐！(没有边框，有坐标轴)
+a + theme(panel.grid.major =element_blank(), 
+          panel.grid.minor = element_blank(),
+          panel.background = element_blank(),
+          axis.line = element_line(colour = "black"))
 
 
 方法二：
-> sp + theme_bw() +
-+ theme(panel.border = element_blank(),panel.grid.major = element_blank(),
-+ panel.grid.minor = element_blank(),axis.line = element_line(colour = "black"))
+a + theme_bw() +
+  theme(panel.border = element_blank(),
+        panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),
+        axis.line = element_line(colour = "black"))
+
+
+
+
 
 
 https://blog.csdn.net/aspirinvagrant/article/details/39672635
@@ -654,6 +721,34 @@ g + theme_gray() #添加主题
 
 
 
+
+
+
+
+========================================
+|-- 使用grid包，把多个ggplot2图片打印到一页上
+----------------------------------------
+#造三个图
+library(ggplot2)
+a=ggplot(mtcars, aes( factor(gear), mpg, fill=factor(gear) ))+geom_boxplot()
+b=a+geom_jitter()
+c=ggplot(diamonds, aes(carat, price, color=cut))+geom_point(alpha=0.2);
+
+#
+library(grid)
+pdf(paste0(outPath,"pdf/multyPic_onePage.pdf"),width=8,height=8)
+#
+grid.newpage()
+pushViewport(viewport(layout=grid.layout(2,2)) ) #造一个网格，2行2列
+#
+vplayout=function(x,y){
+  viewport(layout.pos.row=x, layout.pos.col=y)
+}
+print(a,vp=vplayout(1,1:2)) #第1行第1和2列，图a
+print(b,vp=vplayout(2,1)) #第2行第1列，图b
+print(c,vp=vplayout(2,2)) #第2行第2列，图c
+#
+dev.off()
 
 
 
@@ -1063,7 +1158,7 @@ ggplot(df, aes(gene.mean, gene.dispersion))+geom_point(size=0.1, alpha=0.2)
 
 
 ========================================
-添加辅助线
+添加辅助线 geom_hline
 ----------------------------------------
 1. 添加一条水平线
 bp + geom_hline(aes(yintercept=12))
@@ -1137,7 +1232,7 @@ https://www.cnblogs.com/shaocf/p/9600340.html
 
 
 ========================================
-|-- ggplot2 自定义点的颜色
+|-- ggplot2 自定义点、线的颜色
 ----------------------------------------
 head(tmp)
 #             tSNE_1     tSNE_2 type
@@ -1148,6 +1243,8 @@ head(tmp)
 ggplot(tmp, aes(tSNE_1, tSNE_2, col=factor(type) ))+geom_point()+
   scale_color_manual(values=c("#F8766D","grey"))
 #
+  scale_color_manual(values=c("#F8766D","#7CAE00","#00BFC4","#C77CFF",'#000000')) #前几个默认颜色
+#
 
 
 
@@ -1157,6 +1254,212 @@ ggplot(tmp, aes(tSNE_1, tSNE_2, col=factor(type) ))+geom_point()+
 ========================================
 ********** 应用篇 **********
 ----------------------------------------
+
+
+
+
+
+========================================
+ggplot2 画小提琴图
+----------------------------------------
+1.数据是scRNAseq结果，一列是cluster分类，第二列是基因名字，第三列是表达量。
+想比较不同类的细胞，某个基因的表达量的差异。
+
+> head(df) #5万行， 3列
+     seurat_clusters variable     value
+1480               2    PTPRC 0.0000000
+1483               2    PTPRC 0.3043327
+
+> table(df$seurat_clusters)
+     1      2      3      4 
+152076 141873 122417 115729 
+
+> table(df$variable)
+    CCR7     CD34     CD3D      CD4     CD68    CD79A     CD8A   COL1A1    CSF1R    CSF3R    EPCAM     FPR1 
+   28005    28005    28005    28005    28005    28005    28005    28005    28005    28005    28005    28005 
+    GZMA      LYZ    MS4A1    PTPRC   S100A9 TNFRSF17   TPSAB1 
+   28005    28005    28005    28005    28005    28005    28005
+#
+
+
+
+
+
+
+2.画小提琴图
+(1). 正常坐标系，x轴为基因，y轴为cluster，每个方格为竖着的小提琴图。设置描边为白色。
+pdf(paste0(sampleoutpath,"Vlnplot_",sample,"_celltype.pdf"),width = 8,height = 20)
+
+df$seurat_clusters=as.factor(df$seurat_clusters) #一定要注意，分类变量需要时因子！坑！！
+p <- ggplot(df,aes(x=variable,y=value,fill=variable))+
+  geom_violin(scale = "width",colour="white") + #小提琴图，边框颜色白色，fill属性为填充颜色
+  facet_wrap(seurat_clusters~ . ,strip.position = "left",ncol = 1) + #分面，多行
+  theme_bw() + #白主题
+  theme(panel.grid = element_blank(), #不要背景
+        axis.ticks.y=element_blank(), #不要y坐标刻度
+        
+        axis.text.x = element_text(angle=45,vjust=1,hjust = 1), #x文字倾斜45度
+        axis.text.y = element_blank(), #不要y轴文字
+        
+        legend.position = "none", #不要图例
+        
+        panel.spacing=unit(0,"cm"), #分面间距为0
+        
+        strip.text.y = element_text(angle = 180),
+        strip.background = element_blank()) 
+print(p)
+dev.off()
+
+
+
+(2).转换xy轴后(ggplot3.2.0, 在3.1.0上没有出现预期效果，后来发现，是因为分类变量不是因子！大坑。)
+pdf(paste0(sampleoutpath,"Vlnplot_",sample,"_celltype.pdf"),width = 8,height = 20)
+
+# 旋转小提琴图
+head(df)
+df$seurat_clusters=as.factor(df$seurat_clusters) #一定要注意，分类变量需要时因子！坑！！
+
+str(df)
+
+p2 = ggplot(df,aes(x=seurat_clusters,y=value,fill=variable))+
+  geom_violin(scale = "width",colour="white",alpha=0.85,width=1) +
+  coord_flip() + #guides(fill=FALSE)
+  facet_wrap(variable~.,nrow = 1, strip.position = "bottom") + 
+  theme_bw() +
+  theme(
+        panel.grid = element_blank(), #不要背景网格
+        axis.text.x = element_blank(), #不要x坐标轴刻度文字
+		
+        axis.text.y = element_text(size=15), #y坐标刻度字号
+        axis.title.y = element_text(size=15), #y标题字号
+        
+        legend.position = "none", #不要图例
+        panel.spacing=unit(0,"cm"), #分面的间距
+    
+        strip.placement = "outside", #分面标签位置
+        strip.text.x = element_text(angle=90,vjust=1,hjust = 1,size=15), #分面标签 文字倾斜; 字号
+        strip.background = element_blank() #分面标签 不要背景
+    )
+print(p2)
+dev.off()
+
+
+
+
+3. hjust和vjust做了什么？
+(资料来源：ggplot2，Hadley Wickham，第196页)
+
+hjust 控制水平对齐和 vjust 控制垂直对齐。
+取值[0,1]之间, 0表示左对齐, <1>表示右对齐
+
+大多数情况下，您可以在此范围之外使用它，但不要指望它以任何特定方式运行）。
+
+
+
+
+
+
+========================================
+ggplot2 画饼图，及原生函数pie
+----------------------------------------
+1.原生画图函数pie 画饼图
+
+x=c(40,20,3,26,10,45)
+x2=c('n1','n2','n3','n4','n5','n6')
+x3=paste0(x2, "(",x,', ',round(x/sum(x)*100,2),"%)" );x3
+pie(x)
+pie(x,labels=x3) #加上百分比
+pie(x,labels=x3,edges = 200) #最外圈的多边形的边的个数，没必要
+
+pie(x,labels=x3,radius = 0.8) #圈是画在一个正方形内，0-1之间。
+
+pie(x,labels=x3,clockwise=T) #顺时针开始画
+
+#设置颜色
+library(RColorBrewer)
+brewer.pal.info # 查看有哪些调色板
+col6=RColorBrewer::brewer.pal(n = 6,name = "Set2")
+barplot(1:6,col=col6)
+
+pie(x,labels=x3,clockwise=T, col=col6)
+
+
+
+
+
+
+
+
+2. 使用 ggplot2 做饼图
+大坑：如果想要画的图顺序混乱，多半是因为分类变量必须是因子，而自动转换得到的因子不是期望的顺序。需要手工转换因子，以便保证因子的顺序。
+
+
+library(ggplot2)
+df=data.frame(
+	x=x,
+	x2=x2,
+	x3=x3
+)
+#1.画单个柱形图
+g1=ggplot(df, mapping=aes(x="", y=x,fill=x3))+
+  geom_bar(stat="identity",width=0.5)
+g1
+#2.旋转
+g2=g1+ coord_polar("y", start=0)
+g2 
+
+#3 重新着色
+#g2 +  scale_fill_manual(values=c("#999999", "#E69F00", "#56B4E9"))
+g3=g2 +  scale_fill_manual(values=col6)
+g3
+
+# 添加刻度
+g3+geom_text(stat="identity", aes(label = x3), size=4, position=position_stack(vjust = 1)) #刻度不准
+
+g3+geom_text(stat="identity",aes(y=x, label = scales::percent(x/100)), size=4, position=position_stack(vjust = 0.5))
+
+# 去掉背景
+blank_theme <- theme_minimal()+
+  theme(
+    axis.title.x = element_blank(),
+    axis.title.y = element_blank(),
+    axis.text.x = element_blank(),
+    axis.text.y = element_blank(),
+    panel.border = element_blank(),
+    panel.grid=element_blank(),
+    axis.ticks = element_blank(),
+    plot.title=element_text(size=14, face="bold")
+  )
+
+
+#分类变量一定要是因子才行，否则顺序会很混乱
+ggplot(df, mapping=aes(x="", y=x,fill=x3))+
+  geom_bar(stat="identity",width=0.5)+
+  coord_polar("y", start=0)+
+  #scale_fill_manual(values=col6)
+  scale_fill_brewer(palette="Dark2")+
+  blank_theme+
+  geom_text(stat="identity",aes(x=1.3,y=x, label = x3), size=4, position=position_stack(vjust = 0.5))
+  
+  #geom_text(stat="identity",aes(y=x, label = scales::percent(x/100)), size=4, position=position_stack(vjust = 0.5))
+#
+
+
+#ggpubr包的ggpie（）
+#用ggpar()修改图形
+p4 <- ggpar(p3, title = 'Number of cars in different Cylinders',#设置标题
+      legend = 'right', #设置图例位置
+      orientation = 'reverse')#反转绘图的方向为逆时针方向。
+p4
+
+ref:
+http://www.sthda.com/english/wiki/ggplot2-pie-chart-quick-start-guide-r-software-and-data-visualization
+https://www.cnblogs.com/ljhdo/p/4514106.html
+https://www.jianshu.com/p/3c1b824dfd84
+
+
+
+
 
 
 ========================================
@@ -1460,16 +1763,135 @@ ggplot(NULL, aes(x=log10(unname(apply(apa5,1,sum)) ) ))+#geom_density()+
 
 
 ========================================
-repel 对ggplot2 点进行标注
+ggplot2 插件
+----------------------------------------
+
+========================================
+|-- ggrepel 对ggplot2 点进行标注
 ----------------------------------------
 可以自动画线，连接注释文字和点。
-
+1.
 # Seurat3 中使用到了
 
 plot1 <- VariableFeaturePlot(pbmc)
 plot2 <- LabelPoints(plot = plot1, points = top10, repel = TRUE)
 CombinePlots(plots = list(plot1, plot2))
 
+
+
+
+
+2.
+geom_text怎么用？
+g=ggplot(data, aes(PC1,PC2, color=sample))+geom_point()+
+  geom_text(aes(PC1,PC2,color=sample,label=GSM,hjust = -0.1) )+
+  xlim(-20,20)+
+  theme_bw()
+#
+
+# plot
+library(ggplot2)
+g=ggplot(compareL, aes(log2(FC), -log10(q.value), color=threshold))+geom_point()+
+  labs(title="Difference of 3'UTR length: sync VS normal HeLa",
+       x="log2(3'UTR length fold change)")
+g
+#
+#add text
+dd_text = compareL[(abs(compareL$logFC) > 1.5) &(abs(compareL$logFC) < 5) & (compareL$q.value < 0.01),]
+head(dd_text)
+#View(dd_text)
+dim(dd_text) #133
+
+
+#添加文字-基因名
+#install.packages("ggrepel") https://blog.csdn.net/woodcorpse/article/details/78955334
+library(ggrepel)
+g + geom_text(data=dd_text, aes(x=logFC, y=-log10(q.value), label=dd_text$id),
+              colour="black",size=3)+ylim(0,20)
+#
+g+geom_text_repel(data=dd_text, aes(x=logFC, y=-log10(q.value), label=dd_text$id),
+                  colour="black",size=3)+ylim(0,20)
+#
+
+如果注释太多，连线太密，可以设置透明度，防止点被盖住。
+
+
+
+
+
+
+
+========================================
+|-- ggsignif箱线图添加显著性差异标识(多组分析)
+----------------------------------------
+# 直接在程序中嵌入数据
+mydatatxt="
+group value
+T1 12.88
+T1 13.06
+T1 13.52
+T2 13.96
+T2 14.57
+T2 15.28
+T3 14.80
+T3 14.04
+T3 14.37
+T3 13.97
+T3 14.49
+T4 14.47
+T4 13.26
+T4 14.14
+"
+mydata=read.table(text=mydatatxt, header=T) # text设置了，file就要留空。
+mydata
+
+#
+#BiocManager::install('ggsignif')
+library("ggsignif")
+library('ggplot2')
+# geom_signif()
+# compare_means(value ~ group, data = exprSet_L,method="wilcox.test", paired=FALSE)
+exprSet_L=mydata
+gene_name='geneXX'
+
+my_comparisons <- list(c("T1","T2"), c("T1","T3"),c("T1", "T4"))
+ggplot(exprSet_L,aes(group,value))+
+  geom_boxplot(width=0.5)+
+  geom_jitter(aes(color=group))+
+  theme(plot.title=element_text(size = 25),
+        axis.text.x=element_text(size=25,angle=0),
+        axis.text.y=element_text(size=25),
+        axis.title.x=element_text(size = 25),
+        axis.title.y=element_text(size = 25))+
+  labs(title=paste0('Title:',gene_name),x=gene_name, y= 'Expression')+
+  geom_signif(comparisons = my_comparisons,
+              step_increase = 0.1,
+              map_signif_level = T, #T显示星号，F显示p值
+              test = t.test, size=1,textsize = 6)+
+  theme_set(theme_set(theme_bw(base_size=22)))
+# wilcox.test
+
+# geom_signif(mapping = NULL, data = NULL, stat = "signif",
+#             position = "identity", na.rm = FALSE, show.legend = NA,
+#             inherit.aes = TRUE, comparisons = NULL, test = "wilcox.test",
+#             test.args = NULL, annotations = NULL, map_signif_level = FALSE,
+#             y_position = NULL, xmin = NULL, xmax = NULL, margin_top = 0.05,
+#             step_increase = 0, tip_length = 0.03, size = 0.5, textsize = 3.88,
+#             family = "", vjust = 0, ...)
+
+
+ref:
+https://www.jianshu.com/p/d8e968250ae3
+
+
+
+========================================
+----------------------------------------
+
+
+
+========================================
+----------------------------------------
 
 
 
