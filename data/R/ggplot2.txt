@@ -5,11 +5,16 @@ ggplot2
 
 http://sape.inf.usi.ch/quick-reference/ggplot2
 https://blog.csdn.net/u014801157/article/category/2215813
-http://agetouch.blog.163.com/blog/static/228535090201443183139251/
+http://agetouch.blog.163.com/blog/static/228535090201443183139251/ [404]
 
 
-完整示例代码可以查看
+完整代码示例:
 https://github.com/DawnEve/bioToolKit/blob/master/R_scripts/ggplot2_dplyr/000-ggplot2-book1.R
+
+
+示例图及代码:
+http://www.biomooc.com/R/R-draw-adv-ggplot2.html
+http://tool.biomooc.com/R_scripts/index.html
 
 
 ========================================
@@ -568,8 +573,229 @@ https://blog.csdn.net/u014801157/article/details/24372503
 
 
 ========================================
-ggplot2作图详解3：映射（mapping） //todo
+ggplot2作图详解3：映射（mapping
 ----------------------------------------
+ggplot2数据层面的操作包括映射和分面。先说映射。
+
+1 映射的类型
+前面我们已经了解到ggplot对象的data项存储了整个数据框的内容，而“映射”则确定如何使用这些数据。
+
+ggplot2按照图形属性提供了以下可用映射类型：
+
+颜色类型映射：包括 color（颜色或边框颜色）、fill（填充颜色）和 alpha（透明度）
+形状类型映射：包括 linetype（线型）、size（点的大小或线的宽度）和 shape（形状）
+位置类型映射：包括 x, y, xmin, xmax, ymin, ymax, xend, yend
+特殊类型：包括两类，一类是指定数据分组和顺序的映射group和order，另一类是字符串映射。
+前两种类型是经典的美学属性映射，第三类的x和y映射也常规，第四类很特别，尤其是字符串映射，很另类，其他类型的映射都可以用aes函数指定，但H.W.为字符串映射专门造了个函数：aes_string。不知道他对字符串特别关照还是实在想不出其他解决方案。
+
+
+
+
+
+
+2 颜色和形状类型映射
+规律性的东西简单轻松，大家都喜欢；而到处暗藏潜规则、充斥着特例的东西（比如plotrix、perl和中国社会）很杂碎很累人，当然也很让人烦躁和讨厌。
+ggplot2中颜色和形状这两类映射最符合台面规则的，即：把数据框的变量和图形的美学属性对应起来。
+
+2.1 映射的过程
+先看下面ggplot2的数据diamonds：
+library(ggplot2)
+set.seed(100)
+d.sub <- diamonds[sample(nrow(diamonds), 500), ]
+head(d.sub, 4)
+
+
+(1) 散点图，映射数据到x和y坐标
+p  <- ggplot(data=d.sub, aes(x=carat, y=price))
+
+
+theme_set(theme_bw())
+p  + geom_point()
+
+
+(2) 映射钻石颜色属性到颜色
+p  + geom_point() + aes(color=color) + theme(legend.position=c(2,2))
+
+
+(3) 使用原生R绘图模拟ggplot的映射
+ggplot2映射的过程可以用plot函数作图步骤进行分解，它包含三方面的操作（不包括图形页面设置）：
+
+数据分组
+设定颜色标尺
+按颜色标尺指定每组数据的颜色
+
+# 设定颜色标尺
+levs  <- levels(d.sub$color)
+cl  <-  rainbow(length(levs))
+# 页面设置
+par(mar=c(3,3,0.5,0.5), mgp=c(1.5, 0.5, 0), bg="white")
+plot(d.sub$carat, d.sub$price, type='n', xlab="carat", ylab="price")
+i  <- 1
+for(lev in levs){
+  # 数据分组
+  datax  <- d.sub[d.sub$color==lev, ]
+  # 作图并指定数据点颜色
+  points(datax$carat, datax$price, pch=20, col=cl[i])
+  i  <- i + 1
+}
+
+
+上面对数据的分组只设定了一个变量，如果增加数据分组的变量，ggplot2中只需要增加映射的类型就可以了，比如在颜色分类的基础上加钻石切工（cut）进行分类：
+
+p  + geom_point() + aes(color=color, shape=cut) + theme(legend.position=c(2,2))
+
+
+用plot函数处理起来要考虑的问题就多一些。
+
+
+
+
+
+
+2.2 映射的标尺
+用plot函数作图我们得自己考虑使用什么颜色表示不同组的数据，也就是使用什么标尺（或比例尺）。ggplot2则自动应用标尺，这是一个隐含过程。标尺大体可以分为两类：
+
+离散型（或枚举型）标尺。罗列出所有数据分类并将其与美学属性一一对应，处理过程包含数据分类，如上例。
+连续型（或区间型）标尺。看下面例子：
+
+(1)
+p + geom_point( aes(size= x*y*z ) )+ theme(legend.position=c(0.8,0.5))
+
+上图中点的大小反映钻石的x*y*z值，相当于钻石的大小。用plot函数也可以实现：
+
+cex <- d.sub[,"x"]*d.sub[,"y"]*d.sub[,"z"]
+cex  <- cex/max(cex)*4
+par(mar=c(3,3,0.5,0.5), mgp=c(1.5, 0.5, 0), bg="white")
+plot(d.sub$carat, d.sub$price, type='n', xlab="carat", ylab="price")
+points(d.sub$carat, d.sub$price, pch=20, cex=cex$x)
+
+可以看到作图过程也需要手动建立数据和图形属性间的对应关系，但没有对数据分类。
+
+
+(2)
+ggplot2对映射应用的标尺可以修改，ggplot提供了一大批 scale_xxxxxxxx 类型的函数，比如 scale_color_xxxx 类型函数用户修改颜色标尺，scale_shape_xxxx 修改形状，scale_linetype_xxxx 修改线型等。按照数据的类型，这些函数还有4种基本类型：
+
+continuous：连续型
+discrete：离散型
+identity：和数据取值相同
+manual：手工指定
+有关颜色和坐标轴标尺设定的函数较多，适应不同需要。
+
+cls  <- terrain.colors(length(levels(d.sub$color)))
+p  + geom_point() + aes(color=color) + scale_color_manual(values=cls)
+
+p  + geom_point() + aes(color=color) +scale_color_brewer(palette = "Set2")
+
+
+
+
+2.3 映射与图例
+映射还有一个作用：产生图例。这在ggplot2也是自动的隐含过程，但在plot函数作图中是一个体力活，制作过程就不举例说明了，可以参考legend函数。
+
+
+
+2.4 图形颜色和形状的非映射设置
+(1)除了通过映射设置几何图形的图形颜色和形状属性外，ggplot2还提供了直接设定方式。和映射方式设置不一样的是：直接设定方式不会在图例上有反映。比较下面两图：
+
+q=ggplot(d.sub, aes(x=cut, y=price))
+q+geom_point()
+
+q  + geom_boxplot(aes(x=cut, fill=cut)) +
+  scale_fill_manual(values=rep("cyan", length(levels(d.sub$cut))))
+q  + geom_boxplot(aes(x=cut), fill="cyan")
+
+虽然填充色都是青色，但前者用的映射对数据进行了分组，所以会出现分组图例。
+注意：直接设定方法的参数名称和映射设定是一样的，但是不放在aes函数内部。
+
+
+
+
+(2)在qplot函数中如果要进行美学属性的非映射设定得用 “I” 函数，否则将被当长映射设置。
+qplot(x=cut, y=price, data=d.sub, geom="boxplot", fill="cyan")
+qplot(x=cut, y=price, data=d.sub, geom="boxplot", fill=I("cyan"))
+
+“I”函数表示设为固定值，如果不是在qplot函数中可以不用它。
+
+
+(3)透明度属性虽然包含在映射类型中，但一般情况下都是直接设定而非映射设定：
+
+p1=ggplot(diamonds, aes(x=carat, y=price))
+
+p1 + geom_point(aes(alpha=carat/100))
+p1 + geom_point(alpha=0.05)
+# 第一张图就达不到设置透明度显示点密集度的效果
+
+
+
+
+
+
+3 位置类型映射
+x和y映射的用法很明确，就不再罗嗦了。xmin, xmax, ymin, ymax, xend, yend这几种映射属于特殊类型，H.W.在ggplot2的说明档里面写得很清楚（赞，H.W.不仅是写R软件的高手，还是普及教育的牛人），下面就照搬他的例子简单说明一下用法。
+
+
+3.1 ymin/ymax映射的用法
+下面代码通过直线拟合产生了钻石切工和价格的关系数据（预测的价格和标准差）
+
+dmod <- lm(price ~ cut, data = diamonds)
+cuts <- data.frame(cut = unique(diamonds$cut), 
+                   predict(dmod, 
+                           data.frame(cut =unique(diamonds$cut)), 
+                           se = TRUE)[c("fit", "se.fit")]
+                   )
+cuts
+##         cut  fit se.fit
+## 1     Ideal 3458  27.00
+## 2   Premium 4584  33.75
+## 3      Good 3929  56.59
+## 4 Very Good 3982  36.06
+## 5      Fair 4359  98.79
+
+
+(2)
+通过设定ymin/ymax映射，用pointrange几何类型可以直接做出带误差线的散点图，无需使用errorbar设置：
+se <- ggplot(cuts, aes(x = cut, y = fit, ymin = fit - se.fit, ymax = fit + se.fit, colour = cut))
+se + geom_pointrange()
+
+(3)
+当然也可以先画点再做误差线，这样思路明确些。或者做其他类型的图如柱形图：
+
+se + geom_point() + geom_errorbar(width=0.2)
+se + geom_bar(stat="identity", aes(fill=cut)) + geom_errorbar(width=0.2)
+
+
+(4)
+ymin/ymax可以用来改变几何类型的坐标轴范围，但 这不是标准用法，最简单的是用ylim函数：
+se + geom_point(aes(ymin = 3000, ymax = 4800)) + geom_errorbar(width=0.2) 
+#Warning: Ignoring unknown aesthetics: ymin, ymax 不识别这俩参数?
+
+se + geom_point() + geom_errorbar(width=0.2) + ylim(3000,5000)
+# 或者用： scale_y_continuous(limits=c(3000,5000))
+se + geom_point() + scale_y_continuous(limits=c(3000,5000))
+
+
+
+
+
+4. 特殊映射
+特殊类型映射有特殊应用。曲线图和柱形图对于x轴数据类型的要求是不一样的，曲线图要用连续型数据，而柱形图要用因子型（或离散型）数据，这两类图形如果不经特殊处理就不能放在一起。group映射可以轻松搞定它：
+
+se + geom_bar(stat="identity", aes(fill=cut)) + geom_errorbar(width=0.2) +
+  coord_cartesian(ylim=c(3000,4800)) + 
+  geom_line(aes(group="Subject"), color="black")
+
+
+
+
+
+
+
+
+
+
+
+
+ref:
 https://blog.csdn.net/u014801157/article/details/24372505
 
 
@@ -579,24 +805,598 @@ https://blog.csdn.net/u014801157/article/details/24372505
 
 
 ========================================
-ggplot2作图详解4：分面（faceting） //todo
+ggplot2作图详解4：分面（faceting）
 ----------------------------------------
+ggplot2的分面有两种方式，分别使用 facet_wrap 或 facet_grid 函数。
+
+# 准备工作
+library(ggplot2)
+set.seed(100)
+d.sub <- diamonds[sample(nrow(diamonds), 500), ]
+head(d.sub, 4)
+
+theme_set(theme_bw())
+p  <- ggplot(data=d.sub, aes(x=carat, y=price))
+
+
+
+
+1 缠绕分面 facet_wrap
+facet_wrap 即“缠绕分面”，对数据分类只能应用一个标准，不同组数据获得的小形按从左到右从上到下的“缠绕”顺序进行排列：
+
+(1)
+levels(d.sub$cut)
+## [1] "Fair"      "Good"      "Very Good" "Premium"   "Ideal"
+p  + geom_point() + facet_wrap(~cut)
+
+
+(2)
+显然这是对数据进行分组后绘制得到的图形，这类图形对于比较不同数据的趋势非常有帮助。facet_wrap 的参数如下：
+
+# 非运行代码
+facet_wrap(facets, nrow = NULL, ncol = NULL, scales = "fixed",
+           shrink = TRUE, as.table = TRUE, drop = TRUE)
+#
+facets：分面参数如 ~cut，表示用 cut 变量进行数据分类
+nrow：绘制图形的行数
+ncol：绘制图形的列数，一般nrow/ncol只设定一个即可
+scales：坐标刻度的范围，可以设定四种类型。fixed 表示所有小图均使用统一坐标范围；free表示每个小图按照各自数据范围自由调整坐标刻度范围；free_x为自由调整x轴刻度范围；free_y为自由调整y轴刻度范围。
+shrinks：也和坐标轴刻度有关，如果为TRUE（默认值）则按统计后的数据调整刻度范围，否则按统计前的数据设定坐标。
+as.table：和小图排列顺序有关的选项。如果为TRUE（默认）则按表格方式排列，即最大值（指分组level值）排在表格最后即右下角，否则排在左上角。
+drop：是否丢弃没有数据的分组，如果为TRUE（默认），则空数据组不绘图。
+
+
+(3)scales 的设定效果：
+
+p  + geom_point() + facet_wrap(~cut, scales="free") + ggtitle('scales="free"')
+p  + geom_point() + facet_wrap(~cut, scales="free_y") + ggtitle('scales="free_y"')
+
+
+
+
+
+
+2 格网分面 facet_grid
+(1)格网分面可以应用多个标准对数据进行分组。还是先看看效果：
+
+qplot(carat, price, data=diamonds, alpha=I(0.2)) + facet_grid(color~cut)
+
+显然参数 color~cut 对数据的分组和小图排列有决定作用，波浪号前为小图分行标准，后面为分列标准。
+
+
+(2)facet_grid 的完整用法为：
+# 非运行代码
+facet_grid(facets, margins = FALSE, scales = "fixed", space = "fixed", shrink = TRUE,
+           labeller = "label_value", as.table = TRUE, drop = TRUE)
+和facet_wrap比较，除不用设置ncol和nrow外（facets公式已经包含）外还有几个参数不同：
+
+
+1)margins
+注意：这不是设定图形边界的参数。它是指用于分面的包含每个变量元素所有数据的数据组。
+
+margins	
+Either a logical value or a character vector. Margins are additional facets which contain all the data for each of the possible values of the faceting variables. If FALSE, no additional facets are included (the default). If TRUE, margins are included for all faceting variables. If specified as a character vector, it is the names of variables for which margins are to be created.
+
+
+就是在行的最后、列的最后添加一个汇总的图，名字叫(all)。
+
+qplot(carat, price, data=diamonds, alpha=I(0.2)) + facet_grid(color~cut, margins=TRUE)
+
+
+
+2)
+
+
+
+
+
+
+
+#
+
+
+
+
+
+#
+
+
+
+
+
+
+ref:
 https://blog.csdn.net/u014801157/article/details/24372507
 
 
 
 ========================================
-ggplot2作图详解5：图层语法和图形组合 //todo
+ggplot2作图详解5：图层语法和图形组合
 ----------------------------------------
+图层设置是ggplot2做图的关键。通过查看ggplot图形对象的数据结构我们了解到一个图层至少包含几何类型、统计类型和位置调整三方面的东西，当然数据和映射得首先建立。如果把ggplot2当成是太极，这些内容的设置就相当于太极的招式，有固定方法；对招式理解透彻后以随意对它们进行组合，并融合数据层面的一些设置（如分面、美学属性映射等）创造出用于解决问题的完美图形。
+
+1 图层的几何和统计类型
+1.1 几何/统计类型设置函数
+在ggplot2中，每种几何类型都有对应的（默认）统计类型，反之亦然。两者不分家，所以得放在一起来说。几何类型的设置函数全部为geom_xxx形式，而统计类型设置函数全部为stat_xxx的形式：
+
+library(ggplot2)
+ls("package:ggplot2", pattern="^geom_.+")
+##  [1] "geom_abline"     "geom_area"       "geom_bar"        "geom_bin2d"      "geom_blank"     
+##  [6] "geom_boxplot"    "geom_col"        "geom_contour"    "geom_count"      "geom_crossbar"  
+## [11] "geom_curve"      "geom_density"    "geom_density_2d" "geom_density2d"  "geom_dotplot"   
+## [16] "geom_errorbar"   "geom_errorbarh"  "geom_freqpoly"   "geom_hex"        "geom_histogram" 
+## [21] "geom_hline"      "geom_jitter"     "geom_label"      "geom_line"       "geom_linerange" 
+## [26] "geom_map"        "geom_path"       "geom_point"      "geom_pointrange" "geom_polygon"   
+## [31] "geom_qq"         "geom_qq_line"    "geom_quantile"   "geom_raster"     "geom_rect"      
+## [36] "geom_ribbon"     "geom_rug"        "geom_segment"    "geom_sf"         "geom_sf_label"  
+## [41] "geom_sf_text"    "geom_smooth"     "geom_spoke"      "geom_step"       "geom_text"      
+## [46] "geom_tile"       "geom_violin"     "geom_vline"
+
+ls("package:ggplot2", pattern="^stat_.+")
+##  [1] "stat_bin"            "stat_bin_2d"         "stat_bin_hex"        "stat_bin2d"         
+##  [5] "stat_binhex"         "stat_boxplot"        "stat_contour"        "stat_count"         
+##  [9] "stat_density"        "stat_density_2d"     "stat_density2d"      "stat_ecdf"          
+## [13] "stat_ellipse"        "stat_function"       "stat_identity"       "stat_qq"            
+## [17] "stat_qq_line"        "stat_quantile"       "stat_sf"             "stat_sf_coordinates"
+## [21] "stat_smooth"         "stat_spoke"          "stat_sum"            "stat_summary"       
+## [25] "stat_summary_2d"     "stat_summary_bin"    "stat_summary_hex"    "stat_summary2d"     
+## [29] "stat_unique"         "stat_ydensity" 
+
+很多，有小部分是相同的。如果一个个介绍就得写成说明书了，跟软件包作者写的函数说明没什么两样；再说也没必要，不是每个人都会用到全部的类型。下面看一下几何函数geom_point和统计函数stat_identity的参数：
+
+# 函数说明，非运行代码
+geom_point(mapping = NULL, data = NULL, stat = "identity",
+           position = "identity", na.rm = FALSE, ...)
+stat_identity(mapping = NULL, data = NULL, geom = "point",
+              position = "identity", width = NULL,
+              height = NULL, ...)
+#
+
+有4个参数是一样的：映射（mapping）、数据（data）、位置（position）和点点点（Dot-dot-dot: …）。H.W.特别强调了mapping和data参数的先后顺序在几何/统计类型设定函数和ggplot函数中的差别：ggplot函数先设定数据，再设定映射；而几何/统计类型函数则相反，因为确定作图或统计之前一般都已经有数据，只需指定映射即可。如果不写参数名，它们的用法是这样的：
+
+# 示例，非运行代码
+ggplot(数据, 映射)
+geom_xxx(映射, 数据)
+stat_xxx(映射, 数据)
+
+"点点点"参数是R语言非常特殊的一个数据类型，用在函数的参数用表示任意参数，在这里表示传递给图层的任意参数如color, shape, alpha等。
+
+
+
+
+(2)前面我们一直用geom_point来做散点图，其实完全可以用stat_identity来做，得到的图形是完全相同的：
+
+# 取ggplot2的diamonds数据集的一部分数据：
+set.seed(100)
+d.sub <- diamonds[sample(nrow(diamonds), 500),]
+p <- ggplot(d.sub, aes(x=carat, y=price))
+theme_set(theme_bw())
+p + stat_identity()
+p + geom_point()
+
+
+查看图层组成可以看到两者都有geom_point、stat_identity和position_identity：
+(p + stat_identity())$layers
+# [[1]]
+# geom_point: na.rm = FALSE
+# stat_identity: na.rm = FALSE
+# position_identity 
+
+(p + geom_point())$layers
+# [[1]]
+# geom_point: na.rm = FALSE
+# stat_identity: na.rm = FALSE
+# position_identity 
+
+
+
+
+如果把geom_xxx类函数获得的图层称为“几何图层”，stat_xxx类函数获得的图层就可以称为“统计图层”。但这样的说法很不合适，因为每个图层都包含这两个东西，两者没有本质差别。如果你一定要把geom或stat清理掉（设为NULL），不会有任何错误信息，但图层的内容还是老样：
+
+(p + stat_identity(geom=NULL))$layers
+(p + geom_point(stat=NULL))$layers
+## 我的测试是报错 Error: Attempted to create layer with no geom.
+
+
+为什么设置两套方案，H.W.有他的理由吧，毕竟有很多人只作图不统计，也有很多人做了很多统计以后才偶尔作个图。
+
+
+
+
+
+1.2 图层对象
+(1)
+geom_xxx和stat_xxx可以指定数据，映射、几何类型和统计类型，一般来说，有这些东西我们就可以作图了。但实际情况是这些函数不可以直接出图，因为它不是完整的ggplot对象：
+
+p <- geom_point(mapping=aes(x=carat, y=price), data=d.sub)
+class(p)
+## [1] "LayerInstance" "Layer"         "ggproto"       "gg"
+
+p
+## mapping: x = ~carat, y = ~price 
+## geom_point: na.rm = FALSE
+## stat_identity: na.rm = FALSE
+## position_identity
+
+
+(2)
+图层只是存储类型为environment的R语言对象，它只有建立在ggplot结构的基础上才会成为图形，在这里哪怕是一个空的ggplot对象框架都很有用。这好比仓库里的帐篷，如果你找不到地方把它们支起来，这些东西顶多是一堆货物
+
+ggplot() + p
+
+
+(3)
+前面说过多个图层的相加是有顺序的，图层和ggplot对象的加法也是有顺序的，如果把ggplot对象加到图层上就没有意义。这种规则同样适用于映射和ggplot的相加：
+
+p + ggplot()
+## Error: Cannot add ggproto objects together. Did you forget to add this object to a ggplot object?
+
+class(aes(x=carat, y=price) + ggplot(d.sub))
+## [1] "NULL"
+
+class(ggplot(d.sub) + aes(x=carat, y=price))
+## [1] "gg"     "ggplot"
+
+
+
+
+
+
+2 图层的位置调整参数
+(1)
+这和位置映射没有关系，当前版ggplot2只有5种：
+
+- dodge：“避让”方式，即往旁边闪，如柱形图的并排方式就是这种。
+- fill：填充方式， 先把数据归一化，再填充到绘图区的顶部。
+- identity：原地不动，不调整位置
+- jitter：随机抖一抖，让本来重叠的露出点头来
+- stack：叠罗汉
+
+p <- ggplot(d.sub, aes(x=cut, y=price, fill=color))
+p + geom_bar(stat="summary", fun.y="mean", position="stack")
+p + geom_bar(stat="summary", fun.y="mean", position="fill")
+p + geom_bar(stat="summary", fun.y="mean", position="dodge")
+p + geom_bar(stat="summary", fun.y="mean", position="jitter") #柱形图的抖动很没道理
+
+但散点图里面就有效果了：
+p + geom_point(position="identity")
+p + geom_point(position="jitter")
+
+p + geom_boxplot()+geom_point(position="jitter")
+所以怎么调整还得看图形的需要。
+
+
+(2)再看看x轴数据连续的图形：
+
+p <- ggplot(d.sub, aes(x=price, fill=cut, color=cut))
+p + stat_density(position="stack")
+p + stat_density(position="fill")
+p + stat_density(position="identity")
+p + stat_density(position="identity", alpha=0.2)
+p + stat_density(position="identity", fill="transparent")
+
+看起来很奇妙，改变一个参数就得到不同的图形。
+
+
+
+
+
+
+3 图层组合
+图层的组合不是连续使用几个几何或统计类型函数那么简单。ggplot函数可以设置数据和映射，每个图层设置函数（geom_xxx和stat_xxx）也都可以设置数据和映射，这虽然给组合图制作带来很大便利，但也可能产生一些混乱。如果不同图层设置的数据和映射不同，将会产生什么后果？得了解规则。
+
+3.1 简单组合
+(1)不同的图层使用同一套数据，只是几何类型或统计类型有差别。这是最简单也是最常用的，用ggplot函数设置好数据和映射，把几个图层加起来即可：
+
+datax <- data.frame(x=1:10, y=rnorm(10)+1:10)
+p  <- ggplot(datax, aes(x=x, y=y))
+p + geom_point() + geom_line()
+p + geom_point() + geom_smooth(method="lm")
+
+
+(2)
+ggplot2的图层设置函数对映射的数据类型是有较严格要求的，比如geom_point和geom_line函数要求x映射的数据类型为数值向量，而geom_bar函数要使用因子型数据。如果数据类型不符合映射要求就得做类型转换，在组合图形时还得注意图层的先后顺序：
+
+p  <- ggplot(datax, aes(x=factor(x), y=y)) + xlab("x")
+p + geom_bar(stat="identity", fill="gray") +
+  geom_line(aes(group=1), size=2) + geom_point(color="red")
+p + geom_bar(stat="identity", fill="gray") +
+  geom_smooth(aes(group=1), method="lm", se=FALSE, size=2)
+
+上面第一个图除了花哨一点外没有任何科学意义，如果放在论文中会被骂得狗学喷头：一套数据重复作图还都是一个意思，是不是脑子有病？但这里只是说明作图方法。作图过程应先作柱形图，因为它要求x映射是因子型数据。x映射为因子的数据作散点图的调整步骤相对简单。如果先作散点图，把坐标轴从数值向量（连续型）改为因子型相当麻烦。
+
+
+
+(3)
+3.2 不同映射的组合
+映射反映的是数据变量。多数情况下一个图形中使用的是同一个数据集，只是变量不同。通常情况下x，y轴至少有一个是相同的，可以用不同图层叠加不同的数据变量：
+
+p <- ggplot(d.sub, aes(x=carat)) + ylab("depth (blue) / table (red)")
+p + geom_point(aes(y=depth), color="blue")  +
+  geom_point(aes(y=table), color="red")
+#
+
+但是为什么要这么做呢？预先处理一下数据再作图会更好，图例都已经帮你设好了：
+
+library(reshape2)
+datax <- melt(d.sub, id.vars="carat", measure.vars=c("depth", "table"))
+ggplot(datax, aes(x=carat, y=value, color=variable)) + geom_point()
+
+
+
+
+
+3.3 不同类型数据的组合
+如果在geom_xxx函数中改变数据会怎么样呢？不同类型的数据一般不会有完全相同的变量，否则就不是“不同类型”了，所以映射也会相应做修改。下面把钻石数据diamonds和汽车数据mtcars这两个风牛马不相及的数据放在一起看看。
+（首先声明：下面的方法只是演示，图形没有任何科学意义。科学图形应该能让观众直观地了解数据，而不是让明白者糊涂让糊涂者脑残。有不少人喜欢用双坐标作混合数据图，个人认为那是很愚昧的做法。）
+
+diamonds数据我们在前面已经了解过了，先看看R datasets包里面的mtcars数据：
+
+
+data(mtcars, package="datasets")
+str(mtcars)
+
+head(mtcars, 4)
+
+好，开始玩点玄乎的：
+
+p  <- ggplot(data=d.sub, aes(x=carat, y=price, color=cut))
+layer1 <- geom_point(aes(x=carb, y=mpg), mtcars, color="black")
+(p1 <- p + layer1)
+
+图中数据点是正确的，但坐标轴标题却对不上号。看看ggplot对象的数据、映射和图层：
+head(p1$data, 4)
+## # A tibble: 4 x 10
+##   carat cut     color clarity depth table price     x     y     z
+##   <dbl> <ord>   <ord> <ord>   <dbl> <dbl> <int> <dbl> <dbl> <dbl>
+## 1  1.26 Ideal   G     SI1      59.6    57  6738  7.08  7.04  4.21
+## 2  0.7  Ideal   D     VS2      62.7    57  3448  5.65  5.67  3.55
+
+
+p1$mapping
+## Aesthetic mapping: 
+## * `x`      -> `carat`
+## * `y`      -> `price`
+## * `colour` -> `cut`
+
+p1$layers
+## [[1]]
+## mapping: x = ~carb, y = ~mpg 
+## geom_point: na.rm = FALSE
+## stat_identity: na.rm = FALSE
+## position_identity 
+
+数据和映射都还是ggplot原来设置的样子，layer2图层设置的都没有存储到ggplot图形列表对象的data和mapping元素中，而是放在了图层中，但图层中设定的数据不知道跑哪里。
+
+如果再增加一个图层，把坐标轴标题标清楚：
+
+layer2 <- geom_point(aes(y=depth))
+(p1 <- p1 + layer2 + xlab("carb(black) / carat") + ylab("mpg(black) / depth"))
+
+
+很有意思。layer2重新指定了y映射，但没碰原来ggplot对象设置的x和color映射，从获得的图形来看y数据改变了，x和color还是原ggplot对象的设置。查看一下映射和图层：
+
+p1$mapping
+## Aesthetic mapping: 
+## * `x`      -> `carat`
+## * `y`      -> `price`
+## * `colour` -> `cut`
+
+p1$layers
+## [[1]]
+## mapping: x = ~carb, y = ~mpg 
+## geom_point: na.rm = FALSE
+## stat_identity: na.rm = FALSE
+## position_identity 
+## 
+## [[2]]
+## mapping: y = ~depth 
+## geom_point: na.rm = FALSE
+## stat_identity: na.rm = FALSE
+## position_identity 
+
+
+可以这么理解：ggplot2图层作图时依次从ggplot对象和图层中获取数据/映射，如果两者映射有重叠，后者将替换前者，但只是在该图层中进行替换而不影响ggplot对象。
+
+如果ggplot对象的映射比图层的映射多，而图层又使用了不同的数据，这是什么情况？看看：
+p + geom_point(aes(x=carb, y=mpg), mtcars)
+
+# Don't know how to automatically pick scale for object of type function. Defaulting to continuous.
+# Error: Aesthetics must be valid data columns. Problematic aesthetic(s): colour = cut. 
+# Did you mistype the name of a data column or forget to add stat()?
+
+由于图层继承了ggplot对象的color映射，但又找不到数据，所以没法作图。解决办法是把原有的映射用NULL取代，或者设为常量（非映射）：
+
+p + geom_point(aes(x=carb, y=mpg, color=NULL), mtcars)
+p + geom_point(aes(x=carb, y=mpg), mtcars, color="red")
+
+
+
+
+
+
+
+
+1. 散点图
+
+控制散点的大小size、透明度alpha
+ggplot(df, aes(gene.mean, gene.dispersion))+geom_point(size=0.1, alpha=0.2)
+
+
+
+
+
+
+
+
+
+ref:
 https://blog.csdn.net/u014801157/article/details/24372517
 
 
 
-
-
 ========================================
-ggplot2作图详解6：标尺（scale）设置 //todo
+ggplot2作图详解6：标尺（scale）设置
 ----------------------------------------
+
+标尺是ggplot2作图必需的元素，在《映射》一节提到了它的概念并简单进行了设置。在数据分析阶段，为避免陷入数据无关的垃圾坑，我们只需要设置映射，ggplot2自动配置合适的标尺并产生坐标和图例。这是ggplot2适合数据可视化分析的原因之一。
+
+在图形美化阶段，我们可以通过修改标尺改善图形外观。标尺设置一般不会对数据产生影响，但坐标轴标尺除外。
+
+
+
+
+1.标尺设定函数
+(1)ggplot2修改标尺的函数有一大堆：
+
+library(ggplot2)
+scalex <- ls("package:ggplot2", pattern="^scale.+")
+length(scalex)
+
+# [1] 94
+
+
+
+(2)提取函数名的第二个字段，对这些函数的作用进行分类：
+
+> scalex <- scalex[grep("([^_]+_){2}.+", scalex)]
+> unique(gsub("(([^_]+_){2}).+","\\1***",scalex))
+ [1] "scale_alpha_***"      "scale_color_***"      "scale_colour_***"     "scale_continuous_***"
+ [5] "scale_discrete_***"   "scale_fill_***"       "scale_linetype_***"   "scale_shape_***"     
+ [9] "scale_size_***"       "scale_x_***"          "scale_y_***"   
+
+可以看到标尺设置的内容有10种（颜色color/colour算一种）：透明度、线条颜色、连续变量、离散变量、填充色、线型、形状、大小，x和y轴。
+标尺设置的内容都有对应的映射设置类型，但映射比标尺多了xmin, xmax, ymin, ymax, xend, yend，group和string等（请参看《映射》一节）。
+
+
+(3)虽然设置函数很多，但不管是函数用法还是函数名称上都是很有规律的：
+getNames=function(keyword){
+	scalexx <- scalex[grepl( paste0(keyword,".+"), scalex)]
+	unique(gsub("(([^_]+_){2})(.+)","\\3",scalexx))
+}
+
+
+# 线条颜色
+> getNames('scale_color')
+ [1] "brewer"     "continuous" "discrete"   "distiller"  "gradient"   "gradient2" 
+ [7] "gradientn"  "grey"       "hue"        "identity"   "manual"     "viridis_c" 
+[13] "viridis_d" 
+
+
+# 填充色
+> getNames('scale_fill')
+ [1] "brewer"     "continuous" "date"       "datetime"   "discrete"   "distiller" 
+ [7] "gradient"   "gradient2"  "gradientn"  "grey"       "hue"        "identity"  
+[13] "manual"     "ordinal"    "viridis_c"  "viridis_d" 
+
+
+# 大小
+> getNames('scale_size')
+[1] "area"       "continuous" "date"       "datetime"   "discrete"   "identity"  
+[7] "manual"     "ordinal"
+
+
+# 透明度
+> getNames('scale_alpha')
+[1] "continuous" "date"       "datetime"   "discrete"   "identity"   "manual"    
+[7] "ordinal"
+
+
+# 线型
+> getNames('scale_linetype')
+[1] "continuous" "discrete"   "identity"   "manual"
+
+# 形状
+> getNames('scale_shape')
+[1] "continuous" "discrete"   "identity"   "manual"     "ordinal"
+
+
+# x轴
+> getNames('scale_x')
+# y轴
+> getNames('scale_y')
+[1] "continuous" "date"       "datetime"   "discrete"   "log10"      "reverse"   
+[7] "sqrt"       "time" 
+
+
+
+> getNames('scale_continuous')
+[1] "identity"
+
+> getNames('scale_discrete')
+[1] "identity" "manual" 
+
+除坐标轴外，其它标尺都有四种基本设置函数："continuous"，"discrete"，"identity"和"manual"。
+结合标尺的作用和设定方法两个标准，H.W把它们分为4种类型的标尺：位置、颜色、无变换和人工设置类型（说实话，他的分类思维有点乱）。
+颜色设置相关的函数较多，线条颜色和填充色设置的函数类型一样，而x轴和y轴设置的函数类型也一样。
+
+由于标尺函数的命名和用法很有规律，下面仅介绍颜色和坐标轴设置函数的一些用法。
+
+
+
+
+
+
+
+
+2 颜色标尺设置
+
+2.1 连续型颜色标尺
+ggplot2提供了16个填充色设置的标尺函数（线条颜色也一样）：
+
+> ls("package:ggplot2", pattern="^scale_fill.+")
+ [1] "scale_fill_brewer"     "scale_fill_continuous" "scale_fill_date"      
+ [4] "scale_fill_datetime"   "scale_fill_discrete"   "scale_fill_distiller" 
+ [7] "scale_fill_gradient"   "scale_fill_gradient2"  "scale_fill_gradientn" 
+[10] "scale_fill_grey"       "scale_fill_hue"        "scale_fill_identity"  
+[13] "scale_fill_manual"     "scale_fill_ordinal"    "scale_fill_viridis_c" 
+[16] "scale_fill_viridis_d" 
+
+
+先看看“continuous”的用法。对于数据为非因子型的填充色映射，ggplot2自动使用“continuous”类型颜色标尺表示连续颜色空间。如果要修改默认颜色就要使用scale_fill_continuous函数进行修改，这个函数最有用的参数是low和high，分别表示低端和高端数据的颜色，中间颜色根据颜色空间space自动计算：
+
+
+###
+theme_set(theme_bw())
+df  <- expand.grid(1:30, 1:30)
+colnames(df) <- c('x','y')
+df$z <- rnorm(900)
+head(df)
+
+p <- ggplot(data=df, aes(x=x, y=y, fill=z));p
+p+geom_point()
+p + geom_raster()
+p + geom_raster() + scale_fill_continuous(low="darkgreen", high="orangered", space='rgb')
+
+p + geom_raster() + scale_fill_gradient2(low="darkgreen", high="red", mid="yellow", midpoint=1)
+
+
+
+
+
+2.2 离散型颜色标尺
+
+##
+set.seed(100)
+dms <- diamonds[sample(nrow(diamonds),500),] #随机选取500个样本
+head(dms)
+p  <- ggplot(data=dms, aes(x=carat, y=price, color=cut));
+
+p + geom_point() + scale_color_manual(values=c('blue','cyan', 'yellow', 'orange', 'red'))
+p + geom_point() + scale_color_manual(values=rainbow(5))
+
+
+
+
+
+
+
+
+
+
+
+
+ref:
 https://blog.csdn.net/u014801157/article/details/24372521
 
 
@@ -605,12 +1405,143 @@ https://blog.csdn.net/u014801157/article/details/24372521
 
 
 
-========================================
-ggplot2作图详解7：主题（theme）设置 //todo
-----------------------------------------
-https://blog.csdn.net/u014801157/article/details/24372531
 
-1. element_text() 上按下f1帮助键
+
+========================================
+ggplot2作图详解7：主题（theme）设置
+----------------------------------------
+凡是和数据无关的图形设置内容理论上都可以归 主题类 但考虑到一些内容（如 坐标轴 ）的特殊性，可以允许例外的情况。主题的设置相当繁琐，很容易就占用了大量的作图时间，应尽量把这些东西简化，把注意力主要放在数据分析上。基于这种考虑，ggplot2主题设置的内容虽然相当多，本文仅在总体上作一简单介绍。
+
+
+1.theme函数及其参数
+(1)ggplot2预设主题，
+    theme_gray() # 默认
+    theme_bw()
+    theme_linedraw()
+    theme_light()
+    theme_dark()
+    theme_minimal()
+    theme_void()
+    theme_test() #常用于学术期刊
+    theme_classic()#常用于学术期刊
+
+# 测试例
+library(ggplot2)
+head(mtcars)
+#Displacement (cu.in.)排量越大，每加仑汽油跑的距离越小
+g=ggplot(mtcars, aes(disp, mpg))+geom_point() 
+
+g+theme_bw() #有边框，有背景线
+g+theme_test() #有边框，白板
+g+theme_classic() #白班，无上、右边框
+
+
+
+
+
+(2)这些主题都包括哪些参数？
+> library(ggplot2)
+> theme_test  # 函数名不加括号，获得函数的代码
+
+function (base_size = 11, base_family = "", base_line_size = base_size/22, 
+    base_rect_size = base_size/22) 
+{
+    half_line <- base_size/2
+    theme(line = element_line(colour = "black", size = base_line_size, 
+        linetype = 1, lineend = "butt"), rect = element_rect(fill = "white", 
+        colour = "black", size = base_rect_size, linetype = 1), 
+        text = element_text(family = base_family, face = "plain", 
+            colour = "black", size = base_size, lineheight = 0.9, 
+            hjust = 0.5, vjust = 0.5, angle = 0, margin = margin(), 
+            debug = FALSE), axis.line = element_blank(), axis.line.x = NULL, 
+        axis.line.y = NULL, axis.text = element_text(size = rel(0.8), 
+            colour = "grey30"), axis.text.x = element_text(margin = margin(t = 0.8 * 
+            half_line/2), vjust = 1), axis.text.x.top = element_text(margin = margin(b = 0.8 * 
+            half_line/2), vjust = 0), axis.text.y = element_text(margin = margin(r = 0.8 * 
+            half_line/2), hjust = 1), axis.text.y.right = element_text(margin = margin(l = 0.8 * 
+            half_line/2), hjust = 0), axis.ticks = element_line(colour = "grey20"), 
+        axis.ticks.length = unit(half_line/2, "pt"), axis.ticks.length.x = NULL, 
+        axis.ticks.length.x.top = NULL, axis.ticks.length.x.bottom = NULL, 
+        axis.ticks.length.y = NULL, axis.ticks.length.y.left = NULL, 
+        axis.ticks.length.y.right = NULL, axis.title.x = element_text(margin = margin(t = half_line/2), 
+            vjust = 1), axis.title.x.top = element_text(margin = margin(b = half_line/2), 
+            vjust = 0), axis.title.y = element_text(angle = 90, 
+            margin = margin(r = half_line/2), vjust = 1), axis.title.y.right = element_text(angle = -90, 
+            margin = margin(l = half_line/2), vjust = 0), legend.background = element_rect(colour = NA), 
+        legend.spacing = unit(2 * half_line, "pt"), legend.spacing.x = NULL, 
+        legend.spacing.y = NULL, legend.margin = margin(0, 0, 
+            0, 0, "cm"), legend.key = element_rect(fill = "white", 
+            colour = NA), legend.key.size = unit(1.2, "lines"), 
+        legend.key.height = NULL, legend.key.width = NULL, legend.text = element_text(size = rel(0.8)), 
+        legend.text.align = NULL, legend.title = element_text(hjust = 0), 
+        legend.title.align = NULL, legend.position = "right", 
+        legend.direction = NULL, legend.justification = "center", 
+        legend.box = NULL, legend.box.margin = margin(0, 0, 0, 
+            0, "cm"), legend.box.background = element_blank(), 
+        legend.box.spacing = unit(2 * half_line, "pt"), panel.background = element_rect(fill = "white", 
+            colour = NA), panel.border = element_rect(fill = NA, 
+            colour = "grey20"), panel.grid.major = element_blank(), 
+        panel.grid.minor = element_blank(), panel.spacing = unit(half_line, 
+            "pt"), panel.spacing.x = NULL, panel.spacing.y = NULL, 
+        panel.ontop = FALSE, strip.background = element_rect(fill = "grey85", 
+            colour = "grey20"), strip.text = element_text(colour = "grey10", 
+            size = rel(0.8), margin = margin(0.8 * half_line, 
+                0.8 * half_line, 0.8 * half_line, 0.8 * half_line)), 
+        strip.text.x = NULL, strip.text.y = element_text(angle = -90), 
+        strip.placement = "inside", strip.placement.x = NULL, 
+        strip.placement.y = NULL, strip.switch.pad.grid = unit(half_line/2, 
+            "pt"), strip.switch.pad.wrap = unit(half_line/2, 
+            "pt"), plot.background = element_rect(colour = "white"), 
+        plot.title = element_text(size = rel(1.2), hjust = 0, 
+            vjust = 1, margin = margin(b = half_line)), plot.subtitle = element_text(hjust = 0, 
+            vjust = 1, margin = margin(b = half_line)), plot.caption = element_text(size = rel(0.8), 
+            hjust = 1, vjust = 1, margin = margin(t = half_line)), 
+        plot.tag = element_text(size = rel(1.2), hjust = 0.5, 
+            vjust = 0.5), plot.tag.position = "topleft", plot.margin = margin(half_line, 
+            half_line, half_line, half_line), complete = TRUE)
+}
+<bytecode: 0x173ffb48>
+<environment: namespace:ggplot2>
+
+
+看穿了吧，没神秘感了。它无非是一个具有两个参数的函数：base_size和base_family。
+其主题部分直接应用了另外一个函数：theme。它就是ggplot2的主题设置函数。这个theme函数的产生看起来非常简单：
+
+# 函数说明，非运行代码
+theme(..., complete = FALSE)
+
+但dotdotdot(···) 参数却内涵丰富，它可以设置很多内容。
+
+
+ref: https://blog.csdn.net/u014801157/article/details/24372531
+官方文档: 
+
+
+
+
+
+
+
+
+
+
+
+
+2. 所有元素都在theme函数内使用element_line，element_rect，element_text和element_blank函数设置，使用方法参考这几个函数的参数说明即可，这里不再一一举例说明。
+text, line, rect和title是最顶层的元素，理论上可以做全局设定，但当前版本ggplot2还没有实现(?)，可以根据情况做一些调整：
+
+(1) 简单实例
+p=ggplot(mtcars, aes(disp, mpg, color=factor(gear) ))+geom_point(); p
+
+p + theme(
+  panel.background=element_rect(fill='transparent', color='black'), #背景透明，黑边框
+  legend.key=element_rect(fill='transparent', color='transparent'), #图例无背景，无边框
+  axis.text=element_text(color='red')) #坐标轴文字红色
+#
+
+
+
+(2) element_text() 上按下f1帮助键
  
 element_blank: draws nothing, and assigns no space.
 element_rect: borders and backgrounds.
@@ -623,7 +1554,63 @@ margins() is used to specify the margins of elements.
 
 
 
-2.
+(3).更复杂的设置
+https://www.sohu.com/a/135157372_572440
+
+
+1)基于填充色属性：
+scale_fill_discrete() #离散变量填充色
+scale_fill_continuous() #连续变量填充色
+scale_fill_gradient() #连续变量色阶
+scale_fill_gray() #灰度填充色
+scale_fill_hue() #自定义画板填充色
+scale_fill_brewer() #自定义画板填充色
+scale_fill_manual() #自定义填充色
+
+
+
+2)基于颜色属性：
+scale_colour_discrete()
+scale_colour_continuous()
+scale_colour_gradient()
+scale_colour_gray()
+scale_colour_hue()
+scale_colour_brewer()
+scale_colour_manual()
+
+
+
+3)基于大小属性：
+scale_size_discrete()
+scale_size_continuous()
+scale_size_manual()
+scale_size_area()
+
+
+
+4)基于形状属性：
+scale_shape_discrete()
+scale_shape_continuous()
+scale_shape_manual()
+
+
+
+5)基于线型属性：
+scale_linetype_discrete()
+scale_linetype_continuous()
+scale_linetype_manual()
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -634,7 +1621,6 @@ margins() is used to specify the margins of elements.
 ========================================
 |-- 去除 ggplot2 背景色和网格
 ----------------------------------------
-
 推荐方式：
 
 #提前定义好空白主题样式
@@ -702,7 +1688,7 @@ https://blog.csdn.net/aspirinvagrant/article/details/39672635
 
 
 ========================================
-|-- ggplot2默认主题怎么设置？
+|-- ggplot2默认主题怎么设置？自定义主题
 ----------------------------------------
 1.设置默认主题
 #Cowplot made ggplot2 theme disappear / How to see current ggplot2 theme, and restore the default?
@@ -718,6 +1704,49 @@ g + theme_gray() #添加主题
 
 
 
+3. 自定义主题 
+
+# 自定义主题
+library(ggplot2)
+theme_01 <- function(..., bg='white'){
+  require(grid)
+  #theme_classic(...) + #基于预设主题
+  theme_bw(...)+
+    theme(
+          rect=element_rect(fill=bg), #背景色填充
+          plot.margin=unit(rep(0.1,4), 'lines'), #图片四周距离
+          
+          #panel.background=element_rect(fill='transparent', color='black'),#白底黑边
+          #panel.border=element_rect(fill='transparent', color='transparent'),
+          
+          panel.grid=element_blank(), #不要背景网格
+          axis.title = element_text(color='black', vjust=0.1), #坐标轴标题也就是变量名
+          
+          axis.ticks.length = unit(-0.2,"lines"), #坐标刻度向内
+          axis.ticks = element_line(color='black'), #坐标轴刻度颜色
+          
+          #axis.ticks.margin = unit(0.8,"lines"), #`axis.ticks.margin` is deprecated. Please set `margin` property  of `axis.text` instead 
+          # unit(c(t, r, b, l), unit)
+          axis.text.x = element_text(margin=margin(t=0.8, unit="lines") ), #x轴刻度向上到坐标轴0.8行
+          axis.text.y = element_text(margin=margin(r=0.8, unit="lines") ),
+          
+          ##legend.title=element_blank(), #去掉图例标题
+          #legend.key=element_rect(fill='transparent', color='transparent')
+          plot.title=element_text(face="bold", hjust = 0.5), #大图标题居中 #size=14,
+          
+          legend.position="bottom", #图例显示位置
+          legend.margin=margin(t = -0.5, unit='line') #图例整体上边距,缩减n行
+      )
+}
+
+p=ggplot(mtcars, aes(disp, mpg, color=factor(gear) ))+geom_point();p
+
+p+theme_01()+
+  scale_color_hue("gear_DIY")+
+  labs(title="mpg ~ disp")
+#
+
+
 
 
 
@@ -726,8 +1755,67 @@ g + theme_gray() #添加主题
 
 
 ========================================
+一页多图，同时绘制多图
+----------------------------------------
+利用facet_grid
+利用cowplot包
+利用gridExtra包
+
+
+1.gridExtra包，一行绘制多个图
+library(gridExtra)
+grid.arrange(p1,p2,nrow=1)
+
+
+可以设置多行多列
+grid.arrange(plots[[1]]...plots[[10]],ncol=1,nrow=10)
+
+
+
+2.
+library(Rmisc)
+multiplot(p1,p2,cols=2)
+
+
+
+3.
+install.packages("cowplot")
+library(cowplot)
+plot_grid(p1,  NULL, NULL,p2, labels = c("A", "", "", "B"),ncol = 2)
+
+
+
+
+
+4.ggplot2 的分面(facet)可以绘制一页多图, 但是必须是来自同一个数据集的图形,局限性很大. 如果我们有多个不同来源的图形,想绘制到一张图上又该如何处理呢? multiplot提供了极为强大的函数功能.
+
+multiplot可以设置行列, 也可以设置一个矩阵进行布局.
+http://www.cookbook-r.com/Graphs/Multiple_graphs_on_one_page_(ggplot2)/
+
+multiplot(p1, p2, p3, p4, cols=2)
+
+
+
+
+
+
+ref:
+https://www.jianshu.com/p/ff05c07d42d7
+https://blog.csdn.net/scpcmoon/article/details/80722376
+https://blog.csdn.net/tanzuozhev/article/details/51112223
+
+
+
+
+
+========================================
 |-- 使用grid包，把多个ggplot2图片打印到一页上
 ----------------------------------------
+grid中文翻译为网格，可将其解释为画布分割，通过设定相应的参数，从而可以任意的摆放图形
+
+
+
+1. 实例(来自作者的书)
 #造三个图
 library(ggplot2)
 a=ggplot(mtcars, aes( factor(gear), mpg, fill=factor(gear) ))+geom_boxplot()
@@ -749,6 +1837,494 @@ print(b,vp=vplayout(2,1)) #第2行第1列，图b
 print(c,vp=vplayout(2,2)) #第2行第2列，图c
 #
 dev.off()
+
+
+
+
+
+2. 常用函数：
+grid.newpage() 创建新的画布
+grid.layout() 分割画布，使用参数widths和heights指定分割比例 ,从上到下，从左到右排列
+viewport() 在画布中创建视窗
+
+grid.show.viewport() 在画布中展示视窗
+
+grid.show.layout() 展示分割的画布
+
+pushViewport() 将新建的viewport推出去，即将工作区域切换到新的viewport
+
+popViewport() 将当前的viewport删除，其父viewport作为新的工作区域, 子viewport中的绘制的图形不会被删除
+
+downViewport() 导航到子viewport，并作为工作区域，原viewport不会删除
+
+upViewport() 导航到父viewport，父viewport变为工作区域, 原viewport不会被删除
+
+seekViewport() 导航到name参数所在的viewport,并作为工作区域
+
+grid.text() 输出文本标签,坐标只与画布有关，与viewport无关
+
+
+
+
+(2)
+viewport(x = unit(0.5, "npc"), y = unit(0.5, "npc"),
+         width = unit(1, "npc"), height = unit(1, "npc"),
+         default.units = "npc", just = "centre",
+         gp = gpar(), clip = "inherit",
+         xscale = c(0, 1), yscale = c(0, 1),
+         angle = 0,
+         layout = NULL,
+         layout.pos.row = NULL, layout.pos.col = NULL,
+         name = NULL)
+
+grid.layout(nrow = 1, ncol = 1,
+        widths = unit(rep_len(1, ncol), "null"),
+        heights = unit(rep_len(1, nrow), "null"),
+        default.units = "null", respect = FALSE,
+        just="centre")
+#
+
+(3) 参数解释：
+name 指定viewport的名字，用于搜索和定位
+x,y 为起点坐标，默认是矩形视窗中心坐标，为0 - 1的数字，表示占newpage的比例
+width, height 为矩形视窗的长宽，同样是占newpage的比例
+angle 表示角度，从-360到360,正数表示逆时针旋转，负数表示顺时针旋转
+just 表示指定视窗起点位置，默认“centre”, 还可以设置左下角c(“left”, “buttom”), 右上角c(“right”, “top”) 等
+
+layout grid.layout 对象，用于将当前的viewport拆分为子区域
+layout.pos.row 创建的viewport在父节点layout的行位置
+layout.pos.col 创建的viewport在父节点的layout列位置
+
+nrow 表示将该区域拆分为几行
+ncol 表示将该区域拆分为几列
+widths 表示每个子区域的宽度,向量长度等于ncol
+heights 表示每个子区域的高度，向量长度等于nrow
+
+gp = gpar() 表示传递其它参数，如: col/fill颜色,lty线型, lwd线宽, fontsize文本尺寸, fontfamily字体, fontface字型等，
+可以通过?gpar查询
+
+
+例: 倾斜45度的矩形
+library(ggplot2)
+library(grid)
+grid.newpage()  # 创建一个空白画布
+vp1 <- viewport(x = 0.5, y = 0.5, width = 0.5, height = 0.25, angle = 45)  # 设定视窗大小
+grid.show.viewport(vp1)  # 查看在画布中的的视窗，自动上色，方便观察
+
+
+
+
+(4)例: 新建互相重叠的3个绘图视窗
+library(ggplot2)
+library(grid)
+#library(showtext)
+
+#YaHei <- windowsFont("微软雅黑")font_add("YaHei", regular = "msyh.ttc", bold = "msyhbd.ttc")  
+# 右键字体，然后点击属性，regular指定常规, bold表示指定粗体字体 
+#showtext_auto()
+
+#### 父viewport
+grid.newpage()   #新建一个page
+vp1 <- viewport(x = 0, y = 0.2, w = 0.9, h = 0.8, just = c("left", "bottom"))  #新建一个viewport，起点为左下角，
+pushViewport(vp1)  # 推出vp1
+grid.rect(gp = gpar(col = "red"))  # 新建一个矩形,gp=gpar()表示设置图形参数
+grid.text("我在vp1_1", x = 0.8, y = 0.2, gp = gpar(col = "red", fontfamily = "YaHei", fontsize = 15))  # 新建一个文本,输出到vp1
+
+vp2 <- viewport(x = 0, y = 0.2, w = 0.9, h = 0.8, just = c("left", "bottom"))  # 新建一个viewport，起点为左下角，
+pushViewport(name = vp2)  # 将工作区域设置到vp2
+grid.rect(x = 0.1, y = 0.2, width = 0.9, height = 0.7, just = c("left", "bottom"), gp = gpar(col = "blue", lty = "dashed"))  # 新建一个矩形,gp=gpar()表示设置图形参数 
+grid.text("我在vp2_1", x = 0.8, y = 0.3, gp = gpar(col = "blue", fontfamily = "YaHei", fontsize = 15))  # 新建一个文本,输出到vp2
+
+vp3 <- viewport(x = 0.1, y = 0.2, width = 0.9, height = 0.7, just = c("left", "bottom"))
+pushViewport(vp3)
+grid.rect(x = 0.1, y = 0.2, width = 0.7, height = 0.7, just = c("left", "bottom"), gp = gpar(col = "orange", lty = "twodash", lwd = 2))  
+# 新建一个矩形,gp=gpar()表示设置图形参数 
+grid.text("我在vp3_1", x = 0.6, y = 0.4, gp = gpar(col = "orange", fontfamily = "YaHei", fontsize = 15))  # 新建一个文本,输出到vp2
+
+
+
+
+
+(5) layout参数
+
+library(ggplot2)
+library(grid)
+grid.newpage()
+g1 <- grid.layout(nrow = 3, ncol = 2, widths = c(2, 3), heights = c(2, 1, 3))  # 设置分割的宽度和长度比例
+ 
+grid.show.layout(l = g1) #显示3行2列的视窗
+
+
+
+
+(6) 综合例子: 三个图，上面一个，下面两个（左右各一个）
+library(ggplot2)
+library(grid)
+#library(showtext)
+
+#YaHei <- windowsFont("微软雅黑")font_add("YaHei", regular = "msyh.ttc", bold = "msyhbd.ttc")  # 右键字体，然后点击属性，regular指定常规, bold表示指定粗体字体 
+#showtext_auto()
+
+### 准备ggplot对象
+plot.iris <- ggplot(iris, aes(Sepal.Length, Sepal.Width)) + 
+  geom_point() + 
+  facet_grid(cols = vars(Species))  # 按Species列分面
+plot.iris
+
+plot.mpg <- ggplot(mpg, aes(x = cty, y = hwy, colour = factor(cyl))) + 
+  geom_point(size = 2.5) +       
+  labs(title = "dot plot")
+plot.mpg
+
+plot.diamonds <- ggplot(diamonds, aes(clarity, fill = cut)) + 
+  geom_bar() + 
+  theme(axis.text.x = element_text(angle = 70, 
+                                   vjust = 0.5)) + labs(title = "bar plot")
+plot.diamonds
+
+###开始填充图
+grid.newpage()  # 新建画布
+layout_1 <- grid.layout(nrow = 3, ncol = 2, 
+                        widths = c(1, 1), heights = c(1, 4, 5))  # 分成上下2*3共6个版块，最上面版块显示标题
+pushViewport(viewport(layout = layout_1))  # 推出分成6个版块的视窗
+#
+print(plot.iris, vp = viewport(layout.pos.row = 2, layout.pos.col = c(1, 2)))  # 在中间一行子视窗中画plot.iris
+print(plot.mpg, vp = viewport(layout.pos.row = 3, layout.pos.col = 1))  # 在左下角子视窗中画plot.mpg
+print(plot.diamonds, vp = viewport(layout.pos.row = 3, layout.pos.col = 2))  #在右下角子视窗中画plot.diamonds
+grid.text("我是画布名称", x = 0.5, y = 0.95, gp = gpar(col = "orange", fontfamily = "YaHei", fontsize = 15))  # 增加画布标题
+
+
+
+
+
+
+========================================
+|-- grid 拼接蝴蝶图(向左右的柱状图，中间一列是文字)
+----------------------------------------
+
+1.例:
+
+library(ggplot2)
+library(grid)
+library(dplyr)
+#library(showtext)
+library(Cairo)
+
+#YaHei <-  windowsFont("微软雅黑")
+#font_add("YaHei",regular = "msyh.ttc", bold = "msyhbd.ttc") # 右键字体，然后点击属性，regular指定常规, bold表示指定粗体字体 
+
+#CairoPNG(file = "蝴蝶图_exercing.png", width = 1200, height = 700)
+#showtext_begin()
+
+#生成图形所需数据集：
+mydata<-data.frame(id=1:14,
+                   A=c(5.0,14.7,2.5,8.5,5.1,6.9,7.7,6.8,4.4,4.9,5.3,1.0,0.9,7.8),
+                   B=c(31.3,24.7,17.8,17.2,15.3,14.3,13.9,13.9,12.4,10.0,6.5,4.2,2.5,0.9),
+                   Label=c("Website","Customer & Employee Referral","Webinar","Facebook/Twitter/Other Social",
+                           "Marketting & Advertising","Paid Serch","Other","Sales generated","Tradeshows",
+                           "Parter","Linkedin","Events","Lead list","Emial Campaign"))
+p1<-ggplot(mydata) + # 绘制右侧的柱形图  
+  geom_hline(yintercept=mean(mydata$A),linetype=2,size=.25,colour="grey")+  
+  geom_bar(aes(x=id,y=A),stat="identity",fill="#E2BB1E",colour=NA)+  
+  ylim(-5.5,16)+   
+  scale_x_reverse()+   
+  geom_text(aes(x=id,y=-4,label=Label),vjust=.5)+  
+  geom_text(aes(x=id,y=A+.75,label=paste0(A,"%")),size=4.5,family="YaHei",fontface="bold")+  
+  coord_flip()+  
+  theme_void()
+p1
+
+##
+p2<-ggplot(mydata)+ # 绘制左侧柱形图, 左侧图没有横坐标刻度标签  
+  geom_hline(yintercept=-mean(mydata$B),linetype=2,size=.25,colour="grey")+  geom_bar(aes(x=id,y=-B),stat="identity",fill="#C44E4C",colour=NA)+ 
+  # y=-B,绘制的图形在另一侧  
+  ylim(-40,0)+  scale_x_reverse()+ #   
+  geom_text(aes(x=id,y=-B-1.75,label=paste0(B,"%")),size=4.5,family="YaHei",fontface="bold")+  
+  coord_flip()+  
+  theme_void()
+p2
+
+##
+# 图形拼接
+grid.newpage() # 新建画布
+layout_1 <- grid.layout(nrow = 2, ncol = 2, widths = c(2, 3), heights = c(1, 9)) # 分成2*2共4个版块
+pushViewport(viewport(layout = layout_1)) # 推出分为4个版块的视窗
+print(p1, vp = viewport(layout.pos.row = 2, layout.pos.col = 2)) # 将p1输出到右下角
+print(p2, vp = viewport(layout.pos.row = 2, layout.pos.col = 1)) # 将p2输出到左下角# 添加主标题和分标题
+# 差不多结束了。下面是文字
+grid.text(label="我是主标题",x = 0.5,y = 0.97,gp=gpar(col="cyan",fontsize=15,fontfamily="YaHei",draw=TRUE,just = "centre"))
+grid.text(label="我是左标题", x = 0.15,y =0.94,gp=gpar(col="blue",fontsize=10,fontfamily="YaHei",draw=TRUE,just = c("left", "top")))
+grid.text(label="我是右标题",x = 0.85,y =0.94,gp=gpar(col="blue",fontsize=10,fontfamily="YaHei",draw=TRUE,just = c("right", "top")))
+#
+#showtext_end()
+#dev.off()
+
+
+
+
+
+
+========================================
+|-- 子母图: 子图嵌入主图
+----------------------------------------
+子母图主要是形成局部放大的效果，既可以从整体上对比，又兼顾特别小的数据组，或特别密的数据点可以查看，而没有必要单独做2张图。
+
+library(ggplot2)
+library(grid)
+
+
+
+1. 
+library(grid)
+vp <- viewport(width = 0.3, height = 0.4, x = 0.65,y = 0.9,just=c("left","top"))
+    # width\height表示插入图形的大小，x\y表示插入图形相对于图片底层just的位置
+print(p1)
+print(p2,vp=vp)
+
+
+
+
+2.
+install.packages("viridis")
+library(viridis)
+ggdraw() +draw_plot(p1,0,0,1,1)+
+draw_plot(p2,0.1,0.5,0.3,0.4)   # 0.1\0.5为图的左下角x\y的位置，0.3\0.4为图形的宽度和高度
+
+
+
+
+
+
+3.不同的图叠加拼凑在一起展示
+(1)不同的数据放到同一张图展示
+par(new=TRUE) # 每叠加一次新图形，运行一次该程序命令，即可实现在原图上继续叠加数据绘图
+
+plot(x1,x2,xlab="维度",ylab="物种多样性数量");    #做散点图
+lines(lowess(x1,x2),col=2);    #利用lowess做回归曲线
+par(new=TRUE)  # 是否叠加新图形，没叠加一次运行一次该命令
+plot(x3,x4,yaxt="n",xaxt="n",xlab="维度",ylab="物种多样性数量");    #做散点图
+lines(lowess(x1,x2),col=2,lty=4);    #利用lowess做回归曲线
+
+
+
+(2)用grid.newpage()函数命令选择是否进行图形叠加，该命令有先后顺序，先运行。
+
+library(grid)
+library(ggplot2)
+gg <- ggplot(mpg, aes(displ, hwy, colour = class)) +  geom_point()
+library(png)
+logo <- readPNG("C:\\Users\\TD\\Desktop\\test.png")
+grid.newpage()
+print(gg)  # 绘制第一个图
+vp <- viewport(x = 0.6, y = 0.3, width = 0.2, height = 0.2)
+grid.raster(logo, vp = vp)  # 将第一个图和第二个图形合并
+
+
+
+
+4.grid包可以画子母图。 
+安装gridExtra包后，ggplot2中多了一个ggplotGrob()函数，可以创建grob对象参数：
+
+library(ggplot2)
+library(gridExtra)
+g <- ggplotGrob(qplot(1, 1) + #子图
+                  theme(plot.background = element_rect(colour = "black")))
+qplot(1:10, 1:10) +    
+  annotation_custom(  # 通过添加注释的方式，向图形内部添加一个图形
+    grob = g,  # 插入子图形对象，即添加内容
+    xmin = 1, xmax = 5, ymin = 5, ymax = 10 # 添加位置4个坐标
+  )
+#
+
+
+
+
+
+ref:
+1. R语言组合绘图和多个图形叠加、图片叠加绘图
+https://blog.csdn.net/tandelin/article/details/94412733
+
+2. R语言绘图叠加 https://blog.csdn.net/tandelin/article/details/94362055
+
+
+
+
+
+
+========================================
+|-- gridExtra包，组合多个图形
+----------------------------------------
+1. 主要函数：
+arrangeGrob()
+grid.arrange()
+marrangeGrob()
+
+
+(2). 语法：
+arrangeGrob(..., grobs = list(...), layout_matrix, vp = NULL,
+  name = "arrange", as.table = TRUE, respect = FALSE, clip = "off",
+  nrow = NULL, ncol = NULL, widths = NULL, heights = NULL, top = NULL,
+  bottom = NULL, left = NULL, right = NULL, padding = unit(0.5, "line"))
+ 
+grid.arrange(..., newpage = TRUE)
+ 
+marrangeGrob(grobs, ..., ncol, nrow, layout_matrix = matrix(seq_len(nrow *
+  ncol), nrow = nrow, ncol = ncol), top = quote(paste("page", g, "of",
+  npages)))
+#
+
+(3)
+参数解释：
+grobs 图形对象列表，grob是graphical object两个单词的缩写，表示ggpot等图形对象
+layout_matrix 表示布局的矩阵
+
+
+
+
+
+2. 为散点图顶部和右侧添加柱状图
+#为散点图顶部和右侧添加柱状图
+library(ggplot2)
+library(gridExtra)
+#library(showtext)
+
+#YaHei <-  windowsFont("微软雅黑")
+#font_add("YaHei",regular = "msyh.ttc", bold = "msyhbd.ttc") # 右键字体，然后点击属性，regular指定常规, bold表示指定粗体字体 
+#showtext.auto()
+
+empty <- ggplot() + geom_point(aes(1, 1), colour = "white") +   
+  theme(axis.ticks = element_blank(), 
+        panel.background = element_blank(), 
+        axis.line = element_blank(), 
+        axis.text.x = element_blank(), axis.text.y = element_blank(), 
+        axis.title.x = element_blank(), axis.title.y = element_blank())
+#
+scatter <- ggplot() + 
+  geom_point(aes(mtcars$mpg, mtcars$qsec)) # 绘制主图散点图
+scatter
+#
+hist_top <- ggplot() + 
+  geom_histogram(aes(mtcars$mpg)) # 绘制上方频率分布直方图
+hist_top
+#
+hist_right <- ggplot() + 
+  geom_histogram(aes(mtcars$qsec)) + coord_flip() # 绘制右侧频率分布直方图# 最终组合，由4个图拼图而成，只有右上角的图已经将标注移除了
+hist_right
+#
+grid.arrange(hist_top, empty, scatter, hist_right, # 按从左到右，从上到下顺序排列4个图
+             ncol = 2, nrow = 2, widths = c(4, 1), heights = c(1, 4)) 
+             # 4个版块的长宽比例# 其实这种组合图已经有相应的R包了，ggExtra
+#
+#
+# 一行画出来以上过程
+df <- data.frame(x = mtcars$mpg, y = mtcars$qsec)
+p <- ggplot(df, aes(x, y)) + geom_point() + theme_classic()
+ggExtra::ggMarginal(p, type = "histogram")
+
+
+
+
+
+
+3.把绘图对象添加到列表总，并把该列表传递给grid.arrange()函数中的grobs参数
+
+library(ggplot2)
+library(gridExtra)
+library(lattice)  # 类似ggplot,但是语法更加复杂
+#library(showtext)
+
+#YaHei <- windowsFont("微软雅黑")
+#font_add("YaHei", regular = "msyh.ttc", bold = "msyhbd.ttc")  # 右键字体，然后点击属性，regular指定常规, bold表示指定粗体字体 showtext.auto()
+
+gs <- list(NULL)
+gs[[1]] <- qplot(1, 1)
+gs[[2]] <- xyplot(1 ~ 1)  # lattice包
+grid.arrange(grobs = gs, ncol = 2)
+
+## 或者ggplot2对象
+gs <- list(NULL)
+gs[[1]]=ggplot(mtcars, aes(disp, mpg))+geom_point()
+gs[[2]]=ggplot(mtcars, aes(disp, mpg))+geom_point()
+grid.arrange(grobs = gs, ncol = 2)
+
+
+
+
+
+
+
+
+
+========================================
+|-- cowplot包为ggplot2 提供出版物级的主题
+----------------------------------------
+
+1. cowplot是一个ggplot2包的简单补充，意味着其可以为ggplot2提供出版物级的主题等。
+更重要的是，这个包可以组合多个”ggplot2”绘制的图为一个图，并且为每个图加上例如A,B,C等标签，
+这在具体的出版物上通常是要求的。 
+
+语法结构与ggplot类似，将ggplot2图作为一个对象置于 ggdraw()中
+
+draw_plot(plot, x = 0, y = 0, width = 1, height = 1, scale = 1)
+draw_text(text, x = 0.5, y = 0.5, size = 14, hjust = 0.5, vjust = 0.5,...)
+draw_plot_label(label, x = 0, y = 1, hjust = -0.5, vjust = 1.5, size = 16, fontface = "bold", family = NULL, colour = NULL, ...)
+
+参数解释：
+- plot 表示ggplot2绘图对象
+- x, y 表示子图的起点坐标(左下角坐标)，在0-1之间，表示占母图的比例，
+- width, height 表示子图长宽所占比例，在0-1之间
+- text 表示要映射的文本向量
+- label 表示要映射的文本向量
+
+其它参数与ggplot2中意思一样
+
+
+
+
+2. 例子: 拼接三个图，顶上一个，底下两个(左一个右一个)。
+library(ggplot2)
+library(cowplot)
+theme_set(theme_cowplot())
+#library(showtext)
+
+#font_add_google("Dancing Script", "Dancing")
+
+plot.iris <- ggplot(iris, aes(Sepal.Length, Sepal.Width)) +     
+  geom_point() + 
+  facet_grid(cols = vars(Species)) 
+plot.iris
+# 按Species列分面
+
+plot.mpg <- ggplot(mpg, aes(x = cty, y = hwy, colour = factor(cyl))) +   
+  geom_point(size = 2.5) +    
+  labs(title = "dot plot") 
+plot.mpg
+
+plot.diamonds <- ggplot(diamonds, aes(clarity, fill = cut)) +   
+  geom_bar() +   
+  theme(axis.text.x = element_text(angle = 70, vjust = 0.5)) +   
+  labs(title = "bar plot")
+plot.diamonds
+
+gg <- ggdraw() +  
+  draw_plot(plot.iris, 0, 0.5, 1, 0.5) + # 在母图上半部，占母图比例1/2  
+  draw_plot(plot.mpg, 0, 0, 0.5, 0.5) + # 在母图左下角，占母图比例1/4  
+  draw_plot(plot.diamonds, 0.5, 0, 0.5, 0.5) + # 在母图右下角，占母图比例1/4 
+  draw_plot_label(c("A", "B", "C"), c(0, 0, 0.5), c(1, 0.5, 0.5), 
+                  size = 15, colour = "cyan", family = "Dancing") # 加上标签，
+#showtext_begin()
+print(gg)
+#showtext_end()
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -1089,6 +2665,17 @@ g+geom_segment(aes(x=1, y=155, xend=2, yend=155))+ #横线
 
 
 ========================================
+|-- 放大图例的点
+----------------------------------------
+
+p3 + guides(colour = guide_legend(override.aes = list(alpha = 1,size=10)))
+
+
+
+
+
+
+========================================
 |-- ggplot2 legend图例的修改
 ----------------------------------------
 https://www.cnblogs.com/emanlee/p/5373649.html
@@ -1112,9 +2699,27 @@ p+theme(legend.position='none');
 p+theme(legend.title=element_blank())
 
 
-图例（legend）的位置
+
+
+
 图例（legend）的位置和对齐使用的主题设置legend.position来控制，其值可为right,left,top,bottom,none(不加图例，或是一个表示位置的数值。这个数值型位置由legend.justfication给定的相对边角位置表示（取0和1之间的值），它是一个长度为2的数值型向量：右上角为c(1,1),左下角为c(0,0)
-例如：p+theme(legend.position=”left”)
+例如：p+theme(legend.position='left')
+
+
+legend.position还可以设置图例的具体位置，即legend.position = c(x, y)。注意，这里的x和y的取值范围均为[0,1]。
+#将图例放到图形内部，并设置为左上角
+p + theme(legend.position=c(0,1)) #跑到图外面去了, why？怎么办?
+因为默认情况下图例的中心点位置设在了(0,1)的位置，如果需要更改图例中心点位置，则需使用legend.justification = c(x, y)进行设置，如legend.justification = c(1,0)表示图例中心点在图例的左上角。下面使用legend.justification重新绘制一下图例的位置：
+p + theme(legend.position=c(0,1), legend.justification=c(0,1))
+
+legend.justification:
+anchor point for positioning legend inside plot ("center" or two-element numeric vector) or the justification according to the plot area when positioned outside the plot.
+
+
+
+theme(legend.key.height=unit(5, 'line'))
+
+
 
 
 
@@ -1147,18 +2752,11 @@ https://github.com/hadley/ggplot2/wiki/Legend-Attributes
 
 
 
-========================================
-散点图
-----------------------------------------
-1.控制散点的大小size、透明度alpha
-ggplot(df, aes(gene.mean, gene.dispersion))+geom_point(size=0.1, alpha=0.2)
-
-
 
 
 
 ========================================
-添加辅助线 geom_hline
+添加辅助线: 竖线geom_hline，横线geom_vline，斜线geom_abline
 ----------------------------------------
 1. 添加一条水平线
 bp + geom_hline(aes(yintercept=12))
@@ -1166,6 +2764,16 @@ bp + geom_hline(aes(yintercept=12))
 
 2. linetype 设置线型为 虚线
 bp + geom_hline(aes(yintercept=12), colour="#990000", linetype="dashed")
+
+
+3.倾斜线
+g+geom_abline(intercept=2.709e+01,slope=-7.447e-05 )
+通过斜率和截距可以添加线性拟合线，至于两个参数的值可以同线性函数lm()获得。
+
+
+g+geom_vline(aes(xintercept=1.5), colour="#ff0000", linetype="dashed",size=1)+
+      xlim(0,10)+ylim(0,10
+
 
 
 refer:
@@ -1360,28 +2968,93 @@ hjust 控制水平对齐和 vjust 控制垂直对齐。
 
 
 ========================================
-ggplot2 画饼图，及原生函数pie
+ggplot2 画饼图，及原生函数pie，主题(theme)和图例(legend)设置
 ----------------------------------------
-1.原生画图函数pie 画饼图
 
+
+1.原生画图函数pie 画饼图
+########### 画饼图
+#数据
 x=c(40,20,3,26,10,45)
-x2=c('n1','n2','n3','n4','n5','n6')
+x2=c('z1','d2','n3','b4','a5','c6')
 x3=paste0(x2, "(",x,', ',round(x/sum(x)*100,2),"%)" );x3
+x4=(paste0(x, "\n",round(x/sum(x)*100,2),"%" ) );x4
+###################
+# 原生R函数 画饼图
 pie(x)
 pie(x,labels=x3) #加上百分比
-pie(x,labels=x3,edges = 200) #最外圈的多边形的边的个数，没必要
 
-pie(x,labels=x3,radius = 0.8) #圈是画在一个正方形内，0-1之间。
+pie(x,labels=x3,edges = 20) #最外圈的多边形的边的个数(默认200)
+pie(x,labels=x3,radius = 0.5) #圈是画在一个正方形内的[0,1](默认0.8)
 
 pie(x,labels=x3,clockwise=T) #顺时针开始画
 
-#设置颜色
-library(RColorBrewer)
-brewer.pal.info # 查看有哪些调色板
-col6=RColorBrewer::brewer.pal(n = 6,name = "Set2")
-barplot(1:6,col=col6)
+#lty : 每个扇区的线型（0：无，1：实线；2：短划线；3：点线；4：点划线；5：长划线；6：双划线;）
+pie(x,labels=x3,clockwise=T, lty =0)
+pie(x,labels=x3,clockwise=T, lty =0:5)
 
-pie(x,labels=x3,clockwise=T, col=col6)
+#border : 每个扇区的边框颜色。
+pie(x,labels=x3,clockwise=T, border ="red")
+pie(x,labels=x3,clockwise=T, border =c(1:6))
+
+
+#自定义颜色
+library(RColorBrewer)
+#brewer.pal.info # 查看有哪些调色板
+col6=RColorBrewer::brewer.pal(n = 6,name = "Set2")
+barplot(c(1:6),col=col6) #预览颜色
+#
+pie(x,labels=x3,clockwise=T, col=col6)  
+
+
+#想要图例横着排序，只能提前对图例排序
+# https://stackoverflow.com/questions/39552682/base-r-horizontal-legend-with-multiple-rows/39552713
+Nfact = 6
+Nrows = 2
+Ncols = ceiling(Nfact / Nrows)
+MyOrder = matrix(1:(Nrows*Ncols), nrow=Nrows, ncol=Ncols, byrow=T)
+
+
+#fig1
+pie(x, #数据
+    labels=x4, #标签
+    clockwise=T, #顺时针方向
+    col=col6, #扇形颜色
+    main="Pie Plot of XX",
+    lty=0) #扇形描边，去掉
+#legend(x=-1,y=-1.2, #"right", #图例位置
+legend("bottom", 
+       inset=-0.2, #图例为关键词时，inset = 分数 设置其相对位置(-向下，+向上)
+       legend=x2[MyOrder], #图例文字
+       fill=col6[MyOrder], #图例填充颜色
+       
+       #box.lty=1, #图例最外大方框
+       bty="n", #不要图例边框
+       
+       #title.adj=0, #图例标题的相对位置，0.5为默认，在中间。0最左，1为最右。
+       #title="Type",#图例标题
+       
+       cex=1, #字体大小倍数
+       #horiz = T,#横着显示，会覆盖掉ncol
+       ncol=3, #图例显示为n列
+       #byrow=T, #??
+       
+       xpd=T, #有这句话才能显示在图外
+       x.intersp=0.5, #图例中文字离图片的水平距离
+       #y.intersp=1, #图例中文字离图片的垂直距离
+       
+       text.width=0.3, #两个图例之间的距离
+       #merge = TRUE,
+       #title="Type", #图例标题
+       border=NA #不要图例小方块描边
+)
+#
+
+
+
+
+
+
 
 
 
@@ -1393,32 +3066,18 @@ pie(x,labels=x3,clockwise=T, col=col6)
 2. 使用 ggplot2 做饼图
 大坑：如果想要画的图顺序混乱，多半是因为分类变量必须是因子，而自动转换得到的因子不是期望的顺序。需要手工转换因子，以便保证因子的顺序。
 
-
-library(ggplot2)
+###################
+## 使用ggplot2包 画饼图
 df=data.frame(
-	x=x,
-	x2=x2,
-	x3=x3
+  count=x, #计数
+  type=x2, #右侧图例的颜色
+  #tag=x3, #饼图上的图注
+  tag=x4
 )
-#1.画单个柱形图
-g1=ggplot(df, mapping=aes(x="", y=x,fill=x3))+
-  geom_bar(stat="identity",width=0.5)
-g1
-#2.旋转
-g2=g1+ coord_polar("y", start=0)
-g2 
-
-#3 重新着色
-#g2 +  scale_fill_manual(values=c("#999999", "#E69F00", "#56B4E9"))
-g3=g2 +  scale_fill_manual(values=col6)
-g3
-
-# 添加刻度
-g3+geom_text(stat="identity", aes(label = x3), size=4, position=position_stack(vjust = 1)) #刻度不准
-
-g3+geom_text(stat="identity",aes(y=x, label = scales::percent(x/100)), size=4, position=position_stack(vjust = 0.5))
+head(df)
 
 # 去掉背景
+library(ggplot2)
 blank_theme <- theme_minimal()+
   theme(
     axis.title.x = element_blank(),
@@ -1428,21 +3087,77 @@ blank_theme <- theme_minimal()+
     panel.border = element_blank(),
     panel.grid=element_blank(),
     axis.ticks = element_blank(),
-    plot.title=element_text(size=14, face="bold")
+    plot.title=element_text(size=14, face="bold",
+                            hjust = 0.5)#大图标题居中
   )
 
+library(ggrepel) #geom_text_repel 比 geom_text新增功能：防止文字遮挡，自动连线点和标签
+ggPie=function(df2){
+  #df=df2
+  g=ggplot(df2, mapping=aes(x="", y=count,fill=type))+
+    geom_bar(stat="identity",width=0.5)+
+    #coord_polar("y", start=0)+ #0度角起始角度
+    coord_polar(theta = 'y', direction = -1)+ #direction设置方向
+    #scale_fill_manual(values=col6)
+    scale_fill_brewer(palette="Dark2")+
+    blank_theme+
+    theme(legend.position="bottom", #图例显示位置
+          
+          legend.margin=margin(t = -1.5, unit='line'), #图例整体上边距,缩减n行
+          
+          legend.spacing.x = unit(2, 'pt'), #图例之间的x距离
+          legend.spacing.y = unit(2,"pt"), #图例之间的y距离
+          
+          #plot.margin=unit(c(1,0,1,0),"lines"), #图形外围边框top,right,bottom,left
+          
+          
+          legend.box = "horizontal", #多图排列方式 'horizontal', 'vertical'
+          #legend.direction="horizontal", #图例排列方向 'horizontal', 'vertical'
+          #legend.title.align = 0.5, #？
+          #legend.key = element_rect(color = NA, fill = NA), #图例每个方块的边框
+          #legend.key = element_rect(size = 1,color = 'yellow' ),
+          
+          #legend.key.size = unit(0.2, "cm"), #图例方块大小
+          legend.key.height=unit(1,"line"), #图例方块的高度
+          legend.key.width=unit(0.5,"line"), #图例方块的宽度度
+          
+          #标签right距离，left距离
+          legend.text = element_text(margin = margin(r = 20, l=2,t = -3, unit = "pt")), 
+          #legend.text = element_text(margin = margin(t = -5,unit='pt')), #图例文字上移-n,或下移n
+          
+          
+          
+          legend.background = element_blank() )+  #去掉图例背景
+    #guides(fill = guide_legend(title = NULL))+ #去掉图例标题
+    guides(fill = guide_legend(ncol = 3, #图例几列
+                               inset=-0.5,
+                               byrow=T))+ #图例横着排？默认竖着排
+    labs(title="Pie plot (ggplot2)",  #设置大图标题
+         #subtitle ="subtitles here, pie from count data.",
+         x="",y="")+
+    geom_text_repel(stat="identity",aes(x=1.2,y=x, label = tag), size=4, #饼图上的文字
+              position=position_stack(vjust = 0.5));g
+  #geom_text(stat="identity",aes(y=x, label = scales::percent(x/100)), 
+  #          size=4, position=position_stack(vjust = 0.5))
+  return(g)
+}
 
-#分类变量一定要是因子才行，否则顺序会很混乱
-ggplot(df, mapping=aes(x="", y=x,fill=x3))+
-  geom_bar(stat="identity",width=0.5)+
-  coord_polar("y", start=0)+
-  #scale_fill_manual(values=col6)
-  scale_fill_brewer(palette="Dark2")+
-  blank_theme+
-  geom_text(stat="identity",aes(x=1.3,y=x, label = x3), size=4, position=position_stack(vjust = 0.5))
-  
-  #geom_text(stat="identity",aes(y=x, label = scales::percent(x/100)), size=4, position=position_stack(vjust = 0.5))
-#
+#1 ggplot2 图例距离怎么调?
+# https://stackoverflow.com/questions/11366964/is-there-a-way-to-change-the-spacing-between-legend-items-in-ggplot2
+#2 ggplot2 主题（theme）设置 
+# http://www.sohu.com/a/224303554_466874
+# https://www.sohu.com/a/135157372_572440
+# https://stackoverflow.com/questions/17073772/ggplot2-legend-on-top-and-margin
+
+#分类变量一定要是因子才行，否则顺序是分类变量的ascii码顺序，不一定符合预期
+print(ggPie(df) )
+
+#指定因子顺序
+df_2=df
+df_2$type=factor(df_2$type, levels=c('z1', 'd2', 'n3', 'b4', 'a5', 'c6'))
+print( ggPie(df_2) ) #fig2
+
+
 
 
 #ggpubr包的ggpie（）
@@ -1629,7 +3344,201 @@ ggsave("volcano8.png",g,width=8,height=8)
 
 
 
-2.实例2： DESeq2的结果画图
+
+========================================
+|-- DESeq2做差异分析，并画火山图
+----------------------------------------
+
+##########################
+# 1 get DE gene list, with DESeq2
+##########################
+library(DESeq2)
+
+# matrix
+countData <- cbind( RNA[,cid.norm], RNA[,cid.sync] )
+dim(countData) #14675    56
+countData[1:4,1:4]
+#过滤掉5个细胞以下表达的基因
+df=data.frame(
+  gene=row.names(countData),
+  num.N=apply(countData[, cid.norm]>0,1,sum),
+  num.S=apply(countData[, cid.sync]>0,1,sum),
+  row.names = 1
+)
+head(df)
+df2=df[which(df$num.N>5 & df$num.S>5),]
+dim(df2) #7487 2
+#
+countData=countData[rownames(df2),]
+dim(countData) #[1] 7487   56
+
+#条件
+condition <- factor(c( rep('normal', length(cid.norm)), rep('sync', length(cid.sync))  ), 
+                    levels=c('normal','sync'))
+condition
+#
+dds <- DESeqDataSetFromMatrix(countData, DataFrame(condition), design= ~ condition )
+# 过滤
+nrow(dds) #7487
+dds2 <- dds[ rowSums(counts(dds)) > 1, ]
+nrow(dds2)#[1] 7487
+
+keyword='sync_VS_normal_HeLa'
+#
+#一步法
+dds3 <- DESeq(dds2) #耗时1min
+## estimating size factors
+## estimating dispersions
+## gene-wise dispersion estimates
+## mean-dispersion relationship
+## final dispersion estimates
+## fitting model and testing
+## -- replacing outliers and refitting for 5164 genes
+## -- DESeq argument 'minReplicatesForReplace' = 7 
+## -- original counts are preserved in counts(dds)
+## estimating dispersions
+## fitting model and testin
+
+#获取结果
+res <- results(dds3)
+head(res)
+#log2 fold change (MLE): condition sync vs normal 
+#Wald test p-value: condition sync vs normal 
+#DataFrame with 6 rows and 6 columns
+#baseMean     log2FoldChange             lfcSE               stat             pvalue
+#<numeric>          <numeric>         <numeric>          <numeric>          <numeric>
+#  AAAS  45.0706763507379 -0.286189288744119 0.984181112955205 -0.290789251060485  0.771212506698282
+#AAGAB 37.6621410990222  0.761637086304566   1.1243489415785  0.677402768961818  0.498150441980007
+
+#                   padj
+#              <numeric>
+# AAAS  0.941981213557402
+#AAGAB 0.849654084021838
+
+# 校正后p-value为NA的赋值为1
+res$padj[is.na(res$padj)] = 1
+
+# order
+res <- res[order(res$padj),]
+dim(res) #7487 6
+
+# set cutoff
+resSig <- subset(res, abs(log2FoldChange)>log2(2) & padj < 0.05)
+dim(resSig) #[1] 252  6
+head(resSig)
+
+#save to file
+resSig<-data.frame(resSig)
+dim(resSig) #[1] 252   6
+head(resSig)
+write.csv(resSig, file=paste0("DESeq2_DEG_",keyword,".csv") )
+
+
+#save all file for GSEA
+res2=data.frame(res)
+dim(res2) #7487 6
+head(res2)
+write.csv(res2, file=paste0("DESeq2_ALL_",keyword,".csv") )
+
+
+
+
+##########################
+# 2 volcano plot
+##########################
+library('ggplot2')
+dif=data.frame(res)
+dif$threshold= factor( abs(dif$log2FoldChange) > log2(1.5) & dif$padj < 0.05, #1.5倍, 0.05
+                       levels=c(TRUE,FALSE) )
+str(dif)
+head(dif)
+tb=table(dif$threshold);tb
+#TRUE FALSE 
+#304  7235
+
+#
+dif$threshold2="ns";
+dif[which(dif$log2FoldChange > log2(1.5) & dif$padj < 0.05),]$threshold2="up";
+dif[which(dif$log2FoldChange < (-log2(1.5)) & dif$padj < 0.05),]$threshold2="down";
+dif$threshold2=factor(dif$threshold2, levels=c('down','ns','up'))
+tb2=table(dif$threshold2);tb2
+#down   ns   up 
+#130 7183  174
+
+# save up and down gene list
+geneUp=row.names(dif[which(dif$threshold2=='up'),]);length(geneUp) #174
+head(geneUp)
+writeLines(geneUp, paste0('DESeq2_', keyword,'_genes_UP.txt') )
+#
+geneDown=row.names(dif[which(dif$threshold2=='down'),]);length(geneDown) #130
+head(geneDown)
+writeLines(geneDown, paste0('DESeq2_', keyword,'_genes_DOWN.txt') )
+
+##############
+g = ggplot(data=dif, aes(x=log2FoldChange, y=-log10(padj), color=threshold2)) +
+  geom_point(alpha=0.4, size=0.4) +
+  theme_bw() +
+  theme(legend.box = "horizontal", #显著性图例，水平，标到底部
+        legend.position="bottom") +
+  #scale_color_manual('Significant',labels=c("TRUE","FALSE"), values=c("red", "grey") )+ 
+  scale_color_manual('Significant',labels=c(paste0("down(",tb2[[1]],')'),'ns',
+                                            paste0("up(",tb2[[3]],')' )),
+                     values=c("blue", "grey",'red') )+
+  xlab("log2(FoldChange)") + ylab("-log10(p.adj)") +
+  labs(title= paste0("DEG: ",keyword) ); g
+# add text to a few genes
+dd_text = dif[ ((abs(dif$log2FoldChange) > 2) & (dif$padj < 1e-10) ) | 
+                 abs(dif$log2FoldChange) > 5.5,]; dim(dd_text)
+head(dd_text)
+#add text
+library(ggrepel)
+g2=g + geom_text_repel(data=dd_text, aes(x=log2FoldChange, y=-log10(padj), label=row.names(dd_text)), 
+                       size=2.5, colour="black",alpha=0.6); g2
+#保存图片
+CairoPDF(file=paste0('volcano_plot_',keyword,'.pdf'), width=3.6,height=4)
+print(g2)
+dev.off()
+#
+
+##########################
+# 3 check the counts; 用原始counts还是用标准化过后的呢？
+##########################
+showCounts=function(gene1){
+  print(gene1)
+  c0=as.numeric(RNA[gene1,cid.norm]);
+  c1=as.numeric(RNA[gene1,cid.sync]);
+  deltaCV=sd(c1)/mean(c1)-sd(c0)/mean(c0)
+  df=data.frame(
+    counts=c(c0,c1),
+    type=c(rep('normal', length(c0)),   rep('sync', length(c1)) )
+  )
+  #library(ggplot2)
+  g=ggplot(df, aes(type,log10(counts+1),color=type))+
+    theme_bw()+
+    geom_boxplot()+geom_jitter(size=0.5, alpha=1)+
+    scale_color_manual(values=c('grey','#93BBFD'))+
+    labs(title=gene1,x=paste0("deltaCV:",round(deltaCV,2) ) , y="log10(RNAcounts+1)")
+  g
+}
+dd_text=dd_text[order(-dd_text$log2FoldChange),]
+head(dd_text)
+dim(dd_text) #21
+geneUp2=rownames(dd_text[which(dd_text$log2FoldChange>0),] );length(geneUp2) #13
+geneDown2=rownames(dd_text[which(dd_text$log2FoldChange<0),] );length(geneDown2) #8
+#
+CairoPDF(file=paste0("02-Check_counts_", keyword,".pdf"),width=7,height=5)
+grid.arrange(
+  showCounts(geneUp2[1]),
+  showCounts(geneUp2[2]),
+  showCounts(geneUp2[13]),
+  
+  showCounts(geneDown2[1]),
+  showCounts(geneDown2[7]),
+  showCounts(geneDown2[8]),
+  nrow=2
+)
+dev.off()
+
 
 
 

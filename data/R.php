@@ -7,7 +7,7 @@ return array (
     2 => array (
       array('项目描述','R001','html',),
       array('参考资料','R002','html'),
-      array('FAQ-杂项','R003-grocer','txt'),
+      array('R杂项(准备和调试)','R003-grocer','txt'),
     ),
   ),
 

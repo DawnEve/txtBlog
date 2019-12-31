@@ -205,25 +205,7 @@ Warning messages:
 
 
 
-
-
-========================================
-与测序相关的conductor包：
-----------------------------------------
- Sequencing (347)
-	 ChIPSeq (61)
-	 DNASeq (10)
-	 ExomeSeq (6)
-	 HiC (7)
-	 MethylSeq (15)
-	 Microbiome (9)
-	 miRNA (9)
-	 RiboSeq (4)
-	 RIPSeq (2)
-	 RNASeq (130)
-	 TargetedResequencing (5)
-	 WholeGenome (15)
-	 
+ 
 ========================================
 如何将R和RStudio中界面的语言转变成英文
 ----------------------------------------
@@ -280,8 +262,27 @@ http://bioconductor.org/packages/3.3/bioc/manuals/BiocInstaller/man/BiocInstalle
 
 
 
+
 ========================================
-Bioconductor, SingleCellExperiment and scater
+与测序相关的conductor包：
+----------------------------------------
+ Sequencing (347)
+	 ChIPSeq (61)
+	 DNASeq (10)
+	 ExomeSeq (6)
+	 HiC (7)
+	 MethylSeq (15)
+	 Microbiome (9)
+	 miRNA (9)
+	 RiboSeq (4)
+	 RIPSeq (2)
+	 RNASeq (130)
+	 TargetedResequencing (5)
+	 WholeGenome (15)
+
+
+========================================
+|-- Bioconductor, SingleCellExperiment and scater
 ----------------------------------------
 1.推荐新手和老手使用良好开发和维护的Bioconductor方法和类。
 https://www.bioconductor.org/developers/how-to/commonMethodsAndClasses/
@@ -348,16 +349,522 @@ http://hemberg-lab.github.io/scRNA.seq.course/figures/scater_qc_workflow.png
 
 
 
+
+
+
+
 ========================================
-Seurat包：单细胞测序的各个方面
+R操作mysql数据库
 ----------------------------------------
-1.官方教程页 http://satijalab.org/seurat/get_started.html
 
-http://hemberg-lab.github.io/scRNA.seq.course/seurat-chapter.html
-功能包含QC, analysis, and exploration of scRNA-seq data。
+1. 把mysql连接信息写到文件中。
+$ cat /home/wangjl/pylib/con_mysql.R
+library(DBI)
+library(RMySQL)
+con<-dbConnect(MySQL(),user='root', password='123456',dbname='wang',host='y.biomooc.com',
+               port=7070, DBMsencoding='utf8')
+dbSendQuery(con,'SET NAMES utf8;') #读取防乱码
+query<-dbSendQuery(con,'alter database wang character set utf8;') #写入防乱码
+#
+#query<-dbSendQuery(con,'select cid, cellType from cell_c1 where cellType="HeLa_sync"')
+#data=fetch(query, n=-1);
+#data
 
 
 
+
+2. 把数据查询写成函数
+#R语言的数据库链接
+rm(con)
+getDF_fromDB=function(sql){
+  source('/home/wangjl/pylib/con_mysql.R')
+  query<-dbSendQuery(con, sql );
+  data=fetch(query, n=-1);
+  #
+  print(dim(data))
+  print(head(data))
+  return(data)
+}
+
+
+
+# 获取编码基因，和非编码基因
+sql=paste0('select distinct gene_name,gene_type from feature_gene;');
+geneNames=getDF_fromDB(sql)
+# [1] 58692     2
+#   gene_name      gene_type
+# 1    TSPAN6 protein_coding
+# 2      TNMD protein_coding
+# 3      DPM1 protein_coding
+# 4     SCYL3 protein_coding
+
+
+
+
+
+========================================
+|-- R通过ODBC连接数据库(win)
+----------------------------------------
+以下的实验环境是在windows7-64操作系统下进行
+1、下载（mySQL-connector-odbc-5.3.7-win64.msi）
+     下载地址：http://dev.mysql.com/downloads/connector/odbc (8.2 MB) 
+2、安装Mysql的RODBC：mysql-connector-odbc-5.3.2-win64.msi
+3、配置datasource
+
+(1)找到C:\Windows\System32\odbcad32.exe
+(2)左侧点击 添加 ，选择MySQL ODBC ANSI Driver/或 unicode，点击完成；
+(3)填写表格，名字(填写mysqlodbc或自定义，下文R的odbcConnect第一个参数要用)建议用无空格的英文，描述随便写，填写mysql用户名和密码，选择数据库，点击OK。
+(4)回到ODBC数据源管理器，选择mysqlodbc，点击确定。
+
+4.R软件访问mysql数据库
+(1)安装及加载RODBC
+install.packages("RODBC")
+library(RODBC)
+
+(2) 与mysql建立连接
+channel=odbcConnect("mysqlodbc", uid="root", pwd="")
+
+（3）查询该数据库下都有哪些数据库表
+
+> sqlTables(channel)
+  TABLE_CAT TABLE_SCHEM   TABLE_NAME TABLE_TYPE REMARKS
+1      test                       aa      TABLE        
+2      test              first_table      TABLE        
+3      test             second_table      TABLE        
+4      test                 students      TABLE 
+5      test                 orders      TABLE   
+
+（4）查询某个表中的数据返回给数据框
+> orders=sqlFetch(channel,"orders")
+> orders
+ order_id order_name order_unit order_quantity order_price order_note order_time
+1 1  2500ml95%酒精  桶  17 12  NA 1464
+
+（5）条件查询
+orders2=sqlQuery(channel,"select order_name,order_price from orders order by order_id desc");
+
+（6）将数据框中的数据保存到数据库表中
+USArrests #这是R的默认内置数据，是一个数据框
+
+数据框的首列没有列名，所以在保存之前需要指定列名
+sqlSave(channel, USArrests, rownames = "state", addPK = TRUE)
+
+cmd打开数据库查看test库，多了usarrests表，里面正是数据框中的内容。可见数据框能正确的保存到mysql数据库中去了
+
+添加一条数据
+rs3=sqlQuery(channel,"insert into usarrests(state,murder,assault,urbanpop,rape)values('noplace',0,0,0,0)");
+发现数据已经在了。
+
+（7）在R软件将刚才添加到mysql数据库中的表删除掉
+sqlDrop(channel,"usarrests")
+
+（8）关闭连接资源
+odbcClose(channel)
+
+（9）通过RODBC进行数据存取的主要函数
+函数名字	函数描述
+odbcConnect(dsn,uid="",pwd="")  #建立并打开连接
+sqlFetch(channel,sqtable) #从数据库读取数据表，并返回一个数据框对象
+sqlQuery(channel,query) #想数据库提交一个sql查询，并返回结果（'data.frame'格式）
+sqlSave(channel,mydf,tablename=sqtable,append=FALSE) #将一个数据框写入或更新(append=True)到数据库
+sqlDrop(channel,sqtable) #从数据库删除一个表
+sqlClear(channel,sqltable) #删除表中内容
+sqlTable(channel) #返回数据库中表的信息
+sqlColumns(chanel,sqltable) #返回数据库表sqltable列的信息
+close(channel) #关闭连接
+
+操作步骤：
+建立DSN
+打开连接
+数据操作
+关闭连接 
+
+
+实例1
+#加载包
+library(RODBC)
+
+#创建连接
+channel<-odbcConnect("BITEST",uid="dw",psw="dw")
+
+#执行查询
+org1<-sqlFetch(channel,'DIM.DIM_ORGANIZATION') #这是oracle数据库
+org2<-sqlQuery(channel,"select * from DIM.DIM_ORGANIZATION")
+
+#关闭连接
+odbcClose(channel)
+
+#使用数据
+head(org1)
+head(org2)
+
+
+
+实例2 通过RODBC将数据写入oracle
+
+library(RODBC)
+channel<-odbcConnect("BITEST",uid="dw",psw="dw")
+#创建数据，待写入对象
+mydata<-sqlQuery(channel,'select * from DIM.DIM_ORGANIZATION')
+
+#写入数据库，并读取结果
+sqlSave(channel,mydata,"NEW_TABLE_NAME", append=FALSE)
+mydata2=sqlQuery(channel,'select * from NEW_TABLE_NAME')
+
+#更新数据库，并读取结果
+sqlSave(channel,mydata,"NEW_TABLE_NAME", append=TRUE)
+mydata3=sqlQuery(channel,'select * from NEW_TABLE_NAME')
+
+#删除刚刚建立的数据表NEW_TABLE_NAME
+sqlDrop(channel,"NEW_TABLE_NAME")
+odbcClose(channel)
+
+#查看执行结果
+head(mydata,n=30)
+head(mydata2,n=30)
+head(mydata3,n=30)
+
+
+refer:
+http://wenku.baidu.com/link?url=PtNUOCT66CzajvN_uM_4FaCloQffW8HzaE1PMlOg3UqyXwpZNbT3DC1URy-tsLqQRIeW_DJhxBsS06QsY99OjKSq_BV7--vj1zWhtga7k1_
+http://blog.csdn.net/hongweigg/article/details/49779943
+http://www.dataguru.cn/thread-289411-1-1.html
+
+
+
+
+
+========================================
+|-- R通过RMySQL包操作mysql数据库(linux)
+----------------------------------------
+test: 2019.10
+mysql on docker ubuntu1806;
+Rstudio on centOS7
+
+
+1.Rmysql库安装
+注意: Rmysql库依赖DBI库
+
+install.packages("DBI")
+install.packages("RMySQL") 或 install.packages('RMySQL',type='source')
+
+查看已安装的包：
+.packages(all.available=TRUE)
+
+至此安装完毕,如果中间过程还出问题,可能底层C++环境欠缺
+参考:https://www.jianshu.com/p/d57355c57876
+
+
+
+
+
+
+2.
+另外R连接mysql会出现中文乱码变问号情况，查到COS上一个贴子，解决方案如下：
+在MySQL的配置文件/etc/mysql/my.cnf中[client]标签下加default-character-set=utf8 
+
+这个我试了，总是报错。我用的docker版的mysql，是这个原因吗？
+后面避免读写中文乱码，使用的是sql语句。
+
+library(DBI)
+library(RMySQL)
+con<-dbConnect(MySQL(),user='root', password='123456',dbname='wang',host='y.biomooc.com',
+               port=7070, DBMsencoding='utf8')
+dbSendQuery(con,'SET NAMES utf8;') #读取防中文乱码
+query<-dbSendQuery(con,'alter database wang character set utf8;') #写入防中文乱码
+#
+query<-dbSendQuery(con,'select * from fruits;')
+data=fetch(query);
+data #获得数据框
+
+
+
+
+
+3. 在R中使用RMySQL
+library(DBI)
+library(RMySQL)
+#help(package="RMySQL") #查看说明文档
+
+##连接数据库
+con<-dbConnect(MySQL(),user='root', password='123456',dbname='wang',host='y.biomooc.com',port=7070, DBMsencoding='utf8')
+## 连接linux本地的mysql不需要输入host，默认port=3306。
+
+##关闭数据库
+## dbDisconnect(con) 
+
+
+
+
+(1)查询：dbSendQuery的使用 
+dbSendQuery返回的MySQLResult类型，而dbGetQuery直接返回数据框data.frame
+
+dbSendQuery(con,'SET NAMES utf8') #先执行这一句，防止中文显示乱码
+
+
+#i) 用sql语句查询，获得数据框，直接获得查询结果 
+dbGetQuery(con, "SELECT * FROM fruits limit 3")
+
+
+
+#ii) 用sql语句查询，获得数据框，两步法获取查询结果
+res <- dbSendQuery(con, "SELECT *FROM fruits")#获取前2条数据，n=-1时是获取所有数据  
+data <- dbFetch(res, n=2) #再获取余下几条数据
+data
+data <- dbFetch(res, n=-1) #取余下所有数据
+data
+
+dbClearResult(res)#清除查询结果
+
+#dbDisconnect(con)#断开连接  
+
+
+
+
+#iii) 用R函数，读整个数据表  
+tb=dbReadTable(con,"result")
+tb
+##   name subject score
+## 1 张三    数学    90
+## 2 张三    语文    50
+## 3 张三    地理    40
+## 4 李四    语文    55
+## 5 李四    政治    45
+## 6 王五    政治    30
+
+
+
+
+(2)查看状态
+> summary(con) #获取连接信息
+<MySQLConnection:0,0>
+  User:   root 
+  Host:   y.biomooc.com 
+  Dbname: wang 
+  Connection type: y.biomooc.com via TCP/IP 
+
+Results:
+<MySQLResult:0,0,0>
+  Statement: select * from cell_c1 limit 3; 
+  Has completed? yes 
+  Affected rows: -1 
+  Rows fetched: 3 
+NULL
+
+
+dbGetInfo(con) #获取连接信息
+dbListTables(con) #查看database下所有表格
+
+
+
+
+ii) 防止中文乱码
+mysql> show variables like "char%";
++------------ -------------+------------ ---------------+
+| Variable_name            | Value                      |
++----------- --------------+------------- --------------+
+| character_set_client     | utf8                       |
+| character_set_connection | utf8                       |
+| character_set_database   | latin1                     | #改为utf8写入才能避免R写入中文时乱码
+| character_set_filesystem | binary                     |
+| character_set_results    | utf8                       |
+| character_set_server     | latin1                     |
+| character_set_system     | utf8                       |
+| character_sets_dir       | /usr/share/mysql/charsets/ |
++----------- --------------+---------- -----------------+
+8 rows in set (0.01 sec)
+
+#防止写入中文时乱码
+dbSendQuery(con,'alter database wang character set utf8;') #数据库改为utf8，否则写入会中文乱码
+
+#查询字符集
+query<-dbSendQuery(con,'show variables like "char%";')
+df=fetch(query) #返回值是数据框
+
+
+
+
+
+
+(3)写数据库表: 创建新表，写入 
+#dbWriteTable(conn, "tablename", data) #写表
+
+#写表，把fruits写入水果数据表"fruits"
+fruits <-data.frame(id=1:5,name=c("苹果","香蕉","梨子","玉米","西瓜"),price=c(8.8,4.98,7.8,6,2.1),status=c("无","打折","无","售罄","批发"))  
+dbListTables(con)
+dbWriteTable(con,"fruits",fruits,row.names=F, fileEncoding="utf-8")  #写入中文乱码！编码一致就正常了
+dbListTables(con)
+
+
+#使用sql查询
+query<-dbSendQuery(con,'select * from fruits limit 3;')
+data<-fetch(query)
+
+#追加数据表，是否覆盖
+#new_info <- data.frame(user_id=6:7,user_name=c("小明","小红"),score = c(82,74))
+#dbWriteTable(conn,"student_info ",new_info, append=T,row.names=F) #追加数据
+#dbWriteTable(conn," student_info ",testB,overwrite=T,row.names=F)#覆盖数据
+
+new_info <- data.frame(id=6:7,name=c("水果1","水果2"),price = c(8.2,7.4),status=c("打折","批发"))
+dbWriteTable(con,"fruits",new_info,append=T,row.names=F) #追加数据
+dbWriteTable(con,"fruits",new_info,overwrite=T,row.names=F)#覆盖数据：以前的数据被清空，现在只有这个新增的数据了
+
+
+
+(4)删除表
+dbRemoveTable(con, "fruits")
+
+
+
+(5)其他方法
+summary(con) #连接信息
+
+dbGetInfo(con)
+
+dbListTables(con) #列出所有的表
+
+dbExistsTable(con,'table_name')#是否存在表
+
+dbListResults(con) #列出所有的结果
+
+dbClearResult(res) #清除结果
+
+
+
+
+
+
+附录：
+1. SQL语句语句特点：先全局选择，再局部选择
+Select * from sale where year=2010 and ...
+
+
+2.where后面可以接很多，有比较运算符，算数运算符，逻辑运算符。
+- 比较运算符号：=(等于，不是双引号)；!=（不等于）；>，<，>=，<=
+- 算数运算符：*，/，+，-
+- 逻辑运算符：&&(and,与)， ||（or，或） ，!（,not非）
+
+
+
+
+refer:
+https://blog.csdn.net/sinat_26917383/article/details/51601539
+
+
+
+
+========================================
+|-- R操作sqlite
+----------------------------------------
+1. sqlite的优点就是既有数据库的sql操作灵活性（和mysql很类似），又有文件的存放便捷性(不需要连接数据库等操作)。
+缺点是只适用于小数据集。
+
+(1) 实例1
+# install.packages("RSQLite")
+library(RSQLite)
+
+#连接表，所有结果保存到一个文件中
+db = dbConnect(SQLite(), dbname="~/web/docs/your-db.sqlite")
+
+#之后和mysql操作一样了。
+
+# 创建表
+dbSendQuery(conn=db,
+   "CREATE TABLE SSGB_obs
+   (Date DATETIME,
+   Station TEXT,
+   Snowline TEXT,
+   PRIMARY KEY (Date, Station))
+")
+
+# List tables in your database
+dbListTables(db)
+ 
+# List columns in a table
+dbListFields(db, "SSGB_obs")
+
+
+#导入一批csv文件到db表：雪线的数据
+# List files
+f = list.files("./csv/clean/")
+# Read csvs
+# Format for database
+# Write to database
+for (i in f){
+  x = read.table(paste0("./csv/clean/", i), sep ="|", stringsAsFactors=F)
+  for (j in names(x[-1])){
+    Date = x[-1,1]
+    Station = x[1,j]
+    Snowline = x[-1,j]
+    data = cbind.data.frame(Date,Station,Snowline)
+    dbWriteTable(conn=db, name="SSGB_obs", data, append=T, row.names=F)
+  }
+}
+
+# 读出数据，得到的是数据框
+x = dbGetQuery(db, "
+   SELECT * FROM SSGB_obs
+")
+
+
+
+
+
+
+(2) 实例2
+library(RSQLite)
+sqlite    <- dbDriver("SQLite")
+con <- dbConnect(sqlite,"hg19_bioconductor.sqlite") # makes a new file
+
+#写入数据到db
+suppressMessages(library(org.Hs.eg.db))
+kegg2ID=toTable(org.Hs.egPATH)
+#[1] "gene_id" "path_id"
+dbWriteTable(con,'keggID2geneID',kegg2ID,row.name=F,overwrite=T)
+
+#读出db
+x = dbGetQuery(con, "
+   SELECT * FROM keggID2geneID
+")
+class(x) #[1] "data.frame"
+head(x)
+
+dbDisconnect(con) #关闭连接
+
+# 查文件大小
+system("ls -l hg19_bioconductor.sqlite", show=TRUE)
+# -rw-r--r--. 1 wangjl jinwf 290816 Nov 23 21:19 hg19_bioconductor.sqlite
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+ref:
+一个R语言package：https://cran.r-project.org/web/packages/RSQLite/RSQLite.pdf
+参考：https://scottishsnow.wordpress.com/2014/08/14/writing-to-a-database-r-and-sqlite/
+示例代码：http://faculty.washington.edu/kenrice/sisg-adv/exampleSQLite.R
+
+
+
+
+
+
+
+
+
+
+========================================
+dplyr包与Mysql数据库 //todo
+----------------------------------------
 
 
 
@@ -436,8 +943,19 @@ dev.off()
 ========================================
 |-- pheatmap包画各种热图
 ----------------------------------------
-2.使用pheatmap包画热图： 画列注释、图例自定义颜色和0的位置
 https://www.jianshu.com/p/1c55ea64ff3f
+
+顶部分类条
+添加分类间隔gap
+
+
+
+
+难题
+(1)使用pheatmap包画热图： 画列注释、图例自定义颜色和0的位置
+Q: 在数据不scale时，颜色设为蓝，白，红，图例会显示最小值最大值的范围，有没有办法实现0点为白色，>0为红色，<0为蓝色？
+A: 可以通过breaks和color参数进行设置的
+
 
 #使用raw
 #tmp=br5@raw.data[c(s.genes.2,g2m.genes.2),]
@@ -448,6 +966,7 @@ tmp=tmp[,sort(colnames(tmp))]
 tmp.type=data.frame( Type=substr(colnames(tmp),1,4) );
 rownames(tmp.type) = colnames(tmp)
 head(tmp.type)
+
 ###
 #查看cell cycle基因对细胞分类的效果
 #breaks
@@ -463,6 +982,275 @@ pheatmap(tmp, border=FALSE,
          breaks=bk
          )
 dev.off()
+
+
+
+
+
+
+
+
+1.构建测试数据集
+test = matrix(rnorm(200), 20, 10)
+test[1:10, seq(1, 10, 2)] = test[1:10, seq(1, 10, 2)] + 3
+test[11:20, seq(2, 10, 2)] = test[11:20, seq(2, 10, 2)] + 2
+test[15:20, seq(2, 10, 2)] = test[15:20, seq(2, 10, 2)] + 4
+colnames(test) = paste("Test", 1:10, sep = "")
+rownames(test) = paste("Gene", 1:20, sep = "")
+head(test[,1:6])
+##          Test1      Test2    Test3      Test4    Test5       Test6
+## Gene1 4.064973  0.7535271 3.024070 -2.1294440 4.407945 -0.35677097
+## Gene2 2.360043  1.6974946 3.273425 -2.3341406 3.839523  0.16982944
+## Gene3 3.253465 -0.9011582 1.716257 -0.2294471 4.636610 -0.24520382
+## Gene4 4.070226 -0.6191941 3.734437  1.9348314 4.426825 -0.17730957
+## Gene5 3.821414  0.5584876 1.871479 -0.2784607 2.633761  0.01332901
+## Gene6 3.012469  0.1738285 3.652423 -2.0083435 4.124951 -0.67899611
+
+# 默认绘图
+pheatmap(test)
+
+(2) 归一化
+# scale = "row"参数对行进行归一化
+pheatmap(test, scale = "row")
+
+
+(3) 聚类方式
+# clustering_method参数设定不同聚类方法，默认为"complete",可以设定为'ward', 'ward.D', 'ward.D2', 'single', 'complete', 'average', 'mcquitty', 'median' or 'centroid'
+pheatmap(test,scale = "row", clustering_method = "average")
+
+# clustering_distance_rows = "correlation"参数设定行聚类距离方法为Pearson corralation，默认为欧氏距离"euclidean"
+pheatmap(test, scale = "row", clustering_distance_rows = "correlation")
+
+# cluster_row = FALSE参数设定不对行进行聚类
+pheatmap(test, cluster_row = FALSE)
+
+
+(4) 色彩
+# color参数自定义颜色
+pheatmap(test, color = colorRampPalette(c("navy", "white", "firebrick3"))(50))
+
+
+
+(5) 图例控制
+# legend_breaks参数设定图例显示范围，legend_labels参数添加图例标签
+pheatmap(test, legend_breaks = c(1:5), legend_labels = c("1.0","2.0","3.0","4.0","5.0"))
+
+
+# legend = FALSE参数去掉图例
+pheatmap(test, legend = FALSE)
+
+
+
+(6) 每个最小方格的边框
+# border_color参数设定每个热图格子的边框色
+pheatmap(test, border_color = "red")
+
+# border=FALSE参数去掉边框线
+pheatmap(test, border=FALSE)
+
+
+
+
+
+
+
+
+
+
+2. 顶部添加分类条
+
+# 构建列注释信息
+annotation_col = data.frame(
+  CellType = factor(rep(c("CT1", "CT2"), 5)), 
+  Time = 1:5
+)
+rownames(annotation_col) = paste("Test", 1:10, sep = "")
+head(annotation_col)
+##       CellType Time
+## Test1      CT1    1
+## Test2      CT2    2
+## Test3      CT1    3
+## Test4      CT2    4
+## Test5      CT1    5
+## Test6      CT2    1
+
+
+
+# 构建行注释信息
+annotation_row = data.frame(
+  GeneClass = factor(rep(c("Path1", "Path2", "Path3"), c(10, 4, 6)))
+)
+rownames(annotation_row) = paste("Gene", 1:20, sep = "")
+head(annotation_row)
+##       GeneClass
+## Gene1     Path1
+## Gene2     Path1
+## Gene3     Path1
+## Gene4     Path1
+## Gene5     Path1
+## Gene6     Path1
+
+
+
+# annotation_col参数添加列注释信息
+pheatmap(test, annotation_col = annotation_col)
+
+
+# annotation_legend = FALSE参数去掉注释图例
+pheatmap(test, annotation_col = annotation_col, annotation_legend = FALSE)
+
+(2)
+# annotation_col和annotation_row参数同时添加行和列的注释信息
+pheatmap(test, annotation_row = annotation_row, annotation_col = annotation_col)
+
+
+
+(3)
+# 自定注释信息的颜色列表
+ann_colors = list(
+  Time = c("white", "firebrick"),
+  CellType = c(CT1 = "#1B9E77", CT2 = "#D95F02"),
+  GeneClass = c(Path1 = "#7570B3", Path2 = "#E7298A", Path3 = "#66A61E")
+)
+head(ann_colors)
+## $Time
+## [1] "white"     "firebrick"
+## 
+## $CellType
+##       CT1       CT2 
+## "#1B9E77" "#D95F02" 
+## 
+## $GeneClass
+##     Path1     Path2     Path3 
+## "#7570B3" "#E7298A" "#66A61E"
+
+# annotation_colors设定注释信息的颜色
+pheatmap(test, annotation_col = annotation_col, annotation_colors = ann_colors, main = "Title")
+
+pheatmap(test, annotation_col = annotation_col, annotation_row = annotation_row, 
+         annotation_colors = ann_colors)
+
+pheatmap(test, annotation_col = annotation_col, annotation_colors = ann_colors[2]) 
+
+
+
+
+
+
+
+
+
+
+3. 添加分类间隔gap
+
+(1)
+# gaps_row = c(10, 14)参数在第10和14行处添加gap, 要求对行不进行聚类
+pheatmap(test, annotation_col = annotation_col, cluster_rows = FALSE, gaps_row = c(10, 14))
+
+(2)
+# cutree_col = 2参数将列按聚类树的结果分成两部分, 要求对列进行聚类
+pheatmap(test, annotation_col = annotation_col, cluster_rows = FALSE, gaps_row = c(10, 14),
+         cutree_col = 2)
+
+(3)
+# 对行和列都不聚类，自定义划分行和列的gap
+pheatmap(test, annotation_col = annotation_col, cluster_rows = FALSE, cluster_cols = FALSE, 
+         gaps_row = c(6, 10, 14), gaps_col = c(2, 5, 8))
+#
+
+
+
+
+
+
+4. 外观控制：行名显示、自定义行名、格子里的数字、格子宽度高度、标题
+(1)
+# show_rownames和show_colnames参数设定是否显示行名和列名
+pheatmap(test,show_rownames=F,show_colnames=F)
+
+
+# 自定义行的标签名
+labels_row = c("", "", "", "", "", "", "", "", "", "", "", "", "", "", "", 
+               "", "", "Il10", "Il15", "Il1b")
+# labels_row参数添加行标签
+pheatmap(test, annotation_col = annotation_col, labels_row = labels_row)
+
+
+
+(2) 格子里显示数字
+# display_numbers = TRUE参数设定在每个热图格子中显示相应的数值，number_color参数设置数值字体的颜色
+pheatmap(test, display_numbers = TRUE,number_color = "blue")
+
+
+(3)
+# number_format = "%.1e"参数设定数值的显示格式
+pheatmap(test, display_numbers = TRUE, number_format = "%.1e")
+
+
+
+(4)
+# 自定义数值的显示方式
+pheatmap(test, display_numbers = matrix(ifelse(test < 0.05, "*", ""), nrow(test)))
+
+
+(5)
+# cellwidth和cellheight参数设定每个热图格子的宽度和高度，main参数添加主标题
+pheatmap(test, cellwidth = 15, cellheight = 12, main = "Example heatmap")
+
+
+
+
+
+
+
+5. 设定聚类方式
+(1)
+# 自定义聚类的距离方法
+drows = dist(test, method = "minkowski")
+dcols = dist(t(test), method = "minkowski")
+# clustering_distance_rows和clustering_distance_cols参数设定行和列的聚类距离方法
+pheatmap(test, clustering_distance_rows = drows, clustering_distance_cols = dcols)
+
+
+
+(2)
+# treeheight_row和treeheight_col参数设定行和列聚类树的高度，默认为50
+pheatmap(test, treeheight_row = 30, treeheight_col = 50)
+
+
+
+
+
+
+
+6. 输出
+(1)
+# fontsize参数设定标签字体大小，filename参数设定图片保存名称
+pheatmap(test, cellwidth = 15, cellheight = 12, fontsize = 8, filename = "test.pdf")
+
+
+(2)将热图结果按聚类后的顺序输出
+aa=pheatmap(test,scale="row")  #热图，归一化，并聚类
+
+# 简要查看热图对象的信息
+summary(aa)
+##          Length Class  Mode   
+## tree_row 7      hclust list   
+## tree_col 7      hclust list   
+## kmeans   1      -none- logical
+## gtable   6      gtable list
+
+
+order_row = aa$tree_row$order  #记录热图的行排序
+order_col = aa$tree_col$order    #记录热图的列排序
+datat = data.frame(test[order_row,order_col])   # 按照热图的顺序，重新排原始数据
+datat = data.frame(rownames(datat),datat,check.names =F)  # 将行名加到表格数据中
+colnames(datat)[1] = "geneid" 
+write.table(datat,file="reorder.txt",row.names=FALSE,quote = FALSE,sep='\t')  #输出结果，按照热图中的顺序
+
+
+
+
 
 
 
@@ -642,7 +1430,9 @@ grid.draw(ven1)
 
 
 ========================================
+GenVisR包: 瀑布图/突变图谱 Waterfall Plot
 ----------------------------------------
+https://www.jianshu.com/p/8723aa6c9845
 
 
 ========================================

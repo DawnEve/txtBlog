@@ -1746,6 +1746,7 @@ filtered(被过滤的)
 https://blog.csdn.net/m0_37268841/article/details/80234365
 Filtered（过滤的）：由于报文无法到达指定的端口，nmap不能够决定端口的开放状态，这主要是由于网络或者主机安装了一些防火墙所导致的。当nmap收到icmp报文主机不可达报文（例如：type为3，code为13（communication administratively prohibit）报文）或者目标主机无应答，常常会将目标主机的状态设置为filtered。
 
+那么，我修改端口总可以吧？
 
 
 
@@ -1794,7 +1795,8 @@ tcp        0      1 sustc-HG.lan:54548      10.20.46.143:7070       SYN_SENT
 
 
 (3)
-关闭ubuntu的防火墙 ufw disable 开启防火墙 ufw enable
+关闭ubuntu的防火墙 ufw disable 
+开启防火墙 ufw enable
 https://www.jb51.net/article/138876.htm
 
 $ sudo ufw disable
@@ -1859,6 +1861,115 @@ $ ss -tnl
 (4)
 $ curl -i http://y.biomooc.com:7070
 $ wget http://y.biomooc.com:7070
+
+
+
+
+9. 又不行了，感觉是间歇性的。切换到局域网内部。改端口试试？
+$ sudo docker run -p 7071:3306 -d -it -e MYSQL_ROOT_PASSWORD=123456 -v /home/wangjl/dockerFile:/var/lib/mysql dawneve/mysql
+
+$ docker ps
+CONTAINER ID        IMAGE               COMMAND                  CREATED             STATUS              PORTS                    NAMES
+a1e0c7438e6d        dawneve/mysql       "docker-entrypoint.s…"   3 seconds ago       Up 2 seconds        0.0.0.0:7071->3306/tcp   lucid_shaw
+
+$ mysql -h192.168.2.120 -P7071 -uroot -p
+Enter password: 
+ERROR 2003 (HY000): Can't connect to MySQL server on '192.168.2.120' (111)
+
+还是连不上。
+
+1)看iptables被加了这么一行
+wangjl@sustc-HG:~$ sudo iptables -L
+Chain INPUT (policy ACCEPT)
+target     prot opt source               destination         
+
+Chain FORWARD (policy ACCEPT)
+target     prot opt source               destination         
+
+Chain OUTPUT (policy ACCEPT)
+target     prot opt source               destination         
+
+Chain DOCKER (0 references)
+target     prot opt source               destination         
+ACCEPT     tcp  --  anywhere             172.17.0.2           tcp dpt:mysql
+
+2)能ping通:
+$ ping 172.17.0.2
+PING 172.17.0.2 (172.17.0.2) 56(84) bytes of data.
+64 bytes from 172.17.0.2: icmp_seq=1 ttl=64 time=0.079 ms
+
+
+3)但是就是连不上:
+$ mysql -h 172.17.0.2 -uroot -p
+Enter password: 
+ERROR 2003 (HY000): Can't connect to MySQL server on '172.17.0.2' (111)
+
+$ mysql -h 172.17.0.2 -P3306 -uroot -p
+一样不行。
+
+
+4)
+$ sudo nmap -sS -p 3300-8000 172.17.0.2
+
+Starting Nmap 7.60 ( https://nmap.org ) at 2019-12-27 10:03 CST
+Nmap scan report for 172.17.0.2
+Host is up (0.000064s latency).
+All 4701 scanned ports on 172.17.0.2 are closed
+MAC Address: 02:42:AC:11:00:02 (Unknown)
+
+Nmap done: 1 IP address (1 host up) scanned in 82.19 seconds
+
+
+$ sudo nmap -sS -p 0-3300 172.17.0.2
+
+Starting Nmap 7.60 ( https://nmap.org ) at 2019-12-27 10:09 CST
+Nmap scan report for 172.17.0.2
+Host is up (0.000015s latency).
+All 3301 scanned ports on 172.17.0.2 are closed
+MAC Address: 02:42:AC:11:00:02 (Unknown)
+
+Nmap done: 1 IP address (1 host up) scanned in 3.25 seconds
+这就奇怪了，都ping通了，但是不知道是哪个端口？
+
+
+
+5) 端口还是不通。
+$ telnet 192.168.2.120 8000
+Trying 192.168.2.120...
+Connected to 192.168.2.120.
+Escape character is '^]'.
+^C^C^C^C^C
+Connection closed by foreign host.
+
+$ telnet 192.168.2.120 7071
+Trying 192.168.2.120...
+telnet: Unable to connect to remote host: Connection refused
+
+
+6) 换随机端口呢？
+$ sudo docker run -P -d -it -e MYSQL_ROOT_PASSWORD=123456 -v /home/wangjl/dockerFile:/var/lib/mysql dawneve/mysql
+
+$ docker ps
+CONTAINER ID        IMAGE               COMMAND                  CREATED             STATUS              PORTS                     NAMES
+02ebf4e44db2        dawneve/mysql       "docker-entrypoint.s…"   3 seconds ago       Up 2 seconds        0.0.0.0:32768->3306/tcp   eager_snyder
+
+$ telnet 192.168.2.120 32768
+Trying 192.168.2.120...
+telnet: Unable to connect to remote host: Connection refused
+
+$ mysql -h 192.168.2.120 -P32768 -uroot -p
+通过了！！
+
+再启动7070端口的容器，也正常了。
+麻蛋，问题还是没有解决。这个间歇性bug，又白白耽误我8个小时。
+
+
+
+10. 升级docker试试
+感觉docker内部mysql没问题，就是外部端口映射出的问题。
+
+可能是主机端口耗尽了？怎么查？
+
 
 
 

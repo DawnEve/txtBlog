@@ -28,7 +28,7 @@
 
 
 
-# scan word
+# scan word(5 rows per group)
 刷单词遇到的不会的单词
 每组放5行，每行5-20个难记的单词
 
@@ -58,10 +58,26 @@
 ["conspiracy", "altitude", "distress", "solidarity", "mock", "sniff"]
 ["slack", "cottage", "gymnasium", "plead", "liberate", "certify", "erroneous"]
 ["porcelain", "freight", "withhold", "lodge", "appal", "turbine", "slum", "layoff", "magistrate", "lavatory", "obstruction", "spiral", "overhear", "transcend", "dine", "exquisite"]
+["disgrace", "knob", "huddle", "contrive", "outlet", "stern", "feudal", "flap"]
+
+
+## group 5
+["siren", "locality", "grin", "overtime", "caress", "rejoice", "reciprocal"]
+["crane", "shady", "agony", "vowel", "stoop", "cardinal", "eccentric", "paddle", "ample", "contempt"]
+["aspire", "abound", "inhale", "tow", "versatile", "colonel", "thereby", "nasty", "psychiatry"]
+["spite", "trivial", "grim", "orchestra", "clergy", "minute", "intrigue", "despise", "Catholic", "vulgar", "statute", "divert", "ebb"]
+["authentic", "envisage", "creep", "emigrate", "tub", "endow", "handicap", "desirable", "acquaint", "veteran"]
+
+
+## group 6
+["clasp", "spray", "prestige", "cylinder", "simultaneous", "blush", "enclosure", "linguistic", "feeble", "fragrant", "torment", "lash", "maneuver", "biography"]
+["adore", "tenant", "wrench", "senate", "strenuous", "wink", "trifle", "submerge", "chorus", "heroine"]
 
 
 
-# Error in spelling
+
+
+# Error in spelling(10 tests per section)
 听写错的单词: 熟词写错 /听错的 /生词 
 反复写错，一行10个抄写，死记硬背才能记得牢。
 输入数据库，每天至少一组，按照错误率复习。
@@ -71,7 +87,7 @@
 录入句子: http://ielts.dawneve.cc/dict/addSentence.html
 
 背单词: http://ielts.dawneve.cc/dict/recite.html
-刷单词: http://ielts.dawneve.cc/dict/scanWorld.html
+刷单词: http://ielts.dawneve.cc/dict/scanWord.html
 
 
 
@@ -423,6 +439,51 @@ sediment
 
 
 
+
+
+
+
+
+
+
+
+
+
+## section 3 
+ 
+3.1
+写错的
+auditorium senior sociologist regional 
+luxury challenge curious economically
+
+音节听错
+saving up for college;
+sixth;
+.. is just a real relief off of our shoulders;
+bordering schools have been losing enrollment as well;
+two nearby districts;
+it looks more like a zero-sum game;
+I'm still in shock right now;
+bring people to this rural town;
+
+at plants, like this one;
+resin and glass are applied;
+
+生词
+dwindle populous hull resin aspiring reinvent 
+
+take its cue from ...;
+tick other boxes;
+
+
+
+
+
+
+
+
+
+
 ## 模板
 写错的
 
@@ -516,7 +577,15 @@ Biography must to some extent delineate characters. 在某种程度上，传记�
 
 # 同义词替换
 
+## 名词
 
+### 显示: indicate, 
+
+
+
+## 动词
+
+### 丢掉、舍弃: discard, remove, 
 
 
 

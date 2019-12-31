@@ -44,7 +44,7 @@ return array (
       array('FAQ of TCGA','FAQ_TCGA','txt'),
       array('本地生信软件','localSoft402','txt'),
       array('外显子WES分析','NGS_exon','txt'),
-      array('circos','circos','txt'),
+      array('circos-Cytoscape','circos-Cytoscape','txt'),
     ),
   ),
 
