@@ -309,6 +309,29 @@ http://ielts.biomooc.com/en/contents.html
 
 
 ========================================
+|-- 将微信结果保存到数据库 //todo
+----------------------------------------
+
+1.数据表设计
+
+CREATE TABLE `msg_English` (
+  `msg_id` int(4) not null primary key auto_increment,
+  `msg_url` varchar(300), #url
+	
+  `msg_origin` char(100) NOT NULL DEFAULT '', #来源
+  `msg_date` char(50) NOT NULL DEFAULT '', #日期
+  `msg_size` int(10) NOT NULL DEFAULT 0, #字数
+
+  `msg_title` char(100) NOT NULL DEFAULT '', 
+  `msg_desc` char(150) NOT NULL DEFAULT '',
+  `msg_content` text #PRIMARY KEY (`msg_origin`,`msg_date`)
+) ENGINE=MyISAM DEFAULT CHARSET=utf8 COLLATE=utf8_bin COMMENT='微信英文文章表';
+
+
+
+
+
+========================================
 将网址用js编码成ascii传递，在server端再还原成url
 ----------------------------------------
 ########################
@@ -509,13 +532,32 @@ string(86) "https://ichef.bbc.co.uk/wwhp/144/cpsprodpb/17206/production/_1079627
 
 
 ========================================
+测试词汇量的网站
+----------------------------------------
+http://testyourvocab.com/
+
+
+
+
+========================================
 如何记忆单词？做一个艾宾浩斯记忆曲线背单词工具 //todo
 ----------------------------------------
-这个效果和配色挺好的：
+1.这个效果和配色挺好的：
 http://dict.bioon.com/word/8000.asp?c=81&t=1
 
 我做的版本：引用了百度翻译
 http://ielts.biomooc.com/wordKing/
+
+
+
+
+第一个复习周期：2天
+第二个复习周期：4天
+第三个复习周期：7天
+第四个复习周期：20天
+
+举个例子：假设今天新建的单词表为「List_20」,也就是说这份单词表要在建立日期后的第2天，第4天，第7天和第20天复习。
+
 
 
 
@@ -722,11 +764,540 @@ i {
 
 
 ========================================
+|-- 爬虫抓取必应词典条目，插入数据库
 ----------------------------------------
+http://y.biomooc.com:7000/notebooks/web/getWords.ipynb
+
+
+1.爬虫抓取单词数据(音标、意思)，到本地文件
+import re
+import requests
+import random,time
+
+################
+# part1 给出单词，获取单词，并写下单词、音标、意思到文本文件
+################
+def scrawWord(word):
+    response=requests.get('https://cn.bing.com/dict/SerpHoverTrans?q='+word)
+    #print(response.status_code)# 响应的状态码 200
+    #print(response.content)  #返回字节信息
+    #response.text  #返回文本内容
+    
+    #正则解析内容
+    #音标
+    phoneticSymbol=re.findall(r'lang="en">(.*?)</span>',response.text,re.S)  #re.S 把文本信息转换成1行匹配
+    if len(phoneticSymbol)<1:
+        phoneticSymbol=''
+    else:
+        phoneticSymbol=phoneticSymbol[0]
+    #print(phoneticSymbol[0])
+
+    #意思
+    meaningArr=re.findall(r'<ul>(.*?)</ul>',response.text,re.S)  #re.S 把文本信息转换成1行匹配
+    meaning='<ul>'+'</ul><ul>'.join(meaningArr) +'</ul>';
+    #print( meaning )
+    
+    #拼接起来
+    arr=[word, phoneticSymbol.strip(), meaning]
+    wordStr='\t\t'.join(arr)
+    
+    #写入文件; 单词、音标，意思
+    fw=open('word_ms2.txt','a')
+    fw.write(wordStr+'\n')
+    fw.close()
+#test
+#word="profound"
+#scrawWord(word)
+
+
+################
+# part2 读取单词列表(cet6大概5k多个单词)，逐个进行
+################
+def now():
+    return time.strftime("%Y-%m-%d %H:%M:%S", time.localtime()) #'2018-09-27 21:15:01'
+#
+
+print('task begins:',now())
+fr2=open('/home/wangjl/web/docs/docs/words.js')
+lines=fr2.readlines();
+i=0
+for i in range(len(lines)):
+    lineR=lines[i]
+    if i>20:
+        #break;
+        pass
+    word=lineR.strip().strip(',').strip("'")
+    scrawWord(word)
+    #休眠，等待随机时间后执行函数
+    rt=0.5+3*random.random() #0-1之间
+    time.sleep(rt)
+    #进度条
+    if i%100==0:
+        print(i, '|'+word+"|", now(),rt)
+
+fr2.close()
+print('==end==')
+
+
+
+
+
+
+2. 插入数据库
+(1)创建数据库
+drop table if exists word_ms; 
+CREATE TABLE `word_ms` (
+  `id` int(10) NOT NULL AUTO_INCREMENT,
+  `word` varchar(50) DEFAULT NULL,
+  `phoneticSymbol` varchar(100) DEFAULT NULL,
+  `meaning` text,
+  `modi_time` varchar(30) DEFAULT NULL,
+  `add_time` varchar(30) DEFAULT NULL,
+  PRIMARY KEY (`id`),
+  #Unique KEY `word` (`word`)
+  KEY `word` (`word`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8;
+
+
+mysql> desc word_ms;
++----------------+--------------+------+-----+---------+----------------+
+| Field          | Type         | Null | Key | Default | Extra          |
++----------------+--------------+------+-----+---------+----------------+
+| id             | int(10)      | NO   | PRI | NULL    | auto_increment |
+| word           | varchar(50)  | YES  | UNI | NULL    |                |
+| phoneticSymbol | varchar(100) | YES  |     | NULL    |                |
+| meaning        | text         | YES  |     | NULL    |                |
+| modi_time      | varchar(30)  | YES  |     | NULL    |                |
+| add_time       | varchar(30)  | YES  |     | NULL    |                |
++----------------+--------------+------+-----+---------+----------------+
+6 rows in set (0.00 sec)
+
+
+
+
+
+
+(2)使用py插入数据
+#local_time=time.localtime(add_time) #这种格式太长了，没啥用
+##time.struct_time(tm_year=2019, tm_mon=10, tm_mday=26, tm_hour=18, tm_min=21, tm_sec=2, tm_wday=5, tm_yday=299, tm_isdst=0) 
+#human_time=time.strftime("%Y-%m-%d %H:%M:%S", local_time) #2019-10-26 18:21:02 显示格式
+#print(add_time, local_time, human_time)
+
+
+################
+# part3 插入数据库
+################
+import re
+
+#创建数据库 略
+
+#链接数据库
+import pymysql
+# 打开数据库连接
+db = pymysql.connect(host='y.biomooc.com',port=7070,user='root', password='123456', database='wang')
+# 使用cursor()方法获取操作游标 
+cursor = db.cursor()
+
+print('==begin==')
+#读取数据，拼接sql语句
+fr=open('word_ms2.txt','r')
+lines=fr.readlines();
+for i in range(len(lines)):
+    line=lines[i].strip()
+    if i>20:
+        #break;
+        pass
+    arr=re.split('\t\t',line)
+    
+    # SQL 语句
+    add_time=int(time.time()) #1572085262 数据库保存这种格式
+    #mysql 转义 content = db.escape_string(content)
+    sql="insert into word_ms(word,phoneticSymbol,meaning,add_time) values('%s','%s','%s',%d)" %  \
+    (arr[0],db.escape_string(arr[1]),db.escape_string(arr[2]), add_time)
+    #print(sql+'\n')
+    # 执行sql语句
+    rs=cursor.execute(sql)
+    if i%1000==0:
+        print(i,arr[0],rs)
+        pass
+
+#关闭文件
+fr.close()
+
+# 关闭数据库连接
+db.commit();
+cursor.close()
+db.close()
+
+print('==end==')
+
+
+
+缺点：对于大小写，mysql没有区分，貌似需要调节编码方式。
+May和may是不同的，但是目前无差别，甚至被认为是重复。
+//todo
+
+
+
+
+
+(3)web访问
+<script type="text/javascript">
+$(document).ready(function(){
+  $("#btn1").click(function(){
+      var word=$('#word').val()
+      $.get('http://127.0.0.1:5000/api/dict/'+word, function(res){
+        console.log(res)
+        $('#show').html( res.word +'<br>'+ res.phoneticSymbol +'<br>'+res.meaning);
+      })
+  });
+</script>
+
+web后台接口
+#字典查询后台接口
+@app.route('/api/dict/<word>', methods=['GET'])
+def getword(word):
+    #链接数据库
+    import pymysql
+    # 打开数据库连接
+    db = pymysql.connect(host='y.biomooc.com',port=7070,user='root', password='123456', database='wang',charset='utf8')
+    # 使用cursor()方法获取操作游标 
+    cursor = db.cursor()
+    #sql语句
+    sql='select * from word_ms where word="'+word+'";'
+    # 执行sql语句
+    cursor.execute(sql)
+    results = cursor.fetchall()
+    # 关闭数据库连接
+    cursor.close()
+    db.close()
+
+    result=results[0]
+    print(word, result)
+
+    #准备返回值
+    response = jsonify({
+        'word': result[1], 
+        'phoneticSymbol':result[2], 
+        'meaning':result[3]
+    })
+    #允许跨域访问
+    response.headers.add('Access-Control-Allow-Origin', '*')
+    return response
+#
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 ========================================
+|-- 添加牛津3000-5000单词标签
 ----------------------------------------
+1.来源：
+(1)
+下载： https://www.oxfordlearnersdictionaries.com/wordlists/oxford3000-5000
+
+
+(2)
+解释：https://www.oxfordlearnersdictionaries.com/about/wordlists/oxford3000-5000
+
+1)What is the Oxford 3000?
+The Oxford 3000 is a list of the 3,000 core words that every learner of English needs to know.
+
+The words have been chosen based on their frequency in the Oxford English Corpus and relevance to learners of English. Every word is aligned to the CEFR, guiding learners on the words they should know at A1-B2 level.
+
+
+2)
+What is the Oxford 5000?
+The Oxford 5000 is an expanded core word list for advanced learners of English.
+
+As well as the Oxford 3000 core word list, it includes an additional 2,000 words that are aligned to the CEFR, guiding advanced learners at B2-C1 level on the most useful high-level words to learn to expand their vocabulary.
+
+
+3)
+CEFR stands for the ‘Common European Framework of Reference’ for languages, which is a description of the language abilities of students at different levels of learning. The CEFR can be used to compare standards in language learning and create teaching programmes.
+
+It grades language skills at six levels:
+
+A1 and A2 indicate elementary and pre-intermediate levels of ability.
+B1and B2 indicate lower- and upper-intermediate levels.
+C1 indicates advanced level.
+C2 indicates complete proficiency in the language.
+
+
+
+(3) OX没有C2词汇
+https://tracktest.eu/english-levels-cefr/
+
+https://www.examenglish.com/CEFR/cefr.php
+https://www.examenglish.com/CEFR/C2.htm
+
+
+
+
+
+2.代码
+## add tag to db
+#step1 check if the word in DB
+import re,time,os
+import requests
+
+#需要跑很多遍，run=1,测试单词是否在db,需要至少跑两次；
+#run=2 测试单词是否完全相同，如有不同的，则修改
+#run=3 添加标签到db
+run=3
+
+fpath='/home/wangjl/web/docs/word/ox3000.txt'
+#fpath='/home/wangjl/web/docs/word/ox5000.txt'
+fr=open(fpath,'r')
+i=0
+mydb=DBUtil()
+for lineR in fr.readlines():
+    i+=1;
+    if i>10:
+        #break;
+        pass
+    line=lineR.strip();
+    arr=re.split('\s',line)
+    word=arr[0]
+    tag=arr[-1]
+    #print(line, '|',word, tag)
+    #查询是否有？
+    sql='select * from word_ms where word="'+word+'";';
+    rs=mydb.query(sql)
+    if len(rs)!=1:
+        url="http://10.21.127.192:20180/api/dict/"+word;
+        if run==1:
+            res=os.system("wget "+url)
+            time.sleep(0.5)
+        print('==============>',i,word, '|', len(rs),res )
+    else:
+        if run<2:
+            continue;
+        #有这个单词，且只有一个
+        word2=rs[0];
+        wid=int(word2[0])
+        if word2[1]!=word:
+            print('==Not equal===>',wid, word2[1],'|',word,tag)
+        
+        #
+        if run<3:
+            continue;
+        sql='update word_ms set tag_ox="%s" where id=%d;' %(tag,wid);
+        rs=mydb.execute(sql)
+        # 进度条
+        if i%100==0:
+            print(wid, word2[1],'|',word,tag,'|', rs)
+fr.close();
+print('end')
+
+
+
+
+========================================
+|-- 雅思单词表，及标签
+----------------------------------------
+1.
+雅思word list:
+https://github.com/woshichuanqilz/others/blob/master/WindowsConfig/IELTS
+
+
+添加新列，雅思词汇 tag_ielts: 第一批3000个标签为1, 默认是0；
+alter table word_ms add tag_ielts int(3) DEFAULT 0 comment '雅思词汇' after tag_ox;
+## ALTER TABLE word_ms DROP tag_ielts;
+
+
+
+
+
+2.代码（依赖python 自定义mysql类）
+## add tag to db
+#step1 check if the word in DB
+import re,time,os
+import requests
+
+#run=0 测试单词是否在db，没有则打印出来
+#需要跑很多遍，run=1,测试单词是否在db,如果没有，则添加到db，需要至少跑两次；
+
+#run=2 测试单词是否完全相同，如有不同的，则手动修改
+#run=3 添加标签到db
+run=3
+
+#fpath='/home/wangjl/web/docs/word/ox3000.txt'
+#fpath='/home/wangjl/web/docs/word/ox5000.txt'
+#fpath='/home/wangjl/web/docs/word/freq2000.txt'
+fpath='/home/wangjl/web/docs/word/ielts.txt'
+
+fr=open(fpath,'r')
+i=0
+mydb=DBUtil()
+for lineR in fr.readlines():
+    i+=1;
+    if i>100:
+        #break;
+        pass
+    line=lineR.strip();#空白行跳过
+    if len(line)==0:
+        continue;
+    
+    arr=re.split('\s',line)
+    word=arr[0]; word=word.strip('*');
+    tag=arr[-1]
+    #print(line, '|',word, tag)
+    #查询是否有？
+    sql='select * from word_ms where word="'+word+'";';
+    rs=mydb.query(sql)
+    #print(word, len(rs) )
+    if len(rs)!=1:
+        if run==0: 
+            if  len(rs)==0:#打印出不在数据库的单词
+                print('===0收录===>',word, len(rs) )
+
+            if len(rs) >0:#对于多个词条，跳过
+                print('==多个词条==>',word, len(rs) )
+            continue; 
+        url="http://10.21.127.192:20180/api/dict/"+word;
+        
+        if run==1:
+            res=os.system("wget "+url)
+            time.sleep(0.5)
+            print('======插入DB========>',i,word, '|', len(rs),res )
+    else:
+        if run<2:
+            continue;
+        #有这个单词，且只有一个
+        word2=rs[0];
+        wid=int(word2[0])
+        if word2[1]!=word and run==2:
+            print('==Not equal===>',wid, word2[1],'|',word,tag)
+        
+        #
+        tag='1'
+        if run<3:
+            continue;
+        sql='update word_ms set tag_ielts="%s" where id=%d;' %(tag,wid);
+        rs=mydb.execute(sql)
+        # 进度条
+        if i%100==0:
+            print(wid, word2[1],'|',word,tag,'|', rs)
+fr.close();
+print('==end==; run=',run, '; i=',i)
+
+
+
+
+3.统计个数
+mysql> select count(*) from word_ms where tag_ielts=1;
+## 3593
+
+
+
+
+
+========================================
+dawn语料库：最新已经有web版
+----------------------------------------
+1.数据库设计
+dawn语料库，以行为单位保存(一行可能包含很多句子)
+CREATE TABLE `sentence_dawn` (
+  `id` int(10) NOT NULL AUTO_INCREMENT,
+  `line` text,
+  `source` varchar(50) DEFAULT NULL,
+  `add_time` varchar(30) DEFAULT NULL,
+  PRIMARY KEY (`id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8;
+
+
+
+2.给出文本，插入到数据库
+#task: 给出一个文本，按照行插入数据库中。
+#过滤掉：空行，you焊丝的行，重复的行，一行有且仅有一个句子且少于5个单词的
+#v0.2 调整过滤
+import re,time
+def insertParaToDB(fname, source):
+    mydb=DBUtil() #我的自定义mysql类，在python/入门中有
+    #fname="/home/wangjl/web/docs/docs/NCE4.txt"
+    #source='NCE4'
+    
+    add_time=int(time.time()) #插入时间
+    fr=open(fname,'r',encoding='utf8')
+    i=0
+    j=0
+    for lineR in fr.readlines():
+        i+=1
+        if i>100:
+            #break
+            pass
+        line=lineR.strip()
+        arr=re.split('[.?!]+',line)
+        marker='OK'
+
+        #过滤空行
+        if len(line)==0:
+            continue;
+        #过滤带汉字的行
+        if re.search(r'[\u4e00-\u9fa5\|]+',line)!=None:
+            marker='No_汉字';
+            continue;
+        #过滤重复的行
+        if re.search('Listen to the tape then answer the question below',line)!=None:
+            marker='No_重复';
+            continue;
+        if re.search('https{0,1}://www',line)!=None or re.search('doi: ',line)!=None:
+            marker='No_URL'
+            continue;
+        
+        if len(arr)==1 and len(re.split('\s+',arr[0]) )<5:
+                marker='No_仅有一句，且这一句不到5个单词'
+                continue
+
+        #整句的保存到数据库中
+        j+=1
+        rs=''
+        sql="insert into sentence_dawn(line,source,add_time) values('%s','%s',%d);" % ( mydb.db().escape_string(line), source,add_time)
+        rs=mydb.execute(sql)
+        #print(j,line)
+        #抽样检查
+        if j%10==0:
+            print('='*20,j,i,marker, len(arr),' | ',line)
+            pass
+
+    fr.close()
+    print('==end== 实际插入行数 j=',j, '; 总行数 i=',i)
+    
+
+#test
+fname="/home/wangjl/web/docs/txt/a1.txt"
+source='Nature'
+insertParaToDB(fname, source)
+
+#test
+fname="/home/wangjl/web/docs/docs/NCE4.txt"
+source='NCE4'
+insertParaToDB(fname, source)
+
+
+
+3. 查询
+
+统计
+select * from sentence_dawn order by add_time DESC, id DESC limit 5;
+select count(*) from sentence_dawn;
+
+按照单词查找
+select * from sentence_dawn where line like "%risk%" order by add_time DESC, id DESC limit 5;
+
+添加了web页面，用于添加语料库。
 
 
 ========================================

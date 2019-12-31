@@ -25,8 +25,18 @@ return array (
     0 => 3,
     1 => 'scRNAseq包',
     2 => array (
-      array('scSeq-sc3包','scSeq-sc3','txt'),
-      array('scSeq-Seurat包','scSeq-Seurat','txt'),
+      array('Seurat包','Seurat','txt'),
+      array('sc3包等','sc3','txt'),
+    ),
+  ),
+   
+  array (
+    0 => 3,
+    1 => '相关分析',
+    2 => array (
+      array('wgcna包','wgcna_note','txt'),
+      array('科研故事','story','txt'),
+
     ),
   ),
   

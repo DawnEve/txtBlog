@@ -301,7 +301,30 @@ echo $a->getAge();
 ========================================
 php文件操作
 ----------------------------------------
-1.php获取获取当前文件夹
+1.文件读写
+(1)
+//把查的词写入文件，一个单词一行
+$word="good";
+$wordfile_handler = fopen("backup/wordSearched.txt", "a");
+fwrite($wordfile_handler, $word."\n");
+fclose($wordfile_handler);
+
+
+//读出文件
+
+
+
+
+(2) 每天一个文件
+$date = date("Ymd");
+$file_name = '/tmp/'.$date.'.txt';
+
+
+
+
+
+2.文件夹操作
+(1)php获取获取当前文件夹
 //获取当前绝对路径
 define('ROOT_PATH',dirname( __FILE__ ));
 echo ROOT_PATH;
@@ -315,7 +338,7 @@ defined('DAWN_PATH') or define('DAWN_PATH', dirname(__file__) .'/' );
 
 
 
-2.php获取文件创建时间、修改时间
+(2).php获取文件创建时间、修改时间
 filemtime ( string filename )
 返回文件上次被修改的时间，出错时返回 FALSE。时间以 Unix 时间戳的方式返回，可用于 date()。
 例如：$a=filemtime("log.txt");
@@ -381,6 +404,75 @@ The template (templates/list.php) can now be simplified to "extend" the layout:
 
 
 
+4. 获取某文件夹中的文件列表，按照最后修改时间顺序排列
+<?php 
+//使用PHP5面向对象的写法,获取文件名列表，按照时间倒序排列
+//https://www.cnblogs.com/hltswd/p/6279824.html
+function getFileList($directory){
+	$files = array();
+	try {
+		$dir = new DirectoryIterator($directory);
+
+	} catch (Exception $e) {
+		throw new Exception($directory . ' is not readable');
+	}
+	foreach($dir as $file) {
+		if($file->isDot()) continue;
+		//print_r($file);
+		$files[$file->getFileName()]=$file->getCTime();
+	}
+	//
+	arsort($files);
+	return $files;
+}
+
+$files1=getFileList('./');
+$files2=array_keys( $files1 );
+print('<pre>');
+print_r( $files1 );
+print_r( $files2 );
+
+
+##
+Array
+(
+    [dustbin] => 1571393732
+    [test.php] => 1571393567
+    [efforts-underway-to-help-rohingya-weather-next-monsoon-season.mp3] => 1571382882
+)
+Array
+(
+    [0] => dustbin
+    [1] => test.php
+    [2] => efforts-underway-to-help-rohingya-weather-next-monsoon-season.mp3
+)
+
+
+
+
+
+
+========================================
+php文件夹操作(目录)
+----------------------------------------
+1. php 文件夹是否存在,不存在就创建
+
+$lujing = "./nihao/wohao";
+if(!is_dir($liujing)){
+    mkdir(iconv("UTF-8", "GBK", $lujing),0777,true);
+}    
+
+
+(2)
+// 直接这样即可：
+$dir = './test/test';
+is_dir($dir) OR mkdir($dir, 0777, true);   // 如果文件夹不存在，将以递归方式创建该文件夹
+
+
+
+
+
+
 
 ========================================
 php数组 - 关联数组是php的精华
@@ -401,6 +493,14 @@ array_key_exists语法如下
 如果键存在返回true isset函数语法如下
 	isset($array[$key])
 
+
+
+========================================
+|-- 一维数组的遍历; 读取中文文件名乱码怎么办？ iconv("GBK", "UTF-8", $fileName);
+----------------------------------------
+for($i=0; $i<count($files);$i++){
+	$files[$i] = iconv("GBK", "UTF-8", $files[$i]);
+}
 
 
 ========================================
@@ -1045,15 +1145,123 @@ php 访问mysql //todo
 
 
 ========================================
+php 改写HTTP header头信息，允许跨域访问其静态文件
 ----------------------------------------
+1.想用php搭建一个静态文件服务器，允许其他网站跨站调用静态文件，怎么做呢？
+需要用php添加允许跨域访问:
+header("Access-Control-Allow-Origin: *"); 
+
+
+
+
+2.static.php
+<?php
+/** 如果有list，则看文件，否则返回文件
+*/
+
+//接收参数
+$file_dir='./';
+if(isset($_GET['dir'])){
+	$file_dir=$_GET['dir'];
+}
+
+
+//使用PHP5面向对象的写法,获取文件名列表
+function getFileList($directory) {
+	$files = array();
+	try {
+		$dir = new DirectoryIterator($directory);
+	} catch (Exception $e) {
+		throw new Exception($directory . ' is not readable');
+	}
+	foreach($dir as $file) {
+		if($file->isDot()) continue;
+		$files[] = $file->getFileName();
+	}
+	return $files;
+}
+
+
+//如果指定文件夹内文件list，则默认查找并返回json文件
+// xx.com/static.php?list=1
+if(isset($_GET['list'])){
+	echo json_encode(getFileList($file_dir));
+	die();
+}
+
+
+
+header('Server: suctom-server',true);
+//header('HTTP/1.1 200 OK');
+header('Server: WJL_audio_server/0.4');
+header('Email: jimmymall@163.com');
+//header('Content-Type:text/html;charset=UTF-8');//html文件类型,UTF-8类型
+header("Access-Control-Allow-Origin: *");
+
+
+// 返回静态文件内容 xx.com/static.php?file=xx.mp3
+if(isset($_GET['file'])){
+	$file_name=$_GET['file'];
+}else{
+	die('file must be specified!');
+}
+
+//检查文件是否存在
+if (! file_exists ( $file_dir . $file_name )) {   
+    header('HTTP/1.1 404 NOT FOUND'); 
+} else {
+    //以只读和二进制模式打开文件  
+    $file = fopen ( $file_dir . $file_name, "rb" );
+     
+    //告诉浏览器这是一个文件流格式的文件   
+    //Header ( "Content-type: application/octet-stream" );
+    //请求范围的度量单位 
+    Header ( "Accept-Ranges: bytes" ); 
+    //Content-Length是指定包含于请求或响应中数据的字节长度   
+    Header ( "Accept-Length: " . filesize ( $file_dir . $file_name ) ); 
+    //用来告诉浏览器，文件是可以当做附件被下载，下载后的文件名称为$file_name该变量的值。
+    Header ( "Content-Disposition: attachment; filename=" . $file_name );   
+ 
+    //读取文件内容并直接输出到浏览器   
+    echo fread ( $file, filesize( $file_dir . $file_name ) );   
+    fclose ( $file );
+    exit ();
+}
+
+
+
+
 
 ========================================
+PHP实现http与https转化 //未验证
 ----------------------------------------
+最近在写PHP程序时，需要使浏览器在https和http之间转化，上网搜索相关信息，无奈只有最近在写PHP程序时，需要使浏览器在https和http之间转化，上网搜索相关信息，无奈只有一篇介绍用ASP实现“在http和https之间转化”的文章，于是只好行写了用PHP实现http与https转化的代码。
+
+如果网页使用https访问，在网页开头加入以下代码：
+<?php  
+//http转化为https   
+if ($_SERVER["HTTPS"]<>"on")  
+{  
+$xredir="https://".$_SERVER["SERVER_NAME"].  
+$_SERVER["REQUEST_URI"];  
+header("Location: ".$xredir);  
+}   
+?>
+
+
+如果网页使用http访问，在网页开头加入以下代码：
+<?php  
+//https转化为http   
+if ($_SERVER["HTTPS"]=="on")  
+{  
+$xredir="http://".$_SERVER["SERVER_NAME"].  
+$_SERVER["REQUEST_URI"];  
+header("Location: ".$xredir);  
+}   
+?>
 
 
 
-========================================
-----------------------------------------
 
 ========================================
 ----------------------------------------

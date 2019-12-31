@@ -7,7 +7,7 @@ return array (
     2 => array (
       array('项目描述','R001','html',),
       array('参考资料','R002','html'),
-      array('FAQ-杂项','R003-grocer','txt'),
+      array('R杂项(准备和调试)','R003-grocer','txt'),
     ),
   ),
 
@@ -21,7 +21,8 @@ return array (
       array('R进阶-统计学','R03-statistics','txt'),
       array('R进阶-OOP面向对象','R04-OOP','txt'),
       array('R基础-机器学习','R05-MachineLearning','txt'),
-      array('R基础-可视化','R06-visualization','txt'),
+      array('R基础-原生可视化','R06-visualization','txt'),
+      array('apply家族函数','R07-apply','md'),
 
       array('bioconductor基础','bioconductor01','txt'),
     ),
