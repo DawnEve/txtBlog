@@ -72,7 +72,7 @@
 ## group 6
 ["clasp", "spray", "prestige", "cylinder", "simultaneous", "blush", "enclosure", "linguistic", "feeble", "fragrant", "torment", "lash", "maneuver", "biography"]
 ["adore", "tenant", "wrench", "senate", "strenuous", "wink", "trifle", "submerge", "chorus", "heroine"]
-
+["glitter", "liable", "coalition", "harassment"]
 
 
 
