@@ -7,7 +7,7 @@ return array (
     2 => array (
       array('项目描述','scSeq001','html',),
       array('参考资料','scSeq002','html'),
-      //array('FAQ','scSeq003','html'),
+      array('FAQ 及思路','scSeq003','md'),
     ),
   ),
 

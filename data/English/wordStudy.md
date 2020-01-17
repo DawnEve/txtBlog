@@ -73,6 +73,15 @@
 ["clasp", "spray", "prestige", "cylinder", "simultaneous", "blush", "enclosure", "linguistic", "feeble", "fragrant", "torment", "lash", "maneuver", "biography"]
 ["adore", "tenant", "wrench", "senate", "strenuous", "wink", "trifle", "submerge", "chorus", "heroine"]
 ["glitter", "liable", "coalition", "harassment"]
+["appraisal", "mischief", "pat", "orchard", "pneumonia", "liner", "breach", "moss", "interim"]
+["illiterate", "saddle", "persecute", "hostile", "deceit", "apparatus", "avert", "petroleum", "strife", "plaster", "ascertain", "integral", "tumble", "conscientious", "encyclopedia"]
+
+
+## group 7
+
+
+
+
 
 
 

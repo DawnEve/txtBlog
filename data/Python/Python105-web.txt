@@ -902,6 +902,180 @@ def yourMethod(params):
 
 
 ========================================
+flask-SQLAlchemy 及 flask 常见模型类: 模型这个术语表示程序使用的持久化实体
+----------------------------------------
+
+flask-sqlalchemy 致力于简化在 Flask 中 SQLAlchemy 的使用，提供了有用的默认值和额外的助手来更简单地完成常见任务。
+
+
+
+1. flask中的模型
+
+## example1
+from flask import Flask
+from flask_sqlalchemy import SQLAlchemy
+
+app = Flask(__name__)
+app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///./test.db'
+db = SQLAlchemy(app)
+
+class User(db.Model):
+    id = db.Column(db.Integer,primary_key=True)
+    username = db.Column(db.String(80),unique = True)
+    email = db.Column(db.String(120),unique=True)
+
+    def __init__(self,username,email):
+        self.username = username
+        self.email = email
+
+    def __repr__(self):
+        return '<User %r>' % self.username
+
+ db.create_all()
+#
+# 解释：
+(1) 模型需要继承自db.Model,然后需要映射到表中的属性,必须写成db.Column的数据类型
+(2)
+db.Integer代表整型
+db.String代表varchar
+db.Text 代表text
+
+(3)
+其他参数
+primary_key 代表将这个字段设置为主键
+autoincrement 代表这个主键为自增长的
+nullable 代表这个字段是否为空,默认可以为空
+
+最后用db.creat_all() 将模型真正创建到数据库中
+
+admin = User('admin','admin@example.com')
+guest = User('guest','guest@example.com')
+
+db.session.add(admin)
+db.session.add(guest)
+db.session.commit()
+
+ref: 
+https://blog.csdn.net/Co_zy/article/details/77905568
+
+
+
+
+
+
+
+
+
+
+2.
+(1)一对多
+class Role(db.Model):
+    """角色表"""
+    __tablename__ = 'roles'
+
+    id = db.Column(db.Integer, primary_key=True)
+    name = db.Column(db.String(64), unique=True)
+    users = db.relationship('User', backref='role', lazy='dynamic')
+
+class User(db.Model):
+    """用户表"""
+    __tablename__ = 'users'
+    id = db.Column(db.Integer, primary_key=True)
+    name = db.Column(db.String(64), unique=True, index=True)
+
+
+(2)多对多
+tb_student_course = db.Table('tb_student_course',
+                             db.Column('student_id', db.Integer, db.ForeignKey('students.id')),
+                             db.Column('course_id', db.Integer, db.ForeignKey('courses.id'))
+                             )
+
+class Student(db.Model):
+    __tablename__ = "students"
+    id = db.Column(db.Integer, primary_key=True)
+    name = db.Column(db.String(64), unique=True)
+
+    courses = db.relationship('Course', secondary=tb_student_course,
+                              backref=db.backref('students', lazy='dynamic'),
+                              lazy='dynamic')
+
+class Course(db.Model):
+    __tablename__ = "courses"
+    id = db.Column(db.Integer, primary_key=True)
+    name = db.Column(db.String(64), unique=True)
+
+
+(3)自关联 一对多
+class Comment(db.Model):
+    """评论"""
+    __tablename__ = "comments"
+
+    id = db.Column(db.Integer, primary_key=True)
+    # 评论内容
+    content = db.Column(db.Text, nullable=False)
+    # 父评论id
+    parent_id = db.Column(db.Integer, db.ForeignKey("comments.id"))
+    # 父评论(也是评论模型)
+    parent = db.relationship("Comment", remote_side=[id],
+                             backref=db.backref('childs', lazy='dynamic'))
+
+# 测试代码
+if __name__ == '__main__':
+    db.drop_all()
+    db.create_all()
+
+    com1 = Comment(content='我是主评论1')
+    com2 = Comment(content='我是主评论2')
+    com11 = Comment(content='我是回复主评论1的子评论1')
+    com11.parent = com1
+    com12 = Comment(content='我是回复主评论1的子评论2')
+    com12.parent = com1
+
+    db.session.add_all([com1, com2, com11, com12])
+    db.session.commit()
+    app.run(debug=True)
+
+
+(4)自关联多对多
+tb_user_follows = db.Table(
+    "tb_user_follows",
+    db.Column('follower_id', db.Integer, db.ForeignKey('info_user.id'), primary_key=True),  # 粉丝id
+    db.Column('followed_id', db.Integer, db.ForeignKey('info_user.id'), primary_key=True)  # 被关注人的id
+)
+
+class User(db.Model):
+    """用户表"""
+    __tablename__ = "info_user"
+
+    id = db.Column(db.Integer, primary_key=True)  
+    name = db.Column(db.String(32), unique=True, nullable=False)
+
+    # 用户所有的粉丝，添加了反向引用followed，代表用户都关注了哪些人
+    followers = db.relationship('User',
+                                secondary=tb_user_follows,
+                                primaryjoin=id == tb_user_follows.c.followed_id,
+                                secondaryjoin=id == tb_user_follows.c.follower_id,
+                                backref=db.backref('followed', lazy='dynamic'),
+                                lazy='dynamic')
+##
+
+
+
+
+
+
+
+ref:
+https://blog.csdn.net/fanlei5458/article/details/80464633
+
+Flask从入门到精通之模型定义: https://www.cnblogs.com/senlinyang/p/8378632.html
+	https://www.jianshu.com/p/19eb89b1d6b3
+
+模型关系 https://www.cnblogs.com/senlinyang/p/8379436.html
+
+
+
+========================================
 flask 安全：cookie, session 和用户登录、退出
 ----------------------------------------
 1.理论基础
@@ -1090,7 +1264,8 @@ def get():
     book=request.cookies.get('book','no book')
 
     return jsonify({
-        'session':[username,session['psw'] ], 
+        'session':[username,session.get('psw', 'nothing') ], 
+        #'session':[username,session['psw'] ], 
         'cookie':[cookie,book]
     })
 #
@@ -1111,7 +1286,11 @@ def delete():
 if __name__ == '__main__':
     app.run(debug=True, port=10001) 
 
-
+#
+# http://127.0.0.1:10001/  #设置session
+# http://127.0.0.1:10001/get 超过20s不访问，paw session就会失效。
+#   - 一直刷新，30s后cookie就自动到期销毁了 
+# 
 
 
 

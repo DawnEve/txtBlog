@@ -1746,6 +1746,590 @@ fr.close()
 
 
 
+========================================
+|-- SQLAlchemy创建模型与表的映射(ORM, Object-Relational Mapping 对象关系映射)
+----------------------------------------
+ORM: 把关系数据库的表结构映射到对象
+
+关系db:
+[
+    ('1', 'Michael'),
+    ('2', 'Bob'),
+    ('3', 'Adam')
+]
+
+
+对象object:
+class User(object):
+    def __init__(self, id, name):
+        self.id = id
+        self.name = name
+
+[
+    User('1', 'Michael'),
+    User('2', 'Bob'),
+    User('3', 'Adam')
+]
+
+
+
+
+
+1. 准备
+
+(1)官网： https://www.sqlalchemy.org/
+The Python SQL Toolkit and Object Relational Mapper
+
+It provides a full suite of well known enterprise-level persistence patterns, designed for efficient and high-performing database access, adapted into a simple and Pythonic domain language.
+提供了一套企业级的持久化模式，为高可用和高性能数据访问而设计，提供一种简单的Python风格的语言。
+
+
+
+(2)设计哲学
+The main goal of SQLAlchemy is to change the way you think about databases and SQL!
+主要目标是，改变你思考和使用数据库和SQL的方式。
+
+
+SQLAlchemy considers the database to be a relational algebra engine, not just a collection of tables.
+更像关系代数，而不是表格的集合。
+
+SQLAlchemy is most famous for its object-relational mapper (ORM), an optional component that provides the data mapper pattern, where classes can be mapped to the database in open ended, multiple ways - allowing the object model and database schema to develop in a cleanly decoupled way from the beginning.
+因ORM出名。
+
+类似把C盘深层次文件或文件夹拉到桌面，本质也是映射磁盘位置信息，其实也与快捷方式图标启动应用程序也有异曲同工之妙。ORM就是用面向对象的方式操作mysql数据库。
+
+
+
+(3)架构图： http://aosabook.org/en/sqlalchemy.html
+ORM:
+Core: Schema/ SQL expression language/ Engine /{ Connection Pooling / Dialect}
+Python  core: DBAPI
+DB: database
+
+
+
+(4)ORM作用
+1）隐藏了数据访问细节，“封闭”的通用数据库交互，ORM的核心。他使得我们的通用数据库交互变得简单易行，并且完全不用考虑该死的SQL语句。快速开发，由此而来。
+2）ORM使我们构造固化数据结构变得简单易行。
+
+
+(5)ORM缺点
+1）无可避免的，自动化意味着映射和关联管理，代价是牺牲性能
+2）现在的各种ORM框架都在尝试使用各种方法来减轻这块（LazyLoad，Cache），效果还是很显著的。
+
+
+
+
+
+2. 使用
+(1)安装方法
+pip install SQLAlchemy
+
+教程:
+The SQLAlchemy Reference Documentation: https://docs.sqlalchemy.org/en/13/
+廖雪峰教程 https://www.liaoxuefeng.com/wiki/1016959663602400/1017803857459008
+音频: https://talkpython.fm/episodes/show/5/sqlalchemy-and-data-access-in-python
+
+
+(2)
+提前建表
+MariaDB [test]> select * from user;
++----+----------+
+| id | name     |
++----+----------+
+|  1 | Lilei    |
+|  2 | jim      |
+|  3 | Michael  |
+|  4 | Bob      |
+|  5 | Adam     |
+|  6 | Robinson |
++----+----------+
+6 rows in set (0.09 sec)
+
+
+
+(3) DB_test1.py
+# 导入:
+from sqlalchemy import Column, String, create_engine
+from sqlalchemy.orm import sessionmaker
+from sqlalchemy.ext.declarative import declarative_base
+
+# 创建对象的基类:
+Base = declarative_base()
+
+# 定义User对象:
+class User(Base):
+    # 表的名字:
+    __tablename__ = 'user'
+
+    # 表的结构:
+    id = Column(String(20), primary_key=True)
+    name = Column(String(20))
+    
+    def __repr__(self): # 可选，仅仅为美化输出
+        return "<User(id='%s', name='%s')>" % ( self.id, self.name)
+
+# 初始化数据库连接:
+#engine = create_engine('mysql+mysqlconnector://root:password@localhost:3306/test')
+engine = create_engine('mysql+mysqlconnector://root:@localhost:3306/test')
+# 创建DBSession类型:
+DBSession = sessionmaker(bind=engine)
+
+
+解释：
+1)以上代码完成SQLAlchemy的初始化和具体每个表的class定义。如果有多个表，就继续定义其他class，例如School：
+
+class School(Base):
+    __tablename__ = 'school'
+    id = ...
+    name = ...
+
+2)create_engine()用来初始化数据库连接。SQLAlchemy用一个字符串表示连接信息：
+
+'数据库类型+数据库驱动名称://用户名:口令@机器地址:端口号/数据库名'
+你只需要根据需要替换掉用户名、口令等信息即可。
+
+## engine = create_engine("mysql+mysqldb://john:123456@127.0.0.1:3306/s15", max_overflow=5)
+		max_overflow是最大连接数
+
+
+
+
+3)如何从数据库表中查询数据呢？有了ORM，查询出来的可以不再是tuple，而是User对象。SQLAlchemy提供的查询接口如下：
+
+# 创建Session:
+session = DBSession()
+# 创建Query查询，filter是where条件，最后调用one()返回唯一行，如果调用all()则返回所有行:
+user = session.query(User).filter(User.id=='1').one()
+# 打印类型和对象的name属性:
+print('type:', type(user))
+print('name:', user.name)
+# 关闭Session:
+session.close()
+
+输出:
+$ python DB_test1.py
+type: <class '__main__.User'>
+name: Lilei
+
+
+
+4) 下面，我们看看如何向数据库表中添加一行记录。
+由于有了ORM，我们向数据库表中添加一行记录，可以视为添加一个User对象：
+
+# 创建session对象:
+session = DBSession()
+# 创建新User对象:
+new_user = User(id='7', name='Bob02')
+# 添加到session:
+session.add(new_user)
+# 提交即保存到数据库:
+session.commit()
+# 关闭session:
+session.close()
+
+可见，关键是获取session，然后把对象添加到session，最后提交并关闭。DBSession对象可视为当前数据库连接。
+可见，ORM就是把数据库表的行与相应的对象建立关联，互相转换。
+
+
+
+(5) 由于关系数据库的多个表还可以用外键实现一对多、多对多等关联，相应地，ORM框架也可以提供两个对象之间的一对多、多对多等功能。
+
+例如，如果一个User拥有多个Book，就可以定义一对多关系如下：
+
+class User(Base):
+    __tablename__ = 'user'
+
+    id = Column(String(20), primary_key=True)
+    name = Column(String(20))
+    # 一对多:
+    books = relationship('Book')
+
+class Book(Base):
+    __tablename__ = 'book'
+
+    id = Column(String(20), primary_key=True)
+    name = Column(String(20))
+    # “多”的一方的book表是通过外键关联到user表的:
+    user_id = Column(String(20), ForeignKey('user.id'))
+
+当我们查询一个User对象时，该对象的books属性将返回一个包含若干个Book对象的list。
+
+
+
+小结
+ORM框架的作用就是把数据库表的一行记录与一个对象互相做自动转换。
+
+正确使用ORM的前提是了解关系数据库的原理。
+
+
+
+
+
+
+
+3. 更详细用法
+https://docs.sqlalchemy.org/en/13/
+分为ORM和Core两大部分:
+https://docs.sqlalchemy.org/en/13/orm/tutorial.html
+
+
+(1) 过滤器	说明
+filter()	把过滤器添加到原查询上,返回一个新查询
+filter_by()	把等值过滤器添加到原查询上,返回一个新查询
+limit()	使用指定的值限制原查询返回的结果数量,返回一个新查询
+offset()	偏移原查询返回的结果,返回一个新查询
+order_by()	根据指定条件对原查询结果进行排序,返回一个新查询
+group_by()	根据指定条件对原查询结果进行分组,返回一个新查询
+
+
+(2)在查询上应用指定的过滤器后,通过调用 all() 执行查询,以列表的形式返回结果。除了 all() 之外,还有其他方法能触发查询执行。
+
+常用查询执行函数
+方法	说明
+all()	以列表形式返回查询的所有结果
+first()	返回查询的第一个结果,如果没有结果,则返回 None
+first_or_404()	返回查询的第一个结果,如果没有结果,则终止请求,返回 404 错误响应
+get()	返回指定主键对应的行,如果没有对应的行,则返回 None
+get_or_404()	返回指定主键对应的行,如果没找到指定的主键,则终止请求,返回 404 错误响应
+count()	返回查询结果的数量
+paginate()	返回一个 Paginate 对象,它包含指定范围内的结果
+
+
+
+session.query.filter(User.name == 'ed')
+session.query(User).filter(User.name != ‘tom’)# 不等判断
+
+
+session.query(User).filter(User.name.like('%tom%'))
+session.query.filter(User.name.ilike('%ed%')) # (case-insensitive LIKE)
+
+
+
+## 范围条件——in / not in
+# IN
+session.query.filter(User.name.in_(['ed', 'wendy', 'jack']))
+session.query(User).filter(User.id.in_([1,2,3,4]))
+
+session.query(User).filter(User.name.in_([
+     session.query(User.name).filter(User.id.in_[1,2,3,4])
+]))
+
+# NOT IN
+session.query(User).filter(~User.id.in_([1,2,3]))
+
+
+
+
+
+# 指定排序查询
+user_list = session.query(User).order_by(User.id) # 默认顺序
+user_list = session.query(User).order_by(-User.id) # 指定倒序
+user_list = session.query(User).order_by(-User.id, User.name) # 多个字段
+
+
+
+from sqlalchemy import text
+for user in session.query(User).\
+        filter(text("id<4")).\
+        order_by(text("id")).all():
+    print(user.name)
+#
+# 结果
+# Lilei
+# jim
+# Michael
+
+
+
+# 指定列查询
+user_list = session.query(User, User.name).all()
+for u in user_list:
+    print(u.id, u.name)
+
+# 切片查询
+user_list = session.query(User).all()[1:3]
+
+
+# 指定列属性别名
+对于名称较长的字段属性，可以指定名称在使用时简化操作
+user_list = session.query(Usre.name.label(‘n’)).all()
+
+for user in user_list:
+    print(user.n)
+#
+
+
+
+## 指定类型别名
+对于类型名称较长的情况，同样可以指定别名进行处理
+from sqlalchemy.orm import aliased
+
+user_alias = aliased(User, name=’u_alias’)
+user_list = session.query(u_alias, u_alias.name).all()
+for u in user_list:
+    print(u.u_alias, u.name)
+#
+
+
+
+## 空值条件——is null / is not null
+
+# IS NULL
+session.query(User).filter(User.name == None)
+session.query(User).filter(User.name.is_(None)) # pep8
+
+# IS NOT NULL
+session.query(User).filter(User.name != None)
+session.query(User).filter(User.name.isnot(None)) # pep8
+
+
+## 并且条件——AND
+from sqlalchemy import and_
+
+session.query(User).filter(User.name=’tom’).filter(User.age=12)
+session.query(User).filter(User.name=’tom’, User.age=12)
+session.query(User).filter(and_(User.name=’tom’, User.age=12))
+
+
+
+## 或者条件——OR
+
+from sqlalchemy import or_
+session.query(User).filter(or_(User.name=’tom’, User.name=’jerry’))
+
+
+
+
+
+
+
+
+
+
+(2) 直接使用sql语句
+## SQL语句查询
+某些特殊情况下，我们也可能在自己的程序中直接使用sql语句进行操作
+
+# exaple 1
+from sqlalchemy import text
+session.query(User).from_statement(
+	text('select * from users where name=:name and age=:age')).params(name=’tom’, age=12).all()
+
+
+
+# exaple 2
+from sqlalchemy import text
+users=session.query(User).from_statement(
+                     text("SELECT * FROM user where name=:name")).\
+                     params(name='Jim').all()
+print(users)
+##
+# 输出 [<User(id='2', name='jim')>]
+
+
+
+(3) 查询结果
+1) all()函数返回查询列表
+session.query(User).all()
+[..]
+
+2) filter()函数返回单项数据的列表生成器
+session.query(User).filter(..)
+<..>
+
+3) one()/one_or_none()/scalar()返回单独的一个数据对象
+session.query(User).filter(..).one()/one_or_none()/scalar()
+..
+
+usr_info = session.query(user).filter_by(age=12).first()
+
+
+ref:
+https://www.jianshu.com/p/7d4b9f2e32a7
+https://www.jianshu.com/p/ce885bf16b99
+
+mysql 与python: https://www.jianshu.com/p/874b100bec69
+
+
+
+
+
+========================================
+|-- Sqlalchemy 实例(中文乱码解决方法)
+----------------------------------------
+实例2
+Sqlalchemy 中文乱码解决方法 https://blog.csdn.net/u014291956/article/details/78771594
+中文乱码了，查看一下数据表示什么编码的: show create table xxTable;
+
+
+################### 1. get engine
+from sqlalchemy import create_engine
+
+# https://www.jianshu.com/p/47c1c2618812
+from sqlalchemy.ext.declarative import declarative_base 
+from sqlalchemy import Column, Integer, String ,DateTime, Boolean
+
+# 连接数据库
+#engine = create_engine('mysql://root:password@localhost:3306/test?charset=utf8')
+engine = create_engine('mysql+pymysql://root:@localhost:3306/test?charset=utf8') #加这一句，防止中文乱码1/2
+
+
+## 编码问题
+## 获取基类
+BaseModel = declarative_base()
+
+class News(BaseModel): # 继承基类
+    __tablename__ = 'students1'
+    id = Column(Integer, primary_key = True)
+    nickname = Column(String(20))
+    name = Column(String(20), nullable = False)
+    sex = Column(String(10))
+    in_time = Column(DateTime)
+    is_vaild = Column(Boolean)
+    idcard = Column(Integer, unique = True)
+	
+	#id = Column(Integer, primary_key = True, autoincrement=True)
+    #name = Column(String(250),nullable=False,unique = True,comment=u"姓名")
+    
+    __table_args__ = {
+        "mysql_charset": "utf8" #加这一句，防止中文乱码2/2 
+    }
+#
+
+
+News.metadata.create_all(engine)   # 创建表格
+#向数据库发出CREATE TABLE命令，由此数据库新建名为users的表
+#调用时会检查已经存在的表结构，因此可重复调用
+
+
+################### 2. get session
+## 新增数据
+from sqlalchemy.orm import sessionmaker
+Session = sessionmaker(bind=engine)
+
+class OrmTest(object):
+    def __init__(self):
+        self.session = Session()
+
+    def add_one(self):
+        new_obj = News(
+            nickname = '123',
+            name = '321',
+            sex = '男',
+        )
+        self.session.add(new_obj)
+        self.session.commit()
+        return new_obj
+
+    def add_more(self):
+        new_obj = News(
+            nickname = '123',
+            name = '321',
+            sex = '男',
+        )
+        new_obj2 = News(
+            nickname = 'wei',
+            name = 'lai',
+            sex = '女',
+        )
+        self.session.add_all([new_obj, new_obj2])
+        self.session.commit()
+        return new_obj
+
+    ## 查询数据        
+    def get_one(self, n=1):
+        return self.session.query(News).get(n)  # get 是选id为2的
+
+    def get_more(self):
+        #return self.session.query(News).filter_by(is_vaild=True)
+        return self.session.query(News).filter_by(is_vaild=0)
+
+
+    ## 修改数据
+    ## 将一条当作多条的一种情况
+    def update_data(self):
+        data_list = self.session.query(News).filter(News.id >= 5)
+        for item in data_list:
+            if item:
+                item.is_vaild = 0
+                self.session.add(item)  # 加入
+        self.session.commit()  # 提交
+    ## filter 与 filter_by 的区别
+
+
+    ## 删除数据
+    def delete_data(self, n=6):
+        data = self.session.query(News).get(n)
+        if data:
+            self.session.delete(data)
+            self.session.commit()
+        else:
+            return False
+
+    def delete_data_more(self, n=5):
+        delete_list = self.session.query(News).filter(News.id <= n)
+        for item in delete_list:
+            if item:
+                self.session.delete(item)       
+            else:
+                return False
+        self.session.commit() 
+
+
+#######
+def selLine(model, n=1, more=False): 
+    # 2. get one line
+    if not more:
+        man = model.get_one(n) 
+        ## 防止查询失误
+        if man:  
+            print('ID:{0}, {1} {2}'.format(man.id, man.nickname ,man.sex))
+        else:
+            print('Not exist')
+    
+    # get more data
+    else:
+        data_more = model.get_more()
+        print('count =', data_more.count())  # 计数
+        for new_obj in data_more:
+            print('ID:{0}  {1} {2} {3}'.format(new_obj.id,new_obj.sex,new_obj.name,new_obj.nickname))
+
+
+
+    
+
+#增删改查
+if __name__ == '__main__':
+    model = OrmTest() #0. 创建模型
+    #
+    # 1. 添加数据, 反复执行，多添加十几条的。
+    #model.add_one() #添加一行
+    #model.add_more() #添加多行
+
+    # 4. 删除
+    #model.delete_data(); print('数据删除成功')
+    model.delete_data_more()
+    
+    # 3. 改
+    #model.update_data(); print('数据修改成功')
+    
+    #selLine(model,n=19);
+    selLine(model,more=True);
+##
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 ========================================
 15. 多进程
@@ -2288,7 +2872,7 @@ arr
 
 
 ========================================
-16. 识别运行环境，设置不同的变量值
+17. 识别运行环境，设置不同的变量值
 ----------------------------------------
 1.
 
