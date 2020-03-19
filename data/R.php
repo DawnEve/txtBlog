@@ -18,7 +18,8 @@ return array (
     2 => array (
       array('R语言基础','R01-basic','txt'),
       array('R进阶-数据框data.frame','R02-data.frame','txt'),
-      array('R进阶-统计学','R03-statistics','txt'),
+      array('Math-概率论与数理统计','R03-statistics','txt'),
+      array('Math-线性代数','R03_linear_algebra','txt'),
       array('R进阶-OOP面向对象','R04-OOP','txt'),
       array('R基础-机器学习','R05-MachineLearning','txt'),
       array('R基础-原生可视化','R06-visualization','txt'),
@@ -39,6 +40,7 @@ return array (
       array('ggplot2绘图','ggplot2','txt'),
       array('分析差异表达基因 DEG','pkg-DEG','txt'),
       array('数据框清理dplyr','pkg-dplyr','txt'),
+      array('微积分','calculus','txt'),
     ),
   ),
   

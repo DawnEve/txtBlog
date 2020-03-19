@@ -24,6 +24,8 @@ return array (
 
 	  array('浏览器-DOM-BOM','js103-browser','txt' ),
 	  array('js OOP','js104-OOP','txt' ),
+	  array('js 可视化-canvas','js105-canvas','txt' ),
+	  array('js 可视化-SVG','js106-SVG','txt' ),
 
 	  array('写类库 dawnJS','dawnJS001','txt' ),
 	  //array('dawnJS源码与注释','dawnJS002','txt' ),
