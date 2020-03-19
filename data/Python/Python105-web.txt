@@ -902,6 +902,180 @@ def yourMethod(params):
 
 
 ========================================
+flask-SQLAlchemy 及 flask 常见模型类: 模型这个术语表示程序使用的持久化实体
+----------------------------------------
+
+flask-sqlalchemy 致力于简化在 Flask 中 SQLAlchemy 的使用，提供了有用的默认值和额外的助手来更简单地完成常见任务。
+
+
+
+1. flask中的模型
+
+## example1
+from flask import Flask
+from flask_sqlalchemy import SQLAlchemy
+
+app = Flask(__name__)
+app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///./test.db'
+db = SQLAlchemy(app)
+
+class User(db.Model):
+    id = db.Column(db.Integer,primary_key=True)
+    username = db.Column(db.String(80),unique = True)
+    email = db.Column(db.String(120),unique=True)
+
+    def __init__(self,username,email):
+        self.username = username
+        self.email = email
+
+    def __repr__(self):
+        return '<User %r>' % self.username
+
+ db.create_all()
+#
+# 解释：
+(1) 模型需要继承自db.Model,然后需要映射到表中的属性,必须写成db.Column的数据类型
+(2)
+db.Integer代表整型
+db.String代表varchar
+db.Text 代表text
+
+(3)
+其他参数
+primary_key 代表将这个字段设置为主键
+autoincrement 代表这个主键为自增长的
+nullable 代表这个字段是否为空,默认可以为空
+
+最后用db.creat_all() 将模型真正创建到数据库中
+
+admin = User('admin','admin@example.com')
+guest = User('guest','guest@example.com')
+
+db.session.add(admin)
+db.session.add(guest)
+db.session.commit()
+
+ref: 
+https://blog.csdn.net/Co_zy/article/details/77905568
+
+
+
+
+
+
+
+
+
+
+2.
+(1)一对多
+class Role(db.Model):
+    """角色表"""
+    __tablename__ = 'roles'
+
+    id = db.Column(db.Integer, primary_key=True)
+    name = db.Column(db.String(64), unique=True)
+    users = db.relationship('User', backref='role', lazy='dynamic')
+
+class User(db.Model):
+    """用户表"""
+    __tablename__ = 'users'
+    id = db.Column(db.Integer, primary_key=True)
+    name = db.Column(db.String(64), unique=True, index=True)
+
+
+(2)多对多
+tb_student_course = db.Table('tb_student_course',
+                             db.Column('student_id', db.Integer, db.ForeignKey('students.id')),
+                             db.Column('course_id', db.Integer, db.ForeignKey('courses.id'))
+                             )
+
+class Student(db.Model):
+    __tablename__ = "students"
+    id = db.Column(db.Integer, primary_key=True)
+    name = db.Column(db.String(64), unique=True)
+
+    courses = db.relationship('Course', secondary=tb_student_course,
+                              backref=db.backref('students', lazy='dynamic'),
+                              lazy='dynamic')
+
+class Course(db.Model):
+    __tablename__ = "courses"
+    id = db.Column(db.Integer, primary_key=True)
+    name = db.Column(db.String(64), unique=True)
+
+
+(3)自关联 一对多
+class Comment(db.Model):
+    """评论"""
+    __tablename__ = "comments"
+
+    id = db.Column(db.Integer, primary_key=True)
+    # 评论内容
+    content = db.Column(db.Text, nullable=False)
+    # 父评论id
+    parent_id = db.Column(db.Integer, db.ForeignKey("comments.id"))
+    # 父评论(也是评论模型)
+    parent = db.relationship("Comment", remote_side=[id],
+                             backref=db.backref('childs', lazy='dynamic'))
+
+# 测试代码
+if __name__ == '__main__':
+    db.drop_all()
+    db.create_all()
+
+    com1 = Comment(content='我是主评论1')
+    com2 = Comment(content='我是主评论2')
+    com11 = Comment(content='我是回复主评论1的子评论1')
+    com11.parent = com1
+    com12 = Comment(content='我是回复主评论1的子评论2')
+    com12.parent = com1
+
+    db.session.add_all([com1, com2, com11, com12])
+    db.session.commit()
+    app.run(debug=True)
+
+
+(4)自关联多对多
+tb_user_follows = db.Table(
+    "tb_user_follows",
+    db.Column('follower_id', db.Integer, db.ForeignKey('info_user.id'), primary_key=True),  # 粉丝id
+    db.Column('followed_id', db.Integer, db.ForeignKey('info_user.id'), primary_key=True)  # 被关注人的id
+)
+
+class User(db.Model):
+    """用户表"""
+    __tablename__ = "info_user"
+
+    id = db.Column(db.Integer, primary_key=True)  
+    name = db.Column(db.String(32), unique=True, nullable=False)
+
+    # 用户所有的粉丝，添加了反向引用followed，代表用户都关注了哪些人
+    followers = db.relationship('User',
+                                secondary=tb_user_follows,
+                                primaryjoin=id == tb_user_follows.c.followed_id,
+                                secondaryjoin=id == tb_user_follows.c.follower_id,
+                                backref=db.backref('followed', lazy='dynamic'),
+                                lazy='dynamic')
+##
+
+
+
+
+
+
+
+ref:
+https://blog.csdn.net/fanlei5458/article/details/80464633
+
+Flask从入门到精通之模型定义: https://www.cnblogs.com/senlinyang/p/8378632.html
+	https://www.jianshu.com/p/19eb89b1d6b3
+
+模型关系 https://www.cnblogs.com/senlinyang/p/8379436.html
+
+
+
+========================================
 flask 安全：cookie, session 和用户登录、退出
 ----------------------------------------
 1.理论基础
@@ -1090,7 +1264,8 @@ def get():
     book=request.cookies.get('book','no book')
 
     return jsonify({
-        'session':[username,session['psw'] ], 
+        'session':[username,session.get('psw', 'nothing') ], 
+        #'session':[username,session['psw'] ], 
         'cookie':[cookie,book]
     })
 #
@@ -1111,7 +1286,130 @@ def delete():
 if __name__ == '__main__':
     app.run(debug=True, port=10001) 
 
+#
+# http://127.0.0.1:10001/  #设置session
+# http://127.0.0.1:10001/get 超过20s不访问，paw session就会失效。
+#   - 一直刷新，30s后cookie就自动到期销毁了 
+# 
 
+
+
+
+
+========================================
+|-- flask RBAC (Role-Based Access Control): 基于角色的权限控制
+----------------------------------------
+
+1. RBAC几乎无关语言、框架，主要是数据库结构上面设计；通常来讲需要5张表：
+1)、 auth_user // 用户表
+2)、 auth_node // 可授权节点表
+3)、 auth_role // 角色表
+
+4)、 auth_user_role // 用户《=》角色关系对应表，因为用户和角色是many-to-many的关系（or ones-to-one，看实际情况）
+5)、 authenticated // 角色授权表 同样是many-to-many的关系
+
+用户可对应N个角色（不一定非一成不变），每个角色可授权N个节点，节点权限验证的时候，使用用户的所有角色去取得已授权的节点列表，然后判断，就这么简单。开发中可能会根据实际情况有一些变动，灵活处理即可。
+
+另外说一句，Flask有RBAC的实现方案，不过没用过，github上面关注度也不高，给传送门吧 https://github.com/shonenada/flask-rbac
+
+
+
+
+
+
+
+2.Flask实现基于角色的访问控制(RBAC)
+https://blog.51cto.com/kevinhao/1900391
+
+Flask的核心在于”Micro”，因此它不像Django拥有很多功能，尤其是认证系统。因此使用Flask要自己写一个认证系统。下面就给大家分享一下简单的Flask实现RBAC。下面都是在models.py文件的代码
+
+1、权限常量
+
+class Permission:
+    COMMENT = 0x02
+	ADMINISTER = 0x80
+
+2、角色表
+class Role(db.Model):
+    __tablename__ = 'roles'
+    id =db.Column(db.Integer,primary_key=True)
+	name =db.Column(db.String(255),unique=True)
+	default = db.Column(db.Boolean,default=False,index=True)
+	permissions = db.Column(db.Integer)
+	users = db.relationship('User',backref='role',lazy='dynamic')
+	
+def __repr__(self):
+	return '<Role%r>' %self.name
+
+将角色手动添加到数据库中，即耗时又容易出错，最便捷的又不容易出错的方法就是写一个静态方法。
+
+class Role(db.Model):
+……
+  @staticmethod
+      def insert_roles():
+          roles = {
+              'User': (Permission.COMMENT,True),
+              'Administrator': (0xff,False)
+          }
+          for ro in roles:
+              role= Role.query.filter_by(name=ro).first()
+              ifrole is None:
+                  role = Role(name=ro)
+              role.permissions = roles[ro][0]
+              role.default = roles[ro][1]
+              db.session.add(role)
+          db.session.commit()
+
+3、用户表
+class User(UserMixin,db.Model):
+    __tablename__ = 'users'
+    id =db.Column(db.Integer,primary_key=True)
+    username =db.Column(db.String(255),unique=True,index=True)
+    passwd =db.Column(db.String(255))
+    email =db.Column(db.String(255),unique=True,index=True)
+    role_id = db.Column(db.Integer,db.ForeignKey('roles.id'))
+ 
+
+    def __repr__(self):
+         '<User %r>'%self.username
+
+4、赋予角色
+用户在注册时，会赋予适当的角色。用户注册时赋予的角色都是普通用户，这是默认角色。但管理员就比较列外了。管理员由设置的变量CMDB_ADMIN来识别，当注册的邮箱和设置的该变量的值一样就会自动设置为管理员。
+
+Class User(UseMin,db.Model):
+
+……
+
+    def__init__(self,**kwargs):
+       super(User,self).__init__(**kwargs)
+        if self.role is None:
+            if self.email ==current_app.config['CMDB_ADMIN']:
+                self.role =Role.query.filter_by(permissions=0xff).first()
+            if self.role ==None:
+                self.role =Role.query.filter_by(default=True).first()
+    def __repr__(self):
+         '<User %r>'%self.username
+#
+
+
+
+
+3.flask通用rbac权限框架
+https://blog.csdn.net/weixin_39352048/article/details/80363326
+
+
+
+
+
+
+
+========================================
+|-- casbin: 权限控制
+----------------------------------------
+
+https://casbin.org/
+
+现在新推出了一个权限框架，叫PyCasbin（https://github.com/casbin/pyc...）。PyCasbin采用了元模型的设计思想，支持多种经典的访问控制方案，如ACL、RBAC、ABAC，还支持对RESTful API的控制。现在已经支持Django、Flask等Web框架了。需要中文文档的话，可以在百度搜索：PyCasbin: https://github.com/casbin/pycasbin
 
 
 

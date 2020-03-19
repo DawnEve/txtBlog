@@ -18,7 +18,9 @@ return array (
     2 => array (
       array('R语言基础','R01-basic','txt'),
       array('R进阶-数据框data.frame','R02-data.frame','txt'),
-      array('R进阶-概率论与数理统计','R03-statistics','txt'),
+      array('Math-概率论与数理统计','R03-statistics','txt'),
+      array('Math-线性代数','R03_linear_algebra','txt'),
+
       array('R进阶-OOP面向对象','R04-OOP','txt'),
       array('R基础-机器学习','R05-MachineLearning','txt'),
       array('R基础-原生可视化','R06-visualization','txt'),

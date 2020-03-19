@@ -156,7 +156,6 @@ Share images, automate workflows, and more with a free Docker Hub account: |分�
 
 For more examples and ideas, visit: | 分享镜像，自动工作流，以及更多免费Docker hub账号：
  https://docs.docker.com/userguide/
-
 ```
 
 我们试试docker推荐的命令：
