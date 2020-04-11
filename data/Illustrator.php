@@ -54,6 +54,7 @@ return array (
     1 => 'multi media',
     2 => array (
       array('audition3.0','audition','txt'),
+      array('premiere_pro_cs4','premiere_note','txt'),
     ),
   ),
 
