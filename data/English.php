@@ -20,8 +20,19 @@ return array (
     2 => array (
       array('英语资源代码','en101-code','txt'),
       array('英语学习统计 项目展','en_statistics','txt'),
-      array('学术英语','academicEnglish','txt'),
       array('疯狂记单词Word','wordStudy','md'),
+    ),
+  ),
+
+
+
+  array (
+    0 => 1,
+    1 => '语法',
+    2 => array (
+      array('学术英语','academicEnglish','txt'),
+      array('语法俱乐部','grammarClub','md'),
+
     ),
   ),
 
