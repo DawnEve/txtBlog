@@ -1971,7 +1971,7 @@ $ grep '\s72.4 291306356' -B 5 mem_202004.txt
 3. 可视化生成pdf
 (1) 使用py提取数据
 # fileName: log_analysis.py
-# v0.2
+# v0.3
 # howToRun: $ python log_analysis.py mem_202004
 # get data, and draw system mem usage plot;
 
@@ -1984,39 +1984,53 @@ def timeStr2timeStamp(strTime):
 #aa='2020-04-13 11:09:51'
 #timeStr2timeStamp(aa)
 
-fName=sys.argv[1]
+
+def saveUser(userDict, cTime, fw):
+    timeStamp=str(timeStr2timeStamp(cTime));
+    for user,pct in userDict.items():
+        fw.write(','.join([timeStamp, cTime, user,  str(pct) ])+"\n");  
+#
+
+
+fName='mem_202004'
+if sys.argv[1].startswith('mem'):
+    fName=sys.argv[1]
 
 #/home/wangjl/data/testCode/
 fr=open(fName+'.txt', 'r')
 fw=open(fName+'.csv', 'w')
-arrTime=[];
+
 
 i=0
 cTime="None-"; #当前时间
-arrUser=[]
+userDict={}
 for lineR in fr.readlines():
     line=lineR.strip()
+    
     #空行 or 标题行略过
     if line=="" or re.match('^USER', line): 
         continue;
+    
     i+=1;
     if i>20:
         #break;
         pass;
+
+    
     #if time line, update time
     if re.match('^\d{4}-',line):
-        #print(i, line)
-        cTime=line;
-        arrTime.append(cTime)
-        arrUser=[]
-    else:
-        arr=re.split('\s+', line)
-        if arr[0] in arrUser:
-            continue;#已经记录过，跳过。保证每个时间点、每个user只记录一次。
-        arrUser.append(arr[0])
+        #rint('>>>>>>>>>>',i, line)
+        if userDict!={}:
+            saveUser(userDict, cTime, fw); #save to disc;
         
-        fw.write(','.join([str(timeStr2timeStamp(cTime)), cTime, arr[0], arr[3]])+"\n");
-        #print(i, cTime, arr[0],arr[3])
+        cTime=line; #current time
+        userDict={}
+    else:
+        arr=re.split('\s+', line); #print(i, arr[0], arr[3]) #['pdyan', '74276', '49.3', '0.9',
+        user=arr[0];
+        if user not in userDict:
+            userDict[user]=0;
+        userDict[user] += float(arr[3]) #内存累加
 
 fr.close();
 fw.close();
@@ -2032,11 +2046,17 @@ os.system("Rscript log_draw.R "+fName)
 # v0.3;
 # 调用方法 $ Rscript log_draw.R mem_202004
 
-myArgs<-commandArgs(TRUE)
-fname=myArgs[1];
+fname="mem_202004"
+path2="/home/wangjl/data/testCode/"
 
-#/home/wangjl/data/testCode/
-memData=read.csv(paste0(fname, '.csv'), header=F)
+
+myArgs<-commandArgs(TRUE)
+if(length(myArgs)>0){
+  fname=myArgs[1];
+  path2=""
+}
+
+memData=read.csv(paste0(path2,fname, '.csv'), header=F)
 dim(memData) #6687    4
 memData$V2=as.character(memData$V2)
 names(memData)=c('time','timeStr','user','pct')
@@ -2046,17 +2066,17 @@ head(memData)
 #1 1586747391 2020-04-13 11:09:51  pdyan 0.9
 #2 1586747391 2020-04-13 11:09:51 wangjl 0.7
 
-#只保留偶数整点的
+#只保留整点的
 for(i in 1:length(memData$timeStr) ){
   cTime=memData$timeStr[i]
   if(!(substr(cTime,15,16) %in% c('00', '01') ) ){
     memData$timeStr[i]=""
-	next;
+    next;
   }
   hour=as.numeric(substr(cTime,12,13))
   if(hour%%2==1){
-	memData$timeStr[i]=""
-	next;
+    memData$timeStr[i]=""
+    next;
   }
 }
 length(memData$timeStr)
@@ -2067,13 +2087,14 @@ g=ggplot(memData, aes(x=time, y=pct, color=user) )+
   theme_classic()+
   labs(x=NULL, y="Mem usage(%)", title="Memery usage of top 10 pid every 2 minites")+
   theme(axis.text.x=element_text(angle=60, hjust=1,size=8,color="grey50") )+ #坐标轴刻度旋转60度。
-  scale_x_discrete(limits=memData$time, labels =memData$timeStr);
-
+  scale_x_discrete(limits=memData$time, labels =memData$timeStr)
+#g
 library('Cairo')
+#CairoPNG(1200,800, file =paste0(fname,'.png'), res = 100);
 CairoPDF(width=10, height=8, file =paste0(fname,'.pdf'));
 g+geom_line(aes(linetype=user))
 g+geom_line()
-g+ geom_line()+facet_wrap(~user)
+g+ geom_line()+facet_wrap(~user)+scale_x_discrete(labels = NULL)
 dev.off()
 print(getwd())
 #
