@@ -90,9 +90,11 @@
 ["elaborate", "counsel", "entail", "composite", "confer", "brutal", "procession", "scorn"]
 ["scratch", "physiological", "grind", "pedestrian", "juvenile", "reliance"]
 ["amiable", "fraud", "fling", "cemetery"]
+["vicious", "buffet", "limp", "alloy", "malignant", "spontaneous", "passage", "superstition", "hound"]
 
 
-
+## group 9
+["recollect", "virtue", "denounce", "renovate", "proposition", "revolt"]
 
 
 

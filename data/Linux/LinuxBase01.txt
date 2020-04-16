@@ -1899,9 +1899,9 @@ $ sudo apt-get install eclipse
 
 
 ========================================
-系统监控(记录占用内存最多的几个进程)
+DIY一个系统内存监控(记录内存占用top10进程，并可视化)
 ----------------------------------------
-1.
+1. 原理
 # linux 下 取进程占用 cpu 最高的前10个进程
 ps aux|head -1;ps aux|grep -v PID|sort -rn -k +3|head
 
@@ -1917,7 +1917,7 @@ $ ps aux|head -1;ps aux| grep -v PID |sort -k 4nr -k 5nr | head
 
 
 
-2. 长效内存监视工具: 使用python写定时脚本,2分钟记录一次，每个月一个文件;
+2. 长效内存监视工具(tmux中运行): 使用python写定时脚本,2分钟记录一次，每个月一个文件;
 # coding: UTF-8
 import time
 import subprocess
@@ -1949,6 +1949,239 @@ myTask(cmd, 120) #every 2 minits;
 一次8次，14464，则一个月 14464/8*30*24*30=39.05e6, 也就是37M, 可以接受，不过还是要定期删除的;
 path: /home/wangjl/data/testCode/
 
+(2). 查找占用最高的记录和时间
+1) 最新的记录，第四列是内存
+$ tail mem_202004.txt -n 13
+2020-04-15 10:42:31
+USER        PID %CPU %MEM    VSZ   RSS TTY      STAT START   TIME COMMAND
+jhsun    124116 96.0  0.8 7086684 3489044 pts/20 Sl  10:24  17:36 /home/jhsun/data/biosoft/bowtie2-2.3.5-sra-linux-x86_64/bowtie2-align-s --wrapper basic-0 --mm -x /data/reference/hg38/gatk/Homo_sapiens_assembly38.fasta -S SRR6013345.sam -U /home/jhsun/data/CNVHap/data/A8/fastq/SRR6013345.fastq.gz
+
+2) 最高记录
+$ grep -v 2020 mem_202004.txt | grep -v USER |sort -k 4rn|head
+yihg      56247 93.0 72.4 291306356 286619104 pts/24 R+ 13:41   7:37 shapeit -check --input-vcf new.nobiallel.yhg.rmdup.chr1.HG01855_12run.bwa_37.bam.sort.realn.bqsr.vcf.gz -M ./impute_HG01855_12run/genetic_map_chr1_combined_b37.txt --input-ref ./impute_HG01855_12run/1000GP_Phase3.sample ./impute_HG01855_12run/1000GP_Phase3_chr1.hap.gz ./impute_HG01855_12run/1000GP_Phase3_chr1.legend.gz --output-log yhg.rmdup.chr1.HG01855_12run.bwa_37.bam.sort.realn.bqsr.alignment
+
+3) 最高纪录的时间
+$ grep '\s72.4 291306356' -B 5 mem_202004.txt
+
+
+
+
+
+
+3. 可视化生成pdf
+(1) 使用py提取数据
+# fileName: log_analysis.py
+# v0.2
+# howToRun: $ python log_analysis.py mem_202004
+# get data, and draw system mem usage plot;
+
+import re, time, sys, os 
+
+def timeStr2timeStamp(strTime):
+    timeArray=time.strptime(strTime, "%Y-%m-%d %H:%M:%S")
+    timeStamp = int(time.mktime(timeArray))
+    return(timeStamp)
+#aa='2020-04-13 11:09:51'
+#timeStr2timeStamp(aa)
+
+fName=sys.argv[1]
+
+#/home/wangjl/data/testCode/
+fr=open(fName+'.txt', 'r')
+fw=open(fName+'.csv', 'w')
+arrTime=[];
+
+i=0
+cTime="None-"; #当前时间
+arrUser=[]
+for lineR in fr.readlines():
+    line=lineR.strip()
+    #空行 or 标题行略过
+    if line=="" or re.match('^USER', line): 
+        continue;
+    i+=1;
+    if i>20:
+        #break;
+        pass;
+    #if time line, update time
+    if re.match('^\d{4}-',line):
+        #print(i, line)
+        cTime=line;
+        arrTime.append(cTime)
+        arrUser=[]
+    else:
+        arr=re.split('\s+', line)
+        if arr[0] in arrUser:
+            continue;#已经记录过，跳过。保证每个时间点、每个user只记录一次。
+        arrUser.append(arr[0])
+        
+        fw.write(','.join([str(timeStr2timeStamp(cTime)), cTime, arr[0], arr[3]])+"\n");
+        #print(i, cTime, arr[0],arr[3])
+
+fr.close();
+fw.close();
+
+print('==end==, i=', i)
+os.system("Rscript log_draw.R "+fName)
+
+
+
+
+(2) 使用ggplot2绘图
+# fileName: log_draw.R
+# v0.3;
+# 调用方法 $ Rscript log_draw.R mem_202004
+
+myArgs<-commandArgs(TRUE)
+fname=myArgs[1];
+
+#/home/wangjl/data/testCode/
+memData=read.csv(paste0(fname, '.csv'), header=F)
+dim(memData) #6687    4
+memData$V2=as.character(memData$V2)
+names(memData)=c('time','timeStr','user','pct')
+head(memData)
+#          V1                  V2     V3  V4
+#         time             timeStr   user pct
+#1 1586747391 2020-04-13 11:09:51  pdyan 0.9
+#2 1586747391 2020-04-13 11:09:51 wangjl 0.7
+
+#只保留偶数整点的
+for(i in 1:length(memData$timeStr) ){
+  cTime=memData$timeStr[i]
+  if(!(substr(cTime,15,16) %in% c('00', '01') ) ){
+    memData$timeStr[i]=""
+	next;
+  }
+  hour=as.numeric(substr(cTime,12,13))
+  if(hour%%2==1){
+	memData$timeStr[i]=""
+	next;
+  }
+}
+length(memData$timeStr)
+
+
+library('ggplot2')
+g=ggplot(memData, aes(x=time, y=pct, color=user) )+
+  theme_classic()+
+  labs(x=NULL, y="Mem usage(%)", title="Memery usage of top 10 pid every 2 minites")+
+  theme(axis.text.x=element_text(angle=60, hjust=1,size=8,color="grey50") )+ #坐标轴刻度旋转60度。
+  scale_x_discrete(limits=memData$time, labels =memData$timeStr);
+
+library('Cairo')
+CairoPDF(width=10, height=8, file =paste0(fname,'.pdf'));
+g+geom_line(aes(linetype=user))
+g+geom_line()
+g+ geom_line()+facet_wrap(~user)
+dev.off()
+print(getwd())
+#
+
+
+
+
+
+4. 把pdf显示到html
+
+(0)如何从机器A上ssh到机器B上，然后执行机器B上的脚本/命令？如何使之自动化完成？
+思路: 
+- sshpass;
+- https://blog.csdn.net/weixin_34273046/article/details/90283099
+
+
+示例:
+USER=wangjl;
+PASS_J=passwd
+
+sshpass -p ${PASS_J} ssh -t ${USER}@j.biomooc.com<<EOF
+cd /data4/wangjl/test/
+python log_analysis.py mem_202004
+EOF
+
+pwd
+
+
+
+(1) 更新pdf、获取pdf脚本 updateGetShowHTML.sh
+# 在一台安装有nginx的主机上通过sftp获取其他主机生成的pdf的脚本
+# v0.4 自动更新其他主机信息，之后下载
+# Run: $ bash updateGetShowHTML.sh
+# https://blog.51cto.com/gavinshaw/545611
+cd /home/wangjl/web/docs/mem/
+
+USER=wangjl;
+PASS_X=passwd1
+PASS_J=passwd2
+
+# step1
+echo 'update X'
+sshpass -p ${PASS_X} ssh -t ${USER}@x.biomooc.com<<EOF
+cd /home/wangjl/data/testCode/
+python log_analysis.py mem_202004
+EOF
+
+echo 'update J'
+sshpass -p ${PASS_J} ssh -t ${USER}@j.biomooc.com<<EOF
+cd /data4/wangjl/test/
+python log_analysis.py mem_202004
+EOF
+
+
+# step2
+echo 'get host X'
+lftp -u ${USER},${PASS_X} sftp://x.biomooc.com:22<<EOF
+cd /home/wangjl/data/testCode
+lcd /home/wangjl/web/docs/mem/
+get mem_202004.pdf
+bye
+EOF
+mv mem_202004.pdf X_mem_202004.pdf
+
+echo 'get host J'
+lftp -u ${USER},${PASS_J} sftp://j.biomooc.com:22<<EOF
+cd /data4/wangjl/test/
+lcd /home/wangjl/web/docs/mem/
+get mem_202004.pdf
+bye
+EOF
+mv mem_202004.pdf J_mem_202004.pdf
+
+# step3
+echo `date`"<br>" | cat >>/home/wangjl/web/docs/mem/index.html
+echo "report: http://y.biomooc.com/wangjl/docs/mem/"
+
+
+
+
+(2) 在/home/wangjl/web/docs/mem/内新建index.html 
+$ cat index.html 
+Mem usage; update time is listed at the bottom of this page;
+<hr>
+
+x.biomooc.com<br>
+<embed width="800" height="600" src="X_mem_202004.pdf"> </embed>
+
+<hr>
+j.biomooc.com<br>
+<embed width="800" height="600" src="J_mem_202004.pdf"> </embed>
+<hr>
+
+
+
+
+(3) 可以通过web查看报告了
+在C上运行脚本，分别更新A和B上内的pdf，然后下载，更新web日期，即可查看
+$ bash updateGetShowHTML.sh 
+
+http://y.biomooc.com/wangjl/docs/mem/
+
+
+
+
+(4) crone定时执行，每天3,15点更新;
+$ crontab -e
+0 3,15 * * * bash /home/wangjl/updateGetShowHTML.sh >>/home/wangjl/web/log.txt
 
 
 
