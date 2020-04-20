@@ -95,6 +95,19 @@
 
 ## group 9
 ["recollect", "virtue", "denounce", "renovate", "proposition", "revolt"]
+["fabulous", "pirate", "lounge", "sew", "tribe"]
+["flare", "hostage", "eligible", "legitimate", "feasible"]
+["sly", "pathetic", "permeate", "tempo", "ideal"]
+["sprout", "corrode", "shaft", "concise", "prick", "bosom", "gracious"]
+
+
+
+## group 10
+["groan", "precede", "tangle", "stale"]
+["rack", "verse", "zigzag", "exploit", "prose"]
+
+
+
 
 
 

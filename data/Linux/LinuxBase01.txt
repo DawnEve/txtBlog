@@ -1942,7 +1942,7 @@ def myTask(cmd, interval):
 #
 
 cmd="ps aux|head -1;ps aux| grep -v PID |sort -k 4nr -k 5nr | head"
-myTask(cmd, 120) #every 2 minits;
+myTask(cmd, 120) #every 2 minutes;
 
 
 日志文件大小:
@@ -2044,6 +2044,7 @@ os.system("Rscript log_draw.R "+fName)
 (2) 使用ggplot2绘图
 # fileName: log_draw.R
 # v0.3;
+# v0.4; 自动白天黑夜条
 # 调用方法 $ Rscript log_draw.R mem_202004
 
 fname="mem_202004"
@@ -2066,38 +2067,113 @@ head(memData)
 #1 1586747391 2020-04-13 11:09:51  pdyan 0.9
 #2 1586747391 2020-04-13 11:09:51 wangjl 0.7
 
+
 #只保留整点的
 for(i in 1:length(memData$timeStr) ){
   cTime=memData$timeStr[i]
+  #分钟是00和01的保留，其余空
   if(!(substr(cTime,15,16) %in% c('00', '01') ) ){
     memData$timeStr[i]=""
     next;
   }
   hour=as.numeric(substr(cTime,12,13))
-  if(hour%%2==1){
+  #小时为偶数的保留，其余为空
+  if(hour%%6!=0){
     memData$timeStr[i]=""
     next;
   }
 }
 length(memData$timeStr)
+table(memData$timeStr!="")
+
 
 
 library('ggplot2')
 g=ggplot(memData, aes(x=time, y=pct, color=user) )+
   theme_classic()+
-  labs(x=NULL, y="Mem usage(%)", title="Memery usage of top 10 pid every 2 minites")+
+  labs(x=NULL, y="Mem usage(%)", title="Memery usage of top 10 pid every 2 minutes")+
   theme(axis.text.x=element_text(angle=60, hjust=1,size=8,color="grey50") )+ #坐标轴刻度旋转60度。
   scale_x_discrete(limits=memData$time, labels =memData$timeStr)
 #g
+
+
+
+
+
+
+#定义黑夜0:00-8:00
+# seq(1,10,3) #86400
+start=min(memData$time) #距离最小的往后最近的0点
+end=max(memData$time) #距离最大的往前最近的8点
+
+#adjust start
+while(1){
+  timeString=as.POSIXct(start, origin="1970-01-01");
+  #print( paste(start, timeString) )
+  if(substr(timeString, 15,16) %in% c('00','01') ){ #min
+    if(substr(timeString, 12,13)=="00"){ #hour
+      break;
+    }
+  }
+  start=start+60
+}
+
+#adjust end
+while(1){
+  timeString=as.POSIXct(end, origin="1970-01-01");
+  #print( paste(end, timeString) )
+  if(substr(timeString, 15,16) %in% c('00','01') ){ #min
+    if(substr(timeString, 12,13)=="08"){ #hour
+      break;
+    }
+  }
+  end=end-60
+}
+
+rec=data.frame(
+  xmin=seq(start, end, 86400),
+  xmax=seq(start, end, 86400)+28800
+)
+rec
+#
+
+
+
+
+
+g2=ggplot()+
+  scale_x_discrete(memData$time)+
+  geom_rect(data = rec, 
+            aes(xmin = xmin, 
+                xmax = xmax), 
+            alpha = 0.1,
+            ymin = -Inf, 
+            ymax = Inf, 
+            fill = "#000000",
+            colour = "blue",
+            size = 0)+
+  geom_line(data=memData, aes(x=time, y=pct, color=user) )+
+  theme_classic()+
+  labs(x=NULL, y="Mem usage(%)", title="Memery usage of top 10 pid every 2 minutes")+
+  theme(axis.text.x=element_text(angle=60, hjust=1,size=8,color="grey50"),
+        panel.background = element_rect(fill = "white")
+  )+
+  scale_x_discrete(limits=memData$time, labels =memData$timeStr)
+#scale_x_discrete( labels =memData$timeStr)
+#g2
+
 library('Cairo')
 #CairoPNG(1200,800, file =paste0(fname,'.png'), res = 100);
-CairoPDF(width=10, height=8, file =paste0(fname,'.pdf'));
+CairoPDF(width=20, height=8, file =paste0(fname,'.pdf'));
 g+geom_line(aes(linetype=user))
 g+geom_line()
+g2
 g+ geom_line()+facet_wrap(~user)+scale_x_discrete(labels = NULL)
+
 dev.off()
 print(getwd())
 #
+
 
 
 
