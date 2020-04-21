@@ -105,7 +105,7 @@
 ## group 10
 ["groan", "precede", "tangle", "stale"]
 ["rack", "verse", "zigzag", "exploit", "prose"]
-
+["ballot", "futile", "numb", "packet", "wretched"]
 
 
 
