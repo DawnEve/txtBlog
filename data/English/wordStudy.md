@@ -106,6 +106,10 @@
 ["groan", "precede", "tangle", "stale"]
 ["rack", "verse", "zigzag", "exploit", "prose"]
 ["ballot", "futile", "numb", "packet", "wretched"]
+["refrain", "empirical", "prosecute", "revive", "sturdy", "brim", "gasp", "booth", "shrewd"]
+["hermit", "negligent", "predate", "affluent", "fraught", "gox"]
+
+
 
 
 
