@@ -39,6 +39,7 @@ for($i=0; $i<count($arrLeft['data']);$i++){
 			switch( strtolower($fileType) ){
 				//如果是txt，则引入txt.js文件
 				case 'txt':
+					echo '<script type="text/javascript" src="/public/js/startMove.js"></script>';
 					echo '<script type="text/javascript" src="/public/js/txt.js"></script>';
 					echo '<link rel="stylesheet" type="text/css" href="/public/css/txt.css">';
 					break;
