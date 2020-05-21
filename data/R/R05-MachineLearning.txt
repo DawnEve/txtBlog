@@ -8,6 +8,9 @@ GC含量统计：http://www.biotrainee.com/forum.php?mod=viewthread&tid=625&page
 
 
 
+
+
+
 ========================================
 ROC曲线的意义
 ----------------------------------------
@@ -406,6 +409,23 @@ for(i in 1:10){
 # 完整代码这里：https://blog.csdn.net/tiaaaaa/article/details/58116346
 
 
+
+
+========================================
+|-- 用R对数据进行随机抽样
+----------------------------------------
+#去掉一类，变成两类
+x=iris[which(iris$Species!="virginica"),];
+x$Species=factor(x$Species)
+str(x);dim(x)
+
+#生成抽样序列
+set.seed(100)
+ind=sample(2,nrow(x),replace=TRUE,prob=c(0.8,0.2));ind
+
+#取80%作为训练集，20为测试集
+x_train=x[ind==1,];dim(x_train)
+x_test=x[ind==2,];dim(x_test) #去掉标签
 
 
 
@@ -869,7 +889,271 @@ https://www.cnblogs.com/leezx/p/6120302.html
 
 
 ========================================
+一文读懂回归分析:概述Cox回归、岭回归、Lasso回归、ElasticNet 回归
 ----------------------------------------
+http://www.360doc.com/content/17/0420/20/99071_647188582.shtml
+
+生物学中的基因很多是有共线性的，所以，后三种方法经常使用。
+回归正则化方法（套索，岭和ElasticNet）在高维数据和数据集变量之间存在多重共线性的情况下运行良好。
+
+3）Cox回归
+Cox回归的因变量就有些特殊，它不经考虑结果而且考虑结果出现时间的回归模型。它用一个或多个自变量预测一个事件（死亡、失败或旧病复发）发生的时间。Cox回归的主要作用发现风险因素并用于探讨风险因素的强弱。但它的因变量必须同时有2个，一个代表状态，必须是分类变量，一个代表时间，应该是连续变量。只有同时具有这两个变量，才能用Cox回归分析。Cox回归主要用于生存资料的分析，生存资料至少有两个结局变量，一是死亡状态，是活着还是死亡；二是死亡时间，如果死亡，什么时间死亡？如果活着，从开始观察到结束时有多久了？所以有了这两个变量，就可以考虑用Cox回归分析。
+
+
+
+
+
+9）岭回归
+当数据之间存在多重共线性（自变量高度相关）时，就需要使用岭回归分析。在存在多重共线性时，尽管最小二乘法（OLS）测得的估计值不存在偏差，它们的方差也会很大，从而使得观测值与真实值相差甚远。岭回归通过给回归估计值添加一个偏差值，来降低标准误差。
+
+岭回归要点：
+1）除常数项以外，岭回归的假设与最小二乘回归相同；
+2） 它收缩了相关系数的值，但没有达到零，这表明它不具有特征选择功能；
+3）这是一个正则化方法，并且使用的是 L2 正则化。
+
+
+
+
+
+13）套索回归 LASSO
+与岭回归类似，套索也会对回归系数的绝对值添加一个罚值。此外，它能降低偏差并提高线性回归模型的精度。看看下面的等式：
+
+套索回归要点：
+1）除常数项以外，这种回归的假设与最小二乘回归类似；
+2）它将收缩系数缩减至零（等于零），这确实有助于特征选择；
+3）这是一个正则化方法，使用的是 L1 正则化；
+4）如果一组预测因子是高度相关的，套索回归会选出其中一个因子并且将其它因子收缩为零。
+
+
+lasso 回归就是这个意思，就是让回归系数不要太大，以免造成过度拟合（overfitting）。所以呢，lasso regression是个啥呢，就是一个回归，并且回归系数不要太大。
+
+具体的实现方式是加了一个L1正则的惩罚项。
+
+
+
+
+
+14）ElasticNet 回归
+ElasticNet 回归是套索回归和岭回归的组合体。它会事先使用 L1 和 L2 作为正则化矩阵进行训练。当存在多个相关的特征时，Elastic-net 会很有用。岭回归一般会随机选择其中一个特征，而 Elastic-net 则会选择其中的两个。同时包含岭回归和套索回归的一个切实的优点是，ElasticNet 回归可以在循环状态下继承岭回归的一些稳定性。
+
+ElasticNet 回归要点：
+1）在高度相关变量的情况下，它会产生群体效应；
+2）选择变量的数目没有限制；
+3）它可以承受双重收缩。
+
+
+
+
+
+
+
+ref:
+https://www.bilibili.com/video/BV1LE411D7SW
+Lasso回归（L1正则，MAP+拉普拉斯先验） https://blog.csdn.net/qq_32742009/article/details/81674021
+Lasso回归总结 https://www.cnblogs.com/wmx24/p/9555219.html
+
+
+
+
+========================================
+|-- 实例: glmnet包做 Ridge回归、Lasso 回归、Elastic-Net Regression
+----------------------------------------
+1. 使用 glmnet 包
+
+alpha=0时，只有岭回归;
+alpha=1时，只有lasso回归;
+lamda{ alpha(累加|variable1|) + (1-alpha)(累加|variable2|^2) }
+
+
+
+
+2. 代码及详解
+(1) 三种算法的结果与比较
+##########
+library(glmnet)
+set.seed(42)
+
+### step1 获取数据
+#模拟数据
+n=1000 #行
+p=5000 #列
+real_p=15 #真实有效的15列，其余都是背景噪音
+
+x=matrix(rnorm(n*p), nrow=n, ncol=p)
+y=apply(x[,1:real_p], 1, sum) + rnorm(n) #x的前15列，按行求和。加入噪音。
+## 现在有一个向量y，需要用数据x预测向量y
+# 预测方法: Ridge, Lasso, Elastic-Net Regression
+
+
+### step2 分配训练集，测试集
+train_rows=sample(1:n, 0.66*n) #选哪些行？随机的2/3行
+
+x.train=x[train_rows,] #训练集
+x.test=x[-train_rows,] #测试集
+#
+y.train=y[train_rows] #训练集结果
+y.test=y[-train_rows] #测试集结果
+#
+
+### step3 开始岭归回
+alpha0.fit=cv.glmnet(x.train, y.train, type.measure = 'mse',
+                     alpha=0, family='gaussian')
+### 参数解释:
+#(1) 函数名字中的 cv 表示使用cross validation 获取最优的lambda; 默认使用 10-Fold Cross Validation;
+# 和 lm(), glm() 不同，cv.glmnet()不接受 formula notation, x和y必须分别传入。
+#(2) mse表示 mean squared error: 残差平方和，除以样本容量。
+#  If we were applying Elastic_Net Regression to Logistic Regression, we would set this to deviance.
+#(3) 因为使用Ridge Regression，所以设置 alpha=0;
+#(4) family 设置为 gaussian; 如果使用Logistic Regression, 则使用 binomial;
+#
+## 整体解释：
+# 该方程，应用岭回归罚分，使用10x交叉验证，找到最优化的lambda
+
+### step4 开始预测
+alpha0.predicted=predict(alpha0.fit, s=alpha0.fit$lambda.1se, newx = x.test)
+# 使用 predict() 函数，应用 alpha0.fit 到 测试数据集上。
+# 参数解释:
+# 第一个是模型
+## 第二个参数s，可能是size，保存到alpha0.fit 中的最优化的lambda值对应的"the size of the penalty"
+#   本例中，设置为 lambda.1se，保存在alpha0.fit中的，这导致最简单的模型(比如，模型有最少的非零参数)，
+#   and within 1 standard error of the lambda that had the smallest sum.
+## s也可以设置为 lambda.min，就是产生最小误差和的lambda值。
+## 本例选择 lambda.1se, 因为统计学上，它和lambda.min没有差异，但是有更少的参数。
+## Tips: 我认为只有 Lasso 和 Elastic Net Regression 可以去除参数... 然后呢？
+## 本文为了比较的统一，都是用 lambda.1se 了。
+# 第三个参数 newx 就是新数据。
+
+
+## step5 计算损失函数: mean squared error
+mean( (y.test - alpha0.predicted)^2 ) #14.88459
+# (这里使用 预测与真实值差的平方均值)
+
+################
+# 尝试 Lasso Regression(alpha=1时)
+# step3 B
+alpha1.fit=cv.glmnet(x.train, y.train, type.measure = 'mse',
+                     alpha=1, family='gaussian')
+#step4 B
+alpha1.predicted=predict(alpha1.fit, s=alpha1.fit$lambda.1se, newx = x.test)
+#step5 B
+mean( (y.test - alpha1.predicted)^2 ) #1.184701
+# 误差比Ridge小，模型预测效果好于Ridge。
+
+
+################
+# 尝试 Elastic-Net Regression(alpha=(0,1)时)
+# step3 C
+alpha0.5.fit=cv.glmnet(x.train, y.train, type.measure = 'mse',
+                     alpha=0.5, family='gaussian')
+#step4 C
+alpha0.5.predicted=predict(alpha0.5.fit, s=alpha0.5.fit$lambda.1se, newx = x.test)
+#step5 C
+mean( (y.test - alpha0.5.predicted)^2 ) #1.23797
+# 误差比Lasso大，这个比较中 Lasso 赢了。
+
+################
+# 可以尝试一系列的 alpha，
+list.of.fits=list()
+for(i in 0:10){
+  print(i) #进度条
+  fit.name=paste0('alpha', i/10)
+  
+  list.of.fits[[fit.name]]=cv.glmnet(x.train, y.train, type.measure = 'mse',
+                                     alpha=i/10, family='gaussian')
+}
+# 计算 mean squared errors for each fit with the testing dataset
+results=data.frame()
+for(i in 0:10){
+  print(i) #进度条
+  fit.name=paste0('alpha', i/10)
+  fit=list.of.fits[[fit.name]]
+  #
+  predicted=predict(fit, s=fit$lambda.1se, newx = x.test)
+  mse=mean( (y.test - predicted)^2 )
+  
+  temp=data.frame(alpha=i/10, mse=mse, fit.name=fit.name)
+  results=rbind(results, temp)
+}
+dim(results) #11 3
+head(results)
+#   alpha       mse fit.name
+#1    0.0 14.918840   alpha0
+#2    0.1  2.256924 alpha0.1
+#3    0.2  1.472927 alpha0.2
+plot(mse~alpha, results, type="o")
+#结论 对这组数据，alpha=1时，Lasso回归的结果还是最好的。
+
+
+
+
+(2) 确定好拟合参数，接下来解决问题
+#####
+# part1
+fit2<-glmnet(x.train, y.train, alpha=1,family='gaussian')
+plot(fit2, xvar = "lambda", label = TRUE)
+print(fit2)
+
+
+# part2
+cv.fit <- cv.glmnet( x.train, y.train, alpha=1);
+
+# pic1 可视化拟合效果，看纵坐标MSE什么时候最小(红色虚线标出)
+plot(cv.fit)
+abline(v=log(c(cv.fit$lambda.min)),lty=2, col="red")
+
+# pic2 看有几个截距，就有几个非0参数
+plot(fit2, xvar = "lambda", label = TRUE)
+abline(v=log(c(cv.fit$lambda.min,cv.fit$lambda.1se)),lty=2)
+abline(v=log(c(cv.fit$lambda.min)),lty=2, col="red")
+
+# 查看每个参数的系数
+coef(fit2, s = cv.fit$lambda.1se )
+
+
+
+# part 3 预测结果图
+pfit = predict(fit2, x.test, s = cv.fit$lambda.1se, type = "response")
+plot(pfit, y.test)
+
+
+
+
+#如果取最小值时
+cv.fit$lambda.min #0.0908066
+Coefficients <- coef(fit2, s = cv.fit$lambda.min)
+Active.Index <- which(Coefficients != 0)
+Active.Coefficients <- Coefficients[Active.Index]
+Active.Index
+Active.Coefficients
+row.names(Coefficients)[Active.Index] #69个非0参数
+
+minlassopred <-predict(cv.fit,newx=x.test,s=cv.fit$lambda.min) #,type="response"
+minlassopred
+
+
+#如果取1倍标准误内(大小和min无统计学差异)，参数最少的lambda值。【建议使用这个】
+cv.fit$lambda.1se #0.1257568
+Coefficients <- coef(fit2, s = cv.fit$lambda.1se)
+Active.Index <- which(Coefficients != 0)
+Active.Coefficients <- Coefficients[Active.Index]
+Active.Index
+Active.Coefficients
+row.names(Coefficients)[Active.Index] #27个非0参数
+
+selassopred <-predict(cv.fit,type="response",newx=x.test,s=cv.fit$lambda.1se)
+selassopred
+
+
+
+(3) 怎么解释2张图? 
+特别是顶部数字是什么意思？我推测，是非0变量的个数。
+
+贴吧 https://tieba.baidu.com/p/6301813616?red_tag=2818960114
+
+
+
+
+
 
 
 
@@ -877,17 +1161,182 @@ https://www.cnblogs.com/leezx/p/6120302.html
 
 
 ========================================
+|-- 实例: glmnet包做 Cox 回归 筛选变量
 ----------------------------------------
+1. 与预后有关的文章，传统的做法一般会选择多变量cox回归，高级做法自然就是我们今天的lasso分析。
+https://www.dxy.cn/bbs/newweb/pc/post/42430476
 
+线性回归采用一个高维的线性函数来尽可能的拟合所有的数据点，最简单的想法就是最小化函数值与真实值误差的平方。
+
+Lasso回归则是在一般线性回归基础上加入了正则项，在保证最佳拟合误差的同时，使得参数尽可能的“简单”，使得模型的泛化能力强。正则项一般采用一，二范数，使得模型更具有泛化性，同时可以解决线性回归中不可逆情况。这个时候你可能不淡定了，你是魔鬼吗？什么是正则项？？？
+
+正则项：正则化就是通过对模型参数进行调整（数量和大小），降低模型的复杂度，以达到可以避免过拟合的效果。正则化是机器学习中的一种叫法，其它领域内叫法各不相同，统计学领域叫惩罚项，数学领域叫范数。而正则项又包括两种，即一范数和二范数，就是L1和L2范数。
+
+重点来了：采用L1范数则是lasso 回归，L2范数则是岭回归了。那么函数有啥区别呢？如下：
+	公式略。本博客暂时不支持公式。
+- L1范数是所有参数绝对值之和，对应的回归方法叫做Lasso回归。
+- L2范数是所有参数的平方和，对应的回归方法叫做Ridge回归，岭回归需要注意的是，正则项中的回归系数为每个自变量对应的回归系数，不包含回归常数项。
+
+
+L1和L2各有优劣，
+- L1是基于特征选择的方式，有多种求解方法，更加具有鲁棒性；
+- L2则鲁棒性稍差，只有一种求解方式，而且不是基于特征选择的方式。
+
+在GWAS分析中，当用多个SNP位点作为自变量时，采用基于特征选择的L1范式，不仅可以解决过拟合的问题，还可以筛选重要的SNP位点，所以lasso回归在GWAS中应用的更多一点。
+
+我们在大多数signature文章中主要是基因挑选，自然就是今天的主题lasso cox回归，接下来我们看一下，如何采用R语言glmnet来实现。
+
+
+
+2. 代码
+library(glmnet)
+#载入数据。
+#包含30个基因在1000个病人样本中的表达，另一个是每个患者的生存状态和生存时间，生存时间以年为单位，如下：
+data('CoxExample')
+# 1000行(病人)，30列(基因)
+dim(x)
+x[1:10,1:5]
+
+# 1000行(病人) 2列(生存时间、终点)
+dim(y)
+head(y)
+
+
+
+# step1 整理数据(30个基因在1000个病人)
+x=data.frame(x)
+y=data.frame(y)
+
+row.names(x)=paste0("patient",1:1000)
+colnames(x)=paste0('gene',1:30)
+
+row.names(y)=paste0("patient",1:1000)
+colnames(y)=c('time','status')
+
+
+
+# step2 构建生存分析
+library(survival)
+fit_sur=Surv(y$time, y$status)
+dim(fit_sur) #1000 2
+head(fit_sur) #[1] 1.76877757  0.54528404  0.04485918+ 0.85032298+ 0.61488426  0.29860939+
+str(fit_sur)
+
+
+# step3 通过glmnet函数中的设置family参数定义采用的算法模型，比如设置cox
+fit=glmnet(as.matrix(x), fit_sur, family='cox')
+fit
+
+## 画图: 各个基因的系数，大体能看出正负
+plot(fit, label=T)
+
+# step4 Lasso回归最重要的就是选择合适的λ值，可以通过cv.glmnet函数实现
+cv.fit=cv.glmnet(as.matrix(x), fit_sur, 
+                #nfold=10,
+                family='cox')
+cv.fit
+# Call:  cv.glmnet(x = as.matrix(x), y = fit_sur, family = "cox") 
+# 
+# Measure: Partial Likelihood Deviance 
+# 
+#      Lambda Measure      SE Nonzero
+# min 0.01750   13.07 0.07251      15
+# 1se 0.04869   13.13 0.06238      10
+
+plot(cv.fit) #画图，能找到误差最小的lambda值的位置
+# 基于该图选择最佳的λ，一般可以采用两个内置函数实现cvfit$lambda.min和 cvfit$lambda.1se 。
+
+
+# step5 基因筛选，采用coef函数即可，有相应参数的gene则被保留，采用λ使用的是lambda.min
+# 我感觉采用1se更好。大小和min没有统计学差异，同时做到了参数最少化
+coef.1se=coef(cv.fit, s="lambda.1se")
+coef.1se
+# 30 x 1 sparse Matrix of class "dgCMatrix"
+#                  1
+# gene1   0.38108115
+# gene2  -0.09838545
+# gene3  -0.13898708
+# gene4   0.10107014
+# gene5  -0.11703684
+# gene6  -0.39278773
+# gene7   0.24631270
+# gene8   0.03861551
+# gene9   0.35114295
+# gene10  0.04167588
+# gene11  .        
+# 第二列有数值是非点号的则代表被选择的基因。
+
+# step6 美化lasso图，怎么标出来每个基因？
+plot(fit, label=T)
+
+
+
+#如果取1倍标准误内(大小和min无统计学差异)，参数最少的lambda值。【建议使用这个】
+cv.fit$lambda.1se
+Coefficients <- coef(fit, s = cv.fit$lambda.1se)
+Active.Index <- which(Coefficients != 0)
+Active.Coefficients <- Coefficients[Active.Index]
+Active.Index
+Active.Coefficients
+row.names(Coefficients)[Active.Index] #10个非0参数
 
 
 
 
 
 ========================================
+****** 广告 ******
 ----------------------------------------
 
 
+
+
+========================================
+临床预测模型 速成班
+----------------------------------------
+#################
+###day1
+#################
+
+一、快速掌握预测模型构建神器STATA\R软件
+1、熟练应用SPSS,手把手让你快速学会STATA\R，无需相关统计软件的前期知识。
+2、全程实战数据现场演示特征筛选、变量选择中三大法宝（逐步法、最优子集、Lasso）；模型评价中的三大法宝（AIC\BIC\Adjr2）。
+3、发放STATA和R软件全套代码（形成2张Table，5张Figure），学员无需编程基础，对号入座，极大降低统计软件的学习成本。
+
+二、反复练习掌握Liner\Logistic\Cox回归构建预测模型的策略
+1、实战经验告知你不同类别预测模型构建的关键点、侧重点、闪光点、以问题为导向的案例式教学，帮你快速厘清建模时的哑变量、交互作用、调整作用、混杂因素、独立作用、阈值作用……
+
+
+
+
+#################
+### day2
+#################
+一、实战临床预测模型-验证部分实战课
+1、快速实战体会什么是内部验证和外部验证？模型的可重复性Reproducibility，Cross-Validation、Bootstrap 验证等方法？如何体现模型的外推性（generalizability）？
+2、2个以上模型比较的套路流程与模型改进思路
+
+二、实战经验分析二分类结局（logistic回归）与time-to-event数据（COX回归）的similar与dissimilar
+1、模型改进验证特点
+2、快速理解NRI\IDI等最新评价指标
+
+
+
+
+#################
+### day3
+#################
+一、来自实战的数据，手把手的教你结构化的研究方式，利用STATA、R编程，每一个学员都能亲自独立完成基本的临床预测模型研究。（DCA分析结果、Nomogram图的制作代码等）
+
+二、临床预测模型国际指南（TRIPOD）详细解读
+
+三、既往学员的案例示范讨论，经典预测模型高分文章解析，回复审稿人问题的技巧，国际上喜欢刊登临床预测模型文章的期刊分析，开拓你的眼界……
+
+
+
+
+ref:
+https://mp.weixin.qq.com/s?__biz=MjM5MDc0NDU2NQ==&mid=2650376120&idx=1&sn=bac5fdce4914355189e2dadd4b239360
 
 
 

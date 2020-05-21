@@ -1436,7 +1436,190 @@ https://www.jianshu.com/p/8723aa6c9845
 
 
 ========================================
+曼哈顿图: 展示突变基因在染色体上的位置和p值
 ----------------------------------------
+1. 什么是曼哈顿图 Manhattan Plot
+曼哈顿图是一种散点图，通常用于显示具有大量数据点，许多非零振幅和更高振幅值分布的数据。该图通常用于全基因组关联研究（GWAS）以显示重要的SNP（来源wiki）。
+
+在图中每个点代表一个SNP，纵轴为每个SNP计算出来的Pvalue取-log10，横轴为SNP所在的染色体。基因位点的Pvalue越小即-log10(Pvalue)越大，其与表型性状或疾病等关联程度越强。而且通常来说受到连锁不平衡的影响，强关联位点周围的SNP也会显示出相对较高的信号强度，并依次向两边递减，所以会出现上图中红色部分的现象。一般，在GWAS的研究中，Pvalue的阈值在10^-6 或者10^-8以下。
+
+
+2.怎么做曼哈顿图 Manhattan Plot
+使用R包 qqman——an R package for creating Q-Q and manhattan plots
+
+(1) 安装包
+install.packages("qqman")
+
+(2) 所需数据的格式
+library(qqman)
+data("gwasResults")
+head(gwasResults)
+#   SNP CHR BP         P
+# 1 rs1   1  1 0.9148060
+# 2 rs2   1  2 0.9370754
+# 3 rs3   1  3 0.2861395
+# 4 rs4   1  4 0.8304476
+# 5 rs5   1  5 0.6417455
+# 6 rs6   1  6 0.5190959
+
+第一列为SNP的名字，第二列CHR为所在染色体，第三列BP为染色体上所在位置。要注意如果你的CHR中存在X，Y这样的，需要给他们转化为数字如赋予23，24等。
+其中第一列SNP的名字是可选择的，后三列是必须提供的。
+
+(3) 画图
+1)基础版: 按照chr黑灰交替
+manhattan(gwasResults, chr="CHR", bp="BP", snp="SNP", p="P" )
+
+
+2)标记其中一系列你感兴趣的SNP：给出你感兴趣的snpsOfInterest列表即可。
+snpsOfInterest #这些点会高亮显示
+# [1] "rs3001" "rs3002" "rs3003" "rs3004" "rs3005" "rs3006" "rs3007" "rs3008" "rs3009" "rs3010" "rs3011"
+# [12] "rs3012" "rs3013" "rs3014" "rs3015" "rs3016" "rs3017" "rs3018" "rs3019" "rs3020" "rs3021" "rs3022"
+manhattan(gwasResults, highlight = snpsOfInterest)
+
+
+3)想知道每条染色体上pvalue最小的SNP
+manhattan(gwasResults, annotatePval = 0.01)
+manhattan(gwasResults, annotatePval = 0.0001)#不符合该筛选条件的即使-log10(pvalue)最高也不显示
+
+
+4)不喜欢黑色和灰色的搭配，也可以自行改变颜色。
+manhattan(gwasResults, annotatePval = 0.01,annotateTop = T, col = c("grey", "skyblue")) #灰蓝交替
+
+
+
+
+
+
+
+3. 还可以使用ggplot2来绘制 
+
+(1) 使用dplyr 包的%>% 管道符整理数据
+
+library(dplyr)
+don <- gwasResults %>% 
+  
+  # Compute chromosome size
+  group_by(CHR) %>% 
+  summarise(chr_len=max(BP)) %>% 
+  
+  # Calculate cumulative position of each chromosome
+  mutate(tot=cumsum(chr_len)-chr_len) %>%
+  select(-chr_len) %>%
+  
+  # Add this info to the initial dataset
+  left_join(gwasResults, ., by=c("CHR"="CHR")) %>%
+  
+  # Add a cumulative position of each SNP
+  arrange(CHR, BP) %>%
+  mutate( BPcum=BP+tot)
+
+head(don)
+#   SNP CHR BP         P tot BPcum
+# 1 rs1   1  1 0.9148060   0     1
+# 2 rs2   1  2 0.9370754   0     2
+# 3 rs3   1  3 0.2861395   0     3
+# 4 rs4   1  4 0.8304476   0     4
+# 5 rs5   1  5 0.6417455   0     5
+# 6 rs6   1  6 0.5190959   0     6
+
+axisdf = don %>% group_by(CHR) %>% summarize(center=( max(BPcum) + min(BPcum) ) / 2 )
+head(axisdf)
+# # A tibble: 6 x 2
+#     CHR center
+#   <int>  <dbl>
+# 1     1   750.
+# 2     2  2096 
+# 3     3  3212.
+# 4     4  4204 
+# 5     5  5115 
+# 6     6  5966 
+
+
+don是用于作图的主要数据表，而axisdf是用于处理x轴，因为我们想要他们按照染色体的位置排布。
+
+
+
+(2) 绘图
+ggplot(don, aes(x=BPcum, y=-log10(P))) +
+    geom_point( aes(color=as.factor(CHR)), alpha=0.8, size=1.3) +
+    scale_color_manual(values = rep(c("grey", "skyblue"), 22 )) +
+    scale_x_continuous( label = axisdf$CHR, breaks= axisdf$center ) +
+    scale_y_continuous(expand = c(0, 0) ) +     # remove space between plot area and x axis
+    theme_bw() +
+    theme( 
+      legend.position="none",
+      panel.border = element_blank(),
+      panel.grid.major.x = element_blank(),
+      panel.grid.minor.x = element_blank()
+    )
+
+其中 scale_x_continuous( label = axisdf$CHR, breaks= axisdf$center )控制着x轴的刻度位置和标签文本。
+
+
+
+(3)如果想要把某些SNP标记出来呢？那么我们在前期处理数据的时候需要将这些数据标记出来，这个过程和之前火山图标记显著的基因很类似:
+don <- gwasResults %>% 
+  
+  # Compute chromosome size
+  group_by(CHR) %>% 
+  summarise(chr_len=max(BP)) %>% 
+  
+  # Calculate cumulative position of each chromosome
+  mutate(tot=cumsum(chr_len)-chr_len) %>%
+  select(-chr_len) %>%
+  
+  # Add this info to the initial dataset
+  left_join(gwasResults, ., by=c("CHR"="CHR")) %>%
+  
+  # Add a cumulative position of each SNP
+  arrange(CHR, BP) %>%
+  mutate( BPcum=BP+tot) %>%
+
+  # ！！！！！！Add highlight and annotation information
+ mutate( is_highlight=ifelse(SNP %in% snpsOfInterest, "yes", "no")) %>%
+  mutate( is_annotate=ifelse(-log10(P)>4, "yes", "no")) 
+
+# Prepare X axis
+axisdf <- don %>% group_by(CHR) %>% summarize(center=( max(BPcum) + min(BPcum) ) / 2 )
+
+
+## 然后画图的时候geom_point在颜色上进行区分，并使用geom_label_repel标注出来即可：
+ggplot(don, aes(x=BPcum, y=-log10(P))) +
+    
+    # Show all points
+    geom_point( aes(color=as.factor(CHR)), alpha=0.8, size=1.3) +
+    scale_color_manual(values = rep(c("grey", "skyblue"), 22 )) +
+    
+    # custom X axis:
+    scale_x_continuous( label = axisdf$CHR, breaks= axisdf$center ) +
+    scale_y_continuous(expand = c(0, 0) ) +     # remove space between plot area and x axis
+
+    # Add highlighted points
+    geom_point(data=subset(don, is_highlight=="yes"), color="orange", size=2) +
+  
+    # Add label using ggrepel to avoid overlapping
+    geom_label_repel( data=subset(don, is_annotate=="yes"), aes(label=SNP), size=2) +
+
+    # Custom the theme:
+    theme_bw() +
+    theme( 
+      legend.position="none",
+      panel.border = element_blank(),
+      panel.grid.major.x = element_blank(),
+      panel.grid.minor.x = element_blank()
+    )
+
+
+
+
+
+
+
+
+ref:
+https://www.jianshu.com/p/1edc44fe922f
+
+
 
 
 
