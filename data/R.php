@@ -24,7 +24,7 @@ return array (
       array('R基础-原生可视化','R06-visualization','txt'),
       array('apply家族函数','R07-apply','md'),
 
-      array('bioconductor基础','bioconductor01','txt'),
+      array('R包与bioconductor','bioconductor01','txt'),
     ),
   ),
 

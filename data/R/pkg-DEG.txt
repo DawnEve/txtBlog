@@ -6,6 +6,8 @@
 https://www.cnblogs.com/wangprince2017/p/9937080.html
 原版：https://www.bioconductor.org/packages/devel/workflows/vignettes/RNAseq123/inst/doc/limmaWorkflow_CHN.html
 
+三个包比较的: https://www.freesion.com/article/752576024/
+
 
 limma包使用到edgeR DGEList object作为输入。
 
@@ -2166,9 +2168,12 @@ romer函数实现了基于旋转而不是置换的GSEA方法，它可以与一�
 
 
 ========================================
-edgeR //todo
+edgeR
 ----------------------------------------
 1. 用途
+edgeR 适用于RNA-Seq，SAGE-Seq，Chip-Seq，CRISPR-Cas9，DNA methylation研究。
+
+
 (1)细胞特异性基因是用edgeR识别的。
 The cell-specific genes between ESC and NIH-3T3 were identified using EdgeR (FDR < 0.05; fold change > 1.5 or greater than two-thirds)34.
 
@@ -2197,7 +2202,94 @@ at the R prompt to open the User’s Guide in a pdf viewer.
 
 
 
-2. 
+
+
+
+
+
+
+2. edgeR包是进行RNA-seq数据分析非常常用的一个R包。该包需要输入每个基因关于每个样本的reads数的数据，每行对应一个基因，每一列对应一个样本。建议使用htseq-count进行统计，输出文件即可直接使用。如果需要算RPKM，需要自己统计基因长度信息。
+
+(0)快速入门
+glm approach 相比经典方法更灵活。旗下包含quasi-likelihood F-test method 和 likelihood ratio。
+quasi-likelihood： 建议用于大量RNA-seq数据的差异表达分析。
+likelihood ratio： 建议用于单细胞RNA-seq分析和没有重复的实验分析中。
+
+
+x = read.delim("TableOfCounts.txt",row.name = "Symbol")
+group = factor(c(1,1,2,2))
+y = DGEList(counts = x,group = group)
+y = calcNormFactors(y)
+design = model.matrix(~group)
+y = estimateDisp(y,design)
+
+运行quasi-likelihood F test：
+fit = glmQLFit(y,design)
+qlf = glmQLFTest(fit,coef = 2)
+topTags(qlf)
+
+运行likelihood ratio tests：
+fit = glmFit(y,design)
+lrt = glmLRT(fit,coef = 2)
+topTags(lrt)
+
+
+
+
+
+
+(1) 输入基因和分组信息
+第一步：构建 DGEList类变量
+edgeR的大多数操作都是对 DGEList类型变量进行，所以第一步必须构建该类型变量，使用函数：DGEList
+y <- DGEList(counts=x)
+
+
+这里的x就是每个行一个基因每列一个样本的reads数表达矩阵。
+当然还需要一个分组信息的数据，需要自己建立，例如：
+
+group <- c(1,1,2,2)
+y <- DGEList(counts=x, group=group)
+
+
+(2) 第二步：基因筛选
+对于在大多数样本中表达数量都很少的基因，需要进行过滤，这一步可以根据自己定义的标准过滤，edgeR推荐使用该包的CPM（ count-per-million ）值进行过滤，命令：
+
+keep <- rowSums(cpm(y)>1) >= 2#至少在两个样本里cpm大于1
+y <- y[keep, , keep.lib.sizes=FALSE]
+
+
+(3) 第三步：标准化
+edgeR的标准化思想主要针对的是不同样本在建库时效应。这一点与RPKM不同，因为edgeR认为不同的基因对于所有样本的影响是相同的，所以不必考虑。因此为了消除这种建库时的效应，edgeR会更推荐你使用他的calcNormFactors函数，算出来的值叫做trimmed mean of M-values (TMM) ，命令为：
+
+y <- calcNormFactors(y)
+y$samples
+
+# group lib.size norm.factors
+# Sample1 1 10880519 1.17
+# Sample2 1 9314747 0.86
+# Sample3 1 11959792 1.32
+# Sample4 2 7460595 0.91
+# Sample5 2 6714958 0.83
+
+
+(4) 第四步：聚类与热图
+在表达量分析中经常会遇到根据基因表达量来对基因进行聚类分析的过程，edgeR建议使用logcpm这个指标来进行聚类和画热图，命令是：
+
+logcpm <- cpm(y, prior.count=2, log=TRUE)
+
+
+(5) 第五步：差异表达分析
+edgeR的差异表达分析有两种方式，简单的一种是直接进行配对检验，命令是：
+
+et <- exactTest(y, pair=c("A","B")) #检验A、B样本的差异表达基因
+topTags(et)
+
+
+另一种算法比较复杂，其思想是：首先表达值需要服从某个分布，然后与这个分布不相符的基因才是差异表达基因。具体做法如下：
+
+design <- model.matrix(~Subject+Treat)#设计一个实验设计矩阵
+fit <- glmFit(y, design)#构建一个基因表达值得广义线性模型
+lrt <- glmLRT(fit) #通过似然比检验得到最后的结果
 
 
 
@@ -2205,13 +2297,9 @@ at the R prompt to open the User’s Guide in a pdf viewer.
 
 
 
-
-
-
-
-
-
-
+ref:
+https://blog.csdn.net/hzau_yang/article/details/78118257
+https://blog.csdn.net/weixin_44649331/article/details/103842532
 
 
 ========================================

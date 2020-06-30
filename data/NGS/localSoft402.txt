@@ -3368,7 +3368,7 @@ gtf文件结合 Gviz R包进行可视化 //todo
 原创： 生信技能树  生信技能树  2018-12-05
 
 
-
+详情见 R/bioconductor
 
 
 
@@ -3933,17 +3933,298 @@ macs2 callpeak -t pas.bed -f BED --outdir out_dir2 -n pas_ -g hs -q 0.05
 
 
 ========================================
-系统发育树、聚类方法
+相关分析的可视化: corrplot 包(输入matrix的 列 相关矩阵) 
 ----------------------------------------
-1.
-#当order = "hclust"时，可使用hclust.method选择层次聚类的方法
+MM=cor(mtcars); #corrplot输入的是相关系数，三种计算相关系数的方法
+如果求行之间的相关，则先转置t(df);
+
+
+
+1. 标记相关性p值
+(1) 设置没通过统计的相关性结果打X
+res1 = cor.mtest(mtcars, conf.level = .95)
+corrplot(MM, p.mat = res1$p, sig.level = .01)
+
+
+(2) 还可设置不显著的结果为空白（insig = 'blank'），
+或显示p值（insig = 'p-value'）；
+或用*数量代表显示性（insig = 'label_sig'）
+
+corrplot(MM, p.mat = res1$p, insig = 'label_sig', 
+         sig.level = c(.001, .01, .05), 
+         pch.cex = .9, pch.col = 'black') 
+##（c（.001, .01, .05）分别表示3种显著程度）
+
+
+(3)###添加置信区间：
+corrplot(MM, low = res1$lowCI, upp = res1$uppCI, order = 'hclust', 
+	rect.col = 'navy', plotCI= 'rect', cl.pos = 'n')
+
+
+
+
+
+2. 画出类似热图的效果：method = 'color'
+
+(1)# (修正颜色位 红高，蓝低)，并把相关的分为3类(addrect  = 3)，每类用黑框括起来
+library("corrplot")
+# matrix.cor=cor(mtcars)
+matrix.cor=cor( t(mtcars) )
+corrplot(matrix.cor, order = "hclust",addrect  = 3, hclust.method="ward.D2")
+
+# 默认是圆圈，可以设置为 method = 'color',
+
+# 默认的渐变色感觉反了，改正为
+col2 <- c("#67001F", "#B2182B", "#D6604D", "#F4A582",
+                           "#FDDBC7", "#FFFFFF", "#D1E5F0", "#92C5DE",
+                           "#4393C3", "#2166AC", "#053061")
+corrplot(matrix.cor, method = 'color',
+         col=colorRampPalette( rev(col2) )(200),
+         order = "hclust",addrect  = 3, hclust.method="ward.D2")
+#
+
+
+缺点: 没有显示聚类连线，没有返回值
+克服: 使用 hclust() 聚类，并返回聚类标签。
+
+
+
+(2) 显示相关系数
+# order参数设定不同展示顺序，默认order='orginal'以原始顺序展示，其他顺序有AOE，FPC，hclust；这里以AOE为例，毕竟官方说AOE排序较好；
+# addCoef.col = 'grey'，给图添加相关系数（数字）并设定数字颜色为grey；
+corrplot(MM, order = 'AOE', addCoef.col = 'grey')
+
+
+
+(3) 当order是hclust时，可以用addrect参数添加聚类方框；
+corrplot(MM, order = 'hclust', addrect = 2)
+# hclust.method = 'ward.D2'设定聚类方法
+corrplot(MM, order = 'hclust', hclust.method = 'ward.D2', addrect = 4)
+
+
+
+
+
+
+
+
+
+3. 相关矩阵的显示方法:
+method	
+Character, the visualization method of correlation matrix to be used. Currently, it supports seven methods, named "circle" (default), "square", "ellipse", "number", "pie", "shade" and "color". See examples for details.
+
+dt=t(mtcars)
+head(dt) #竖着是产品/cell, 横着是指标/gene
+
+# 按 column 标准化
+dt.norm=apply(dt, 2, function(x){ log2(x/sum(x)*1e6+1) })
+dt.norm=as.data.frame(dt.norm)
+head(dt.norm) 
+dim(dt.norm) #11 32
+
+#par(mfrow=c(2,1), mar=c(3,2,1,1))
+#(1) 用相关系数可视化
+dt.cor=cor( (dt.norm)) #求列之间的相关系数
+head(dt.cor)
+corrplot( dt.cor, method = "color",
+          order = 'hclust', hclust.method = 'ward.D2', 
+          addrect = 4)
+#(2) 用相关系数聚类
+dt.dist=dist( t(dt.cor) )
+hclust_ward.D=hclust( dt.dist, method = "ward.D2")
+plot(hclust_ward.D, hang=-1, main="cor(norm data)") #行之间的聚类
+rect.hclust(hclust_ward.D,4)
+#(3) 用值直接聚类
+dt.dist2=dist( t(dt.norm) )
+hclust_ward.D2=hclust( dt.dist2, method = "ward.D2")
+plot(hclust_ward.D2, hang=-1, main="norm data") #行之间的聚类
+rect.hclust(hclust_ward.D2,4)
+## 手工比较发现，使用标准化后的数据，直接聚类、相关系数再聚类结果没有差别。
+#
+
+
+
+
+
+
+
+
+4. 上三角、下三角: 多图组合
+(1) type参数设定展示类型，有3种：full，upper，lower（前面展示的图都是type=“full”）；
+# 	默认type='full'展示全部；当type设为其他值时，则可形成组合图。
+corrplot(MM, order = 'AOE', type = 'lower')
+
+
+(2) 多图组合 circle + ellipse
+# tl.pos = 'd'设定文本标签展示在对角线
+corrplot(MM, order = 'AOE', type = 'upper', tl.pos = 'd')
+# add = TRUE在已有的图形上添加其他图形
+# tl.pos = 'n'不展示文本标签, cl.pos = 'n'不展示颜色图例，
+#   diag = FALSE不展示对角线的相关系数
+corrplot(MM, add = TRUE, type = 'lower', method = 'ellipse', 
+         order = 'AOE',  diag = FALSE, tl.pos = 'n', cl.pos = 'n')
+#
+
+
+(3)## circle + square
+corrplot(MM, order = 'AOE',type = 'upper', tl.pos = 'd')
+corrplot(MM, add = TRUE, type = 'lower', method = 'square', 
+         order = 'AOE',diag = FALSE, tl.pos = 'n', cl.pos = 'n')
+#
+
+
+(4)## circle + colorful number
+corrplot(MM, order = 'AOE', type = 'upper', tl.pos = 'd')
+corrplot(MM, add = TRUE, type = 'lower', method = 'number', 
+	order = 'AOE',diag = FALSE, tl.pos = 'n', cl.pos = 'n')
+#
+
+
+
+
+
+
+
+ref:
+https://www.jianshu.com/p/00000f6f32df
+http://www.360doc.com/content/19/0109/21/52645714_807781591.shtml
+
+
+
+
+
+
+========================================
+系统发育树、层次聚类方法(hierarchical cluster)、最优聚类数
+----------------------------------------
+https://bradleyboehmke.github.io/HOML/hierarchical.html
+
+# Helper packages
+library(dplyr)       # for data manipulation
+library(ggplot2)     # for data visualization
+
+# Modeling packages
+library(cluster)     # for general clustering algorithms
+library(factoextra)  # for visualizing cluster results
+
+
+
+1. 层次聚类(hclust)是通过可视化然后人为去判断大致聚为几类，很明显在共同父节点的一颗子树可以被聚类为一个类
+(1) 层次聚类 经典语句
+dataset=mtcars;head(dataset)
+h_dist <- dist(as.matrix(dataset))
+h_clust<-hclust(h_dist, method = 'ward.D')
+plot(h_clust, hang = -1) #对行进行聚类
+rect.hclust(h_clust,3) #分为三类，添加矩形框
+
+rect.hclust(clust_ward2, k = boxNunber, border = rainbow(boxN)) #可以设置矩形的颜色
+
+
+
+(2)当order = "hclust"时，可使用hclust.method选择层次聚类的方法
 #hclust.method可以为“complete”, “ward”, “single”, “average”, “mcquitty”, “median”, “centroid”
+#ward.D和ward.D2是最优秀的聚类方法，推荐优先尝试。
 
-corrplot(matrix,order = "hclust",addrect  = 3,hclust.method="ward.D2")
+corrplot(matrix.cor, order = "hclust",addrect  = 3, hclust.method="ward.D2")
 
 
 
 
+
+
+2. 最佳分类数的确定, 好像只对 kmeans 有效： fviz_nbclust()
+
+head(mtcars)
+#一列一个细胞，一行一个基因(参数)
+dt=t(mtcars)
+#head(dt)
+# 按照列标准化
+dt=apply(dt, 2, function(x){ log2( 1+  1e6*x/sum(x) ) })
+dt=as.data.frame(dt)
+head(dt) 
+
+#计算距离
+dt.dist=dist( dt, method="euclidean")
+#method	
+#the distance measure to be used. This must be one of 
+#"euclidean", "maximum", "manhattan", "canberra", "binary" or 
+#"minkowski". Any unambiguous substring can be given.
+class(dt.dist) #[1] "dist"
+length(dt.dist) #55
+head(dt.dist)
+
+
+#使用距离聚类
+tree1=hclust( dt.dist, method = 'ward.D2' ); plot( tree1 )  #对观测值(row)聚类
+boxN=3;rect.hclust(tree1, k = boxN, border = rainbow(boxN))
+
+dt.cor=cor(dt)
+hclust( dist(dt.cor, method = "") )
+
+
+#get cluster number for each item
+head(cutree(tree1, k=boxN))
+table(cutree(tree1, k=boxN))
+# 1 2 3 
+# 7 2 2
+
+library(pheatmap)
+pheatmap( as.matrix(dt), scale='row', 
+          clustering_method='ward.D2',
+          border_color = NA )
+
+# 确定最佳分类数： 貌似只能是 kmeans 方法
+# Allowed values include: kmeans, cluster::pam, cluster::clara, 
+#  cluster::fanny, hcut, etc.
+library("factoextra")
+dim(dt) #11 32
+fviz_nbclust( dt, FUNcluster=kmeans, method="silhouette")
+fviz_nbclust( dt, FUNcluster=kmeans, method="wss")
+fviz_nbclust( dt, FUNcluster=kmeans, method="gap_stat")
+# method = c("silhouette", "wss", "gap_stat")
+
+
+
+
+
+
+
+3.NbClust() function: 30 indices for choosing the best number of clusters
+
+NbClust(data = NULL, diss = NULL, distance = "euclidean",
+        min.nc = 2, max.nc = 15, method = NULL)
+参数详解:
+* data: matrix
+* diss: dissimilarity matrix to be used. By default, diss=NULL, but if it is replaced by a dissimilarity matrix, distance should be “NULL”
+* distance: the distance measure to be used to compute the dissimilarity matrix. Possible values include “euclidean”, “manhattan” or “NULL”.
+	- min.nc, max.nc: minimal and maximal number of clusters, respectively
+	- method: The cluster analysis method to be used including “ward.D”, “ward.D2”, “single”, “complete”, “average”, “kmeans” and more.
+#
+
+To compute NbClust() for kmeans, use method = “kmeans”.
+To compute NbClust() for hierarchical clustering, method should be one of c(“ward.D”, “ward.D2”, “single”, “complete”, “average”).
+
+
+
+
+(2) 评估分类标准
+library(cluster)
+# Gap statistic for hierarchical clustering
+dt=mtcars
+gap_stat <- clusGap( t(dt), FUN = hcut, K.max = 10, B = 10)
+# pheatmap(dt)
+fviz_gap_stat(gap_stat)
+
+
+
+
+
+
+
+ref:
+1.https://blog.csdn.net/weixin_30954607/article/details/97271072
+2.https://www.cnblogs.com/think90/p/7133753.html
+3.https://www.datanovia.com/en/lessons/determining-the-optimal-number-of-clusters-3-must-know-methods/
 
 
 
