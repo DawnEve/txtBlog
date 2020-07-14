@@ -547,6 +547,128 @@ R语言-环境系统 https://blog.csdn.net/xiaohukun/article/details/76137052
 
 
 ========================================
+|-- 保存和载入环境: 包括全局环境<environment: R_GlobalEnv>
+----------------------------------------
+
+1.保存载入全局环境
+(1) 简单示例
+## 保存当前环境到文件
+save.image(file='myEnvironment.RData')
+
+解释：是保存当前工作空间的简写，就是输入q('yes')时默认执行的操作。
+save.image() is just a short-cut for ‘save my current workspace’, i.e., 
+save(list = ls(all.names = TRUE), file = ".RData", envir = .GlobalEnv).  # 等价语句，不建议使用默认参数。
+It is also what happens with q("yes").
+
+
+## 从文件获取保存过的环境变量值
+load('myEnvironment.RData') #有坑：执行本语句，则会不可逆的覆盖当前环境中的同名变量
+
+
+
+
+(2) 自定义函数，先检查是否环境已经清空的安全载入方式
+load2=function(...){
+  # print( environment() )
+  if( ls( envir = globalenv() )=='load2' ){
+    print('Loading')
+    load(...)
+  }else{
+    stop("Warning: please clear the current environment!")
+  }
+  
+  print(i)
+}
+
+load2('myEnvironment002.RData') #, envir = globalenv()
+
+
+
+
+
+
+
+
+2. 保存一般环境对象
+
+## 构建环境，以及环境中的函数
+my_env = new.env(hash = TRUE, parent = .GlobalEnv)
+my_env[['echo']] <- function(x) {-x}
+
+my_env[['echo']](123)
+# [1] -123
+my_env$echo(123)
+# [1] -123
+
+class(my_env) #[1] "environment"
+my_env  #<environment: 0x000000001644a548>
+
+
+(1) 保存环境方法1:save/load，返回值仅仅是原环境的名字(字符串)，原环境已静默载入
+save(my_env, file = "MyEnv.RData")
+rm(my_env)
+my_env$echo(123) #不可用 Error: object 'my_env' not found
+
+# 载入
+mn1=load('MyEnv.RData')
+mn1 #[1] "my_env"
+#
+my_env$echo(123) #-123 #可用
+
+
+
+(2) [推荐] saveRDS/readRDS。注意，readRDS返回的是环境对象，而不是对象名字字符串，和load不同。
+也就是可以在载入的时候修改环境的名字。这几乎是最理想的保存和载入环境的方法了。
+
+saveRDS(my_env, file = "MyEnv.RData")
+rm(my_env)
+
+my_env2 <- readRDS("MyEnv.RData")
+my_env2 ## <environment: 0x00000000046370f8>
+
+my_env2$echo(123) #-123
+
+
+(3) save/attach 添加到搜索路径了，在当前环境中并不可见。
+Another possibility is to place MyEnv.RData on the search path rather than in the global environment:
+
+save(my_env, file = "MyEnv2.RData")
+rm(my_env)
+
+attach("MyEnv2.RData")
+my_env ### <environment: 0x0000000017ddd538>
+my_env$echo(123) #123
+
+
+
+(4) 如果想把环境导入到全局环境。
+Note: If you wish to load the contents of my_env into the global environment rather than loading my_env itself you will have to copy the contents out:
+
+for(el in ls(my_env)) { assign(el, get(el, my_env)) }
+echo(123) #[1] -123
+
+
+(5) 如果想要保存字符串，而不是二进制文件呢？
+save, saveRDS and serialize all have an ascii argument
+
+saveRDS(my_env, file = "MyEnvA.RData", ascii=T,compress=F) #只有这样，才是文本文件，但是很多多余数据。
+rm(my_env)
+
+my_env2=readRDS("MyEnvA.RData")
+my_env2$echo(123)
+
+
+
+
+
+ref:
+https://stackoverflow.com/questions/35279150/how-to-save-a-standalone-r-environment-object
+
+
+
+
+
+========================================
 ****** R语言面向对象(OOP)初步: S3, S4 类
 ----------------------------------------
 R的面向对象编程是基于泛型函数(generic function)的，而不是基于类层次结构。

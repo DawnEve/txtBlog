@@ -7,6 +7,10 @@ pkg-shiny
 ========================================
 shiny 官方教程
 ----------------------------------------
+官方教程分好几部分，其中入门教程和article部分是文字的。
+
+
+
 1. 官方教程
 https://shiny.rstudio.com/tutorial/
 但是看这个教程要翻墙...学技术，各凭本事吧。
@@ -53,7 +57,8 @@ Recap - Part 3
 
 
 
-2. 有一个7节书面教程课，每个课程20分钟，能学会基本的使用方法。
+2. tutorial: 共7节，书面教程，每个课程大概20分钟(要有web基础)，能学会基本的使用方法。
+https://shiny.rstudio.com/tutorial/written-tutorial/lesson1/
 
 Lesson 1 - Welcome to Shiny
 Lesson 2 - Layout the user interface
@@ -62,6 +67,12 @@ Lesson 4 - Display reactive output
 Lesson 5 - Use R scripts and data
 Lesson 6 - Use reactive expressions
 Lesson 7 - Share your apps
+
+
+
+
+3. articles 系列
+https://shiny.rstudio.com/articles/
 
 
 
@@ -362,6 +373,68 @@ tags$div(
 
 
 ========================================
+|-- 进一步的美化，自定义css
+----------------------------------------
+
+1.引入方式
+tags$style(rel='stylesheet', href='style1.css')
+tags$style(rel='stylesheet', href='styles/style2.css')
+
+文件结构
+app-1/
+|- ui.R
+|- server.R
+|- www/
+	|- style1.css
+	|- style2.css
+#
+
+
+
+
+2. 使用html定义组件，可以添加行内css
+mainPanel(
+	HTML('<textarea id="ta" class="form-control shiny-text-output"',
+		 'style="resize:none; height:200px;" readonly></textarea>'
+	)
+)
+
+
+
+
+
+
+========================================
+|-- 自定义js
+----------------------------------------
+
+1.如何引入js文件
+
+shinyjs::run_js('document.getElementsByTagName("textarea")[0].setAttribute("wrap", "off");')
+
+shinyUI(fluidPage(
+  tags$script(src='my.js'),
+	...
+#
+位置在 www/my.js
+
+
+
+
+2.如何单击全选框内文字
+
+
+
+
+
+
+
+
+
+
+
+
+========================================
 shiny入门第3课: 控制组件 Add control widgets( 就是html的表单 form: inputbox, radio, checkbox,... )
 ----------------------------------------
 用于用户各种输入。
@@ -396,6 +469,8 @@ selectInput	A box with choices to select from
 sliderInput	A slider bar
 submitButton	A submit button
 textInput	A field to enter text
+
+textAreaInput 输入大量文本
 
 部分组件是基于 Twitter Bootstrap project。
 
@@ -529,6 +604,8 @@ shinyApp(ui = ui, server = server)
 
 
 
+
+
 ========================================
 |-- 页面布局: layout-guide
 ----------------------------------------
@@ -544,8 +621,80 @@ https://shiny.rstudio.com/reference/shiny/latest/textAreaInput.html
 
 
 
+
+
+
+
 ========================================
-shiny入门第4课: 展示响应式输出 Display reactive output
+|-- tab panel
+----------------------------------------
+
+1. 主显区
+# 右侧显示部分 Main panel for displaying outputs ----
+mainPanel(
+
+  # Output: Tabset w/ plot, summary, and table ----
+  tabsetPanel(type = "tabs",
+			  tabPanel("Plot", plotOutput("plot")),
+			  tabPanel("Summary", verbatimTextOutput("summary")),
+			  tabPanel("Table", tableOutput("table"))
+  )
+)
+#
+
+
+
+2.后台逻辑区
+server <- function(input, output) {
+  d <- reactive({ # 依赖单选框分布类型、滑动条n
+    Sys.sleep(2) #假设这个是很耗时的步骤
+    dist <- switch(input$dist,
+                   norm = rnorm,
+                   unif = runif,
+                   lnorm = rlnorm,
+                   exp = rexp,
+                   rnorm)
+    dist(input$n)
+  })
+
+  # 创建输出 Generate a plot of the data ----
+  output$plot <- renderPlot({
+    dist <- input$dist
+    n <- input$n
+
+    hist(d(), n=30,
+         main = paste("r", dist, "(", n, ")", sep = ""),
+         col = "#75AADB", border = "white")
+  })
+
+  # Generate a summary of the data ----
+  output$summary <- renderPrint({
+    summary(d())
+  })
+
+  # Generate an HTML table view of the data ----
+  output$table <- renderTable({
+    d()
+  })
+}
+
+
+
+
+
+
+
+ref:
+https://shiny.rstudio.com/articles/tabsets.html
+https://shiny.rstudio.com/reference/shiny/1.0.2/tabPanel.html
+
+
+
+
+
+
+========================================
+shiny入门第4课: 展示响应式输出 Display reactive output ( 各种 Output 对象 )
 ----------------------------------------
 1. 响应式需要2步:
 (1).ui中添加R对象
@@ -624,25 +773,264 @@ input加上美元符号，后面是输入对象的名字，也就是第一个参
 ========================================
 shiny入门第5课: 使用R脚本和数据 Use R scripts and data
 ----------------------------------------
+目的：如何在shiny  app中载入data, R Scripts, and packages？
+
+
+1. 读入数据
+在app目录下创建 data/ 文件夹，里面放数据。
+app-1/
+	|- ui.R
+	|- server.R
+	|- data/
+		|- xx.txt
+		|- xx.rds
+#
+
+counties <- readRDS("census-app/data/counties.rds")
+head(counties)
+
+我测试的是
+mainPanel( 
+	h2("hist plot"),
+	plotOutput("histDt") #前台
+)
+
+output$histDt=renderPlot({
+	dt=read.table('data/xx.txt', header=T,row.names=1); #后台
+	hist(dt[,1], n=10)
+})
+
+
+
+
+
+
+2. 文件路径
+source() 和 readRDS中的路径，和shell / cmd路径不太一样。
+server.R中执行命令时，路径起始于server.R所在的目录，也就是保存server.R的路径将变成shiny的工作目录。
+
+可以把代码写到单独的文件中 fn1.R，然后在server.R中source该文件。
+
+output$histDt=renderPlot({
+	source('fn1.R')
+})
+
+
+但是fn1.R中一次只能画一个图，多个图则只显示最后一个
+$ cat fn1.R
+    dt=read.table('data/xx.txt', header=T,row.names=1);
+    hist(dt[,1], n=10) 
+    plot(dt[,1], dt[,2])
+	#
+    library('pheatmap')
+    pheatmap(dt, scale='row') #除最后一个图，其他图就像不存在一样。
+#
+
+
+
+
+
+3. 执行
+
+# 代码放置地点1
+ui=fluidpage()
+server=function(input, output){
+	# 代码放置地点2
+	output$map=renderPlot({
+		# 代码放置地点3
+	})
+}
+
+shinyApp(ui, server)
+
+所有的代码都会执行，但是放置到不同的地方，能执行的次数是不一样的。
+(1)第一次执行 runApp()时，所有代码都执行一遍，包括server函数。
+(2)每次新用户访问时，shiny运行一次server函数，为每个用户建立不同的对象。
+(3)当用户修改界面组件的值时，shiny依赖该变量的output列表就会运行一次。
+
+
+启发:
+
+(1)在server函数开始之前加载脚本、库、数据集，保证静态资源载入一次就够了。
+(2)对于每个用户不同的部分，放到server函数内render*外。
+比如 用户的session信息(详见下文章节)
+
+
 
 
 
 
 ========================================
+|-- 用户的session信息
 ----------------------------------------
+https://shiny.rstudio.com/articles/client-data.html
+
+
+1. 实例 
+(1) 前台部分
+library(shiny)
+shinyUI( fluidPage(
+  headerPanel( "Census Vis. 004" ),
+  
+  # 侧面控件
+  sidebarPanel(
+	  mainPanel( 
+		h2('Session info'),
+		#pre( textOutput('clientdataText') )
+		verbatimTextOutput("clientdataText")
+	  )
+))
+
+(2) 后台部分
+shinyServer(function(input, output, session) {
+  cdata <- session$clientData
+
+  # Values from cdata returned as text
+  output$clientdataText <- renderText({
+    cnames <- names(cdata)
+
+    allvalues <- lapply(cnames, function(name) {
+      paste(name, cdata[[name]], sep = " = ")
+    })
+    paste(allvalues, collapse = "\n")
+  })
+})
+
 
 
 ========================================
+shiny入门第6课: 使用响应表达式 Use reactive expressions
 ----------------------------------------
+目的: 想让用户更快的得到结果，但是如果你的app需要处理大量很慢的计算呢？
+reactive expressions 可以指定那一部分需要更新，防止不需要的计算过程拉低app的响应速度。
+
+创建 Create reactive expressions with reactive({ })
+引用 Call reactive expressions with the name of the expression followed by parentheses ()
+
+
+1. 单页面实例
+注: data.txt 就是 mtcars 数据集保存得到的。
+$ cat app.R 
+
+library('shiny')
+
+# Define UI ----
+ui <- fluidPage(
+	# 侧面控件
+  sidebarPanel(
+  	helpText("input sth."),
+      sliderInput("range", "Range of interest",
+                   min = 0, max = 100, value =c(0,100) )
+  ),
+
+    mainPanel( 
+    	    h2("hist plot"),
+    		plotOutput("histDt"),
+    	)
+)
+
+# Define server logic ----
+server <- function(input, output) {
+	#reactive({})函数则自带缓存，除了第一次加载耗时外，之后都是用缓存数据(除非它依赖的input改变了)
+	dataInput <- reactive({
+		    # 假设获取数据很慢，需要访问网络
+			Sys.sleep(3)
+			x=read.table('data.txt', header=T, row.names=1)
+			return(x)
+		})
+
+	output$histDt=renderPlot({
+		# 假设获取数据很慢，需要访问网络
+		#Sys.sleep(3)
+		#x=read.table('data.txt', header=T, row.names=1) #每次用户更改页面值，都需要等待加载数据。
+		x=dataInput()
+		#
+
+		arr=input$range
+		len=rnorm( mean(arr) )
+		#
+		library(pheatmap)
+		pheatmap(x, scale='row', main=length(len) )
+		#hist(x, main=length(l))
+    })
+}
+
+# Run the app ----
+shinyApp(ui = ui, server = server)
+
+#
+
+
+
+
 
 
 
 ========================================
+shiny入门第7课: 分享应用 Share your apps
 ----------------------------------------
+shiny app可以分享为R脚本，或者作为一个web page发布。但无法封装为无需server的离线web。
+前者需要用户知道怎么运行R shiny，可以在本地运行。
+后者则只需要一个浏览器即可查看和使用。
+
+
+1. 作为脚本发布，发布到github等网络上
+shiny提供了三个函数来运行在线shiny脚本: runUrl, runGitHub, and runGist.
+
+(1) 压缩为zip文件后，放到自己的网站上
+library(shiny)
+runUrl( "<the weblink>")
+
+
+(2) 如果没有网站，脚本放到了github，则
+runGitHub( "<your repository name>", "<your user name>")
+
+(3) runGist("<gist number>")
+比如 runGist("eb3470beb1c0252bd0289cbc89bcf36f")
+
+
+
+
+2. Share as a web page
+可以使用自己的vps，安装R环境，安装shinny包来提供shinny web服务。
+如果没有自己的vps，则RStudio提供了三种方案。
+	shinyapps.io 
+	Shiny Server (需要自己的服务器)
+	RStudio Connect (商用带支持)
+#
+
+
+
 
 
 ========================================
+监视数据的变化: 观察者 shiny observe and observeEvent
 ----------------------------------------
+https://shiny.rstudio.com/reference/shiny/latest/observe.html
+observes和reactive expressions 一样，可以读取响应值和调用响应表达式，并在依赖更新后重新执行。
+但是和reactive expressions不一样的地方是，它不能产生结果、用于其他reactive expressions的输入。所以通常用来输入和输出。
+
+另一个不同是执行策略。reactive expressions是懒加载，依赖值改变后并不立刻执行，直到它被调用才更新。不过不被调用，则不更新。而observers 则是依赖跟新后立刻主动更新。
+
+observe ({
+ #subset someDataframe which I need in the observeEvent() 
+ observeEvent(input$Numbers, {
+	#if not NULL, do something with subsetted dataframe
+ })
+})
+
+
+
+subset <- reactive({
+ # Do your sub-setting here 
+ if(!is.null(input$Numbers)){
+	#Do something else
+ } 
+ # return (your_subset)
+})
+
+
+
 
 
 
