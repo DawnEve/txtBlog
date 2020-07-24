@@ -3,7 +3,7 @@ return array (
   'Git' => '版本控制',
   'html' => '前端框架',
   'css' => 'css增强',
-  'javascript' => 'js、jQuery、nodeJS等js框架',
+  'JavaScript' => 'js、jQuery、nodeJS等js框架',
   'PHP' => 'php基础知识',
   'thinkPHP' => '第一个框架',
   //'ci' => '第二个框架', to thinkPHP

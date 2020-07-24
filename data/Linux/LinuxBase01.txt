@@ -314,6 +314,47 @@ ls rm rmdir mkdir 这些命令都可以使用。同理调用本机都是加 l , 
 
 
 ========================================
+|-- centOS7 时间落后12小时，可能是时区timezone错了
+----------------------------------------
+1.
+$ date 
+## Mon May 11 05:20:37 EDT 2020
+
+$ timedatectl
+      Local time: Mon 2020-05-11 05:20:47 EDT
+  Universal time: Mon 2020-05-11 09:20:47 UTC
+        RTC time: Mon 2020-05-11 09:20:47
+       Time zone: America/New_York (EDT, -0400)
+     NTP enabled: yes
+NTP synchronized: yes
+ RTC in local TZ: no
+      DST active: yes
+ Last DST change: DST began at
+                  Sun 2020-03-08 01:59:59 EST
+                  Sun 2020-03-08 03:00:00 EDT
+ Next DST change: DST ends (the clock jumps one hour backwards) at
+                  Sun 2020-11-01 01:59:59 EDT
+                  Sun 2020-11-01 01:00:00 EST
+#
+时区不对。修改：
+$ sudo timedatectl  set-timezone Asia/Shanghai
+## 需要权限
+
+$ date
+Mon May 11 17:29:10 HKT 2020
+
+
+
+ref:
+https://blog.csdn.net/zlt995768025/article/details/79765738
+
+
+
+
+
+
+
+========================================
 磁盘管理基本概念
 ----------------------------------------
 磁盘基本概念：
@@ -1899,8 +1940,401 @@ $ sudo apt-get install eclipse
 
 
 ========================================
+DIY一个系统内存监控(记录内存占用top10进程，并可视化)
 ----------------------------------------
+1. 原理
+# linux 下 取进程占用 cpu 最高的前10个进程
+ps aux|head -1;ps aux|grep -v PID|sort -rn -k +3|head
 
+
+# linux 下 取进程占用内存(MEM)最高的前10个进程
+ps aux|head -1;ps aux|grep -v PID|sort -rn -k +4|head
+
+我的改进
+$ ps aux|head -1;ps aux| grep -v PID |sort -k 4nr -k 5nr | head
+
+
+
+
+
+
+2. 长效内存监视工具(tmux中运行): 使用python写定时脚本,2分钟记录一次，每个月一个文件;
+# coding: UTF-8
+import time
+import subprocess
+
+# every interval second, do cmd; Every month a log file.
+# v0.2
+def myTask(cmd, interval):
+    while True:
+        fname=time.strftime("%Y%m", time.localtime()) 
+        fw=open('mem_'+fname+'.txt','a')
+
+        mytime=time.strftime("%Y-%m-%d %H:%M:%S", time.localtime());
+        (status, output)=subprocess.getstatusoutput(cmd)
+
+        fw.write(mytime+"\n")
+        fw.write(output+"\n\n")
+
+        fw.close()
+        
+        print(mytime)
+        time.sleep(interval)
+#
+
+cmd="ps aux|head -1;ps aux| grep -v PID |sort -k 4nr -k 5nr | head"
+myTask(cmd, 120) #every 2 minutes;
+
+
+日志文件大小:
+一次8次，14464，则一个月 14464/8*30*24*30=39.05e6, 也就是37M, 可以接受，不过还是要定期删除的;
+path: /home/wangjl/data/testCode/
+
+(2). 查找占用最高的记录和时间
+1) 最新的记录，第四列是内存
+$ tail mem_202004.txt -n 13
+2020-04-15 10:42:31
+USER        PID %CPU %MEM    VSZ   RSS TTY      STAT START   TIME COMMAND
+jhsun    124116 96.0  0.8 7086684 3489044 pts/20 Sl  10:24  17:36 /home/jhsun/data/biosoft/bowtie2-2.3.5-sra-linux-x86_64/bowtie2-align-s --wrapper basic-0 --mm -x /data/reference/hg38/gatk/Homo_sapiens_assembly38.fasta -S SRR6013345.sam -U /home/jhsun/data/CNVHap/data/A8/fastq/SRR6013345.fastq.gz
+
+2) 最高记录
+$ grep -v 2020 mem_202004.txt | grep -v USER |sort -k 4rn|head
+yihg      56247 93.0 72.4 291306356 286619104 pts/24 R+ 13:41   7:37 shapeit -check --input-vcf new.nobiallel.yhg.rmdup.chr1.HG01855_12run.bwa_37.bam.sort.realn.bqsr.vcf.gz -M ./impute_HG01855_12run/genetic_map_chr1_combined_b37.txt --input-ref ./impute_HG01855_12run/1000GP_Phase3.sample ./impute_HG01855_12run/1000GP_Phase3_chr1.hap.gz ./impute_HG01855_12run/1000GP_Phase3_chr1.legend.gz --output-log yhg.rmdup.chr1.HG01855_12run.bwa_37.bam.sort.realn.bqsr.alignment
+
+3) 最高纪录的时间
+$ grep '\s72.4 291306356' -B 5 mem_202004.txt
+
+
+
+
+
+
+3. 可视化生成pdf
+(1) 使用py提取数据
+# fileName: log_analysis.py
+# v0.3
+# howToRun: $ python log_analysis.py mem_202004
+# get data, and draw system mem usage plot;
+
+import re, time, sys, os 
+
+def timeStr2timeStamp(strTime):
+    timeArray=time.strptime(strTime, "%Y-%m-%d %H:%M:%S")
+    timeStamp = int(time.mktime(timeArray))
+    return(timeStamp)
+#aa='2020-04-13 11:09:51'
+#timeStr2timeStamp(aa)
+
+
+def saveUser(userDict, cTime, fw):
+    timeStamp=str(timeStr2timeStamp(cTime));
+    for user,pct in userDict.items():
+        fw.write(','.join([timeStamp, cTime, user,  str(pct) ])+"\n");  
+#
+
+
+fName='mem_202004'
+if sys.argv[1].startswith('mem'):
+    fName=sys.argv[1]
+
+#/home/wangjl/data/testCode/
+fr=open(fName+'.txt', 'r')
+fw=open(fName+'.csv', 'w')
+
+
+i=0
+cTime="None-"; #当前时间
+userDict={}
+for lineR in fr.readlines():
+    line=lineR.strip()
+    
+    #空行 or 标题行略过
+    if line=="" or re.match('^USER', line): 
+        continue;
+    
+    i+=1;
+    if i>20:
+        #break;
+        pass;
+
+    
+    #if time line, update time
+    if re.match('^\d{4}-',line):
+        #rint('>>>>>>>>>>',i, line)
+        if userDict!={}:
+            saveUser(userDict, cTime, fw); #save to disc;
+        
+        cTime=line; #current time
+        userDict={}
+    else:
+        arr=re.split('\s+', line); #print(i, arr[0], arr[3]) #['pdyan', '74276', '49.3', '0.9',
+        user=arr[0];
+        if user not in userDict:
+            userDict[user]=0;
+        userDict[user] += float(arr[3]) #内存累加
+
+fr.close();
+fw.close();
+
+print('==end==, i=', i)
+os.system("Rscript log_draw.R "+fName)
+
+
+
+
+(2) 使用ggplot2绘图
+# fileName: log_draw.R
+# v0.3;
+# v0.4.2; 自动白天黑夜条
+# v0.4.3 控制y坐标范围0-100
+# 调用方法 $ Rscript log_draw.R mem_202004
+
+fname="mem_202004"
+path2="/home/wangjl/data/testCode/"
+
+
+myArgs<-commandArgs(TRUE)
+if(length(myArgs)>0){
+  fname=myArgs[1];
+  path2=""
+}
+
+memData=read.csv(paste0(path2,fname, '.csv'), header=F)
+dim(memData) #6687    4
+memData$V2=as.character(memData$V2)
+names(memData)=c('time','timeStr','user','pct')
+head(memData)
+#          V1                  V2     V3  V4
+#         time             timeStr   user pct
+#1 1586747391 2020-04-13 11:09:51  pdyan 0.9
+#2 1586747391 2020-04-13 11:09:51 wangjl 0.7
+
+
+#只保留整点的
+for(i in 1:length(memData$timeStr) ){
+  cTime=memData$timeStr[i]
+  #分钟是00和01的保留，其余空
+  if(!(substr(cTime,15,16) %in% c('00', '01') ) ){
+    memData$timeStr[i]=""
+    next;
+  }
+  hour=as.numeric(substr(cTime,12,13))
+  #小时为偶数的保留，其余为空
+  if(hour%%6!=0){
+    memData$timeStr[i]=""
+    next;
+  }
+}
+length(memData$timeStr)
+table(memData$timeStr!="")
+
+
+
+library('ggplot2')
+g=ggplot(memData, aes(x=time, y=pct, color=user) )+
+  theme_classic()+
+  labs(x=NULL, y="Mem usage(%)", title="Memery usage of top 10 pid every 2 minutes")+
+  theme(axis.text.x=element_text(angle=60, hjust=1,size=8,color="grey50") )+ #坐标轴刻度旋转60度。
+  scale_x_discrete(limits=memData$time, labels =memData$timeStr)
+#g
+
+
+
+
+
+
+#定义黑夜0:00-8:00
+# seq(1,10,3) #86400
+start=min(memData$time) #距离最小的往后最近的0点
+end=max(memData$time) #距离最大的往前最近的8点
+
+#adjust start
+while(1){
+  timeString=as.POSIXct(start, origin="1970-01-01");
+  #print( paste(start, timeString) )
+  if(substr(timeString, 15,16) %in% c('00','01') ){ #min
+    if(substr(timeString, 12,13)=="00"){ #hour
+      break;
+    }
+  }
+  start=start+60
+}
+
+#adjust end
+while(1){
+  timeString=as.POSIXct(end, origin="1970-01-01");
+  #print( paste(end, timeString) )
+  if(substr(timeString, 15,16) %in% c('00','01') ){ #min
+    if(substr(timeString, 12,13)=="08"){ #hour
+      break;
+    }
+  }
+  end=end-60
+}
+
+rec=data.frame(
+  xmin=seq(start, end, 86400),
+  xmax=seq(start, end, 86400)+28800
+)
+rec
+#
+
+
+g2=ggplot()+
+  scale_x_discrete(memData$time)+
+  geom_rect(data = rec, 
+            aes(xmin = xmin, 
+                xmax = xmax), 
+            alpha = 0.1,
+            ymin = -Inf, 
+            ymax = Inf, 
+            fill = "#000000",
+            colour = "blue",
+            size = 0)+
+  geom_line(data=memData, aes(x=time, y=pct, color=user) )+
+  theme_classic()+
+  labs(x=NULL, y="Mem usage(%)", title="Memery usage of top 10 pid every 2 minutes(Grey denotes night[0:00-8:00])")+
+  theme(axis.text.x=element_text(angle=60, hjust=1,size=8,color="grey50"),
+        panel.background = element_rect(fill = "white")
+  )+
+  coord_cartesian(ylim = c(0,100))+
+  scale_x_discrete(limits=memData$time, labels =memData$timeStr)
+#scale_x_discrete( labels =memData$timeStr)
+#g2
+
+library('Cairo')
+#CairoPNG(1200,800, file =paste0(fname,'.png'), res = 100);
+CairoPDF(width=20, height=8, file =paste0(fname,'.pdf'));
+#g+geom_line()
+g2
+g+geom_line(aes(linetype=user))
+g+ geom_line()+facet_wrap(~user)+scale_x_discrete(labels = NULL)+ coord_cartesian(ylim = c(0,100))
+
+dev.off()
+print(getwd())
+#
+
+
+
+
+
+
+4. 把pdf显示到html
+
+(0) 技术测试
+1)##如何从机器A上ssh到机器B上，然后执行机器B上的脚本/命令？如何使之自动化完成？
+思路: 
+- sshpass;
+- https://blog.csdn.net/weixin_34273046/article/details/90283099
+
+
+示例:
+USER=wangjl;
+PASS_J=passwd
+
+sshpass -p ${PASS_J} ssh -t ${USER}@j.biomooc.com<<EOF
+cd /data4/wangjl/test/
+python log_analysis.py mem_202004
+EOF
+
+pwd
+
+
+###
+2)如何获取年月
+year=`date -d "0 month ago" +%Y`
+month=`date -d "0 month ago" +%m`
+yearMonth="${year}${month}"
+echo $yearMonth
+
+
+
+
+
+(1) 更新pdf、获取pdf脚本 updateGetShowHTML.sh
+# 在一台安装有nginx的主机上通过sftp获取其他主机生成的pdf的脚本
+# v0.4 自动更新其他主机信息，之后下载
+# v0.5 自动获取年和月份
+# Run: $ bash updateGetShowHTML.sh
+# https://blog.51cto.com/gavinshaw/545611
+cd /home/wangjl/web/docs/mem/
+
+USER=wangjl;
+PASS_X=passwd1
+PASS_J=passwd2
+
+year=`date -d "0 month ago" +%Y`
+month=`date -d "0 month ago" +%m`
+yearMonth="${year}${month}"
+
+# step1
+echo 'update X'
+sshpass -p ${PASS_X} ssh -t ${USER}@x.biomooc.com<<EOF
+cd /home/wangjl/data/testCode/
+python log_analysis.py mem_${yearMonth}
+EOF
+
+echo 'update J'
+sshpass -p ${PASS_J} ssh -t ${USER}@j.biomooc.com<<EOF
+cd /data4/wangjl/test/
+python log_analysis.py mem_${yearMonth}
+EOF
+
+
+# step2
+echo 'get host X'
+lftp -u ${USER},${PASS_X} sftp://x.biomooc.com:22<<EOF
+cd /home/wangjl/data/testCode
+lcd /home/wangjl/web/docs/mem/
+get mem_${yearMonth}.pdf
+bye
+EOF
+mv mem_${yearMonth}.pdf X_mem_${yearMonth}.pdf
+
+echo 'get host J'
+lftp -u ${USER},${PASS_J} sftp://j.biomooc.com:22<<EOF
+cd /data4/wangjl/test/
+lcd /home/wangjl/web/docs/mem/
+get mem_${yearMonth}.pdf
+bye
+EOF
+mv mem_${yearMonth}.pdf J_mem_${yearMonth}.pdf
+
+# step3
+echo `date`"<br>" | cat >>/home/wangjl/web/docs/mem/index.html
+echo "report: http://y.biomooc.com/wangjl/docs/mem/"
+
+
+
+
+(2) 在/home/wangjl/web/docs/mem/内新建index.html 
+$ cat index.html 
+Mem usage; update time is listed at the bottom of this page;
+<hr>
+
+x.biomooc.com<br>
+<embed width="800" height="600" src="X_mem_202004.pdf"> </embed>
+
+<hr>
+j.biomooc.com<br>
+<embed width="800" height="600" src="J_mem_202004.pdf"> </embed>
+<hr>
+
+
+
+
+(3) 可以通过web查看报告了
+在C上运行脚本，分别更新A和B上内的pdf，然后下载，更新web日期，即可查看
+$ bash updateGetShowHTML.sh 
+
+http://y.biomooc.com/wangjl/docs/mem/
+
+
+
+
+(4) crone定时执行，每天3,15点更新;
+$ crontab -e
+0 3,15 * * * bash /home/wangjl/updateGetShowHTML.sh >>/home/wangjl/web/log.txt
 
 
 

@@ -78,7 +78,43 @@
 
 
 ## group 7
+["comrade", "steward", "parasite", "jolly", "verge", "discrepancy", "obscure"]
+["bypass", "composite", "entail", "pedestrian", "rake", "riddle", "scorn"]
+["dissipate", "lounge", "renovate", "repel", "revolt", "tiresome", "wholesome", "wreath"]
+["sly", "agitate", "tempo", "pathetic", "prick", "shaft", "gracious", "inertia"]
+["futile", "numb", "pail", "rack", "stale", "wretched", "tangle"]
 
+
+## group 8
+["tentative", "exotic", "contemplate"]
+["elaborate", "counsel", "entail", "composite", "confer", "brutal", "procession", "scorn"]
+["scratch", "physiological", "grind", "pedestrian", "juvenile", "reliance"]
+["amiable", "fraud", "fling", "cemetery"]
+["vicious", "buffet", "limp", "alloy", "malignant", "spontaneous", "passage", "superstition", "hound"]
+
+
+## group 9
+["recollect", "virtue", "denounce", "renovate", "proposition", "revolt"]
+["fabulous", "pirate", "lounge", "sew", "tribe"]
+["flare", "hostage", "eligible", "legitimate", "feasible"]
+["sly", "pathetic", "permeate", "tempo", "ideal"]
+["sprout", "corrode", "shaft", "concise", "prick", "bosom", "gracious"]
+
+
+
+## group 10
+["groan", "precede", "tangle", "stale"]
+["rack", "verse", "zigzag", "exploit", "prose"]
+["ballot", "futile", "numb", "packet", "wretched"]
+["refrain", "empirical", "prosecute", "revive", "sturdy", "brim", "gasp", "booth", "shrewd"]
+["hermit", "negligent", "predate", "affluent", "fraught", "gox"]
+
+
+
+## group 11
+['gauge', 'esteem','ego','patrol','merit','inlet','dubious']
+['discourse', 'enclose', 'sensation', 'proclaim', 'plight', 'deliberate', 'fringe', 'commemorate', 'spit']
+['manifest', 'disposition', 'scout', ]
 
 
 
@@ -509,7 +545,7 @@ tick other boxes;
 
 
 
-#专业词汇 (论文高逼格词汇)
+#专业词汇 (+论文高逼格词汇)
 ## 名词
 ### mitosis 英 /maɪˈtəʊsɪs/  美 /maɪˈtoʊsɪs/
 N a method of cell division, in which the nucleus divides into daughter nuclei, each containing the same number of chromosomes as the parent nucleus 有丝分裂
@@ -534,6 +570,10 @@ their nascent industries 他们的新兴行业
 
 ### aberrant 英 [əˈberənt; ˈæbərənt]  美 [əˈberənt,ˈæbərənt] 
 adj. 异常的；畸变的；脱离常轨的；迷乱的
+
+
+### adverse 英 /ˈædvɜːs; ədˈvɜːs/  美 /ədˈvɜːrs,ˈædvɜːrs/
+adj. 不利的；相反的；敌对的（名词adverseness，副词adversely）
 
 
 

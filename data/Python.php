@@ -19,7 +19,8 @@ return array (
       array('Python快速入门','Python101-basic','txt',),
       array('Python基础详解','Python102-more','txt',),
       array('Python OOP','Python103-OOP','txt',),
-      array('Python数据处理包','Python104-packages','txt',),
+      array('Python数据处理包','Py104_data_analysis','txt',),
+      array('Python DA可视化','Py104B_data_visualization','txt', 'matplotlib, seaborn'), #第四个参数不起作用
       array('Python Web','Python105-web','txt',),
       array('Python标准库','Python106-Standard_lib','txt',),
     ),
@@ -43,7 +44,7 @@ return array (
     1 => 'GO语言',
     2 => array (
       array('GO语言简介','GO_lang001','html',),
-      array('GO语言简介','GO_lang101-basic','txt',),
+      array('GO语言基础','GO_lang101-basic','txt',),
     ),
   ),
   

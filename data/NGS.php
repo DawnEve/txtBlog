@@ -51,7 +51,7 @@ return array (
 
   array (
     0 => 5,
-    1 => '练习题',
+    1 => '专业知识库',
     2 => array (
       array('生信编程必练200题','practise501','txt'),
       array('肿瘤基础理论','cancer_basis','txt'),

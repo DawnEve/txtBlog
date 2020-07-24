@@ -21,7 +21,7 @@ return array (
 	  array('bash和shell编程','LinuxBase02-shell', 'txt'),
 	  //array('VIM常用命令','vim001', 'txt'),
 	  array('字符grep/awk/sed','string_process', 'txt'),
-	  array('用户和权限管理','linux102-user', 'txt'),
+	  array('用户、权限与日志和安全','linux102-user', 'txt'),
     ),
   ),
   

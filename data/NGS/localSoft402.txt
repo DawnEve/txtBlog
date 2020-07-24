@@ -2407,6 +2407,36 @@ $ bedtools intersect -a reads.bed -b genes.bed -c
 
 
 ========================================
+|-- 怎么取 大bam文件 的子集?
+----------------------------------------
+$ samtools view CutA_c01_ROW31_Aligned.sortedByCoord.out.bam |grep chr8| grep 14601 | wc
+   2362   35430  690623
+#
+
+1.建立一个bed文件，限定区域
+$ vim RPL8.bed
+chr8	146015076	146015318
+
+
+2. 从bam中取出该范围的行
+$ bedtools intersect -a CutA_c01_ROW31_Aligned.sortedByCoord.out.bam -b RPL8.bed >c01_ROW31_RPL8.bam
+
+
+检查:
+$ samtools view c01_ROW31_RPL8.bam |wc
+   2363   35445  690971
+#
+
+
+
+
+ref:
+使用samtools/bedtools提取bam/sam文件指定区域reads 
+http://www.dengfeilong.com/note/290.html
+
+
+
+========================================
 samtools用法 – Utilities for the Sequence Alignment/Map (SAM) format
 ----------------------------------------
 代码： https://github.com/samtools/samtools
@@ -3059,23 +3089,103 @@ refer: https://blog.csdn.net/whenfree/article/details/85305616
 
 
 ========================================
-IGV使用方法
+IGV使用方法，及导入本地fa和gtf文件
 ----------------------------------------
 IGV User Guide ： http://software.broadinstitute.org/software/igv/UserGuide
 
-目的：
-从gencode数据库下载基因注释文件，并且用IGV去查看你感兴趣的基因的结构，比如TP53,KRAS,EGFR等等。
+1. IGV能干啥
+目的：从gencode数据库下载基因注释文件，并且用IGV去查看你感兴趣的基因的结构，比如TP53,KRAS,EGFR等等。
+
+基于Java的、可以桌面使用、命令行使用，交互式的可视化工具。
+可视化reads覆盖情况: 
+	基因敲除后基因组测序reads覆盖;
+	不同exon区域RNAseq的覆盖情况
+	AS/SNP/Indel可视化
+	
+
+它是一款本地的探索基因组数据的可视化浏览器，有多个系统版本，支持多种不同类型的输入格式，包括芯片测序、二代测序、基因组注释文件等。推荐使用BAM与SAM格式，主要格式见下表
+
+数据来源	文件格式
+序列比对	SAM/BAM
+显示覆盖率	TDF
+拷贝数	    SNP、CN
+基因表达	GCT、RES
+基因注释	GFF3/GTF、BED
+突变数据	MUT
+追踪参考基因组覆盖度、测序深度（UCSC）	WIG、BW
+
+
+(2) 使用流程
+启动IGV，导入参考基因组，导入注释文件/bam/tdf等，选择目标区域，设置参数，展示结果。
+
+
+把测序数据fq用bwa mem、star等比对到参考基因组得到sam格式，最后用samtools转换格式sam to bam。
+sort, index, 后放到IGV查看。
+
+也可以使用bedtools等获取bam的区域子集文件，再放到IGV查看。
 
 
 
-1.导入hg19参考基因组及注释文件
-(1)Genomes - load genoe fom file---选择上述生成的hg19.fa文件。
 
 
-(2)
-只能导入系统自带的，不能从外部导入gtf文件？
+2. 安装和使用
+(1)安装: 
+
+IGV 官网http://software.broadinstitute.org/software/igv/download～ Broadinstitute出品
+Java version8 下载： https://www.java.com/en/download/mac_download.jsp
+IGV内置的物种基因组及基因组来源：http://software.broadinstitute.org/software/igv/Genomes
+完整的官方帮助文档：http://software.broadinstitute.org/software/igv/book/export/html/6
+
+Windows用户下载，解压后，点击igv.bat文件即可启动；
+
+界面简介:
+顶部栏: 左侧的基因组,接着染色体，基因或位置信息，最右侧放大倍数;
+左侧: Fa文件栏,reads覆盖栏，Reads分布栏
+底部: fasta 核酸序列, gtf注释
 
 
+
+
+
+
+(2)导入参考基因组
+1)Genomes - load genoe fom file---选择上述生成的hg19.fa文件。
+
+# 最好先用samtools 的faidx构建一个.fai索引文件
+# for hg19 genome
+cd ~/reference/genome/hg19
+wget -c http://hgdownload.cse.ucsc.edu/goldenPath/hg19/bigZips/hg19.fa.gz
+gunzip hg19.fa.gz && rm hg19.fa.gz
+samtools faidx hg19.fa
+
+# for hg38 genome
+cd ~/reference/genome/hg38
+wget -c http://hgdownload.cse.ucsc.edu/goldenPath/hg38/bigZips/hg38.fa.gz
+gunzip hg38.fa.gz && rm hg38.fa.gz
+samtools faidx hg38.fa
+
+把fa和它的索引.fai放在本地，然后只需要通过Genomes=>Load Genome from File，导入FASTA文件
+
+
+
+
+
+(3)导入gtf/gff注释文件
+能导入系统自带的，也能从外部文件导入
+
+wget ftp://ftp.ebi.ac.uk/pub/databases/gencode/Gencode_human/release_32/gencode.v32.annotation.gtf.gz
+gunzip gencode.v32.annotation.gtf.gz
+
+菜单IGV tools - sort gtf文件，
+File => Load from file => 选择解压后、sort后的GTF文件，这是为了能看到基因的信息（IGV底部转录本信息）。
+基因组和GTF都有了，就可以载入bam文件查看了
+
+
+不过好像不能按照基因名查找，但是查看bam文件是绰绰有余了
+//todo 如何能按照基因名查找呢？因为它只是个加入的track，如果能通过Genome菜单导入就好了，但是总是报错。
+
+
+2) 自定义 gtf文件要满足的条件
 向IGV导入gencode hg19 的 gtf文件
 https://software.broadinstitute.org/software/igv/GFF
 A General Feature Format (GFF) file is a simple tab-delimited text file for describing genomic features. There are several slightly but significantly different GFF file formats. IGV supports the GFF2, GFF3 and GTF file formats.
@@ -3085,11 +3195,16 @@ See the Computational Genomics Laboratory web site (http://mblab.wustl.edu/GTF2.
 
 
 
-### 看来这个载入方式不对？！
+
+### 载入方式
 1)打开IGV菜单Tools->igvtools, 
 command中先选择Sort，input中输入gtf绝对路径(gencode.v30lift37.annotation.gtf)，鼠标单击外面，自动生成output file，点击run按钮，大约1min后生成.sorted.gtf文件；
 然后使用command中的Index命令，input填写刚生成的gtf文件，点击run，1min后生成.idx文件。
-2)然后点击菜单Genome->Load genome from file， gencode.v30lift37.annotation.sorted.gtf，报错： Could not create index file: xx.gtf.fai  //todo 
+2)然后点击菜单 File - load from file. 选择刚成成的sorted.gtf即可载入轨道。上下拖动到合适的位置。
+3)右击左侧文件名，选择expanded，即可看到更多转录本的信息。
+
+注意: 不能选这个 genome->Load genome from file， gencode.v30lift37.annotation.sorted.gtf，报错： Could not create index file: xx.gtf.fai 这个是针对hg19.fa文件的。
+
 
 
 ### IGV官方介绍怎么制作自己的参考文件：
@@ -3103,9 +3218,6 @@ Creating a .genome File
 但是，还是不行，loading Genome... 等了半天，没有报错，但是还是没载入。//todo2
 
 
-
-
-
 Feature display name: To override the default setting for which field is used to label the features in the IGV track, add the following line to the file:
 ##displayName=<field name>
 
@@ -3113,8 +3225,132 @@ Coloring features: To specify a color for a given feature, you can add this to t
 
 
 
+(4) 导入你的bam文件
+点击File - load from file - select bam file;
+要求： 同文件夹下必须存在同前缀的.bam.bai文件;(可由 samtools index xx.sorted.bam 生成)
 
 
+其他文件:如 TDF, vcf等
+TDF: bam文件的简化版，可用来展示覆盖率情况，只包含密度信息;
+TDF 可由 tools - igvtools 的count 处理bam得到.
+	Count 支持的格式: sam,bam,bed等;
+	toTDF: 转化 sorted文件，如 wig, gct, igv 等;
+#
+
+
+
+
+
+
+
+
+
+3. 界面可视化部分细节调整
+(1) 最底部的 fasta 和gtf轨道
+
+track 默认是单行显示;
+	蓝色粗线：外显子区域;
+	细线：内含子区域;
+	没有线: 基因间区.
+右击，选择 Expanded 或 squished 可展开track，查看不同转录本的情况。
+
+放大，可以看到fasta显示3个读码框，及对应的氨基酸，可以单击箭头改变方向，查看另外3个读码框。
+
+
+(2) read 展示区
+右击选择 color alignment by - Read strand, 
+如果需要成对查看，可一并在右键菜单选择View as pairs.
+
+
+## 正负链 reads
+i)右击reads区，group alignment by - first in paired strand,
+ii) Color alignment by - read strand;
+
+
+## 还可以看 junction 区域。
+
+
+
+(3) 如何保存当前视图？
+菜单Fiel - save session，保存为 xx.xml即可。
+下次打开这个session(File - open session)，即可查看到该视图。
+
+
+(4) 如何在同一个页面展示多个基因？
+菜单Region - region list, 可以搜索: cycle ，获得cell cycle gene list，
+也可以左侧点击my lists，输入自己的基因列表，一个基因一行。
+点底下的View即可看到。
+
+
+
+
+
+
+
+
+
+4. IGV导出svg文件后期美化
+(1) 右击reads，选择 change track color，可以修改coverage的颜色。
+
+需要找到参考的文献图，一个取色工具(比如picPick)。
+
+(2) 导出svg矢量图文件
+File - save image, 记住：第二行选择svg格式。
+
+(3) 找到该文件，用AI打开。
+先调整画板大小，适合整个图形。
+
+图形好像不完整，有很多黑色灰色的区域，好像是蒙版，单击del键删除或者双击del键删除。
+
+ctrl+A全选，菜单对象，取消编组，再次执行取消编组。
+
+然后开始选择del删除掉不需要的部分。只保留峰图、底下的基因结构图、顶上的一个基因标尺。
+
+选中某一连起来的区域，右键选择 释放剪切蒙版，接着右键选择 编组。就可以整体移动了。
+注意上下有对应关系，不能随便左右移动某一部分的位置，要保证只上下移动，需要按着shift键。
+ctrl+R调出来标尺，辅助对齐。
+
+使用钢笔工具连接剩余的2个标尺刻度，添加文字(比如1kb)，字体改为arial，移动到合适的位置。
+
+把底部的基因结构图移动到最顶部。
+
+量变的峰图左右两边的基线不想要怎么办？删掉，找到剪刀工具(快捷键C)，点击路径，然后选择工具V选择删除。
+
+左边的track名字，自己添加文字即可。
+
+最后调整画板到合适的大小。
+保存为svg，方便后期修改。可以直接拖到chrome中查看svg图片。
+或者导出为png、tiff等。
+
+
+
+
+
+5. trouble shooting:
+(1) Could not reserve enough space for xxxKB object heap;
+
+如果显示空间不足，则可以使用Notepad++修改 igv.bat 文件 jar -Xmx 300m
+
+
+(2)
+
+
+
+
+
+
+###
+# 替代品绘图：trackViewer软件包不但可以输出高品质的track图
+# https://www.jianshu.com/p/fef9f8c19f22
+BiocManager::install("trackViewer")
+library("trackViewer")
+
+
+
+
+
+ref:
+美化svg https://www.bilibili.com/video/BV16J411s7Gf
 
 
 
@@ -3132,7 +3368,7 @@ gtf文件结合 Gviz R包进行可视化 //todo
 原创： 生信技能树  生信技能树  2018-12-05
 
 
-
+详情见 R/bioconductor
 
 
 
@@ -3697,9 +3933,298 @@ macs2 callpeak -t pas.bed -f BED --outdir out_dir2 -n pas_ -g hs -q 0.05
 
 
 ========================================
+相关分析的可视化: corrplot 包(输入matrix的 列 相关矩阵) 
 ----------------------------------------
+MM=cor(mtcars); #corrplot输入的是相关系数，三种计算相关系数的方法
+如果求行之间的相关，则先转置t(df);
 
 
+
+1. 标记相关性p值
+(1) 设置没通过统计的相关性结果打X
+res1 = cor.mtest(mtcars, conf.level = .95)
+corrplot(MM, p.mat = res1$p, sig.level = .01)
+
+
+(2) 还可设置不显著的结果为空白（insig = 'blank'），
+或显示p值（insig = 'p-value'）；
+或用*数量代表显示性（insig = 'label_sig'）
+
+corrplot(MM, p.mat = res1$p, insig = 'label_sig', 
+         sig.level = c(.001, .01, .05), 
+         pch.cex = .9, pch.col = 'black') 
+##（c（.001, .01, .05）分别表示3种显著程度）
+
+
+(3)###添加置信区间：
+corrplot(MM, low = res1$lowCI, upp = res1$uppCI, order = 'hclust', 
+	rect.col = 'navy', plotCI= 'rect', cl.pos = 'n')
+
+
+
+
+
+2. 画出类似热图的效果：method = 'color'
+
+(1)# (修正颜色位 红高，蓝低)，并把相关的分为3类(addrect  = 3)，每类用黑框括起来
+library("corrplot")
+# matrix.cor=cor(mtcars)
+matrix.cor=cor( t(mtcars) )
+corrplot(matrix.cor, order = "hclust",addrect  = 3, hclust.method="ward.D2")
+
+# 默认是圆圈，可以设置为 method = 'color',
+
+# 默认的渐变色感觉反了，改正为
+col2 <- c("#67001F", "#B2182B", "#D6604D", "#F4A582",
+                           "#FDDBC7", "#FFFFFF", "#D1E5F0", "#92C5DE",
+                           "#4393C3", "#2166AC", "#053061")
+corrplot(matrix.cor, method = 'color',
+         col=colorRampPalette( rev(col2) )(200),
+         order = "hclust",addrect  = 3, hclust.method="ward.D2")
+#
+
+
+缺点: 没有显示聚类连线，没有返回值
+克服: 使用 hclust() 聚类，并返回聚类标签。
+
+
+
+(2) 显示相关系数
+# order参数设定不同展示顺序，默认order='orginal'以原始顺序展示，其他顺序有AOE，FPC，hclust；这里以AOE为例，毕竟官方说AOE排序较好；
+# addCoef.col = 'grey'，给图添加相关系数（数字）并设定数字颜色为grey；
+corrplot(MM, order = 'AOE', addCoef.col = 'grey')
+
+
+
+(3) 当order是hclust时，可以用addrect参数添加聚类方框；
+corrplot(MM, order = 'hclust', addrect = 2)
+# hclust.method = 'ward.D2'设定聚类方法
+corrplot(MM, order = 'hclust', hclust.method = 'ward.D2', addrect = 4)
+
+
+
+
+
+
+
+
+
+3. 相关矩阵的显示方法:
+method	
+Character, the visualization method of correlation matrix to be used. Currently, it supports seven methods, named "circle" (default), "square", "ellipse", "number", "pie", "shade" and "color". See examples for details.
+
+dt=t(mtcars)
+head(dt) #竖着是产品/cell, 横着是指标/gene
+
+# 按 column 标准化
+dt.norm=apply(dt, 2, function(x){ log2(x/sum(x)*1e6+1) })
+dt.norm=as.data.frame(dt.norm)
+head(dt.norm) 
+dim(dt.norm) #11 32
+
+#par(mfrow=c(2,1), mar=c(3,2,1,1))
+#(1) 用相关系数可视化
+dt.cor=cor( (dt.norm)) #求列之间的相关系数
+head(dt.cor)
+corrplot( dt.cor, method = "color",
+          order = 'hclust', hclust.method = 'ward.D2', 
+          addrect = 4)
+#(2) 用相关系数聚类
+dt.dist=dist( t(dt.cor) )
+hclust_ward.D=hclust( dt.dist, method = "ward.D2")
+plot(hclust_ward.D, hang=-1, main="cor(norm data)") #行之间的聚类
+rect.hclust(hclust_ward.D,4)
+#(3) 用值直接聚类
+dt.dist2=dist( t(dt.norm) )
+hclust_ward.D2=hclust( dt.dist2, method = "ward.D2")
+plot(hclust_ward.D2, hang=-1, main="norm data") #行之间的聚类
+rect.hclust(hclust_ward.D2,4)
+## 手工比较发现，使用标准化后的数据，直接聚类、相关系数再聚类结果没有差别。
+#
+
+
+
+
+
+
+
+
+4. 上三角、下三角: 多图组合
+(1) type参数设定展示类型，有3种：full，upper，lower（前面展示的图都是type=“full”）；
+# 	默认type='full'展示全部；当type设为其他值时，则可形成组合图。
+corrplot(MM, order = 'AOE', type = 'lower')
+
+
+(2) 多图组合 circle + ellipse
+# tl.pos = 'd'设定文本标签展示在对角线
+corrplot(MM, order = 'AOE', type = 'upper', tl.pos = 'd')
+# add = TRUE在已有的图形上添加其他图形
+# tl.pos = 'n'不展示文本标签, cl.pos = 'n'不展示颜色图例，
+#   diag = FALSE不展示对角线的相关系数
+corrplot(MM, add = TRUE, type = 'lower', method = 'ellipse', 
+         order = 'AOE',  diag = FALSE, tl.pos = 'n', cl.pos = 'n')
+#
+
+
+(3)## circle + square
+corrplot(MM, order = 'AOE',type = 'upper', tl.pos = 'd')
+corrplot(MM, add = TRUE, type = 'lower', method = 'square', 
+         order = 'AOE',diag = FALSE, tl.pos = 'n', cl.pos = 'n')
+#
+
+
+(4)## circle + colorful number
+corrplot(MM, order = 'AOE', type = 'upper', tl.pos = 'd')
+corrplot(MM, add = TRUE, type = 'lower', method = 'number', 
+	order = 'AOE',diag = FALSE, tl.pos = 'n', cl.pos = 'n')
+#
+
+
+
+
+
+
+
+ref:
+https://www.jianshu.com/p/00000f6f32df
+http://www.360doc.com/content/19/0109/21/52645714_807781591.shtml
+
+
+
+
+
+
+========================================
+系统发育树、层次聚类方法(hierarchical cluster)、最优聚类数
+----------------------------------------
+https://bradleyboehmke.github.io/HOML/hierarchical.html
+
+# Helper packages
+library(dplyr)       # for data manipulation
+library(ggplot2)     # for data visualization
+
+# Modeling packages
+library(cluster)     # for general clustering algorithms
+library(factoextra)  # for visualizing cluster results
+
+
+
+1. 层次聚类(hclust)是通过可视化然后人为去判断大致聚为几类，很明显在共同父节点的一颗子树可以被聚类为一个类
+(1) 层次聚类 经典语句
+dataset=mtcars;head(dataset)
+h_dist <- dist(as.matrix(dataset))
+h_clust<-hclust(h_dist, method = 'ward.D')
+plot(h_clust, hang = -1) #对行进行聚类
+rect.hclust(h_clust,3) #分为三类，添加矩形框
+
+rect.hclust(clust_ward2, k = boxNunber, border = rainbow(boxN)) #可以设置矩形的颜色
+
+
+
+(2)当order = "hclust"时，可使用hclust.method选择层次聚类的方法
+#hclust.method可以为“complete”, “ward”, “single”, “average”, “mcquitty”, “median”, “centroid”
+#ward.D和ward.D2是最优秀的聚类方法，推荐优先尝试。
+
+corrplot(matrix.cor, order = "hclust",addrect  = 3, hclust.method="ward.D2")
+
+
+
+
+
+
+2. 最佳分类数的确定, 好像只对 kmeans 有效： fviz_nbclust()
+
+head(mtcars)
+#一列一个细胞，一行一个基因(参数)
+dt=t(mtcars)
+#head(dt)
+# 按照列标准化
+dt=apply(dt, 2, function(x){ log2( 1+  1e6*x/sum(x) ) })
+dt=as.data.frame(dt)
+head(dt) 
+
+#计算距离
+dt.dist=dist( dt, method="euclidean")
+#method	
+#the distance measure to be used. This must be one of 
+#"euclidean", "maximum", "manhattan", "canberra", "binary" or 
+#"minkowski". Any unambiguous substring can be given.
+class(dt.dist) #[1] "dist"
+length(dt.dist) #55
+head(dt.dist)
+
+
+#使用距离聚类
+tree1=hclust( dt.dist, method = 'ward.D2' ); plot( tree1 )  #对观测值(row)聚类
+boxN=3;rect.hclust(tree1, k = boxN, border = rainbow(boxN))
+
+dt.cor=cor(dt)
+hclust( dist(dt.cor, method = "") )
+
+
+#get cluster number for each item
+head(cutree(tree1, k=boxN))
+table(cutree(tree1, k=boxN))
+# 1 2 3 
+# 7 2 2
+
+library(pheatmap)
+pheatmap( as.matrix(dt), scale='row', 
+          clustering_method='ward.D2',
+          border_color = NA )
+
+# 确定最佳分类数： 貌似只能是 kmeans 方法
+# Allowed values include: kmeans, cluster::pam, cluster::clara, 
+#  cluster::fanny, hcut, etc.
+library("factoextra")
+dim(dt) #11 32
+fviz_nbclust( dt, FUNcluster=kmeans, method="silhouette")
+fviz_nbclust( dt, FUNcluster=kmeans, method="wss")
+fviz_nbclust( dt, FUNcluster=kmeans, method="gap_stat")
+# method = c("silhouette", "wss", "gap_stat")
+
+
+
+
+
+
+
+3.NbClust() function: 30 indices for choosing the best number of clusters
+
+NbClust(data = NULL, diss = NULL, distance = "euclidean",
+        min.nc = 2, max.nc = 15, method = NULL)
+参数详解:
+* data: matrix
+* diss: dissimilarity matrix to be used. By default, diss=NULL, but if it is replaced by a dissimilarity matrix, distance should be “NULL”
+* distance: the distance measure to be used to compute the dissimilarity matrix. Possible values include “euclidean”, “manhattan” or “NULL”.
+	- min.nc, max.nc: minimal and maximal number of clusters, respectively
+	- method: The cluster analysis method to be used including “ward.D”, “ward.D2”, “single”, “complete”, “average”, “kmeans” and more.
+#
+
+To compute NbClust() for kmeans, use method = “kmeans”.
+To compute NbClust() for hierarchical clustering, method should be one of c(“ward.D”, “ward.D2”, “single”, “complete”, “average”).
+
+
+
+
+(2) 评估分类标准
+library(cluster)
+# Gap statistic for hierarchical clustering
+dt=mtcars
+gap_stat <- clusGap( t(dt), FUN = hcut, K.max = 10, B = 10)
+# pheatmap(dt)
+fviz_gap_stat(gap_stat)
+
+
+
+
+
+
+
+ref:
+1.https://blog.csdn.net/weixin_30954607/article/details/97271072
+2.https://www.cnblogs.com/think90/p/7133753.html
+3.https://www.datanovia.com/en/lessons/determining-the-optimal-number-of-clusters-3-must-know-methods/
 
 
 

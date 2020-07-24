@@ -6,6 +6,8 @@
 https://www.cnblogs.com/wangprince2017/p/9937080.html
 原版：https://www.bioconductor.org/packages/devel/workflows/vignettes/RNAseq123/inst/doc/limmaWorkflow_CHN.html
 
+三个包比较的: https://www.freesion.com/article/752576024/
+
 
 limma包使用到edgeR DGEList object作为输入。
 
@@ -369,6 +371,10 @@ s
 # 图略 
 
 
+
+
+ref:
+1. R语言实战：edgeR-RNASeq差异基因鉴定 https://www.jianshu.com/p/cabee4bb7441
 
 
 
@@ -2162,9 +2168,12 @@ romer函数实现了基于旋转而不是置换的GSEA方法，它可以与一�
 
 
 ========================================
-edgeR //todo
+edgeR
 ----------------------------------------
 1. 用途
+edgeR 适用于RNA-Seq，SAGE-Seq，Chip-Seq，CRISPR-Cas9，DNA methylation研究。
+
+
 (1)细胞特异性基因是用edgeR识别的。
 The cell-specific genes between ESC and NIH-3T3 were identified using EdgeR (FDR < 0.05; fold change > 1.5 or greater than two-thirds)34.
 
@@ -2193,7 +2202,94 @@ at the R prompt to open the User’s Guide in a pdf viewer.
 
 
 
-2. 
+
+
+
+
+
+
+2. edgeR包是进行RNA-seq数据分析非常常用的一个R包。该包需要输入每个基因关于每个样本的reads数的数据，每行对应一个基因，每一列对应一个样本。建议使用htseq-count进行统计，输出文件即可直接使用。如果需要算RPKM，需要自己统计基因长度信息。
+
+(0)快速入门
+glm approach 相比经典方法更灵活。旗下包含quasi-likelihood F-test method 和 likelihood ratio。
+quasi-likelihood： 建议用于大量RNA-seq数据的差异表达分析。
+likelihood ratio： 建议用于单细胞RNA-seq分析和没有重复的实验分析中。
+
+
+x = read.delim("TableOfCounts.txt",row.name = "Symbol")
+group = factor(c(1,1,2,2))
+y = DGEList(counts = x,group = group)
+y = calcNormFactors(y)
+design = model.matrix(~group)
+y = estimateDisp(y,design)
+
+运行quasi-likelihood F test：
+fit = glmQLFit(y,design)
+qlf = glmQLFTest(fit,coef = 2)
+topTags(qlf)
+
+运行likelihood ratio tests：
+fit = glmFit(y,design)
+lrt = glmLRT(fit,coef = 2)
+topTags(lrt)
+
+
+
+
+
+
+(1) 输入基因和分组信息
+第一步：构建 DGEList类变量
+edgeR的大多数操作都是对 DGEList类型变量进行，所以第一步必须构建该类型变量，使用函数：DGEList
+y <- DGEList(counts=x)
+
+
+这里的x就是每个行一个基因每列一个样本的reads数表达矩阵。
+当然还需要一个分组信息的数据，需要自己建立，例如：
+
+group <- c(1,1,2,2)
+y <- DGEList(counts=x, group=group)
+
+
+(2) 第二步：基因筛选
+对于在大多数样本中表达数量都很少的基因，需要进行过滤，这一步可以根据自己定义的标准过滤，edgeR推荐使用该包的CPM（ count-per-million ）值进行过滤，命令：
+
+keep <- rowSums(cpm(y)>1) >= 2#至少在两个样本里cpm大于1
+y <- y[keep, , keep.lib.sizes=FALSE]
+
+
+(3) 第三步：标准化
+edgeR的标准化思想主要针对的是不同样本在建库时效应。这一点与RPKM不同，因为edgeR认为不同的基因对于所有样本的影响是相同的，所以不必考虑。因此为了消除这种建库时的效应，edgeR会更推荐你使用他的calcNormFactors函数，算出来的值叫做trimmed mean of M-values (TMM) ，命令为：
+
+y <- calcNormFactors(y)
+y$samples
+
+# group lib.size norm.factors
+# Sample1 1 10880519 1.17
+# Sample2 1 9314747 0.86
+# Sample3 1 11959792 1.32
+# Sample4 2 7460595 0.91
+# Sample5 2 6714958 0.83
+
+
+(4) 第四步：聚类与热图
+在表达量分析中经常会遇到根据基因表达量来对基因进行聚类分析的过程，edgeR建议使用logcpm这个指标来进行聚类和画热图，命令是：
+
+logcpm <- cpm(y, prior.count=2, log=TRUE)
+
+
+(5) 第五步：差异表达分析
+edgeR的差异表达分析有两种方式，简单的一种是直接进行配对检验，命令是：
+
+et <- exactTest(y, pair=c("A","B")) #检验A、B样本的差异表达基因
+topTags(et)
+
+
+另一种算法比较复杂，其思想是：首先表达值需要服从某个分布，然后与这个分布不相符的基因才是差异表达基因。具体做法如下：
+
+design <- model.matrix(~Subject+Treat)#设计一个实验设计矩阵
+fit <- glmFit(y, design)#构建一个基因表达值得广义线性模型
+lrt <- glmLRT(fit) #通过似然比检验得到最后的结果
 
 
 
@@ -2201,13 +2297,9 @@ at the R prompt to open the User’s Guide in a pdf viewer.
 
 
 
-
-
-
-
-
-
-
+ref:
+https://blog.csdn.net/hzau_yang/article/details/78118257
+https://blog.csdn.net/weixin_44649331/article/details/103842532
 
 
 ========================================
@@ -2302,9 +2394,14 @@ dev.off()
 2.步骤
 第一步在你的PC或者MAC上安装Rstudio
 第二步安装deseq2工具并载入
-source("https://bioconductor.org/biocLite.R")
-biocLite("DESeq2")
+
+#新版这样安装
+# BiocManager::install("DESeq")
+# BiocManager::install("DESeq2")
+# BiocManager::install("pasilla")
+
 library(DESeq2)
+library(pasilla)
 
 然后是读取数据，在这里需要说明一下
 1)、读取的数据结构应该是
@@ -2312,6 +2409,8 @@ library(DESeq2)
 
 2)、数据可以从txt或者csv等文件直接用read.table/csv读取
 # setwd("~/data")
+# setwd('G:\\c1_BR_analysis_code\\30_RE_cell_line')
+
 data <- read.table("ehbio_trans.Count_matrix.xls", header=T, row.names=1, com='', quote='', check.names=F, sep="\t")
 
 
@@ -2366,6 +2465,7 @@ pasillaCountTable = read.table( datafile, header=TRUE, row.name=1);head( pasilla
 raw.count=pasillaCountTable
 
 #加载条件
+library(DESeq)
 data(pasillaGenes)
 dim(pasillaGenes)
 ## Features  Samples 
@@ -2376,19 +2476,19 @@ dim(pasillaGenes)
 ##元数据可以分为三组，分别是样本(行名)，特征(列)和整个实验的信息。
 pasillaDesign = data.frame(
   names = colnames( pasillaCountTable ),
-  condition = pasillaGenes$condition,
-  libType = pasillaGenes$type,
+  condition = rev(pasillaGenes$condition),
+  libType = rev(pasillaGenes$type),
   row.names = 1
 )
 pasillaDesign
-##            condition     libType
-## untreated1   treated single-read
-## untreated2   treated  paired-end
-## untreated3   treated  paired-end
+##           condition     libType
+## untreated1 untreated  paired-end
+## untreated2 untreated  paired-end
+## untreated3 untreated single-read
 ## untreated4 untreated single-read
-## treated1   untreated single-read
-## treated2   untreated  paired-end
-## treated3   untreated  paired-end
+## treated1     treated  paired-end
+## treated2     treated  paired-end
+## treated3     treated single-read
 coldata=pasillaDesign
 # data prepare end.
 
@@ -2400,21 +2500,21 @@ coldata=pasillaDesign
 ####################
 # 开始使用DESeq2
 ####################
-DESeq2包采用DESeqDataSet存储原始的read count和中间计算的统计量。
+#DESeq2包采用DESeqDataSet存储原始的read count和中间计算的统计量。
 
-构建deseq2对象
+#构建deseq2对象
 dds <- DESeqDataSetFromMatrix(countData = raw.count, #表达矩阵
 	colData = coldata, #样品分组信息表
 	design = ~ condition) #实验设计信息，conditions必须是colData中的一列的colname
 
-设置对照
-dds$condition<−relevel(dds$condition,'Normal')  
-
-#dds$condition <- relevel(dds$condition,'untreated')
+#设置对照
+#dds$condition = relevel(dds$condition,'Normal')  
+dds$condition = relevel(dds$condition,'untreated')
 dds$condition #level中的两项，第一个是对照。
+# Levels: untreated treated
 
 
-计算开始，样本量大的话，可以先去干点别的
+#计算开始，样本量大的话，可以先去干点别的
 dds2 <- DESeq(dds)
 ## estimating size factors
 ## estimating dispersions
@@ -2430,31 +2530,116 @@ dds2 <- DESeq(dds)
 ### more todo at last.
 
 
-get结果
+#get结果
 res <- results(dds2)
 head(res) # log2 fold change (MLE): condition treated vs untreated 果然是对的
 ## 校正后p-value为NA的赋值为1
 #res$padj[is.na(res$padj)] = 1
 # 按pvalue排序, 把差异大的基因放前面
-res <- res[order(res$pvalue),]  #order函数是给出从小到大排序后的位置，默认decreasing = FALSE
+res <- res[order(res$padj),]  #order函数是给出从小到大排序后的位置，默认decreasing = FALSE
+head(res)
 
 
 #设置cutoff
-resSig <- subset(res, abs(log2FoldChange)>1 & padj < 0.05) #需要先替换NA为0吧？不用NA替换为1，NA都会被过滤掉的。
-dim(resSig) #[1] 44  6
+resSig <- subset(res, abs(log2FoldChange)>log2(1.5) & padj < 0.05) #需要先替换NA为0吧？不用NA替换为1，NA都会被过滤掉的。
+dim(resSig) #[1] 479  6
 head(resSig)
+#	baseMean	log2FoldChange	lfcSE	stat	pvalue	padj
+#FBgn0039155	730.5958061	-4.619013333	0.168706778	-27.37894349	4.89E-165	4.07E-161
+#FBgn0025111	1501.410513	2.899864343	0.126920536	22.84787335	1.53E-115	6.38E-112
+#FBgn0029167	3706.116531	-2.197000182	0.096988843	-22.65209194	1.33E-113	3.69E-110
+#FBgn0003360	4343.035397	-3.179672196	0.1435264	-22.15391877	9.56E-109	1.99E-105
 
 
-#输出结果
+#输出结果，并记录到文件
 resSig<-data.frame(resSig)
 write.csv(resSig,file="DESeq2_DEG.csv")
+res0=res
 
 #end
 
 
 
+############
+## MA plot
+res2=data.frame(res)
+plotMA(res2 ,ylim=c(-5,5) )
+# 标出p最显著的基因
+topGene <- rownames(res2)[which.min(res2$padj)]
+with(res2[topGene, ], {
+   points(baseMean, log2FoldChange, col="dodgerblue", cex=6, lwd=2)
+   text(baseMean, log2FoldChange, topGene, pos=2, col="dodgerblue")
+})
 
 
+
+
+
+############
+# ?counts查看此函数功能
+# normalized=T, 返回标准化的数据
+normalized_counts <- counts(dds2, normalized=TRUE)
+head(normalized_counts)
+
+# 根据基因在不同的样本中表达变化的差异程度mad值对数据排序，差异越大的基因排位越前。
+normalized_counts_mad <- apply(normalized_counts, 1, mad)
+normalized_counts <- normalized_counts[order(normalized_counts_mad, decreasing=T), ]
+
+# filter zeros
+hist( log2( apply(normalized_counts,1,sum) ),n=100 )
+keep=apply(normalized_counts,1,sum)!=0
+# hist plot
+pheatmap( log2(normalized_counts[keep,]+1),
+          clustering_method="average",
+          show_rownames=F,
+          scale="row",
+          
+          annotation_col=df,
+          
+          cluster_rows=T, 
+          cluster_cols=T)
+# 这个热图分类效果还好
+#
+# 使用差异基因分类
+ls()[grep('Sig',ls(), ignore.case=T)]
+head(resSig)
+dim(resSig) #479 6
+pheatmap( log2(normalized_counts[rownames(resSig),]+1),
+          clustering_method="average",
+          show_rownames=F,
+          scale="row",
+          
+          annotation_col=df,
+          
+          cluster_rows=T, 
+          cluster_cols=T)
+#
+
+
+
+
+
+
+############
+# 经过lfcShrink 收缩log2 fold change
+res_order<-res[order(row.names(res)),]
+res = res_order
+res.shrink <- lfcShrink(dds2, contrast = c("condition","treated","untreated"), res=res)
+#Note that type='apeglm' and type='ashr' have shown to have less bias than type='normal'.
+#See ?lfcShrink for more details on shrinkage type,
+res.shrink=as.data.frame(res.shrink)
+##
+plotMA(res.shrink, ylim = c(-5,5))
+topGene <- rownames(res)[which.min(res$padj)]
+with(res[topGene, ], {
+  points(baseMean, log2FoldChange, col="dodgerblue", cex=2, lwd=2)
+  text(baseMean, log2FoldChange, topGene, pos=2, col="dodgerblue")
+})
+##
+head(res.shrink)
+#                 baseMean log2FoldChange      lfcSE         stat     pvalue      padj
+# FBgn0000003    0.1715687    0.014108444 0.05709662  0.269612549 0.78745835        NA
+# FBgn0000008   95.1440790    0.001752368 0.18253170  0.009611049 0.99233161 0.9969282
 
 
 ############
@@ -2472,6 +2657,7 @@ write.csv(resSig,file="DESeq2_DEG.csv")
 
 # 作者还是非常推荐使用lfcShrink的https://support.bioconductor.org/p/95695/
 # 对于新版本而言，可以这样手动操作
+
 resultsNames(dds2) ## [1] "Intercept"  "condition_treated_vs_untreated" #coef的参数
 #BiocManager::install("apeglm")
 library(apeglm)
@@ -2479,7 +2665,7 @@ library(apeglm)
 resLFC <- lfcShrink(dds2,coef="condition_treated_vs_untreated", type="apeglm")
 # 选择的apeglm参数(Zhu, Ibrahim, and Love 2018)进行effect size shrinkage,which improves on the previous estimator
 
-# 发现shrink前后少了一列stat
+# 发现shrink后少了一列stat
 names(resLFC)
 #[1] "baseMean"       "log2FoldChange" "lfcSE"          "pvalue"       "padj"          
 names(res)
@@ -2489,20 +2675,105 @@ names(res)
 
 
 
+############
+#Plot counts
+# 不画图，只显示数据
+# plotCounts(dds2, gene=which.min(res2$padj), intgroup="condition", returnData=TRUE) #这个好像是错的
+plotCounts(dds2, gene=rownames(res2)[which.min(res2$padj)], intgroup="condition", returnData=TRUE)
+#只画图，不显示数据
+topGene #"FBgn0039155"
+plotCounts(dds2, gene="FBgn0039155", intgroup="condition", returnData=FALSE)
+
+# 下面用ggplot2来画基因 的box图和point图
+#boxplot
+library(dplyr)
+library(ggplot2)
+plotCounts(dds, gene="FBgn0039155", intgroup="condition", returnData=TRUE) %>% 
+  ggplot(aes(condition, count)) + 
+  geom_boxplot(aes(fill=condition)) + 
+  scale_y_log10() + ggtitle("FBgn0039155")
+#
+
+## point plot
+d <- plotCounts(dds, gene="FBgn0039155", intgroup="condition", returnData=TRUE)
+ggplot(d, aes(x=condition, y=count)) + 
+   geom_point(aes(color= condition),size= 4, position=position_jitter(w=0.5,h=0)) + 
+   scale_y_log10(breaks=c(25,100,400))+ ggtitle("FBgn0039155")
+
+
+##########
+## PCA(principal components analysis)
+vsdata <- vst(dds2, blind=FALSE)
+#
+detach("package:DESeq", unload=TRUE)
+plotPCA(vsdata, intgroup="condition") 
+##Error in (function (classes, fdef, mtable)  : 
+##unable to find an inherited method for function ‘exprs’ for signature ‘"DESeqTransform"’
+##报这个错，是因为包不对，消掉无关的包 https://bbs.pinggu.org/thread-1337086-1-1.html
 
 
 
 
 
+##########
+#热图：两部分
+# 4.1 count matrix 热图
+# BiocManager::install('pheatmap')
+library("pheatmap")
+select<-order(rowMeans(counts(dds2, normalized = TRUE)),
+              decreasing = TRUE)[1:300]
+df <- as.data.frame(colData(dds2)[,c("condition","sizeFactor")]) 
+# this gives log2(n + 1)
+ntd <- normTransform(dds2)
+pheatmap(assay(ntd)[select,],
+         show_rownames=F,
+         scale="row",
+         cluster_rows=T, 
+         cluster_cols=T,
+         annotation_col=df)
+#
+#
+# 使用原始read画热图， 说明log2(cpm+1)画热图挺好的。
+dim(raw.count) #14599
+head(raw.count)
+keep=apply(raw.count,1,sum)>0
+table(keep)
+#
+count.standard=apply(raw.count[keep,],2,function(x){ x*1e6/sum(x) })
+dim(count.standard)
+head(count.standard)
+pheatmap( log2(count.standard+1),
+          clustering_method="average",
+         show_rownames=F,
+         scale="row",
 
-# ?counts查看此函数功能
-# normalized=T, 返回标准化的数据
-normalized_counts <- counts(dds2, normalized=TRUE)
-head(normalized_counts)
+         annotation_col=df,
 
-根据基因在不同的样本中表达变化的差异程度mad值对数据排序，差异越大的基因排位越前。
-normalized_counts_mad <- apply(normalized_counts, 1, mad)
-normalized_counts <- normalized_counts[order(normalized_counts_mad, decreasing=T), ]
+         cluster_rows=T, 
+         cluster_cols=T)
+#
+#
+
+## 4.2 sample-to-sample distances热图
+sampleDists <- dist(t(assay(vsdata)))
+library("RColorBrewer")
+sampleDistMatrix <- as.matrix(sampleDists)
+rownames(sampleDistMatrix) <- paste(vsdata$condition, vsdata$type, sep="-")
+colnames(sampleDistMatrix) <- NULL
+colors <- colorRampPalette( rev(brewer.pal(9, "Blues")) )(255)
+pheatmap(sampleDistMatrix,
+         clustering_distance_rows=sampleDists,
+         clustering_distance_cols=sampleDists,
+         col=colors)
+#样本聚类到一起了
+
+
+##
+
+
+
+
+
 
 
 
@@ -2513,7 +2784,7 @@ normalized_counts <- normalized_counts[order(normalized_counts_mad, decreasing=T
 
 如果input没有gene symbol，则这个时候依旧是没有基因名字的，你需要参考下面的教程进行注释。果蝇的基因，不做了。
 生信干货~ID(ENSGxx)转Gene name的方法~
-R代码包与练习文件请到Chris生信初级教程中下载
+
 
 
 
@@ -2524,6 +2795,10 @@ https://mp.weixin.qq.com/s?__biz=MzI5MTcwNjA4NQ%3D%3D&mid=2247485368&idx=1&sn=12
 
 用DESeq2包来对RNA-seq数据进行差异分析
 http://www.bio-info-trainee.com/bioconductor_China/software/DESeq2.html
+
+
+RNA-seq实战(下)_数据可视化、GO/KEGG分析
+https://www.jianshu.com/p/f73de8022cf9
 
 
 
@@ -2737,7 +3012,7 @@ ID转换
 
 https://mp.weixin.qq.com/s?__biz=MzI3MTM4NTAzOQ==&mid=2247483831&idx=1&sn=e53f0896514c3785c38773435a74e9af
 
-
+详见 NGS/GO 分析专题。
 
 
 ========================================
