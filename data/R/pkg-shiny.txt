@@ -694,6 +694,102 @@ https://shiny.rstudio.com/reference/shiny/1.0.2/tabPanel.html
 
 
 ========================================
+|-- 怎么加前台进度条、异步
+----------------------------------------
+R运行太慢，超过10s用户会以为页面挂掉了，怎么在页面加一个进度条？
+
+
+
+1. R的shiny网页里面添加进度条实现起来非常容易，withProgress/incProgress/setProgress
+教程: https://shiny.rstudio.com/reference/shiny/latest/withProgress.html
+更多例子: https://shiny.rstudio.com/gallery/progress-bar-example.html
+
+
+withProgress(expr, min = 0, max = 1, value = min + (max - min) * 0.1,
+  message = NULL, detail = NULL,
+  style = getShinyOption("progress.style", default = "notification"),
+  session = getDefaultReactiveDomain(), env = parent.frame(),
+  quoted = FALSE)
+
+setProgress(value = NULL, message = NULL, detail = NULL,
+  session = getDefaultReactiveDomain())
+
+incProgress(amount = 0.1, message = NULL, detail = NULL,
+  session = getDefaultReactiveDomain())
+
+#
+
+
+
+
+
+
+2. 异步执行需要2个包: future, promises
+Shiny async is implemented via integration with the future and promises packages. These two packages are used together:
+
+R的异步: https://rstudio.github.io/promises/
+
+Shiny 1.1.0: Scaling Shiny with async
+https://blog.rstudio.com/2018/06/26/shiny-1-1-0/
+
+(1)Use future to perform long-running operations in a worker process that runs in the background, leaving Shiny processes free to serve other users in the meantime. This yields much better responsiveness under load, and much more predictable latency.
+使用 future 执行一个后台进程。
+(2)Use promises to handle the result of each long-running background operation back in the Shiny process, where additional processing can occur, such as further data manipulation, or displaying to the user via a reactive output.
+使用 promises 处理后台进程的结果。
+
+
+原始写法:
+server <- function(input, output, session) {
+  r <- reactive({ #如果httr::GET(url)这里需要30s，则用户感觉R进程“暂停”30秒。
+    httr::GET(url) %>%
+      httr::content("parsed")
+  })
+
+  output$plot <- renderPlot({
+    r() %>%
+      ggplot(aes(speed, dist)) + geom_point()
+  })
+}
+
+
+
+异步写法:
+library(promises)
+library(future)
+plan(multisession)
+
+server <- function(input, output, session) {
+  r <- reactive({
+    future(httr::GET(url)) %...>%
+      httr::content("parsed")
+  })
+  
+  output$plot <- renderPlot({
+    r() %...>% {
+      ggplot(., aes(speed, dist)) + geom_point()
+    }
+  })
+}
+
+
+
+
+
+异步最后一步匿名函数的写法:
+# Code here runs in process A
+future({
+  # Code here runs in (child) process B
+}) %...>% (function(result) {
+  # Code here runs in process A
+})
+
+
+
+
+
+
+
+========================================
 shiny入门第4课: 展示响应式输出 Display reactive output ( 各种 Output 对象 )
 ----------------------------------------
 1. 响应式需要2步:
@@ -984,6 +1080,11 @@ runUrl( "<the weblink>")
 
 (2) 如果没有网站，脚本放到了github，则
 runGitHub( "<your repository name>", "<your user name>")
+
+例:
+runGitHub( "shiny_GO", "DawnEve", host='0.0.0.0', port=9993)
+
+
 
 (3) runGist("<gist number>")
 比如 runGist("eb3470beb1c0252bd0289cbc89bcf36f")
