@@ -48,6 +48,7 @@ return array (
     1 => '常用R包',
     2 => array (
       array('ggplot2绘图','ggplot2','txt'),
+      array('ggplot2绘图demo','ggplot2_demo','txt'),
       array('分析差异表达基因 DEG','pkg-DEG','txt'),
       array('数据框清理dplyr','pkg-dplyr','txt'),
       array('R web: shinny框架','pkg-shiny','txt'),
