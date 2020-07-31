@@ -115,6 +115,8 @@
 ['gauge', 'esteem','ego','patrol','merit','inlet','dubious']
 ['discourse', 'enclose', 'sensation', 'proclaim', 'plight', 'deliberate', 'fringe', 'commemorate', 'spit']
 ['manifest', 'disposition', 'scout', ]
+["underlie", "bizarre", "grief", "pant", "exhibit", "hurl"]
+
 
 
 
