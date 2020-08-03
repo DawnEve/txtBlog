@@ -22,6 +22,7 @@ return array (
 	  //array('VIM常用命令','vim001', 'txt'),
 	  array('字符grep/awk/sed','string_process', 'txt'),
 	  array('用户、权限与日志和安全','linux102-user', 'txt'),
+	  array('多媒体','linux301_mutimedia', 'txt'),
     ),
   ),
   
