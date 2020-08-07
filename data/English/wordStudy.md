@@ -110,12 +110,17 @@
 ["hermit", "negligent", "predate", "affluent", "fraught", "gox"]
 
 
-
 ## group 11
 ['gauge', 'esteem','ego','patrol','merit','inlet','dubious']
 ['discourse', 'enclose', 'sensation', 'proclaim', 'plight', 'deliberate', 'fringe', 'commemorate', 'spit']
 ['manifest', 'disposition', 'scout', ]
-["underlie", "bizarre", "grief", "pant", "exhibit", "hurl"]
+["underlie", "bizarre", "grief", "pant", "exhibit", "hurl", 'eminent']
+['horizontal', 'excerpt', 'consent', 'persevere']
+
+
+
+## group 12
+["disperse", "bleak", "negligible", "renaissance", "dispose", "designate", "brittle"]
 
 
 
