@@ -120,8 +120,8 @@
 
 
 ## group 12
-["disperse", "bleak", "negligible", "renaissance", "dispose", "designate", "brittle"]
-
+["disperse", "bleak", "negligible", "renaissance", "dispose", "designate", "brittle", "deposit"]
+["contend", "dip", "revelation", "prevalent"]
 
 
 
