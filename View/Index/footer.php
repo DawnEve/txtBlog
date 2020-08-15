@@ -128,7 +128,7 @@
 		
 		echo '<br />数学: ';
 		print_links(array(
-			array('https://blog.csdn.net/hpdlzu80100','数学笔记(高数/线代/统计/)'),
+			array('https://blog.csdn.net/hpdlzu80100/category_7468916.html','数学笔记(高数/线代/统计/)'), //https://blog.csdn.net/hpdlzu80100
 			array('https://face2ai.com/Math-Probability-5-5-The-Negative-Binomial-Distribution/','谭升(统计/书list)'),
 			array('https://qinqianshan.com/math/probability_distribution/','SAM NOTE(统计等)'),
 		));
@@ -138,12 +138,14 @@
 		print_links(array(
 			array('http://www.bioinfo-scrounger.com/','生信笔记'),
 			array('https://www.cnblogs.com/leezx/tag/单细胞/','单细胞'),
+			array('https://divingintogeneticsandgenomics.rbind.io/#publications','Ming Tang(scATAC)'),
 			array('https://life2cloud.com/cn/2018/11/pipelines-styles/','李剑峰(生信流程)'),
 			
 			array('http://blog.shenwei.me/about/','shenwei(微生物)'),
+			array('http://www.dengfeilong.com/post/aboutUs.html','邓飞龙(微生物)'),
 			array('http://kaopubear.top/','Fei Zhao(bioinfo)'),
+			array('https://liulab-dfci.github.io/teaching','liulab'), //X Shirley Liu
 			//array('',''),
-			// array('http://www.dengfeilong.com/post/aboutUs.html','邓飞龙'), //空间过期
 		));
 ?>		
 			

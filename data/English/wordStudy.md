@@ -118,10 +118,17 @@
 ['horizontal', 'excerpt', 'consent', 'persevere']
 
 
-
 ## group 12
 ["disperse", "bleak", "negligible", "renaissance", "dispose", "designate", "brittle", "deposit"]
 ["contend", "dip", "revelation", "prevalent"]
+["symmetry", "temperament", "desolate", "equivalent", "embody"]
+["scramble", "repertoire", "lateral", "judicial"]
+["cafe", "doctorate", "constituent"]
+
+
+
+## group 13
+["divine", "scarf", "leaflet", "spade", "glare"]
 
 
 

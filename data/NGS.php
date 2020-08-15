@@ -6,8 +6,9 @@ return array (
     1 => '前言与资料',
     2 => array (
       array('项目描述','NGS001','html',),
-      array('参考资料','NGS002','html'),
+      array('RNA分子参考资料','NGS002','html'),
       array('FAQ','NGS003','html'),
+      array('最佳实践 best_practice','best_practice','txt'),
     ),
   ),
   
@@ -19,9 +20,9 @@ return array (
 	  array('测序分子生物学','seq101-basic','txt' ),
       array('测序扫盲/陈巍学基因','NGS004','txt'),
     ),
-  ),  
-  
-  
+  ),
+
+
   array (
     0 => 3,
     1 => '数据分析语言',
