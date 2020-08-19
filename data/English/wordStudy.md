@@ -129,7 +129,7 @@
 
 ## group 13
 ["divine", "scarf", "leaflet", "spade", "glare"]
-
+["swamp", "verdict"]
 
 
 

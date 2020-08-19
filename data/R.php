@@ -30,17 +30,6 @@ return array (
 
 
 
-  array (
-    0 => 1,
-    1 => '数学 Math',
-    2 => array (
-      array('概率论与数理统计','Math_statistics','txt'),
-      array('线性代数','Math_linear_algebra','txt'),
-      array('微积分','Math_calculus','txt'),
-    ),
-  ),
-
-
 
 
   array (
