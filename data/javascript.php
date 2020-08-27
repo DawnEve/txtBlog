@@ -19,7 +19,7 @@ return array (
     2 => 
     array (
 	  array('js core 快速入门','js101-basic','txt' ),
-	  array('js函数、闭包、原型','js102-adv','txt' ),
+	  array('js高级:函数、闭包、原型','js102-adv','txt' ),
 	  //array('字符串处理','js201','txt' ),
 
 	  array('浏览器-DOM-BOM-Event','js103-browser','txt' ),

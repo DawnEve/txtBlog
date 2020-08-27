@@ -131,6 +131,7 @@
 			array('https://blog.csdn.net/hpdlzu80100/category_7468916.html','数学笔记(高数/线代/统计/)'), //https://blog.csdn.net/hpdlzu80100
 			array('https://face2ai.com/Math-Probability-5-5-The-Negative-Binomial-Distribution/','谭升(统计/书list)'),
 			array('https://qinqianshan.com/math/probability_distribution/','SAM NOTE(统计等)'),
+			array('https://www.cnblogs.com/pinard/category/894690.html','刘建平Pinard(数据挖掘等)'),
 		));
 		
 		
@@ -164,8 +165,8 @@ var cnzz_protocol = (("https:" == document.location.protocol) ? " https://" : " 
 		
 		<div class='links'>
 			Copyright &copy; 2009 - 2020 DawnEve. All Rights Reserved. | 
-			<a target='_blank' href='https://github.com/DawnEve'>Folk me on Github</a> | 
-			<a class=red href='index.php?k=Git&id=0_2'>Contact me</a> | 
+			<a class=red target='_blank' href='https://github.com/DawnEve'>Folk me on Github</a> | 
+			<a href='index.php?k=Git&id=0_2'>Contact me</a> | 
 			<a target='_blank' href='http://pan.baidu.com/s/1i3imHpF' title='密码:qa53'>web tools</a>
 		</div>
 

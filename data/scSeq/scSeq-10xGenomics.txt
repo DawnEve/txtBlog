@@ -687,8 +687,196 @@ $ zcat S-6_S1_L001_R1_001.fastq.gz | grep -P "T{10,}" | wc
 
 
 
+
+
+
+
 ========================================
+|-- 找到R2定位下游5k区域，并把R1的polyT后的序列比对上去
 ----------------------------------------
+
+0. 选择unique map 的序列(对于star也就是mapQ=255)
+in TGACTAGGTAAACACA_Aligned.sortedByCoord.out.bam
+
+$ samtools view TGACTAGGTAAACACA_Aligned.sortedByCoord.out.bam | awk '$5==255{print $0}' |head
+A00129:409:HKVNVDSXX:2:1527:1561:13808	0	chr10	7844744	255	2S74M4119N37M648N15M22S	*	0	0	CCTTGACTTTCAACCGCACCCGCCAGGCTGTCATCACAAAGGAGTTGATTGAAATCATCTCTGGGGCTGCTGCTCTGGATTAATGAAAATCAAGTTGCATCCTCAGACAAGAGGTAAAGAAGAAGAATGCGCAGGCTGATTTTAACTGAT	FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF:FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF:FFFFFFFFF:FFFFFFFFFFFFFFFFFFFF	NH:i:1	HI:i:1	AS:i:107	nM:i:10
+
+A00129:409:HKVNVDSXX:2:1244:28185:36683 0       chr11   812541  255     93M126N43M14S   *       0       0       GCAAGCTGGCCAGTGTGCCTGCTGGTGGGGCTGTGGCTGTTTCTGCTGCCCCTGGCTCTGCAGCACCTGCTGCTGGTTCTGCCCCCGCTGCAGCAGAGGAGAAGAAAGATGAGAAGAAGGAGGAGTCCGAGGAGTCGGATGACGACATGG  FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF,FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF  NH:i:1  HI:i:1  AS:i:116        nM:i:10
+
+
+
+1. 比如 
+i) A00129:409:HKVNVDSXX:2:1527:1561:13808 序列的R1不可比对
+ii) A00129:409:HKVNVDSXX:2:1244:28185:36683 序列R1不可比对
+iii) A00129:409:HKVNVDSXX:2:2565:1823:3615 序列
+
+(1) R2的fq文件为
+$ cd /data/jinwf/wangjl/apa/test2/
+$ cat TGACTAGGTAAACACA.uniq.R2.fq | grep -P "2:2565:1823:3615" -A 3 -n
+18937:@A00129:409:HKVNVDSXX:2:2565:1823:3615 2:N:0:CCGGGTAT
+18938-ACGAGGGGACGCTGTAGCCAAGGCTTCCAAGGACACCCATGTAATGGATTACCGGGCCTTGGTGCATGAGCGAGATGAAGCAGCCTATGGGGCGCTAAGGGCCATGGTGCTGGACCTGAGGGCCTTCTATGCTGAGCTTTATCATATCAT
+18939-+
+18940-FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF,FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF:FFFFFFFFFFFFFFFFFF
+
+
+
+获取质量比较低的R1的polyT后的序列(pos+3)
+$ cat TGACTAGGTAAACACA.uniq.R1.fq | grep -P "2:2565:1823:3615" -A 3 -n
+18937:@A00129:409:HKVNVDSXX:2:2565:1823:3615 1:N:0:CCGGGTAT
+18938-TGACTAGGTAAACACATTAATAGGTATTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTGTAGTATAAATCATTTATTTTACTTATAATACTTAGAACAATAAATCGAAGGGTTTTATTAACCCATGGGGTTGACGATTTTCTATAGGTTG
+18939-+
+18940-FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF,FFFFFFFFFFFF:F,,:,:::FFF:,,,F:,FFFF,,FF,,FF:,,,:,,,:,:,:F,:,,,,,FF,,FF:,:F,FFFF,F,,FF,FF,,,:FFFF,,,:,,FFF,
+
+去掉前56个，剩下的就是R1 lowQ序列: TTGTAGTATAAATCATTTATTTTACTTATAATACTTAGAACAATAAATCGAAGGGTTTTATTAACCCATGGGGTTGACGATTTTCTATAGGTTG
+
+
+
+
+
+(2) bam文件的比对结果
+$ samtools view map/TGACTAGGTAAACACA_Aligned.sortedByCoord.out.bam | awk '$5==255{print $0}' | grep '2565:1823:3615'
+
+A00129:409:HKVNVDSXX:2:2565:1823:3615   16      chr14   24612679        255     20M95N87M303N43M        *       0       0       ATGATATGATAAAGCTCAGCATAGAAGGCCCTCAGGTCCAGCACCATGGCCCTTAGCGCCCCATAGGCTGCTTCATCTCGCTCATGCACCAAGGCCCGGTAATCCATTACATGGGTGTCCTTGGAAGCCTTGGCTACAGCGTCCCCTCGT  FFFFFFFFFFFFFFFFFF:FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF,FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF  NH:i:1  HI:i:1  AS:i:134        nM:i:9
+
+
+
+(3) 获取定位点位置
+$ bedtools bamtobed -i map/TGACTAGGTAAACACA_Aligned.sortedByCoord.out.bam | awk '$5==255{print $0}' | grep '2565:1823:3615'
+chr14   24612678        24613226        A00129:409:HKVNVDSXX:2:2565:1823:3615   255     -
+注释: bed 是0-based坐标，比bam小1。[A, B)
+
+
+
+
+
+
+(4) 获取下游5k序列
+这里暂时不检测是否到同一个链上的下一个基因内。
+因为是-链，所以下游是坐标减小的方向。
+chr14:24607678-24612678, 用IGV目测已经进入另一个基因内了，先不管了。
+
+$ samtools faidx /home/wangjl/data/ref/hg19/hg19.fa chr14:24607678-24612678 > testDB.fa
+返回很多行的序列。
+
+
+
+(5) 先试试网页版工具
+
+1) 使用 blat的结果
+检查是否在 chr14 呢？ 不在，所以不对。
+
+
+2) blast
+https://blast.ncbi.nlm.nih.gov/Blast.cgi?PROGRAM=blastn&PAGE_TYPE=BlastSearch&LINK_LOC=blasthome
+
+blast 没有结果。
+
+
+
+3) 使用 blast+
+$ cd blast 
+
+## 由fa建立索引数据库
+$ cd blast
+$ makeblastdb -in ../testDB.fa -input_type fasta -dbtype nucl -title geneBase -parse_seqids -out geneBase -logfile File_Name
+
+## 
+$ blastn -query ../test.fasta -db geneBase -out test1.blastn.out
+$ less test1.blastn.out
+
+结果是 ***** No hits found *****
+
+
+
+
+
+
+4) bowtie2 
+$ cd bowtie2
+## 建库
+$ bowtie2-build ../testDB.fa geneDB
+
+## 比对
+$ bowtie2 -x geneDB -U ../test.fq ## 没有比对结果
+
+
+## 换这一套参数
+$ bowtie2 --mp 2,1 -D 15 -R 2 -N 1 -L 10 -I S,1,0.75  -x geneDB -U ../test.fq
+参数解释: http://bowtie-bio.sourceforge.net/bowtie2/manual.shtml#building-from-source
+(1*)--mp MX,MN   Sets the maximum (MX) and minimum (MN) mismatch penalties, both integers.Default: MX = 6, MN = 2.
+(2)-D <int> 
+Up to <int> consecutive seed extension attempts can “fail” before Bowtie 2 moves on, using the alignments found so far. A seed extension “fails” if it does not yield a new best or a new second-best alignment. This limit is automatically adjusted up when -k or -a are specified. Default: 15.
+(3) -R <int>
+<int> is the maximum number of times Bowtie 2 will “re-seed” reads with repetitive seeds. When “re-seeding,” Bowtie 2 simply chooses a new set of reads (same length, same number of mismatches allowed) at different offsets and searches for more alignments. A read is considered to have repetitive seeds if the total number of seed hits divided by the number of seeds that aligned at least once is greater than 300. Default: 2.
+(4) 启发式算法 Multiseed heuristic
+the trade-off between speed and sensitivity/accuracy can be adjusted by setting the seed length (-L), the interval between extracted seeds (-i), and the number of mismatches permitted per seed (-N). 
+
+(5)-r
+Reads (specified with <m1>, <m2>, <s>) are files with one input sequence per line, without any other information (no read names, no qualities). When -r is set, the result is as if --ignore-quals is also set.
+
+
+
+$ bowtie2 --mp 2,1 -D 15 -R 2 -N 1 -L 10 -x geneDB -U ../test.fq
+$ bowtie2 --mp 2,1 -D 15 -R 2 -N 1 -L 9 -x geneDB -U ../test.fq
+
+
+$ bowtie2 --mp 2,1 -D 15 -R 2 -N 1 -L 10 -I S,1,0.75  -x geneDB -U ../test.fq 
+$ bowtie2 --local --mp 2,1 -D 15 -R 2 -N 1 -L 10 -I S,1,0.75  -x geneDB -U ../test.fq 
+
+
+
+
+## 结果输出
+5 reads; of these:
+  5 (100.00%) were unpaired; of these:
+    0 (0.00%) aligned 0 times
+    3 (60.00%) aligned exactly 1 time
+    2 (40.00%) aligned >1 times
+100.00% overall alignment rate
+@HD     VN:1.0  SO:unsorted
+@SQ     SN:chr14:24607678-24612678      LN:5001
+@PG     ID:bowtie2      PN:bowtie2      VN:2.3.5.1      CL:"/home/wangjl/software/bowtie2-2.3.5.1-linux-x86_64/bowtie2-align-s --wrapper basic-0 --mp 2,1 -D 15 -R 2 -N 1 -L 10 -I S,1,0.75 -x geneDB -U ../test.fq"
+PosQC   0       chr14:24607678-24612678 3318    42      60M     *       0       0       CACTCTTATTGGCTAGGTTCCCCGACTTCCGCTCTCGGTTGGTGGTTGGCTTTGCCTGTT    ,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,F,,,,,,,,,,,,,,    AS:i:0XN:i:0  XM:i:0  XO:i:0  XG:i:0  NM:i:0  MD:Z:60 YT:Z:UU
+NegQC   16      chr14:24607678-24612678 3318    42      60M     *       0       0       CACTCTTATTGGCTAGGTTCCCCGACTTCCGCTCTCGGTTGGTGGTTGGCTTTGCCTGTT    KKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKK    AS:i:0XN:i:0  XM:i:0  XO:i:0  XG:i:0  NM:i:0  MD:Z:60 YT:Z:UU
+line1   16      chr14:24607678-24612678 1891    2       94M     *       0       0       ACTTTTTGTTTTTTTTTTTATAATAAACTTGGTCCCCTTTTTTAAAAATAAATATTGTTTTTTTTAAATTATATTAAAATAAAAAACTTAAAAC  FFFFFFFFFFFFFF,FFFFF<FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF<FFFFFFFFFFFFFFFFFFFFFFFFFF        AS:i:-53        XS:i:-54        XN:i:0  XM:i:53 XO:i:0  XG:i:0  NM:i:53 MD:Z:1A0G2C1A0G0A0C0C0A0G0C0C1G0G0C0C2C1T0G0G0C0G0A0A0A4A1C1C2C0T2A2T0A1A0A0A0A1A0A1A0A7A1A0A2T1A6T1A0G0C0C0G0G0      YT:Z:UU
+line2   0       chr14:24607678-24612678 3663    2       94M     *       0       0       TTTAAAAAAAAAAAATTTATTTTAGGGGGAGCCGGAAATTAAAAAAAAAAACCAAAAACCAAGTAGGAAACCCACACCAAGGACACCACCATAT  FFFFFFFFFFFFFFFFFFFFFFFFF,FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF,FFFFFFFFFFFFFFFFFFFFFF,FFFFFFFFFFF        AS:i:-51        XS:i:-54        XN:i:0  XM:i:51 XO:i:0  XG:i:0  NM:i:51 MD:Z:2C0T0T1T0C0T0C1T1T0T2A0T0G0A0C0A0G1A0T0A0A0G3C0T0G7G2C2T0C3T0G0G1G0T0T0T0A0C2C2G0A0T4G3A1G0A3C0T0T0G1C1  YT:Z:UU
+line3   0       chr14:24607678-24612678 4902    23      94M     *       0       0       TTGTAGTATAAATCATTTATTTTACTTATAATACTTAGAACAATAAATCGAAGGGTTTTATTAACCCATGGGGTTGACGATTTTCTATAGGTTG  FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF,,,FFFFFFFFFFFFFFFFFFFFFFFFFF        AS:i:-28        XN:i:0  XM:i:28 XO:i:0  XG:i:0  NM:i:28 MD:Z:0A0C0A0A0C0A4G12C3C2G1C1C0G0G1T0T2G2C2A2T2C4C2C4T1T8A7C0C6 YT:Z:UU
+
+
+
+
+目测比对效果
+
+> mapped-line2: 
+ACAACATATAGATCATTTATTTTCCTTCTAGTCCCGGGTTCAGTACATAGATGGCTTTTCTTCACCCTTTGGGTTGACAATTTTCTCCAGGTTG
+> origin-line2:
+TTGTAGTATAAATCATTTATTTTACTTATAATACTTAGAACAATAAATCGAAGGGTTTTATTAACCCATGGGGTTGACGATTTTCTATAGGTTG
+
+#
+https://sequencing.qcfail.com/articles/mapq-values-are-really-useful-but-their-implementation-is-a-mess/
+
+the max MAPQ score that bowtie2 gives is 42. You should be able to demonstrate this for yourself by examining the distribution of MAPQ scores from your own data.
+
+
+
+
+
+(6) 获取切割位点
+1)bam 2 bed(0-based)
+bam to bed
+$ samtools view -bS 01.sam >01.bam
+
+$ bedtools bamtobed -i 01.bam 
+chr14:24610815-24612679 1764    1858    line3   23      +
+24610815+1764=24612579
+chr14:24612580-24612580 # 坐标要加1
+
+
+
+2) 直接用bam计算
+
+背景序列是 chr14:24607678-24612678，比对到的位置是  24607678+4902=24612580
+chr14:24612580-24612580
 
 
 
