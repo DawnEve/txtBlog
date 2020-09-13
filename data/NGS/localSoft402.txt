@@ -946,6 +946,12 @@ $ STAR --runThreadN 30  \
 	--genomeLoad LoadAndKeep \  #单一会报错
 	--limitBAMsortRAM 20000000000 \ #加入这一行就不报错了
 	--outFileNamePrefix  /home/wangjl/data/apa/190515/hg19_mm10/c2_ROW01_
+#
+
+
+如果是双端 reads, 最后三个参数是为了提高比对的 uniq map，降低 too short 百分比:
+$ STAR --genomeDir /home/niesy/data/reference/star_hg --runThreadN 10 --readFilesIn ATAC-1-3_L4_F0000570F0001151.R1_val_1.fq.gz ATAC-1-3_L4_F0000570F0001151.R2_val_2.fq.gz --readFilesCommand zcat --outFileNamePrefix test --outSAMtype BAM SortedByCoordinate --outBAMsortingThreadN 10 --outFilterScoreMinOverLread 0 --outFilterMatchNminOverLread 0 --outFilterMismatchNmax 2 
+
 
 
 (4)更多参数
@@ -958,6 +964,20 @@ $ STAR --runThreadN 30  \
 如果你在建立索引或者比对的时候增加了注释信息，那么STAR还能帮你进行基因计数。参数为 --quantMode, 分为转录本水平(TranscriptomeSAM)和基因水平(GeneCounts)，在计数的时候还允许指定哪些哪些read不参与计数，"IndelSoftclipSingleend"和"Singleend"
 
 对于非链特异性RNA-seq，同时为了保证能和Cufflinks兼容，需要添加 --outSAMstrandField intronMotif在SAM中增加XS属性，并且建议加上 --outFilterIntronMotifsRemoveNoncanonical。如果是链特异性数据，那么就不需要特别的参数，Cufflinks用 --library-type声明类型即可=
+
+
+
+### 如果uniq比对率过低，出现 too short 过高，则可以调整比对参数 
+### https://github.com/alexdobin/STAR/issues/169
+You can increase the number of mapped reads by relaxing the requirements on the mapped length, e.g.: 
+--outFilterScoreMinOverLread 0.3 --outFilterMatchNminOverLread 0.3       
+或者下面这个更好:
+--outFilterScoreMinOverLread 0 --outFilterMatchNminOverLread 0 --outFilterMatchNmin 0
+the number of missmaches I controlled by --outFilterMismatchNmax 2 and got my preferred results.
+
+
+
+
 
 
 
@@ -2433,6 +2453,55 @@ $ samtools view c01_ROW31_RPL8.bam |wc
 ref:
 使用samtools/bedtools提取bam/sam文件指定区域reads 
 http://www.dengfeilong.com/note/290.html
+
+
+
+========================================
+|-- 文件转换 bam to fastq
+----------------------------------------
+1. 命令使用
+bedtools bamtofastq [OPTIONS] -i <BAM> -fq <FASTQ>
+
+可选项
+Option	Description
+-fq2	FASTQ for second end. Used if BAM contains paired-end data. BAM should be sorted by query name (samtools sort -n aln.bam aln.qsort) if creating paired FASTQ with this option.
+-tags	Create FASTQ based on the mate info in the BAM R2 and Q2 tags.
+
+
+
+
+(1)实例: 输入10x 单端一个cell barcode的bam文件
+$ bedtools bamtofastq -i ../mapRaw/AGCCTAATCCTGCCAT_raw_R2_Aligned.sortedByCoord.out.bam -fq aa.fq
+
+$ head aa.fq 
+@A00129:409:HKVNVDSXX:2:2173:24551:24752
+ACCGCCATGGACAACGCCAGCAAGAACGCTTCTGATATGATTGACAAATTGACCTTGACTTTCAACCGCACCCGCCAGGCTGTCATCACAAAGGAGTTGATTGAAATCATCTCTGGGGCTGCTGCTCTGGATTAATGAAAATCAAGTTGC
++
+FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF:FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF:FFFFFFFFFFFFF:FFFFFFFFFFFFFFFFFF,FFFFFFFFFFFFFFFFFFFF:FFFFFFFFFFFFFFFFFFFFFFF
+
+
+
+(2) -fq2 Creating two FASTQ files for paired-end sequences.
+注意Note:
+When using this option, it is required that the BAM file is sorted/grouped by the read name. 
+This keeps the resulting records in the two output FASTQ files in the same order. 
+One can sort the BAM file by query name with samtools sort -n aln.bam aln.qsort.
+
+
+$ samtools sort -n aln.bam aln.qsort
+
+$ bedtools bamtofastq -i aln.qsort.bam \
+                      -fq aln.end1.fq \
+                      -fq2 aln.end2.fq
+
+$ head -8 aln.end1.fq
+
+
+
+ref: https://bedtools.readthedocs.io/en/latest/content/tools/bamtofastq.html
+
+
+
 
 
 

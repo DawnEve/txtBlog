@@ -61,6 +61,95 @@ passwd
 OS: Ubuntu1604
 您需要root权限/sudo权限才能进行本文的操作。
 
+
+https://www.cnblogs.com/lanxuezaipiao/archive/2012/12/01/2797440.html
+基本上，批量添加用户有两种方式，一是用useradd + passwd命令配合脚本来添加，二是用newusers+chpasswd来添加。
+
+
+
+
+一. 比较好的方式
+(1)模板: https://www.jb51.net/article/58865.htm
+
+$ cat useradd.sh
+#!/bin/bash
+for name in tom joy john mark james
+do  useradd $name
+    echo "redhat" | passwd --stdin $name
+done
+
+
+(2) 新建目录: 
+新增用户，添加到分组2020
+家目录为 /home/uname/，其中一个软连接 data 指向 /data/uname
+数据文件存放地址 /data/uname/, 其中一个文件夹 homework 用于提交作业
+
+
+users.txt中是用户名，一个用户名一行
+lilei
+xiaoming
+
+
+
+$ cat addUser.sh
+
+## groupadd 2020
+
+cat users.txt | while read id; 
+do 
+	if [ -n $id ]
+	then
+		echo '===== for user: ' $id;
+		useradd -d /home/$id -s /bin/bash -m $id ##-G 2020
+		echo $id"123" | passwd --stdin $id
+		echo "--> end of task 1: add usr & change pass" 
+		
+		mkdir -m 700 /data/student2020/$id
+		mkdir -m 700 "/data/student2020/$id/homework"
+		ln -s /data/student2020/$id /home/$id/data
+		# ln -s /data/student2020/$id/homework /home/wangjl/homework/$id
+		chown -R $id /data/student2020/$id
+		chgrp -R $id /data/student2020/$id
+		echo "--> end of task 2: add links"
+	else
+		echo "The username is null!"
+	fi
+done;
+
+
+
+(3) 汇总学生作业的快捷方式到管理员目录下的/homework/
+好像作用不大，因为可见权限太难控制。
+快捷方式不能访问，还是直接使用sudo直接复制或者逐个查看。
+
+
+$ cat addlinks.sh
+# v0.2
+mkdir homework
+
+cat users.txt | while read id; 
+do
+	if [ -n $id ]
+	then
+		echo '===== for user: ' $id;
+		ln -s /data/student2020/$id/homework /home/wangjl/homework/$id
+	else
+		echo "The username is null!"
+	fi
+done;
+
+
+
+
+
+
+
+
+
+
+
+二. 之前的方式
+
 已知学生们的学号：
 注意一定要删除最后一行的空行！！
 $ cat stu_id.txt
@@ -653,7 +742,116 @@ $ ls /etc/shadow -l
 ========================================
 更精细的权限管理：ACL权限控制
 ----------------------------------------
-https://blog.csdn.net/tch918/article/details/10019523
+
+我们看某个文件（Linux系统中目录也是文件，一切皆是文件）是否支持 ACL 权限，首先要看文件所在的分区是否支持 ACL 权限。
+1. 查看当前系统有哪些分区：df -h
+$ df -h
+
+
+
+
+
+
+2.查看指定分区详细文件信息：dumpe2fs -h 分区路径
+下面是查看 根分区/ 的详细文件信息
+
+$ dumpe2fs -h /dev/mapper/centos-root
+
+
+
+
+
+
+3.开启分区 ACL 权限
+(1)临时开启分区 ACL 权限
+mount -o remount,acl /
+重新挂载根分区，并挂载加入 acl 权限。注意这种命令开启方式，如果系统重启了，那么根分区权限会恢复到初始状态。
+
+(2)永久开启分区 ACL 权限
+1) 修改配置文件 /etc/fstab
+
+上面是修改根分区拥有 acl 权限
+UUID=490ed737-f8cf-46a6-ac4b-b7735b79fc63 /                       ext4    defaults,acl        1 1
+
+2) 重新挂载文件系统或重启系统，使得修改生效
+mount -o remount /
+
+
+
+
+
+
+
+4、设定 ACL 权限：setfacl 选项 文件名
+(1)给用户设定 ACL 权限：setfacl -m u:用户名:权限 指定文件名
+(2)、给用户组设定 ACL 权限:setfacl -m g:组名:权限 指定文件名
+注意：我们给用户或用户组设定 ACL 权限其实并不是真正我们设定的权限，是与 mask 的权限“相与”之后的权限才是用户的真正权限，一般默认mask权限都是rwx，与我们所设定的权限相与就是我们设定的权限。mask 权限下面我们会详细讲解
+范例：所有者root用户在根目录下创建一个文件目录/project，然后创建一个QQ群所属组，所属组里面创建两个用户zhangsan和lisi。所有者和所属组权限和其他人权限是770。
+然后创建一个旁听用户 pt，给他设定/project目录的 ACL 为 r-x。
+
+目录 /project 的所有者和所属组其他人权限设定为 770。接下来我们创建旁听用户 pt，并赋予 acl 权限 rx
+
+为了验证 pt 用户对于 /project 目录没有写权限，我们用 su 命令切换到 pt 用户，然后进入 /project 目录，在此目录下创建文件，看是否能成功：
+
+上面提示权限不够，说明 acl 权限赋予成功，注意如下所示，如果某个目录或文件下有 + 标志，说明其具有 acl 权限。
+
+
+
+
+
+
+5、查看 ACL 权限：getfacl 文件名
+
+
+
+6、最大有效权限 mask
+　　前面第4点我们讲过，我们给用户或用户组设定 ACL 权限其实并不是真正我们设定的权限，是与 mask 的权限“相与”之后的权限才是用户的真正权限，一般默认mask权限都是rwx，与我们所设定的权限相与就是我们设定的权限。
+
+　　我们通过 getfacl 文件名 也能查看 mask 的权限，那么我们怎么设置呢？
+setfacl -m m:权限 文件名
+
+
+
+
+7、删除 ACL 权限
+(1)、删除指定用户的 ACL 权限
+setfacl -x u:用户名 文件名
+(2)、删除指定用户组的 ACL 权限
+setfacl -x g:组名 文件名
+(3)、删除文件的所有 ACL 权限
+setfacl -b 文件名
+
+
+
+8、递归 ACL 权限
+通过加上选项 -R 递归设定文件的 ACL 权限，所有的子目录和子文件也会拥有相同的 ACL 权限。
+setfacl -m u:用户名:权限 -R 文件名
+
+
+
+
+9、默认 ACL 权限
+如果给父目录设定了默认的 ACL 权限，那么父目录中所有新建的子文件会继承父目录的 ACL 权限。
+setfacl -m d:u:用户名:权限 文件名
+
+
+
+10、总结
+本篇博客我们介绍了权限管理的ACL权限，通过设定 ACL 权限，我们为某个用户指定某个文件的特定权限，在实际权限管理中还是用的比较多的。
+
+
+
+
+
+
+
+ref:
+linux
+https://www.cnblogs.com/ysocean/p/7801329.html 
+http://c.biancheng.net/view/863.html
+
+
+一般化 https://blog.csdn.net/tch918/article/details/10019523 
 
 
 

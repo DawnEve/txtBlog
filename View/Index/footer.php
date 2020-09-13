@@ -133,7 +133,17 @@
 			array('https://qinqianshan.com/math/probability_distribution/','SAM NOTE(统计等)'),
 			array('https://www.cnblogs.com/pinard/category/894690.html','刘建平Pinard(数据挖掘等)'),
 		));
-		
+
+
+
+		echo '<br />ML/AI: ';
+		print_links(array(	
+			array('http://freemind.pluskid.org/','张驰原pluskid(ML/AI)'),
+			array('https://blog.csdn.net/v_july_v/article/details/7624837','july(ML/AI)'),
+		));
+
+
+
 		
 		echo '<br />生信: ';
 		print_links(array(

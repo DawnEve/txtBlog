@@ -130,6 +130,13 @@
 ## group 13
 ["divine", "scarf", "leaflet", "spade", "glare"]
 ["swamp", "verdict"]
+["vanity", "foul", "virtual", "canteen", "diffuse", "assembly", "eastern"]
+["sophomore", "menace", "portray", "whirl", "stake", "swarm"]
+
+
+
+
+
 
 
 
