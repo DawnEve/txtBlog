@@ -140,6 +140,7 @@
 		print_links(array(	
 			array('http://freemind.pluskid.org/','张驰原pluskid(ML/AI)'),
 			array('https://blog.csdn.net/v_july_v/article/details/7624837','july(ML/AI)'),
+			array('http://blog.17study.com.cn/','月色(ML/AI)'),
 		));
 
 
@@ -174,7 +175,7 @@ var cnzz_protocol = (("https:" == document.location.protocol) ? " https://" : " 
 		
 		
 		<div class='links'>
-			Copyright &copy; 2009 - 2020 DawnEve. All Rights Reserved. | 
+			Copyright &copy; 2009 - <?php echo date('Y',time()); ?> DawnEve. All Rights Reserved. | 
 			<a class=red target='_blank' href='https://github.com/DawnEve'>Folk me on Github</a> | 
 			<a href='index.php?k=Git&id=0_2'>Contact me</a> | 
 			<a target='_blank' href='http://pan.baidu.com/s/1i3imHpF' title='密码:qa53'>web tools</a>

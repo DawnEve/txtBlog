@@ -18,8 +18,9 @@ return array (
     1 => '数学基础 Math',
     2 => array (
       array('概率论与数理统计','Math_statistics','txt'),
+      array('概统2','Math_statistics2','txt'),
       array('线性代数','Math_linear_algebra','txt'),
-      array('线代2: 矩阵与线性空间','Math_linear_algebra2','txt'),
+      array('线代2: MIT课程; 线性空间','Math_linear_algebra2','txt'),
       array('微积分','Math_calculus','txt'),
     ),
   ),

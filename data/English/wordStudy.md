@@ -126,16 +126,21 @@
 ["cafe", "doctorate", "constituent"]
 
 
-
 ## group 13
 ["divine", "scarf", "leaflet", "spade", "glare"]
 ["swamp", "verdict"]
 ["vanity", "foul", "virtual", "canteen", "diffuse", "assembly", "eastern"]
-["sophomore", "menace", "portray", "whirl", "stake", "swarm"]
+["sophomore", "menace", "portray", "whirl", "stake", "swarm", "textile"]
+["nevertheless", "sham", "sin", "kin", "siege"]
 
 
 
-
+## group 14
+["exceedingly", "hatch", "aural", "immerse", "severe", "dwell", "fertile", "misery"]
+["paradigm", "rein", "hypocrisy", "circumference", "civilian", "liability", "stumble", "stool"]
+["canoe", "significance", "trolley", "burglar"]
+["radiant", "autonomy", "multitude"]
+["spectacular", "turbulent"]
 
 
 

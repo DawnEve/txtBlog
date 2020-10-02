@@ -18,7 +18,7 @@
 
 
 <div class=nav>
-<b><a class='redBg' href='/index.php'>txtBlog</a></b>
+<b><a class='redBg' href='/index.php' title="知识管理系统">txtBlog</a></b>
 <?php
 $keyword=$arrTop['keyword'];
 $top=$arrTop['data'];
