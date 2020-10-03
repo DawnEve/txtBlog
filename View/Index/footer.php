@@ -186,6 +186,9 @@ var cnzz_protocol = (("https:" == document.location.protocol) ? " https://" : " 
 			♥ Do have faith in what you're doing. 
 			[<?php echo date('Y-m-d H:i:s',time());?>] 
 			Powered by <a target='_blank' href='https://github.com/DawnEve/txtBlog' title='txtBlog(A simple yet powerful php blog system for reading and organizing txt files.)'>txtBLog v0.5</a>
+			
+			<a target="_blank" href="http://stuff.mit.edu/doc/counter-howto.html"><img src="https://stuff.mit.edu/cgi/counter/txtBlog"></a>
+			
 		</div>
 	</div>
 </div>
