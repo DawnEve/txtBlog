@@ -19,6 +19,7 @@ return array (
       array('Python快速入门','Python101-basic','txt',),
       array('Python基础详解','Python102-more','txt',),
       array('Python OOP','Python103-OOP','txt',),
+      array('py设计模式','py_design_pattern','md',),
       array('Python数据处理包','Py104_data_analysis','txt',),
       array('Python DA可视化','Py104B_data_visualization','txt', 'matplotlib, seaborn'), #第四个参数不起作用
       array('Python Web','Python105-web','txt',),
