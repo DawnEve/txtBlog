@@ -161,7 +161,6 @@
 
 
 
-
 # Error in spelling(10 tests per section)
 听写错的单词: 熟词写错 /听错的 /生词 
 反复写错，一行10个抄写，死记硬背才能记得牢。
