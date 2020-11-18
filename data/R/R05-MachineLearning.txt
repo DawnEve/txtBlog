@@ -7,11 +7,31 @@ R与机器学习
 GC含量统计：http://www.biotrainee.com/forum.php?mod=viewthread&tid=625&page=2#pid1904
 
 
+1. pdf经典书籍
+
+
+
+2. 网站资料和课程
+
 
 R机器学习教程 https://bradleyboehmke.github.io/HOML/
 
 关于统计和算法的网站: 
 UCLA 统计学院: https://stats.idre.ucla.edu/r/dae/logit-regression/
+
+
+sklearn: https://qinqianshan.com/machine_learning/sklearn/
+
+
+Dr. Shirin Elsinghorst: Biologist turned Bioinformatician turned Data Scientist
+https://shirinsplayground.netlify.app/categories/machine-learning/
+
+
+
+
+3. 视频资料
+
+
 
 
 
@@ -643,6 +663,33 @@ fviz_pca_biplot(iris.pca,
 ========================================
 |-- PCA 分析与可视化 示例
 ----------------------------------------
+自己封装的函数
+
+my.doCPA=function(rna_logcpm, celltype, center = F){
+    test.pr<-prcomp( t(rna_logcpm), center = center) 
+
+    library(factoextra)
+    print(fviz_eig(test.pr, addlabels = TRUE))
+
+    ind <- get_pca_ind(test.pr) #这是看观察值，也就是行。
+    
+    df=as.data.frame(ind$coord)
+    df$celltype=celltype
+    return(df)
+}
+
+df=my.doCPA(rnaM.logcpm, cellInfo[colnames(rnaM.logcpm), ]$cellType)
+
+# 画出每个点的位置，使用前几个PC
+library(ggplot2)
+ggplot(df, aes(Dim.1, Dim.2, color=celltype) )+geom_point()+theme_bw()
+ggplot(df, aes(Dim.1, Dim.3, color=celltype) )+geom_point()+theme_bw()
+ggplot(df, aes(Dim.2, Dim.3, color=celltype) )+geom_point()+theme_bw()
+
+
+
+
+
 
 1. 精简版
 ################
@@ -884,13 +931,271 @@ https://www.jianshu.com/p/6e413420407a
 ========================================
 |-- PCA 的原理和手工实现 //todo
 ----------------------------------------
+1. 输入数据描述
+行为gene，列为sample。
+   s1 s2 s3 s4 s5 s6
+g1  
+g2
+g3
+
+一个基因时，一维图。
+2个基因时，2-D图。
+3个基因时，3-D图。
+再多，就超出人类直觉了。
+可以使用降维方法，把高维数据降低到2维，方便可视化查看。
+
+
+(1) 考虑2个基因的情况，
+先中心化: 按行计算每个基因的mean，每行减去该行的mean。
+
+然后有一条过原点的直线，角度是变量，0-360。每个点到投射到该直线上。然后计算投射点到原点的距离和sum of squared distances (SSD).
+旋转直线，直到SSD最大的方向，这个折线就叫做第一个主成分(简称PC 1)。
+
+对于数据中的某一个点A(x,y)，在直线y=tan(Theta)*x上的投影为B(a,b).
+B在直线上:  b=k*x
+OB垂直于AB: (OB, AB)=0, (a,b)*(x-a, y-b)=0
+解方程得
+a=(x+k*y)/(1+k^2)
+b=a*k
+
+
+使用R实现这一过程: 找到2维中使SSD最大的直线夹角，并可视化PC1及各点在PC1上的的投影。
+dt=t(iris[, c(1,3)])
+dim(dt) #行为2个基因，列为样品名
+# 中心化
+dt=as.data.frame(t(apply(dt, 1, function(x){
+  x-mean(x)
+})))
+head(dt[,1]) #-0.7433333 -2.3580000
+result=list(angle=0,ssd=0)
+ssds=c()
+for(angle in seq(0,180, 0.1) ){
+  #线的角度
+  st=tan(angle/180*3.14159265358979)
+  ssd=0
+  for(i in 1:ncol(dt)){
+    x=dt[1,i];  y=dt[2,i]; #数据点
+    a=(x+st*y)/(1+st^2); b=a*st; #映射到直线上
+    ssd=ssd+(a^2+b^2)
+  }
+  ssds=c(ssds, ssd)
+  if(result[['ssd']]<ssd){
+    result[['ssd']]=ssd
+    result[['angle']]=angle
+  }
+}
+plot(seq(0,180, 0.1), ssds)
+result
+# $angle
+#[1] 66.8
+#
+#$ssd
+#[1] 545.6228
+
+# 可视化第PC 1的方向
+st=tan(result[['angle']]/180*3.14159265358979) #斜率
+plot(t(dt), col=iris[,5], pch=20, xlim=c(-3,3.5), ylim=c(-3,3.5))
+x1=seq(-4,4,0.5); lines(x1, x1*st,type='l') #add line
+#
+ssd=0
+outer=c() #残差
+for(i in 1:ncol(dt)){
+  x=dt[1,i];  y=dt[2,i]; #数据点
+  a=(x+st*y)/(1+st^2); b=a*st; #映射到直线上
+  # 画映射的点和垂线
+  points(a,b,type='p',col='#F600FF55', pch=20)
+  lines(c(x,a), c(y,b), type='l',col='grey',lty=2)
+  outer=c(outer, sum( c(x-a,y-b)*c(1,st) ) )
+  ssd=ssd+(a^2+b^2)
+}
+hist(outer, n=50) # 确实都垂直
+ssd #545.6228
+
+
+> st
+[1] 2.333175
+也就意味着在PC1上，gene1每增加1，gene2就增加2.33，也就是说基因2贡献的比较多。
+也可以按照做菜的角度理解PC1，1份gene1, 2.33份gene2。
+
+数学上，我们说PC1是gene1和gene2的线性组合。
+而且数学上 PC1^2=1^2 + (2.33)^2
+(1^2 + st^2)**0.5=2.538445
+
+而使用SVD分解时，PC会被标准化到1。所以，只需要每个分量都除以斜边
+gene1份数: 1/2.538445=0.393942
+gene2份数: st/2.538445=0.9191355
+
+> 0.393942**2+0.9191355**2
+[1] 1
+
+
+新名词: 这个单位向量(0.393942, 0.9191355)又叫做 Singular Vector or the "Eigenvector" for PC1;
+
+SS(distance for PC1)=Eigenvalue for PC1
+sqrt(Eigenvalue for PC1)=Sigular Value for PC1
+
+PCA calls the ss(distances) for the best fit line the Eigenvalue for PC1, 
+and the square root of the Eigenvalue for PC1 is called the Sigular Value for PC1.
+
+
+
+
+2) 第二个PC
+由于这是二维的，第二个PC要在PC1垂直的方向上找，所以，只有一个选择。
+PC2方向 (-0.9191355, 0.393942)，这是PC2的奇异向量或特征向量。
+系数也叫PC2的loading Scores: PC2需要 -0.9191355 份gene1, 和 0.393942 份 gene2，
+
+
+b1=c(0.393942, 0.9191355);b1
+b2=c(-0.9191355, 0.393942);b2
+sum(b1*b2) #[1] 0
+# 正交向量，乘积为0
+x1=1; plot(NULL, xlim=c(-x1,x1), ylim=c(-x1,x1))
+lines( c(0,b1[1]), c(0,b1[2]), col='red')
+lines( c(0,b2[1]), c(0,b2[2]), col='blue')
+
+
+
+
+
+3) 画最后的PC图时，旋转PC1至水平。相当于对每个点做坐标变换。
+坐标轴的旋转矩阵: https://blog.csdn.net/TOM_00001/article/details/62054572
+一个坐标(x,y)逆时针旋转alpha角度到(x',y'), 满足[x',y']T=A.[x,y]T时，坐标变换矩阵 A=
+|cosA, -sinA|
+|sinA, cosA|
+
+
+## R 代码实现: 对坐标轴旋转到x和PC1一致，各个点的位置和在x轴(PC1)上的投影。
+PI=3.1415926535897932
+dt=t(iris[, c(1,3)])
+dim(dt) #行为2个基因，列为样品名
+# 中心化
+dt=as.data.frame(t(apply(dt, 1, function(x){
+  x-mean(x)
+})))
+head(dt[,1])
+dim(dt)
+# 旋转坐标轴
+x0=0.3939420
+y0=0.9191355
+angle=-atan(y0/x0) #弧度制的角度，相当于顺时针旋转，是角度的负方向
+dt2=apply(t(dt), 1, function(xy){
+  c( sum(c(cos(angle), -sin(angle)) *xy), 
+     sum(c(sin(angle), cos(angle))*xy ) )
+})
+head(dt2[,1])
+dim(dt2)
+# 检验旋转前后，点到原点的距离。应该是不变。
+apply(dt[, 1:10],2,function(x){ sum(x**2) } )
+apply(dt2[, 1:10],2,function(x){ sum(x**2)} )
+plot(t(dt2), col=iris[,5], xlim=c(-3, 4), ylim=c(-3, 4))
+# 可视化第PC 1的方向
+st=tan(0/180*3.14159265358979) #线的角度
+x1=seq(-3,5,0.5); lines(x1, x1*st,type='l') #add line
+#
+ssd=0
+for(i in 1:ncol(dt)){
+  x=dt2[1,i];  y=dt2[2,i]; #数据点
+  a=(x+st*y)/(1+st^2); b=a*st; #映射到直线上
+  # 画映射的点和垂线
+  points(a,b,type='p',col='#F600FF55', pch=20)
+  lines(c(x,a), c(y,b), type='l',col='grey',lty=2)
+  ssd=ssd+(a^2+b^2)
+}
+ssd #[1] 545.6228 和旋转前一致。
+
+
+
+备注: this is how PCA is done using Sinular Value Decomposition(SVD).
+
+
+
+
+
+
+4) 变异程度和碎石图
+还记得特征值吗？
+SS(distances for PC1) = Eigenvalue for PC1
+SS(distances for PC2) = Eigenvalue for PC2
+
+除以样本数n-1，得到variation:
+SS(distances for PC1)/(n-1) = variation for PC1
+SS(distances for PC2)/(n-1) = variation for PC2
+
+
+
+## R: 计算variation for PC1-2
+ssd/(ncol(dt)-1) #3.661898 
+
+# 可视化第PC 2的方向
+st=tan(90/180*3.14159265358979) #线的角度
+x1=seq(-3,15,0.5); lines(x1, x1*st,type='l') #add line
+ssd2=0
+for(i in 1:ncol(dt)){
+  x=dt2[1,i];  y=dt2[2,i]; #数据点
+  a=(x+st*y)/(1+st^2); b=a*st; #映射到直线上
+  # 画映射的点和垂线
+  points(a,b,type='p',col='#F600FF22', pch=20)
+  lines(c(x,a), c(y,b), type='l',col='grey',lty=2)
+  ssd2=ssd2+(a^2+b^2)
+}
+ssd2
+ssd2/(ncol(dt)-1) #0.1400731 
+
+
+这也就是说2个PC总的变异是 3.661898 +0.1400731=3.801971
+也就是说
+PC1占了变异的 3.661898/3.801971=0.9631578=96.3%
+PC2占了变异的 0.1400731/3.801971=0.03684223=3.6%
+
+碎石图 Scree plot 是描述每个PC解释多少变异的:
+barplot(c(0.9631578, 0.03684223))
+
+
+
+
+
+
+
+(3) 考虑3个基因的情况
+过原点，找ssd最大的方向，为PC1。
+然后过原点，在PC1的垂直平面上寻找ssd最大的方向，得到PC2；
+然后过原点，和PC1和PC2都垂直的方向就是PC3;
+
+如果有更多基因，就有同样数目的PC。一般来说，PC个数=min(变量数，观测值数);
+
+每个PC都是3个基因的线性组合，基因前的3个系数是单位向量。
+
+
+碎石图 Scree plot: 找到所有的PC之后，就可以使用特征值(比如，ss(distances))来计算每个PC解释的变异百分比，画碎石图。
+
+如果前2个PC已经解释了>90%，就可以使用2个PC画图了。
+旋转坐标轴，使PC1水平，PC2竖直，画出新坐标系统下的各个点。
+
+
+
+
+(4) 4个基因时，已经无法直接画图了。
+但是还可以找到4个PC，以及画碎石图。
+
+注: 如果最后结果差不多，
+
+
+
+
+
+
+
 
 
 
 
 ref:
 https://www.cnblogs.com/leezx/p/6120302.html
+https://www.bilibili.com/video/av35447404?from=search&seid=1532616759578227057
+https://www.jianshu.com/p/101064609904
 
+关于PCA的解释 https://blog.csdn.net/lanyuelvyun/article/details/82384179
 
 
 
@@ -1485,6 +1790,568 @@ row.names(Coefficients)[Active.Index] #10个非0参数
 
 
 ========================================
+PCA 及 t-SNE ( t-Distributed Stochastic Neighbor Embedding (t-SNE) )
+----------------------------------------
+1933 PCA
+1952 MDS
+2000 Isomap
+2002 SNE
+2008 t-SNE
+2014 BHtSNE
+? UMAP
+
+非线性降维方法
+1969 Sammon mapping
+1997 CCA
+2000 Isomap
+2000 LLE: locally linear embedding
+2002 SNE 
+2002 Laplacian Eigenmaps
+2004 MVU: Maximum Variance Unfolding
+
+
+如果是scRNAseq数据，还是用成熟的包比较好:  seurat in R or ScanPy in python.
+They include everything from data-processing, clustering and generating plots such as these within them. It will make your life a lot easier.
+- https://satijalab.org/seurat/
+- https://scanpy.readthedocs.io/en/stable/
+
+
+The t-SNE step may take a while depending on the size of your dataset. There are quicker options like UMAP which is also slightly better in other ways in maintaining the global architecture of the clusters. 
+
+
+
+
+
+
+1. PCA 是对协方差矩阵求特征向量。最大的特征值对应的特征向量，被用来重构原始数据最重要的部分。
+It does so by calculating the eigenvectors from the covariance matrix. The eigenvectors that correspond to the largest eigenvalues (the principal components) are used to reconstruct a significant fraction of the variance of the original data.
+
+PCA之后获取的新特征或组分都是互相独立的。
+
+PCA是线性降维。不能准确表示多维数据。
+Recall the PCA objective: Project data onto a lower dimensional subspace, such that the variance is maximized.
+Conclusion: Mostly preserves distances between dissimilar points;
+But is that really what we want for the purpose of visualization?
+
+
+实例: 高维弯曲的围巾图，投射到二维。原本弯曲而距离很近的点还能距离很近吗？
+
+
+
+
+
+
+2. TNE 随机近邻插入
+In contrast to PCA, SNE focused on maintaining the nearest neighbors in the lower dimensional map.
+
+Aim is to match distributions of distances between points in high and low dimensional space via conditional probabilities;
+
+Assume distrances in both high and low dimensional space are Gaussian-distributed;
+SNE focuses on preserving the local structure of the data.
+
+
+SNE是先将欧几里得距离转换为条件概率来表达点与点之间的相似度。
+
+py 代码实现: https://github.com/DawnEve/ML_MachineLearning/blob/master/t-SNE/tSNE_demo.ipynb
+
+
+- 如果一个N高维空间 xi表示第i个对象, x1,x2,...,xn;
+- yi表示低维空间中的第i个对象, y1,y2,...,yn;
+- 建立一个近邻矩阵，反应高维数据点之间的相似关系;
+	把高维空间欧氏距离，转为反应相似度的条件概率。
+- 高维空间的距离转为条件概率 Pj|i=exp(-||xi-xj||^2/ (2*sigmai^2) ) / 求和(k!i, exp(-||xi-xk||^2/ (2*sigmai^2) ) );
+	距离越远，算出来的p越小; 距离越近，算出来的p越大;
+	
+	sigmai 和一个叫做perplexity的参数相关，perplexity可以大概的解释为每个点有几个近邻。
+		perplexity与算法中使用的最近邻居的数量有关。不同的perplexity可能会导致最终结果发生巨大变化。
+	sigmai 是二分法对距离矩阵搜索获得的???
+	
+	def p_joint(X, target_perplexity):
+		"""Given a data matrix X, gives joint probabilities matrix.
+		# Arguments
+			X: Input data matrix.
+		# Returns:
+			P: Matrix with entries p_ij = joint probabilities.
+		"""
+		#(1)距离 Get the negative euclidian distances matrix for our data
+		distances = neg_squared_euc_dists(X)
+		#(2)根据距离、Perp求最优的sigmai. Find optimal sigma for each row of this distances matrix
+		sigmas = find_optimal_sigmas(distances, target_perplexity)
+		#(3)根据距离、sigma求相似矩阵. Calculate the probabilities based on these optimal sigmas
+		p_conditional = calc_prob_matrix(distances, sigmas)
+		#(4)对称化 Go from conditional to joint probabilities matrix
+		P = p_conditional_to_joint(p_conditional)
+		return P
+	
+- 低维空间的距离 Qj|i=exp(-||yi-yj||^2 ) / 求和(k!i, exp(-||yi-yk||^2 ) );
+	规定 pi|i=qi|i=0;
+
+
+- cost function: 移动Q点，使P和Q的KL散度(熵)最小化: C=累加(i, KL(Pi||Qi))=累加(i, 累加(j, Pj|i*log(pj|i/qj/i)));
+	高维空间算出来的p是固定的，而低维空间算出来的q则每移动一次重新计算一次，怎么知道q的运动方向呢？
+	if p==q, then log(1)=0;
+	Penalize when p!=q:
+		Large p & small q: Big penalty; 倾向于保持原始相似度大的关系。
+		Small p & large q: Small penaly;
+	所以，SNE能保持数据的局部结构。
+	
+- 梯度:
+	求偏导数 dC/dyi= 2*求和(j, (yi-yj)*(pj|i-qj|i + pi|j-qi|j)) #----> 这个求导看不懂?????
+		前面的 (yi-yj) 相当于弹簧 spring，后面的(pj|i-qj|i + pi|j-qi|j) 提供伸展性 Attraction/Repulsion
+	有了cost function, SNE 就可以使用梯度方向做优化了。
+	
+- momentum term alpha(t): 除了cost function 的梯度，还有一项momentum term，来加速优化并避免局部最优条件。
+- SNE 有2个问题:
+	Cost function is difficult to optimize
+	Crowding problem: overlapping
+		How to solve crowding problems?
+		Goal: dissimilar points have to be modeled as far apart as possible in the map;
+#
+
+
+
+
+
+
+
+
+
+3. t-SNE 解决了 crowding problem.
+优势: t-SNE tends to preserve local structure at the same time preserving the global structure as much as possible;
+而PCA保持global structure（变异最大的方向），却损失了 local structure;
+
+tSNE 的cost函数有2个不同特性:
+	- Cost function 是对称的(相对于 SNE): pi|j=pj|i, and qi|j=qj|i;
+	- 低维空间的相似矩阵是使用t分布来求的。
+#
+
+
+
+具体算法细节: http://www.jmlr.org/papers/volume9/vandermaaten08a/vandermaaten08a.pdf
+主要步骤
+- 计算相似概率：计算高低维度中该点相似性。
+	计算方法就是按照高斯分布，以某点为中心，计算到其他点的距离，映射到正态分布获得一个可能性p值。
+		距离越近，p越大； 距离越远，p越小。
+		之后要标准化，就是防止选取的中心点不一样时导致的高斯分布sigma不同而p值差不同。
+		(0.24,0.05) (0.12,0.024) 标准化后都是 (0.827, 0.172): 比较松散的类和比较紧凑的类，点的相似度一样。perplex 参数什么意思?
+	然后换一个点，重新计算它到其他点的距离；使用高斯分布折算出p值。
+	直到每个点为中心都计算一遍。
+	两个方向的p值求平均，作为2点的最终相似度p。最后就获得了一个相似矩阵。每一行、每一列表示那个点和其他点的最终相似度p。
+	由于自身与自身无关，所以自己到自己的最终相似度定义为0；
+	
+- 最小化高低纬点的条件概率差异，获得一个最优的低纬度空间内的点的表示。
+	然后把高维空间的点随机映射到直线上;
+	然后计算线性空间内的点之间的相似度，不过，这一次距离映射到相似度p时，使用t分布。
+		t分布很像normal分布，但是最高点比较矮，尾巴比较高。能解决拥挤的问题。
+	使用t分布，计算点两两之间的相似分数，然后scale，得到相似矩阵。
+	
+- 为了使条件概率和的最小化，使用梯度下降法，最小化 所有数据点的 Kullback-Leibler divergence。
+	逐步移动低维空间的点，使其相似矩阵和高维空间越来越相似。
+	
+
+注: Kullback-Leibler divergence or KL divergence 是衡量一个分布和另一个期望分布的差异的方法。
+
+
+简单说，tSNE 最小化两种分布的差异: 一个分布是衡量输入对象在高维空间的相似性的，一个分布是衡量低维空间插入点之间的相似性的。
+
+
+(1) t分布比着正态分布，最高点更低，而尾巴更高。x在尾巴处对应着更细腻的y值变化。 
+f=function(x){ 1/(3.1415926*(1+x^2)) }
+x=seq(-8, 8, 0.1)
+y=f(x)
+plot(x, dnorm(x), type='l', main="Distribution") #normal distribution
+lines(x,y, type='l', lty=3, col='red') #t-distribution
+legend('topleft', lty=c(1,3), bty='n',
+       col=c('black', 'red'), legend=c('Normal', "t"))
+#
+
+(2)
+低维使用自由度为1的t分布(就是柯西分布): P(x)=1/[pi*(1+x^2)]
+Qij=(1+||yi-yj||^2)^-1 / 累加(k!=l, (1+||yl-yk||^2)^-1)
+这样，就把不相似的点最大程度的分开了。
+
+偏导数 dC/dyi= 4*求和(j, (pij-qij)*(yi-yj)*(1+ ||yi-yj||^2 )^-1)  ## ----> 不知道这个偏导数怎么求的。原论文附录有推导。
+
+定义 pij=(pj|i+pi|j)/(2*n)，会有更简单的梯度函数 dC/dyi=4*累加(j, (pij-qij)*(yi-yj))
+
+
+
+
+(3) 局限性
+1) tSNE很适合高维数据的可视化，但是不能用于降维。点之间的距离没有意义。
+2) 数据有很高内在维度时不那么成功; ??
+3) cost function不是凸函数! 要仔细选择最优的参数。
+
+
+
+(4) 一个重要的参数 Perplexity 困惑度。
+不同的Perp会导致不同的聚类
+	Perp too small -> local variations dominate,
+	Perp too large -> global change dominate.
+	#
+	Loosely speaking, one could say that a larger / denser dataset requires a larger perplexity.
+	Typical values for the perplexity range between 5 and 50. 原始论文认为Perp[5,50]比较稳健。
+#
+
+
+
+(5) tSNE 失败的情形？
+tSNE assumes local linearity(Euclidean distances between neighbors); when does this assumption fail?
+1) 当数据噪音很大时，tSNE 会失败，怎么办？
+Solution: 先用PCA做平滑化。然后对前几(5-50)个PC进行tSNE可视化。
+
+2) Data with high intrinsic dimension(on a highly varying manifold)
+Solution: learn a "code" - of lower dimension using an Auto-encoder;
+
+什么是 intrinsic dimension? 
+	https://eng.uber.com/intrinsic-dimension/
+	https://cran.r-project.org/web/packages/intrinsicDimension/vignettes/intrinsic-dimension-estimation.html
+		The intrinsic dimension of a data set is a measure of its complexity. Data sets that can be accurately described with a few parameters have low intrinsic dimension. It is expected that the performance of many machine learning algorithms is dependent on the intrinsic dimension of the data. 
+#
+
+
+
+
+
+
+#########
+看不懂的部分:
+cost 函数是什么？KL 散度，求和(p*log(p/q));
+怎么移动低维空间的点？按照梯度移动; ==> 怎么求梯度/偏导数?
+对矩阵求偏导数是什么概念？
+	http://math.fudan.edu.cn/gdsx/KEJIAN/方向导数和梯度.pdf
+#
+
+
+
+
+
+
+
+
+4. 答疑Question
+(1) R package "tsne" and "Rtsne" give different cell clustering results?
+"tsne" is a "pure R" implementation of the t-SNE algorithm, while package "Rtsne" is an R wrapper around the fast t-SNE implementation by Van der Maaten.
+
+A:
+Apparently, there may have been a bug in the tsne package, which may or may not be related to what you are seeing. Check the discussion here to see if it applies: https://gist.github.com/mikelove/74bbf5c41010ae1dc94281cface90d32
+
+
+(2) scale(perplexity)有什么作用？
+大部分人在使用t-SNE时，一般都直接使用默认参数图个方便(一般perplexity的默认值是30)，如果忽视了perplexity带来的影响，有的时候遇到t-SNE可视化效果不好时，根本就不知道哪里出了问题，优化起来也就无从下手了。
+
+那么perplexity到底是啥呢？我们可以回顾t-SNE的数学表达式，主要是和sigma这一项相关
+
+perplexity表示了近邻的数量，例如设perplexity为2，那么就很有可能得到很多两个一对的小集群。
+
+
+
+(3) t-SNE 分类可信吗？ 为什么多重复几次 t-SNE 结果不一样，而且有些类一会分开一会聚合？
+A: t-SNE更关心的是学习维持局部结构，群间的距离并不能说明什么，而且每次跑t-SNE的结果并不完全一致。所以解决这个问题，我们只需要跑多次找出效果最好的就可以了。引起这个问题的本质原因是，t-SNE是在优化一个非凸的目标函数，我们每次得到的只不过是一个局部最小。所以会出现同一集群被分为两半的情况
+
+分类要依靠其他方法，t-SNE 仅仅是一个可视化方法: 
+t-SNE is a valuable tool in generating hypotheses and understanding, but does not produce conclusive evidence
+
+可以用t-SNE来提出假设 不要用t-SNE得出结论。
+
+
+
+(4) t-SNE 中cluster之间的距离有意义吗？t-SNE能用于寻找离群点outlier吗？
+t-SNE中集群之间的距离并不表示相似度。
+对t分布来说，超出一定距离范围以后，其相似度都是很小的。也就是说，只要不在一个集群范围内，其相似度都是一个很小的值，我们所看到的集群之间的呈现出来的距离并不能说明什么，这是由t-SNE的内在所决定的。
+
+t-SNE不能用于寻找离群点outlier。
+
+
+
+
+第一作者(machine learning and computer vision): https://lvdmaaten.github.io/
+	更多答疑看这里: https://lvdmaaten.github.io/tsne/
+	Accelerating t-SNE using Tree-Based Algorithms. https://lvdmaaten.github.io/publications/papers/JMLR_2014.pdf
+#
+
+
+
+
+
+ref:
+t-SNE使用过程中的一些坑 https://www.jianshu.com/p/631d6529e0df?from=singlemessage (有一个原理图)
+视频 https://www.bilibili.com/video/BV1Z7411v7EL?p=1
+https://www.datacamp.com/community/tutorials/introduction-t-sne
+https://vimsky.com/article/4400.html
+实战: https://ajitjohnson.com/tsne-for-biologist-tutorial/
+
+出版社的专题 https://www.oreilly.com/content/an-illustrated-introduction-to-the-t-sne-algorithm/
+
+t-SNE visualization of CNN codes: http://cs.stanford.edu/people/karpathy/cnnembed/
+
+
+
+
+
+
+
+
+
+
+
+
+
+========================================
+|-- t-SNE的实现: R, python, js
+----------------------------------------
+
+https://github.com/DawnEve/ML_MachineLearning/blob/master/t-SNE/tSNE_demo.ipynb
+
+
+
+1. 在R中实现 PCA 和 tSNE
+
+真实scRNAseq数据
+RNA: https://github.com/ajitjohnson/ajitjohnson.github.io/blob/master/assets/data/tsne_tutorial/exp.csv
+cell type: https://github.com/ajitjohnson/ajitjohnson.github.io/blob/master/assets/data/tsne_tutorial/meta.csv
+
+
+(1) 使用R包
+## Load the t-SNE library
+# install.packages("Rtsne")
+library(Rtsne)
+
+######## (1) input data
+#1) input raw counts
+IR_data0 =iris[1:4]
+#2) input cpm: 对obs进行归一化，这里是row
+IR_data1 <- as.data.frame(t(apply(iris[,1:4], 1, function(x){ x/sum(x)*1e4 })))
+#3) input log2cpm:
+IR_data2 <- as.data.frame(t(apply(iris[,1:4], 1, function(x){ log2(1+ x/sum(x)*1e4) })))
+IR_species <- iris[ ,5]
+dim(IR_data2) #150 4
+
+## (2)do PCA
+library(FactoMineR)
+do_PCA=function(dt){
+  # PCA 默认是对列计算的。而我们要对obs聚类，就要先转置
+  dt.pca=PCA( t(dt) )
+  #dt.pca$ind
+  #str(dt.pca$ind)
+  dim(dt.pca$var$coord) #150 3
+  head(dt.pca$var$coord)
+  #          Dim.1     Dim.2         Dim.3
+  #cell1 0.8381696 0.5454088 -0.0009952193
+  #cell2 0.8758969 0.4800065 -0.0489729933
+  par(mfrow=c(1,3))
+  plot(dt.pca$var$coord[,1] , dt.pca$var$coord[,2], col=iris[,5])
+  plot(dt.pca$var$coord[,1] , dt.pca$var$coord[,3], col=iris[,5])
+  plot(dt.pca$var$coord[,2] , dt.pca$var$coord[,3], col=iris[,5])
+  return(dt.pca)
+}
+#PCA结果很稳定。如果输入相同，则每次运行结果都一样
+dt.pca0=do_PCA(IR_data0)
+dt.pca1=do_PCA(IR_data1)
+dt.pca2=do_PCA(IR_data2)
+dt.pca2$eig #每个PC解释了百分之多少的变异
+str(dt.pca2$var)
+
+
+## (3)do tSNE
+do_tsne=function(IR_data){
+  ## Run the t-SNE algorithm and store the results into an object called tsne_results
+  tsne_results <- Rtsne(IR_data, perplexity=30, check_duplicates = FALSE) 
+  # You can change the value of perplexity and see how the plot changes
+  #str(tsne_results)
+  
+  ## Generate the t_SNE plot
+  par(mfrow=c(1,2)) # To plot two images side-by-side
+  plot(tsne_results$Y, col = "blue", pch = 19, cex = 1.5) # Plotting the first image
+  plot(tsne_results$Y, col = "black", bg= IR_species, pch = 21, cex = 1.5) 
+  # Second plot: Color the plot by the real species type (bg= IR_species)
+  return(tsne_results)
+}
+set.seed(2020)
+tsne_results0=do_tsne(IR_data0) #每次执行t-SNE，结果都是随机的
+tsne_results1=do_tsne(IR_data1)
+tsne_results2=do_tsne(IR_data2)
+#
+dim(tsne_results2$Y) #150 2
+head(tsne_results2$Y)
+plot(tsne_results2$Y[,1], col=iris[,5])
+plot(tsne_results2$Y[,2], col=iris[,5])
+plot(tsne_results2$Y[,1],tsne_results2$Y[,2], col=iris[,5])
+
+#
+# (4)带入前几个PC做tSNE
+tsne_results2_2=do_tsne(dt.pca2$var$coord[,1:3])
+plot(tsne_results2_2$Y[,1],tsne_results2_2$Y[,2], col=iris[,5])
+#
+
+
+
+
+
+(2) 使用纯R实现t-SNE (来自同名R包)
+tsne=function (X, initial_config = NULL, k = 2, initial_dims = 30, 
+  perplexity = 30, max_iter = 1000, min_cost = 0, epoch_callback = NULL, 
+  whiten = TRUE, epoch = 100) 
+{
+  if ("dist" %in% class(X)) {
+    n = attr(X, "Size")
+  }
+  else {
+    X = as.matrix(X)
+    X = X - min(X)
+    X = X/max(X)
+    initial_dims = min(initial_dims, ncol(X))
+    if (whiten) 
+      X <- .whiten(as.matrix(X), n.comp = initial_dims)
+    n = nrow(X)
+  }
+  momentum = 0.5
+  final_momentum = 0.8
+  mom_switch_iter = 250
+  epsilon = 500
+  min_gain = 0.01
+  initial_P_gain = 4
+  eps = 2^(-52)
+  if (!is.null(initial_config) && is.matrix(initial_config)) {
+    if (nrow(initial_config) != n | ncol(initial_config) != 
+      k) {
+      stop("initial_config argument does not match necessary configuration for X")
+    }
+    ydata = initial_config
+    initial_P_gain = 1
+  }
+  else {
+    ydata = matrix(rnorm(k * n), n)
+  }
+  P = .x2p(X, perplexity, 1e-05)$P
+  P = 0.5 * (P + t(P))
+  P[P < eps] <- eps
+  P = P/sum(P)
+  P = P * initial_P_gain
+  grads = matrix(0, nrow(ydata), ncol(ydata))
+  incs = matrix(0, nrow(ydata), ncol(ydata))
+  gains = matrix(1, nrow(ydata), ncol(ydata))
+  for (iter in 1:max_iter) {
+    if (iter%%epoch == 0) {
+      cost = sum(apply(P * log((P + eps)/(Q + eps)), 1, 
+        sum))
+      message("Epoch: Iteration #", iter, " error is: ", 
+        cost)
+      if (cost < min_cost) 
+        break
+      if (!is.null(epoch_callback)) 
+        epoch_callback(ydata)
+    }
+    sum_ydata = apply(ydata^2, 1, sum)
+    num = 1/(1 + sum_ydata + sweep(-2 * ydata %*% t(ydata), 
+      2, -t(sum_ydata)))
+    diag(num) = 0
+    Q = num/sum(num)
+    if (any(is.nan(num))) 
+      message("NaN in grad. descent")
+    Q[Q < eps] = eps
+    stiffnesses = 4 * (P - Q) * num
+    for (i in 1:n) {
+      grads[i, ] = apply(sweep(-ydata, 2, -ydata[i, ]) * 
+        stiffnesses[, i], 2, sum)
+    }
+    gains = ((gains + 0.2) * abs(sign(grads) != sign(incs)) + 
+      gains * 0.8 * abs(sign(grads) == sign(incs)))
+    gains[gains < min_gain] = min_gain
+    incs = momentum * incs - epsilon * (gains * grads)
+    ydata = ydata + incs
+    ydata = sweep(ydata, 2, apply(ydata, 2, mean))
+    if (iter == mom_switch_iter) 
+      momentum = final_momentum
+    if (iter == 100 && is.null(initial_config)) 
+      P = P/4
+  }
+  ydata
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+2. 手写 python版的t-SNE 
+https://www.plob.org/article/15978.html
+https://nlml.github.io/in-raw-numpy/in-raw-numpy-t-sne/
+tsne.py代码: https://github.com/nlml/tsne_raw/blob/master/src/tsne.py
+
+
+(2) python包: sklearn
+https://www.deeplearn.me/2137.html
+
+
+
+
+
+
+
+
+
+3.js 版本的t-SNE
+(1) 项目实例 https://cs.stanford.edu/people/karpathy/tsnejs/csvdemo.html
+代码 https://github.com/karpathy/tsnejs
+
+
+
+
+
+
+
+========================================
+UMAP 简介
+----------------------------------------
+1. UMAP: Uniform Manifold Approximation and Projection for Dimension Reduction
+https://arxiv.org/abs/1802.03426
+
+UMAP (Uniform Manifold Approximation and Projection) is a novel manifold learning technique for dimension reduction. UMAP is constructed from a theoretical framework based in Riemannian geometry and algebraic topology. The result is a practical scalable algorithm that applies to real world data. The UMAP algorithm is competitive with t-SNE for visualization quality, and arguably preserves more of the global structure with superior run time performance. Furthermore, UMAP has no computational restrictions on embedding dimension, making it viable as a general purpose dimension reduction technique for machine learning.
+
+(1) 原始论文
+py参考实现: https://github.com/lmcinnes/umap
+文档: https://umap-learn.readthedocs.io/en/latest/
+
+
+视频讲解: https://www.bilibili.com/video/BV1a4411R76S?from=search&seid=12484312964074038519
+	RP-trees + NN-descent
+	SGD + negative sampling
+	UMAP speeed up over t-SNE 
+	UMAP可以用于有监督的聚类
+#
+
+
+
+
+
+(2) 生物学应用
+Published: 03 December 2018
+Dimensionality reduction for visualizing single-cell data using UMAP
+https://www.nature.com/articles/nbt.4314
+
+
+2)Yeast: rticle|Open Access|Published: 24 March 2020
+Dimensionality reduction by UMAP to visualize physical and genetic interactions
+
+
+
+
+
+
+
+
+
+
+========================================
 ****** 广告 ******
 ----------------------------------------
 
@@ -1542,15 +2409,138 @@ https://mp.weixin.qq.com/s?__biz=MjM5MDc0NDU2NQ==&mid=2650376120&idx=1&sn=bac5fd
 
 
 ========================================
+|-- 文章实例：解决的问题，及用到的机器学习方法
 ----------------------------------------
 
 
 
+1.[4.856, 2019] 核磁图像提高宫颈癌淋巴结转移的诊断效果
+
+Radiother Oncol. 2019 Jun 25;138:141-148. doi: 10.1016/j.radonc.2019.04.035. [Epub ahead of print]
+Radiomics analysis of magnetic resonance imaging improves diagnostic performance of lymph node metastasis in patients with cervical cancer.
+
+1. Department of Medical Imaging, Henan Provincial People's Hospital, Zhengzhou, China; Zhengzhou University People's Hospital, Zhengzhou, China; Henan University People's Hospital, Zhengzhou, China.
+
+
+A total of 189 cervical cancer patients were divided into a training cohort (n = 126) and a validation cohort (n = 63). For each patient, we extracted radiomic features from intratumoral and peritumoral tissues on sagittal T2WI and axial apparent diffusion coefficient (ADC) maps. Afterward, the radiomic features associated with LNM status were selected by univariate ROC testing and logistic regression with the least absolute shrinkage and selection operator (LASSO) penalty in the training cohort. Based on the selected features, a support vector machine (SVM) model was established to predict LNM status. To further improve the diagnostic performance, a decision tree which combines the radiomics model with clinical factors was built.
+
+主要方法: ROC testing + logistic regression+LASSO;
+SVM;
+decision tree;
 
 
 
-========================================
-----------------------------------------
+
+
+2. [3.303,2019] 甲状腺超声，预测滤泡性甲状腺癌的远端转移
+J Clin Med. 2020 Jul 8;9(7). pii: E2156. doi: 10.3390/jcm9072156.
+Radiomics Based on Thyroid Ultrasound Can Predict Distant Metastasis of Follicular Thyroid Carcinoma.
+
+1. Department of Radiology, Kangbuk Samsung Hospital, Sungkyunkwan University School of Medicine, Seoul 03181, Korea.
+
+A radiomics signature was generated using the least absolute shrinkage and selection operator and was used to train a support vector machine (SVM) classifier in five-fold cross-validation. The SVM classifier showed an area under the curve (AUC) of 0.90 on average on the test folds. 
+
+主要方法： LASSO + SVM; AUC;
+
+
+
+
+
+
+3. [2.687,2019IF] 对早期宫颈癌盆腔淋巴结转移的术前预测
+Eur J Radiol. 2019 May;114:128-135. doi: 10.1016/j.ejrad.2019.01.003. Epub 2019 Mar 20.
+Preoperative prediction of pelvic lymph nodes metastasis in early-stage cervical cancer using radiomics nomogram developed based on T2-weighted MRI and diffusion-weighted imaging.
+
+1. Department of Medical Imaging, First Affiliated Hospital of Xi'an Jiaotong University, No.277, West Yanta Road, Xi'an, 710061, Shaanxi, People's Republic of China; Department of Radiology, Shaanxi Provincial People's Hospital, Xi'an, Shaanxi, 710068, People's Republic of China.
+
+
+//Radiomics features extracted from T2WI and DWI were selected by least absolute shrinkage and selection operation regression for further radimoics signature calculation. The discrimination of this radiomics signature for PLN metastasis was then assessed using a support vector machine (SVM) model. 
+
+主要方法： LASSO + SVM;
+
+
+
+
+
+
+4.[2.327,2019IF] 蛋白的细胞亚定位
+
+J Theor Biol. 2018 Nov 16. pii: S0022-5193(18)30565-4. doi: 10.1016/j.jtbi.2018.11.012. [Epub ahead of print]
+Identification of protein subcellular localization via integrating evolutionary and physicochemical information into Chou's general PseAAC.
+Shen Y1, Tang J2, Guo F3.
+Author information:
+1. School of Computer Science and Technology, College of Intelligence and Computing, Tianjin University, Yaguan Road, Jinnan District, Tianjin, P.R.China. Electronic address: shenyinan@tju.edu.cn.
+
+// In this paper, we propose a multi-kernel SVM to predict subcellular localization of both multi-location and single-location proteins. 
+
+First, we make use of the evolutionary information extracted from position specific scoring matrix (PSSM) and physicochemical properties of proteins, by Chou's general PseAAC and other efficient functions. 
+
+Then, we propose a multi-kernel support vector machine (SVM) model to identify multi-label protein subcellular localization. As a result, our method has a good performance on predicting subcellular localization of proteins. It achieves an average precision of 0.7065 and 0.6889 on two human datasets, respectively.
+
+主要方法: 多核SVM;
+
+
+
+
+
+
+
+5. [4.101,2019IF] 非侵袭直肠癌的核磁成像，评估5个术后指标
+
+Eur Radiol. 2018 Nov 9. doi: 10.1007/s00330-018-5763-x. [Epub ahead of print]
+Preoperative radiomic signature based on multiparametric magnetic resonance imaging for noninvasive evaluation of biological characteristics in rectal cancer.
+Meng X1, Xia W2, Xie P1, Zhang R 2, Li W1, Wang M2, Xiong F1, Liu Y2, Fan X3, Xie Y1, Wan X4, Zhu K5, Shan H6, Wang L7, Gao X8.
+Author information:
+1. Department of Radiology, Sixth Affiliated Hospital of Sun Yat-sen University, Guangzhou, 510655, China.
+
+//Radiomic features were extracted from MP-MRI and then refined for reproducibility and redundancy. The refined features were investigated for usefulness in building radiomic signatures by using two feature-ranking methods (MRMR and WLCX) and three classifiers (RF, SVM, and LASSO). Multivariable logistic regression was used to build an integrated evaluation model combining radiomic signatures and clinical characteristics. The performance was evaluated using an independent validation dataset comprising 148 patients.
+
+//The MRMR and LASSO regression produced the best-performing radiomic signatures for 
+
+主要方法: MRMR + LASSO;
+
+
+
+
+
+6. [2.826,2019IF] 转移性肾细胞肾癌中的VEGF和TKI
+
+Pathol Oncol Res. 2017 Sep 29. doi: 10.1007/s12253-017-0323-2. [Epub ahead of print]
+Development of Response Classifier for Vascular Endothelial Growth Factor Receptor (VEGFR)-Tyrosine Kinase Inhibitor (TKI) in Metastatic Renal Cell Carcinoma.
+Go H1, Kang MJ1, Kim PJ2, Lee JL 3, Park JY4, Park JM1, Ro JY5, Cho YM6.
+Author information:
+
+1
+Department of Pathology, Asan Medical Center, University of Ulsan College of Medicine, 88, Olympic-ro 43-gil, Songpa-gu, Seoul, 05505, Republic of Korea.
+
+//Clinicolaboratory-histopathological data, 41 gene mutations, 20 protein expression levels and 1733 miRNA expression levels were compared between clinical benefit and non-benefit groups. The classifier was built using support vector machine (SVM). Seventy-three patients were clinical benefit group, and 28 patients were clinical non-benefit group. 
+
+主要方法: SVM; simple decision tree
+
+
+
+
+
+7. [3.632,2019IF]
+	
+Developing a new radiomics-based CT image marker to detect lymph node metastasis among cervical cancer patients
+Comput Methods Programs Biomed. 2020 Sep 16;197:105759. doi: 10.1016/j.cmpb.2020.105759. Online ahead of print.
+
+1 School of Electrical and Computer Engineering, University of Oklahoma, Norman, OK, 73019, USA.
+
+
+
+
+
+8.[7.971, 2019IF] （临床预测）整合3’UTR来建立模型，6基因构成，识别可手术的三阴性乳腺癌的腋窝淋巴结转移风险。
+
+Wang, L., et al. (2019). "Integrative 3' Untranslated Region-Based Model to Identify Patients with Low Risk of Axillary Lymph Node Metastasis in Operable Triple-Negative Breast Cancer." Oncologist 24(1): 22-30.
+
+We evaluated 3' untranslated region (3'UTR) profiles using microarray data of TNBC from two Gene Expression Omnibus datasets. Samples from GSE31519 were divided into training set (n = 164) and validation set (n = 163), and GSE76275 was used to construct testing set (n = 164). 
+
+We built a six-member 3'UTR panel (ADD2, COL1A1, APOL2, IL21R, PKP2, and EIF4G3) using an elastic net model to estimate the risk of lymph node metastasis (LNM). 
+
+A combinatorial analysis of the 3'UTR panel and tumor size yielded an accuracy of 97.2%, 100%, and 100% in training, validation, and testing set, respectively.
 
 
 

@@ -17,6 +17,9 @@
 ## 单词分类
 [4-6级考试大纲 - 附词汇(2016年修订版)](http://cet.neea.edu.cn/html1/folder/16113/1588-1.htm)
 [最常见1000个单词](https://www.ef.com/wwen/english-resources/english-vocabulary/top-1000-words/)
+[雅思词汇表(新东方乱序版)](https://github.com/fanhongtao/IELTS/blob/master/IELTS%20Word%20List.txt)
+[GRE词汇分级表](https://github.com/jukamonk/english-word-lists)
+
 
 
 ## 刷单词使用方法
@@ -110,11 +113,47 @@
 ["hermit", "negligent", "predate", "affluent", "fraught", "gox"]
 
 
-
 ## group 11
 ['gauge', 'esteem','ego','patrol','merit','inlet','dubious']
 ['discourse', 'enclose', 'sensation', 'proclaim', 'plight', 'deliberate', 'fringe', 'commemorate', 'spit']
 ['manifest', 'disposition', 'scout', ]
+["underlie", "bizarre", "grief", "pant", "exhibit", "hurl", 'eminent']
+['horizontal', 'excerpt', 'consent', 'persevere']
+
+
+## group 12
+["disperse", "bleak", "negligible", "renaissance", "dispose", "designate", "brittle", "deposit"]
+["contend", "dip", "revelation", "prevalent"]
+["symmetry", "temperament", "desolate", "equivalent", "embody"]
+["scramble", "repertoire", "lateral", "judicial"]
+["cafe", "doctorate", "constituent"]
+
+
+## group 13
+["divine", "scarf", "leaflet", "spade", "glare"]
+["swamp", "verdict"]
+["vanity", "foul", "virtual", "canteen", "diffuse", "assembly", "eastern"]
+["sophomore", "menace", "portray", "whirl", "stake", "swarm", "textile"]
+["nevertheless", "sham", "sin", "kin", "siege"]
+
+
+## group 14
+["exceedingly", "hatch", "aural", "immerse", "severe", "dwell", "fertile", "misery"]
+["paradigm", "rein", "hypocrisy", "circumference", "civilian", "liability", "stumble", "stool"]
+["canoe", "significance", "trolley", "burglar"]
+["radiant", "autonomy", "multitude"]
+["spectacular", "turbulent"]
+
+
+
+## group 15
+["crisp", "conspiracy", "porch", "deficit", "distress"]
+["slack", "gymnasium", "oath", "courtesy"]
+["petty", "pretext", "pillar", "ankle", "strive", "instruct", "postpone", "suffice", "repetition"]
+
+
+
+
 
 
 

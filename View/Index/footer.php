@@ -128,22 +128,36 @@
 		
 		echo '<br />数学: ';
 		print_links(array(
-			array('https://blog.csdn.net/hpdlzu80100','数学笔记(高数/线代/统计/)'),
+			array('https://blog.csdn.net/hpdlzu80100/category_7468916.html','数学笔记(高数/线代/统计/)'), //https://blog.csdn.net/hpdlzu80100
 			array('https://face2ai.com/Math-Probability-5-5-The-Negative-Binomial-Distribution/','谭升(统计/书list)'),
 			array('https://qinqianshan.com/math/probability_distribution/','SAM NOTE(统计等)'),
+			array('https://www.cnblogs.com/pinard/category/894690.html','刘建平Pinard(数据挖掘等)'),
 		));
-		
+
+
+
+		echo '<br />ML/AI: ';
+		print_links(array(	
+			array('http://freemind.pluskid.org/','张驰原pluskid(ML/AI)'),
+			array('https://blog.csdn.net/v_july_v/article/details/7624837','july(ML/AI)'),
+			array('http://blog.17study.com.cn/','月色(ML/AI)'),
+		));
+
+
+
 		
 		echo '<br />生信: ';
 		print_links(array(
 			array('http://www.bioinfo-scrounger.com/','生信笔记'),
 			array('https://www.cnblogs.com/leezx/tag/单细胞/','单细胞'),
+			array('https://divingintogeneticsandgenomics.rbind.io/#publications','Ming Tang(scATAC)'),
 			array('https://life2cloud.com/cn/2018/11/pipelines-styles/','李剑峰(生信流程)'),
 			
 			array('http://blog.shenwei.me/about/','shenwei(微生物)'),
+			array('http://www.dengfeilong.com/post/aboutUs.html','邓飞龙(微生物)'),
 			array('http://kaopubear.top/','Fei Zhao(bioinfo)'),
+			array('https://liulab-dfci.github.io/teaching','liulab'), //X Shirley Liu
 			//array('',''),
-			// array('http://www.dengfeilong.com/post/aboutUs.html','邓飞龙'), //空间过期
 		));
 ?>		
 			
@@ -161,9 +175,9 @@ var cnzz_protocol = (("https:" == document.location.protocol) ? " https://" : " 
 		
 		
 		<div class='links'>
-			Copyright &copy; 2009 - 2020 DawnEve. All Rights Reserved. | 
-			<a target='_blank' href='https://github.com/DawnEve'>Folk me on Github</a> | 
-			<a class=red href='index.php?k=Git&id=0_2'>Contact me</a> | 
+			Copyright &copy; 2009 - <?php echo date('Y',time()); ?> DawnEve. All Rights Reserved. | 
+			<a class=red target='_blank' href='https://github.com/DawnEve'>Folk me on Github</a> | 
+			<a href='index.php?k=Git&id=0_2'>Contact me</a> | 
 			<a target='_blank' href='http://pan.baidu.com/s/1i3imHpF' title='密码:qa53'>web tools</a>
 		</div>
 
@@ -172,6 +186,9 @@ var cnzz_protocol = (("https:" == document.location.protocol) ? " https://" : " 
 			♥ Do have faith in what you're doing. 
 			[<?php echo date('Y-m-d H:i:s',time());?>] 
 			Powered by <a target='_blank' href='https://github.com/DawnEve/txtBlog' title='txtBlog(A simple yet powerful php blog system for reading and organizing txt files.)'>txtBLog v0.5</a>
+			
+			<a target="_blank" href="http://stuff.mit.edu/doc/counter-howto.html"><img src="https://stuff.mit.edu/cgi/counter/txtBlog"></a>
+			
 		</div>
 	</div>
 </div>

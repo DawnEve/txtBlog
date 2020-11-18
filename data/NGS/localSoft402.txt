@@ -759,6 +759,8 @@ $ STAR --version
 STAR_2.5.2b
 
 
+
+
 (3)下载参考基因组
 1).资源:下载hg19基因组的fasta文件和gtf注释文件
 参考基因组 http://hgdownload.cse.ucsc.edu/goldenPath/hg19/bigZips/
@@ -778,6 +780,7 @@ cat *.fa >hg19.fa
 
 2)下载老鼠mm9基因组
 axel -n 20 http://hgdownload.cse.ucsc.edu/goldenPath/mm9/bigZips/mm9.2bit
+
 
 3)怎么把2bit转变成fasta？使用twoBitToFa工具
 https://blog.csdn.net/weixin_40099163/article/details/86151988
@@ -808,6 +811,18 @@ $ axel -n 80 http://hgdownload.cse.ucsc.edu/goldenPath/mm10/bigZips/mm10.2bit
 
 选择最新的gtf注释文件，人类和小鼠常在http://www.gencodegenes.org下载，植物的可信基因组见http://plants.ensembl.org
 
+
+
+
+
+(5) 使用genecode的一套fa和gtf文件: Release M25 (GRCm38.p6)
+$ cd /home/wangjl/data/ref/mouse_M25
+$ wget ftp://ftp.ebi.ac.uk/pub/databases/gencode/Gencode_mouse/release_M25/gencode.vM25.annotation.gtf.gz
+$ wget ftp://ftp.ebi.ac.uk/pub/databases/gencode/Gencode_mouse/release_M25/GRCm38.p6.genome.fa.gz
+
+ftp://ftp.ebi.ac.uk/pub/databases/gencode/Gencode_mouse/release_M25/gencode.vM25.transcripts.fa.gz
+
+$ gunzip *
 
 
 
@@ -868,6 +883,16 @@ lab server上本来就有该STAR可用的hg19索引:
 STAR --runThreadN 50 --runMode genomeGenerate --genomeDir /home/wangjl/data/ref/mouse/STAR/  --genomeFastaFiles /home/wangjl/data/ref/mouse/mm9.fa --sjdbGTFfile /home/wangjl/data/ref/mouse/mm9_ucsc_genes-20190506.gtf --sjdbOverhang 100
 [11:05 - 11:21]
 
+
+## 193服务器上
+$ STAR --runMode genomeGenerate \
+	--runThreadN 50 \
+	--genomeDir /home/wangjl/data/ref/mouse_M25/index/star/  \
+	--genomeFastaFiles /home/wangjl/data/ref/mouse_M25/GRCm38.p6.genome.fa \
+	--sjdbGTFfile /home/wangjl/data/ref/mouse_M25/gencode.vM25.annotation.gtf \
+	--sjdbOverhang 100
+#
+[11:52 - 12:07]
 
 
 
@@ -946,6 +971,12 @@ $ STAR --runThreadN 30  \
 	--genomeLoad LoadAndKeep \  #单一会报错
 	--limitBAMsortRAM 20000000000 \ #加入这一行就不报错了
 	--outFileNamePrefix  /home/wangjl/data/apa/190515/hg19_mm10/c2_ROW01_
+#
+
+
+如果是双端 reads, 最后三个参数是为了提高比对的 uniq map，降低 too short 百分比:
+$ STAR --genomeDir /home/niesy/data/reference/star_hg --runThreadN 10 --readFilesIn ATAC-1-3_L4_F0000570F0001151.R1_val_1.fq.gz ATAC-1-3_L4_F0000570F0001151.R2_val_2.fq.gz --readFilesCommand zcat --outFileNamePrefix test --outSAMtype BAM SortedByCoordinate --outBAMsortingThreadN 10 --outFilterScoreMinOverLread 0 --outFilterMatchNminOverLread 0 --outFilterMismatchNmax 2 
+
 
 
 (4)更多参数
@@ -958,6 +989,20 @@ $ STAR --runThreadN 30  \
 如果你在建立索引或者比对的时候增加了注释信息，那么STAR还能帮你进行基因计数。参数为 --quantMode, 分为转录本水平(TranscriptomeSAM)和基因水平(GeneCounts)，在计数的时候还允许指定哪些哪些read不参与计数，"IndelSoftclipSingleend"和"Singleend"
 
 对于非链特异性RNA-seq，同时为了保证能和Cufflinks兼容，需要添加 --outSAMstrandField intronMotif在SAM中增加XS属性，并且建议加上 --outFilterIntronMotifsRemoveNoncanonical。如果是链特异性数据，那么就不需要特别的参数，Cufflinks用 --library-type声明类型即可=
+
+
+
+### 如果uniq比对率过低，出现 too short 过高，则可以调整比对参数 
+### https://github.com/alexdobin/STAR/issues/169
+You can increase the number of mapped reads by relaxing the requirements on the mapped length, e.g.: 
+--outFilterScoreMinOverLread 0.3 --outFilterMatchNminOverLread 0.3       
+或者下面这个更好:
+--outFilterScoreMinOverLread 0 --outFilterMatchNminOverLread 0 --outFilterMatchNmin 0
+the number of missmaches I controlled by --outFilterMismatchNmax 2 and got my preferred results.
+
+
+
+
 
 
 
@@ -2437,6 +2482,55 @@ http://www.dengfeilong.com/note/290.html
 
 
 ========================================
+|-- 文件转换 bam to fastq
+----------------------------------------
+1. 命令使用
+bedtools bamtofastq [OPTIONS] -i <BAM> -fq <FASTQ>
+
+可选项
+Option	Description
+-fq2	FASTQ for second end. Used if BAM contains paired-end data. BAM should be sorted by query name (samtools sort -n aln.bam aln.qsort) if creating paired FASTQ with this option.
+-tags	Create FASTQ based on the mate info in the BAM R2 and Q2 tags.
+
+
+
+
+(1)实例: 输入10x 单端一个cell barcode的bam文件
+$ bedtools bamtofastq -i ../mapRaw/AGCCTAATCCTGCCAT_raw_R2_Aligned.sortedByCoord.out.bam -fq aa.fq
+
+$ head aa.fq 
+@A00129:409:HKVNVDSXX:2:2173:24551:24752
+ACCGCCATGGACAACGCCAGCAAGAACGCTTCTGATATGATTGACAAATTGACCTTGACTTTCAACCGCACCCGCCAGGCTGTCATCACAAAGGAGTTGATTGAAATCATCTCTGGGGCTGCTGCTCTGGATTAATGAAAATCAAGTTGC
++
+FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF:FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF:FFFFFFFFFFFFF:FFFFFFFFFFFFFFFFFF,FFFFFFFFFFFFFFFFFFFF:FFFFFFFFFFFFFFFFFFFFFFF
+
+
+
+(2) -fq2 Creating two FASTQ files for paired-end sequences.
+注意Note:
+When using this option, it is required that the BAM file is sorted/grouped by the read name. 
+This keeps the resulting records in the two output FASTQ files in the same order. 
+One can sort the BAM file by query name with samtools sort -n aln.bam aln.qsort.
+
+
+$ samtools sort -n aln.bam aln.qsort
+
+$ bedtools bamtofastq -i aln.qsort.bam \
+                      -fq aln.end1.fq \
+                      -fq2 aln.end2.fq
+
+$ head -8 aln.end1.fq
+
+
+
+ref: https://bedtools.readthedocs.io/en/latest/content/tools/bamtofastq.html
+
+
+
+
+
+
+========================================
 samtools用法 – Utilities for the Sequence Alignment/Map (SAM) format
 ----------------------------------------
 代码： https://github.com/samtools/samtools
@@ -3089,7 +3183,28 @@ refer: https://blog.csdn.net/whenfree/article/details/85305616
 
 
 ========================================
-IGV使用方法，及导入本地fa和gtf文件
+基因组浏览器 genome browser
+----------------------------------------
+
+1. 本地:
+IGV 最常见
+IGB 可以整个染色体进行连续缩放
+UCSC 本地版 GBiB: http://genome.ucsc.edu/goldenpath/help/gbib.html
+
+
+
+2. web 版:
+UCSC: http://genome.ucsc.edu/cgi-bin/hgGateway
+washU: http://epigenomegateway.wustl.edu/browser/ 貌似只有在线版，配色优美
+
+
+3. R语言版
+Gviz包: http://www.bioconductor.org/packages/release/bioc/html/Gviz.html
+
+
+
+========================================
+|-- IGV使用方法，及导入本地fa和gtf文件
 ----------------------------------------
 IGV User Guide ： http://software.broadinstitute.org/software/igv/UserGuide
 
@@ -3357,18 +3472,93 @@ ref:
 
 
 
+========================================
+|-- igv.js 网页展示bam文件
+----------------------------------------
+1. 官方链接
+https://github.com/igvteam
+https://github.com/igvteam/igv.js
+https://github.com/igvteam/igv.js/wiki
+
+
+2. 实例: 需要放到静态服务器环境打开
+
+<script src="https://igv.org/web/release/2.0.1/dist/igv.min.js"></script>
+
+<body>
+  <div id='igv-div'></div>
+</body>
+
+<script>
+//我们可以通过fastaURL和indexURL以及track内的URL和indexURL来自定义fasta文件和bam文件。
+var igvDiv = document.getElementById("igv-div");
+
+//设置
+var options = {
+	genome: "hg19",
+	//fastaURL:'http://127.0.0.1:8089/igv.js_test/chr22.fasta',
+	//indexURL:'http://127.0.0.1:8089/igv.js_test/chr22.fasta.fai',
+	//locus: "chr8:128,747,267-128,754,546",
+	locus: 'chr12:6,644,962-6,648,055',
+	tracks: [{
+	  type: 'alignment',
+	  format: 'bam',
+	  //url: 'https://data.broadinstitute.org/igvdata/1KG/b37/data/HG02450/alignment/HG02450.mapped.ILLUMINA.bwa.ACB.low_coverage.20120522.bam',
+	  //name: 'HG02450'
+	  url: "normalHeLa.sort.bam", //'http://127.0.0.1:8089/igv.js_test/chr22.bam',
+	  indexURL: "normalHeLa.sort.bam.bai",  //'http://127.0.0.1:8089/igv.js_test/chr22.bam.bai',
+	  name:'chr12',
+
+	}]
+};
+
+//启动
+igv.createBrowser(igvDiv, options)
+	.then(function (browser) {
+	  console.log("Created IGV browser");
+	})
+</script>
+
+
+
+
+
+
+
+3.当然，如果我们想要使用vcf文件也可以，只需要修改tracks的内容，接收vcf文件就可以了，tracks的内容修改如下：
+我没试出效果，留待以后再说。
+
+/*
+type: "variant",
+format: "vcf",
+url: "https://s3.amazonaws.com/1000genomes/release/20130502/ALL.chr22.phase3_shapeit2_mvncall_integrated_v5a.20130502.genotypes.vcf.gz",
+indexURL: "https://s3.amazonaws.com/1000genomes/release/20130502/ALL.chr22.phase3_shapeit2_mvncall_integrated_v5a.20130502.genotypes.vcf.gz.tbi",
+name: "1KG variants (chr22)",
+squishedCallHeight: 1,
+expandedCallHeight: 4,
+displayMode: "squished",
+visibilityWindow: 1000
+*/
+
+
+
+
+
+
 
 
 
 
 ========================================
-gtf文件结合 Gviz R包进行可视化 //todo
+|-- gtf文件结合 Gviz R包进行可视化 //todo
 ----------------------------------------
 使用refGenome加上dplyr玩转gtf文件
 原创： 生信技能树  生信技能树  2018-12-05
 
 
 详情见 R/bioconductor
+
+
 
 
 

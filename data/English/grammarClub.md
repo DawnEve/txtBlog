@@ -139,5 +139,180 @@ Yesterday he had his leg broken. (过去分词作宾补)
 
 
 
-#
+
+
+# 三大类共14种从句
+
+语言领域的工作沟通和交流，讲究的是语言表达的逻辑性和信息传达的充分度。在这一语言环境下，除了时态、主谓一致等语法点需要熟稔于心外，三大类14种从句（名词性从句、形容词性从句、副词性从句）需要熟练使用。
+
+
+## 名词性从句4种
+
+### 主语从句 Whether it's right or not remains to be seen. 
+### 宾语从句 I wonder whether it's right or not. 
+### 同位语从句 This is a question whether it's right or not. 
+### 表语从句 The question is whether it's right or not.
+
+
+## 形容词性从句2种
+
+### 限定性定语从句 She is the student who can speak English well.
+### 非限定性定语从句 She is the student, who can speak English well.
+
+
+## 副词性从句8种
+
+### 时间状语从句 The fact will come out when he comes here. 
+### 地点状语从句 You can go wherever you like. 
+### 原因状语从句 Pay more attention to your lessons because you are a student. 
+### 方式状语从句 He walks as if he were a king. 
+### 目的状语从句 She went to Japan so that she could learn Japanese well. 
+
+目的状语从句是指从句部分用以补充说明主句中谓语动词发生的目的的状语从句。可以由that, so that, in order that, lest, for fear that, in case等引导。
+
+目的状语从句的谓语常含有may, might, can, could, should, will, would等情态动词。
+
+例如：
+You must speak louder so that /in order that you can be heard by all.
+He wrote the name down for fear that(lest) he should forget it.
+Better takes more clothes in case the weather is cold.
+
+
+
+
+（1）目的状语从句中常含有can,could,may,might,should等情态动词。
+I got up early so that I could catch the first bus.
+我起得很早，目的是为了赶上头班公共汽车。
+
+（2）在口语中so可以引导目的状语从句。
+We'll sit nearer the front so we can hear better.
+我们坐的靠前一点，因此，我们听得清楚一点。
+
+
+
+【注意】in order that与in order to的区别：
+in order that+从句
+in order to+动词原形 （ in order to后面加的那个不叫目的状语从句，叫目的状语）
+
+in order to 为了，后接动词原形，做目的状语。
+i get up early in order to catch the early bus.
+
+in order that 为了，后接从句，做目的状语。
+i get up early in order that i can catch the early bus.
+
+
+目的状语从句的一个特点：
+由于目的都是未来的行为，所以从句中一般用表示未来可能性时态，
+当然还可以用will,would,can,等
+
+
+
+
+
+
+
+### 结果状语从句 She went to Japan so that she learned Japanese well. 
+
+结果状语从句常由so… that或such…that引导。结构是：such+a/an+形容词+名=so+形容词+a/an+名。such 修饰名词或名词词组，so 只能修饰形容词或副词。
+
+so和 such
+结果状语从句其规律由so与such的不同词性决定。such 是形容词，修饰名词或名词词组，so 是副词，只能修饰形容词或副词。 so 还可与表示数量的形容词many, few, much, little连用，形成固定搭配。
+
+such+a/an+形容词+名=so+形容词+a/an+名
+so foolish
+such a fool
+so nice a flower
+such a nice flower
+so many / few flowers
+such nice flowers
+so much / little money
+such rapid progress
+so many people
+such a lot of people
+（ so many 已成固定搭配，a lot of 虽相当于 many，但 a lot of 为名词性的，只能用such搭配。）
+so…that与 such…that之间的转换既为 so与such之间的转换。
+
+例句：
+The boy is so young that he can't go to school.
+He is such a young boy that he can't go to school.
+
+
+1.so that可以引导目的状语从句， 也可以引导结果状语从句。
+例如：
+He worried so that he couldn’t sleep. 
+　　他急得睡不着。(so that引导结果状语从句)
+It was very cold, so that the river froze.
+　　天气寒冷， 河水都结冰了。(so that引导结果状语从句)
+I came to the class early so that I could see the classmate beside me.
+　　我赶早来上课， 以便早点看到我旁边的同学。(so that引导目的状语从句)
+
+
+**so+形容词+that**
+Some people were so moved by the sight that they began to cry.
+　　一些人对此情景如此感动，以致开始哭了出来。
+The wind was so strong that he could hardly move forward.
+　　风刮得如此猛烈，以致他几乎是寸步难行。
+
+
+**so+副词+that**
+The ball struck him so hard that he nearly fell into the water.
+　　球重重地打在了他身上，使他几乎落到水里去。
+
+**so+形容词+a+单数名词+that**
+It was so hot a day that they wanted to go swimming.
+　　天那么热，他们想去游泳。
+
+
+**so+many/few（+复数名词）+that**
+There are so many picture-story books that the boy won't leave.
+　　有那么多连环画书，小孩都不想离开了。
+
+
+**so+much/little+单数不可数名词）+that**
+There is so much contradictory advice about exercising that you become confused.
+　　对于锻炼有那么多互相矛盾的意见，以致都把你给弄糊涂了。
+He gave me so little time that it was impossible for me to finish the work on time.
+　　他给我的时间如此少，要我按时完成任务是不可能的。
+
+
+2.表示“如此……以致……”的“so...that...”和“such... that...”均可引导结果状语从句， 其中的such 是形容词， 修饰名词； so 是副词， 修饰形容词或副词， 具体的搭配形式是：
+(1)“so+adj./adv.+that”， “so+adj.(+a/an)+n.+that”；
+(2)“such(+a/an)(+adj.)+n.+that”。
+例如：
+He speaks so fast that no one can catch him.
+　　他说话太快， 无人听得明白。
+There is so rapid an increase in population that a food shortage is caused.
+　　人口增长如此迅速， 以致造成了粮食短缺。
+Our country has so much coal that she can export large quantities.
+　　我们国家的煤炭非常丰富， 可以大量出口。
+　　(so与表示数量的代词many， few， much， little等连用已经形成固定搭配， 这些场合下不能换用such的对应结构表示)
+The shop sells such expensive goods that I want to buy nothing in it.
+　　这家商店出售的货物价格昂贵， 以致我在里面不想购买任何东西。
+He’s such a good person that we mustn’t blame him.
+　　他是这样好的人， 我们不能怪他。
+They are such fine teachers that we all hold them in great respect.
+　　他们是非常好的老师， 我们对他们极为尊敬。
+It is such nice weather that I would like to go to the beach.
+　　天气如此之好， 我想去海滩。
+
+
+如果结果状语从句的主语与主句的主语相同， 可用so (adj./adv.) as to取代该结果状语从句， 注意体会以下例句：
+The weather was bad, so as to make a good photo hard to take.
+　　天气恶劣， 以致难以拍出来好照片。
+He was so kind as to phone for a taxi for the patient.
+　　他是如此热心， 以至于他为病人打电话叫了出租车。
+How could you be so stupid as to believe him?
+　　你怎么这么笨， 竟相信了他的话？
+
+
+
+在结果状语从句主从句主语一致的情况下，可省去从句主语，从句谓语变非谓语。这时，前面的so ...就要换一个形式来陈述。so是中性程度副词，如果从句是肯定句，那么so就要换为enough。如果从句是否定句，那么so就要换成too。要注意的是：enough只能在所修饰词的后面。例：
+He is so old that he can go to school alone.省略式为：He is old enough to go to school alone.
+
+
+
+
+### 条件状语从句 I will understand it if he tells me. 
+### 让步状语从句 He knows a lot though he is little.
+
 

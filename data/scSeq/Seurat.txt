@@ -1,4 +1,4 @@
-Suerat包是大一统的scRNA分析包
+Suerat包是大一统的scRNAseq分析包
 
 
 
@@ -9,6 +9,9 @@ Seurat对象的slot和处理流程： 从Suerat对象中找可用的数据
 原始代码： https://github.com/satijalab/seurat/
 
 扣数据 https://satijalab.org/seurat/seurat_clustering_tutorial_part2.html
+
+https://github.com/satijalab/seurat/wiki/Seurat#slots
+
 
 
 
@@ -302,7 +305,31 @@ DotPlotPDF(BC_HeLa.scoreGenes,"13-BC_vs_HeLa---top5",width=10,height=4.5,pbmc=pb
 
 
 
-###### 2.0版本的
+2. 常用查询
+(1) 查HVG个数
+length(VariableFeatures(pbmc2)) #6000
+
+
+(2) 查feature个数
+summary(pbmc2$nFeature_RNA)
+#Min. 1st Qu.  Median    Mean 3rd Qu.    Max. 
+#2669    5664    6426    6368    7100   11619 
+
+
+
+
+
+
+
+
+
+
+
+
+
+#######################
+# 2.0版本的
+#######################
 1. slot raw.data原始count数据
 
 > br5@raw.data[1:4,1:4]
@@ -458,107 +485,6 @@ https://mp.weixin.qq.com/s?__biz=MzI5MTcwNjA4NQ==&mid=2247484978&idx=1&sn=07b7f7
 
 
 
-========================================
-Seurat包：画DotPlot图
-----------------------------------------
-
-####replot markergenes
-# v2.0新增2个filter
-# v2.1 新增可以设置 seurat 对象，方便从外部修改对象的ident后重新传入值
-DotPlotPDF=function(genelist,prefix="",width=26,height=10, suerat_obj=br10){
-  #filter1:保证基因唯一性
-  genelist=unique(genelist)
-  #filter2:保证基因在数据中存在
-  gene.exist=rownames(suerat_obj@data)#有的基因名字
-  #打印出不存在的基因
-  gene.reserve=c()
-  for(g in genelist){
-    if(g %in% gene.exist){
-      gene.reserve=c(gene.reserve, g)
-    }else{
-      print(g)
-    }
-  }
-  #开始画图
-  CairoPDF( paste0(prefix,"_DotPlot.pdf") , width = width, height = height)
-  #控制x坐标循序，可以把x逆序，如rev(genelist)
-  #怎么控制y坐标顺序？
-  marker_dot_plot <- DotPlot(object = suerat_obj, genes.plot = gene.reserve, plot.legend = TRUE,
-                             cols.use = c("black","red"), x.lab.rot = T,dot.scale = 10, do.return=T)
-  marker_dot_plot <- marker_dot_plot + theme(axis.text.x = element_text(angle = 60, vjust = 1, hjust = 1))
-  print(marker_dot_plot)
-  dev.off()
-}
-
-
-# 查看几个level，也就是几个分类
-levels(br10@ident)
-table(br10@ident)
-
-getwd()
-DotPlotPDF(rev(tmp$gene),"adjP0.05",width=28,height=4.5) #75个
-DotPlotPDF(top5$gene,"top5",width=5,height=4.5) #5*4=20个
-
-markers=readLines("marker_list/8.txt") #读取每行，生成数组
-DotPlotPDF(markers,"top5",width=5,height=4.5)
-#
-
-
-
-
-
-========================================
-Seurat包：用tsne画不同批次的细胞的点图
-----------------------------------------
-
-#
-mef=br10
-
-#分离分类变量
-cn=colnames(mef@data)
-end=regexpr('\\.',cn)
-#end=unlist(end[1:60])
-end;table(end)
-#pop= sapply(cn,substr,rep(1,60),end,USE.NAMES=F)
-pop=c()
-for(i in c(1:60)){
-  pop=c(pop,substr(cn[i], 1, end[i]-1))
-}
-pop
-table(pop)
-
-
-#TSNE plot for batches
-#pop<-rep(1,28)#bc
-#pop<-c(pop,rep(2,32))#mef
-#pop
-length(pop);table(pop)
-#pop<-rep(1,73)
-#pop<-c(pop,rep(2,26))
-#pop<-c(pop,rep(3,76))
-
-coordx<-mef@dr$tsne@cell.embeddings[,1]  # 新版本又更新了v3.0.1 mef@reductions$umap@cell.embeddings[,1]
-coordy<-mef@dr$tsne@cell.embeddings[,2]
-df1<-data.frame(coordx=coordx,coordy=coordy,pop=pop)
-df1$pop<-as.factor(df1$pop)
-#pdf(paste(path_out,"5.pdf",sep=""))
-par(mai=c(1,1,0.2,0.5));
-pl<-ggplot(data=df1,aes(x=coordx,y=coordy,colour=factor(pop)))+
-  geom_point(size=2,alpha=1)+
-  #   guides(fill=guide_legend(title="test1"))+
-  labs(x="tSNE 1",y="tSNE 2")+theme_bw()+
-  theme(
-    panel.grid.major = element_blank(),
-    panel.grid.minor = element_blank(),
-    #    panel.border = element_blank(),
-    panel.background = element_blank())
-#pl+scale_colour_discrete(name="sample",labels=c("bc","mef"))
-
-pl+scale_color_discrete(name="Sample")
-#dev.off()
-############################
-
-
 
 
 
@@ -603,91 +529,11 @@ DimPlot(object = pbmc, reduction.use = "mds", pt.size = 2) +
 
 
 
-========================================
-重绘 Seurat热图，标记细胞来源、Seurat分类
-----------------------------------------
-
-1. 原始代码： 
-
-# 全部 find markers for every cluster compared to all remaining cells, report only the positive ones
-pbmc.markers <- FindAllMarkers(pbmc2, only.pos = TRUE, min.pct = 0.25, logfc.threshold = 0.25)
-
-
-top10 <- pbmc.markers %>% group_by(cluster) %>% top_n(n = 10, wt = avg_logFC)
-#DoHeatmap(pbmc2, features = top10$gene) + NoLegend()
-DoHeatmap(pbmc2, features = top10$gene)
-
-
-
-
-
-2. 自定义代码
-########### 画heatmap，标记来源
-library(pheatmap)
-#来源标签
-syncID=gsub("_","",readLines("/home/wangjl/data/apa/190530Mix/cluster2_syncHeLa.27L.cellID") ); head(syncID)
-normalID=gsub("_","",readLines("/home/wangjl/data/apa/190530Mix/cluster2_HeLa_nonsyncHeLa.29R.cellID") ); head(normalID)
-allID=colnames( pbmc2@assays$RNA ); head(allID) #没啥用
-#
-
-#添加UMAP分类标签
-pbmc2@assays$RNA@scale.data
-table(pbmc2@active.ident)
-pbmc2@active.ident[pbmc2@active.ident==1]
-c0=names(pbmc2@active.ident[pbmc2@active.ident==0])
-c1=names(pbmc2@active.ident[pbmc2@active.ident==1])
-c2=names(pbmc2@active.ident[pbmc2@active.ident==2])
-
-#
-pbmc2@assays$RNA[top10$gene,c("c01ROW24","c01ROW35")] #同步化 head
-pbmc2@assays$RNA[top10$gene,c("c9ROW14","c9ROW15")] #同步化 tail
-pbmc2@assays$RNA[top10$gene,c("c12ROW10","c12ROW16")] #normal head
-#
-pbmc2@assays$RNA[top10$gene[20:30], gsub("_","",syncID)]
-pbmc2@assays$RNA[top10$gene[20:30], gsub("_","",normalID)]
-#
-
-# 构建列注释信息
-annotation_col = data.frame(
-  row.names = c(c0, c1, c2),
-  cellType = rep("BC", length(allID)),
-  UMAP_Cluster=rep(c(0,1,2),c(length(c0), length(c1), length(c2)))
-)
-annotation_col$cellType=as.character(annotation_col$cellType)
-annotation_col$cellType[ rownames(annotation_col) %in% syncID]="syncHeLa"
-annotation_col$cellType[ rownames(annotation_col) %in% normalID]='normalHeLa'
-annotation_col
-head(annotation_col)
-
-# 自定义注释颜色
-# 自定注释信息的颜色列表
-ann_colors = list(
-  #cellType = c("white", "firebrick"),
-  cellType = c(BC="yellow", syncHeLa="#F8746B", normalHeLa="#00BDC2"),
-  UMAP_Cluster = c('0' = "#F8766D", '1' = "#00BA38", '2' = "#619CFF" )
-)
-head(ann_colors)
-
-# annotation_col参数添加列注释信息
-#rna=pbmc2@assays$RNA
-#matrix2=rna[top10$gene,allID]  #[1]  30 225
-#class(matrix2)
-matrix2=pbmc2@assays$RNA@scale.data[top10$gene,c(c0,c1,c2)] #[1] 478762    225
-dim(matrix2) #[1]  30 225
-pheatmap(matrix2, annotation_col = annotation_col, annotation_colors = ann_colors,
-         cluster_cols=F,cluster_rows=F, #不聚类
-         border=FALSE, # 去边框
-         gaps_col = c(length(c0), length(c0)+length(c1),  length(c0)+length(c1)+length(c2)), #分组显示
-         show_colnames = F) #不显示底下的名字
-###########
-
-
-
 
 
 
 ========================================
-*** 修改Seurat对象 ***
+*** 修改补充 Seurat对象 ***
 ----------------------------------------
 
 
@@ -713,6 +559,20 @@ pbmc12@active.ident = sortIdent
 
 
 
+#*********
+对比：
+官方指定的显示的方法是：
+new.cluster.ids <- c("Naive CD4 T", "Memory CD4 T", "CD14+ Mono", "B", "CD8 T", "FCGR3A+ Mono", 
+    "NK", "DC", "Platelet")
+names(new.cluster.ids) <- levels(pbmc)
+pbmc <- RenameIdents(pbmc, new.cluster.ids)
+DimPlot(pbmc, reduction = "umap", label = TRUE, pt.size = 0.5) + NoLegend()
+#*********
+
+
+
+
+
 
 2.
 # 指定比较
@@ -729,6 +589,8 @@ head(BC_HeLa.markers, n = 5)
 # find markers for every cluster compared to all remaining cells, report only the positive ones
 pbmc.markers <- FindAllMarkers(pbmc12, only.pos = F, min.pct = 0.25, logfc.threshold = 0.25, test.use = 'wilcox')
 pbmc.markers %>% group_by(cluster) %>% filter(p_val_adj<0.05 & abs(avg_logFC)>log2(2) ) %>%  top_n(n = 3, wt = avg_logFC)
+
+
 
 
 
@@ -822,12 +684,328 @@ barplot(rep(1, length(hmcols)), col=hmcols, border = NA, space=0, axes=F)
 
 
 ========================================
+****** Seurat 结果输出后: 重绘 ******
 ----------------------------------------
 
 
 
 ========================================
+画DotPlot图
 ----------------------------------------
+1. 更通用的画法 //todo
+
+
+
+
+
+
+
+
+2.
+####replot markergenes
+# v2.0新增2个filter
+# v2.1 新增可以设置 seurat 对象，方便从外部修改对象的ident后重新传入值
+DotPlotPDF=function(genelist,prefix="",width=26,height=10, suerat_obj=br10){
+  #filter1:保证基因唯一性
+  genelist=unique(genelist)
+  #filter2:保证基因在数据中存在
+  gene.exist=rownames(suerat_obj@data)#有的基因名字
+  #打印出不存在的基因
+  gene.reserve=c()
+  for(g in genelist){
+    if(g %in% gene.exist){
+      gene.reserve=c(gene.reserve, g)
+    }else{
+      print(g)
+    }
+  }
+  #开始画图
+  CairoPDF( paste0(prefix,"_DotPlot.pdf") , width = width, height = height)
+  #控制x坐标循序，可以把x逆序，如rev(genelist)
+  #怎么控制y坐标顺序？
+  marker_dot_plot <- DotPlot(object = suerat_obj, genes.plot = gene.reserve, plot.legend = TRUE,
+                             cols.use = c("black","red"), x.lab.rot = T,dot.scale = 10, do.return=T)
+  marker_dot_plot <- marker_dot_plot + theme(axis.text.x = element_text(angle = 60, vjust = 1, hjust = 1))
+  print(marker_dot_plot)
+  dev.off()
+}
+
+
+# 查看几个level，也就是几个分类
+levels(br10@ident)
+table(br10@ident)
+
+getwd()
+DotPlotPDF(rev(tmp$gene),"adjP0.05",width=28,height=4.5) #75个
+DotPlotPDF(top5$gene,"top5",width=5,height=4.5) #5*4=20个
+
+markers=readLines("marker_list/8.txt") #读取每行，生成数组
+DotPlotPDF(markers,"top5",width=5,height=4.5)
+#
+
+
+
+
+
+
+
+
+
+========================================
+重绘 Seurat热图，标记细胞来源、Seurat分类
+----------------------------------------
+
+1. 原始代码： 
+
+# 全部 find markers for every cluster compared to all remaining cells, report only the positive ones
+pbmc.markers <- FindAllMarkers(pbmc2, only.pos = TRUE, min.pct = 0.25, logfc.threshold = 0.25)
+
+
+top10 <- pbmc.markers %>% group_by(cluster) %>% top_n(n = 10, wt = avg_logFC)
+#DoHeatmap(pbmc2, features = top10$gene) + NoLegend()
+DoHeatmap(pbmc2, features = top10$gene)
+
+
+
+
+
+2. 自定义代码
+########### 画heatmap，标记来源
+library(pheatmap)
+#来源标签
+syncID=gsub("_","",readLines("/home/wangjl/data/apa/190530Mix/cluster2_syncHeLa.27L.cellID") ); head(syncID)
+normalID=gsub("_","",readLines("/home/wangjl/data/apa/190530Mix/cluster2_HeLa_nonsyncHeLa.29R.cellID") ); head(normalID)
+allID=colnames( pbmc2@assays$RNA ); head(allID) #没啥用
+#
+
+#添加UMAP分类标签
+pbmc2@assays$RNA@scale.data
+table(pbmc2@active.ident)
+pbmc2@active.ident[pbmc2@active.ident==1]
+c0=names(pbmc2@active.ident[pbmc2@active.ident==0])
+c1=names(pbmc2@active.ident[pbmc2@active.ident==1])
+c2=names(pbmc2@active.ident[pbmc2@active.ident==2])
+
+#
+pbmc2@assays$RNA[top10$gene,c("c01ROW24","c01ROW35")] #同步化 head
+pbmc2@assays$RNA[top10$gene,c("c9ROW14","c9ROW15")] #同步化 tail
+pbmc2@assays$RNA[top10$gene,c("c12ROW10","c12ROW16")] #normal head
+#
+pbmc2@assays$RNA[top10$gene[20:30], gsub("_","",syncID)]
+pbmc2@assays$RNA[top10$gene[20:30], gsub("_","",normalID)]
+#
+
+# 构建列注释信息
+annotation_col = data.frame(
+  row.names = c(c0, c1, c2),
+  cellType = rep("BC", length(allID)),
+  UMAP_Cluster=rep(c(0,1,2),c(length(c0), length(c1), length(c2)))
+)
+annotation_col$cellType=as.character(annotation_col$cellType)
+annotation_col$cellType[ rownames(annotation_col) %in% syncID]="syncHeLa"
+annotation_col$cellType[ rownames(annotation_col) %in% normalID]='normalHeLa'
+annotation_col
+head(annotation_col)
+
+# 自定义注释颜色
+# 自定注释信息的颜色列表
+ann_colors = list(
+  #cellType = c("white", "firebrick"),
+  cellType = c(BC="yellow", syncHeLa="#F8746B", normalHeLa="#00BDC2"),
+  UMAP_Cluster = c('0' = "#F8766D", '1' = "#00BA38", '2' = "#619CFF" )
+)
+head(ann_colors)
+
+# annotation_col参数添加列注释信息
+#rna=pbmc2@assays$RNA
+#matrix2=rna[top10$gene,allID]  #[1]  30 225
+#class(matrix2)
+matrix2=pbmc2@assays$RNA@scale.data[top10$gene,c(c0,c1,c2)] #[1] 478762    225
+dim(matrix2) #[1]  30 225
+pheatmap(matrix2, annotation_col = annotation_col, annotation_colors = ann_colors,
+         cluster_cols=F,cluster_rows=F, #不聚类
+         border=FALSE, # 去边框
+         gaps_col = c(length(c0), length(c0)+length(c1),  length(c0)+length(c1)+length(c2)), #分组显示
+         show_colnames = F) #不显示底下的名字
+###########
+
+
+
+========================================
+扩展: 重绘 PCA,tSNE,UMAP
+----------------------------------------
+######## replot: PCA,tSNE,UMAP
+getDimensionData=function(seuratObj){
+  df=data.frame(
+    cid=names(seuratObj@active.ident),
+    PC_1=seuratObj@reductions$pca@cell.embeddings[,1],
+    PC_2=seuratObj@reductions$pca@cell.embeddings[,2],
+    PC_3=seuratObj@reductions$pca@cell.embeddings[,3],
+    #umap
+    UMAP_1=seuratObj@reductions$umap@cell.embeddings[,1],
+    UMAP_2=seuratObj@reductions$umap@cell.embeddings[,2],
+    #
+    tSNE_1=seuratObj@reductions$tsne@cell.embeddings[,1],
+    tSNE_2=seuratObj@reductions$tsne@cell.embeddings[,2],
+    ident=unname(seuratObj@active.ident),
+    row.names = 1
+  )
+  return( df)
+}
+pcaData=getDimensionData(pbmc2)
+dim(pcaData) #328 5
+head(pcaData)
+ggplot(pcaData, aes(PC_1, PC_2, color=ident))+geom_point()+theme_classic()
+ggplot(pcaData, aes(PC_1, PC_3, color=ident))+geom_point()+theme_classic()
+ggplot(pcaData, aes(PC_2, PC_3, color=ident))+geom_point()+theme_classic()
+#
+ggplot(pcaData, aes(tSNE_1, tSNE_2, color=ident))+geom_point()+theme_classic()
+ggplot(pcaData, aes(UMAP_1, UMAP_2, color=ident))+geom_point()+theme_classic()
+#
+library(rgl) #可以鼠标旋转的3D图
+plot3d(pcaData$PC_1, pcaData$PC_2, pcaData$PC_3)
+#############
+
+
+
+
+========================================
+|-- 3D扩展: 画PCA的3D散点图: 从R中生成png，在linux中合并为gif，如何添加表示分类的颜色？
+----------------------------------------
+3D图能很直观的理解类群，在PPT中效果比2D图好太多。
+不过生成过程比较麻烦，建议：尽量在本地R中好好优化后再启动生成gif流程。
+
+
+0.如果数据太大，下载不方便，则可以考虑只提取画图必要的部分。
+#获取pca数据
+df=data.frame(
+  pc_1=pbmc9@dr$pca@cell.embeddings[,1],
+  pc_2=pbmc9@dr$pca@cell.embeddings[,2],
+  pc_3=pbmc9@dr$pca@cell.embeddings[,3],
+  ident=pbmc9@ident
+)
+saveRDS(df, file = "10x_B116_TSENPlot_9_PC1-6_r0.6_DF.rds")
+
+
+
+
+
+1. PCA 3d plot图，一般是黑白的
+#########
+# R中, win10
+#########
+setwd("D:\\Temp\\10xB116\\tmp_plot")
+pbmc5=readRDS("10x_B116_TSENPlot_9_again.rds")
+
+#获取pca数据
+pc_1=pbmc5@dr$pca@cell.embeddings[,1]
+pc_2=pbmc5@dr$pca@cell.embeddings[,2]
+pc_3=pbmc5@dr$pca@cell.embeddings[,3]
+
+library(rgl) #可以鼠标旋转的3D图
+plot3d(pc_1, pc_2, pc_3)
+
+#install.packages("magick")
+library(magick) #生成gif图所需的原材料 若干png
+movie3d(spin3d(axis=c(0,0,1),rpm=3), type = "gif",duration=3,fps=10,convert=F)
+#位置在临时文件夹中 C:\Users\admin\AppData\Local\Temp\RtmpOqAa3k ，zip打包上传到linux中。
+#注意：利用movie3d函数保存动画，其实是生成一些列的.png格式的图面文件，每个文件代表一帧，然后利用ImageMagick软件提供的convert命令将这些文件合并成为gif格式的动画文件。所以要想让动画动起来是一定要安装ImageMagick软件的。输出的动画会被放在一个临时文件夹中，地址名会在R窗口中输出。如果不想利用ImageMagick软件，可以设置convert=F，然后其他软件会将这一系列的.png文件转换为动画。
+
+
+
+#########
+# linux中,Ubuntu 18.04.1 LTS
+#########
+$ unzip RtmpOqAa3k.zip -d gif/
+$ cd gif
+
+convert -delay 0 *.png ~/web/a1.gif
+convert ~/web/a1.gif -coalesce -reverse -quiet -layers OptimizePlus -loop 0 ~/web/a2.gif
+convert ~/web/a1.gif ~/web/a2.gif ~/web/a3.gif
+
+
+
+
+
+
+2.如果多个样本怎么用颜色或形状区分呢？
+如何加上彩色？加上tSNE的分类颜色：1获取tSNE图的颜色；2.为PCA 3D图加上这些颜色。
+
+
+#如何获取TSNEPlot中表示分类的颜色 https://github.com/satijalab/seurat/issues/257
+identities <- levels(pbmc5@ident) # Create vector with levels of object@ident
+require(scales)
+my_color_palette <- hue_pal()(length(identities)) # Create vector of default ggplot2 colors
+# Plot the tSNE plot with the default ggplot2 colors
+#TSNEPlot(object = pbmc5, do.return = T) + 
+#  scale_color_manual(values = my_color_palette)
+#The colour codes can be found in my_color_palette.
+
+#my_color_palette是一个长度为10的数组，怎么转换为一个factor的值？
+ident=pbmc5@ident
+t1=factor(ident,labels = my_color_palette)
+
+
+#可以画3D图了
+library(rgl) #可以鼠标旋转的3D图
+plot3d(pc_1, pc_2, pc_3, col= t1,size=4)
+
+接着使用movie3d函数生成一堆png，然后用linux下的convert生成gif文件。
+
+
+
+
+
+========================================
+|-- 用tsne画不同批次的细胞的点图
+----------------------------------------
+
+#
+mef=br10
+
+#分离分类变量
+cn=colnames(mef@data)
+end=regexpr('\\.',cn)
+#end=unlist(end[1:60])
+end;table(end)
+#pop= sapply(cn,substr,rep(1,60),end,USE.NAMES=F)
+pop=c()
+for(i in c(1:60)){
+  pop=c(pop,substr(cn[i], 1, end[i]-1))
+}
+pop
+table(pop)
+
+
+#TSNE plot for batches
+#pop<-rep(1,28)#bc
+#pop<-c(pop,rep(2,32))#mef
+#pop
+length(pop);table(pop)
+#pop<-rep(1,73)
+#pop<-c(pop,rep(2,26))
+#pop<-c(pop,rep(3,76))
+
+coordx<-mef@dr$tsne@cell.embeddings[,1]  # 新版本又更新了v3.0.1 mef@reductions$umap@cell.embeddings[,1]
+coordy<-mef@dr$tsne@cell.embeddings[,2]
+df1<-data.frame(coordx=coordx,coordy=coordy,pop=pop)
+df1$pop<-as.factor(df1$pop)
+#pdf(paste(path_out,"5.pdf",sep=""))
+par(mai=c(1,1,0.2,0.5));
+pl<-ggplot(data=df1,aes(x=coordx,y=coordy,colour=factor(pop)))+
+  geom_point(size=2,alpha=1)+
+  #   guides(fill=guide_legend(title="test1"))+
+  labs(x="tSNE 1",y="tSNE 2")+theme_bw()+
+  theme(
+    panel.grid.major = element_blank(),
+    panel.grid.minor = element_blank(),
+    #    panel.border = element_blank(),
+    panel.background = element_blank())
+#pl+scale_colour_discrete(name="sample",labels=c("bc","mef"))
+
+pl+scale_color_discrete(name="Sample")
+#dev.off()
+############################
 
 
 

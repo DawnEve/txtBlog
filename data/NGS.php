@@ -6,8 +6,9 @@ return array (
     1 => '前言与资料',
     2 => array (
       array('项目描述','NGS001','html',),
-      array('参考资料','NGS002','html'),
+      array('RNA分子参考资料','NGS002','html'),
       array('FAQ','NGS003','html'),
+      array('最佳实践 best_practice','best_practice','txt'),
     ),
   ),
   
@@ -19,9 +20,9 @@ return array (
 	  array('测序分子生物学','seq101-basic','txt' ),
       array('测序扫盲/陈巍学基因','NGS004','txt'),
     ),
-  ),  
-  
-  
+  ),
+
+
   array (
     0 => 3,
     1 => '数据分析语言',
@@ -31,7 +32,7 @@ return array (
       array('perl基础','lang-Perl','txt'),
 
 
-      array('GO分析及可视化','GO_analysis01','txt'),
+      array('circos-Cytoscape','circos-Cytoscape','txt'),
     ),
   ),  
   
@@ -44,7 +45,8 @@ return array (
       array('FAQ of TCGA','FAQ_TCGA','txt'),
       array('本地生信软件','localSoft402','txt'),
       array('外显子WES分析','NGS_exon','txt'),
-      array('circos-Cytoscape','circos-Cytoscape','txt'),
+      array('GO分析及可视化','GO_analysis01','txt'),
+      array('microRNA分析','miRNA','txt'),
     ),
   ),
 

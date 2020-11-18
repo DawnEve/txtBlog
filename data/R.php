@@ -30,24 +30,14 @@ return array (
 
 
 
-  array (
-    0 => 1,
-    1 => '数学 Math',
-    2 => array (
-      array('概率论与数理统计','Math_statistics','txt'),
-      array('线性代数','Math_linear_algebra','txt'),
-      array('微积分','Math_calculus','txt'),
-    ),
-  ),
-
-
 
 
   array (
     0 => 1,
     1 => '常用R包',
     2 => array (
-      array('ggplot2绘图','ggplot2','txt'),
+      array('ggplot2绘图教程','ggplot2','txt'),
+      array('ggplot2绘图demo','ggplot2_demo','txt'),
       array('分析差异表达基因 DEG','pkg-DEG','txt'),
       array('数据框清理dplyr','pkg-dplyr','txt'),
       array('R web: shinny框架','pkg-shiny','txt'),
