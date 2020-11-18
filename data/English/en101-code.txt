@@ -308,8 +308,11 @@ http://ielts.biomooc.com/en/contents.html
 
 
 
+
+
+
 ========================================
-|-- 将微信结果保存到数据库 //todo
+|-- 将微信(英文全文)结果保存到数据库
 ----------------------------------------
 
 1.数据表设计
@@ -326,6 +329,246 @@ CREATE TABLE `msg_English` (
   `msg_desc` char(150) NOT NULL DEFAULT '',
   `msg_content` text #PRIMARY KEY (`msg_origin`,`msg_date`)
 ) ENGINE=MyISAM DEFAULT CHARSET=utf8 COLLATE=utf8_bin COMMENT='微信英文文章表';
+
+
+清空数据表
+> truncate table wang.msg_English;
+
+查字段及其属性
+> show full columns from msg_English;
+
+
+
+
+
+2.保存文章到db
+脚本位置: IELTS/py/ jupyter文件。
+警告： jupyter 会一直占用mysql连接，如果要执行只好重启jupyter，进入mysql的docker容器重启。
+
+(0) 获取标题
+import requests
+from lxml import html
+
+#1.请求数据
+def getURLs(url):
+    page=requests.Session().get(url)
+    #print("==ok  http://y.biomooc.com/wangjl/urls.html")
+
+
+    #2.解析数据：获取批量URL
+    tree=html.fromstring(page.text)
+
+    result=tree.xpath('//@href')#重复出现2次，所以只取奇数即可。
+    arrURL=[]
+    for i in range( len(result) ):
+        if i==0: continue;
+        arrURL.append(result[i])
+    print(len(arrURL))
+    print(arrURL[0:5])
+    return arrURL
+# test
+url="http://ielts.dawneve.cc/en/contents.html"
+arrURL=getURLs(url)
+print("="*20, "预期会有n个url，请手工测试一个url能否打开。")
+
+
+
+
+
+
+(1) 输入url，获取英文文本信息，写入文件，并返回
+# 函数库
+import re, requests, sys, pymysql
+
+# v0.2 修改日期获取方式
+# v0.3 修正条件
+
+def getInfoByURL2(msg_url):
+    #####################################
+    #1.爬虫获取信息
+    #####################################
+    # 发出请求
+    response=requests.get(msg_url)
+    assert response.status_code==200,'Error: requests.get'
+    #print(respose.text)
+    #解析数据
+    page3=response.text.encode('utf-8').decode('utf-8')
+    
+
+    #1.msg_title
+    title=re.findall(r"msg_title = '(.*?)'",page3,re.S)[0]
+    #print('title=',title)
+
+    #2.msg_desc
+    msg_desc=re.findall(r'msg_desc = "(.*?)"',page3,re.S)[0]
+    #print('msg_desc=',msg_desc)
+
+    #3.js_content
+    rs=re.findall(r'id="js_content" style="visibility: hidden;"\>(.*?)\<\/div\>',page3,re.S)[0]
+    #print('rs=', rs)
+    
+    # data 
+    msg_date=re.findall(r',s="(.*?)"',page3,re.S)[0]
+
+    
+    
+    #4.获取日期
+    
+    ########### 方法1，从内容中获取日期
+    #aid1 由第一行获取数组：日期字符串，单词数
+    def getDateStrSize(strs):
+        d1=strs   #rs[1:300];d1
+        d2=re.split("words",d1)[0]
+        d3=re.split(">",d2)[-1]
+        d4=re.split("\|", d3)
+
+        return [d4[0].strip(), int(d4[1].strip())] ##'Aug 30, 2018'日期; 859 单词数
+    #aid2 由日期字符串'Aug 30, 2018'获得日期数字字符串 '20180830'
+    def getDateFromStr(s):
+        a = s; #d4[0].strip()
+        month=a[0:3]; month
+        year=a[-4:];year
+        day=re.split("[\s,]",a)[1];day
+        #
+        m_dict={"Jan":"01", "Feb":"02", "Mar":"03", "Apr":"04", "May":"05", "Jun":"06", 
+                "Jul":"07", "Aug":"08", "Sep":"09", "Oct":"10", "Nov":"11", "Dec":"12" }
+        #
+        def to2(day):
+            if len(day)==1:
+                day="0"+day
+            return day;
+
+        return year+m_dict[month]+to2(day)
+    #
+    
+    # 根据情况判断使用哪种方法
+    raw=re.sub('<[^>]+>','', rs[1:300])
+    if (len(re.split("\|",raw))>1) and (len(re.split("words",raw))>1)  :
+        #print(raw)
+        d_n=getDateStrSize(raw);
+        #print(d_n)  ##['Aug 30, 2018', 859]
+        dateN=getDateFromStr(d_n[0]) #'20180830'
+        #5.获取字数
+        size=d_n[1]
+        #print(dateN, size)
+    else:
+        ########### 方法2，从系统中获取日期。没有字数信息。
+        dateN=re.sub('-','',msg_date)
+        size=0
+    
+    
+    #写入文件
+    with open('backup/'+dateN+'.html','w', encoding="utf8") as f:
+        f.write('<meta http-equiv="Content-Type" content="text/html; charset=utf-8">')
+        f.write(title+"<br>")
+        f.write(msg_desc)
+        f.write(rs)
+    print("Title: ", title)
+    print("write in to file: http://y.biomooc.com/wangjl/en"+dateN+".html")
+    
+    return [url,dateN, size,title,msg_desc,rs]
+
+
+
+(2) 保存到数据库
+def insertInfo2DB2(info,source="英语读报"):
+    # 打开数据库连接
+    db = pymysql.connect(host='y.biomooc.com',port=7070,user='root', password='123456', \
+                         database='wang', charset='utf8')
+
+    # 使用cursor()方法获取操作游标 
+    cursor = db.cursor()
+
+    #如果没有，则保存到数据库中
+    def DoInsertDB(info,source=source):
+        # SQL 插入语句
+        sql = "INSERT INTO msg_English(msg_url,msg_origin,msg_date, msg_size, msg_title, msg_desc,msg_content) \
+               VALUES ('%s', '%s', '%s', '%d', '%s', '%s','%s' )" % \
+              (info[0],source, info[1],info[2],
+                   pymysql.escape_string(info[3]),
+                   pymysql.escape_string(info[4]),
+                   pymysql.escape_string(info[5]))
+                #[url,dateN, size,title,msg_desc,rs]
+               #(msg_url, '英语读报', dateN, size, title, msg_desc, pymysql.escape_string(rs))
+        try:
+            cursor.execute(sql) # 执行sql语句
+            db.commit() # 提交到数据库执行
+            print("commit successfully")
+        except:
+            rsponse=db.rollback() # 发生错误时回滚
+            print("rollback")
+            print( sys.exc_info() )
+
+    #如果日期已经存在，则不进行处理
+
+
+    # SQL 查询语句
+    dateN2=info[1]
+    #dateN2="20170102"
+    sql = 'select msg_date from msg_English where msg_date like "'+dateN2+'";'
+
+    # 执行sql语句
+    cursor.execute(sql)
+    values = cursor.fetchall()
+    if len(values)==0:
+        print("Not exist the date")
+        DoInsertDB(info,source)
+    else:
+        print("The date "+dateN2+" has already existed.")
+
+    # 关闭数据库连接
+    db.close()
+#
+
+
+
+(3) 二合一函数
+# 批量URL获取文章，并插入数据库
+def run(start):
+    for i in range(start, len(arrURL)): #随机时间段后[2s,12s]执行
+    #for i in range(4,6):    
+        msg_url=arrURL[i]
+        print(msg_url)
+        #2.get Info  return [url,dateN, size,title,msg_desc,rs]
+        info= getInfoByURL2(msg_url)
+
+        #3.插入数据库
+        insertInfo2DB2(info)
+
+        #等待随机时间
+        pause=3+2*random.random()
+        print(str(i)+' '+str(pause))
+        time.sleep(pause)
+        print('='*20)
+run(1)
+run(44)
+## bug: 遇到中文标题就报错，不知道哪一句错了。
+# 共 624 个
+
+
+
+忘写日期了
+
+rollback
+* DataError(1406, "Data too long for column 'msg_desc' at row 1"
+* DataError(1406, "Data too long for column 'msg_content' at row 1")
+
+
+run(321, 322, True)
+
+
+
+
+3. 查询结果
+查找一个单词在句子中的位置
+mysql> select * from msg_English where msg_content like '%reside%'\G
+
+制作一个网页最好。
+
+
+
+
+
 
 
 

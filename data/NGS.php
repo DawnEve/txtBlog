@@ -46,6 +46,7 @@ return array (
       array('本地生信软件','localSoft402','txt'),
       array('外显子WES分析','NGS_exon','txt'),
       array('GO分析及可视化','GO_analysis01','txt'),
+      array('microRNA分析','miRNA','txt'),
     ),
   ),
 

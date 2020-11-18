@@ -499,8 +499,10 @@ su切换成root用户以后，pwd一下，发现工作目录仍然是普通用�
 常用实例：
 	源代码一般以file.tar.gz file.tar.bz2或file.src.rpm 打包；
 	file.tar.gz和file.tar.bz2格式的解包命令如下； 
-	[root@ubuntu]# tar jxvf file.tar.bz2 
-	[root@ubuntu]# tar zxvf file.tar.gz
+	$ tar jxvf file.tar.bz2 
+	$ tar zxvf file.tar.gz
+	
+	$ tar -xvJf file.tar.xz 解压缩
 
 tar详解
 	-c: 建立压缩档案
@@ -1276,8 +1278,52 @@ https://www.cnblogs.com/zhuxiaohou110908/p/5786893.html
 
 
 
+
+
+
+
 ========================================
-|-- 文件同步命令 rsync: "远程同步"(remote sync)
+|-- Linux的sz(下载)和rz(上传)命令
+----------------------------------------
+
+工作中需要在Linux和Windows之间传输文件时，一般使用winscp或者ftp工具来完成，最近才知道有sz和rz这两个命令，方便好用。
+
+运行命令rz、sz要比FTP容易很多，而且服务器不需要另开FTP服务即可完成。
+sz：将选定的文件发送（send）到本地机器
+rz：运行该命令会弹出一个文件选择窗口，从本地选择文件上传到服务器(receive)
+rz，sz是便是Linux/Unix同Windows进行ZModem文件传输的命令行工具，windows端需要支持ZModem的telnet/ssh客户端（比如SecureCRT）。
+
+注意：该方法的传输速度比较慢，推荐使用中小文件的传输。
+
+
+1. sz 下载
+从Linux下载文件到本机 , 在Linux终端输入命令回车后，选择本地存储路径即可。
+
+命令格式：
+sz filename   下载文件filename
+sz file1 file2   下载多个文件
+sz dir/*　　　下载dir目录下所有文件
+
+
+
+2. rz 上传
+从本地上传文件到Linux，在Linux终端输入命令回车后，选择本地要上传的文件即可，可一次指定多个文件
+
+命令格式：    rz
+上传到服务器的路径为当前执行rz命令的目录。
+
+
+注意：
+(1).如果机器上没有安装过 lrzsz 安装包，则无法使用rz和sz命令。
+　可使用yum命令安装：yum install -y lrzsz
+  或者下载源码进行安装。下载地址：https://ohse.de/uwe/software/lrzsz.html
+(2).上传和下载都默认使用Linux当前登录的用户，使用时要根据个人需要修改文件的权限。
+
+
+
+
+========================================
+文件同步命令 rsync: "远程同步"(remote sync)
 ----------------------------------------
 1. 安装
 注意，传输的双方都必须安装 rsync。
@@ -1327,6 +1373,9 @@ $ rsync -av --delete source/ destination
 上面命令中，--delete参数会使得destination成为source的一个镜像。
 
 
+
+(5) --progress 参数
+显示进度条
 
 
 
@@ -1438,8 +1487,16 @@ $ rsync -a --delete --link-dest /compare/path /source/path /target/path
 
 
 
+7. 实例
+(1)定时备份
+可以增加一个定时任务，闲时（比如每天凌晨3点）备份工作路径
+$crontab -e
+0 22 * * * rsync -av --delete /Directory1/ username@bak.server:/Directory2/
+使得工作路径下的数据在每天都能有两份，就算实验室火灾或者电脑被锤也就损失不到一天的工作量。
 
 
+
+(2)脚本实例
 下面是一个脚本示例，备份用户的主目录。
 
 #!/bin/bash
@@ -1492,42 +1549,339 @@ http://www.ruanyifeng.com/blog/2020/08/rsync.html
 
 
 ========================================
-|-- Linux的sz(下载)和rz(上传)命令
+|-- rsync 增量备份实战：备份和恢复
+----------------------------------------
+使用场景：每月备份一下自己的文件，防止服务器硬盘坏了，啥都找不到了。
+准备：一个远程主机J，一个移动硬盘disk，一个插移动硬盘disk的linux机器Y。
+
+
+1. 实例1：在远程机器J上，备份到远程机器J的另一个目录
+准备：在~/testBackup/添加文件 vim a.txt，并随便添加内容。
+
+## 相当于cp命令， -a可以递归、同步元数据（修改时间、权限等）
+$ rsync -a ~/testBackup/ ~/temp/
+## 检查目录 ls ~/temp/，发现已经有文件了。
+
+## -v参数输出详细过程
+$ rsync -av ~/testBackup/ ~/temp/
+sending incremental file list
+
+sent 74 bytes  received 12 bytes  172.00 bytes/sec
+total size is 14  speedup is 0.16
+
+
+## 如果有变动
+$ mkdir vueJS
+$ rsync -av ~/testBackup/ ~/temp/
+sending incremental file list
+./
+vueJS/
+
+sent 124 bytes  received 23 bytes  294.00 bytes/sec
+total size is 14  speedup is 0.10
+
+
+
+
+
+
+
+2. 实例2：在远程机器J上，备份到本地机器Y上
+
+$ rsync -av ~/testBackup/ wangjl@y.biomooc.com:~/backupDemo/
+Warning: Permanently added the ECDSA host key for IP address '10.20.16.180' to the list of known hosts.
+wangjl@y.biomooc.com's password: 
+sending incremental file list
+./
+a.txt
+vueJS/
+
+sent 185 bytes  received 46 bytes  15.93 bytes/sec
+total size is 14  speedup is 0.06
+
+# 在机器Y上检查 ls ~/backupDemo/ 发现已经有内容了。
+
+
+
+
+
+
+
+
+3. 实例3：远程机器J上，增量备份到本地机器Y上。在本地Y上操作。
+~/backupDemo/base/ 基础备份
+~/backupDemo/01/ 备份时间点01
+~/backupDemo/02/ 备份时间点02 实际使用时，可以使用年月日时间戳
+
+
+(1) 第一次全量备份
+$ rsync -av --delete wangjl@j.biomooc.com:~/testBackup/ ~/backupDemo/base/
+
+
+(2) 增量备份
+时间点01
+$ rsync -av --delete --link-dest ~/backupDemo/base/ wangjl@j.biomooc.com:~/testBackup/ ~/backupDemo/01/ 
+时间点02
+$ rsync -av --delete --link-dest ~/backupDemo/base/ wangjl@j.biomooc.com:~/testBackup/ ~/backupDemo/02/ 
+时间点03
+$ rsync -av --delete --link-dest ~/backupDemo/base/ wangjl@j.biomooc.com:~/testBackup/ ~/backupDemo/03/ 
+时间点04
+$ rsync -av --delete --link-dest ~/backupDemo/base/ wangjl@j.biomooc.com:~/testBackup/ ~/backupDemo/04/ 
+
+
+(3) 如果远程J坏了，怎么恢复呢？假设恢复到最新的结果04
+$ rsync -av --delete ~/backupDemo/04/ wangjl@j.biomooc.com:~/testBackup/ 
+sending incremental file list
+./
+vueJS/
+vueJS/ReadMe.txt
+
+sent 255 bytes  received 46 bytes  66.89 bytes/sec
+total size is 60  speedup is 0.20
+
+
+(4) 写成自动化脚本
+$ cat backupMonthly.sh
+#!/bin/bash
+# A script to perform incremental backups using rsync
+
+set -o errexit
+set -o nounset
+set -o pipefail
+
+readonly SOURCE_DIR="wangjl@j.biomooc.com:~/testBackup/" #"~/data/"
+readonly BACKUP_DIR="/home/wangjl/backupDemo" #"/mnt/data/backups"
+readonly DATETIME="$(date '+%Y-%m-%d_%H:%M:%S')"
+readonly BACKUP_PATH="${BACKUP_DIR}/${DATETIME}"
+readonly LATEST_LINK="${BACKUP_DIR}/latest"
+
+mkdir -p "${BACKUP_DIR}"
+
+rsync -av --delete \
+  "${SOURCE_DIR}/" \
+  --link-dest "${LATEST_LINK}" \
+  --exclude=".cache" \
+  "${BACKUP_PATH}"
+
+rm -rf "${LATEST_LINK}"
+ln -s "${BACKUP_PATH}" "${LATEST_LINK}"
+
+上面脚本中，每一次同步都会生成一个新目录${BACKUP_DIR}/${DATETIME}，并将软链接${BACKUP_DIR}/latest指向这个目录。
+下一次备份时，就将${BACKUP_DIR}/latest作为基准目录，生成新的备份目录。最后，再将软链接${BACKUP_DIR}/latest指向新的备份目录。
+
+
+执行后：
+$ bash backupMonthly.sh
+wangjl@j.biomooc.com's password: 
+receiving incremental file list
+created directory /home/wangjl/backupDemo/2020-11-06_17:44:16
+--link-dest arg does not exist: /home/wangjl/backupDemo/latest
+./
+a.txt
+index.html
+vueJS/
+vueJS/ReadMe.txt
+
+sent 108 bytes  received 367 bytes  135.71 bytes/sec
+total size is 60  speedup is 0.13
+
+
+修改一个文件a.txt+新增一个文件b.txt后，再次执行：
+$ bash backupMonthly.sh 
+wangjl@j.biomooc.com's password: 
+receiving incremental file list
+created directory /home/wangjl/backupDemo/2020-11-06_17:46:54
+./
+a.txt
+b.txt
+
+sent 85 bytes  received 334 bytes  119.71 bytes/sec
+total size is 83  speedup is 0.20
+
+
+
+
+
+
+
+
+========================================
+|-- windows下的git bash 怎么使用rsync？最后用了cwRsync
 ----------------------------------------
 
-工作中需要在Linux和Windows之间传输文件时，一般使用winscp或者ftp工具来完成，最近才知道有sz和rz这两个命令，方便好用。
-
-运行命令rz、sz要比FTP容易很多，而且服务器不需要另开FTP服务即可完成。
-sz：将选定的文件发送（send）到本地机器
-rz：运行该命令会弹出一个文件选择窗口，从本地选择文件上传到服务器(receive)
-rz，sz是便是Linux/Unix同Windows进行ZModem文件传输的命令行工具，windows端需要支持ZModem的telnet/ssh客户端（比如SecureCRT）。
-
-注意：该方法的传输速度比较慢，推荐使用中小文件的传输。
+1. [Windows Bash] Add Rsync to “Git Bash for Windows”
+https://blog.tiger-workshop.com/add-rsync-to-git-bash-for-windows/
+Tiger Fok在他的博客上告诉了我们一个非常好用的方法，
+那就是使用pacman库中的rsync程序，里面i686代表32位系统，x86_64代表64位系统
 
 
-1. sz 下载
-从Linux下载文件到本机 , 在Linux终端输入命令回车后，选择本地存储路径即可。
-
-命令格式：
-sz filename   下载文件filename
-sz file1 file2   下载多个文件
-sz dir/*　　　下载dir目录下所有文件
+In last few post we mentioned using bash in Windows by install Git.
+It comes with handy *nix tools like grep, find, wget, curl, vim, ssh… but something still missing is rsync
 
 
-
-2. rz 上传
-从本地上传文件到Linux，在Linux终端输入命令回车后，选择本地要上传的文件即可，可一次指定多个文件
-
-命令格式：    rz
-上传到服务器的路径为当前执行rz命令的目录。
+Furthermore, cwRsync and DeltaCopy does not work in bash environment.
 
 
+I decided to download the package from pacman repository.
+http://www2.futureware.at/~nickoe/msys2-mirror/msys/x86_64/rsync-3.1.2-2-x86_64.pkg.tar.xz
+
+Extract it using 7-zip and drop rsync.exe to C:\Program Files\Git\usr\bin and profit!
+
+Likewise, you can find more *nix tools from pacman repository and install it manually.
+
+
+(0) 任务
+
+服务器目录 /home/wangjl/web/webPan.py
+## 查文件大小
+$ du -sh .
+1.7M
+
+增量备份到F:/testProject/
+
+
+
+(1) linux上
+下载页面: http://www2.futureware.at/~nickoe/msys2-mirror/msys/x86_64/
+$ wget http://www2.futureware.at/~nickoe/msys2-mirror/msys/x86_64/rsync-3.2.3-1-x86_64.pkg.tar.zst
+
+解压 https://cloud.tencent.com/developer/ask/172210
+$ sudo apt-get install zstd
+$ tar -I zstd -xvf rsync-3.2.3-1-x86_64.pkg.tar.zst
+解压出一个文件夹usr/bin，找到其中的 rsync.exe
+
+(2) win10提前安装git bash(https://git-scm.com/)
+下载rsync.exe到win10的 D:\Program Files\Git\usr\bin 下。
+
+(3) 尝试备份-失败
+右键菜单中打开 git bash, 输入 
+$ rsync -av --delete wangjl@y.biomooc.com:/home/wangjl/web/webPan.py F:/testProject/01/
+报错：
+D:/Program Files/Git/usr/bin/rsync.exe: error while loading shared libraries: msys-zstd-1.dll: cannot open shared object file: No such file or directory
+
+可能缺少依赖
+Cygwin(link is external) is a Linux-like environment for Windows. It consists of a DLL (cygwin1.dll), which emulates substantial Linux API functionality, and a collection of tools.
+
+
+
+
+
+
+### >>> 解决依赖
+1)如何下载到 msys-zstd-1.dll ?
+在页面 https://packages.msys2.org/package/libzstd?repo=msys&variant=x86_64 点击链接下载
+https://repo.msys2.org/msys/x86_64/libzstd-1.4.5-2-x86_64.pkg.tar.xz
+2)还缺
+D:/Program Files/Git/usr/bin/rsync.exe: error while loading shared libraries: msys-xxhash-0.8.0.dll: cannot open shared object file: No such file or directory
+$ wget https://repo.msys2.org/msys/x86_64/libxxhash-0.8.0-1-x86_64.pkg.tar.zst
+$ tar -I zstd -xvf libxxhash-0.8.0-1-x86_64.pkg.tar.zst
+
+3)还缺 msys-lz4-1.dll: 
+4)还缺 msys-crypto-1.1.dll: 
+
+https://packages.msys2.org/package/
+https://packages.msys2.org/package/rsync?repo=msys&variant=x86_64
+https://repo.msys2.org/msys/x86_64/rsync-3.2.3-1-x86_64.pkg.tar.zst
+
+
+
+
+
+
+(4) 其他尝试 都失败了
+1) 安装 windows 子系统: 失败，没安上。
+2) 尝试FreeFileSync
+https://freefilesync.org/download.php
+选择win安装后，怎么操作？
+图形界面，有歧义，不好用。
+3) "Using rsync from msysgit for binary files"
+http://repo.msys2.org/msys/x86_64/
+
+$ wget http://repo.msys2.org/msys/x86_64/rsync-3.2.2-1-x86_64.pkg.tar.zst
+$ tar -I zstd -xvf rsync-3.2.2-1-x86_64.pkg.tar.zst
+$ cd rsync-3.2.2
+https://rsync.samba.org/
+
+
+$ wget http://www2.futureware.at/~nickoe/msys2-mirror/mingw/x86_64/mingw-w64-x86_64-librsync-2.3.0-1-any.pkg.tar.xz
+$ tar -xvJf mingw-w64-x86_64-librsync-2.3.0-1-any.pkg.tar.xz
+$ ls mingw64/bin/
+librsync.dll  rdiff.exe
+
+
+
+
+
+
+
+
+
+
+
+2. 尝试 cwRsync
+https://www.itefix.net/cwrsync
+下载客户端 
+https://itefix.net/dl/free-software/cwrsync_6.2.0_x64_free.zip
+解压后使用cmd登录。
+
+F:\testProject> 在这里执行，因为该目录包含解压包
+
+> rsync -av --delete /cygdrive/F/testProject/00/ /cygdrive/F/testProject/01/  #可以
+> rsync /cygdrive/F/testProject/00/ /cygdrive/F/testProject/02/  #可以
+
+> rsync -av --delete wangjl@y.biomooc.com:/home/wangjl/web/webPan.py/ /cygdrive/F/testProject/03/  #不可以
+wangjl@y.biomooc.com's password:
+rsync: connection unexpectedly closed (0 bytes received so far) [sender]
+rsync error: error in rsync protocol data stream (code 12) at io.c(235) [sender=3.1.2]
+rsync: [Receiver] safe_read failed to read 4 bytes: Connection reset by peer (104)
+rsync error: error in rsync protocol data stream (code 12) at io.c(276) [Receiver=3.2.3]
+
+## https://stackoverflow.com/questions/7261029/why-is-this-rsync-connection-unexpectedly-closed-on-windows
+> rsync -e './ssh' -av --delete wangjl@y.biomooc.com:/home/wangjl/web/webPan.py/ /cygdrive/F/testProject/03/  #可以
 注意：
-(1).如果机器上没有安装过 lrzsz 安装包，则无法使用rz和sz命令。
-　可使用yum命令安装：yum install -y lrzsz
-  或者下载源码进行安装。下载地址：https://ohse.de/uwe/software/lrzsz.html
-(2).上传和下载都默认使用Linux当前登录的用户，使用时要根据个人需要修改文件的权限。
+i) 一定要添加参数 -e './ssh'
+ii) 本地路径是 /cygdrive/F/test/ 表示F:/test/目录。
 
+
+缺点: 貌似还是不方便执行增量备份，windows子系统是不是好点呢？安装失败。
+
+
+尝试增量备份
+> rsync -e './ssh' -av --delete --link-dest /cygdrive/F/testProject/03/ wangjl@y.biomooc.com:/home/wangjl/web/webPan.py/ /cygdrive/F/testProject/04/
+> rsync -e './ssh' -av --delete --link-dest /cygdrive/F/testProject/04/ wangjl@y.biomooc.com:/home/wangjl/web/webPan.py/ /cygdrive/F/testProject/05/
+> rsync -e './ssh' -av --delete --link-dest /cygdrive/F/testProject/05/ wangjl@y.biomooc.com:/home/wangjl/web/webPan.py/ /cygdrive/F/testProject/06/
+
+## 去掉.git文件夹的内容，但是文件夹保存
+> rsync -e './ssh' -av --delete --exclude '.git/*' --link-dest /cygdrive/F/testProject/06/ wangjl@y.biomooc.com:/home/wangjl/web/webPan.py/ /cygdrive/F/testProject/07/
+
+## 去掉.git文件夹的内容，文件夹也删掉
+> rsync -e './ssh' -av --delete --exclude '.git' --link-dest /cygdrive/F/testProject/06/ wangjl@y.biomooc.com:/home/wangjl/web/webPan.py/ /cygdrive/F/testProject/08/
+
+两次rsync(cwRsync on win10)备份之间source文件没有修改，然后修改一个备份文本，另一个备份中也被修改了，就是硬链接效果。
+也就是说 NTFS 文件系统也是支持硬链接的。也就能实现增量备份了。
+
+
+
+
+
+
+
+
+
+3. 在win10上的virtualBox上安装ubuntu，添加共享文件夹，把某个硬盘文件夹添加到ubuntu。使用 ubuntu 备份。
+
+$ rsync -av --delete --exclude '.git' --link-dest ~/share/00/ wangjl@y.biomooc.com:/home/wangjl/web/webPan.py/ ~/share/01/
+$ rsync -av --delete --exclude '.git' --link-dest ~/share/01/ wangjl@y.biomooc.com:/home/wangjl/web/webPan.py/ ~/share/02/
+
+经过git bash的ls -l查看，发现都没有硬链接。
+也就是都是全量备份，不是增量备份。
+
+## 不备份 __pycache__ 目录。
+$ rsync -av --delete --exclude '.git' --exclude '__pycache__' --link-dest ~/share/02/ wangjl@y.biomooc.com:/home/wangjl/web/webPan.py/ ~/share/03/
+
+
+
+结论: 1和3失败，2成功，实现了在win下增量备份远程数据。
 
 
 
