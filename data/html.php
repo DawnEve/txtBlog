@@ -38,6 +38,7 @@ return array (
     1 => '网络协议',
     2 => array (
       array('http协议','http','txt',),
+      array('技术需求信息','techInfo','txt',),
     ),
   ),
   

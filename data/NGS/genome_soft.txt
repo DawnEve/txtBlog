@@ -1,179 +1,18 @@
-单基因遗传病的生信分析流程：SNP、Indel等(NGS_exon WES)
+基因组分析常用软件和流程
 
 
-WES数据一般用于SNP和Indel分析，不能用于CNA和SA的分析。
 
-参考: 
-https://mp.weixin.qq.com/s/gyIiOvod05N5fU7GXdQHnw
+
 
 
 
 ========================================
-单基因遗传病分析(SNP/Indel)的主要流程和软件
+数据质控 与 比对
 ----------------------------------------
 
-1.主要流程 
-质控->比对得到map->BAM处理->call突变->合并gvcf
-
-参考GATK Germline Best Practice
-
-
-一文囊括全基因组测序各步骤工具
-https://mp.weixin.qq.com/s/ONl1UuY3EC3eJG94SKDHAg#rd
-
-
-2.SNP分析所需软件(来自诺禾致源的说明书)
-
-分析内容	软件	备注	版本
-1).比对	BWA、Samblaster	测序结果与参考基因组进行比对，得到bam结果	0.1.22
-        Sambamba	标记重复read	v0.4.7
-2).SNP/INDEL检测	SAMtools	检测、过滤SNP及INDEL变异	1.0
-3).CNV检测	control-FREEC	检测样本CNV	v6.7
-4).变异功能注释	ANNOVAR	对检测到的变异进行结构和功能注释	2013Aug23
-
-
-
-
-
-
-参考序列比对分析结果
-有效测序数据通过 BWA(version 0.7.8-r455)比对到人类参考基因组(UCSC hg19)，得到 BAM 格式的最初的比对结果。
-在最初的比对结果的基础上做如下处理:
-(1) 用samblaster（Version 0.1.21）从最初的比对结果中挑选split reads和discord reads；
-(2) 用sambamba（0.6.6）对比对结果进行排序和merge;
-(3) 用sambamba去除重复的reads。经过以上处理，得到 BAM 格式的最终比对结果。
-
-后续变异检测基于这个比对结果。
-如果一个或一对read(s)在基因上可以有多个比对位置，BWA的处理策略是从中 选择一个最好的，如果有两个或以上最好的比对位置，则从中随机选择一个。这种多重比对(multiple hit)的处理对 SNP、indel 以及 CNV 等的检测有重要影响。通常检测 SNP 或 INDEL 的时候要使用高质量的比对(alignment)，即比对质量值大于0或更高。
-
-本文件夹下包含每个样本(样本名)的比对结果数据结果文件:
-1.后缀 bam 文件 比对结果文件
-2.后缀.bam.bai文件 对bam文件构建索引，用于对bam文件的快速处理
-
-结果文件说明:
-1.后缀 bam 文件是 sam 文件的压缩格式，解读请参考附件 SAMv1.pdf
-2.后缀 bam.bai 文件是由命令 sambamba index *.bam 得到
-
-
-
-
-
-3.外显子测序结题报告
-https://wenku.baidu.com/view/ff8cd0f3f424ccbff121dd36a32d7375a417c6bb.html
-1)对raw data 过滤，得到clean reads
-	- 过滤掉 reads 的接头序列
-	- SE测序低质量碱基数超过该reads的50%时，舍弃该reads
-	- SE reads中的N碱基超过10%时，舍弃该reads
-	- fastqc统计：reads数量、数据产量、质量分布。
-2)使用BWA比对到参考基因组GRCh38上
-3)使用Picard去除重复reads
-4)使用GATK做局部重比对和碱基质量校正[好像已经去掉了]
-5)基于比对结果，统计每个样品的测序深度、覆盖度、比对率等评价指标
-
-6)使用 GATK 的HaplotypeCaller检测基因组变异，包括SNP和Indel
-7)使用基于深度信号方法的 CNVnator v0.2.7检测拷贝数变异CNV
-8)使用Breakdancer或者CREST检测结构变异
-9)使用SnpEff软件对变异结果进行注释及影响预测。
-
-
-
-
-
-
 
 ========================================
-Seqtools 及 参考基因组 及参考文献
-----------------------------------------
-1.参考基因组的md5sum值：https://taichimd.us/mediawiki/index.php/Seqtools
-BRB-SeqTools： https://linus.nci.nih.gov/seqtools/
-
-
-
-
-2.参考基因组
-(1)ClinVar使用的是hg38基因组：
-https://www.ncbi.nlm.nih.gov/clinvar/RCV000139793/#clinical-assertions
-
-
-
-(2)refGene.txt 的说明：
-$ head refGene.txt -n 2
-75      NM_001172656    chr4    -       2271323 2420370 2272451 2420050 12      2271323,2273037,2273401,2274899,2275788,2306015,2321896,2339133,2341179,2343204,2355659,2420011,        2272583,2273141,2273506,2275016,2275943,2307263,2321998,2339223,2341382,2343342,2355800,2420370,    0       ZFYVE28 cmpl    cmpl    0,1,1,1,2,2,2,2,0,0,0,0,
-
-每列的解释：http://genome.ucsc.edu/cgi-bin/hgTables
-
-wget -c -O mm9.refGene.txt.gz http://hgdownload.soe.ucsc.edu/goldenPath/mm9/database/refGene.txt.gz
-wget -c -O mm10.refGene.txt.gz http://hgdownload.soe.ucsc.edu/goldenPath/mm10/database/refGene.txt.gz
-wget -c -O hg19.refGene.txt.gz http://hgdownload.soe.ucsc.edu/goldenPath/hg19/database/refGene.txt.gz
-wget -c -O hg38.refGene.txt.gz http://hgdownload.soe.ucsc.edu/goldenPath/hg38/database/refGene.txt.gz
-
-$ gunzip hg38.refGene.txt.gz
-$ less -S hg38.refGene.txt
-
-提取其中的带有geneID的一列，并且没有重复
-$ awk '{print $7}' refGene.list.txt | sort -u > uniqu.refGene.list.txt
-查看列数
-$ wc -l uniqu.refGene.list.txt 
-
-
-
-
-(3)GTF格式的refGene如何在Ensembl及UCSC下载
-http://blog.sina.com.cn/s/blog_751bd9440102v76a.html
-
-
-(4) igenome
-http://jp.support.illumina.com/sequencing/sequencing_software/igenome.html
-
-
-
-
-
-3.单基因遗传病文章
-
-单基因遗传病——家系样本研究思路
-基因测序产业网  2016-05-06
-
-[1] https://en.wikipedia.org/wiki/Genetic_disorder
-
-[2] Feng R, Sang Q, Kuang Y,et al. Mutationgs in TUBB8 and Human Oocyte Meiotic Arrest. N Engl J Med. 2016, 374(3): 223-32. 
-外显子组测序解析卵细胞发育障碍
-
-
-[3] Lukacs V, Mathur J, Mao R, et al. Imparied PIEZO1 function in patients with a novel autosomal recessive congentital lymphatic dysplasia. Nat Commun. 2015, 6: 8329.
-外显子组测序解析常染色体隐性先天性淋巴管发育不良
-
-
-最全！华大基因单基因遗传病检测科研成果汇编
-原创： 华大医学  华大医学  2018.9月3日
-
-
-
-========================================
-ClinVar数据库统计单基因遗传病致病位点人群频率
-----------------------------------------
-原创： 基因游侠  基因检测与解读  2018.5月1日
-
-评估一个基因位点是否为患者的致病基因，游侠认为需要从三个方面来考虑，
-第一是临床评估，即该基因在数据库（如OMIM）中记录的表型是否与患者的表型想符合，
-第二是生物信息学评估，包括正常人群频率、突变类型、软件预测、序列保守性等等，
-第三是遗传模式评估，即如果是隐性遗传是否为父母（父母正常）分别携带一个位点，如果是显性遗传是否为新发突变（父母正常）。
-
-万分之一，后来的实际工作中发现这个cutoff过于严谨，容易把真阳性位点排除。
-
-
-首先我们从ClinVar官网下载最新的VCF，下载地址为
-ftp://ftp.ncbi.nlm.nih.gov/pub/clinvar/vcf_GRCh37/
-ftp://ftp.ncbi.nlm.nih.gov/pub/clinvar/vcf_GRCh38/
-
-个人推荐对于隐性遗传基因cutoff设为0.005或0.01，对于显性遗传基因cutoff设为0.001或0.005，以上只是初步粗略统计，推荐cutoff仅供参考，谢谢！
-
-
-
-
-
-========================================
-fastq数据的过滤、修剪、错误去除和质控[fastqc + cutadapt]
+|-- fastq数据的过滤、修剪、错误去除和质控[fastqc + cutadapt]
 ----------------------------------------
 1.质控用fastqc
 http://www.bioinformatics.babraham.ac.uk/projects/fastqc/
@@ -299,7 +138,7 @@ Total written (filtered):  11,454,864,271 bp (95.3%)
 
 
 ========================================
-比对：BWA的安装 与使用
+|-- 比对：BWA的安装 与使用
 ----------------------------------------
 1.http://bio-bwa.sourceforge.net/
 
@@ -430,8 +269,50 @@ $ bwa mem -t 6 -M ${INDEX} ../1_cleanData/outN.1.fastq ../1_cleanData/outN.2.fas
 
 
 
+
+
+
 ========================================
-Samblaster
+**** bam文件的处理（质控、标记重复、校准）和转vcf
+----------------------------------------
+
+
+
+========================================
+|-- Picard: 对sam文件进行进行重新排序（reorder）、标记PCR重复
+----------------------------------------
+1. Picard官网：http://broadinstitute.github.io/picard/
+A set of command line tools (in Java) for manipulating high-throughput sequencing (HTS) data and formats such as SAM/BAM/CRAM and VCF.
+
+
+
+2.下载
+$ wget https://github.com/broadinstitute/picard/releases/download/2.18.15/picard.jar
+$ vim ~/.bashrc #添加一行
+	PICARD="/home/wangjl/Soft/picard.jar"
+$ source ~/.bashrc
+
+
+
+
+3.使用Picard排序：比对是按照字典顺序1,10,2,改为1,2,10
+
+$ java -Xmx20g -jar $PICARD SortSam SORT_ORDER=coordinate INPUT=${WORKING_DIR}/2018rerun/processed_bam/${name}.sam OUTPUT=${WORKING_DIR}/2018rerun/processed_bam/${name}.bam
+
+
+
+
+4. 标记PCR重复
+已经整合到 gatk4 中了。
+
+
+
+
+
+
+
+========================================
+|-- 标记重复：Samblaster
 ----------------------------------------
 
 https://github.com/GregoryFaust/samblaster
@@ -459,23 +340,21 @@ samblaster is a fast and flexible program for marking duplicates in read-id grou
 refer: https://github.com/GregoryFaust/samblaster
 
 
-
 3.中文
 https://www.sohu.com/a/246097230_99971433
 
 
 
 
+
+
 ========================================
-Sambamba: process your BAM data faster!（去重 比 Picard 快）
+|-- Sambamba: process your BAM data faster!（samtools的竞争者）
 ----------------------------------------
-1.Picard官网：for users
-http://broadinstitute.github.io/picard/
 
-A set of command line tools (in Java) for manipulating high-throughput sequencing (HTS) data and formats such as SAM/BAM/CRAM and VCF.
-
-2.Sambamba 官网
+1.Sambamba 官网
 https://github.com/biod/sambamba
+http://lomereiter.github.io/sambamba/
 
 http://lomereiter.github.io/sambamba/docs/sambamba-view.html
 sambamba主要有filter，merge,slice和duplicate等七个功能来处理sam/bam文件。
@@ -496,6 +375,12 @@ $ sambamba -v
 #sambamba 0.6.8
 
 
+
+## 预览bam文件
+sambamba view OPTIONS <input.bam | input.sam> [region1 [...]]
+
+
+
 refer:
 1.官网 http://lomereiter.github.io/sambamba/docs/sambamba-view.html
 2.中文参考：
@@ -505,240 +390,74 @@ https://blog.csdn.net/msw521sg/article/details/65938377
 
 
 
-========================================
-samtools
-----------------------------------------
-1.SAM (Sequence Alignment/Map) format is a generic format for storing large nucleotide sequence alignments. SAM aims to be a format that:
-http://samtools.sourceforge.net/
-
-
-
-2.安装： 
-$ wget https://sourceforge.net/projects/samtools/files/latest/download
-$ mv download samtools-1.9.tar.bz2
-$ tar -xjvf samtools-1.9.tar.bz2
-$ cd samtools-1.9
-$ make 
-## FAILED.  Either configure --without-curses or resolve this error to build
-
-$ sudo yum install ncurses-devel
-没用，还报错。
-
-
-
-算了，还是yum安装吧：
-$ sudo yum install samtools
-$ samtools
-
-Program: samtools (Tools for alignments in the SAM format)
-Version: 0.1.18 (r982:295)
-
-$ sudo yum remove samtools #卸载yum安装的
-
-
-
-
-版本老，还是尽力安装最新的：
-$ sudo ./configure
-$ sudo make #不报错了
-$ sudo make install
-
-$ samtools
-Program: samtools (Tools for alignments in the SAM format)
-Version: 1.9 (using htslib 1.9)
 
 
 
 ========================================
-bedtools: a powerful toolset for genome arithmetic
+|-- 用bcftools来call variation
 ----------------------------------------
-1. bedtools: flexible tools for genome arithmetic and DNA sequence analysis.
-usage:    bedtools <subcommand> [options]
 
-https://bedtools.readthedocs.io/en/latest/index.html
+1.安装
+Variant Call Format (VCF) and its binary counterpart BCF.
+https://mp.weixin.qq.com/s?__biz=MzAxMDkxODM1Ng==&mid=2247483812&idx=1&sn=c3f7ce44a4f164f0d5549e11a22e702f&chksm=9b48411fac3fc8093925fbad417636544ea9af0c58ee9f4f31d1fa1fc2c80af610a835d09311&scene=21#wechat_redirect
 
 
-2.安装
-https://bedtools.readthedocs.io/en/latest/content/installation.html
 
-$ wget https://github.com/arq5x/bedtools2/releases/download/v2.25.0/bedtools-2.25.0.tar.gz
-$ tar -zxvf bedtools-2.25.0.tar.gz
-$ cd bedtools2
-$ make
 
+http://samtools.github.io/bcftools/
+## 下载安装
+git clone git://github.com/samtools/htslib.git
+git clone git://github.com/samtools/bcftools.git
+cd bcftools
+## The following is optional: 
+## autoheader && autoconf && ./configure --enable-libgsl --enable-perl-filters
+sudo make #第一次出错，用 make clean后再次sudo make通过了。
+sudo make install 
 
-缺少  #include <zlib.h>
-http://zlib.net/ download zlib
-$ wget http://zlib.net/zlib-1.2.11.tar.gz
-$ tar zxvf zlib-1.2.11.tar.gz
-$ cd zlib-1.2.11/
-$ ./configure
-$ make 
-$ sudo make install
 
-(直到两年后我才理解（linux下 的软件安装需要指定路径，而且是自己有权限的路径
-./configure --prefix=/home/wangjl/bin/)
--- 再在bwa目录使用make，正常了。（bwa的安装也依赖zlib）
+$ bcftools
+## Version: 1.9-67-g626e46b (using htslib 1.9-63-gd7922af) 
 
 
+为了使用BCFtools plugins，需要设置环境变量：
+export BCFTOOLS_PLUGINS=/path/to/bcftools/plugins
 
 
 
-还是报错。
-算了，还是最简单yum安装吧：
-https://bedtools.readthedocs.io/en/latest/content/installation.html
-$sudo yum install BEDTools
-$ bedtools -version
-bedtools 2.15.0
-#版本有点老，卸载
-$ sudo yum remove BEDTools
 
+2.使用
+bcftools — utilities for variant calling and manipulating VCFs and BCFs.
+https://samtools.github.io/bcftools/bcftools.html
 
+对排序好的bam数据用samtools生成bcf文件：
+$ samtools mpileup -ugf ../hs38DH.fa hs2.sort.bam  >hs2.bcf
 
+由于生成的是二进制格式的数据，需要进行解析或者转换成vcf：
+$ bcftools view hs2.bcf >hs2.vcf
 
-重新安装新版本。
-$ sudo make 
-# 报错 gzstream.C:(.text+0x2a2): undefined reference to `gzopen64'
 
-##https://bedtools.readthedocs.io/en/latest/content/faq.html
-## 先确定gzopen64是否存在，再更新链接，使该函数可被调用。
-$ locate libz.so | less
-$ objdump -T /usr/local/lib/libz.so | grep gzopen64
-## 00000000000120f0 g    DF .text  0000000000000304  ZLIB_1.2.3.3 gzopen64
+(2)bcftools合并vcf文件
+$ bcftools merge A.vcf.gz B.vcf.gz C.vcf.gz -Oz -o ABC.vcf.gz
 
-$ sudo make LIBS='/usr/local/lib/libz.so'
-$ sudo make install LIBS='/usr/local/lib/libz.so'
+https://www.cnblogs.com/chenwenyan/p/9273726.html
 
-##退出再登录还是报错： bedtools: /lib64/libz.so.1: version `ZLIB_1.2.3.3' not found (required by bedtools)
-$ sudo ln -sf /usr/local/lib/libz.so /lib64/libz.so.1
 
-$ bedtools --version
-bedtools v2.25.0
 
 
 
-========================================
-Control-Freec:检测拷贝数变异的神器
-----------------------------------------
-1. 简介
-http://bioinfo-out.curie.fr/projects/freec/
 
 
-Control-Freec 既可以检测拷贝数变异CNV，还可以分析杂合性缺失LOH。官网如下
-http://boevalab.com/FREEC/
 
-Control-FREEC is a tool for detection of copy-number changes and allelic imbalances (including LOH) using deep-sequencing data originally developed by the Bioinformatics Laboratory of Institut Curie (Paris). Nowdays, Control-FREEC is supported by the team of Valentina Boeva at Institut Cochin, Inserm(Paris). 
 
-在检测拷贝数变异时，支持全基因组测序，全外显子测序，目标区域捕获测序等多种测序方案，
-对于全基因组数据，分析是不需要提供对照样本；
-对于全外显子测序和目标区域捕获测序，必须提供对照样本。
 
-# Control-FREEC
-Copy number and genotype annotation from whole genome and whole exome sequencing data.
+3. call SNP from bam 
 
+Program: bcftools (Tools for variant calling and manipulating VCFs and BCFs)
+Version: 1.11-35-g8a744dd (using htslib 1.11-27-g246c146)
 
 
-
-
-
-
-2.安装准备
-(1)安装必须准备
-http://boevalab.com/FREEC/tutorial.html#install
-
-10Gb of RAM
-Linux or MACS OS; only older versions of Control-FREEC (up to v6.2) are available for Windows
-R installed
-	R version 3.5.1
-samtools installed if the input files are in .BAM format
-	Version: 1.9 (using htslib 1.9)
-bedtools installed if you wish to create minipileup files from .BAM
-	bedtools v2.25.0
-sambamba installed if you wish to speed up reading of .BAM files
-	sambamba 0.6.8 by Artem Tarasov and Pjotr Prins (C) 2012-2018
-
-
-
-(2)##https://github.com/BoevaLab/FREEC/releases
-$ wget -O FREEC-11.5.tar.gz https://github.com/BoevaLab/FREEC/archive/v11.5.tar.gz
-$ tar xzvf FREEC-11.5.tar.gz
-$ cd FREEC-11.5
-在FREEC-11.4下有3个目录：
-data目录保存的是配置文件的模板，包含WGS和WES两套模板；
-scripts目录下是一些常用的脚本；
-src目录下就是软件的源代码，freec可执行文件就位于这个目录。
-
-$ cd src
-$ make
-$ make install #报错，可能必须手动安装快捷方式了
-
-$ cd ~/bin
-$ ln -s ~/Soft/FREEC-11.5/src/freec
-$ freec -h
-Control-FREEC v11.5 : a method for automatic detection of copy number alterations, subclones and for accurate estimation of contamination and main ploidy using deep-sequencing data
-
-
-
-
-
-文件配置方式：http://boevalab.com/FREEC/tutorial.html#CONFIG
-
-
-
-
-http://boevalab.com/FREEC/
-Starting from Control-FREEC v10.6, Control-FREEC can work on exome-seq data without a control sample. 
-
-
-
-
-
-
-3.Control-FREEC v11.5
-$ pwd
-/home/wangjl/bin
-$ ln -s /home/wangjl/Soft/FREEC-11.5/src/freec
-
-
-
-3.配置文件很复杂
-http://boevalab.com/FREEC/
-http://boevalab.com/FREEC/tutorial.html#CONFIG
-
-Starting from Control-FREEC v10.6, Control-FREEC can work on exome-seq data without a control sample. 
-
-
-
-
-========================================
-变异注释-基因频率数据库
-----------------------------------------
-如何挖掘外显子变异频率信息： https://www.jianshu.com/p/4278896661f2
-http://www.omicsclass.com/article/463
-
-千人基因组计划 http://www.internationalgenome.org/category/population/
-
-
-
-1.为达到变异筛选目的，我们一般会在几个大型的外显子变异数据库中对新发现的突变进行注释，了解其突变频率等情况。常用的数据库有dbSNP、Hapmap、COSMIC、1000Genomes projects千人基因组计划（根据人种来源，分为全部人种、东亚人、美洲人等不同子数据库）、ESP6500外显子计划、ExAC（根据人种来源，分为全部人种、东亚人等不同子数据库）。
-
-Population Code	Population Description	Super Population Code
-CHB	Han Chinese in Beijing, China	EAS
-CDX	Chinese Dai in Xishuangbanna, China	EAS
-
-
-2.目标变异筛选（基于变异频率）
-结合以上数据库，通过特定的阈值筛选，我们可以过滤很多无效变异。例如，可以过滤千人基因组数据库中频率大于0.01变异位点，以得到真正可能致病的罕见突变（rare）。也可以联合多个数据库对突变频率进行过滤，或者同时参考dbSNP中记录的SNP信息，初步判断数据库中不存在的变异为新发现变异，以增加研究价值。
-
-不过值得注意的是，在dbSNP中没有记录的变异，有可能是新变异，也有可能是旧的符合条件的变异，更有可能是测序错误。因此在判断某一变异的价值的时候，需要结合其位置信息以及蛋白突变有害性等信息进行判断。
-
-
-
-
-
-
-
-
+$ ref="/data/wangjl/soft/GATK/resources/bundle/hg38/Homo_sapiens_assembly38.fasta"
+$ samtools mpileup -ugf $ref ../align/*.bam | bcftools call -vmO z -o out2.vcf.gz
 
 
 
@@ -860,7 +579,7 @@ https://software.broadinstitute.org/gatk/documentation/quickstart.php
 
 
 ========================================
-gatk4.0 实践 (hg19) 当前主流
+|-- gatk4.0 实践 (hg19) 当前主流
 ----------------------------------------
 主要参考： https://www.plob.org/article/11698.html
 	https://cloud.tencent.com/developer/news/180158
@@ -1117,7 +836,7 @@ $ zcat EX23.filter.vcf.gz|grep -v "#"|wc
 
 
 ========================================
-gatk4.0 实践 (hg38) 未来趋势
+|-- gatk4.0 实践 (hg38) 未来趋势
 ----------------------------------------
 主要参考： http://www.bio-info-trainee.com/3144.html
 其他参考： https://www.plob.org/article/7009.html
@@ -1326,8 +1045,13 @@ https://biohpc.cornell.edu/lab/doc/Variant_workshop_Part2.pdf
 
 
 
+
+
+
+
+
 ========================================
-Workflow Description Language (WDL)语言
+|-- Workflow Description Language (WDL)语言
 ----------------------------------------
 1.简介
 http://www.openwdl.org/
@@ -1413,8 +1137,17 @@ https://docs.docker.com/install/
 
 
 
+
+
+
+
 ========================================
-用vcftools来处理vcf文件（centOS6.8安装失败）
+**** vcf的注释和过滤
+----------------------------------------
+
+
+========================================
+|-- 用vcftools来处理vcf文件 //todo
 ----------------------------------------
 1.概述
 https://vcftools.github.io/index.html
@@ -1441,90 +1174,20 @@ The perl module is a general Perl API for manipulating VCF files, whereas the bi
 2.下载与安装
 https://vcftools.github.io/downloads.html
 
-(1)用yum安装吧：
-$ sudo yum install vcftools
-$ vcftools
-VCFtools (v0.1.11)
 
-使用的时候报错
-Error:VCF version must be v4.0 or v4.1:
-You are using version VCFv4.2
-说明必须安装新版本
-sudo yum remove vcftools
+## Ubuntu 18.04 LTS
+$ wget -c https://github.com/vcftools/vcftools/releases/download/v0.1.16/vcftools-0.1.16.tar.gz
 
-
-
-(2)尝试安装
-$ git clone https://github.com/vcftools/vcftools.git
-需要环境中有perl
-cd vcftools
-./autogen.sh  报错1
-$ sudo yum install install autoconf automake libtool #解决报错1
-
-./configure
-make 
-make install #依旧报错
-
-
-$ wget https://github.com/vcftools/vcftools/releases/download/v0.1.16/vcftools-0.1.16.tar.gz
 $ tar zxvf vcftools-0.1.16.tar.gz
-$ cd vcftools-0.1.16 
-./configure
-make ##报错 bgzf.h:33:10: fatal error: zlib.h: No such file or directory
-make install
+$ cd vcftools-0.1.16$
+$ ./configure
+$ make
+$ sudo make install
 
-
-## 无效 download from : 
-wget https://github.com/madler/zlib/blob/master/zlib.h
-## put the file in the same folder as your project file. 放在平级目录中。
-
-
-
-(3)重启，再次make时又有新的报错：
-vcftools-bcf_file.o: In function `bcf_file::open_gz()':                                                                                  │
-/home/wangjl/Soft/vcftools/src/cpp/bcf_file.cpp:88: undefined reference to `gzbuffer'
-解决不了
-
-
-
-(4)回到压缩包内
-[wangjl@NGSZD vcftools-0.1.16]$ whereis zlib.h
-zlib: /usr/include/zlib.h /usr/share/man/man3/zlib.3.gz
-
-
-这里说 https://github.com/alexdobin/STAR/issues/142 可能是gcc找不到.h文件，
-it looks like gcc cannot find zlib.h . Please check that /usr/include/ appears in the list of standard include directories with
-$ gcc -xc -E -v -
-$ gcc -xc++ -E -v -
-
-
-
-看来是需要设置gcc的头文件自动搜索路径
-【1】include头文件路径
-除了默认的/usr/include, /usr/local/include等include路径外，还可以通过设置环境变量来添加系统include的路径：
-# C
-export C_INCLUDE_PATH=XXXX:$C_INCLUDE_PATH
-# CPP
-export CPLUS_INCLUDE_PATH=XXX:$CPLUS_INCLUDE_PATH
-以上修改可以直接命令行输入（一次性），可以在/etc/profile中完成（对所有用户生效），也可以在用户home目录下的.bashrc或.bash_profile中添加（针对某个用户生效），修改完后重新登录即生效。
-原文：https://blog.csdn.net/allenlinrui/article/details/21483617 
-
-
-
-ghc-zlib-devel.x86_64 : Haskell compression and decompression library development files
-zlib-devel.i686 : Header files and libraries for Zlib development
-zlib-devel.x86_64 : Header files and libraries for Zlib development
-
-
-结论：最终在centOS6.8上也没有安装成功新版本的vcftools，旧版本已经不支持该vcf 4.2标准。
-
-
-
-
-(5)使用ubuntu1604安装试试(192.168.1.115)
-很顺利的make通过了。
 $ vcftools --version
 VCFtools (0.1.16)
+
+
 
 
 
@@ -1549,76 +1212,13 @@ specific_position.txt的输入格式如下：
 1 1018704
 
 
-
-
-========================================
-用bcftools来call variation
-----------------------------------------
-
-1.安装
-Variant Call Format (VCF) and its binary counterpart BCF.
-https://mp.weixin.qq.com/s?__biz=MzAxMDkxODM1Ng==&mid=2247483812&idx=1&sn=c3f7ce44a4f164f0d5549e11a22e702f&chksm=9b48411fac3fc8093925fbad417636544ea9af0c58ee9f4f31d1fa1fc2c80af610a835d09311&scene=21#wechat_redirect
+帮助：https://vcftools.github.io/man_latest.html#EXAMPLES
 
 
 
 
-http://samtools.github.io/bcftools/
-## 下载安装
-git clone git://github.com/samtools/htslib.git
-git clone git://github.com/samtools/bcftools.git
-cd bcftools
-## The following is optional: 
-## autoheader && autoconf && ./configure --enable-libgsl --enable-perl-filters
-sudo make #第一次出错，用 make clean后再次sudo make通过了。
-sudo make install 
 
 
-$ bcftools
-## Version: 1.9-67-g626e46b (using htslib 1.9-63-gd7922af) 
-
-
-为了使用BCFtools plugins，需要设置环境变量：
-export BCFTOOLS_PLUGINS=/path/to/bcftools/plugins
-
-
-
-
-2.使用
-bcftools — utilities for variant calling and manipulating VCFs and BCFs.
-https://samtools.github.io/bcftools/bcftools.html
-
-对排序好的bam数据用samtools生成bcf文件：
-$ samtools mpileup -ugf ../hs38DH.fa hs2.sort.bam  >hs2.bcf
-
-由于生成的是二进制格式的数据，需要进行解析或者转换成vcf：
-$ bcftools view hs2.bcf >hs2.vcf
-
-
-(2)bcftools合并vcf文件
-$ bcftools merge A.vcf.gz B.vcf.gz C.vcf.gz -Oz -o ABC.vcf.gz
-
-https://www.cnblogs.com/chenwenyan/p/9273726.html
-
-
-
-========================================
-Picard: 对sam文件进行进行重新排序（reorder）
-----------------------------------------
-1.官网： A set of command line tools (in Java) for manipulating high-throughput sequencing (HTS) data and formats such as SAM/BAM/CRAM and VCF.
-
-http://broadinstitute.github.io/picard/
-
-
-2.下载
-$ wget https://github.com/broadinstitute/picard/releases/download/2.18.15/picard.jar
-$ vim ~/.bashrc #添加一行
-	PICARD="/home/wangjl/Soft/picard.jar"
-$ source ~/.bashrc
-
-
-3.使用Picard排序：比对是按照字典顺序1,10,2,改为1,2,10
-
-$ java -Xmx20g -jar $PICARD SortSam SORT_ORDER=coordinate INPUT=${WORKING_DIR}/2018rerun/processed_bam/${name}.sam OUTPUT=${WORKING_DIR}/2018rerun/processed_bam/${name}.bam
 
 
 
@@ -1626,7 +1226,7 @@ $ java -Xmx20g -jar $PICARD SortSam SORT_ORDER=coordinate INPUT=${WORKING_DIR}/2
 
 
 ========================================
-变异功能注释 ANNOVAR (hg19)
+|-- 变异功能注释 ANNOVAR (hg19)
 ----------------------------------------
 
 将原始fq文件通过FastQC-bwa-samtools|GATK等流程最终得到vcf文件，也就是记录某些位点变异的文本文件。但只是通过看vcf文件我们是不知道些变异位点到底是位于基因的exon、intron、UTR等的哪些区域的。所以我们需要对vcf文件也就是这些变异位点进行注释。
@@ -1806,11 +1406,12 @@ alternative allele frequency in All subjects in the NHLBI-ESP project with 6500 
 -rw-rw-r--. 1 wangjl wangjl  57M Dec 23  2014 hg19_esp6500siv2_ea.txt
 -rw-rw-r--. 1 wangjl wangjl  15M Dec 23  2014 hg19_esp6500siv2_ea.txt.idx
 
-(12)$ annotate_variation.pl -buildver hg19 -downdb -webfrom annovar ljb26_all humandb19/
+(12)
+$ annotate_variation.pl -buildver hg19 -downdb -webfrom annovar ljb26_all humandb19/
 ljb26_all: whole-exome SIFT, PolyPhen2 HDIV, PolyPhen2 HVAR, LRT, MutationTaster, MutationAssessor, FATHMM, MetaSVM, MetaLR, VEST, CADD, GERP++, PhyloP and SiPhy scores from dbNSFP version 2.6
 
--rw-rw-r--. 1 wangjl wangjl  11G Sep 25  2014 hg19_ljb26_all.txt
--rw-rw-r--. 1 wangjl wangjl  18M Sep 25  2014 hg19_ljb26_all.txt.idx
+2020-12-21 23:44:36 (573 KB/s) - ‘hg38_ljb26_all.txt.gz’ saved [2311601075/2311601075]
+
 
 
 
@@ -2030,8 +1631,15 @@ refer:
 https://www.jianshu.com/p/7607c894eaae
 
 
+
+
+
+
+
+
+
 ========================================
-|-- 注释的解读：
+|-- 注释的解读
 ----------------------------------------
 http://annovar.openbioinformatics.org/en/latest/user-guide/gene/
 
@@ -2375,15 +1983,208 @@ annotate_variation.pl -buildver hg38 ex1.avinput humandb38/
 
 
 
-========================================
-各种培训班
-----------------------------------------
+
 
 
 
 ========================================
-|-- [大纲]第十八期临床遗传病生信实操培训班（上海班）
+**** 流程可视化： BRB-SeqTools 及 参考基因组 及参考文献
 ----------------------------------------
+
+BRB-SeqTools is a new tool for NGS data analysis. It will support the importing, pre-processing, variant calling, and somatic mutation annotation of both RNA-Seq and DNA-Seq data, in either .FASTQ or .bam file format. 
+
+
+
+1.参考基因组的md5sum值：https://taichimd.us/mediawiki/index.php/Seqtools
+BRB-SeqTools： https://linus.nci.nih.gov/seqtools/
+
+
+
+
+2.参考基因组
+(1)ClinVar使用的是hg38基因组：
+https://www.ncbi.nlm.nih.gov/clinvar/RCV000139793/#clinical-assertions
+
+
+
+(2)refGene.txt 的说明：
+$ head refGene.txt -n 2
+75      NM_001172656    chr4    -       2271323 2420370 2272451 2420050 12      2271323,2273037,2273401,2274899,2275788,2306015,2321896,2339133,2341179,2343204,2355659,2420011,        2272583,2273141,2273506,2275016,2275943,2307263,2321998,2339223,2341382,2343342,2355800,2420370,    0       ZFYVE28 cmpl    cmpl    0,1,1,1,2,2,2,2,0,0,0,0,
+
+每列的解释：http://genome.ucsc.edu/cgi-bin/hgTables
+
+wget -c -O mm9.refGene.txt.gz http://hgdownload.soe.ucsc.edu/goldenPath/mm9/database/refGene.txt.gz
+wget -c -O mm10.refGene.txt.gz http://hgdownload.soe.ucsc.edu/goldenPath/mm10/database/refGene.txt.gz
+wget -c -O hg19.refGene.txt.gz http://hgdownload.soe.ucsc.edu/goldenPath/hg19/database/refGene.txt.gz
+wget -c -O hg38.refGene.txt.gz http://hgdownload.soe.ucsc.edu/goldenPath/hg38/database/refGene.txt.gz
+
+$ gunzip hg38.refGene.txt.gz
+$ less -S hg38.refGene.txt
+
+提取其中的带有geneID的一列，并且没有重复
+$ awk '{print $7}' refGene.list.txt | sort -u > uniqu.refGene.list.txt
+查看列数
+$ wc -l uniqu.refGene.list.txt 
+
+
+
+
+(3)GTF格式的refGene如何在Ensembl及UCSC下载
+http://blog.sina.com.cn/s/blog_751bd9440102v76a.html
+
+
+(4) igenome
+http://jp.support.illumina.com/sequencing/sequencing_software/igenome.html
+
+
+
+
+
+3.单基因遗传病文章
+
+单基因遗传病——家系样本研究思路
+基因测序产业网  2016-05-06
+
+[1] https://en.wikipedia.org/wiki/Genetic_disorder
+
+[2] Feng R, Sang Q, Kuang Y,et al. Mutationgs in TUBB8 and Human Oocyte Meiotic Arrest. N Engl J Med. 2016, 374(3): 223-32. 
+外显子组测序解析卵细胞发育障碍
+
+
+[3] Lukacs V, Mathur J, Mao R, et al. Imparied PIEZO1 function in patients with a novel autosomal recessive congentital lymphatic dysplasia. Nat Commun. 2015, 6: 8329.
+外显子组测序解析常染色体隐性先天性淋巴管发育不良
+
+
+最全！华大基因单基因遗传病检测科研成果汇编
+原创： 华大医学  华大医学  2018.9月3日
+
+
+
+
+
+
+
+
+========================================
+**** 拷贝数变异 CNV 
+----------------------------------------
+
+
+========================================
+|-- Control-Freec:检测拷贝数变异(CNV)的神器
+----------------------------------------
+1. 简介
+http://bioinfo-out.curie.fr/projects/freec/
+
+
+Control-Freec 既可以检测拷贝数变异CNV，还可以分析杂合性缺失LOH。官网如下
+http://boevalab.com/FREEC/
+
+Control-FREEC is a tool for detection of copy-number changes and allelic imbalances (including LOH) using deep-sequencing data originally developed by the Bioinformatics Laboratory of Institut Curie (Paris). Nowdays, Control-FREEC is supported by the team of Valentina Boeva at Institut Cochin, Inserm(Paris). 
+
+在检测拷贝数变异时，支持全基因组测序，全外显子测序，目标区域捕获测序等多种测序方案，
+对于全基因组数据，分析是不需要提供对照样本；
+对于全外显子测序和目标区域捕获测序，必须提供对照样本。
+
+# Control-FREEC
+Copy number and genotype annotation from whole genome and whole exome sequencing data.
+
+
+
+
+
+
+
+2.安装准备
+(1)安装必须准备
+http://boevalab.com/FREEC/tutorial.html#install
+
+10Gb of RAM
+Linux or MACS OS; only older versions of Control-FREEC (up to v6.2) are available for Windows
+R installed
+	R version 3.5.1
+samtools installed if the input files are in .BAM format
+	Version: 1.9 (using htslib 1.9)
+bedtools installed if you wish to create minipileup files from .BAM
+	bedtools v2.25.0
+sambamba installed if you wish to speed up reading of .BAM files
+	sambamba 0.6.8 by Artem Tarasov and Pjotr Prins (C) 2012-2018
+
+
+
+(2)##https://github.com/BoevaLab/FREEC/releases
+$ wget -O FREEC-11.5.tar.gz https://github.com/BoevaLab/FREEC/archive/v11.5.tar.gz
+$ tar xzvf FREEC-11.5.tar.gz
+$ cd FREEC-11.5
+在FREEC-11.4下有3个目录：
+data目录保存的是配置文件的模板，包含WGS和WES两套模板；
+scripts目录下是一些常用的脚本；
+src目录下就是软件的源代码，freec可执行文件就位于这个目录。
+
+$ cd src
+$ make
+$ make install #报错，可能必须手动安装快捷方式了
+
+$ cd ~/bin
+$ ln -s ~/Soft/FREEC-11.5/src/freec
+$ freec -h
+Control-FREEC v11.5 : a method for automatic detection of copy number alterations, subclones and for accurate estimation of contamination and main ploidy using deep-sequencing data
+
+
+
+
+
+文件配置方式：http://boevalab.com/FREEC/tutorial.html#CONFIG
+
+
+
+
+http://boevalab.com/FREEC/
+Starting from Control-FREEC v10.6, Control-FREEC can work on exome-seq data without a control sample. 
+
+
+
+
+
+
+3.Control-FREEC v11.5
+$ pwd
+/home/wangjl/bin
+$ ln -s /home/wangjl/Soft/FREEC-11.5/src/freec
+
+
+
+3.配置文件很复杂
+http://boevalab.com/FREEC/
+http://boevalab.com/FREEC/tutorial.html#CONFIG
+
+Starting from Control-FREEC v10.6, Control-FREEC can work on exome-seq data without a control sample. 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+========================================
+[大纲] 各种培训班
+----------------------------------------
+
+####################
+# 1. [大纲]第十八期临床遗传病生信实操培训班（上海班）
+####################
 基因游侠  基因检测与解读  2018.10月15日
 
 
@@ -2425,9 +2226,15 @@ annotate_variation.pl -buildver hg38 ex1.avinput humandb38/
 
 
 
-========================================
-|-- [大纲]遗传病测序数据分析解读科普系列 第2期 生信分析基础：了解数据处理过程
-----------------------------------------
+
+
+
+
+
+
+####################
+# 2. [大纲]遗传病测序数据分析解读科普系列 第2期 生信分析基础：了解数据处理过程
+####################
 原创： 熊吉的熊  瀚垚生物医学  2018.8月2日
 
 1.数据前处理
@@ -2462,9 +2269,17 @@ bam文件对很多人的印象可能是
 主要理解fastq/bam/vcf的数据质量基本判断原则。
 
 
-========================================
-|-- [大纲]逸仙生信临床解读培训班第二天
-----------------------------------------
+
+
+
+
+
+
+
+
+####################
+# 3.[大纲]逸仙生信临床解读培训班第二天
+####################
 廖健伟  逸仙细胞分子论坛  2018.9月9日
 
 2018年9月9日，逸仙细胞分子论坛的首届生物信息临床解读培训班迎来了第二天的课程
@@ -2490,9 +2305,17 @@ bam文件对很多人的印象可能是
 
 
 
-========================================
-|-- [大纲]儿童遗传分子诊断技术质控及数据一体化信息管理——新华医院的经验探索尝试
-----------------------------------------
+
+
+
+
+
+
+
+
+####################
+#4. [大纲]儿童遗传分子诊断技术质控及数据一体化信息管理——新华医院的经验探索尝试
+####################
 聚道科技GeneDock  聚道科技GeneDock  2018.6月22日
 
 2018分子及遗传诊断高峰论坛于6月14-15日在上海成功举办。上海交通大学医学院附属新华医院余永国主任为大家带来题为《复杂多样的儿童遗传分子诊断技术质控及数据一体化信息管理——新华医院的经验探索尝试》的精彩报告。
@@ -2517,7 +2340,10 @@ bam文件对很多人的印象可能是
 
 
 ========================================
+call小鼠的SNP用什么工具？
 ----------------------------------------
+varscan2
+或者直接 samtools+bcftools;
 
 
 

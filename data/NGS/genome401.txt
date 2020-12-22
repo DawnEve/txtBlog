@@ -184,6 +184,110 @@ https://blog.csdn.net/herokoking/article/details/78292616
 
 
 ========================================
+|-- 下载 CCDS 数据，解析出外显子bed文件
+----------------------------------------
+1. 下载 
+$ wget ftp://ftp.ncbi.nlm.nih.gov/pub/CCDS/current_human/CCDS.current.txt
+$ pwd
+/home/wangjl/data/ref/human/NCBI/
+
+$ head CCDS.current.txt -n 4
+#chromosome     nc_accession    gene    gene_id ccds_id ccds_status     cds_strand      cds_from        cds_to  cds_locations   match_type
+1       NC_000001.8     LINC00115       79854   CCDS1.1 Withdrawn       -       801942  802433  [801942-802433] Identical
+1       NC_000001.11    SAMD11  148398  CCDS2.2 Public  +       925941  944152  [925941-926012, 930154-930335, 931038-931088, 935771-935895, 939039-939128, 939274-939459, 941143-941305, 942135-942250, 942409-942487, 942558-943057, 943252-943376, 943697-943807, 943907-944152]  Identical
+
+
+
+
+查看第6列，只看 Public 的就行了。
+$ awk -F"\t" '{print $6}' CCDS.current.txt| sort | uniq -c
+      1 ccds_status
+  32722 Public
+    247 Reviewed, update pending
+    126 Reviewed, withdrawal pending
+    235 Under review, update
+    104 Under review, withdrawal
+   1693 Withdrawn
+     11 Withdrawn, inconsistent annotation
+#
+
+
+
+
+
+
+2. 获取每个外显子的位置信息的bed文件。
+
+这个不是。wget ftp://ftp.ncbi.nlm.nih.gov/pub/CCDS/current_human/CCDS_exons.current.txt
+
+需要自己从CCDS中构建。
+$ head -n 3 /home/wangjl/data/ref/human/NCBI/CCDS.current.txt | perl -alne '{/\[(.*?)\]/;next unless $1;$strand=$F[6];$gene=$F[2];$exons=$1;$exons=~s/\s//g;$exons=~s/-/\t/g;print "$F[0]\t$_\t$gene\t0\t$strand" foreach split/,/,$exons;}'
+
+1       801942  802433  LINC00115       0       -
+1       925941  926012  SAMD11  0       +
+1       930154  930335  SAMD11  0       +
+1       931038  931088  SAMD11  0       +
+
+
+## 只需要保留 Public 的行即可
+$ awk -F "\t" '$6=="Public"{print $0}' /home/wangjl/data/ref/human/NCBI/CCDS.current.txt | perl -alne '{/\[(.*?)\]/;next unless $1;$strand=$F[6];$gene=$F[2];$exons=$1;$exons=~s/\s//g;$exons=~s/-/\t/g;print "chr$F[0]\t$_\t$gene\t0\t$strand" foreach split/,/,$exons;}' | sort -u | bedtools sort -i > /home/wangjl/data/ref/human/NCBI/hg38.exon.bed
+
+
+
+
+
+
+
+
+
+(2) 用python写呢？
+
+ii) 用python结果一样。
+##############
+# aim: get exon.bed from CCDS file
+##############
+import re
+
+fr=open("/home/wangjl/data/ref/human/NCBI/CCDS.current.txt")
+fw=open("/home/wangjl/data/ref/human/NCBI/hg38.exon.bed", 'w')
+
+i=0
+for lineR in fr.readlines():
+    i+=1
+    arr=re.split('\t', lineR.strip())
+    if  i==1 or arr[5]!='Public':
+        continue;
+    Chr="chr"+arr[0]
+    gene=arr[2]
+    strand=arr[6]
+    lists=re.split(', ', arr[9])
+    for item in lists:
+        arr2=re.split('-', item.strip('[').strip(']'))
+        if len(arr2)<2:
+            print(lineR); continue;
+        rs=[Chr, arr2[0], arr2[1], gene, "0", strand]
+        fw.write('\t'.join(rs)+'\n')
+
+fr.close()
+fw.close()
+print('==end==')
+
+# 在使用shell，保持行的唯一性
+## $ sort -u hg38.exon.bed2 > hg38.exon.bed_py
+
+
+
+
+
+
+
+
+
+
+
+
+
+========================================
 |-- RefSeq简介、Table Browser 下载gtf文件(refGene)
 ----------------------------------------
 (1)什么是参考序列RefSeq？
