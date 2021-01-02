@@ -34,7 +34,7 @@ return array (
 
       array('circos-Cytoscape','circos-Cytoscape','txt'),
       array('GO分析及可视化','GO_analysis01','txt'),
-      array('FAQ of TCGA','FAQ_TCGA','txt'),
+      array('GEO and TCGA','GEO_TCGA','txt'),
     ),
   ),  
   

@@ -8,15 +8,26 @@ GO/KEGG 基因富集分析
 
 
 ========================================
-Gene Ontology 官网
+相关教程
 ----------------------------------------
-http://geneontology.org/docs/go-enrichment-analysis/
 
 1. GO enrichment analysis
+Gene Ontology 官网
+http://geneontology.org/docs/go-enrichment-analysis/
+
 One of the main uses of the GO is to perform enrichment analysis on gene sets. For example, given a set of genes that are up-regulated under certain conditions, an enrichment analysis will find which GO terms are over-represented (or under-represented) using annotations for that gene set.
+
 
 2. 工具
 官网: http://geneontology.org/
+
+
+
+
+3.中文教程 
+
+人人都要会的转录组(RNA-seq)下游分析: https://zhuanlan.zhihu.com/p/77901431
+
 
 
 
@@ -1401,6 +1412,66 @@ head(rs$ENTREZID)
 
 
 
+4. 任意转换: (ensembl id -- entrez id -- symbol)
+
+library(AnnotationDbi)
+library(org.Hs.eg.db)
+# options(stringsAsFactors = F)
+res=data.frame(
+  gene_id=c("ENSG00000152495","ENSG00000171735"),
+  stringsAsFactors = F
+)
+res$gene_id
+
+# 输入keys。输入类型 keytype，返回类型column
+
+# gene id --> symbol
+res$symbol <- mapIds(org.Hs.eg.db,
+                     keys=res$gene_id,
+                     column="SYMBOL",
+                     keytype="ENSEMBL",
+                     multiVals="first")
+res
+
+# gene id --> ENTREZID
+res$entrez <- mapIds(org.Hs.eg.db,
+                     keys=res$gene_id,
+                     column="ENTREZID",
+                     keytype="ENSEMBL",
+                     multiVals="first")
+res
+#          gene_id symbol entrez
+#1 ENSG00000152495  CAMK4    814
+#2 ENSG00000171735 CAMTA1  23261
+
+# entrez id --> symbol
+res$symbol2=mapIds(org.Hs.eg.db,
+                     keys=res$entrez,
+                     column="SYMBOL",
+                     keytype="ENTREZID",
+                     multiVals="first")
+res
+
+# 
+res$ensembl2=mapIds(org.Hs.eg.db,
+                   keys=res$symbol,
+                   column="ENSEMBL",
+                   keytype="SYMBOL",
+                   multiVals="first")
+res
+#           gene_id symbol entrez symbol2        ensembl2
+#1 ENSG00000152495  CAMK4    814   CAMK4 ENSG00000152495
+#2 ENSG00000171735 CAMTA1  23261  CAMTA1 ENSG00000171735
+
+
+
+
+
+
+
+
+
+
 ========================================
 GSEA分析是个什么鬼？
 ----------------------------------------
@@ -1929,7 +2000,7 @@ dbListTables(db) #查看表
 ## [25] "metadata"              "ncbi2ensembl"          "omim"                  "pfam"                 
 ## [29] "prosite"               "pubmed"                "refseq"                "sqlite_stat1"         
 ## [33] "sqlite_stat4"          "ucsc"                  "unigene"               "uniprot" 
-
+# 下文有每个表的字段。
 
 dbListFields(db, "kegg") #查看字段
 ## 1] "_id"     "path_id"
@@ -1967,14 +2038,19 @@ ref:
 
 
 2. 查看该包的所有表结构
+library('org.Hs.eg.db')
+str(org.Hs.eg.db)
+
+db = dbConnect(SQLite(), dbname=org.Hs.eg.db$conn@dbname)
+tblist=dbListTables(db)
+
 showTable=function(n=1){
   tbname=tblist[n]
-  print( paste(n, 'table name: ',tbname) )
+  print( paste(n, ' | table name: ',tbname) )
   print(dbListFields(db, tbname)) #查看字段
   kegg=dbGetQuery(db, paste0("SELECT * FROM ",tbname) ) #查看内容
   print(dim(kegg) )
-  print(head(kegg))
-  tail(kegg)
+  print( rbind( head(kegg), tail(kegg) ) )
 }
 showTable()
 n=23;
@@ -1985,6 +2061,47 @@ n=n+1;showTable(n)
 n=n+1;showTable(n)
 #
 
+
+## 都有_id列
+"chrlengths"(染色体长度),   
+"chromosome_locations"(//todo: 负值？) 
+"chromosomes"(基因id,染色体),   
+"cytogenetic_locations"(基因id,遗传位置19q13.43),
+
+"genes"(gene_id), 
+"gene_info"("gene_name" "symbol" \n alpha-1-B glycoprotein	A1BG)
+"alias" (基因别名),   
+"accessions" (基因的NCBI的acc号),  
+"pubmed"("pubmed_id", 12477932),  
+"refseq"("accession", NM_130786), 
+
+"ensembl"(ensembl_id ENSG00000121410)
+"ensembl2ncbi"(ensembl_id ENSG00000121410),  
+"ncbi2ensembl"("ensembl_id", ENSG00000121410),
+"ensembl_prot"(prot_id ENSP00000286479), 
+"ensembl_trans"(trans_id ENST00000543404), 
+
+"ucsc"(ucsc_id, ENST00000596924.1),
+"unigene"("unigene_id", Hs.529161),
+"omim"("omim_id", 138670), 
+
+"uniprot"("uniprot_id", P04217)
+"ec"(蛋白EC编号 2.3.1.5),  
+"pfam"("ipi_id"  "pfam_id" \n IPI00022895 PF13895)
+"prosite"("ipi_id"     "prosite_id" \n IPI00022895    PS50835), 
+
+"go"("go_id"    "evidence" "ontology" \n GO:0002576      TAS       BP), "go_all", 
+"go_bp" ("go_id"    "evidence" \n GO:0002576      TAS), "go_bp_all",
+"go_cc"("go_id"    "evidence" \n GO:0005576      HDA), "go_cc_all",
+"go_mf"("go_id"    "evidence" \n GO:0003674       ND), "go_mf_all",
+"kegg"("path_id" \n 04610),
+
+"map_counts"("map_name" "count" \n SYMBOL2EG  61164), 
+"map_metadata"("map_name" "source_name" "source_url" "source_date"\n ENTREZID 	Entrez Gene  ftp://ftp.ncbi.nlm.nih.gov/gene/DATA 2019-Jul10)         
+"metadata"("name"  "value" \n Db type		OrgDb),
+
+"sqlite_stat1"("tbl"  "idx"  "stat" \n ensembl    Fensembl   29663 2)         
+"sqlite_stat4"("tbl"    "idx"    "neq"    "nlt"    "ndlt"   "sample"),
 
 
 
@@ -2126,7 +2243,17 @@ GO术语是和SWISS-PROT/TrEMBL/InterPro and Ensembl中的蛋白序列无赘余�
 
 
 ========================================
+富集分析用到的统计学
 ----------------------------------------
+1.Proportions Test in R
+https://www.bioinfo-scrounger.com/archives/Proportions-Test-in-R/
+
+我发现数据集A在TGF-Beta通路中有5个基因发生突变，数据集B则有1个基因发生突变；我想知道这两个数据集（以某个指标区分开的）在TGF-Beta通路的基因突变比例是否有显著的统计学意义
+
+主要参考：
+http://www.sthda.com/english/wiki/comparing-proportions-in-r
+
+
 
 ========================================
 ----------------------------------------

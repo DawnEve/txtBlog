@@ -1,9 +1,10 @@
-单基因遗传病的生信分析流程：SNP、Indel等(NGS_exon WES)
-
+1.单基因遗传病的生信分析流程：SNP、Indel等(NGS_exon WES)
 WES数据一般用于SNP和Indel分析，不能用于CNA和SA的分析。
-
 参考: 
 https://mp.weixin.qq.com/s/gyIiOvod05N5fU7GXdQHnw
+
+
+2. ATAC 分析 
 
 
 
@@ -1754,8 +1755,9 @@ chr1,1719406,1719406,G,A,"exonic","CDK11A",.,"nonsynonymous SNV","CDK11A:NM_0013
 
 
 ========================================
-|-- gatk4的 gvcf 的使用 //todo
+|-- gatk4的 gvcf 的使用：GWAS全基因组关联分析流程（BWA+samtools+gatk+Plink+Admixture+Tassel）
 ----------------------------------------
+推荐: 包含多样本整合 https://www.jianshu.com/p/23058873b814
 
 不同场景略有不同。
 
@@ -1763,8 +1765,394 @@ chr1,1719406,1719406,G,A,"exonic","CDK11A",.,"nonsynonymous SNV","CDK11A:NM_0013
 	把 vcf 文件转换为 maf 格式
 家系外显子分析
 	筛选父母有而子女没有的突变。
+#
 
 
+
+
+0. 准备 
+下载 fa和gtf文件。备用。
+安装 samtools，gatk4，
+
+## 构建索引
+samtools  faidx base/example.fasta  # 该命令会在example.fasta所在目录下创建一个example.fai索引文件
+gatk CreateSequenceDictionary -R example.fasta -O example.dict # 创建gatk索引 生产dict文件
+
+
+
+
+1. 比对 
+
+## 构建索引
+bwa index -a bwtsw example.fasta 
+#构建索引 -a is算法 （BWT构造算法：bwtsw、is或rb2）
+# Warning: `-a bwtsw' does not work for short genomes, while `-a is' and `-a div' do not work not for long genomes.
+# human genome 很长，应该用 -a bwtsw
+
+
+## 进行比对
+bwa mem -t 6 -R '@RG\tID:foo\tPL:Illumina\tSM:example' 
+example.fasta example_1.fq.gz example_2.fq.gz > example.sam
+# 进行对比 mem算法 -t 运行的核数目
+# -R添加头部 
+	# ID：这是Read Group的分组ID，一般设置为测序的lane ID（不同lane之间的测序过程认为是独立的），下机数据中我们都能看到这个信息的，一般都是包含在fastq的文件名中；
+	# 
+	# PL：指的是所用的测序平台，这个信息不要随便写，在GATK中，PL只允许被设置为：ILLUMINA，SLX，SOLEXA，SOLID，454，LS454，COMPLETE，PACBIO，IONTORRENT，CAPILLARY，HELICOS或UNKNOWN这几个信息。如果不知道，那么必须设置为UNKNOWN。
+	# 
+	# SM：样本ID。
+	# 
+	# LB：测序文库的名字，如果上面的lane ID足够用于区分的话，也可以不用设置LB；
+
+## 注意： 用GATK检测变异 其中ID,PL和SM信息是必须的。
+
+
+
+二、samtools格式转换
+
+## 转bam
+samtools view -bS example.sam -o example.bam 
+# -b 输出bam格式文件 -S 输入sam格式文件
+
+## 质控
+samtools view -h -b -q30 example.bam > example.q30.bam
+# -q 比对的最低质量值 -h 输出的文件包含头部信息 -b 输出bam格式文件 
+
+## 接着只使用 q30 reads.
+
+
+
+
+三、gatk变异检测
+
+1.排序
+gatk SortSam -I example.q30.bam \
+	-O example.q30.sort.bam \
+	-R base/example.fasta 
+	-SO coordinate --CREATE_INDEX true
+# -I 输入文件 -O 输出文件 -R参考基因组 --CREATE_INDEX 是否建立索引 
+# 将sam文件中同一染色体对应的条目按照坐标顺序从小到大进行排序
+
+
+2.标记重复序列
+gatk  MarkDuplicates -I example.q30.sort.bam \
+	-O example.q30.sort.markdup.bam \
+	-M example.q30.sort.markdup_metrics.txt
+# -I 输入排序后的文件 -O 输出文件 -M 输出重复矩阵 
+
+
+samtools index example.q30.sort.markdup.bam  ## 为gatk建立索引，非常重要。
+
+
+3.检测变异
+
+## 逐个获得 gvcf文件
+gatk HaplotypeCaller --emit-ref-confidence GVCF 
+	-R base/example.fasta \
+	-I example.q30.sort.markdup.bam \
+	-L chrX \
+	-O chrX.g.vcf.gz
+# HaplotypeCaller同时检测snp和indel -R 参考基因组 -I 输入文件 -L 仅检测该染色体的变异（分染色体检测变异，加快速度）-O 输出文件 
+#
+# --emit-ref-confidence,-ERC <ReferenceConfidenceMode> //todo ?? 
+#	  Mode for emitting reference confidence scores (For Mutect2, this is a BETA feature)
+#	  Default value: NONE. Possible values: {NONE, BP_RESOLUTION, GVCF}
+
+
+## 合并文件(g.vcf)
+gatk CombineGVCFs -R base/example.fasta \
+	--variant example1.g.vcf.gz \
+	--variant example2.g.vcf.gz \
+	-O con.vcf.gz
+# -R 参考基因组 --variant 输入变异文件 可以输入多个文件 -O 输出文件
+
+
+## 检测变异
+gatk GenotypeGVCFs -R ref.fa -V test.g.vcf -O test.vcf
+# Perform joint genotyping on a single-sample GVCF from HaplotypeCaller or a multi-sample GVCF from CombineGVCFs or  GenomicsDBImport 
+# Version:4.1.9.0  
+# --variant,-V <String>         A VCF file containing variants  Required.
+
+
+4.提取SNP变异
+gatk SelectVariants -R base/example.fasta \
+	-V test.vcf -O test.snp.vcf \
+	--select-type-to-include SNP
+# -R 参考基因组 -O 输出vcf文件 -V 输入vcf文件 --select-type-to-include 选取提取的变异类型(#SNP,MNP,INDEL,SYMBOLIC,MIXED)
+
+## 同理：提取 INDEL 变异
+gatk SelectVariants -R base/example.fasta \
+	-V test.vcf -O test.indel.vcf \
+	--select-type-to-include INDEL
+#
+
+
+
+
+5.对SNP进行过滤
+
+gatk VariantFiltration -O chr5.Filt.vcf -V chr5.vcf 
+	--cluster-window-size 10 \
+	--filter-expression "MQ0 >= 4 && ((MQ0 / (1.0 * DP)) > 0.1)" --filter-name "HARD_TO_VALIDATE" \
+	--filter-expression "DP < 5 " --filter-name "LowCoverage" \
+	--filter-expression "QUAL < 30.0 " --filter-name "VeryLowQual" \
+	--filter-expression "QUAL > 30.0 && QUAL < 50.0 " --filter-name LowQual" \
+	--filter-expression "QD < 1.5 " --filter-name "LowQD" 
+# -O 输出文件 -V输入变异文件 
+# --cluster-window-size 以10个碱基为一个窗口
+# --filter-expression 过滤条件; 
+# --filter-name 被过滤掉的SNP不会删除，而是给一个标签，例如 "LowCoverage" 。这里可以将过滤条件合并，仅给出一个标签。
+
+# 这里通过设定相应的参数值进行了硬过滤，实际应用时还要根据数据类型及自己的需求设定相应的参数。
+
+
+
+6.合并文件(vcf)
+# 可以按照染色体分开，并行运行，加快速度。到最后再合并。
+
+# 删除掉被过滤的SNP
+grep -v "LowCoverage" Filt.vcf > Filt1.vcf
+# -v显示不包含匹配文本的所有行 "LowCoverage"上一步给出的标签
+
+# 合并成一个文件
+gatk MergeVcfs -I chr1.Filt.vcf -I chr2.Filt.vcf -I chr3.Filt.vcf  -O Filt.vcf
+# -I 输入文件 可以多次指定 -O 输出文件
+
+
+# 至此为止就得到了整个群体的VCF变异文件，后续都是基于此文件来进行相应的分析。
+
+
+
+
+
+
+
+四、Plink格式转换及主成分分析
+$ plink --version
+PLINK v1.90b6.21 64-bit (19 Oct 2020)
+
+
+# 1.VCF格式转换为 ped/map格式
+vcftools --vcf snp.vcf --plink --out snp
+## vcftools --gzvcf out2.vcf.gz --plink --out snp #生成3个文件，自动添加后缀 .ped, .map, .log;
+
+# 2.ped/map格式转换为bed/bim/fam格式
+plink --file snp --make-bed --out snp_test
+
+# 3.主成分分析
+plink  --threads 8 --bfile snp_test --pca 10 --out pca
+# --threads 线程数 --bfile 输入.bed文件 --pca 主成分的成分数 --out输出的文件名
+
+屏幕输出
+...
+Note: No phenotypes present.
+Excluding 3402 variants on non-autosomes from relationship matrix calc.
+Relationship matrix calculation complete.
+Warning: calculating 7 PCs, since there are only 7 samples.
+--pca: Results saved to pca.eigenval and pca.eigenvec .
+
+$ cat pca.eigenval 
+0.63699
+0.55491
+0.541334
+0.511698
+0.498848
+0.452904
+-0.354982
+
+$ cat pca.eigenvec 
+c12_ROW03 c12_ROW03 -0.186622 -0.0195107 -0.111878 -0.0646772 -0.686427 -0.577263 -0.379049
+c12_ROW10 c12_ROW10 0.268247 -0.190893 -0.501091 0.660166 0.231316 -0.0827067 -0.379928
+c14_ROW06 c14_ROW06 0.166619 -0.424089 -0.250373 -0.70356 0.277246 0.0187263 -0.396846
+c14_ROW36 c14_ROW36 -0.170673 -0.0136689 -0.11386 0.0437088 -0.437396 0.809657 -0.330076
+c15_ROW25 c15_ROW25 -0.480131 0.668602 -0.186411 -0.0988655 0.386696 -0.0467249 -0.355253
+c16_ROW36 c16_ROW36 0.67534 0.415014 0.443848 -0.034986 -0.0512558 0.017639 -0.412936
+c19_ROW06 c19_ROW06 -0.386931 -0.404815 0.654973 0.228238 0.234456 -0.0392221 -0.385771
+
+
+
+
+
+
+
+
+五、Admixture 群体结构
+1.群体结构分析
+$ for K in 2 3 4 5 6 7 8 9 10; \
+do 
+	admixture --cv hapmap3.bed $K | tee log${K}.out; 
+done
+#2 3 4 5 6 7 8 9 10分成的群体结构数 hapmap3.bed 输入文件
+
+## for K in 2 3 4 5 6 7 8 9 10; do  admixture --cv snp_test.bed $K | tee log${K}.out; done
+
+
+屏幕输出
+Summary: 
+Converged in 4 iterations (1.255 sec)
+Loglikelihood: -38306.665489
+Fst divergences between estimated populations: 
+        Pop0    Pop1    Pop2    Pop3    Pop4    Pop5    Pop6    Pop7    Pop8
+Pop0
+Pop1    0.424
+Pop2    0.361   0.432
+Pop3    0.422   0.476   0.449
+Pop4    0.320   0.457   0.364   0.397
+Pop5    0.486   0.442   0.447   0.524   0.497
+Pop6    0.447   0.514   0.455   0.445   0.418   0.480
+Pop7    0.411   0.459   0.387   0.417   0.373   0.518   0.460
+Pop8    0.427   0.448   0.437   0.448   0.419   0.466   0.378   0.406
+Pop9    0.404   0.435   0.389   0.370   0.422   0.486   0.441   0.415   0.426
+CV error (K=10): 0.05160
+Writing output files.
+
+
+# 注意:
+# 如果你的数据格式是plink的bed文件, 比如a.bed, 那么你应该包含a.bim, a.fam
+# 如果你的数据格式是plink的ped文件, 比如b.ped, 那么你应该包括b.map
+# K值根据实际情况进行设置，通过比较得到最佳K值。
+
+
+grep -h CV log*.out
+# 查看最佳K值 输出最佳K值文件：hapmap3.3.Q （我的是 snp_test.7.Q）
+# 可以看出, K=7时, CV error最小
+
+# CV error (K=2): 0.96695
+# CV error (K=3): 0.57379
+# CV error (K=4): 0.45799
+# CV error (K=5): 0.25490
+# CV error (K=6): 0.11147
+# CV error (K=7): 0.05211
+# CV error (K=8): 0.05602
+# CV error (K=9): 0.05905
+# CV error (K=10): 0.05160
+
+
+
+
+2.R语言作图
+
+$ vim draw.R
+K=7
+tbl=read.table( paste0( "snp_test.", K, ".Q") );
+pdf('result010.pdf', width=5, height=3)
+barplot(t(as.matrix(tbl)), col=rainbow(K), xlab="Individual", ylab="Ancestry", border=NA)
+# xx.K.Q文件为群体结构的结果，作为协变量进行关联分析
+dev.off()
+
+$ Rscript draw.R 
+
+
+
+
+
+
+
+
+
+六、Tassel 关联分析
+Tassel的管道命令不允许有回车符号，使用以下命令时需要将#注释及换行删除。
+
+1.VCF格式转换为 hmp格式
+
+run_pipeline.pl -SortGenotypeFilePlugin -inputFile example.vcf -outputFile example -fileType VCF
+#给vcf文件排序，排成tassel认可的序列
+#-inputFile 输入的文件名 -outputFile 输出的文件名 -fileType 输出的文件格式
+
+run_pipeline.pl -fork1 -vcf example.vcf  -export example -exportType Hapmap -runfork1
+#vcf文件转换为hapmap格式
+#-vcf 输出的文件 -export 输出的文件 -exportType 输出的文件格式
+
+
+
+2.亲缘关系
+
+run_pipeline.pl -importGuess genotype.hmp.txt #打开数据文件
+-KinshipPlugin -method Centered_IBS -endPlugin #计算亲缘关系
+-export genotype_kinship.txt  #输出文件名
+-exportType SqrMatrix #输出格式
+
+
+3.关联分析
+
+混合线性模型
+run_pipeline.pl -fork1 -h genotype.hmp.txt -filterAlign -filterAlignMinCount 150 -filterAlignMinFreq 0.05 -filterAlignMaxFreq 1 
+#-h读取hapmap格式的基因型数据 -filterAlign 打开过滤选项 
+#-filterAlignMinCount -filterAlignMinFreq -filterAlignMaxFreq 过滤的条件 需要按照实际情况进行修改
+
+-fork2 -r traits.txt 
+#-r 读取表型数据
+
+-fork3 -q population_structure.txt -excludeLastTrait 
+#-q 读取群体结构数据 -excludeLastTrait 去掉最后一个群体结构 （当分成的群体结构＞2时）
+
+-fork4 -k kinship.txt 
+#读取亲缘关系数据
+-combine5 -input1 -input2 -input3 -intersect -combine6 -input5 -input4 -mlm -export example
+#-combine合并数据 -mlm混合线性模型 -export输出文件名
+
+
+一般线性模型
+
+run_pipeline.pl 
+-fork1 -h genotype.hmp.txt -filterAlign
+-filterAlignMinCount 150 -filterAlignMinFreq 0.05 -filterAlignMaxFreq 1 
+-fork2 -r traits.txt 
+-fork3 -q population_structure.txt -excludeLastTrait
+-combine4 -input1 -input2 -input3 -intersect -glm -export example
+#-glm 一般线性模型
+
+
+
+
+
+
+4.R语言作图
+Library(qqman)
+#加载qqman包
+
+曼哈顿图
+
+manhattan(example,ylim=c(0,10),col = color_set,annotatePval = 0.01)
+# ylim Y轴范围 col 颜色 annotatePval 标记最高位点 CHR==1 绘制每个染色体的曼哈顿图
+
+
+Q-Q plot
+qq(example$P)
+
+
+
+
+
+
+
+
+
+
+
+
+七、其他
+1.基因组统计工具
+# 可以统计fasta和fastq中的信息。
+seqkit fx2tab example.fasta -l -n
+# -l 统计序列长度 -n 统计染色体
+
+
+2.提取文本文档中某列
+# 用于Tassel关联分析后的结果文件，提取相应的列进行R语言绘图。
+cat MLM.txt | awk '{print $1" "$3" "$4" "$7}' > manhattan.txt
+# $提取的列数
+
+
+3.删除文本文档中不包含匹配文本的行
+grep -v "LowCoverage" Filt.vcf > Filt1.vcf
+
+
+
+
+
+
+ref:
+https://www.jianshu.com/p/23058873b814
 
 
 
@@ -1828,7 +2216,98 @@ ftp://ftp.ncbi.nlm.nih.gov/pub/clinvar/vcf_GRCh38/
 
 
 ========================================
+**** ATAC-seq **** //todo
 ----------------------------------------
+ref:
+https://www.bilibili.com/video/BV16s411T7Fh
+第五章 ATAC-seq数据分析 Chapter 5: ATAC-seq data analysis http://qiubio.com/new/book/chapter-06/
+
+
+
+
+
+参考教程:
+ATAC-seq 分析流程入门 https://www.jianshu.com/p/09d3a0c7fb20
+ATAC-Seq 数据分析一文就够(上） http://www.360doc.com/content/17/1218/22/19913717_714335567.shtml
+ATAC-seq 分析（上）  https://www.jianshu.com/p/b7bd87315b6e
+
+
+
+1. 背景知识
+
+ATAC-seq (Assays for Transposase-Accessible Chromatin using sequencing) 是一种较新的全基因组范畴染色质开放区域的一种研究手段。比较之前的研究方法，ATAC-seq具有容易操作，不需要交连，有高信噪比，以及对样品总量要求低等优点。很多实验室纷纷使用ATAC-seq 与 RNA-seq, 及epi-genomics的数据结合在一起分析，以达到更加准确地分析基因差异表达与调控关系的目的。
+
+
+(1). ATAC-seq具有以下显著优势
+ - 操作简单省时，建库步骤简化，因此提高了可重复性并降低错误率；
+ - 不依赖抗体，可实现对无ChIP级别抗体转录因子的结合位点分析；
+ - 样本起始量大大降低，只需要10^5左右的细胞即可完成一次实验。
+#
+
+实验步骤
+https://www.abcam.com/epigenetics/epigenetics-application-spotlight-atac-seq
+
+
+
+
+(2). ATAC-seq数据质量评估注意
+
+ENCODE的ATAC-seq数据标准，来源：https://www.encodeproject.org/atac-seq
+ATAC-seq Data Standards and Processing Pipeline
+
+
+质量标准
+    1. 必须有2次或更多次生物学重复。十分珍贵或者稀有样本 除外，但必须做至少2次技术重复。
+    2. 每次重复要有25 million非冗余、非线粒体、能够回帖的fragment（单端25 million reads，双端50 million reads = 25 milliion fragment）。
+    3. 回帖率>95%，>80%可以接受。
+    3. 用IDR计算重复的一致性，rescue和self consistency ratios都>2。
+    4. 用以下指标控制PCR扩增对文库复杂性的影响：NRF>0.9, PBC1>0.9, and PBC2>3
+    5. 各种peak文件必须满足如下要求：
+        - 每个重复的peak数>150000，>100000可以接受（看到这里，理解了为啥ENCODE的ATAC-seq的peak file没法用了，原来是在追求peak数啊！还得自己重跑）
+        - IDR peak>70000，>50000可以接受
+        - 要存在无核小体区NFR
+        - 要存在单核小体峰，好的ATAC-seq数据应该包含核小体，这样既能看开放染色质，又能看核小体。
+    7. The fraction of reads in called peak regions (FRiP score)  >0.3，>0.2可以接受。对珍贵 tissues，不要求FRiP，但TSS富集还是要作为关键的衡量信噪比的指标。
+    8. TSS富集分数阈值与参考基因组相关。
+#
+
+
+
+(3). ATAC-seq研究应用方向
+    1 染色体开放性图谱绘制
+    2 表观修饰差异研究
+        2017年，Debattama R. Sen等在Nature上发表T细胞耗竭的研究文章，发现在耗竭T细胞和效应T细胞之间，基因转录表达谱差异仅有9.75%，但ATAC-seq展示的染色质开放性差异高达44.48%，说明ATAC-seq的检测可以获得转录调控方面的重要信息，并且极为灵敏。
+    3 胚胎发育表观遗传修饰
+    4 肿瘤发生表观机制研究
+    5 疾病潜在标志物的预测
+    6 肿瘤异质性或分型研究
+        2016年Snyder等发表在Cell上的文章证实，不同种类肿瘤的核小体定位存在显著差异，可以借此进行肿瘤分型研究。
+        Cell-free DNA Comprises an In Vivo Nucleosome Footprint that Informs Its Tissues-Of-Origin[J]. Cell, 2016 
+        https://www.ncbi.nlm.nih.gov/pubmed/26771485
+    7 全基因组范围的转录因子（TFs）结合位点分析
+        确定转录因子结合位点（TFBS）是理解转录调控机制，建立转录调控网络的关键，可以提供基因表达机制层面的重要信息。
+        转录因子结合位点预测是ATAC-seq的“拿手好戏”，可以在一次实验中获得全基因组范围内全部的TFBS，再结合ChIP-seq的验证，可将所有转录因子的“行踪”尽收眼底~
+#
+
+
+
+
+(4) 相关文章
+
+2018-esATAC: an easy-to-use systematic pipeline for ATAC-seq data analysis  很有趣，使用R语言完成全流程  https://academic.oup.com/bioinformatics/article/34/15/2664/4924216 
+
+2016-Cell- https://www.ncbi.nlm.nih.gov/pubmed/27374332，研究肿瘤转移和chromatin accessibility, 思路和fig值得学习
+
+2016- cell- https://www.ncbi.nlm.nih.gov/pubmed/27863249  整合Chromatin accessibility, Hi-C,GWAS,RNA-Seq，ncRNA
+
+2016- Nat Genet https://www.ncbi.nlm.nih.gov/pubmed/27526324 
+
+
+
+
+
+
+
 
 
 

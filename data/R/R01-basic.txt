@@ -1480,16 +1480,16 @@ https://bbs.pinggu.org/thread-4961503-1-1.html
 ----------------------------------------
 在R语言中采用函数式编程。需要对R的函数进行深入的学习。
 
-
-函数=函数名+参数
+1. 函数=函数名+参数
 exp(1)
+
 参数还可以接收向量：
 exp( c(1,2,3,4) )
 
 
 自定义函数
-fn=function(){
-	return(xx);
+fn=function(xx){
+	return(xx+10);
 }
 
 
@@ -1506,11 +1506,28 @@ fn=function(){
 
 
 
+3. 获取函数的源代码
+
+- 直接在R console中敲函数 的名字，有些函数是可以直接显示所有代码，但是有些却不能。
+- 对于那些不能的，使用函数 getAnywhere(函数名）可以返回这个函数的代码。
+	对于同名函数，还需要使用[n]指定顺序编号，才能正确返回函数源代码:
+
+> getAnywhere(add)[1]
+function (x) 
+{
+    return(x + 7)
+}
+<bytecode: 0x8f948c0>
+<environment: namespace:wjl007>
+
+
+
+
 
 
 refer:
 https://www.douban.com/note/279077707/
-
+https://www.cnblogs.com/foreverycc/archive/2013/04/18/3028422.html
 
 
 
@@ -2136,6 +2153,9 @@ https://bbs.pinggu.org/thread-3802000-1-1.html
 
 
 
+
+
+
 ========================================
 文件I/O
 ----------------------------------------
@@ -2404,13 +2424,73 @@ https://www.r-bloggers.com/read-excel-files-from-r/
 
 
 ========================================
-时间 Time
+|-- R的list数据传给python：使用json中间文件
+----------------------------------------
+R包jsonlite 
+
+colorSets=list(
+  "group1"=c('red','blue','#FF9600'),
+  "group2"=c('brwon', 'green', '#F000F0'),
+  "group3"=c("purple")
+)
+
+> colorSets
+$group1
+[1] "red"     "blue"    "#FF9600"
+
+$group2
+[1] "brwon"   "green"   "#F000F0"
+
+$group3
+[1] "purple"
+
+
+
+1. 假设有一个R的list数据，R之间如何保存和读取？
+(1) R list to json file
+
+library("jsonlite")
+jsonlite::toJSON(colorSets)
+
+setwd("~/data/r-pkg/wjl009/")
+writeLines(jsonlite::toJSON(colorSets), "data/colors.json")
+
+查看文件内容：
+{"group1":["red","blue","#FF9600"],"group2":["brwon","green","#F000F0"],"group3":["purple"]}
+
+
+
+
+(2) json file to R list
+## json file to R list
+colorsSet2=jsonlite::fromJSON("data/colors.json")
+str(colorsSet2) ## List of 3
+
+
+
+
+(3) json file to python dict
+>>> import json
+>>> fr=open("/home/wangjl/data/r-pkg/wjl009/data/colors.json",'r')
+>>> load_jn = json.load(fr)
+>>> print(type(load_jn), load_jn)
+## <class 'dict'> {'group1': ['red', 'blue', '#FF9600'], 'group2': ['brwon', 'green', '#F000F0'], 'group3': ['purple']}
+>>> load_jn['group2']
+['brwon', 'green', '#F000F0']
+
+
+
+
+========================================
+日志: 时间 Time、sink()函数
 ----------------------------------------
 1. 获取时间
 > now=Sys.time();now
 [1] "2020-04-17 10:52:38 CST"
+
 > as.numeric(now)
 [1] 1587091959
+
 > str(now)
  POSIXct[1:1], format: "2020-04-17 10:52:38"
 #
@@ -2425,7 +2505,7 @@ for(i in 1:100){
   }
   
   # time consuming task
-  Sys.sleep(0.05)
+  Sys.sleep(0.05) #休眠0.05s
 }
 
 
@@ -2443,6 +2523,9 @@ timeString2stamp('04-13 23') #[1] 1586790000
 
 
 
+
+
+
 3. 时间戳变日期格式
 > as.Date(as.POSIXct(1587322649, origin="1970-01-01"))
 [1] "2020-04-19"
@@ -2450,6 +2533,70 @@ timeString2stamp('04-13 23') #[1] 1586790000
 完整形式: //为什么日期不一样，上面是19日，下面是20日？
 as.POSIXct(1587322649, origin="1970-01-01")
 [1] "2020-04-20 02:57:29 CST"
+
+
+
+
+
+4. 用时间戳新建目录、sink记录参数
+每次使用函数所用的参数都不同，因此需要一些方法能够将每次这些不同的结果以及参数存储起来。
+
+(1). 首先使用一个R内置的时间函数Sys.time()：
+> Sys.time()
+[1] "2021-01-02 10:27:37 CST"
+
+#这里更改设置，输出成自己喜欢的格式：
+> format(Sys.time(), '_%Y_%b_%dth_%H_%M')
+[1] "_2021_Jan_02th_10_28"
+
+
+#因此，可以每次程序都能够新建一个以时间为名称的文件夹（避免重复问题） 
+dir = '/media/Research/RData/Gene_Data_Mining/' 
+Gene_DIR = paste(dir, GeneName, format(Sys.time(), '_%Y_%b_%dth_%H_%M'),'/', sep = '') 
+dir.create(Gene_DIR) 
+setwd(Gene_DIR)
+
+
+
+
+2. 接下来，使用一个sink函数，能够将该函数的参数记录下来：
+
+Gene_Integrate_Analysis = function(GeneName, NSF_Cut = 0.3, 
+                                   Standardize = c('mean','none', 'median'),
+                                   GO_hgCutoff = 0.001,KEGG_hgCutoff = 0.01, PFAM_hgCutoff = 0.01, 
+                                   QQ_Pos_Cut = 3.29, QQ_Neg_Cut = -3.29,
+                                   Perm_Num = 10000, Perm_Pval_Cut = 0.001){
+
+   #......   
+   setwd(Gene_DIR)
+  
+  #write the log file
+  sink('log.txt') ## 屏幕输出也会同步记录到文件中
+  
+  print(paste('Gene Name:', GeneName))
+  print(paste('Non-specific filtering cutoff:', NSF_Cut))
+  print(paste('Standardize method:', Standardize))
+  print(paste('GO Hypergeometric Test cutoff:', GO_hgCutoff ))
+  print(paste('KEGG Hypergeometric Test cutoff:', KEGG_hgCutoff ))
+  print(paste('PFAM Hypergeometric Test cutoff:', PFAM_hgCutoff ))
+  print(paste('GSEA analysis QQ plot Positive Cutoff: ', QQ_Pos_Cut)) 
+  print(paste('GSEA analysis QQ plot Negative Cutoff: ', QQ_Neg_Cut))
+  print(paste('GSEA analysis Permutation Number:', Perm_Num))
+  print(paste('GSEA analysis Permutation Pvalue Cut:',Perm_Pval_Cut))
+  
+  sink()
+}
+
+这样我们就能够把每一次运用函数的参数及其相应结果都保存下来！
+
+
+
+
+
+ref:
+https://www.cnblogs.com/foreverycc/archive/2013/04/27/3046188.html
+
+
 
 
 
