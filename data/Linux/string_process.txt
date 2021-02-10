@@ -2378,7 +2378,7 @@ Ubuntu is a release of linux.
 ------------
 
 2)我们可以运用匹配来添加文本：
-注意其中的/is/a，这意思是匹配到/fish/后就追加一行
+注意其中的/is/a，这意思是匹配到/is/后就追加一行
 $ sed '/is/a ---' out.txt
 this is a linux system.
 ---
@@ -2595,30 +2595,140 @@ Ubuntu are a release of linux.
 
 
 ========================================
-命令split: 将一个文件分割成数个
+分割文件命令: split及其与解压命令的组合
 ----------------------------------------
-1. 该指令将大文件分割成较小的文件，在默认情况下将按照每1000行切割成一个小文件。
+1. 语法
+(1) split 指令将大文件分割成较小的文件，在默认情况下将按照每1000行切割成一个小文件。
+只能输入文本文件，不能gz压缩。如果是gz压缩过的，建议配合gunzip -c同时使用 
+$ gunzip -c xx.gz | split -l 800 -d prefix_
 
-
-2. 语法
-split [--help][--version][-<行数>][-b <字节>][-C <字节>][-l <行数>][要切割的文件][输出文件名]
-
+(2) split [--help][--version][-<行数>][-b <字节>][-C <字节>][-l <行数>][要切割的文件][输出文件名]
 参数说明：
+	-l, --lines=NUMBER     指定每份行数 put NUMBER lines per output file
+	-d, --numeric-suffixes[=FROM]  子文件用数字当后缀 use numeric suffixes instead of alphabetic;                          
+									FROM changes the start value (default 0)
+		## 不加-d，则默认子文件用字母组合做后缀: xaa, xab, xac etc...
+
 	-<行数> : 指定每多少行切成一个小文件
 	-b<字节> : 指定每多少字节切成一个小文件
+
 	--help : 在线帮助
 	--version : 显示版本信息
 	-C<字节> : 与参数"-b"相似，但是在切 割时将尽量维持每行的完整性
-	[输出文件名] : 设置切割后文件的前置文件名， split会自动在前置文件名后再加上编号
-#
+	[输出文件名] : 设置切割后文件的前置文件名(prefix前缀)， split会自动在前置文件名后再加上编号
+
+# 如果是测序文件.fq，则需要保持每4行的完整性，所以-b和-C参数都不建议使用。
 
 
-3. 实例
-使用指令"split"将文件"README"每6行切割成一个文件，输入如下命令：
+(3) split提供两种方式对文件进行切割：
+	根据行数切割，通过-l参数指定需要切割的行数
+	根据大小切割，通过-b参数指定需要切割的大小
+		$ split -b 500M -d --verbose 2020011702-www.happylauliu.cn.gz split-size
+
+
+
+2. 示例
+
+(1) 按行分割
 $ split -6 README       #将README文件每六行分割成一个文件 
+$ split -l 4000000 myFastq.fq 
+
+
+(2) 按文件大小分割
+$ split -b 8G large.tgz large.tgz.part-  #分成8G大小的文件
+
+
+(3) 分割gz压缩文件
+zless超级慢，建议用gunzip -c 代替。
+$ zless recal.fastq.gz | split -l 4000000 - prefix
+
+推荐 
+$ gunzip -c xx.fastq.gz | split -l 100000000 -d - FqChunk_
+
+(4) 如果想分割后再压缩呢？使用filter参数: split --bytes=1024M --filter='gzip > $FILE.gz' /path/to/input /path/to/output
+$ split -l 100 -d --filter='gzip > $FILE.gz' ../ncbi_error_report.txt small_ #博主测试通过
+
+## ref https://serverfault.com/questions/598647/how-to-split-a-file-and-compress-directly
+$ zcat ERR3152365.fastq.gz | split -a 3 -d -l 1200000 --numeric-suffixes --filter='pigz -p 8 > $FILE.fq.gz' - splitout/part_'
 
 
 
+
+
+
+
+3. 分割gz压缩文件的性能测试
+有一个115G的gz文本文件，每1e8行分割到一个文件，需要大概50多个子文件。
+-rw-r--r--. 1 wangjl user 115G Dec 29 21:41 /data4/public_data/10x_colon_RNA/CRCSZ04_mergeAllData/mergedRawData2/CRCSZ05N_S1_L001_R1_001.fastq.gz
+
+(1) 手动版 耗时 几个小时
+$ zcat /data4/public_data/10x_colon_RNA/CRCSZ04_mergeAllData/mergedRawData2/CRCSZ05N_S1_L001_R1_001.fastq.gz | head -n 100000000 | tail -n 100000000 >temp2/origin/chunk_1.fq &
+$ zcat /data4/public_data/10x_colon_RNA/CRCSZ04_mergeAllData/mergedRawData2/CRCSZ05N_S1_L001_R1_001.fastq.gz | head -n 200000000 | tail -n 100000000 >temp2/origin/chunk_1.fq &
+...
+$ ls -lth 
+-rw-r--r--. 1 wangjl user 8.4G Jan 18 21:56 chunk_3.fq       
+-rw-r--r--. 1 wangjl user 8.4G Jan 18 21:54 chunk_2.fq       
+-rw-r--r--. 1 wangjl user 8.4G Jan 18 21:53 chunk_1.fq
+## 缺点：手动执行，一次几条，全部执行250G的内存都扛不住。
+## 越往后越慢，貌似head 是全部读进内存，然后再取出来的，越往后无用功越多。
+
+
+(2) 特慢 耗时一晚上没完成
+$ zless /data4/public_data/10x_colon_RNA/CRCSZ04_mergeAllData/mergedRawData2/CRCSZ05N_S1_L001_R1_001.fastq.gz | split -l 100000000 -d - FqChunk_
+$ ls -lth
+-rw-r--r--. 1 wangjl user 8.4G Jan 19 01:40 FqChunk_02
+-rw-r--r--. 1 wangjl user 8.4G Jan 18 23:55 FqChunk_01
+-rw-r--r--. 1 wangjl user 8.4G Jan 18 22:50 FqChunk_00
+## zless 很慢，差不多60分钟产出一个文件。
+
+(3) 最优解 耗时1个小时多
+$ gunzip -c /data4/public_data/10x_colon_RNA/CRCSZ04_mergeAllData/mergedRawData2/CRCSZ05N_S1_L001_R1_001.fastq.gz | split -l 100000000 -d - FqChunk_
+$ ls -lth
+-rw-r--r--. 1 wangjl user 8.4G Jan 19 09:47 FqChunk_02
+-rw-r--r--. 1 wangjl user 8.4G Jan 19 09:46 FqChunk_01
+-rw-r--r--. 1 wangjl user 8.4G Jan 19 09:44 FqChunk_00
+## 【极力推荐】 gunzip -c 差不多 1.5min产出一个文件。
+
+测试: gunzip -c 和 zcat是不是一样呢？
+$ zcat /data4/public_data/10x_colon_RNA/CRCSZ04_mergeAllData/mergedRawData2/CRCSZ05N_S1_L001_R1_001.fastq.gz | split -l 100000000 -d - FqChunkTest_
+
+-rw-r--r--. 1 wangjl user 8.4G Jan 19 14:21 FqChunkTest_02
+-rw-r--r--. 1 wangjl user 8.4G Jan 19 14:20 FqChunkTest_01
+-rw-r--r--. 1 wangjl user 8.4G Jan 19 14:19 FqChunkTest_00
+## 差不多也是1.5min一个。更简练。
+
+
+(4) 再压缩小文件。需要20小时。
+$ zcat /data4/public_data/10x_colon_RNA/CRCSZ04_mergeAllData/mergedRawData2/CRCSZ05N_S1_L001_R1_001.fastq.gz | split -l 100000000 -d --filter='gzip > $FILE.gz' - FqChunkTest2_
+
+-rw-r--r--. 1 wangjl user 2.1G Jan 19 15:32 FqChunkTest2_02.gz
+-rw-r--r--. 1 wangjl user 2.0G Jan 19 15:10 FqChunkTest2_01.gz
+-rw-r--r--. 1 wangjl user 2.0G Jan 19 14:48 FqChunkTest2_00.gz
+## 压缩率4倍。但是慢了20倍，大概23min一个。
+
+
+
+
+
+4. 合并文件 
+$ cat split-size01 split-size02 >two-file-merge
+
+https://www.shayanderson.com/linux/split-tar-and-gzip-file-into-smaller-multiple-files.htm
+(1) TAR and GZIP the large file:
+$ tar -czvf newlarge.tgz largefile.dat
+
+(2)use the split command to split the files into multiple smaller files:
+$ split -b 300m "newlarge.tgz" "newlarge.tgz.part-"
+
+newlarge.tgz.part-aa
+newlarge.tgz.part-ab
+newlarge.tgz.part-ac
+
+(3) join the split files and extract the TAR and GZIP large file
+$ cat newlarge* > newlarge.tgz
+
+(4) 解压缩
+$ tar -xvf newlarge.tgz
 
 
 

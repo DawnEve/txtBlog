@@ -128,6 +128,8 @@ to表示:朝着,向着,对着;for表示:为(某人),替(某人)。
 
 
 ## 5.Subject(主语)＋Verb (动词)＋Object (宾语)＋Complement(补语)
+在这一句型中，宾语是动词不定式的逻辑主语。
+
 If you let me go. I’ll make you king. (名词作宾补)
 Leave the door open. (形容词作宾补)
 We found Li Ming out when we arrived. (副词作宾补)
@@ -135,6 +137,45 @@ Make yourself at home. (介词短语作宾补)
 I saw a stranger enter the building. (不定式作宾补)
 The boss kept them working all day. (现在分词作宾补)
 Yesterday he had his leg broken. (过去分词作宾补)
+
+(1) 在表示感觉的动词后面作宾语补足语，并且不定式都不带to.(被动语态里要带to)
+这一类动词有：see, hear, feel, watch, notice, observe, look at, listen to,等。
+
+I hear them sing yesterday. 昨天我听见他们唱歌了。
+Did you see him go out? 你看见他们出去了吗。
+I felt something crawl up my leg. 我感到有什么东西爬道我腿上了。
+
+(2) 在使役动词后作宾语补足语，不定式不带to
+这一类动词有：make, let, have等。转为被动语态时，其后通常都用带to的不定式（have没有被动语态）
+
+What would you have me do? 你要我做什么？
+She made him give up smoking.她让他戒烟了。
+Let him do whatever he whishes to do.他想干什么就让他干吧。
+
+(3) 在表示心理状态的动词后作宾语补足语。
+这类动词有：consider, think, believe, discover, find, imagine, judge, suppose, prove 等。这类动词后的不定式通常是“to be+形容词或名词” 结构，think，consider， find后的to be常可省略。
+
+We consider him (to be) a good teacher.我们认为他是一个好老师。
+He proved that theory (to be) very important.他证明那个理论是很重要的。
+I thought her (to be) nice and honest the first time I met her.我第一次见到她的时候就认为她人很好，很诚实。
+
+(4) 在表示情感状态的动词后作宾语补足语。
+这类动词有：love, like, prefer, hate, want, wish, except等。
+
+I’d prefer you to leave him alone.我希望你不要打扰他。
+I don’t want there to be any trouble.我不想有任何麻烦。
+
+(5) 动词advise, allow, ask, beg, command, tell, invite, force, oblige, get, help, encourage, persuade, permit, remind, request, order, warn, cause 等后面，多接不定式短语作宾语补足语。
+
+We don’t allow such things to happen again.我们不容许这种事情再发生。
+Most of the parents agree to forbid their children to smoke. 大多数父母都同意禁止自己的孩子抽烟。
+She requested him to go with her. 她邀请他一同去。
+
+(6) 动词不定式也可作一些短语动词的宾语补足语。
+I’m waiting for Jeans to arrive.我正在等詹姆斯的到来。
+He’s arranged for a car to pick them up at the station.他已经安排了一辆汽车去车站接他们。
+The UN has called on both sides to observe the cease fire.联合国号召交战双方遵守停火协定。
+
 
 
 

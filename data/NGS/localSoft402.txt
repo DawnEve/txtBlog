@@ -979,6 +979,42 @@ $ STAR --genomeDir /home/niesy/data/reference/star_hg --runThreadN 10 --readFile
 
 
 
+
+
+## 另一个例子: 双端测序
+a) 用 ensembl的数据吧:
+$ cd /home/wangjl/data/ref/mm10/ensembl/
+$ wget ftp://ftp.ensembl.org/pub/release-102/gtf/mus_musculus/Mus_musculus.GRCm38.102.chr.gtf.gz
+$ wget ftp://ftp.ensembl.org/pub/release-102/fasta/mus_musculus/dna/Mus_musculus.GRCm38.dna.primary_assembly.fa.gz
+
+
+b) 生成索引
+$ STAR --runMode genomeGenerate \
+	--runThreadN 50 \
+	--genomeDir /home/wangjl/data/ref/mm10/ensembl/STAR/  \
+	--genomeFastaFiles /home/wangjl/data/ref/mm10/ensembl/Mus_musculus.GRCm38.dna.primary_assembly.fa \
+	--sjdbGTFfile /home/wangjl/data/ref/mm10/ensembl/Mus_musculus.GRCm38.102.chr.gtf \
+	--sjdbOverhang 100
+# 19:41 - 19:57 = 16min;
+
+
+c) 批量比对，双端。
+$ ls *_1.fastq | tail -n 9 | while read id; do cid=$(basename $id "_1.fastq"); 
+echo $cid; 
+STAR --runThreadN 30  \
+	--outSAMtype BAM SortedByCoordinate  \
+	--genomeDir /home/wangjl/data/ref/mm10/ensembl/STAR/  \
+	--readFilesIn /home/wangjl/data/apa/20200701Fig/zs/smart_seq2/${cid}_1.fastq /home/wangjl/data/apa/20200701Fig/zs/smart_seq2/${cid}_2.fastq \
+	--genomeLoad LoadAndKeep \
+	--limitBAMsortRAM 20000000000 \
+	--outFileNamePrefix  /home/wangjl/data/apa/20200701Fig/zs/smart_seq2/map/${cid}_
+done;
+
+
+
+
+
+
 (4)更多参数
 除了上面常用的一些参数外，STAR的可选参数其实非常多.
 
@@ -1106,7 +1142,7 @@ d:/ STARmanual.pdf
 
 
 ========================================
-|-- Mapping QC: 用RSeQC对比对后的转录组数据进行质控(An RNA-seq Quality Control Package)
+|-- Mapping QC: 用RSeQC对比对后的转录组数据进行质控(An RNA-seq Quality Control Package) 测序覆盖度
 ----------------------------------------
 RSeQC包是一个python软件
 
@@ -1137,13 +1173,41 @@ python <RSeQCpath>/bam_stat.py -i input.bam -r genome.bed -o output.txt
 python <RSeQCpath>/split_bam.py -i input.bam -r rRNAmask.bed -o output.txt
 
 
-(1)geneBody_coverage.py
+(1) 对bam文件排序和索引
+// 排序
+$ ls ../R2bam -S | tail
+ACTTTGTCAATTAGGA-1.bam
+AAAGTCCAGCAGTCTT-1.bam
+...
+
+$ ls ../R2bam -S | head -n 5 | while read id; do 
+cb=$(basename $id ".bam");
+echo $cb;
+samtools sort -@ 5 -o ${cb}.sorted.bam ../R2bam/$id;
+done;
+
+// 索引
+$ ls *bam| while read id; do 
+echo $id;
+samtools index ${id};
+done;
+
+
+
+
+(2)geneBody_coverage.py
 参考基因组bed文件下载 https://www.jianshu.com/p/e0676631bd35
 
 为了保证染色体名字一致(主要是chr1和1的区别)，要下载参考基因组fa来源一致的bed文件。
 一共三家UCSC，NCBI，ensemble。
 比如从UCSC下载hg19的bed文件：
 https://genome.ucsc.edu/cgi-bin/hgTables
+
+
+警告: 
+	- bam必须排序和索引过; 
+	- 提供的bed文件和bam文件的染色体名字风格要一致: 都是chr1或者1。
+#
 
 
 运行：
@@ -1171,13 +1235,29 @@ $ geneBody_coverage.py -r /data/jinwf/wangjl/ref/human/hg19_ucsc_genes-20190509.
 $ cd /home/wangjl/data/c1_2019APA/sc/combine/sc_fq/mapping/bamR2Lh/
 $ geneBody_coverage.py -r /data/jinwf/wangjl/ref/human/hg19_ucsc_genes-20190506.bed  -i c2_ROW01.sorted.bam,c2_ROW02.sorted.bam  -o ../mappingQC_human/c2_ROW0102
 
+
+
+# 如何获取逗号隔开的大量文件名？
+$ ls -m *bam ##不好：逗号和空格隔开的
+AATGCCATCTTCCCAG-1.sorted.bam, ACTTTCAAGCTTAGTC-1.sorted.bam, AGAAGTAAGTGAGCCA-1.sorted.bam
+$ ls -m *bam | xargs echo  | sed 's/ //g' 
+AATGCCATCTTCCCAG-1.sorted.bam,ACTTTCAAGCTTAGTC-1.sorted.bam,AGAAGTAAGTGAGCCA-1.sorted.bam,ATCCTATCAGAGCCCT-1.sorted.bam,ATGCATGGTGAAGCTG-1.sorted.bam,GGATGTTCACTAACGT-1.sorted.bam,GTACAACGTCTTCGAA-1.sorted.bam,GTGAGGACACACGTGC-1.sorted.bam,TCCTTCTTCCTGGGAC-1.sorted.bam,TGTTTGTCACCGAATT-1.sorted.bam
+## 最好还是使用方法4)，把文件名放到一个文本中
+
+
+
+
 3)输入-i也可以提供包含bam文件的文件夹：
 $ geneBody_coverage.py -r /home/wangjl/data/ref/hg19/hg19_ucsc_genes-20190509.bed -i ./ -o ./test_
 
+
 4)-i 后跟文本文件，文本内容是bam的路径，一行一个bam的路径。
+可以多开几个窗口，并行运行。
+
 
 
 提示: 运行需要的时间很长，一般要过夜。为防止以外中断，请在tmux内运行。
+为了加快速度，可以每5个bam文件名放到一个文本文件中，使用 -i bamFile_2.txt 多开几个窗口并行运行。
 
 
 

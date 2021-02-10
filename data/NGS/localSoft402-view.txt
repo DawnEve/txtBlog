@@ -401,6 +401,25 @@ visibilityWindow: 1000
 
 
 ========================================
+使用 conda 安装 igvtools
+----------------------------------------
+$ conda install -c bioconda igvtools -y
+
+
+如果BAM文件太大，可以使用 igvtools 将BAM转为TDF文件再可视化：
+
+$ igvtools count -z 5 -w 25 *.bam *.bam.tdf hg38
+
+但是TDF文件只能反映基因组每个区域的测序深度，无法看到具体的比对情况，适合用来检查已经找到的Peak或者CNV。
+
+
+
+
+
+
+
+
+========================================
 绘制seqlogo图
 ----------------------------------------
 利用ggseqlogo https://blog.csdn.net/kMD8d5R/article/details/79554875
@@ -557,6 +576,7 @@ HOMER no longer requires ghostscript and weblogo
 (1) 下载页
 http://homer.ucsd.edu/homer/download.html
 $ mkdir homer
+$ cd homer
 $ wget http://homer.ucsd.edu/homer/configureHomer.pl
 $ perl configureHomer.pl -install
 
@@ -739,6 +759,257 @@ Oligo 表格信息构建好之后，HOMER 对富集的Oligo 进行全局搜索�
 
 
 
+
+
+
+
+
+
+
+========================================
+|-- homer 查找bam中的峰，bedtools merge 合并重叠的峰
+----------------------------------------
+1. 根据比对好的 bam ，找峰的位置
+(1) makeTagDirectory
+比对基因组得到bam文件之后，首先用通过makeTagDirectory这个命令，生成一个文件夹，用法如下
+
+makeTagDirectory out_dir align.bam
+输出目录文件如下
+
+├── chr1.tags.tsv
+├── chr2.tags.tsv
+├── chr3.tags.tsv
+...
+├── chrY.tags.tsv
+├── tagAutocorrelation.txt
+├── tagCountDistribution.txt
+├── tagInfo.txt
+└── tagLengthDistribution.txt
+
+
+实例
+$ makeTagDirectory c1 ../N5_NH_CB_list_filtered_c1.bam #21:45
+$ makeTagDirectory c5 ../N5_NH_CB_list_filtered_c5.bam
+
+
+
+1)默认将每条染色体的比对情况有一个tags.tsv文件来存储，除此之外，还有几个以tag开头的文件，包含了一些简单的统计信息。
+
+以比较小的c5为例
+$ head c5/1.tags.tsv 
+	1	14721	1	1.0	50
+	1	14722	1	1.0	150
+	1	14738	1	1.0	150
+	1	14744	1	2.0	150
+
+
+2)tagCountDistribution.txt包含了测序深度的分布信息，第一列为测序深度的值，第二列为对应的reads的比例。根据这个文件的前10行，在R里面可视化如下
+
+$ head c5/tagCountDistribution.txt
+Tags per tag position (Median = 1, tags per genomic bp = 0.004) Fraction of Positions
+0       0.000000
+1       0.658301
+2       0.189620
+3       0.064872
+4       0.027592
+5       0.014129
+6       0.00857
+
+## R
+dt=read.table("/data/wangjl/bams/peaks/c5/tagCountDistribution.txt",skip = 1)
+head(dt)
+dt2=dt[1:10,]; plot(dt2$V1, dt2$V2, type="h")  # 就是从高到低的一系列柱子。
+
+对于chip样本而言，unique mapping reads的比例越高越好，所以可以看到测序深度为1的比例是最高的。
+
+
+3) tagLengthDistribution.txt包含了reads的长度分布信息，第一列为长度，第二列为对应reads的比例， 在R里面可视化如下
+
+$ head c5/tagLengthDistribution.txt 
+Tag Length (Average tag length = 117.972379)    Fraction of Tags
+0       0.000000
+1       0.000002
+2       0.000003
+3       0.002020
+
+## R
+dt=read.table("/data/wangjl/bams/peaks/c5/tagLengthDistribution.txt",skip = 1)
+head(dt)
+plot(dt$V1, dt$V2, type="h")  ## 是一系列从低到高的柱子。
+
+可以对插入片段的长度分布有一个直观的了解。
+
+
+4) tagAutocorrelation.txt用于评估测序数据正负链上测序深度分布的相关性，在R里面可视化如下
+
+$ head c5/tagAutocorrelation.txt 
+Distance in bp(Fragment Length Estimate: 75)(Peak Width Estimate: 75)   Same Strand (+ for Watson strand, - for Crick)  Opposite Strand
+-2000   64292.0 25532.0
+-1999   64515.0 25348.0
+-1998   64468.0 25436.0
+-1997   64349.0 25329.0
+-1996   64015.0 25492.0
+
+## R
+dt=read.table("/data/wangjl/bams/peaks/c5/tagAutocorrelation.txt",skip = 1)
+dim(dt) #4000    3
+head(dt)
+#
+plot(dt$V1, dt$V2, type="l", col="red")
+lines(dt$V1, dt$V3, type="l", col="blue")
+## 由于10x只有RNA5'-3'一个方向的，所以blue线被压得很低。
+
+正负连的峰值间距离为插入偏度的长度。
+
+
+
+(2) findPeaks
+分别对input和IP样本建立好tagdirectory之后就可以peak calling, 用法如下
+
+findPeaks ip_tagdir/ -i input_tagdir -style histone -o homer.peak.txt
+## ip_tagdir 就是免疫共沉淀测序；input_tagdir就是RNAseq。
+
+实例: 我的是10x scRNAseq，只有比对后的bam文件。只需要找到峰，没有什么额外信息。
+$ findPeaks c1/ -size 50 -minDist 12  -o homer.peak.c1.txt #Total Peaks identified = 370105
+$ findPeaks c5/ -size 50 -minDist 12  -o homer.peak.c5.txt #Total Peaks identified = 221731
+参数解释:
+  -size <#> (Peak size, default: auto)
+  -minDist <#> (minimum distance between peaks, default: peak size x2)
+
+
+输出结果和macs2的类似，分成了两部分，文件头尾以#开头的行为注释行。
+$ grep -v '#' homer.peak.c5.txt | head
+#PeakID chr     start   end     strand  Normalized Tag Count    Not used        findPeaks Score Fold Change vs Local    p-value vs Local        Clonal Fold Change
+11-14   11      65499049        65499099        +       97037.8 0.000   700.000000      55.41   0.00e+00        0.07
+11-722  11      65499006        65499056        +       90278.1 0.000   41.000000       50.57   0.00e+00        0.23
+11-1    11      65499516        65499566        +       56981.5 0.000   988.000000      29.14   0.00e+00        0.05
+11-4    11      65499483        65499533        +       52463.9 0.000   955.000000      26.53   0.00e+00        0.05
+#"PeakID"  "chr"  "start"       "end"      "strand"   "norCouts" "notUs "findPeaksScore" "FC"   "p"          "ClonalFC"
+
+# 第5列只有正链，也即是不区分正负链。不是我想要的。
+$ grep -v '#' homer.peak.c5.txt |awk '{print $5}' | sort | uniq -c
+ 221731 +
+#
+
+
+2)# 这个找的是转录本，不是峰。
+$ findPeaks c1/ -style groseq -size 50 -minDist 12  -o homer_Chain.peak.c1.txt  ## 54632 total transcripts discovered
+##  -style groseq  ##这种模式用于分析链特异性的GRO_seq数据
+
+
+
+3) 链特异性
+$ findPeaks c1/ -size 50 -minDist 12 -strand separate -o homer_Chain.peak.c1.txt #Total Peaks identified = 494496
+$ findPeaks c5/ -size 50 -minDist 12 -strand separate -o homer_Chain.peak.c5.txt #Total Peaks identified = 246860
+
+$ grep -v '#' homer_Chain.peak.c5.txt |awk '{print $5}' | sort | uniq -c
+ 121417 -
+ 125443 +
+#
+
+
+但是CCND1基因在IGV上看是一个峰
+$ cat homer_Chain.peak.c1.txt | awk '$2==3' | awk '$3>108047000' | awk '$3<108048000' | head
+3-331   3       108047208       108047258       -       103.0   0.000   74.000000       60.32   0.00e+00        0.59
+3-365   3       108047180       108047230       -       81.6    0.000   72.000000       45.04   0.00e+00        0.56
+3-1995  3       108047114       108047164       -       15.9    0.000   41.000000       7.43    1.14e-32        0.35
+
+
+
+
+
+
+
+
+2. 合并后重叠峰 
+$ bedtools --version
+bedtools v2.29.2
+
+
+$ bedtools merge
+Tool:    bedtools merge (aka mergeBed)
+Version: v2.29.2
+Summary: Merges overlapping BED/GFF/VCF entries into a single interval.
+Usage:   bedtools merge [OPTIONS] -i <bed/gff/vcf>
+
+
+(1) 转bed
+$ awk 'BEGIN{OFS = "\t"}{if(NR>34)print $2, $3, $4,$1,$6,$5}' homer_Chain.peak.c1.txt > c1_notsorted_notmerged_peak.bed
+$ awk 'BEGIN{OFS = "\t"}{if(NR>34)print $2, $3, $4,$1,$6,$5}' homer_Chain.peak.c5.txt > c5_notsorted_notmerged_peak.bed
+
+
+(2) sort bed 
+$ bedtools sort -i c1_notsorted_notmerged_peak.bed > c1_notmerged_peak.bed
+$ bedtools sort -i c5_notsorted_notmerged_peak.bed > c5_notmerged_peak.bed
+
+
+(3) merge bed 
+$ bedtools merge -d 100 -s -c 6 -o distinct -i c1_notmerged_peak.bed > ./c1_merge.peakfile.bed
+$ bedtools merge -d 100 -s -c 6 -o distinct -i c5_notmerged_peak.bed > ./c5_merge.peakfile.bed
+
+参数详解
+-d	Maximum distance between features allowed for features to be merged.
+	- Def. 0. That is, overlapping & book-ended features are merged.
+	- (INTEGER)
+	- Note: negative values enforce the number of b.p. required for overlap.
+		
+-s	Force strandedness.  That is, only merge features that are on the same strand.
+		- By default, merging is done without respect to strand.
+	链特异。默认不管。
+-c  Specify columns from the B file to map onto intervals in A. Default: 5.
+       Multiple columns can be specified in a comma-delimited list.
+-o  Specify the operation that should be applied to -c.
+		Valid operations:
+			sum, min, max, absmin, absmax,
+			mean, median, mode, antimode
+			distinct (i.e., print a delimited list (NO duplicates allowed)),
+
+
+$ head c1_merge.peakfile.bed
+1       14696   14769   -
+1       185455  185505  -
+1       186281  186331  -
+
+$ head c5_merge.peakfile.bed 
+1       14703   14753   -
+1       185455  185526  -
+1       186300  186367  -
+1       629113  629163  +
+
+不是末端的峰也算进来了，肯定不对。
+
+#重新获取 bam2bed，只要最后一个碱基。
+
+
+
+
+
+
+$ cat c1_merge.peakfile | awk '$1==3' | awk '$2>108047000' | awk '$3<108048000' | head
+3       108047114       108047258       -
+
+
+
+
+
+
+
+ref:
+http://www.360doc.com/content/19/1225/20/68068867_882178087.shtml
+http://homer.ucsd.edu/homer/interactions/HiCtagDirectory.html
+
+
+
+
+
+========================================
+|-- IGV查看bed峰图 //todo
+----------------------------------------
+
+http://www.360doc.com/content/20/0304/19/68068867_896721933.shtml
+bed to tdf 才能用IGV看。
+wig也可以直接用IGV看。
+https://www.cnblogs.com/djx571/p/12110883.html
 
 
 

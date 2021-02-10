@@ -163,6 +163,7 @@
 			array('http://www.chenlianfu.com/','生信培训'), //陈连福的生信博客
 			array('https://github.com/YutingPKU','刘玉婷的GitHub'), //北大刘程组学生，包括ChIP-seq/RNA-seq/Hi-C数据处理的脚本
 			array('http://www.biotrainee.com:8081/jmzeng/book/basic/','曾健明的笔记'),
+			array('http://blog.biochen.com/about','陈雯(lincRNA)'),
 			//array('',''),
 		));
 ?>
