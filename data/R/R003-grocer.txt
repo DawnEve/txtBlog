@@ -17,6 +17,30 @@ install.packages(packageurl, repos=NULL, type="source")
 
 
 ========================================
+R 的常用设置代码
+----------------------------------------
+options(stringsAsFactors = FALSE)
+
+
+setwd("/data/wangjl/scScripts/")
+getwd()
+
+
+
+dir.create("backup/b2/") #CellTalk/
+
+outputRoot=paste0( getwd(), "/backup/b2/") 
+outputRoot
+
+
+
+
+
+
+
+
+
+========================================
 安装或更新 R base 
 ----------------------------------------
 
@@ -1383,7 +1407,7 @@ https://blog.csdn.net/lixiaomie01/article/details/78012942
 
 
 ========================================
-|-- 在jupyter中执行R代码、及问题与解决
+|-- 在jupyter中执行R代码、及问题与解决：控制图片宽高
 ----------------------------------------
 直接在terminal中运行安装代码，不会出现IRkernel等的报错～
 step1:打开terminal，
@@ -1464,11 +1488,18 @@ DotPlot(pbmc, features = unique(gene.df$gene) ) +
 
 
 
+#### 示例: 这个设置和pdf()中的宽高设置一样。
+options(repr.plot.width=10, repr.plot.height=8) #大的
+plot(1:20)
+
+options(repr.plot.width=4, repr.plot.height=4) #小的
+plot(1:20)
+
 
 
 ref:
 https://blog.csdn.net/ICERON/article/details/82743930
-
+https://bbs.pinggu.org/forum.php?mod=viewthread&tid=5927080&ordertype=1
 
 
 
@@ -2235,14 +2266,429 @@ R 代码 经典片段 (暂存)
 
 
 
+========================================
+使用docker运行R
+----------------------------------------
+1. 只运行R，当前黑窗口显示
+
+$ docker run --rm -it rstudio/r-base:4.0-focal
+
+
 
 
 ========================================
+|-- 使用docker运行 Rstudio: R 4.0.4, Seurat 4.0.0, monocle3 v0.2.3.0
 ----------------------------------------
+1. 运行 Rstudio，需要有可用的端口。
+
+最佳实践: 1.(2) 1);
+
+(1) 可以打开web界面
+# https://hub.docker.com/r/rocker/rstudio
+
+
+选择不同版本的R (Use different versions of R)
+docker run -d -p 8787:8787 -e PASSWORD=yourpasswordhere rocker/rstudio:devel
+docker run -d -p 8787:8787 -e PASSWORD=yourpasswordhere rocker/rstudio:3.2.0
+
+
+1) 做端口映射，-p 外部端口 5000 : 指向docker内部接口8787。
+$ docker run -d -p 5000:8787 -e PASSWORD=yourpasswordhere rocker/rstudio
+使用web窗口登录: http://ipV4:5000
+user: rstudio
+pass: 自己设置的
+
+## R version 4.0.4 (2021-02-15) -- "Lost Library Book"
+
+
+2) 为用户名 rstudio 添加sudo权限。Give the user root permissions (add to sudoers)
+$ docker run -d -p 8787:8787 -e ROOT=TRUE -e PASSWORD=yourpasswordhere rocker/rstudio
+
+3) 做文件映射，-v 外部当前文件夹: docker内部文件夹。
+Link a local volume (in this example, the current working directory, $(pwd)) to the rstudio container:
+$ docker run -d -p 8787:8787 -v $(pwd):/home/rstudio -e PASSWORD=yourpasswordhere rocker/rstudio
+
+为了防止影响过大，外部主机是不是应该设置一个专门的文件夹？
+$ chmod 777 /home/wangjl/data/dockerRstudio
+$ docker run -d -p 5000:8787 -v /home/wangjl/data/dockerRstudio:/home/rstudio/data -e PASSWORD=yourpasswordhere rocker/rstudio
+
+
+# 进入docker内部，很多命令不能用。
+$ docker ps
+$ docker exec -it 06e bash
+
+
+
+4) 跳过密码输入 Bypassing the authentication step
+注意：不要在阿里云等公网使用，只在安全的局域网内使用，否则容易出安全问题。
+Simply set the environmental variable DISABLE_AUTH=true, e.g.
+
+$ docker run --rm \
+  -p 127.0.0.1:5000:8787 \
+  -e DISABLE_AUTH=true \
+  rocker/rstudio
+
+登录地址:  http://localhost:5000
+不用输入用户名和密码，直接登录 rstudio用户了。
+
+
+5) 使用root登录一个运行中的实例 Access a root shell for a running rstudio container instance
+
+# 使用 docker ps 查看，第一列就是运行中的 docker id。
+$ docker exec -ti <CONTAINER_ID> bash
+
+# 然后就可以使用安装/维护系统了，比如 apt-get、添加删除用户等。
+
+
+
+
+
+
+
+
+
+
+(2) 安装包路径的映射
+感觉包保存到容器内部吧，这样推送的包就可以直接使用某个已经安装的包了。
+
+但是重开容器，就要重新安装，也很麻烦。
+如果做了包路径映射，新的容器能找到这个包吗？
+
+1) 新建带包映射的容器 【最佳句子】
+$ mkdir -p /home/wangjl/data/dockerRstudio/R_lib_4.0
+$ chmod 777 /home/wangjl/data/dockerRstudio/R_lib_4.0 #存放R包
+
+$ docker run -d -p 5000:8787 -v /home/wangjl/data/dockerRstudio:/home/rstudio \
+	-v /home/wangjl/data/dockerRstudio/R_lib_4.0:/home/rstudio/R/x86_64-pc-linux-gnu-library/4.0 \
+	-e ROOT=TRUE \
+	-e PASSWORD=yourpasswordhere rocker/rstudio
+#
+
+2) 修改包的查找路径
+对docker的操作：在Rstudio的terminal中执行。
+R的默认目录下新建（如果没有的话）.Rprofile 文件，在里面加上一行:
+.libPaths("/home/rstudio/R/x86_64-pc-linux-gnu-library/4.0")
+
+然后重启R：Rstudio 菜单 Session - quit session.
+
+> .libPaths() # 包的查找路径，应该是优先安装到第一个中。
+[1] "/home/rstudio/R/x86_64-pc-linux-gnu-library/4.0"
+[2] "/usr/local/lib/R/site-library"                  
+[3] "/usr/local/lib/R/library"
+
+
+3) 安装包，并测试
+library(ggplot2) #no package ...
+install.packages("ggplot2") #11:40 - 11:43
+library(ggplot2)
+
+head(mtcars)
+ggplot(mtcars, aes(mpg, wt, color=factor(cyl) ))+geom_point()+
+  theme_bw()
+
+4) 检查文件 
+物理机：$ ls /home/wangjl/data/dockerRstudio/R_lib_4.0/  
+docker内: $ ls /home/rstudio/R/x86_64-pc-linux-gnu-library/4.0
+输出:
+assertthat  desc      farver    labeling   pkgconfig    R6            scales       waldo
+brio        diffobj   ggplot2   lifecycle  pkgload      RColorBrewer  testthat     withr
+callr       digest    glue      magrittr   praise       rematch2      tibble
+cli         ellipsis  gtable    munsell    prettyunits  rlang         utf8
+colorspace  evaluate  isoband   pillar     processx     rprojroot     vctrs
+crayon      fansi     jsonlite  pkgbuild   ps           rstudioapi    viridisLite
+
+5) 关掉这个容器，重新开一个
+$ docker ps
+CONTAINER ID        IMAGE               COMMAND                  CREATED             STATUS              PORTS                    NAMES
+3d8f00fc78a9        rocker/rstudio      "/init"                  About an hour ago   Up About an hour    0.0.0.0:5000->8787/tcp   vigorous_elgamal
+
+$ docker stop 3d8f
+$ docker run -d -p 5000:8787 -v /home/wangjl/data/dockerRstudio:/home/rstudio \
+	-v /home/wangjl/data/dockerRstudio/R_lib_4.0:/home/rstudio/R/x86_64-pc-linux-gnu-library/4.0 \
+	-e ROOT=TRUE \
+	-e PASSWORD=yourpasswordhere rocker/rstudio
+$ docker ps
+CONTAINER ID        IMAGE               COMMAND                  CREATED             STATUS              PORTS                    NAMES
+41fdd9af3312        rocker/rstudio      "/init"                  6 seconds ago       Up 5 seconds        0.0.0.0:5000->8787/tcp   nifty_boot
+
+
+# 登录web后，可以直接导入 ggplot2, 也就是新开的能找到原始的安装包。
+> library(ggplot2)
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+2. 安装更多的包到该镜像上
+
+(1) 在docker中安装 Seurat包 v4.0.0
+$ cp /data/wangjl/scScripts/backup/a2/pbmc10k-Tsubset_final.rds .
+
+
+> install.packages("BiocManager")
+> BiocManager::install("monocle")
+Error: .onLoad failed in loadNamespace() for 'XML', details:
+Installation path not writeable, unable to update packages: boot, cluster, MASS, mgcv
+
+
+
+> BiocManager::install("Seurat")
+> library(Seurat)
+Error: package or namespace load failed for ‘Seurat’ in dyn.load(file, DLLpath = DLLpath, ...):
+ unable to load shared object '/home/rstudio/R/x86_64-pc-linux-gnu-library/4.0/igraph/libs/igraph.so':
+  libxml2.so.2: cannot open shared object file: No such file or directory
+
+$ sudo apt install libxml2
+$ sudo apt install libglpk-dev #比较大
+## 可以载入 Seurat 了。
+$ sudo apt install libxt-dev #解决一个warning
+
+
+在Rstudio中可用:
+# BiocManager::install("Seurat")
+library(Seurat)
+scRNA=readRDS("pbmc10k-Tsubset_final.rds")
+DimPlot(scRNA)
+DimPlot(scRNA, label=T)
+#
+FeaturePlot(scRNA, features = c("CD3D","CD4","CD8A", 'CCR7', 'ITGB1',"GZMB") )
+
+
+
+2)
+## 提交新镜像
+$ docker ps
+CONTAINER ID        IMAGE               COMMAND                  CREATED             STATUS              PORTS                    NAMES
+78d8611d7559        rocker/rstudio      "/init"                  29 minutes ago      Up 29 minutes       0.0.0.0:5000->8787/tcp   infallible_matsumoto
+
+$ docker commit -m 'Seurat is ok, if with pkg dir on github' 78d8611d7559 dawneve/rstudio:Seurat
+sha256:0ccae6079dadb8cad8b05efb11a07f9f7fe6b3fd5634c87f7c2008025bfb9f81
+
+$ docker images
+REPOSITORY          TAG                 IMAGE ID            CREATED             SIZE
+dawneve/rstudio     Seurat              0ccae6079dad        15 seconds ago      2.09GB
+rocker/rstudio      latest              9e22c8cd092b        9 days ago          1.95GB
+
+比基础版又多了1G(apt安装的3个包)，还不包括物理机上的R包文件夹。
+~/data/dockerRstudio$ sudo du -sh
+1.6G    .
+
+$ docker stop 78d
+78d
+
+
+### 重启R session, 不保存内存的东西。又提交了一个commit。
+$ docker commit -m 'Seurat is ok, if with pkg dir on github' e2957a0e8b19 dawneve/rstudio:Seurat_
+sha256:e4131393d1ed635d345d44cd1c459939dece46843b84b652bce0ecd66d90fc1c
+看docker images 是一样大，说明只有硬盘里的有作用，内存中的不会保存到镜像中。
+再删掉这个镜像: docker rmi e4131393d1ed
+
+
+
+3) 推送到 docker hub:
+
+$ sudo apt install gnupg2 pass 先安装包，否则登录失败。
+## https://stackoverflow.com/questions/50151833/cannot-login-to-docker-account/50569553
+
+$ docker logout
+$ docker login -u dawneve 
+## yourPassWord #登陆
+
+$ docker image push dawneve/rstudio:Seurat #推送2.09G的镜像
+
+## 貌似不到5min就传好了 https://hub.docker.com/u/dawneve
+https://hub.docker.com/r/dawneve/rstudio/tags?page=1&ordering=last_updated
+
+
+
+
+4) 添加注释
+https://hub.docker.com/repository/docker/dawneve/rstudio
+
+打包物理机上的R包文件到github附件上: https://github.com/DawnEve/scRNAseqCode/releases/tag/scDocker-Seurat
+$ tar -cvzf pkgs_forDocker_seurat.tar.gz /home/wangjl/data/dockerRstudio
+
+## 教训：这样用绝对路径打包的，解压后也是绝对路径。下次还是用相对路径打包吧。
+$ tar -cvzf pkgs_forDocker_seurat.tar.gz dockerRstudio
+tar: Exiting with failure status due to previous errors
+
+
+
+
+
+
+
+
+
+
+
+
+(2) 在docker中安装 monocle3 包 #v0.2.3.0 (beta)
+别人写好的包含有monocle3的容器 https://quay.io/repository/biocontainers/r-monocle3?tab=info
+
+
+$ docker run -d -p 5000:8787 -v /home/wangjl/data/dockerRstudio:/home/rstudio \
+	-v /home/wangjl/data/dockerRstudio/R_lib_4.0:/home/rstudio/R/x86_64-pc-linux-gnu-library/4.0 \
+	-e ROOT=TRUE \
+	-e PASSWORD=yourpasswordhere dawneve/rstudio:Seurat
+#
+
+
+
+1) 版本选择与安装
+http://cole-trapnell-lab.github.io/monocle-release/docs/#installing-monocle
+
+Monocle 2 and Monocle 3 alpha are deprecated
+Please use our new package, Monocle 3!
+https://cole-trapnell-lab.github.io/monocle3/
+
+
+https://cole-trapnell-lab.github.io/monocle3/docs/introduction/
+paper: monocle3 https://www.nature.com/articles/s41586-019-0969-x
+
+
+# 安装 
+https://cole-trapnell-lab.github.io/monocle3/docs/installation/
+
+if (!requireNamespace("BiocManager", quietly = TRUE))
+	install.packages("BiocManager")
+
+BiocManager::install(c('BiocGenerics', 'DelayedArray', 'DelayedMatrixStats',
+                       'limma', 'S4Vectors', 'SingleCellExperiment',
+                       'SummarizedExperiment', 'batchelor', 'Matrix.utils'))
+
+install.packages("devtools")
+devtools::install_github('cole-trapnell-lab/leidenbase')
+devtools::install_github('cole-trapnell-lab/monocle3')
+
+
+## 报错: libudunits2.so.0: cannot open shared object file
+> Track_genes <- graph_test(cds, neighbor_graph="principal_graph", cores=10)
+
+$ sudo apt install libudunits2-dev #6M ?
+$ sudo apt install libproj-dev  #38M
+$ sudo apt install libgdal-dev  #423M
+
+
+# 使用验证
+https://github.com/cole-trapnell-lab/monocle3
+
+https://cole-trapnell-lab.github.io/monocle3/
+https://cole-trapnell-lab.github.io/monocle3/docs/starting/
+
+> library(monocle3) #v0.2.3.0
+
+# Provide the path to the Cell Ranger output.
+> cds <- load_cellranger_data("~/Downloads/10x_data")
+
+感觉不好用。。。
+
+
+
+2) 提交新镜像
+$ docker ps
+CONTAINER ID        IMAGE                    COMMAND                  CREATED             STATUS              PORTS                    NAMES
+e2957a0e8b19        dawneve/rstudio:Seurat   "/init"                  19 hours ago        Up 19 hours         0.0.0.0:5000->8787/tcp   friendly_borg
+
+$ docker commit -m 'monocle3 is ok, if with pkg dir on github' e2957a0e8b19 dawneve/rstudio:monocle3
+
+$ docker images
+REPOSITORY          TAG                 IMAGE ID            CREATED             SIZE
+dawneve/rstudio     monocle3            8893c1f83058        4 minutes ago       2.58GB
+dawneve/rstudio     Seurat              0ccae6079dad        19 hours ago        2.09GB
+rocker/rstudio      latest              9e22c8cd092b        10 days ago         1.95GB
+
+比着上一个版本又增加了0.5GB。还不包括R包。
+~/data/dockerRstudio$ sudo du -sh
+5.6G    .
+这也太大了吧。。。
+重启R session之后变小了: 1.1G    .
+
+
+
+3) 推送到 docker hub:
+## sudo apt install gnupg2 pass #先安装包，否则登录失败。
+
+$ docker login -u dawneve 
+## yourPassWord #登陆
+
+$ docker image push dawneve/rstudio:monocle3 #推送2.58G的镜像
+仔细看，发现只需要推送一层，其他层都已经在了，所以快。
+
+
+https://hub.docker.com/r/dawneve/rstudio/tags?page=1&ordering=last_updated
+
+
+4) 添加注释
+https://hub.docker.com/repository/docker/dawneve/rstudio
+
+打包物理机上的R包文件到github附件上: https://github.com/DawnEve/scRNAseqCode/releases/tag/scDocker-monocle3
+
+$ tar -cvzf pkgs_forDocker_Seurat_monocle3.tar.gz dockerRstudio
+-rw-rw-r--  1 wangjl wangjl 384M Mar  2 10:45 pkgs_forDocker_Seurat_monocle3.tar.gz
+
+
+只打包某个时间点之后的文件呢？
+$ tar czvf pkgs_forDocker_monocle3_incre.tar.gz --newer-mtime  "2021-03-01 17:00:00" dockerRstudio
+-rw-rw-r-- 1 wangjl wangjl 156M Mar  2 11:04 pkgs_forDocker_monocle3_incre.tar.gz
+这个增量包小了很多。
+
+
+
+
+
+
+
+
+
+
+
+
+
+# 不能用
+$ docker run -t -p 5000:8004 opencpu/rstudio  
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 ========================================
+|-- 直接能用的 Seurat 容器
 ----------------------------------------
+1. 位置
+https://satijalab.org/seurat/articles/install.html
+https://hub.docker.com/r/satijalab/seurat
+
+$ docker pull satijalab/seurat:4.0.0
+
+
+2. 启动 
+$ docker run -d -p 5000:8787 satijalab/seurat:4.0.0 bash 
+
+只能在黑窗口下使用，不知道怎么用Rstudio。
+
+
+
+
 
 
 

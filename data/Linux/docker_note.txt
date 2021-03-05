@@ -537,6 +537,11 @@ PING baidu.com (123.125.114.144) 56(84) bytes of data.
 1.
 想推送需要有一个hub.docker.com账号。先去注册。
 
+
+$ sudo apt install gnupg2 pass 先安装包，否则登录失败。
+## https://stackoverflow.com/questions/50151833/cannot-login-to-docker-account/50569553
+
+
 # docker login -u dawneve -p yourPassWord #登陆
 
 # docker ps #查看容器
@@ -579,6 +584,134 @@ The push refers to a repository [docker.io/dawneve/mysql]
 $ docker images --digests | head  #查看摘要
 create, run, rmi以及Dockerfile的FROM镜像参考中使用摘要。比如按照摘要pull下来镜像
 $ docker pull ouruser/sinatra@sha256:cbbf2f9a99b47fc460d422812b6a5adff7dfee951d8fa2e4a98caa0382cfbdbf
+
+
+
+========================================
+|-- 保存docker镜像到文件，及文件导入镜像的方法
+----------------------------------------
+1. 镜像的迁移，一个方法是传到仓库(公共或本地)，另一个是使用文件。
+
+使用Docker save和Docker load命令来存储和载入镜像。
+
+
+
+
+2. 保存镜像为文件
+
+$ docker images
+REPOSITORY          TAG                 IMAGE ID            CREATED             SIZE
+rocker/rstudio      latest              9e22c8cd092b        11 days ago         1.95GB
+
+命令 docker save -o 要保存的文件名  要保存的镜像
+$ docker save -o rstudio.docker.tar  9e22c8cd092b
+
+$ ls -lth
+-rw------- 1 wangjl wangjl 1.9G Mar  3 14:19 rstudio.docker.tar
+
+
+(2) 更多测试
+
+1)或者生成gz压缩
+$ docker save -o rstudio.docker.tar.gz  rocker/rstudio:latest
+$ docker save -o rstudio.docker2.tar.gz  9e22c8cd092b
+
+$ ls -lt
+total 8122792
+-rw------- 1 wangjl wangjl 1967693824 Mar  3 14:24 rstudio.docker2.tar.gz
+-rw------- 1 wangjl wangjl 1967694848 Mar  3 14:21 rstudio.docker.tar.gz
+-rw------- 1 wangjl wangjl 1967693824 Mar  3 14:19 rstudio.docker.tar
+
+结论: 使用tag的比使用sha1的略大，而文件名是否gz结尾对大小没影响。
+
+
+2) 尝试解压
+$ tar zxvf rstudio.docker2.tar.gz 
+gzip: stdin: not in gzip format
+tar: Child returned status 1
+tar: Error is not recoverable: exiting now
+不能解压，说明不是个压缩文件。
+
+# 尝试解包
+$ tar -xvf rstudio.docker2.tar.gz 
+解压到本文件夹内一堆数字开头的文件夹，说明就是一个tar文件，那就不要加gz结尾。
+
+不过可以再压缩成gz文件
+$ gzip -c rstudio.docker.tar > rstudio.docker0.tar.gz #-c保留原始文件
+
+# 这下体积小了一半。
+-rw-rw-r-- 1 wangjl wangjl 531M Mar  3 14:32 rstudio.docker0.tar.gz
+
+
+
+
+3) 最佳实践: 
+- 生成的tar，压缩后得到gz文件，方便保存和传输。
+- 使用tag备份，而不是image id。
+$ docker save 9e22c8cd092b | gzip -c > rstudio.docker3.tar.gz  #导入时丢失tag信息
+$ docker save rocker/rstudio:latest | gzip -c > rstudio.docker4.tar.gz  #最佳。带tag信息。
+
+-rw-rw-r-- 1 wangjl wangjl 531M Mar  3 14:40 rstudio.docker3.tar.gz
+-rw-rw-r-- 1 wangjl wangjl 531M Mar  3 14:59 rstudio.docker4.tar.gz
+
+结论：docker save 的tar文件就可以gz压缩后备份到硬盘，或者复制到其他主机，解压后直接导入了。
+
+
+
+
+
+3. 从文件载入镜像
+
+docker load --input 文件
+或者
+docker load < 文件名
+此时会导入镜像以及相关的元数据信息等。
+
+
+首先使用SSH工具将文件上传到另一台服务器。
+
+如果压缩过，则解压
+$ gunzip -c rstudio.docker3.tar.gz > rstudio.docker3.tar
+
+-rw-rw-r-- 1 wangjl wangjl 1967693824 Mar  3 14:44 rstudio.docker3.tar
+
+
+############
+我在本机操作的，所以先备份原来的镜像，然后删掉老镜像
+$ docker tag rocker/rstudio:latest rocker/rstudio:old
+$ docker rmi rocker/rstudio:latest
+Untagged: rocker/rstudio:latest
+$ docker images # 查看已经删掉了 rocker/rstudio      latest              9e22c8cd092b        11 days ago         1.95GB
+############
+
+然后通过命令载入镜像：
+$ docker load < rstudio.docker3.tar
+Loaded image ID: sha256:9e22c8cd092b6289d0765e08b682e2517cb7cef579baa871eec2362c9e43960d
+
+docker images 没有发现新的镜像。主要是备份镜像的id是不变的。
+
+如果彻底删除掉同id的image，再导入
+$ docker images -a
+<none>              <none>              9e22c8cd092b        11 days ago         1.95GB
+
+$ 改名字
+$ docker tag 9e22c8cd092b dawneve/rstudio
+$ docker images
+
+
+
+
+(2) 使用tag备份的文件导入呢？
+$ docker load --input rstudio.docker.tar.gz #这个是直接导出的伪gz文件，本质是tar文件。
+Loaded image: rocker/rstudio:latest
+
+$ docker images
+rocker/rstudio      latest              9e22c8cd092b        11 days ago         1.95GB
+
+结论：看来使用tag备份最好！虽然略大了一点。
+
+
+
 
 
 
@@ -1070,8 +1203,8 @@ $ docker cp outer.html ed7ee9:/var/www/html/
 
 
 
-(4)此时，可以对容器进行提交，生成一个新的容器，该容器将包含添加到nginx里面的outer.html页面。
-示例命令：docker commit -m '注释' 容器id 自定义容器名
+(4)此时，可以对容器进行提交，生成一个新的镜像，该镜像将包含添加到nginx里面的outer.html页面。
+示例命令：docker commit -m '注释' 容器id 自定义镜像名
 完整命令：docker commit -m 'a new nginx container with outer.html' ed7ee90e50de george/static_web:addOuterFile
 sha256:1222d23b39e9a5fa9b8f7d7ae71
 
@@ -1617,22 +1750,54 @@ https://blog.csdn.net/taowuhua0505/article/details/88255773
 
 
 ========================================
-|-- 为运行中的容器添加端口映射 // todo 
+|-- 为运行中的容器添加端口映射
 ----------------------------------------
-1.方法1 容器打包成镜像，重新运行该镜像时添加端口映射
-$ docker ps
-
-$ docker run -it --name web_demo -p 8000:80  fanzone/aaa:v1  /bin/bash  # 添加了端口映射
-
-$ docker run -it --name web_demo -p 8000:80  fanzone/aaa:v1  bash
+简单的说，2种。
+- iptables 端口转发；
+- commit 容器为一个images，重新运行一个新的容器
 
 
+1.方法1：不需要重启容器。
 
-2.修改容器的json文件：
+(1) 获得容器IP：将container_name 换成实际环境中的容器名
+$ docker inspect `container_name` | grep IPAddress
+	"IPAddress": "172.17.0.3",
+
+(2) iptable转发端口
+将容器的8000端口映射到docker主机的8001端口
+$ sudo iptables -t nat -A  DOCKER -p tcp --dport 8001 -j DNAT --to-destination 172.17.0.3:8000
+
+
+
+(3) // 下面没看懂，先留着: 
+修改容器的json文件：
 暂停容器，
 修改容器映射时只需要 修改hostconfig.json的PortBindings , 增加容器映射时还需要改config.v2.json的ExposedPorts
 
 重新运行容器。
+
+
+
+
+
+
+
+
+
+2.方法2 容器打包成镜像，重新运行该镜像时添加端口映射
+
+$ docker ps
+$ docker commit containerid foo/aaa
+
+$ docker run -it --name web_demo -p 8000:80  foo/aaa:v1  /bin/bash  # 添加了端口映射
+
+$ docker run -it --name web_demo -p 8000:80  foo/aaa:v1  bash
+
+
+
+
+
+
 
 
 
@@ -2043,6 +2208,60 @@ Client:
 
 $ docker --version
 Docker version 18.09.9, build 1752eb3
+
+
+
+========================================
+|-- docker images 存储空间在哪里？占了多大？
+----------------------------------------
+1. 位置
+$ docker info | grep "Docker Root Dir"
+WARNING: No swap limit support
+ Docker Root Dir: /var/lib/docker
+
+$ cd /var/lib/docker
+$ sudo ls -lth
+
+
+$ sudo ls -lth image/overlay2/imagedb/content/sha256
+$ docker images #可看到image id，和上一条一样。
+
+$ sudo ls -aShl overlay2/
+
+
+2. 怎么查看实际磁盘占有大小？
+$ du -s /var/lib/docker/overlay2的最后一行。
+或者 $ du -sh /var/lib/docker/overlay2。
+
+或者更human readable的，根据文件大小排序 $ du -sh * | sort -h
+
+
+
+ref:https://www.cnblogs.com/allen2333/p/11645140.html
+
+
+========================================
+----------------------------------------
+
+
+
+========================================
+----------------------------------------
+
+
+
+========================================
+----------------------------------------
+
+
+
+========================================
+----------------------------------------
+
+
+
+========================================
+----------------------------------------
 
 
 
