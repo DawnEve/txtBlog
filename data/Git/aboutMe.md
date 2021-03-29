@@ -2,11 +2,13 @@
 
 ## 基本信息   
 
-- 姓名: 于甲高  [@GitHub](https://github.com/DawnEve)  
+- 姓名: Wangjl  [@GitHub](https://github.com/DawnEve)  
 - 性别: M  
-- 网名: 	George
-- 现居: 	郑州-高新区
-- 技术偏好:	肿瘤免疫方向，单细胞转录组分析。熟悉Python3/R/shell/js/jQuery/php/thinkPHP/mysql/java，常用python3/R/bash shell/JavaScript。了解python高并发，Python OOP，R S4等。
+- 现居: 	深圳-南山区
+- 技术偏好:	肿瘤免疫方向，单细胞转录组分析。
+	* 熟悉Linux/Python3/R/shell/js/jQuery/php/thinkPHP/mysql/。
+	* 常用python3/R/shell/JavaScript，擅长R base绘图和ggplot2绘图。
+	* 了解python高并发，Python OOP，R OOP等。
 
 
 
@@ -18,10 +20,13 @@
 
 - Tel: 15890149335  
 - Email:	JimmyMall at live dot com, or 163 dot com
-
-- Address: 河南省郑州市科学大道100号郑州大学新校区    
+   
 - QQ: 469004330  
-- QQ群: `生物信息与R语言交流群(187923577)`, js/php熟手交流群(369578518), 英语读报QQ群(755650994) 
+- QQ群: 
+	* `生物信息与R语言交流群(187923577)`
+	* `生物信息与python/ML/AI(572686844)`
+	* 英语读报&英文名著QQ群(755650994) 
+	* js/php熟手交流群(369578518)
 
 - Other: [weibo](http://weibo.com/wangjunliangvip), [百度贴吧](http://tieba.baidu.com/f?kw=%C7%D7%D7%D4%D7%DF%C2%B7&fr=index)
 
