@@ -29,7 +29,7 @@
 			array('http://www.shouce.ren/api/index','在线手册下载'),
 			array('http://tool.chinaz.com/tools/jsformat.aspx','html/js格式化','代码美化'),
 			//
-			//array('http://aibusy.com/blog/?p=226','Sublime插件'), 打不开了
+			array('https://iconarchive.com/tag/google-chrome','icon'),
 		);
 		echo '<br />友情链接[IT Tools]: ';
 		print_links($links_IT_tools);
