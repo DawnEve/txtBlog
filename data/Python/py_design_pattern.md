@@ -5,7 +5,7 @@
 # 设计模式分为3大类
 理论部分见 `JavaEE/设计模式`;
 
-设计模式: [概述](http://c.biancheng.net/view/1317.html), [博客1](https://blog.csdn.net/qq_33905217/category_10605219.html), [博客2](https://blog.csdn.net/slx3320612540/category_6903175.html), [博客3](https://blog.csdn.net/lovelion/category_738451.html), [目录和实例名](https://blog.csdn.net/LoveLion/article/details/108293317)
+设计模式: [概述](http://c.biancheng.net/view/1317.html), [博客1](https://blog.csdn.net/qq_33905217/category_10605219.html), [博客2](https://blog.csdn.net/slx3320612540/category_6903175.html), [博客3](https://blog.csdn.net/lovelion/category_738451.html), [目录和实例名](https://blog.csdn.net/LoveLion/article/details/108293317), [菜鸟教程](https://www.runoob.com/design-pattern/design-pattern-tutorial.html)
 
 23种设计模式的py代码及注释: [py1](http://www.pythontip.com/python-patterns/detail/abstract_factory), [py2](https://www.cnblogs.com/welan/category/1193037.html)
 
@@ -176,11 +176,23 @@ Facade Pattern: Provide a unified interface to a set of interfaces in a subsyste
 
 ## 组合（Composite）模式
 
+又叫部分整体模式
+
 将对象组合成树状层次结构，使用户对单个对象和组合对象具有一致的访问性。
 
+何时使用： 1、您想表示对象的部分-整体层次结构（树形结构）。 2、您希望用户忽略组合对象与单个对象的不同，用户将统一地使用组合结构中的所有对象。
 
+如何解决：树枝和叶子实现统一接口，树枝内部组合该接口。
 
+关键代码：树枝内部组合该接口，并且含有内部属性 List，里面放 Component。
 
+优点： 1、高层模块调用简单。 2、节点自由增加。
+
+缺点：在使用组合模式时，其叶子和树枝的声明都是实现类，而不是接口，违反了依赖倒置原则。
+
+使用场景：部分、整体场景，如树形菜单，文件、文件夹的管理。
+
+注意事项：定义时为具体类。
 
 
 
