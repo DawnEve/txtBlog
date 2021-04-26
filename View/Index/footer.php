@@ -164,6 +164,7 @@
 			array('https://github.com/YutingPKU','刘玉婷的GitHub'), //北大刘程组学生，包括ChIP-seq/RNA-seq/Hi-C数据处理的脚本
 			array('http://www.biotrainee.com:8081/jmzeng/book/basic/','曾健明的笔记'),
 			array('http://blog.biochen.com/about','陈雯(lincRNA)'),
+			array('https://github.com/xuzhougeng/myscripts/blob/master/igv_web.py','徐洲更(生信脚本)'), //其中 igv那个值得学习 
 			//array('',''),
 		));
 ?>
