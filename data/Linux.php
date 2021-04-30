@@ -51,8 +51,8 @@ return array (
     1 => '虚拟机和docker',
     2 => array (
 	  array('VirtualBox','VirtualBox001','md' ),
-	  array('docker笔记','docker_note','txt' ),
-	  array('docker快速入门','docker001','md' ),
+	  array('docker笔记.txt','docker_note','txt' ),
+	  array('docker快速入门.md','docker001','md' ),
 	  array('apache Spark','apacheSpark','txt' ),
 
     ),

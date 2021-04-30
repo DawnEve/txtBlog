@@ -871,7 +871,7 @@ Webpack 可以将多种静态资源 js、css、less 转换成一个静态文件�
 
 ## 安装webpack 
 
-- 官网(https://nodejs.org/en/)下载 [node.js 10.16.3 LTS](https://nodejs.org/dist/v10.16.3/node-v10.16.3-x64.msi), 也可以从清华镜像下载; 双击安装，一路默认。
+- 官网( https://nodejs.org/en/ )下载 [node.js 10.16.3 LTS](https://nodejs.org/dist/v10.16.3/node-v10.16.3-x64.msi), 也可以从 [清华镜像](https://mirrors.tuna.tsinghua.edu.cn/nodejs-release/) 下载; 双击安装，一路默认。
 - 测试版本号 C:\Users\admin>node --version  #v10.16.3; C:\Users\admin>npm --version #6.9.0(2019.9.4)
 - 使用淘宝镜像安装npm包 npm install -g cnpm --registry=https://registry.npm.taobao.org
  * added 689 packages from 933 contributors in 60.958s
