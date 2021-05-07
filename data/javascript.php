@@ -23,7 +23,7 @@ return array (
 	  //array('字符串处理','js201','txt' ),
 
 	  array('浏览器DOM-Event-Ajax','js103-browser','txt' ),
-	  array('js OOP','js104-OOP','txt' ),
+	  array('js OOP-TypeScript','js104-OOP','txt' ),
 	  array('js 可视化-canvas','js105-canvas','txt' ),
 	  array('js 可视化-SVG','js106-SVG','txt' ),
 	  array('ES5 ES6','js201-ES5ES6','txt' ),
