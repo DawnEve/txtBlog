@@ -13,9 +13,10 @@ return array (
 
 
   array (
-    0 => 1,
+    0 => 2,
     1 => 'R语言',
     2 => array (
+      array('R IDE','R00-IDE','txt'),
       array('R语言基础','R01-basic','txt'),
       array('R进阶-数据框data.frame','R02-data.frame','txt'),
       array('R进阶-统计抽样与分布','R03-statistics','txt'),
@@ -33,7 +34,7 @@ return array (
 
 
   array (
-    0 => 1,
+    0 => 3,
     1 => '常用R包',
     2 => array (
       array('ggplot2绘图教程','ggplot2','txt'),

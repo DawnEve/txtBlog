@@ -32,9 +32,10 @@ return array (
   
   array (
     0 => 4,
-    1 => '企业管理',
+    1 => '管理',
     2 => 
     array (
+	  array('时间管理','mg_200_time','txt' ),
 	  array('软件研发管理','mg_201_soft','txt' ),
 	  array('人员管理','mg_202_man','txt' ),
 	  array('科研经验','mg_203_research','txt' ),
@@ -51,6 +52,7 @@ return array (
 	  array('notepad++','npp', 'html'),
 	  array('sublime编辑器','sublime001', 'html'),
 	  array('vs code','vsCode', 'txt'),
+	  array('Typora','Typora', 'md'),
 	  array('phpStorm','phpStorm001', 'md'),
     ),
   ),

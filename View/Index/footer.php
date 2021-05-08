@@ -29,7 +29,7 @@
 			array('http://www.shouce.ren/api/index','在线手册下载'),
 			array('http://tool.chinaz.com/tools/jsformat.aspx','html/js格式化','代码美化'),
 			//
-			//array('http://aibusy.com/blog/?p=226','Sublime插件'), 打不开了
+			array('https://iconarchive.com/tag/google-chrome','icon'),
 		);
 		echo '<br />友情链接[IT Tools]: ';
 		print_links($links_IT_tools);
@@ -128,6 +128,7 @@
 		
 		echo '<br />数学: ';
 		print_links(array(
+			array('http://3d-genome.life/','李程3D基因组(多元回归/贝叶斯/)'),
 			array('https://blog.csdn.net/hpdlzu80100/category_7468916.html','数学笔记(高数/线代/统计/)'), //https://blog.csdn.net/hpdlzu80100
 			array('https://face2ai.com/Math-Probability-5-5-The-Negative-Binomial-Distribution/','谭升(统计/书list)'),
 			array('https://qinqianshan.com/math/probability_distribution/','SAM NOTE(统计等)'),
@@ -145,7 +146,7 @@
 
 
 
-		
+
 		echo '<br />生信: ';
 		print_links(array(
 			array('http://www.bioinfo-scrounger.com/','生信笔记'),
@@ -157,10 +158,17 @@
 			array('http://www.dengfeilong.com/post/aboutUs.html','邓飞龙(微生物)'),
 			array('http://kaopubear.top/','Fei Zhao(bioinfo)'),
 			array('https://liulab-dfci.github.io/teaching','liulab'), //X Shirley Liu
+			array('http://www.dzbioinformatics.com/','HiC'), //南京师范大学生命科学学院在读博士2020.12 戴早, 前列腺癌、生物信息学、分子动力学和量化计算
+			array('http://www.wuchangsong.com/','ATAC'), //
+			array('http://www.chenlianfu.com/','生信培训'), //陈连福的生信博客
+			array('https://github.com/YutingPKU','刘玉婷的GitHub'), //北大刘程组学生，包括ChIP-seq/RNA-seq/Hi-C数据处理的脚本
+			array('http://www.biotrainee.com:8081/jmzeng/book/basic/','曾健明的笔记'),
+			array('http://blog.biochen.com/about','陈雯(lincRNA)'),
+			array('https://github.com/xuzhougeng/myscripts/blob/master/igv_web.py','徐洲更(生信脚本)'), //其中 igv那个值得学习 
 			//array('',''),
 		));
-?>		
-			
+?>
+
 
 <?php if($web_status==1){?>
 <script type="text/javascript">
@@ -187,7 +195,14 @@ var cnzz_protocol = (("https:" == document.location.protocol) ? " https://" : " 
 			[<?php echo date('Y-m-d H:i:s',time());?>] 
 			Powered by <a target='_blank' href='https://github.com/DawnEve/txtBlog' title='txtBlog(A simple yet powerful php blog system for reading and organizing txt files.)'>txtBLog v0.5</a>
 			
-			<a target="_blank" href="http://stuff.mit.edu/doc/counter-howto.html"><img src="https://stuff.mit.edu/cgi/counter/txtBlog"></a>
+			
+			
+			<!-- 浏览计数器: 异步 -->
+			<a target="_blank" href="http://stuff.mit.edu/doc/counter-howto.html" id='viewCounter'>
+				<!-- <img src="https://stuff.mit.edu/cgi/counter/txtBlog"> -->
+			</a>
+			
+
 			
 		</div>
 	</div>

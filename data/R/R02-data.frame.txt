@@ -135,7 +135,6 @@ http://www.cnblogs.com/studyzy/p/4316118.html
 plyr包:http://www.bagualu.net/wordpress/archives/5519
 dplyr包:https://www.cnblogs.com/shangfr/p/6110614.html
 
-myBlog:http://agetouch.blog.163.com/blog/static/2285350902016101010233392/
 apply:http://www.cnblogs.com/studyzy/p/4355082.html
 
 
@@ -1182,7 +1181,7 @@ https://blog.csdn.net/qq_35242986/article/details/68927909
 
 
 ========================================
-|-- 10.数据筛选、排序 match(x, table)函数
+|-- 10.数据筛选、排序 match(x, table)函数, x %in% table 更直观
 ----------------------------------------
 1. 用法:
 (1) match(x, table, nomatch = NA_integer_, incomparables = NULL)
@@ -1200,12 +1199,13 @@ If an element of vector 1 doesn’t match any element of vector 2 then it return
 
 
 
+
+
+
 2. 用法 
 (1)
 match(c(1, "TRUE"), c(T, 0, "1"))
 # [1] 3 1
-
-
 
 a1=c(1,2,3,4,5,6)
 a2=c(2,3,4,5,6,8,10)
@@ -1213,14 +1213,35 @@ rs=match(a1, a2);rs #[1] NA  1  2  3  4  5 # 返回的是a1在a2中的位置，�
 a2[rs]  #[1] NA  2  3  4  5  6 #返回的是位置的变量 
 
 
-
-
-
 (2) wgcna 包的代码
 femaleSamples = rownames(datExpr); #获取行名
 traitRows = match(femaleSamples, allTraits$Mice); #返回行名在第二个矩阵中的位置
 datTraits = allTraits[traitRows, -1]; #从第二个矩阵获取子矩阵，保持第一个矩阵的行名； 去掉第一列。
 rownames(datTraits) = allTraits[traitRows, 1]; #把第一列当新矩阵的行标题
+
+
+
+(3) seurat中，给定基因list，返回原矩阵中存在的基因。
+1)
+HB.genes <- c("HBA1","HBA2","HBB","HBD","HBE1","HBG1","HBG2","HBM","HBQ1","HBZ")
+HB_m <- match(HB.genes, rownames(pbmc@assays$RNA)) 
+HB.genes <- rownames(pbmc@assays$RNA)[HB_m]
+HB.genes <- HB.genes[!is.na(HB.genes)]
+
+HB.genes  ## 'HBA1''HBA2''HBB''HBD''HBG1''HBG2''HBQ1'
+
+
+
+2) 使用 %in% 达到同样目的，更简练。
+HB.genes <- c("HBA1","HBA2","HBB","HBD","HBE1","HBG1","HBG2","HBM","HBQ1","HBZ")
+
+HB_m <- HB.genes %in% rownames(pbmc@assays$RNA)
+HB.genes <- HB.genes[HB_m]
+
+HB.genes  ## 'HBA1''HBA2''HBB''HBD''HBG1''HBG2''HBQ1'
+
+
+
 
 
 
@@ -1475,6 +1496,88 @@ Example[Example$Col1 < -5, "Col1"] <- 0
 
 ref:
 https://stackoverflow.com/questions/47001491/r-dataframe-error-replacement-has-1-row-data-has-0
+
+
+
+========================================
+|-- df操作常见bugs: R语言首行一定要执行 options(stringsAsFactors=F)
+----------------------------------------
+
+1. 取子列时，一定要使用字符，而不能是因子
+不确定时使用 as.character
+
+br.data2=br.data[, as.character(df[df$reads<=th2,]$cell) ] 
+#debug: 有factor时一定要注意转换，和检验是否去掉了
+
+(2) 复现bug: 
+
+# step1.根据某个指标筛选细胞
+dat=iris[,1:4]
+dat$cell=paste0('cell',1:150)
+dat$cell=factor(dat$cell) #起因：不经意间 str 变 factor
+# check
+head(dat)
+str(dat)
+# 根据条件，筛选细胞
+sel=dat[which(dat$Sepal.Width>4),]$cell
+sel #factor
+# [1] cell16 cell33 cell34
+# 150 Levels: cell1 cell10 cell100 cell101 cell102 cell103 cell104 cell105 cell106 cell107 ... cell99
+# 转为字符串 
+sel2=as.character(sel)
+sel2 #character
+# [1] "cell16" "cell33" "cell34"
+# 
+# step2.造 表达矩阵 3行150列
+dat2=as.data.frame( matrix(1:(3*150), 3, 150, byrow = T) )
+colnames(dat2)=paste0("cell", 1:150)
+# check
+head(dat2[, 1:6])
+# 
+# step3.对 表达矩阵 取子集
+dat2[,  sel] #用因子时，不符合预期
+#   cell59 cell78 cell79
+# 1     59     78     79
+# 2    209    228    229
+# 3    359    378    379
+# 
+dat2[, as.character( sel ) ] #用字符串时，符合预期
+#   cell16 cell33 cell34
+# 1     16     33     34
+# 2    166    183    184
+# 3    316    333    334
+# 
+# check 第n行第2列是否>4
+dat[59,2] # [1] 2.9 #not >4
+dat[16,2] # [1] 4.4 # >4
+
+可见，用不用 as.character(f) 取出的子集完全不同。
+本例子中，用 factor 类型取子集的结果完全错误！而且系统不报错。
+
+
+
+
+
+(3) 解决方法: 
+防止 字符串 自动转为 因子。
+
+#less 1.txt
+#a	1
+#b	2
+# stringAsFactors=FALSE
+rs=read.table("D:/Temp/1.txt")
+str(rs) #factor
+#(1)
+rs2=read.table("D:/Temp/1.txt", stringsAsFactors=F)
+str(rs2) #chr
+#
+
+(2) 在代码第一行加上 
+options(stringsAsFactors=F)
+
+
+
+
 
 
 
@@ -2170,7 +2273,39 @@ head(tmp2)
 
 
 ========================================
+|-- 分别统计三种鸢尾花的每个指标的平均值
 ----------------------------------------
+
+思路: 
+1. 按照分类列分组；
+2. 求每个分组内的平均值
+
+
+
+# 按照第5列分组(得到sub df)，统计每组各列的平均值
+sapply(  split( iris[,1:4], iris[,5]), function(x){
+  apply(x, 2, mean)
+})
+
+
+结果:
+             setosa versicolor virginica
+Sepal.Length  5.006      5.936     6.588
+Sepal.Width   3.428      2.770     2.974
+Petal.Length  1.462      4.260     5.552
+Petal.Width   0.246      1.326     2.026
+
+
+验证：
+> colMeans(iris[which(iris$Species=="setosa"),1:4])
+Sepal.Length  Sepal.Width Petal.Length  Petal.Width 
+       5.006        3.428        1.462        0.246
+# 其余两类略。
+
+
+
+
+
 
 ========================================
 ----------------------------------------

@@ -251,3 +251,16 @@ function locateURLAnchor(){
 		}
     }
 }
+
+
+
+/** 异步 获取页面底部的计数器
+*/
+addEvent(window, 'load', function(){
+	var oA=document.getElementById("viewCounter");
+	var url="https://stuff.mit.edu/cgi/counter/txtBlog"
+	setTimeout(function(){
+		var oImg=createElement("img", {src:url, alt:"浏览次数[异步获取]"})
+		oA.append(oImg)
+	}, 0)
+})

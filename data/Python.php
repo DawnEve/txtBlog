@@ -16,14 +16,15 @@ return array (
     0 => 2,
     1 => 'Python语法',
     2 => array (
-      array('Python快速入门','Python101-basic','txt',),
-      array('Python基础详解','Python102-more','txt',),
-      array('Python OOP','Python103-OOP','txt',),
+      array('Python快速入门','Py101-basic','txt',),
+      array('Python基础详解','Py102-more','txt',),
+      array('Python OOP','Py103-OOP','txt',),
       array('py设计模式','py_design_pattern','md',),
       array('Python数据处理包','Py104_data_analysis','txt',),
       array('Python DA可视化','Py104B_data_visualization','txt', 'matplotlib, seaborn'), #第四个参数不起作用
-      array('Python Web','Python105-web','txt',),
-      array('Python标准库','Python106-Standard_lib','txt',),
+      array('Python Web','Py105-web','txt',),
+      array('python异步IO','Py107_async','txt',),
+      array('Python标准库','Py-Standard_lib','txt',),
     ),
   ),
   
@@ -33,9 +34,9 @@ return array (
     1 => '机器学习ML',
     2 => array (
       array('机器学习概述 ML AI','MachineLearning-01','txt',),
+      array('Py与算法 algorithm','Py201_algorithm','txt',),
       array('python爬虫','webSpider','txt',),
       array('python财经','stocks','txt',),
-	  array('微信小程序','little_Program','txt'),
     ),
   ),
   

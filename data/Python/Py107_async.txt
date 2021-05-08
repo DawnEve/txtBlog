@@ -1,0 +1,287 @@
+Py107_async
+异步IO
+
+
+推荐《fluent python》中协程部分的章节，里面有讲述协程的基础到协程的应用
+
+
+
+if io_bound:
+    if io_slow:
+        print('Use Asyncio') #IO密集，IO太慢: asyncio包 协程
+    else:
+        print('Use multi-threading') #IO密集 多线程
+else if cpu_bound:
+    print('Use multi-processing') # CPU密集 多进程，master-worker
+#
+
+
+========================================
+多进程/线程程序设计的 基本原则和教程
+----------------------------------------
+1. 设计高性能的多进程时，会遵守以下规则：
+
+尽可能少传一点数据
+尽可能减少主线程的负担
+尽可能不让某个进程傻等着
+尽可能减少进程间通信的频率
+
+
+
+
+2. Py 多进程/多线程/协程
+https://zhuanlan.zhihu.com/p/38011814
+
+https://zhuanlan.zhihu.com/p/340657122
+
+代码 https://github.com/Yonv1943/Python/tree/master/Demo
+
+
+
+
+
+
+
+========================================
+协程
+----------------------------------------
+
+1. 协程，又称微线程，纤程。英文名Coroutine。
+协程看上去也是子程序，但执行过程中，在子程序内部可中断，然后转而执行别的子程序，在适当的时候再返回来接着执行。
+
+两个函数内部没有互相调用，但是会切换着执行，这就是协程。
+
+
+
+2. 协程的特点在于是一个线程执行，那和多线程比，协程有何优势？
+
+最大的优势就是协程极高的执行效率。因为子程序切换不是线程切换，而是由程序自身控制，因此，没有线程切换的开销，和多线程比，线程数量越多，协程的性能优势就越明显。
+
+第二大优势就是不需要多线程的锁机制，因为只有一个线程，也不存在同时写变量冲突，在协程中控制共享资源不加锁，只需要判断状态就好了，所以执行效率比多线程高很多。
+
+因为协程是一个线程执行，那怎么利用多核CPU呢？最简单的方法是多进程+协程，既充分利用多核，又充分发挥协程的高效率，可获得极高的性能。
+
+
+
+3. Python对协程的支持是通过generator实现的。
+在generator中，我们不但可以通过for循环来迭代，还可以不断调用next()函数获取由yield语句返回的下一个值。
+但是Python的yield不但可以返回一个值，它还可以接收调用者发出的参数。
+
+
+(1)来看例子：
+传统的生产者-消费者模型是一个线程写消息，一个线程取消息，通过锁机制控制队列和等待，但一不小心就可能死锁。
+如果改用协程，生产者生产消息后，直接通过yield跳转到消费者开始执行，待消费者执行完毕后，切换回生产者继续生产，效率极高：
+
+Python2.5中引入yield表达式，参见PEP342: https://www.python.org/dev/peps/pep-0342/
+# 对基于生成器的协程的支持 已弃用并计划在 Python 3.10 中移除。
+def consumer():
+    r = ''
+    while True:
+        n = yield r
+        if not n:
+            return
+        print('[CONSUMER] Consuming %s...' % n)
+        r = '200 OK'
+
+def produce(c):
+    c.send(None)
+    n = 0
+    while n < 5:
+        n = n + 1
+        print('[PRODUCER] Producing %s...' % n)
+        r = c.send(n)
+        print('[PRODUCER] Consumer return: %s' % r)
+    c.close()
+
+c = consumer()
+produce(c)
+
+(2) 注意到consumer函数是一个generator，把一个consumer传入produce后：
+- 首先调用c.send(None)启动生成器；
+- 然后，一旦生产了东西，通过c.send(n)切换到consumer执行；
+- consumer通过yield拿到消息，处理，又通过yield把结果传回；
+- produce拿到consumer处理的结果，继续生产下一条消息；
+- produce决定不生产了，通过c.close()关闭consumer，整个过程结束。
+
+
+(3) 整个流程无锁，由一个线程执行，produce和consumer协作完成任务，所以称为“协程”，而非线程的抢占式多任务。
+
+最后套用Donald Knuth的一句话总结协程的特点：
+“子程序就是协程的一种特例。”
+
+
+
+
+
+
+
+
+
+
+
+
+(4) 详解
+
+1)例子中的c.send(None)，其功能类似于next(c)，比如：
+>>> def num():
+        yield 1
+        yield 2
+    
+>>> c = num()
+>>> c.send(None)
+1
+>>> next(c)
+2
+>>> next(c)
+Traceback (most recent call last):
+  File "<stdin>", line 1, in <module>
+StopIteration
+
+
+2) n = yield r，这里是一条语句，但要理解两个知识点，赋值语句先计算= 右边，由于右边是 yield 语句，所以yield语句执行完以后，进入暂停，而赋值语句在下一次启动生成器的时候首先被执行；
+
+因为赋值运算符自右向左的特性，所以在consumer中，先执行的yield r，转到produce中，执行相关语句后，再由send（）返回到consumer中，然后将send（n）的传入值赋值给n，此时n就等于了1，再继续执行剩下代码。
+
+
+n = yield r
+1. 接受sned输入
+2. 循环再次执行到这里时返回r
+重复1,2
+
+
+
+3) send 在接受None参数的情况下，等同于next(generator)的功能，
+但send同时也可接收其他参数，比如例子中的c.send(n)，要理解这种用法，先看一个例子：
+
+>>> def num():
+        a = yield 1
+        while True:
+            a = yield a
+       
+>>> c = num()
+>>> c.send(None)
+1
+>>> c.send(5)
+5
+>>> c.send(100)
+100
+
+
+ref:
+https://www.liaoxuefeng.com/wiki/1016959663602400/1017968846697824#0
+
+
+
+
+========================================
+asyncio是Python 3.4版本引入的标准库，直接内置了对异步IO的支持。
+----------------------------------------
+https://docs.python.org/3/library/asyncio.html
+
+Async IO in Python: A Complete Walkthrough
+https://realpython.com/async-io-python/
+
+Python异步IO之协程(一):从yield from到async的使用
+https://blog.csdn.net/SL_World/article/details/86597738
+
+
+
+小结：
+asyncio提供了完善的异步IO支持；
+异步操作需要在coroutine中通过yield from完成；
+多个coroutine可以封装成一组Task然后并发执行。
+
+(1) 原始写法
+
+import threading
+import asyncio
+
+@asyncio.coroutine
+def hello():
+    print('Hello world! (%s)' % threading.currentThread())
+    yield from asyncio.sleep(1)
+    print('Hello again! (%s)' % threading.currentThread())
+
+loop = asyncio.get_event_loop()
+tasks = [hello(), hello()]
+loop.run_until_complete(asyncio.wait(tasks))
+loop.close()
+
+
+
+
+
+(2) 改进写法: 函数声明时 +async 前缀，调用函数时 +await 前缀
+
+为了简化并更好地标识异步IO，从Python 3.5开始引入了新的语法async和await，可以让coroutine的代码更简洁易读。
+请注意，async和await是针对coroutine的新语法，要使用新的语法，只需要做两步简单的替换：
+- 把@asyncio.coroutine替换为async；
+- 把yield from替换为await。
+
+
+
+import threading
+import asyncio
+
+async def hello():
+    print('Hello world! (%s)' % threading.currentThread())
+    await asyncio.sleep(1) #至少使用一次 await，否则无法中断来启动并行的函数。
+    print('Hello again! (%s)' % threading.currentThread())
+
+loop = asyncio.get_event_loop()
+tasks = [hello(), hello()]
+loop.run_until_complete(asyncio.wait(tasks))
+loop.close()
+
+
+
+在3.5过后，我们可以使用async修饰将普通函数和生成器函数包装成异步函数和异步生成器。 
+比如这样，就是异步生成器
+async def async_generator():
+    yield 1
+
+
+
+
+========================================
+----------------------------------------
+
+
+========================================
+----------------------------------------
+
+
+
+========================================
+----------------------------------------
+
+
+========================================
+----------------------------------------
+
+
+
+========================================
+----------------------------------------
+
+
+========================================
+----------------------------------------
+
+
+========================================
+----------------------------------------
+
+
+========================================
+----------------------------------------
+
+
+
+========================================
+----------------------------------------
+
+
+========================================
+----------------------------------------
+

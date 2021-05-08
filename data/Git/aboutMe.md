@@ -2,11 +2,13 @@
 
 ## 基本信息   
 
-- 姓名: 于甲高  [@GitHub](https://github.com/DawnEve)  
+- 姓名: Wangjl  [@GitHub](https://github.com/DawnEve)  
 - 性别: M  
-- 网名: 	George
-- 现居: 	郑州-高新区
-- 技术偏好:	肿瘤免疫方向，单细胞转录组分析。熟悉Python3/R/shell/js/jQuery/php/thinkPHP/mysql/java，常用python3/R/bash shell/JavaScript。了解python高并发，Python OOP，R S4等。
+- 现居: 	深圳-南山区
+- 技术偏好:	肿瘤免疫方向，单细胞转录组分析。
+	* 熟悉Linux/Python3/R/shell/js/jQuery/php/thinkPHP/mysql/。
+	* 常用python3/R/shell/JavaScript，擅长R base绘图和ggplot2绘图。
+	* 了解python高并发，Python OOP，R OOP等。
 
 
 
@@ -18,10 +20,13 @@
 
 - Tel: 15890149335  
 - Email:	JimmyMall at live dot com, or 163 dot com
-
-- Address: 河南省郑州市科学大道100号郑州大学新校区    
+   
 - QQ: 469004330  
-- QQ群: `生物信息与R语言交流群(187923577)`, js/php熟手交流群(369578518), 英语读报QQ群(755650994) 
+- QQ群: 
+	* `生物信息与R语言交流群(187923577)`
+	* `生物信息与python/ML/AI(572686844)`
+	* 英语读报&英文名著QQ群(755650994) 
+	* js/php熟手交流群(369578518)
 
 - Other: [weibo](http://weibo.com/wangjunliangvip), [百度贴吧](http://tieba.baidu.com/f?kw=%C7%D7%D7%D4%D7%DF%C2%B7&fr=index)
 
@@ -119,13 +124,3 @@
 [//]:# 非公开信息: BitBucket(密码、数据); 证件(wjlDocs at 163Mail)
 
 私人信息: 见txt；
-[//]:# 物业费: (2019.4.30起)89*2.48元每平每月=220.72元/月，第三年2021.5.1开始是2.68(238.52元/月)；
-[//]:# 租金: 2019.8.3 微信收到房租和押金总共20300+之前的500订金=20800元(1600*12+1600一个月押金)
-[//]:# 2019第四季度物业费: 220.72*3=662.16 微信收到663元(2020.1.16)
-[//]:# 2020.8.8 收到8月房租1600元， 2020第1-7月的物业费: 220.72*7=1545.04 微信收到 3146元
-[//]:# 2020.9.11 收到9月房租1600
-[//]:# 2020.10.13 收到10月房租1600
-[//]:# 2020.11.10 欠物业费8,9,10三个月 220.72*3=662.16 
-[//]:# 剩余金额 1600-662.16-194.4
-
-

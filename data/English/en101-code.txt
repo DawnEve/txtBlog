@@ -314,7 +314,6 @@ http://ielts.biomooc.com/en/contents.html
 ========================================
 |-- 将微信(英文全文)结果保存到数据库
 ----------------------------------------
-
 1.数据表设计
 
 CREATE TABLE `msg_English` (
@@ -326,7 +325,7 @@ CREATE TABLE `msg_English` (
   `msg_size` int(10) NOT NULL DEFAULT 0, #字数
 
   `msg_title` char(100) NOT NULL DEFAULT '', 
-  `msg_desc` char(150) NOT NULL DEFAULT '',
+  `msg_desc` char(200) NOT NULL DEFAULT '',
   `msg_content` text #PRIMARY KEY (`msg_origin`,`msg_date`)
 ) ENGINE=MyISAM DEFAULT CHARSET=utf8 COLLATE=utf8_bin COMMENT='微信英文文章表';
 
@@ -337,6 +336,18 @@ CREATE TABLE `msg_English` (
 查字段及其属性
 > show full columns from msg_English;
 
+有错别字，可能是 pymysql.escape_string() 实体变换太多导致的，要替换回’
+> select msg_id, msg_desc from msg_English where msg_desc like "%\x26#39;%";
+
+
+encodeURI('\x26#39;') //"&#39;" 这个在html中就是'，所以可以在js中转义。
+'company\x26#39;s'.replace('\x26#39;', '’')  //"company’s"
+
+'company\x26#39;scompany\x26#39;scompany\x26#39;s'.replace(/\x26#39;/g, '’')  //"company’scompany’scompany’s" 全局替换
+这个貌似起作用了。不过正则中的\要转义\\
+
+
+
 
 
 
@@ -344,6 +355,11 @@ CREATE TABLE `msg_English` (
 2.保存文章到db
 脚本位置: IELTS/py/ jupyter文件。
 警告： jupyter 会一直占用mysql连接，如果要执行只好重启jupyter，进入mysql的docker容器重启。
+$ sudo docker exec -it e3f bash
+# service mysql restart
+$ docker start e3f
+
+
 
 (0) 获取标题
 import requests
@@ -381,9 +397,11 @@ print("="*20, "预期会有n个url，请手工测试一个url能否打开。")
 import re, requests, sys, pymysql
 
 # v0.2 修改日期获取方式
-# v0.3 修正条件
+# v0.3 修正条件:过滤掉日期中的html标签
+# v0.4 过滤掉日期中的空格实体
+# v0.5 fix url para
 
-def getInfoByURL2(msg_url):
+def getInfoByURL2(msg_url, fromSys=False):
     #####################################
     #1.爬虫获取信息
     #####################################
@@ -443,7 +461,8 @@ def getInfoByURL2(msg_url):
     
     # 根据情况判断使用哪种方法
     raw=re.sub('<[^>]+>','', rs[1:300])
-    if (len(re.split("\|",raw))>1) and (len(re.split("words",raw))>1)  :
+    raw=re.sub('&nbsp;', '', raw)
+    if fromSys==False and (len(re.split("\|",raw))>1) and (len(re.split("words",raw))>1)  :
         #print(raw)
         d_n=getDateStrSize(raw);
         #print(d_n)  ##['Aug 30, 2018', 859]
@@ -466,12 +485,14 @@ def getInfoByURL2(msg_url):
     print("Title: ", title)
     print("write in to file: http://y.biomooc.com/wangjl/en"+dateN+".html")
     
-    return [url,dateN, size,title,msg_desc,rs]
+    return [msg_url,dateN, size,title,msg_desc,rs]
 
 
 
 (2) 保存到数据库
-def insertInfo2DB2(info,source="英语读报"):
+# v0.2 desc 最长150字符
+# v0.3 desc 最长180字符; 添加第三个参数，默认检查日期是否重复
+def insertInfo2DB2(info,source="英语读报", checkDate=True):
     # 打开数据库连接
     db = pymysql.connect(host='y.biomooc.com',port=7070,user='root', password='123456', \
                          database='wang', charset='utf8')
@@ -485,9 +506,9 @@ def insertInfo2DB2(info,source="英语读报"):
         sql = "INSERT INTO msg_English(msg_url,msg_origin,msg_date, msg_size, msg_title, msg_desc,msg_content) \
                VALUES ('%s', '%s', '%s', '%d', '%s', '%s','%s' )" % \
               (info[0],source, info[1],info[2],
-                   pymysql.escape_string(info[3]),
-                   pymysql.escape_string(info[4]),
-                   pymysql.escape_string(info[5]))
+                   pymysql.escape_string(info[3]), #title
+                   pymysql.escape_string(info[4])[0:180], #desc
+                   pymysql.escape_string(info[5])) #content
                 #[url,dateN, size,title,msg_desc,rs]
                #(msg_url, '英语读报', dateN, size, title, msg_desc, pymysql.escape_string(rs))
         try:
@@ -501,22 +522,25 @@ def insertInfo2DB2(info,source="英语读报"):
 
     #如果日期已经存在，则不进行处理
 
+    if checkDate:
+        # SQL 查询语句
+        dateN2=info[1]
+        #dateN2="20170102"
+        sql = 'select msg_date from msg_English where msg_date like "'+dateN2+'";'
 
-    # SQL 查询语句
-    dateN2=info[1]
-    #dateN2="20170102"
-    sql = 'select msg_date from msg_English where msg_date like "'+dateN2+'";'
-
-    # 执行sql语句
-    cursor.execute(sql)
-    values = cursor.fetchall()
-    if len(values)==0:
-        print("Not exist the date")
-        DoInsertDB(info,source)
+        # 执行sql语句
+        cursor.execute(sql)
+        values = cursor.fetchall()
+        if len(values)==0:
+            print("Not exist the date")
+            DoInsertDB(info,source)
+        else:
+            print("The date "+dateN2+" has already existed.")
     else:
-        print("The date "+dateN2+" has already existed.")
+        DoInsertDB(info,source);
 
     # 关闭数据库连接
+    cursor.close()
     db.close()
 #
 
@@ -524,49 +548,78 @@ def insertInfo2DB2(info,source="英语读报"):
 
 (3) 二合一函数
 # 批量URL获取文章，并插入数据库
-def run(start):
-    for i in range(start, len(arrURL)): #随机时间段后[2s,12s]执行
+# v0.2 添加参数: checkDate
+
+def run(start, end=-1, fromSys=False, checkDate=True):
+    if end==-1:
+        end=len(arrURL)
+    for i in range(start, end): #随机时间段后[2s,12s]执行
     #for i in range(4,6):    
         msg_url=arrURL[i]
         print(msg_url)
         #2.get Info  return [url,dateN, size,title,msg_desc,rs]
-        info= getInfoByURL2(msg_url)
+        info= getInfoByURL2(msg_url, fromSys)
 
         #3.插入数据库
-        insertInfo2DB2(info)
+        insertInfo2DB2(info, checkDate=checkDate)
 
         #等待随机时间
-        pause=3+2*random.random()
-        print(str(i)+' '+str(pause))
+        pause=1+2*random.random()
+        print(str(i)+" "+ str(info[1])+' '+str(pause) )
         time.sleep(pause)
         print('='*20)
+### 
 run(1)
 run(44)
-## bug: 遇到中文标题就报错，不知道哪一句错了。
-# 共 624 个
+run(19, 20, checkDate=False)
 
+# 共 624 个，但是有一些被删除了。
+> select count(*) from msg_English;
+616
 
 
 忘写日期了
+日期重复
+* The date 20190608 has already existed.
 
 rollback
 * DataError(1406, "Data too long for column 'msg_desc' at row 1"
 * DataError(1406, "Data too long for column 'msg_content' at row 1")
 
-
 run(321, 322, True)
+
+
+
+(4) 一个一个添加的函数
+def addOneByURL(msg_url, source="英语读报", fromSys=True):
+    info= getInfoByURL2(msg_url, fromSys)
+    insertInfo2DB2(info, source)
+    print(str(info[1]) )
+    print('='*20)
+# test
+addOneByURL('https://mp.weixin.qq.com/s/cBaYW7V_t7ULIA7D5FKbjQ','新英文杂志')
+
 
 
 
 
 3. 查询结果
-查找一个单词在句子中的位置
+(1) 查找一个单词在句子中的位置
 mysql> select * from msg_English where msg_content like '%reside%'\G
 
-制作一个网页最好。
+(2) 制作一个网页最好。
+http://ielts.dawneve.cc/dict/sentence2.html?page=1&word=good
 
 
-
+(3) 有差错重做时，结果少了几条：
+select msg_id, msg_date, msg_title from msg_English2 
+where msg_title not in 
+(select msg_title from msg_English);
+结果：
+| msg_id | msg_date | msg_title
+|    579 | 20181007 | NCE3 | Lesson 1 A Puma at large 逃遁的美洲狮 
+|    583 | 20180724 | 英语读报：我们在中学学习的英语距离国外英语环境的差距有多大？
+|    582 | 20180913 | NW | We might be heading for a crash as bad as 1929 
 
 
 
@@ -1446,6 +1499,81 @@ mysql> select count(*) from word_ms where tag_ielts=1;
 
 
 
+========================================
+|-- 统计编号中断的单词编号，并添加新词
+----------------------------------------
+1. 不存在的编号
+select model2.id-1 as noExistID from 
+	(select model1.id from wang.word_ms as model1) as model2 
+where model2.id>1 and not exists 
+	(select model3.id from wang.word_ms as model3 where  model3.id=model2.id-1);
+#
+
++-----------+
+| noExistID |
++-----------+
+|      1131 | *
+|      5506 |
+|      5523 |
+|      5528 |
+|      5535 |
+|      5540 |
+|      5547 |
+|      5563 |
+|      5565 |
+
+
+
+(2) check 
+mysql> select * from word_ms where id=1131;
+Empty set (0.00 sec)
+
+
+
+(3) 插入新值
+insert into word_ms(id, word) values(1131, 'twitchiness');
+
+然后用web补充完善发音和意思
+http://ielts.dawneve.cc/dict/updateWord.html?id=1131
+
+陌生程度strangeness 最高
+> update word_ms set strangeness=10 where id=1131;
+
+
+(4) check 
+> select * from word_ms where id=1131;
+
+
+
+
+
+
+
+
+
+========================================
+|-- 汉英字典 //todo
+----------------------------------------
+1. 可用版：没有界面
+
+
+(1)只能win cmd登陆
+G:\xampp\mysql\bin>mysql -h y.biomooc.com -P 7070 -u root -p
+
+(2) 
+MySQL [(none)]> select * from wang.word_ms where meaning like '%推测%'\G
+
+为什么使用ubuntu shell不能输入中文呢？ //todo
+
+
+
+
+2. web界面版
+
+//todo 
+
+
+
 
 ========================================
 dawn语料库：最新已经有web版
@@ -1543,12 +1671,23 @@ select * from sentence_dawn where line like "%risk%" order by add_time DESC, id 
 添加了web页面，用于添加语料库。
 
 
-========================================
-----------------------------------------
 
 
+
 ========================================
+权威引文字典
 ----------------------------------------
+
+1.一百多GB的MDX词库资源集合下载，类ftp站 
+https://mdx.mdict.org/
+Mdict词库资源，免费下载mdx/mdd/css文件，支持欧路，深蓝，goldendict等APP软件！
+
+
+
+2. 牛津高阶英汉双解词典（第9版）完整免费下载
+https://mdict.org/post/oxford-9/
+
+
 
 
 ========================================

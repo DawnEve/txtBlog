@@ -16,6 +16,7 @@ return array (
     1 => 'scRNAseq技术',
     2 => array (
       array('scSeq方法学','scSeq101-methods','txt'),
+      array('adv 进阶分析方法','adv_method','txt'),
       array('scSeq-10xGenomics','scSeq-10xGenomics','txt'),
       array('scSeq-c1-RNA','scSeq-c1-RNA','txt'),
     ),
@@ -27,6 +28,7 @@ return array (
     2 => array (
       array('Seurat包','Seurat','txt'),
       array('sc3包等','sc3','txt'),
+      array('cell_marker','cell_marker','txt'),
     ),
   ),
    
@@ -37,8 +39,23 @@ return array (
       array('wgcna包','wgcna_note','txt'),
       array('科研故事','story','txt'),
       array('Endnote的使用','endnote','txt'),
+      array('影响因子IF','IF','html'),
 
     ),
   ),
+  
+  
+
+  array (
+    0 => 5,
+    1 => '专业知识库',
+    2 => array (
+      array('生信编程必练200题','practise501','txt'),
+      array('肿瘤基础理论','cancer_basis','txt'),
+      array('精编免疫学','immunology_basis','txt'),
+      array('统计与统计参数','NGS_statistics','txt'),
+    ),
+  ),
+ 
   
 );

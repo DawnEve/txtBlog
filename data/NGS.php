@@ -33,34 +33,32 @@ return array (
 
 
       array('circos-Cytoscape','circos-Cytoscape','txt'),
+      array('GO分析及可视化','GO_analysis01','txt'),
+      array('GEO and TCGA','GEO_TCGA','txt'),
     ),
   ),  
   
   array (
     0 => 4,
-    1 => '基因组分析',
+    1 => 'RNA分析',
     2 => array (
       array('文件格式','NGS_format','txt'),
       array('db_参考基因组_在线工具','genome401','txt'),
-      array('FAQ of TCGA','FAQ_TCGA','txt'),
-      array('本地生信软件','localSoft402','txt'),
-      array('外显子WES分析','NGS_exon','txt'),
-      array('GO分析及可视化','GO_analysis01','txt'),
+      array('本地生信软件(分析)','localSoft402','txt'),
+      array('本地生信软件(可视化)','localSoft402-view','txt'),
       array('microRNA分析','miRNA','txt'),
     ),
   ),
 
-
+  
   array (
-    0 => 5,
-    1 => '专业知识库',
+    0 => 4,
+    1 => 'Genome分析',
     2 => array (
-      array('生信编程必练200题','practise501','txt'),
-      array('肿瘤基础理论','cancer_basis','txt'),
-      array('精编免疫学','immunology_basis','txt'),
-      array('统计与统计参数','NGS_statistics','txt'),
+      array('基因组分析软件','genome_soft','txt'),
+      array('外显子WES分析','NGS_exon_pipeline','txt'),
+
     ),
   ),
-  
   
 );

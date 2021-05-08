@@ -762,9 +762,10 @@ tapply(c(1,2,3,4,5,6), c('a','a','b','c','b','c'), sum)
 tapply(iris$Petal.Length,iris$Species,mean)
 # setosa versicolor  virginica 
 # 1.462      4.260      5.552 
+```
 
-
-
+### 例2：传入更多参数 ...
+```
 #对向量x和y进行计算，并以向量t为索引进行分组，求和。
 set.seed(1)
 # 定义x,y向量
@@ -805,7 +806,7 @@ tapply(x,t,sum)+tapply(y,t,sum)
 
 
 
-### 例2，实现excel中数据透视表的功能
+### 例3，tapply() 实现excel中数据透视表的功能
 ```
 # tapply实现crosstable功能
 da=data.frame(
@@ -828,11 +829,12 @@ da
 tapply(da$sale,da$year,mean)
 # 2007 2008 2009 
 # 2.5  6.0  9.0
-tapply(da$sale,da$year) #缺省函数时输出的是分组 [1] 1 1 1 1 2 2 2 3 3 3 
+tapply(da$sale,da$year) #缺省函数时输出的是分组 
+# [1] 1 1 1 1 2 2 2 3 3 3 
 
 
-#
-seq=tapply(da$sale,list(da$year,da$province))#二维分组时缺省函数输出是什么？
+#二维分组时缺省函数输出是什么？
+seq=tapply(da$sale,list(da$year,da$province))
 seq #输出的到底是啥？已经超过组数10了。
 #[1]  1  4  7 10  2  8 11  6  9 12 
 #注意输出最大的是12，缺少俩。嗯...懂了
@@ -850,11 +852,28 @@ tapply(da$sale, seq, mean) #这样会扁平输出成一行
 # 1  5  2  8  3  6  9  4  7 10
 
 
-#再次尝试：
+# 上表输出不确定数据的对应关系，很不直观。
+# 继续尝试：
 rs=tapply(da$sale,list(da$year,da$province),function(x){
   print(paste0("输入",x))
 })
+#[1] "输入1"
+#[1] "输入5"
+#[1] "输入2"
+#[1] "输入8"
+#[1] "输入3"
+#[1] "输入6"
+#[1] "输入9"
+#[1] "输入4"
+#[1] "输入7"
+#[1] "输入10"
+
 rs #从这个结果更能看到顺序，就是先按照province排序，然后按照year输出。
+#        A       B       C       D       
+# 2007 "输入1" "输入2" "输入3" "输入4" 
+# 2008 "输入5" NA      "输入6" "输入7" 
+# 2009 NA      "输入8" "输入9" "输入10"
+
 
 tapply(da$sale,list(da$year,da$province),function(x)x) #透视表效果
 #       A  B C  D
@@ -863,7 +882,10 @@ tapply(da$sale,list(da$year,da$province),function(x)x) #透视表效果
 # 2009 NA  8 9 10
 
 tapply(da$sale,list(da$year,da$province),mean) #mean，结果和上文一样，是因为每个交叉点只有一个数据
-#我们增加几行试试
+
+
+######################
+#给原始数据增加几行
 da2=rbind(da,data.frame(
   year=c('2007','2008','2009'),
   province=c('A',"C","B"),
@@ -872,9 +894,13 @@ da2=rbind(da,data.frame(
 da2
 
 tapply(da2$sale,list(da2$year,da2$province),mean)#正常
+#         A     B    C  D
+#2007 50.5     2    3  4
+#2008  5.0    NA 1003  7
+#2009   NA 15004    9 10
 
 #看细节可以发现，数据是按照交叉点一次传入fun的，但是在fun内是按照向量分别执行语句的。
-rs=tapply(da2$sale,list(da2$year,da2$province),function(x){myprint("输入",x)})
+rs=tapply(da2$sale,list(da2$year,da2$province),function(x){print(paste("输入",x))})
 # [1] "输入1"   "输入100"
 # [1] "输入5"
 # [1] "输入2"
@@ -886,6 +912,10 @@ rs=tapply(da2$sale,list(da2$year,da2$province),function(x){myprint("输入",x)})
 # [1] "输入7"
 # [1] "输入10"
 rs #有些地方输入两个
+#        A           B           C           D        
+#2007 Character,2 "输入 2"    "输入 3"    "输入 4" 
+#2008 "输入 5"    NULL        Character,2 "输入 7" 
+#2009 NULL        Character,2 "输入 9"    "输入 10"
 
 tapply(da2$sale,list(da2$year,da2$province)) #(年x省份)一样的序号也相同，符合预期
 #[1]  1  4  7 10  2  8 11  6  9 12  1  8  6 
@@ -915,7 +945,7 @@ gl(3,1,20) #如果更长，则会重复以上
 
 ### 函数table（求因子出现的频数）
 ```
-使用格式为：
+# 使用格式为：
 #table(..., exclude = if (useNA == "no") c(NA, NaN), useNA = c("no",
 #        "ifany", "always"), dnn = list.names(...), deparse.level = 1)
 #其中参数exclude表示哪些因子不计算。
