@@ -9,7 +9,7 @@
 
 23种设计模式的py代码及注释: [py1](http://www.pythontip.com/python-patterns/detail/abstract_factory), [py2](https://www.cnblogs.com/welan/category/1193037.html)
 
-My python codes: [Github](https://github.com/DawnEve/learngit/tree/master/Python3/pythonCodeGit/day20-design-pattern)
+> My python codes: [Github](https://github.com/DawnEve/learngit/tree/dev/Python3/pythonCodeGit/day20-design-pattern)
 
 
 虽然是c++/java等强类型语言的概念，不过通用性还是很强的。值得研究和磨练思维模式。
@@ -196,8 +196,23 @@ Facade Pattern: Provide a unified interface to a set of interfaces in a subsyste
 
 
 
+
+
+
 # 行为型模式(11类)：策略/模板方法/观察者/迭代子/责任链/命令/备忘录/状态/访问者/中介者/解释器
 
+
+## 策略（Strategy）模式 
+
+定义了一系列算法，并将每个算法封装起来，使它们可以相互替换，且算法的改变不会影响使用算法的客户。
+
+
+
+
+
+## 模板方法（TemplateMethod）模式
+
+定义一个操作中的算法骨架，而将算法的一些步骤延迟到子类中，使得子类可以不改变该算法结构的情况下重定义该算法的某些特定步骤。
 
 
 
