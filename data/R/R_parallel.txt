@@ -1,0 +1,485 @@
+R 并行计算
+
+越来越快
+for 最慢
+apply 很快
+rowSums 全部向量化更快，也可能是最快的
+parallel 可能更快(用到了多个核)
+Rcpp 直接用c++肯定是最快的。
+
+
+parallel包已经是R的默认安装包了。
+简单用法如下：detectCores检查核数， makeCluster设定核数，然后parApply执行。
+
+
+
+========================================
+基准测试: 求矩阵的每一行的sd
+----------------------------------------
+1. 产生数据
+set.seed(2021)
+dt <- matrix(runif(10^6), ncol = 10)
+
+dim(dt) #[1] 100000     10
+head(dt)
+
+(2) invisible() 是干啥的？
+(3) system.time({ }) 能统计其中的代码运行的时间
+
+
+
+
+
+2. 测试
+(1)使用 for 循环
+system.time({
+	rowSd1=c()
+	for (i in 1:nrow(dt)) {
+		rowSd1=c(rowSd1, sd(dt[i,]) )
+	}
+})
+
+用户 系统 流逝 
+22.14  0.36 22.86 
+
+length(rowSd1) #100000
+head(rowSd1) #[1] 0.2329231 0.3028007 0.2722582 
+
+
+
+(2) 使用apply
+system.time({
+	rowSd2=apply(dt, 1, sd)
+})
+用户 系统 流逝 
+1.68 0.00 1.72 
+
+# check
+length(rowSd2) #100000
+head(rowSd2) #0.2329231 0.3028007 0.2722582
+
+
+
+(3) 使用 向量化计算标准化
+system.time({
+   rowSd3=sqrt(rowSums((dt - rowMeans(dt))^2)/(dim(dt)[2] - 1))
+})
+用户 系统 流逝 
+0.02 0.00 0.02
+# check
+length(rowSd3) #100000
+head(rowSd3) #[1] 0.2329231 0.3028007 0.2722582
+
+
+
+(4) 使用多核
+library(parallel)
+detectCores(logical = F)
+cl <- makeCluster(getOption("cl.cores", 4))
+system.time({
+    rowSd4=parApply(cl, dt, 1, sd)
+})
+stopCluster(cl)
+
+#user  system elapsed 
+#用户 系统 流逝 
+#0.25 0.30 1.07
+# check
+length(rowSd4) #100000
+head(rowSd4) #0.2329231 0.3028007 0.2722582
+
+
+
+
+========================================
+|-- 提升R语言运算效率的11个实用方法
+----------------------------------------
+R的 for 循环效率很低，怎么提升需要循环的代码的效率呢?
+
+本文将介绍几种适用于大数据领域的方法，包括简单的逻辑调整设计、并行处理和Rcpp的运用，利用这些方法你可以轻松地处理1亿行以上的数据集。
+
+
+基准测试2: 
+让我们尝试提升往数据框中添加一个新变量过程(该过程中包含循环和判断语句)的运算效率。下面的代码输出原始数据框：
+# Create the data frame
+col1 <- runif (12^5, 0, 2)
+col2 <- rnorm (12^5, 0, 2)
+col3 <- rpois (12^5, 3)
+col4 <- rchisq (12^5, 2)
+df <- data.frame (col1, col2, col3, col4)
+逐行判断该数据框(df)的总和是否大于4，如果该条件满足，则对应的新变量数值为’greaterthan4’，否则赋值为’lesserthan4’。
+
+
+system.time({
+	out0=c();
+	for (i in 1:nrow(df) ){
+		if(df[i,1] + df[i,2] + df[i,3] + df[i,4] > 4 ){
+			out0=c(out0, "greaterthan4")
+		}else{
+			out0=c(out0, "lesserthan4")
+		}
+	}
+})
+
+#  user  system elapsed 
+#129.517   1.449 130.928
+
+
+
+1.向量化处理和预设数据库结构
+循环运算前，记得预先设置好数据结构和输出变量的长度和类型，千万别在循环过程中渐进性地增加数据长度。接下来，我们将探究向量化处理是如何提高处理数据的运算速度。
+
+system.time({
+	out1=character(nrow(df)) #提前设置指定长度的空字符数组 "" "" ""
+	for (i in 1:nrow(df) ){
+		if(df[i,1] + df[i,2] + df[i,3] + df[i,4] > 4 ){
+			out1[i]="greaterthan4"
+		}else{
+			out1[i]="lesserthan4"
+		}
+	}
+})
+
+# user  system elapsed 
+#6.896   0.000   6.894
+
+
+
+
+2. 将条件语句的判断条件移至循环外
+将条件判断语句移至循环外可以提升代码的运算速度，接下来本文将利用包含100,000行数据至1,000,000行数据的数据集进行测试：
+
+system.time({
+	out2=character(nrow(df))
+	conditions=df[,1] + df[,2] + df[,3] + df[,4] > 4 #条件移到循环外
+	
+	for (i in 1:nrow(df) ){
+		if( conditions[i] ){
+			out2[i]="greaterthan4"
+		}else{
+			out2[i]="lesserthan4"
+		}
+	}
+})
+#  user  system elapsed 
+#  0.033   0.000   0.033
+
+
+
+
+3.只在条件语句为真时执行循环过程
+另一种优化方法是预先将输出变量赋值为条件语句不满足时的取值，然后只在条件语句为真时执行循环过程。此时，运算速度的提升程度取决于条件状态中真值的比例。
+
+本部分的测试将和case(2)部分进行比较，和预想的结果一致，该方法确实提升了运算效率。
+
+system.time({
+	out3=rep("lesserthan4", nrow(df)) #提前放上一个预设值
+	conditions=df[,1] + df[,2] + df[,3] + df[,4] > 4
+	
+	for (i in  (1:nrow(df))[conditions] ){ #只在条件为真时进入循环
+		out3[i]="greaterthan4"
+	}
+})
+
+user  system elapsed 
+  0.022   0.000   0.022 
+
+
+
+
+4.尽可能地使用 ifelse()语句
+
+利用ifelse()语句可以使你的代码更加简便。ifelse()的句法格式类似于if()函数，但其运算速度却有了巨大的提升。
+即使是在没有预设数据结构且没有简化条件语句的情况下，其运算效率仍高于上述的两种方法。
+
+system.time({
+	conditions=df[,1] + df[,2] + df[,3] + df[,4] > 4
+	out4= ifelse(conditions, "greaterthan4", "lesserthan4")
+})
+#user  system elapsed 
+#  0.031   0.000   0.031
+
+system.time({
+  out4= ifelse( (df$col1 + df$col2 + df$col3 + df$col4)> 4 , "greaterthan4", "lesserthan4")
+})
+#user  system elapsed 
+#  0.031   0.000   0.031
+
+system.time({
+  out4= ifelse( rowSums(df)> 4 , "greaterthan4", "lesserthan4")  #用上 rowSums 速度也没提升
+})
+#user  system elapsed 
+# 0.035   0.000   0.036
+
+
+可见，目前最快的还是case3.
+
+
+
+5.使用 which()语句
+
+利用which()语句来筛选数据集，我们可以达到Rcpp三分之一的运算速率。
+
+system.time({
+	out5=rep("lesserthan4", nrow(df))
+	out5[ which(rowSums(df)>4) ]="greaterthan4"
+})
+#user  system elapsed 
+# 0.007   0.000   0.007
+
+这是目前最快的。
+
+
+
+
+
+6.利用apply族函数来替代for循环语句
+
+本部分将利用apply()函数来计算上文所提到的案例，并将其与向量化的循环语句进行对比。
+该方法的运算效率优于原始方法，但劣于ifelse()和将条件语句置于循环外端的方法。
+该方法非常有用，但是当你面对复杂的情形时，你需要灵活运用该函数。
+
+system.time({
+	out6=apply(df, 1, function(x){
+		if(sum(x)>4){
+			"greaterthan4"
+		}else{
+			"lesserthan4"
+		}
+	})
+})
+# user  system elapsed 
+#  0.284   0.000   0.283
+
+
+system.time({
+	out6=apply(df, 1, function(x){
+		ifelse(sum(x)>4, "greaterthan4", "lesserthan4") #嵌套ifelse，时间更久了。
+	})
+})
+# user  system elapsed 
+#  0.505   0.000   0.505 
+
+
+
+7. 利用compiler包中的字节码编译函数cmpfun()
+这可能不是说明字节码编译有效性的最好例子，但是对于更复杂的函数而言，字节码编译将会表现地十分优异，因此我们应当了解下该函数。
+
+system.time({
+	library(compiler)
+	myFun=cmpfun(function(x){
+			if(sum(x)>4){
+				"greaterthan4"
+			}else{
+				"lesserthan4"
+			}
+	})
+
+	out7=apply(df, 1, myFun)
+})
+# user  system elapsed 
+# 0.255   0.012   0.267
+
+
+
+# 准备工作不计时
+library(compiler)
+myFun=cmpfun(function(x){
+		if(sum(x)>4){
+			"greaterthan4"
+		}else{
+			"lesserthan4"
+		}
+})
+
+system.time({
+	out7=apply(df, 1, myFun)
+})
+#user  system elapsed 
+#0.294   0.000   0.294 
+
+
+
+
+
+
+8. 利用Rcpp
+
+截至目前，我们已经测试了好几种提升运算效率的方法，其中最佳的方法是利用ifelse()函数 --> 我测试的是which最快。
+如果我们将数据量增大十倍，运算效率将会变成啥样的呢?接下来我们将利用Rcpp来实现该运算过程，并将其与ifelse()进行比较。
+
+setwd("~/data/test/testR")
+
+system.time({
+	library(Rcpp)
+	sourceCpp("MyFunc2.cpp")
+	out8=myFunc(df)
+})
+# user  system elapsed 
+# 0.010   0.004   0.014 
+
+下面是利用C++语言编写的函数代码，将其保存为“MyFunc.cpp”并利用sourceCpp进行调用。
+//source for MyFunc2.cpp 
+#include <Rcpp.h>
+using namespace Rcpp;
+//[[Rcpp::export]]
+CharacterVector myFunc(DataFrame x){
+  NumericVector col1=x["col1"];
+	NumericVector col2=x["col2"];
+  NumericVector col3=x["col3"];
+	NumericVector col4=x["col4"];
+  int n=col1.size();
+  CharacterVector out(n);
+  for (int i=0; i<n; i++) {
+    if (col1[i]+col2[i]+col3[i]+col4[i] >4){
+      out[i]="greaterthan4";
+    }else{
+      out[i]="lesserthan4";
+    }
+  }
+  return out;
+}
+
+
+
+
+9.利用并行运算
+
+并行运算的代码：
+
+# parallel processing
+library(foreach)
+library(doSNOW)
+cl <- makeCluster(4, type="SOCK") # for 4 cores machine
+registerDoSNOW (cl)
+condition <- (df$col1 + df$col2 + df$col3 + df$col4) > 4
+
+# parallelization with vectorization
+system.time({
+  out9 <- foreach(i = 1:nrow(df), .combine=c) %dopar% {
+    if (condition[i]) {
+      return("greater_than_4")
+    } else {
+      return("lesser_than_4")
+    }
+  }
+})
+#user  system elapsed 
+# 72.115   3.935  76.058 
+
+不知道为什么如此慢？？
+
+
+这个提示暴漏出一堆函数:
+The following objects are masked from ‘package:parallel’:
+    clusterApply, clusterApplyLB, clusterCall, clusterEvalQ, clusterExport, clusterMap,
+    clusterSplit, makeCluster, parApply, parCapply, parLapply, parRapply, parSapply, splitIndices,
+    stopCluster
+#
+
+
+
+10.利用内存较小的数据结构
+data.table()是一个很好的例子，因为它可以减少数据的内存，这有助于加快运算速率。
+
+library(data.table)
+dt <- data.table(df)  # create the data.table
+system.time({
+  for (i in 1:nrow (dt)) {
+    if ((dt[i, col1] + dt[i, col2] + dt[i, col3] + dt[i, col4]) > 4) {
+      dt[i, col5:="greater_than_4"]  # assign the output as 5th column
+    } else {
+      dt[i, col5:="lesser_than_4"]  # assign the output as 5th column
+    }
+  }
+})
+
+巨慢！！
+user  system elapsed 
+291.915   2.007 293.892
+
+
+
+
+总结
+方法：速度， nrow(df)/time_taken = n 行每秒
+原始方法：1X, 856.2255行每秒(正则化为1)
+向量化方法：738X, 631578行每秒
+只考虑真值情况：1002X，857142.9行每秒
+ifelse：1752X，1500000行每秒
+which：8806X，7540364行每秒
+Rcpp：13476X，11538462行每秒
+
+
+## 我的评测
+方法：速度， nrow(df)/time_taken = n 行每秒  seconds
+原始方法：1X, 1921行每秒(正则化为1)  129.5s
+向量化方法：18.7X, 36083行每秒  6.896
+判断移到循环外: 3925X, 7540363行每秒  0.033s
+只考虑真值情况：5887X，11310545行每秒 0.022s
+ifelse：4178X，8026838行每秒  0.031s
+which：18504X，35547428行每秒  0.007s
+apply: 456X, 876169行/s, 0.284s
+Rcpp：12953X，24883200行每秒  0.010s
+
+
+
+
+
+
+
+#########################################
+
+tips-1.尽早地移除变量并恢复内存容量
+在进行冗长的循环计算前，尽早地将不需要的变量移除掉。在每次循环迭代运算结束时利用gc()函数恢复内存也可以提升运算速率。
+
+
+
+
+
+
+
+
+ref:
+https://www.r-bloggers.com/2016/01/strategies-to-speedup-r-code/
+http://blog.sina.com.cn/s/blog_13eaccf160102wqlp.html
+https://www.cda.cn/view/17597.html
+
+========================================
+----------------------------------------
+
+
+
+
+
+========================================
+----------------------------------------
+
+
+
+========================================
+----------------------------------------
+
+
+
+========================================
+----------------------------------------
+
+
+
+
+
+========================================
+----------------------------------------
+
+
+
+========================================
+----------------------------------------
+
+
+
+========================================
+----------------------------------------
+
+

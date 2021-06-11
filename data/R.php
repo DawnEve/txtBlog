@@ -42,6 +42,7 @@ return array (
       array('分析差异表达基因 DEG','pkg-DEG','txt'),
       array('数据框清理dplyr','pkg-dplyr','txt'),
       array('R web: shinny框架','pkg-shiny','txt'),
+      array('R并行计算','R_parallel','txt'),
     ),
   ),
   

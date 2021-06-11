@@ -467,7 +467,7 @@ https://www.zhihu.com/question/268877581/answer/1827368050
 多期刊杂志要求Font为Arial，但看很多nature science的文章的Font似乎并不是
 
 
-图片高度: 5 3/8 inches(13.65cm)(最大)
+图片宽度: 5 3/8 inches(13.65cm)(最大)
 图片高度: 8 1/4 inches(21.1cm)(最大)
 字号: 8-point type size(最小)
 线条粗细: 0.5pt(最小)
@@ -496,10 +496,190 @@ b.将内容放在满足尺寸要求的矩形之内，导出图片后再剪裁
 
 
 
+
+
+
+
+
+
 ref:
 1.PPT作图如何满足期刊投稿要求？分辨率，尺寸，字号等
 https://mp.weixin.qq.com/s?__biz=MzA4MTYyOTE4Ng==&mid=2648123673&idx=1&sn=f63e52aa5da397cc195584f21eb400b4
 2.
+
+
+
+
+
+
+
+
+
+
+========================================
+p值怎么画？ 图中标注p值时，不用科学计数法1.2e-7的形式，用1.2x10^-7
+----------------------------------------
+1. 图中标注数值的方法
+library(ggplot2) #ggplot 3.2.1
+g=ggplot(iris, aes(Sepal.Length, Sepal.Width, color=Species))+
+  geom_point(size=0.8)+theme_bw();g
+  
+(1)只有一个文字的应该使用 annotate()
+g+annotate(geom="text",x=5, y=4.2, label="setosa", color="black")
+
+(2)或者显示指定空df，而指定data=NULL不行。
+g+geom_text(data=data.frame(), aes(x=5, y=4.2, label="setosa"), color='black' )
+
+
+
+
+
+2. 图中标注p值的方法
+(1) R 基础作图
+## 使用非科学计数法 在图中标注p值
+annotate_Pvalue=function(p0, ...){
+  #p0=1.2e-52; p0
+  p0=formatC(p0, format="e", digits=2);#p0 #"1.2e-52"
+  # split by e
+  p0=strsplit(p0, "e")[[1]]; #p0 #[1] "1.2" "-52"
+  # plot
+  label = bquote(italic(P)~"=" ~ .(p0[1]) ~ "\u00d7" ~ 10^.(p0[2]) )
+  text(labels = label, ...)
+}
+# test
+plot(1:3)
+annotate_Pvalue(1.5e-26, x=2, y=1.8)
+
+
+
+## v2.0: if p>=0.01, then show p directly with 3 digits.
+# if p<0.01, then using scientific mark, with 2 digits.
+transPvalue=function(p0){
+  #p0=1.2e-52; p0
+  if(p0<0.01){
+    p0=formatC(p0, format="e", digits=2);#p0 #"1.2e-52"
+    # split by e
+    p0=strsplit(p0, "e")[[1]]; #p0 #[1] "1.2" "-52"
+    # plot
+    label = bquote(italic(P)~"=" ~ .(p0[1]) ~ "\u00d7" ~ 10^.(p0[2]) )
+  }else{
+    p0=round(p0,3); #p0
+    label = bquote(italic(P)~"=" ~ .(p0) )
+  }
+  return(label)
+}
+plot(1:3)
+text(x=2, y=1.8, labels=transPvalue(1.56464e-26))
+text(x=2, y=2.5, labels=transPvalue(0.0215466))
+
+
+
+
+
+(2) ggplot2 作图
+library(ggplot2)
+g=ggplot(iris, aes(Sepal.Length, Sepal.Width, color=Species))+
+  geom_point(size=0.8)+theme_bw();g
+
+g+annotate(geom="text", x=5, y=4.2, label=transPvalue(1.5e-26), color="black")
+缺点: 报警告！同时p值边缘很模糊，显然是同一个值被重复了3次。
+# I explored more, perhaps these three FALSE  makes p value draw 3 times at the same place, but how can I avoid it?
+> is.na(transPvalue(1.5e-26))
+[1] FALSE FALSE FALSE
+Warning message:
+In is.na(transPvalue(1.5e-26)) :
+  is.na() applied to non-(list or vector) of type 'language'
+
+
+
+https://github.com/tidyverse/ggplot2/issues/4505
+You cannot pass language to label aesthetic (you should have seen a warning for this). Instead, you can pass a text and specify parse = TRUE.
+不能传递 language 类型，要传递 text，并指定参数 parse = TRUE
+
+library(ggplot2)
+g <- ggplot(iris, aes(Sepal.Length, Sepal.Width, color = Species)) +
+  geom_point(size = 0.8) +
+  theme_bw()
+
+g + annotate(geom = "text", x = 5, y = 4.2, label = 'italic(P) ~ "=" ~ "1.50" ~ "×" ~ 10^"-26"', color = "black", parse = TRUE)
+
+
+
+# transfer p value for ggplot2 plotting
+transPvalue2=function(p0){
+  #p0=1.2e-52; p0
+  if(p0<0.01){
+    p0=formatC(p0, format="e", digits=2);#p0 #"1.2e-52"
+    # split by e
+    p0=strsplit(p0, "e")[[1]]; #p0 #[1] "1.2" "-52"
+    # plot
+    label = paste0( 'italic(P)~"="~',p0[1],'~"\u00d7"~10^',p0[2])
+  }else{
+    p0=round(p0,3); #p0 #保留2位
+    label = paste0( 'italic(P)~"=" ~', p0 )
+  }
+  return(label)
+}
+
+g <- ggplot(iris, aes(Sepal.Length, Sepal.Width, color = Species)) +
+  geom_point(size = 0.8) +
+  theme_bw();g
+
+g + annotate(geom = "text", x = 5, y = 4.2, 
+             label = transPvalue2(2.51546e-26), 
+             color = "black", parse = TRUE)
+g + annotate(geom = "text", x = 5, y = 4.2, 
+             label = transPvalue2(0.03146495), 
+             color = "black", parse = TRUE)
+
+还有，以后提问题去 https://community.rstudio.com/
+github issue 仅仅记录和解决 bug。
+
+
+
+
+
+(3) 更多关于公式的打印技巧
+原文 https://stackoverflow.com/questions/53503742/ggplot2-annotate-text-with-superscript-and-function
+I guess annotate() doesn't actually accept expressions like base plotting functions, so rather than passing an expression as an expression, you need to pass the string version of it and let ggplot parse it for you. You can do that with
+
+	annotate(geom = 'text', 
+	  label = paste0("R^2==", round(summary(lm(emissions ~ etsemit, data=full))$r.squared, 3)), 
+	  x = Inf, y = Inf, hjust = 1.5, vjust = 2, parse=TRUE)
+
+Most of the time if you want an expression you would use bquote to make one
+
+	bquote(R^2==.( round(summary(lm(emissions ~ etsemit, data=full))$r.squared, 3)))
+
+and you could deparse() that to get the string version but in this case it's easier to go with paste() I suppose.
+
+
+涉及的函数
+parse( text='') #字符串拼凑成公式，在ggplot2中，这个由参数 parse=T 设定后由包内部转换
+deparse() #公式to字符串
+
+
+测试
+draw=function(label, main1=""){
+  plot(mpg ~ disp, data=mtcars, main=main1)
+  text(x=300,y=30, col='red', label= label)
+}
+
+#
+a1=bquote(R^2 ~ "=" ~ 0.71); a1
+draw(a1, main='a1')
+#
+a2=deparse(a1);a2
+draw(a2, main='a2')
+#
+a3=parse(text='R^2 ~ "=" ~ 0.73'); a3
+draw(a3, main='a3')
+
+
+
+
+
+
 
 
 

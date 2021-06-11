@@ -286,7 +286,7 @@ https://download.asperasoft.com/download/docs/ascp/2.7/html/index.html
 如何上传测序数据到 GEO
 ----------------------------------------
 0. 准备:
-如果是人的样本，需要申请许可号。
+如果是人的样本，需要申请许可号，每个国家都有自己的规定。
 如果是细胞系和小鼠的样本，则可以直接上传到GEO。
 
 (1)推荐上传gz压缩的fastq文件（不要使用zip压缩），且各个样本已做拆分。
@@ -305,7 +305,6 @@ $ id="9" && echo c${id}_R1.fastq && echo c${id}_R2.fastq
 
 太慢了，还是全手动 多进程操作吧。
 $ id="9" && gzip -c c${id}_R1.fastq > ../combine_gz/c${id}_R1.fastq.gz && gzip -c c${id}_R2.fastq > ../combine_gz/c${id}_R2.fastq.gz
-
 $ id="12" && gzip -c c${id}_R2.fastq > ../combine_gz/c${id}_R2.fastq.gz
 
 
@@ -326,6 +325,60 @@ $ md5sum small.png
 
 
 
+(3) 为节省硬盘空间，怎么安全删除原始fastq文件，保留压缩后的fastq.gz?
+先检测 fastq 的md5值，
+再检测 fastq.gz 解压缩后的md5值，
+如果相等，则证明 fastq.gz 解压缩后能还原为原fastq，可以安全删除原 fastq。
+
+## step1: 原始 fastq的md5
+$ ls /home/wangjl/data/apa/fq_files/mef/*_R2.fastq | xargs md5sum >mef.md5
+
+
+## step2: gz 解压后的md5值 
+$ ls /home/wangjl/data/scPolyA-seq/data/raw_sc/human/*gz | while read fName; do echo $fName; md5=`gunzip -c ${fName} | md5sum | awk '{print $1}'` && echo -e "${md5}\t${fName}" >>human.fq.gz_after_gunzip.222.md; done;
+
+
+## step3: cat 后肉眼观察， 或 使用R语言 检测md5是否和原始文件的md5一致
+readOriginMD5=function(){
+  d1=read.table("bc.md5")
+  d1_=read.table("mef.md5")
+  d1=rbind(d1,d1_)
+  head(d1)
+  d1$cid=gsub("/home/wangjl/data/apa/fq_files/mef/", "", d1$V2)
+  d1$cid=gsub("/home/wangjl/data/apa/fq_files/bc/", "", d1$cid)
+  d1$cid=gsub("_R2", "", d1$cid)
+  d1$cid=gsub("_", "", d1$cid)
+  rownames(d1)=d1$cid
+  print(dim(d1))
+  d1
+}
+readGunzipMD5=function(){
+  d2=read.table("human.fq.gz_after_gunzip.222.md")
+  head(d2)
+  d2$cid=gsub("/home/wangjl/data/scPolyA-seq/data/raw_sc/human/", "", d2$V2)
+  d2$cid=gsub(".gz", "", d2$cid)
+  print(dim(d2))
+  rownames(d2)=d2$cid
+  d2
+}
+d1=readOriginMD5() #640
+d2=readGunzipMD5() #222
+#
+head(d1)
+head(d2)
+length(intersect(d1$cid, d2$cid))
+#
+d2$md52=d1[rownames(d2),]$V1
+dim(d2)
+d2$check= (d2$V1==d2$md52)
+head(d2)
+table(d2$check) #222 true
+# 如果都是true，则正确。
+
+
+
+
+
 
 
 
@@ -334,7 +387,7 @@ $ md5sum small.png
 https://www.ncbi.nlm.nih.gov/geo/info/submission.html
 
 
-2. 注册登录GEOGEO数据库
+2. 注册登录GEO数据库
 为了上传数据，首先需要登录账号，点击界面右上方“login”。
 新用户需要先注册，填写相关信息后，账号通过邮箱激活。
 
@@ -344,14 +397,54 @@ https://www.ncbi.nlm.nih.gov/geo/info/submission.html
 
 
 3. 上传数据
+上传数据类型可分为3类：
+	芯片数据；
+	高通量数据，如RNA-seq、ChIP-seq等；
+	其它表达谱数据，例如RT-PCR等。
 
-(1) 上传数据类型可分为3类：
+下来以某 C1 scRNA-seq数据上传为例展示，点击上传高通量数据类型。
+Submitting high-throughput sequence data to GEO
 
-芯片数据；
-高通量数据，如RNA-seq、ChIP-seq等；
-其它表达谱数据，例如RT-PCR等。
+(1)Assembling your submission
+- Metadata spreadsheet
+- Processed data files
+- Raw data files
 
-(2) 下来以某RNA-seq数据上传为例展示，点击上传高通量数据类型。
+(2)Uploading your submission
+
+要准备好所有数据，放到一个文件夹中，一起上传，只有一次机会，不能反复上传。
+$ ls geo_submission_jun7/ |wc
+    564     564    9956
+
+推荐使用 sftp 上传: lftp 用户名:密码@ftp地址:传送端口（默认21）
+1) 官方示例 Using 'lftp'
+lftp ftp://geoftp:password@ftp-private.ncbi.nlm.nih.gov
+cd uploads/jinwlab_AV27EOOc
+mirror -R Folder_with_submission_files
+
+
+2) 我的实例
+$ lftp geoftp@ftp-private.ncbi.nlm.nih.gov:21
+输入密码
+> cd uploads
+> cd jinwlab_AV27EOOc
+> mirror -R geo_submission_jun7
+
+## 564 个文件, 2021/6/7 20:52 --> 
+## 忘了 excel 表格了，upload到上传文件夹，希望别出错。21:04
+
+
+
+(3)General Information
+- Data provisions, standards and administration
+- Categories of sequence submissions accepted by GEO
+
+
+
+
+
+
+
 
 
 
