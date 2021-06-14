@@ -579,6 +579,17 @@ https://help.aliyun.com/document_detail/110173.html
 ----------------------------------------
 领域专用语言 domain specific language 
 
+Snakemake是Bioconda的作者——算法工程师Johannes Köster为了数据分析能够更有效的重复，用Python3写的工作流管理工具（Workflow Management System）。这个工具的特点是可以根据文件的依赖关系来智能管理命令的并行和串行。
+
+Snakemake的优势：
+  - 工作流通过基于Python的语言进行描述，容易理解。前后生成文件逻辑清晰，方便维护。
+  - Snakemake工作流程可以无缝扩展到工作站、集群和云环境而无需修改工作流定义。作业调度方便控制，比如CPU内核、内存等。
+  - Snakemake可以使用Conda或Singularity自动部署工作流所需的软件依赖性。
+  - 如果任务中断，当前的文件状态保留，已成功生成的文件不会被覆盖，已运行完的命令不会重复运行。
+
+
+
+
 我们都知道ATAC-seq是探索染色体开放程度的一项非常重要的技术，比如我们要分析ATAC-seq的数据（注：ATAC-seq的原理请移步 ATAC-seq - Wikipedia），根据ENCODE的建议，ATAT-seq数据分析往往会分成下面几个步骤：
 raw FASTQ cut adapter
 mapping to the reference with aligner like bowtie2
@@ -635,6 +646,10 @@ https://www.bilibili.com/video/BV1jb411i76T?p=2
 
 
 1.安装 snakemake包
+
+(0) 如果有pip3，也可无需激活环境: $ pip3 install snakemake -i https://pypi.douban.com/simple/
+
+
 (1)$ pip3 -V ##(安装失败)
 pip 19.1.1 from /home/wangjl/software/anaconda3/lib/python3.7/site-packages/pip (python 3.7)
 
@@ -705,9 +720,12 @@ virtualenv是如何创建“独立”的Python运行环境的呢？原理很简�
 
 
 
+
+
 2. 简单执行shell命令
-(1)再次进入虚拟环境：
+(1)再次进入虚拟环境：(不是必须的，只要能调用 $ snakemake --version #6.4.1 即可)
 $ source /home/wangjl/software/snakemake/.venv/bin/activate
+
 
 (2)创建两个文本文件1.txt, 2.txt，内容分别是hello和world，作为输入文件。
 $ cat Snakefile
@@ -722,9 +740,11 @@ rule test_cat:
 #
 这里有四个参数:
 rule: 是名称, 这里命名为test_cat
-Input: 输入文件, 这里是”1.txt”, “2.txt”
+Input: 输入文件, 这里是”1.txt”, “2.txt”。使用英文引号括着，逗号隔开。
 Output: 输出文件, 这里是”hebing.txt”
-Shell: 这里是要执行的脚本, 用到输入文件是{input}, 输出文件是{output}
+Shell: 这里是要执行的 shell 命令, 用到输入文件是{input}, 输出文件是{output}.
+	要加引号，一个长命令可以换行，且中间不需要加引号。
+
 
 
 实例2
@@ -732,13 +752,19 @@ $ cat sort.sf
 rule sort:
 	input: "words.txt"
 	output: "words.sorted.txt"
-	shell: "sort {input} > {output}"
+	shell: 
+		"sort {input} > {output}"
+		" && ls -lth {output}"
 
-# rules can use shell: Python (run:), and R (run: R() )
+## rules can use shell: Python (run:), and R (run: R() ) //不懂
+$ snakemake -s sort.sf
+-rw-rw-r-- 1 wangjl wangjl 31 Jun 14 15:45 words.sorted.txt
 
 
 
-(3)查看任务内容 
+
+
+(3)查看任务内容 dry-run
 $ snakemake -np
 这里不执行程序，而是把相关的脚本打印出来，同时还有任务统计信息
 
@@ -824,6 +850,21 @@ Complete log: /data/jinwf/wangjl/software/snakemake/.snakemake/log/2019-07-20T07
 好吧，就是屏幕上输出的内容~
 
 
+(8) 生成流程图 --dag
+$ sudo apt install graphviz #dot 命令所在的包
+
+$ snakemake --forceall --dag | dot -Tpdf > dag.pdf
+
+$ snakemake -s cat3.sf --dag {1,2}.cat.txt | dot -Tsvg > dag.svg
+
+然后可以静态服务器查看图片 
+$ http-server -p=9000
+
+
+
+
+
+
 
 
 
@@ -831,10 +872,7 @@ Complete log: /data/jinwf/wangjl/software/snakemake/.snakemake/log/2019-07-20T07
 参考： https://www.jianshu.com/p/8e57fd2b81b2
 
 
-
-
-
-### 使用conda安装定义在config中的环境
+(1) 使用conda安装定义在config中的环境
 rule mytask:
     input:
         "path/to/{dataset}.txt"
@@ -853,7 +891,7 @@ dependencies:
 #
 
 
-### singularity(类docker的容器技术)的整合 
+(2) singularity(类docker的容器技术)的整合 
 rule mytask:
     input:
         "path/to/{dataset}.txt"
@@ -865,7 +903,8 @@ rule mytask:
         "some-tool {input} > {output}"
 #
 
-## Singularity + Conda
+
+(3) Singularity + Conda
 singularity:
     "docker://continuumio/miniconda3:4.4.1" ## define OS
 rule mytask:
@@ -896,10 +935,13 @@ Command line help:snakemake --help
 
 
 
+
+
+
 ========================================
-|-- snakefile实例分析、外部脚本接收snakemake传入的参数
+|-- snakefile实例分析：给snakemake传入参数(通配符)、脚本顶部定义变量、run直接运行py代码、外部脚本接收snakemake传入的参数
 ----------------------------------------
-1. 比对并保存bam文件
+1. 使用bwa比对到参考基因组，并保存bam文件
 rule bwa_map:
     input:
         "data/genome.fa",
@@ -910,10 +952,110 @@ rule bwa_map:
         "bwa mem {input} | samtools view -Sb - > {output}"
 #
 
+以上命令比较死板，甚至还不如手工打的爽快。
+但是如果使用上通配符，则灵活性大大增加。
+
+
+(2) 可以从 命令行 传入参数 (传入目标文件(就是output的文件名)，脚本内部按照 通配符 获取相应参数)
+rule cat2:
+    input:
+        "header.txt",
+        "{sample}.txt"
+    output:
+        "{sample}.cat.txt"
+    shell:
+        "cat {input} > {output}"
+
+1)命令中指定目标文件，他会自动套用规则中的output，然后查找依赖并执行。
+$ snakemake -s cat2.sf 2.cat.txt -j1 #最后是指定cpu核心数 1
+
+
+2)命令指定多个目标文件，用花括号括着。
+$ snakemake -s cat2.sf {1,2}.cat.txt -j1
+结果只执行了1.cat.txt, 因为2.cat.txt已经生成过。省却了手动判断是否存在等操作。
+
+如果删掉2个目标文件 $ rm *cat.txt, 再次执行该命令，则生成2个文件。
+
+如果使用 $ touch 2.txt 改变输入文件的时间戳，它就会认为 2.txt 文件发生了改变，那么重复之前的命令就会再次生成 2.cat.txt。
+
+
+$ head *cat.txt
+==> 1.cat.txt <==
+this is a header.
+this is file 1
+
+==> 2.cat.txt <==
+this is a header.
+this is file 2
 
 
 
-2. 
+
+输出的日志:
+Job counts:
+	count	jobs
+	2	cat2 # 这个过程走了2遍。
+	2
+
+[Mon Jun 14 10:59:15 2021]
+rule cat2:
+    input: header.txt, 1.txt
+    output: 1.cat.txt
+    jobid: 0
+    wildcards: sample=1  # 通配符1
+
+[Mon Jun 14 10:59:15 2021]
+Finished job 0.
+1 of 2 steps (50%) done
+
+[Mon Jun 14 10:59:15 2021]
+rule cat2:
+    input: header.txt, 2.txt
+    output: 2.cat.txt
+    jobid: 1
+    wildcards: sample=2 # 通配符2
+
+[Mon Jun 14 10:59:15 2021]
+Finished job 1.
+2 of 2 steps (100%) done
+
+
+(3) 如果想在shell中引用通配符，形式是 {wildcards.sample}
+rule cat3:
+    input:
+        "header.txt",
+        "{sample}.txt"
+    output:
+        "{sample}.cat.txt"
+    shell:
+        "cat {input} > {output} 2>log/{wildcards.sample}.log"
+
+$ snakemake -s cat3.sf {1,3}.cat.txt
+
+
+
+
+
+
+
+
+
+
+
+2. 脚本顶部、规则外定义变量，方便批量组装
+
+(1) expand() 函数: 
+定义好变量名字，然后使用 列表推导式 批量组装
+>>> ["sorted_reads/{}.bam".format(sample) for sample in ["A","B"]]
+['sorted_reads/A.bam', 'sorted_reads/B.bam']
+
+snakemake定义了 expand进行简化, 上面可以继续改写成 
+expand("sorted_reads/{sample}.bam",sample=SAMPLES)
+
+
+(2) 只需要在 rule all 中使用，前面的相同的变量会自动赋值
+多个变量可以使用 等号= 定义，获取时使用 点号. 获取。
+
 $ cat snakefile
 SAMPLES = ['Sample1', 'Sample2']
 rule all:
@@ -930,17 +1072,100 @@ rule quantify_genes:
     shell:
         'echo {input.genome} {input.r1} {input.r2} > {output}'
 
-#
+
+(3) 测试 
+$ cat cat4.sf
+Samples=["A", "B"]
+rule make_page:
+	input: 
+		hd="header.txt",
+		txt=expand("sorted_read/{sample}.txt", sample=Samples)
+	output:
+		"out/index.html"
+	shell:
+		"cat {input.hd} {input.txt} > {output}"
+		"&& echo '==End==' {output} "
+
+$ snakemake -s cat4.sf 
+==End== out/index.html
+
+
+检查输出
+$ cat out/index.html 
+<h1>this is header</h1>
+
+this is a
+this is B file
 
 
 
 
 
 
-3.snakemake向外部脚本中传递参数 
+
+3. run 直接运行py脚本。
+实例: 输出报告
+$ snakemake --version 
+注意使用最新版: #6.4.1
+而老版本无法运行: #4.3.1
+
+(1). 输出报告：用run语句，不加引号。
+snakemake的一个优点就是可以在规则里面写Python脚本，只需要把shell改成run，此外还不需要用到引号。
+
+$ cat cat5.sf 
+rule report:
+	input: "1.txt"
+	output: "report.html"
+	run:
+		from snakemake.utils import report
+		arr=[]
+		with open(input[0]) as f:
+			for line in f.readlines():
+				arr.append( line.strip() )
+		n_len=len(arr)
+		
+		report("""
+		# An example of report
+		
+		Reads were mapped to hg19 
+		refer genome and variants were called jointly with 
+		SAMtools / BCFtools.
+		
+		This resulted in {n_len} variants(see Table T1_)
+		""", output[0], T1=	input[0] )
+
+$ snakemake -s cat5.sf -j1
+
+
+
+(2) 测试
+$ cat xx.sf 
+rule report:
+	input: "1.txt"
+	output: "report.html"
+	run:
+		fr=open(input[0], 'r')
+		fw=open(output[0], "w")
+		for lineR in fr.readlines():
+			line=lineR.strip()
+			print(line)
+			fw.write(line+"<br>")
+		fr.close()
+		fw.close()
+
+$ snakemake -s xx.sh -j1
+
+
+
+
+
+
+
+4. snakemake向外部脚本中传递参数 
 refer: https://slides.com/johanneskoester/ismb-snakemake-tutorial-2019#/16
 
-snakemake中的rule
+(1) snakemake中的rule，调用外部R脚本
+$ cat R.sf
 rule mytask1:
 	input:
 		"path/to/{dataset}.txt"
@@ -949,6 +1174,34 @@ rule mytask1:
 	script:
 		"scripts/myscript.R"
 #
+# 在外部R脚本中接收参数：
+print("Enter R") #无用
+data=read.table(snakemake@input[[1]])
+data=data[order(data$id),]
+write.table(data, file=snakemake@output[[1]])
+print("Leave R") #无用
+
+
+$ cat path/to/stu.txt 
+	id name
+1 200 Tom
+2 20 Dim
+3 1 Apple
+4 4 Trp
+ 
+$ snakemake -s R.sf -j1 result/stu.txt
+
+$ cat result/stu.txt  #已经按照id排序了
+"id" "name"
+"3" 1 "Apple"
+"4" 4 "Trp"
+"2" 20 "Dim"
+"1" 200 "Tom"
+
+
+
+(2) 调用外部py脚本 
+$ cat Py.sh
 rule mytask2:
 	input:
 		"data/{sample}.txt"
@@ -965,14 +1218,29 @@ data=data.sort_values("id")
 data.to_csv(snakemake.output[0], sep="\t")
 
 
-# 在外部R脚本中接收参数：
-data=read.table(snakemake@input[[1]])
-data=data[order(data$id),]
-write.table(data, file=snakemake@output[[1]])
+$ cat person.txt  #注意: 是tab分割的
+id	name
+200	Tom
+20	Dim
+1	Apple
+4	Trp
+
+$ snakemake -s Py.sf result/person.txt -j1
+
+$ cat result/person.txt 
+	id	name
+2	1	Apple
+3	4	Trp
+1	20	Dim
+0	200	Tom
 
 
 
-## 还可以复用 reuseable wrappers from central repository
+
+
+
+
+(3) 还可以复用 reuseable wrappers from central repository
 rule map_reads:
 	input:
 		"{sample}.bam"
@@ -1020,6 +1288,49 @@ rule mytask:
     shell:
         "some-tool {input} > {output}"
 #
+
+
+
+
+
+
+基础部分小结：
+总结下学习过程，知识点如下：
+	Snakemake基于规则执行命令，规则一般由 input, output, shell三部分组成。
+	Snakemake可以自动确定不同规则的输入输出的依赖关系，根据时间戳来判断文件是否需要重新生成
+	Snakemake 以{sample}.fa形式进行文件名通配，用 {wildcards.sample}获取sample的实际文件名
+	Snakemake用 expand()生成多个文件名，本质是Python的列表推导式
+	Snakemake可以在规则外直接写Python代码，在规则内的 run里也可以写Python代码。
+	Snakefile的第一个规则通常是 rule all，因为默snakemake默认执行第一条规则
+
+ref:
+https://mp.weixin.qq.com/s?__biz=MzI1MjU5MjMzNA==&mid=2247486637&idx=1&sn=93035d68b68a178c803f3689fb937dec
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+========================================
+|-- snakemake进阶：对流程进一步修饰
+----------------------------------------
+在基础部分中，我们完成了流程的框架，
+下一步则是对这个框架进行不断完善，比如说编写配置文件，声明不同rule的消耗资源，记录运行日志等。
+
+
+
+
+
+
 
 
 
@@ -1115,6 +1426,198 @@ rule cutadapt: #rule 后是规则的名字，自定义。内部一般要有 inpu
 
 refer:
 https://www.bilibili.com/video/av45832590?p=6
+
+
+
+========================================
+|-- rule all 是干什么的？其input就是目标文件，然后倒序查找其依赖谁的output
+----------------------------------------
+1.最重要的一条规则：all
+
+前面我们已经讲过，snakemake 通过各个规则的输入、输出来确定执行顺序和依赖关系，snakemake 每次默认执行第一个规则之后，会通过该规则的依赖关系（输入）来决定接下来执行哪个规则。
+所以，为了将所有规则都调用起来，我们需要在工作流文件最开始写下第一个规则：all 规则，来调取各支线最后一条规则的输出，这样层层递推，就可以将所有关联规则都调用起来。示例如下：
+
+rule all:
+    input:
+        "stat/stat.txt"
+
+#下面加一个合并文件的rule
+
+
+
+$ cat stat/stat.txt 
+i am stat.txt
+
+$ cat sort2.sf 
+rule all:
+    input:
+        "stat/stat.txt"
+    shell: 
+        "echo 'this is rule all' && cat {input}"
+rule sort:
+	input: "words.txt"
+	output: "words.sorted.txt"
+	shell: "sort {input} > {output}"
+
+执行结果: 
+$ snakemake -s sort2.sf 
+Building DAG of jobs...
+Provided cores: 1
+Rules claiming more threads will be scaled down.
+Job counts:
+	count	jobs
+	1	all
+	1
+
+rule all:
+    input: stat/stat.txt
+    jobid: 0
+
+this is rule all
+i am stat.txt
+Finished job 0.
+1 of 1 steps (100%) done
+
+问题: 为什么只执行一个rule，第二个rule怎么不执行呢？
+
+
+(2) 这就解释了为什么rule all 是最后的规则了。
+找到rule all中的input，整个流程就结束了。
+为了找到这个文件在哪里，就需要看其他rule的输出，就是倒推执行过程。
+
+
+$ cat sort3.sf 
+rule all:
+    input:
+        "words.sorted.txt"  # 如果这个是最终文件，则该规则最后执行。
+    shell: 
+        "echo 'this is rule all' && cat {input}"
+rule sort:
+	input: "words.txt"
+	output: "words.sorted.txt"
+	shell: "sort {input} > {output}"
+
+执行结果 
+$ snakemake -s sort3.sf 
+Building DAG of jobs...
+Provided cores: 1
+Rules claiming more threads will be scaled down.
+Job counts:
+	count	jobs
+	1	all
+	1
+
+rule all:
+    input: words.sorted.txt
+    jobid: 0
+
+this is rule all
+apple
+beach
+book
+good
+pear
+zoo
+Finished job 0.
+1 of 1 steps (100%) done
+
+
+
+
+2. 啥意思？不懂GNU Make
+rule all:
+    input:
+        expand('{sample}.txt', sample=SAMPLES)
+
+rule all的input是流程最终的目标文件，类似于GNU Make，从顶部指定目标。
+expand是Snakemake的特有函数，类似列表推导式。
+
+
+Snakemake的工作流程是这样的：
+- 先读rule all，了解目标文件是Sample1.txt和Sample2.txt。
+
+
+
+3. 测试: 别人在QQ群问为什么报错？ 
+(1)
+$ cat filter.sf 
+SI=["test_1"]
+
+rule all:
+	input:
+		expand("{sample}_1_trimmed.fq", sample=SI),
+		expand("{sample}_2_trimmed.fq", sample=SI)
+rule fileter:
+	input:
+		"{sample}_1.fq"
+		"{sample}_2.fq"
+	output:
+		"{sample}_1_trimmed.fq"
+		"{sample}_2_trimmed.fq"
+	params:
+		"./"
+	shell: "echo {params} {input[0]} {input[1]} 1>{output[0]} 2>{output[1]}"
+
+报错:
+$ snakemake -s filter.sf 
+Building DAG of jobs...
+MissingInputException in line 3 of /home/wangjl/test/SnakeMake/filter.sf:
+Missing input files for rule all:
+test_1_2_trimmed.fq
+test_1_1_trimmed.fq
+
+
+
+(2) 我认为是 expand 不配套
+$ cat filter3.sf 
+SI=["test_1"]
+
+rule all:
+        input:
+                expand("{sample}_1_trimmed.fq", sample=SI),
+                expand("{sample}_2_trimmed.fq", sample=SI)
+rule fileter:
+        input:
+                "{sample}_1.fq",
+                "{sample}_2.fq"
+        output:
+                "{sample}_1_trimmed.fq",
+                "{sample}_2_trimmed.fq"
+        params:
+                "./"
+        shell: "cat {params}{input[0]} > {output[0]} && cat {input[1]} >{output[1]}"
+
+
+执行结果 
+$ snakemake -s filter3.sf 
+Building DAG of jobs...
+Provided cores: 1
+Rules claiming more threads will be scaled down.
+Job counts:
+	count	jobs
+	1	all
+	1	fileter
+	2
+
+rule fileter:
+    input: test_1_1.fq, test_1_2.fq
+    output: test_1_1_trimmed.fq, test_1_2_trimmed.fq
+    jobid: 1
+    wildcards: sample=test_1
+
+Finished job 1.
+1 of 2 steps (50%) done
+
+localrule all:
+    input: test_1_1_trimmed.fq, test_1_2_trimmed.fq
+    jobid: 0
+
+Finished job 0.
+2 of 2 steps (100%) done
+
+
+
+
 
 
 
