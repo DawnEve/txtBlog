@@ -1,0 +1,1346 @@
+ATAC-seq
+
+
+
+
+========================================
+ATAC-seq 简介
+----------------------------------------
+
+ATAC-seq经典之作
+论文标题：Transposition of native chromatin for fast and sensitive epigenomic profiling of open chromatin, DNA-binding proteins and nucleosome position
+
+表观测序领域大牛William J Greenleaf和Howard Y Chang的经典之作，引用上千次的ATAC经典原文
+
+
+
+
+(1).复习核小体知识：https://en.wikipedia.org/wiki/ATAC-seq
+核小体有间距，则间距部分会被Tn5酶插入测序接头，也就能看到reads 峰。
+而核小体密集区域，则几乎没有reads，也就看不到任何峰。
+
+如果一个基因处于开放区域，就是测到很多ATAC reads，则该基因一般就是高表达的。
+如果一个promoter在开放区域，则其下游基因一般高表达。
+如果一个enhancer 处在比较弱(少ATAC reads)的区域，则该 enhancer 不太容易发生近端效应。
+
+
+(2) ATAC-seq 就是越松散的genome区域，测得的reads越多。该区域基因表达量比较多。
+测序reads分布示意图 https://github.com/crazyhottommy/pyflow-ATACseq/blob/master/ATAC.jpg
+https://blog.csdn.net/u012110870/article/details/102804164
+https://www.jianshu.com/p/eb02b95cf049
+
+ATAC文库构建通常借助Illumina的Nextera®（Illumina）试剂盒，然而Nextera文库涉及的序列不同于其他形式的文库。
+
+### Tn5转座酶切割开放DNA
+Tn5转座子切割相同的DNA片段并在片段两端添加如下序列，其中加粗斜体部分紧挨着文库的插入片段序列
+序列如下:
+Read 1 ——>  5’ TCGTCGGCAGCGTC[AGATGTGTATAAGAGACAG] 
+Read 2 ——>  5’ GTCTCGTGGGCTCGG[AGATGTGTATAAGAGACAG] 
+可以发现Read1、Read2部分序列一致： AGATGTGTATAAGAGACAG
+
+### 随后PCR扩增连接P5、P7接头
+连接测序接头以锚定在flowcell芯片上的接头以供测序反应：
+
+序列如下：
+[P5--index5-R1]  5’ AATGATACGGCGACCACCGAGATCTACAC[i5]TCGTCGGCAGCGTC 
+[P7--index7-R2]  5’ CAAGCAGAAGACGGCATACGAGAT[i7]GTCTCGTGGGCTCGG
+
+### 完整文库结构
+Index 2 (i5)5’-[AATGATACGGCGACCACCGAGATCTACAC]IIIIIIII[TCGTCGGCAGCGTC->AGATGTGTATAAGAGACAG]-NNNNNN-[CTGTCTCTTATACACATCT<-CCGAGCCCACGAGAC]IIIIIIII[ATCTCGTATGCCGTCTTCTGCTTG]-3’ Index 1 (i7)
+
+IIIIIIII: Index 2 (i5), 8 bases 
+IIIIIIII: Index 1 (i7), 8 bases 
+-NNNNNN-: 插入序列
+ref:http://bioinformatics.cvr.ac.uk/blog/illumina-adapter-and-primer-sequences/
+
+这个图很奇怪，
+左边: P5,N5, index2(i5), 最后来个Read 1.
+右边: P7,N7, index1(i7), 最后来个Read 2.
+index内 14+19 + 19+15=67 形式上浪费这么多序列
+	假设测150，还剩余 150-67=83
+	假设测100，还剩余 150-67=33
+
+如何过滤去接头？
+如果截去接头序列需要在 CTGTCTCTTATACACATCT 位置截取，工具可以是cutadapt、trim_galore等类似可以自定义截去接头的软件。
+
+
+
+
+
+
+(3) 分析过程： 五个大步骤
+raw FASTQ cut adapter
+mapping to the reference with aligner like bwa, bowtie2
+sort alignment result (BAM files)
+remove BAM file duplications
+peak-calling with MACS2
+
+
+测序数据文件是两个重复的双端测序：
+ATAC_seq_rep1_R1.fq.gz ATAC_seq_rep1_R2.fq.gz 
+ATAC_seq_rep2_R1.fq.gz ATAC_seq_rep2_R2.fq.gz 
+ATAC_seq_rep3_R1.fq.gz ATAC_seq_rep3_R2.fq.gz 
+
+
+
+ENCODE 项目公开了ATAC数据、标准和分析过程（基于wdl的），值得参考。
+提供了从原始的fastq数据开到，到peak caling结束的基础分析功能，尽管缺少了下游的差异分析和motfi分析，这套流程依然值得推荐。
+https://github.com/ENCODE-DCC/atac-seq-pipeline
+
+trim, mapping, peak calling三部曲：通过cutadapt软件去除adapter和低质量序列，然后是bowitie2比对参考基因组，最后调用MACS2进行peak calling。
+
+
+
+
+
+
+========================================
+ATAC-seq分析走流程：测试数据
+----------------------------------------
+
+1. 准备数据：用哪一套数据？
+https://blog.csdn.net/weixin_43569478/article/details/108079790
+
+(1) 检索 GEO
+all: https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc=GSE97669
+ATAC-seq for HeLa cell line(n=2) PMID: 29731168
+https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc=GSE106145
+
+
+ATAC-seq for MDA-MB-231, ctrl vs KO(n=6, 2ctrl, 2KO*2)
+https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc=GSE97583
+
+
+HeLa ATAC-Seq, address the effect of TLK loss on chromatin accessibility(n=6, 2ctrl, 2KO*2)
+https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc=GSE131022
+
+
+(2) 选中这个，并下载
+ATAC-seq of MCF-7 cells post ligand treatment(n=18) 这个数据不错。
+
+
+文章: https://www.ncbi.nlm.nih.gov/pubmed/31353221
+Guan J, Zhou W, Hafner M, Blake RA et al. Therapeutic Ligands Antagonize Estrogen Receptor Function by Impairing Its Mobility. 
+Cell 2019 Aug 8;178(4):949-963.e18. PMID: 31353221
+
+
+Results: 
+Ligand 4-OH tamoxifen, a selective ER modulator (SERM), significantly alters chromatin accessibility and partially mimics the effect of natural ligand E2 on chromatin accessibility in MCF-7 breast cells. 
+Selective ER degraders (SERD) fulvestrant and GDC-0927 on the other hand have very little impact on chromatin accessibility.
+
+https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc=GSE117940
+GSM3315603	Vehicle Rep 1 SRR7629152
+GSM3315604	Vehicle Rep 3
+GSM3315605	Vehicle Rep 2
+
+GSM3315612	4-OH tamoxifen Rep 3  SRR7629161
+GSM3315613	4-OH tamoxifen Rep 2
+GSM3315614	4-OH tamoxifen Rep 1
+
+
+https://www.ncbi.nlm.nih.gov/Traces/study/?acc=PRJNA483774
+$ cd /home/wangjl/data/ATAC/raw
+$ cat SRR_Acc_List.txt
+SRR7629152
+SRR7629153
+SRR7629154
+SRR7629161
+SRR7629162
+SRR7629163
+
+$ cat SRR_Acc_List.txt | head -n 3 | while read id; do echo $id; 
+fasterq-dump --split-files -e 10 $id;
+done;
+
+
+$ cat SRR_Acc_List.txt | tail -n 3 | while read id; do echo $id; 
+fasterq-dump --split-files -e 10 $id;
+done;
+
+# 22:36 --> 0:09, 1.5h 66G,
+$ ls -lh
+total 66G
+-rw-rw-r-- 1 wangjl wangjl 4.3G Jun 17 22:48 SRR7629152_1.fastq
+-rw-rw-r-- 1 wangjl wangjl 4.3G Jun 17 22:48 SRR7629152_2.fastq
+-rw-rw-r-- 1 wangjl wangjl 5.9G Jun 17 23:27 SRR7629153_1.fastq
+-rw-rw-r-- 1 wangjl wangjl 5.9G Jun 17 23:27 SRR7629153_2.fastq
+-rw-rw-r-- 1 wangjl wangjl 5.3G Jun 18 00:01 SRR7629154_1.fastq
+-rw-rw-r-- 1 wangjl wangjl 5.3G Jun 18 00:01 SRR7629154_2.fastq
+
+-rw-rw-r-- 1 wangjl wangjl 4.8G Jun 17 22:51 SRR7629161_1.fastq
+-rw-rw-r-- 1 wangjl wangjl 4.8G Jun 17 22:50 SRR7629161_2.fastq
+-rw-rw-r-- 1 wangjl wangjl 6.3G Jun 17 23:32 SRR7629162_1.fastq
+-rw-rw-r-- 1 wangjl wangjl 6.3G Jun 17 23:32 SRR7629162_2.fastq
+-rw-rw-r-- 1 wangjl wangjl 6.5G Jun 18 00:09 SRR7629163_1.fastq
+-rw-rw-r-- 1 wangjl wangjl 6.5G Jun 18 00:09 SRR7629163_2.fastq
+
+
+Reads很短，就40bp?
+$ head SRR7629152_1.fastq 
+@SRR7629152.1 1 length=41
+CACCANTGGCAGCCTAGCATTAGCAGGAATACCTTTCCTCA
++SRR7629152.1 1 length=41
+A/AAA#AEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEE/
+
+
+(3) 先压缩一下，减少磁盘占用
+$ cat SRR_Acc_List.txt | tail -n 3 | while read id; do echo $id; 
+gzip ${id}_1.fastq;
+done;
+
+变换 _1 为 _2, tail 为 head，共4种组合。
+9:40 --> 10:28 可能之前就结束了。缩小为原来的 20%。
+
+$ ls -lth
+total 13G
+-rw-rw-r-- 1 wangjl wangjl 1.3G Jun 18 00:09 SRR7629163_2.fastq.gz
+-rw-rw-r-- 1 wangjl wangjl 1.3G Jun 18 00:09 SRR7629163_1.fastq.gz
+-rw-rw-r-- 1 wangjl wangjl 1.1G Jun 18 00:01 SRR7629154_2.fastq.gz
+-rw-rw-r-- 1 wangjl wangjl 1.1G Jun 18 00:01 SRR7629154_1.fastq.gz
+-rw-rw-r-- 1 wangjl wangjl 1.2G Jun 17 23:32 SRR7629162_1.fastq.gz
+-rw-rw-r-- 1 wangjl wangjl 1.2G Jun 17 23:32 SRR7629162_2.fastq.gz
+-rw-rw-r-- 1 wangjl wangjl 1.2G Jun 17 23:27 SRR7629153_2.fastq.gz
+-rw-rw-r-- 1 wangjl wangjl 1.1G Jun 17 23:27 SRR7629153_1.fastq.gz
+-rw-rw-r-- 1 wangjl wangjl 909M Jun 17 22:51 SRR7629161_1.fastq.gz
+-rw-rw-r-- 1 wangjl wangjl 935M Jun 17 22:50 SRR7629161_2.fastq.gz
+-rw-rw-r-- 1 wangjl wangjl 826M Jun 17 22:48 SRR7629152_1.fastq.gz
+-rw-rw-r-- 1 wangjl wangjl 863M Jun 17 22:48 SRR7629152_2.fastq.gz
+
+(4) 先抽取部分测试
+$ zcat SRR7629152_1.fastq.gz | wc
+111588868 223177736 4533824964
+111/4 Million reads /sample. 抽取 1e5 reads/sample.
+
+$ mkdir ../fq
+$ cat SRR_Acc_List.txt | while read id; do echo $id; 
+zcat ${id}_1.fastq.gz | head -n 400000 | gzip > ../fq/s_${id}_1.fastq.gz;
+zcat ${id}_2.fastq.gz | head -n 400000 | gzip > ../fq/s_${id}_2.fastq.gz;
+done;
+# 几秒结束。
+
+$ cd ../fq/
+$ zcat s_SRR7629163_2.fastq.gz  | wc
+ 400000  800000 15147256
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+========================================
+|-- QC: raw fastq 
+----------------------------------------
+先用抽样数据走流程
+$ cd /data/wangjl/ATAC/fq/
+
+(1) 质控
+$ mkdir QC_raw
+$ fastqc -t 10 *.fastq.gz -o QC_raw/
+
+
+$ sudo pip3 install multiqc
+$ multiqc --version
+multiqc, version 1.10.1
+
+$ mkdir QC_raw/multiqc/
+$ multiqc QC_raw/*fastqc.zip -o QC_raw/multiqc/
+
+检查: 
+$ http-server -p 12345
+多数40bp长度，没有其他异常，连adapter都没有。
+
+
+
+========================================
+|-- 去接头
+----------------------------------------
+(2) 去接头
+https://github.com/ENCODE-DCC/atac-seq-pipeline/blob/master/src/detect_adapter.py
+'Nextera ': b'CTGTCTCTTATA', #经过grep检测，这个接头最多，其他2个没有发现。
+
+
+$ id="SRR7629163" && cutadapt -j 4 --time 1 -e 0.1 -O 3 --quality-cutoff 25 \
+-m 15 -a CTGTCTCTTATA \
+-A AGACGGGAAGAGCGTCGTGAGGGAAGAGTGTAGATCTCGGTGGTCGCGTATCATT \
+-o clean/${id}_1.fastq.gz -p clean/${id}_2.fastq.gz s_${id}_1.fastq.gz s_${id}_2.fastq.gz > clean/cut.log 2>&1
+## 98.1% rewrite.
+
+$ ls *1.fastq.gz | sed -e 's/s_//' -e 's/_1.fastq.gz//'
+SRR7629152
+SRR7629153
+SRR7629154
+SRR7629161
+SRR7629162
+SRR7629163
+
+$ ls *1.fastq.gz | sed -e 's/s_//' -e 's/_1.fastq.gz//' | while read id; do echo $id; 
+cutadapt -j 4 --time 1 -e 0.1 -O 3 --quality-cutoff 25 \
+-m 15 -a CTGTCTCTTATA \
+-A AGACGGGAAGAGCGTCGTGAGGGAAGAGTGTAGATCTCGGTGGTCGCGTATCATT \
+-o clean/${id}_1.fastq.gz -p clean/${id}_2.fastq.gz s_${id}_1.fastq.gz s_${id}_2.fastq.gz >> clean/cut.log 2>&1;
+done;
+
+
+
+========================================
+|-- mapping with BWA
+----------------------------------------
+(3). mapping with BWA
+因为reads太短了，决定使用 bwa。
+$ bwa 
+Program: bwa (alignment via Burrows-Wheeler transformation)
+Version: 0.7.17-r1188
+
+#########################
+# 构建索引
+#########################
+UCSC GRCh38
+$ cd /home/wangjl/data/ref/human/UCSC/
+$ bwa index -a bwtsw -p bwa/hg38_fa hg38.fa.gz
+其中 -p bwa/hg38_ 是指定前缀
+939M Jan 16  2014 hg38.fa.gz
+[main] Real time: 2974.649 sec(49min); CPU: 2929.810 sec
+
+$ ls /home/wangjl/data/ref/human/UCSC/bwa -lth
+total 5.3G
+-rw-rw-r-- 1 wangjl wangjl 1.5G Jun 18 15:39 hg38_fa.sa
+-rw-rw-r-- 1 wangjl wangjl  21K Jun 18 15:24 hg38_fa.amb
+-rw-rw-r-- 1 wangjl wangjl  22K Jun 18 15:24 hg38_fa.ann
+-rw-rw-r-- 1 wangjl wangjl 766M Jun 18 15:24 hg38_fa.pac
+-rw-rw-r-- 1 wangjl wangjl 3.0G Jun 18 15:23 hg38_fa.bwt
+
+
+#########################
+# 比对 & sort
+#########################
+bwa mem genome.fa  A1_clean_1.fq.gz A1_clean_2.fq.gz | samtools sort -O bam -T A1 > A1.bam
+
+$ cd /data/wangjl/ATAC/fq
+$ mkdir map
+
+$ id="SRR7629163"
+$ bwa mem -t 10 -R "@RG\tID:${id}\tSM:${id}" /home/wangjl/data/ref/human/UCSC/bwa/hg38_fa  clean/${id}_1.fastq.gz clean/${id}_2.fastq.gz -o map/${id}.sam
+##[main] Real time: 6.269 sec; CPU: 34.911 sec
+## -t 10 线程数
+
+$ grep -v '^[#@]' map/SRR7629163.sam |wc
+ 196244 3373449 38998448
+
+$ samtools sort -O bam -T ${id}_tmp map/${id}.sam > map/${id}.sort.bam
+## -T 是临时文件夹
+$ ls -lth map/
+total 45M
+-rw-rw-r-- 1 wangjl wangjl 7.6M Jun 18 16:18 SRR7629163.sort.bam  #体积缩小为原来的19%。
+-rw-rw-r-- 1 wangjl wangjl  38M Jun 18 16:15 SRR7629163.sam
+
+
+二合一，批量（注意：使用双引号，变量才能替换）
+$ cat ../raw/SRR_Acc_List.txt | while read id; do echo $id;
+bwa mem -t 10 -R "@RG\tID:${id}\tSM:${id}" /home/wangjl/data/ref/human/UCSC/bwa/hg38_fa  clean/${id}_1.fastq.gz clean/${id}_2.fastq.gz | samtools sort -O bam -T ${id}_tmp > map/${id}.sort.bam;
+done;
+
+$ ls -lth map/
+total 44M
+-rw-rw-r-- 1 wangjl wangjl 7.6M Jun 18 16:21 SRR7629163.sort.bam
+-rw-rw-r-- 1 wangjl wangjl 7.0M Jun 18 16:21 SRR7629162.sort.bam
+-rw-rw-r-- 1 wangjl wangjl 7.0M Jun 18 16:21 SRR7629161.sort.bam
+-rw-rw-r-- 1 wangjl wangjl 7.9M Jun 18 16:21 SRR7629154.sort.bam
+-rw-rw-r-- 1 wangjl wangjl 7.0M Jun 18 16:21 SRR7629153.sort.bam
+-rw-rw-r-- 1 wangjl wangjl 7.6M Jun 18 16:21 SRR7629152.sort.bam
+
+$ samtools view map/SRR7629154.sort.bam | wc
+ 197452 3398838 39337777
+
+
+
+
+#########################
+# index
+#########################
+$ cat ../raw/SRR_Acc_List.txt | while read id; do echo $id;
+samtools index map/${id}.sort.bam;
+done;
+
+
+
+
+
+
+
+========================================
+|-- 去除线粒体上的reads，去重复 (推荐使用 sambamba，其次 picard，最不推荐 samtools)
+----------------------------------------
+由于细胞器DNA蛋白结合少，所以显然更容易被Tn5 转座酶切割，普通的ATAC-Seq的read就会有大量是细胞器的DNA，这就是为啥需要用INTACT技术。
+
+此外如果不是PCR-free的建库方法，会有大量重复的read，也就需要标记或去除重复。
+
+
+
+1. 去掉线粒体上的reads。
+首先将不含质体的染色体名称写到一个chrlist文件中，染色体名称之间用空格隔开，然后执行如下命令即可得到去除质体的bam
+$ samtools view -b A1.bam `cat chrlist` > A1.del_MT_PT.bam
+
+
+执行
+$ samtools view  map/SRR7629153.sort.bam| grep -v "^#"| awk '{print $3}' | sort | uniq -c| grep -E -v "GL|KI|JH|KB|chrM"
+    678 *
+  16554 chr1
+   5261 chr10
+   5175 chr11
+   5527 chr12
+   2483 chr13
+   4475 chr14
+   3155 chr15
+   3655 chr16
+   6137 chr17
+   1604 chr18
+   2189 chr19
+   9700 chr2
+   5257 chr20
+   1694 chr21
+   1163 chr22
+   8552 chr3
+   5334 chr4
+   8615 chr5
+   6031 chr6
+   7196 chr7
+   7400 chr8
+   4485 chr9
+   3427 chrX
+    215 chrY
+
+$ cat map/chrlist
+chr1 chr10 chr11 chr12 chr13 chr14 chr15 chr16 chr17 chr18 chr19 chr2 chr20 chr21 chr22 chr3 chr4 chr5 chr6 chr7 chr8 chr9 chrX chrY
+
+
+$ cat ../raw/SRR_Acc_List.txt | while read id; do echo $id; 
+samtools view -b map/${id}.sort.bam `cat map/chrlist` > map/${id}.del_MT.sort.bam;
+done;
+
+
+
+
+
+
+2. 去重复
+用于后续分析的reads需要是唯一比对且去重复的，bwa比对结果可以通过MAPQ值来提取唯一比对reads，可以用picard、sambamba等软件去除dup，最终得到唯一比对且去重复的bam文件。
+
+samtools rmdup 是如何行使去除PCR重复reads功能的？和 picard MarkDuplicates 现在改名为 GATK MarkDuplicates 有什么区别？
+
+(1) The Genome Analysis Toolkit (GATK) v4.1.9.0
+HTSJDK Version: 2.23.0
+Picard Version: 2.23.3
+
+$ gatk MarkDuplicates
+Using GATK jar /data/wangjl/soft/gatk-4.1.9.0/gatk-package-4.1.9.0-local.jar
+Running:
+    java -Dsamjdk.use_async_io_read_samtools=false -Dsamjdk.use_async_io_write_samtools=true -Dsamjdk.use_async_io_write_tribble=false -Dsamjdk.compression_level=2 -jar /data/wangjl/soft/gatk-4.1.9.0/gatk-package-4.1.9.0-local.jar MarkDuplicates
+USAGE: MarkDuplicates [arguments]
+
+命令行给出的例子
+java -jar picard.jar MarkDuplicates \
+I=input.bam \
+O=marked_duplicates.bam \
+M=marked_dup_metrics.txt
+
+
+
+## 命令方式1: 新语法，官方推荐
+$ id="SRR7629152"
+$ gatk MarkDuplicates -I map/${id}.del_MT.sort.bam -O map/${id}.rmdup.bam -M map/${id}.rmdup.matrix -ASO coordinate -REMOVE_DUPLICATES true
+
+$ samtools view map/SRR7629152.rmdup.bam | wc  #确实删掉了些行
+ 143879 2604778 31278683
+$ samtools view map/SRR7629152.del_MT.sort.bam | wc
+ 145083 2481870 28650942
+
+
+## 命令方式2: 控制内存和CPU占用，更安全的用法。
+$ PICARD="/data/wangjl/soft/gatk-4.1.9.0/gatk-package-4.1.9.0-local.jar"
+$ java -Xms5g -Xmx10g -XX:ParallelGCThreads=4 \
+    -jar ${PICARD} MarkDuplicates \
+    I=map/${id}.del_MT.sort.bam O=map/${id}.rmdup.bam M=map/${id}.rmdup.matrix \
+    ASO=coordinate REMOVE_DUPLICATES=true 2>map/rmdup.log
+
+$ samtools view map/SRR7629152.rmdup.bam | wc
+ 143879 2604778 31278683
+和 方式1 结果一样。
+
+
+批量运行，使用新语法
+$ cat ../raw/SRR_Acc_List.txt | while read id; do echo $id; 
+gatk MarkDuplicates -I map/${id}.del_MT.sort.bam -O map/${id}.rmdup.bam -M map/${id}.rmdup.matrix -ASO coordinate -REMOVE_DUPLICATES true;
+done;
+
+
+
+$ ls -lth map
+total 147M
+-rw-rw-r-- 1 wangjl wangjl 3.4K Jun 18 21:38 SRR7629163.rmdup.matrix
+-rw-rw-r-- 1 wangjl wangjl 8.5M Jun 18 21:38 SRR7629163.rmdup.bam
+-rw-rw-r-- 1 wangjl wangjl 3.4K Jun 18 21:38 SRR7629162.rmdup.matrix
+-rw-rw-r-- 1 wangjl wangjl 7.3M Jun 18 21:38 SRR7629162.rmdup.bam
+-rw-rw-r-- 1 wangjl wangjl 3.4K Jun 18 21:38 SRR7629161.rmdup.matrix
+-rw-rw-r-- 1 wangjl wangjl 7.2M Jun 18 21:38 SRR7629161.rmdup.bam
+-rw-rw-r-- 1 wangjl wangjl 3.4K Jun 18 21:38 SRR7629154.rmdup.matrix
+-rw-rw-r-- 1 wangjl wangjl 8.5M Jun 18 21:38 SRR7629154.rmdup.bam
+-rw-rw-r-- 1 wangjl wangjl 3.4K Jun 18 21:38 SRR7629153.rmdup.matrix
+-rw-rw-r-- 1 wangjl wangjl 7.0M Jun 18 21:38 SRR7629153.rmdup.bam
+-rw-rw-r-- 1 wangjl wangjl 3.4K Jun 18 21:37 SRR7629152.rmdup.matrix
+-rw-rw-r-- 1 wangjl wangjl 8.4M Jun 18 21:37 SRR7629152.rmdup.bam
+
+
+
+
+
+
+(2) 使用 samtools rmdup 去重复 (去的太多了，不建议用)
+Usage:  samtools rmdup [-sS] <input.srt.bam> <output.bam>
+-s    rmdup for SE reads
+-S    treat PE reads as SE in rmdup (force -s)
+
+$ samtools rmdup -S map/${id}.del_MT.sort.bam map/${id}.samtools_rmdup.bam
+[bam_rmdupse_core] 4139 / 144722 = 0.0286 in library '	'
+
+$ samtools view map/SRR7629152.samtools_rmdup.bam | wc
+ 140944 2408371 27736668
+这个删除的有点多啊，
+samtools 140944 (保留97.14%)，对比着 picard 的 143879 (保留99.17%)
+
+
+
+
+
+(3) 用samblaster和sambamba来代替picard做sam文件的去重复，这两款软件比picard快30倍 (保留reads数和picard一样)
+https://www.it610.com/article/1228439887515062272.htm
+
+要注意的是picard Markduplicates 和sambamba markdup的输入文件是bam格式，samblaster是sam格式。这里只测试 sambamba。
+sambamba 主要有filter，merge,slice和duplicate等七个功能来处理sam/bam文件。
+
+
+## 安装
+https://github.com/lomereiter/sambamba/releases
+$ wget https://github.com/biod/sambamba/releases/download/v0.8.0/sambamba-0.8.0-linux-amd64-static.gz
+$ gunzip sambamba-0.8.0-linux-amd64-static.gz
+$ chmod +x sambamba-0.8.0-linux-amd64-static
+$ ln -s /home/wangjl/soft/sambamba-0.8.0-linux-amd64-static ~/bin/sambamba
+
+
+## 查看版本号
+$ sambamba --version
+sambamba 0.8.0
+ by Artem Tarasov and Pjotr Prins (C) 2012-2020
+    LDC 1.10.0 / DMD v2.080.1 / LLVM6.0.1 / bootstrap LDC - the LLVM D compiler (0.17.4)
+
+$ sambamba markdup --help
+Usage: sambamba-markdup [options] <input.bam> [<input2.bam> [...]] <output.bam>
+       By default, marks the duplicates without removing them
+-r, --remove-duplicates  remove duplicates instead of just marking them
+-t, --nthreads=NTHREADS  number of threads to use
+--tmpdir=TMPDIR    specify directory for temporary files
+
+
+
+##--> 去重
+$ sambamba markdup -r -t 5 --tmpdir map/tmp/${id} map/${id}.del_MT.sort.bam map/${id}.sambamba_rmdup.bam
+
+$ ls -lth map/
+total 155M
+-rw-rw-r-- 1 wangjl wangjl 2.7M Jun 18 22:00 SRR7629152.sambamba_rmdup.bam.bai
+-rw-rw-r-- 1 wangjl wangjl 6.1M Jun 18 22:00 SRR7629152.sambamba_rmdup.bam
+drwxrwxr-x 2 wangjl wangjl 4.0K Jun 18 22:00 SRR7629152_tmp
+同时生成一个bai文件。注意临时文件夹没删
+
+$ samtools view map/SRR7629152.sambamba_rmdup.bam | wc
+ 143879 2460899 28401109
+
+reads数和 picard 一模一样，速度更快，且文件更小。
+
+
+批量运行
+$ cat ../raw/SRR_Acc_List.txt | while read id; do echo $id; 
+sambamba markdup -r -t 5 --tmpdir map/tmp/${id} map/${id}.del_MT.sort.bam map/${id}.sambamba_rmdup.bam;
+done;
+
+
+$ ls -lth map/
+total 196M
+-rw-rw-r-- 1 wangjl wangjl 2.7M Jun 18 22:04 SRR7629163.sambamba_rmdup.bam.bai
+-rw-rw-r-- 1 wangjl wangjl 6.2M Jun 18 22:04 SRR7629163.sambamba_rmdup.bam
+drwxrwxr-x 8 wangjl wangjl 4.0K Jun 18 22:04 tmp
+-rw-rw-r-- 1 wangjl wangjl 2.5M Jun 18 22:04 SRR7629162.sambamba_rmdup.bam.bai
+-rw-rw-r-- 1 wangjl wangjl 5.4M Jun 18 22:04 SRR7629162.sambamba_rmdup.bam
+-rw-rw-r-- 1 wangjl wangjl 5.2M Jun 18 22:04 SRR7629161.sambamba_rmdup.bam
+-rw-rw-r-- 1 wangjl wangjl 2.5M Jun 18 22:04 SRR7629161.sambamba_rmdup.bam.bai
+-rw-rw-r-- 1 wangjl wangjl 2.6M Jun 18 22:04 SRR7629154.sambamba_rmdup.bam.bai
+-rw-rw-r-- 1 wangjl wangjl 6.3M Jun 18 22:04 SRR7629154.sambamba_rmdup.bam
+-rw-rw-r-- 1 wangjl wangjl 5.1M Jun 18 22:04 SRR7629153.sambamba_rmdup.bam
+-rw-rw-r-- 1 wangjl wangjl 2.5M Jun 18 22:04 SRR7629153.sambamba_rmdup.bam.bai
+-rw-rw-r-- 1 wangjl wangjl 2.7M Jun 18 22:04 SRR7629152.sambamba_rmdup.bam.bai
+-rw-rw-r-- 1 wangjl wangjl 6.1M Jun 18 22:04 SRR7629152.sambamba_rmdup.bam
+
+
+
+
+
+
+========================================
+|-- QC: 比对结果质控
+----------------------------------------
+比对后，去掉线粒体、去重后的bam，再index后用于下游分析。
+
+
+1.Reads在染色体上分布的可视化
+
+比对后得到的bam文件可以转化为bigWig（bw）格式，可通过可视化软件进行展示。deeptools软件可以实现bw格式转化和可视化展示。
+
+1) 首先需要在linux环境中安装deeptools软件，可以用以下命令实现bam向bw格式的转换：
+$ id="SRR7629163"
+## sambamba index -t 6 ${id}.sambamba_rmdup.bam ## 之前rmdup时已经自动生成过了
+$ bamCoverage -b map/${id}.sambamba_rmdup.bam -o QC_map/${id}.bw;  ##必须提前index
+
+
+## 批量化
+$ cat ../raw/SRR_Acc_List.txt | while read id; do echo $id;
+bamCoverage -b map/${id}.sambamba_rmdup.bam -o QC_map/${id}.bw;
+done;
+
+
+二进制文件，也没法直接看文件内容。不报错就认为没问题吧。
+
+得到的BW文件可以用 IGV 进行可视化
+
+
+
+
+
+2) 可以使用deeptools软件展示reads在特定区域的分布，如：
+computeMatrix reference-point   \ # reference-pioint表示计算一个参照点附近的reads分布，与之相对的是scale-regions，计算一个区域附近的reads分布
+       --referencePoint TSS   \#以输入的bed文件的起始位置作为参照点
+       -S  A1.bw \ #可以是一个或多个bw文件
+       -R  gene.bed \ #基因组位置文件
+       -b 3000   \ #计算边界为参考点上游3000bp
+       -a 3000   \ #计算边界为参考点下游3000bp，与-b合起来就是绘制参考点上下游3000bp以内的reads分布
+       -o  A1.matrix.mat.gz \ #输出作图数据名称
+#图形绘制
+plotHeatmap \
+ -m  A1.matrix.mat.gz\ #上一步生成的作图数据
+ -out A1.pdf \ # 输出图片名称
+
+
+
+
+## (i)下载bed格式的基因组位置文件(The BED file of the gene model can be downloaded from UCSC Table Browser.)
+http://genome.ucsc.edu/cgi-bin/hgTables?command=start
+
+genome: human
+assembly: Dec. 2013 (GRCh38/hg38)
+group: Genes and Gene Predictions
+track: NCBI RefSeq
+table: RefSeq All(ncbiRefSeq)
+region: genome
+output format: BED - browser extensible data
+output file: hg38_refseq_whole_gene.bed
+
+Click ‘get output’ button, and in the next page ‘Output refGene as BED’ click ‘get BED’ button.
+
+
+
+
+##(ii) 统计
+单个测试
+$ computeMatrix reference-point   \
+       --referencePoint TSS   \
+       -S  QC_map/${id}.bw \
+       -R  /home/wangjl/data/ref/human/UCSC/hg38_refseq_whole_gene.bed \
+       -b 3000   \
+       -a 3000   \
+       -o  QC_map/matrix/${id}.matrix.mat.gz
+很慢: 17:02-> 18:07
+
+
+批量化，放后台运行。
+$ cat ../raw/SRR_Acc_List.txt | while read id; do echo $id;
+computeMatrix reference-point   \
+       --referencePoint TSS   \
+       -S QC_map/${id}.bw \
+       -R /home/wangjl/data/ref/human/UCSC/hg38_refseq_whole_gene.bed \
+       -b 1000 \
+       -a 1000 \
+       -o QC_map/matrix/${id}.mat.gz &
+done;
+## 检查后台 $ ps -aux | grep computeMatrix
+风扇声音很大。
+
+
+
+
+## (iii) 画图
+单个测试
+$ mkdir QC_map/pdf
+$ plotHeatmap -m QC_map/matrix/${id}.mat.gz -out QC_map/pdf/${id}.pdf
+
+批量化
+$ cat ../raw/SRR_Acc_List.txt | while read id; do echo $id;
+plotHeatmap -m QC_map/matrix/${id}.mat.gz -out QC_map/pdf/${id}_.pdf;
+done;
+
+
+目测：峰图和热图都出来了，5/6看着正常。其中一个热图不正常，没颜色变化。
+
+
+
+
+
+
+
+2. 片段长度周期性分布图
+https://www.jianshu.com/p/0a8d57dbfc3c
+
+insert size与 fragment length 差别 http://tiramisutes.github.io/2016/09/19/Insert-Size.html
+
+(1) 获取insert fragment 长度数据
+$ echo $id  #SRR7629163
+
+$ samtools view map/${id}.sambamba_rmdup.bam | \
+awk -F'\t' 'function abs(x){return ((x < 0.0) ? -x : x)} {print $1"\t"abs($9)}' | \
+sort | uniq | cut -f2 > map/${id}.fragment.length.txt
+解释: 
+awk中
+	-F"\t" 按照tab分割
+	然后定义一个函数 function abs(x){return ((x < 0.0) ? -x : x)} 表示返回绝对值。
+	{print $1"\t"abs($9)} 打印第一列、第9列的绝对值
+	
+	
+感觉不该使用uniq，因为不需要删重复？
+$ samtools view map/${id}.sambamba_rmdup.bam | awk -F'\t' 'function abs(x){return ((x < 0.0) ? -x : x)} {print $1"\t"abs($9)}' |  sort | uniq -c | sort -k1n | head -n 80| tail
+ 1 SRR7629163.94576	0
+      1 SRR7629163.97738	0
+      1 SRR7629163.979	0
+      1 SRR7629163.98342	0
+      1 SRR7629163.98752	0
+      1 SRR7629163.99702	0
+      2 SRR7629163.100000	66
+      2 SRR7629163.10001	45
+      2 SRR7629163.10003	53
+      2 SRR7629163.10004	61
+目测除了0是出现1次，其他都是2次出现。
+着重复是怎么来的呢？嗯，理解了，就是双端测序，每一端一行，一对reads是2行，分别记录本行信息和另一行的坐标，插入长度正负号不同。
+$ samtools view map/${id}.sambamba_rmdup.bam | grep -P "SRR7629163.10004"
+SRR7629163.10004	163	chr3	73049179	60	41M	=	73049200	61	AACTAAATGAATACATTCAAGATTAGAATACTTCTCGGGGC	AAAAAEEAEEE6EEEEEEEEEEEEEEEEAEEEEEAEEEEEE	NM:i:0	MD:Z:41	MC:Z:40M	AS:i:41	XS:i:19	RG:Z:${id}
+SRR7629163.10004	83	chr3	73049200	60	40M	=	73049179	-61	ATTAGAATACTTCTCGGGGCCAGGTGTGGTGGCTCACGCC	AEEEEEEEEEAEEEEEEEEEE6EE/EEEE/EEE/EAAAAA	NM:i:0	MD:Z:40	MC:Z:41M	AS:i:40	XS:i:27	RG:Z:${id}
+
+
+
+
+
+
+
+
+(2) 画图
+hist 函数可以直接绘图，但是不太好看，可以用plot函数来画；同样density 函数也可以画图，但是也可以导出list,再进行plot 或者 ggplot 画图.
+
+## R 包直接绘图
+#BiocManager::install("ATACseqQC")
+library(ATACseqQC)
+fragSize <- fragSizeDist("map/SRR7629163.sambamba_rmdup.bam", "treat3")
+
+
+
+################
+# 原生R绘制
+################
+
+setwd("/data/wangjl/ATAC/fq")
+getwd()
+
+library(tidyverse)
+data <- read.table("map/SRR7629163.fragment.length.txt")
+dim(data) #73718     1
+head(data)
+
+######
+# 过滤
+######
+# 去除0行
+d2=data[data$V1>0,]
+length(d2)
+# 去掉太长的
+d2=d2[d2<1200]
+length(d2)
+
+fragment=d2
+length(fragment)
+
+
+######
+##Part1：基础语法画图
+######
+# 利用直方图统计频数分布，设置柱子个数
+breaks_num <- 500
+res <- hist(fragment, breaks = breaks_num, plot = FALSE)
+
+# 添加坐标原点
+plot(x = c(0, res$breaks),
+     y = c(0, 0, res$counts) / 10^2,
+     type = "l", col = "red",full="red",
+     xlab = "Fragment length(bp)",
+     ylab = expression(Normalized ~ read ~ density ~ 10^2),
+     main = "Sample Fragment sizes")
+
+
+
+######
+##Part2：ggplot2 画图及其拼图
+######
+## 不同数据分布
+df1 <- data.frame(x1 = c(0, res$breaks),y1=c(0, 0, res$counts) / 10^2)
+p1 <- ggplot(df1,aes(x =x1,y = y1 ))+
+  geom_line(col="red")+
+  xlab("Fragment length(bp)")+
+  ylab(expression(Normalized ~ read ~ count ~ 10^2))+
+  ggtitle("Sample Fragment sizes")+
+  theme_classic()
+p1
+
+## 画小图
+df2 <- data.frame(x1 = c(0, res$breaks),y1=log10(c(0, 0, res$counts) / 10^2)+1)
+p2 <- ggplot(df2,aes(x =x1,y = y1 ))+
+  geom_line(col="red")+
+  xlab("Fragment length(bp)")+
+  ylab(expression(Normalized ~ read ~ count ~ (log)))+
+  ggtitle("Sample Fragment sizes")+
+  theme_classic()
+p2
+
+## 小图插入右上角
+library(cowplot)
+ggdraw() +
+  draw_plot(p1, 0, 0, 1, 1) +
+  draw_plot(p2, 0.5, 0.52, 0.5, 0.4) +
+  draw_plot_label(c("A", "B"), c(0, 0.5), c(1, 0.92), size = 15)
+
+
+######
+##Part3：其他（密度图）
+######
+P3 <- ggplot(as.data.frame(fragment))+
+  geom_density(aes(x=fragment),bw=3,color = "red")+
+  xlim(0,NA)+
+  scale_y_continuous(breaks = c(seq(0,0.004,0.001)),
+                     labels=c(seq(0,4)),
+                     name = expression(Normalized ~ read ~ density ~ 10^-3))+
+  theme_classic()
+P3
+
+
+
+
+
+
+
+
+========================================
+|-- Peak calling
+----------------------------------------
+(4) MACS2 找 peak 
+MACS2能够检测DNA片断的富集区域，是ATAC-seq数据call peak的主流软件。
+
+$ macs2 --version
+macs2 2.2.7.1
+
+峰检出的原理如下：
+首先将所有的reads都向3'方向延伸插入片段长度，然后将基因组进行滑窗，计算该窗口的dynamic λ，
+λ的计算公式为：λlocal = λBG（λBG是指背景区域上的reads数目），
+然后利用泊松分布模型的公式计算该窗口的显著性P值，最后对每一个窗口的显著性P值进行FDR校正。
+默认校正后的P值（即qvalue）小于或者等于0.05的区域为peak区域。
+
+
+(i)需要在linux环境中安装macs2软件，然后执行以下命令：
+macs2 callpeak \
+	-t A1.uni.dedup.bam \ #bam文件
+	-n A1 \ # 输出文件前缀名
+	--shift -100 \ #extsize的一半乘以-1
+	--extsize 200 \ #一般是核小体大小
+	--call-summits #检测峰顶信息
+注：以上参数参考文献（Jie Wang，et.al.2018.“ATAC-Seq analysis reveals a widespread decrease of chromatin accessibility in age-related macular degeneration.” Nature Communications）
+
+
+==> 尝试1: 报错
+$ macs2 callpeak \
+	-f BAM -g hs \
+	-t map/${id}.sambamba_rmdup.bam \
+	-n macs2_test/${id} \
+	--shift -100 \
+	--extsize 200 \
+	--call-summits
+报错
+INFO  @ Fri, 18 Jun 2021 22:52:18: #2 looking for paired plus/minus strand peaks...
+INFO  @ Fri, 18 Jun 2021 22:52:18: #2 number of paired peaks: 0
+WARNING @ Fri, 18 Jun 2021 22:52:18: Too few paired peaks (0) so I can not build the model! Broader your MFOLD range parameter may erase this error. If it still can't build the model, we suggest to use --nomodel and --extsize 147 or other fixed number instead.
+WARNING @ Fri, 18 Jun 2021 22:52:18: Process for pairing-model is terminated!
+
+
+
+==> 尝试2: 不知道怎么改。试试软件给的建议: --nomodel and --extsize 147
+$ mkdir macs2_test
+$ macs2 callpeak \
+	-f BAM -g hs \
+	-t map/${id}.sambamba_rmdup.bam \
+	-n macs2_test/${id}_73 \
+	--nomodel --shift -73 --extsize 147 \
+	--call-summits
+## Shift 模型参数：
+--nomodel	这个参数和extsize、shift是配套使用的，有这个参数才可以设置 extsize 和 shift 。
+--extsize	当设置了 nomodel 时，MACS会用--extsize这个参数从5'->3'方向扩展reads修复fragments。比如说你的转录因子结合范围200bp，就设置这个参数是200。
+--shift	当设置了--nomodel，MACS用这个参数从5'端移动剪切，然后用--extsize延伸，如果--shift是负值表示从3'端方向移动。
+	建议ChIP-seq数据集这个值保持默认值为0，对于检测富集剪切位点如DNAsel数据集设置为EXTSIZE的一半。
+	那ATAC怎么设置? ATAC-seq关心的是在哪切断，断点才是peak的中心，所以使用shift模型，--shift -75或-100
+
+MACS2输出文件解
+$ ls -lth macs2_test/
+total 32K
+-rw-rw-r-- 1 wangjl wangjl 3.7K Jun 19 09:54 SRR7629163_73_peaks.narrowPeak
+-rw-rw-r-- 1 wangjl wangjl 2.7K Jun 19 09:54 SRR7629163_73_summits.bed
+-rw-rw-r-- 1 wangjl wangjl 5.1K Jun 19 09:54 SRR7629163_73_peaks.xls
+
+$ head macs2_test/SRR7629163_73_peaks.narrowPeak
+chr1    629325  629494  macs2_test/SRR7629163_73_peak_1         54      .       2.96016 11.3533 5.45488 71
+chr1    629602  629967  macs2_test/SRR7629163_73_peak_2a        126     .       3.67855 19.1081 12.6363 100
+chr1    629602  629967  macs2_test/SRR7629163_73_peak_2b        41      .       2.70196 9.90816 4.16214 318
+chr1    631059  631344  macs2_test/SRR7629163_73_peak_3a        58      .       2.91161 11.8142 5.88874 78
+chr1    631059  631344  macs2_test/SRR7629163_73_peak_3b        87      .       3.22924 14.9192 8.73225 208
+
+
+
+
+==> 尝试3: 人细胞系ATAC-seq 数据call peak的参数设置如下：
+$ macs2 callpeak -t map/${id}.sambamba_rmdup.bam --outdir macs2_test -n ${id}_shift100 \
+	-f BAM -g hs --shift -100 --extsize 200 --nomodel \
+	-B --SPMR --call-summits 2>macs2_test/sample.macs2.log
+参数解释
+-B, --bdg  Whether or not to save extended fragment pileup, and local lambda tracks (two files) at every bp into a bedGraph file. DEFAULT: False
+	是否保存2个文件(默认: 否): extended fragment pileup, and local lambda tracks to bedGraph file.
+-B --SPMR 会多2个输出文件。
+
+$ ls macs2_test/ -lth
+total 8.8M
+-rw-rw-r-- 1 wangjl wangjl 3.1K Jun 19 10:10 sample.macs2.log
+-rw-rw-r-- 1 wangjl wangjl 4.4M Jun 19 10:10 SRR7629163_shift100_control_lambda.bdg  ##额外多的文件1
+-rw-rw-r-- 1 wangjl wangjl 2.8K Jun 19 10:10 SRR7629163_shift100_peaks.narrowPeak
+-rw-rw-r-- 1 wangjl wangjl 4.2K Jun 19 10:10 SRR7629163_shift100_peaks.xls
+-rw-rw-r-- 1 wangjl wangjl 2.0K Jun 19 10:10 SRR7629163_shift100_summits.bed
+-rw-rw-r-- 1 wangjl wangjl 4.4M Jun 19 10:10 SRR7629163_shift100_treat_pileup.bdg ##额外多的文件2
+
+
+## 批量化 
+$ cat ../raw/SRR_Acc_List.txt | while read id; do echo $id;
+macs2 callpeak -t map/${id}.sambamba_rmdup.bam --outdir macs2 -n ${id}_shift100 \
+	-f BAM -g hs --shift -100 --extsize 200 --nomodel \
+	-B --SPMR --call-summits 2>macs2/${id}.macs2.log;
+done;
+
+
+$ ls macs2/*narrowPeak -lth
+-rw-rw-r-- 1 wangjl wangjl 2.9K Jun 19 14:52 macs2/SRR7629163_shift100_peaks.narrowPeak
+-rw-rw-r-- 1 wangjl wangjl 2.2K Jun 19 14:52 macs2/SRR7629162_shift100_peaks.narrowPeak
+-rw-rw-r-- 1 wangjl wangjl 2.7K Jun 19 14:52 macs2/SRR7629161_shift100_peaks.narrowPeak
+-rw-rw-r-- 1 wangjl wangjl 2.7K Jun 19 14:52 macs2/SRR7629154_shift100_peaks.narrowPeak
+-rw-rw-r-- 1 wangjl wangjl 2.5K Jun 19 14:52 macs2/SRR7629153_shift100_peaks.narrowPeak
+-rw-rw-r-- 1 wangjl wangjl 1.7K Jun 19 14:52 macs2/SRR7629152_shift100_peaks.narrowPeak
+
+
+
+
+
+
+
+(ii) 按照另一个教程的参数
+$ macs2 callpeak -t map/${id}.sambamba_rmdup.bam -f BAM -g hs -n macs2_/${id} -m 2 100
+参数 [-m MFOLD MFOLD]
+
+## 批量化
+$ makir macs2_/
+$ cat ../raw/SRR_Acc_List.txt | while read id; do echo $id;
+macs2 callpeak -t map/${id}.sambamba_rmdup.bam -f BAM -g hs -n macs2_/${id} -m 2 100;
+done;
+
+
+$ ls -lth macs2_/*narrowPeak
+-rw-rw-r-- 1 wangjl wangjl 3.6K Jun 19 14:54 macs2_/SRR7629163_peaks.narrowPeak
+-rw-rw-r-- 1 wangjl wangjl 3.2K Jun 19 14:54 macs2_/SRR7629162_peaks.narrowPeak
+-rw-rw-r-- 1 wangjl wangjl 3.1K Jun 19 14:54 macs2_/SRR7629161_peaks.narrowPeak
+-rw-rw-r-- 1 wangjl wangjl 2.2K Jun 19 14:54 macs2_/SRR7629154_peaks.narrowPeak
+-rw-rw-r-- 1 wangjl wangjl 3.2K Jun 19 14:54 macs2_/SRR7629153_peaks.narrowPeak
+-rw-rw-r-- 1 wangjl wangjl 1.5K Jun 19 14:54 macs2_/SRR7629152_peaks.narrowPeak
+
+
+
+
+
+
+
+
+
+
+
+
+#############
+# treat vs control 可以跳过下面这一段 macs分析
+#############
+
+(iii) 比较两组间的呢？
+$ macs2 callpeak -c map/SRR7629152.sambamba_rmdup.bam map/SRR7629153.sambamba_rmdup.bam \
+	-t map/SRR7629161.sambamba_rmdup.bam map/SRR7629162.sambamba_rmdup.bam map/SRR7629163.sambamba_rmdup.bam \
+	-f BAM -g hs -n macs2/treat_vs_control -m 2 100;
+
+$ ls -lth macs2/ | grep vs
+-rw-rw-r-- 1 wangjl wangjl    0 Jun 18 23:06 treat_vs_control_peaks.narrowPeak
+-rw-rw-r-- 1 wangjl wangjl 1.5K Jun 18 23:06 treat_vs_control_peaks.xls
+-rw-rw-r-- 1 wangjl wangjl    0 Jun 18 23:06 treat_vs_control_summits.bed
+-rw-rw-r-- 1 wangjl wangjl  95K Jun 18 23:06 treat_vs_control_model.r
+
+这里没有 narrowPeak 文件，长度是0, why?
+
+
+#==> 去掉一个处理组，保持处理和对照样本数一致(n=2:2):
+$ macs2 callpeak \
+	-c map/SRR7629152.sambamba_rmdup.bam map/SRR7629153.sambamba_rmdup.bam \
+	-t map/SRR7629161.sambamba_rmdup.bam map/SRR7629162.sambamba_rmdup.bam \
+	-f BAM -g hs -n macs2/treat_vs_control -m 2 100;
+
+$ ls -lth macs2/ | grep vs
+-rw-rw-r-- 1 wangjl wangjl  24K Jun 18 23:12 treat_vs_control_peaks.narrowPeak
+-rw-rw-r-- 1 wangjl wangjl  27K Jun 18 23:12 treat_vs_control_peaks.xls
+-rw-rw-r-- 1 wangjl wangjl  18K Jun 18 23:12 treat_vs_control_summits.bed
+-rw-rw-r-- 1 wangjl wangjl  82K Jun 18 23:12 treat_vs_control_model.r
+
+$ Rscript macs2/treat_vs_control_model.r
+能看到 Peak Model 图。
+Cross−Correlation 图2条竖线。
+
+
+
+
+#==> 使用三组，处理和对照样本数一致(n=3:3):
+$ macs2 callpeak \
+	-c map/SRR7629152.sambamba_rmdup.bam map/SRR7629153.sambamba_rmdup.bam map/SRR7629154.sambamba_rmdup.bam \
+	-t map/SRR7629161.sambamba_rmdup.bam map/SRR7629162.sambamba_rmdup.bam map/SRR7629163.sambamba_rmdup.bam \
+	-f BAM -g hs -n macs2/treat_vs_control-3 -m 2 100;
+
+$ ls -lth macs2/ | grep -P "\-3"
+-rw-rw-r-- 1 wangjl wangjl  47K Jun 19 09:39 treat_vs_control-3_peaks.narrowPeak
+-rw-rw-r-- 1 wangjl wangjl  52K Jun 19 09:39 treat_vs_control-3_peaks.xls
+-rw-rw-r-- 1 wangjl wangjl  34K Jun 19 09:39 treat_vs_control-3_summits.bed
+-rw-rw-r-- 1 wangjl wangjl  95K Jun 19 09:39 treat_vs_control-3_model.r
+
+
+$ Rscript macs2/treat_vs_control-3_model.r
+能看到 Peak Model 图。
+Cross−Correlation 图就剩下一条竖线。
+
+
+
+==> 使用2组，使用ATAC-seq推荐参数
+## 在 macs2/下清理文件 ls -t | tail -n 20 | xargs -i mv {} dustbin/
+
+$ macs2 callpeak \
+	-c map/SRR7629152.sambamba_rmdup.bam map/SRR7629153.sambamba_rmdup.bam \
+	-t map/SRR7629161.sambamba_rmdup.bam map/SRR7629162.sambamba_rmdup.bam \
+	--shift -100 --extsize 200 --nomodel \
+	-f BAM -g hs -n macs2/treat_vs_control-shift100 2>macs2/shift100.macs2.log
+## 没有 model 图，去掉 --nomodel 再执行一遍有了。
+
+$ macs2 callpeak \
+	-c map/SRR7629152.sambamba_rmdup.bam map/SRR7629153.sambamba_rmdup.bam \
+	-t map/SRR7629161.sambamba_rmdup.bam map/SRR7629162.sambamba_rmdup.bam \
+	--shift -100 --extsize 200 \
+	-f BAM -g hs -n macs2/treat_vs_control-shift100-m 2>macs2/shift100-m.macs2.log
+$ Rscript macs2/treat_vs_control-shift100-m_model.r
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+========================================
+|-- Motif 分析
+----------------------------------------
+ATAC分析得到的peak是染色质上的开放区域，这些染色质开放区域常常预示着转录因子的结合，因此对peak区域进行motif分析很有意义。常见的motif分析软件有homer和MEME。以homer软件为例，首先在linux环境中安装homer，然后用以下命令进行motif分析：
+
+findMotifsGenome.pl \
+  A1_peaks.bed \ #用于进行motif分析的bed文件
+  genome.fa  \ #参考基因组fa文件
+  A1  \ #输出文件前缀
+  -size  given \ #使用给定的bed区域位置进行分析，如果填-size -100,50则是用给定bed中间位置的上游100bp到下游50bp的区域进行分析
+
+
+$ findMotifsGenome.pl
+	Program will find de novo and known motifs in regions in the genome
+	Usage: findMotifsGenome.pl <pos file> <genome> <output directory> [additional options]
+	Example: findMotifsGenome.pl peaks.txt mm8r peakAnalysis -size 200 -len 8
+
+homer分析motif的原理及结果参见 http://homer.ucsd.edu/homer/motif/index.html
+
+
+
+1. 按照bed文件范围分析(start to end)
+
+$ findMotifsGenome.pl \
+  macs2/treat_vs_control-shift100-m_peaks.narrowPeak \
+  /home/wangjl/data/ref/human/UCSC/hg38.fa  \
+  homer/treat_vs_control-bed  \
+  -size given
+
+
+## 报错：
+        Peak file looks good!                                 
+
+        Background files for 150 bp fragments found.
+!!!! Might have something wrong with preparsed files
+!!!! Rerun and add "-preparse" to the command line to force recreation of the files
+        Custom genome sequence file: /home/wangjl/data/ref/human/UCSC/hg38.fa.gz
+
+        Scanning input files...
+!!! Something is wrong... are you sure you chose the right length for motif finding?
+!!! i.e. also check your sequence file!!!
+
+
+是不是必须解压fasta文件?
+## /home/wangjl/data/ref/human/UCSC
+$ gunzip -c hg38.fa.gz >hg38.fa
+删除刚建立的文件夹 preparsed/
+重新运行。
+这一次很慢，估计能出结果。
+$ ls -lth preparsed/
+total 896M
+-rw-rw-r-- 1 wangjl wangjl  80M Jun 19 12:07 hg38.fa.93.gcbins
+-rw-rw-r-- 1 wangjl wangjl  80M Jun 19 12:07 hg38.fa.93.cgbins
+-rw-rw-r-- 1 wangjl wangjl 199M Jun 19 12:07 hg38.fa.93.cgfreq
+-rw-rw-r-- 1 wangjl wangjl 375M Jun 19 12:07 hg38.fa.93.seq
+-rw-rw-r-- 1 wangjl wangjl 165M Jun 19 12:06 hg38.fa.93.pos
+
+
+
+批量化 
+$ cat ../raw/SRR_Acc_List.txt | while read id; do echo $id;
+findMotifsGenome.pl \
+  macs2/${id}_shift100_peaks.narrowPeak \
+  /home/wangjl/data/ref/human/UCSC/hg38.fa  \
+  homer/${id}  \
+  -size given;
+done;
+
+
+
+
+
+
+
+
+
+2. 按照 summit 上下游分析(下游100，上游50范围内)
+
+$ findMotifsGenome.pl \
+  macs2/treat_vs_control-shift100-m_summits.bed \
+  /home/wangjl/data/ref/human/UCSC/hg38.fa  \
+  homer_/treat_vs_control-summits  \
+  -size  -100,50
+
+
+
+
+
+
+
+
+3. 可视化
+
+根据motif与已知转录因子的富集情况可以绘制气泡图，从而可以看到样本与已知转录因子的富集显著性。
+
+
+已知转录因子的富集显著性
+x轴为样本标签: A1, A2, B1, B2
+Y轴为转录因子名字: JunB, Jun-AP1, Fra2, Fra1, Fosl2, CTCF, Atf3, AP-1
+中间是dotplot，直径大小表示 motif enrichment(-logP)
+
+
+
+
+
+
+ref:
+https://www.jianshu.com/p/4e6b42152694
+
+
+
+
+
+
+========================================
+|-- 差异分析: R包 DiffBind //todo
+----------------------------------------
+差异peak代表着比较组合染色质开放性有差异的位点，ChIP-seq和ATAC-seq都可以用 DiffBind 进行差异分析。DiffBind通过bam文件和peak的bed文件计算出peak区域标准化的readcount，可以选择edgeR、DESeq2等模型进行差异分析。
+
+DiffBind是鉴定两个样本间差异结合位点的一个R包。
+主要用于peak数据集，包括对peaks的重叠和合并的处理，计算peaks重复间隔的测序reads数，并基于结合亲和力鉴定具有统计显著性的差异结合位点。适用的统计模型有DESeq、DESeq2、edgeR。
+
+library("DiffBind")
+
+
+准备输入文件
+需要准备一个SampleSheet文件，与ChIPQC的方法一样。SampleSheet文件是根据实验设计和数据存储地址等信息创建的一个csv格式文件，包含的表头信息有"SampleID"、 "Tissue"、 "Factor"、 "Condition" 、"Treatment"、"Replicate" 、"bamReads" 、"ControlID"、 "bamControl" "Peaks"、 "PeakCaller"（bam,peak文件分别在比对和call peak的步骤产生）。
+
+""、 ""、 ""、 "" 、""、"" 、"" 、""、 "bamControl" "Peaks"、 "PeakCaller"
+
+SampleID	Treatment	bamReads	ControlID
+ctrl1	ctrl	c1.bam 	
+ctrl2	ctrl	c2.bam 	
+treat1	treat	t1.bam 	
+treat2	treat	t2.bam 	
+
+
+
+dbObj <- dba(sampleSheet="SampleSheet.csv")
+
+
+
+
+
+
+
+ref:
+https://www.jianshu.com/p/f849bd55ac27
+
+
+
+
+
+
+========================================
+|-- 峰注释 //todo
+----------------------------------------
+在科研分析中我们往往需要将peak区域与基因联系起来，也就是通过对peak进行注释找到peak相关基因。
+
+常见的peak注释软件有ChIPseeker、homer、PeakAnnotator等。
+以ChIPseeker为例，需要在R中安装ChIPseeker包和GenomicFeatures包，然后就可以进行分析了。
+
+library(ChIPseeker)
+library(GenomicFeatures)
+txdb<- makeTxDbFromGFF('gene.gtf') #生成txdb对象，如果研究物种没有已知的TxDb,可以用GenomicFeatures中的函数生成
+peakfile <-readPeakFile('A1_peaks.narrowPeak') #导入需要注释的peak文件
+peakAnno <- annotatePeak(peakfile,tssRegion=c(-2000, 2000), TxDb=txdb)
+## 用peak文件和txdb进行peak注释，这里可以通过tssRegion定义TSS区域的区间
+
+
+对于peak注释的结果，也可以进行可视化展示，如：
+p <- plotAnnoPie(peakAnno)
+
+一个饼图。
+
+
+
+
+
+
+
+
+
+
+========================================
+|-- 富集分析 //todo
+----------------------------------------
+通过注释得到的peak相关基因可以使用goseq、topGO等R包进行GO富集分析，用kobas进行kegg富集分析，也可以使用DAVID在线工具来完成富集分析。
+
+可以通过挑选感兴趣的GO term或pathway进一步筛选候选基因。
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+========================================
+使用snakemake构建 ATAC-seq 分析流程
+----------------------------------------
+流程脚本:
+https://github.com/crazyhottommy/pyflow-ATACseq
+
+
+
+
+
+
+
+========================================
+----------------------------------------
+
+
+
+
+
+
+
+
+
+========================================
+----------------------------------------
+
+
+
+
+
+
+
+
+
+========================================
+----------------------------------------
+
+
+
+
+
+
+
+========================================
+----------------------------------------
+
+
+
+
+
+
+
+
+
+

@@ -25,8 +25,11 @@ return array (
     0 => 3,
     1 => '其他语言和框架',
     2 => array (
-	  array('微信小程序','little_Program','txt'),
-      array('flutter','flutter','txt',),
+      array('perl基础','lang-Perl','txt'),
+
+
+      array('微信小程序','little_Program','txt'),
+      array('flutter','flutter','txt'),
     ),
   ),
   

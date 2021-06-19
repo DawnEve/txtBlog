@@ -29,7 +29,6 @@ return array (
     2 => array (
       array('测序分析shell语句','shell-in-seq','txt'),
       array('构建分析流程 pipeline','pipeline','txt'),
-      array('perl基础','lang-Perl','txt'),
 
 
       array('circos-Cytoscape','circos-Cytoscape','txt'),
@@ -57,6 +56,7 @@ return array (
     2 => array (
       array('基因组分析软件','genome_soft','txt'),
       array('外显子WES分析','NGS_exon_pipeline','txt'),
+      array('ATAC-seq分析','ATAC-seq','txt'),
 
     ),
   ),
