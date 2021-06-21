@@ -1287,13 +1287,158 @@ p <- plotAnnoPie(peakAnno)
 
 
 
+========================================
+*** 使用snakemake构建 ATAC-seq 分析流程 ***
+----------------------------------------
+
+1. snakefile 脚本的5个步骤
+
+开始按照步骤写规则：
+$ cat ATAC-seq.smk
+####################
+# ATAC-seq workflow
+####################
+REP_INDEX=["rep1","rep2"]
+INDEX_BT2="/home/wangjl/ref/hg38/bowtie2_hg38/hg38_only_chromosome"
+PICARD="/home/wangjl/soft/bin/picard.jar"
+
+rule all:
+	input: 
+		expand("macs2_result/ATAC_seq_{rep}_peaks.narrowPeak", rep=REP_INDEX)
+
+# 第一步: 去接头
+rule cutadapt:
+	input:
+		"raw_fastq/ATAC_seq_{rep}_R1.fq.gz",
+		"raw_fastq/ATAC_seq_{rep}_R2.fq.gz"
+	output:
+		"clean_fastq/ATAC_seq_{rep}_R1.fq.gz", 
+		"clean_fastq/ATAC_seq_{rep}_R2.fq.gz"
+	log:
+		"clean_fastq/ATAC_seq_{rep}_cutadapt.log"
+	shell:
+		"cutadapt -j 4 --time 1 -e 0.1 -O 3 --quality-cutoff 25 \
+		-m 50 -a AGATCGGAAGAGCACACGTCTGAACTCCAGTCAC \
+		-A AGACGGGAAGAGCGTCGTGAGGGAAGAGTGTAGATCTCGGTGGTCGCGTATCATT \
+		-o {output[0]} -p {output[1]} {input[0]} {input[1]} > {log} 2>&1"
+
+# -j 4 使用4核。输出是 -o 和-p。最后的 > {log} 2>&1 我认为可以简写为 2>{log}，因为没有啥输出了。
+# -O MINLENGTH, --overlap MINLENGTH 设置最小重叠长度(read, 接头)
+#       Require MINLENGTH overlap between read and adapter for an adapter to be found. Default: 3
+#-q [5'CUTOFF,]3'CUTOFF, --quality-cutoff [5'CUTOFF,]3'CUTOFF 去掉低质量的reads。
+#		Trim low-quality bases from 5' and/or 3' ends of each read before adapter removal. Applied to both reads if
+#		data is paired. If one value is given, only the 3' end is trimmed. If two comma-separated cutoffs are given,
+#		the 5' end is trimmed with the first cutoff, the 3' end with the second.
+#-m LEN[:LEN2], --minimum-length LEN[:LEN2]  最小reads长度，低于该值就去掉。
+#         Discard reads shorter than LEN. Default: 0
+#-a ADAPTER, --adapter ADAPTER  去接头3'端。如果是$则只看最后位置。
+#		Sequence of an adapter ligated to the 3' end (paired data: of the first read). The adapter and subsequent
+#		bases are trimmed. If a '$' character is appended ('anchoring'), the adapter is only found if it is a
+#		suffix of the read.
+
+
+# 第二步: 比对
+rule bt2_mapping:
+	input:
+		"clean_fastq/ATAC_seq_{rep}_R1.fq.gz", 
+		"clean_fastq/ATAC_seq_{rep}_R2.fq.gz
+	output:
+		"bam/ATAC_seq_{rep}_bt2_hg38.sam"
+	log:
+		"bam/ATAC_seq_{rep}_bt2_hg38.log"
+	shell:
+		"bowtie2 -x {INDEX_BT2} -p 4 -1 {input[0]} -2 {input[1]} -S {output} >{log} 2>&1"
+# -x 是之前建立的索引。-p 是CPU核心数。-1和-2是输入文件R1和R2。-S 输出文件。
+
+# 第三步: sam to bam, and sort
+rule bam_sort:
+	input:
+		"bam/ATAC_seq_{rep}_bt2_hg38.sam"
+	output:
+		"bam/ATAC_seq_{rep}_bt2_hg38_sort.bam"
+	log:
+		"bam/ATAC_seq_{rep}_bt2_hg38_sort.log"
+	shell:
+		"samtools sort -O BAM -o {output} -T {output}.temp -@ 4 -m 2G {input} >{log} 2>&1"
+# -O 输出格式。-o 输出文件名。-T 临时文件名。-@ CPU核心数。-m 内存上限。最后是输出。
+
+
+
+# 第四步: 去重复。使用picard会输出2个，一个bam，一个matrix文件。
+rule rm_duplicate:
+	input:
+		"bam/ATAC_seq_{rep}_bt2_hg38_sort.bam"
+	outpu:
+		"bam/ATAC_seq_{rep}_bt2_hg38_sort_rmdup.bam",
+		"bam/ATAC_seq_{rep}_bt2_hg38_sort_rmdup.matrix"
+	log:
+		"bam/ATAC_seq_{rep}_bt2_hg38_sort_rmdup.log"
+	shell:
+		"java -Xms5g -Xmx10g -XX:ParallelGCThreads=4 \
+		-jar {PICARD} MarkDuplicates \
+		I={input} O={output[0]} M={output[1]} \
+		ASO=coordinate REMOVE_DUPLICATES=true 2>{log}"
+# -Xms5g 最小使用5G内存。-Xmx10g 最大10G内存。-XX:ParallelGCThreads=4 CPU核心数。
+# O第一个输出，M第二个输出。ASO=coordinate 指定是按照坐标轴sort过。去掉重复。
+
+
+# 第5步: call peak
+rule call_peak:
+	input:
+		"bam/ATAC_seq_{rep}_bt2_hg38_sort_rmdup.bam"
+	output:
+		"macs2_result/ATAC_seq_{rep}_peaks.narrowPeak"
+	params: #这2个设置是MACS2本身shell的问题，不是每个工具都这样
+		"ATAC_seq_{rep}",
+		"macs2_result"
+	log:
+		"macs2_result/ATAC_seq_{rep}_peaks.log"
+	shell:
+		"macs2 callpeak -c xx -t {input} -f BAM -g hs \
+		--outdir {params[1]} -n {params[0]} -m 2 100 >{log} 2>&1"
+# -c 对照。-t 处理组。-f 格式。-g 基因组类型 人。
+# --outdir 输出文件夹。-n 输出文件名。-m 2 100 富集区间 2-100的输出。
+
+
+
+
+(2) 测试 
+dry run 检查语法错误
+$ snakemake -s ATAC-seq.smk -np # -n 不是真的运行，-p 打印shell命令。
+
+
+画流程图 
+$ snakemake -s ATAC-seq.smk --dag | dot -Tsvg > ATAC-seq.svg
+
+
+(3) 运行 
+$ snakemake -s ATAC-seq.smk -p -j 2 # 使用2个进程
+$ snakemake -s ATAC-seq.smk -p -j 2 & 
+
+
+看进程pid
+$ ps | cut -d ' ' -f 2
+$ ps | cut -d ' ' -f 2 | grep -P "^\d{1,}"  ## 显示进程号
+$ ps | cut -d ' ' -f 2 | grep -P "^\d{1,}" | xargs kill ## 杀进程
+
+
+
+
+refer:
+https://www.bilibili.com/video/av45832590?p=6
+
+
+
 
 
 ========================================
-使用snakemake构建 ATAC-seq 分析流程
+|-- 使用snakemake构建 ATAC-seq 分析流程(实例)
 ----------------------------------------
 流程脚本:
 https://github.com/crazyhottommy/pyflow-ATACseq
+
+
+
 
 
 
