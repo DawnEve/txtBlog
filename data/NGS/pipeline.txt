@@ -1626,6 +1626,17 @@ rule bcftools_call:
 虽然sample是一个字典，但是展开的时候，只会使用他们的key值部分。
 
 
+如果在配置文件后直接输出呢？
+$ cat con1.sf 
+configfile: "config.yaml"
+a=config["samples"]
+print(a)
+SI=[a['A'], a['B']]
+print(SI)
+直接输出:
+{'A': 'data/samples/A.fastq', 'B': 'data/samples/B.fastq'}
+['data/samples/A.fastq', 'data/samples/B.fastq']
+
 
 (1) 测试1 数组形式: 使用 数组 配置文件
 $ cat config1.yaml 
@@ -2076,18 +2087,45 @@ wrapper:
 
 
 
+########
+# 包装器实例: 就是提前写好的 shell 语句，直接引用。
+########
+$ cat bio/cat100/wrapper.py #文件名就叫 wrapper.py，引用时使用相对路径。
+from snakemake.shell import shell
+shell("echo 'line number 100' | cat - {snakemake.input} > {snakemake.output}")
 
+$ cat r1.sf
+rule catNumber:
+	input:"1.txt"
+	output:"2.txt"
+	wrapper: "file://./bio/cat100"
 
+$ snakemake -s r1.sf -j1
+
+$ cat 2.txt 
+line number 100
+1
+2
+3
+
+更多包装器实例
+https://bitbucket.org/snakemake/snakemake-wrappers/src/master/bio/
 
 
 
 
 
 (2) 模块化之level2 ---大型分析流程的整合 (include)
+https://github.com/snakemake/snakemake/blob/main/docs/tutorial/additional_features.rst
 
 为了可重复使用，或者构建大的工作流，有时候需要把工作流拆分成小的模块。
 不同功能的rule分开放到不同的脚本中(小的Snakefile)，然后通过include语句将其包含在主Snakefile中。
+
 include: "path/to/other/snakefile"
+
+包含是相对于出现它们的Snakefile目录的。例如，如果以上Snakefile驻留在directory中my/dir，则Snakemake将在此处搜索include my/dir/path/to/other/snakefile，而与工作目录无关。
+
+
 
 在我们的日常分析中，为了流程的重复使用和方便后续修改维护，会把参数设置、依赖软件的路径、样本信息写在单独的配置文件里。
 在这种设置中，所有规则都共享一个公共配置文件。
@@ -2105,7 +2143,6 @@ include: "path/to/other/snakefile"
 └── Snakefile
 
 默认的目标规则（通常称为all-rule）不会受到include的影响。也就是说，无论您有多少个包含在第一个规则之上的内容，它始终将是Snakefile中的第一个规则。
-包含是相对于出现它们的Snakefile目录的。例如，如果以上Snakefile驻留在directory中my/dir，则Snakemake将在此处搜索include my/dir/path/to/other/snakefile，而与工作目录无关。
 
 
 示例: 
@@ -2113,7 +2150,60 @@ include: "path/to/other/snakefile"
 
 
 
+########
+# include 实例
+########
+|-config.yaml
+|-main.sf
+|-rule/
+  |-addLine1.sf
+  |-addLine2.sf
 
+$ cat config.yaml 
+samples:
+  - 1
+  - A
+  - B
+
+$ cat main.sf 
+configfile: "config.yaml"
+SI=config["samples"]
+
+rule all:
+        input: expand( "{sample}.out.2", sample=SI)
+
+include: "rules/addLine1.sf"
+include: "rules/addLine2.sf"
+
+$ cat rules/addLine1.sf 
+rule addL1:
+        input:"{sample}.in.1"
+        output:"{sample}.out.1"
+        shell:"echo 'line1 by rule1' | cat - {input} > {output}"
+
+$ cat rules/addLine2.sf 
+rule addL2:
+        input:"{sample}.out.1"
+        output:"{sample}.out.2"
+        shell:"echo 'line 2 by rule 2' | cat {input} -  > {output}"
+
+
+路径都是相对于主文件的，被包含的文件在哪里无所谓。
+提前按照配置文件准备好输入: 1.in.1, A.in.1, B.in.1
+include的先后顺序也无关。
+
+$ snakemake -s main.sf -j1
+Job counts:
+        count   jobs
+        3       addL1
+        3       addL2
+        1       all
+        7
+
+$ cat A.out.2 
+line1 by rule1
+this is A
+line 2 by rule 2
 
 
 
@@ -2384,6 +2474,122 @@ https://www.jianshu.com/p/8e57fd2b81b2
 
 
 
+
+
+========================================
+|-- 怎么处理shell 命令中 awk 同时有单引号、双引号的报错？
+----------------------------------------
+1. 例子: 使用awk把逗号分割变为tab分割的文件
+$ cat a.txt
+a,1,2,3,4
+b,2,3,80,2
+z,10,34,2322,34432
+d,3,4,8,1
+
+$ cat a.txt | awk -F "," '{print $1"\t"$2"\t"$3"\t"$4"\t"$5}' > b.txt
+$ cat b.txt 
+a       1       2       3       4
+b       2       3       80      2
+z       10      34      2322    34432
+d       3       4       8       1
+
+
+(2) 使用 snakemake
+$ cat awk.sf
+rule doubleQuote:
+	input: "a.txt"
+	output: "b.txt"
+	shell:"cat a.txt | awk -F "," '{print $1"\t"$2"\t"$3"\t"$4"\t"$5}' > b.txt"
+
+$ snakemake -s awk.sf -j1
+SyntaxError in line 4 of /home/wangjl/test/snakemake/test3/awk.sf:
+unexpected character after line continuation character
+
+unexpected character after line continuation character
+连续行字符后的意外字符
+
+
+## 报错了，怎么办？
+	- 把双引号前面加上反斜线转义：\"，或者改为单引号。防止单双引号分不清界限。
+	- awk的{}变为两层{{}}。因为snakemake的变量替换需要去掉一层{}。
+$ cat awk2.sf
+rule doubleQuote:
+	input: "a.txt"
+	output: "b.txt"
+    shell:"cat a.txt | awk -F ',' '{{print $1\"\t\"$2\"\t\"$3\"\t\"$4\"\t\"$5}}' > b.txt"
+    #shell:"cat a.txt | awk -F \",\" '{{print $1\"\t\"$2\"\t\"$3\"\t\"$4\"\t\"$5}}' > b.txt"
+
+$ snakemake -s awk2.sf -j1
+$ cat b.txt 
+a       1       2       3       4
+b       2       3       80      2
+z       10      34      2322    34432
+d       3       4       8       1
+
+
+
+(3) 实战
+$ samtools view map/SRR7629163.sambamba_rmdup.bam |  awk -F'\t' 'function abs(x){return ((x<0.0)?-x:x)} {print $1"\t"abs($9)}' | sort | uniq | cut -f 2 |head
+66
+45
+53
+61
+55
+
+
+$ cat a1.sf
+rule fragment_length:
+	input: "map/SRR7629163.sambamba_rmdup.bam"
+	output: "test/frag_len.txt"
+	log: "test/frag_len.log"
+	shell: 
+		"samtools view {input} | \
+		awk -F'\t' 'function abs(x){{return ((x<0.0)?-x:x)}} {{print $1\"\t\"abs($9)}}'| \
+		sort | uniq | cut -f2 >{output} 2>{log}"
+
+$ snakemake -s a1.sf -j1
+$ head test/frag_len.txt 
+66
+45
+53
+61
+55
+
+
+(4) 实战2：批量化
+$ cat a2.sf
+SI=["SRR7629163","SRR7629162"]
+
+rule all:
+	input: expand("test/{sample}.frag_len.txt", sample=SI)
+
+rule fragment_length:
+	input: "map/{sample}.sambamba_rmdup.bam"
+	output: "test/{sample}.frag_len.txt"
+	log: "test/{sample}.frag_len.txt.log"
+	shell: 
+		"samtools view {input} | \
+		awk -F'\t' 'function abs(x){{return ((x<0.0)?-x:x)}} {{print $1\"\t\"abs($9)}}'| \
+		sort | uniq | cut -f2 >{output} 2>{log}"
+
+$ snakemake -s a2.sf -j1
+$ head test/SRR7629162.frag_len.txt
+60
+43
+$ ls test/ -lth
+total 664K
+-rw-rw-r-- 1 wangjl wangjl 198K Jun 21 21:35 SRR7629162.frag_len.txt
+-rw-rw-r-- 1 wangjl wangjl    0 Jun 21 21:35 SRR7629162.frag_len.txt.log
+-rw-rw-r-- 1 wangjl wangjl 231K Jun 21 21:35 SRR7629163.frag_len.txt
+-rw-rw-r-- 1 wangjl wangjl    0 Jun 21 21:35 SRR7629163.frag_len.txt.log
+
+
+
+
+
+
+
+
 ========================================
 |-- rule all 是干什么的？其input就是目标文件，然后倒序查找其依赖谁的output
 ----------------------------------------
@@ -2572,6 +2778,150 @@ Finished job 0.
 
 
 
+
+
+========================================
+|-- 实例: 使用snakemake构建 ATAC-seq 分析流程(fastq -> call peak )
+----------------------------------------
+先给个玩具，主要是学流程。
+下一个部分才是可以运行的。
+
+
+1. snakefile 脚本的5个步骤
+
+开始按照步骤写规则：
+$ cat ATAC-seq.smk
+####################
+# ATAC-seq workflow
+####################
+REP_INDEX=["rep1","rep2"]
+INDEX_BT2="/home/wangjl/ref/hg38/bowtie2_hg38/hg38_only_chromosome"
+PICARD="/home/wangjl/soft/bin/picard.jar"
+
+rule all:
+	input: 
+		expand("macs2_result/ATAC_seq_{rep}_peaks.narrowPeak", rep=REP_INDEX)
+
+# 第一步: 去接头
+rule cutadapt:
+	input:
+		"raw_fastq/ATAC_seq_{rep}_R1.fq.gz",
+		"raw_fastq/ATAC_seq_{rep}_R2.fq.gz"
+	output:
+		"clean_fastq/ATAC_seq_{rep}_R1.fq.gz", 
+		"clean_fastq/ATAC_seq_{rep}_R2.fq.gz"
+	log:
+		"clean_fastq/ATAC_seq_{rep}_cutadapt.log"
+	shell:
+		"cutadapt -j 4 --time 1 -e 0.1 -O 3 --quality-cutoff 25 \
+		-m 50 -a AGATCGGAAGAGCACACGTCTGAACTCCAGTCAC \
+		-A AGACGGGAAGAGCGTCGTGAGGGAAGAGTGTAGATCTCGGTGGTCGCGTATCATT \
+		-o {output[0]} -p {output[1]} {input[0]} {input[1]} > {log} 2>&1"
+
+# -j 4 使用4核。输出是 -o 和-p。最后的 > {log} 2>&1 我认为可以简写为 2>{log}，因为没有啥输出了。
+# -O MINLENGTH, --overlap MINLENGTH 设置最小重叠长度(read, 接头)
+#       Require MINLENGTH overlap between read and adapter for an adapter to be found. Default: 3
+#-q [5'CUTOFF,]3'CUTOFF, --quality-cutoff [5'CUTOFF,]3'CUTOFF 去掉低质量的reads。
+#		Trim low-quality bases from 5' and/or 3' ends of each read before adapter removal. Applied to both reads if
+#		data is paired. If one value is given, only the 3' end is trimmed. If two comma-separated cutoffs are given,
+#		the 5' end is trimmed with the first cutoff, the 3' end with the second.
+#-m LEN[:LEN2], --minimum-length LEN[:LEN2]  最小reads长度，低于该值就去掉。
+#         Discard reads shorter than LEN. Default: 0
+#-a ADAPTER, --adapter ADAPTER  去接头3'端。如果是$则只看最后位置。
+#		Sequence of an adapter ligated to the 3' end (paired data: of the first read). The adapter and subsequent
+#		bases are trimmed. If a '$' character is appended ('anchoring'), the adapter is only found if it is a
+#		suffix of the read.
+
+
+# 第二步: 比对
+rule bt2_mapping:
+	input:
+		"clean_fastq/ATAC_seq_{rep}_R1.fq.gz", 
+		"clean_fastq/ATAC_seq_{rep}_R2.fq.gz
+	output:
+		"bam/ATAC_seq_{rep}_bt2_hg38.sam"
+	log:
+		"bam/ATAC_seq_{rep}_bt2_hg38.log"
+	shell:
+		"bowtie2 -x {INDEX_BT2} -p 4 -1 {input[0]} -2 {input[1]} -S {output} >{log} 2>&1"
+# -x 是之前建立的索引。-p 是CPU核心数。-1和-2是输入文件R1和R2。-S 输出文件。
+
+# 第三步: sam to bam, and sort
+rule bam_sort:
+	input:
+		"bam/ATAC_seq_{rep}_bt2_hg38.sam"
+	output:
+		"bam/ATAC_seq_{rep}_bt2_hg38_sort.bam"
+	log:
+		"bam/ATAC_seq_{rep}_bt2_hg38_sort.log"
+	shell:
+		"samtools sort -O BAM -o {output} -T {output}.temp -@ 4 -m 2G {input} >{log} 2>&1"
+# -O 输出格式。-o 输出文件名。-T 临时文件名。-@ CPU核心数。-m 内存上限。最后是输出。
+
+
+
+# 第四步: 去重复。使用picard会输出2个，一个bam，一个matrix文件。
+rule rm_duplicate:
+	input:
+		"bam/ATAC_seq_{rep}_bt2_hg38_sort.bam"
+	outpu:
+		"bam/ATAC_seq_{rep}_bt2_hg38_sort_rmdup.bam",
+		"bam/ATAC_seq_{rep}_bt2_hg38_sort_rmdup.matrix"
+	log:
+		"bam/ATAC_seq_{rep}_bt2_hg38_sort_rmdup.log"
+	shell:
+		"java -Xms5g -Xmx10g -XX:ParallelGCThreads=4 \
+		-jar {PICARD} MarkDuplicates \
+		I={input} O={output[0]} M={output[1]} \
+		ASO=coordinate REMOVE_DUPLICATES=true 2>{log}"
+# -Xms5g 最小使用5G内存。-Xmx10g 最大10G内存。-XX:ParallelGCThreads=4 CPU核心数。
+# O第一个输出，M第二个输出。ASO=coordinate 指定是按照坐标轴sort过。去掉重复。
+
+
+# 第5步: call peak
+rule call_peak:
+	input:
+		"bam/ATAC_seq_{rep}_bt2_hg38_sort_rmdup.bam"
+	output:
+		"macs2_result/ATAC_seq_{rep}_peaks.narrowPeak"
+	params: #这2个设置是MACS2本身shell的问题，不是每个工具都这样
+		"ATAC_seq_{rep}",
+		"macs2_result"
+	log:
+		"macs2_result/ATAC_seq_{rep}_peaks.log"
+	shell:
+		"macs2 callpeak -c xx -t {input} -f BAM -g hs \
+		--outdir {params[1]} -n {params[0]} -m 2 100 >{log} 2>&1"
+# -c 对照。-t 处理组。-f 格式。-g 基因组类型 人。
+# --outdir 输出文件夹。-n 输出文件名。-m 2 100 富集区间 2-100的输出。
+
+
+
+
+(2) 测试 
+dry run 检查语法错误
+$ snakemake -s ATAC-seq.smk -np # -n 不是真的运行，-p 打印shell命令。
+
+
+画流程图 
+$ snakemake -s ATAC-seq.smk --dag | dot -Tsvg > ATAC-seq.svg
+
+
+(3) 运行 
+$ snakemake -s ATAC-seq.smk -p -j 2 # 使用2个进程
+$ snakemake -s ATAC-seq.smk -p -j 2 & 
+
+
+看进程pid
+$ ps | cut -d ' ' -f 2
+$ ps | cut -d ' ' -f 2 | grep -P "^\d{1,}"  ## 显示进程号
+$ ps | cut -d ' ' -f 2 | grep -P "^\d{1,}" | xargs kill ## 杀进程
+
+
+
+
+refer:
+https://www.bilibili.com/video/av45832590?p=6
 
 
 

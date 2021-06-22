@@ -4,17 +4,24 @@ ATAC-seq
 
 
 ========================================
-ATAC-seq 简介
+ATAC-seq 简介 及教程
 ----------------------------------------
 
-ATAC-seq经典之作
+0. ATAC-seq经典之作
 论文标题：Transposition of native chromatin for fast and sensitive epigenomic profiling of open chromatin, DNA-binding proteins and nucleosome position
 
 表观测序领域大牛William J Greenleaf和Howard Y Chang的经典之作，引用上千次的ATAC经典原文
 
 
+(2) harvard ATAC 分析流程
+https://informatics.fas.harvard.edu/atac-seq-guidelines.html
+https://informatics.fas.harvard.edu/atac-seq-guidelines-old-version.html
+https://informatics.fas.harvard.edu/category/software.html
 
 
+
+
+2. 基础
 (1).复习核小体知识：https://en.wikipedia.org/wiki/ATAC-seq
 核小体有间距，则间距部分会被Tn5酶插入测序接头，也就能看到reads 峰。
 而核小体密集区域，则几乎没有reads，也就看不到任何峰。
@@ -95,7 +102,7 @@ trim, mapping, peak calling三部曲：通过cutadapt软件去除adapter和低�
 
 
 ========================================
-ATAC-seq分析走流程：测试数据
+ATAC-seq分析走流程：基础分析 (测试数据)
 ----------------------------------------
 
 1. 准备数据：用哪一套数据？
@@ -985,10 +992,25 @@ $ ls -lth macs2_/*narrowPeak
 
 
 
+(iii) 另一个教程推荐使用 -f BAMPE
+macs2 callpeak  -t <BED>  -f BEDPE  -n NAME  -g ce  --keep-dup all
 
+Analyze only properly paired alignments with -f BAMPE. Here, the fragments are defined by the paired alignments' ends, and there is no modeling or artificial extension. Singleton alignments are ignored. This is the preferred option for using only properly paired alignments.
 
+仅使用配对数据，单端被忽略。
 
+$ macs2 callpeak -t map/${id}.sambamba_rmdup.bam  -f BAMPE --outdir macs2_/  -n ${id}_BAMPE  -g hs
 
+$ ls -lth macs2_ | grep SRR7629163
+-rw-rw-r-- 1 wangjl wangjl 3.4K Jun 22 20:06 SRR7629163_BAMPE_peaks.narrowPeak
+-rw-rw-r-- 1 wangjl wangjl 2.4K Jun 22 20:06 SRR7629163_BAMPE_summits.bed
+-rw-rw-r-- 1 wangjl wangjl 4.7K Jun 22 20:06 SRR7629163_BAMPE_peaks.xls
+-rw-rw-r-- 1 wangjl wangjl 2.5K Jun 19 14:54 SRR7629163_summits.bed
+-rw-rw-r-- 1 wangjl wangjl 3.6K Jun 19 14:54 SRR7629163_peaks.narrowPeak
+-rw-rw-r-- 1 wangjl wangjl 5.0K Jun 19 14:54 SRR7629163_peaks.xls
+-rw-rw-r-- 1 wangjl wangjl  74K Jun 19 14:54 SRR7629163_model.r
+
+比 -f BAM 少了2行。
 
 
 
@@ -998,7 +1020,8 @@ $ ls -lth macs2_/*narrowPeak
 # treat vs control 可以跳过下面这一段 macs分析
 #############
 
-(iii) 比较两组间的呢？
+比较两组间的呢？
+
 $ macs2 callpeak -c map/SRR7629152.sambamba_rmdup.bam map/SRR7629153.sambamba_rmdup.bam \
 	-t map/SRR7629161.sambamba_rmdup.bam map/SRR7629162.sambamba_rmdup.bam map/SRR7629163.sambamba_rmdup.bam \
 	-f BAM -g hs -n macs2/treat_vs_control -m 2 100;
@@ -1084,8 +1107,135 @@ $ Rscript macs2/treat_vs_control-shift100-m_model.r
 
 
 ========================================
-|-- Motif 分析
+ATAC-seq 高级分析（peak注释、差异peak、motif、转录因子的footprint和核小体占位）
 ----------------------------------------
+1. paper
+ATAC-seq数据分析工具的比较和推荐（Genome Biology综述）
+https://mp.weixin.qq.com/s?__biz=MzA4NTIyMzk4Mg%3D%3D&mid=2247483678&idx=1&sn=de7b6bcbf76c2a9051d0db7a4d9cd074
+https://pubmed.ncbi.nlm.nih.gov/32014034/
+
+
+2. 技巧
+https://www.cnblogs.com/leezx/p/12953732.html
+
+
+
+
+
+========================================
+|-- Annotation 峰注释 //todo
+----------------------------------------
+在科研分析中我们往往需要将peak区域与基因联系起来，也就是通过对peak进行注释找到peak相关基因。
+
+It is helpful to know what genomic features are near the peaks called by MACS2. One program that is commonly used to annotate peaks is ChIPseeker. Like MACS2, ChIPseeker was originally designed to be used in the analysis of ChIP-seq, but it works just as well with ATAC-seq.
+
+ChIPseeker requires that the genome of interest be annotated with locations of genes and other features. The ChIPseeker user guide is extremely helpful in using this R/Bioconductor package.
+
+
+常见的peak注释软件有ChIPseeker、homer、PeakAnnotator等。
+
+
+以ChIPseeker为例，需要在R中安装ChIPseeker包和GenomicFeatures包，然后就可以进行分析了。
+
+library(ChIPseeker)
+library(GenomicFeatures)
+txdb<- makeTxDbFromGFF('gene.gtf') #生成txdb对象，如果研究物种没有已知的TxDb,可以用GenomicFeatures中的函数生成
+peakfile <-readPeakFile('A1_peaks.narrowPeak') #导入需要注释的peak文件
+peakAnno <- annotatePeak(peakfile,tssRegion=c(-2000, 2000), TxDb=txdb)
+## 用peak文件和txdb进行peak注释，这里可以通过tssRegion定义TSS区域的区间
+
+
+对于peak注释的结果，也可以进行可视化展示，如：
+p <- plotAnnoPie(peakAnno)
+
+一个饼图。
+
+
+
+
+========================================
+|-- 差异分析: R包 DiffBind /  bedtools subtract //todo
+----------------------------------------
+
+1. 差异peak代表着比较组合染色质开放性有差异的位点，ChIP-seq和ATAC-seq都可以用 DiffBind 进行差异分析。DiffBind通过bam文件和peak的bed文件计算出peak区域标准化的readcount，可以选择edgeR、DESeq2等模型进行差异分析。
+
+DiffBind是鉴定两个样本间差异结合位点的一个R包。
+主要用于peak数据集，包括对peaks的重叠和合并的处理，计算peaks重复间隔的测序reads数，并基于结合亲和力鉴定具有统计显著性的差异结合位点。适用的统计模型有DESeq、DESeq2、edgeR。
+
+library("DiffBind")
+
+
+准备输入文件
+需要准备一个SampleSheet文件，与ChIPQC的方法一样。SampleSheet文件是根据实验设计和数据存储地址等信息创建的一个csv格式文件，包含的表头信息有"SampleID"、 "Tissue"、 "Factor"、 "Condition" 、"Treatment"、"Replicate" 、"bamReads" 、"ControlID"、 "bamControl" "Peaks"、 "PeakCaller"（bam,peak文件分别在比对和call peak的步骤产生）。
+
+""、 ""、 ""、 "" 、""、"" 、"" 、""、 "bamControl" "Peaks"、 "PeakCaller"
+
+SampleID	Treatment	bamReads	ControlID
+ctrl1	ctrl	c1.bam 	
+ctrl2	ctrl	c2.bam 	
+treat1	treat	t1.bam 	
+treat2	treat	t2.bam 	
+
+
+
+dbObj <- dba(sampleSheet="SampleSheet.csv")
+
+
+
+
+
+
+
+
+2. Comparing peak files
+Determining genomic regions that are common or different to a set of peak files is best accomplished with BEDTools, a suite of software tools that enables "genome arithmetic."
+
+(1) 重复内共有的峰 bedtools intersect
+For example, bedtools intersect determines regions that are common to two peak files, such as replicates of the same experimental group.
+
+
+(2) 实验-对照特有的峰 bedtools subtract
+Finding differences between two peak files, such as control vs. experimental groups, is accomplished via bedtools subtract.
+
+
+
+
+
+
+ref:
+https://www.jianshu.com/p/f849bd55ac27
+
+
+
+
+
+
+
+========================================
+|-- Motif 分析 //todo
+----------------------------------------
+1.Motif富集分析
+
+活性开放的染色质区域通过结合特定的转录因子影响转录，转录因子结合识别的DNA序列成为motif，人体中大约有1600转录因子，其中一半多已经有明确的motif。对motif的分析包括motif富集分析和转录因子的footprint。
+
+目前有很多Motif数据库，其中最普遍的JASPAR数据库，包含了很多物种的数据，可以很容易地通过APIs或Bioconductor的R包获得相关数据。除此之外，CIS-BP和TRANSFAC包含真核转录因子的motif；HOCOMOCO专注于人和小鼠；RegulonDB是E.coli数据。
+
+Motif信息主要以txt文件格式保存，比如位置权重矩阵（as a position weight matrix , PWM）。HOMER、Bioconductor中的TFBSTools和motifmatchr包可以利用PWM搜索特定序列中的motif。PWMScan可以通过网页快速搜索motif。MEME suit里面的FIMO、MAST和MCAST在motif搜索上有不同的应用。MEME suit和PWMScan有网页版本，更容易使用。
+
+得到每个peak region里motif的位置和频率，再和随机背景或其它条件比较，就可以做motif的富集分析。HOMER、MEME-AME、MEME-CentriMo和DAStk分别采用不同的统计检验比较peak和背景区域motif频率的差异。ChromVAR是为单细胞ATAC-seq开发的motif分析工具，把每个细胞当作一个重复。
+
+需要注意的是并时不时所有的TFs都有鉴定好的motif，而同一个家族TFs有类似的motif。在软件选择上，MEME-CentriMo是用的比较多的一个网页应用，可以产生可视化的报告，单细胞ATAC-seq可以选择chromVAR软件。
+
+
+
+
+2. homer 
+
+HOMER is a suite of software designed for motif discovery. It takes a peak file as input and checks for the enrichment of both known sequence motifs and de novo motifs.
+
+http://homer.ucsd.edu/homer/ngs/peakMotifs.html
+
+
 ATAC分析得到的peak是染色质上的开放区域，这些染色质开放区域常常预示着转录因子的结合，因此对peak区域进行motif分析很有意义。常见的motif分析软件有homer和MEME。以homer软件为例，首先在linux环境中安装homer，然后用以下命令进行motif分析：
 
 findMotifsGenome.pl \
@@ -1101,6 +1251,8 @@ $ findMotifsGenome.pl
 	Example: findMotifsGenome.pl peaks.txt mm8r peakAnalysis -size 200 -len 8
 
 homer分析motif的原理及结果参见 http://homer.ucsd.edu/homer/motif/index.html
+
+
 
 
 
@@ -1197,69 +1349,6 @@ https://www.jianshu.com/p/4e6b42152694
 
 
 
-========================================
-|-- 差异分析: R包 DiffBind //todo
-----------------------------------------
-差异peak代表着比较组合染色质开放性有差异的位点，ChIP-seq和ATAC-seq都可以用 DiffBind 进行差异分析。DiffBind通过bam文件和peak的bed文件计算出peak区域标准化的readcount，可以选择edgeR、DESeq2等模型进行差异分析。
-
-DiffBind是鉴定两个样本间差异结合位点的一个R包。
-主要用于peak数据集，包括对peaks的重叠和合并的处理，计算peaks重复间隔的测序reads数，并基于结合亲和力鉴定具有统计显著性的差异结合位点。适用的统计模型有DESeq、DESeq2、edgeR。
-
-library("DiffBind")
-
-
-准备输入文件
-需要准备一个SampleSheet文件，与ChIPQC的方法一样。SampleSheet文件是根据实验设计和数据存储地址等信息创建的一个csv格式文件，包含的表头信息有"SampleID"、 "Tissue"、 "Factor"、 "Condition" 、"Treatment"、"Replicate" 、"bamReads" 、"ControlID"、 "bamControl" "Peaks"、 "PeakCaller"（bam,peak文件分别在比对和call peak的步骤产生）。
-
-""、 ""、 ""、 "" 、""、"" 、"" 、""、 "bamControl" "Peaks"、 "PeakCaller"
-
-SampleID	Treatment	bamReads	ControlID
-ctrl1	ctrl	c1.bam 	
-ctrl2	ctrl	c2.bam 	
-treat1	treat	t1.bam 	
-treat2	treat	t2.bam 	
-
-
-
-dbObj <- dba(sampleSheet="SampleSheet.csv")
-
-
-
-
-
-
-
-ref:
-https://www.jianshu.com/p/f849bd55ac27
-
-
-
-
-
-
-========================================
-|-- 峰注释 //todo
-----------------------------------------
-在科研分析中我们往往需要将peak区域与基因联系起来，也就是通过对peak进行注释找到peak相关基因。
-
-常见的peak注释软件有ChIPseeker、homer、PeakAnnotator等。
-以ChIPseeker为例，需要在R中安装ChIPseeker包和GenomicFeatures包，然后就可以进行分析了。
-
-library(ChIPseeker)
-library(GenomicFeatures)
-txdb<- makeTxDbFromGFF('gene.gtf') #生成txdb对象，如果研究物种没有已知的TxDb,可以用GenomicFeatures中的函数生成
-peakfile <-readPeakFile('A1_peaks.narrowPeak') #导入需要注释的peak文件
-peakAnno <- annotatePeak(peakfile,tssRegion=c(-2000, 2000), TxDb=txdb)
-## 用peak文件和txdb进行peak注释，这里可以通过tssRegion定义TSS区域的区间
-
-
-对于peak注释的结果，也可以进行可视化展示，如：
-p <- plotAnnoPie(peakAnno)
-
-一个饼图。
-
-
-
 
 
 
@@ -1287,160 +1376,474 @@ p <- plotAnnoPie(peakAnno)
 
 
 
-========================================
-*** 使用snakemake构建 ATAC-seq 分析流程 ***
-----------------------------------------
-
-1. snakefile 脚本的5个步骤
-
-开始按照步骤写规则：
-$ cat ATAC-seq.smk
-####################
-# ATAC-seq workflow
-####################
-REP_INDEX=["rep1","rep2"]
-INDEX_BT2="/home/wangjl/ref/hg38/bowtie2_hg38/hg38_only_chromosome"
-PICARD="/home/wangjl/soft/bin/picard.jar"
-
-rule all:
-	input: 
-		expand("macs2_result/ATAC_seq_{rep}_peaks.narrowPeak", rep=REP_INDEX)
-
-# 第一步: 去接头
-rule cutadapt:
-	input:
-		"raw_fastq/ATAC_seq_{rep}_R1.fq.gz",
-		"raw_fastq/ATAC_seq_{rep}_R2.fq.gz"
-	output:
-		"clean_fastq/ATAC_seq_{rep}_R1.fq.gz", 
-		"clean_fastq/ATAC_seq_{rep}_R2.fq.gz"
-	log:
-		"clean_fastq/ATAC_seq_{rep}_cutadapt.log"
-	shell:
-		"cutadapt -j 4 --time 1 -e 0.1 -O 3 --quality-cutoff 25 \
-		-m 50 -a AGATCGGAAGAGCACACGTCTGAACTCCAGTCAC \
-		-A AGACGGGAAGAGCGTCGTGAGGGAAGAGTGTAGATCTCGGTGGTCGCGTATCATT \
-		-o {output[0]} -p {output[1]} {input[0]} {input[1]} > {log} 2>&1"
-
-# -j 4 使用4核。输出是 -o 和-p。最后的 > {log} 2>&1 我认为可以简写为 2>{log}，因为没有啥输出了。
-# -O MINLENGTH, --overlap MINLENGTH 设置最小重叠长度(read, 接头)
-#       Require MINLENGTH overlap between read and adapter for an adapter to be found. Default: 3
-#-q [5'CUTOFF,]3'CUTOFF, --quality-cutoff [5'CUTOFF,]3'CUTOFF 去掉低质量的reads。
-#		Trim low-quality bases from 5' and/or 3' ends of each read before adapter removal. Applied to both reads if
-#		data is paired. If one value is given, only the 3' end is trimmed. If two comma-separated cutoffs are given,
-#		the 5' end is trimmed with the first cutoff, the 3' end with the second.
-#-m LEN[:LEN2], --minimum-length LEN[:LEN2]  最小reads长度，低于该值就去掉。
-#         Discard reads shorter than LEN. Default: 0
-#-a ADAPTER, --adapter ADAPTER  去接头3'端。如果是$则只看最后位置。
-#		Sequence of an adapter ligated to the 3' end (paired data: of the first read). The adapter and subsequent
-#		bases are trimmed. If a '$' character is appended ('anchoring'), the adapter is only found if it is a
-#		suffix of the read.
-
-
-# 第二步: 比对
-rule bt2_mapping:
-	input:
-		"clean_fastq/ATAC_seq_{rep}_R1.fq.gz", 
-		"clean_fastq/ATAC_seq_{rep}_R2.fq.gz
-	output:
-		"bam/ATAC_seq_{rep}_bt2_hg38.sam"
-	log:
-		"bam/ATAC_seq_{rep}_bt2_hg38.log"
-	shell:
-		"bowtie2 -x {INDEX_BT2} -p 4 -1 {input[0]} -2 {input[1]} -S {output} >{log} 2>&1"
-# -x 是之前建立的索引。-p 是CPU核心数。-1和-2是输入文件R1和R2。-S 输出文件。
-
-# 第三步: sam to bam, and sort
-rule bam_sort:
-	input:
-		"bam/ATAC_seq_{rep}_bt2_hg38.sam"
-	output:
-		"bam/ATAC_seq_{rep}_bt2_hg38_sort.bam"
-	log:
-		"bam/ATAC_seq_{rep}_bt2_hg38_sort.log"
-	shell:
-		"samtools sort -O BAM -o {output} -T {output}.temp -@ 4 -m 2G {input} >{log} 2>&1"
-# -O 输出格式。-o 输出文件名。-T 临时文件名。-@ CPU核心数。-m 内存上限。最后是输出。
-
-
-
-# 第四步: 去重复。使用picard会输出2个，一个bam，一个matrix文件。
-rule rm_duplicate:
-	input:
-		"bam/ATAC_seq_{rep}_bt2_hg38_sort.bam"
-	outpu:
-		"bam/ATAC_seq_{rep}_bt2_hg38_sort_rmdup.bam",
-		"bam/ATAC_seq_{rep}_bt2_hg38_sort_rmdup.matrix"
-	log:
-		"bam/ATAC_seq_{rep}_bt2_hg38_sort_rmdup.log"
-	shell:
-		"java -Xms5g -Xmx10g -XX:ParallelGCThreads=4 \
-		-jar {PICARD} MarkDuplicates \
-		I={input} O={output[0]} M={output[1]} \
-		ASO=coordinate REMOVE_DUPLICATES=true 2>{log}"
-# -Xms5g 最小使用5G内存。-Xmx10g 最大10G内存。-XX:ParallelGCThreads=4 CPU核心数。
-# O第一个输出，M第二个输出。ASO=coordinate 指定是按照坐标轴sort过。去掉重复。
-
-
-# 第5步: call peak
-rule call_peak:
-	input:
-		"bam/ATAC_seq_{rep}_bt2_hg38_sort_rmdup.bam"
-	output:
-		"macs2_result/ATAC_seq_{rep}_peaks.narrowPeak"
-	params: #这2个设置是MACS2本身shell的问题，不是每个工具都这样
-		"ATAC_seq_{rep}",
-		"macs2_result"
-	log:
-		"macs2_result/ATAC_seq_{rep}_peaks.log"
-	shell:
-		"macs2 callpeak -c xx -t {input} -f BAM -g hs \
-		--outdir {params[1]} -n {params[0]} -m 2 100 >{log} 2>&1"
-# -c 对照。-t 处理组。-f 格式。-g 基因组类型 人。
-# --outdir 输出文件夹。-n 输出文件名。-m 2 100 富集区间 2-100的输出。
-
-
-
-
-(2) 测试 
-dry run 检查语法错误
-$ snakemake -s ATAC-seq.smk -np # -n 不是真的运行，-p 打印shell命令。
-
-
-画流程图 
-$ snakemake -s ATAC-seq.smk --dag | dot -Tsvg > ATAC-seq.svg
-
-
-(3) 运行 
-$ snakemake -s ATAC-seq.smk -p -j 2 # 使用2个进程
-$ snakemake -s ATAC-seq.smk -p -j 2 & 
-
-
-看进程pid
-$ ps | cut -d ' ' -f 2
-$ ps | cut -d ' ' -f 2 | grep -P "^\d{1,}"  ## 显示进程号
-$ ps | cut -d ' ' -f 2 | grep -P "^\d{1,}" | xargs kill ## 杀进程
-
-
-
-
-refer:
-https://www.bilibili.com/video/av45832590?p=6
 
 
 
 
 
 ========================================
-|-- 使用snakemake构建 ATAC-seq 分析流程(实例)
+使用snakemake构建 ATAC-seq 分析流程(实例)
 ----------------------------------------
 流程脚本:
 https://github.com/crazyhottommy/pyflow-ATACseq
 
+按照include模式写，写成一个就保存一个。
+
+
+
+1. 测试
+
+(1) fq QC
+$ cat main1.sf 
+SI=["SRR7629152","SRR7629153"]  
+
+rule all:
+	input: 
+		expand("QC_raw/s_{sample}_2_fastqc.html", sample=SI),
+		expand("QC_raw/s_{sample}_2_fastqc.html", sample=SI)
+
+include:"rules/01qc.sf"
+
+
+####
+$ cat rules/01qc.sf 
+rule QC_fq:
+        input: 
+                "raw/s_{sample}_1.fastq.gz",
+                "raw/s_{sample}_2.fastq.gz",
+        output: 
+                "QC_raw/s_{sample}_1_fastqc.html",
+                "QC_raw/s_{sample}_2_fastqc.html"
+        log: "QC_raw/s_{sample}_fastqc.html.log"
+        shell: 
+                "fastqc -t 10 {input} -o QC_raw/ >{log} 2>&1"
+
+$ snakemake -s main1.sf -j1
+Job counts:
+	count	jobs
+	2	QC_fq
+	1	all
+	3
+
+$ ls QC_raw/ -lth
+total 3.8M
+-rw-rw-r-- 1 wangjl wangjl 589K Jun 22 12:29 s_SRR7629153_1_fastqc.html
+-rw-rw-r-- 1 wangjl wangjl 589K Jun 22 12:29 s_SRR7629153_2_fastqc.html
+-rw-rw-r-- 1 wangjl wangjl 369K Jun 22 12:29 s_SRR7629153_2_fastqc.zip
+-rw-rw-r-- 1 wangjl wangjl 357K Jun 22 12:29 s_SRR7629153_1_fastqc.zip
+-rw-rw-r-- 1 wangjl wangjl 2.1K Jun 22 12:29 s_SRR7629153_fastqc.html.log
+
+
+
+(2) 去接头
+$ cat main2.sf 
+SI=["SRR7629152","SRR7629153"]  
+
+rule all:
+	input: 
+		expand("QC_raw/s_{sample}_2_fastqc.html", sample=SI),
+		expand("clean/{sample}_2.fastq.gz", sample=SI)
+
+include:"rules/01qc.sf"
+include:"rules/02cutAdaptor.sf"
+
+
+$ cat rules/02cutAdaptor.sf
+rule cut_adapter:
+	input:
+		"raw/s_{sample}_1.fastq.gz",
+		"raw/s_{sample}_2.fastq.gz",
+	output:
+		"clean/{sample}_1.fastq.gz",
+		"clean/{sample}_2.fastq.gz"
+	log:"clean/{sample}_cutapapt.log"
+	shell:
+		"cutadapt -j 4 --time 1 -e 0.1 -O 3 --quality-cutoff 25 \
+		-m 15 -a CTGTCTCTTATA \
+		-A AGACGGGAAGAGCGTCGTGAGGGAAGAGTGTAGATCTCGGTGGTCGCGTATCATT \
+		-o {output[0]} -p {output[1]} {input[0]} {input[1]} >{log} 2>&1"
+
+
+$ snakemake -s main2.sf -j4
+Job counts:
+	count	jobs
+	1	all
+	2	cut_adapter
+	3
+$ ls -lth clean/
+total 11M
+-rw-rw-r-- 1 wangjl wangjl 2.6M Jun 22 12:42 SRR7629153_1.fastq.gz
+-rw-rw-r-- 1 wangjl wangjl 2.7M Jun 22 12:42 SRR7629153_2.fastq.gz
+-rw-rw-r-- 1 wangjl wangjl 2.4K Jun 22 12:42 SRR7629153_cutapapt.log
+-rw-rw-r-- 1 wangjl wangjl 2.7M Jun 22 12:42 SRR7629152_1.fastq.gz
+-rw-rw-r-- 1 wangjl wangjl 2.7M Jun 22 12:42 SRR7629152_2.fastq.gz
+-rw-rw-r-- 1 wangjl wangjl 2.4K Jun 22 12:42 SRR7629152_cutapapt.log
 
 
 
 
+
+
+(3) 比对 & sort
+$ cat main3.sf 
+SI=["SRR7629152","SRR7629153"]  
+BWA_INDEX="/home/wangjl/data/ref/human/UCSC/bwa/hg38_fa"
+
+rule all:
+	input: 
+		expand("QC_raw/s_{sample}_2_fastqc.html", sample=SI),
+		expand("map/{sample}.sort.bam", sample=SI)
+
+include:"rules/01qc.sf"
+include:"rules/02cutAdaptor.sf"
+include:"rules/03BWA_mapping.sf"
+
+
+## 仅保存bam，删除sam中间文件。
+$ cat rules/03BWA_mapping.sf
+rule bwa_mapping:
+	input:
+		"clean/{sample}_1.fastq.gz",
+		"clean/{sample}_2.fastq.gz"
+	output:
+		temp("map/{sample}_bwa_hg38.sam")
+	params: bwa=r"@RG\tID:{sample}\tSM:{sample}"
+	threads: 8
+	log:"map/{sample}_bwa_hg38.sam.log"
+	shell:
+		"bwa mem -t {threads} -R '{params.bwa}' -o {output} {BWA_INDEX}  {input} >{log} 2>&1"
+
+rule sort_to_bam:
+	input:"map/{sample}_bwa_hg38.sam"
+	output:"map/{sample}.sort.bam"
+	params: tmp="{sample}_tmp"
+	log: "map/{sample}.sort.bam.log"
+	shell:"samtools sort -O bam -T {params.tmp} -o {output} {input} >{log} 2>&1"
+
+
+
+
+$ snakemake -s main3.sf -j 10
+Job counts:
+	count	jobs
+	1	all
+	2	bwa_mapping
+	2	sort_to_bam
+	5
+
+$ ls -lth map/
+total 15M
+-rw-rw-r-- 1 wangjl wangjl 7.0M Jun 22 22:14 SRR7629153.sort.bam
+-rw-rw-r-- 1 wangjl wangjl    0 Jun 22 22:14 SRR7629153.sort.bam.log
+-rw-rw-r-- 1 wangjl wangjl 1.1K Jun 22 22:14 SRR7629153_bwa_hg38.sam.log
+-rw-rw-r-- 1 wangjl wangjl 7.6M Jun 22 22:14 SRR7629152.sort.bam
+-rw-rw-r-- 1 wangjl wangjl    0 Jun 22 22:14 SRR7629152.sort.bam.log
+-rw-rw-r-- 1 wangjl wangjl 1.1K Jun 22 22:14 SRR7629152_bwa_hg38.sam.log
+
+
+
+
+
+
+
+
+
+
+
+(4) rm MT, rm dup, rm Low MapQ, then BAM QC (TSS分布图，插入片段长度)
+$ cat main4.sf 
+SI=["SRR7629152","SRR7629153"]  
+BWA_INDEX="/home/wangjl/data/ref/human/UCSC/bwa/hg38_fa"
+
+from snakemake.utils import R
+
+rule all:
+	input: 
+		expand("QC_raw/s_{sample}_2_fastqc.html", sample=SI), #fastq QC
+		# expand("map_clean/{sample}.final.bam", sample=SI), # 最终的 3次过滤的 bam
+		expand("QC_map/TSS/{sample}.TSS.heatmap.pdf", sample=SI), #BAM QC: TSS 
+		expand("map_clean/fragment_length/ATAC_QC_{sample}.pdf", sample=SI) # BAM QC: 片段长度
+
+# 一个小任务有一个输出文件，单线不分叉
+include:"rules/01qc.sf"
+include:"rules/02cutAdaptor.sf"
+include:"rules/03BWA_mapping.sf"
+include:"rules/04Bam_filter.sf"
+include:"rules/04-2-Bam_QC.sf"
+
+
+
+$ cat rules/04Bam_filter.sf
+rule index:
+	input:"{sample}.bam"
+	output:"{sample}.bam.bai"
+	shell:"samtools index {input}"
+
+## rm MT
+rule get_chrlist:
+	input:"map/{sample}.sort.bam"
+	output:"map_clean/{sample}.chrlist"
+	log:"map_clean/{sample}.chrlist.log"
+	shell:"samtools view  {input}| grep -v '^#'| awk '{{print $3}}' \
+		| sort | uniq -c| grep -E -v 'GL|KI|JH|KB|chrM' | grep chr | awk '{{print $2}}' | xargs > {output} 2>{log}"
+
+rule del_MT:
+	input:"map_clean/{sample}.chrlist", "map/{sample}.sort.bam", "map/{sample}.sort.bam.bai"
+	output:"map_clean/{sample}.sort.delMT.bam"
+	log:"map_clean/{sample}.sort.delMT.bam.log"
+	shell:"samtools view -b {input[1]} `cat {input[0]}` > {output} 2>{log}"
+
+# filter by MAPQ:
+# 1 需要不需要按MAPQ过滤？需要，下例bowtie2按照>10过滤的。
+# 2 三个过滤怎么排序好？不确定
+# 3 怎么设置其他参数?
+# https://informatics.fas.harvard.edu/atac-seq-guidelines-old-version.html#alignments
+# https://github.com/ENCODE-DCC/atac-seq-pipeline/blob/master/src/encode_task_filter.py
+rule rm_low_MAPQ:
+	input:"map_clean/{sample}.sort.delMT.bam"
+	output:"map_clean/{sample}.sort.delMT.HmapQ.bam"
+	shell:"samtools view -bh -q 50 {input} > {output}"
+
+# remove duplicate: 这个放最后的优势是，会自动生成bai文件
+rule rm_dup:
+	input:"map_clean/{sample}.sort.delMT.HmapQ.bam"
+	output:"map_clean/{sample}.final.bam"
+	threads: 8
+	params:tmp="map_clean/tmp/{sample}"
+	log:"map_clean/{sample}.sort.delMT.HmapQ.sambambaRmDup.bam.log"
+	shell:"sambamba markdup -r -t {threads} --tmpdir {params.tmp} {input} {output} >{log} 2>&1"
+
+
+
+$ cat rules/04-2-Bam_QC.sf
+########################
+# MAP_QC: 2 target file
+########################
+
+## target 1
+rule MAP_QC_bamCoverage:
+	input: "map_clean/{sample}.final.bam"
+	output: "QC_map/{sample}.bw"
+	log: "QC_map/{sample}.bw.log"
+	shell: "bamCoverage -b {input} -o {output} >{log} 2>&1"
+
+rule MAP_QC_computeMatrix:
+	input: "QC_map/{sample}.bw"
+	output:"QC_map/matrix/{sample}.mat.gz"
+	log: "QC_map/matrix/{sample}.mat.gz.log"
+	shell:"computeMatrix reference-point \
+       --referencePoint TSS \
+       -S {input} \
+       -R /home/wangjl/data/ref/human/UCSC/hg38_refseq_whole_gene.bed \
+       -b 1000 \
+       -a 1000 \
+       -o {output} >{log} 2>&1"
+
+rule MAP_QC_plotHeatmap:
+	input: "QC_map/matrix/{sample}.mat.gz",
+	output:"QC_map/TSS/{sample}.TSS.heatmap.pdf"
+	log: "QC_map/TSS/{sample}.TSS.heatmap.pdf.log"
+	shell:"plotHeatmap -m {input} -out {output}"
+
+## target 2
+rule get_fragment_length:
+	input:"map_clean/{sample}.final.bam"
+	output:"QC_map/fragment_length/{sample}.fragment.length.txt"
+	log:"QC_map/{sample}.fragment.length.txt.log"
+	shell:"samtools view {input} | \
+		awk -F'\t' 'function abs(x){{return ((x < 0.0) ? -x : x)}} {{print $1\"\t\"abs($9)}}' | \
+		sort | uniq | cut -f2 > {output} 2>{log}"
+
+rule draw_plot:
+	input: 
+		"map_clean/{sample}.final.bam",
+		"QC_map/fragment_length/{sample}.fragment.length.txt"
+	output: "map_clean/fragment_length/ATAC_QC_{sample}.pdf"
+	log: "map_clean/fragment_length/ATAC_QC_{sample}.pdf.log"
+	params: key="{sample}"
+	run: R("""
+		library("ATACseqQC");
+		pdf("{output}", width=5, height=5);
+		fragSizeDist("{input[0]}", "{params.key}")
+		dev.off();
+	""")
+
+
+$ snakemake -s main4.sf -j 10
+Job counts:
+        count   jobs
+        2       MAP_QC_bamCoverage
+        2       MAP_QC_computeMatrix
+        2       MAP_QC_plotHeatmap
+        1       all
+        2       del_MT
+        2       draw_plot
+        2       get_chrlist
+        2       get_fragment_length
+        2       index
+        2       rm_dup
+        2       rm_low_MAPQ
+        21
+这个很花时间的。
+
+
+
+
+
+
+
+
+
+
+
+(5) call peak 
+
+(6) find motif 
+$ cat main6.sf 
+SI=["SRR7629152","SRR7629153"]  
+BWA_INDEX="/home/wangjl/data/ref/human/UCSC/bwa/hg38_fa"
+
+from snakemake.utils import R
+
+rule all:
+	input: 
+		expand("QC_raw/s_{sample}_2_fastqc.html", sample=SI), #fastq QC
+		expand("map_clean/{sample}.final.bam", sample=SI), # 最终的 3次过滤的 bam
+		# expand("QC_map/TSS/{sample}.TSS.heatmap.pdf", sample=SI), #BAM QC: TSS (十分耗时:40min 1e4 reads)
+		expand("map_clean/fragment_length/ATAC_QC_{sample}.pdf", sample=SI), # BAM QC: 片段长度
+		expand("homer/{sample}/knownResults.html", sample=SI)
+
+# 一个小任务有一个输出文件，单线不分叉
+include:"rules/01qc.sf"
+include:"rules/02cutAdaptor.sf"
+include:"rules/03BWA_mapping.sf"
+include:"rules/04Bam_filter.sf"
+include:"rules/04-2-Bam_QC.sf"
+
+include:"rules/05call_peak.sf"
+include:"rules/06homer_find_motif.sf"
+
+
+
+$ cat rules/05call_peak.sf
+rule call_peak:
+	input:
+		"map_clean/{sample}.final.bam"
+	output:
+		"macs2_result/{sample}_peaks.narrowPeak"
+	params:
+		"{sample}",
+		"macs2_result"
+	log:
+		"macs2_result/{sample}_peaks.narrowPeak.log"
+	shell:
+		"macs2 callpeak -t {input} -f BAM -g hs \
+		--shift -100 --extsize 200 --nomodel \
+		-B --SPMR --call-summits \
+		--outdir {params[1]} -n {params[0]} >{log} 2>&1"
+
+
+$ cat rules/06homer_find_motif.sf
+GENOME   ="/home/wangjl/data/ref/human/UCSC/hg38.fa"
+## 命令中指定输出目录
+rule homer_find_motif: 
+	input: "macs2_result/{sample}_peaks.narrowPeak"
+	output: "homer/{sample}/knownResults.html"
+	params: out_dir="homer/{sample}/"
+	log:"homer/{sample}/knownResults.html.log"
+	shell:"findMotifsGenome.pl {input} {GENOME} {params.out_dir} -size given >{log} 2>&1"
+
+
+$ snakemake -s main6.sf -j10
+Job counts:
+	count	jobs
+	1	all
+	2	call_peak
+	2	homer_find_motif
+	5
+#
+
+
+
+
+
+
+
+
+$ ls map_clean/fragment_length -lth
+total 24K
+-rw-rw-r-- 1 wangjl wangjl 12K Jun 22 20:12 ATAC_QC_SRR7629152.pdf
+-rw-rw-r-- 1 wangjl wangjl 11K Jun 22 20:12 ATAC_QC_SRR7629153.pdf
+-rw-rw-r-- 1 wangjl wangjl   0 Jun 22 20:12 ATAC_QC_SRR7629152.pdf.log
+-rw-rw-r-- 1 wangjl wangjl   0 Jun 22 20:12 ATAC_QC_SRR7629153.pdf.log
+
+
+
+$ ls -lth macs2_result/
+total 20M
+-rw-rw-r-- 1 wangjl wangjl  145 Jun 22 16:24 SRR7629152_peaks.narrowPeak
+-rw-rw-r-- 1 wangjl wangjl 7.3M Jun 22 16:24 SRR7629152_control_lambda.bdg
+-rw-rw-r-- 1 wangjl wangjl 3.0K Jun 22 16:24 SRR7629152_peaks.narrowPeak.log
+-rw-rw-r-- 1 wangjl wangjl 1.4K Jun 22 16:24 SRR7629152_peaks.xls
+-rw-rw-r-- 1 wangjl wangjl   99 Jun 22 16:24 SRR7629152_summits.bed
+-rw-rw-r-- 1 wangjl wangjl 3.7M Jun 22 16:24 SRR7629152_treat_pileup.bdg
+-rw-rw-r-- 1 wangjl wangjl 1.1K Jun 22 16:24 SRR7629153_peaks.narrowPeak
+-rw-rw-r-- 1 wangjl wangjl 3.0K Jun 22 16:24 SRR7629153_peaks.narrowPeak.log
+-rw-rw-r-- 1 wangjl wangjl  700 Jun 22 16:24 SRR7629153_summits.bed
+-rw-rw-r-- 1 wangjl wangjl 6.0M Jun 22 16:24 SRR7629153_control_lambda.bdg
+-rw-rw-r-- 1 wangjl wangjl 2.3K Jun 22 16:24 SRR7629153_peaks.xls
+-rw-rw-r-- 1 wangjl wangjl 3.1M Jun 22 16:24 SRR7629153_treat_pileup.bdg
+
+
+
+## check
+$ cat map_clean/SRR7629152.chrlist
+chr1 chr10 chr11 chr12 chr13 chr14 chr15 chr16 chr17 chr18 chr19 chr2 chr20 chr21 chr22 chr3 chr4 chr5 chr6 chr7 chr8 chr9 chrX chrY
+
+
+$ samtools view  map_clean/SRR7629153.sort.delMT.sambambaRmDup.bam | awk '{print $5}'  | sort |uniq -c | sort -k1nr
+  98375 60
+  17016 0
+   1586 40
+    510 27
+    461 57
+$ samtools view -q 60 map_clean/SRR7629153.sort.delMT.sambambaRmDup.bam  | wc
+  98375 1674485 19435299
+
+
+
+
+
+
+
+
+
+
+2. 最终版
+
+(1) 第一行改为完整版
+SI=["SRR7629152","SRR7629153","SRR7629154", "SRR7629161", "SRR7629162", "SRR7629163"]
+
+(2) 把中间特别慢的BAM质控部分单独调用。
+
+$ snakemake -s main.sf -j2
+Job counts:    
+        count   jobs   
+        4       QC_fq
+        1       all       
+        4       bwa_mapping
+        6       call_peak                                          
+        4       cut_adapter                                         
+        4       del_MT                
+        4       draw_plot
+        4       get_chrlist     
+        4       get_fragment_length
+        6       homer_find_motif
+        4       index
+        4       rm_dup
+        4       rm_low_MAPQ
+        4       sort_to_bam
+        57
 
 
 
