@@ -2,6 +2,7 @@
 
 
 本文从理论和技术上描述如何构建生信分析流程。
+一个好的生物信息分析流程可以让你事倍功半，有效减负，同时也有利于他人重复你的数据分析结果。
 
 难点是：脚本和编程语言之间的交互调用，及反馈。
 
@@ -37,17 +38,16 @@ awesome-pipeline: https://github.com/pditommaso/awesome-pipeline
 
 
 
+Workflow systems turn raw data into scientific knowledge
+https://www.nature.com/articles/d41586-019-02619-z
+How workflow tools can make your computational methods portable, maintainable, reproducible and shareable.
 
 
 
 
 
 
-
-
-
-
-脚本语言流，主要是通过简单的脚本语言（如shell，R，Python，Perl）运行各类命令行脚本/程序。常见的几种工作模式：
+(1)脚本语言流，主要是通过简单的脚本语言（如shell，R，Python，Perl）运行各类命令行脚本/程序。常见的几种工作模式：
 	1)单个脚本就是一整个流程
 	2)多个脚本组成一个流程
 	3)封装成可以输入参数的命令行程序
@@ -67,6 +67,38 @@ awesome-pipeline: https://github.com/pditommaso/awesome-pipeline
 
 基于shell的pipleline实例：
 史上最快的转录组定量流程 https://mp.weixin.qq.com/s?__biz=MzAxMDkxODM1Ng==&mid=2247485134&idx=1&sn=396fb3826573fbc5a9b0ea33695ef764
+
+
+
+
+(2)Common Workflow language（CWL）语言
+Common Workflow language 语言流是近几年兴起的，专门用于数据分析流程构建的一类语言/工具。
+
+这类语言/工具最核心的部分：定义每一个计算过程（脚本）的输入和输出，然后通过连接这些输入和输出，构成数据分析流程（图二，图三）（如 Galaxy, wdl，cromwell，nextflow，snakemake，bpipe 等）。
+
+示例项目：
+
+chip-seq-pipeline2：ENCODE Transcription Factor and Histone ChIP-Seq processing pipeline （chipseq_pipeline的WDL版）.
+
+ngsjs-wkfl-wdl: A library of next-generation sequencing data analysis workflow (WDL).
+
+biowdl: BioWDL is a collection of pipelines and workflows usable for a variety of sequencing related analyses. They are made using WDL and closely related to BIOPET.
+
+snakemake-workflows: An experimental repo for common snakemake rules and workflows.
+
+
+
+
+(3)Makefile 流
+
+(4)配置文件流
+
+(5) Jupyter notebook 和 R markdown 流
+
+
+
+
+
 
 
 
@@ -128,6 +160,13 @@ refer:
 Keywords: pipeline, workflow, framework
 
 https://mp.weixin.qq.com/s/L04wd4Ud3eQ5wP6EWtke5A
+
+
+
+
+
+
+
 
 
 
@@ -442,44 +481,238 @@ print(getNow() );
 https://www.cnblogs.com/arkenstone/p/5609063.html
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
 ========================================
 基于 Common Workflow language 语言流的流程 / WDL(workflow description language)
 ----------------------------------------
+CWL（Common Workflow Language）普通工作流语言和WDL（Workflow Description Language）工作流描述语言。定义每一个计算过程（脚本）的输入和输出，然后通过连接这些输入和输出，构成数据分析流程。
+
+CWL/WDL现已被Seven Bridges、Broad Institute等众多国际顶级研究机构使用。
+
+可以在多个平台执行，比如本地服务器、SGE 集群，云计算平台等，可以做到一次编写多处执行。
+
+CWL是一种描述分析管线和计算工具的方式——这类系统已经有超过250种了，其中比较流行的包括
+ - Linux版本最有名的如Snakemake, Nextflow，bpipe等。
+ - 图形界面版的如Galaxy，一些商业公司的云平台（拖拉图标即可）。
+
+虽然它们使用了不同的语言，支持不同的特性，但这类系统有着共同的目标：让计算过程能够重现、移植、维护、共享。
+CWL本质上是一种让研究人员用来共享管线的交换语言。对于研究者来说，这门语言让代码库变得正常了，减少了大约73%的代码。更重要的是，这让代码更容易测试、执行和共享新的算法，以及在云上运行。
+
+
+其他好处？举个例子：
+某计算平台的开发者，在该平台下编写了一个分析流程，但一段时间后要将分析流程迁移，到Seven Bridges/DNAnexus上... 此时，该开发者需要重新按照以上三个流程规范修改这个流程。
+
+但是，如果开发者是按照CWL标准编写的分析流程，那么这个流程就可以分别在Seven Bridges/DNAnexus上正确运行，不需要做任何修改，因为这些平台都支持CWL。
+
+
+
+
+
+
+
+
+1. CWL 
 https://github.com/common-workflow-language/
 https://www.commonwl.org/
 
 CWL is designed to meet the needs of data-intensive science, such as Bioinformatics, Medical Imaging, Astronomy, Physics, and Chemistry.
 
+## CWL的一个实现是snakemake。
+configfile: "config.yaml"
+
+rule all:
+    input:
+        "report.html"
+
+rule bwa_map:
+    input:
+        "data/genome.fa",
+        lambda wildcards: config["samples"][wildcards.sample]
+    output:
+        temp("mapped_reads/{sample}.bam")
+    params:
+        rg="@RG\tID:{sample}\tSM:{sample}"
+    log:
+        "logs/bwa_mem/{sample}.log"
+    threads: 8
+    shell:
+        "(bwa mem -R '{params.rg}' -t {threads} {input} | "
+        "samtools view -Sb - > {output}) 2> {log}"
+
+rule report:
+    input: "calls/all.vcf"
+    output: "report.html"
+    run:
+        from snakemake.utils import report
+        with open(input[0]) as vcf:
+            n_calls = sum(1 for l in vcf if not l.startswith("#"))
+
+        report("""
+        An example variant calling workflow
+        """, output[0], T1=input[0])
 
 
-GATK Cromwell +WDL学习 https://blog.csdn.net/theomarker/article/details/79627804
-
-gatk-tool-wdls https://github.com/broadinstitute/gatk-tool-wdls/tree/master
 
 
 
 
+2. The Workflow Description Language (WDL) makes it straightforward to define analysis tasks, chain them together in workflows, and parallelize their execution.
+
+(1) Cromwell 是 Broad Institute 开发的工作流管理引擎，支持 WDL 和 CWL 两种工作流描述语言。
+Broad Institute可谓业内之翘楚，我们利用其开发的WDL和Cromwell来搭建自己的生物信息分析流程。
+https://openwdl.org/
+
+WDL语法结构：
+	workflow
+	task
+	call
+	command
+	output
+
+
+示例1 
+workflow myWorkflow {
+    call myTask
+}
+task myTask {
+    command {
+        echo "hello world"
+    }
+    output {
+        String out = read_string(stdout())
+    }
+}
+
+
+ 
+(2) 从 Hello world 开始编写WDL
+像我们学习其他语言一样，先从经典的 hello world 开始，学习 WDL 的编写
+## 定义task
+task echo {
+  String out
+
+  command {
+    echo Hello World! > ${out}
+  }
+
+  runtime {
+    cluster: "OnDemand ecs.sn1.medium img-ubuntu-vpc"
+    docker: "registry.cn-shanghai.aliyuncs.com/mynamespace/myubuntu:0.1"
+  }
+
+  output {
+    File outFile = "${out}"
+  }
+}
+
+## 定义工作流
+workflow wf_echo {
+  call echo
+  output {
+    echo.outFile
+  }
+}
+
+
+上面的例子是一个简单的 WDL，作用是输出 Hello world 并保存在一个文件里面，输出文件名可以指定。一个完整的 WDL 一般由下面几个部分组成：
+
+	workflow：工作流定义
+	task：工作流包含的任务定义
+	call：调用或触发工作流里面的 task 执行
+	command：task在计算节点上要执行的命令行
+	runtime：task在计算节点上的运行时参数，包括 CPU、内存、docker 镜像等
+	output：task 或 workflow 的输出定义
 
 
 
 
-========================================
-|--  Cromwell(an execution engine that can run WDL scripts)  Broad Institute 公司开发的工作流管理系统
-----------------------------------------
+
+
+
+
+
+3. 如何运行 wdl 脚本? 使用 Cromwell。
+Cromwell是一个开源的由Java编写支持WDL的执行工具。
+需要java 8。
+支持 WDL 和 CWL 两种工作流描述语言
+可以多平台支持支持WDL的执行：本地机器，本地服务器集群，云平台。
+
+Cromwell(an execution engine that can run WDL scripts)  Broad Institute 公司开发的工作流管理系统
+Cromwell is a Workflow Management System geared towards scientific workflows. 面向科学工作流。
 https://github.com/broadinstitute/cromwell
-
-Cromwell is a Workflow Management System geared towards scientific workflows. 
 
 Scientific workflow engine designed for simplicity & scalability. Trivially transition between one off use cases to massive scale production environments http://cromwell.readthedocs.io/
 
-使用Cromwell。Cromwell是一个开源的由Java编写支持WDL的执行工具。可以在3个平台支持支持WDL的执行：本地机器，本地服务器集群，云平台。需要java 8 
+
+(1)下载和安装 Cromwell
+Cromwell可执行文件可以从Cromwell GitHub存储库中以预编译的jar文件的形式获得 。它需要Java 8才能运行。
+https://github.com/broadinstitute/cromwell/releases/
+
+$ wget https://github.com/broadinstitute/cromwell/releases/download/65/cromwell-65.jar
+
+$ java --version
+openjdk 11.0.11 2021-04-20
 
 
 
 
+(2) 使用 Cromwell 运行 WDL 有两种模式
+==> Run 模式
+用来执行单个 WDL，适用于调试初期，快速执行一个WDL。
+$ java -jar cromwell.jar run echo.wdl --inputs input.json
+
+==> Server 模式
+用下面的命令启动一个 HTTP server
+$ java -Dconfig.file=application.conf -jar cromwell.jar server
+
+再使用 RESTful API 提交工作流到 server 执行：
+$ java -jar cromwell.jar submit -t wdl -i input.json -o option.json -h http://localhost:8000
 
 
+
+相比 Run 模式，Server 模式有以下优势：
+- 可以并行处理多个 workflow，适用于生产环境
+- 有 Call caching 等高级特性（下文会讲到），优化 workflow 的执行
+- 提供丰富的 workflow metadata，来展示 workflow 的执行过程
+
+注意：不管是使用Run 模式还是 Server模式，要使用批量计算作为后端运行 WDL，都需要对应的配置文件支持，配置文件详解请参考批量计算官方文档或Cromwell 官方文档。
+
+
+语法检查工具
+WDL 编写完成后，在真正执行之前，我们可以使用官方工具进行语法检查：
+$ java -jar wdltool.jar validate myWorkflow.wdl
+
+
+
+
+(4) 现成案例:
+https://github.com/gatk-workflows
+GATK Cromwell +WDL学习 https://blog.csdn.net/theomarker/article/details/79627804
+gatk-tool-wdls https://github.com/broadinstitute/gatk-tool-wdls/tree/master
+
+总体来说，WDL结构略复杂，槽点很多，容易出错，调试较麻烦，但依然不失为科学共同体杰出的流程化语言，值得学习、推广应用。
+
+
+
+
+ref:
+https://wenlongshen.github.io/2018/09/15/Pipelining-Solution-2/
 https://help.aliyun.com/document_detail/110173.html
+https://developer.aliyun.com/article/716546
+
+
 
 
 
@@ -488,12 +721,73 @@ https://help.aliyun.com/document_detail/110173.html
 
 
 ========================================
+|-- 使用 docker 分析高通量测序数据
 ----------------------------------------
+docker也是一个很有发展前途的方向，可以作为轻量级生物信息工具的容器，它将帮助具有复杂依赖关系的流程变得简单。
+docker不是一个流程方法，只是个封装的容器工具而已，能把软件及其运行环境一起打包，方便环境的迁移。可以作为流程中的一个工具使用。
+docker，作为一个开源的应用容器引擎，小巧、可移植、可虚拟化、沙箱式的使用机制使其成为流程应用开发的不二之选。
+
+容器是工作流程上特别有用的一类附加功能，因为它允许研究者将执行每个步骤所需的计算组件精准打包。
+
+2018年，非洲生物信息网络H3ABioNet的研究者们构建了四条管线——两条使用了CWL，两条使用了Nextflow——并将它们存在了Docker容器中（S. Baichoo et al. BMC Bioinform. 19, 457; 2018）。这样，就能让计算结果可以重现，工作流程也可以在网上下载，尽管不同人用的计算资源各不相同。
+https://bmcbioinformatics.biomedcentral.com/articles/10.1186/s12859-018-2446-1
+
+
+使用docker要理解image和container的概念，镜像包含了一个完整的操作系统及所需要的应用程序，容器则是从镜像创建的一个实例，同一个镜像可以对应多个容器，而容器彼此之间隔离。
 
 
 
-========================================
-----------------------------------------
+(1) 使用方式
+可以去文章或 https://biocontainers.pro/ 找别人构建好的镜像。
+BioContainers: 10.1K tools, 39.7K versions, 196.9K containers and packages
+SOFTWARE --> CONTAINER --> WORKFLOW
+
+https://biocontainers.pro/registry?all_fields_search=bowtie2
+https://biocontainers.pro/tools/bioconductor-atacseqqc
+https://hub.docker.com/r/biocontainers/bowtie2/
+
+$ docker run --rm -v /home/wenlong/Data/:/data/ biocontainers/bowtie2 bowtie2 -x /data/hg19index/hg19 -1 /data/test.r1.gz -2 /data/test.r2.gz -S /data/test.sam
+
+参数解释
+--rm 使得该容器退出后自动删除。
+-v 是文件映射，冒号前面是本机，后面是docker内部地址。相当于文件夹挂载。
+	bowtie2生成的比对文件将出现在本地/home/wenlong/Data下。
+镜像名是 biocontainers/bowtie2。
+运行的命令是 bowtie2 -x /data/hg19index/hg19 -1 /data/test.r1.gz -2 /data/test.r2.gz -S 
+
+注意biocontainers构建这个镜像时使用了CMD ["bowtie2"]，所以想要交互终端的话得使用docker run -it biocontainers/bowtie2 /bin/bash。
+
+
+
+
+(2) 构建方式
+以ChIP-seq等分析时常用的peak calling工具MACS2为例。
+
+	下载官方的Ubuntu镜像作为起始镜像docker pull ubuntu，
+	建立一个文件夹用于存放制作镜像过程中所用到的文件，下载MACS2的源码包并新建Dockerfile文件
+	执行docker build -t macs2:ubuntu.v1 .（慢）
+	构建成功后，查看并尝试使用该镜像
+	将该镜像上传到自己的docker hub
+
+
+$ docker run --rm -v /home/wenlong/Data/:/data/ macs2:ubuntu.v1 macs2 callpeak -t /data/test.sam -f SAM -n test --outdir /data/macs2_result
+
+
+
+
+
+
+
+ref:
+https://wenlongshen.github.io/2018/09/08/Pipelining-Solution-1/
+
+
+
+
+
+
+
+
 
 
 
@@ -2040,6 +2334,7 @@ Finished job 0.
 |-- snakemake 高级：目录结构与模块化(wrapper/include/subworkflow )、依赖的自动部署(conda, Singularity)、集群、环境变量 envvars(提供密码) 
 ----------------------------------------
 1. snakemake 模块化 提供了三个层次
+https://snakemake.readthedocs.io/en/stable/snakefiles/modularization.html  最详细
 https://snakemake.readthedocs.io/en/stable/tutorial/additional_features.html#modularization
 https://www.jianshu.com/p/574021f11a68
 
@@ -2126,6 +2421,10 @@ include: "path/to/other/snakefile"
 包含是相对于出现它们的Snakefile目录的。例如，如果以上Snakefile驻留在directory中my/dir，则Snakemake将在此处搜索include my/dir/path/to/other/snakefile，而与工作目录无关。
 
 
+使用哪个配置文件？
+如果你的snake脚本在目录/path/A/下，你的工作目录在/path/B/下，你的/path/C/下运行脚本 snakemake -s /path/A/xx.sf -j1 则找配置文件是相对于当前目录的，也即是读取/path/C/config.yaml。
+但是配置文件是相对于运行脚本的目录的，在哪里调用snake脚本，就相对于当前pwd找配置文件。
+
 
 在我们的日常分析中，为了流程的重复使用和方便后续修改维护，会把参数设置、依赖软件的路径、样本信息写在单独的配置文件里。
 在这种设置中，所有规则都共享一个公共配置文件。
@@ -2143,6 +2442,7 @@ include: "path/to/other/snakefile"
 └── Snakefile
 
 默认的目标规则（通常称为all-rule）不会受到include的影响。也就是说，无论您有多少个包含在第一个规则之上的内容，它始终将是Snakefile中的第一个规则。
+
 
 
 示例: 
@@ -2204,6 +2504,50 @@ $ cat A.out.2
 line1 by rule1
 this is A
 line 2 by rule 2
+
+
+
+
+
+
+#####################
+# 使用配置文件 yaml or json
+#####################
+$ cd test2/
+$ cat config.yaml #格式有严格要求: 逗号后有空格, 冒号后有空格，不需要加引号了。
+samples: [SRR7629152, SRR7629153, SRR7629154, SRR7629161, SRR7629162, SRR7629163]
+workdir: /home/wangjl/data/ATAC/fq/test3/
+
+$ cat config.json #格式很严格: 键值都要加引号，键值对后加逗号，最后一个不加。
+{
+	"samples":["SRR7629152","SRR7629153","SRR7629154", "SRR7629161", "SRR7629162", "SRR7629163"],
+	"workdir":"/home/wangjl/data/ATAC/fq/test3/"
+}
+
+
+snake脚本中
+$ cat test.sf
+configfile: "config.yaml"
+workdir: config["workdir"]
+
+SI=config["samples"]
+print(SI)
+print(SI[0])
+print(SI[1])
+
+rule get:
+	input:"1.txt"
+	output:"2"
+	shell:"cat {input} > {output}"
+
+$ snakemake -s test.sf -j 1 -F
+['SRR7629152', 'SRR7629153', 'SRR7629154', 'SRR7629161', 'SRR7629162', 'SRR7629163']
+SRR7629152
+SRR7629153
+
+$ ls -lth ../test3/2
+-rw-rw-r-- 1 wangjl wangjl 10 Jun 23 16:36 ../test3/2
+
 
 
 
@@ -2475,6 +2819,9 @@ https://www.jianshu.com/p/8e57fd2b81b2
 
 
 
+========================================
+|-- *** 疑难杂症 ***
+----------------------------------------
 
 ========================================
 |-- 怎么处理shell 命令中 awk 同时有单引号、双引号的报错？
@@ -2583,6 +2930,43 @@ total 664K
 -rw-rw-r-- 1 wangjl wangjl 231K Jun 21 21:35 SRR7629163.frag_len.txt
 -rw-rw-r-- 1 wangjl wangjl    0 Jun 21 21:35 SRR7629163.frag_len.txt.log
 
+
+
+
+
+
+
+
+========================================
+|-- 能否把 snakemake 脚本和输出分开? 使用 workdir: "path/to/workdir"
+----------------------------------------
+1. In snakemake documentation:
+
+"All paths in the snakefile are interpreted relative to the directory snakemake is executed in. This behaviour can be overridden by specifying a workdir in the snakefile:"
+
+workdir: "path/to/workdir"
+
+So just put that at the begining of your snakefile and all inputs and outputs will be interpreted relative to this path.
+
+这个值可以在配置文件中定义。
+
+
+(1) 实例 
+$ cd test4
+$ cat s1.sf
+workdir: "../test3/"
+rule cat:
+	input:"1.txt"
+	output:"from_test2.txt"
+	shell:"cat {input} > {output}"
+
+$ snakemake -s s1.sf -j 1
+$ head ../test3/from_test2.txt 
+1
+
+
+
+ref:https://stackoverflow.com/questions/40941249/snakemake-is-there-a-way-to-specify-an-output-directory-for-each-rule
 
 
 
@@ -2781,10 +3165,72 @@ Finished job 0.
 
 
 ========================================
+|-- 使用snakemake并行调用很慢的R脚本(必须是可拆解的、依赖id的R脚本)
+----------------------------------------
+
+## 这个脚本R脚本巨慢，依赖输入参数可以分拆成很多份
+$ test.R
+## 依赖2个传入的参数：起始、步长
+# get parameters
+myArgs<-commandArgs(TRUE)
+n1=as.numeric( myArgs[1] )
+len=as.numeric( myArgs[2] )
+
+n2=n1+len
+print( paste('[',n1, n2, ')'))
+
+# load data
+#genes2=readLines("input/genes2.gene.txt")
+rnaM2=read.table("input/rnaM2.df.txt")
+
+out_cor=rnaM2[n1:n2,]
+
+print( dim(out_cor) )
+write.table(out_cor, paste0("output_test/APA_regulator_Cor_", n1, "_", len, ".df.txt") )
+
+
+
+
+$ cat config.yaml 
+len: 20
+n1:
+ - 1
+ - 21
+ - 41
+
+$ cat test.sf
+configfile: "config.yaml"
+
+rule all:
+	input: expand("output_test/APA_regulator_Cor_{n1}_{len}.df.txt", n1=config["n1"], len=config["len"])
+
+rule R_script:
+	output: "output_test/APA_regulator_Cor_{n1}_{len}.df.txt"
+	log: "output_test/APA_regulator_Cor_{n1}_{len}.df.txt.log"
+	shell: "Rscript test.R {wildcards.n1} {wildcards.len} {output} >{log} 2>&1"
+#
+
+$ snakemake -s test.sf -j 4
+
+
+
+
+
+
+
+
+
+========================================
 |-- 实例: 使用snakemake构建 ATAC-seq 分析流程(fastq -> call peak )
 ----------------------------------------
 先给个玩具，主要是学流程。
-下一个部分才是可以运行的。
+
+最佳实践: 
+- 不要在脚本中添加目录等具体信息，添加到 params中，在shell中引用即可。
+- 使用 threads 设置CPU内核数，在运行时该数字会根据你的输入临时调整。
+- 推荐用配置文件，脚本中引用 configfile: "config.yaml"
+	- 脚本头部设定工作目录 workdir: config["workdir"]
+
 
 
 1. snakefile 脚本的5个步骤

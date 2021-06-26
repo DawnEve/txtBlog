@@ -11,12 +11,25 @@ ATAC-seq 简介 及教程
 论文标题：Transposition of native chromatin for fast and sensitive epigenomic profiling of open chromatin, DNA-binding proteins and nucleosome position
 
 表观测序领域大牛William J Greenleaf和Howard Y Chang的经典之作，引用上千次的ATAC经典原文
+翻译: https://mp.weixin.qq.com/s?__biz=MzA4NTIyMzk4Mg%3D%3D&mid=2247483678&idx=1&sn=de7b6bcbf76c2a9051d0db7a4d9cd074
+
 
 
 (2) harvard ATAC 分析流程
 https://informatics.fas.harvard.edu/atac-seq-guidelines.html
 https://informatics.fas.harvard.edu/atac-seq-guidelines-old-version.html
 https://informatics.fas.harvard.edu/category/software.html
+
+
+
+(3) ATAC 个性化分析思路
+https://www.cnblogs.com/leezx/p/12953732.html
+
+
+ChIP-seq流程(snakemake) https://zhuanlan.zhihu.com/p/48320500
+
+
+
 
 
 
@@ -601,7 +614,7 @@ drwxrwxr-x 8 wangjl wangjl 4.0K Jun 18 22:04 tmp
 
 
 ========================================
-|-- QC: 比对结果质控
+|-- QC: 比对结果质控 (TSS 热图 、插入片段长度分布图)
 ----------------------------------------
 比对后，去掉线粒体、去重后的bam，再index后用于下游分析。
 
@@ -642,6 +655,13 @@ computeMatrix reference-point   \ # reference-pioint表示计算一个参照点�
 plotHeatmap \
  -m  A1.matrix.mat.gz\ #上一步生成的作图数据
  -out A1.pdf \ # 输出图片名称
+
+
+computeMatrix 有两种模式可以选择，这里我们用的是reference-point，另外还有scale-regions，
+- 前者适合看一个点附近的信号，后者则适合看指定的不同长度的区域。
+- 当我们选用reference-point模式时，会默认用bed文件的第二列作为中心扩展。
+- 工作原理 https://www.jianshu.com/p/ab2bb3f55d6f
+
 
 
 
@@ -687,6 +707,12 @@ computeMatrix reference-point   \
 done;
 ## 检查后台 $ ps -aux | grep computeMatrix
 风扇声音很大。
+
+https://deeptools.readthedocs.io/en/latest/content/tools/plotHeatmap.html
+https://deeptools.readthedocs.io/en/latest/content/tools/plotProfile.html
+$ plotHeatmap -m $matrix -out $heatmap
+$ plotProfile -m $matrix -out $profile
+
 
 
 
@@ -756,7 +782,9 @@ SRR7629163.10004	83	chr3	73049200	60	40M	=	73049179	-61	ATTAGAATACTTCTCGGGGCCAGG
 (2) 画图
 hist 函数可以直接绘图，但是不太好看，可以用plot函数来画；同样density 函数也可以画图，但是也可以导出list,再进行plot 或者 ggplot 画图.
 
-## R 包直接绘图
+################
+# R 包直接绘图
+################
 #BiocManager::install("ATACseqQC")
 library(ATACseqQC)
 fragSize <- fragSizeDist("map/SRR7629163.sambamba_rmdup.bam", "treat3")
@@ -971,6 +999,14 @@ $ ls macs2/*narrowPeak -lth
 
 
 
+
+
+
+
+
+
+
+
 (ii) 按照另一个教程的参数
 $ macs2 callpeak -t map/${id}.sambamba_rmdup.bam -f BAM -g hs -n macs2_/${id} -m 2 100
 参数 [-m MFOLD MFOLD]
@@ -1011,6 +1047,20 @@ $ ls -lth macs2_ | grep SRR7629163
 -rw-rw-r-- 1 wangjl wangjl  74K Jun 19 14:54 SRR7629163_model.r
 
 比 -f BAM 少了2行。
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -1123,7 +1173,7 @@ https://www.cnblogs.com/leezx/p/12953732.html
 
 
 ========================================
-|-- Annotation 峰注释 //todo
+|-- Annotation 峰注释
 ----------------------------------------
 在科研分析中我们往往需要将peak区域与基因联系起来，也就是通过对peak进行注释找到peak相关基因。
 
@@ -1132,10 +1182,11 @@ It is helpful to know what genomic features are near the peaks called by MACS2. 
 ChIPseeker requires that the genome of interest be annotated with locations of genes and other features. The ChIPseeker user guide is extremely helpful in using this R/Bioconductor package.
 
 
-常见的peak注释软件有ChIPseeker、homer、PeakAnnotator等。
+常见的peak注释软件有 ChIPseeker、homer、PeakAnnotator等。
 
 
-以ChIPseeker为例，需要在R中安装ChIPseeker包和GenomicFeatures包，然后就可以进行分析了。
+
+1. 以ChIPseeker为例，需要在R中安装ChIPseeker包和GenomicFeatures包，然后就可以进行分析了。
 
 library(ChIPseeker)
 library(GenomicFeatures)
@@ -1149,6 +1200,90 @@ peakAnno <- annotatePeak(peakfile,tssRegion=c(-2000, 2000), TxDb=txdb)
 p <- plotAnnoPie(peakAnno)
 
 一个饼图。
+
+
+
+
+
+
+
+
+
+
+2. homer 注释峰
+$ annotatePeaks.pl H3K4Me3.bed hg19 1>ChIP-Seq_H3K4Me3_1_peakAnn.xls 2>H3K4Me3_annLog.txt
+
+Usage: annotatePeaks.pl <peak file | tss> <genome version>  [additional options...]
+
+
+## 实例
+$ annotatePeaks.pl macs2/SRR7629152_shift100_peaks.narrowPeak hg38 1>macs2/ann/SRR7629152_peakAnn.xls #2>macs2/ann/SRR7629152_ann.log
+
+##==> 报错:
+!!!!Genome hg38 not found in /home/wangjl/soft/homer/.//config.txt
+        To check if is available, run "perl /home/wangjl/soft/homer/.//configureHomer.pl -list"
+        If so, add it by typing "perl /home/wangjl/soft/homer/.//configureHomer.pl -install hg38"
+查了一下，发现有 hg38
+$ perl /home/wangjl/soft/homer/.//configureHomer.pl -list
+下载安装这个，下载很慢！！
+$ perl /home/wangjl/soft/homer/.//configureHomer.pl -install hg38
+## Current base directory for HOMER is /home/wangjl/soft/homer/.//
+安装很慢，主要是网速慢。
+
+
+再次执行，还是成功。
+
+$ head  macs2/ann/SRR7629152_peakAnn.xls
+PeakID (cmd=annotatePeaks.pl macs2/SRR7629152_shift100_peaks.narrowPeak hg38)   Chr     Start   End     Strand  Peak Score      Focus Ratio/Region Size Annotation      Detailed Annotation     Distance to TSS Nearest PromoterID      Entrez ID       Nearest Unigene Nearest Refseq Nearest Ensembl Gene Name       Gene Alias      Gene Description        Gene Type
+SRR7629152_shift100_peak_8      chr13   109424078       109424389       +       669     NA      Intergenic      Intergenic      23537   NR_126361       104326054       Hs.569298       NR_126361       ENSG00000229792 LINC00399       TCONS_00021596  long intergenic non-protein coding RNA 399     ncRNA
+SRR7629152_shift100_peak_6      chr11   10509241        10509764        +       286     NA      promoter-TSS (NM_001190702)     promoter-TSS (NM_001190702)     -316    NM_001190702    100463486               NM_001190702    ENSG00000255823 MTRNR2L8        HN8     MT-RNR2 like 8 protein-coding
+SRR7629152_shift100_peak_18     chr5    80651408        80651656        +       281     NA      promoter-TSS (NM_001190470)     promoter-TSS (NM_001190470)     -524    NM_001190470    100462981               NM_001190470            MTRNR2L2        HN2     MT-RNR2 like 2protein-coding
+# 我加的列编号
+# 1                             2       3               4               5       6       7       8                                9                               10     11              12                      13                       14              16       17            
+
+
+1 PeakID (cmd=annotatePeaks.pl macs2/SRR7629152_shift100_peaks.narrowPeak hg38)   
+2 Chr     
+3 Start   
+4 End     
+5 Strand  
+
+6 Peak Score      
+7 Focus Ratio/Region Size
+8 Annotation      
+9 Detailed Annotation     
+10 Distance to TSS 
+11 Nearest PromoterID      
+12 Entrez ID       
+13 Nearest Unigene 
+14 Nearest Refseq 
+15 Nearest Ensembl 
+16 Gene Name       
+17 Gene Alias      
+18 Gene Description        
+19 Gene Type
+
+看注释的效果，就是看第8和9列的分布，然后用R回个饼图。
+$ head  macs2/ann/SRR7629152_peakAnn.xls| awk -F "\t" '{print $8}'
+
+
+
+
+(2) 批量化
+$ makir macs2/ann/
+$ cat ../raw/SRR_Acc_List.txt | while read id; do echo $id;
+annotatePeaks.pl macs2/${id}_shift100_peaks.narrowPeak hg38 1>macs2/ann/${id}_peakAnn.txt 2>macs2/ann/${id}_ann.log;
+done;
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -1212,7 +1347,7 @@ https://www.jianshu.com/p/f849bd55ac27
 
 
 ========================================
-|-- Motif 分析 //todo
+|-- Motif 分析 ( homer )
 ----------------------------------------
 1.Motif富集分析
 
@@ -1236,6 +1371,7 @@ HOMER is a suite of software designed for motif discovery. It takes a peak file 
 http://homer.ucsd.edu/homer/ngs/peakMotifs.html
 
 
+
 ATAC分析得到的peak是染色质上的开放区域，这些染色质开放区域常常预示着转录因子的结合，因此对peak区域进行motif分析很有意义。常见的motif分析软件有homer和MEME。以homer软件为例，首先在linux环境中安装homer，然后用以下命令进行motif分析：
 
 findMotifsGenome.pl \
@@ -1251,6 +1387,22 @@ $ findMotifsGenome.pl
 	Example: findMotifsGenome.pl peaks.txt mm8r peakAnalysis -size 200 -len 8
 
 homer分析motif的原理及结果参见 http://homer.ucsd.edu/homer/motif/index.html
+homer 找motif的原理: https://www.jianshu.com/p/9a31f5f01e7b
+
+
+示例2: 
+findMotifsGenome.pl H3K4Me3.bed hg19 H3K4Me3_motif -len 8,10,12
+# peak文件：ChIP-Seq_H3K4Me3_1_homer.bed
+# 基因组版本：hg19
+# 输出路径：ChIP-Seq_H3K4Me3_1_motifDir
+# motif长度：-len 8,10,12 
+# motif的软件默认长度为8，10，12
+​
+-p <#> (Number of processors to use, default: 1) 设置线程数
+-S <#> (Number of motifs to optimize, default: 25) 所寻找的motif数目，默认为25。25已经不算少了，如果自定义数目，推荐设置更少而不是更多。
+
+
+
 
 
 
@@ -1306,6 +1458,12 @@ done;
 
 
 
+测试: 加上参数 -preparse, 后来发现是narrowPeak是空文件时报这个错。
+$ findMotifsGenome.pl macs2_result/SRR7629153_peaks.narrowPeak /home/wangjl/data/ref/human/UCSC/hg38.fa homer/SRR7629153_1/ -size given -p 10
+## 21:03--> 
+$ findMotifsGenome.pl macs2_result/SRR7629153_peaks.narrowPeak /home/wangjl/data/ref/human/UCSC/hg38.fa homer/SRR7629153_1/ -size given -p 10 -preparse
+$ findMotifsGenome.pl macs2_result/SRR7629153_peaks.narrowPeak hg38 homer/SRR7629153_2/ -size given -p 10
+## 21:07-->
 
 
 
@@ -1391,60 +1549,70 @@ https://github.com/crazyhottommy/pyflow-ATACseq
 
 
 
-1. 测试
-
+1. 边测试边写，模块化。
 (1) fq QC
 $ cat main1.sf 
 SI=["SRR7629152","SRR7629153"]  
 
 rule all:
 	input: 
-		expand("QC_raw/s_{sample}_2_fastqc.html", sample=SI),
-		expand("QC_raw/s_{sample}_2_fastqc.html", sample=SI)
+		"QC_raw/multiqc/multiqc_report.html"
 
-include:"rules/01qc.sf"
+include:"rules/01qc_raw.sf"
 
 
 ####
-$ cat rules/01qc.sf 
-rule QC_fq:
-        input: 
-                "raw/s_{sample}_1.fastq.gz",
-                "raw/s_{sample}_2.fastq.gz",
-        output: 
-                "QC_raw/s_{sample}_1_fastqc.html",
-                "QC_raw/s_{sample}_2_fastqc.html"
-        log: "QC_raw/s_{sample}_fastqc.html.log"
-        shell: 
-                "fastqc -t 10 {input} -o QC_raw/ >{log} 2>&1"
+$ cat rules/01qc_raw.sf 
+rule QC_raw_fq:
+	input: 
+		"raw/s_{sample}_1.fastq.gz",
+		"raw/s_{sample}_2.fastq.gz",
+	output: 
+		"QC_raw/s_{sample}_1_fastqc.html",
+		"QC_raw/s_{sample}_2_fastqc.html"
+	params:out_dir="QC_raw"
+	log: "QC_raw/s_{sample}_fastqc.html.log"
+	shell: 
+		"fastqc -t 10 {input} -o {params.out_dir} >{log} 2>&1"
 
-$ snakemake -s main1.sf -j1
+rule multi_QC_raw:
+	input: expand("QC_raw/s_{sample}_2_fastqc.html", sample=SI)
+	output:"QC_raw/multiqc/multiqc_report.html"
+	params: 
+		in_dir="QC_raw",
+		out_dir="QC_raw/multiqc/"
+	log: "QC_raw/multiqc/multiqc_report.html.log"
+	shell:"multiqc {params.in_dir}/*fastqc.zip -o {params.out_dir} >{log} 2>&1"
+
+
+
+$ snakemake -s main1.sf -j3
 Job counts:
 	count	jobs
-	2	QC_fq
+	2	QC_raw_fq
 	1	all
-	3
+	1	multi_QC_raw
+	4
 
 $ ls QC_raw/ -lth
 total 3.8M
--rw-rw-r-- 1 wangjl wangjl 589K Jun 22 12:29 s_SRR7629153_1_fastqc.html
--rw-rw-r-- 1 wangjl wangjl 589K Jun 22 12:29 s_SRR7629153_2_fastqc.html
--rw-rw-r-- 1 wangjl wangjl 369K Jun 22 12:29 s_SRR7629153_2_fastqc.zip
--rw-rw-r-- 1 wangjl wangjl 357K Jun 22 12:29 s_SRR7629153_1_fastqc.zip
--rw-rw-r-- 1 wangjl wangjl 2.1K Jun 22 12:29 s_SRR7629153_fastqc.html.log
+drwxrwxr-x 3 wangjl wangjl 4.0K Jun 23 11:24 multiqc
+-rw-rw-r-- 1 wangjl wangjl 589K Jun 23 11:24 s_SRR7629152_1_fastqc.html
+-rw-rw-r-- 1 wangjl wangjl 582K Jun 23 11:24 s_SRR7629152_2_fastqc.htm
 
 
 
-(2) 去接头
+
+(2) 去接头，然后QC
 $ cat main2.sf 
 SI=["SRR7629152","SRR7629153"]  
 
 rule all:
 	input: 
-		expand("QC_raw/s_{sample}_2_fastqc.html", sample=SI),
-		expand("clean/{sample}_2.fastq.gz", sample=SI)
+		"QC_raw/multiqc/multiqc_report.html",
+		"QC_clean/multiqc/multiqc_report.html"
 
-include:"rules/01qc.sf"
+include:"rules/01qc_raw.sf"
 include:"rules/02cutAdaptor.sf"
 
 
@@ -1463,21 +1631,44 @@ rule cut_adapter:
 		-A AGACGGGAAGAGCGTCGTGAGGGAAGAGTGTAGATCTCGGTGGTCGCGTATCATT \
 		-o {output[0]} -p {output[1]} {input[0]} {input[1]} >{log} 2>&1"
 
+rule QC_clean_fq:
+	input: 
+		"clean/{sample}_1.fastq.gz",
+		"clean/{sample}_2.fastq.gz"
+	output: 
+		"QC_clean/{sample}_1_fastqc.html",
+		"QC_clean/{sample}_2_fastqc.html"
+	params:out_dir="QC_clean"
+	log: "QC_clean/{sample}_fastqc.html.log"
+	shell: 
+		  "fastqc -t 10 {input} -o {params.out_dir} >{log} 2>&1"
+
+rule multi_QC_clean:
+	input: expand("QC_clean/{sample}_2_fastqc.html", sample=SI)
+	output:"QC_clean/multiqc/multiqc_report.html"
+	params: 
+		in_dir="QC_clean",
+		out_dir="QC_clean/multiqc/"
+	log: "QC_clean/multiqc/multiqc_report.html.log"
+	shell:"multiqc {params.in_dir}/*fastqc.zip -o {params.out_dir} >{log} 2>&1"
+
+
+
 
 $ snakemake -s main2.sf -j4
 Job counts:
 	count	jobs
+	2	QC_clean_fq
 	1	all
 	2	cut_adapter
-	3
+	1	multi_QC_clean
+	6
+	
 $ ls -lth clean/
 total 11M
--rw-rw-r-- 1 wangjl wangjl 2.6M Jun 22 12:42 SRR7629153_1.fastq.gz
--rw-rw-r-- 1 wangjl wangjl 2.7M Jun 22 12:42 SRR7629153_2.fastq.gz
--rw-rw-r-- 1 wangjl wangjl 2.4K Jun 22 12:42 SRR7629153_cutapapt.log
--rw-rw-r-- 1 wangjl wangjl 2.7M Jun 22 12:42 SRR7629152_1.fastq.gz
--rw-rw-r-- 1 wangjl wangjl 2.7M Jun 22 12:42 SRR7629152_2.fastq.gz
--rw-rw-r-- 1 wangjl wangjl 2.4K Jun 22 12:42 SRR7629152_cutapapt.log
+-rw-rw-r-- 1 wangjl wangjl 2.7M Jun 23 11:25 SRR7629152_1.fastq.gz
+-rw-rw-r-- 1 wangjl wangjl 2.7M Jun 23 11:25 SRR7629152_2.fastq.gz
+-rw-rw-r-- 1 wangjl wangjl 2.4K Jun 23 11:25 SRR7629152_cutapapt.log
 
 
 
@@ -1491,10 +1682,11 @@ BWA_INDEX="/home/wangjl/data/ref/human/UCSC/bwa/hg38_fa"
 
 rule all:
 	input: 
-		expand("QC_raw/s_{sample}_2_fastqc.html", sample=SI),
+		"QC_raw/multiqc/multiqc_report.html",
+		"QC_clean/multiqc/multiqc_report.html",
 		expand("map/{sample}.sort.bam", sample=SI)
 
-include:"rules/01qc.sf"
+include:"rules/01qc_raw.sf"
 include:"rules/02cutAdaptor.sf"
 include:"rules/03BWA_mapping.sf"
 
@@ -1523,7 +1715,7 @@ rule sort_to_bam:
 
 
 
-$ snakemake -s main3.sf -j 10
+$ snakemake -s main3.sf -j 4
 Job counts:
 	count	jobs
 	1	all
@@ -1533,12 +1725,12 @@ Job counts:
 
 $ ls -lth map/
 total 15M
--rw-rw-r-- 1 wangjl wangjl 7.0M Jun 22 22:14 SRR7629153.sort.bam
--rw-rw-r-- 1 wangjl wangjl    0 Jun 22 22:14 SRR7629153.sort.bam.log
--rw-rw-r-- 1 wangjl wangjl 1.1K Jun 22 22:14 SRR7629153_bwa_hg38.sam.log
--rw-rw-r-- 1 wangjl wangjl 7.6M Jun 22 22:14 SRR7629152.sort.bam
--rw-rw-r-- 1 wangjl wangjl    0 Jun 22 22:14 SRR7629152.sort.bam.log
--rw-rw-r-- 1 wangjl wangjl 1.1K Jun 22 22:14 SRR7629152_bwa_hg38.sam.log
+-rw-rw-r-- 1 wangjl wangjl 7.0M Jun 23 11:29 SRR7629153.sort.bam
+-rw-rw-r-- 1 wangjl wangjl    0 Jun 23 11:29 SRR7629153.sort.bam.log
+-rw-rw-r-- 1 wangjl wangjl 1.1K Jun 23 11:29 SRR7629153_bwa_hg38.sam.log
+-rw-rw-r-- 1 wangjl wangjl 7.6M Jun 23 11:28 SRR7629152.sort.bam
+-rw-rw-r-- 1 wangjl wangjl    0 Jun 23 11:28 SRR7629152.sort.bam.log
+-rw-rw-r-- 1 wangjl wangjl 1.1K Jun 23 11:28 SRR7629152_bwa_hg38.sam.log
 
 
 
@@ -1558,14 +1750,16 @@ BWA_INDEX="/home/wangjl/data/ref/human/UCSC/bwa/hg38_fa"
 from snakemake.utils import R
 
 rule all:
-	input: 
-		expand("QC_raw/s_{sample}_2_fastqc.html", sample=SI), #fastq QC
-		# expand("map_clean/{sample}.final.bam", sample=SI), # 最终的 3次过滤的 bam
-		expand("QC_map/TSS/{sample}.TSS.heatmap.pdf", sample=SI), #BAM QC: TSS 
-		expand("map_clean/fragment_length/ATAC_QC_{sample}.pdf", sample=SI) # BAM QC: 片段长度
+	input:
+		"QC_raw/multiqc/multiqc_report.html", #fastq QC
+		"QC_clean/multiqc/multiqc_report.html",
+		
+		expand("map_clean/{sample}.final.bam", sample=SI), # 最终的 3次过滤的 bam
+		# expand("QC_map/TSS/{sample}.TSS.heatmap.pdf", sample=SI), #BAM QC: TSS (巨慢)
+		expand("QC_map/fragment_length/fragment_length_{sample}.pdf", sample=SI) # BAM QC: 片段长度
 
 # 一个小任务有一个输出文件，单线不分叉
-include:"rules/01qc.sf"
+include:"rules/01qc_raw.sf"
 include:"rules/02cutAdaptor.sf"
 include:"rules/03BWA_mapping.sf"
 include:"rules/04Bam_filter.sf"
@@ -1654,19 +1848,50 @@ rule get_fragment_length:
 		awk -F'\t' 'function abs(x){{return ((x < 0.0) ? -x : x)}} {{print $1\"\t\"abs($9)}}' | \
 		sort | uniq | cut -f2 > {output} 2>{log}"
 
+# https://snakemake.readthedocs.io/en/stable/snakefiles/rules.html
+root=config["Snk_RootDir"]
 rule draw_plot:
 	input: 
 		"map_clean/{sample}.final.bam",
 		"QC_map/fragment_length/{sample}.fragment.length.txt"
-	output: "map_clean/fragment_length/ATAC_QC_{sample}.pdf"
-	log: "map_clean/fragment_length/ATAC_QC_{sample}.pdf.log"
-	params: key="{sample}"
-	run: R("""
-		library("ATACseqQC");
-		pdf("{output}", width=5, height=5);
-		fragSizeDist("{input[0]}", "{params.key}")
-		dev.off();
-	""")
+	output: "QC_map/fragment_length/fragment_length_{sample}.pdf"
+	log: "QC_map/fragment_length/fragment_length_{sample}.pdf.log"
+	params: 
+		key="{sample}",
+		workdir=config["workdir"]
+	shell:"Rscript {root}/scripts/plot04_fragment_length.R {input[0]} {output[0]} {params.key} {params.workdir} >{log} 2>&1"
+
+# run 语句如何记录日志? //todo	
+#	run: R("""
+#		library("ATACseqQC");
+#		pdf("{output}", width=5, height=5);
+#		fragSizeDist("{input[0]}", "{params.key}")
+#		dev.off();
+#	""")
+
+
+## 同时生成pdf和png
+$ cat scripts/plot04_fragment_length.R
+myArgs<-commandArgs(TRUE)
+infile=myArgs[1]
+outfile=myArgs[2]
+params.key=myArgs[3]
+
+setwd(myArgs[4])
+
+library("ATACseqQC");
+pdf(outfile, width=5, height=5);
+fragSizeDist(infile, params.key)
+dev.off();
+
+outfile2=paste0(substring(outfile, 1, nchar(outfile)-3), "png")
+png(outfile2, width=1500, height=1500, res=300);
+fragSizeDist(infile, params.key)
+dev.off();
+
+
+
+
 
 
 $ snakemake -s main4.sf -j 10
@@ -1684,8 +1909,18 @@ Job counts:
         2       rm_dup
         2       rm_low_MAPQ
         21
-这个很花时间的。
-
+这个很花时间的，可以跳过。
+Job counts:
+	count	jobs
+	1	all
+	2	del_MT
+	2	draw_plot
+	2	get_chrlist
+	2	get_fragment_length
+	2	index
+	2	rm_dup
+	2	rm_low_MAPQ
+	15
 
 
 
@@ -1697,34 +1932,6 @@ Job counts:
 
 
 (5) call peak 
-
-(6) find motif 
-$ cat main6.sf 
-SI=["SRR7629152","SRR7629153"]  
-BWA_INDEX="/home/wangjl/data/ref/human/UCSC/bwa/hg38_fa"
-
-from snakemake.utils import R
-
-rule all:
-	input: 
-		expand("QC_raw/s_{sample}_2_fastqc.html", sample=SI), #fastq QC
-		expand("map_clean/{sample}.final.bam", sample=SI), # 最终的 3次过滤的 bam
-		# expand("QC_map/TSS/{sample}.TSS.heatmap.pdf", sample=SI), #BAM QC: TSS (十分耗时:40min 1e4 reads)
-		expand("map_clean/fragment_length/ATAC_QC_{sample}.pdf", sample=SI), # BAM QC: 片段长度
-		expand("homer/{sample}/knownResults.html", sample=SI)
-
-# 一个小任务有一个输出文件，单线不分叉
-include:"rules/01qc.sf"
-include:"rules/02cutAdaptor.sf"
-include:"rules/03BWA_mapping.sf"
-include:"rules/04Bam_filter.sf"
-include:"rules/04-2-Bam_QC.sf"
-
-include:"rules/05call_peak.sf"
-include:"rules/06homer_find_motif.sf"
-
-
-
 $ cat rules/05call_peak.sf
 rule call_peak:
 	input:
@@ -1741,6 +1948,36 @@ rule call_peak:
 		--shift -100 --extsize 200 --nomodel \
 		-B --SPMR --call-summits \
 		--outdir {params[1]} -n {params[0]} >{log} 2>&1"
+
+
+(6) find motif 
+$ cat main6.sf 
+SI=["SRR7629152","SRR7629153"]  
+BWA_INDEX="/home/wangjl/data/ref/human/UCSC/bwa/hg38_fa"
+
+from snakemake.utils import R
+
+rule all:
+	input:
+		"QC_raw/multiqc/multiqc_report.html", #fastq QC
+		"QC_clean/multiqc/multiqc_report.html",
+		
+		expand("map_clean/{sample}.final.bam", sample=SI), # 最终的 3次过滤的 bam
+		# expand("QC_map/TSS/{sample}.TSS.heatmap.pdf", sample=SI), #BAM QC: TSS (巨慢:40min 1e4 reads)
+		expand("QC_map/fragment_length/fragment_length_{sample}.pdf", sample=SI), # BAM QC: 片段长度
+
+		expand("homer/{sample}/knownResults.html", sample=SI)
+
+# 一个小任务有一个输出文件，单线不分叉
+include:"rules/01qc_raw.sf"
+include:"rules/02cutAdaptor.sf"
+include:"rules/03BWA_mapping.sf"
+include:"rules/04Bam_filter.sf"
+include:"rules/04-2-Bam_QC.sf"
+
+include:"rules/05call_peak.sf"
+include:"rules/06homer_find_motif.sf"
+
 
 
 $ cat rules/06homer_find_motif.sf
@@ -1761,7 +1998,26 @@ Job counts:
 	2	call_peak
 	2	homer_find_motif
 	5
-#
+# 也很慢: 40min
+[Wed Jun 23 12:12:15 2021]
+[Wed Jun 23 12:52:22 2021]
+
+
+
+
+
+
+
+$ vim test2.sf
+GENOME   ="/home/wangjl/data/ref/human/UCSC/hg38.fa"
+## 命令中指定输出目录
+rule homer_find_motif: 
+        input: "macs2_result/{sample}_peaks.narrowPeak"
+        output: "homer/{sample}/knownResults.html"
+        params: out_dir="homer/{sample}/"
+        threads: 4
+        log:"homer/{sample}/knownResults.html.log"
+        shell:"findMotifsGenome.pl {input} {GENOME} {params.out_dir} -size given -p {threads} -preparse >{log} 2>&1"
 
 
 
@@ -1770,29 +2026,43 @@ Job counts:
 
 
 
-$ ls map_clean/fragment_length -lth
-total 24K
--rw-rw-r-- 1 wangjl wangjl 12K Jun 22 20:12 ATAC_QC_SRR7629152.pdf
--rw-rw-r-- 1 wangjl wangjl 11K Jun 22 20:12 ATAC_QC_SRR7629153.pdf
--rw-rw-r-- 1 wangjl wangjl   0 Jun 22 20:12 ATAC_QC_SRR7629152.pdf.log
--rw-rw-r-- 1 wangjl wangjl   0 Jun 22 20:12 ATAC_QC_SRR7629153.pdf.log
+
+
+
+$ ls QC_map/fragment_length -lth
+total 536K
+-rw-rw-r-- 1 wangjl wangjl  12K Jun 23 15:14 fragment_length_SRR7629152.pdf
+-rw-rw-r-- 1 wangjl wangjl 1.3K Jun 23 15:14 fragment_length_SRR7629152.pdf.log
+-rw-rw-r-- 1 wangjl wangjl  69K Jun 23 15:14 fragment_length_SRR7629152.png
 
 
 
 $ ls -lth macs2_result/
-total 20M
--rw-rw-r-- 1 wangjl wangjl  145 Jun 22 16:24 SRR7629152_peaks.narrowPeak
--rw-rw-r-- 1 wangjl wangjl 7.3M Jun 22 16:24 SRR7629152_control_lambda.bdg
--rw-rw-r-- 1 wangjl wangjl 3.0K Jun 22 16:24 SRR7629152_peaks.narrowPeak.log
--rw-rw-r-- 1 wangjl wangjl 1.4K Jun 22 16:24 SRR7629152_peaks.xls
--rw-rw-r-- 1 wangjl wangjl   99 Jun 22 16:24 SRR7629152_summits.bed
--rw-rw-r-- 1 wangjl wangjl 3.7M Jun 22 16:24 SRR7629152_treat_pileup.bdg
--rw-rw-r-- 1 wangjl wangjl 1.1K Jun 22 16:24 SRR7629153_peaks.narrowPeak
--rw-rw-r-- 1 wangjl wangjl 3.0K Jun 22 16:24 SRR7629153_peaks.narrowPeak.log
--rw-rw-r-- 1 wangjl wangjl  700 Jun 22 16:24 SRR7629153_summits.bed
--rw-rw-r-- 1 wangjl wangjl 6.0M Jun 22 16:24 SRR7629153_control_lambda.bdg
--rw-rw-r-- 1 wangjl wangjl 2.3K Jun 22 16:24 SRR7629153_peaks.xls
--rw-rw-r-- 1 wangjl wangjl 3.1M Jun 22 16:24 SRR7629153_treat_pileup.bdg
+total 14M
+-rw-rw-r-- 1 wangjl wangjl  213 Jun 23 12:12 SRR7629152_peaks.narrowPeak
+-rw-rw-r-- 1 wangjl wangjl 3.7M Jun 23 12:12 SRR7629152_control_lambda.bdg
+-rw-rw-r-- 1 wangjl wangjl 3.1K Jun 23 12:12 SRR7629152_peaks.narrowPeak.log
+-rw-rw-r-- 1 wangjl wangjl 1.5K Jun 23 12:12 SRR7629152_peaks.xls
+-rw-rw-r-- 1 wangjl wangjl  145 Jun 23 12:12 SRR7629152_summits.bed
+-rw-rw-r-- 1 wangjl wangjl 3.7M Jun 23 12:12 SRR7629152_treat_pileup.bdg
+-rw-rw-r-- 1 wangjl wangjl  517 Jun 23 12:12 SRR7629153_peaks.narrowPeak
+-rw-rw-r-- 1 wangjl wangjl 3.1K Jun 23 12:12 SRR7629153_peaks.narrowPeak.log
+-rw-rw-r-- 1 wangjl wangjl  344 Jun 23 12:12 SRR7629153_summits.bed
+-rw-rw-r-- 1 wangjl wangjl 3.0M Jun 23 12:12 SRR7629153_control_lambda.bdg
+-rw-rw-r-- 1 wangjl wangjl 1.8K Jun 23 12:12 SRR7629153_peaks.xls
+-rw-rw-r-- 1 wangjl wangjl 3.1M Jun 23 12:12 SRR7629153_treat_pileup.bdg
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -1801,13 +2071,13 @@ $ cat map_clean/SRR7629152.chrlist
 chr1 chr10 chr11 chr12 chr13 chr14 chr15 chr16 chr17 chr18 chr19 chr2 chr20 chr21 chr22 chr3 chr4 chr5 chr6 chr7 chr8 chr9 chrX chrY
 
 
-$ samtools view  map_clean/SRR7629153.sort.delMT.sambambaRmDup.bam | awk '{print $5}'  | sort |uniq -c | sort -k1nr
+$ samtools view  map_clean/SRR7629153.final.bam | awk '{print $5}'  | sort |uniq -c | sort -k1nr
   98375 60
   17016 0
    1586 40
     510 27
     461 57
-$ samtools view -q 60 map_clean/SRR7629153.sort.delMT.sambambaRmDup.bam  | wc
+$ samtools view -q 60 map_clean/SRR7629153.final.bam  | wc
   98375 1674485 19435299
 
 
@@ -1819,13 +2089,243 @@ $ samtools view -q 60 map_clean/SRR7629153.sort.delMT.sambambaRmDup.bam  | wc
 
 
 
+========================================
+|-- 最终版，及最佳实践
+----------------------------------------
 2. 最终版
+$ cp main6.sf main.sf
+(1) 使用配置文件
 
-(1) 第一行改为完整版
+第一行改为完整版
 SI=["SRR7629152","SRR7629153","SRR7629154", "SRR7629161", "SRR7629162", "SRR7629163"]
 
-(2) 把中间特别慢的BAM质控部分单独调用。
 
+$ cat config.yaml #格式有严格要求: 逗号后有空格, 冒号后有空格，不需要加引号了。
+samples: [SRR7629152, SRR7629153, SRR7629154, SRR7629161, SRR7629162, SRR7629163]
+workdir: /home/wangjl/data/ATAC/fq/test3
+Snk_RootDir: /home/wangjl/soft/snakemakeWorkflow/ATAC-seq/demo1
+
+
+
+snake脚本中引用
+$ cat test.sf
+configfile: "config.yaml"
+workdir: config["workdir"]
+
+SI=config["samples"]
+
+
+
+
+
+
+
+(2) 生成总的流程图
+$ mkdir images
+$ snakemake -s main.sf --dag | dot -Tsvg > images/ATAC-seq_Sample.svg
+$ snakemake -s main.sf --rulegraph 2> /dev/null | dot -Tsvg > images/ATAC-seq_Rule.svg
+
+
+
+$ cat rules/getWorkflow.sf
+root=config["Snk_RootDir"]
+
+rule cp_config:
+	output:temp("config.yaml")
+	message: "cp config file from snakeRoot to workdir"
+	shell:"cp {root}/config.yaml {output}"
+
+rule get_workflow_dag:
+	input:"config.yaml"
+	output:
+		"images/ATAC-seq_Sample.svg",
+		"images/ATAC-seq_Rule.svg"
+	shell:
+		"snakemake -s {root}/main.sf --dag | dot -Tsvg > {output[0]} && "
+		"snakemake -s {root}/main.sf --rulegraph 2> /dev/null | dot -Tsvg > {output[1]}"
+
+
+# 测试
+$ cat test2.sf
+configfile:"config.yaml"
+include:"rules/getWorkflow.sf"
+workdir: config['workdir']
+
+rule all:
+	input:"images/ATAC-seq_Sample.svg"
+
+
+## 必须把 config.yaml 放到工作目录，才能画流程图。原理是啥呢？
+$ snakemake -s test2.sf -j 1
+Job counts:
+	count	jobs
+	1	all
+	1	cp_config
+	1	get_workflow_dag
+	3
+
+
+
+
+
+
+(3) 把中间特别慢的BAM质控部分单独调用。
+(4) 生成报告html文件，可在浏览器中看的。
+$ vim getReport.sf 
+configfile: "config.yaml"
+workdir: config["workdir"]
+
+SI=config["samples"]
+
+#SI=["SRR7629152","SRR7629153"]
+
+rule all:
+	input: 
+		expand("QC_map/TSS/{sample}.TSS.heatmap.pdf", sample=SI), #BAM QC: TSS (very slow:40min 1e4 reads)
+		"report/index.html"
+
+include:"rules/04-2-Bam_QC.sf"
+include:"rules/getWorkflow.sf"
+include:"rules/report.sf"
+
+
+
+
+###### 其他文件
+
+$ cat rules/report.sf
+# SI=["SRR7629152","SRR7629153"]
+rule report:
+	input:
+		"images/ATAC-seq_Rule.svg"
+	output:"report/index.html"
+	run: 
+		import time
+		timsString=time.strftime("%Y/%m/%d %H:%M:%S", time.localtime()) 
+
+		head='''
+<meta charset="utf-8" />
+<style>
+.content{width:800px; margin:10px auto;}
+h2{
+	font-style: normal;
+	padding-left: 20px;
+	padding-right: 20px;
+	margin: 10px 0;
+	border-bottom: 1px solid #d3d3d3;
+	font-size: 25px;
+	background-image: linear-gradient(to bottom,#f3f3f3 0,#e3e3e3 100%);
+	border-radius: 5px;
+}
+h3{
+	padding: 5px 10px;
+    font-size: 20px;
+    text-shadow: 0 0 1px #999;
+    color: #333;
+    border-bottom: 1px solid #D9D9D9;
+    font-weight: bold;
+    margin-top: 10px;
+}
+.content a {
+    color: #0593d3;
+    text-decoration: none;
+}
+.h200{
+	height:200px;
+}
+.footer{color: #aaa; background:black; border-top:20px; padding: 20px; border-top:1px solid black;}
+</style>
+		<title>ATAC-seq Report</title>
+		'''
+		
+		workflow="<div class='content'><h1>ATAC-seq Report</h1>"+ timsString + "<br>" + \
+		"<h2>Workflow</h2> <h3>Rules</h3>  <image class=h200 src='../images/ATAC-seq_Rule.svg'>" +\
+		"<h3>Samples</h3>  <image class=h200 src='../images/ATAC-seq_Sample.svg'><br>"
+		
+		files='<h2>Output</h2><h3>raw/</h3> Raw fastq file' +\
+		'<h3>QC_raw/</h3> <a target="_blank" href="../QC_raw/multiqc/multiqc_report.html">report</a>, <a href="../QC_raw/multiqc/multiqc_report.html.log">log</a>' +\
+		'<h3>clean/</h3> fastq files after cut adaptor ' +\
+		'<h3>QC_clean/</h3> <a target="_blank" href="../QC_clean/multiqc/multiqc_report.html">report</a>, <a target="_blank" href="../QC_clean/multiqc/multiqc_report.html.log">log</a>'+\
+		'<h3>map/</h3> bam files after BWA mapping to hg38 '+\
+		'<h3>map_clean/</h3> bam files after rm MT, low MAPQ, duplicates.'+\
+		'<h3>QC_map/</h3>'+\
+		'	<p>QC_map/fragment_length/: 插入片段长度分布图 barplot (pdf files) of fragment length distribution</p>%s'+\
+		'	<p>QC_map/TSS/: TSS附近reads 热图。 heatmap 可选 运行巨慢。</p>%s'+\
+		'<h3>macs2_result/</h3> .narrowPeak for each file.%s' +\
+		'<h3>homer/</h3> motif results. %s</div>'
+		
+		footer="<div class=footer><div class='content'> Sample number: "+ str(len(SI)) +"<br> The end | "+timsString+" </div></div>"
+		
+		#################
+		# get BAM QC links
+		#################
+		fragLen="<hr>Click and View <ul>"
+		pngs=""
+		for i in SI:
+			fnames="<li><a href='../QC_map/fragment_length/fragment_length_%s.pdf'>fragment_length_%s.pdf</a>, <a href='../QC_map/fragment_length/%s.fragment.length.txt'>%s.fragment.length.txt</a></li>" % (i,i, i,i)
+			fragLen += fnames
+			#
+			pngs+="<img class=h200 src='../QC_map/fragment_length/fragment_length_%s.png'>" % i;
+		fragLen+="</ul>"+pngs
+		
+		
+		TSS="<hr>Click and View <ul>"
+		for i in SI:
+			fnames="<li><a href='../QC_map/TSS/%s.TSS.heatmap.pdf'>%s.TSS.heatmap.pdf</a></li>" % (i,i)
+			TSS += fnames
+		TSS+="</ul>"
+		
+		#################
+		# get macs results links
+		#################
+		macs2="<hr>Download <ul>"
+		for i in SI:
+			fnames="<li><a href='../macs2_result/%s_peaks.narrowPeak'>%s_peaks.narrowPeak</a>, <a href='../macs2_result/%s_peaks.xls'>%s_peaks.xls</a>, <a href='../macs2_result/%s_summits.bed'>%s_summits.bed</a></li>" % (i,i, i,i, i,i)
+			macs2 += fnames
+		macs2+="</ul>"
+		
+		#################
+		# get homer result
+		#################
+		homer="<hr>Click and View<ul>"
+		for i in SI:
+			fnames="<li><a href='../homer/%s/knownResults.html'>%s knownResults.html</a>, <a href='../homer/%s/homerResults.html'>%s homerResults.html</a>,</li>" % (i,i, i,i)
+			homer += fnames
+		homer+="</ul>"
+		
+		
+		files=files % (fragLen, TSS, macs2, homer)
+		
+		html=head+workflow+ files+footer;
+		
+		# save
+		fw=open( output[0],'w')
+		fw.write(html)
+		fw.close()
+#
+
+
+$ snakemake -s getReport.sf -j 4
+Job counts:
+	count	jobs
+	2	MAP_QC_bamCoverage
+	2	MAP_QC_computeMatrix
+	2	MAP_QC_plotHeatmap
+	1	all
+	7
+耗时 22min，2个样本。
+[Wed Jun 23 13:04:42 2021]
+[Wed Jun 23 13:22:41 2021]
+
+
+
+
+
+
+
+3. 其他修改与测试
+
+(1) 测试文件全局运行
 $ snakemake -s main.sf -j2
 Job counts:    
         count   jobs   
@@ -1844,27 +2344,402 @@ Job counts:
         4       rm_low_MAPQ
         4       sort_to_bam
         57
+[Tue Jun 22 22:52:13 2021] to 
+[Wed Jun 23 02:02:52 2021]
+6个小样本: 去掉了 BAM heatmap 支线，全程只需要 3 h 多
+
+需要看的结果文件
+$ ls QC_map/fragment_length/ 片段长度的pdf
+$ head homer/SRR7629152/knownResults.html 富集已知motif的报告
+
+
+
+
+(2) 实验文件修改名字，和正式一致。 准备正式开始
+$ cat ../../../raw/SRR_Acc_List.txt | while read id; do echo $id; 
+mv s_${id}_1.fastq.gz ${id}_1.fastq.gz;
+mv s_${id}_2.fastq.gz ${id}_2.fastq.gz;
+done
+
+$ ls -lth
+total 36M
+-rw-rw-r-- 1 wangjl wangjl 3.1M Jun 22 21:54 SRR7629163_2.fastq.gz
+-rw-rw-r-- 1 wangjl wangjl 3.0M Jun 22 21:54 SRR7629163_1.fastq.gz
+
+$ ls -lth ../../../raw/
+total 13G
+-rw-rw-r-- 1 wangjl wangjl 1.3G Jun 18 00:09 SRR7629163_2.fastq.gz
+-rw-rw-r-- 1 wangjl wangjl 1.3G Jun 18 00:09 SRR7629163_1.fastq.gz
+
+
+删除其他文件夹。
+$ ls | grep -v '^raw$' | xargs -i rm -rf {}
+
+
+(3) 删除代码中的 s_ 前缀
+$ find . | xargs grep "s_{" --color=auto
+grep: .: Is a directory
+grep: ./rules: Is a directory
+./rules/01qc_raw.sf:		"raw/s_{sample}_1.fastq.gz",
+./rules/01qc_raw.sf:		"raw/s_{sample}_2.fastq.gz",
+./rules/01qc_raw.sf:		"QC_raw/s_{sample}_1_fastqc.html",
+./rules/01qc_raw.sf:		"QC_raw/s_{sample}_2_fastqc.html"
+./rules/01qc_raw.sf:	log: "QC_raw/s_{sample}_fastqc.html.log"
+./rules/01qc_raw.sf:	input: expand("QC_raw/s_{sample}_2_fastqc.html", sample=SI)
+
+./rules/02cutAdaptor.sf:		"raw/s_{sample}_1.fastq.gz",
+./rules/02cutAdaptor.sf:		"raw/s_{sample}_2.fastq.gz",
+
+
+
+(4) images 文件夹放到 report/ 下。
+$ find . | grep -v ".snakemake"| xargs grep "images/" --color=auto 2>/dev/null
+./rules/report.sf:		"images/ATAC-seq_Rule.svg"
+./rules/report.sf:		"<h2>Workflow</h2> <h3>Rules</h3>  <image class=h200 src='../images/ATAC-seq_Rule.svg'>" +\
+./rules/report.sf:		"<h3>Samples</h3>  <image class=h200 src='../images/ATAC-seq_Sample.svg'><br>"
+./rules/getWorkflow.sf:		"images/ATAC-seq_Sample.svg",
+./rules/getWorkflow.sf:		"images/ATAC-seq_Rule.svg"
+
+./test2.sf:	input:"images/ATAC-seq_Sample.svg"
+
+
+(5) 把 BAM QC 部分移到 main.sf 中。
+最后的报告就很快了。报告也可以移动进去。
+
+	"report/index.html"
+
+include:"rules/04-2-Bam_QC.sf"
+include:"rules/getWorkflow.sf"
+include:"rules/report.sf"
+
+整个流程的报告图如下:
+$ snakemake -s getReport.sf -j 1 -F
+
+
+(6) fastqc -t {threads}
+threads: 8
+
+$ find . | grep "sf$" | xargs grep "fastqc " --color=auto
+./rules/01qc_raw.sf:		"fastqc -t 10 {input} -o {params.out_dir} >{log} 2>&1"
+./rules/02cutAdaptor.sf:		  "fastqc -t 10 {input} -o {params.out_dir} >{log} 2>&1"
+
+
+
+(7) 给 samtools 添加多线程
+$ find . | grep "sf$" | xargs grep "samtools " --color=auto
+./rules/04-2-Bam_QC.sf:	shell:"samtools view {input} | \
+./rules/04Bam_filter.sf:	shell:"samtools index {input}"
+./rules/04Bam_filter.sf:	shell:"samtools view  {input}| grep -v '^#'| awk '{{print $3}}' \
+./rules/04Bam_filter.sf:	shell:"samtools view -b {input[1]} `cat {input[0]}` > {output} 2>{log}"
+./rules/04Bam_filter.sf:	shell:"samtools view -bh -q 50 {input} > {output}"
+./rules/03BWA_mapping.sf:	shell:"samtools sort -O bam -T {params.tmp} -o {output} {input} >{log} 2>&1"
+
+threads: 4
+-@ {threads}
+
+
+
+(8) findMotifsGenome.pl -p 20 添加多线程
+$ find . | grep "sf$" | xargs grep "findMotifsGenome" --color=auto
+./rules/06homer_find_motif.sf:	shell:"findMotifsGenome.pl {input} {GENOME} {params.out_dir} -size given >{log} 2>&1"
+
+
+Usage: findMotifsGenome.pl <pos file> <genome> <output directory> [additional options]
+        Example: findMotifsGenome.pl peaks.txt mm8r peakAnalysis -size 200 -len 8
+
+findMotifsGenome.pl peaks.txt mm8r peakAnalysis -size 200 -len 8
+
+"findMotifsGenome.pl {input} {GENOME} {params.out_dir} -size given -p {threads} >{log} 2>&1"
+
+
+所有的选项都在最后添加，否则会出错。
+-p <#> (Number of processors to use, default: 1)
+
+
+
+(9) 怎么解决dag画流程图问题?
+嗯，直接在工作目录下建立，就可以直接画图。
+配置文件会不会被删掉？大概率不会，需要测试。
+还真被删除了。怎么办？只能把temp()去掉了。
+
+
+
+
+(10) cutadapt -j 4 
+$ find . | grep "sf$" | xargs grep "cutada" --color=auto
+./rules/02cutAdaptor.sf:		"cutadapt -j 4 --time 1 -e 0.1 -O 3 --quality-cutoff 25 \
+
+
+
+
+
+
+
+
+
+4. 测试
+(1)6个完全样本:
+$ snakemake -s main.sf -j 8
+Building DAG of jobs...                                        
+Using shell: /bin/bash                                              
+Provided cores: 8                     
+Rules claiming more threads will be scaled down.
+Job counts:                     
+        count   jobs
+        6       MAP_QC_bamCoverage
+        6       MAP_QC_computeMatrix
+        6       MAP_QC_plotHeatmap
+        6       QC_clean_fq                                    
+        6       QC_raw_fq                                           
+        1       all                   
+        6       bwa_mapping
+        6       call_peak       
+        6       cut_adapter
+        6       del_MT
+        6       draw_plot
+        6       get_chrlist
+        6       get_fragment_length
+        6       homer_find_motif
+        6       index
+        1       multi_QC_clean
+        1       multi_QC_raw
+        6       rm_dup
+        6       rm_low_MAPQ
+        6       sort_to_bam
+        105
+#
+[Wed Jun 23 20:35:59 2021] 开始
+[Wed Jun 23 22:53:40 2021] 晚上走之前，37 of 105 steps (35%) done。map还没结束。
+
+[Thu Jun 24 05:39:03 2021] 早上过来，  78 of 105 steps (74%) done，QC_map/matrix
+[Thu Jun 24 09:50:30 2021] 中午吃饭前  94 of 105 steps (90%) done，MAP_QC_plotHeatmap
+[Thu Jun 24 13:32:22 2021]  最后一个文件不知道为什么这么慢？     103 of 105 steps (98%) done
+
+[Thu Jun 24 16:43:37 2021]  105 of 105 steps (100%) done
+一共运行了 20h 多。
+晚8:35-半夜0点 3.5h
+0点-16:43      16.7h
+Complete log: /data/wangjl/soft/snakemakeWorkflow/ATAC-seq/demo1/.snakemake/log/2021-06-23T203559.284905.snakemake.log
+
+
+
+
+
+
+(2) 修订后的测试，2个小样本
+直接在工作目录下建立配置文件。
+$ cd /home/wangjl/data/ATAC/fq/test4
+$ cat config.yaml
+samples: [SRR7629152, SRR7629153] #, SRR7629154, SRR7629161, SRR7629162, SRR7629163]
+workdir: /home/wangjl/data/ATAC/fq/test4
+Snk_RootDir: /home/wangjl/soft/snakemakeWorkflow/ATAC-seq/demo1
+
+$ ls -l
+total 8
+-rw-rw-r-- 1 wangjl wangjl  191 Jun 24 15:29 config.yaml
+drwxrwxr-x 2 wangjl wangjl 4096 Jun 23 19:59 raw
+
+
+$ snakemake -s /home/wangjl/soft/snakemakeWorkflow/ATAC-seq/demo1/main.sf -np
+
+$ snakemake -s /home/wangjl/soft/snakemakeWorkflow/ATAC-seq/demo1/main.sf -j 8
+Job counts:
+        count   jobs
+        2       MAP_QC_bamCoverage
+        2       MAP_QC_computeMatrix
+        2       MAP_QC_plotHeatmap
+        2       QC_clean_fq
+        2       QC_raw_fq
+        1       all
+        2       bwa_mapping
+        2       call_peak
+        2       cut_adapter
+        2       del_MT
+        2       draw_plot
+        2       get_chrlist
+        2       get_fragment_length
+        1       get_workflow_dag
+        2       homer_find_motif
+        2       index
+        1       multi_QC_clean
+        1       multi_QC_raw
+        1       report
+        2       rm_dup
+        2       rm_low_MAPQ
+        2       sort_to_bam
+        39
+17:12 --> 17:49, 共37min;
+Complete log: /data/wangjl/ATAC/fq/test4/.snakemake/log/2021-06-24T171243.266321.snakemake.log
+
+如果出错，删掉重来。
+$ ls | grep -v '^raw$' | xargs -i rm -rf {}
+
+
+
+
+Building DAG of jobs...
+Error: Directory cannot be locked. This usually means that another Snakemake instance is running on this directory. Another possibility is that a previous run exited unexpectedly.
+[Thu Jun 24 17:12:45 2021]
+
+翻译：无法锁定目录。请确保没有其他Snakemake进程尝试在下面的目录中创建相同的文件
+问题所在：之前这个目录下已经执行过其他的 snakemake 命令了。
+
+解决办法也直接给出来了：
+If you are sure that no other instances of snakemake are running on this directory, the remaining lock was likely caused by a kill signal or a power loss. It can be removed with the --unlock argument.
+
+在这个目录下执行: snakemake --unlock
+
+
+
+
+
+
+此后的修订记录在单独的库中:
+https://github.com/DawnEve/snakemakeWorkflow
+
+ref: https://github.com/snakemake-workflows
+
+
+
 
 
 
 
 
 ========================================
+Hair project (Run by ATAC-seq workflow version v0.3)
 ----------------------------------------
+1. 共96个文件
+$ cd /home/wangjl/data/ATAC/hair
+$ ls -lth raw/origin | head
+total 3.0G
+-r--r--r-- 1 wangjl wangjl  65M Jun 24 19:09 cgm-9_R2.fastq.gz
+-r--r--r-- 1 wangjl wangjl  67M Jun 24 19:09 cgm-9_R1.fastq.gz
+
+cgm-1_R2.fastq.gz
+cgm-96_R2.fastq.gz
+
+
+$ seq 1 4
+1
+2
+3
+4
+
+
+(1) 写配置文件
+$ path1="/home/wangjl/data/ATAC/hair/raw/origin/"
+$ seq 1 96 | while read i; do 
+id="cgm-"${i};
+echo $id; 
+ln -s ${path1}/${id}_R1.fastq.gz raw/${id}_1.fastq.gz;
+ln -s ${path1}/${id}_R2.fastq.gz raw/${id}_2.fastq.gz;
+echo $id >>raw/cid.txt
+done;
+
+
+$ zcat raw/cgm-2_1.fastq.gz | head
+@A00582:646:H7CJTDSX2:4:1101:27534:1141 1:N:0:CTAAACGG+AGAGGATA
+CTTATACACATCTCCGAGCCCACGAGACCTAAACGGATCTCGGATGCCGTCTTGGGCGTGGAAAGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGG
++
+FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF,:F,,:,,,F,,,,,,F,,,F,,,,,,:::FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF
+
+
+$ cp raw/cid.txt config.yaml
+$ sed -i "s/^/ - /" config.yaml
+
+$ vim config.yaml ###add three lines on top
+workdir: /home/wangjl/data/ATAC/hair
+Snk_RootDir: /home/wangjl/soft/snakemakeWorkflow/ATAC-seq/demo1
+samples: 
+
+$ vim test.sf 
+configfile:"config.yaml"
+SI=config["samples"]
+print(SI[1:10])
+
+$ snakemake -s test.sf -j 1
+['cgm-2', 'cgm-3', 'cgm-4', 'cgm-5', 'cgm-6', 'cgm-7', 'cgm-8', 'cgm-9', 'cgm-10']
+
+
+## dry run:
+$ snakemake -s /home/wangjl/soft/snakemakeWorkflow/ATAC-seq/demo1/main.sf -np
+
+$ snakemake -s /home/wangjl/soft/snakemakeWorkflow/ATAC-seq/demo1/main.sf -j 8
+Job counts:
+	count	jobs
+	96	MAP_QC_bamCoverage
+	96	MAP_QC_computeMatrix
+	96	MAP_QC_plotHeatmap
+	96	QC_clean_fq
+	96	QC_raw_fq
+	1	all
+	96	bwa_mapping
+	96	call_peak
+	96	cut_adapter
+	96	del_MT
+	96	draw_plot
+	96	get_chrlist
+	96	get_fragment_length
+	1	get_workflow_dag
+	96	homer_find_motif
+	96	index
+	1	multi_QC_clean
+	1	multi_QC_raw
+	1	report
+	96	rm_dup
+	96	rm_low_MAPQ
+	96	sort_to_bam
+	1637
+[Thu Jun 24 19:44:31 2021]
+
+
+
+[Thu Jun 24 20:32:12 2021]
+rule MAP_QC_computeMatrix:
+    input: QC_map/cgm-57.bw
+    output: QC_map/matrix/cgm-57.mat.gz
+    log: QC_map/matrix/cgm-57.mat.gz.log
+    jobid: 1132
+    wildcards: sample=cgm-57
+
+Waiting at most 5 seconds for missing files.
+MissingOutputException in line 3 of /home/wangjl/soft/snakemakeWorkflow/ATAC-seq/demo1/rules/06homer_find_motif.sf:
+Job Missing files after 5 seconds:
+homer/cgm-57/knownResults.html
+This might be due to filesystem latency. If that is the case, consider to increase the wait time with --latency-wait.
+Job id: 1555 completed successfully, but some output files are missing. 1555
+  File "/home/wangjl/.local/lib/python3.6/site-packages/snakemake/executors/__init__.py", line 589, in handle_job_success
+  File "/home/wangjl/.local/lib/python3.6/site-packages/snakemake/executors/__init__.py", line 259, in handle_job_success
+
+
+发现macs2峰是0行。
+往前找发现bam还是有的。反复尝试macs参数都不行，往前把MAPQ过滤bam的功能去掉-q 0，再跑就正常了。
 
 
 
 
 
+(2) 看reads/cell 
+
+$ ls -lth raw/|head
+total 16K
+-rw-rw-r-- 1 wangjl wangjl 663 Jun 24 19:36 cid.txt
+lrwxrwxrwx 1 wangjl wangjl  58 Jun 24 19:35 cgm-96_1.fastq.gz -> /home/wangjl/data/ATAC/hair/raw/origin//cgm-96_R1.fastq.gz
+lrwxrwxrwx 1 wangjl wangjl  58 Jun 24 19:35 cgm-96_2.fastq.gz -> /home/wangjl/data/ATAC/hair/raw/origin//cgm-96_R2.fastq.gz
 
 
+$ cat raw/cid.txt | head -n 2 | while read id; do echo $id; done;
+cgm-1
+cgm-2
 
+$ cat raw/cid.txt | while read id; do 
+R1=`zcat raw/${id}_1.fastq.gz | grep "^+" |wc -l`
+echo $id $R1 >> readsPerCell.txt; 
+done;
 
-========================================
-----------------------------------------
-
-
-
+使用R画图。
+只保留reads数超过 0.02e6=2万 reads的才保留。
 
 
 
