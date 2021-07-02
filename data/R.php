@@ -43,6 +43,8 @@ return array (
       array('数据框清理dplyr','pkg-dplyr','txt'),
       array('R web: shinny框架','pkg-shiny','txt'),
       array('R并行计算','R_parallel','txt'),
+
+      array('如何写R包?','R20-R-pkgs','txt'),
     ),
   ),
   
