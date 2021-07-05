@@ -1,0 +1,241 @@
+R06-debug_testing
+
+
+========================================
+R语言-调试代码 //todo
+----------------------------------------
+和其他语言一样你自然可以通过print一些参数之类的方法进行debug,但是R或RStudio提供的一些代码调试工具还是能为你提供一些有用的尝试。
+这些工具包括：traceback、browser、debug、debugonce、trace和recover函数。
+
+一般debug包括两个步骤，首先是定位代码错误发生的位置，然后是找出代码发生错误的原因并解决
+
+
+
+1. 其中第一步可以借助traceback函数来完成
+traceback
+traceback函数可以帮助你精确定位错误。很多R函数之间都会存在互相调用的情况，如何确定出错的函数往往是个难题。
+
+first<-function()second()
+second<-function()third()
+third<-function()fourth()
+fourth<-function()fifth()
+fifth<-function()bug()
+
+上述函数都在调用下一个函数（除了最后一个函数）
+由于bug函数不存在，运行first()将会报错
+Error in bug() : could not find function "bug"
+
+
+
+
+
+
+
+ref:
+https://blog.csdn.net/xiaohukun/article/details/76659515
+
+
+
+========================================
+|-- 调试函数 stop('sth')
+----------------------------------------
+相当于断言
+
+例1: 读取文本第x行
+fn2=function(x=2){
+  print('line1')
+  if(x<0){
+    stop( paste('Stoped here: x should be greater than 0; but x=',x) )
+  }
+  print('line2')
+}
+fn2(10)
+fn2(-1)
+
+
+
+例2：如果除数为0则报错
+for(y in -2:2){
+  if(y==0){
+    stop("Divided by 0")
+  }
+  print(1/y)
+}
+# 输出: 
+[1] -0.5
+[1] -1
+Error: Divided by 0
+
+
+
+
+
+========================================
+ |-- 函数的调试debug 和性能分析 system.time()
+----------------------------------------
+
+一、函数的调试 debug
+1.手动添加 print(xx)， 随时查看变量，判断出错位置。
+缺点：比较繁琐，特别是程序较长的时候。
+
+2.使用R的调试工具。
+(1) debug(f)函数可以把函数f()设置成调试状态，意味着每次调用f()都会进入这一状态。
+取消这一状态需调用 undebug(f)。
+在2.10版本之后，可以使用 debugonce()代替，仅检查漏洞一次。
+
+
+(2)程序调试工具还能跟踪运行步骤，进而加深对程序处理过程的理解
+
+#递归的原理：将x类型的原始问题降级为一个或划分为若干个更小的同类型问题，然后对每个较小问题调用f()函数自身，直到达到终止条件，再将各个小问题的结果向上返回并整理来解决问题。
+
+#递归算法排序
+qs=function(x){
+  if(length(x)<=1) return(x)
+  pivot=x[1]
+  therest=x[-1]
+  sv1=therest[therest<pivot]
+  sv2=therest[therest>=pivot]
+  sv1=qs(sv1)
+  sv2=qs(sv2)
+  return(c(sv1,pivot,sv2))
+}
+a=c(8,7,20,9,45,3)
+qs(a)
+# [1]  3  7  8  9 20 45
+
+#使用调试工具，跟踪代码
+#trace code
+debugonce(qs)
+qs(a)
+然后回车查看下一步，或者输入变量回车，查看当前变量的值。
+
+
+
+
+二、性能优化
+https://www.zhihu.com/question/23589055
+1.跟踪运行的时间
+add=function(a,b){
+	return(a+b)
+}
+
+方法1：
+time1=Sys.time();
+add(1,2);
+time2=Sys.time();
+print(paste("消耗时间",time2-time1));
+
+
+方法2：【推荐】
+system.time(add(1,2))
+用户user 系统system 流逝elapsed 
+0.10 0.00 0.09 
+
+
+三个数字分别表示 
+user:消耗在应用程序（非操作系统部分）执行的时间；
+system: 低层操作系统执行（如磁盘读写等）部分的时间；
+elapsed:是经过的总时间（可以认为是前两者的总和）。
+一般优化时主要关注user时间。
+
+
+
+
+
+2.避免使用for循环，优先使用向量化操作
+
+x=runif(1e6)
+y=runif(1e6)
+
+#向量化
+system.time(z<-x+y) #这里不能使用=，否则会被认为是传入的参数而报错
+# 用户 系统 流逝 
+# 0.01 0.00 0.02 
+
+#for循环
+z=vector(length=1e6)
+system.time(for(i in 1:length(x)) z[i]=x[i]+y[i])
+# 用户 系统 流逝 
+# 0.13 0.00 0.12 #为什么elapse比user还小呢？不清楚
+
+
+可见，向量化0.01s运行速度远远高于for循环的0.13s。
+
+当然，速度的提升是以更多内存消耗为代价的。时间和空间的权衡经常无法避免。
+
+
+
+
+
+
+========================================
+|-- tryCatch() 应对可能的错误，保证程序继续运行
+----------------------------------------
+1. 基础示例
+
+(1) error参数是一个函数，输入是当前报错，输出是报错输出的文本
+msg <- tryCatch({
+    text[seq(which(text == "")[1] + 1, length(text), 1)]
+  }, error = function(e) {
+    print(e)
+    paste0("Error 01")
+})
+## <simpleError in text == "": comparison (1) is possible only for atomic and list types>
+msg
+## [1] "Error 01"
+
+
+
+(2) 支持 finally 语句 
+
+> tryCatch(ls[1], finally = print("The finally cmd"))
+Error in ls[1] : object of type 'closure' is not subsettable
+[1] "The finally cmd"
+
+
+
+
+
+2. 循环中，如何在报error后继续运行后面的代码？
+
+# i=3的时候会报错
+testFUN=function(i){
+  if(i==3){
+    ls[i]
+  }else{
+    print(i)
+  }
+  print("hello")
+}
+testFUN(1)
+testFUN(3)
+
+
+# i=3报错后继续运行i=4
+for(i in 1:4){
+  tryCatch({
+	testFUN(i)
+  },error = function(e){  cat("Error: The input is ",i,"\n") }
+  )
+  print( paste("------>", i, " is done!") )
+}
+
+
+
+
+
+
+
+========================================
+|-- 怎么能休眠2s再执行？
+----------------------------------------
+1. 系统休眠几秒，用Sys.sleep 语句。
+for(i in 1:3){
+  print(i)
+  Sys.sleep(2)
+}
+
+
+
+
+

@@ -445,11 +445,764 @@ https://www.r-bloggers.com/2016/01/strategies-to-speedup-r-code/
 http://blog.sina.com.cn/s/blog_13eaccf160102wqlp.html
 https://www.cda.cn/view/17597.html
 
+
+
 ========================================
+R 调用 C 语言：Rcpp包等
+----------------------------------------
+
+1. 先找资料
+
+(1).Rcpp 简明入门
+https://cosx.org/2013/12/rcpp-introduction/
+(2).R语言与C语言混合编程——R语言中调用C语言函数（Windows+RStudio）
+https://blog.csdn.net/qq_37395039/article/details/104706452
+
+
+
+
+
+
+
+2. Rcpp包写c++代码的方式和效率对比
+https://blog.rstudio.com/2018/10/11/rstudio-1-2-preview-cpp/
+
+
+(1) 直接混合书写C++代码和R代码
+
+# c 版的函数
+library(Rcpp)
+cppFunction(
+    'int fib_cpp_0(int n){
+         if(n==1||n==2) return 1;
+         return(fib_cpp_0(n-1)+fib_cpp_0(n-2));
+    }'
+)
+
+# R 版的函数
+fib_r <- function(n){
+    if(n==1||n==2) return(1)
+    return(fib_r(n-1)+fib_r(n-2))
+}
+
+
+> system.time(fib_r(30))
+   user  system elapsed 
+  0.448   0.027   0.475 
+> system.time(fib_cpp_0(30))
+   user  system elapsed 
+  0.002   0.000   0.002 
+#
+我们可以发现，fib_cpp_0比fib_r快得多了。
+
+虽然如此，我觉得这个比较没有什么意思，原因在于这个对比中没有体现 R 向量化运算的优势。不过考虑到相当多的人在写 R 的代码时根本不考虑向量化（我忏悔，我就是其中之一），Rcpp 还真的能解决很多效率问题。
+
+
+
+
+
+(2) 单独文件写C++代码，然后在R中调用(sourceCpp，类似 R 里面的 source功能)
+
+$ cat func1.cpp 
+#include <Rcpp.h>
+using namespace Rcpp;
+
+//[[Rcpp::export]]
+int fib_cpp_1(int n)
+{
+    if(n==1||n==2) return 1;
+    return fib_cpp_1(n-1)+fib_cpp_1(n-2);
+}
+
+
+# 在 R 中
+> library("Rcpp")
+> sourceCpp("func1.cpp") #在Rstudio的Environment可见函数名 fib_cpp_1，可见文件名不重要。
+> system.time(fib_cpp_1(30))
+   user  system elapsed 
+  0.001   0.001   0.002
+#
+
+在上面可以看出用sourceCpp生成的函数fib_cpp_1在计算速度上，
+和用cppFunction生成的fib_cpp_0差不多。
+
+
+
+
+(3) cppFunction和sourceCpp的本质是什么？
+
+我们来回忆一下在没有 Rcpp 之前我们是如何调用 C/C++ 的。在那个年代，我们会先写出 C/C++ 的代码，然后用R CMD SHLIB生成一个动态链接库，然后再用dyn.load载入这个动态链接库。最后用.Call(或者. C，当然这个太老了），调用库中的函数。
+
+然后我们直接输入fib_cpp_1看看它们的庐山真面目：
+> fib_cpp_0
+function (n) 
+.Call(<pointer: 0x7f482d4f84b0>, n)
+<bytecode: 0x1c002f70>
+
+> fib_cpp_1
+function (n) 
+.Call(<pointer: 0x7f482d7074b0>, n)
+<bytecode: 0x1bffb680>
+
+可见，通过cppFunction和sourceCpp得到的这个函数，本质上还是用.Call调用动态链接库中编译好的 C++ 函数。
+只不过 Rcpp 帮你把一些麻烦的步骤省略下来了。
+
+
+
+
+(4) Rcpp 包终极参考资料
+https://adv-r.hadley.nz/rcpp.html
+Scalar input and scalar output
+Vector input and scalar output
+Vector input and vector output
+Matrix input and vector output
+
+前者里面有很多基础操作的代码，包括：向量->向量；向量->矩阵；标量->矩阵等等，里面都有示例函数及相关代码，复制到自己的cpp文件中运行并理解就很容易上手。
+
+
+
+https://gallery.rcpp.org/
+后者相当于一个搜索库，要使用Rcpp进行矩阵运算、并行计算、常用算法等操作，直接在里面进行搜索，就可以看到大神写的一些相应代码，同时知道该调用哪些库中的函数。
+
+
+
+
+(5) 矩阵计算 
+
+利用RcppEigen进行矩阵运算
+https://blog.csdn.net/weixin_41929524/article/details/81978734
+
+
+
+
+
+
+
+========================================
+不用包，R 原生调用C/C++ 的三种方式
+----------------------------------------
+The following functions provide a standard interface to compiled code that has been linked into R: 
+ .C 
+ .Call
+ .External
+
+
+
+========================================
+|-- 1. 使用 .C 接口 
+----------------------------------------
+http://dept.stat.lsa.umich.edu/~yizwang/software/maxLinear/noteonR.html
+http://users.stat.umn.edu/~geyer/rc/
+https://github.com/cjgeyer/foo
+
+(1) 主要包括四步
+
+1) 写c/c++代码
+
+How to obtain returned values from C functions?
+
+The C functions should have no return value. To return some values from a C function to R, one should set an argument as the value passer. Recall that in the C functions to be called by R, all the arguments are pointers. Therefore, the C functions should assign the to-be-returned value(s) to the value(s) pointed by this value-passer pointer.
+大概就是说，C中要使用指针接收和返回数据。
+
+
+# 先写好代码
+$ cat func2.c
+#include<stdio.h>
+void add(int* x, int* y){
+	*x = *x + *y;
+}
+int main(){
+	int a=1, b=2, a0;
+	a0=a;
+	add(&a,&b);
+	printf("Hello R, from C, %d+%d=%d\n", a0, b, a);
+    return 0;
+}
+
+$ gcc func2.c -o func2.out
+$ ./func2.out
+Hello R, from C, 1+2=3
+
+
+2) 编译写好的c/c++代码为 a shared library (.dll in Windows and .so (.o) in linux)
+win下安装 Rtools、mingw并配置环境; linux下不需要。
+
+## 在RStudio中运行
+setwd("/data/wangjl/test/testR/learnR/") #设置c文件的路径
+system("R CMD SHLIB massdistnew.c") #编译c文件
+
+## 或者直接在shell下编译
+$ R CMD SHLIB func2.c
+
+输出2个文件
+-rwxr-xr-x 1 wangjl wangjl  11K Jul  5 11:26 func2.so
+-rw-r--r-- 1 wangjl wangjl 7.6K Jul  5 11:26 func2.o
+
+
+3) load the shared library by dyn.load("LIBNAME"), 在R中载入.dll文件(win)/.so(linux), 
+> dyn.load('/data/wangjl/test/testR/learnR/func2.so')
+
+4) 调用C文件的函数
+call the compiled C function by .C("FUNNAME",...). 
+Here LIBNAME is the name of the shared library file and FUNNAME is the name of the C function.
+
+# y = .C("massdisttest", x = as.double(xtrunc), xmass = as.double(tau[trunc]/sum(tau[trunc])), nx = nx, xlo = as.double(lo), xhi = as.double(up),y = double(2 * n), ny = as.integer(n))$y
+
+> y = .C("add", a=as.integer(100), b=as.integer(123) )$a
+> y #223
+
+
+
+
+(2) R包装函数
+R Wrapper Functions
+It is considered user-friendly to wrap the call to .C in an R function.
+为了方便使用R风格的代码，把.C包装到R函数中。
+
+
+例子2: 求一个数组的平方。
+$ cat foo.c
+void foo(int *nin, double *x)
+{
+	int n = nin[0], i;
+	for (i=0; i<n; i++)
+	x[i] = x[i] * x[i];
+}
+
+$ R CMD SHLIB foo.c
+
+在R中载入
+> dyn.load('foo.so')
+
+## 测试1
+> .C("foo", n=as.integer(3), x=as.double(c(1,2,3)))
+$n
+[1] 3
+
+$x
+[1] 1 4 9
+
+## 测试2
+> arr=rnorm(5); print(arr); .C("foo", n=as.integer(5), x=as.double(arr))
+[1] -0.4847097 -1.2398497 -0.5159316 -0.1128015 -0.3207237
+$n
+[1] 5
+
+$x
+[1] 0.23494350 1.53722723 0.26618537 0.01272419 0.10286372
+
+
+
+# 写个R包装函数
+foo <- function(x) {
+	   if (!is.numeric(x)){ stop("argument x must be numeric") }
+	   out <- .C("foo",
+			   n=as.integer(length(x)),
+			   x=as.double(x))
+	   return(out$x)
+}
+
+> foo(c(1,2,3))
+[1] 1 4 9
+
+
+包装函数有三个好处: 在R中做错误检测、可在R中准备某些参数、只返回需要的部分。
+This has three benefits
+- It allows some error checking in R, where it is easier than in C.
+- It allows some arguments (like n here) to be calculated so they don't have to be supplied by the user.
+- It allows you to return only what the user needs.
+
+
+
+
+
+(3) 怎么在C中使用R的函数呢？(进一步的，怎么直接引用R低层引用的C函数呢？)
+例子3: Using R Random Number Generators in C
+
+$ cat baz.c
+#include <R.h>
+#include <Rmath.h>
+
+void baz(int *nin, double *sin, double *tin, double *x)
+{
+    int n = nin[0];
+    double s = sin[0];
+    double t = tin[0];
+
+    int i;
+
+    GetRNGstate();
+
+    for (i = 0; i < n; i++)
+        x[i] = rbeta(s, t);
+
+    PutRNGstate();
+}
+
+注意C代码中的如下两行，他们之间的部分代码像是在R中一样运行。
+	GetRNGstate();
+	PutRNGstate();
+must be done before and after (respectively) all calls to random number functions (in this example rbeta). With that done, the random numbers work in C just like in R.
+
+
+$ R CMD SHLIB baz.c
+
+在R中载入
+set.seed(42)
+rbeta(5, 1.5, 2.5) #[1] 0.2311371 0.4824677 0.5662345 0.4951170 0.3454934
+#
+dyn.load("baz.so")
+baz <- function(n, s, t) {
+    .C("baz", n = as.integer(n), s = as.double(s), t = as.double(t),
+        x = double(n))$x
+}
+set.seed(42)
+baz(5, 1.5, 2.5) #[1] 0.2311371 0.4824677 0.5662345 0.4951170 0.3454934
+
+输出结果一样。
+经过测试，只支持函数，语法是不支持的：比如必须分号结尾，不能使用<-代替=。
+怎么在C中调用C的 rbeta 函数呢？就是R函数低层调用的C函数？不知道，可能要读源码了。
+> rbeta
+function (n, shape1, shape2, ncp = 0) 
+{
+    if (missing(ncp)) 
+        .Call(C_rbeta, n, shape1, shape2)
+    else {
+        X <- rchisq(n, 2 * shape1, ncp = ncp)
+        X/(X + rchisq(n, 2 * shape2))
+    }
+}
+<bytecode: 0x3dac2a8>
+<environment: namespace:stats>
+
+这个函数在哪里？ .Call(C_rbeta
+$ which R
+/usr/bin/R
+
+
+如果R安装到这里：
+/APPS/src/R-2.6.2
+则所需要的函数可能在这里:
+/APPS/src/R-2.6.2/src/nmath/rbeta.c
+如果移动过位置，就不好找了，那么重新下载一个函数吧: https://cran.r-project.org/
+
+
+
+
+
+
+(4) 处理来自C语言的错误
+Error Messages from C
+Use the R error or warning function. They work just like printf but produce an R error or warning as the case may be. Here is an example (downloadable as qux.c).
+
+$ cat qux.c
+#include <R.h>
+void qux(int *nin, double *x)
+{
+    int n = nin[0];
+    int i;
+
+    if (n < 1)
+        error("arg n was %d, must be positive\n", n);
+
+    for (i = 0; i < n; i++)
+        x[i] = x[i] * x[i];
+}
+$ R CMD SHLIB qux.c
+
+在R中: 
+> dyn.load("qux.so")
+> .C("qux", n = as.integer(4), x = as.double(1:4))
+$n
+[1] 4
+
+$x
+[1]  1  4  9 16
+> .C("qux", n = as.integer(0), x = as.double(1:4)) #故意报错
+Error: arg n was 0, must be positive
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+========================================
+|-- 2. .Call 是更高级的调用函数 
+----------------------------------------
+
+https://github.com/cjgeyer/qux/blob/master/package/qux/src/qux.c
+
+.Call 比 .C 接口更复杂，功能更全面。
+.Call 需要一些安装标准R的时候安装过的头文件，以便访问一个新数据类型 SEXP。
+如下代码展示用法:
+
+The .Call interface is the more fully featured and complex cousin of the .C interface. Unlike .C, .Call requires header files that come standard with every R installation. These header files provide access to a new data type, SEXP. 
+The following code, stored in the file, doubler2.c, illustrates its use.
+
+
+
+
+(1) 也是四个步骤
+
+1) 写 c 代码 
+
+$ cat doubler2.c
+#include <R.h>
+#include <Rdefines.h>
+SEXP double_me2(SEXP x) {
+  // Doubles the value of the first integer element of the SEXP input
+  SEXP result;
+  PROTECT(result = NEW_INTEGER(1)); // i.e., a scalar quantity
+  INTEGER(result)[0] = INTEGER(x)[0] * 2;
+  UNPROTECT(1); // Release the one item that was protected
+  return result;
+}
+
+
+和 .C 不一样，double_me2 函数有返回值。
+
+Unlike our experience with the .C interface, double_me2 is a function and does return a value. While that appeals to intuition, no matter what the native input and output types, they must now live in a SEXP object. To code double_me2, you must know that there’s an integer in the input x, and extract it as if it were the first item in a C array. For the return value, you must add your integer result to a SEXP object in an equally unnatural way. The PROTECT function must be used to prevent R’s automatic garbage collection from destroying all the objects.
+
+
+2) 编译 
+$ R CMD SHLIB doubler2.c
+我遇到报错了，找不到 r.h, 要大写R.h 
+
+
+3) 在R中引用和调用
+> setwd("/data/wangjl/test/testR/learnR")
+> dyn.load("doubler2.so")
+> .Call("double_me2", as.integer(5))
+[1] 10
+
+
+
+
+
+
+
+(2) 探索一下头文件
+
+## on CentOS
+$ R RHOME
+/usr/lib64/R
+
+$ ls -1 `R RHOME`/include
+Rconfig.h
+Rdefines.h
+Rembedded.h
+R_ext
+R.h
+Rinterface.h
+Rinternals.h
+Rmath.h
+Rversion.h
+S.h
+
+# on Ubuntu
+$ sudo find /usr/ | grep -P "Rinterface" --color=auto 2>/dev/null
+/usr/share/R/include/Rinterface.h
+$ ls /usr/share/R/include
+Rconfig.h  Rdefines.h  Rembedded.h  R_ext  R.h  Rinterface.h  Rinternals.h  Rmath.h  Rversion.h  S.h
+
+
+解释 Here’s what they contain:
+- Rconfig.h	various configuration flags
+- Rdefines.h	lots of macros of interest, includes Rinternals.h
+- Rembedded.h	function declarations for embedding R in C programs
+- R_ext	directory of include files for specific data types, etc.
+- R.h	includes all the files found in R_ext
+- Rinterface.h	provides hooks for external GUIs
+- Rinternals.h	core R data structures R核心数据类型
+- Rmath.h	math constants and function declarations
+- Rversion.h	version string components
+- S.h	macros for S/R compatibility
+
+With the .Call() interface, the C function needs to be of type SEXP — a pointer to a SEXPREC or Simple EXPression RECord.  We’ll get the definition of SEXP and everything else we need by including both R.h and Rdefines.h in our code.  So here is the C code for our first, brain dead C function — helloA1.c:
+
+$ cat helloA1.c
+#include <R.h>
+#include <Rdefines.h>
+#include <stdio.h>
+SEXP helloA1() {
+  printf("Hello World!\n");
+  return(R_NilValue);
+}
+
+函数返回值类型是 SEXP，参数也是该类型。C代码决定着从其他类型转为或转出 SEXP 类型。
+Note that, even though we are returning R_NilValue (aka NULL), the function is declared to be of type SEXP.  The function will always be of type SEXP, as will any arguments.  It will be up to the C code to convert other data types into and out of SEXP.  
+
+$ R CMD SHLIB helloA1.c
+
+## 在R中写 包装函数 
+# wrapper function to invoke helloA1
+dyn.load("helloA1.so")
+helloA1 <- function() {
+  result <- .Call("helloA1")
+}
+
+> greeting <- helloA1()
+Hello World!
+> class(greeting)
+[1] "NULL"
+
+是不是感觉很复杂？这是有价值的，继续看。
+
+
+
+
+
+
+(3) 防止垃圾回收 PROTECT against garbage collection
+
+R会自动回收垃圾，这是很有用的。
+为了防止C的数据被回收，需要标记一下，就是函数 PROTECT 和 UNPROTECT。
+
+新版本的 hello world，为R字符串向量分配空间，把问候语分配给第一个元素，然后返回该向量。
+
+$ cat hello3.c 
+#include <R.h>
+#include <Rdefines.h>
+SEXP helloB1() {
+  SEXP result;
+  PROTECT(result = NEW_CHARACTER(1));
+  SET_STRING_ELT(result, 0, mkChar("Hello World!"));
+  UNPROTECT(1);
+  return(result);
+}
+
+为一个字符串向量分配内存使用的是 NEW_CHARACTER(长度)。
+我们该看看R包含的头文件中这一类的宏是怎么定义的。
+Note that we allocate memory for a character vector of length # with NEW_CHARACTER(#).  It is worth taking a look in the R include files to see how this and similar macros are defined:
+
+$ grep NEW_ /usr/lib/R/include/*.h
+$ grep NEW_ /usr/share/R/include/*.h
+/usr/share/R/include/Rdefines.h:#define NEW_LOGICAL(n)		Rf_allocVector(LGLSXP,n)
+/usr/share/R/include/Rdefines.h:#define NEW_INTEGER(n)		Rf_allocVector(INTSXP,n)
+/usr/share/R/include/Rdefines.h:#define NEW_NUMERIC(n)		Rf_allocVector(REALSXP,n)
+/usr/share/R/include/Rdefines.h:#define NEW_CHARACTER(n)	Rf_allocVector(STRSXP,n)
+/usr/share/R/include/Rdefines.h:#define NEW_COMPLEX(n)		Rf_allocVector(CPLXSXP,n)
+/usr/share/R/include/Rdefines.h:#define NEW_LIST(n)		Rf_allocVector(VECSXP,n)
+/usr/share/R/include/Rdefines.h:#define NEW_STRING(n)		NEW_CHARACTER(n)
+/usr/share/R/include/Rdefines.h:#define NEW_RAW(n)		Rf_allocVector(RAWSXP,n)
+/usr/share/R/include/Rdefines.h:/* NEW_OBJECT is recommended; NEW is for green book compatibility */
+/usr/share/R/include/Rdefines.h:#define NEW_OBJECT(class_def)	R_do_new_object(class_def)
+
+
+看到 NEW_CHARACTER(1) 低层使用的其实是 Rf_allocVector(STRSXP,1)，能看到很多R源码中的老名字。
+So we could have used allocVector(STRSXP,1) instead of NEW_CHARACTER(1) and you will see plenty of the former in R source code and packages.   
+
+类似的，我们可以使用 grep 查找关键词 “_ELT” 或 “mkChar”。
+Similarly you can grep for “_ELT” or “mkChar” and learn about those.  
+
+这并不是信息的最终源码，我们将围绕代码实例google，检查R包含文件，甚至检查 R-devel 邮件列表，来对获取可以让C代码和R对象共用的方法。
+There really isn’t any definitive source for information and you will have to get comfortable googling, poking around source code examples, examining the R include files and even checking the R-devel mailing list to get a sense of the R functions that are available for getting C code to work with R objects.  
+
+我推荐多花时间看看 Rinternals.h 和 Rdefines.h。
+I would recommend spending some time with Rinternals.h and Rdefines.h.
+
+
+## 编译
+$ R CMD SHLIB hello3.c
+
+在R中 
+dyn.load("hello3.so")
+helloB1  <- function() {
+  result <- .Call("helloB1")
+  return(result)
+}
+helloB1 () #[1] "Hello World!"
+
+终于看到返回值了。不过感觉还是过于复杂化了。
+复杂-收益总是平衡的，接着看例子。
+
+
+
+
+
+
+
+
+(4) 在头文件中做类型映射 Casting about in the R header files
+
+如标题所说，在C代码做的事情越来越多，你很可能需要把字符串类型转为 SEXP 对象，SEXP对象转为 整数等等。
+The title of this section really says it all.  As you start to do more in your C code you will need to learn how to cast character strings into SEXP objects, SEXP objects into integers, etc. etc.  
+
+要想成为专家，还有有限、但大量的知识点。
+There is a finite, but large, amount to know before you become expert.  
+
+这个资料的“习惯使用SEXP”一节中的两个链接的例子很好。
+The two links in the “Getting used to SEXP” section above have excellent examples as does Programming with Data: Using and Extending R by Dirk Eddelbuettel.
+http://dirk.eddelbuettel.com/papers/uofc_acm_feb2010.pdf
+
+
+
+接下来是最后一个 hello world 例子，用来计数问候语的字符长度。
+Here is our last “Hello World!” example, the one that counts the characters in incoming greetings.  
+
+本例演示 Rdefines.h 中定义的R 宏是怎么从vector 中抽取元素的，vector怎么映射为字符和整数，怎么使用 UNPROTECT 在 PROTECT stack上 去掉已保护的同样数量的元素。
+This example shows how R macros defined in Rdefines.h are used to extract elements from a vector, how vector elements are cast into char and int and how you need to UNPROTECT the same number of elements that you placed on the PROTECT stack.
+
+
+$ cat demo4.c 
+#include <R.h>
+#include <Rdefines.h>
+#include <string.h>
+SEXP helloC1(SEXP greeting) {
+  int i, vectorLength, stringLength;
+  SEXP result;
+  PROTECT(greeting = AS_CHARACTER(greeting));
+  vectorLength = LENGTH(greeting);
+  PROTECT(result = NEW_INTEGER(vectorLength));
+  for (i=0; i<vectorLength; i++) {
+    stringLength = strlen(CHAR(STRING_ELT(greeting, i)));
+    INTEGER(result)[i] = stringLength;
+  }
+  UNPROTECT(2);
+  return(result);
+}
+
+$ R CMD SHLIB demo4.c
+
+
+在R中 
+# wrapper function to invoke helloC1 
+dyn.load("demo4.so")
+helloC1 <- function(greeting) {
+  result <- .Call("helloC1", greeting)
+  return(result)
+}
+# source('wrappers.R')
+greeting <- c("Hello World!", "Bonjour tout le monde!", "Привет мир!")
+helloC1(greeting) #[1] 12 22 20
+
+
+
+
+
+
+
+(5) 更多例子
+.Call() 接口在R包中大量使用。
+
+- 更多资料参考: https://cran.r-project.org/doc/manuals/R-exts.html
+
+- Hadley Wickham has written an excellent tutorial on using the .Call() interface.
+	http://adv-r.had.co.nz/C-interface.html
+
+
+
+
+
+
+
+
+========================================
+|-- 3. .External 函数 //todo
 ----------------------------------------
 
 
+C_selectlist
+C_dataviewer
+C_optimhess
 
+提供一个指针，指向已经编译好的C代码并执行。上述三个函数的源代码位于R/src/library/utils/src目录下
+可以直接在R命令行调用：
+.External2(utils:::C_selectlist, choices, preselect, multiple, title) （位于R selectlist函数）
+注意如果去掉utils:::就无法找到对象
+
+winDialog("yesno",sprintf(a,sQuote("D:\\用户目录\\Documents/R/win-library/3.1")))
+能打开一个yesno的对话框
+其实是调用了
+.External2(C_winDialog, type, message)
+
+
+
+
+
+
+
+
+
+
+
+
+========================================
+|-- 4. 对比与总结
+----------------------------------------
+
+(1) 这两个R调用C代码的接口概述如下：
+The important differences between the two R interfaces to C code are summarized here:
+
+.C() 简单数据类型
+- allows you to write simple C code that knows nothing about R
+- only simple data types can be passed
+- all argument type conversion and checking must be done in R
+- all memory allocation must be done in R
+- all arguments are copied locally before being passed to the C function (memory bloat)
+
+
+.Call() 复杂数据类型
+- allows you to write simple R code
+- allows for complex data types
+- allows for a C function return value
+- allows C function to allocate memory
+- does not require wasteful argument copying
+- requires 【much】 more knowledge of R internals
+- is the 【recommended】, modern approach for serious C programmers
+
+To allow readers to compare for themselves how difficult or easy it is to switch from .C() to .Call() we will re-implement our three “Hello World!” examples using the .Call() interface.
+
+
+
+
+
+
+
+
+
+########
+总结： 
+
+.C() 很简洁，不需要要任何依赖，但是使用指针来获取参数和返回结果。很多项目中使用这个。
+.Call() 更繁琐，本质也是指针。需要对R内部结构很了解，是【推荐方法】。
+	https://github.com/satijalab/seurat/blob/master/R/RcppExports.R
+	ComputeSNN <- function(nn_ranked, prune) {
+		.Call('_Seurat_ComputeSNN', PACKAGE = 'Seurat', nn_ranked, prune)
+	}
+	https://github.com/satijalab/seurat/blob/master/src/RcppExports.cpp
+	Rcpp (>= 0.11.0) 也就是说 Seurat 也是依赖 Rcpp包的?
+Rcpp 包，大项目中使用有风险，因为依赖很多 macro，在有些案例中会损失精度，但是用户获取不到任何warning/error。
+
+
+
+
+R 高级话题:
+https://www.r-bloggers.com/2014/02/three-ways-to-call-cc-from-r/
+http://mazamascience.com/WorkingWithData/?p=1099
+
+
+更多资料 
+Calling C code from R (Sigal Blay, 2004) *
+	http://www.sfu.ca/~sblay/R-C-interface.ppt
+Calling other languages from R (R.M. Ripley, 2009) *
+	http://www.stat.purdue.edu/~liu105/STAT598G_lab/Rcourse94up.pdf
+R API cheat sheet (Simon Urbanek, 2012) *
+	http://tolstoy.newcastle.edu.au/R/e17/devel/att-0724/R_API_cheat_sheet.pdf
+
+
+怎么在R包中调用c++
+http://dept.stat.lsa.umich.edu/~yizwang/software/maxLinear/noteonR.html
+http://dept.stat.lsa.umich.edu/~yizwang/software/maxLinear/AlanRPackageTutorial.pdf
 
 
 ========================================
