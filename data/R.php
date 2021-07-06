@@ -22,10 +22,11 @@ return array (
       array('R进阶-统计抽样与分布','R03-statistics','txt'),
       array('R进阶-OOP面向对象','R04-OOP','txt'),
       array('R基础-机器学习','R05-MachineLearning','txt'),
-      array('R调试和测试','R06-debug_testing','txt'),
+      array('R调试和测试debug-test','R06-debug_testing','txt'),
       array('apply家族函数','R07-apply','md'),
 
       array('R包与bioconductor','bioconductor01','txt'),
+      array('R加速: 向量化/并行/C++','R_speedUp','txt'),
       array('如何写R包?','R20-R-pkgs','txt'),
     ),
   ),
@@ -52,7 +53,6 @@ return array (
       array('分析差异表达基因 DEG','pkg-DEG','txt'),
       array('数据框清理dplyr','pkg-dplyr','txt'),
       array('R web: shinny框架','pkg-shiny','txt'),
-      array('R并行计算','R_parallel','txt'),
 
     ),
   ),

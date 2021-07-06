@@ -826,20 +826,93 @@ Error: arg n was 0, must be positive
 
 
 
+(5) 再给出2个例子 Using .C
+I. Calling C with an integer vector
+
+/* useC1.c */
+void useC(int *i) {
+	i[0] = 11;
+}
+
+函数只能是void类型，不能有返回值。返回值只能通过自己的参数传递。
+The C function should be of type void.
+The compiled code should not return anything except through its arguments.
+
+$ R CMD SHLIB useC1.c
+
+## 在R中 
+> dyn.load("useC1.so")
+> .C("useC", n = as.integer(1:4))
+$n
+[1] 11  2  3  4
+
+
+在C中要为传入的参数设置正确的长度。
+.C()函数的第一个参数是C函数名。
+其余的是传入C函数的R对象。所有参数必须强制转为正确的R存储格式，防止出错。
+.C()函数返回一个list对象。
+
+总结：没有新东西，不过数组本质上是指针。
 
 
 
 
+II. Calling C with different vector types
 
+/* useC2.c */
+void useC2(int *i, double *d, char **c, int *l) {
+	i[0] = 11;
+	d[0] = 2.333;
+	c[1] = "g";
+	l[0] = 0;
+}
+
+$ R CMD SHLIB useC2.c
+
+注: To compile more than one c file:
+R CMD SHLIB file1.c file2.c file3.c
+to get file1.so 编译多个的C文件，输出名字就是第一个文件的名字。
+
+## 在R中 
+> dyn.load("useC2.so")
+> .C("useC2", a = as.integer(1:4), b=as.double(3.1415926), 
+		c=as.character( c("this", "is", "a string") ), d=c(T, F) )
+$a
+[1] 11  2  3  4
+
+$b
+[1] 2.333
+
+$c
+[1] "this"     "g"        "a string"
+
+$d
+[1] FALSE FALSE
+
+不用管C的形式参数名字，传入相同类型的实参即可。
+其他R对象也能传入.C()，但是最好使用其他接口。
+
+- 在.()中，R对象在传递给C前先复制一份，在编译后的C代码返回时再拷贝一份给R。
+- 而.Call() 和 .External() 接口都不复制他们的参数。
+- 你应该把通过接口传入的参数当作只读的。
 
 
 
 
 ========================================
-|-- 2. .Call 是更高级的调用函数 
+|-- 2. .Call 是更高级的调用接口 
 ----------------------------------------
 
 https://github.com/cjgeyer/qux/blob/master/package/qux/src/qux.c
+
+该接口：
+- 没那么多复制了。
+- 在C代码中对答案进行维度划分的能力
+- 获取其他类型。Access to other types, e.g. expressions, raw type and the ability to easily execute R code (call_R is a pain).
+- 能获取vector的name属性等。Access to the attributes of the vectors, for example the names.
+- 容易处理缺失值。The ability to handle missing values easily。
+
+
 
 .Call 比 .C 接口更复杂，功能更全面。
 .Call 需要一些安装标准R的时候安装过的头文件，以便访问一个新数据类型 SEXP。
@@ -847,6 +920,7 @@ https://github.com/cjgeyer/qux/blob/master/package/qux/src/qux.c
 
 The .Call interface is the more fully featured and complex cousin of the .C interface. Unlike .C, .Call requires header files that come standard with every R installation. These header files provide access to a new data type, SEXP. 
 The following code, stored in the file, doubler2.c, illustrates its use.
+
 
 
 
@@ -1091,7 +1165,230 @@ helloC1(greeting) #[1] 12 22 20
 
 
 
-(5) 更多例子
+
+(5) III. Sending R integer vectors to C (在C中打印传入的整数)
+/* useCall1.c */
+#include <R.h>
+#include <Rdefines.h>
+SEXP getInt(SEXP myint, SEXP myintVar) {
+	int Imyint, n; // declare an integer variable
+	int *Pmyint; // pointer to an integer vector
+	PROTECT(myint = AS_INTEGER(myint));
+
+
+## 解释: 
+- Rdefines.h是某种程度上比 Rinternal.h 高级，如果在任何时候想和S语言共享则推荐使用。 
+- SEXP 意思是 简单表达式(Simple EXPression)
+- myint 是 SEXP 类型的，这是一个泛型类，所以需要转为正确的类型。
+- C代码创建的R对象，需要使用 PROTECT 宏把要给指针指向该对象。这告诉R这个对象在使用，不要销毁。
+
+• Rdefines.h is somewhat more higher level then Rinternal.h, and is preferred if the code might be shared with S at any stage.
+• SEXP stands for Simple EXPression
+• myint is of type SEXP, which is a general type, hence coercion is needed to the right type.
+• R objects created in the C code have to be reported using the PROTECT macro on a pointer to the object. This tells R that the object is in use so it is not destroyed.
+
+
+	Imyint = INTEGER_POINTER(myint)[0];
+	Pmyint = INTEGER_POINTER(myint);
+	n = INTEGER_VALUE(myintVar);
+	printf(" Printed from C: \n");
+	printf(" Imyint: %d \n", Imyint);
+	printf(" n: %d \n", n);
+	printf(" Pmyint[0], Pmyint[1]: %d %d \n", Pmyint[0], Pmyint[1]);
+	UNPROTECT(1);
+	return(R_NilValue);
+}
+
+## 解释:
+- 保护机制是基于堆的，所以 UNPROTECT(n) 是不保护最后一个 n 对象。返回前 PROTECT 和 UNPROTECT 必须配对。
+- 对于实数，replace int with double and INTEGER with NUMERIC ??
+
+• The protection mechanism is stack based, so UNPROTECT(n) unprotects the last n objects which were protected. The calls to PROTECT and UNPROTECT must balance when the user's code returns.
+• to work with real numbers, replace int with double and INTEGER with NUMERIC
+
+
+$ R CMD SHLIB useCall1.c
+
+## 在R中 
+> dyn.load("useCall1.so")
+> .Call("getInt", a=c(10,2,3), b=c(4,5) )
+NULL
+ Printed from C: 
+ Imyint: 10 
+ n: 4 
+ Pmyint[0], Pmyint[1]: 10 2
+#
+
+
+
+
+(6) IV. Sending R character vectors to C (在C中为指针分配内存，获取R传入的字符串数组)
+/* useCall2.c */
+#include <R.h>
+#include <Rdefines.h>
+SEXP getChar(SEXP mychar) {
+	char *Pmychar[5]; // array of 5 pointers
+	
+	// to character strings
+	PROTECT(mychar = AS_CHARACTER(mychar)); 
+	
+	// allocate memory:
+	Pmychar[0] = R_alloc(strlen(CHAR(STRING_ELT(mychar, 0))), sizeof(char));
+	Pmychar[1] = R_alloc(strlen(CHAR(STRING_ELT(mychar, 1))), sizeof(char));
+	
+	// ... and copy mychar to Pmychar:
+	strcpy(Pmychar[0], CHAR(STRING_ELT(mychar, 0)));
+	strcpy(Pmychar[1], CHAR(STRING_ELT(mychar, 1)));
+	
+	printf(" Printed from C:");
+	printf(" %s %s \n",Pmychar[0],Pmychar[1]);
+	UNPROTECT(1);
+	
+	return(R_NilValue);
+}
+$ R CMD SHLIB useCall2.c
+
+
+In R:
+> dyn.load("useCall2.so")
+> mychar <- c("do","re","mi", "fa", "so")
+> out <- .Call("getChar", mychar)
+ Printed from C: do re 
+> out
+NULL
+
+
+
+
+
+(7) V. Getting an integer vector from C (在R中获取C传来的整数)
+/* useCall3.c */
+#include <R.h>
+#include <Rdefines.h>
+SEXP setInt() {
+	SEXP myint;
+	int *p_myint;
+	int len = 5;
+	
+	// Allocating storage space:
+	PROTECT(myint = NEW_INTEGER(len)); 
+	
+	p_myint = INTEGER_POINTER(myint);
+	p_myint[0] = 7;
+	
+	UNPROTECT(1);
+	return myint;
+}
+// to work with real numbers, replace
+// int with double and INTEGER with NUMERIC
+$ R CMD SHLIB useCall3.c
+
+In R:
+> dyn.load("useCall3.so")
+> out<- .Call("setInt")
+> out [1] 7 0 0 0 0
+[1]        7        0 25514720        0 59062360 
+## 为什么我的结果不符合预期? 不全是0? 因为没有初始化，里面的数字是原始内存残留的。
+
+
+
+
+
+
+(8) VI. Getting a character vector from C (从C获取字符串)
+/* useCall4.c */
+#include <R.h>
+#include <Rdefines.h>
+SEXP setChar() {
+	SEXP mychar;
+	PROTECT(mychar = allocVector(STRSXP, 5));
+	SET_STRING_ELT(mychar, 0, mkChar("A"));
+	UNPROTECT(1);
+	return mychar;
+}
+$ R CMD SHLIB useCall4.c
+
+In R:
+> dyn.load("useCall4.so")
+> out <- .Call("setChar")
+> out
+[1] "A" ""  ""  ""  "" 
+
+注: 如果把中间改为 SET_STRING_ELT(mychar, 0, mkChar("About"));
+则返回一个字符串 "About"
+
+
+
+
+
+(9) VII. Getting a list from C (从C获取一个字符串)
+/* useCall5.c */
+#include <R.h>
+#include <Rdefines.h>
+SEXP setList() {
+	int *p_myint, i;
+	double *p_double;
+	SEXP mydouble, myint, list, list_names;
+	char *names[2] = {"integer", "numeric"};
+	
+	// creating an integer vector:
+	PROTECT(myint = NEW_INTEGER(5));
+	p_myint = INTEGER_POINTER(myint);
+	
+	// ... and a vector of real numbers:
+	PROTECT(mydouble = NEW_NUMERIC(5));
+	p_double = NUMERIC_POINTER(mydouble);
+	for(i = 0; i < 5; i++) {
+		p_double[i] = 1/(double)(i + 1);
+		p_myint[i] = i + 1;
+	}
+
+	// Creating a character string vector
+	// of the "names" attribute of the
+	// objects in out list:
+	PROTECT(list_names = allocVector(STRSXP,2));
+	for(i = 0; i < 2; i++)
+		SET_STRING_ELT(list_names,i,mkChar(names[i])); 
+
+	// Creating a list with 2 vector elements:
+	PROTECT(list = allocVector(VECSXP, 2));
+	
+	// attaching myint vector to list:
+	SET_VECTOR_ELT(list, 0, myint);
+	
+	// attaching mydouble vector to list:
+	SET_VECTOR_ELT(list, 1, mydouble);
+	
+	// and attaching the vector names:
+	setAttrib(list, R_NamesSymbol, list_names);
+	
+	UNPROTECT(4);
+	return list;
+}
+
+注: SET_VECTOR_ELT stands for Set Vector Element
+
+$ R CMD SHLIB useCall5.c
+
+In R:
+> dyn.load("useCall5.so")
+> out <- .Call("setList")
+> out
+$integer
+[1] 1 2 3 4 5
+
+$numeric
+[1] 1.0000000 0.5000000 0.3333333 0.2500000 0.2000000
+
+
+
+
+
+
+
+
+
+(n) 更多例子
 .Call() 接口在R包中大量使用。
 
 - 更多资料参考: https://cran.r-project.org/doc/manuals/R-exts.html
@@ -1124,6 +1421,8 @@ winDialog("yesno",sprintf(a,sQuote("D:\\用户目录\\Documents/R/win-library/3.
 能打开一个yesno的对话框
 其实是调用了
 .External2(C_winDialog, type, message)
+
+
 
 
 
@@ -1175,14 +1474,14 @@ To allow readers to compare for themselves how difficult or easy it is to switch
 
 .C() 很简洁，不需要要任何依赖，但是使用指针来获取参数和返回结果。很多项目中使用这个。
 .Call() 更繁琐，本质也是指针。需要对R内部结构很了解，是【推荐方法】。
+Rcpp 包，大项目中使用有风险，因为依赖很多 macro，在有些案例中会损失精度，但是用户获取不到任何warning/error。
+
 	https://github.com/satijalab/seurat/blob/master/R/RcppExports.R
 	ComputeSNN <- function(nn_ranked, prune) {
 		.Call('_Seurat_ComputeSNN', PACKAGE = 'Seurat', nn_ranked, prune)
 	}
 	https://github.com/satijalab/seurat/blob/master/src/RcppExports.cpp
 	Rcpp (>= 0.11.0) 也就是说 Seurat 也是依赖 Rcpp包的?
-Rcpp 包，大项目中使用有风险，因为依赖很多 macro，在有些案例中会损失精度，但是用户获取不到任何warning/error。
-
 
 
 
@@ -1200,13 +1499,53 @@ R API cheat sheet (Simon Urbanek, 2012) *
 	http://tolstoy.newcastle.edu.au/R/e17/devel/att-0724/R_API_cheat_sheet.pdf
 
 
-怎么在R包中调用c++
-http://dept.stat.lsa.umich.edu/~yizwang/software/maxLinear/noteonR.html
-http://dept.stat.lsa.umich.edu/~yizwang/software/maxLinear/AlanRPackageTutorial.pdf
 
 
 ========================================
+|-- If you are developing an R package: 在R包中调用c++
 ----------------------------------------
+http://dept.stat.lsa.umich.edu/~yizwang/software/maxLinear/noteonR.html
+http://dept.stat.lsa.umich.edu/~yizwang/software/maxLinear/AlanRPackageTutorial.pdf
+
+And lastly, tips on creating an R package with compiled code
+
+
+1. 如果你在开发R包，把 useC.c 复制到 myPackage/src/ 下。
+包的用户就不需要手动用dyn.load()加载编译后的c代码了。
+
+所以，把 zzz.R 文件加到myPackage/R 下， 
+zzz.R 文件要包含这一句
+
+.First.lib <-function (lib, pkg) {
+	library.dynam("myPackage", pkg, lib)
+}
+
+
+
+2. 修改 .C() 函数：参数列表最后添加 PACKAGE="compiled_file".
+
+比如，编译后的C代码名字是 useC1.so:
+.C("useC", b = as.integer(a), PACKAGE="useC1")
+
+如果使用 Makefile ，注意看 R CMD SHLIB myfile.c 的输出，以获得需要合并到 Makefile 中的 flag。
+If you are using a Makefile, look at the output from R CMD SHLIB myfile.c for flags that you may need to incorporate in the Makefile. 
+
+
+
+
+3. 即使你的代码通过了 'R CMD check'
+
+- 尝试这样编译C代码: 'gcc -pedantic -Wall'，您应该只得到您有理由不消除的警告。
+(you should get only warnings that you have reasons not to eliminate)
+
+- 检查R代码 'R CMD check --use-gct'，
+(It uses 'gctorture(TRUE)' when running examples/tests, and it's slow) 
+
+如果您不这样做，CRAN将为您做，并将把您送回绘图板(?)。
+If you won't, CRAN will do that for you and will send you back to the drawing board.
+
+
+
 
 
 
