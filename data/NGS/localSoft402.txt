@@ -6,6 +6,11 @@
 http://www.360doc.com/content/17/1014/11/42030643_694826019.shtml
 
 
+Hemberg-lab单细胞转录组数据分析（五）
+http://www.360doc.com/content/19/0403/11/51784026_826127283.shtml
+
+
+
 
 ========================================
 Galaxy生信分析平台-搭建（本地化）
@@ -240,15 +245,22 @@ Have you tried mapping the RNA-seq data yet? It may not be necessary to remove p
 ========================================
 |-- 高通量测序数据质控神器—Trimmomatic （也是一个java程序）
 ----------------------------------------
+1. 简介
+(1) 文章
+Trimmomatic: A flexible read trimming tool for Illumina NGS data
+ 
+Citations
+Bolger, A. M., Lohse, M., & Usadel, B. (2014). Trimmomatic: A flexible trimmer for Illumina Sequence Data. Bioinformatics, btu170.
+
 高通量测序数据质控神器——Trimmomatic。这个于 2014 年发表在 Bioinformatics 上的软件，至今为止在 Web of Science 上可以检索到 2,098 次引用，而在谷歌学术上更是达到了惊人的 3,391 次：
 
-这个软件为什么深受大家的喜爱呢？今天小编就给大家分析一下它在质控方面的强大之处。
 
-1. 无脑安装、使用"简单"、运行速度可观
+(2) 这个软件为什么深受大家的喜爱呢？今天分析一下它在质控方面的强大之处。
+
+1). 无脑安装、使用"简单"、运行速度可观
 这个软件是用 Java 写的，运行效率比较高.
 
-
-2. 强大的去接头能力
+2). 强大的去接头能力
 一般的质控软件在处理含有接头序列的 reads 时，通常采用 "在允许错配的情况下，如果分析的 read 匹配一定数量的接头序列即去除这条 read 或从匹配开始的位置截断 read，仅保留匹配位置之前的部分序列" 的方式。
 
 如果采取 "去除含有接头序列的 reads" 的方式，会造成测序数据的浪费 (如果片段选择没有控制好，整个 lane 会有很大一部分数据含有接头序列，怎么办？);
@@ -256,6 +268,18 @@ Have you tried mapping the RNA-seq data yet? It may not be necessary to remove p
 如果采取 "从匹配开始的位置截断 read，仅保留匹配位置之前的部分序列" 的方式，对于只含有少数几个碱基的 reads，普通的质控软件是处理不了的（又该怎么办？）。
 
 But，Trimmomatic 有两种模式：Single End Mode 和 Paired End Mode，对于单端测序数据，它和其它软件相比没有明显的优势；但如果是双端测序的数据，Trimmomatic 采用两种去接头方式，更强大，更彻底！
+
+
+
+
+http://www.usadellab.org/cms/?page=trimmomatic
+
+
+
+
+
+
+
 
 
 https://www.plob.org/article/12130.html
@@ -901,10 +925,16 @@ $ STAR --runMode genomeGenerate \
 
 
 
-4.Run mapping jobs. 推荐直接用(3)
-51页手册STARmanual.pdf： https://github.com/alexdobin/STAR/blob/master/doc/STARmanual.pdf
 
-(1) 基本比对，后面还有2个改进版。
+4.Run mapping jobs. 
+
+51页手册STARmanual.pdf： https://github.com/alexdobin/STAR/blob/master/doc/STARmanual.pdf
+推荐直接用(3)，
+多样本考虑(2)，
+uniq map低看看(4)
+
+
+(1) 基本比对，后面还有3个改进版。
 test data
 [wangjl@nih_jin test3]$ ls -lth /home/wangjl/data/test
 total 2.5G
@@ -934,7 +964,8 @@ Jan 17 22:17:03 ..... finished successfully
 	
 获得文件: c14_A1_Aligned.out.sam
 
-(2)改进1： 建议添加保留基因组选项（--genomeLoad LoadAndKeep），对于共用一套index的多个比对，能节省很多内存，提高比对的并发数量。
+
+(2)改进1： 对多个样本的比对，建议添加保留基因组选项（--genomeLoad LoadAndKeep），对于共用一套index的多个比对，能节省很多内存，提高比对的并发数量。
 该测序read最长150bp。
 $ STAR --runThreadN 10 \
 	--genomeDir /data1/hou/RNA/refs/hg19_ERCC92/index/star \
@@ -959,6 +990,36 @@ Note, when UMIs are used, their barcodes should be removed from the read sequenc
 
 
 
+2) https://www.biostars.org/p/260069/
+还有人建议，多样本比对时，
+--genomeLoad LoadAndExit 载入基因组
+	$ STAR --genomeLoad LoadAndExit --genomeDir starIndexDirectoryPath
+然后for循环比对
+	STAR --genomeLoad LoadAndKeep --genomeDir starIndexDirectoryPath --runThreadN nThreads -readFilesIn /pathToReadFile --outFileNamePrefix prefix
+--genomeLoad Remove  移除基因组。
+	STAR --genomeLoad Remove --genomeDir starIndexDirectoryPath
+
+
+LoadAndRemove will automatically remove the index from memory once all STAR jobs using it finishes. 
+LoadAndExit will leave the index in memory until you run STAR with --genomeLoad Remove.
+
+
+## 测试实例: 首尾加载、卸载基因组，中间是若干比对过程。 
+$ STAR --genomeLoad LoadAndExit --genomeDir /home/wangjl/data/ref/hg19/index/star/ --outFileNamePrefix map/tmp/_load_
+$ STAR --runThreadN 10 \
+		--outSAMtype BAM SortedByCoordinate  \
+		--genomeDir /home/wangjl/data/ref/hg19/index/star/ \
+		--readFilesIn clean/c16ROW01_trimmed.fq.gz \
+		--readFilesCommand zcat  \
+		--genomeLoad LoadAndKeep  \
+		--limitBAMsortRAM 20000000000  \
+		--outFileNamePrefix map/tmp/c16ROW01_
+$ STAR --genomeLoad Remove --genomeDir /home/wangjl/data/ref/hg19/index/star/ --outFileNamePrefix map/tmp/_rm_
+
+
+
+
+
 
 (3)改进2：推荐直接输出bam文件，适合py并发使用。
 --outSAMtype BAM SortedByCoordinate 输出格式为BAM并排序过。
@@ -976,6 +1037,9 @@ $ STAR --runThreadN 30  \
 
 如果是双端 reads, 最后三个参数是为了提高比对的 uniq map，降低 too short 百分比:
 $ STAR --genomeDir /home/niesy/data/reference/star_hg --runThreadN 10 --readFilesIn ATAC-1-3_L4_F0000570F0001151.R1_val_1.fq.gz ATAC-1-3_L4_F0000570F0001151.R2_val_2.fq.gz --readFilesCommand zcat --outFileNamePrefix test --outSAMtype BAM SortedByCoordinate --outBAMsortingThreadN 10 --outFilterScoreMinOverLread 0 --outFilterMatchNminOverLread 0 --outFilterMismatchNmax 2 
+
+
+
 
 
 
@@ -1015,7 +1079,37 @@ done;
 
 
 
-(4)更多参数
+
+(4) 改进3：如果uniq比对率过低，出现 too short 过高，则可以调整比对参数 
+### https://github.com/alexdobin/STAR/issues/169
+You can increase the number of mapped reads by relaxing the requirements on the mapped length, e.g.: 
+--outFilterScoreMinOverLread 0.3 --outFilterMatchNminOverLread 0.3       
+或者下面这个更好:
+--outFilterScoreMinOverLread 0 --outFilterMatchNminOverLread 0 --outFilterMatchNmin 0
+the number of missmaches I controlled by --outFilterMismatchNmax 2 and got my preferred results.
+
+
+## 参数解释
+% of reads unmapped: too short |       21.10%
+"Reads too short" doesn't really mean that, it just means "didn't map".
+
+outFilterScoreMinOverLread      0.66
+    float: same as outFilterScoreMin, but  normalized to read length (sum of mates' lengths for paired-end reads)
+
+
+## 效果对比
+Uniquely mapped reads % |	63.30%
+Uniquely mapped reads % |	65.68%
+# STAR 参数加上 --outFilterScoreMinOverLread 0 --outFilterMatchNminOverLread 0 --outFilterMatchNmin 0 \
+Uniquely mapped reads % |	80.54%
+Uniquely mapped reads % |	83.70%
+
+
+
+
+
+
+(5)更多参数
 除了上面常用的一些参数外，STAR的可选参数其实非常多.
 
 输出BAM文件时，STAR还可以对BAM进行一些预处理，"--bamRemoveDuplicatesType"用于去重("UniqueIdentical","UniqueIdenticalNotMulti")
@@ -1028,13 +1122,11 @@ done;
 
 
 
-### 如果uniq比对率过低，出现 too short 过高，则可以调整比对参数 
-### https://github.com/alexdobin/STAR/issues/169
-You can increase the number of mapped reads by relaxing the requirements on the mapped length, e.g.: 
---outFilterScoreMinOverLread 0.3 --outFilterMatchNminOverLread 0.3       
-或者下面这个更好:
---outFilterScoreMinOverLread 0 --outFilterMatchNminOverLread 0 --outFilterMatchNmin 0
-the number of missmaches I controlled by --outFilterMismatchNmax 2 and got my preferred results.
+
+
+
+
+
 
 
 
