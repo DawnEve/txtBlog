@@ -1385,7 +1385,7 @@ par(ask=F)
 
 
 ========================================
-如何在shell脚本中调用R脚本并传递参数 -- (打造pipeline必备技能)
+如何在shell脚本中调用R脚本并传递参数？各种运行R及R脚本的方法 -- (打造pipeline必备技能)
 ----------------------------------------
 
 1.shell中调用R脚本: Rscript path/to/myscript.R arg1 arg2 arg3
@@ -1404,19 +1404,103 @@ dev.off()
 
 (2)shell调用
 
-方法1: 直接在屏幕上显示结果（推荐使用该方法，直观）
+方法1: Rscript 直接在屏幕上显示结果（推荐使用该方法，直观）
 $ Rscript myRscript.R 
 ## 可以看到生成的pdf文件，和打印出来的文字，及其他信息。
 
 
-方法2: 结果输出到文件（结果就像截屏，相当于代码逐行执行。不推荐）
-$ R CMD BATCH myscript.R
+方法2: R CMD BATCH 结果输出到文件（结果就像截屏，相当于代码逐行执行。不推荐） 详细实例看(5)
+$ R CMD BATCH myscript.R  #标准输出重定向到 .Rout 文件。
 ## Check the output
 $ cat myscript.Rout
 
 
 如果碰到报错了，请看2
 如何传入参数，请看3
+
+
+
+
+(3) 如果写好头文件，添加可执行权限，则可以直接在shell中传参并执行
+$ cat test.R 
+#!/usr/bin/env Rscript
+
+args = commandArgs(trailingOnly = TRUE)
+n=as.numeric( args[1L] )
+print( paste("n=", n+1 ) );
+message(sprintf("Hello %s", args[2L]))
+
+
+关于第一行，建议用这种写法，方便在不同电脑上一致。而绝对路径则换个电脑就需要修改代码。
+但是绝对地址能指定是哪一个版本的的R，否则默认就是使用路径中的第一个R。
+The first line is the shebang line. It’s best practice to use /usr/bin/env Rscript instead of hard-coding the path to your R installation. Otherwise you risk your script breaking on other computers.
+
+增加执行权限，然后传入2个参数并执行： 
+$ chmod +x test.R
+$ ./test.R 10 fromShell
+[1] "n= 11"
+Hello fromShell
+
+小结: print() 显示有编号[1]，而 message 则更像原生shell 输出。
+
+
+
+
+(4) 在一行shell中同时执行多个R脚本
+
+$ Rscript -e 'date()' -e 'format(Sys.time(), "%a %b %d %X %Y")'
+[1] "Wed Jul 21 11:20:05 2021"
+[1] "Wed Jul 21 11:20:05 AM 2021"
+
+$ Rscript -e 'Sys.time()'
+[1] "2021-07-21 11:23:14 CST"
+
+$ Rscript -e "head(iris,2)"
+  Sepal.Length Sepal.Width Petal.Length Petal.Width Species
+1          5.1         3.5          1.4         0.2  setosa
+2          4.9         3.0          1.4         0.2  setosa
+
+
+
+还可以单行执行R -e 但是会有很多无用的R启动输出(不推荐)
+$ R -e 'install.packages(c("package1", "package2"))'
+R -e 'install.packages(c("package1", "package2"), lib="/usr/local/lib/R/site-library")'  #指定安装地址
+
+
+
+
+
+
+
+
+
+(5) R CMD BATCH foo.R  重定向标准输出到文件 .Rout，比如 foo.Rout
+$ cat foo.R
+set.seed(2021)
+print(rnorm(10))
+
+$ R CMD BATCH foo.R  #默认生成的是 .Rout 文件
+$ cat foo.Rout #查看，共27行
+R version 3.6.3 (2020-02-29) -- "Holding the Windsock"
+...
+> set.seed(2021)
+> print(rnorm(10))
+ [1] -0.12245998  0.55245663  0.34864950  0.35963224  0.89805369 -1.92256952
+ [7]  0.26174436  0.91556637  0.01377194  1.72996316
+> 
+> proc.time()
+   user  system elapsed 
+  0.492   0.487   0.153
+
+
+Note: you'll want to try out the --vanilla and other options to remove all the startup cruft.
+cruft [krʌft] 令人讨厌的东西，不整齐的部分
+
+$ R CMD BATCH --vanilla foo.R
+查看结果，没啥变化。
+
+
+
 
 
 
@@ -1530,7 +1614,7 @@ Args[1]= /usr/lib64/R/bin/exec/R
 
 
 
-4.在shell脚本中调用R脚本，并在shell中接收返回值，判断是否成功执行
+5.在shell脚本中调用R脚本，并在shell中接收返回值，判断是否成功执行 //todo
 
 
 
@@ -1543,7 +1627,7 @@ Args[1]= /usr/lib64/R/bin/exec/R
 refer:
 1.传参 https://www.cnblogs.com/awishfullyway/p/6632662.html
 2.R包路径 https://bbs.pinggu.org/forum.php?mod=viewthread&tid=4585044&page=1
-
+3.如何用R写命令行工具 https://blog.sellorm.com/2017/12/18/learn-to-write-command-line-utilities-in-r/ //todo
 
 
 
@@ -1635,6 +1719,117 @@ merge_peaks <- function(bedtools.path, path, peaks.file){
 
 ref:
 https://www.cnblogs.com/emanlee/p/6930884.html
+
+
+
+
+
+========================================
+|-- Rscript --vanilla 是什么模式？ //todo
+----------------------------------------
+1. 见过的实例
+
+(1) shell 直接调用的情况
+$ Rscript --vanilla drawPCA.R normed.csv output.pdf
+
+(2) 在py中调用R脚本，并传参
+import subprocess
+subprocess.call("/usr/local/bin/Rscript --vanilla script.r input.txt output.pdf", shell=True)
+
+貌似无法获取结果。除非写到文件中，在用py读进来？
+
+
+(3) R 中调用R脚本
+> system("Rscript --vanilla test.R")
+
+
+(4) 自己用的话
+#! /usr/bin/Rscript --vanilla
+
+考虑多个R版本，则使用 
+#! /usr/bin/env Rscript
+这会在当前环境(PATH)中正确的地方查找。
+这种情况下无法加 --vanilla 参数。
+
+#! /usr/bin/env Rscript --vanilla
+     the error message simply is
+/usr/bin/env: Rscript --vanilla: No such file or directory
+
+
+(5) 参数的控制
+https://www.r-bloggers.com/2015/09/passing-arguments-to-an-r-script-from-command-lines/
+
+$ cat sillyScript.R
+#!/usr/bin/env Rscript
+args = commandArgs(trailingOnly=TRUE)
+
+# test if there is at least one argument: if not, return an error
+if (length(args)==0) {
+  stop("At least one argument must be supplied (input file).n", call.=FALSE)
+} else if (length(args)==1) {
+  # default output file
+  args[2] = "out.txt"
+}
+
+## program...
+df = read.table(args[1], header=TRUE)
+num_vars = which(sapply(df, class)=="numeric")
+df_out = df[ ,num_vars]
+write.table(df_out, file=args[2], row.names=FALSE)
+
+
+运行脚本
+$ Rscript -e "write.table(iris, 'iris.txt')" #提供数据
+
+$ Rscript --vanilla sillyScript.R iris.txt out2.txt
+或
+$ Rscript --vanilla sillyScript.R iris.txt
+
+$ Rscript --vanilla sillyScript.R #报错
+Error: At least one argument must be supplied (input file).n
+Execution halted
+
+
+
+
+
+
+
+
+2. 这个 Rscript --vanilla 啥意思？
+
+(1) 线索1 https://stackoverflow.com/questions/12540138/how-can-i-make-my-r-session-vanilla
+
+How can I ensure a consistent R environment among different users on the same server?
+- 不受特定用户设置的影响，
+- doesn't read R history, profile, or environment files
+- doesn't reload data or objects from previous sessions
+
+help("vanilla")
+?new.env
+
+(2) ??vanilla
+Run an R child process, with no configuration
+运行一个没有配置项的R子进程。
+
+Description
+It tries to mimic a fresh R installation. In particular:
+ - No library path setting.
+ - No CRAN(-like) repository is set.
+ - The system and user profiles are not run.
+
+该模式下
+library(callr)
+r(.libPaths()) #不起作用
+r(function() .libPaths()) 可以。
+
+
+
+
+
+
+
+
 
 
 
@@ -2348,8 +2543,13 @@ $ docker run -d -p 5000:8787 satijalab/seurat:4.0.0 bash
 
 
 
-========================================
-----------------------------------------
+
+
+
+
+
+
+
 
 
 ========================================
