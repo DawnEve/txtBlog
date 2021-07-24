@@ -1,0 +1,1318 @@
+c102-adv: c语言的高级话题
+
+
+多文件编译
+	命令行参数
+
+
+指针
+	数组：指针与数组是重点、难点
+	结构体
+	函数参数接收指针
+	函数作为指针传给函数
+
+
+
+高层应用
+	linux 嵌入式开发
+	linux 小工具开发
+	linux 网络程序开发
+
+
+
+========================================
+多文件联合编译：同时编译、预编译
+----------------------------------------
+1. 场景: 对于大文件，可以分开编译，以便节省编译时间。
+
+(1) 一个简单的例子: 求2个数的最大值。
+$ cat 03_max.c
+int max(int a, int b){
+  if(a>b) return a;
+  else return b;
+}
+
+仅编译, 加-c 选项
+$ gcc -c 03_max.c -o max.o
+
+
+(2) 编译主文件
+$ cat 03_multiple_files.c 
+#include<stdio.h>
+// 多文件分别编译
+//#include "02_max.c"
+
+//声明函数，否则会报 警告
+int max(int a, int b);
+
+int main(){
+  printf("the max is:%d\n", max(10, 20));
+}
+
+$ gcc max.o 03_multiple_files.c -o main.out
+$ ./main.out 
+the max is:20
+
+
+(3) 可能还有更多的函数，比如 
+$ cat 03_min.c
+int min(int a, int b){
+  if(a<b) return a;
+  else return b;
+}
+
+仅编译, 加-c 选项
+$ gcc -c 03_min.c -o min.o
+
+
+ii)修改主函数，加入新功能
+$ cat 03_multiple_files-v2.c 
+#include<stdio.h>
+//声明函数
+int max(int a, int b);
+int min(int a, int b);
+
+int main(){
+  int a=10, b=200;
+  printf("the max is:%d\n", max(a, b));
+  printf("the min is:%d\n", min(a, b));
+}
+
+组合编译
+$ gcc max.o min.o 03_multiple_files-v2.c -o main_v2.out
+
+$ ./main_v2.out 
+the max is:200
+the min is:10
+
+
+
+
+(4) 最佳实践，就是把常用的函数编译成静态资源库 xx.o，作为工具库。
+把经常变化的部分单独写，编译时联合编译，以便节省时间。
+
+上面的例子看不出时间差异，因为函数太简单。
+实际项目的重头编译通常需要好几个小时，甚至好几天，预编译会大大缩短编译时间。
+
+
+
+(5) 头文件和函数定义分离：头文件公开，函数定义则编译后保密。
+
+可以模仿系统文件 stdio.h 做法，把前面的函数声明放到一个单独的 .h 文件中。
+新建2个新文件，和 .o 同名。
+$ cat max.h 
+int max(int a, int b);
+
+$ cat min.h 
+int min(int a, int b);
+
+
+$ cat 03_multiple_files-v3.c 
+#include<stdio.h>
+#include "max.h"
+#include "min.h"
+
+int main(){
+  int a=10, b=200;
+  printf("the max is:%d\n", max(a, b));
+  printf("the min is:%d\n", min(a, b));
+}
+
+$ gcc max.o min.o 03_multiple_files-v3.c -o main_v3.out
+
+$ ./main_v3.out 
+the max is:200
+the min is:10
+
+
+
+
+
+
+
+========================================
+|-- Makefile 的编写和使用：多文件自动化编译
+----------------------------------------
+1. 像上面只有2个函数文件，gcc 命令已经很长了。
+每次变动都需要重新编译，光输编译命令就很费劲了。有没有自动化的工具？
+这就是make 命令，虽然它内部也是使用 gcc 的。
+
+$ make -v
+GNU Make 4.1
+Built for x86_64-pc-linux-gnu
+Copyright (C) 1988-2014 Free Software Foundation, Inc.
+License GPLv3+: GNU GPL version 3 or later <http://gnu.org/licenses/gpl.html>
+This is free software: you are free to change and redistribute it.
+There is NO WARRANTY, to the extent permitted by law.
+
+
+
+
+2. 定义配置文件 Makefile。
+要告诉 make 要生成什么文件，依赖哪些源码文件，这些都定义在配置文件中。
+
+先删掉 .o 和 .out 文件： 
+$ rm *.o
+$ rm *.out
+
+要求：
+ - 文件名只能是 Makefile 或者 makefile。
+ - 第二行的命令前是一个tab键，linux下是6个空格的位置。如果不是有可能报错。
+
+
+
+$ cat Makefile
+# this is make file
+# 冒号前是最终的目标文件，冒号后是依赖文件
+# tab键，后面是要执行的命令
+main_v3.out: max.o min.o 03_multiple_files-v3.c
+	gcc max.o min.o 03_multiple_files-v3.c -o main_v3.out
+
+# 然后是依赖文件怎么生成的
+max.o: 03_max.c
+	gcc -c 03_max.c -o max.o
+min.o: 03_min.c
+	gcc -c 03_min.c -o min.o
+
+执行编译 
+$ make 
+gcc -c 03_max.c -o max.o
+gcc -c 03_min.c -o min.o
+gcc max.o min.o 03_multiple_files-v3.c -o main_v3.out
+
+
+测试效果 
+$ ./main_v3.out 
+the max is:200
+the min is:10
+
+
+(2) 如果依赖文件已经有了，则自动跳过其生成步骤
+$ cat Makefile
+# 修改第一行，生成 a.out 文件
+a.out: max.o min.o 03_multiple_files-v3.c
+	gcc max.o min.o 03_multiple_files-v3.c -o a.out
+
+max.o: 03_max.c
+	gcc -c 03_max.c -o max.o
+min.o: 03_min.c
+	gcc -c 03_min.c -o min.o
+
+
+再编译时，已经有的中间文件就直接用了。
+$ make 
+gcc max.o min.o 03_multiple_files-v3.c -o a.out
+
+
+再次编译，则提示已经是最新版了。
+$ make
+make: 'a.out' is up to date.
+
+
+如果修改源文件，把其中一个数字添加负号，则改动后的文件重新编译。
+$ vim 03_multiple_files-v3.c
+$ make 
+gcc max.o min.o 03_multiple_files-v3.c -o a.out
+
+$ ./a.out 
+the max is:10
+the min is:-200
+
+
+也就是使用 Makefile 的好处是，
+	- 以后不需要写那些麻烦的命令了。
+	- 编译时，会检查时间戳(我猜测的)，如果没有修改过，则不再编译。
+
+
+
+
+
+
+
+3. 设置其他目标
+
+(1) 在文件末尾加上: 
+
+clean:
+    rm -f *.out && rm -f *.o
+
+
+执行的时候写上，则自动执行第二行语句，清除中间文件。
+$ make clean
+
+
+(2) 按照这个规律，你还可以添加更多自定义子命令。
+
+
+
+
+
+
+
+
+========================================
+Linux 下的 C语言
+----------------------------------------
+
+
+
+========================================
+|-- main 函数中的 return 与 错误码
+----------------------------------------
+1. main 函数的完整形式
+
+$ cat 04_hello.c
+#include <stdio.h>
+int main(int argc, char* argv[]){
+	printf("Hello, world!\n");
+	return 0;
+}
+
+编译并执行
+
+$ gcc 04_hello.c -o 04.out && ./04.out
+Hello, world!
+
+
+linux 是怎么判断 && 前的命令执行结束了呢？就是看返回值0。
+如果返回值不是0，则是报错。
+
+
+最后一条执行的返回值是0，就是我们编译好的C程序的返回值。
+$ echo $?
+0
+
+
+
+2. 返回其他错误码
+
+(1) 比如返回 101 
+场景：合并另个字符串，如果输入的字符串小于2个，则报错 101 
+
+$ cat 05_return_101.c
+#include <stdio.h>
+#include<string.h>
+int main(int argc, char* argv[]){
+	if(argc<3){
+		return 101;
+	}
+	printf("input: |%s|, |%s|\n", argv[1],  *(argv+2));
+
+	char c1[10], c2[10];
+	strcpy(c1, argv[1]);
+	strcpy(c2, argv[2]);
+	printf("c1=|%s|, c2=|%s|\n", c1, c2);
+
+	strcat(c1, c2);
+	printf("combined: '%s'\n", c1);
+	return 0;
+}
+
+不提供参数时:
+$ ./a.out 
+$ echo $? # 前一个命令的返回值
+101
+
+$ ./a.out && echo "OK" # 前一个不返回0，则&&后不能连续执行
+$
+
+
+再试试提供2个参数时
+$ ./a.out this Dog
+input: |this|, |Dog|
+c1=|this|, c2=|Dog|
+combined: 'thisDog'
+$ echo $?
+0
+
+$ ./a.out this Cat && echo "OK" 
+input: |this|, |Cat|
+c1=|this|, c2=|Cat|
+combined: 'thisCat'
+OK
+
+
+ref:https://www.imooc.com/video/6207
+
+
+
+
+========================================
+|-- 命令行参数 int main(int argc, int* argv[]);
+----------------------------------------
+
+
+1. 使用场景
+执行程序时，可以从命令行传值给 C 程序。
+这些值被称为命令行参数，它们对程序很重要，特别是当您想从外部控制程序，而不是在代码内对这些值进行硬编码时，就显得尤为重要了。
+
+
+
+2. 实现方式
+
+命令行参数是使用 main() 函数参数来处理的，其中，
+- argc 是指传入参数的个数，
+- argv[] 是一个指针数组，指向传递给程序的每个参数。
+
+下面是一个简单的实例，检查命令行是否有提供参数，并根据参数执行相应的动作：
+
+
+#include <stdio.h>
+int main(int argc, char *argv[]){
+	for(int i=0; i<argc; i++){
+		printf("input paras[%d]=%s\n", i, *(argv+i) );
+		//printf("input paras[%d]=%s | %s\n", i, *(argv+i), argv[i]);
+	}
+	return 0;
+}
+
+输出结果:
+$ ./a.out some times
+input paras[0]=./a.out
+input paras[1]=some
+input paras[2]=times
+
+第0个参数是脚本本身，后面是其余的参数。
+为了获得用户传入的参数，可以从下标1开始。
+
+
+
+如果传入带空格的字符串呢？用引号隔开
+$ ./a.out some times "a book"
+input paras[0]=./a.out | ./a.out
+input paras[1]=some | some
+input paras[2]=times | times
+input paras[3]=a book | a book
+
+
+
+
+
+
+========================================
+|-- 标准输入输出流及错误流(stdin/stdout/stderr) 与 重定向
+----------------------------------------
+
+1. linux 基本概念
+
+stdin  0  默认是键盘
+stdout  1  默认是显示器终端
+stderr  2  
+
+
+
+2. C语言示例
+
+(1) 常见形式
+$ cat 06_cio.c
+#include<stdio.h>
+int main(){
+	int a;
+	printf("input a number:");
+	scanf("%d", &a);
+	printf("hello world! you input: %d\n", a);
+	return 0;
+}
+
+运行后，系统会自动提供一个指针，指向标准输出流。
+
+
+(2) 手动指定输出设备
+$ cat 07_cio_stdout.c
+#include<stdio.h>
+int main(){
+	//fprintf(fp, "xx %c $d", char1, 20);
+	fprintf(stdout, "please input a %s:\n", "number");
+	// 等同于 
+	printf("please input a %s:\n", "number");
+	
+	int a;
+	//scanf("%d", &a);
+	// 等价于
+	//fscanf(fp,"%s%s%s%s%s%s",&c1,&c2,&c3,&c4,&c5,&c6);
+	fscanf(stdin, "%d", &a);
+	printf("your input is %d\n", a);
+	
+	//错误流，记着返回一个非0整数。
+	if(a<0){
+		fprintf(stderr, "the value must be positive! But you input %d\n", a);
+		return 1;
+	}
+		
+	return 0;
+}
+
+
+测试
+$ ./a.out
+please input a number:
+please input a number:
+-12
+your input is -12
+the value must be positive! But you input -12
+
+$ echo $?
+1
+
+
+(3) 尝试重定向 1(默认) 也就是标准输出流 到文件。
+$ ./a.out >1.log #是一样的效果，重定向左侧默认是1.
+$ ./a.out 1>1.log
+20
+
+$ cat 1.log 
+please input a number:
+please input a number:
+your input is 20
+发现两个输出方式printf(), fprintf()，都重定向到了文件。
+
+
+ii) 也可以使用追加模式，这样每次新增的内容都在最后，老内容不被覆盖。
+$ ./a.out >>1.log
+1
+$ cat 1.log 
+please input a number:
+please input a number:
+your input is 20
+please input a number:
+please input a number:
+your input is 1
+
+
+
+(4) 尝试重定向 2 也就是标注错误流 到文件 
+$ ./a.out 1>1.log 2>err.log
+-10
+
+$ cat err.log
+the value must be positive! But you input -10
+
+
+(5) 输入 重定向：使用文件输入数字，而不是键盘
+$ cat num.log
+11
+$ ./a.out <num.log
+please input a number:
+please input a number:
+your input is 11
+
+
+(6) 3个设备全部重定向到文件
+$ ./a.out 1>1.log 2>err.log <num.log
+没有报错。
+
+
+尝试输入一个不存在的文件
+$ ./a.out 1>1.log 2>err.log <num2.log
+$ cat err.log 
+-bash: num2.log: No such file or directory
+
+
+
+
+
+========================================
+|-- C语言与 管道 |
+----------------------------------------
+
+1. linux 示例
+
+$ ls /etc/ | grep ab
+anacrontab
+crontab
+crypttab
+fstab
+mtab
+
+前一个命令的输出，作为下一个命令的输入，这个起连接作用的就是管道。
+
+
+
+
+2. 给出任意多个整数，求平均值。
+(1) 输入总数，n，求平均数
+$ cat 08_mean.c
+#include<stdio.h>
+int main(){
+	int sum, n;
+	//printf("please input sum,n:");
+	scanf("%d,%d", &sum, &n);
+	if(n<=0){
+		fprintf(stderr, "Error: N>0\n");
+		return 1;
+	}
+	float mean=sum/n;
+	//printf("sum=%d, n=%d, mean=%f\n", sum, n, mean);
+	printf("%f", mean);
+	return 0;
+}
+
+$ gcc 08_mean.c -o mean.out
+$ ./mean.out 
+80,5 回车
+16.000000
+
+
+
+
+(2) 接收用户的输入，求总数和n
+$ cat 08_count.c 
+#include<stdio.h>
+int main(){
+	int flag=1;
+	int i;
+	int count=0;
+	int sum=0;
+	while(flag){
+		scanf("%d", &i);
+		if(0==i) break; //输入0则停止
+		count++;
+		sum+=i;
+	}
+	printf("%d,%d", sum, count);
+	return 0;
+}
+
+$ gcc 08_count.c -o count.out
+$ ./count.out 
+1
+2
+3
+0
+6,3
+
+
+(3) 两个连起来使用
+
+$ ./count.out | ./mean.out
+$ ./count.out | ./mean.out
+10
+20
+0
+15.000000
+
+
+
+
+========================================
+GNU symbolic debugger,简称「GDB 调试器」
+----------------------------------------
+1. GDB工具简介
+
+(1)gdb是GNU开源组织发布的一个强大的Linux下的程序调试工具。
+
+一般来说，GDB主要帮助你完成下面四个方面的功能：
+- 启动你的程序，可以按照你的自定义的要求随心所欲的运行程序。
+- 可让被调试的程序在你所指定的调置的断点处停住。（断点可以是条件表达式）
+- 当程序被停住时，可以检查此时你的程序中所发生的事。
+- 你可以改变你的程序，将一个BUG产生的影响修正从而测试其他BUG。
+
+(2) GDB调试一定要是可执行文件而不是.c文件
+要用gcc进行编译，具体的命令如下：
+$ gcc -g 源文件.c -o 输出的目标文件
+
+参数解释：
+-g,-o参数缺一不可
+加上-g 选项，会保留代码的文字信息，便于调试。
+
+加上-g选项以后，gcc在编译是会做以下额外的操作：
+- 创建符号表，符号表包含了程序中使用的变量名称的列表。
+- 关闭所有的优化机制，以便程序执行过程中严格按照原来的C代码进行。
+
+(3) Ubuntu 默认已经安装了
+$ gdb --version
+GNU gdb (Ubuntu 8.2-0ubuntu1~18.04) 8.2
+Copyright (C) 2018 Free Software Foundation, Inc.
+License GPLv3+: GNU GPL version 3 or later <http://gnu.org/licenses/gpl.html>
+This is free software: you are free to change and redistribute it.
+There is NO WARRANTY, to the extent permitted by law.
+
+
+
+
+
+2. 尝试使用
+(1) 交换值：失败版本
+$ cat 01_swap.c 
+#include<stdio.h>
+void swap(int x, int y){
+  int tmp=x;
+  x=y;
+  y=x;
+  printf("in swap(): a=%d, b=%d\n", x,y);
+}
+
+int main(){
+  int a=10, b=20;
+  printf("a=%d, b=%d\n", a,b);
+  swap(a, b);
+  printf("a=%d, b=%d\n", a,b);
+  return 0;
+}
+
+
+2) 编译与执行
+$ gcc -g 01_swap.c -o 01_swap.out
+
+$ ./01_swap.out 
+a=10, b=20
+in swap(): a=20, b=10
+a=10, b=20
+
+
+3) gdb运行
+$ gdb 01_swap.out
+
+l 或 list 列出源代码，再按回车，继续显示
+(gdb) l
+11        printf("a=%d, b=%d\n", a,b);
+12        swap(a, b);
+13        printf("a=%d, b=%d\n", a,b);
+14        return 0;
+15      }
+
+单步调试: 
+(gdb) start
+
+查看变量值，p, print:
+(gdb) p b
+$2 = 0
+
+执行下一行
+(gdb) n
+输出下一行的行号和内容。
+
+查看变量值，p, print:
+(gdb) p b
+$4 = 20
+
+(gdb) n
+a=10, b=20   ## 这有实参的值
+12        swap(a, b);
+到函数这一行了，查看函数内部，使用s 
+(gdb) s
+swap (x=10, y=20) at 01_swap.c:3  #这是形参的值
+3         int tmp=x;
+
+查看堆栈，有2个编号，目前是最上面的有效
+(gdb) bt
+#0  swap (x=20, y=20) at 01_swap.c:5
+#1  0x00005555555546c4 in main () at 01_swap.c:12
+
+切换到主函数，主函数还在第12行没动。
+(gdb) f 1
+#1  0x00005555555546c4 in main () at 01_swap.c:12
+12        swap(a, b);
+
+在这里检查变量
+(gdb) p a
+$7 = 10
+(gdb) p b
+$8 = 20
+
+这时，子函数中的变量是不能访问的
+(gdb) p x
+No symbol "x" in current context.
+
+切换回子函数，子函数执行到5行了(第5行还没有执行)
+(gdb) bt
+#0  swap (x=20, y=20) at 01_swap.c:5
+#1  0x00005555555546c4 in main () at 01_swap.c:12
+(gdb) f 0
+#0  swap (x=20, y=20) at 01_swap.c:5
+5         y=tmp;
+(gdb) p x
+$9 = 20
+(gdb) p y
+$10 = 20
+
+还可以查看变量的地址
+(gdb) p &x
+$11 = (int *) 0x7fffffffdd3c
+
+
+退出 
+(gdb) q
+
+
+
+
+
+(2) 交换值，使用指针：成功的版本
+$ cat 01_swap2.c 
+#include<stdio.h>
+void swap(int* x, int* y){
+  int tmp=*x;
+  *x=*y;
+  *y=tmp;
+  printf("in swap(): a=%d, b=%d\n", *x,*y);
+}
+
+int main(){
+  int a=10, b=20;
+  printf("a=%d, b=%d\n", a,b);
+  swap(&a, &b);
+  printf("a=%d, b=%d\n", a,b);
+  return 0;
+}
+
+编译执行，成功交换了值
+$ gcc -g 01_swap2.c -o 01_swap2.out
+$ ./01_swap2.out 
+a=10, b=20
+in swap(): a=20, b=10
+a=20, b=10
+
+
+
+
+
+2) 使用 gdb 调试
+$ gdb 01_swap2.out
+(gdb) start
+
+多次输入 next ，直到执行到函数
+(gdb) n
+a=10, b=20
+12        swap(&a, &b);
+
+
+进入子函数内部s，发现传递的确实是指针。指针相差4个字节，就是int类型的sizeof。
+(gdb) s
+swap (x=0x7fffffffdd60, y=0x7fffffffdd64) at 01_swap2.c:3
+3         int tmp=*x;
+
+(gdb) p x
+$3 = (int *) 0x7fffffffdd60
+(gdb) p *x
+$5 = 10
+
+回到主函数
+(gdb) bt
+#0  swap (x=0x7fffffffdd60, y=0x7fffffffdd64) at 01_swap2.c:3
+#1  0x000055555555474b in main () at 01_swap2.c:12
+(gdb) f 1
+#1  0x000055555555474b in main () at 01_swap2.c:12
+12        swap(&a, &b);
+
+查看变量 a的地址 == 子函数中的指针x。也就是他们指向的是同一个内存块。
+(gdb) p a
+$6 = 10
+(gdb) p &a
+$7 = (int *) 0x7fffffffdd60
+
+
+回到子函数
+(gdb) f 0
+#0  swap (x=0x7fffffffdd60, y=0x7fffffffdd64) at 01_swap2.c:3
+3         int tmp=*x;
+执行到交换值后
+(gdb) n
+5         *y=tmp;
+(gdb) n
+6         printf("in swap(): a=%d, b=%d\n", *x,*y);
+
+(gdb) p *x
+$8 = 20
+(gdb) p *y
+$9 = 10
+
+回到主函数，检查变量，发现也交换过了。
+(gdb) f 1
+#1  0x000055555555474b in main () at 01_swap2.c:12
+12        swap(&a, &b);
+(gdb) p a
+$10 = 20
+(gdb) p b
+$11 = 10
+
+
+
+
+
+
+
+
+3. GDB常用的调试命令
+一大波命令来袭，hold,或者jump
+（gdb）help：查看命令帮助，具体命令查询在gdb中输入help + 命令,简写h
+（gdb）run：重新开始运行文件（run-text：加载文本文件，run-bin：加载二进制文件）,简写r
+（gdb）start：单步执行，运行程序，停在第一执行语句
+（gdb）list：查看原代码（list-n,从第n行开始查看代码。list+ 函数名：查看具体函数）,简写l
+（gdb）set：设置变量的值
+（gdb）next：单步调试（逐过程，函数直接执行）,简写n
+（gdb）step：单步调试（逐语句：跳入自定义函数内部执行）,简写s
+（gdb）backtrace：查看函数的调用的栈帧和层级关系,简写bt
+（gdb）frame：切换函数的栈帧,简写f
+（gdb）info：查看函数内部局部变量的数值,简写i
+（gdb）finish：结束当前函数，返回到函数调用点
+（gdb）continue：继续运行,简写c
+（gdb）print：打印值及地址,简写p
+（gdb）quit：退出gdb,简写q
+（gdb）break+num：在第num行设置断点,简写b
+（gdb）info breakpoints：查看当前设置的所有断点
+（gdb）delete breakpoints num：删除第num个断点,简写d
+（gdb）display：追踪查看具体变量值
+（gdb）undisplay：取消追踪观察变量
+（gdb）watch：被设置观察点的变量发生修改时，打印显示
+（gdb）i watch：显示观察点
+（gdb）enable breakpoints：启用断点
+（gdb）disable breakpoints：禁用断点
+（gdb）x：查看内存x/20xw 显示20个单元，16进制，4字节每单元
+（gdb）run argv[1] argv[2]：调试时命令行传参
+
+以上就是GDB的命令其中的部分，下面列详细写一些基础常用的命令：
+ **list **
+list 可写为l,可以列出所调试程序的代码
+
+1.list+linenumber
+可以列出linenumber附近的代码
+2.list function
+可以列出函数上下文的源程序
+
+
+run & quit
+在GDB中如何将程序运行起来，此时只要输入run命令,就可以将命令跑起来
+而quit则是退出GDB调试
+break
+
+
+
+
+(1)GDB查看，执行汇编语言
+查看汇编 disassemble
+
+下面就是查看的汇编代码
+
+
+
+
+
+
+
+ref:
+https://blog.csdn.net/awm_kar98/article/details/82840811
+
+
+
+
+========================================
+|-- 内存管理：堆内存、栈内存的差异，静态变量、局部变量
+----------------------------------------
+1. 计算机中数据表示方法
+计算机使用二进制，电路只有通电、不通电2个状态。
+	而二进制写出来又太长，所以经常使用16进制打印，比如内存地址。
+	2进制和16进制的转换很方便，就是4位2进制->压缩到1位16进制。
+人类使用的是十进制，因为人有十个手指头。
+
+
+
+
+2. 内存管理概述
+
+(1) 计算机内存
+8 bit = 1B (1 byte 1个字节)  一个字节存放8个二进制位的数据。
+1024 byte=1K =2**10
+1024 K=1M    =2**20
+1024 M=1G    =2**30
+1024 G=1T    =2**40
+1024 T=1PB   =2**50
+1024 P=1EB   =2**60
+
+32位操作系统只能识别4G内存，为什么？
+因为地址总线是32位，也就是寻址空间是32位。
+	32位指的是：给内存编号只能编到32个二进制位。
+	32根地址总线就有2**32个状态：(2**10)*(2**10)*(2**10)*(2**2)=4*k*k*k=4*k*M=4G;
+		2**32/1e9=4.294967296
+
+那么 64 位操作系统最多支持多少内存呢？
+	头疼 2**64=(2**10)*(2**10)*(2**10)*(2**10)*(2**10)*(2**10)*(2**4)=16KKKKKK=16KKKG=16GG=16x10**18
+		2**64/1e18=18.446744073709553
+		也即是说 16KMG=16MT 的内存条，远超过了我们市面上能买到的内存总数。
+	4位二进制对应一个16进制位，所以64位的内存地址，写成16进制是16位，从0-9a-f。
+	0x开头，从最低的 16个0，到最高的16个f。
+	
+
+用户使用的是后32位，也就是8个16进制位。
+其他是操作系统使用的。
+内存按照大部分分为
+- 系统内核
+- 栈：
+- 空白？自由可分配内存。
+- 堆 
+- 数据段：定义的 const 常量，全局变量。内存编号大于 代码段。
+- 代码段：源代码。编号处于低位。
+
+
+
+
+
+(2) 我测试的，64位ubuntu，指针占了8位，为什么不是16位?
+#include<stdio.h>
+int main(){
+  int *p, i=100;
+  p=&i;
+  printf("i=%d, p=%p, len(p)=%ld\n", *p, p, sizeof(p));
+}
+
+$ ./a.out 
+i=100, p=0x7ffd91c7b4ac, len(p)=8
+
+
+
+指针即为地址，指针几个字节跟语言无关，而是跟系统的寻址能力有关，
+譬如以前是16位地址，指针即为2个字节，
+现在一般是32位系统，所以是4个字节，
+以后64位，则就为8个字节。
+
+
+
+
+
+
+
+
+
+
+3. 看一下C语言的各个组分都保存在内存内的什么位置。
+
+(1) 实例代码
+$ cat 02_mem.c 
+//求正方形、长方形面积
+//为了检查各个变量在内存中的位置，加入很多无关变量。
+#include<stdio.h>
+
+int global =0;
+int rect(int a, int b){
+	static int count=0;
+	count++;
+	global++;
+	int s=a*b;
+	return s;
+}
+
+int quadrate(int a){
+	static int count =0;
+	count++;
+	global++;
+	int s=rect(a, a);
+	return s;
+}
+
+int main(){
+	int a=3, b=4;
+	int *pa=&a, *pb=&b;
+	int *pglobal=&global;
+	int (*box)(int a)=&quadrate;
+	int s=box(a);
+	printf("%d\n", s);
+}
+
+$ gcc -g 02_mem.c
+$ ./a.out
+9
+
+
+
+(2) gdb 调试 
+
+$ gdb a.out
+(gdb) start
+Temporary breakpoint 1 at 0x729: file 02_mem.c, line 22.
+Starting program: /data/wangjl/test/C/a.out 
+
+Temporary breakpoint 1, main () at 02_mem.c:22
+22      int main(){
+
+
+当按几下next时，可以看到代码，这就是内存中的代码段，
+不过，C语言语法不允许直接操作代码段。
+(gdb) n
+25              int *pglobal=&global;
+
+(gdb) n
+28              printf("%d\n", s);
+
+
+除了代码编译后存在代码段以外，
+- 当前调用了哪个函数呢？
+- 当前调用的函数运行到多少行？
+- 并且这个函数中有哪些变量，这些变量的值是什么？
+这些信息都记录在栈中。栈是内存中的编号比较高的位置。
+
+(gdb) p a
+$1 = 3
+(gdb) p &a
+$3 = (int *) 0x7fffffffdd4c
+(gdb) p pa
+$2 = (int *) 0x7fffffffdd4c
+## 变量名只是一个代号。变量的本质就是内存。
+
+
+(gdb) p &pa ## 指向指针的指针
+$4 = (int **) 0x7fffffffdd58
+(gdb) p *(&pa)  ## 指向变量的指针
+$5 = (int *) 0x7fffffffdd4c
+(gdb) p **(&pa)
+$6 = 3
+(gdb) p *pa
+$7 = 3
+
+C语言中所有的变量都是有类型的。
+int 类型保存整数。
+指针保存的就是内存地址。
+指针的本质就是地址。
+
+
+
+
+
+(3) 代码段：保存函数，编号最小。
+我们比较一下各种变量的内存编号的大小
+
+(gdb) p &rect
+$8 = (int (*)(int, int)) 0x5555555546aa <rect>
+(gdb) p &quadrate
+$9 = (int (*)(int)) 0x5555555546e1 <quadrate>
+(gdb) p &main
+$10 = (int (*)()) 0x555555554721 <main>
+
+说明函数加载顺序：先加载的 main，然后是 rect，最后是 quadrate。
+而连续加载的函数内存编号相减，就是上一个占用的内存空间。
+
+
+
+
+
+(4) 数据段：全局变量、常量 
+
+(gdb) p &global
+$12 = (int *) 0x555555755014 <global>
+
+这个比代码段要大，说明 数据段 在 代码段 之上。
+
+
+按照变量声明的顺序查看其地址
+(gdb) list
+23              int a=3, b=4;
+24              int *pa=&a, *pb=&b;
+25              int *pglobal=&global;
+26              int (*box)(int a)=&quadrate;
+27              int s=box(a);
+28              printf("%d\n", s);
+29      }
+
+(gdb) p &a
+$13 = (int *) 0x7fffffffdd4c
+(gdb) p &b
+$14 = (int *) 0x7fffffffdd50
+(gdb) p &pa
+$15 = (int **) 0x7fffffffdd58
+(gdb) p &pb
+$16 = (int **) 0x7fffffffdd60
+(gdb) p &pglobal
+$21 = (int **) 0x7fffffffdd68
+(gdb) p &box
+$22 = (int (**)(int)) 0x7fffffffdd70
+
+(gdb) p box  ##这是指向函数的指针
+$17 = (int (*)(int)) 0x5555555546e1 <quadrate>
+
+(gdb) p &s
+$19 = (int *) 0x7fffffffdd54
+
+(gdb) q
+退出。
+
+可见a占4位，首地址加4就是b的地址。
+中间间隔4，why? 往后找 变量s在这4位上。可能是C语言编译时优化了，把相同类型的变量放一起声明。
+然后声明的指针变量 pa，pb，pglobal，box，保存的地址，其本身的内存地址各占8字节。
+
+
+
+
+
+(5) 栈内存
+在代码段、数据段、堆中声明的变量，先声明的地址小，后来的大。
+而栈则相反，先声明的大，越后来越小。
+
+重新执行到函数调用部分
+$ gdb a.out
+(gdb) start
+
+(gdb) n
+27              int s=box(a);
+
+
+i)进入函数
+(gdb) s
+quadrate (a=3) at 02_mem.c:16
+16              count++;
+
+(gdb) bt # 查看栈，预先不知道要放到栈中多少个变量，最先分配的栈地址最大，往后越来越小。
+#0  quadrate (a=3) at 02_mem.c:16
+#1  0x0000555555554777 in main () at 02_mem.c:27
+
+(gdb) n
+18              int s=rect(a, a);
+
+函数内又调用了一个函数，目前都在#0  quadrate (a=3) at 02_mem.c:16 内部
+(gdb) p &s
+$1 = (int *) 0x7fffffffdd2c
+
+
+
+ii) 再次进入函数
+(gdb) s
+rect (a=3, b=3) at 02_mem.c:8
+8               count++;
+
+查看栈，这时最早的是最底部的 main(内存编号最大)，然后是 quadrate 内存编号略小。
+栈的最上面始终是当前正在执行的函数。
+栈的特点：先进后出。只有顶部一个出口/入口。
+(gdb) bt
+#0  rect (a=3, b=3) at 02_mem.c:8
+#1  0x0000555555554719 in quadrate (a=3) at 02_mem.c:18
+#2  0x0000555555554777 in main () at 02_mem.c:27
+
+
+(gdb) n
+10              int s=a*b;
+(gdb) n
+11              return s;
+
+(gdb) p &s
+$2 = (int *) 0x7fffffffdd04
+## 对比上一层 i) 中的 &s，发现这个后入栈的 s 的内存编号更小。
+
+(gdb) p &count
+$3 = (int *) 0x555555755018 <count>
+## 这个静态变量，内存地址和前面几个变量都不一样，这是在堆中。
+
+
+
+
+
+iii) 切换到#1栈，就是函数quadrate内部
+(gdb) f 1
+#1  0x0000555555554719 in quadrate (a=3) at 02_mem.c:18
+18              int s=rect(a, a);
+
+(gdb) p &count
+$4 = (int *) 0x55555575501c <count>
+
+在正方形和长方形面积函数中都有一个叫 count 的静态变量，他们是2个独立的变量。
+
+
+(gdb) p &global
+$5 = (int *) 0x555555755014 <global>
+
+
+
+
+
+iv) 切换回#0栈，就是rect内部
+
+(gdb) f 0
+#0  rect (a=3, b=3) at 02_mem.c:11
+11              return s;
+(gdb) p &global
+$6 = (int *) 0x555555755014 <global>
+
+这个全局变量，地址是一样的。
+
+静态变量、全局变量、常量，都在数据段中，内存地址编号比较小。
+所以函数可以调用很多次，但是函数内的静态变量都是指向数据段的，是可以保留值的。
+
+
+
+
+
+
+
+========================================
+|-- 函数指针，指针指向的数据访问 //todo
+----------------------------------------
+v) 函数指针 
+https://www.imooc.com/video/7864
+
+
+
+
+
+
+
+
+
+
+
+========================================
+指针与内存: 指针、数组、字符串
+----------------------------------------
+CPU做了什么，内存发生了什么变化？
+
+
+
+
+
+
+
+
+
+
+
+
+========================================
+----------------------------------------
+
+========================================
+----------------------------------------
+
+========================================
+----------------------------------------
+
+
+
+
+========================================
+----------------------------------------
+
+========================================
+----------------------------------------
+
+
+
+
+
+
+========================================
+----------------------------------------
+
+========================================
+----------------------------------------
+
+========================================
+----------------------------------------
+
+
+
+
+========================================
+----------------------------------------
+
+========================================
+----------------------------------------
+
+
+
+
+
+
+========================================
+----------------------------------------
+
+========================================
+----------------------------------------
+
+========================================
+----------------------------------------

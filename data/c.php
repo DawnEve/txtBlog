@@ -15,7 +15,8 @@ return array (
     0 => 2,
     1 => '语法',
     2 => array (
-      array('C语言入门教程','c101','txt',),
+      array('C语言入门','c101-base','txt',),
+      array('C语言高级话题','c102-adv','txt',),
       array('数据结构与算法','c102-data_structures_algorithm','txt',),
       array('leetcode.com','leetcode','txt',),
     ),
