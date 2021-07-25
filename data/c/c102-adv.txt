@@ -609,15 +609,20 @@ GNU symbolic debugger,简称「GDB 调试器」
 
 (2) GDB调试一定要是可执行文件而不是.c文件
 要用gcc进行编译，具体的命令如下：
-$ gcc -g 源文件.c -o 输出的目标文件
+$ gcc -g -O0 源文件.c -o 输出的目标文件
 
 参数解释：
--g,-o参数缺一不可
+-g,-O参数缺一不可
 加上-g 选项，会保留代码的文字信息，便于调试。
+-O0 就是不做编译优化。
+	比如没使用的变量，编译器优化后直接删掉了，不在内存中初始化。
+
+
 
 加上-g选项以后，gcc在编译是会做以下额外的操作：
 - 创建符号表，符号表包含了程序中使用的变量名称的列表。
 - 关闭所有的优化机制，以便程序执行过程中严格按照原来的C代码进行。
+
 
 (3) Ubuntu 默认已经安装了
 $ gdb --version
@@ -631,7 +636,8 @@ There is NO WARRANTY, to the extent permitted by law.
 
 
 
-2. 尝试使用
+2. 尝试使用 gdb 调试程序
+
 (1) 交换值：失败版本
 $ cat 01_swap.c 
 #include<stdio.h>
@@ -861,14 +867,75 @@ $11 = 10
 （gdb）x：查看内存x/20xw 显示20个单元，16进制，4字节每单元
 （gdb）run argv[1] argv[2]：调试时命令行传参
 
+
+(1) 内存各部分的起始位置在哪里？
+
+有一组专用的gdb变量可以用来检查和修改计算机的通用寄存器，gdb提供了目前每一台计算机中实际使用的4个寄存器的标准名字：
+$pc ： 程序计数器
+$fp ： 帧指针（当前堆栈帧）
+$sp ： 栈指针
+$ps ： 处理器状态
+
+测试: 
+(gdb) p $pc
+$18 = (void (*)()) 0x5555555546dc <rect+50>
+(gdb) p $fp
+$19 = (void *) 0x7fffffffdd08
+(gdb) p $sp
+$20 = (void *) 0x7fffffffdd08
+(gdb) p $ps
+$21 = [ PF IF ]
+
+
+
+## 查看栈内存起始地址
+(gdb) p $sp  
+$7 = (void *) 0x7fffffffdd08
+
+## 打印栈开始的前40个字(160个字节)
+(gdb) x/40x $sp
+0x7fffffffdd08: 0xffffdd30      0x00007fff      0x55554719      0x00005555
+0x7fffffffdd18: 0x756e6547      0x00000003      0x00000009      0x00000000
+0x7fffffffdd28: 0xf7dd7660      0x00007fff      0xffffdd80      0x00007fff
+0x7fffffffdd38: 0x55554777      0x00005555      0x00000001      0x00000000
+0x7fffffffdd48: 0x555547fd      0x00000003      0x00000004      0x00007fff
+0x7fffffffdd58: 0xffffdd4c      0x00007fff      0xffffdd50      0x00007fff
+0x7fffffffdd68: 0x55755014      0x00005555      0x555546e1      0x00005555
+0x7fffffffdd78: 0x88589500      0xa161f7f7      0x555547b0      0x00005555
+0x7fffffffdd88: 0xf7a05b97      0x00007fff      0x00000001      0x00000000
+0x7fffffffdd98: 0xffffde68      0x00007fff      0x00008000      0x00000001
+
+
+
+(2)函数的调用
+
+call name 调用和执行一个函数
+
+(gdb) call rect(2,3)
+$12 = 6
+
+
+(3) 按地址打印值
+(gdb) p *0x7fffffffdd50
+$19 = 3
+
+
+
+
+
+
+
+
+
 以上就是GDB的命令其中的部分，下面列详细写一些基础常用的命令：
  **list **
 list 可写为l,可以列出所调试程序的代码
 
-1.list+linenumber
-可以列出linenumber附近的代码
-2.list function
-可以列出函数上下文的源程序
+list+linenumber 可以列出linenumber附近的代码
+$ list 20
+
+list function 可以列出函数上下文的源程序
+
 
 
 run & quit
@@ -887,11 +954,11 @@ break
 
 
 
-
-
-
 ref:
 https://blog.csdn.net/awm_kar98/article/details/82840811
+https://blog.csdn.net/lxb_champagne/article/details/5282316
+
+
 
 
 
@@ -991,7 +1058,7 @@ int rect(int a, int b){
 	return s;
 }
 
-int quadrate(int a){
+int square(int a){
 	static int count =0;
 	count++;
 	global++;
@@ -1003,8 +1070,8 @@ int main(){
 	int a=3, b=4;
 	int *pa=&a, *pb=&b;
 	int *pglobal=&global;
-	int (*box)(int a)=&quadrate;
-	int s=box(a);
+	int (*psquare)(int a)=&square;
+	int s=(*psquare)(a);
 	printf("%d\n", s);
 }
 
@@ -1072,12 +1139,12 @@ int 类型保存整数。
 
 (gdb) p &rect
 $8 = (int (*)(int, int)) 0x5555555546aa <rect>
-(gdb) p &quadrate
-$9 = (int (*)(int)) 0x5555555546e1 <quadrate>
+(gdb) p &square
+$9 = (int (*)(int)) 0x5555555546e1 <square>
 (gdb) p &main
 $10 = (int (*)()) 0x555555554721 <main>
 
-说明函数加载顺序：先加载的 main，然后是 rect，最后是 quadrate。
+说明函数加载顺序：先加载的 main，然后是 rect，最后是 square。
 而连续加载的函数内存编号相减，就是上一个占用的内存空间。
 
 
@@ -1097,8 +1164,8 @@ $12 = (int *) 0x555555755014 <global>
 23              int a=3, b=4;
 24              int *pa=&a, *pb=&b;
 25              int *pglobal=&global;
-26              int (*box)(int a)=&quadrate;
-27              int s=box(a);
+26              int (*psquare)(int a)=&square;
+27              int s=(*psquare)(a);
 28              printf("%d\n", s);
 29      }
 
@@ -1112,11 +1179,11 @@ $15 = (int **) 0x7fffffffdd58
 $16 = (int **) 0x7fffffffdd60
 (gdb) p &pglobal
 $21 = (int **) 0x7fffffffdd68
-(gdb) p &box
+(gdb) p &psquare
 $22 = (int (**)(int)) 0x7fffffffdd70
 
-(gdb) p box  ##这是指向函数的指针
-$17 = (int (*)(int)) 0x5555555546e1 <quadrate>
+(gdb) p psquare  ##这是指向函数的指针
+$17 = (int (*)(int)) 0x5555555546e1 <square>
 
 (gdb) p &s
 $19 = (int *) 0x7fffffffdd54
@@ -1126,13 +1193,13 @@ $19 = (int *) 0x7fffffffdd54
 
 可见a占4位，首地址加4就是b的地址。
 中间间隔4，why? 往后找 变量s在这4位上。可能是C语言编译时优化了，把相同类型的变量放一起声明。
-然后声明的指针变量 pa，pb，pglobal，box，保存的地址，其本身的内存地址各占8字节。
+然后声明的指针变量 pa，pb，pglobal，psquare，保存的地址，其本身的内存地址各占8字节。
 
 
 
 
 
-(5) 栈内存
+(5) 栈(stack)内存
 在代码段、数据段、堆中声明的变量，先声明的地址小，后来的大。
 而栈则相反，先声明的大，越后来越小。
 
@@ -1141,22 +1208,22 @@ $ gdb a.out
 (gdb) start
 
 (gdb) n
-27              int s=box(a);
+27              int s=(*psquare)(a);
 
 
 i)进入函数
 (gdb) s
-quadrate (a=3) at 02_mem.c:16
+square (a=3) at 02_mem.c:16
 16              count++;
 
 (gdb) bt # 查看栈，预先不知道要放到栈中多少个变量，最先分配的栈地址最大，往后越来越小。
-#0  quadrate (a=3) at 02_mem.c:16
+#0  square (a=3) at 02_mem.c:16
 #1  0x0000555555554777 in main () at 02_mem.c:27
 
 (gdb) n
 18              int s=rect(a, a);
 
-函数内又调用了一个函数，目前都在#0  quadrate (a=3) at 02_mem.c:16 内部
+函数内又调用了一个函数，目前都在#0  square (a=3) at 02_mem.c:16 内部
 (gdb) p &s
 $1 = (int *) 0x7fffffffdd2c
 
@@ -1167,12 +1234,12 @@ ii) 再次进入函数
 rect (a=3, b=3) at 02_mem.c:8
 8               count++;
 
-查看栈，这时最早的是最底部的 main(内存编号最大)，然后是 quadrate 内存编号略小。
+查看栈，这时最早的是最底部的 main(内存编号最大)，然后是 square 内存编号略小。
 栈的最上面始终是当前正在执行的函数。
 栈的特点：先进后出。只有顶部一个出口/入口。
 (gdb) bt
 #0  rect (a=3, b=3) at 02_mem.c:8
-#1  0x0000555555554719 in quadrate (a=3) at 02_mem.c:18
+#1  0x0000555555554719 in square (a=3) at 02_mem.c:18
 #2  0x0000555555554777 in main () at 02_mem.c:27
 
 
@@ -1193,15 +1260,15 @@ $3 = (int *) 0x555555755018 <count>
 
 
 
-iii) 切换到#1栈，就是函数quadrate内部
+iii) 切换到#1栈，就是函数square内部
 (gdb) f 1
-#1  0x0000555555554719 in quadrate (a=3) at 02_mem.c:18
+#1  0x0000555555554719 in square (a=3) at 02_mem.c:18
 18              int s=rect(a, a);
 
 (gdb) p &count
 $4 = (int *) 0x55555575501c <count>
 
-在正方形和长方形面积函数中都有一个叫 count 的静态变量，他们是2个独立的变量。
+在正方形和长方形面积函数中都有一个叫 count 的静态变量，他们是2个独立的变量，内存地址不同。
 
 
 (gdb) p &global
@@ -1227,19 +1294,75 @@ $6 = (int *) 0x555555755014 <global>
 
 
 
+## 查看栈内存起始地址
+(gdb) p $sp  
+$7 = (void *) 0x7fffffffdd08
+
+
+## 打印栈开始的前40个字(160个字节)
+(gdb) x/40x $sp
+0x7fffffffdd08: 0xffffdd30      0x00007fff      0x55554719      0x00005555
+0x7fffffffdd18: 0x756e6547      0x00000003      0x00000009      0x00000000
+0x7fffffffdd28: 0xf7dd7660      0x00007fff      0xffffdd80      0x00007fff
+0x7fffffffdd38: 0x55554777      0x00005555      0x00000001      0x00000000
+0x7fffffffdd48: 0x555547fd      0x00000003      0x00000004      0x00007fff
+0x7fffffffdd58: 0xffffdd4c      0x00007fff      0xffffdd50      0x00007fff
+0x7fffffffdd68: 0x55755014      0x00005555      0x555546e1      0x00005555
+0x7fffffffdd78: 0x88589500      0xa161f7f7      0x555547b0      0x00005555
+0x7fffffffdd88: 0xf7a05b97      0x00007fff      0x00000001      0x00000000
+0x7fffffffdd98: 0xffffde68      0x00007fff      0x00008000      0x00000001
+
+
+
+
+
+
 
 
 
 ========================================
-|-- 函数指针，指针指向的数据访问 //todo
+|-- 函数指针，指针指向的数据访问: 回调函数 //todo
 ----------------------------------------
-v) 函数指针 
-https://www.imooc.com/video/7864
+1. 函数指针 
+
+$ gdb a.out 
+(gdb) start
+
+(gdb) n
+26              int (*psquare)(int a)=&square;
+(gdb) n
+27              int s=(*psquare)(a);
+(gdb) bt
+#0  main () at 02_mem.c:27
 
 
+进入函数内部
+(gdb) s
+square (a=3) at 02_mem.c:16
+16              count++;
+(gdb) bt
+#0  square (a=3) at 02_mem.c:16
+#1  0x0000555555554777 in main () at 02_mem.c:27
+
+回到主函数 
+(gdb) f 1
+#1  0x0000555555554777 in main () at 02_mem.c:27
+27              int s=(*psquare)(a);
+
+这是一个指向函数的指针
+(gdb) p psquare 
+$3 = (int (*)(int)) 0x5555555546e1 <square>  #指向堆中的函数
+(gdb) p &psquare  
+$1 = (int (**)(int)) 0x7fffffffdd70  #这个指针本身在栈中保存
+
+尝试打印其指向的内容：解引用
+(gdb) p *psquare 
+$4 = {int (int)} 0x5555555546e1 <square> #不懂为什么是这个形式 //todo
 
 
-
+尝试通过这个函数的指针调用该函数
+(gdb) call (*psquare)(20)
+$2 = 400
 
 
 
@@ -1247,14 +1370,187 @@ https://www.imooc.com/video/7864
 
 
 ========================================
-指针与内存: 指针、数组、字符串
+|-- 指针与内存: 指针、数组、字符串
 ----------------------------------------
 CPU做了什么，内存发生了什么变化？
 
+1. 数组的本质
+
+(1) 示例程序
+$ cat 03_mem_array.c
+#include<stdio.h>
+int main(){
+	int a=3;
+	int  b=2;
+	int arr[3];
+	arr[0]=1;
+	arr[1]=20;
+	arr[2]=300;
+	int *p=&a, i;
+	int N=10;
+	for(i=0; i<N; i++){
+		printf("*p=%d\n", *p);
+		p++;
+	}
+	printf("== ==\n");
+	p=&a;
+	for(i=0; i<N; i++){
+		printf("p[%d]=%d\n",i, p[i]);
+	}
+}
+上下打印的值完全相同，也就是说：数组就是指针。
+arr == &arr[0]
+
+
+
+(2) 编译执行
+$ gcc -g -O0  03_mem_array.c -o a.out0
+$ gcc -g  03_mem_array.c -o a.out
+
+参数-O0表示不编译优化，结果文件可能略大。
+-rwxrwxr-x 1 wangjl wangjl 11008 Jul 25 21:56 a.out
+-rwxrwxr-x 1 wangjl wangjl 11008 Jul 25 21:56 a.out0
+$ md5sum a.out*
+d9a6fd1ac496ca7db8cfc261545c3dce  a.out
+4c2900c395789379f0365e56566b4a9c  a.out0
+
+
+
+$ gcc -g 03_mem_array.c
+$ ./a.out
+*p=3
+*p=1
+*p=2
+*p=10
+*p=1353044336
+*p=32767
+*p=2138310128
+*p=1
+*p=20
+*p=300
+== ==
+p[0]=3  //a
+p[1]=1  //i
+p[2]=2  //b
+p[3]=10  //N
+p[4]=1353044320
+p[5]=32767
+p[6]=2138310128
+p[7]=1
+p[8]=20
+p[9]=300
+
+
+为什么连续声明的变量a=3,b=2不连续？
+为什么变量和数组中间有间隔？
+这个都需要使用 gdb 查看内存找答案。
+
+
+(3) gdb 调试 
+$ gdb a.out
+(gdb) start
+
+连续执行几个next，
+(gdb) n
+*p=3
+13                      p++;
+
+
+(gdb) p &a
+$1 = (int *) 0x7fffffffdd50
+(gdb) p &b
+$2 = (int *) 0x7fffffffdd58
+(gdb) p &N
+$3 = (int *) 0x7fffffffdd5c
+
+(gdb) p &i
+$4 = (int *) 0x7fffffffdd54
+(gdb) p i
+$8 = 0
+
+发现原来a和b之间的是变量i。
+
+(gdb) p *p #解指针，取值
+$11 = 3
+(gdb) p p  #指针指向的地址，就是 &a
+$9 = (int *) 0x7fffffffdd50
+(gdb) p &p  #指针本身存放的位置
+$10 = (int **) 0x7fffffffdd60
+(gdb) whatis p # 查看p的类型，是 int指针
+type = int *
+
+
+(gdb) p &arr[0]
+$5 = (int *) 0x7fffffffdd6c
+(gdb) p &arr[1]
+$6 = (int *) 0x7fffffffdd70
+(gdb) p &arr[2]
+$7 = (int *) 0x7fffffffdd74
+
+
+打印栈的前12个位置，
+第一行4个: a=3, i=0, b=2, N=10
+第二行4个: 前三个不知道是啥。
+	前两个是指针p本身在内存中的位置 &p，倒着放的。
+		第三个不知道啥，可能是指针类型 int。//todo 
+	第四个是数组第一个元素 arr[0]=1
+第三行前两个: arr[1]=20, arr[2]=300
+
+(gdb) x/12x $sp
+0x7fffffffdd50: 0x00000003      0x00000000      0x00000002      0x0000000a
+0x7fffffffdd60: 0xffffdd50      0x00007fff      0x555545f0      0x00000001
+0x7fffffffdd70: 0x00000014      0x0000012c      0x355a2500      0x17c15553
+
+
+x表示要输出内存的值，12x就是输出12个16进制， $sp 就是从这个位置开始输出。
+还可以d指定按照10进制输出，更直观了，但是指针变量 p 就乱了。
+(gdb) x/12d $sp
+0x7fffffffdd50: 3       0       2       10
+0x7fffffffdd60: -8880   32767   1431651824      1
+0x7fffffffdd70: 20      300     895100160       398546259
 
 
 
 
+
+2. 数组与指针：任何使用数组的地方都可以使用指针代替。
+
+方便 p++ 做指针偏移时，按照int类型递增。
+p += 3 则表示指针向下移动 int 的3倍，就是4*3=12个。
+甚至更厉害的数组样偏移 p[3]=200 直接赋值。
+
+
+(1) 使用指针操作数组
+
+$ cat 04_array_pointer.c
+#include<stdio.h>
+int main(){
+	int arr[]={1,20,303, 444};
+	int *p=arr;
+	//使用指针改变值
+	p[3]=505;
+	for(int i=0; i<4; i++){
+		//使用指针下标，输出数组
+		printf("p[%d]=%d\n", i, p[i]);
+	}
+	for(int i=0; i<4; i++){
+		//使用指针偏移，输出数组
+		printf("*(p+%d)=%d\n", i, *p);
+		p++;
+	}
+	return 0;
+}
+
+
+输出:
+p[0]=1
+p[1]=20
+p[2]=303
+p[3]=505  //被修改过。
+*(p+0)=1
+*(p+1)=20
+*(p+2)=303
+*(p+3)=505
 
 
 
@@ -1263,7 +1559,16 @@ CPU做了什么，内存发生了什么变化？
 
 
 ========================================
+|-- 字符数组(字符串)、二维字符数组(字符串数组) //todo
 ----------------------------------------
+
+
+
+
+
+
+
+
 
 ========================================
 ----------------------------------------
