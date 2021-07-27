@@ -10,23 +10,40 @@ return array (
       array('FAQ','c003','txt'),
     ),
   ),
-  
+
   array (
     0 => 2,
-    1 => '语法',
+    1 => 'C语言语法',
     2 => array (
-      array('C语言入门教程','c101','txt',),
-      array('数据结构与算法','c102-data_structures_algorithm','txt',),
+      array('C语言基础','c101-base','txt',),
+      array('C语言高级话题','c102-adv','txt',),
+      array('C语言100题','c-practise','txt',),
+    ),
+  ),
+
+
+
+  array (
+    0 => 2,
+    1 => 'C与算法',
+    2 => array (
+      array('数据结构','c201-data_structures','txt',),
+      array('算法','c202-algorithm','txt',),
       array('leetcode.com','leetcode','txt',),
     ),
   ),
-    
+
+
   array (
     0 => 3,
     1 => '其他语言和框架',
     2 => array (
-	  array('微信小程序','little_Program','txt'),
-      array('flutter','flutter','txt',),
+      array('perl基础','lang-Perl','txt'),
+
+      array('微信小程序','little_Program','txt'),
+      array('flutter','flutter','txt'),
+	  
+      array('知识的边界','my_margin','txt'),
     ),
   ),
   

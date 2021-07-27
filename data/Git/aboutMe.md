@@ -24,6 +24,7 @@
 - QQ: 469004330  
 - QQ群: 
 	* `生物信息与R语言交流群(187923577)`
+	* NGS分析群(322719050) 
 	* `生物信息与python/ML/AI(572686844)`
 	* 英语读报&英文名著QQ群(755650994) 
 	* js/php熟手交流群(369578518)
@@ -73,10 +74,23 @@
 
 ## 项目经验
 
-- 开源项目: 基于文件的目录结构的笔记软件[txtBlog](https://github.com/dawneve/txtBlog "博客框架和内容纯手工打造。")(基于php) 和 [txtBlog.py](https://github.com/dawneve/txtBlog.py")(基于Python3)，用于管理庞杂的IT知识点。支持txt、html、markdown格式的笔记。txt和md自动生成目录。py版能自定义txt页面的样式。  
-- 生信参考网站： [生物慕课网 bioMooc.com](http://www.biomooc.com/R/R-draw-sketch.html) 包含较多图片的教程，是对txtBlog的有效补充。  
+- 开源项目: 基于文件的目录结构的笔记软件[txtBlog](https://github.com/dawneve/txtBlog "知识管理系统。")(基于php) 和 [txtBlog.py](https://github.com/dawneve/txtBlog.py")(基于Python3)，用于管理庞杂的IT知识点、生信知识点。支持txt、html、markdown格式的笔记。txt和md自动生成目录。py版能自定义txt页面的样式。
+- 生信参考网站： [生物慕课网 bioMooc.com](http://www.biomooc.com/R/R-draw-sketch.html) 重点是包含较多图片的可视化教程，是对txtBlog的有效补充。  
 - 微信订阅号： 拂晓学术, 生物慕课; [英语读报](http://ielts.biomooc.com/en/); 米欧互联;  
-- Others: [米欧互联](http://mioweb.biomooc.com/ "mio web")、[某制冷公司网站](https://www.wllwzl.com/ "企业站")
+- Others: [米欧互联](http://mioweb.biomooc.com/ "mio web")、[某制冷公司网站](https://www.wllwzl.com/ "企业站")、[某生物网站](http://www.applybio.com/)
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 

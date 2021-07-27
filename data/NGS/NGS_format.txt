@@ -5,6 +5,12 @@
 	https://software.broadinstitute.org/software/igv/FileFormats
 
 
+UCSC 格式转换工具集合
+	http://hgdownload.soe.ucsc.edu/admin/exe/linux.x86_64/
+
+
+
+
 ========================================
 简并碱基
 ----------------------------------------
@@ -570,11 +576,19 @@ SAM和BAM是序列比对之后常用的输出格式，比如tophat输出BAM格�
 SAM是一种序列比对格式标准，由sanger制定，是以TAB为分割符的文本格式。主要应用于测序序列mapping到基因组上的结果表示，当然也可以表示任意的多重比对结果。当测序得到的fastq文件map到基因组之后，我们通常会得到一个sam或者bam为扩展名的文件。SAM的全称是sequence alignment/map format。而BAM就是SAM的二进制文件(B取自binary)，占用存储空间更小。
 
 samtools由中国学者开发，专门用于sam/bam格式文件的各种操作。
+李恒博士目前担任美国哈佛医学院及博德研究所的高级科学家，是SAMtools、BWA、MAQ、TreeSoft和TreeFam等著名生物信息学软件的核心作者。
 
 
-
-sam文件某一行
+sam文件某一行(single end 单端比对， star)
 HWI-ST1001:137:C12FPACXX:7:1115:14131:66670     0       chr1    12805   1       42M4I5M *       0       0       TTGGATGCCCCTCCACACCCTCTTGATCTTCCCTGTGATGTCACCAATATG     CCCFFFFFHHGHHJJJJJHJJJJJJJJJJJJJJJJIJJJJJJJJJJJJIJJ     AS:i:-28        XN:i:0  XM:i:2  XO:i:1XG:i:4   NM:i:6  MD:Z:2C41C2     YT:Z:UU NH:i:3  CC:Z:chr15      CP:i:102518319  XS:A:+  HI:i:0 
+
+
+sam文件某2行(Paired end 双端比对，BWA)
+$ samtools view map/${id}.sambamba_rmdup.bam | grep -P "SRR7629163.10004"
+SRR7629163.10004	163	chr3	73049179	60	41M	=	73049200	61	AACTAAATGAATACATTCAAGATTAGAATACTTCTCGGGGC	AAAAAEEAEEE6EEEEEEEEEEEEEEEEAEEEEEAEEEEEE	NM:i:0	MD:Z:41	MC:Z:40M	AS:i:41	XS:i:19	RG:Z:treat1
+SRR7629163.10004	83	chr3	73049200	60	40M	=	73049179	-61	ATTAGAATACTTCTCGGGGCCAGGTGTGGTGGCTCACGCC	AEEEEEEEEEAEEEEEEEEEE6EE/EEEE/EEE/EAAAAA	NM:i:0	MD:Z:40	MC:Z:41M	AS:i:40	XS:i:27	RG:Z:treat1
+
+
 
 
 SAM分为两部分，注释信息（header section）和比对结果部分（alignment section）。
@@ -670,6 +684,19 @@ $ samtools view dAdapter_CutA_c16_ROW17.fq_Aligned.sortedByCoord.out.bam |awk '{
 (5)MAPQ	比对质量 mapping qulity  越高则位点越独特。-10 log10 Pr{mapping position is wrong}。例如：255
 
 表示为mapping的质量值，mapping Quality, It equals -10log10Pr{mapping position is wrong}, rounded to the nearest integer, A value 255 indicates that the mapping quality is not available. 该值的计算方法是mapping的错误率的-10log10值，之后四舍五入得到的整数，如果值为255表示mapping值是不可用的，如果是unmapped read则MAPQ为0，一般在使用bwa mem或bwa aln（bwa 0.7.12-r1039版本）生成的sam文件，第五列为60表示mapping率最高，一般结果是这一列的数值是从0到60，且0和60这两个数字出现次数最多
+
+
+使用samtools对mapq值筛选，其中-q参数就是依据mapq值筛选：
+$ samtools view -bhS -q 30 input.sam > output.bam
+参数: 
+-b output BAM;  
+-h include header in SAM output
+-S   ignored (input format is auto-detected)
+   --input-fmt-option OPT[=VAL]
+     Specify a single input file format option in the form of OPTION or OPTION=VALUE
+
+
+
 
 STAR出来的bam结果255最多。
 $ samtools view dAdapter_CutA_c16_ROW17.fq_Aligned.sortedByCoord.out.bam |awk '{print $5}' |sort|uniq -c 
@@ -784,9 +811,26 @@ MD:Z  代表序列和参考序列错配的字符串
 
 
 ========================================
-wig、bigWig和bedgraph文件详解
+wig、bigWig和 bedGraph 文件详解
 ----------------------------------------
 我们一般会熟悉sam/bam格式文件，就是把测序reads比对到参考基因组后的文件！bam或者bed格式的文件主要是为了追踪我们的reads到底比对到了参加基因组的什么区域，而UCSC规定的这几个文件格式(wig、bigWig和bedgraph)用处不一样，仅仅是为了追踪参考基因组的各个区域的覆盖度，测序深度！而且这些定义好的文件，可以无缝连接到UCSC的Genome Browser工具里面进行可视化！
+
+
+
+那么bigWig格式是什么？
+bigWig是wig或bedGraph的二进制版，存放区间的坐标轴信息和相关计分(score)，主要用于在基因组浏览器上查看数据的连续密度图，可用wigToBigWig从wiggle进行转换。
+
+
+bedGraph和wig格式是什么? 
+USCS的帮助文档称这两个格式数是【已经过时】的基因组浏览器图形轨展示格式，前者展示稀松型数据，后者展示连续性数据。
+--> 目前推荐使用bigWig/bigBed这两种格式取代前两者。
+
+
+为什么要用bigWig? 
+主要是因为BAM文件比较大，直接用于展示时对服务器要求较大。
+因此在GEO上仅会提供bw,即bigWig下载，便于下载和查看。如果真的感兴趣，则可以下载原始数据进行后续分析。
+
+
 
 
 
@@ -911,6 +955,267 @@ https://www.plob.org/article/9505.html
 
 
 ========================================
+|-- bedGraph 格式, bam 2 bedGraph
+----------------------------------------
+1. bedGraph 格式 
+http://genome.ucsc.edu/goldenPath/help/bedgraph.html
+
+(1)
+bedGraph格式允许在track格式展示连续值数据。该展示类型便于显示概率分数和转录组数据。类似于摆动（WIG）格式，不同的是，以bedGraph格式导出的数据保留其原始状态。这可以输出到基因组浏览器中。
+有关wig格式看这里: http://genome.ucsc.edu/goldenPath/help/wiggle.html
+
+对于大数据集，你想保存在自己的服务器上，则应该使用BigWig格式: http://genome.ucsc.edu/goldenPath/help/bigWig.html
+
+实际上，尝试加载超过5000万行的bedGraph自定义轨道将导致错误消息，但转换为bigWig可解决该问题（请参见示例3）。 
+注意：bedGraph 不能轻易的转为 wig 格式；使用 bigWigToWig  把 gedGraph 转为 bigWig 将返回原始的 bedGraph 文件。
+
+
+
+
+(2) 常规结构
+先是 track definition line, 然后是 4列bed格式:
+
+chromA  chromStartA  chromEndA  dataValueA
+chromB  chromStartB  chromEndB  dataValueB
+
+
+
+
+(3) 轨道定义行是一样，复制的时候要删除换行符
+All options are placed in a single line separated by spaces:
+
+track type=bedGraph name=track_label description=center_label
+    visibility=display_mode color=r,g,b altColor=r,g,b
+    priority=priority autoScale=on|off alwaysZero=on|off gridDefault=on|off
+    maxHeightPixels=max:default:min graphType=bar|points viewLimits=lower:upper
+    yLineMark=real-value yLineOnOff=on|off
+    windowingFunction=maximum|mean|minimum smoothingWindow=off|2-16
+Note: if you copy/paste the above example, you must remove the line breaks.
+
+只有 track type 是必须的，且必须是 bedGraph:  type=bedGraph
+其他都可选。
+
+
+
+(4) 数据值是4列
+整数或实数，正负都有。 // 为什么可以是负呢？
+染色体坐标是 0-based，半开的。
+	就是染色体第一个碱基位置是0，最后一个碱基位置是 N-1,N是染色体长度。
+	必须是排序过的，只有指定位置才画图。
+
+
+
+
+
+2. 实例 Example
+
+例子是9行分开的点，在chr19上49,302,001 to 49,304,701。
+把本例作为自定义轨道可视化时，只需要一下文字复制到 Genome Browser 的 annotation track text box
+
+
+
+$ cat xx.bedGraph 
+browser position chr19:49302001-49304701
+browser hide all
+browser pack refGene encodeRegions
+browser full altGraph
+#	300 base wide bar graph, autoScale is on by default == graphing
+#	limits will dynamically change to always show full range of data
+#	in viewing window, priority = 20 positions this as the second graph
+#	Note, zero-relative, half-open coordinate system in use for bedGraph format
+track type=bedGraph name="BedGraph Format" description="BedGraph format" visibility=full color=200,100,0 altColor=0,100,200 priority=20
+chr19 49302000 49302300 -1.0
+chr19 49302300 49302600 -0.75
+chr19 49302600 49302900 -0.50
+chr19 49302900 49303200 -0.25
+chr19 49303200 49303500 0.0
+chr19 49303500 49303800 0.25
+chr19 49303800 49304100 0.50
+chr19 49304100 49304400 0.75
+chr19 49304400 49304700 1.00
+
+
+复制到这里: https://genome.ucsc.edu/cgi-bin/hgCustom
+
+注意: 以上例子包含一行 type= 是为了把数据加载到浏览器。
+这一行将导致浏览器之外的其他工具验证失败，比如 validateFiles。
+
+
+
+
+
+
+3. 格式转换 bam 2 bedGraph
+
+(1)To generate the BedGraph files from BAM files, you need the chromsome size file chromInfo.txt.gz which can be downloaded from UCSC (hg19 or mm9) and then use the BedTools' genomecov as follow:
+
+http://hgdownload.soe.ucsc.edu/goldenPath/mm10/database/
+$ wget http://hgdownload.soe.ucsc.edu/goldenPath/mm10/database/chromInfo.txt.gz
+$ gunzip chromInfo.txt.gz 
+
+## /home/wangjl/data/ref/mouse/UCSC/
+$ mv chromInfo.txt  mm10_chr_size.txt
+$ head mm10_chr_size.txt
+chr1    195471971       /gbdb/mm10/mm10.2bit
+chr2    182113224       /gbdb/mm10/mm10.2bit
+
+
+
+(2) http://bedtools.readthedocs.io/en/latest/content/tools/genomecov.html
+$ bedtools genomecov -bg -ibam sample_sorted.bam -g mm9_chr_size.txt -split > sample.bedgraph
+
+Usage: bedtools genomecov [OPTIONS] -i <bed/gff/vcf> -g <genome> 
+参数解释:
+Version: v2.29.2
+-bg             Report depth in BedGraph format. For details, see: 输出bedGraph格式
+        genome.ucsc.edu/goldenPath/help/bedgraph.html
+
+-ibam           The input file is in BAM format.
+             Note: BAM _must_ be sorted by position 输入 排序过的 bam。
+-g  <genome>  The genome file should tab delimited and structured as follows: 
+         <chromName><TAB><chromSize>                                        
+
+        For example, Human (hg19):                    
+        chr1    249250621
+        chr2    243199373
+        ...
+        chr18_gl000207_random   4262
+-split   Treat "split" BAM or BED12 entries as distinct BED intervals.
+		when computing coverage.
+		   For BAM files, this uses the CIGAR "N" and "D" operations to infer the blocks for computing coverage. 
+		   For BED12 files, this uses the BlockCount, BlockStarts, and BlockEnds fields (i.e., columns 10,11,12). 
+
+
+(3)实战
+$ bedtools genomecov -bg -ibam /data/wangjl/ZhangMin/map/ADK_KO_1Aligned.sortedByCoord.out.bam \
+-g /home/wangjl/data/ref/mouse/UCSC/mm10_chr_size.txt -split > /data/wangjl/ZhangMin/bedGraph/KO_1.bedgraph
+
+## WARNING: Genome (-g) files are ignored when BAM input is provided. 也就是说有bam了，就不需要 -g参数提供chr大小了。
+# 21:21 -> 21:22
+
+
+$ bedtools genomecov -bg -ibam /data/wangjl/ZhangMin/map/ADK_KO_2Aligned.sortedByCoord.out.bam -split > /data/wangjl/ZhangMin/bedGraph/KO_2.bedgraph
+
+
+$ head KO_1.bedgraph 
+1       3044513 3044615 2
+1       3044942 3044960 2
+1       3044960 3045068 4
+1       3045068 3045087 3
+
+
+
+
+
+
+
+ref:
+https://blog.csdn.net/u011262253/article/details/109369089
+https://firas.io/post/dapars/
+
+
+
+
+
+========================================
+|-- bam to bigWig: 两步法，及deeptools的一步法
+----------------------------------------
+1. 两步法
+(1). bam to bedGraph
+见上文。
+
+(2). bedGraph to bigWig 
+
+http://hgdownload.cse.ucsc.edu/admin/exe/linux.x86_64/
+bedGraphToBigWig           2021-06-02 11:57  5.3M 
+
+$ cd ~/bin/
+$ wget http://hgdownload.cse.ucsc.edu/admin/exe/linux.x86_64/bedGraphToBigWig
+$ chmod +x bedGraphToBigWig
+
+$ bedGraphToBigWig 
+### kent source version 415 ###
+bedGraphToBigWig v 2.8 - Convert a bedGraph file to bigWig format (bbi version: 4).
+
+使用方法usage:    bedGraphToBigWig in.bedGraph chrom.sizes out.bw
+
+参数解释:
+where in.bedGraph is a four column file in the format:
+      <chrom> <start> <end> <value>
+and chrom.sizes is a two-column file/URL: <chromosome name> <size in bases>
+and out.bw is the output indexed big wig file.
+If the assembly <db> is hosted by UCSC, chrom.sizes can be a URL like
+  http://hgdownload.soe.ucsc.edu/goldenPath/<db>/bigZips/<db>.chrom.sizes
+or you may use the script fetchChromSizes to download the chrom.sizes file.
+If not hosted by UCSC, a chrom.sizes file can be generated by running
+twoBitInfo on the assembly .2bit file.
+The input bedGraph file must be sorted, use the unix sort command:
+  sort -k1,1 -k2,2n unsorted.bedGraph > sorted.bedGraph
+options:
+   -blockSize=N - Number of items to bundle in r-tree.  Default 256
+   -itemsPerSlot=N - Number of data points bundled at lowest level. Default 1024
+   -unc - If set, do not use compression.
+#
+
+
+实战 
+$ cd map_QC/
+$ bedGraphToBigWig ../bedGraph/trimKO_1.bedgraph /home/wangjl/data/ref/mouse/UCSC/mm10_chr_size.txt KO_1.bw
+
+-rw-rw-r-- 1 wangjl wangjl 87M Jun  4 17:14 KO_1.bw
+$ head KO_1.bw
+二进制文件，乱码。
+
+
+
+
+
+2. 一步法
+启发: GEO看到一句:https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc=GSM4632925
+Bigwig files were obtained with the bamCoverage function from deepTools. Values represent number of reads per bin. We used a bin size of 50.
+
+
+https://deeptools.readthedocs.io/en/develop/content/list_of_tools.html
+$ bamCoverage --bam myAlignedReads.bam \
+--outFileName myCoverageFile.bigWig \
+--outFileFormat bigwig \
+--fragmentLength 200 \
+--ignoreDuplicates \
+--scaleFactor 0.5
+
+
+我的实例:
+$ bamCoverage --bam ../map/ADK_KO_1Aligned.sortedByCoord.out.bam \
+--outFileName myCoverageFile_KO_1.bigWig \
+--outFileFormat bigwig \
+--ignoreDuplicates \
+--scaleFactor 0.5
+
+
+想多进程就加入参数 -p 20
+$ bamCoverage --bam ../map/ADK_KO_2Aligned.sortedByCoord.out.bam --outFileName myCoverageFile_KO_2.bigWig --outFileFormat bigwig --ignoreDuplicates --scaleFactor 0.5 -p 20
+看屏幕输出，numberOfProcessors: 12，而默认是1，貌似有最高值？
+分成12块确实快很多。
+
+
+遇到报错: bamCoverage: error: unrecognized arguments: --fragmentLength 200
+最接近的是这2个参数:
+--minFragmentLength INT  
+	The minimum fragment length needed for read/pair inclusion. 
+	This option is primarily useful in ATACseq experiments, for filtering mono- or di-nucleosome fragments. (Default: 0)
+--maxFragmentLength INT
+	The maximum fragment length needed for read/pair inclusion. (Default: 0)
+删除该参数接着跑。
+
+
+
+
+
+
+
+
+
+========================================
 gtf和gff文档 - 基因注释文件 Genome annotations
 ----------------------------------------
 1. gff 格式
@@ -976,6 +1281,329 @@ One-based index: Start and end positions are identified using a one-based index.
 3.gtf与gff转换以及对GFF文件进行过滤
 
 常采用的软件是gffread，为Cufflinks自带的一个程序，他不仅可以实现GTF与GFF的互相转换，而且还可以对GFF文件进行过滤处理。
+
+
+
+
+
+
+========================================
+|-- gtf to bed12 (UCSC genome ref bed format)
+----------------------------------------
+1. 目标是什么样的 bed12?
+
+$ geneBody_coverage.py -i input.bam -r genome.bed -o output.txt
+就是这个 bed 文件，之前是从 UCSC 下载的。
+但是如果gtf是从 ensembl 下载的，怎么保持数据的一致呢？怎么从gtf生成该bed呢？
+
+
+(1) 先预览一下 mouse.mm9.bed 的格式
+47382  568584 6981704 /home/wangjl/data/ref/mouse/UCSC/mm10_refseq_whole_gene_noChr.bed
+
+$ head /home/wangjl/data/ref/mouse/UCSC/mm10_refseq_whole_gene_noChr.bed
+1       134199214       134235457       NM_001039510    0       -       134202950       134234355       0       3       4376,398,230,   0,34800,36013,
+1       134199214       134235457       NM_001282945    0       -       134202950       134234355       0       3       4376,432,230,   0,34800,36013,
+1       134199214       134235457       NM_001008533    0       -       134202950       134234355       0       2       4376,1443,      0,34800,
+1       134199214       134235457       NM_001291930    0       -       134202950       134203505       0       2       4376,230,       0,36013,
+1       134199214       134234856       NM_001291928    0       -       134202950       134234733       0       2       4376,194,       0,35448,
+1       58713285        58733227        NR_149255       0       +       58733227        58733227        0       4       374,427,136,975,        0,13020,17866,18967,
+1       25067475        25829707        NM_175642       0       -       25068167        25826760        0       31      881,105,36,644,40,96,172,99,86,67,70,151,103,104,127,44,103,76,150,109,69,195,107,102,165,165,165,162,111,772,246,      0,7209,16768,26289,31400,33957,44216,44701,49813,59165,61343,63775,154284,159244,160945,328960,353082,363947,364951,389516,393267,420449,436957,437437,464394,464999,479940,486199,492279,758528,761986,
+1       58711490        58758882        NM_001293804    0       +       58732272        58753922        0       10      102,89,427,136,74,55,50,82,508,5099,    0,2080,14815,19661,20762,24167,28772,29474,40848,42293,
+1       58711490        58758882        NM_001289704    0       +       58726436        58753922        0       10      102,427,106,136,74,55,50,82,508,5099,   0,14815,17565,19661,20762,24167,28772,29474,40848,42293,
+1       8359738 9299877 NM_027671       0       -       8363474 8803943 0       21      3895,111,93,153,72,117,39,130,131,83,103,42,44,58,57,135,54,54,64,82,1745,      0,54464,85288,88241,103655,105698,194986,223466,235673,247331,265040,318068,318198,319334,322234,423024,444178,522422,639447,843440,938394,
+
+
+
+
+(2) 再预览一下 human.hg38.bed 的格式，看看每一列都是啥信息？
+http://genome.ucsc.edu/FAQ/FAQformat.html#format1
+
+172766  2073192 30293803 /home/wangjl/data/ref/human/UCSC/hg38_refseq_whole_gene.bed
+
+$ head /home/wangjl/data/ref/human/UCSC/hg38_refseq_whole_gene.bed 
+chr1    67092164        67134970        NM_001276352.2  0       -       67093579        67127240        0       9       1440,70,145,68,113,158,92,86,41,        0,4087,11073,19412,23187,33587,35001,38977,42765,
+chr1    67092164        67134970        NM_001276351.2  0       -       67093004        67127240        0       8       1440,187,70,113,158,92,86,41,   0,3070,4087,23187,33587,35001,38977,42765,
+chr1    67092164        67134970        NR_075077.2     0       -       67134970        67134970        0       10      1440,70,145,68,143,113,158,92,86,41,    0,4087,11073,19412,21449,23187,33587,35001,38977,42765,
+chr1    67092175        67109072        XM_011541469.1  0       -       67093004        67103382        0       5       1429,187,70,145,44,     0,3059,4076,11062,16853,
+chr1    67092175        67131183        XM_011541467.1  0       -       67093004        67127240        0       9       1429,187,70,106,68,113,158,92,42,       0,3059,4076,11062,19401,23176,33576,34990,38966,
+chr1    67092175        67131227        XM_017001276.1  0       -       67093004        67127240        0       9       1429,187,70,145,68,113,158,92,86,       0,3059,4076,11062,19401,23176,33576,34990,38966,
+chr1    67092175        67134962        XM_011541465.2  0       -       67093004        67127240        0       9       1429,187,70,145,68,113,158,92,33,       0,3059,4076,11062,19401,23176,33576,34990,42754,
+chr1    67092175        67141646        XM_011541466.2  0       -       67093004        67127240        0       9       1429,187,70,145,68,113,158,92,33,       0,3059,4076,11062,19401,23176,33576,34990,49438,
+chr1    67093484        67131227        XM_017001277.1  0       -       67093569        67127240        0       9       120,68,70,145,68,113,158,92,86, 0,1869,2767,9753,18092,21867,32267,33681,37657,
+chr1    67093484        67131227        XM_011541473.2  0       -       67093579        67127240        0       6       120,70,113,158,92,86,   0,2767,21867,32267,33681,37657,
+
+
+前6列是标准bed个还是 1 chr, 2 start, 3 end, 4 name(这里是转录本名字), 5 score, 6 strand.
+第7列, 第8列: 67093579        67127240
+7 thickStart: 绘制特征的起始位置（例如，基因显示中的起始密码子）。当没有此部分时，thickStart和thickEnd通常设置为chromStart位置。
+8 thickEnd: 绘制特征的结束位置（例如基因显示中的终止密码子）。
+
+第9列, 第10列:  0       9
+9 itemRgb：R，G，B形式的RGB值（例如255,0,0）。如果轨道行 itemRgb属性设置为“On”，则此RBG值将确定此BED行中包含的数据的显示颜色。注意：建议使用此属性的简单颜色方案（八种颜色或更少颜色），以避免压倒Genome浏览器和Internet浏览器的颜色资源。
+10 blockCount：BED行中的块（外显子）数。
+
+
+第11列 blockSizes：块大小的逗号分隔列表。此列表中的项目数应与第10列blockCount相对应。
+和gtf比较，应该是每个外显子的长度，逗号隔开。
+$ cat tmp | awk '$3=="exon"{print $5-$4}'
+1438
+69
+144
+67
+112
+157
+91
+85
+40
+
+第12列 blockStarts：以逗号分隔的块开始列表。应该相对于 chromStart(第2列) 计算所有 blockStart(gtf的exon起点) 位置。此列表中的项目数应与 blockCount(第10列) 相对应。
+$ cat tmp | awk '$3=="exon"{print $4-67092164}'
+2
+4088
+11074
+19413
+23188
+33588
+35002
+38978
+42766
+
+
+
+
+
+### 以下为判断上面是啥内容的重要参考信息:
+
+i) CCDS 好像不是这个。
+$ head /home/wangjl/data/ref/human/NCBI/CCDS.current.txt 
+#chromosome     nc_accession    gene    gene_id ccds_id ccds_status     cds_strand      cds_from        cds_to  cds_locations   match_type
+1       NC_000001.8     LINC00115       79854   CCDS1.1 Withdrawn       -       801942  802433  [801942-802433] Identical
+1       NC_000001.11    SAMD11  148398  CCDS2.2 Public  +       925941  944152  [925941-926012, 930154-930335, 931038-931088, 935771-935895, 939039-939128, 939274-939459, 941143-941305, 942135-942250, 942409-942487, 942558-943057, 943252-943376, 943697-943807, 943907-944152]      Identical
+
+$ grep "C1orf141" /home/wangjl/data/ref/human/NCBI/CCDS.current.txt 
+1       NC_000001.11    C1orf141        400757  CCDS30745.1     Public  -       67093004        67127239        [67093004-67093603, 67095234-67095420, 67096251-67096320, 67115351-67115463, 67125751-67125908, 67127165-67127239]      Identical
+1       NC_000001.11    C1orf141        400757  CCDS72804.1     Public  -       67093579        67127239        [67093579-67093603, 67096251-67096320, 67103237-67103381, 67111576-67111643, 67115351-67115463, 67125751-67125908, 67127165-67127239]   Identical
+
+
+
+ii) 找一下 gtf 文件
+1893860  33750332 286394748 /home/wangjl/data/ref/human/UCSC/hg38.refGene.gtf
+
+按 转录本 搜索
+$ grep "NM_001276352" /home/wangjl/data/ref/human/UCSC/hg38.refGene.gtf
+chr1    refGene transcript      67092166        67134970        .       -       .       gene_id "C1orf141"; transcript_id "NM_001276352";  gene_name "C1orf141";
+chr1    refGene exon    67092166        67093604        .       -       .       gene_id "C1orf141"; transcript_id "NM_001276352"; exon_number "1"; exon_id "NM_001276352.1"; gene_name "C1orf141";
+chr1    refGene 3UTR    67092166        67093579        .       -       .       gene_id "C1orf141"; transcript_id "NM_001276352"; exon_number "1"; exon_id "NM_001276352.1"; gene_name "C1orf141";
+chr1    refGene CDS     67093583        67093604        .       -       1       gene_id "C1orf141"; transcript_id "NM_001276352"; exon_number "1"; exon_id "NM_001276352.1"; gene_name "C1orf141";
+chr1    refGene exon    67096252        67096321        .       -       .       gene_id "C1orf141"; transcript_id "NM_001276352"; exon_number "2"; exon_id "NM_001276352.2"; gene_name "C1orf141";
+chr1    refGene CDS     67096252        67096321        .       -       2       gene_id "C1orf141"; transcript_id "NM_001276352"; exon_number "2"; exon_id "NM_001276352.2"; gene_name "C1orf141";
+chr1    refGene exon    67103238        67103382        .       -       .       gene_id "C1orf141"; transcript_id "NM_001276352"; exon_number "3"; exon_id "NM_001276352.3"; gene_name "C1orf141";
+chr1    refGene CDS     67103238        67103382        .       -       0       gene_id "C1orf141"; transcript_id "NM_001276352"; exon_number "3"; exon_id "NM_001276352.3"; gene_name "C1orf141";
+chr1    refGene exon    67111577        67111644        .       -       .       gene_id "C1orf141"; transcript_id "NM_001276352"; exon_number "4"; exon_id "NM_001276352.4"; gene_name "C1orf141";
+chr1    refGene CDS     67111577        67111644        .       -       2       gene_id "C1orf141"; transcript_id "NM_001276352"; exon_number "4"; exon_id "NM_001276352.4"; gene_name "C1orf141";
+chr1    refGene exon    67115352        67115464        .       -       .       gene_id "C1orf141"; transcript_id "NM_001276352"; exon_number "5"; exon_id "NM_001276352.5"; gene_name "C1orf141";
+chr1    refGene CDS     67115352        67115464        .       -       1       gene_id "C1orf141"; transcript_id "NM_001276352"; exon_number "5"; exon_id "NM_001276352.5"; gene_name "C1orf141";
+chr1    refGene exon    67125752        67125909        .       -       .       gene_id "C1orf141"; transcript_id "NM_001276352"; exon_number "6"; exon_id "NM_001276352.6"; gene_name "C1orf141";
+chr1    refGene CDS     67125752        67125909        .       -       0       gene_id "C1orf141"; transcript_id "NM_001276352"; exon_number "6"; exon_id "NM_001276352.6"; gene_name "C1orf141";
+chr1    refGene exon    67127166        67127257        .       -       .       gene_id "C1orf141"; transcript_id "NM_001276352"; exon_number "7"; exon_id "NM_001276352.7"; gene_name "C1orf141";
+chr1    refGene CDS     67127166        67127240        .       -       0       gene_id "C1orf141"; transcript_id "NM_001276352"; exon_number "7"; exon_id "NM_001276352.7"; gene_name "C1orf141";
+chr1    refGene 5UTR    67127241        67127257        .       -       .       gene_id "C1orf141"; transcript_id "NM_001276352"; exon_number "7"; exon_id "NM_001276352.7"; gene_name "C1orf141";
+chr1    refGene exon    67131142        67131227        .       -       .       gene_id "C1orf141"; transcript_id "NM_001276352"; exon_number "8"; exon_id "NM_001276352.8"; gene_name "C1orf141";
+chr1    refGene 5UTR    67131142        67131227        .       -       .       gene_id "C1orf141"; transcript_id "NM_001276352"; exon_number "8"; exon_id "NM_001276352.8"; gene_name "C1orf141";
+chr1    refGene exon    67134930        67134970        .       -       .       gene_id "C1orf141"; transcript_id "NM_001276352"; exon_number "9"; exon_id "NM_001276352.9"; gene_name "C1orf141";
+chr1    refGene 5UTR    67134930        67134970        .       -       .       gene_id "C1orf141"; transcript_id "NM_001276352"; exon_number "9"; exon_id "NM_001276352.9"; gene_name "C1orf141";
+chr1    refGene start_codon     67127238        67127240        .       -       0       gene_id "C1orf141"; transcript_id "NM_001276352"; exon_number "7"; exon_id "NM_001276352.7"; gene_name "C1orf141";
+chr1    refGene stop_codon      67093580        67093582        .       -       0       gene_id "C1orf141"; transcript_id "NM_001276352"; exon_number "1"; exon_id "NM_001276352.1"; gene_name "C1orf141";
+
+按 基因 搜索，共包含3个转录本。
+$ grep -i "C1orf141" /home/wangjl/data/ref/human/UCSC/hg38.refGene.gtf                                                                                         
+chr1    refGene transcript      67092166        67134970        .       -       .       gene_id "C1orf141"; transcript_id "NM_001276351";  gene_name "C1orf141";                                  
+chr1    refGene exon    67092166        67093604        .       -       .       gene_id "C1orf141"; transcript_id "NM_001276351"; exon_number "1"; exon_id "NM_001276351.1"; gene_name "C1orf141";
+chr1    refGene 3UTR    67092166        67093004        .       -       .       gene_id "C1orf141"; transcript_id "NM_001276351"; exon_number "1"; exon_id "NM_001276351.1"; gene_name "C1orf141";
+chr1    refGene CDS     67093008        67093604        .       -       0       gene_id "C1orf141"; transcript_id "NM_001276351"; exon_number "1"; exon_id "NM_001276351.1"; gene_name "C1orf141";
+chr1    refGene exon    67095235        67095421        .       -       .       gene_id "C1orf141"; transcript_id "NM_001276351"; exon_number "2"; exon_id "NM_001276351.2"; gene_name "C1orf141";
+chr1    refGene CDS     67095235        67095421        .       -       1       gene_id "C1orf141"; transcript_id "NM_001276351"; exon_number "2"; exon_id "NM_001276351.2"; gene_name "C1orf141";
+chr1    refGene exon    67096252        67096321        .       -       .       gene_id "C1orf141"; transcript_id "NM_001276351"; exon_number "3"; exon_id "NM_001276351.3"; gene_name "C1orf141";
+chr1    refGene CDS     67096252        67096321        .       -       2       gene_id "C1orf141"; transcript_id "NM_001276351"; exon_number "3"; exon_id "NM_001276351.3"; gene_name "C1orf141";
+chr1    refGene exon    67115352        67115464        .       -       .       gene_id "C1orf141"; transcript_id "NM_001276351"; exon_number "4"; exon_id "NM_001276351.4"; gene_name "C1orf141";
+chr1    refGene CDS     67115352        67115464        .       -       1       gene_id "C1orf141"; transcript_id "NM_001276351"; exon_number "4"; exon_id "NM_001276351.4"; gene_name "C1orf141";
+chr1    refGene exon    67125752        67125909        .       -       .       gene_id "C1orf141"; transcript_id "NM_001276351"; exon_number "5"; exon_id "NM_001276351.5"; gene_name "C1orf141";
+chr1    refGene CDS     67125752        67125909        .       -       0       gene_id "C1orf141"; transcript_id "NM_001276351"; exon_number "5"; exon_id "NM_001276351.5"; gene_name "C1orf141";
+chr1    refGene exon    67127166        67127257        .       -       .       gene_id "C1orf141"; transcript_id "NM_001276351"; exon_number "6"; exon_id "NM_001276351.6"; gene_name "C1orf141";
+chr1    refGene CDS     67127166        67127240        .       -       0       gene_id "C1orf141"; transcript_id "NM_001276351"; exon_number "6"; exon_id "NM_001276351.6"; gene_name "C1orf141";
+chr1    refGene 5UTR    67127241        67127257        .       -       .       gene_id "C1orf141"; transcript_id "NM_001276351"; exon_number "6"; exon_id "NM_001276351.6"; gene_name "C1orf141";
+chr1    refGene exon    67131142        67131227        .       -       .       gene_id "C1orf141"; transcript_id "NM_001276351"; exon_number "7"; exon_id "NM_001276351.7"; gene_name "C1orf141";
+chr1    refGene 5UTR    67131142        67131227        .       -       .       gene_id "C1orf141"; transcript_id "NM_001276351"; exon_number "7"; exon_id "NM_001276351.7"; gene_name "C1orf141";
+chr1    refGene exon    67134930        67134970        .       -       .       gene_id "C1orf141"; transcript_id "NM_001276351"; exon_number "8"; exon_id "NM_001276351.8"; gene_name "C1orf141";
+chr1    refGene 5UTR    67134930        67134970        .       -       .       gene_id "C1orf141"; transcript_id "NM_001276351"; exon_number "8"; exon_id "NM_001276351.8"; gene_name "C1orf141";
+chr1    refGene start_codon     67127238        67127240        .       -       0       gene_id "C1orf141"; transcript_id "NM_001276351"; exon_number "6"; exon_id "NM_001276351.6"; gene_name "C1orf141";
+chr1    refGene stop_codon      67093005        67093007        .       -       0       gene_id "C1orf141"; transcript_id "NM_001276351"; exon_number "1"; exon_id "NM_001276351.1"; gene_name "C1orf141";
+chr1    refGene transcript      67092166        67134970        .       -       .       gene_id "C1orf141"; transcript_id "NM_001276352";  gene_name "C1orf141";
+chr1    refGene exon    67092166        67093604        .       -       .       gene_id "C1orf141"; transcript_id "NM_001276352"; exon_number "1"; exon_id "NM_001276352.1"; gene_name "C1orf141";
+chr1    refGene 3UTR    67092166        67093579        .       -       .       gene_id "C1orf141"; transcript_id "NM_001276352"; exon_number "1"; exon_id "NM_001276352.1"; gene_name "C1orf141";
+chr1    refGene CDS     67093583        67093604        .       -       1       gene_id "C1orf141"; transcript_id "NM_001276352"; exon_number "1"; exon_id "NM_001276352.1"; gene_name "C1orf141";
+chr1    refGene exon    67096252        67096321        .       -       .       gene_id "C1orf141"; transcript_id "NM_001276352"; exon_number "2"; exon_id "NM_001276352.2"; gene_name "C1orf141";
+chr1    refGene CDS     67096252        67096321        .       -       2       gene_id "C1orf141"; transcript_id "NM_001276352"; exon_number "2"; exon_id "NM_001276352.2"; gene_name "C1orf141";
+chr1    refGene exon    67103238        67103382        .       -       .       gene_id "C1orf141"; transcript_id "NM_001276352"; exon_number "3"; exon_id "NM_001276352.3"; gene_name "C1orf141";
+chr1    refGene CDS     67103238        67103382        .       -       0       gene_id "C1orf141"; transcript_id "NM_001276352"; exon_number "3"; exon_id "NM_001276352.3"; gene_name "C1orf141";
+chr1    refGene exon    67111577        67111644        .       -       .       gene_id "C1orf141"; transcript_id "NM_001276352"; exon_number "4"; exon_id "NM_001276352.4"; gene_name "C1orf141";
+chr1    refGene CDS     67111577        67111644        .       -       2       gene_id "C1orf141"; transcript_id "NM_001276352"; exon_number "4"; exon_id "NM_001276352.4"; gene_name "C1orf141";
+chr1    refGene exon    67115352        67115464        .       -       .       gene_id "C1orf141"; transcript_id "NM_001276352"; exon_number "5"; exon_id "NM_001276352.5"; gene_name "C1orf141";
+chr1    refGene CDS     67115352        67115464        .       -       1       gene_id "C1orf141"; transcript_id "NM_001276352"; exon_number "5"; exon_id "NM_001276352.5"; gene_name "C1orf141";
+chr1    refGene exon    67125752        67125909        .       -       .       gene_id "C1orf141"; transcript_id "NM_001276352"; exon_number "6"; exon_id "NM_001276352.6"; gene_name "C1orf141";
+chr1    refGene CDS     67125752        67125909        .       -       0       gene_id "C1orf141"; transcript_id "NM_001276352"; exon_number "6"; exon_id "NM_001276352.6"; gene_name "C1orf141";
+chr1    refGene exon    67127166        67127257        .       -       .       gene_id "C1orf141"; transcript_id "NM_001276352"; exon_number "7"; exon_id "NM_001276352.7"; gene_name "C1orf141";
+chr1    refGene CDS     67127166        67127240        .       -       0       gene_id "C1orf141"; transcript_id "NM_001276352"; exon_number "7"; exon_id "NM_001276352.7"; gene_name "C1orf141";
+chr1    refGene 5UTR    67127241        67127257        .       -       .       gene_id "C1orf141"; transcript_id "NM_001276352"; exon_number "7"; exon_id "NM_001276352.7"; gene_name "C1orf141";
+chr1    refGene exon    67131142        67131227        .       -       .       gene_id "C1orf141"; transcript_id "NM_001276352"; exon_number "8"; exon_id "NM_001276352.8"; gene_name "C1orf141";
+chr1    refGene 5UTR    67131142        67131227        .       -       .       gene_id "C1orf141"; transcript_id "NM_001276352"; exon_number "8"; exon_id "NM_001276352.8"; gene_name "C1orf141";
+chr1    refGene exon    67134930        67134970        .       -       .       gene_id "C1orf141"; transcript_id "NM_001276352"; exon_number "9"; exon_id "NM_001276352.9"; gene_name "C1orf141";
+chr1    refGene 5UTR    67134930        67134970        .       -       .       gene_id "C1orf141"; transcript_id "NM_001276352"; exon_number "9"; exon_id "NM_001276352.9"; gene_name "C1orf141";
+chr1    refGene start_codon     67127238        67127240        .       -       0       gene_id "C1orf141"; transcript_id "NM_001276352"; exon_number "7"; exon_id "NM_001276352.7"; gene_name "C1orf141";
+chr1    refGene stop_codon      67093580        67093582        .       -       0       gene_id "C1orf141"; transcript_id "NM_001276352"; exon_number "1"; exon_id "NM_001276352.1"; gene_name "C1orf141";
+chr1    refGene transcript      67092166        67134970        .       -       .       gene_id "C1orf141"; transcript_id "NR_075077";  gene_name "C1orf141";
+chr1    refGene exon    67092166        67093604        .       -       .       gene_id "C1orf141"; transcript_id "NR_075077"; exon_number "1"; exon_id "NR_075077.1"; gene_name "C1orf141";
+chr1    refGene exon    67096252        67096321        .       -       .       gene_id "C1orf141"; transcript_id "NR_075077"; exon_number "2"; exon_id "NR_075077.2"; gene_name "C1orf141";
+chr1    refGene exon    67103238        67103382        .       -       .       gene_id "C1orf141"; transcript_id "NR_075077"; exon_number "3"; exon_id "NR_075077.3"; gene_name "C1orf141";
+chr1    refGene exon    67111577        67111644        .       -       .       gene_id "C1orf141"; transcript_id "NR_075077"; exon_number "4"; exon_id "NR_075077.4"; gene_name "C1orf141";
+chr1    refGene exon    67113614        67113756        .       -       .       gene_id "C1orf141"; transcript_id "NR_075077"; exon_number "5"; exon_id "NR_075077.5"; gene_name "C1orf141";
+chr1    refGene exon    67115352        67115464        .       -       .       gene_id "C1orf141"; transcript_id "NR_075077"; exon_number "6"; exon_id "NR_075077.6"; gene_name "C1orf141";
+chr1    refGene exon    67125752        67125909        .       -       .       gene_id "C1orf141"; transcript_id "NR_075077"; exon_number "7"; exon_id "NR_075077.7"; gene_name "C1orf141";
+chr1    refGene exon    67127166        67127257        .       -       .       gene_id "C1orf141"; transcript_id "NR_075077"; exon_number "8"; exon_id "NR_075077.8"; gene_name "C1orf141";
+chr1    refGene exon    67131142        67131227        .       -       .       gene_id "C1orf141"; transcript_id "NR_075077"; exon_number "9"; exon_id "NR_075077.9"; gene_name "C1orf141";
+chr1    refGene exon    67134930        67134970        .       -       .       gene_id "C1orf141"; transcript_id "NR_075077"; exon_number "10"; exon_id "NR_075077.10"; gene_name "C1orf141";
+
+
+
+
+(3) 从 gtf 转为 bed12 ，作为 genome.bed 使用
+
+fName="/home/wangjl/data/ref/human/UCSC/hg38.refGene.gtf"
+fr=open(fName)
+fw=open( fName+".bed", "w")
+
+import re
+
+i=0; s=0; info={"id":[], "exons":[]}
+# get first 9 columns of bed12
+def get9Col(arr):
+    tid=re.split('transcript_id "', arr[8])[1]
+    tid=re.split('";', tid)[0]    
+    arr2=[  arr[0], arr[3],arr[4], tid, "0", arr[6],   arr[3],arr[4], "0"]
+    return arr2;
+
+# get last 2 cols of bed12
+def get2Col(arr, pos):
+    lens=""; lens2=""
+    for i in arr:
+        lens += str( int(i[1]) - int(i[0]) )+","
+        lens2 += str( int(i[0]) - int(pos) )+","
+    return([lens, lens2])
+
+# get all 12 cols
+def save12Cols(info, pos, fw):
+    info["id"].append( str( len(info["exons"]) ) ) # add 10th column blockCount
+    arr2 = get2Col(info["exons"], pos) # get last 2 columns: exonLength, (exonStart-chromStart)
+    lineArr= info["id"] + arr2
+    # print("write to file: ", "\t".join(lineArr) )
+    fw.write( "\t".join(lineArr) + "\n")
+
+for lineR in fr.readlines():
+    i+=1
+    line=lineR.strip()
+    arr=re.split("\t", line) #total 9 columns of gtf files
+    # ['chr1', 'refGene', 'transcript', '11874', '14409', '.', '+', '.', 'gene_id "DDX11L1"; transcript_id "NR_046018";  gene_name "DDX11L1";']
+    
+    #1. only keep transcript and exon info
+    if arr[2] not in ["transcript", "exon"]:
+        continue;
+    #2. get transcript id and process last transcript
+    if arr[2]=="transcript":
+        if len(info['id'])>0:
+            save12Cols(info, start, fw); s+=1
+            info={"id":[], "exons":[]} # init for next transcript id
+        info["id"]=get9Col(arr); # get first 9 columns: chr, start, end, transID, score=0, strand, start, end, Color=0,
+        start=arr[3]
+        strand=arr[6]
+    if arr[2]=="exon":
+        info["exons"].append(arr[3:5]);
+
+save12Cols(info, start, fw);s+=1
+
+fr.close()
+fw.close()
+print("==end==",i,s); #==end== 1893860 84787
+
+
+
+
+(4) 测试效果
+$ cd /data/wangjl/ATAC/fq/test4/
+
+reads主要在5’端的ATAC数据。
+1) 生成的bed
+$ geneBody_coverage.py -i map_clean/SRR7629152.final.bam -r /home/wangjl/data/ref/human/UCSC/hg38.refGene.gtf.bed -o QC_map/SRR7629152.53_
+19:41-> 19:56 (15min)
+
+# bed 文件 
+$ head /home/wangjl/data/ref/human/UCSC/hg38.refGene.gtf.bed  #84,787
+chr1    11874   14409   NR_046018       0       +       11874   14409   0       3       353,108,1188,   0,739,1347,
+chr1    14362   29370   NR_024540       0       -       14362   29370   0       11      467,68,151,158,197,135,136,146,98,153,49,       0,608,1434,2245,2496,2871,3244,3553,3906,10376,14959,
+
+$ cat /home/wangjl/data/ref/human/UCSC/hg38.refGene.gtf.bed | awk '{print $10}'|sort|uniq -c |sort -k1nr  
+   7202 4 
+   7020 3  
+   6592 5 
+   6451 1  
+      1 92 
+      1 94 
+      1 95
+
+
+2) 下载的bed
+$ geneBody_coverage.py -i map_clean/SRR7629152.final.bam -r /home/wangjl/data/ref/human/UCSC/hg38_refseq_whole_gene.bed -o QC_map/SRR7629152.53-2_
+20:01->20:34(33min)
+
+$ head /home/wangjl/data/ref/human/UCSC/hg38_refseq_whole_gene.bed #172,766
+chr1    67092164        67134970        NM_001276352.2  0       -       67093579        67127240        0       9       1440,70,145,68,113,158,92,86,41,        0,4087,11073,19412,23187,33587,35001,38977,42765,
+chr1    67092164        67134970        NM_001276351.2  0       -       67093004        67127240        0       8       1440,187,70,113,158,92,86,41,   0,3070,4087,23187,33587,35001,38977,42765,
+
+$ cat /home/wangjl/data/ref/human/UCSC/hg38_refseq_whole_gene.bed | awk '{print $10}'|sort|uniq -c |sort -k1nr                                                                                                [125/195]
+  17371 3                                                                                                                                                                                              
+  13685 4                                                                                                                                                                      
+  11705 5                                                                                             
+  10368 6                                                                                                          
+   9260 7  
+      1 313
+      1 359
+      1 363
+
+小结: 图形差不多。都是5’端高，指数降低到3'。
+
+
+
+3) 另一个样本: 3'测序。
+
+$ samtools index clean/c12ROW09_Aligned.sortedByCoord.out.bam
+$ geneBody_coverage.py -i clean/c12ROW09_Aligned.sortedByCoord.out.bam -r /home/wangjl/data/ref/human/UCSC/hg38.refGene.gtf.bed -o QC_map/c12ROW09.53_
+20:27->20:31
+
+$ geneBody_coverage.py -i clean/c12ROW09_Aligned.sortedByCoord.out.bam -r /home/wangjl/data/ref/human/UCSC/hg38_refseq_whole_gene.bed -o QC_map/c12ROW09-2.53_
+
+小结：图形有差别，还是下载的bed图形更细腻。
+
+
+
+结论：还是用下载的bed文件吧，除非真的找不到了。
+
+
+
+
+
+
+
+
+
 
 
 

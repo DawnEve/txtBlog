@@ -2287,6 +2287,7 @@ $ sudo apt-get install eclipse
 ========================================
 DIY一个系统内存监控(记录内存占用top10进程，并可视化)
 ----------------------------------------
+
 1. 原理
 # linux 下 取进程占用 cpu 最高的前10个进程
 ps aux|head -1;ps aux|grep -v PID|sort -rn -k +3|head
@@ -2298,6 +2299,13 @@ ps aux|head -1;ps aux|grep -v PID|sort -rn -k +4|head
 我的改进
 $ ps aux|head -1;ps aux| grep -v PID |sort -k 4nr -k 5nr | head
 
+
+
+获取数据的方法: https://github.com/aijialin/SysMonitor
+/proc/meminfo
+/proc/cpuinfo
+/proc/stat
+/proc/net/netstat
 
 
 
@@ -2692,11 +2700,448 @@ $ crontab -e
 
 
 ========================================
+Ubuntu 转移地方之后不知道IP，插屏幕后不能启动
 ----------------------------------------
+1. Ubuntu 工作站从213移动到205后，不能联网了。
+Stuck in emergency mode and nothing works?
+https://askubuntu.com/questions/960790/stuck-in-emergency-mode-and-nothing-works
+
+[  0.824138] Couldn't get size: 0x800000000e
+/dev/sda2: recovering journal
+/dev/sda2: clean, ... files, ... blocks.
+You are in emergency mode. After logging in, type "journalctl -xb" to view system logs, 
+"systemctl reboot" to reboot, "systemctl default" or "exit" to boot into default mode.
+Give root pasword for maintenance
+(or press Control-D to continue):
+
+
+然后输入 root 密码后进入了不能联网的命令行界面。
+$ ping baidu.com 找不到
+$ ifconfig 命令只有一个127.0.0.1信息。
+
+
+
+$ journalctl -xb
+好几屏幕，看不懂。
+
+ 
+到使用systemctl status network发现网络无法正常重启，
+而系统像是重启了。
+
+$ sudo blkid 
+$ cat /etc/fstab
+
+
+
+
+
+2. 高赞回答: 不该挂载 recovery partition!
+
+
+Your /etc/fstab is wrong.
+
+First, you don't need to mount Acer-specific or recovery partitions, or the CD-ROM.
+So, I'd comment out these lines...
+
+
+(1)sudo -H gedit /etc/fstab
+#Entry for /dev/sda3 :
+#UUID=C85AA81A5AA806F2   /media/Acer ntfs-3g defaults,locale=en_US.UTF-8 0 0
+# note that I commented this out and also changed the "00" to "0 0"
+
+#Entry for /dev/sda4 :
+#UUID=4ECAA8ECCAA8D18F   /media/Recovery ntfs-3g defaults,locale=en_US.UTF-8 0 0
+# note that I commented this out and also changed the "00" to "0 0"
+
+#/dev/sr0    /media/cdrom0   udf,iso9660 user,noauto 0   0
+
+
+(2) and change:
+#Entry for /dev/sdb1 :
+UUID=0C08B30A08B2F1B6   /media/DATA ntfs-3g defaults,locale=en_US.UTF-8 00
+
+to this:
+#Entry for /dev/sdb1 :
+UUID=0C08B30A08B2F1B6   /media/DATA ntfs-3g defaults,locale=en_US.UTF-8 0 0
+# note the change from "00" to "0 0"
+
+(3)that will fix your problem.
+However, if you must keep sda4, then the correct line would be...
+
+#Entry for /dev/sda4 :
+UUID=003CAE413CAE3218   /media/Recovery ntfs-3g defaults,locale=en_US.UTF-8 0 0
+# note the new UUID, and the "0 0" at the end of the line.
+
+
+
+#######
+Seeing your answer triggered me to start commenting stuff out in my /etc/fstab file,
+when I commented out the USB thumb drive mounting part, boom! It worked! 
+I replaced the thumb drive, updated my fstab file and now I'm good to go again. 
+
+
+
+
+#######
+1)Type your root password
+2)cat /etc/fstab
+3)blkid (show the device ids)
+4)Now check which which UUID in /etc/fstab does not apper in blkid output
+5)type 'nano /etc/fstab' and Comment out that line (Just put # infront of the line)
+6)type 'reboot' (Now your problem should be fixed and after logging in successfully, you can add the current UUID in /etc/fstab file )
+先注释掉 /etc/fstab 中而不在blkid中的条目，sudo nano /etc/fstab
+然后reboot，等正常启动后，再在 /etc/fstab 中添加上当前在blkid中出现的uuid。
+
+
+
+As an example, this is my output of /etc/fstab file, in which I simply commented out the line ( UUID=C3D1-3CB7 /windows vfat utf8,umask=007,gid=46 0 1), because the UUID=C3D1-3CB7 has been changed.
+
+
+
+
+
+
+3. 删掉 恢复区 还是在无限重启。
+
+I am not able to edit the file using gksudo or vim or emacs. Perhaps nano.
+
+but the problem still continues to exist even after commenting the lines and now on ntfsfix it says that the Linux Swap partition is corrupt. Please Help. – 
+
+
+
+
+
+
+4. 可能是文件系统坏了
+
+All you have to do is perform a file system check using,
+
+$ fsck.ext4 /dev/sda3
+where sda3 can be your partition and if you are using ext3 file system, change the command as follows:
+$ fsck.ext3 /dev/sda3
+
+About the partition number, Linux shows you the partition before arriving at the prompt.
+
+This should solve the problem.
+
+
+####
+fsck -f /dev/xxx
+这条命令输完以后就按提示回车 
+
+
+说明是磁盘错误/dev/sda1的错误，所以可以用fsck来处理错误。
+输入命令：fsck -y /dev/sda1
+
+
+
+####
+Worked like a charm for me as well. Thanks a lot! 
+
+
+### 
+Check /etc/fstab to see what disks are mounted by default, it will be one of those that need to be checked. 
+对所有挂载的磁盘都执行这个命令。Ex: sda1, sda2, sda3, sda4, and so on
+
+Once you run the above command, you'll be prompted to fix the issue right inside the terminal itself.
+Keep hitting y (for yes) until the end of the fix.
+(or you can use -fy for automatically response yes to all.)
+
+
+
+5.  https://www.virten.net/2017/08/vcsa-6-5-broken-filesystem-welcome-to-emergency-mode/
+看到报错时，报错信息已经滚过去了，要回看，
+so the first thing is to scroll up (Shift + Page Up)
+
+
+# df -h
+# cat /etc/fstab
+
+看看相对于后者，前者缺少哪些文件？
+As you can see, the /storage/log filesystem is missing in the output from df -h:
+
+
+然后对缺少的检查
+The next step is to run a filesystem check. Use the -y option to automatically fix all issues or press "y" for each identified error.
+# e2fsck -y /dev/log_vg/log
+
+When all errors are fixed, reboot vCenter Server Appliance:
+
+# reboot -f
+It should now be able to boot the vCenter Service Appliance.
+
+
+
+
+6. 可能是显卡问题: 这是一个新显示器，不一定有显卡驱动
+
+(1) 
+先去BIOS看看有没有禁用显卡之类的。。。或者在grub(就你选择试用那里)添加nomodeset=0
+
+(2)
+https://blog.csdn.net/lh315936716/article/details/112898030
+系统安装完成启动后花屏 提示Couldn't get size: 0x800000000e
+
+原因是NVIDIA GEFORCE RTX2080显卡适配的问题
+
+解决方法：在选择系统的时候按e进入下面第二张图界面，在quiet前面加nomodeset，
+启动后打开terminal输入sudo gedit /etc/modprobe.d/blacklist.conf，输入密码后在最后一行加上blacklist nouveau。（禁用自带的显卡驱动）
+
+保存后在terminal输入sudo update-initramfs -u 使修改生效
+
+然后安装nvidia显卡驱动，重启后正常了
+
+
+
+
+
+
+
+########
+
+总结一下，如何抢救这个Del T5820 工作站的
+1. 按开机键，不干涉启动失败，进入紧急模式；
+2. 紧急模式注释掉 /etc/fstab 中有而 blkid 没有的设备后，reboot 重启，开始在第一个Ubuntu logo，几个小时不动。
+只能再次重启。
+3. F12 进入 bios，选择启动Ubuntu，然后按一下 Esc，进入grub启动选项，选第二项高级，见到3个内核及对应的recovery模式，
+选最老的内核的recovery模式，然后有菜单，选择 大概倒数第二项，drop to root;
+输入root密码后，进入shell。
+这时候可以编辑文件，但是所有服务都是dead。
+
+4. 输入 # init 3 回车，下一屏幕，就是正常tty1终端。
+没有图形界面，但是服务都可用。
+经测试，尝试远程桌面，也可以用。
+
+5. 可能以前工程师上门装系统，用的是工作站主板上的显示器接口，该接口实验室没有可用的连接线。
+而这次外接屏幕用的是 工作站独立显卡上的接口，可能没有显卡驱动。
+
+
+
+
+Ubuntu查看开机日志
+$ dmesg
+
+[    0.866080] Couldn't get size: 0x800000000000000e  //就这一行是红色的
+[    0.866982] MODSIGN: Couldn't get UEFI MokListRT
+[    0.868654] zswap: loaded using pool lzo/zbud
+
+
+
+
+
+ref:
+https://blog.csdn.net/lk142500/article/details/82778165
+https://unix.stackexchange.com/questions/347808/ubuntu-gives-message-welcome-to-emergency-mode
+
 
 
 ========================================
+|-- 查看显卡及安装显卡驱动
 ----------------------------------------
+1. 查看显卡型号
+$ sudo lshw -c video
+[sudo] password for wangjl: 
+  *-display                 
+       description: VGA compatible controller
+       product: GP106GL
+       vendor: NVIDIA Corporation
+       physical id: 0
+       bus info: pci@0000:65:00.0
+       version: a1
+       width: 64 bits
+       clock: 33MHz
+       capabilities: pm msi pciexpress vga_controller bus_master cap_list rom
+       configuration: driver=nvidia latency=0  ##使用的网卡驱动名称
+       resources: irq:44 memory:d7000000-d7ffffff memory:c0000000-cfffffff memory:d0000000-d1ffffff ioport:b000(size=128) memory:c0000-dffff
+#
+可以看到你的显卡信息，比如我的就是 product: GP106GL
+
+
+$ lshw -C display
+WARNING: you should run this program as super-user.
+  *-display                 
+       description: VGA compatible controller
+       product: GP106GL
+       vendor: NVIDIA Corporation
+       physical id: 0
+       bus info: pci@0000:65:00.0
+       version: a1
+       width: 64 bits
+       clock: 33MHz
+       capabilities: vga_controller bus_master cap_list rom
+       configuration: driver=nvidia latency=0
+       resources: irq:44 memory:d7000000-d7ffffff memory:c0000000-cfffffff memory:d0000000-d1ffffff ioport:b000(size=128) memory:c0000-dffff
+WARNING: output may be incomplete or inaccurate, you should run this program as super-user.
+
+
+
+
+
+2. 查看是否安装驱动
+
+
+## 第一行输出便有硬件厂商、型号名称/序列号和PCI  ID。
+$ lspci -vnn | grep VGA -A 12 
+
+65:00.0 VGA compatible controller [0300]: NVIDIA Corporation GP106GL [10de:1c30] (rev a1) (prog-if 00 [VGA controller])
+	Subsystem: Dell GP106GL [Quadro P2000] [1028:11b3]
+	Flags: bus master, fast devsel, latency 0, IRQ 44, NUMA node 0
+	Memory at d7000000 (32-bit, non-prefetchable) [size=16M]
+	Memory at c0000000 (64-bit, prefetchable) [size=256M]
+	Memory at d0000000 (64-bit, prefetchable) [size=32M]
+	I/O ports at b000 [size=128]
+	Expansion ROM at 000c0000 [disabled] [size=128K]
+	Capabilities: <access denied>
+	Kernel driver in use: nvidia
+	Kernel modules: nvidiafb, nouveau, nvidia_drm, nvidia
+
+65:00.1 Audio device [0403]: NVIDIA Corporation GP106 High Definition Audio Controller [10de:10f1] (rev a1)
+
+
+具体型号: Dell GP106GL [Quadro P2000]
+
+
+
+
+
+3.查找你的显卡的驱动
+(1) 去NVDIA driver search page搜索你的显卡需要的驱动型号并下载(如图）。
+https://www.nvidia.com/Download/Find.aspx
+
+Name	Version	Release Date
+Linux x64 (AMD64/EM64T) Display Driver NFB	465.31	May 18, 2021
+Linux x64 (AMD64/EM64T) Display Driver NVIDIA Certified	460.80	May 11, 2021
+Linux x64 (AMD64/EM64T) Display Driver NFB	465.27	April 29, 2021
+Linux x64 (AMD64/EM64T) Display Driver NVIDIA Certified	450.119.03	April 19, 2021
+
+
+
+(2)为了再次确认一遍，你还可以使用这个命令查看你可以使用的驱动：
+$ ubuntu-drivers devices
+
+$ ubuntu-drivers devices
+== /sys/devices/pci0000:64/0000:64:00.0/0000:65:00.0 ==
+modalias : pci:v000010DEd00001C30sv00001028sd000011B3bc03sc00i00
+vendor   : NVIDIA Corporation
+model    : GP106GL [Quadro P2000]
+manual_install: True
+driver   : nvidia-driver-460-server - distro non-free
+driver   : nvidia-driver-450 - third-party free
+driver   : nvidia-driver-465 - third-party free recommended
+driver   : nvidia-driver-455 - third-party free
+driver   : nvidia-driver-390 - distro non-free
+driver   : nvidia-driver-450-server - distro non-free
+driver   : nvidia-driver-418-server - distro non-free
+driver   : nvidia-driver-460 - third-party free
+driver   : nvidia-driver-418 - third-party free
+driver   : xserver-xorg-video-nouveau - distro free builtin
+
+如果结果显示和搜索到的驱动版本一样，推荐也是390.67，那我们可以安心安装390.67版本。
+但是结果显示的并没有390.67，为了避免出错，建议选择结果显示中的版本号，如460.80。
+
+
+
+
+
+4. 安装驱动
+
+(1). 禁用nouveau。
+打开终端，输入：
+$ sudo gedit /etc/modprobe.d/blacklist.conf
+
+在blacklist.conf文件末尾加上这两行，并保存：
+blacklist nouveau
+options nouveau modeset=0
+
+然后执行命令：
+
+$ sudo update-initramfs -u  //应用更改
+
+重启系统，验证是否禁用nouveau：
+
+lsmod | grep nouveau
+没有信息返回说明已禁用（如图）
+
+
+
+
+(2)安装NVIDIA驱动。
+方法一：
+打开系统设置->软件和更新->附加驱动->选择NVIDIA驱动->应用更改（如图）
+
+
+
+方法二：
+进入命令行界面：
+
+Ctrl+Alt+F1  //（深坑：笔记本的F键有小键盘，需加上Fn），之后输入用户名和密码登录即可。
+
+关闭图形界面：
+sudo service lightdm stop
+
+卸载旧版本nvidia驱动：
+sudo apt-get remove --purge nvidia*
+
+给驱动run文件赋予执行权限：
+sudo chmod  a+x NVIDIA-Linux-x86_64-396.18.run //对应自己下载的驱动名称
+
+安装nvidia驱动:
+sudo ./NVIDIA-Linux-x86_64-396.18.run -no-x-check -no-nouveau-check -no-opengl-files //只有禁用opengl这样安装才不会出现循环登陆的问题
+
+-no-x-check：安装驱动时关闭X服务
+-no-nouveau-check：安装驱动时禁用nouveau
+-no-opengl-files：只安装驱动文件，不安装OpenGL文件
+
+安装过程中的选项：
+
+The distribution-provided pre-install script failed! Are you sure you want to continue? 选择 yes 继续。
+Would you like to register the kernel module souces with DKMS? This will allow DKMS to automatically build a new module, if you install a different kernel later?  选择 No 继续。
+问题没记住，选项是：install without signing
+问题大概是：Nvidia's 32-bit compatibility libraries? 选择 No 继续。
+Would you like to run the nvidia-xconfigutility to automatically update your x configuration so that the NVIDIA x driver will be used when you restart x? Any pre-existing x confile will be backed up.  选择 Yes
+
+这些选项如果选择错误可能会导致安装失败，没关系，只要前面不出错，多尝试几次就好。
+
+打开图形界面：
+sudo service lightdm start
+
+
+(3)查看NVIDIA版本检验是否安装完成
+$ nvidia-smi
+
+$ nvidia-smi
+Wed May 19 11:29:43 2021       
++------------ ----------------- ---------------------- -----------------------+
+| NVIDIA-SMI 460.27.04    Driver Version: 460.27.04    CUDA Version: 11.2     |
+|------------ ------------------+----------------------+----------------------+
+| GPU  Name        Persistence-M| Bus-Id        Disp.A | Volatile Uncorr. ECC |
+| Fan  Temp  Perf  Pwr:Usage/Cap|         Memory-Usage | GPU-Util  Compute M. |
+|                               |                      |               MIG M. |
+|============= =================+======================+========== ===========|
+|   0  Quadro P2000        Off  | 00000000:65:00.0 Off |                  N/A |
+| 78%   40C    P0    19W /  75W |      0MiB /  5050MiB |      0%      Default |
+|                               |                      |                  N/A |
++------------ ------------------+----------------------+----------------------+
+                                                                               
++------------- ----------------- ------------------ ------------ -------------+
+| Processes:                                                                  |
+|  GPU   GI   CI        PID   Type   Process name                  GPU Memory |
+|        ID   ID                                                   Usage      |
+|============ =================== ================== ======== ================|
+|  No running processes found                                                 |
++------------ ------------------- ------------------ -------- ----------------+
+
+
+
+ref:
+https://blog.csdn.net/qiancaobaicheng/article/details/95096354
+https://www.cnblogs.com/vcan123/p/11902213.html
+
+
+
+
+
+
 
 
 ========================================

@@ -184,7 +184,7 @@ var cnzz_protocol = (("https:" == document.location.protocol) ? " https://" : " 
 		
 		<div class='links'>
 			Copyright &copy; 2009 - <?php echo date('Y',time()); ?> DawnEve. All Rights Reserved. | 
-			<a class=red target='_blank' href='https://github.com/DawnEve'>Folk me on Github</a> | 
+			<a class=red target='_blank' href='https://github.com/DawnEve/txtBlog'>Folk me on Github</a> | 
 			<a href='index.php?k=Git&id=0_2'>Contact me</a> | 
 			<a target='_blank' href='http://pan.baidu.com/s/1i3imHpF' title='密码:qa53'>web tools</a>
 		</div>

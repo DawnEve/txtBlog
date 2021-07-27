@@ -19,10 +19,10 @@ return array (
 	  array('十大常用命令','Linux101', 'txt'),
 	  array('系统_磁盘_软件_进程','Linux102-sys-disk', 'txt'),
 	  array('bash和shell编程','Linux103-shell', 'txt'),
-	  //array('VIM常用命令','vim001', 'txt'),
 	  array('字符grep/awk/sed','string_process', 'txt'),
 	  array('用户、权限与日志和安全','linux104-user', 'txt'),
 	  array('多媒体','linux301_mutimedia', 'txt'),
+	  array('编辑器VIM/emacs','editor', 'txt'),
     ),
   ),
   

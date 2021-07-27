@@ -37,7 +37,7 @@ txtBlog v0.6
 	8.主流浏览器（PC端的chrome，移动端UC、腾讯浏览器）  
 
 ## 优化：  
-	9.全站缓存60s。 已取消缓存，没必要; 
+	9.全站缓存60s。 已取消缓存，没有并发压力，没必要缓存; 
 	
 ## 
 #
@@ -90,5 +90,6 @@ $ git checkout master
 除了默认控制器，还有其他控制器：
 /index.php?c=outline&k=php&id=1_1  php的大纲
 /index.php?c=summary&k=2015 年度总结
+/index.php?c=summary&k=2020 年度总结
 
 ``````

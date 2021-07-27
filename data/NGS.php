@@ -25,15 +25,15 @@ return array (
 
   array (
     0 => 3,
-    1 => '数据分析语言',
+    1 => '通用分析',
     2 => array (
       array('测序分析shell语句','shell-in-seq','txt'),
       array('构建分析流程 pipeline','pipeline','txt'),
-      array('perl基础','lang-Perl','txt'),
 
 
       array('circos-Cytoscape','circos-Cytoscape','txt'),
-      array('GO分析及可视化','GO_analysis01','txt'),
+      array('富集分析(GO/KEGG)','GO_analysis01','txt'),
+
       array('GEO and TCGA','GEO_TCGA','txt'),
     ),
   ),  
@@ -42,11 +42,12 @@ return array (
     0 => 4,
     1 => 'RNA分析',
     2 => array (
-      array('文件格式','NGS_format','txt'),
+      array('ngs文件格式及互转','NGS_format','txt'),
       array('db_参考基因组_在线工具','genome401','txt'),
       array('本地生信软件(分析)','localSoft402','txt'),
       array('本地生信软件(可视化)','localSoft402-view','txt'),
       array('microRNA分析','miRNA','txt'),
+      array('APA分析','APA-seq','txt'),
     ),
   ),
 
@@ -57,6 +58,7 @@ return array (
     2 => array (
       array('基因组分析软件','genome_soft','txt'),
       array('外显子WES分析','NGS_exon_pipeline','txt'),
+      array('ATAC-seq分析','ATAC-seq','txt'),
 
     ),
   ),

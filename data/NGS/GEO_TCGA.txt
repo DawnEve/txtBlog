@@ -65,7 +65,7 @@ $ vdb-config --interactive
 
 
 
-2. 下载数据 
+2. 下载数据：直接看(3)
 (1) 下载数据
 $ prefetch SRR000001
 $ prefetch SRR1511730 -O ./
@@ -122,7 +122,7 @@ done
 
 
 
-(3) 下载和解压二合一
+(3) 下载和解压二合一（推荐: 最后的多线程 + 批量脚本）
 You can also avoid the prefetch step and download and convert the Run in one step by entering just the Run accession without the .sra extension in your fasterq-dump or sam-dump command:
 
 $ fasterq-dump --split-files SRR1512315
@@ -137,6 +137,12 @@ CCCFFFFFHHHHHIJJJJJJJJIJJ
 特别推荐这个命令。
 $ fasterq-dump --split-files -e 10 SRR1512315
 
+
+
+批量化运行: 多开几个tmux窗口，一个窗口中下载3个文件。（相当于手动多进程 + 程序内多进程）
+$ cat SRR_Acc_List.txt | head -n 3 | while read id; do echo $id; 
+fasterq-dump --split-files -e 10 $id;
+done;
 
 
 
@@ -158,9 +164,8 @@ $ fastq-dump --split-3 -O ./ SRR13166718.sra
 参数解释：
 --split-3     3-way splitting for mate-pairs. 
 	For each spot, if there are two biological reads satisfying filter conditions, the first is placed in the `*_1.fastq` file, and the second is placed in the `*_2.fastq` file. If there is only one biological read satisfying the filter conditions, it is placed in the `*.fastq` file.All other reads in the spot are ignored.
---gzip                        Compress output using gzip: deprecated,
-                                     not recommended
-#
+--gzip     Compress output using gzip: deprecated, not recommended
+
 
 
 
@@ -278,6 +283,243 @@ done
 ref:
 https://www.jianshu.com/p/fed19a8821eb
 https://download.asperasoft.com/download/docs/ascp/2.7/html/index.html
+
+
+
+
+========================================
+如何上传测序数据到 GEO
+----------------------------------------
+0. 准备:
+如果是人的样本，需要申请许可号，每个国家都有自己的规定。
+如果是细胞系和小鼠的样本，则可以直接上传到GEO。
+
+(1)推荐上传gz压缩的fastq文件（不要使用zip压缩），且各个样本已做拆分。
+
+$ cd /home/wangjl/data/apa/fq_files/combine/
+$ ls *fastq | while read id; 
+do  
+	echo $id; 
+	gzip -c $id > ../combine_gz/${id}.gz
+done;
+
+
+
+## test
+$ id="9" && echo c${id}_R1.fastq && echo c${id}_R2.fastq
+
+太慢了，还是全手动 多进程操作吧。
+$ id="9" && gzip -c c${id}_R1.fastq > ../combine_gz/c${id}_R1.fastq.gz && gzip -c c${id}_R2.fastq > ../combine_gz/c${id}_R2.fastq.gz
+$ id="12" && gzip -c c${id}_R2.fastq > ../combine_gz/c${id}_R2.fastq.gz
+
+
+
+(2) 生成md5校验
+$ cd /home/wangjl/data/apa/fq_files/combine_gz
+
+## get md5sum
+$ ls *.fastq.gz | xargs md5sum >result.md5
+
+## 核验
+$ md5sum -c result.md5
+
+
+抽检压缩过的文件，解压后，和原始文件比较
+$ gunzip -c small.png.gz | md5sum
+$ md5sum small.png
+
+
+
+(3) 为节省硬盘空间，怎么安全删除原始fastq文件，保留压缩后的fastq.gz?
+先检测 fastq 的md5值，
+再检测 fastq.gz 解压缩后的md5值，
+如果相等，则证明 fastq.gz 解压缩后能还原为原fastq，可以安全删除原 fastq。
+
+## step1: 原始 fastq的md5
+$ ls /home/wangjl/data/apa/fq_files/mef/*_R2.fastq | xargs md5sum >mef.md5
+
+
+## step2: gz 解压后的md5值 
+$ ls /home/wangjl/data/scPolyA-seq/data/raw_sc/human/*gz | while read fName; do echo $fName; md5=`gunzip -c ${fName} | md5sum | awk '{print $1}'` && echo -e "${md5}\t${fName}" >>human.fq.gz_after_gunzip.222.md; done;
+
+
+## step3: cat 后肉眼观察， 或 使用R语言 检测md5是否和原始文件的md5一致
+readOriginMD5=function(){
+  d1=read.table("bc.md5")
+  d1_=read.table("mef.md5")
+  d1=rbind(d1,d1_)
+  head(d1)
+  d1$cid=gsub("/home/wangjl/data/apa/fq_files/mef/", "", d1$V2)
+  d1$cid=gsub("/home/wangjl/data/apa/fq_files/bc/", "", d1$cid)
+  d1$cid=gsub("_R2", "", d1$cid)
+  d1$cid=gsub("_", "", d1$cid)
+  rownames(d1)=d1$cid
+  print(dim(d1))
+  d1
+}
+readGunzipMD5=function(){
+  d2=read.table("human.fq.gz_after_gunzip.222.md")
+  head(d2)
+  d2$cid=gsub("/home/wangjl/data/scPolyA-seq/data/raw_sc/human/", "", d2$V2)
+  d2$cid=gsub(".gz", "", d2$cid)
+  print(dim(d2))
+  rownames(d2)=d2$cid
+  d2
+}
+d1=readOriginMD5() #640
+d2=readGunzipMD5() #222
+#
+head(d1)
+head(d2)
+length(intersect(d1$cid, d2$cid))
+#
+d2$md52=d1[rownames(d2),]$V1
+dim(d2)
+d2$check= (d2$V1==d2$md52)
+head(d2)
+table(d2$check) #222 true
+# 如果都是true，则正确。
+
+
+
+
+
+
+
+
+
+1. 打开 GEO 上传界面
+https://www.ncbi.nlm.nih.gov/geo/info/submission.html
+
+
+2. 注册登录GEO数据库
+为了上传数据，首先需要登录账号，点击界面右上方“login”。
+新用户需要先注册，填写相关信息后，账号通过邮箱激活。
+
+
+登录后，如果账号是首次登录，需要完善个人信息，包括国家、地区、所属单位等。
+
+
+
+3. 上传数据
+上传数据类型可分为3类：
+	芯片数据；
+	高通量数据，如RNA-seq、ChIP-seq等；
+	其它表达谱数据，例如RT-PCR等。
+
+下来以某 C1 scRNA-seq数据上传为例展示，点击上传高通量数据类型。
+Submitting high-throughput sequence data to GEO
+
+(1)Assembling your submission
+- Metadata spreadsheet
+- Processed data files
+- Raw data files
+
+(2)Uploading your submission
+
+要准备好所有数据，放到一个文件夹中，一起上传，只有一次机会，不能反复上传。
+$ ls geo_submission_jun7/ |wc
+    564     564    9956
+
+推荐使用 sftp 上传: lftp 用户名:密码@ftp地址:传送端口（默认21）
+1) 官方示例 Using 'lftp'
+lftp ftp://geoftp:password@ftp-private.ncbi.nlm.nih.gov
+cd uploads/jinwlab_AV27EOOc
+mirror -R Folder_with_submission_files
+
+
+2) 我的实例
+$ lftp geoftp@ftp-private.ncbi.nlm.nih.gov:21
+输入密码
+> cd uploads
+> cd jinwlab_AV27EOOc
+> mirror -R geo_submission_jun7
+
+## 564+1(本excel表格) 个文件, 2021/6/7 20:52 --> 2021/6/15 21:50
+## 忘了 excel 表格了，upload到上传文件夹，希望别出错。21:04
+
+
+Total 565 files;
+2021-6-7 begin 0
+
+2021-6-9 15:00 56 files now;
+         20:41 61
+
+2021-6-10 14:21 112 files now;
+        14:43   116 files now;  398K/s
+        15:09   119 files now;   25K/s
+        17:10   125 files now;   46K/s
+
+2021-6-11 10:04  142 files now;  25K/s
+        14:39   165 files now;  1.27M/s, 4.64M/s,
+        14:46   176 files now;  9.0M/s,  max    c13ROW16
+        15:49   181 files now;  39K/s
+        19:28   183 files now;  36K/s
+
+2021-6-12 11:33  265 files now; 399K/s,  c16ROW10
+        17:24    304 files now;  50K/s, c19ROW13
+
+2021-6-13 10:45  362 files now;  29K/s,  c2ROW37
+        15:16   365 files now; 42K/s,  c2ROW40
+        22:46   398 files now; 30K/s,  c3ROW33
+		
+2021-6-14 10:01  446 files now;  399K/s, c7ROW01
+        21:57 514 files now;  29K/s, c8ROW30
+2021-6.15 21:35 end
+New: 564 files, 0 symlinks
+128001857054 bytes transferred in 630018 seconds (198.4 KiB/s)
+貌似少了一个文件，也就是我的 excel 文件。
+
+put geo_submission_jun7/seq_template.xlsx
+107265 bytes transferred in 10 seconds (10.6 KiB/s) 
+现在565文件。
+
+确保数据都放在了文件夹内 
+lftp geoftp@ftp-private.ncbi.nlm.nih.gov:/uploads/jinwlab_AV27EOOc> ls geo_submission_jun7/|wc
+    565    5085   41533
+
+
+
+(3)General Information
+- Data provisions, standards and administration
+- Categories of sequence submissions accepted by GEO
+
+
+
+(4) 最后是通知GEO去处理数据，五天内处理。
+https://submit.ncbi.nlm.nih.gov/geo/submission/ 这个页面只出现一次。
+
+
+Submission Summary
+Thank you for using the GEO Submission form.
+
+Transferred files are placed into the processing queue and will be reviewed within 5 business days; expect to receive an email from GEO curators with your GEO accession numbers, or questions about your submission. We can be contacted at geo@ncbi.nlm.nih.gov if you do not hear from us within the allotted time, or if you require additional assistance.
+
+Incomplete or incorrectly formatted submissions cannot be processed. A complete submission consists of:
+	1.Completed metadata worksheet
+	2.Raw data
+	3.Processed data
+
+If you have not transferred all components, please use the Submission form to submit the missing components.
+
+Directory:	geo_submission_jun7/
+User ID:	jin**lab
+Submission kind:	new
+		✓ Metadata
+		✓ Processed data
+		✓ Raw data
+Public release date:	immediately following curation
+Comment
+
+
+### 第二天收到邮件
+From: "GEO - Carlos Evangelista" <geo@ncbi.nlm.nih.gov>
+Subject: [geo] GSE178264 approval [NCBI tracking system #22102877]
+Date: 16 June 2021 at 03:44:53 GMT+8
+To: ji*@*.edu.cn
+
+https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc=GSE178264
+
 
 
 
@@ -677,6 +919,9 @@ http://www.bio-info-trainee.com/3783.html
 ONCOLN:  http://www.oncolnc.org
 KMPLOT:  http://kmplot.com/analysis
 GEPIA:  http://gepia.cancer-pku.cn/detail.php?gene=CUL3
+GEPIA2:  http://gepia2.cancer-pku.cn/#analysis
+
+
 
 1.在R里面重新画ONCOLNC数据
 rm(list=ls())
@@ -746,9 +991,417 @@ plot(e$Expression,e$rsem)
 
 
 ========================================
+*** UCSC Xena: 在线多组学、临床-表型数据 探索工具 ***
+----------------------------------------
+文献中
+Exon and CDS annotation for TCGA and miRNA expression were downloaded from Xena UCSC Genome browsers.
+https://doi.org/10.1016/j.molcel.2019.12.022
+
+
+
+
+1. Xena UCSC Genome browsers
+可用来下数据，还可以在线分析，很多好用的在线探索工具。
+
+http://xena.ucsc.edu/
+国内镜像 https://xena.hiplot.com.cn/
+
+
+(1) 官网简介
+UCSC Xena
+See the bigger picture
+An online exploration tool for public and private, multi-omic and clinical/phenotype data
+一个公共-私人数据，多组学，临床-表型数据 在线探索工具。
+
+
+# 帮助文档 Tutorials and walkthroughs
+Don't know where to start? Jump in with one of our tutorials or "How do I …" walkthroughs
+https://ucsc-xena.gitbook.io/project/tutorials
+
+
+# 探索多渠道肿瘤数据 Explore TCGA, GDC, and other public cancer genomics resources
+Discover new trends and validate your findings with 1500+ datasets and 50+ cancer types.
+http://xena.ucsc.edu/public/
+
+
+# 查看私人数据或文献中的数据 View your own private data, or data from a paper
+View your data, securely and privately. Our step-by-step wizard will guide you whether you're on a Windows or Mac.
+http://xena.ucsc.edu/private-hubs/
+
+
+# Xena can help you ...
+1) 画生存曲线 Perform a Kaplan-Meier survival analysis
+Wondering if a gene (or probe, or clinical value, etc) affects survival? We have survival analyses complete with p-values, adjustable time frames, and multiple survival endpoints.
+http://xena.ucsc.edu/kaplan-survival-analysis/
+
+2) 对比肿瘤和正常，或者跨组织类型 Compare tumor vs normal within or across tissue types
+Use Xena to compare TCGA tumor samples to GTEx normal samples to see if your gene or transcript is up- or down-regulated in one or more cancer types.
+http://xena.ucsc.edu/compare-tissue/
+
+3) 发现基因和临床数据的关联 Discover relationships among genomic and clinical data
+Wondering if an increase in gene expression is correlated with a promoter hypomethylation, an increase in chromatin accessibility, or hotspot missense mutations? Xena lines up multiple types of data side-by-side to help you find out.
+http://xena.ucsc.edu/discover-relationships/
+
+4) 基于基因型数据分型 Create subgroups based any genomic data
+With Xena you can compare expression of a gene between wild type vs mutant samples, or between samples with normal copy number vs amplifications, or between any other subgroups.
+http://xena.ucsc.edu/create-subgroups/
+
+5) 方便分享 Share live views with your colleague
+Found something interesting and want to share? Xena bookmarks live views for further exploration by you or anyone you send the link to.
+
+6) 容易下载的预编译数据，可以进一步分析 Download easy-to-use pre-compiled data for further bioinformatic analysis
+Xena compiles easy-to-use data files derived from public resources like TCGA or GDC. These tab-delimited files, such as Pan-cancer gene expression data matrix, can be easily imported into R or python.
+
+http://xena.ucsc.edu/download-data/
+Xena 汇集了 TCGA or GDC 的公共数据，这些多肿瘤的基因表达数据矩阵是csv格式的，很方便导入到R或python。
+
+https://ucsc-xena.gitbook.io/project/overview-of-features/download-data
+4种下载数据的方法：整列，整个表，wget，R or Python API
+
+7) 发布并公开自己的数据 Make your data available to the world
+Get your data (e.g. from a publication) out to a wider audience for both visualization and download. Set up a Xena Data Hub, load up your data, configure it to be public, and share the URL.
+
+
+
+
+
+
+
+2. 其他资料对其的介绍
+
+(1) 可以用Xena帮助解决什么问题
+某个基因的高表达与预后的关系？
+自己定义的两个分组之间的生存存在差异吗？
+某个基因在三种癌症类型的tumor与normal样本是不是存在差异表达？
+某个基因的突变、拷贝数变异、基因表达量之间存在怎样的关系？
+
+(2) Xena中存储的公共数据 
+http://xena.ucsc.edu/public/ 最新的和下面不完全一致。
+
+TCGA
+	40种癌症类型，11000样本
+	主要是primary tumor，还有少量的normal和metastatic
+	数据类型主要有：somatic mutation、gene expression、copy number
+	生存及其他基础表型、临床数据（如年龄、亚型）
+
+TARGET
+	https://ocg.cancer.gov/programs/target
+	全称是：The Therapeutically Applicable Research to Generate Effective Treatments (TARGET)
+	主要围绕儿童开展，包括以下项目，和TCGA类似都有转录组、WGS、WES、甲基化等：
+	
+	Acute Lymphoblastic Leukemia
+	Acute Myeloid Leukemia
+	Kidney Tumors
+	Neuroblastoma 神经母细胞瘤
+	Osteosarcoma 骨肉瘤
+	Pan-cancer Model Systems
+
+GTEx
+	GTEx全称Genotype-Tissue Expression，存储了正常组织的表达量数据
+
+ICGC
+	https://dcc.icgc.org/
+	ICGC 全称International Cancer Genome Consortium（国际癌症基因组联盟），有亚洲、澳大利亚、欧洲、北美和南美的数据
+
+PCAWG
+	https://dcc.icgc.org/pcawg
+	全称是：Pan-Cancer Analysis of Whole Genomes（泛癌全基因组分析），是TCGA工作人员利用TCGA数据当中的WGS数据进行的分析，有2700多个样本供体
+
+CCLE
+	https://portals.broadinstitute.org/ccle
+	Cancer Cell Line Encyclopedia（癌症细胞系百科全书），有各个人种肿瘤细胞系的WES数据，WGS数据，RNAseq数据，扩增子数据。可以找基因表达变化、突变、indels、拷贝数变异、甲基化、药物反应等等。
+	目前已有1,457个 细胞系，涉及84,434个基因
+
+MET500
+	https://met500.path.med.umich.edu/
+	主要是研究转移癌
+	未来还会加入蛋白组学的数据 ，来自：Clinical Proteomic Tumor Analysis Consortium (CPTAC)
+
+
+(3) 常见的癌症可视化类型
+
+体细胞突变 somatic mutation
+
+	DNA测序得到，主要包括：snv、indel这样的小型突变，对蛋白质的影响主要表现在：
+	沉默突变 Silent：不改变蛋白质
+	错义突变 Missense：一个氨基酸被另一个氨基酸取代
+	剪切位点突变 Splice-site：干扰剪切过程
+	有害突变 Deleterious：无义突变（nonsense）、移码突变（frameshift）
+		无义突变：单个碱基的替换引起出现了终止密码子，从而提前终止了多肽链的合成
+		移码突变：在一条DNA链上缺失或者插入1个、2个或者其他非3个及其整数倍的碱基，就会引起作用部位之后的密码子的组成及顺序发生变化，从而导致终止码提前或者延后
+
+
+拷贝数变异 CNV
+	DNA测序得到，也是体细胞突变。主要分为扩增（amplification）和缺失（deletion）
+
+
+基因表达数据
+	RNA测序得到，主要有转录本层面、基因层面、外显子层面、编码蛋白基因层面、非编码RNA层面
+
+
+需要注意:
+	批次效应（由于实验方法、文库制备、分析方法等等产生），因此在比较不同数据集时要当心
+	不是所有的样本都有全部的测序数据，比如某种癌症的某个样本某种测序质量差、文库制备出了问题，它就会缺失这种测序结果
+
+
+(4) 支持的数据分析种类
+！当心！虽然都是TCGA，但数据也存在差异
+
+首先是：TCGA PanCan Atlas，它采用的是TCGA最高质量的数据，采用了统一的pipeline进行分析，大大减小了系统误差；
+	附带了一些衍生数据，比如stemness score、immuno subtype；
+	另外它的生存数据也是经过人工核验的；
+	比对过程是比对到了2006 genome （hg19）；
+	在xena中的名称是：TCGA Pan-Cancer （PANCAN）；
+	适用于：全新的分析
+
+其次是：GDC TCGA data，它也是统一分析，数据来自Genomic Data Commons（GDC）；
+	比对到了2013 genome（hg38）；
+	没有其他衍生数据，只是level3的基因组数据；
+	在xena中的名称是：GDC xxx，如 GDC TCGA Bile Duct Cancer （CHOL）；
+	适用于：单个癌症（不想从pan cancer数据取子集）或者需要hg38版本的数据
+
+最后是：最原始的TCGA data ，TCGA官方放出来的原始数据；
+	大部分是比对到hg19，但也有比对到hg18的；
+	在xena中的名称是：TCGA xxx，如TCGA Bile Duct Cancer（CHOL）；
+	适用于：需要外显子表达量的分析或者需要重复一些早期的工作
+
+
+目前比较推荐的数据使用方式
+- Expression type: Gene expression
+	- Xena Study: TCGA Pan-Cancer(PANCAN)
+	- Dataset: Gene expression(basic menu)
+
+- Expression type: Transcript expression
+	- Xena Study: TCGA Pan-Cancer(PANCAN)
+	- Dataset: TOIL Transcript expression(advanced menu)
+
+- Expression type: LncRNA gene expression
+	- Xena Study: TCGA Pan-Cancer(PANCAN)
+	- Dataset: TOIL Gene expression(advanced menu)
+
+- Expression type: Exon expression
+	- Xena Study: legacy TCGA datasets(per cancer type)
+	- Dataset: Exon expression(advanced menu)
+
+- Expression type: miRNA expression
+	- Xena Study: TCGA Pan-Cancer(PANCAN)
+	- Dataset: miRNA expression(advanced menu)
+
+
+
+
+
+(5) 可视化简单上手——以肺癌的EGFR为例
+
+xena的可视化逻辑就像是excel表格一样，一列一列把癌症样本、想要分析的数据类型、基因等等加载进来
+
+
+1) 了解一下这个基因EGFR
+	10-35%的肺癌病人中会存在EGFR基因的异常（突变或扩增）
+	在女性中最常见
+	EGFR抑制剂目前在临床上已经应用，比如EGFR酪氨酸激酶抑制剂（EGFRTKI）（例如埃罗替尼和吉非替尼）就是一类EGFR阻断药物，在治疗EGFR突变的肺癌中是有效的。目前前三代都出现了抗药问题，来自纪念斯隆-凯特琳癌症中心的研究显示，奥希替尼的初治和后线治疗展现了不同的耐药谱
+	（https://med.sina.cn/article_detail_103_2_90349.html）
+
+2) 加载癌症数据
+加载进来后，看到每一行表示一个样本
+
+
+3) 载入EGFR表达量
+B列的每一行也是和A保持一致。null表示该样本没有数据，显示灰色
+
+
+4) 载入EGFR体细胞突变数据
+C列中，突变位点就是其中的散点，不同颜色表示不同突变影响
+
+5) 载入EGFR的拷贝数变异
+默认只能加三列，此时需要点击Click to Add Column来增加。红色是扩增，蓝色是缺失
+
+
+6) 在上图发现，EGFR有异常的地方，表达量也比较高=》思考：它的异常对生存有没有影响？
+
+思路是：
+step1- 去掉空值（Null）的样本
+step2- 分组，一组有突变，一组没有
+step3- 做生存分析
+
+xena样本过滤小技巧：
+step1:  过滤条件为!=null ，过滤完空值的样本，剩下508个
+step2: 怎么定义EGFR异常呢？
+	根据上图看到，EGFR的异常（Aberration）可以包括：
+	mutation：missense OR inframe deletion
+	copy number：copy number gain
+	因此过滤条件就是：(mis OR infra) OR D:>0.5
+step3：怎么做生存分析呢？
+
+7) 表达量差异在自己分的两组之间差异显著吗？
+选择KM plot下面的👇那个Chart & Statistics ，把X、Y轴设置一下就ok
+
+
+
+#
+
+
+
+
+
+#
+
+
+
+
+
+
+
+
+
+关于XENA储存的数据，需要多说一句的是，XENA的数据有时候是经过结果一定的处理的，这个时候在下载的时候一定要知道自己的原始数据有没有经过处理。这个我们可以在数据下载的unit当中看到，例如这个TCGA的count数据就是经过log2处理的。
+
+
+
+========================================
+华为云下载工具: obsutil
+----------------------------------------
+
+1.
+网页版使用方式: http://www.seqhealth.cn/view/139.html
+命令行使用方式: http://www.seqhealth.cn/view/140.html
+
+(1)下载安装
+$ wget  https://obs-community.obs.cn-north-1.myhuaweicloud.com/obsutil/current/obsutil_linux_amd64.tar.gz
+
+$ tar -zxvf obsutil_linux_amd64.tar.gz
+obsutil_linux_amd64_5.3.4/
+obsutil_linux_amd64_5.3.4/obsutil
+obsutil_linux_amd64_5.3.4/setup.sh
+
+下载好的软件直接解压可用。
+
+$ cd obsutil_linux_amd64_5.3.4/
+$ ls -lth
+total 15M
+-r-x------ 1 wangjl wangjl  15M Jun  1 10:24 obsutil
+-rw------- 1 wangjl wangjl 2.1K Jun  1 10:24 setup.sh
+
+把 obsutil 放到路径中。
+$ ln -s /home/wangjl/soft/obsutil_linux_amd64_5.3.4/obsutil ~/bin/
+
+检查版本号:
+$ obsutil version
+obsutil version:5.3.4, obssdk version:2.2.12
+operating system:linux, arch:amd64
+
+
+
+
+
+(2) 数据下载
+查看邮件，会有一个链接，一个授权码
+
+Authorization  Code:
+https://e-share.obs-website.cn-north-1.myhuaweicloud.com?token=4y6D2Av.....eg==
+
+Access Code:
+200414
+
+* Valid Until:
+Wed, 15 Apr 2020 11:09:12 GMT +0800
+
+
+
+下载数据
+$ obsutil share-cp https://e-share.obs-website.cn-north-1.myhuaweicloud.com?token=4y...eg== /home/wangjl/data/ZhangMin/ -ac=200414  -r -f -u -vlength -vmd5
+
+参数解释:
+命令组成为“obsutil“+ ”Authorization Code“+ ”folder_url“ + ”-ac=Access Code” + “ -r -f  -u -vlength -vmd5”
+	Authorization Code：下载链接
+	folder_url：本地存储路径，上述示例中的本地路径为“/home/seqhealth/data/”，正式下载时请替换
+		远程项目一般自带文件夹，故本地子文件夹可有可无；为了安全，建议加上子文件夹，大不了下载完再mv到外层。
+	-ac：提取码
+	-r：批量下载
+	-f：强制下载，不进行逐个询问
+	-u：增量下载
+	-vlength：下载完成后，验证本地文件大小是否与桶中对象的大小一致
+	-vmd5：下载完成后，验证本地文件的MD5值是否与桶中对象的MD5值一致
+#
+
+
+输出: 很多内容，只关心时间和最后结论。
+Start at 2021-06-02 06:09:50.121111689 +0000 UTC
+下载进度为100%，且Failed数量为0，则下载完成。
+
+
+
+(3) 下载有失败的怎么办？
+
+两个都有失败的：
+Succeed count is:   10        Failed count is:    4
+Succeed count is:   7         Failed count is:    7 
+
+
+华为官网的解释: https://support.huaweicloud.com/obs_faq/obs_faq_0068.html
+- 重新执行下载命令。
+obsutil在下载的时候默认开启断点续传，此时只要重新执行之前的下载命令就可以将之前下载失败的对象采用续传的方式重新下载到本地。
+- 如果问题未能解决，请将obsutil升级到最新版本再进行下载。
+- 如果问题仍然存在，请联系客服处理。
+
+
+再次执行:
+Succeed count is:   14        Failed count is:    0         Skip count is:      14 
+
+Succeed count is:   14        Failed count is:    0         Skip count is:      7         
+Warning count is:   7         不知道这个 Warning 干啥的。
+Succeed bytes is:   12.10GB
+
+
+
+(4) 进文件夹检查 md5 值
+不知道为什么，华为的md5文件顺序是反的，需要2列颠倒后check。
+
+$ awk '{print $2"\t"$1}' UID.md5.txt >UID.md5
+
+$ md5sum -c UID.md5
+ADK_WT_1.dedup.R1.fastq.gz: OK
+...  
+ADK_KO_3.dedup.R2.fastq.gz: OK
+全部都是OK则通过文件完整性校验。
+
+
+
+
+
+
+
+========================================
 ----------------------------------------
 
 
+
+
+========================================
+----------------------------------------
+
+
+
+========================================
+----------------------------------------
+
+
+
+
+
+========================================
+----------------------------------------
+
+
+
+========================================
+----------------------------------------
+
+
+
+
+========================================
+----------------------------------------
 
 
 
