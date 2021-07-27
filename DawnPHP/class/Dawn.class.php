@@ -48,6 +48,7 @@ class Dawn{
 	
 	/*
 	* txt解析器v0.2
+	* v0.3 替换 &，c语言获取指针符号 int a=1, *p=&a;
 	*/
 	public static function showTxt($filename){
 	    //1.确定文件存在，否则提示
@@ -57,12 +58,12 @@ class Dawn{
 	    //2.对文件进行替换
 	    $data = file_get_contents($filename);
 	    //对<>进行转义
+	    $data=preg_replace('/&/','&amp;',$data);
 	    $data=preg_replace('/</','&lt;',$data);
 	    $data=preg_replace('/>/','&gt;',$data);
 	    //对换行的========替换为<hr>
 	    $data=preg_replace('/={30,}/','<hr class=top><h4>',$data);
 	    $data=preg_replace('/\-{30,}/','</h4><hr class=under>',$data);
-	    
 	    
 	    //3.输出显示
 	    return $data;
