@@ -21,6 +21,43 @@ c102-adv: c语言的高级话题
 
 
 ========================================
+编译、调试小技巧
+----------------------------------------
+
+1. 编译技巧
+
+(1) 在gcc下用到数学函数 Math.h ，如sqrt。在gcc时要加上 -lm 参数，这样告诉编译器我要用到数学函数了 。
+如：
+gcc a.c -o a -lm
+
+
+
+
+
+2. 调试技巧
+
+(1) gdb调试 -带有命令行参数
+进入gdb调试：
+gcc -g -Wall httpTest.c -o test    生成了可调试文件
+gdb test                                        进入调试
+
+下面可以使用两种方法输入命令行参数
+1) run  命令行参数
+2) set args  命令行参数
+
+如：我的程序中需要输入的时服务器端ip地址，可以通过以下两种方法输入
+1) 如果直接运行程序，run  www.baidu.com
+2) set  args www.baidu.com,后面再继续进行调试
+
+
+
+
+
+
+
+
+
+========================================
 多文件联合编译：同时编译、预编译
 ----------------------------------------
 1. 场景: 对于大文件，可以分开编译，以便节省编译时间。
@@ -1388,7 +1425,7 @@ $7 = (void *) 0x7fffffffdd08
 
 
 ========================================
-|-- 函数指针，指针指向的数据访问: 回调函数 //todo
+|-- gdb 查看 函数指针
 ----------------------------------------
 1. 函数指针 
 
@@ -1396,7 +1433,7 @@ $ gdb a.out
 (gdb) start
 
 (gdb) n
-26              int (*psquare)(int a)=&square; #连写会显示异常，故意多加一个空格
+26              int (*psquare)(int a)=&square;
 (gdb) n
 27              int s=(*psquare)(a);
 (gdb) bt
@@ -1433,77 +1470,6 @@ $2 = 400
 
 
 
-
-
-
-
-2. 指向函数的指针
-
-#include<stdio.h>
-
-void bubbleSort(int arr[], int n){
-	int i,j, tmp;
-	for(i=0; i<n; i++){
-		for(j=1; j<n; j++){
-			if(arr[i]<arr[j]){
-				tmp=arr[j];
-				arr[j]=arr[i];
-				arr[i]=tmp;
-			}
-		}
-	}
-}
-
-int main(){
-	int arr[]={0, -1,20,-300,4000}, N=sizeof(arr)/sizeof(int);
-	void (*p)(int arr[], int N)=&bubbleSort;
-	(*p)(arr, N);
-	for(int i=0; i<N; i++){
-		printf("%d ", arr[i]);
-	}
-	printf("\n");
-}
-
-
-
-
-
-
-3. 回调函数
-在 A 函数中将参数与 C 函数传递给 B 函数，B函数调用 C 函数；
-B 函数调用的动作称为回调，C 函数称为回调函数。
-
-#include <stdio.h>
-
-// 回调函数a
-void callback_a(int n){
-    printf("Call callback_a, n: %d\n", n);
-}
-
-// 回调函数b
-void callback_b(int n){
-    printf("Call callback_b, n: %d\n", n);
-}
-
-// 回调动作：传入函数的指针
-void callback_act(int x, void (*callback) (int var)){
-    printf("Call callback_act, x: %d\n", x);
-    callback(x);
-}
-
-void main(){
-    int a = 1, b = 2;
-    callback_act(a, callback_a);
-    callback_act(b, callback_b);
-    printf("Main program has done.");
-}
-
-
-输出：
-Call callback_act, x: 1
-Call callback_a, n: 1
-Call callback_act, x: 2
-Call callback_b, n: 2
 
 
 
@@ -2613,12 +2579,35 @@ arr[2] = 1191730623
 ========================================
 |-- 函数指针与回调函数，及静态库和动态库的实现方法
 ----------------------------------------
+函数指针的主要用途是向其他函数传递“回调”，或者模拟类和对象。
+
+
 1.函数指针是指向函数的指针变量。
 通常我们说的指针变量是指向一个整型、字符型或数组等变量，而函数指针是指向函数。
 函数指针可以像一般函数一样，用于调用函数、传递参数。
 
-函数指针变量的声明：
-typedef int (*fun_ptr)(int,int); // 声明一个指向同样参数、返回值的函数指针类型
+
+(1)函数指针变量的声明
+声明一个指向同样参数、返回值的函数指针类型。格式：
+int (*POINTER_NAME)(int a, int b)
+
+简写: 只写参数类型，省略形参
+int (*fun_ptr)(int,int); 
+
+
+记住如何编写它的一个方法是：
+编写一个普通的函数声明：int callme(int a, int b)
+将函数用指针语法包装：int (*callme)(int a, int b)
+将名称改成指针名称：int (*compare_cb)(int a, int b)
+
+
+// case for a function pointer
+typedef int (*compare_cb)(int a, int b);
+
+就可以谁用类 compare_cb 了
+int *bubble_sort(int *numbers, int count, compare_cb cmp)
+
+
 
 
 例1： 函数指针
@@ -2634,7 +2623,7 @@ int main(void){
   int (*p)(int ,int)= &max; // &可以省略
   int a,b,c,d;
 
-  printf("请输入三个数字:");
+  printf("请输入三个数字，space separated:");
   scanf("%d %d %d", &a, &b, &c);
 
   /* 与直接调用函数等价，d = max(max(a, b), c) */
@@ -2670,6 +2659,33 @@ int main(void){
 } 
 void print(){
 	printf("hello world!\n");
+}
+
+
+
+例3：指向函数的指针，调用时加(*funName)也可以。
+#include<stdio.h>
+void bubbleSort(int arr[], int n){
+	int i,j, tmp;
+	for(i=0; i<n; i++){
+		for(j=1; j<n; j++){
+			if(arr[i]<arr[j]){
+				tmp=arr[j];
+				arr[j]=arr[i];
+				arr[i]=tmp;
+			}
+		}
+	}
+}
+
+int main(){
+	int arr[]={0, -1,20,-300,4000}, N=sizeof(arr)/sizeof(int);
+	void (*p)(int arr[], int N)=&bubbleSort;
+	(*p)(arr, N);
+	for(int i=0; i<N; i++){
+		printf("%d ", arr[i]);
+	}
+	printf("\n");
 }
 
 
@@ -2738,6 +2754,44 @@ arr[0] = 1804289383     arr[1] = 846930886      arr[2] = 1681692777     arr[3] =
 
 
 
+## 回调函数示例
+在 A 函数中将参数与 C 函数传递给 B 函数，B函数调用 C 函数；
+B 函数调用的动作称为回调，C 函数称为回调函数。
+
+#include <stdio.h>
+// 回调函数a
+void callback_a(int n){
+    printf("Call callback_a, n: %d\n", n);
+}
+
+// 回调函数b
+void callback_b(int n){
+    printf("Call callback_b, n: %d\n", n);
+}
+
+// 回调动作：传入函数的指针
+void callback_act(int x, void (*callback) (int var)){
+    printf("Call callback_act, x: %d\n", x);
+    callback(x);
+}
+
+void main(){
+    int a = 1, b = 2;
+    callback_act(a, callback_a);
+    callback_act(b, callback_b);
+    printf("Main program has done.");
+}
+
+
+输出：
+Call callback_act, x: 1
+Call callback_a, n: 1
+Call callback_act, x: 2
+Call callback_b, n: 2
+
+
+
+
 
 
 
@@ -2791,6 +2845,9 @@ int main(void){
 输出结果： 
 0, 1, 4, 9, 16, 
 0, 1, 8, 27, 64,
+
+
+
 
 
 
