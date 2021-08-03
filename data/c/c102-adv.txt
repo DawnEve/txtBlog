@@ -31,12 +31,53 @@ c102-adv: c语言的高级话题
 gcc a.c -o a -lm
 
 
+(2) gcc加上 -Wall参数，则显示全部警告，并可能有编译产出。
+比如有未使用的变量。
+
+$ cat p75.c 
+// 使用 -Wall 参数编译
+#include <stdio.h>
+int main(){
+	int i=10;
+	int j;
+	printf("hello\n");
+	return 0;
+}
+
+$ gcc -Wall p75.c 
+p75.c: In function ‘main’:
+p75.c:5:6: warning: unused variable ‘j’ [-Wunused-variable]
+  int j;
+      ^
+p75.c:4:6: warning: unused variable ‘i’ [-Wunused-variable]
+  int i=10;
+      ^
+
+(3) 如果使用 -Werror 参数，则把warning都认为是error
+有error就不会有编译产出。
+
+$ gcc -Wall -Werror p75.c 
+p75.c: In function ‘main’:
+p75.c:5:6: error: unused variable ‘j’ [-Werror=unused-variable]
+  int j;
+      ^
+p75.c:4:6: error: unused variable ‘i’ [-Werror=unused-variable]
+  int i=10;
+      ^
+cc1: all warnings being treated as errors
 
 
 
-2. 调试技巧
 
-(1) gdb调试 -带有命令行参数
+
+
+
+
+
+
+2. gdb 调试技巧
+
+(1) 带有命令行参数
 进入gdb调试：
 gcc -g -Wall httpTest.c -o test    生成了可调试文件
 gdb test                                        进入调试
@@ -49,6 +90,16 @@ gdb test                                        进入调试
 1) 如果直接运行程序，run  www.baidu.com
 2) set  args www.baidu.com,后面再继续进行调试
 
+
+
+
+(2) 设置断点
+
+如果想跳过某一个for循环，则可以把断点设置在for循环之后的那一行。
+
+比如在12行断点
+> b 12
+> start //然后从头运行，停在第12行
 
 
 
@@ -1917,8 +1968,16 @@ Valgrind的最初作者是Julian Seward，他于2006年由于在开发Valgrind�
 源码：https://sourceware.org/git/?p=valgrind.git
 文档：https://www.valgrind.org/docs/
 
+安装 Valgrind
+$ sudo apt install valgrind
+
+$ valgrind --version
+valgrind-3.13.0
+
+
 (2)关于：https://www.valgrind.org/info/about.html
 With Valgrind's tool suite you can automatically detect many memory management and threading bugs, avoiding hours of frustrating bug-hunting, making your programs more stable. You can also perform detailed profiling to help speed up your programs.
+
 
 (3) 为什么用？
 最近老是遇上各种奇奇怪怪的core dump，不太会分析的情况下看到了这款工具。
@@ -1928,22 +1987,50 @@ Valgrind是一个运行你的程序的程序，并且随后会报告所有你犯
 你可以在它的环境中运行你的程序来监视内存的使用情况，比如C 语言中的malloc和free。
 
 
+(4) 想要从源头杜绝内存泄漏，最直接的方式是时刻牢记
+内存分配函数Xalloc( malloc, calloc, realloc) 和内存释放函数 free 必须成对出现。
+
+但是在一些比较复杂的c语言程序中，甚至包含很多文件，有很多循环和分支，我们往往无法逐一验证内存分配函数和内存释放函数的配对。
+
+这时候就需要工具了，valgrind就是其中之一。
+
+
+
 
 
 2. Valgrind的主要功能
-Valgrind工具包包含多个工具，如Memcheck,Cachegrind,Helgrind, Callgrind，Massif。下面分别介绍个工具的作用。
+Valgrind工具包包含多个工具，如 Memcheck, Cachegrind, Helgrind, Callgrind, Massif。下面分别介绍个工具的作用。
 
-使用 Valgrind 十分简单，只要执行valgrind theprogram，它就会运行你的程序，随后打印出你的程序运行时出现的所有错误。
+Memcheck。这是valgrind应用最广泛的工具，一个重量级的内存检查器，能够发现开发中绝大多数内存错误使用情况，比如：使用未初始化的内存，使用已经释放了的内存，内存访问越界等。这也是本文将重点介绍的部分。
+
+Callgrind。它主要用来检查程序中函数调用过程中出现的问题。
+
+Cachegrind。它主要用来检查程序中缓存使用出现的问题。
+
+Helgrind。它主要用来检查多线程程序中出现的竞争问题。
+
+Massif。它主要用来检查程序中堆栈使用中出现的问题。
+
+Extension。可以利用core提供的功能，自己编写特定的内存调试工具。
 
 
-(1) 安装 Valgrind
-$ sudo apt install valgrind
 
-$ valgrind --version
-valgrind-3.13.0
+(1) 使用 Valgrind 十分简单，只要执行valgrind theprogram，它就会运行你的程序，随后打印出你的程序运行时出现的所有错误。
+
+valgrind 的命令一般都很长，不过可以用到了再查。
+
+$ valgrind --tool=memcheck --leak-check=yes --show-reachable=yes ./a.out
+
+--tool=memcheck 表示选择工具 memcheck
+--leak-check=yes 表示退出后搜索内存泄漏
+--show-reachable=yes 相当于 --show-leak-kines=all 显示所有类型的内存泄漏
+
+注意：想要输出正确的行号信息，程序必须使用 -g 选项编译。
 
 
-(2) 测试 
+
+
+(2) 测试 正例：内存正常
 
 $ cat 09_valgrind.c
 #include <stdio.h>
@@ -1979,7 +2066,7 @@ $ valgrind --track-origins=yes ./a.out
 ==14322== Command: ./a.out
 ==14322==
 I am -16777768 years old.
-==14322== Conditional jump or move depends on uninitialised value(s)
+==14322== Conditional jump or move depends on uninitialised value(s) //未初始化的值
 ==14322==    at 0x4E9896A: vfprintf (vfprintf.c:1642)
 ==14322==    by 0x4EA0FA5: printf (printf.c:33)
 ==14322==    by 0x10867F: main (09_valgrind.c:8)
@@ -1990,7 +2077,7 @@ I am -16777768 years old.
 ==14322==    by 0x4EA0FA5: printf (printf.c:33)
 ==14322==    by 0x10867F: main (09_valgrind.c:8)
 ==14322==
-==14322== Conditional jump or move depends on uninitialised value(s)
+==14322== Conditional jump or move depends on uninitialised value(s) //未初始化的值
 ==14322==    at 0x4E94905: _itoa_word (_itoa.c:179)
 ==14322==    by 0x4E97F9D: vfprintf (vfprintf.c:1642)
 ==14322==    by 0x4EA0FA5: printf (printf.c:33)
@@ -2007,13 +2094,151 @@ I am 0 inches tall.
 ==14322== Use --track-origins=yes to see where uninitialised values come from
 ==14322== ERROR SUMMARY: 5 errors from 5 contexts (suppressed: 0 from 0)
 
+解释：
+- 左边显示类似行号的数字（14322）表示的是 Process ID
+- 最上面是 valgrind 的版本信息
+- 中间是 valgrind 通过运行被测试程序，发现的内存问题。通过阅读这些信息，可以发现：
+	发生错误时的函数堆栈，以及具体的源代码行号。
+	非法写操作的具体地址空间。
+- 最下面是对发现的内存问题和内存泄露问题的总结。
+	内存泄露的大小 0 bytes，本程序没有内存泄漏。in use at exit: 0 bytes in 0 blocks
 
+
+
+(3) 测试3 反例：内存不释放
+需要分配内存的，但是不释放的例子。
+
+$ cat 12.c
+#include<stdio.h>
+#include<stdlib.h>
+int main(){
+	int i, arr[]={1,27,34};
+	int *p=malloc( sizeof(int) * 3);
+	for(i=0; i<3; i++){
+		p[i]=arr[i];
+		printf("%d->%d\n", i, *(p+i));
+	}
+	return 0;
+}
+
+$ gcc 12.c
+$ ./a.out
+0->1
+1->27
+2->34
+
+$ ./a.out 
+0->1
+1->27
+2->34
+
+
+
+$ valgrind ./a.out
+版本信息略。
+0->1
+1->27
+2->34
+==32065== 
+==32065== HEAP SUMMARY:
+==32065==     in use at exit: 12 bytes in 1 blocks
+==32065==   total heap usage: 2 allocs, 1 frees, 1,036 bytes allocated
+==32065== 
+==32065== LEAK SUMMARY:
+==32065==    definitely lost: 12 bytes in 1 blocks //泄漏了12字节( int * 3)
+==32065==    indirectly lost: 0 bytes in 0 blocks
+==32065==      possibly lost: 0 bytes in 0 blocks
+==32065==    still reachable: 0 bytes in 0 blocks
+==32065==         suppressed: 0 bytes in 0 blocks
+==32065== Rerun with --leak-check=full to see details of leaked memory
+==32065== 
+==32065== For counts of detected and suppressed errors, rerun with: -v
+==32065== ERROR SUMMARY: 0 errors from 0 contexts (suppressed: 0 from 0)
+
+
+按照最后几行的提示，再试
+$ valgrind --tool=memcheck --leak-check=full ./a.out
+版本信息略。
+0->1
+1->27
+2->34
+==32584== 
+==32584== HEAP SUMMARY:
+==32584==     in use at exit: 12 bytes in 1 blocks
+==32584==   total heap usage: 2 allocs, 1 frees, 1,036 bytes allocated
+==32584== 
+==32584== 12 bytes in 1 blocks are definitely lost in loss record 1 of 1
+==32584==    at 0x4C2FB0F: malloc (in /usr/lib/valgrind/vgpreload_memcheck-amd64-linux.so)
+==32584==    by 0x10872F: main (in /data/wangjl/test/linux_C/a.out)
+==32584== 
+==32584== LEAK SUMMARY:
+==32584==    definitely lost: 12 bytes in 1 blocks
+==32584==    indirectly lost: 0 bytes in 0 blocks
+==32584==      possibly lost: 0 bytes in 0 blocks
+==32584==    still reachable: 0 bytes in 0 blocks
+==32584==         suppressed: 0 bytes in 0 blocks
+==32584== 
+==32584== For counts of detected and suppressed errors, rerun with: -v
+==32584== ERROR SUMMARY: 1 errors from 1 contexts (suppressed: 0 from 0)
+
+
+
+
+(4) 测试4：内存越界
+#include<stdio.h>
+#include<stdlib.h>
+int main(){
+	int i;
+	int len = 4;
+	int *pt = (int*)malloc(len*sizeof(int)); //返回的是空指针，可以主动转换为某个类型
+	int *p = pt;
+
+	for(i=0;i<len;i++){
+		*p=i;
+		p++;
+	}
+
+	*p = 5;
+	return 0;
+}
+
+$ gcc -g 13.c
+
+$ valgrind --tool=memcheck --leak-check=full ./a.out
+...
+==4109== 
+==4109== Invalid write of size 4  //非法写入4个字节
+==4109==    at 0x10869D: main (13.c:15) //位置是第15行 *p = 5;
+==4109==  Address 0x522d050 is 0 bytes after a block of size 16 alloc'd
+==4109==    at 0x4C2FB0F: malloc (in /usr/lib/valgrind/vgpreload_memcheck-amd64-linux.so)
+==4109==    by 0x108669: main (13.c:7)
+==4109== 
+==4109== 
+==4109== HEAP SUMMARY:
+==4109==     in use at exit: 16 bytes in 1 blocks //程序退出后还有16字节没有释放
+==4109==   total heap usage: 1 allocs, 0 frees, 16 bytes allocated
+==4109== 
+==4109== 16 bytes in 1 blocks are definitely lost in loss record 1 of 1
+==4109==    at 0x4C2FB0F: malloc (in /usr/lib/valgrind/vgpreload_memcheck-amd64-linux.so)
+==4109==    by 0x108669: main (13.c:7)
+==4109== 
+==4109== LEAK SUMMARY:
+==4109==    definitely lost: 16 bytes in 1 blocks
+==4109==    indirectly lost: 0 bytes in 0 blocks
+==4109==      possibly lost: 0 bytes in 0 blocks
+==4109==    still reachable: 0 bytes in 0 blocks
+==4109==         suppressed: 0 bytes in 0 blocks
+==4109== 
+==4109== For counts of detected and suppressed errors, rerun with: -v
+==4109== ERROR SUMMARY: 2 errors from 2 contexts (suppressed: 0 from 0)
 
 
 
 
 ref:
 https://blog.csdn.net/andylauren/article/details/93189740
+https://zhuanlan.zhihu.com/p/56538645
+
 
 
 
@@ -2021,7 +2246,7 @@ https://blog.csdn.net/andylauren/article/details/93189740
 
 
 ========================================
-malloc 函数详解 (与free函数连用)
+|-- malloc 函数详解 (与free函数连用)
 ----------------------------------------
 
 1. 简介
