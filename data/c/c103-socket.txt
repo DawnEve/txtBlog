@@ -1,0 +1,830 @@
+C 语言与网络通信
+
+主要内容：
+	网络基础知识
+	C socket API
+
+目标：
+	构建一个加密的聊天软件后台程序(前台使用 Vue 等)
+	后台调用系统，通过网络调用其他软件
+
+
+环境：Ubuntu + win10 Chrome.
+
+
+========================================
+C socket API：客户端 to 服务端
+----------------------------------------
+
+1. 简单的单向通信：客户端 to 服务端
+
+文件结构：
+├── makefile
+├── client.c
+└── server.c 服务端使用的是 9000 端口，要保证该端口开放。
+
+
+(1) server.c
+#include<stdio.h>
+#include<stdlib.h>
+#include<string.h>
+#include<errno.h>
+#include<sys/types.h>
+#include<sys/socket.h>
+#include<netinet/in.h>
+#include<unistd.h>
+
+#define MAXLINE 4096
+
+int main(int argc, char** argv){
+    int  listenfd, connfd;
+    struct sockaddr_in  servaddr;
+    char  buff[4096];
+    int  n;
+
+    if( (listenfd = socket(AF_INET, SOCK_STREAM, 0)) == -1 ){
+        printf("create socket error: %s(errno: %d)\n",strerror(errno),errno);
+        return 0;
+    }
+
+    memset(&servaddr, 0, sizeof(servaddr));
+    servaddr.sin_family = AF_INET;
+    servaddr.sin_addr.s_addr = htonl(INADDR_ANY);
+    servaddr.sin_port = htons(9000);
+
+    if( bind(listenfd, (struct sockaddr*)&servaddr, sizeof(servaddr)) == -1){
+        printf("bind socket error: %s(errno: %d)\n",strerror(errno),errno);
+        return 0;
+    }
+
+    if( listen(listenfd, 10) == -1){
+        printf("listen socket error: %s(errno: %d)\n",strerror(errno),errno);
+        return 0;
+    }
+
+    printf("======waiting for client's request======\n");
+    while(1){
+        if( (connfd = accept(listenfd, (struct sockaddr*)NULL, NULL)) == -1){
+            printf("accept socket error: %s(errno: %d)",strerror(errno),errno);
+            continue;
+        }
+        n = recv(connfd, buff, MAXLINE, 0);
+        buff[n] = '\0';
+        printf("recv msg from client: %s\n", buff);
+        close(connfd);
+    }
+    close(listenfd);
+    return 0;
+}
+
+
+(2) client.c
+#include<stdio.h>
+#include<stdlib.h>
+#include<string.h>
+#include<errno.h>
+#include<sys/types.h>
+#include<sys/socket.h>
+#include<netinet/in.h>
+#include<arpa/inet.h>
+#include<unistd.h>
+#define MAXLINE 4096
+
+int main(int argc, char** argv){
+    int   sockfd, n;
+    char  recvline[4096], sendline[4096];
+    struct sockaddr_in  servaddr;
+
+    if( argc != 2){
+        printf("usage: ./client <ipaddress>\n");
+        return 0;
+    }
+
+    if( (sockfd = socket(AF_INET, SOCK_STREAM, 0)) < 0){
+        printf("create socket error: %s(errno: %d)\n", strerror(errno),errno);
+        return 0;
+    }
+
+    memset(&servaddr, 0, sizeof(servaddr));
+    servaddr.sin_family = AF_INET;
+    servaddr.sin_port = htons(9000); //服务端端口号
+    if( inet_pton(AF_INET, argv[1], &servaddr.sin_addr) <= 0){
+        printf("inet_pton error for %s\n",argv[1]);
+        return 0;
+    }
+
+    if( connect(sockfd, (struct sockaddr*)&servaddr, sizeof(servaddr)) < 0){
+        printf("connect error: %s(errno: %d)\n",strerror(errno),errno);
+        return 0;
+    }
+
+    printf("send msg to server: \n");
+    fgets(sendline, 4096, stdin);
+    if( send(sockfd, sendline, strlen(sendline), 0) < 0){
+        printf("send msg error: %s(errno: %d)\n", strerror(errno), errno);
+        return 0;
+    }
+    close(sockfd);
+    return 0;
+}
+
+
+(3) makefile
+all:server client
+server:server.o
+	gcc -g -o server server.o
+client:client.o
+	gcc -g -o client client.o
+server.o:server.c
+	gcc -g -c server.c
+client.o:client.c
+	gcc -g -c client.c
+
+clean:all
+	rm all
+注意：指令行必须tab开头，不能是空格。
+
+//这个 make clean 不起作用。修改版：
+clean:
+	rm *.o
+cleanAll:
+	rm *o server client
+
+
+
+
+(4) 编译 
+$ make 
+
+(5) 通信测试
+打开服务端 $ ./server 
+打开客户端 $ ./client 127.0.0.1
+
+$ ./client 127.0.0.1
+send msg to server:
+hello
+$ ./client 127.0.0.1
+send msg to server:
+this is wang
+
+
+服务端收到消息
+$ ./server
+======waiting for client's request======
+recv msg from client: hello
+
+recv msg from client: this is wang
+
+
+2) 从另一个不同发行版测试，也正常接收消息
+[wangjl@bio_svr1 test]$ ./client 10.20.89.188
+send msg to server: 
+hello, from CentOS
+
+服务端：recv msg from client: hello, from CentOS
+
+
+
+
+========================================
+C socket API：服务器响应
+----------------------------------------
+2. 如果服务端接收消息，并把消息发送回去呢？
+
+├── makefile
+├── client.c
+└── server.c 服务端使用的是 9000 端口，要保证该端口开放。
+
+
+(1) $ cat server.c
+#include<stdio.h>
+#include<stdlib.h>
+#include<string.h>
+#include<errno.h>
+#include<sys/types.h>
+#include<sys/socket.h>
+#include<netinet/in.h>
+#include<unistd.h>
+
+#include <arpa/inet.h>
+/*
+fix1 所有错误都不能返回0
+update1 发送回客户端
+*/
+
+#define MAXLINE 4096
+
+int main(int argc, char** argv){
+    int  server_sockfd, client_sockfd; /* 之前命名 listenfd 服务端监听, connfd 客户端连接;*/
+    struct sockaddr_in  servaddr;
+    char buff[4096];
+    int  len;
+
+    if( (server_sockfd = socket(AF_INET, SOCK_STREAM, 0)) == -1 ){
+        printf("create socket error: %s(errno: %d)\n",strerror(errno),errno);
+        return 1;
+    }
+
+    memset(&servaddr, 0, sizeof(servaddr));
+    servaddr.sin_family = AF_INET;
+    servaddr.sin_addr.s_addr = htonl(INADDR_ANY);
+    servaddr.sin_port = htons(9000);
+
+    if( bind(server_sockfd, (struct sockaddr*)&servaddr, sizeof(servaddr)) == -1){
+        printf("bind socket error: %s(errno: %d)\n",strerror(errno),errno);
+        return 1;
+    }
+
+    if( listen(server_sockfd, 10) == -1){
+        printf("listen socket error: %s(errno: %d)\n",strerror(errno),errno);
+        return 1;
+    }
+
+    printf("======waiting for client's request======\n");
+    while(1){
+		/*客户端连接上*/
+		if( (client_sockfd = accept(server_sockfd, (struct sockaddr*)NULL, NULL)) == -1){
+			printf("accept socket error: %s(errno: %d)",strerror(errno),errno);
+			continue;
+		}
+		//发送连接欢迎信息		
+		printf("###### accept client %s\n",inet_ntoa(servaddr.sin_addr));
+		len=send(client_sockfd,"Welcome to my server\n",21,0);
+		
+		while( (len = recv(client_sockfd, buff, MAXLINE, 0))>0 ){
+			buff[len] = '\0';
+			printf("recv msg from client: %s\n", buff);
+			
+			//收到消息是 quit，则关闭客户端连接
+			if(!strcmp(buff,"quit\n")){
+				close(client_sockfd);
+				printf("Client is quiting now ...\n");
+				break;
+			}
+			
+			// 发送回客户端
+			if(send(client_sockfd, buff, len, 0)<0){
+				printf("write error\n");
+				return 1;
+			}
+		}
+    }
+	
+	/*关闭套接字*/
+    close(server_sockfd);
+    return 0;
+}
+
+
+
+
+
+
+
+2. $ cat client.c
+#include<stdio.h>
+#include<stdlib.h>
+#include<string.h>
+#include<errno.h>
+#include<sys/types.h>
+#include<sys/socket.h>
+#include<netinet/in.h>
+#include<arpa/inet.h>
+#include<unistd.h>
+#define MAXLINE 4096
+
+/*
+fix1: 错误异常不能返回0
+update: 循环发送消息，接收消息
+*/
+
+int main(int argc, char** argv){
+    int   client_sockfd, len;
+    char  recvline[4096], sendline[4096];
+    struct sockaddr_in  servaddr; //服务器端网络地址结构体
+
+    if( argc != 2){
+        printf("usage: ./client <ipaddress>\n");
+        return 1;
+    }
+
+    if( (client_sockfd = socket(AF_INET, SOCK_STREAM, 0)) < 0){
+        printf("create socket error: %s(errno: %d)\n", strerror(errno),errno);
+        return 1;
+    }
+
+    memset(&servaddr, 0, sizeof(servaddr)); //数据初始化--清零
+    servaddr.sin_family = AF_INET; //设置为IP通信
+    servaddr.sin_port = htons(9000); //服务端端口号
+    if( inet_pton(AF_INET, argv[1], &servaddr.sin_addr) <= 0){ //传入参数：服务器IP地址
+        printf("inet_pton error for %s\n",argv[1]);
+        return 1;
+    }
+
+	/*将套接字绑定到服务器的网络地址上*/
+    if( connect(client_sockfd, (struct sockaddr*)&servaddr, sizeof(servaddr)) < 0){
+        printf("connect error: %s(errno: %d)\n",strerror(errno),errno);
+        return 1;
+    }
+	
+	printf("connected to server\n");
+	len=recv(client_sockfd,recvline,BUFSIZ,0);//接收服务器端信息
+	recvline[len]='\0';
+	//打印服务器端信息
+	printf("received:%s\n",recvline);
+	
+	
+	/*循环的发送接收信息并打印接收信息（可以按需发送，recv返回接收到的字节数，send返回发送的字节数*/
+	while(1){
+		printf("send msg to server(type quit to exit): \n");
+		fgets(sendline, 4096, stdin);
+		/*发送消息*/
+		if( ( len=send(client_sockfd, sendline, strlen(sendline), 0) ) < 0){
+			printf("send msg error: %s(errno: %d)\n", strerror(errno), errno);
+			return 1;
+		}
+		
+		if(!strcmp(sendline,"quit\n")){
+			printf("quiting now ...\n");
+			break;
+		}
+		
+		/*接收消息*/
+		len=recv(client_sockfd, recvline, BUFSIZ, 0);
+		recvline[len]='\0';
+		printf("received:%s\n",recvline);
+		
+	}
+	
+	/*关闭套接字*/
+    close(client_sockfd);
+    return 0;
+}
+
+
+
+(3) $ cat makefile 
+all:server client
+server:server.o
+	gcc -g -o server server.o
+client:client.o
+	gcc -g -o client client.o
+server.o:server.c
+	gcc -g -c server.c
+client.o:client.c
+	gcc -g -c client.c
+clean:
+	rm *.o
+cleanAll:
+	rm *o server client
+
+
+(4) 编译运行
+$ make 
+
+先启动服务端
+$ ./server
+
+然后启动客户端，可以在任意地方，不同机器了需要注明服务端的对外IP地址
+$ ./client 10.20.89.188
+connected to server
+received:Welcome to my server
+
+send msg to server(type quit to exit): 
+this is centos7
+received:this is centos7
+
+send msg to server(type quit to exit): 
+hi
+received:hi
+
+
+服务端：
+$ ./server 
+======waiting for client's request======
+###### accept client 0.0.0.0
+recv msg from client: this is centos7
+
+recv msg from client: hi
+
+
+
+
+
+
+
+
+========================================
+C socket API：最简单的 http server
+----------------------------------------
+目的：从浏览器访问服务端，能响应 hello。
+	不需要额外的文件。
+
+
+背景：了解http请求与响应的规范文件。
+
+
+1. $ cat 03_simple_http_server.c
+#include <stdio.h>
+#include <stdlib.h>
+#include <sys/types.h>
+#include <sys/socket.h>
+#include <netinet/in.h>
+#include <arpa/inet.h>
+#include <unistd.h>
+#include <string.h>
+
+#define PORT 9000			// 服务器监听端口
+#define BUFFER_SIZE 4096
+
+//http响应头，固定写法
+#define RESPONSE_HEADER "HTTP/1.1 200 OK\r\nConnection: close\r\nAccept-Ranges: bytes\r\nWriter: wangjl\r\nContent-Type: text/html\r\n\r\n"
+#define RESPONSE_BODY "<h1>Hello!</h1>"
+
+int handle(int conn){
+	int len = 0;
+	char buffer[BUFFER_SIZE]; // 缓冲区
+	char *pos = buffer;
+	bzero(buffer, BUFFER_SIZE);
+	len = recv(conn, buffer, BUFFER_SIZE, 0);
+	if (len <= 0 ) {
+		printf ("recv error");
+		return -1;
+	} else {
+		printf("Debug request:\n--------------\n%s\n\n",buffer);
+	}
+
+	send(conn, RESPONSE_HEADER RESPONSE_BODY, sizeof(RESPONSE_HEADER RESPONSE_BODY), 0);
+	close(conn); //关闭连接
+}
+
+int main(int argc,char *argv[]){
+	int port = PORT;
+	struct sockaddr_in client_sockaddr; //客户端 socket
+	struct sockaddr_in server_sockaddr; //服务端 socket
+	int listenfd = socket(AF_INET,SOCK_STREAM,0);
+	int opt = 1;
+	int conn;
+	socklen_t length = sizeof(struct sockaddr_in); // 客户端套接字地址变量的大小
+	
+	// 配置套接字IP和端口信息
+	setsockopt(listenfd, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(int));
+	server_sockaddr.sin_family = AF_INET;
+	server_sockaddr.sin_port = htons(port);
+	server_sockaddr.sin_addr.s_addr = htonl(INADDR_ANY);
+	
+	// 绑定服务器套接字
+	if(bind(listenfd,(struct sockaddr *)&server_sockaddr,sizeof(server_sockaddr))==-1){
+		printf("bind error!\n");
+		return -1;   
+	}  
+
+	// 监听服务器套接字
+	if(listen(listenfd, 10) < 0) {
+		printf("listen failed!\n");
+		return -1;   
+	}
+
+	while(1){
+		// 接受客户端的请求
+		conn = accept(listenfd, (struct sockaddr*)&client_sockaddr, &length);
+		if(conn < 0){
+			printf("connect error!\n");
+			continue;
+		}
+		if (handle(conn) < 0) {
+			printf("connect error!\n");
+			close(conn);
+			continue;
+		}  
+	}
+	return 0;
+}
+
+
+
+
+
+2. 编译运行
+$ gcc 03_simple_http_server.c
+
+(1) 运行服务端
+$ ./a.out
+
+(2) 打开浏览器，输入ip和端口号
+http://y.biomooc.com:9000/
+能看到一个大号的 Hello!
+
+F12查看Network的响应部分
+Accept-Ranges: bytes
+Connection: close
+Content-Type: text/html
+Writer: wangjl
+
+
+(3) 查看服务端
+$ ./a.out
+Debug request:
+--------------
+GET / HTTP/1.1
+Host: y.biomooc.com:9000
+Connection: keep-alive
+Cache-Control: max-age=0
+Upgrade-Insecure-Requests: 1
+User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.164 Safari/537.36
+Accept: text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.9
+Accept-Encoding: gzip, deflate
+Accept-Language: zh-CN,zh;q=0.9,en;q=0.8
+Cookie: permutive-id=79c1d0b6-94ab-4f2c-b08d-8b0c304f86ce; AMCV_F7093025512D2B690A490D44%40AdobeOrg=-1303530583%7CMCIDTS%7C18168%7CMCMID%7C83820764609593675141311015783690748716%7CMCAAMLH-1570277322%7C11%7CMCAAMB-1570277322%7CRKhpRz8krg2tLO6pguXWp5olkAcUniQYPHaMWWgdJ3xzPWQmdj0y%7CMCOPTOUT-1569679722s%7CNONE%7CvVersion%7C3.3.0; s_fid=081F4D0E0DB00CB4-2EA8CF03075972F7; AMCV_7801965A577503E87F000101%40AdobeOrg=1585540135%7CMCIDTS%7C18179%7CMCMID%7C84120172439145608931360028624866518795%7CMCAAMLH-1571189020%7C11%7CMCAAMB-1571189020%7CRKhpRz8krg2tLO6pguXWp5olkAcUniQYPHaMWWgdJ3xzPWQmdj0y%7CMCCIDH%7C-1601419246%7CMCOPTOUT-1570591420s%7CNONE%7CMCAID%7CNONE%7CvVersion%7C4.4.0; s_dslv=1570584767765; OB-USER-TOKEN=b69b44d4-6e30-49c3-8ca4-b983678040b6; __tbc=%7Bjzx%7DxKoKvcyMjaskSwd0ZR5bjmV65fvqgMyC-CiUFLMmD5TTcQwCGSzXSRk_9m2myV2utyp-P5PsWxEGk9VhThXE0uS_e-_xcjC04E0kJNcNtey7ZAc56ZZAJ6QL4Rt2HZh8aCxOIEMceXzdUqtPk77fPw; optimizelySegments=%7B%222317890156%22%3A%22false%22%2C%222326810159%22%
+
+
+
+
+
+
+
+
+3. 另一个带注释版
+有bug，浏览器无法看到预期结果。怎么改？//todo
+
+$ cat 03_simple_http_server-v2.c
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <unistd.h>
+#include <arpa/inet.h>
+#include <sys/socket.h>
+ 
+#define PORT 9000      // 服务器监听端口
+ 
+void errorHandling(char *message); // 错误处理
+ 
+int main(int argc,char *argv[]){
+ 
+    int serv_sock;            // 保存后面创建的服务器套接字
+    int clnt_sock;            // 保存接受请求的客户端套接字
+ 
+    char buf[1024];     // 缓冲区
+ 
+    struct sockaddr_in serv_addr;// 保存服务器套接字地址信息
+    struct sockaddr_in clnt_addr;// 保存客户端套接字地址信息
+    socklen_t clnt_addr_size;  // 客户端套接字地址变量的大小
+ 
+    // 发送给客户端的固定内容
+    char status[] ="HTTP/1.0 200 OK\r\n";
+    char header[] ="Server: A Simple Web Server\r\nContent-Type: text/html\r\n\r\n";
+    char body[] ="<html><head><title>A Simple Web Server</title></head><body><h2>Welcome!</h2><p>This is shiyanlou!</p></body></html>";
+ 
+    // 创建一个服务器套接字
+    serv_sock = socket(PF_INET, SOCK_STREAM, 0);
+    if(-1 == serv_sock){
+        errorHandling("socket() error");
+    }
+ 
+    // 配置套接字IP和端口信息
+    memset(&serv_addr, 0,sizeof(serv_addr));
+    serv_addr.sin_family = AF_INET;
+    serv_addr.sin_addr.s_addr = htonl(INADDR_ANY);
+    serv_addr.sin_port = htons(PORT);
+ 
+    // 绑定服务器套接字
+    if(-1 == bind(serv_sock, (struct sockaddr*)&serv_addr,sizeof(serv_addr))){
+        errorHandling("bind() error");
+    }
+ 
+    // 监听服务器套接字
+    if(-1 == listen(serv_sock, 5)){
+        errorHandling("listen() error");
+    }
+ 
+    // 接受客户端的请求
+    clnt_addr_size =sizeof(clnt_addr);
+    clnt_sock = accept(serv_sock, (struct sockaddr *) &clnt_addr, &clnt_addr_size);
+    if(-1 == clnt_sock){
+        errorHandling("accept() error");
+    }
+ 
+    // 读取客户端请求
+    read(clnt_sock, buf,sizeof(buf) -1);
+    printf("%s\n", buf);
+ 
+    // 向客户端套接字发送信息
+    write(clnt_sock, status,sizeof(status));
+    write(clnt_sock, header,sizeof(header));
+    write(clnt_sock, body,sizeof(body));
+ 
+    // 关闭套接字
+    close(clnt_sock);
+    close(serv_sock);
+ 
+    return 0;
+ 
+}
+ 
+void errorHandling(char *message){
+    fputs(message, stderr);
+    fputc('\n', stderr);
+    exit(1);
+}
+
+
+
+
+
+ref: https://blog.csdn.net/s226916240/article/details/103156976
+
+
+
+
+
+========================================
+C socket API：能读取文件的 http server //todo
+----------------------------------------
+服务器端一直监听本机的9000号端口。
+
+2. 服务器响应
+
+(1) 服务端 
+$ cat 04_file_http_server.c
+#include<stdio.h>
+#include<stdlib.h>
+#include<string.h>
+#include<errno.h>
+#include<sys/types.h>
+#include<sys/socket.h>
+#include<netinet/in.h>
+#include<unistd.h>
+
+#include <arpa/inet.h>
+#include <pthread.h>
+
+#define SMALL_BUF 1024
+#define BUF_SIZE 2048
+
+void* request_handler(void* arg);
+void send_error(FILE* fp);
+void send_data(FILE* fp, char* ct, char* file_name);
+void error_handing(char msg[]);
+
+int main()
+{
+	int serv_sock;                      // 服务器sock
+	int clnt_sock;                      // 客户端sock
+	struct sockaddr_in serv_addr;       // 服务器地址
+	struct sockaddr_in clnt_addr;       // 客户端地址
+	// 创建
+	serv_sock = socket(PF_INET, SOCK_STREAM, 0);
+	if (serv_sock == -1)
+		error_handing("socket() error");
+	memset(&serv_addr, 0, sizeof(serv_addr));
+	serv_addr.sin_family = AF_INET;
+	serv_addr.sin_port = 9000;                 // 端口
+	serv_addr.sin_addr.s_addr = INADDR_ANY;    // ip
+	// 绑定
+	if (bind(serv_sock, (struct sockaddr*) & serv_addr, sizeof(serv_addr)) == -1)
+		error_handing("bind() error");
+	// 监听
+	if (listen(serv_sock, 5) == -1)
+		error_handing("listen() error");
+	while (1) {
+		socklen_t clnt_addr_size = sizeof(clnt_addr);
+		clnt_sock = accept(serv_sock, (struct sockaddr*) & clnt_addr, &clnt_addr_size);
+		printf("Connection Request :%s:%d\n",
+			inet_ntoa(clnt_addr.sin_addr), ntohs(clnt_addr.sin_port));
+		pthread_t t_id;
+		pthread_create(&t_id, NULL, request_handler, &clnt_sock);
+		pthread_detach(t_id);
+	}
+ 
+	close(serv_sock);
+	return 0;
+}
+//主函数与采用一客户端一线程的方法
+
+
+//请求处理函数
+void* request_handler(void* arg)
+{
+	int clnt_sock = *((int*)arg);
+	FILE* clnt_read = fdopen(clnt_sock, "r");
+	FILE* clnt_write = fdopen(dup(clnt_sock), "w");
+	char req_line[SMALL_BUF];
+	fgets(req_line, SMALL_BUF, clnt_read);
+	if (strstr(req_line, "HTTP/") == NULL) {     // 查看是否是HTTP请求
+		send_error(clnt_write);
+		fclose(clnt_read);
+		fclose(clnt_write);
+		return NULL;
+	}
+	char method[10];
+	char ct[15];
+	char file_name[30];
+	strcpy(method, strtok(req_line, " /"));  // 查看请求方法
+	strcpy(file_name, strtok(NULL, " /"));   // 查看请求文件名
+	strcpy(ct, content_type(file_name));     // 查看content-type
+	if (strcmp(method, "GET") != 0) {
+		send_error(clnt_write);
+		fclose(clnt_read);
+		fclose(clnt_write);
+		return NULL;
+	}
+	fclose(clnt_read);
+	send_data(clnt_write, ct, file_name);
+}
+
+//发送错误的函数
+void send_error(FILE* fp)
+{
+	char protocol[] = "HTTP/1.0 400 Bad Request\r\n";
+	char server[] = "Server: Linux Web Server \r\n";
+	char cnt_len[] = "Content-length:2048\r\n";
+	char cnt_type[] = "Content-type:text/html/r/n/r/n";
+	char content[] = "<html><head><title>NETWORK</title></head>"
+		"<body><font size+=5><br>发送错误！查看请求文件名和请求方式!"
+		"</font></body></html>";
+	fputs(protocol, fp);
+	fputs(server, fp);
+	fputs(cnt_len, fp);
+	fputs(cnt_type, fp);
+	fflush(fp);
+}
+
+//将一个HTML文件以及响应头拼接发送过去。
+void send_data(FILE* fp, char* ct, char* file_name)
+{
+	char protocol[] = "HTTP/1.0 200 OK\r\n";
+	char server[] = "Server:Linux Web Server \r\n";
+	char cnt_len[] = "Content-length:2048\r\n";
+	char cnt_type[SMALL_BUF];
+	char buf[BUF_SIZE];
+	sprintf(cnt_type, "Content-type:%s\r\n\r\n", ct);
+	FILE* send_file = fopen(file_name, "r");
+	if (send_file == NULL) {
+		send_error(fp);
+		return;
+	}
+ 
+	// 传输头信息
+	fputs(protocol, fp);
+	fputs(server, fp);
+	fputs(cnt_len, fp);
+	fputs(cnt_type, fp);
+ 
+	// 传输请求数据
+	while (fgets(buf, BUF_SIZE, send_file) != NULL) {
+		fputs(buf, fp);
+		fflush(fp);
+	}
+	fflush(fp);
+	fclose(fp);
+}
+
+void error_handing(char *message){
+    fputs(message, stderr);
+    fputc('\n', stderr);
+    exit(1);
+}
+
+
+
+
+
+
+
+
+
+
+
+
+ref:
+https://baijiahao.baidu.com/s?id=1671370288734495212&wfr=spider&for=pc
+https://www.cnblogs.com/zkfopen/p/9441264.html
+
+
+========================================
+C语言实现HTTP的GET和POST请求 //todo
+----------------------------------------
+https://blog.csdn.net/weixin_37569048/article/details/91047343
+
+
+
+
+========================================
+小巧的HTTP Server[C语言] //todo
+----------------------------------------
+https://blog.csdn.net/qsycn/article/details/9815669
+https://blog.csdn.net/oyw5201314ck/article/details/78205546
+
+
+========================================
+----------------------------------------
+
+========================================
+----------------------------------------
+
+
+========================================
+----------------------------------------
+
+========================================
+----------------------------------------
