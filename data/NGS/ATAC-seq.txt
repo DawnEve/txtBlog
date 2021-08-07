@@ -2360,9 +2360,8 @@ plot(x = c(0, res$breaks),
 
 
 ========================================
-|-- 合并后 call peak 和 motif 分析
+|-- 合并后 call peak 和 motif 分析 (MACS2 识别尽量多的峰？)
 ----------------------------------------
-
 1. call peak and find motif 
 $ cat mainBulk.sf 
 SI=["total"]  
@@ -2404,11 +2403,405 @@ rule homer_find_motif:
 # -p <#> (Number of processors to use, default: 1)
 # -preparse (force new background files to be created)
 
-
-
 测试
 $ snakemake -s /data/wangjl/soft/snakemakeWorkflow/ATAC-seq/demo2/mainBulk.sf -j 5 -p
 11:34 --> 12:03, 30min
+
+
+
+
+
+
+
+
+
+2. 探索如何获取更多 peak
+
+(1) 输入
+$ cd /data/wangjl/ATAC/hair/data_P1/
+$ samtools view merged/total.bam |wc  #2.1Gb
+51916420 886379942 11027899754
+51,916,420 = 51 Million reads
+
+## 而上次 (cgm-1_R1.fastq.gz) 的reads总数是：30Mb
+$ samtools view /data/wangjl/ATAC/fq/test5/merged/total.bam|wc
+ 632936 10835066 242551552
+632,936 = 0.6 Million reads.
+仅发现了 32 个peak。
+
+
+2) 提取chr1
+$ samtools view -b -h merged/total.bam chr1 chr20 >merged/total_1_20.bam
+2.1G Aug  5 20:13 merged/total.bam
+252M Aug  6 20:27 merged/total_1_20.bam
+
+
+(2) 预测插入片段长度
+通过predictd子命令可以预测样本的fragment size，命令如下
+macs2 predictd -i input.bam
+
+$ macs2 predictd -i merged/total.bam
+## predicted fragment length is 209 bps
+$ Rscript predictd
+产生一个图 predictd_model.pdf
+
+这个预测出来的数值可用于下一步 --extsize 的值，取多个样本的均值即可。
+官方也给出了推荐值，
+	对于大多数的转录因子chip_seq数据，推荐值为200， 
+	对于大部分组蛋白修饰的chip_seq数据，推荐值为147。
+
+
+
+(3) 默认使用模型
+MACS首先的工作是要确定一个模型，这个模型最关键的参数就是峰宽d，这个d就是bw(band width)，而它的一半就是shiftsize
+
+$ macs2 callpeak -c controlFile.bam -t treatmentFile.bam -m 10 30 -p pvalue -f BAM -g gsize -B -n filename.preffix --outdir ChIP_seq/CallPeak 2>ChIP_seq/CallPeak/filename.macs2.log
+
+$ macs2 callpeak \
+-t ip.bam \
+-c input.bam \
+--outdir out_dir \
+-n chip \
+-g hs
+
+完整版
+
+$ macs2 callpeak -t $input \
+	-m 10 30 -f BAM -g hs \
+	-B -n total --outdir macs2_result/01/
+
+
+
+使用子集测试：
+$ input=merged/total_1_20.bam
+
+1)实测版 01: 基于模型的
+$ macs2 callpeak -t $input \
+	-f BAM -g hs \
+	-n total --outdir macs2_result/01/
+
+$ ls -lth macs2_result/01/
+total 340K
+-rw-rw-r-- 1 wangjl wangjl 86K Aug  6 20:30 total_peaks.narrowPeak
+-rw-rw-r-- 1 wangjl wangjl 96K Aug  6 20:30 total_peaks.xls
+-rw-rw-r-- 1 wangjl wangjl 56K Aug  6 20:30 total_summits.bed
+-rw-rw-r-- 1 wangjl wangjl 97K Aug  6 20:30 total_model.r
+
+1218 12180 87216 macs2_result/01/total_peaks.narrowPeak
+$ head macs2_result/01/total_peaks.narrowPeak
+chr1    17230   17520   total_peak_1    46      .       6.14192 8.87601 4.6407  148
+chr1    88067   88375   total_peak_2    35      .       5.30705 7.29685 3.5407  115
+chr1    181338  181663  total_peak_3    33      .       5.25624 7.06507 3.38641 132
+chr1    191250  191562  total_peak_4    28      .       4.79904 6.26902 2.86454 189
+chr1    633760  634354  total_peak_5    636     .       19.0553 72.1745 63.6785 263
+
+
+2) 实测版 02: 基于模型的，-B 参数
+$ macs2 callpeak -t $input \
+	-f BAM -g hs \
+	-B -n total --outdir macs2_result/02/
+
+$ ls -lth macs2_result/02/
+total 337M
+-rw-rw-r-- 1 wangjl wangjl  86K Aug  6 20:35 total_peaks.narrowPeak
+-rw-rw-r-- 1 wangjl wangjl  96K Aug  6 20:35 total_peaks.xls
+-rw-rw-r-- 1 wangjl wangjl  56K Aug  6 20:35 total_summits.bed
+-rw-rw-r-- 1 wangjl wangjl 169M Aug  6 20:35 total_control_lambda.bdg
+-rw-rw-r-- 1 wangjl wangjl 169M Aug  6 20:35 total_treat_pileup.bdg
+-rw-rw-r-- 1 wangjl wangjl  97K Aug  6 20:35 total_model.r
+
+1218 12180 87216 macs2_result/02/total_peaks.narrowPeak
+$ head macs2_result/02/total_peaks.narrowPeak
+
+多了2个文件：
+$ head macs2_result/02/total_control_lambda.bdg
+chr1    0       12542   0.30253
+chr1    12542   13894   0.31900
+chr1    13894   15092   0.34800
+chr1    15092   15098   0.31900
+chr1    15098   83241   0.30253
+$ awk '$4>14{print $0}' macs2_result/02/total_control_lambda.bdg|head
+chr20   31063803        31063805        14.00700
+chr20   31063809        31063838        14.00700
+chr20   31063838        31063843        14.03600
+chr20   31063843        31063845        14.06500
+chr20   31063845        31063849        14.03600
+chr20   31063849        31063853        14.0650
+
+$ head macs2_result/02/total_treat_pileup.bdg 
+chr1    0       10010   0.00000
+chr1    10010   10092   1.00000
+chr1    10092   10098   2.00000
+chr1    10098   10170   3.00000
+chr1    10170   10300   4.00000
+chr1    10300   10382   3.00000
+
+
+
+3) 实测版 02: 基于模型的，-B 参数 -m 10 30
+默认是 DEFAULT:5 50
+
+$ macs2 callpeak -t $input \
+	-m 10 30 -f BAM -g hs \
+	-B -n total --outdir macs2_result/03/
+
+$ ls -lth macs2_result/03
+total 337M
+-rw-rw-r-- 1 wangjl wangjl  87K Aug  6 20:43 total_peaks.narrowPeak
+-rw-rw-r-- 1 wangjl wangjl  57K Aug  6 20:43 total_summits.bed
+-rw-rw-r-- 1 wangjl wangjl  97K Aug  6 20:43 total_peaks.xls
+-rw-rw-r-- 1 wangjl wangjl 169M Aug  6 20:43 total_control_lambda.bdg
+-rw-rw-r-- 1 wangjl wangjl 169M Aug  6 20:43 total_treat_pileup.bdg
+-rw-rw-r-- 1 wangjl wangjl  97K Aug  6 20:43 total_model.r
+
+1236 12360 88574 macs2_result/03/total_peaks.narrowPeak
+多了十几行。
+
+
+
+
+4) 实测版 02: 不基于模型
+$ macs2 callpeak -t $input -f BAM -g hs \
+--shift -100 --extsize 200 --nomodel \
+--outdir macs2_result/04/ -n total
+
+$ ls -lth macs2_result/04
+total 280K
+-rw-rw-r-- 1 wangjl wangjl  65K Aug  6 20:48 total_summits.bed
+-rw-rw-r-- 1 wangjl wangjl  97K Aug  6 20:48 total_peaks.narrowPeak
+-rw-rw-r-- 1 wangjl wangjl 109K Aug  6 20:48 total_peaks.xls
+
+输出3个文件。
+1392  6960 65633 macs2_result/04/total_summits.bed
+$ head macs2_result/04/total_summits.bed
+chr1    17523   17524   total_peak_1    5.41469
+chr1    88233   88234   total_peak_2    4.1436
+chr1    128679  128680  total_peak_3    3.11127
+chr1    181367  181368  total_peak_4    5.09812
+chr1    191494  191495  total_peak_5    5.41469
+chr1    634081  634082  total_peak_6    60.8075
+
+峰比 基于模型的 数量多 150个。
+
+
+5) 实测版 02: 不基于模型, 加参数 --call-summits
+$ macs2 callpeak -t $input -f BAM -g hs \
+--shift -100 --extsize 200 --nomodel \
+--call-summits \
+--outdir macs2_result/05/ -n total
+
+$ ls -lth macs2_result/05/
+total 280K
+-rw-rw-r-- 1 wangjl wangjl  66K Aug  6 20:51 total_summits.bed
+-rw-rw-r-- 1 wangjl wangjl  99K Aug  6 20:51 total_peaks.narrowPeak
+-rw-rw-r-- 1 wangjl wangjl 111K Aug  6 20:51 total_peaks.xls
+
+1417  7085 66864 macs2_result/05/total_summits.bed
+$ head macs2_result/05/total_summits.bed
+chr1    17519   17520   total_peak_1    5.41469
+chr1    88274   88275   total_peak_2    4.1436
+chr1    128662  128663  total_peak_3    3.11127
+
+目前最多的峰，可能有子峰。 //todo?
+
+
+
+6) 实测版 02: 不基于模型, 加参数 -B --SPMR --call-summits
+$ macs2 callpeak -t $input -f BAM -g hs \
+--shift -100 --extsize 200 --nomodel \
+-B --SPMR --call-summits \
+--outdir macs2_result/06/ -n total
+
+$ ls -lth macs2_result/06/
+total 337M
+-rw-rw-r-- 1 wangjl wangjl  66K Aug  6 20:58 total_summits.bed
+-rw-rw-r-- 1 wangjl wangjl  99K Aug  6 20:58 total_peaks.narrowPeak
+-rw-rw-r-- 1 wangjl wangjl 111K Aug  6 20:58 total_peaks.xls
+-rw-rw-r-- 1 wangjl wangjl 169M Aug  6 20:58 total_control_lambda.bdg
+-rw-rw-r-- 1 wangjl wangjl 168M Aug  6 20:58 total_treat_pileup.bdg
+
+1417  14170 101274 macs2_result/06/total_peaks.narrowPeak
+峰没变化。多了2个文件。
+
+
+
+
+7) 实测版 02: 不基于模型, 输入 BAMPE，其他默认
+$ macs2 callpeak -t $input -f BAMPE -g hs \
+--shift -100 --extsize 200 --nomodel \
+--outdir macs2_result/07/ -n total
+
+$ ls -lth macs2_result/07/
+total 132K
+-rw-rw-r-- 1 wangjl wangjl 45K Aug  6 21:16 total_peaks.narrowPeak
+-rw-rw-r-- 1 wangjl wangjl 50K Aug  6 21:16 total_peaks.xls
+-rw-rw-r-- 1 wangjl wangjl 30K Aug  6 21:16 total_summits.bed
+
+639  6390 45279 macs2_result/07/total_peaks.narrowPeak
+$ head macs2_result/07/total_peaks.narrowPeak
+chr1    88142   88357   total_peak_1    44      .       6.07583 9.48514 4.4531  38
+chr1    191420  191562  total_peak_2    41      .       6.24604 9.12643 4.1663  114
+chr1    633852  634239  total_peak_3    2030    .       47.0835 211.544 203.048 181
+chr1    778606  778836  total_peak_4    28      .       5.36401 7.26307 2.82205 148
+chr1    820987  821182  total_peak_5    27      .       4.59181 7.11394 2.72181 70
+chr1    1724272 1724438 total_peak_6    35      .       5.6817  8.2884  3.53621 113
+
+这是目前最少的峰了。
+
+
+
+8) 实测版 02: 不基于模型, 改变shift=0
+$ macs2 callpeak -t $input -f BAM -g hs \
+--shift 0 --extsize 200 --nomodel \
+-B --SPMR --call-summits \
+--outdir macs2_result/08/ -n total
+
+$ ls -lth macs2_result/08/
+total 337M
+-rw-rw-r-- 1 wangjl wangjl  83K Aug  6 21:30 total_peaks.narrowPeak
+-rw-rw-r-- 1 wangjl wangjl  55K Aug  6 21:30 total_summits.bed
+-rw-rw-r-- 1 wangjl wangjl  92K Aug  6 21:30 total_peaks.xls
+-rw-rw-r-- 1 wangjl wangjl 169M Aug  6 21:30 total_control_lambda.bdg
+-rw-rw-r-- 1 wangjl wangjl 168M Aug  6 21:30 total_treat_pileup.bdg
+
+1180 11800 84103 macs2_result/08/total_peaks.narrowPeak
+$ head macs2_result/08/total_peaks.narrowPeak
+chr1    17317   17521   total_peak_1    53      .       6.61902 10.1308 5.31352 102
+chr1    88085   88357   total_peak_2    40      .       5.7377  8.38894 4.0457  103
+chr1    128638  128838  total_peak_3    30      .       4.91803 6.88453 3.04562 93
+chr1    181343  181573  total_peak_4    39      .       5.88235 8.29379 3.98104 130
+
+
+
+9) 实测版 02: 不基于模型, 改变shift=-73
+$ macs2 callpeak -t $input -f BAM -g hs \
+--shift -73 --extsize 146 --nomodel \
+-B --SPMR --call-summits \
+--outdir macs2_result/09/ -n total
+
+$ ls -lth macs2_result/09/
+total 337M
+-rw-rw-r-- 1 wangjl wangjl  54K Aug  6 21:33 total_summits.bed
+-rw-rw-r-- 1 wangjl wangjl  81K Aug  6 21:33 total_peaks.narrowPeak
+-rw-rw-r-- 1 wangjl wangjl  91K Aug  6 21:33 total_peaks.xls
+-rw-rw-r-- 1 wangjl wangjl 169M Aug  6 21:33 total_control_lambda.bdg
+-rw-rw-r-- 1 wangjl wangjl 168M Aug  6 21:33 total_treat_pileup.bdg
+
+1157  5785 54380 macs2_result/09/total_summits.bed
+
+
+
+
+
+10) 实测版 02: 不基于模型, 改变shift=-209/2  使用 macs2 预测的插入片段长度
+$ macs2 predictd -i merged/total.bam
+## predicted fragment length is 209 bps
+
+$ macs2 callpeak -t $input -f BAM -g hs \
+--shift -105 --extsize 210 --nomodel \
+-B --SPMR --call-summits \
+--outdir macs2_result/10/ -n total
+
+1452  14520 104221 macs2_result/10/total_peaks.narrowPeak
+$ head macs2_result/10/total_peaks.narrowPeak
+chr1    17412   17626   total_peak_1    53      .       6.56238 9.96532 5.33633 107
+chr1    88118   88406   total_peak_2    40      .       5.68643 8.24479 4.0876  152
+chr1    128542  128752  total_peak_3    30      .       4.87409 6.76147 3.06804 121
+chr1    181238  181518  total_peak_4    50      .       6.5312  9.50983 5.00517 150
+
+比 extsize=200 的1417个峰多了一点。
+
+
+
+
+
+
+
+ii) --extsize 290 时：这个290是使用模型预测时，模型图给出的290.
+$ ls -lth macs2_result/10/
+total 337M
+-rw-rw-r-- 1 wangjl wangjl 121K Aug  6 22:00 total_peaks.narrowPeak
+-rw-rw-r-- 1 wangjl wangjl  79K Aug  6 22:00 total_summits.bed
+-rw-rw-r-- 1 wangjl wangjl 134K Aug  6 22:00 total_peaks.xls
+-rw-rw-r-- 1 wangjl wangjl 169M Aug  6 22:00 total_control_lambda.bdg
+-rw-rw-r-- 1 wangjl wangjl 169M Aug  6 22:00 total_treat_pileup.bdg
+
+1708  17080 123049 macs2_result/10/total_peaks.narrowPeak
+
+$ head macs2_result/10/total_peaks.narrowPeak
+chr1    17372   17666   total_peak_1    48      .       6.14192 8.87601 4.80747 147
+chr1    88078   88446   total_peak_2    46      .       6.0652  8.69812 4.68379 178
+chr1    128502  128792  total_peak_3    27      .       4.5489  5.95299 2.76385 164
+chr1    181193  181558  total_peak_4    53      .       6.5703  9.58873 5.3512  184
+chr1    191370  191678  total_peak_5    45      .       5.9988  8.58116 4.59402 145
+chr1    633843  634367  total_peak_6    612     .       18.2501 67.9451 61.2553 232
+chr1    778465  778873  total_peak_7    51      .       5.93878 9.29499 5.13861 203
+chr1    820745  821242  total_peak_8    21      .       3.02343 4.93823 2.15209 230
+chr1    832210  832500  total_peak_9    20      .       3.46457 4.74838 2.0379  115
+chr1    1074805 1075108 total_peak_10   23      .       2.72412 5.27212 2.3442  144
+
+这是目前最多的峰。
+可以使用模型预测，看pdf图中的长度，作为 extsize 再使用 非模型，做一次。
+
+
+
+
+
+11) 实测版 02: 不基于模型, 改变shift=-1000/2 ，是不是越大峰越多
+$ macs2 callpeak -t $input -f BAM -g hs \
+--shift -500 --extsize 1000 --nomodel \
+-B --SPMR --call-summits \
+--outdir macs2_result/11/ -n total
+
+1155 11550 82765 macs2_result/11/total_peaks.narrowPeak
+
+
+
+
+小结：截止目前，峰较多的是 -100， 200 组合。
+	最多的是 10) ii): 
+位置： 
+/data/wangjl/ATAC/hair/data_P1/macs2_result/05/
+/data/wangjl/ATAC/hair/data_P1/macs2_result/06/
+
+
+
+
+(4) IGV 查看 
+$ head  /data/wangjl/ATAC/hair/data_P1/macs2_result/06/total_peaks.narrowPeak 
+chr1    17417   17621   total_peak_1    54      .       6.61902 10.1308 5.41469 102
+chr1    88123   88401   total_peak_2    41      .       5.7377  8.38894 4.1436  151
+chr1    128547  128747  total_peak_3    31      .       4.91803 6.88453 3.11127 115
+chr1    181273  181513  total_peak_4    50      .       6.61765 9.69352 5.09812 116
+chr1    191415  191635  total_peak_5    44      .       6.16438 8.77436 4.42415 106
+chr1    633885  634339  total_peak_6    608     .       21.5278 69.3034 60.8075 188
+chr1    778506  778841  total_peak_7    44      .       6.04396 8.87476 4.49802 129
+chr1    832200  832445  total_peak_8    17      .       3.6     4.55696 1.77127 136
+chr1    1074827 1075060 total_peak_9    13      .       2.52525 3.7002  1.35139 122
+chr1    1511590 1511790 total_peak_10   14      .       2.89855 3.96367 1.48407 151
+
+第 7 列是富集倍数。
+按第7列排序：
+$ sort -k7nr /data/wangjl/ATAC/hair/data_P1/macs2_result/06/total_peaks.narrowPeak | head | column -t
+chr1   633885     634339     total_peak_6      608  .  21.5278  69.3034  60.8075  188
+chr20  28513494   28513833   total_peak_1237   126  .  10.8696  18.5744  12.6431  161
+chr1   206203018  206203335  total_peak_929    97   .  9.42029  15.4102  9.76858  155
+chr1   121184480  121184756  total_peak_567    84   .  8.59375  13.7938  8.40303  140
+chr1   143246801  143247109  total_peak_573    84   .  7.79817  13.8122  8.41075  158
+chr1   184754577  184755234  total_peak_814    117  .  7.1066   17.601   11.7631  468
+chr1   161459153  161459398  total_peak_685    56   .  7.04225  10.4928  5.65903  124
+chr1   223992515  223992806  total_peak_1005   60   .  6.98925  10.9919  6.05824  161
+chr20  47894696   47895299   total_peak_1346a  114  .  6.93069  17.236   11.4168  150
+chr1   147242376  147242776  total_peak_594    87   .  6.79012  14.2738  8.77573  149
+
+
+
+
+
+
+ref:
+峰值差异比较 bdgdiff
+https://cloud.tencent.com/developer/article/1624562
 
 
 
@@ -2423,7 +2816,6 @@ $ snakemake -s /data/wangjl/soft/snakemakeWorkflow/ATAC-seq/demo2/mainBulk.sf -j
 
 $ annotatePeaks.pl macs2_result/total_peaks.narrowPeak hg38 >anno/total_peakAnn.xls 
 http://homer.ucsd.edu/homer/ngs/annotation.html
-
 
 
 
@@ -2463,6 +2855,171 @@ par(mar=c(3,2,2,6))
 pie(d3$Freq, labels=paste0(d3$location, '(', d3$Freq, ')' ) )
 dev.off()
 
+
+
+
+
+3. 写到流程中
+在  mainBulk.sf 中添加目标，及include语句。
+
+$ cat rules/07_peak_annotation.sf
+rule peak_annotate:
+	input: "macs2_result/{sample}_peaks.narrowPeak"
+	output: "anno/{sample}_peakAnn.xls"
+	log: "anno/{sample}_peakAnn.xls.log"
+	shell: "annotatePeaks.pl {input} hg38 >{output} 2>{log}"
+
+rule get_8th_col:
+	input: "anno/{sample}_peakAnn.xls"
+	output: "anno/{sample}_anno.8th_col.txt"
+	shell: "cat {input} | awk -F '\t' '{{print $8}}' | awk -F'(' '{{print $1}}' | sed  -e 's/[ ]*\$//g' -e '1d' > {output}"
+	
+rule draw_pie_plot:
+	input: "anno/{sample}_anno.8th_col.txt"
+	output: "anno/{sample}_pieplot.pdf"
+	script: "../scripts/F07_pie_plot.R"
+
+$ cat scripts/F07_pie_plot.R 
+input=snakemake@input[[1]]
+output=snakemake@output[[1]]
+
+d1=readLines(input)
+d2=sub(" ", '', d1)
+d3=data.frame(table(d2))
+colnames(d3)=c("location", "Freq")
+d3=d3[order(-d3$Freq),]
+
+pdf(output, width=4, height=4)
+par(mar=c(3,2,2,6))
+pie(d3$Freq, labels=paste0(d3$location, '(', d3$Freq, ')' ) )
+dev.off()
+
+
+工作目录中运行
+$ snakemake -s /data/wangjl/soft/snakemakeWorkflow/ATAC-seq/demo2/mainBulk.sf -j 5 -p
+
+
+
+
+
+========================================
+获取ATAC reads matrix: 行为峰，列为sample
+----------------------------------------
+1. 制作bed文件
+
+$ head macs2_result/total_peaks.narrowPeak
+chr1    633888  634322  total_peak_1    628     .       21.5278 69.3034 62.8234 185
+chr1    1724255 1724472 total_peak_2    61      .       6.16824 11.1123 6.11602 96
+chr1    2133178 2133401 total_peak_3    32      .       3.29815 7.46768 3.27843 112
+
+$ awk '{print $1"\t"$2"\t"$3"\t"$4"\t"$5"\t"$6}' macs2_result/total_peaks.narrowPeak > macs2_result/total.bed
+$ head macs2_result/total.bed
+chr1    633888  634322  total_peak_1    628     .
+chr1    1724255 1724472 total_peak_2    61      .
+chr1    2133178 2133401 total_peak_3    32      .
+chr1    3755485 3755688 total_peak_4    15      .
+chr1    3857218 3857468 total_peak_5    48      .
+chr1    6455050 6455251 total_peak_6    20      .
+
+
+
+
+2. 按照bed区间，统计bam文件中的reads数
+$ bedtools multicov
+
+Tool:    bedtools multicov (aka multiBamCov)
+Version: v2.29.2
+Summary: Counts sequence coverage for multiple bams at specific loci.
+
+Usage:   bedtools multicov [OPTIONS] -bams aln.1.bam aln.2.bam ... aln.n.bam -bed <bed/gff/vcf>
+
+(1) 测试1：用2个bam
+$ bedtools multicov -bams map_clean/P101.final.bam map_clean/P102.final.bam -bed macs2_result/total.bed | head
+chr1    633888  634322  total_peak_1    628     .       2       10
+chr1    1724255 1724472 total_peak_2    61      .       0       0
+chr1    2133178 2133401 total_peak_3    32      .       0       0
+chr1    3755485 3755688 total_peak_4    15      .       0       0
+chr1    3857218 3857468 total_peak_5    48      .       0       0
+chr1    6455050 6455251 total_peak_6    20      .       0       0
+chr1    6613440 6613730 total_peak_7    51      .       2       0
+chr1    6785235 6785458 total_peak_8    51      .       0       0
+chr1    7783911 7784113 total_peak_9    25      .       0       2
+chr1    7961419 7961619 total_peak_10   39      .       0       0
+
+
+(2) bam全部用上
+$ bedtools multicov -bams `ls map_clean/P1*.final.bam` -bed macs2_result/total.bed >matrix0.txt
+
+
+(3) 使用R读取文件
+/data/wangjl/ATAC/hair/data_P1/matrix0.txt
+dt=read.table("/data/wangjl/ATAC/hair/data_P1/matrix0.txt", header = F)
+dim(dt)
+dt[1:4,1:8]
+rownames(dt)=dt$V4
+
+dt2=dt[, -c(1:6)]
+colnames(dt2)=paste0("P1", seq(1,96))
+dt2[1:4,1:8]
+dim(dt2) #3560   96
+
+write.table(dt2, "P1_raw_counts.txt")
+
+然后就可以用 Seurat 分析了。
+
+
+
+
+
+
+3. 写成流程
+
+$ cat rules/08_get_matrix.sf 
+rule get_bed:
+	input:"macs2_result/{sample}_peaks.narrowPeak"
+	output: "macs2_result/{sample}.bed"
+	shell:"awk '{{print $1\"\t\"$2\"\t\"$3\"\t\"$4\"\t\"$5\"\t\"$6}}' {input} >{output}"
+
+# 依赖每个样本的去重、去MT后的bam文件
+rule get_matrix:
+	input: "macs2_result/total.bed"
+	output: "matrix/matrix0.txt"
+	log: "matrix/matrix0.txt.log"
+	shell: "bedtools multicov -bams `ls map_clean/*.final.bam` -bed {input} >{output}"
+
+# 获取样本名字
+rule get_sample_name:
+	output: "matrix/colname.txt"
+	shell: "ls map_clean/*.final.bam |  sed -e 's/map_clean\///' -e 's/\.final\.bam//' >{output}"
+
+rule refine_matrix:
+	input: "matrix/matrix0.txt", "matrix/colname.txt"
+	output: "matrix/ATAC_raw_counts_matrix.txt"
+	script: "../scripts/F08_refine_matrix.R"
+
+
+
+
+$ cat scripts/F08_refine_matrix.R
+input=snakemake@input[[1]]
+input2=snakemake@input[[2]]
+output=snakemake@output[[1]]
+
+dt=read.table(input, header = F)
+#dim(dt);dt[1:4,1:8]
+rownames(dt)=dt$V4
+
+dt2=dt[, -c(1:6)]
+colnames(dt2)= readLines(input2);
+# dt2[1:4,1:8]; dim(dt2)
+write.table(dt2, output)
+
+
+
+
+工作目录中运行
+$ snakemake -s /data/wangjl/soft/snakemakeWorkflow/ATAC-seq/demo2/mainBulk.sf -j 5 -p
+1min;
 
 
 

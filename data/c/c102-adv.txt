@@ -31,6 +31,11 @@ c102-adv: c语言的高级话题
 如：
 gcc a.c -o a -lm
 
+对于非标准库，是否都需要-l参数说明呢？
+$ gcc  multi_thread.c -lpthread #引入多线程库 -l pthread
+
+
+
 
 (2) gcc加上 -Wall参数，则显示全部警告，并可能有编译产出。
 比如有未使用的变量。
@@ -3251,9 +3256,372 @@ C语言回调函数详解 https://www.cnblogs.com/jiangzhaowei/p/9129105.html
 
 
 ========================================
+《POSIX 线程编程》：C 与多线程 //todo
+----------------------------------------
+
+1. 实例引入
+
+$ cat multi_thread.c
+#include <stdio.h>   
+#include <pthread.h>  
+#include <time.h>
+//#include <windows.h>//使用Sleep的头
+#include <unistd.h>
+
+int g_number = 0;
+
+#define MAX_COUNT 10000
+
+//pthread_mutex_t mut;
+
+void *counter3(void* args) {
+	int i = 1;
+	while (i <= MAX_COUNT / 4) {
+		//pthread_mutex_lock(&mut);
+		g_number++;
+		//pthread_mutex_unlock(&mut);
+		printf("hi,i am pthread 3, my g_number is [%d]\n", g_number);
+		//Sleep(1);// 单位ms
+		//sleep(1);// 单位s
+		i++;
+	}
+}
+
+void *counter4(void* args) {
+	int j = 1;
+	while (j <= MAX_COUNT / 4) {
+		//pthread_mutex_lock(&mut);
+		g_number++;
+		//pthread_mutex_unlock(&mut);
+		printf("hi,i am pthread 4, my g_number is [%d]\n", g_number);
+		//sleep(1);
+		j++;
+	}
+}
+
+int main() {
+	printf("没加互斥锁：非线程安全的\n");
+	//pthread_mutex_init(&mut, NULL);
+	pthread_t t3;
+	pthread_t t4;
+	pthread_create(&t3, NULL, counter3, NULL);
+	pthread_create(&t4, NULL, counter4, NULL);
+
+	getchar(); //这句不加就不显示任何数字，直接结束了。
+	return 0;
+}
+
+在linux上执行gcc thread.c,  结果出现编译错误undefined reference to 'pthread_create'。由于pthread库不是标准linux库， 所以出错。 改为gcc thread.c -lpthread 即可。
+
+$ gcc multi_thread.c -lpthread
+$ ./a.out 
+没加互斥锁：非线程安全的
+hi,i am pthread 3, my g_number is [1]
+hi,i am pthread 4, my g_number is [2]
+... 很快就出现不同步的情况了
+hi,i am pthread 4, my g_number is [13]
+hi,i am pthread 3, my g_number is [13]
+hi,i am pthread 3, my g_number is [14]
+hi,i am pthread 4, my g_number is [14]
+... 可能需要重复多次才能看到
+hi,i am pthread 3, my g_number is [34]
+hi,i am pthread 4, my g_number is [35]
+hi,i am pthread 3, my g_number is [35]
+或者输出到文件。
+
+去掉sleep函数，输出到文件，检查是否有重复数字
+$ awk -F'[' '{print $2}' 0.out | sed 's/\]//'| sort|uniq -c|sort -k1nr | head
+      2 1029
+      2 1066
+      2 1074
+      2 1173
+      2 1236
+      2 1250
+      2 1282
+$ awk -F'[' '{print $2}' 0.out | sed 's/\]//'| sort|uniq -c|sort -k1nr | awk '$1>1'|wc
+    116     232    1481
+
+
+
+
+(2) 尝试加互斥锁
+把原文的互斥锁的注释打开。
+
+互斥对象是这样工作的。如果线程 a 试图锁定一个互斥对象，而此时线程 b 已锁定了同一个互斥对象时，线程 a就将进入睡眠状态。一旦线程 b 释放了互斥对象（通过 pthread_mutex_unlock() 调用），线程 a就能够锁定这个互斥对象（换句话说，线程 a 就将从 pthread_mutex_lock()函数调用中返回，同时互斥对象被锁定）。同样地，当线程 a 正锁定互斥对象时，如果线程 c 试图锁定互斥对象的话，线程 c也将临时进入睡眠状态。对已锁定的互斥对象上调用 pthread_mutex_lock()的所有线程都将进入睡眠状态，这些睡眠的线程将“排队”访问这个互斥对象。
+
+通常使用 pthread_mutex_lock() 和 pthread_mutex_unlock()来保护数据结构。这就是说，通过线程的锁定和解锁，对于某一数据结构，确保某一时刻只能有一个线程能够访问它。可以推测到，当线程试图锁定一个未加锁的互斥对象时，POSIX线程库将同意锁定，而不会使线程进入睡眠状态。
+
+注意：全局变量的操作都要放到互斥锁中，否则可能出现累加互斥了，但是打印没有互斥的情况，输出还是有重复数字。
+
+$ cat multi_thread2.c
+#include <stdio.h>   
+#include <pthread.h>  
+#include <time.h>
+//#include <windows.h>//使用Sleep的头
+#include <unistd.h>
+
+int g_number = 0;
+
+#define MAX_COUNT 10000
+
+pthread_mutex_t mut;
+
+void *counter3(void* args) {
+	int i = 1;
+	while (i <= MAX_COUNT / 4) {
+		pthread_mutex_lock(&mut);
+		g_number++;
+		printf("hi,i am pthread 3, my g_number is [%d]\n", g_number);
+		pthread_mutex_unlock(&mut);
+		//Sleep(1);// 单位ms
+		//sleep(1);// 单位s
+		i++;
+	}
+}
+
+void *counter4(void* args) {
+	int j = 1;
+	while (j <= MAX_COUNT / 4) {
+		pthread_mutex_lock(&mut);
+		g_number++;
+		printf("hi,i am pthread 4, my g_number is [%d]\n", g_number);
+		pthread_mutex_unlock(&mut);
+		//sleep(1);
+		j++;
+	}
+}
+
+int main() {
+	printf("加互斥锁：线程安全的\n");
+	pthread_mutex_init(&mut, NULL);
+	pthread_t t3;
+	pthread_t t4;
+	pthread_create(&t3, NULL, counter3, NULL);
+	pthread_create(&t4, NULL, counter4, NULL);
+
+	getchar();
+	return 0;
+}
+
+$ gcc multi_thread2.c -lpthread
+$ ./a.out 
+hi,i am pthread 4, my g_number is [2]
+hi,i am pthread 3, my g_number is [1]
+hi,i am pthread 4, my g_number is [3]
+hi,i am pthread 3, my g_number is [4]
+hi,i am pthread 4, my g_number is [5]
+hi,i am pthread 3, my g_number is [6]
+hi,i am pthread 4, my g_number is [7]
+hi,i am pthread 3, my g_number is [8]
+...
+hi,i am pthread 3, my g_number is [27]
+hi,i am pthread 4, my g_number is [28]
+hi,i am pthread 3, my g_number is [29]
+hi,i am pthread 4, my g_number is [30]
+顺序可能会变(比如2,1)，但是值没有重复的。
+
+
+去掉sleep函数，输出到文件，检查是否有重复数字
+$ awk -F'[' '{print $2}' 1.out | sed 's/\]//'| sort|uniq -c|sort -k1nr | head
+     1 
+      1 1
+      1 10
+      1 100
+      1 1000
+      1 1001
+
+$ awk -F'[' '{print $2}' 1.out | sed 's/\]//'| sort|uniq -c|sort -k1nr | awk '$1>1'|wc
+ 0       0       0
+
+小结：之前把g++放到锁内，把printf放到锁外，还是有重复的。要把全局对象的操作都放到锁内，才能保证输出没有重复。
+
+
+
+
+
+
+2. pthread_create() 函数
+
+pthread_create是（Unix、Linux、Mac OS X）等操作系统的创建线程的函数。它的功能是创建线程（实际上就是确定调用该线程函数的入口点），在线程创建以后，就开始运行相关的线程函数。
+pthread_create的返回值表示成功，返回0；表示出错，返回表示-1。
+
+函数原型声明：
+#include <pthread.h>
+int pthread_create(
+	pthread_t *restrict tidp,   //新创建的线程ID指向的内存单元。
+	const pthread_attr_t *restrict attr,  //线程属性，默认为NULL
+	void *(*start_rtn)(void *), //新创建的线程从start_rtn函数的地址开始运行
+	void *restrict arg //默认为NULL。若上述函数需要参数，将参数放入结构中并将地址作为arg传入。
+);
+
+
+(1) 传递参数注意的问题
+问题：
+避免直接在传递的参数中传递发生改变的量，否则会导致结果不可测。
+即使是只再创造一个单线程，也可能在线程未获取传递参数时，线程获取的变量值已经被主线程进行了修改。
+
+通常解决方案：
+重新申请一块内存，存入需要传递的参数，再将这个地址作为arg传入。
+
+
+(2) 使用时注意防止内存泄漏
+在默认情况下通过pthread_create函数创建的线程是非分离属性的，由pthread_create函数的第二个参数决定，在非分离的情况下，当一个线程结束的时候，它所占用的系统资源并没有完全真正的释放，也没有真正终止。
+
+只有在pthread_join函数返回时，该线程才会释放自己的资源。
+或者是设置在分离属性的情况下，一个线程结束会立即释放它所占用的资源。
+
+如果要保证创建线程之后，确保无内存泄漏，必须采用如下方法来规范pthread_create的使用:
+
+
+1)设置线程是detached（分离属性的）
+void run() { 
+    return;
+} 
+
+int main(){ 
+    pthread_t thread; 
+    pthread_attr_t attr; 
+    pthread_attr_init( &attr ); 
+    pthread_attr_setdetachstate(&attr,1); 
+    pthread_create(&thread, &attr, run, 0); //第二个参数决定了分离属性
+
+    //...... 
+    return 0; 
+}
+也有人不赞成这样做，原因：
+
+
+2) 配套使用pthread_join()函数
+pthread_join()函数会一直阻塞调用线程，直到指定的线程终止。当pthread_join()返回之后，应用程序可回收与已终止线程关联的任何数据存储空间。
+但是，同时需要注意，一定要和上面创建的某一线程配套使用，这样还可以起到互斥的作用。否则多线程可能抢占CPU资源，导致运行结果不确定。
+
+牛客一道题目： 下面程序输出结果是什么？（不能确定）
+
+#include<stdio.h>
+#include<string.h>
+#include <pthread.h>
+
+void* print1(void* data){
+    printf("1 ");
+}
+
+void* print2(void* data){
+    printf("2 ");
+}
+
+void* print3(void* data){
+    printf("3 ");
+}
+
+int main(void){
+    pthread_t t,t1,t2;
+
+    pthread_create(&t,0,print1,NULL);
+    pthread_create(&t1,0,print2,NULL);
+    pthread_create(&t2,0,print3,NULL);
+
+    pthread_join(t,NULL);
+    pthread_join(t1,NULL);
+    pthread_join(t2,NULL);
+    printf("\n");
+	return 0;
+}
+
+$ gcc 03.c -lpthread
+
+执行10次，顺序都不一样。
+$ seq 1 10|while read id; do ./a.out; done;
+1 2 3 
+2 1 3 
+1 3 2 
+1 2 3 
+1 2 3 
+1 2 3 
+1 3 2 
+1 2 3 
+1 3 2 
+2 1 3
+
+对于大多数多线程，可能并不要求返回顺序，因为每个任务都有些差异。
+但是如果要求返回顺序，则需要设置阻塞。
+
+int main(void){
+    pthread_t t,t1,t2;
+
+    pthread_create(&t,0,print1,NULL);
+    pthread_join(t,NULL);
+    
+	pthread_create(&t1,0,print2,NULL);
+    pthread_join(t1,NULL);
+	
+    pthread_create(&t2,0,print3,NULL);
+    pthread_join(t2,NULL);
+
+    printf("\n");
+	return 0;
+}
+执行顺序保证了，因为pthread_join阻塞着，等结束才能继续。
+$ seq 1 10|while read id; do ./a.out; done;
+1 2 3 
+1 2 3 
+
+
+
+函数原型：
+int pthread_join(
+	pthread_t tid, //需要等待的线程,指定的线程必须位于当前的进程中，而且不得是分离线程
+	void **status  //线程tid所执行的函数返回值（返回值地址需要保证有效），其中status可以为NULL
+);
+pthread非linux系统的默认库， 需手动链接-线程库 -lpthread
+
+返回值：
+调用成功返回0.
+ESRCH 描述: 没有找到与给定的线程ID 相对应的线程。（如果多个线程等待同一个线程终止，则所有等待线程将一直等到目标线程终止。然后一个等待线程成功返回。其余的等待线程将失败返回ESRCH错误）
+EDEADLK 描述: 将出现死锁，如一个线程等待其本身，或者线程A和线程B 互相等待。
+EINVAL 描述: 与给定的线程ID相对应的线程是分离线程。
+
+
+
+
+ref:
+https://blog.csdn.net/gisxs/article/details/17115981
+
+
+
+
+
+
+========================================
+----------------------------------------
+
+========================================
+----------------------------------------
+
+========================================
 ----------------------------------------
 
 
+
+
+========================================
+----------------------------------------
+
+========================================
+----------------------------------------
+
+
+
+
+
+
+========================================
+----------------------------------------
+
+========================================
+----------------------------------------
+
+========================================
+----------------------------------------
 
 
 
