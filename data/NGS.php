@@ -53,12 +53,13 @@ return array (
 
   
   array (
-    0 => 4,
+    0 => 5,
     1 => 'Genome分析',
     2 => array (
       array('基因组分析软件','genome_soft','txt'),
       array('外显子WES分析','NGS_exon_pipeline','txt'),
       array('ATAC-seq分析','ATAC-seq','txt'),
+      array('3D genome','3D-Genome','txt'),
 
     ),
   ),

@@ -2903,12 +2903,16 @@ https://mp.weixin.qq.com/s?__biz=MzI5MTcwNjA4NQ==&mid=2247485220&idx=1&sn=007188
 bedtools : a powerful toolset for genome arithmetic 强有力的基因组算法瑞士军刀
 ----------------------------------------
 1. 简介 
-
-bedtools: flexible tools for genome arithmetic and DNA sequence analysis.
+(1)bedtools: flexible tools for genome arithmetic and DNA sequence analysis.
 usage:    bedtools <subcommand> [options]
 
-https://bedtools.readthedocs.io/en/latest/index.html
 
+软件相关论文：
+Quinlan, A.R. & Hall, I.M. BEDTools: a flexible suite of utilities for comparing genomic features. Bioinformatics 26, 841-842 (2010).
+
+bedtools说明书：
+https://bedtools.readthedocs.io/en/latest/index.html
+http://quinlanlab.org/tutorials/bedtools/bedtools.html
 
 
 最新版的官网：
@@ -2920,6 +2924,15 @@ https://insidedna.me/tool_page_assets/pdf_manual/bedtools.pdf
 Collectively, the bedtools utilities are a swiss-army knife of tools for a wide-range of genomics analysis tasks. The most widely-used tools enable genome arithmetic: that is, set theory on the genome. For example, bedtools allows one to intersect, merge, count, complement, and shuffle genomic intervals from multiple files in widely-used genomic file formats such as BAM, BED, GFF/GTF, VCF. While each individual tool is designed to do a relatively simple task (e.g., intersect two interval files), quite sophisticated analyses can be conducted by combining multiple bedtools operations on the UNIX command line.
 
 bedtools is developed in the Quinlan laboratory at the University of Utah and benefits from fantastic contributions made by scientists worldwide.
+
+
+
+(2)为什么不得不用bedtools？
+
+速度，当数据到达百万级以上，R和C的速度差别就非常明显了
+专业，但凡涉及到region、peak的处理，bedtools都可以胜任
+
+https://www.cnblogs.com/leezx/p/14475092.html
 
 
 
@@ -3082,6 +3095,52 @@ $ bedtools bamtobed -i reads.bam | head -3
 
 
 
+
+4. 使用实例
+
+(1) 第一个功能 genomecov
+我们先看第一个功能，把alignment的结果文件转为bedgraph格式文件。 不过这个功能用处不是很大。
+
+参考：http://bedtools.readthedocs.io/en/latest/content/tools/genomecov.html
+
+bedtools genomecov [OPTIONS] [-i|-ibam] -g (iff. -i)
+genomeCoverageBed  [OPTIONS] [-i|-ibam] -g (iff. -i)
+
+这个命令本身并不是设计来做格式转换的，bam2bedgraph也只是其中的一个小功能而已，需要加上-bg参数，就可以Report depth in BedGraph format. For details, see: http://genome.ucsc.edu/goldenPath/help/bedgraph.html
+
+大家观摩我下面给出的测试例子，就明白该功能如何使用了
+
+bedtools genomecov  -bg -i E001-H3K4me1.tagAlign -g mygenome.txt >E001-H3K4me1.bedGraph
+bedtools genomecov  -bg -i E001-Input.tagAlign -g mygenome.txt >E001-Input.bedGraph
+nohup bedtools genomecov  -bg -ibam BAF180_CT10.unique.sorted.bam >BAF180_CT10.bedGraph &
+nohup bedtools genomecov  -bg -ibam BAF180_CT22AM.unique.sorted.bam >BAF180_CT22AM.bedGraph &
+nohup bedtools genomecov  -bg -ibam BAF180_CT22.unique.sorted.bam >BAF180_CT22.bedGraph &
+nohup bedtools genomecov  -bg -ibam inputCT10sonication.unique.sorted.bam >inputCT10sonication.bedGraph &
+
+首先alignment的文件必须是sort的，
+然后如果是bed格式的比对文件，用-i 参数来指定输入文件，需要加入参考基因组的染色体大小记录文件(mygenome.txt )，
+如果是bam格式的比对文件，用-ibam指定输入文件，而且不需要参考基因组的染色体大小记录文件。
+
+
+
+
+(2) 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 更多用法：
 http://bedtools.readthedocs.io/en/latest/content/example-usage.html
 高级用法：
@@ -3098,20 +3157,180 @@ https://www.jianshu.com/p/f8bbd51b5199
 
 
 ========================================
-|-- 怎么取 大bam文件 的子集?
+|-- bedtools multicov: 统计 bed 每行区间内bam中的reads数
 ----------------------------------------
+
+对RNA-seq的比对文件中的比对到各个基因的reads进行计数。
+或者对于合并call peak后得到的bed文件，统计每个样本在这些峰中的reads数，获得count 矩阵。
+
+
+参考: http://www.bio-info-trainee.com/745.html
+http://bedtools.readthedocs.io/en/latest/content/tools/multicov.html
+
+
+1. 示例
+(1) 需要对bam做index。
+$ samtools index xx.bam
+
+(2) bed格式可以是4列或6列的，可以从 MACS2 的输出文件中使用 awk 生成。
+$ awk '{print $1"\t"$2"\t"$3"\t"$4"\t"$5"\t"$6}' macs2_result/total_peaks.narrowPeak > macs2_result/total.bed
+$ head macs2_result/total.bed
+chr1    633888  634322  total_peak_1    628     .
+chr1    1724255 1724472 total_peak_2    61      .
+chr1    2133178 2133401 total_peak_3    32      .
+
+
+(3) 获取矩阵
+$ bedtools multicov -bams aln1.bam aln2.bam aln3.bam -bed ivls-of-interest.bed
+# ivls-of-interest.bed这个文件是必须的，可能需要自己制作，其实用gtf文件也可以的，如下：
+chr1 0   10000   ivl1
+chr1 10000   20000   ivl2
+chr1 20000   30000   ivl3
+chr1 30000   40000   ivl4
+
+输出结果前三列是坐标，第四列是基因名，跟我们的bed文件一样，只是最后三列是三个样本的计数，是添加上来的！
+chr1 0       10000   ivl1    100 2234    0
+chr1 10000   20000   ivl2    123 3245    1000
+chr1 20000   30000   ivl3    213 2332    2034
+chr1 30000   40000   ivl4    335 7654    0
+可以看到，它实现的需求，跟htseq这个软件差不多。
+
+
+2) 改进版，如果需要更多sample，可以使用shell子命令
+$ bedtools multicov -bams `ls map_clean/P1*.final.bam` -bed macs2_result/total.bed >macs2_result/matrix0.txt
+
+
+
+
+(4) 矩阵优化：添加行名、列名
+
+1) 获取样本名字
+$ ls map_clean/*.final.bam |  sed -e 's/map_clean\///' -e 's/\.final\.bam//' >matrix/colname.txt
+
+
+2) R script
+dt=read.table("macs2_result/matrix0.txt", header = F)
+dim(dt)
+dt[1:4,1:8]
+rownames(dt)=dt$V4
+
+dt2=dt[, -c(1:6)]
+colnames(dt2)=readLines("matrix/colname.txt")
+dt2[1:4,1:8]
+dim(dt2) #3560   96
+
+write.table(dt2, "P1_raw_counts.txt")
+
+
+然后就可以用 Seurat 分析了。
+
+
+
+
+
+
+
+
+
+========================================
+|--  getfasta: 根据坐标区域来从基因组里面提取fasta序列
+----------------------------------------
+http://bedtools.readthedocs.io/en/latest/content/tools/getfasta.html
+
+1. 简介
+bedtools getfasta extracts sequences from a FASTA file for each of the intervals defined in a BED/GFF/VCF file.
+
+(1)注意：
+1). The headers in the input FASTA file must exactly match the chromosome column in the BED file.
+fa和bed的chr名字要一致。
+
+2). You can use the UNIX fold command to set the line width of the FASTA output. For example, fold -w 60 will make each line of the FASTA file have at most 60 nucleotides for easy viewing.
+可以使用 -w 60 指定每60个碱基换行。方便预览。
+
+3). BED files containing a single region require a newline character at the end of the line, otherwise a blank output file is produced.
+bed文件只有一行时，结尾必须有换行符，否则输出空白。
+
+
+(2) 命令格式
+$ bedtools getfasta [OPTIONS] -fi <input FASTA> -bed <BED/GFF/VCF>
+(or):
+$ getFastaFromBed [OPTIONS] -fi <input FASTA> -bed <BED/GFF/VCF>
+
+参考基因组用-fi参数指定具体位置，输出的fasta序列文件用-fo参数指定
+
+
+
+
+
+2. 示例
+
+(1) 从fa文件获取bed指定坐标的碱基
+$ cat test.fa
+>chr1
+AAAAAAAACCCCCCCCCCCCCGCTACTGGGGGGGGGGGGGGGGGG
+
+$ cat test.bed
+chr1 5 10
+
+$ bedtools getfasta -fi test.fa -bed test.bed
+>chr1:5-10
+AAACC
+
+# optionally write to an output file
+$ bedtools getfasta -fi test.fa -bed test.bed -fo test.fa.out
+
+$ cat test.fa.out
+>chr1:5-10
+AAACC
+
+
+(2) 在bed文件第4列添加名字，作为新生成的fasta的序列名字
+$ cat test.fa
+>chr1
+AAAAAAAACCCCCCCCCCCCCGCTACTGGGGGGGGGGGGGGGGGG
+
+$ cat test.bed
+chr1 5 10 myseq
+
+$ bedtools getfasta -fi test.fa -bed test.bed -name
+>myseq
+AAACC
+
+
+
+(3) 
+$ bedtools getfasta -fi ~/biosoft/bowtie/hg19_index/hg19.fa  -bed ../macs14_results/highQuality_summits.bed  -fo highQuality.fa
+$ bedtools getfasta -fi ~/biosoft/bowtie/hg19_index/hg19.fa  -bed ../macs14_results/highQuality_peaks.bed  -fo highQuality.fa
+
+我的例子脚本里面用的是bed格式来记录坐标区域。
+
+
+
+
+
+========================================
+|-- bedtools intersect / samtools: 取 大bam文件 的子集
+----------------------------------------
+http://bedtools.readthedocs.io/en/latest/content/tools/intersect.html
+
+
+原始序列
+$ samtools view apa/190705PAS/hg19/CutA_c01_ROW31_Aligned.sortedByCoord.out.bam | wc
+2158830 32382450 581771742
+
+
+
+1. 使用 bedtools intersect 取子集
 $ samtools view CutA_c01_ROW31_Aligned.sortedByCoord.out.bam |grep chr8| grep 14601 | wc
    2362   35430  690623
-#
 
-1.建立一个bed文件，限定区域
+(1).建立一个bed文件，限定区域
 $ vim RPL8.bed
 chr8	146015076	146015318
 
 
-2. 从bam中取出该范围的行
+(2).从bam中取出该范围的行
 $ bedtools intersect -a CutA_c01_ROW31_Aligned.sortedByCoord.out.bam -b RPL8.bed >c01_ROW31_RPL8.bam
-
 
 检查:
 $ samtools view c01_ROW31_RPL8.bam |wc
@@ -3120,10 +3339,229 @@ $ samtools view c01_ROW31_RPL8.bam |wc
 
 
 
+2. 使用samtools view  获取
+(1) 获取某染色体序列
+$ samtools view apa/190705PAS/hg19/CutA_c01_ROW31_Aligned.sortedByCoord.out.bam | grep chr8 | wc
+  67760 1016400 17762256
+
+直接在bam后加染色体名字
+$ samtools view apa/190705PAS/hg19/CutA_c01_ROW31_Aligned.sortedByCoord.out.bam chr8 | wc
+  67759 1016385 17762079
+
+(2) 获取某个染色体某范围的reads
+$ samtools view apa/190705PAS/hg19/CutA_c01_ROW31_Aligned.sortedByCoord.out.bam chr8:146015076-146015318 | wc
+	2363   35445  690971
+
+(3) 输出成bam格式 -b，保存头部信息-h
+$ samtools view -b -h apa/190705PAS/hg19/CutA_c01_ROW31_Aligned.sortedByCoord.out.bam chr8:146015076-146015318 >test.bam
+
+$ samtools view test.bam |wc
+   2363   35445  690971
+
+
 
 ref:
 使用samtools/bedtools提取bam/sam文件指定区域reads 
 http://www.dengfeilong.com/note/290.html
+
+
+
+
+========================================
+|-- 区域注释 intersect，及实例若干
+----------------------------------------
+http://bedtools.readthedocs.io/en/latest/content/tools/intersect.html
+
+1. 注释CNV区域时哪个基因？
+
+(1) 从gencode数据库里面下载，然后解析成bed格式
+$ head ~/reference/gtf/gencode/protein_coding.hg19.position
+chr1    69091   70008   OR4F5
+chr1    367640  368634  OR4F29
+chr1    621096  622034  OR4F16
+chr1    859308  879961  SAMD11
+chr1    879584  894689  NOC2L
+chr1    895967  901095  KLHL17
+chr1    901877  911245  PLEKHN1
+chr1    910584  917473  PERM1
+chr1    934342  935552  HES4
+chr1    936518  949921  ISG15
+
+
+(2) 下载的CNV文本文件，转为bed格式的，就是把列的顺序调换一下：
+
+$ head Features.bed  
+chr1    3218610 95674710    TCGA-3C-AAAU-10A-01D-A41E-01    53225   0.0055
+chr1    95676511    95676518    TCGA-3C-AAAU-10A-01D-A41E-01    2   -1.6636
+chr1    95680124    167057183   TCGA-3C-AAAU-10A-01D-A41E-01    24886   0.0053
+chr1    167057495   167059336   TCGA-3C-AAAU-10A-01D-A41E-01    3   -1.0999
+chr1    167059760   181602002   TCGA-3C-AAAU-10A-01D-A41E-01    9213    -8e-04
+chr1    181603120   181609567   TCGA-3C-AAAU-10A-01D-A41E-01    6   -1.2009
+chr1    181610685   201473647   TCGA-3C-AAAU-10A-01D-A41E-01    12002   0.0055
+chr1    201474400   201474544   TCGA-3C-AAAU-10A-01D-A41E-01    2   -1.4235
+chr1    201475220   247813706   TCGA-3C-AAAU-10A-01D-A41E-01    29781   -4e-04
+
+(3) 命令很简单，如下：
+$ bedtools intersect -a Features.bed  -b  ~/reference/gtf/gencode/protein_coding.hg19.position \
+-wa -wb   | bedtools groupby -i - -g 1-4 -c 10 -o collapse
+
+参数解释：
+-g -grp		Specify the columns (1-based) for the grouping.
+			The columns must be comma separated.
+			- Default: 1,2,3
+-c -opCols	Specify the column (1-based) that should be summarized.
+			- Required.
+-o -ops		Specify the operation that should be applied to opCol.
+			Valid operations:
+			    sum, count, count_distinct, min, max,
+			    mean, median, mode, antimode,
+			    stdev, sstdev (sample standard dev.),
+			    collapse (i.e., print a comma separated list (duplicates allowed)), 
+			    distinct (i.e., print a comma separated list (NO duplicates allowed)), 
+			    distinct_sort_num (as distinct, but sorted numerically, ascending), 
+			    distinct_sort_num_desc (as distinct, but sorted numerically, descending), 
+			    concat   (i.e., merge values into a single, non-delimited string), 
+			    freqdesc (i.e., print desc. list of values:freq)
+			    freqasc (i.e., print asc. list of values:freq)
+			    first (i.e., print first value)
+			    last (i.e., print last value)
+			- Default: sum
+
+注释结果如下：可以看到，每个CNV片段都注释到了对应的基因，有些特别大的片段，会被注释到非常多的基因。
+
+chr8    42584924    42783715    TCGA-5T-A9QA-01A-11D-A41E-01    CHRNB3,CHRNA6,THAP1,RNF170,HOOK3
+chr8    42789728    42793594    TCGA-5T-A9QA-01A-11D-A41E-01    HOOK3
+chr8    42797957    42933372    TCGA-5T-A9QA-01A-11D-A41E-01    RP11-598P20.5,FNTA,HOOK3
+chr8    70952673    70964372    TCGA-5T-A9QA-01A-11D-A41E-01    PRDM14
+chr10    42947970    43833200    TCGA-5T-A9QA-01A-11D-A41E-01    BMS1,RET,RASGEF1A,ZNF33B,CSGALNACT2
+chr10    106384615   106473355   TCGA-5T-A9QA-01A-11D-A41E-01    SORCS3
+chr10    106478366   107298256   TCGA-5T-A9QA-01A-11D-A41E-01    SORCS3
+chr10    117457285   117457859   TCGA-5T-A9QA-01A-11D-A41E-01    ATRNL1
+chr11    68990173    69277078    TCGA-5T-A9QA-01A-11D-A41E-01    MYEOV
+chr11    76378708    76926535    TCGA-5T-A9QA-01A-11D-A41E-01    LRRC32,B3GNT6,OMP,TSKU,MYO7A,ACER3,CAPN5
+
+
+
+
+
+
+2. 更多实例
+
+加-wa参数可以报告出原始的在A文件中的feature，
+加-wb参数可以报告出原始的在B文件中的feature, 
+加-c参数可以报告出两个文件中的overlap的feature的数量，
+参数-s可以得到忽略strand的overlap
+
+注意：使用tab分割！
+
+(1) 案例一：包含着染色体位置的两个文件，分别记为A文件和B文件。
+分别来自于不同文件的染色体位置的交集是什么？
+$ cat A.bed
+chr1	10	20
+chr1	30	40
+
+$ cat B.bed
+chr1	15	25
+
+$ bedtools intersect -a A.bed -b B.bed 
+chr1	15	20
+
+
+(2) 案例二：包含着染色体位置的两个文件，分别记为A文件和B文件。
+求A文件中哪些染色体位置是与文件B中的染色体位置有overlap.
+-wa 报告a中的行。
+
+$ bedtools intersect -a A.bed -b B.bed -wa
+chr1	10	20
+
+(3) 案例三：包含着染色体位置的两个文件，分别记为A文件和B文件。
+求A文件中染色体位置与文件B中染色体位置的交集，以及对应的文件B中的染色体位置.
+-wb 报告交集，及B的行
+
+$ bedtools intersect -a A.bed -b B.bed -wb
+chr1	15	20	chr1	15	25
+
+
+
+
+(4) 案例四（常用）： 包含着染色体位置的两个文件，分别记为A文件和B文件。
+求对于A文件的染色体位置是否与文件B中的染色体位置有交集。
+	如果有交集，分别输入A文件的染色体位置和B文件的染色体位置；
+	如果没有交集，输入A文件的染色体位置并以'. -1 -1'补齐文件。
+
+-loj	Perform a "left outer join". That is, for each feature in A report each overlap with B.  
+		If no overlaps are found, report a NULL feature for B.
+左外连接，保持左边a的完整性。有交集就输出b的行，没有交集则输出 . -1 -1 占位。
+
+$ bedtools intersect -a A.bed -b B.bed -loj
+chr1 10 20 chr1 15 25
+chr1 30 40 . -1 -1
+
+
+(5) 案例五： 包含着染色体位置的两个文件，分别记为A文件和B文件。
+对于A文件中染色体位置，如果和B文件中染色体位置有overlap,则输出在A文件中染色体位置和在B文件中染色体位置，以及overlap的长度.
+
+-wo	Write the original A and B entries plus the number of base pairs of overlap between the two features.
+		- Overlaps restricted by -f and -r.
+		  Only A features with overlap are reported.
+报告原始的A和B的行，及重叠的碱基数。
+只报告A中有重合的行。
+
+$ cat A.bed
+chr1	10	20
+chr1	30	40
+
+$ cat B2.bed
+chr1	15	20
+chr1	18	25
+
+$ bedtools intersect -a A.bed -b B2.bed -wo
+chr1	10	20	chr1	15	20	5
+chr1	10	20	chr1	18	25	2
+
+
+
+(6)  包含着染色体位置的两个文件，分别记为A文件和B文件。
+对于A文件中染色体位置，如果和B文件中染色体位置有overlap,则输出在A文件中染色体位置和在B文件中染色体位置，以及overlap的长度；如果和B文件中染色体位置都没有overlap,则用'. -1-1'补齐文件
+
+加了all参数，则报告全部A的行。
+
+$ bedtools intersect -a A.bed -b B2.bed -wao
+chr1	10	20	chr1	15	20	5
+chr1	10	20	chr1	18	25	2
+chr1	30	40	.	-1	-1	0
+
+
+
+(7) 案例七： 包含着染色体位置的两个文件，分别记为A文件和B文件。
+对于A文件中染色体位置，输出在A文件中染色体位置和有多少B文件染色体位置与之有overlap.
+
+-c	For each entry in A, report the number of overlaps with B.
+	- Reports 0 for A entries that have no overlap with B.
+	- Overlaps restricted by -f, -F, -r, and -s.
+报告每行A与几个B行重合。
+
+$ bedtools intersect -a A.bed -b B2.bed -c
+chr1	10	20	2
+chr1	30	40	0
+
+
+
+
+(8) 案例八(常用)： 包含着染色体位置的两个文件，分别记为A文件和B文件。
+对于A文件中染色体位置，输出在A文件中染色体位置和与B文件染色体位置至少有X%的overlap的记录。
+
+
+$ cat A3.bed
+chr1	100	200
+
+$ cat B3.bed
+chr1	130	201
+chr1	180	220
+
+$ bedtools intersect -a A3.bed -b B3.bed -f 0.50 -wa -wb
+chr1	100	200	chr1	130	201
+
 
 
 
@@ -3167,10 +3605,43 @@ $ bedtools bamtofastq -i aln.qsort.bam \
 
 $ head -8 aln.end1.fq
 
-
-
 ref: https://bedtools.readthedocs.io/en/latest/content/tools/bamtofastq.html
 
+
+
+========================================
+|-- bedtools 其他小功能
+----------------------------------------
+1. bedtools merge
+
+用于合并位于同一个bed/gff/vcf 文件中的重叠区域。
+
+$ bedtools merge [OPTION] –i
+
+-s 必须相同(正负)链的区域才合并（软件默认不考虑正负链特征）
+-n 报告合并的区域数量，没有被合并则1
+-d 两个独立区域间距小于（等于）该值时将被合并为一个区域
+-nms 报告被合并区域的名称
+-scores 报告几个被合并特征区域的scores
+
+
+
+
+其它小功能
+1）pairToPair
+比较BEDPE文件搜索overlaps, 类似于pairToBed。
+
+2）bamToBed
+将BAM文件转换为BED文件或者BEDPE文件。
+bamToBed -i reads.bam
+
+3）windowBed类似于intersectBed, 但是可以指定一个数字，让A中的genome feature增加上下游去和B中的genome features进行overlap。默认情况这个值为1000，可以使用-w加定义，可以用-l指定是上游，用-r指定下游
+windowBed -a A.bed -b B.bed -w 5000
+windowBed -a A.bed -b B.bed -l 200 -r 20000
+
+4）subtractBed在A中去除掉B中有的genome features
+5）coverageBed可以计算深度和覆盖度。如计算基因组任意1Kb的测序read的覆盖度
+6）genomeCoverageBed。可以计算给定bam文件在基因组上的覆盖度及每个碱基的深度。
 
 
 
