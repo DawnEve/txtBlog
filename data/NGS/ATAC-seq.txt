@@ -152,6 +152,11 @@ ATAC-seq 分析（上）  https://www.jianshu.com/p/b7bd87315b6e
 ATAC分析大致过程：
 https://adinasarapu.github.io/posts/2019/12/blog-post-atacseq/
 
+这个教程比较系统，旁征博引，又有重要步骤的代码：
+https://yiweiniu.github.io/blog/2019/03/ATAC-seq-data-analysis-from-FASTQ-to-peaks/
+
+
+
 
 
 
@@ -2763,7 +2768,12 @@ chr1    634081  634082  total_peak_6    60.8075
 峰比 基于模型的 数量多 150个。
 
 
+
 5) 实测版 02: 不基于模型, 加参数 --call-summits
+--CALL-SUMMITS
+MACS will now reanalyze the shape of signal profile (p or q-score depending on the cutoff setting) to deconvolve subpeaks within each peak called from the general procedure. It's highly recommended to detect adjacent binding events. While used, the output subpeaks of a big peak region will have the same peak boundaries, and different scores and peak summit positions.
+如果使用，大峰的子峰会有同样的peak边界，不同的peak summit 位置和打分。
+
 $ macs2 callpeak -t $input -f BAM -g hs \
 --shift -100 --extsize 200 --nomodel \
 --call-summits \
@@ -2781,7 +2791,12 @@ chr1    17519   17520   total_peak_1    5.41469
 chr1    88274   88275   total_peak_2    4.1436
 chr1    128662  128663  total_peak_3    3.11127
 
-目前最多的峰，可能有子峰。 //todo?
+目前最多的峰，可能有子峰。
+
+
+
+
+
 
 
 
@@ -2872,6 +2887,7 @@ total 337M
 
 
 
+
 10) 实测版 02: 不基于模型, 改变shift=-209/2  使用 macs2 预测的插入片段长度
 $ macs2 predictd -i merged/total.bam
 ## predicted fragment length is 209 bps
@@ -2889,9 +2905,6 @@ chr1    128542  128752  total_peak_3    30      .       4.87409 6.76147 3.06804 
 chr1    181238  181518  total_peak_4    50      .       6.5312  9.50983 5.00517 150
 
 比 extsize=200 的1417个峰多了一点。
-
-
-
 
 
 
@@ -2926,6 +2939,7 @@ chr1    1074805 1075108 total_peak_10   23      .       2.72412 5.27212 2.3442  
 
 
 
+
 11) 实测版 02: 不基于模型, 改变shift=-1000/2 ，是不是越大峰越多
 $ macs2 callpeak -t $input -f BAM -g hs \
 --shift -500 --extsize 1000 --nomodel \
@@ -2936,12 +2950,17 @@ $ macs2 callpeak -t $input -f BAM -g hs \
 
 
 
+
+
+
 12) 对合并后的bam sort一下呢？
 $ samtools sort -@ 4 -O bam -o merged/total.sort.bam merged/total.bam
 $ macs2 callpeak -t merged/total.sort.bam -f BAM -g hs --shift -100 --extsize 200 --nomodel --call-summits --outdir macs2_result/12/ -n total
 
 3560  35600 256468 macs2_result/12/total_peaks.narrowPeak
 结果和原来一样。
+
+
 
 
 
@@ -2959,10 +2978,18 @@ The default is to keep one tag at the same location. Default: 1
 Note, if you've used samtools or picard to flag reads as 'PCR/Optical duplicate' in bit 1024, MACS2 will still read them although the reads may be decided by MACS2 as duplicate later. 
 If you plan to rely on samtools/picard/any other tool to filter duplicates, please remove those duplicate reads and save a new alignment file then ask MACS2 to keep all by '--keep-dup all'. 
 注意：如果使用其他工具识别重复序列，就先去掉重复，然后设置 macs2 的参数 '--keep-dup all'
+按这个描述，应该加上！
 
-$ macs2 callpeak --keep-dup all  -t merged/total.bam -f BAM -g hs --shift -100 --extsize 200 --nomodel --call-summits --outdir macs2_result/13/ -n total
+$ macs2 callpeak --keep-dup all  -t $input -f BAM -g hs --shift -100 --extsize 200 --nomodel --call-summits --outdir macs2_result/13/ -n total
 
-17178  171780 1245371 macs2_result/13/total_peaks.narrowPeak
+4135  41350 297537 macs2_result/13/total_peaks.narrowPeak
+这是目前最多的峰。
+
+
+
+## for all
+$ macs2 callpeak --keep-dup all  -t merged/total.bam -f BAM -g hs --shift -100 --extsize 200 --nomodel --call-summits --outdir macs2_result/13_/ -n total
+17178  171780 1245371 macs2_result/13_/total_peaks.narrowPeak
 现在终于上一万了：这是目前最多的峰。
 
 
@@ -2970,11 +2997,378 @@ $ macs2 callpeak --keep-dup all  -t merged/total.bam -f BAM -g hs --shift -100 -
 
 
 
+
+14) 尝试使用bed文件 call peak
+
+$ echo $input
+merged/total_1_20.bam
+
+#BAM to BED（可以使用bedtools的bamToBed工具）
+$ bedtools bamtobed -i merged/total_1_20.bam >merged/total_1_20.bed
+$ samtools view merged/total_1_20.bam|wc
+6167048 105261434 1307655743
+$ wc merged/total_1_20.bed
+6167048  37002288 444016703 merged/total_1_20.bed
+共6million PE reads == 3million fragment.
+
+$ head merged/total_1_20.bed
+chr1    10092   10128   NB502151:36:HJWCLBGXJ:2:23308:5252:9191/1       32      +
+chr1    10098   10135   NB502151:36:HJWCLBGXJ:4:13402:10236:19044/1     30      +
+chr1    10165   10203   NB502151:36:HJWCLBGXJ:4:13402:10236:19044/2     30      -
+
+
+$ macs2 callpeak --keep-dup all  -t merged/total_1_20.bed -f BED -g hs --shift -100 --extsize 200 --nomodel --call-summits --outdir macs2_result/14/ -n total
+#1  total tags in treatment: 6167048
+try1:报错：struct.error: unpack requires a buffer of 4 bytes 可能是因为文件格式 -f 没指定好。
+
+29553  295530 2157855 macs2_result/14/total_peaks.narrowPeak
+这就2.9万个峰了！！
+
+$ sort -k7nr macs2_result/14/total_peaks.narrowPeak|head | column -t
+chr1   633888     634248     total_peak_13      6100  .  41.0948  618.525  610.029  161
+chr20  28513494   28513833   total_peak_24786   619   .  24.5455  67.5991  61.9005  156
+chr20  44843410   44843714   total_peak_26371   1821  .  20.8511  188.176  182.14   134
+chr1   228620821  228621169  total_peak_20184   273   .  15.8824  32.5124  27.3884  166
+chr1   121184474  121184758  total_peak_11711   258   .  15.2941  30.9257  25.849   146
+chr1   206202920  206203371  total_peak_17916   263   .  14.8936  31.4074  26.3158  242
+chr20  31157634   31158218   total_peak_25057a  591   .  14.2857  64.8298  59.1845  131
+
+$ sort -k7n macs2_result/14/total_peaks.narrowPeak|head | column -t
+chr1   16924260   16924585   total_peak_1530    13  .  1.70388  2.65224  1.31456  86
+chr1   155008403  155008658  total_peak_12742   13  .  1.75202  2.64877  1.31247  218
+chr1   26282545   26282780   total_peak_2404    14  .  1.75659  2.78987  1.4056   96
+chr1   155062397  155062638  total_peak_12745   13  .  1.77305  2.65746  1.3176   119
+chr1   204149708  204150071  total_peak_17715   13  .  1.78317  2.69161  1.34133  145
+chr20  33664031   33664411   total_peak_25280a  13  .  1.78571  2.70021  1.34544  71
+chr1   16975286   16975486   total_peak_1538    13  .  1.80636  2.76992  1.39232  84
+chr1   2327938    2328298    total_peak_200     14  .  1.80807  2.84397  1.4426   245
+最后这个区域全部都是峰？
+
+
+
+##测试：去掉bed文件第4列，发现的峰一样多，也就说标准bed输入时，macs2没使用“双端测序”这个信息！
+$ awk '{print $1"\t"$2"\t"$3"\t*\t"$5"\t"$6}' merged/total_1_20.bed > merged/total_1_20-v2.bed 
+$ head merged/total_1_20-v2.bed 
+chr1    10092   10128   *       32      +
+chr1    10098   10135   *       30      +
+chr1    10165   10203   *       30      -
+
+$ macs2 callpeak --keep-dup all  -t merged/total_1_20-v2.bed -f BED -g hs --shift -100 --extsize 200 --nomodel --call-summits --outdir macs2_result/14_2/ -n total
+#1  total tags in treatment: 6167048
+29553  295530 2157855 macs2_result/14_2/total_peaks.narrowPeak
+
+
+
+
+### For all reads 
+$ bedtools bamtobed -i merged/total.bam >merged/total.bed
+$ wc merged/total.bed
+$ head merged/total.bed
+
+$ macs2 callpeak --keep-dup all  -t merged/total.bed -f BED -g hs --shift -100 --extsize 200 --nomodel --call-summits --outdir macs2_result/14_/ -n total
+使用bed文件确实慢。
+#1  total tags in treatment: 51916420 => 51 million reads;
+
+134677 1346770 9913942 macs2_result/14_/total_peaks.narrowPeak
+## 这就 13万个peak了？？
+
+$ sort -k7nr macs2_result/14_/total_peaks.narrowPeak | head|column -t
+chr21  8234289    8234727    total_peak_74567   14798  .  41.1765  1486.88  1479.87  213
+chr1   633890     634246     total_peak_2       6121   .  41.0948  618.525  612.18   159
+chr21  8219741    8220283    total_peak_74566   8224   .  40.2941  828.89   822.421  273
+chr10  133689258  133689623  total_peak_18567   3590   .  39.3333  365.119  359.013  173
+chr17  22521267   22521601   total_peak_49268   11343  .  39.0016  1141.11  1134.32  135
+
+$ sort -k7n macs2_result/14_/total_peaks.narrowPeak | head|column -t
+chrY   56832523  56832865  total_peak_128173b  19  .  1.4963   3.91013  1.95375  325
+chr16  46389933  46390898  total_peak_45405a   73  .  1.55011  10.9063  7.35045  113
+chrY   56833302  56833513  total_peak_128174   26  .  1.56869  4.84994  2.62797  103
+chr16  46388673  46388873  total_peak_45404    69  .  1.61464  10.4024  6.94128  92
+chr21  10420080  10420306  total_peak_74620    13  .  1.79211  3.05371  1.39901  114
+
+
+
+
+
+
+
+15) 参数 -bedpe 生成PE的bed，再 call peak(感觉还是有问题，插入片段太大了)
+https://www.biostars.org/p/187204/#187206
+
+try1:
+$ bedtools bamtobed -bedpe -i merged/total_1_20.bam >merged/total_1_20.pe.bed
+很多warning：*****WARNING: Query NB502151:36:HJWCLBGXJ:3:13406:17749:9463 is marked as paired, but its mate does not occur next to it in your BAM file.  Skipping. 
+
+
+try2: https://yiweiniu.github.io/blog/2019/03/ATAC-seq-data-analysis-from-FASTQ-to-peaks/
+# the BAM file should be sorted by read name beforehand
+$ samtools sort -n -T tmp/1_20 -o merged/total_1_20.sorted.bam merged/total_1_20.bam
+
+# The bedtools command should extract the paired-end alignments as bedpe format, then the awk command should shift the fragments as needed
+$ bedtools bamtobed -i merged/total_1_20.sorted.bam -bedpe 2>merged/total_1_20.sorted.bed.log | awk -v OFS="\t" '{if($9=="+"){print $1,$2+4,$6+4}else if($9=="-"){print $1,$2-5,$6-5}}' >merged/total_1_20.sorted.bed
+
+
+## check 中间文件
+$ bedtools bamtobed -i merged/total_1_20.sorted.bam -bedpe 2>/dev/null >merged/total_1_20.sorted.PE.bed
+3051104  30511040 292292978 merged/total_1_20.sorted.PE.bed
+$ cat merged/total_1_20.sorted.PE.bed | head | column -t
+chr1   95346712   95346741   chr1   95346808   95346845   NB502151:36:HJWCLBGXJ:1:11101:1061:13846  40  +  -
+chr1   216089113  216089151  chr1   216089481  216089518  NB502151:36:HJWCLBGXJ:1:11101:1072:11727  60  +  -
+chr1   34843720   34843757   chr1   34843774   34843812   NB502151:36:HJWCLBGXJ:1:11101:1084:6959   60  +  -
+chr1   31331262   31331299   chr1   31331306   31331344   NB502151:36:HJWCLBGXJ:1:11101:1138:1789   40  +  -
+chr1   170822853  170822890  chr1   170822883  170822921  NB502151:36:HJWCLBGXJ:1:11101:1165:7121   60  +  -
+chr20  62435035   62435069   chr20  62435059   62435097   NB502151:36:HJWCLBGXJ:1:11101:1184:5665   60  +  -
+chr1   43434059   43434095   chr1   43434097   43434135   NB502151:36:HJWCLBGXJ:1:11101:1207:18273  60  +  -
+
+$ cat merged/total_1_20.sorted.PE.bed | awk '{print $9}' | sort | uniq -c
+    943 -  ##为什么负链上这么少呢？ //todo
+3050161 +
+
+$ awk '$9=="-"' merged/total_1_20.sorted.PE.bed | head | column -t
+chr20  28561526   28561563   chr20  28561537   28561574   NB502151:36:HJWCLBGXJ:1:11105:7193:1990    60  -  +
+chr1   43904759   43904796   chr1   43904760   43904789   NB502151:36:HJWCLBGXJ:1:11105:19838:9761   40  -  +
+chr20  51867817   51867854   chr20  51867817   51867846   NB502151:36:HJWCLBGXJ:1:11105:22690:19578  60  -  +
+chr20  29881294   29881332   chr20  29881307   29881344   NB502151:36:HJWCLBGXJ:1:11109:16781:16970  31  -  +
+
+$ wc merged/total_1_20.sorted.bed.log # 这0.064million reads(占比2.1%)是不能配对的，可能在按 MAPQ 过滤时去掉的。
+64840 1361640 9803451 merged/total_1_20.sorted.bed.log
+$ head merged/total_1_20.sorted.bed.log
+*****WARNING: Query NB502151:36:HJWCLBGXJ:1:11101:1326:6825 is marked as paired, but its mate does not occur next to it in your BAM file.  Skipping. 
+*****WARNING: Query NB502151:36:HJWCLBGXJ:1:11101:1512:10500 is marked as paired, but its mate does not occur next to it in your BAM file.  Skipping. 
+*****WARNING: Query NB502151:36:HJWCLBGXJ:1:11101:1986:1121 is marked as paired, but its mate does not occur next to it in your BAM file.  Skipping.
+
+$ wc merged/total_1_20.sorted.bed
+3051104  9153312 72613608 merged/total_1_20.sorted.bed
+$ head merged/total_1_20.sorted.bed
+chr1    95346716        95346849
+chr1    216089117       216089522
+chr1    34843724        34843816
+chr1    31331266        31331348
+chr1    170822857       170822925
+## 3051104  9153312 72613608 merged/total_1_20.sorted.bed
+
+
+
+try3:使用参数 -f BEDPE 报错。
+$ macs2 callpeak --keep-dup all  -t merged/total_1_20.sorted.bed -f BEDPE -g hs --shift -100 --extsize 200 --nomodel --call-summits --outdir macs2_result/15/ -n total
+## AssertionError: Right position must be larger than left position, check your BED file at line: b'chr1\t107299657\t4602297\n'
+## 找原因
+$ cat merged/total_1_20.sorted.bed | grep "107299657"
+chr1    107299657       4602297
+chr1    107299657       4602297
+$ cat merged/total_1_20.sorted.PE.bed | grep "107299653"
+chr1    107299653       107299685       chr20   4602255 4602293 NB502151:36:HJWCLBGXJ:1:21302:26815:16322       60      +       -
+chr1    107299653       107299685       chr20   4602255 4602293 NB502151:36:HJWCLBGXJ:2:23205:22166:16656       60      +       -
+==> 原因是染色体不同，理应跳过的！这可能是染色体重组？更提前的措施是，比对时设置最大跨度！
+
+
+
+try4: 第1和第4列同一个染色体上才能用
+$ cat merged/total_1_20.sorted.PE.bed | awk -v OFS="\t" '$1==$4{if($9=="+"){print $1,$2+4,$6+4}else if($9=="-"){print $1,$2-5,$6-5}}' >merged/total_1_20.sorted2.bed
+## 3051072  9153216 72612866 merged/total_1_20.sorted2.bed
+$ head merged/total_1_20.sorted2.bed
+chr1    95346716        95346849
+chr1    216089117       216089522
+chr1    34843724        34843816
+chr1    31331266        31331348
+
+$ macs2 callpeak --keep-dup all  -t merged/total_1_20.sorted2.bed -f BEDPE -g hs --shift -100 --extsize 200 --nomodel --outdir macs2_result/15/ -n total
+#1 fragment size = 2232.4  # 这个值很异常！
+#1  total fragments in treatment: 3051072
+
+1856  18560 135767 macs2_result/15/total_peaks.narrowPeak
+
+
+try5: 尝试测试插入大小
+$ cat merged/total_1_20.sorted2.bed | awk '{print $0"\t"$3-$2}' | sort -k4nr >tmp.txt
+$ head tmp.txt
+chr1    23169911        232508892       209338981
+chr1    24638794        226367125       201728331
+chr1    24638794        226367125       201728331
+chr1    45217695        233662221       188444526
+chr1    10639928        197354846       186714918
+$ tail tmp.txt
+chr20   57818615        57818634        19
+chr20   58221174        58221193        19
+chr20   59838079        59838098        19
+chr20   61562166        61562185        19
+chr20   61566949        61566968        19
+chr20   61611066        61611085        19
+chr20   62126377        62126396        19
+chr20   62710587        62710606        19
+chr20   7416730 7416749 19
+chr20   8706493 8706512 19
+## 超过500的占了多少？
+$ cat tmp.txt | awk '{if($4>500){print "T"}else{print "F"} }' | sort | uniq -c 
+$ cat tmp.txt | awk '{if($4>500){print "T"}else{print "F"} }' | sort | uniq -c 
+3035699 F
+  15373 T
+$ cat tmp.txt | awk '{if($4>1000){print "T"}else{print "F"} }' | sort | uniq -c 
+3050936 F
+    136 T
+按照500过滤一下
+$ cat merged/total_1_20.sorted2.bed | awk '$3-$2<500{print $0}' >merged/total_1_20.sorted2_.bed
+$ macs2 callpeak --keep-dup all -t merged/total_1_20.sorted2_.bed -f BEDPE -g hs --shift -100 --extsize 200 --nomodel --outdir macs2_result/15/ -n total
+#1 fragment size = 117.0 
+#1  total fragments in treatment: 3035496
+2529  25290 180815 macs2_result/15/total_peaks.narrowPeak
+
+
+比较一下这两个bed文件的差异。
+merged/total_1_20.sorted2.bed 本测试15 3051072
+merged/total_1_20.PE.bed 下一个测试16  3025179
+## for 16
+$ cat merged/total_1_20.PE.bed | awk '{print $0"\t"$3-$2}' | sort -k4nr >tmp2.txt
+$ head tmp2.txt 
+chr1    233004825       233005413       588
+chr20   57027943        57028531        588
+chr1    157606904       157607491       587
+chr20   58208877        58209464        587
+chr1    172472203       172472789       586
+
+$ tail tmp2.txt 
+chr1    1427450 1427452 2
+chr1    200487872       200487874       2
+chr1    202624801       202624803       2
+
+
+check:
+$ sort -k7nr macs2_result/15/total_peaks.narrowPeak | head | column -t
+chr1  161402366  161475898  total_peak_1292  273  .  7.54983  28.3794  27.3213  56913
+chr1  206149950  206412109  total_peak_1571  186  .  6.25922  19.6376  18.6038  53167
+chr1  219592584  219616892  total_peak_1819  117  .  5.98008  12.7457  11.7678  11958
+chr1  223996771  224008332  total_peak_1848  108  .  5.70826  11.8287  10.8694  8239
+chr1  16732851   16760860   total_peak_8     63   .  4.25813  7.11051  6.34689  26519
+chr1  223561966  223605231  total_peak_1845  63   .  4.25813  7.11051  6.34689  1863
+
+
+最后也是连片的区域 
+chr1:897,330-924,072
+chr1:16,610,910-16,637,652
+
+
+
+
+
+
+
+
+
+16) 再试 bed PE 模式(官方转bed PE)
+https://pypi.org/project/MACS2/
+
+$ macs2 randsample -i merged/total_1_20.bam -f BAMPE -p 100 -o merged/total_1_20.PE.bed
+## # total fragments/pairs in alignment file: 3025179 
+## 参数解释: -p 抽样百分数
+
+$ wc merged/total_1_20.PE.bed
+ 3025179  9075537 71989774 merged/total_1_20.PE.bed
+$ head merged/total_1_20.PE.bed
+chr20   60209   60386
+chr20   60284   60378
+chr20   60285   60416
+chr20   60294   60356
+chr20   60304   60381
+
+$ macs2 callpeak --keep-dup all  -t merged/total_1_20.PE.bed -f BEDPE -g hs --shift -100 --extsize 200 --nomodel --outdir macs2_result/16/ -n total
+#1 fragment size = 116.7
+#1  total fragments in treatment: 3025179
+2817  28170 201633 macs2_result/16/total_peaks.narrowPeak
+
+
+
+
+
+
+
+17) 实测版 02: 不基于模型, 输入 BAMPE，其他默认
+注释：7) 没有使用 --keep-dup all
+
+$ macs2 callpeak --keep-dup all  -t $input -f BAMPE -g hs --shift -100 --extsize 200 --nomodel --outdir macs2_result/17/ -n total
+#1 fragment size = 116.7
+#1  total fragments in treatment: 3025179
+2817  28170 201633 macs2_result/17/total_peaks.narrowPeak
+
+
+## For all:
+$ macs2 callpeak --keep-dup all  -t merged/total.bam -f BAMPE -g hs --shift -100 --extsize 200 --nomodel --outdir macs2_result/17_/ -n total
+#1 fragment size = 118.2 
+#1  total fragments in treatment: 25450338
+7809  78090 560519 macs2_result/17_/total_peaks.narrowPeak
+
+
+
+18) 实测版 02: 不基于模型, 输入 BAMPE，不使用shift模型：--shift -100 --extsize 200 
+$ macs2 callpeak --keep-dup all  -t $input -f BAMPE -g hs --nomodel --outdir macs2_result/18/ -n total
+#1 fragment size = 116.7 
+#1  total fragments in treatment: 3025179
+2817  28170 201633 macs2_result/18/total_peaks.narrowPeak
+
+## For all:
+$ macs2 callpeak --keep-dup all  -t merged/total.bam -f BAMPE -g hs --nomodel --outdir macs2_result/18_/ -n total
+#1 fragment size = 118.2
+#1  total fragments in treatment: 25450338
+7809  78090 560519 macs2_result/18_/total_peaks.narrowPeak
+
+
+
+19) 实测版 02: 不基于模型, 输入 BAM，使用shift模型：
+$ macs2 callpeak --keep-dup all  -t $input -f BAM -g hs --nomodel \
+--shift -100 --extsize 200 \
+--outdir macs2_result/19/ -n total
+#1 tag size = 37.0 
+#1  total tags in treatment: 3025179
+4081  40810 293153 macs2_result/19/total_peaks.narrowPeak
+
+$ sort -k7nr macs2_result/19/total_peaks.narrowPeak | head|column -t
+chr1   633895     634277     total_peak_7     2935  .  37.5     302.045  293.549  186
+chr20  44843410   44843714   total_peak_3828  901   .  19.112   96.2704  90.1547  144
+chr20  28513494   28513833   total_peak_3585  204   .  14.0845  26.0948  20.4998  184
+chr1   206202988  206203335  total_peak_2636  155   .  11.8056  20.7927  15.5817  184
+chr1   187317487  187317700  total_peak_2350  206   .  11.1111  26.2241  20.6174  126
+chr20  29080367   29080675   total_peak_3602  200   .  11.0687  25.5501  20.0118  11
+
+$ sort -k7nr macs2_result/19/total_peaks.narrowPeak | tail|column -t
+chr20  33852223   33852423   total_peak_3703  16  .  2.76596  3.88464  1.64723  4
+chr20  45963881   45964108   total_peak_3848  20  .  2.75974  4.53365  2.01844  65
+chr1   17694870   17695085   total_peak_239   19  .  2.73312  4.47242  1.98304  145
+chr1   27557500   27557735   total_peak_357   21  .  2.69886  4.71593  2.12677  169
+chr1   54748267   54748539   total_peak_734   19  .  2.69841  4.39229  1.93545  97
+chr1   209805109  209805336  total_peak_2675  19  .  2.68987  4.37252  1.92258  51
+chr1   3999801    4000034    total_peak_71    18  .  2.67559  4.18095  1.81391  101
+chr20  62500715   62500915   total_peak_4046  18  .  2.61538  4.19916  1.81997  178
+chr1   153566477  153566677  total_peak_1828  21  .  2.59259  4.75008  2.14647  105
+chr1   26282580   26282780   total_peak_335   18  .  2.44186  4.33258  1.8987   185
+
+
+## for all 
+$ macs2 callpeak --keep-dup all  -t  merged/total.bam -f BAM -g hs --nomodel \
+--shift -100 --extsize 200 \
+--outdir macs2_result/19_/ -n total
+#1 tag size = 37.0 
+#1  total tags in treatment: 25450338
+16849  168490 1219965 macs2_result/19_/total_peaks.narrowPeak
+
+
+
+
 小结：截止目前，峰较多的是 -100， 200 组合。
 	最多的是 10) ii): 
-位置： 
-/data/wangjl/ATAC/hair/data_P1/macs2_result/05/
-/data/wangjl/ATAC/hair/data_P1/macs2_result/06/
+位置	峰个数	参数与结论
+/data/wangjl/ATAC/hair/data_P1/macs2_result/05/  1417 --call-summits 不应该加该参数
+/data/wangjl/ATAC/hair/data_P1/macs2_result/06/  1417 -B 多2个输出文件
+/data/wangjl/ATAC/hair/data_P1/macs2_result/13/  4153 --keep-dup all 如果前面用其他软件去重过，则必须加该参数。
+## 13 之前的可以不看了。
+/data/wangjl/ATAC/hair/data_P1/macs2_result/14/ 29553 bed 感觉这个有问题；仅仅是峰多，为什么多呢？经测试(去掉第4列峰一样)，确实没使用PE这个信息。
+## 15 及以后没有 --call-summits 参数
+/data/wangjl/ATAC/hair/data_P1/macs2_result/15/  2529 bedtools 生成的 bedpe，和16有差异：有些很长的插入片段
+/data/wangjl/ATAC/hair/data_P1/macs2_result/16/  2817 BEDPE --keep-dup all 最可能是对的(1)
+/data/wangjl/ATAC/hair/data_P1/macs2_result/17/  2817 BAMPE --keep-dup all 结果同16，比bed省事
+/data/wangjl/ATAC/hair/data_P1/macs2_result/18/  2817 BAMPE --keep-dup all 结果同16，不加 shift/extsize 参数: 最可能是对的(1)
+/data/wangjl/ATAC/hair/data_P1/macs2_result/19/  4081 BAM --keep-dup all 加 shift/extsize 参数。最多的峰。最可能是对的(2)
+
+
+
 
 
 
@@ -3014,6 +3408,60 @@ chr1   147242376  147242776  total_peak_594    87   .  6.79012  14.2738  8.77573
 ref:
 峰值差异比较 bdgdiff
 https://cloud.tencent.com/developer/article/1624562
+
+
+
+
+
+
+
+========================================
+|-- 黑名单区域的峰不要：The DAC Exclusion List Regions (previously named "DAC Blacklisted Regions")
+----------------------------------------
+1. One may want to filter peaks using DAC Blacklisted Regions.
+
+The DAC Exclusion List Regions (previously named "DAC Blacklisted Regions") aim to identify a comprehensive set of regions in the human genome that have anomalous, unstructured, high signal/read counts in next gen sequencing experiments independent of cell line and type of experiment. 
+
+https://www.encodeproject.org/annotations/ENCSR636HFF/
+
+Lab custom GRCh38 (ENCAN833UHG) processed data (1 File)
+$ wget https://www.encodeproject.org/files/ENCFF356LFX/@@download/ENCFF356LFX.bed.gz
+$ gunzip ENCFF356LFX.bed.gz
+
+$ wc ENCFF356LFX.bed 
+  910  2730 21720 ENCFF356LFX.bed
+
+$ head ENCFF356LFX.bed 
+chr1    628903  635104
+chr1    5850087 5850571
+chr1    8909610 8910014
+chr1    9574580 9574997
+chr1    32043823        32044203
+chr1    33818964        33819344
+
+
+
+
+
+
+2. The following code was from ENCODE - ATAC-seq Data Standards and Prototype Processing Pipeline
+
+PEAK="${PREFIX}.narrowPeak"
+FILTERED_PEAK="${PREFIX}.narrowPeak.filt.gz"
+bedtools intersect -v -a ${PEAK} -b ${BLACKLIST} \
+  | awk 'BEGIN{OFS="\t"} {if ($5>1000) $5=1000; print $0}' \
+  | grep -P 'chr[0-9XY]+(?!_)' | gzip -nc > ${FILTERED_PEAK}
+
+The 5th column of narroPeak file is integer score for display calculated as int(-10*log10qvalue). Since currently this value might be out of the [0-1000] range defined in UCSC Encode narrowPeak format, the awk code is to assign values greater than 1000 to 1000.
+
+我的版本
+BLACKLIST="ENCFF356LFX.bed"
+PEAK="${PREFIX}.narrowPeak"
+FILTERED_PEAK="${PREFIX}.narrowPeak.filt.gz"
+bedtools intersect -v -a ${PEAK} -b ${BLACKLIST} \
+  | awk 'BEGIN{OFS="\t"} {if ($5>1000) $5=1000; print $0}' \
+  | grep -P 'chr[0-9XY]+(?!_)' | gzip -nc > ${FILTERED_PEAK}
+
 
 
 
