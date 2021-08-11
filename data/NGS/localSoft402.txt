@@ -4245,6 +4245,74 @@ print("===the End===")
 
 
 ========================================
+|-- samtools faidx 命令: 生成fa索引，或者提取提取fa中的序列
+----------------------------------------
+1.对fasta 序列建立一个后缀为.fai 的文件
+
+$ samtools faidx xx.fa
+该命令对输入的fasta序列有一定要求：对于每条序列，除了最后一行外， 其他行的长度必须相同
+
+$ xx.fa
+>one
+ATGCATGCATGCATGCATGCATGCATGCAT
+GCATGCATGCATGCATGCATGCATGCATGC
+ATGCAT
+>two another chromosome
+ATGCATGCATGCAT
+GCATGCATGCATGC
+
+最后生成的.fai文件如下， 共5列，\t分隔；
+one	66	5	30	31
+two	28	98	14	15
+
+第一列 NAME   :   序列的名称，只保留“>”后，第一个空白之前的内容；
+第二列 LENGTH :   序列的长度， 单位为bp；
+第三列 OFFSET :   第一个碱基的偏移量， 从0开始计数，换行符也统计进行；
+第四列 LINEBASES : 除了最后一行外， 其他代表序列的行的碱基数， 单位为bp；
+第五列 LINEWIDTH : 行宽， 除了最后一行外， 其他代表序列的行的长度， 包括换行符。
+	在linux系统中换行符为\n, 要在序列长度的基础上加1；
+	在windows系统中换行符为\r\n, 要在序列长度的基础上加2；
+
+
+
+(2) 提取序列：
+$ samtools faidx input.fa chr1 > chr1.fa
+$ samtools faidx input.fa chr1:100-200 > chr1.fa
+
+测试
+$ samtools faidx xx.fa one 
+>one
+ATGCATGCATGCATGCATGCATGCATGCATGCATGCATGCATGCATGCATGCATGCATGC
+ATGCAT
+
+
+对于UCSC的chr肯定是可以用的：
+>chr1
+>chr2
+...
+
+对于ensemble呢？可行
+>1 dna:chromosome chromosome:GRCh38:1:1:248956422:1 REF
+>2 dna:chromosome chromosome:GRCh38:2:1:242193529:1 REF
+
+
+# samtools faidx input.fa 1 > chr1.fa
+# head -n 2 chr1.fa
+
+# samtools faidx input.fa 1 2 3 > chr1+2+3.fa
+# samtools faidx input.fa chr1 chr2 chr3 > chr1_2_3.fa 
+
+
+提取all：
+$ samtools faidx GRCh37.p13.genome.fa chr1 chr2 chr3 chr4 chr5 chr6 chr7 chr8 chr9 chr10 chr11 chr12 chr13 chr14 chr15 chr16 chr17 chr18 chr19 chr20 chr21 chr22 chrX chrY > GRCh37.chr.fa
+
+
+
+
+
+
+
+========================================
 提取参考基因组某位置的碱基(4种方法)： 根据基因组坐标获得碱基序列(注意bed文件是0-based)
 ----------------------------------------
 
@@ -4559,7 +4627,22 @@ MACS(Model-based Analysis of ChIP-Seq) 的安装
 1. MACS 1.4.2
 http://liulab.dfci.harvard.edu/MACS/Download.html
 
+最新版：
+https://github.com/macs3-project/MACS/tags
+
 MACS全称Model-based Analysis of ChIP-Seq，最初的设计是用来鉴定转录因子的结合位点，但是它也可以用于其他类型的富集方式测序。
+
+
+子命令: 
+- bdgcmp使用 *_treat_pileup.bdg和 *_control_lambda.bdg计算得分轨(score track)
+- bdgpeakcall使用 *_treat_pvalue.bdg 或bdgcmp得到的结果或begGraph文件进行peak calling.bdgbroadcall差不多也是这样子。
+- bdgdiff能用来分析4个bedgraph文件,得到treatment1 vs control1, treatment2 vs control2, treatment1 vs control2, treament2 vs control1的得分。
+- filterdup：过滤重复，结果是BED文件
+- predictd：从比对文件中估计文库大小或d
+- randsample： 随机抽样
+- pileup：以给延伸大小去堆积(pileup)比对得到的reads。这一步不会有去重和测序深度标准化，你需要预先做这些工作。
+
+
 
 
 
@@ -4631,6 +4714,11 @@ https://github.com/taoliu/MACS/
 
 
 
+
+
+
+
+
 3. 更多参数
 
 (0) MACS 参数解释： 
@@ -4655,24 +4743,13 @@ macs2 callpeak: error: the following arguments are required: -t/--treatment
 $ macs2 callpeak --help
 
 
--m MFOLD MFOLD, --mfold MFOLD MFOLD
-	Select the regions within MFOLD range of high-confidence enrichment ratio against background to build model. 
-	选择这些高可信 与背景富集比 区域构建model。
-
-	Fold-enrichment in regions must be lower than upper limit, and higher than the lower limit. Use as "-m 10 30". 
-	富集倍数必须比上限低，比下限高。
-
-	This setting is only used while building the shifting model. 
-	该设置仅用于构建 shifting model.
-
-	Tweaking it is not recommended. DEFAULT:5 50
-
-
 
 
 i)输入文件参数：
 -f BAM 输入文件格式，支持bam,sam,bed等
 	{AUTO,BAM,SAM,BED,ELAND,ELANDMULTI,ELANDEXPORT,BOWTIE,BAMPE,BEDPE}
+	除'BAMPE', 'BEDPE'需要特别声明外，其他格式都可以用 AUTO自动检测。
+
 -g hs 人类基因组
 	hs: 2.7e9
 	mm: 1.87e9
@@ -4682,11 +4759,16 @@ i)输入文件参数：
 -t:实验组，IP的数据文件
 -c: 对照组
 
+--keep-dup all #要不要去重看你之前的处理，如果前面已经去过可以不用去重。
+
+--nolambda：不考虑peak 候选区域的偏差，使用背景λ作为 localλ。
+
 
 ii)输出文件参数：
 --outdir macs2_result/01/ -n total 文件夹、文件名前缀
 
 -B/--bdg:输出bedgraph格式的文件，输出文件以NAME+'_treat_pileup.bdg' for treatment data, NAME+'_control_lambda.bdg' for local lambda values from control显示。
+	以bedGraph格式存放fragment pileup, control lambda, -log10pvalue 和log10qvale.
 -B, --bdg   Whether or not to save extended fragment pileup, and local lambda tracks (two files) at every bp into a bedGraph file. DEFAULT: False
 	是否输出2个bedGraph文件: 每个bp位置的扩展片段堆叠文件，本地lambda轨道。
 
@@ -4711,9 +4793,24 @@ ii)输出文件参数：
 
 iii)peak calling 参数
 -q/--qvalue 和 -p/--pvalue: q value默认值是0.05，与pvalue不能同时使用。
---broad  peak有narrow peak和broad peak, 设置时可以call broad peak 的结果文件。
---broad-cutoff 和pvalue、以及qvalue相似
+
 --nolambda: 不要考虑在峰值候选区域的局部偏差/λ
+--nolambda      If True, MACS will use fixed background lambda as local lambda for every peak region. 
+	Normally, MACS calculates a dynamic local lambda to reflect the local bias due to the potential chromatin accessibility.
+	如果True，对于每个peak区域，macs使用固定的背景 lambda 作为局部lambda。
+	通常，macs计算每个动态局部 lambda 来反应可能的染色质可接近性引起的局部偏差。
+
+
+一般常规是够用的，但是如果你需要看那些更加宽的peak，可以按照官方的建议使用如下参数
+--broad  peak有narrow peak和broad peak, 设置时可以call broad peak 的结果文件。
+	broad region最大长度是 4d。其中d表示MACS的双峰模型两个peak的距离。结果会得到BED12格式文件，存放着附近高度附近的区域。由于要足够的宽，所以需要专门的参数进行统计学过滤。
+
+--broad-cutoff 和pvalue、以及qvalue相似
+	用于过滤 broad得到的peak，默认是q值，如果设置 -p就用p值。
+
+--max-gap MAXGAP  Maximum gap between significant sites to cluster them together. The DEFAULT value is the detected read length/tag size.
+	峰最大间隔。默认值时检测到的reads的长度。
+
 
 
 iv)Shift 模型参数：
@@ -4725,30 +4822,43 @@ It's highly recommended that while you have many datasets to process and you pla
 
 
 --shift SHIFT   (NOT the legacy --shiftsize option!) The arbitrary shift in bp. 
-Use discretion while setting it other than default value. 
-When NOMODEL is set, MACS will use this value to move cutting ends (5') towards 5'->3' direction then apply EXTSIZE to extend them to fragments. 
-When this value is negative, ends will be moved toward 3'->5' direction. 
-Recommended to keep it as default 0 for ChIP-Seq datasets, or -1 * half of EXTSIZE together with EXTSIZE option for detecting enriched cutting loci such as certain DNAseI-Seq datasets. 
-Note, you can't set values other than 0 if format is BAMPE or BEDPE for paired-end data. DEFAULT: 0.
-shift推荐设置：
-	ChIP-Seq数据使用 0 
-	或者 -0.5*extsize: detecting enriched cutting loci such as certain DNAseI-Seq datasets
-对于 BAMPE or BEDPE 数据， shift 只能是0.
+	Use discretion while setting it other than default value. 
+	When NOMODEL is set, MACS will use this value to move cutting ends (5') towards 5'->3' direction then apply EXTSIZE to extend them to fragments. 
+	When this value is negative, ends will be moved toward 3'->5' direction. 
+	Recommended to keep it as default 0 for ChIP-Seq datasets, or -1 * half of EXTSIZE together with EXTSIZE option for detecting enriched cutting loci such as certain DNAseI-Seq datasets. 
+	Note, you can't set values other than 0 if format is BAMPE or BEDPE for paired-end data. DEFAULT: 0.
+	shift推荐设置：
+		ChIP-Seq数据使用 0 
+		或者 -0.5*extsize: detecting enriched cutting loci such as certain DNAseI-Seq datasets
+	对于 BAMPE or BEDPE 数据， shift 只能是0.
 
 
 
 --extsize EXTSIZE     The arbitrary extension size in bp. 
-When nomodel is true, MACS will use this value as fragment size to extend each read towards 3' end, then pile them up. 
-It's exactly twice the number of obsolete SHIFTSIZE. 
-In previous language, each read is moved 5'->3' direction to middle of fragment by 1/2 d, then extended to both direction with 1/2 d. 
-This is equivalent to say each read is extended towards 5'->3' into a d size fragment. DEFAULT: 200. 
-EXTSIZE and SHIFT can be combined when necessary. Check SHIFT option.
+	When nomodel is true, MACS will use this value as fragment size to extend each read towards 3' end, then pile them up. 
+	It's exactly twice the number of obsolete SHIFTSIZE. 
+	In previous language, each read is moved 5'->3' direction to middle of fragment by 1/2 d, then extended to both direction with 1/2 d. 
+	This is equivalent to say each read is extended towards 5'->3' into a d size fragment. DEFAULT: 200. 
+	EXTSIZE and SHIFT can be combined when necessary. Check SHIFT option.
 
 						
 --nomodel  这个参数和extsize、shift是配套使用的，有这个参数才可以设置extsize和shift。
 --shift  当设置了--nomodel，MACS用这个参数从5' 端移动剪切，然后用--extsize延伸，如果--shift是负值表示从3'端方向移动。
 	建议ChIP-seq数据集这个值保持默认值为0，对于检测富集剪切位点如DNAsel数据集设置为EXTSIZE的一半。
 --extsize  当设置了nomodel时，MACS会用--extsize这个参数从5'->3'方向扩展reads修复fragments。比如说你的转录因子结合范围200bp，就设置这个参数是200。
+
+
+-m MFOLD MFOLD, --mfold MFOLD MFOLD
+	Select the regions within MFOLD range of high-confidence enrichment ratio against background to build model. 
+	选择这些高可信 与背景富集比 区域构建model。
+
+	Fold-enrichment in regions must be lower than upper limit, and higher than the lower limit. Use as "-m 10 30". 
+	富集倍数必须比上限低，比下限高。
+
+	This setting is only used while building the shifting model. 
+	该设置仅用于构建 shifting model.
+
+	Tweaking it is not recommended. DEFAULT:5 50
 
 
 
@@ -4859,6 +4969,7 @@ total 280K
 包含peak信息的tab分割的文件，前几行会显示callpeak时的命令。
 
 $ grep "^c" macs2/treat_vs_control-shift100-m_peaks.xls|head
+自己加的行2        3        4         5       6         7             8                9               10
 chr   start      end      length  abs_summit  pileup  -log10(pvalue)  fold_enrichment  -log10(qvalue)  name
 chr1  1013306   1013391   86      1013366     3        11.0199        3.98448          4.04898 macs2/treat_vs_control-shift100-m_peak_1
 chr1  33037014  33037099  86      33037034    2       8.0082          2.98836          2.16415 macs2/treat_vs_control-shift100-m_peak_2
@@ -4867,26 +4978,25 @@ chr1  51236156  51236241  86      51236156    2       8.0082          2.98836   
 chr1  75786189  75786274  86      75786225    3       11.0199         3.98448          4.04898 macs2/treat_vs_control-shift100-m_peak_5
 
 输出矩阵的列：
-
-染色体号
-peak起始位点
-peak结束位点
-peak区域长度
-peak的峰值位点（summit position）
-peak 峰值的高度（pileup height at peak summit, -log10(pvalue) for the peak summit）
-peak的富集倍数（相对于random Poisson distribution with local lambda）
-
+1 染色体号
+2 peak起始位点
+3 peak结束位点
+4 peak区域长度
+5 peak的峰值位点（summit position）
+6 peak 峰值的堆积高度（pileup height at peak summit, -log10(pvalue) for the peak summit）
+7 -log10(pvalue)
+8 peak的富集倍数（相对于random Poisson distribution with local lambda）
+	fold enrichment for this peak summit against random Poisson distribution with local lambda
+9 -log10(qvalue)
+10 峰编号
 
 Coordinates in XLS is 1-based which is different with BED(0-based) format
 XLS里的坐标和bed格式的坐标还不一样，起始坐标需要减1才与narrowPeak的起始坐标一样。
 
 
 
-
-
-
 2.NAME_peaks.narrowPeak
-*narrowPeak文件是BED6+4格式，可以上传到UCSC浏览。输出文件每列信息分别包含：
+*narrowPeak文件是BED6+4格式，可以上传到UCSC genome browser 浏览。输出文件每列信息分别包含：
 
 $ cat macs2/treat_vs_control-shift100-m_peaks.narrowPeak|head
 #自己加的一行2          3           4                                             5       6       7       8       9       10
@@ -4901,11 +5011,11 @@ chr1    75786188     75786274     macs2/treat_vs_control-shift100-m_peak_5      
 3：结束位点
 4：peak name
 5：int(-10*log10qvalue)  ==> 大概是10*第9列。
-6 ：正负链
+6 ：正负链，一般全是点号。
 7：fold change
 8：-log10pvalue
 9：-log10qvalue
-10：relative summit position to peak start 
+10：峰位与peak起点的距离：relative summit position to peak start 
 	==> 可以根据 第2列 + 第10列 算出来峰尖(summit)坐标。
 	就是上文xml中的 abs_summit - start
 
@@ -4931,14 +5041,18 @@ chr1    51236155        51236156        macs2/treat_vs_control-shift100-m_peak_4
 2 summits的1位
 3 summits的2位
 4 name 
-5 -log10qvalue
+5 -log10qvalue  <==
 
 
 
 
 
 4. .bdg
-bedGraph格式，可以导入UCSC或者转换为bigwig格式。两种bfg文件：treat_pileup, and control_lambda.
+bedGraph格式，可以导入UCSC或者转换为bigwig格式。
+
+两种bfg文件：
+- treat_pileup: 实验组bedGraph 文件
+- and control_lambda: 对照组bedGraph 文件
 
 
 
@@ -4947,7 +5061,13 @@ bedGraph格式，可以导入UCSC或者转换为bigwig格式。两种bfg文件�
 BED6+3格式与narrowPeak类似，只是没有第10列。
 
 
+6. NAME_peaks.gappedPeak
+BED12+3格式，存放broad region 和 narrow peaks，可以使用UCSC genome browser查看。
 
+
+7. NAME_model.r
+R程序，运行后在当前文件夹下，生成基于输入数据产生的模型图片
+$ Rscript NAME_model.r
 
 
 
