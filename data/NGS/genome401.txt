@@ -960,7 +960,7 @@ $ cd /home/wangjl/data/ref/hg19/hg19_gene_type
 ## 先提取gene行这个中间文件
 $ cat ../gencode.v30lift37.annotation.gtf|grep -v '^#' | awk -F '\t' '$3=="gene"{print $9}' > ../gencode.v30lift37.annotation_Gene.gtf
 
-## 数秒就出来结果：
+## 数秒就出来结果：这个有漏洞， gene_type "rRNA_pseudogene"; 被 rRNA 包含了
 $ i=0;cat ../hg19_gene_type.txt |while read id; 
 do echo $id; 
 ((i++));
@@ -1230,6 +1230,12 @@ ABHD15-AS1
 
 
 
+
+
+========================================
+|-- 根据gencode gtf格式的基因注释文件得到人所有基因的染色体坐标(hg19)
+----------------------------------------
+
 5.给出人hg19所有基因的染色体坐标
 示例： http://www.biotrainee.com/thread-472-1-1.html
 $ head protein_coding.hg38.position 
@@ -1371,6 +1377,463 @@ refer:
 - Automatic annotation of non-coding genes http://asia.ensembl.org/info/genome/genebuild/ncrna.html
 
 - Format description of GENCODE GTF https://www.gencodegenes.org/pages/data_format.html
+
+
+
+========================================
+|-- 根据gencode gtf格式的基因注释文件得到人所有基因的染色体坐标(hg38)
+----------------------------------------
+
+1. 探究 hg38 注释信息
+/home/wangjl/data/ref/hg38/
+## https://www.gencodegenes.org/human/
+$ wget http://ftp.ebi.ac.uk/pub/databases/gencode/Gencode_human/release_38/gencode.v38.annotation.gtf.gz
+$ wget http://ftp.ebi.ac.uk/pub/databases/gencode/Gencode_human/release_38/GRCh38.p13.genome.fa.gz
+$ wget http://ftp.ebi.ac.uk/pub/databases/gencode/Gencode_human/release_38/gencode.v38.metadata.HGNC.gz
+
+
+(1) 获取gene行的 子gtf 文件
+$ gunzip gencode.v38.annotation.gtf.gz
+$ cat gencode.v38.annotation.gtf | grep -v "^#" | wc
+3150424 125386410 1456198942  ##315万行
+
+看一下第三列都是什么
+$ cat gencode.v38.annotation.gtf | grep -v "^#" | awk '{print $3}' | sort | uniq -c| sort -k1nr
+1499012 exon
+ 825028 CDS
+ 349402 UTR
+ 237012 transcript
+  92997 start_codon
+  86205 stop_codon
+  60649 gene
+    119 Selenocysteine
+#
+$ cat gencode.v38.annotation.gtf | grep -v "^#" | awk '$3=="gene"{print $0}' >gencode.v38.annotation.GENE.gtf
+## 60649  1200672 11124981 gencode.v38.annotation.GENE.gtf  #有6万基因
+
+(2) 都有哪些类型的基因？蛋白编码基因有多少个？
+$ cat gencode.v38.annotation.GENE.gtf | awk -F '\t' '{print $9}' |awk -F'; ' '{print $2}' | head
+gene_type "transcribed_unprocessed_pseudogene"
+gene_type "unprocessed_pseudogene"
+gene_type "miRNA"
+gene_type "lncRNA"
+gene_type "miRNA"
+gene_type "lncRNA"
+
+$ cat gencode.v38.annotation.GENE.gtf | awk -F '\t' '{print $9}' |awk -F'; ' '{print $2}' |awk -F' ' '$1=="gene_type"{print $2}'| sort|uniq -c |sort -k 1nr
+  19955 "protein_coding"
+  16888 "lncRNA"
+  10163 "processed_pseudogene"
+   2614 "unprocessed_pseudogene"
+   2212 "misc_RNA"
+   1901 "snRNA"
+   1879 "miRNA"
+   1056 "TEC"
+    950 "transcribed_unprocessed_pseudogene"
+    943 "snoRNA"
+    502 "transcribed_processed_pseudogene"
+    497 "rRNA_pseudogene"
+    187 "IG_V_pseudogene"
+    145 "IG_V_gene"
+    143 "transcribed_unitary_pseudogene"
+    106 "TR_V_gene"
+     98 "unitary_pseudogene"
+     79 "TR_J_gene"
+     49 "polymorphic_pseudogene"
+     49 "scaRNA"
+     47 "rRNA"
+     37 "IG_D_gene"
+     33 "TR_V_pseudogene"
+     22 "Mt_tRNA"
+     18 "IG_J_gene"
+     15 "pseudogene"
+     14 "IG_C_gene"
+      9 "IG_C_pseudogene"
+      8 "ribozyme"
+      6 "TR_C_gene"
+      5 "sRNA"
+      4 "TR_D_gene"
+      4 "TR_J_pseudogene"
+      3 "IG_J_pseudogene"
+      2 "Mt_rRNA"
+      2 "translated_processed_pseudogene"
+      1 "IG_pseudogene"
+      1 "scRNA"
+      1 "translated_unprocessed_pseudogene"
+      1 "vault_RNA"
+
+
+
+(3) 总结一个循环，一次性获取全部各类别的 gene symbol
+
+$ cat gencode.v38.annotation.GENE.gtf | awk -F '\t' '{print $9}' |awk -F'; ' '{print $2}' |awk -F' ' '$1=="gene_type"{print $2}'| sort|uniq -c |sort -k 1nr |awk -F'"' '{print $2}' > uniq/hg38_gene_type.txt
+
+$ head uniq/hg38_gene_type.txt #40行
+protein_coding
+lncRNA
+processed_pseudogene
+unprocessed_pseudogene
+misc_RNA
+snRNA
+miRNA
+TEC
+transcribed_unprocessed_pseudogene
+snoRNA
+
+
+
+## 已矫正bug: gene_type "rRNA_pseudogene"; 防止被 rRNA 包含，要把两端的引号也包含进去。
+$ i=0;cat uniq/hg38_gene_type.txt |while read id; 
+do echo $id; 
+((i++));
+cat gencode.v38.annotation.GENE.gtf | grep -P "gene_type \"${id}\";" |awk -F'; gene_name "' '{print $2}'|awk -F'"; ' '{print $1}' > uniq/${id}.hg38.gene_name;
+echo "==="${i} end "===";
+done;
+
+60649  1200672 11124981 gencode.v38.annotation.GENE.gtf
+
+最多的是
+	蛋白编码基因 ~2.0万个
+	lncRNA ~1.7万个
+$ wc uniq/* | sort -k1nr
+60689  60689 578313 total
+ 19955  19955 132998 uniq/protein_coding.hg38.gene_name
+ 16888  16888 205271 uniq/lncRNA.hg38.gene_name
+ 10163  10163 104241 uniq/processed_pseudogene.hg38.gene_name
+  2614   2614  26681 uniq/unprocessed_pseudogene.hg38.gene_name
+  2212   2212  20971 uniq/misc_RNA.hg38.gene_name
+  1901   1901  18414 uniq/snRNA.hg38.gene_name
+  1879   1879  15397 uniq/miRNA.hg38.gene_name
+  1056   1056  13869 uniq/TEC.hg38.gene_name
+   950    950   8891 uniq/transcribed_unprocessed_pseudogene.hg38.gene_name
+   943    943  11173 uniq/snoRNA.hg38.gene_name
+   502    502   5101 uniq/transcribed_processed_pseudogene.hg38.gene_name
+   497    497   4882 uniq/rRNA_pseudogene.hg38.gene_name
+   187    187   1961 uniq/IG_V_pseudogene.hg38.gene_name
+   145    145   1374 uniq/IG_V_gene.hg38.gene_name
+   143    143   1219 uniq/transcribed_unitary_pseudogene.hg38.gene_name
+   106    106    821 uniq/TR_V_gene.hg38.gene_name
+    98     98    866 uniq/unitary_pseudogene.hg38.gene_name
+    79     79    553 uniq/TR_J_gene.hg38.gene_name
+    49     49    336 uniq/polymorphic_pseudogene.hg38.gene_name
+    49     49    694 uniq/scaRNA.hg38.gene_name
+    47     47    421 uniq/rRNA.hg38.gene_name
+    40     40    564 uniq/hg38_gene_type.txt ##去掉这个40行，就对应上了
+    37     37    364 uniq/IG_D_gene.hg38.gene_name
+    33     33    272 uniq/TR_V_pseudogene.hg38.gene_name
+    22     22    136 uniq/Mt_tRNA.hg38.gene_name
+    18     18    108 uniq/IG_J_gene.hg38.gene_name
+    15     15    240 uniq/pseudogene.hg38.gene_name
+    14     14     80 uniq/IG_C_gene.hg38.gene_name
+     9      9     70 uniq/IG_C_pseudogene.hg38.gene_name
+     8      8     81 uniq/ribozyme.hg38.gene_name
+     6      6     34 uniq/TR_C_gene.hg38.gene_name
+     5      5     90 uniq/sRNA.hg38.gene_name
+     4      4     24 uniq/TR_D_gene.hg38.gene_name
+     4      4     27 uniq/TR_J_pseudogene.hg38.gene_name
+     3      3     21 uniq/IG_J_pseudogene.hg38.gene_name
+     2      2     15 uniq/translated_processed_pseudogene.hg38.gene_name
+     2      2     16 uniq/Mt_rRNA.hg38.gene_name
+     1      1     14 uniq/IG_pseudogene.hg38.gene_name
+     1      1      7 uniq/scRNA.hg38.gene_name
+     1      1      7 uniq/translated_unprocessed_pseudogene.hg38.gene_name
+     1      1      9 uniq/vault_RNA.hg38.gene_name
+
+2) 去掉重复序列
+$ cat uniq/protein_coding.hg38.gene_name|wc
+  19955   19955  132998
+$ cat uniq/protein_coding.hg38.gene_name| sort |uniq |wc
+  19930   19930  132836
+有重复 25个。
+
+$ cat uniq/protein_coding.hg38.gene_name| sort |uniq -c | awk '$1==2'
+      2 AKAP17A
+      2 ASMT
+      2 ASMTL
+      2 CD99
+      2 CRLF2
+      2 CSF2RA
+      2 DHRSX
+      2 GTPBP6
+      2 IL3RA
+      2 IL9R
+      2 MATR3
+      2 P2RY8
+      2 PDE11A
+      2 PINX1
+      2 PLCXD1
+      2 POLR2J3
+      2 PPP2R3B
+      2 SHOX
+      2 SIGLEC5
+      2 SLC25A6
+      2 TBCE
+      2 TMSB15B
+      2 VAMP7
+      2 WASH6P
+      2 ZBED1
+##
+可以继续逐个探究这些重名的原因？
+
+
+
+
+
+3) 看看 lncRNA
+$ head uniq/lncRNA.hg38.gene_name 
+MIR1302-2HG
+FAM138A
+RP11-34P13.7
+RP11-34P13.8
+RP11-34P13.14
+RP11-34P13.13
+RP11-34P13.9
+AP006222.3
+RP4-669L17.2
+RP5-857K21.2
+
+$ tail uniq/lncRNA.hg38.gene_name 
+CSPG4P2Y
+TTTY17B
+TTTY4B
+TTTY4C
+TTTY17C
+LINC00266-4P
+CSPG4P1Y
+TTTY3
+AJ271736.10
+WASIR1
+
+
+
+也有重复的：
+$ wc uniq/lncRNA.hg38.gene_name 
+  16888  16888 205271 uniq/lncRNA.hg38.gene_name
+$ cat uniq/lncRNA.hg38.gene_name |sort |uniq -c |wc
+  16863   33726  339901
+重复了25个 
+
+$ cat uniq/lncRNA.hg38.gene_name |sort |uniq -c | awk '$1>1'
+      2 AJ271736.10
+      2 ASMTL-AS1
+      2 CLCA4-AS1
+      2 DHRSX-IT1
+      2 DNAJC9-AS1
+      2 ITFG2-AS1
+      2 LINC00102
+      2 LINC00106
+      2 LINC00484
+      2 LINC00486
+      2 LINC00685
+      2 LINC00941
+      2 LINC01115
+      2 LINC01238
+      2 LINC01605
+      2 LINC01830
+      2 PRICKLE2-AS1
+      2 PROX1-AS1
+      2 RAET1E-AS1
+      2 RP11-309M23.1
+      2 RP13-297E16.4
+      2 RP13-297E16.5
+      2 RP13-465B17.4
+      2 RP13-465B17.5
+      2 WASIR1
+# 探究重复的原因？
+
+
+
+
+
+
+
+
+
+
+2. 给出人hg38所有基因的染色体坐标
+
+类似，我感觉要有正负链信息
+$ head protein_coding.hg38.position 
+chr1        69091        70008        OR4F5
+chr1        182393        184158        FO538757.2
+chr1        184923        200322        FO538757.1
+
+
+先使用awk筛选出gene行，接着用Python提取吧。
+(1) 获取gene行
+$ cat gencode.v38.annotation.gtf | grep -v "^#" | awk '$3=="gene"{print $0}' >gencode.v38.annotation.GENE.gtf
+## 60649  1200672 11124981 gencode.v38.annotation.GENE.gtf  #有6万基因
+
+$ head gencode.v38.annotation.GENE.gtf -n2
+chr1    HAVANA  gene    11869   14409   .       +       .       gene_id "ENSG00000223972.5"; gene_type "transcribed_unprocessed_pseudogene"; gene_name "DDX11L1"; level 2; hgnc_id "HGNC:37102"; havana_gene "OTTHUMG00000000961.2";
+chr1    HAVANA  gene    14404   29570   .       -       .       gene_id "ENSG00000227232.5"; gene_type "unprocessed_pseudogene"; gene_name "WASH7P"; level 2; hgnc_id "HGNC:38034"; havana_gene "OTTHUMG00000000958.1";
+
+
+(2) 使用python提取
+## 提取基因起始位置
+import re,time
+
+fr=open("gencode.v38.annotation.GENE.gtf",'r')
+fw=open("gene.hg38.position",'w')
+
+lines=fr.readlines();
+i=0
+start=time.time();
+for lineR in lines:
+    i+=1;
+    if i>5:
+        #break;
+        pass;
+    if i%( round(len(lines)/5) )==0:
+        print("line",i,'/', len(lines), time.time()-start,' seconds elapsed.');
+    #
+    line=lineR.strip();
+    #print(line) #chr1	HAVANA	gene	11869	14409	.	+	.
+    # chr1        69091        70008        -   OR4F5  transcribed_unprocessed_pseudogene
+    arr=re.split('\t',line)
+    arr2=[arr[0],arr[3],arr[4],arr[6]]
+    #print(arr2, arr[8]) #gene_id "ENSG00000223972.5_2"; gene_type "transcribed_unprocessed_pseudogene"; gene_name "DDX11L1"; level 2; havana_gene "OTTHUMG00000000961.2_2"; remap_status "full_contig"; remap_num_mappings 1; remap_target_status "overlap";
+    #匹配出来gene id和type
+    meta=arr[8]
+    #
+    gene_name =re.split('gene_name ', meta)[1];
+    gene_name=re.split('"',gene_name)[1]
+    arr2.append(gene_name)
+    #
+    gene_type =re.split('gene_type ', meta)[1];
+    gene_type=re.split('"',gene_type)[1]
+    arr2.append(gene_type)
+    fw.write('\t'.join(arr2)+'\n')
+#
+fr.close();
+fw.close();
+print("==end==")
+
+$ python3 getPos.py 
+
+$ wc gene.hg38.position
+  60649  363894 2964136 gene.hg38.position
+$ head gene.hg38.position
+chr1    11869   14409   +       DDX11L1 transcribed_unprocessed_pseudogene
+chr1    14404   29570   -       WASH7P  unprocessed_pseudogene
+chr1    17369   17436   -       MIR6859-1       miRNA
+chr1    29554   31109   +       MIR1302-2HG     lncRNA
+chr1    30366   30503   +       MIR1302-2       miRNA
+chr1    34554   36081   -       FAM138A lncRNA
+chr1    52473   53312   +       OR4G4P  unprocessed_pseudogene
+chr1    57598   64116   +       OR4G11P transcribed_unprocessed_pseudogene
+chr1    65419   71585   +       OR4F5   protein_coding
+chr1    89295   133723  -       RP11-34P13.7    lncRNA
+
+
+
+
+
+
+
+2) 如何用 shell 脚本实现这一功能？
+$ awk -F "\t" '{print $1"\t"$4"\t"$5"\t"$7"\t"$9}' gencode.v38.annotation.GENE.gtf | head
+chr1    11869   14409   +       gene_id "ENSG00000223972.5"; gene_type "transcribed_unprocessed_pseudogene"; gene_name "DDX11L1"; level 2; hgnc_id "HGNC:37102"; havana_gene "OTTHUMG00000000961.2";
+chr1    14404   29570   -       gene_id "ENSG00000227232.5"; gene_type "unprocessed_pseudogene"; gene_name "WASH7P"; level 2; hgnc_id "HGNC:38034"; havana_gene "OTTHUMG00000000958.1";
+
+$ cat gencode.v38.annotation.GENE.gtf | grep gene_id|wc
+  60649 1200672 11124981
+$ cat gencode.v38.annotation.GENE.gtf | grep gene_type |wc                                                                                                                                                      
+  60649 1200672 11124981
+$ cat gencode.v38.annotation.GENE.gtf | grep gene_name |wc
+  60649 1200672 11124981
+$ cat gencode.v38.annotation.GENE.gtf | grep hgnc_id |wc
+  39328  805666 7476895
+$ cat gencode.v38.annotation.GENE.gtf | grep havana_gene |wc
+  52964 1066062 10041971
+## 也就是说前三个是所有行都有的。
+
+
+$ awk -F "\t" '{
+split($9, arr, "; ");
+gsub( "gene_id ", "", arr[1] );
+gsub( "gene_type ", "", arr[2] );
+gsub( "gene_name ", "", arr[3] );
+
+gsub("\"", "", arr[1]);
+gsub("\"", "", arr[2]);
+gsub("\"", "", arr[3]);
+
+print $1"\t"$4"\t"$5"\t"$7"\t"arr[3]"\t"arr[2]"\t"arr[1]}' gencode.v38.annotation.GENE.gtf > gene.hg38.position2
+
+60649  424543 4070231 gene.hg38.position2
+
+$ head gene.hg38.position2| column -t
+chr1  11869  14409   +  DDX11L1       transcribed_unprocessed_pseudogene  ENSG00000223972.5
+chr1  14404  29570   -  WASH7P        unprocessed_pseudogene              ENSG00000227232.5
+chr1  17369  17436   -  MIR6859-1     miRNA                               ENSG00000278267.1
+chr1  29554  31109   +  MIR1302-2HG   lncRNA                              ENSG00000243485.5
+chr1  30366  30503   +  MIR1302-2     miRNA                               ENSG00000284332.1
+chr1  34554  36081   -  FAM138A       lncRNA                              ENSG00000237613.2
+chr1  52473  53312   +  OR4G4P        unprocessed_pseudogene              ENSG00000268020.3
+chr1  57598  64116   +  OR4G11P       transcribed_unprocessed_pseudogene  ENSG00000240361.2
+chr1  65419  71585   +  OR4F5         protein_coding                      ENSG00000186092.7
+chr1  89295  133723  -  RP11-34P13.7  lncRNA                              ENSG00000238009.6
+
+行数一样。
+前6列内容也一样：
+$ awk '{print $1 $2 $3 $4 $5 $6}' gene.hg38.position | md5sum
+d9a320ad6ba3ce61e8c6c40ddad1a5e5  -
+$ awk '{print $1 $2 $3 $4 $5 $6}' gene.hg38.position2 | md5sum                                                                                                                                                  
+d9a320ad6ba3ce61e8c6c40ddad1a5e5  -
+
+
+
+
+
+
+(3) 根据第6列，提取蛋白编码基因 2万个
+$ grep protein_coding gene.hg38.position |wc
+  19955  119730  948022
+$ awk '$6=="protein_coding"{print $0}' gene.hg38.position |wc
+  19955  119730  948022
+$ awk '$6=="protein_coding"{print $0}' gene.hg38.position | head
+chr1    65419   71585   +       OR4F5   protein_coding
+chr1    450740  451678  -       OR4F29  protein_coding
+chr1    685679  686673  -       OR4F16  protein_coding
+chr1    923923  944575  +       SAMD11  protein_coding
+chr1    944203  959309  -       NOC2L   protein_coding
+chr1    960584  965719  +       KLHL17  protein_coding
+chr1    966482  975865  +       PLEKHN1 protein_coding
+chr1    975204  982093  -       PERM1   protein_coding
+
+$ awk '$6=="protein_coding"{print $0}' gene.hg38.position2 | head
+chr1    65419   71585   +       OR4F5   protein_coding  ENSG00000186092.7
+chr1    450740  451678  -       OR4F29  protein_coding  ENSG00000284733.2
+chr1    685679  686673  -       OR4F16  protein_coding  ENSG00000284662.1
+chr1    923923  944575  +       SAMD11  protein_coding  ENSG00000187634.13
+chr1    944203  959309  -       NOC2L   protein_coding  ENSG00000188976.11
+chr1    960584  965719  +       KLHL17  protein_coding  ENSG00000187961.14
+chr1    966482  975865  +       PLEKHN1 protein_coding  ENSG00000187583.11
+chr1    975204  982093  -       PERM1   protein_coding  ENSG00000187642.9
+chr1    998962  1000172 -       HES4    protein_coding  ENSG00000188290.11
+chr1    1001138 1014540 +       ISG15   protein_coding  ENSG00000187608.10
+
+
+
+
+
+
+
+
+
+其他来源的 gtf 文件
+
+$ cat Homo_sapiens.GRCh38.97.gtf |wc ##NCBI 的注释
+2877402 109724937 1222926664
+
+$ head ref_GRCh38.p12_top_level.GENE.gff3  -n3 ##NCBI 的注释
+NC_000001.11	BestRefSeq	gene	17369	17436	.	-	.	ID=gene2;Dbxref=GeneID:102466751,HGNC:HGNC:50039,miRBase:MI0022705;Name=MIR6859-1;description=microRNA 6859-1;gbkey=Gene;gene=MIR6859-1;gene_biotype=miRNA;gene_synonym=hsa-mir-6859-1
+NC_000001.11	Gnomon	gene	29926	31295	.	+	.	ID=gene3;Dbxref=GeneID:107985730,HGNC:HGNC:52482;Name=MIR1302-2HG;gbkey=Gene;gene=MIR1302-2HG;gene_biotype=lncRNA
+NC_000001.11	BestRefSeq	gene	30366	30503	.	+	.	ID=gene4;Dbxref=GeneID:100302278,HGNC:HGNC:35294,miRBase:MI0006363;Name=MIR1302-2;description=microRNA 1302-2;gbkey=Gene;gene=MIR1302-2;gene_biotype=miRNA;gene_synonym=hsa-mir-1302-2,MIRN1302-2
+
+
+
 
 
 
