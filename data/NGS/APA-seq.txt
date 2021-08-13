@@ -13,7 +13,7 @@ polyA 注释信息数据库：整理成标准bed文件，方便在 IGV 中查看
 
 
 ========================================
-|-- 权威注释源: gencode/ 
+|-- 权威注释源: gencode(hg38 5.0万位点)/ 
 ----------------------------------------
 1. 通用权威注释源
 /home/wangjl/data/ref/hg38/polyA
@@ -28,7 +28,9 @@ $ gunzip *
 #  96561  2124255 19483618 gencode.v38.polyAs.gtf #9万行
 
 
+1)
 $ head gencode.v38.metadata.PolyA_feature
+自己添加的行    1        2       3        4       5       6     7       8
 ENST00000484859.1       4859    4860    chr1    141474  141475  -       polya_site
 ENST00000484859.1       4852    4857    chr1    141477  141482  -       polya_signal
 ENST00000412666.1       425     426     chr1    365509  365510  +       polya_site
@@ -37,8 +39,138 @@ ENST00000452176.2       817     818     chr1    627377  627378  -       polya_si
 ENST00000452176.2       799     804     chr1    627391  627396  -       polya_signal
 ENST00000450696.1       401     402     chr1    594573  594574  +       polya_site
 
+共8列，按第八列分为2类
+$ cat gencode.v38.metadata.PolyA_feature | awk '{print $8}' | sort | uniq -c
+  45282 polya_signal
+  45457 polya_site #共4.5万位点
+     91 pseudo_polya 什么是假 polyA?太少忽略掉
+
+第1列是 基因id
+第2列是 
+第3列是 
+第4列是 染色体: chr1, chr2, ...
+第5列是 
+第6列是 
+第7列是 strand: + -
+第8列是 位点或信号
+
+问题：2和3,5和6列都是啥？他们的相对差是一样的，$3-$2==$6-$5
+
+按第2列排序，感觉不像是坐标，最大值太小了！ //todo 不知道是啥
+$ cat gencode.v38.metadata.PolyA_feature |awk '$4=="chr7"' | sort -k2nr | head -n2
+ENST00000423517.6	17146	17147	chr7	82820477	82820478	-	polya_site
+ENST00000423517.6	17116	17121	chr7	82820503	82820508	-	polya_signal
+$ cat gencode.v38.metadata.PolyA_feature |awk '$4=="chr7"' | sort -k2nr | tail -n2
+ENST00000583751.1	153	158	chr7	87155535	87155540	+	polya_signal
+ENST00000583751.1	134	139	chr7	87155516	87155521	+	polya_signal
+
+按第5列排序，最小 27214，最大 159116941，IGV查看像是坐标极值了
+$ cat gencode.v38.metadata.PolyA_feature |awk '$4=="chr7"' | sort -k5nr | head -n2
+ENST00000421760.2	693	698	chr7	159116941	159116946	-	polya_signal
+ENST00000421760.2	716	717	chr7	159116922	159116923	-	polya_site
+$ cat gencode.v38.metadata.PolyA_feature |awk '$4=="chr7"' | sort -k5nr | tail -n2
+ENST00000635506.1	321	322	chr7	27233	27234	+	polya_site
+ENST00000635506.1	302	307	chr7	27214	27219	+	polya_signal
 
 
+核对 grb10 基因上的polyA位点: chr7:50,588,869-50,595,988，
+再次印证第5和6行是坐标。
+那么低3和4行可能是基因范围？不清楚
+$ cat gencode.v38.metadata.PolyA_feature |awk '$4=="chr7"' | grep "\s5059"
+ENST00000335866.7	5031	5032	chr7	50590063	50590064	-	polya_site
+ENST00000335866.7	5002	5007	chr7	50590088	50590093	-	polya_signal
+ENST00000398812.6	4704	4705	chr7	50590063	50590064	-	polya_site
+ENST00000398812.6	4675	4680	chr7	50590088	50590093	-	polya_signal
+ENST00000398810.6	4784	4785	chr7	50590063	50590064	-	polya_site
+ENST00000398810.6	4755	4760	chr7	50590088	50590093	-	polya_signal
+
+ENST00000402578.5	4759	4760	chr7	50590068	50590069	-	polya_site
+ENST00000402578.5	4735	4740	chr7	50590088	50590093	-	polya_signal
+ENST00000401949.6	5467	5468	chr7	50590068	50590069	-	polya_site
+ENST00000401949.6	5443	5448	chr7	50590088	50590093	-	polya_signal
+ENST00000644769.1	5431	5432	chr7	50590068	50590069	-	polya_site
+ENST00000644769.1	5407	5412	chr7	50590088	50590093	-	polya_signal
+
+ENST00000357271.9	2049	2050	chr7	50592580	50592581	-	polya_site
+ENST00000357271.9	2032	2037	chr7	50592593	50592598	-	polya_signal
+ENST00000402497.6	2318	2319	chr7	50592580	50592581	-	polya_site
+ENST00000402497.6	2301	2306	chr7	50592593	50592598	-	polya_signal
+
+##=> 
+50590063 远端：有好几行是这一个位点，怎么处理重复？
+50590068 和上一行太近
+50592580 近端
+
+结合gtf查看这几个位点
+$ cat gencode.v38.polyAs.gtf |awk '$1=="chr7"' | grep "\s5059" | awk '{print $1"\t"$4"\t"$5"\t"$3}'
+chr7	50590063	50590064	polyA_site
+chr7	50590068	50590069	polyA_site
+chr7	50590088	50590093	polyA_signal
+chr7	50592580	50592581	polyA_site
+chr7	50592593	50592598	polyA_signal
+
+产生 bed 文件
+$ cat gencode.v38.metadata.PolyA_feature | awk '$8=="polya_site"{print $4"\t"$5"\t"$6"\t"$1"\t0\t"$7}' >gencode.v38.metadata.polyA_site.bed.raw
+$ head gencode.v38.metadata.polyA_site.bed.raw
+chr1	141474	141475	ENST00000484859.1	0	-
+chr1	365509	365510	ENST00000412666.1	0	+
+chr1	627377	627378	ENST00000452176.2	0	-
+chr1	594573	594574	ENST00000450696.1	0	+
+
+$ cat gencode.v38.metadata.polyA_site.bed.raw | awk '{print $1":"$2":"$6}' | sort |uniq -c |sort -k1nr|head
+     52 chr3:107841662:-
+     44 chr11:95832882:-
+     39 chr20:26187019:-
+     35 chr20:58911191:+
+     32 chr3:100748963:+
+     27 chr8:129216467:-
+     26 chr2:149026758:+
+     25 chr20:38420588:-
+为什么重复这么多?
+$ cat gencode.v38.metadata.polyA_site.bed.raw | awk '$1=="chr3" && $2=="107841662"'|wc
+     52     312    2444
+$ cat gencode.v38.metadata.polyA_site.bed.raw | awk '$1=="chr3" && $2=="107841662"'
+chr3	107841662	107841663	ENST00000488852.5	0	-
+chr3	107841662	107841663	ENST00000655585.1	0	-
+chr3	107841662	107841663	ENST00000671051.1	0	-
+chr3	107841662	107841663	ENST00000657924.1	0	-
+chr3	107841662	107841663	ENST00000473528.7	0	-
+chr3	107841662	107841663	ENST00000664360.1	0	-
+chr3	107841662	107841663	ENST00000662126.1	0	-
+chr3	107841662	107841663	ENST00000658864.1	0	-
+chr3	107841662	107841663	ENST00000657888.1	0	-
+chr3	107841662	107841663	ENST00000669982.1	0	-
+chr3	107841662	107841663	ENST00000669004.1	0	-
+chr3	107841662	107841663	ENST00000667930.1	0	-
+chr3	107841662	107841663	ENST00000654163.1	0	-
+chr3	107841662	107841663	ENST00000667116.1	0	-
+chr3	107841662	107841663	ENST00000665981.1	0	-
+chr3	107841662	107841663	ENST00000667812.1	0	-
+chr3	107841662	107841663	ENST00000662882.1	0	-
+chr3	107841662	107841663	ENST00000655401.1	0	-
+
+重新产生bed文件：忽略 geneid 信息，唯一化位置信息后再拆分成bed格式:
+$ cat gencode.v38.metadata.PolyA_feature | awk '$8=="polya_site"{print $4":"$5":"$7}' | sort | uniq | awk -F':' '{print $1"\t"$2"\t"$2+1"\t"$0"\t0\t"$3}' >gencode.v38.metadata.polyA_site.bed
+29132  174792 1304264 gencode.v38.metadata.polyA_site.bed #有2.9万个位点
+
+$ head gencode.v38.metadata.polyA_site.bed
+chr10	100150094	100150095	chr10:100150094:-	0	-
+chr10	100188367	100188368	chr10:100188367:-	0	-
+chr10	100280041	100280042	chr10:100280041:-	0	-
+chr10	100288149	100288150	chr10:100288149:-	0	-
+chr10	100483743	100483744	chr10:100483743:+	0	+
+chr10	100486645	100486646	chr10:100486645:-	0	-
+
+载入IGV，查看 GRB10 的3UTR位点。
+/home/wangjl/data/ref/hg38/polyA
+$ scp gencode.v38.metadata.polyA_site.bed wangjl@y.biomooc.com:/home/wangjl/data/igv/
+
+
+
+
+
+
+2)
 $ head gencode.v38.polyAs.gtf
 ##description: evidence-based annotation of the human genome (GRCh38), version 38 (Ensembl 104) - polyA features
 ##provider: GENCODE
@@ -56,9 +188,42 @@ $ grep -v "^#" gencode.v38.polyAs.gtf | grep "polyA" |wc
 $ grep -v "^#" gencode.v38.polyAs.gtf | grep "polya_signal" |wc 
   40198  884356 8236535
 
+$ grep -v "^#" gencode.v38.polyAs.gtf | grep "polya_site" |wc 
+  50182 1104004 9981589
+
+$ grep -v "^#" gencode.v38.polyAs.gtf | grep "polya_site" | awk '{print $1":"$4":"$7}'| sort | uniq -c | sort -k1nr | head
+      2 chr12:112944892:+
+      2 chr12:85233030:+
+      2 chr16:68138783:+
+      2 chr19:55087918:+
+      1 chr10:100150094:-
+      1 chr10:100164016:-
+      1 chr10:100188298:-
+竟然很少重复的！
+
+整理成 标准 bed 格式
+$ grep -v "^#" gencode.v38.polyAs.gtf | grep "polya_site" | awk '{print $1":"$4":"$7}'| sort | uniq | awk -F':' '{print $1"\t"$2"\t"$2+1"\t"$0"\t0\t"$3}' >gencode.v38.gtf.polyA_site.bed
+50178  301068 2238247 gencode.v38.gtf.polyA_site.bed  #有5.0万个位点
+
+$ head gencode.v38.gtf.polyA_site.bed
+chr10	100150094	100150095	chr10:100150094:-	0	-
+chr10	100164016	100164017	chr10:100164016:-	0	-
+chr10	100188298	100188299	chr10:100188298:-	0	-
+chr10	100188367	100188368	chr10:100188367:-	0	-
+chr10	100274695	100274696	chr10:100274695:-	0	-
+chr10	100280041	100280042	chr10:100280041:-	0	-
+chr10	100288149	100288150	chr10:100288149:-	0	-
+chr10	100364833	100364834	chr10:100364833:+	0	+
+chr10	100413420	100413421	chr10:100413420:+	0	+
+
+载入IGV，查看 GRB10 的3UTR位点。
+/home/wangjl/data/ref/hg38/polyA
+$ scp gencode.v38.gtf.polyA_site.bed wangjl@y.biomooc.com:/home/wangjl/data/igv/
 
 
-
+怎么比较一下这2个文件？目测 gtf 确实包含更多的位点，优先使用。
+- 50178  301068 2238247 gencode.v38.gtf.polyA_site.bed
+- 29132  174792 1304264 gencode.v38.metadata.polyA_site.bed
 
 
 
@@ -66,7 +231,7 @@ $ grep -v "^#" gencode.v38.polyAs.gtf | grep "polya_signal" |wc
 
 
 ========================================
-|-- polyA_DB2 位点( hg19 54,665 = 5.4 万位点)
+|-- polyA_DB2 位点( hg19 54,406 = 5.4 万位点)
 ----------------------------------------
 2. 专业注释，重点实验室给出的资源
 
@@ -240,9 +405,34 @@ chr19:18054785
 $ awk -F"-" '{print $1}' polyAsite.hs.db2.hg19.bed >polyAsite.hs.db2.hg19.txt
 
 54665  54665 802587 polyAsite.hs.db2.hg19.txt
-
-
 和之前整理的一模一样: /home/wangjl/data/apa/190610APA/02_validate/polyAsite.hs.db2.hg19.txt
+
+检查发现还是有重复的位点！
+$ cat polyAsite.hs.db2.hg19.txt | sort | uniq -c | sort -k1nr| head
+      6 chr14:23021094
+      5 chr14:23021097
+      3 chr1:148596158
+      3 chr1:223010726
+      3 chr14:106090687
+
+
+去重后，转为 标准bed 格式，方便IGV使用
+$ cat polyAsite.hs.db2.hg19.txt | sort | uniq | awk -F":" '{print $1"\t"$2"\t"$2+1"\t"$0"\t0\t."}' > polyAsite.hs.db2.hg19.bed
+	54406  326436 2317019 polyAsite.hs.db2.hg19.bed #去掉了几百行重复位点
+$ head polyAsite.hs.db2.hg19.bed
+chr10	100004650	100004651	chr10:100004650	0	.
+chr10	100007451	100007452	chr10:100007451	0	.
+chr10	100007551	100007552	chr10:100007551	0	.
+chr10	100016332	100016333	chr10:100016332	0	.
+chr10	100050456	100050457	chr10:100050456	0	
+
+
+/home/wangjl/data/ref/hg19/polyA/
+$ scp polyAsite.hs.db2.hg19.bed wangjl@y.biomooc.com:/home/wangjl/data/igv/
+
+
+
+
 
 
 
@@ -312,8 +502,6 @@ $ cat PAS.Mm.db2 | awk -F"\t" '{print $2}' | sort | uniq -c | sort -k1nr
     510 AATAGA
 #共13个
 
-
-
 4) 位置信息
 $ cat PAS.Hs.db2 | awk -F"\t" '{print $3}' | sort | uniq -c | sort -k1nr
    6039 -21
@@ -344,7 +532,7 @@ $ cat PAS.Hs.db2 | awk -F"\t" '{print $3}' | sort | uniq -c | sort -k1nr
 
 
 ========================================
-|-- PolyA_DB3: hg19, mm9, rn5 (hg19 311,595=31万位点)
+|-- PolyA_DB3: hg19(290,168=29万位点), mm9(384,337=38万位点), rn5
 ----------------------------------------
 (3). PolyA_DB3: hg19, mm9, rn5 
 
@@ -516,23 +704,77 @@ $ cat sitePerGene.db3 | awk '$1==3' | wc
 
 
 
+6) 转为 bed 格式 
+第五列 Mean RPM
+$ sed '1d' human.PAS.txt | awk '{print $2"\t"$3"\t"$3+1"\t"$1"\t"$5"\t"$4}' >human.PAS.db3.hg19.bed.raw
+$ head human.PAS.db3.hg19.bed.raw
+chr1	564599	564600	chr1:564599:+	3.33339746426	+
+chr1	564629	564630	chr1:564629:+	1.2015737728799998	+
+chr1	564664	564665	chr1:564664:+	14.8564019857	+
+chr1	564708	564709	chr1:564708:+	1.87229320775	+
+chr1	564952	564953	chr1:564952:+	1.9917604133700002	+
+
+是否有重复呢？
+$ awk '{print $4}' human.PAS.db3.hg19.bed.raw | sort | uniq -c | sort -k1nr | head
+     22 chr5:140875283:+
+     22 chr5:140875564:+
+     22 chr5:140891930:+
+     22 chr5:140892366:+
+     22 chr5:140892440:+
+     22 chr5:140892469:+
+     22 chr5:140892542:+
+     22 chr5:140900203:+
+也有很多重复！！uniq只有 2.9万个。
+$ awk '{print $4}' human.PAS.db3.hg19.bed.raw | sort | uniq -c | sort -k1nr |wc
+ 290168  580336 7156810
+$ cat human.PAS.db3.hg19.bed.raw |  sort -k4 | uniq >human.PAS.db3.hg19.bed
+
+$ wc human.PAS.db3.hg19.bed
+  290168  1741008 16899102 human.PAS.db3.hg19.bed
+$ head human.PAS.db3.hg19.bed
+chr10	100004047	100004048	chr10:100004047:+	1.4720911092500002	+
+chr10	100004652	100004653	chr10:100004652:+	47.223500246099995	+
+chr10	100007447	100007448	chr10:100007447:-	3.57704083815	-
+chr10	100007551	100007552	chr10:100007551:-	3.3557913087	-
+chr10	100014965	100014966	chr10:100014965:-	0.7031391756829999	-
+
+/home/wangjl/data/ref/hg19/polyA/polyA_DB3/
+$ scp human.PAS.db3.hg19.bed wangjl@y.biomooc.com:/home/wangjl/data/igv/
 
 
 
 
+## for mouse: 38万位点
+$ sed '1d' mouse.PAS.txt | awk '{print $2"\t"$3"\t"$3+1"\t"$1"\t"$5"\t"$4}' | sort -k4 | uniq >mouse.PAS.db3.mm9.bed
+384337  2306022 22399124 mouse.PAS.db3.mm9.bed
+$ head mouse.PAS.db3.mm9.bed
+chr10	100005160	100005161	chr10:100005160:-	1.6737975028299998	-
+chr10	100020823	100020824	chr10:100020823:+	0.6934169316850001	+
+chr10	100029825	100029826	chr10:100029825:+	0.515148199505	+
+chr10	100029882	100029883	chr10:100029882:+	3.9390024642300006	+
+chr10	100031579	100031580	chr10:100031579:+	1.18978178349	+
+chr10	100032948	100032949	chr10:100032948:+	1.33686426673	+
 
+# 使用 sort -k 4,4 -u #表示按照第4列排序，-u表示按照这一列去重
+$ sed '1d' mouse.PAS.txt | awk '{print $2"\t"$3"\t"$3+1"\t"$1"\t"$5"\t"$4}' | sort -k4,4 -u |wc
+ 384337 2306022 22399124
+
+/home/wangjl/data/ref/mm9/polyA/
+  398885  7507668 54110436 mouse.PAS.txt
+  384337  2306022 22399124 mouse.PAS.db3.mm9.bed #uniq 之后
 
 
 
 
 
 ========================================
-|-- PolyASite 2.0 (hg38 569005=56万位点)
+|-- PolyASite 2.0 (hg38 569,005=56万位点)
 ----------------------------------------
 
 (4) PolyASite 2.0 
 https://polyasite.unibas.ch/atlas#2
 
+/home/wangjl/data/ref/hg38/polyA
 $ wget https://polyasite.unibas.ch/download/atlas/2.0/GRCh38.96/atlas.clusters.2.0.GRCh38.96.bed.gz
 $ gunzip atlas.clusters.2.0.GRCh38.96.bed.gz
 
@@ -558,12 +800,27 @@ $ cat atlas.clusters.2.0.GRCh38.96.bed | awk '{print $10}' | sort | uniq -c | so
 
 
 2) 第11列: motif信息，上游位置，坐标。
+3) 没注释上基因信息，//todo 后续自己注释
 
+4) 转为 标注bed 格式
+第2和3列是什么？和第4列不完全一致。
+第5列和9列相同，是什么？
 
-3) 没注释上基因信息，怎么使用？
+$ cat atlas.clusters.2.0.GRCh38.96.bed  | awk '{ split($4, arr, ":");  print "chr"$1"\t"arr[2]"\t"arr[2]+1"\t"$4"\t"$5"\t"$6}' | sort -k4,4 -u >atlas.PolyASite2.0.GRCh38.bed
 
+569005  3414030 26508213 atlas.PolyASite2.0.GRCh38.bed
+$ head atlas.PolyASite2.0.GRCh38.bed
+chr10	100004243	100004244	10:100004243:-	0.0048	-
+chr10	100008989	100008990	10:100008989:-	0.0004	-
+chr10	100010715	100010716	10:100010715:+	0.0079	+
+chr10	10002791	10002792	10:10002791:-	0.0031	-
+chr10	100032302	100032303	10:100032302:-	0.0074	-
+chr10	100037573	100037574	10:100037573:-	0.0087	-
 
+/home/wangjl/data/ref/hg38/polyA
+$ scp atlas.PolyASite2.0.GRCh38.bed wangjl@y.biomooc.com:/home/wangjl/data/igv/
 
+使用 IGV 查看
 
 
 
