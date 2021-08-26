@@ -1883,11 +1883,27 @@ $ findMotifsGenome.pl \
 
 
 
+(3) findMotifsGenome.pl -p 20 添加多线程
+$ find . | grep "sf$" | xargs grep "findMotifsGenome" --color=auto
+./rules/06homer_find_motif.sf:	shell:"findMotifsGenome.pl {input} {GENOME} {params.out_dir} -size given >{log} 2>&1"
+
+Usage: findMotifsGenome.pl <pos file> <genome> <output directory> [additional options]
+        Example: findMotifsGenome.pl peaks.txt mm8r peakAnalysis -size 200 -len 8
+
+多线程参数：-p <#> (Number of processors to use, default: 1)
+
+$ findMotifsGenome.pl peaks.txt mm8r peakAnalysis -size 200 -len 8
+
+"findMotifsGenome.pl {input} {GENOME} {params.out_dir} -size given -p {threads} >{log} 2>&1"
 
 
 
 
-(3). 可视化
+
+
+
+
+3. 可视化
 根据motif与已知转录因子的富集情况可以绘制气泡图，从而可以看到样本与已知转录因子的富集显著性。
 
 已知转录因子的富集显著性
@@ -4018,6 +4034,161 @@ write.table(dt2, output)
 工作目录中运行
 $ snakemake -s /data/wangjl/soft/snakemakeWorkflow/ATAC-seq/demo2/mainBulk.sf -j 5 -p
 1min;
+
+
+
+
+
+
+========================================
+|-- 生成报告 html文件，可在浏览器中查看与下载结果
+----------------------------------------
+
+$ vim getReport.sf 
+configfile: "config.yaml"
+workdir: config["workdir"]
+
+SI=config["samples"]
+
+#SI=["SRR7629152","SRR7629153"]
+
+rule all:
+	input: 
+		expand("QC_map/TSS/{sample}.TSS.heatmap.pdf", sample=SI), #BAM QC: TSS (very slow:40min 1e4 reads)
+		"report/index.html"
+
+include:"rules/report.sf"
+
+
+
+
+###### 其他文件
+$ cat rules/report.sf
+# SI=["SRR7629152","SRR7629153"]
+rule report:
+	input:
+		"images/ATAC-seq_Rule.svg"
+	output:"report/index.html"
+	run: 
+		import time
+		timsString=time.strftime("%Y/%m/%d %H:%M:%S", time.localtime()) 
+
+		head='''
+<meta charset="utf-8" />
+<style>
+.content{width:800px; margin:10px auto;}
+h2{
+	font-style: normal;
+	padding-left: 20px;
+	padding-right: 20px;
+	margin: 10px 0;
+	border-bottom: 1px solid #d3d3d3;
+	font-size: 25px;
+	background-image: linear-gradient(to bottom,#f3f3f3 0,#e3e3e3 100%);
+	border-radius: 5px;
+}
+h3{
+	padding: 5px 10px;
+    font-size: 20px;
+    text-shadow: 0 0 1px #999;
+    color: #333;
+    border-bottom: 1px solid #D9D9D9;
+    font-weight: bold;
+    margin-top: 10px;
+}
+.content a {
+    color: #0593d3;
+    text-decoration: none;
+}
+.h200{
+	height:200px;
+}
+.footer{color: #aaa; background:black; border-top:20px; padding: 20px; border-top:1px solid black;}
+</style>
+		<title>ATAC-seq Report</title>
+		'''
+		
+		workflow="<div class='content'><h1>ATAC-seq Report</h1>"+ timsString + "<br>" + \
+		"<h2>Workflow</h2> <h3>Rules</h3>  <image class=h200 src='../images/ATAC-seq_Rule.svg'>" +\
+		"<h3>Samples</h3>  <image class=h200 src='../images/ATAC-seq_Sample.svg'><br>"
+		
+		files='<h2>Output</h2><h3>raw/</h3> Raw fastq file' +\
+		'<h3>QC_raw/</h3> <a target="_blank" href="../QC_raw/multiqc/multiqc_report.html">report</a>, <a href="../QC_raw/multiqc/multiqc_report.html.log">log</a>' +\
+		'<h3>clean/</h3> fastq files after cut adaptor ' +\
+		'<h3>QC_clean/</h3> <a target="_blank" href="../QC_clean/multiqc/multiqc_report.html">report</a>, <a target="_blank" href="../QC_clean/multiqc/multiqc_report.html.log">log</a>'+\
+		'<h3>map/</h3> bam files after BWA mapping to hg38 '+\
+		'<h3>map_clean/</h3> bam files after rm MT, low MAPQ, duplicates.'+\
+		'<h3>QC_map/</h3>'+\
+		'	<p>QC_map/fragment_length/: 插入片段长度分布图 barplot (pdf files) of fragment length distribution</p>%s'+\
+		'	<p>QC_map/TSS/: TSS附近reads 热图。 heatmap 可选 运行巨慢。</p>%s'+\
+		'<h3>macs2_result/</h3> .narrowPeak for each file.%s' +\
+		'<h3>homer/</h3> motif results. %s</div>'
+		
+		footer="<div class=footer><div class='content'> Sample number: "+ str(len(SI)) +"<br> The end | "+timsString+" </div></div>"
+		
+		#################
+		# get BAM QC links
+		#################
+		fragLen="<hr>Click and View <ul>"
+		pngs=""
+		for i in SI:
+			fnames="<li><a href='../QC_map/fragment_length/fragment_length_%s.pdf'>fragment_length_%s.pdf</a>, <a href='../QC_map/fragment_length/%s.fragment.length.txt'>%s.fragment.length.txt</a></li>" % (i,i, i,i)
+			fragLen += fnames
+			#
+			pngs+="<img class=h200 src='../QC_map/fragment_length/fragment_length_%s.png'>" % i;
+		fragLen+="</ul>"+pngs
+		
+		
+		TSS="<hr>Click and View <ul>"
+		for i in SI:
+			fnames="<li><a href='../QC_map/TSS/%s.TSS.heatmap.pdf'>%s.TSS.heatmap.pdf</a></li>" % (i,i)
+			TSS += fnames
+		TSS+="</ul>"
+		
+		#################
+		# get macs results links
+		#################
+		macs2="<hr>Download <ul>"
+		for i in SI:
+			fnames="<li><a href='../macs2_result/%s_peaks.narrowPeak'>%s_peaks.narrowPeak</a>, <a href='../macs2_result/%s_peaks.xls'>%s_peaks.xls</a>, <a href='../macs2_result/%s_summits.bed'>%s_summits.bed</a></li>" % (i,i, i,i, i,i)
+			macs2 += fnames
+		macs2+="</ul>"
+		
+		#################
+		# get homer result
+		#################
+		homer="<hr>Click and View<ul>"
+		for i in SI:
+			fnames="<li><a href='../homer/%s/knownResults.html'>%s knownResults.html</a>, <a href='../homer/%s/homerResults.html'>%s homerResults.html</a>,</li>" % (i,i, i,i)
+			homer += fnames
+		homer+="</ul>"
+		
+		
+		files=files % (fragLen, TSS, macs2, homer)
+		
+		html=head+workflow+ files+footer;
+		
+		# save
+		fw=open( output[0],'w')
+		fw.write(html)
+		fw.close()
+#
+
+
+$ snakemake -s getReport.sf -j 4
+Job counts:
+	count	jobs
+	2	MAP_QC_bamCoverage
+	2	MAP_QC_computeMatrix
+	2	MAP_QC_plotHeatmap
+	1	all
+	7
+耗时 22min，2个样本。
+[Wed Jun 23 13:04:42 2021]
+[Wed Jun 23 13:22:41 2021]
+
+
+
 
 
 
