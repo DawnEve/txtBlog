@@ -17,6 +17,7 @@ return array (
     2 => array (
       array('C语言基础','c101-base','txt',),
       array('C语言高级话题','c102-adv','txt',),
+      array('C语言网络通信','c103-socket','txt',),
       array('C语言100题','c-practise','txt',),
     ),
   ),
@@ -25,13 +26,20 @@ return array (
 
   array (
     0 => 2,
-    1 => 'C与算法',
+    1 => '计算机基础知识',
     2 => array (
       array('数据结构','c201-data_structures','txt',),
       array('算法','c202-algorithm','txt',),
+      array('计算机组成原理','c203-prComputer','txt',), //Principles of Computer Organization
+      array('操作系统','c204-OS','txt',), 
+      array('计算机网络','c204-network','txt',), 
+	  
       array('leetcode.com','leetcode','txt',),
     ),
   ),
+
+
+
 
 
   array (

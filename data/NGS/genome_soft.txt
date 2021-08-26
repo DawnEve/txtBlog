@@ -148,7 +148,7 @@ BWA适用于变异比对。
 
 
 
-2.下载
+2.下载 与安装
 https://sourceforge.net/projects/bio-bwa/files/
 
 https://github.com/lh3/bwa/releases
@@ -182,6 +182,103 @@ bwa 0.7.17-r1188
 
 
 3.比对
+更快的是使用 BWA mem | samtools sort 从fastq获得bam。
+https://biology.stackexchange.com/questions/59493/how-to-convert-bwa-mem-output-to-bam-format-without-saving-sam-file
+bwa mem ref.fa in.fq | samtools view -bS - > out.bam
+## The - in samtools view tells it to read from stdin.
+
+建立索引
+$ bwa index -a bwtsw -p index/GRCm38_ Mus_musculus.GRCm38.dna.primary_assembly.fa
+[bwa_index] Pack forward-only FASTA... 8.25 sec
+[bwa_index] Construct SA from BWT and Occ... 766.48 sec
+[main] Version: 0.7.17-r1188
+[main] CMD: bwa index -a bwtsw -p index/GRCm38_ Mus_musculus.GRCm38.dna.primary_assembly.fa
+[main] Real time: 2508.653 sec; CPU: 2425.633 sec
+检查
+$ ls /home/wangjl/data/ref/mouse/ensembl/index/GRCm38_* -lth
+-rw-rw-r-- 1 wangjl wangjl 1.3G Aug 25 15:01 /home/wangjl/data/ref/mouse/ensembl/index/GRCm38_.sa
+-rw-rw-r-- 1 wangjl wangjl  11K Aug 25 14:49 /home/wangjl/data/ref/mouse/ensembl/index/GRCm38_.amb
+-rw-rw-r-- 1 wangjl wangjl 5.5K Aug 25 14:49 /home/wangjl/data/ref/mouse/ensembl/index/GRCm38_.ann
+-rw-rw-r-- 1 wangjl wangjl 652M Aug 25 14:48 /home/wangjl/data/ref/mouse/ensembl/index/GRCm38_.pac
+-rw-rw-r-- 1 wangjl wangjl 2.6G Aug 25 14:48 /home/wangjl/data/ref/mouse/ensembl/index/GRCm38_.bwt
+
+
+开始比对
+$ cd /data/wangjl/ATAC/CRC_ATAC/
+$ id="1" 
+$ bwa mem -t 5 -R "@RG\tID:${id}\tSM:${id}" /home/wangjl/data/ref/mouse/ensembl/index/GRCm38_ raw/${id}_R1.fq.gz raw/${id}_R2.fq.gz | samtools sort -@ 5 -O bam -T /tmp/${id} -o map/${id}.sorted.bam -
+## [main] Real time: 11020.968 sec; CPU: 54746.452 sec 
+## [bam_sort_core] merging from 30 files and 5 in-memory blocks...
+11020/3600 = 3.061111 小时
+
+## 这个形式不知道是否可用？
+$ bwa mem -t 5 -R "@RG\tID:${id}\tSM:${id}" /home/wangjl/data/ref/mouse/ensembl/index/GRCm38_ raw/${id}_R1.fq.gz raw/${id}_R2.fq.gz | samtools sort -@ 5 -O bam -T /tmp/${id}_ > map/${id}_.sort1.bam
+
+对比其中一个的输出，一模一样。能比的就是时间差异了: 
+3e07f2eaf5b2faf2921d3907dd6b9372  map/2.sorted.bam
+3e07f2eaf5b2faf2921d3907dd6b9372  map/2_.sort1.bam
+
+
+
+
+
+
+##########
+https://informatics.fas.harvard.edu/short-introduction-to-bwa.html
+
+/00_genome - reference sequence 
+/01_fastqs - raw Illumina reads
+
+(1) 建立索引
+$ bwa index -p 00_genome/Falb 00_genome/Falbicolis.chr5.fa.gz
+-p 是前缀。这样会在 00_genome/ 下产生几个新文件，开头是Falb
+
+
+(2) shell 批量化获得sam
+mkdir -p 02_bams
+for INDEX in 1 2 3 34 35;
+do
+   bwa mem -M -t 1 -R "@RG\tID:COL_${INDEX}\tSM:COL_${INDEX}" 00_genome/Falb \
+   01_fastqs/Falb_COL${INDEX}.1.fastq.gz \
+   01_fastqs/Falb_COL${INDEX}.2.fastq.gz \
+   > 02_bams/Falb_COL${INDEX}.sam #2> Falb_COL${INDEX}.log
+done
+
+
+
+(3) sam转为bam
+
+for INDEX in 1 2 3 34 35;
+do
+  picard SortSam \
+  I=02_bams/Falb_COL${INDEX}.sam \
+  O=02_bams/Falb_COL${INDEX}.sorted.bam \
+  SORT_ORDER=coordinate \
+  CREATE_INDEX=true
+done
+
+(4) 创建 index 
+
+for INDEX in 1 2 3 34 35
+do
+  picard BuildBamIndex \
+  I=02_bams/Falb_COL${INDEX}.sorted.bam
+done
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+4. 其他参数的探讨
 
 Does BWA call SNPs like MAQ?
 No, BWA only does alignment. Nonetheless, it outputs alignments in the SAM format which is supported by several generic SNP callers such as samtools and GATK.
@@ -192,6 +289,9 @@ http://bio-bwa.sourceforge.net/bwa.shtml
 
 
 (1)建立索引
+
+# 后面是探索 -a 参数，对于human和mouse，使用默认值即可。
+
 参考基因组
 $ ls -lth /home/data/Homo_sapiens/UCSC/hg38/Sequence/WholeGenomeFasta/genome.fa
 -rwxrwxr-x. 1 wangjl wangjl 3.0G Aug 19  2015 /home/data/Homo_sapiens/UCSC/hg38/Sequence/WholeGenomeFasta/genome.fa
@@ -263,6 +363,7 @@ $ bwa mem -t 6 -M ${INDEX} ../1_cleanData/outN.1.fastq ../1_cleanData/outN.2.fas
 [main] Version: 0.7.17-r1188
 [main] CMD: bwa mem -t 6 -M /home/data/Homo_sapiens/UCSC/hg38/Sequence/BWAIndex/genome.fa ../1_cleanData/outN.1.fastq ../1_cleanData/outN.2.fastq
 [main] Real time: 3491.090 sec(0.96hour); CPU: 20559.125 sec
+
 
 
 

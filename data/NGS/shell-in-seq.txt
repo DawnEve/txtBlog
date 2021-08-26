@@ -214,6 +214,9 @@ refer: https://www.jianshu.com/p/f9da70fcaf8d
 
 
 
+
+
+
 ========================================
 新建文件夹，如果有就删除再建
 ----------------------------------------
@@ -228,10 +231,32 @@ fi
 
 
 
+
+
+
+
+
 ========================================
-下载大量测序结果，公共数据
+下载大量测序结果，SRA 公共数据
 ----------------------------------------
-可以在ftp的README中找到具体下载地址，写入文本文件，使用awk批处理下载这些数据。
+
+1. 下载 SRA 数据
+$ cat SRR_Acc_List.txt
+SRR3290193
+SRR3290196
+SRR3290199
+
+
+$ cat SRR_Acc_List.txt| while read id;
+do echo $id;
+fasterq-dump --split-files -e 10 $id;
+done
+
+
+
+
+
+2.可以在ftp的README中找到具体下载地址，写入文本文件，使用awk批处理下载这些数据。
 上面chrX_data.tar.gz是这些文件的chrX上reads的子集。
 
 $ cat list.txt
@@ -250,6 +275,260 @@ ftp://ftp.sra.ebi.ac.uk/vol1/fastq/ERR188/ERR188454/ERR188454_1.fastq.gz
 
 $ awk '{print "wget -b "$1}' list.txt | bash
 估计要下载几个小时。
+
+
+
+
+
+
+
+
+
+========================================
+|-- 压缩文件，并检查再加压后md5sum值是否和之前相同(snakemake 流程)
+----------------------------------------
+目的： 安全删除fastq文件，只保留压缩后的fq.gz文件前，检查是否可以解压恢复源文件。
+
+主版本3大步骤: main.sf
+	压缩前的 md5sum m1
+	压缩后的 md5sum m2
+	压缩后再解压的 md5sum m3
+	比较m3是否等于m1的值
+就按照单文件写，如果是双端，可以当不同的文件名。
+
+精简版本：simple.sf 
+	仅仅计算文件的md5sum值
+	多线程方式。
+
+
+
+1. 批量压缩文件
+
+(1) 准备几个测试文件
+$ ls -lth raw
+total 16K
+-rw-rw-r-- 1 wangjl wangjl 146 Aug 26 15:19 b2.fastq
+-rw-rw-r-- 1 wangjl wangjl  88 Aug 26 15:18 b1.fastq
+-rw-rw-r-- 1 wangjl wangjl 367 Aug 26 15:18 a2.fastq
+-rw-rw-r-- 1 wangjl wangjl 367 Aug 26 15:18 a1.fastq
+
+(2) 压缩前的 md5sum 
+
+$ md5sum raw/a1.fastq
+b3f8495caec755f7f5369d59babf5f49  raw/a1.fastq
+
+$ ls raw/* | head -n 1| xargs md5sum
+b3f8495caec755f7f5369d59babf5f49  raw/a1.fastq
+
+以上两者等价。
+而后者又可以轻易扩展成多个，多开几个终端就是手动多进程了。
+
+$ ls raw/* | head -n 2| xargs md5sum
+b3f8495caec755f7f5369d59babf5f49  raw/a1.fastq
+03425794de6268e314ed4fc70659de37  raw/a2.fastq
+
+
+工作目录
+$ config.yaml
+samples:
+ - a1.fastq
+ - a2.fastq
+ - b1.fastq
+ - b2.fastq
+
+
+脚本目录:
+$ cat main.sf
+configfile: "config.yaml"
+
+SI=config["samples"]
+
+# step1: get origin md5sum
+rule all:
+	input:
+		"md5/origin.md5",
+		#expand("gz/{sample}.gz", sample=SI)
+
+rule getMd5_pre:
+	input: "raw/{sample}"
+	output: temp( "temp/{sample}.md5")
+	shell: "md5sum {input} > {output}"
+rule getMd5:
+	input: expand("temp/{sample}.md5", sample=SI)
+	output: "md5/origin.md5"
+	shell: "cat {input} > {output}"
+
+工作目录中运行:
+$ snakemake -s /home/wangjl/data/soft/snakemakeWorkflow/shell/demo1/main.sf -j 4 -p
+
+输出: 
+$ cat md5/origin.md5 
+b3f8495caec755f7f5369d59babf5f49  raw/a1.fastq
+03425794de6268e314ed4fc70659de37  raw/a2.fastq
+4db446117a68a13458f06854257c4252  raw/b1.fastq
+02ed6baad2521532dea5c7fe192fca06  raw/b2.fastq
+
+
+
+
+(3) 压缩文件
+
+$ gzip tmp.txt  # 产生 tmp.txt.gz 但是删除源文件
+
+$ gzip -c tmp.txt >tmp.txt.gz # 保留源文件
+
+
+rule gz:
+	input: "raw/{sample}"
+	output: "gz/{sample}.gz"
+	shell: "gzip -c {input} > {output}"
+# 新增目标 expand("gz/{sample}.gz", sample=SI),
+
+$ ls -lth gz/
+total 16K
+-rw-rw-r-- 1 wangjl wangjl 114 Aug 26 15:48 b2.fastq.gz
+-rw-rw-r-- 1 wangjl wangjl 195 Aug 26 15:48 a2.fastq.gz
+-rw-rw-r-- 1 wangjl wangjl 182 Aug 26 15:48 a1.fastq.gz
+-rw-rw-r-- 1 wangjl wangjl  88 Aug 26 15:48 b1.fastq.gz
+
+
+(3) 计算压缩后的md5sum
+
+$ ls *.fastq.gz | xargs md5sum >result.md5
+
+
+rule md5_gz_pre:
+	input: "gz/{sample}.gz"
+	output: temp( "temp/{sample}.gz.md5")
+	shell: "md5sum {input} > {output}"
+
+rule md5_gz:
+	input: expand("temp/{sample}.gz.md5", sample=SI)
+	output: "md5/gz.md5"
+	shell: "cat {input} > {output}"
+
+# 新增目标 "md5/gz.md5"
+
+$ cat md5/gz.md5 
+fca41c04c97f0ca9586962375b6960d7  gz/a1.fastq.gz
+86c251b27b0040470d91865b26e980ae  gz/a2.fastq.gz
+589741ef69d496d3a5899eef0a9bc443  gz/b1.fastq.gz
+548f97cf0dae2c508f35855a6fd1e2c6  gz/b2.fastq.gz
+
+
+
+(4) 再解压后的md5值
+
+$ gunzip -c tmp.txt.gz | md5sum
+85b93a57a9eb790ebce2b2ba9cf687c2  -
+
+$ md5sum tmp.txt
+85b93a57a9eb790ebce2b2ba9cf687c2  tmp.txt
+
+确实一样，但是怎么把 文件名放进去呢？
+$ echo `gunzip -c tmp.txt.gz | md5sum | awk '{print $1}'` "tmp.txt.gz"
+85b93a57a9eb790ebce2b2ba9cf687c2 tmp.txt.gz
+
+
+rule unzip_md5_pre:
+	input: "gz/{sample}.gz"
+	output: temp( "temp/{sample}.unzip.md5")
+	shell: "echo `gunzip -c {input} | md5sum | awk '{{print $1}}'`\"  raw/\"{wildcards.sample} > {output}"
+
+rule unzip_md5:
+	input: expand("temp/{sample}.unzip.md5", sample=SI)
+	output: "md5/unzip.md5"
+	shell: "cat {input} > {output}"
+# 新增目标: "md5/unzip.md5"
+
+$ cat md5/unzip.md5 
+b3f8495caec755f7f5369d59babf5f49	raw/a1.fastq
+03425794de6268e314ed4fc70659de37	raw/a2.fastq
+4db446117a68a13458f06854257c4252	raw/b1.fastq
+02ed6baad2521532dea5c7fe192fca06	raw/b2.fastq
+
+
+
+
+(5) 检查解压后的md5值是否和压缩前一致
+
+就是比较2个文件
+$ diff md5/origin.md5 md5/unzip.md5
+
+1)使用脚本逐行判断
+file1="md5/origin.md5"
+file2="md5/unzip.md5"
+
+line=`cat $file1|wc -l`
+
+for ((i=1;i<=$line;i++));do
+	line1=`awk 'NR=="'$i'"{print $1}' $file1`
+	line2=`awk 'NR=="'$i'"{print $1}' $file2`
+	fName=`awk 'NR=="'$i'"{print $2}' $file1`
+if [ $line1 == $line2 ];then
+	echo -e "${i}\t${fName}\tOK"
+else
+	echo -e "${i}\t${fName}\tdifferent"
+fi
+done
+
+
+2) 使用md5判断
+
+m1=`md5sum md5/unzip.md5 | cut -d ' ' -f 1`;
+m2=`md5sum md5/unzip.md5 | cut -d ' ' -f 1`;
+if [ $m1 == $m2 ];then echo 'same'; else echo 'diff'; fi
+
+
+rule confirm:
+	input: "md5/origin.md5", "md5/unzip.md5"
+	output: "md5/confirm.txt"
+	shell: "m1=`md5sum {input[0]} | cut -d ' ' -f 1`; \
+		m2=`md5sum {input[1]} | cut -d ' ' -f 1`; \
+		if [ $m1 == $m2 ];then echo 'same'; else echo 'diff'; fi > {output} && cat {output}"
+# 新增目标： "md5/confirm.txt"
+
+
+$ snakemake -s /home/wangjl/data/soft/snakemakeWorkflow/shell/demo1/main.sf -j 4 -p
+
+
+
+
+
+2. 精简版本：simple.sf 
+   仅仅计算文件解压后的md5sum值，可选计算解压后的md5值。
+   多线程方式。
+
+$ vim simple.sf
+configfile: "config.yaml"
+
+SI=config["samples"]
+
+rule all:
+        input:
+                "md5/origin.md5",
+                #"md5/gz.md5",
+                "md5/unzip.md5",
+
+include: "rules/01_origin_md5.sf"
+#include: "rules/03_md5_of_gz.sf"
+include: "rules/04_md5_of_unzip.sf"
+
+$ snakemake -s /home/wangjl/data/soft/snakemakeWorkflow/shell/demo1/simple.sf -j 4 -p
+输出原始文件的md5，和压缩文件解压后的md5。
+然后手动比较第一列的md5是否一致
+$ awk '{print $1}' md5/origin.md5 | md5sum
+$ awk '{print $1}' md5/unzip.md5 | md5sum
+
+
+
+
+github: https://github.com/DawnEve/snakemakeWorkflow/tree/master/shell/demo1
+
+
+
+
+
 
 
 

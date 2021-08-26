@@ -1246,6 +1246,8 @@ https://blog.csdn.net/lixiaomie01/article/details/78012942
 ========================================
 |-- R也有Notebook了，不用再羡慕Python有jupyter了
 ----------------------------------------
+1. 安装
+
 熟悉python的朋友可能知道jupyter notebook。它是一个Web应用程序，允许你创建和共享代码，方程，可视化和说明性文本文档。现在，我们可以在RStudio中实现R Notebook的功能了。
 
 我的配置步骤：
@@ -1267,6 +1269,62 @@ https://blog.csdn.net/lixiaomie01/article/details/78012942
 注：上述的4,5步也可以直接创建一个新的R Markdown Notebook文件。如下图：
 
 完成上述配置后我们就可以在RStudio中开始我们的R Notebook之旅了。
+
+
+
+
+
+
+2. 使用别人的Rmd代码
+Rmd 可以内置代码，可以边写边运行，也可以写好后直接使用 knit功能生成html代码及图片。
+
+优点：knit 模式运行与当前环境变量是隔离的。
+
+(1)使用别人写好的 Rmd代码：
+	https://github.com/satijalab/seurat/tree/master/vignettes
+	https://github.com/satijalab/seurat/blob/master/vignettes/pbmc3k_tutorial.Rmd
+	
+
+(2) Rstudio中 File- New file- R notebook 
+复制文本进去 https://raw.githubusercontent.com/satijalab/seurat/master/vignettes/pbmc3k_tutorial.Rmd
+保存为 00.Rmd，
+然后点击左上角的 Knit，不久报错，这个过程中，环境变量一直为空。
+
+
+(3) 如果是调试，则变量会污染当前环境。
+快捷键: 
+	执行下一个片段是 ctrl+alt+N
+
+
+
+
+
+3. 书写规则
+其他部分和标准 markdown 差不多，但是插入代码部分有更多细节。
+
+(1) 一般书写，大多数代码就是这样的。
+
+```{r}
+a=20
+print(a)
+```
+
+
+(2) 保存为图片
+
+```{r mito, fig.height=7, fig.width=13}
+# The [[ operator can add columns to object metadata. This is a great place to stash QC stats
+pbmc[["percent.mt"]] <- PercentageFeatureSet(pbmc, pattern = "^MT-")
+```
+
+文件名为 mito-1.png ,后面是宽高设置。
+
+
+(3) 其他书写方式
+
+
+
+
 
 
 
@@ -1711,6 +1769,121 @@ merge_peaks <- function(bedtools.path, path, peaks.file){
 	system(command = "rm ./merge.peakfile", wait = T)
 	system(command = "rm ./notmerged_peak.bed", wait = T)
 }
+
+
+
+
+========================================
+|-- R 调用 R脚本 (实例)：并发执行
+----------------------------------------
+3. R 调用 R脚本(这个不能控制并发核心数)
+假设有一个耗时任务，我们使用多线程加快进度。
+
+step1:
+- 100个细胞，分成批次，多线程执行
+- 分别对cid加1
+- 保存为文件
+step2:
+- 合并各批次结果
+
+
+$ seq 1 100 >cid.txt
+|-cid.txt
+
+
+一共包括2个R脚本，第一个调用第二个。
+|-master.R 
+|-worker.R 
+
+
+$ cat master.R 
+# separate the task
+batch=30;
+total=100;
+
+
+last=0;
+for(i in 1:total){
+  if(i %% batch == 0){
+    # cat(last+1, i, "\n");
+    system(command = paste0("Rscript worker.R ",last+1, " ", i) , wait = F)
+    last=i;
+  }
+}
+
+if(last+1 < total){
+    # cat(last+1, total, "\n");
+    system(command = paste0("Rscript worker.R ",last+1, " ", total) , wait = F)
+}
+
+
+
+
+
+$ cat worker.R
+# get parameters
+myArgs<-commandArgs(TRUE)
+
+id1=as.numeric(myArgs[1])
+id2=as.numeric(myArgs[2])
+cat("start working, from-to: ", id1, id2, "\n");
+
+# get cell id by the input para
+cids= readLines("cid.txt");
+cids=cids[id1:id2]
+
+# a time-consuming job
+work=function(id){
+  Sys.sleep(0.01 + runif(1)*0.02);
+  return( as.numeric(id)+1);
+}
+
+# do the analysis
+df=NULL;
+for(i in 1:length(cids)){
+ # cat(i, cids[i], "\n");
+ id=cids[i];
+ df=rbind(df,  data.frame(
+    id=id,
+    result=work(id)
+  ));
+}
+#print(df);
+write.table(df,  paste0("tmp/result_",id1, "_", id2, ".txt"), col.names=F, quote = F )
+
+
+
+运行：
+$ mkdir tmp/
+$ Rscript master.R 
+
+手动合并
+$ cat tmp/result* tmp/total.txt
+
+检查结果 
+$ ls -lth tmp/
+
+
+
+
+
+
+
+2. 使用snakemake可以控制并发脚本数，在R中调用 snakemake 脚本，并读取最终结果文件。
+snakemake 脚本在: https://github.com/DawnEve/snakemakeWorkflow/tree/master/R_script/demo1
+
+如何不打扰用户的情况下调用 python 并发脚本？
+
+$ seq 1 100 > cid.txt
+$ R
+snakePath="/home/wangjl/soft/snakemakeWorkflow/R_script/demo1/"
+threads=4;
+system(command = paste0("snakemake -s ",snakePath,"main.sf -p -j ", threads) , wait = T);
+# here will be many output text like you run snakemake in shell, wait until task ends.
+
+a=readLines("worker/stat.txt")
+print(a) #[1] "5150"
+
 
 
 

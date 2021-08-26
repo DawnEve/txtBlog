@@ -566,7 +566,6 @@ http://samtools.github.io/hts-specs/
 SAM and its tags specs: 
 https://samtools.github.io/hts-specs/SAMv1.pdf
 https://samtools.github.io/hts-specs/SAMtags.pdf
-https://support.10xgenomics.com/single-cell-gene-expression/software/pipelines/latest/output/bam
 
 
 
@@ -686,7 +685,7 @@ $ samtools view dAdapter_CutA_c16_ROW17.fq_Aligned.sortedByCoord.out.bam |awk '{
 表示为mapping的质量值，mapping Quality, It equals -10log10Pr{mapping position is wrong}, rounded to the nearest integer, A value 255 indicates that the mapping quality is not available. 该值的计算方法是mapping的错误率的-10log10值，之后四舍五入得到的整数，如果值为255表示mapping值是不可用的，如果是unmapped read则MAPQ为0，一般在使用bwa mem或bwa aln（bwa 0.7.12-r1039版本）生成的sam文件，第五列为60表示mapping率最高，一般结果是这一列的数值是从0到60，且0和60这两个数字出现次数最多
 
 
-使用samtools对mapq值筛选，其中-q参数就是依据mapq值筛选：
+1) 使用samtools对mapq值筛选，其中-q参数就是依据mapq值筛选：
 $ samtools view -bhS -q 30 input.sam > output.bam
 参数: 
 -b output BAM;  
@@ -697,8 +696,7 @@ $ samtools view -bhS -q 30 input.sam > output.bam
 
 
 
-
-STAR出来的bam结果255最多。
+2) STAR出来的bam结果255最多。
 $ samtools view dAdapter_CutA_c16_ROW17.fq_Aligned.sortedByCoord.out.bam |awk '{print $5}' |sort|uniq -c 
  124407 0
  121732 1
@@ -707,6 +705,7 @@ $ samtools view dAdapter_CutA_c16_ROW17.fq_Aligned.sortedByCoord.out.bam |awk '{
 
 
 
+3) sam 文件格式自己的说明
 #sam文件说A value 255 indicates that the mapping quality is not available.
 但是STAR说明书说到： The mapping quality MAPQ (column 5) is 255 for uniquely mapping reads, and int(-10*log10(1-1/Nmap)) for multi-mapping reads.
 http://zjuwhw.lofter.com/post/1d209faf_7366624
@@ -718,7 +717,7 @@ If Nmap >= 5, MAPQ = 0.
 
 
 
-
+4) tophat1 
 #tophat1是255,tophat2是50；http://blog.sina.com.cn/s/blog_86c8fc120102uz5o.html
 在需要用到uniquely mapped reads时，可以参考上表，为了保险起见，NH这个tag是统一的，不随tophat版本变化。
 注意：如果是直接grep NH:i:1的话，一定要用grep "NH:i:1\b"，否则会把NH:i:10这类的也抓下来！（切身教训）
@@ -728,12 +727,60 @@ If Nmap >= 5, MAPQ = 0.
 
 
 
-
+5) bowtie2 的 MAPQ 值，最大是 42
 bowtie2有时并不能完全确定一个短的序列来自与参考序列的那个位置，特别是对于那些比较简单的序列。但是bowtie2会给出一个值来显示出 这个段序列来自某个位点的概率值，这个值就是mapping qulity。Mapping qulity的计算方法是：Q=-10log10p，Q是一个非负值，p是这个序列不来自这个位点的估计值。
 
 假如说一条序列在某个参考序列上找到了两个位点，但是其中一个位点的Q明显大于另一个位点的Q值，这条序列来源于前一个位点的可能性就比较大。Q值的差距越大，这独特性越高。
 
 Q值的计算方法来自与SAM标准格式，请查看SAM总结。
+
+$ samtools view -H map/P192.sort.bam | tail -n1
+@PG     ID:bowtie2      PN:bowtie2      VN:2.3.5.1      CL:"/home/wangjl/soft/bowtie2-2.3.5.1-linux-x86_64/bowtie2-align-s --wrapper basic-0 -p 4 -N 1 -X 2000 -x /home/wangjl/data/ref/human/GRCh38_bowtie2/GRCh38_noalt_as -1 clean/P192_R1.fastq.gz -2 clean/P192_R2.fastq.gz"
+
+$ samtools view map/P192.sort.bam | wc
+4991124 100554602 1120084612  #0.5million reads
+$ samtools view map/P192.sort.bam | awk '{print $5}' | sort | uniq -c |sort -k1nr
+3468799 42
+ 420026 1 
+ 170377 0 
+ 153363 34
+ 120034 32
+  98494 35
+...
+   1889 14
+   1570 16
+    686 4
+    259 5
+    140 33
+#
+
+
+6) BWA 的 MAPQ 值，最高的是60
+$ samtools view -H map/P192.sort.bam | tail -n1
+@PG     ID:bwa  PN:bwa  VN:0.7.17-r1188 CL:bwa mem -t 4 -R @RG\tID:P192\tSM:P192 -o map/P192_bwa_hg38.sam /home/wangjl/data/ref/human/UCSC/bwa/hg38_fa clean/P192_R1.fastq.gz clean/P192_R2.fastq.gz
+
+$ samtools view map/P192.sort.bam| wc
+4991124 85038439 1067267869  #0.5million reads
+$ samtools view map/P192.sort.bam | awk '{print $5}' | sort | uniq -c |sort -k1nr
+3430467 60
+ 711565 0 
+ 328878 40
+  44022 30
+...
+   5061 5
+   4634 29
+   4398 36
+   3990 34
+   3745 35
+   3559 32
+   3279 38
+#
+
+
+
+
+
+
 
 
 
@@ -800,6 +847,112 @@ NM:i  经过编辑的序列
 YF:i  说明为什么这个序列被过滤的字符串
 YT:Z
 MD:Z  代表序列和参考序列错配的字符串
+
+
+
+
+ref: https://www.jianshu.com/p/8d01019f33f2
+
+
+
+
+
+
+
+========================================
+|-- 10x bam 格式的 tag 信息
+----------------------------------------
+1. 例子 
+
+NB500915:133:HWCNVBGXX:4:21506:11185:11003	16	1	14603	255	98M	*	0	0	AAGGAAGTAGGTCTGAGCAGCTTGTCCTGGCTGTGTCCATGTCAGAGCAACGGCCCAAGTCTGGGTCTGGGGGGGAAGGTGTCATGGAGCCCCCTACG	<EEEEAA/<EEAEEEEEEEEEEAEEAAEAAEEEEE/EEEEEEEEEEEEEEEEEEEEEEEAEEEEEEE/<AEEEAEEEEEEE/EEEEEEEEEEEAAAAA	NH:i:1	HI:i:1	AS:i:96	nM:i:0	NM:i:0	CR:Z:AACACTCTAGGAGC	CQ:Z:AAAAA/EEAEA66A	CB:Z:AACACTCTAGGAGC-1	UR:Z:GATCC	UQ:Z:AAAAA	UB:Z:GATCC	BC:Z:GTACAACG	QT:Z:EEEAAAAA
+
+D000684:453:HJ7VJBCXX:2:2208:6502:11530	16	1	14603	255	98M	*	0	0	AAGGAAGTAGGTCTGAGCAGCTTGTCCTGGCTGTGTCCATGTCAGAGCAACGGCCCAAGTCTGGGTCTGGGGGGGAAGGTGTCATGGAGCCCCCTACG	GGGGGIGGGGIIGGGIGGAGGGGGIGGGGAAGGAGAIGGGGAGA.GGGGAGAAGGGAIGGGGGGAGGGGGGGGAGGGAAGA<GAGGGAAAAAAAAAGG	NH:i:1	HI:i:1	AS:i:96	nM:i:0	NM:i:0	CR:Z:AGGGTGGACTTGAG	CQ:Z:AAAG.GGGA.<.AA	CB:Z:AGGGTGGACTTGAG-1	UR:Z:GCAGG	UQ:Z:GAAAG	UB:Z:GCAGG	BC:Z:AGCTTCTC	QT:Z:AAGGGIIG
+
+
+
+
+2. 解释
+
+(1) 实例: 把最后一列摘抄出来，逐个看
+
+NH:i:1	HI:i:1	AS:i:96	nM:i:0	NM:i:0	CR:Z:AACACTCTAGGAGC	CQ:Z:AAAAA/EEAEA66A	CB:Z:AACACTCTAGGAGC-1	UR:Z:GATCC	UQ:Z:AAAAA	UB:Z:GATCC	BC:Z:GTACAACG	QT:Z:EEEAAAAA
+NH:i:1	HI:i:1	AS:i:96	nM:i:0	NM:i:0	CR:Z:AGGGTGGACTTGAG	CQ:Z:AAAG.GGGA.<.AA	CB:Z:AGGGTGGACTTGAG-1	UR:Z:GCAGG	UQ:Z:GAAAG	UB:Z:GCAGG	BC:Z:AGCTTCTC	QT:Z:AAGGGIIG
+
+sam 通用标签 https://samtools.github.io/hts-specs/SAMtags.pdf
+
+NH:i:1	
+	NH i Number of reported alignments that contain the query in the current record
+HI:i:1	
+	HI i Query hit index
+AS:i:96	
+	AS i Alignment score generated by aligner
+nM:i:0	
+NM:i:0	
+	NM i Edit distance to the reference
+
+
+
+表示 10x cell barcode, 主要看 CB
+CR:Z:AACACTCTAGGAGC	
+CQ:Z:AAAAA/EEAEA66A	
+CB:Z:AACACTCTAGGAGC-1	
+
+表示 10x UMI，主要看 UB
+UR:Z:GATCC	
+UQ:Z:AAAAA	
+UB:Z:GATCC	
+
+BC:Z:GTACAACG	
+QT:Z:EEEAAAAA
+
+
+
+
+(2) 官方解释：10x定义的标签
+https://support.10xgenomics.com/single-cell-gene-expression/software/pipelines/latest/output/bam
+
+Tag	Type	Description
+CB	Z	Chromium cellular barcode sequence that is error-corrected and confirmed against a list of known-good barcode sequences.
+CR	Z	Chromium cellular barcode sequence as reported by the sequencer.
+CY	Z	Chromium cellular barcode read quality. Phred scores as reported by sequencer.
+
+UB	Z	Chromium molecular barcode sequence that is error-corrected among other molecular barcodes with the same cellular barcode and gene alignment.
+UR	Z	Chromium molecular barcode sequence as reported by the sequencer.
+UY	Z	Chromium molecular barcode read quality. Phred scores as reported by sequencer.
+
+TR	Z	Trimmed sequence. For the Single Cell 3' v1 chemistry, this is trailing sequence following the UMI on Read 2. For the Single Cell 3' v2 chemistry, this is trailing sequence following the cell and molecular barcodes on Read 1.
+
+
+主要的参数是 
+
+cell barcode 
+	原始的 CR
+	质量分数 CY 
+	矫正后的 CB 
+
+UMI 
+	原始的 UR 
+	质量分数 UY
+	矫正后的 UB 
+
+
+(3) 再次查找重复的序列(NH:i:2)，怎么解释
+
+查找 HN:i:2 的序列，发现第二列都是 0和16，这可能是第一条。
+$ samtools view -@ 120 /data/rawdata/bmmmc/HealthyControl_1/frozen_bmmc_healthy_donor1_possorted_genome_bam.bam | grep "NH:i:2" | head -n 3
+NB500915:133:HWCNVBGXX:3:12405:2222:12165	0	1	14188	3	10M1D88M	*	0	0	CACTGAAACCTTTTTGTGGGAGACTATTCCTCCCATCTGCAACAGCTGCCCCTGCTGACTGCCCTTCTCTCCTCCCTCTCATCCCAGAGAAACAGGTC	AAAAAEEEEEEEEEEEEEEEEEEEEEEEEEEEEEAEEEEEEAEEEEEEEAEEAEEEEEEEEEE<EEEEEEEEEEAEEEEA<E</AEEEEAEEAEEEEE	NH:i:2	HI:i:1	AS:i:92	nM:i:0	NM:i:1	CR:Z:GTTATGCTGTTTGG	CQ:Z:AAAAAEAEEEEEEE	CB:Z:GTTATGCTGTTTGG-1	UR:Z:GCTCG	UQ:Z:AAAAA	UB:Z:GCTCG	BC:Z:TAGAGTAA	QT:Z:EEEAAAAA
+NB500915:133:HWCNVBGXX:4:12603:9990:16852	16	1	14364	3	98M	*	0	0	CTGCACAGCTAGAGATCCTTTATTAAAAGCACACTGTTGGTTTCTGCTCAGTTCTTTATTGATTGGTGTGCCGTTTTCTCTGGAAGCCTCTTAAGAAC	E<AAEAA<<EEEEEEA/E/EEEEEEEEE6E<EAEEE/E<<EEEE//EE/EAEEEEEEE/A<EEE</E<E//AAEEEEEEEAAAEAAEEEEEAEAAAAA	NH:i:2	HI:i:1	AS:i:96	nM:i:0	NM:i:0	CR:Z:CCGATAGATAACCG	CQ:Z:/AAAAEEAEE//EE	CB:Z:CCGATAGATAACCG-1	UR:Z:TCGGC	UQ:Z:AAAA<	UB:Z:TCGGC	BC:Z:GTACAACG	QT:Z:E/AAAAAA
+NB500915:133:HWCNVBGXX:1:11306:9550:13097	16	1	14365	3	98M	*	0	0	TGCACAGCTAGAGATCCTTTATTAAAAGCACACTGTTGGTTTCTGCTCAGTTCTTTATTGATTGGTGTGCCGTTTTCTCTGGAAGCCTCTTAAGAACA	A/A//6/<A6/E6EEAEEAEEAEEE<E//<//AE<EE/AEEEAE</EAEEEEEEEEEEA/EEE/AEEE///EEEEE/EAEA<<AA6EEEEEAEAAAAA	NH:i:2	HI:i:1	AS:i:96	nM:i:0	NM:i:0	CR:Z:CCGATAGATAACCG	CQ:Z:AA6AAE6EEEAAA/	CB:Z:CCGATAGATAACCG-1	UR:Z:TCGGC	UQ:Z:AA<AA	UB:Z:TCGGC	BC:Z:AGCTTCTC	QT:Z:EEEAAAAA
+
+
+按照第一个的id查，他们的tag区别是 HI:i:1 和	HI:i:2，表示 hit index.
+第5列 MAPQ 确实挺低的。
+$ samtools view -@ 120 /data/rawdata/bmmmc/HealthyControl_1/frozen_bmmc_healthy_donor1_possorted_genome_bam.bam | grep "NB500915:133:HWCNVBGXX:3:12405:2222:12165" 
+NB500915:133:HWCNVBGXX:3:12405:2222:12165	0	1	14188	3	10M1D88M	*	0	0	CACTGAAACCTTTTTGTGGGAGACTATTCCTCCCATCTGCAACAGCTGCCCCTGCTGACTGCCCTTCTCTCCTCCCTCTCATCCCAGAGAAACAGGTC	AAAAAEEEEEEEEEEEEEEEEEEEEEEEEEEEEEAEEEEEEAEEEEEEEAEEAEEEEEEEEEE<EEEEEEEEEEAEEEEA<E</AEEEEAEEAEEEEE	NH:i:2	HI:i:1	AS:i:92	nM:i:0	NM:i:1	CR:Z:GTTATGCTGTTTGG	CQ:Z:AAAAAEAEEEEEEE	CB:Z:GTTATGCTGTTTGG-1	UR:Z:GCTCG	UQ:Z:AAAAA	UB:Z:GCTCG	BC:Z:TAGAGTAA	QT:Z:EEEAAAAA
+
+NB500915:133:HWCNVBGXX:3:12405:2222:12165	272	15	102516884	3	83M1D15M	*	0	0	GACCTGTTTCTCTGGGATGAGAGGGAGGAGAGAAGGGCAGTCAGCAGGGGCAGCTGTTGCAGATGGGAGGAATAGTCTCCCACAAAAAGGTTTCAGTG	EEEEEAEEAEEEEA/<E<AEEEEAEEEEEEEEEE<EEEEEEEEEEAEEAEEEEEEEAEEEEEEAEEEEEEEEEEEEEEEEEEEEEEEEEEEEEAAAAA	NH:i:2	HI:i:2	AS:i:92	nM:i:0	NM:i:1	CR:Z:GTTATGCTGTTTGG	CQ:Z:AAAAAEAEEEEEEE	CB:Z:GTTATGCTGTTTGG-1	UR:Z:GCTCG	UQ:Z:AAAAA	UB:Z:GCTCG	BC:Z:TAGAGTAA	QT:Z:EEEAAAAA
+
+
 
 
 
@@ -1642,7 +1795,118 @@ MAF和VCF类似，也是一个纯文本的格式，由\t分隔的许多列构成
 
 
 ========================================
+生物信息ID大全 | rsid | Ensembl | HGNC | Entrez | Refseq | Uniprot | OMIM
 ----------------------------------------
+1. rsid
+common SNP的ID，一般以rs开头，其实完全可以用坐标代替，那样可读性就很差了。
+
+https://www.ncbi.nlm.nih.gov/snp/
+https://www.ncbi.nlm.nih.gov/snp/rs223337 【案例】
+
+我们来看看一个SNP有哪些基本信息？
+- Position，最基本的，染色体，坐标，可见一个SNP就是一个基因组site
+- annotation：取决于它落到了哪一个区间，可能有多种注释，因为一个genomic的region可以有多种注释
+- Alleles：这个很重要，对于双倍体，大部分只有两个alleles，如果跟疾病有关，那一个就是protective，一个是risk allele。【一个mutation如何才能变为一个SNP？】
+- Frequency：就是一个allele在一个物种里的频率，排第二的就是MAF，MAF太小的GWAS就分析不了了，技术限制
+
+
+
+
+2. Gene ID
+这个标准比较多，有Ensembl ID，HGNC ID，Entrez ID（NCBI），Refseq ID
+
+Ensembl：https://asia.ensembl.org/index.html
+HGNC：https://www.genenames.org/
+Entrez：https://www.ncbi.nlm.nih.gov/gene/672 【案例】
+Refseq：https://www.ncbi.nlm.nih.gov/nuccore/NM_031991.4【所有物种，很少用】
+
+
+
+3.HUGO symbol
+Gene symbol
+这部分极其麻烦，急需统一。 给基因取名字是比较随意的事情，导致一个基因在历史上有很多Aliases [ˈeɪliəs]
+alias[ˈeɪliəs] 
+https://www.genecards.org/cgi-bin/carddisp.pl?gene=TASOR2
+
+在gtf文件里这个基因叫FAM208B，在VEP注释结果里这个基因叫TASOR2，他们的ENSG ID都是ENSG00000108021【无意发现VEP的symbol有一半无法与gtf里的symbol匹配，才发现这个问题】
+
+如果不负责任，简单的remove掉不匹配的，也可以出结果，但会丢失掉很多信息。
+
+接下来我就要想办法，如何用R包来统一不同系统的symbol。
+Multi-symbol checker(https://www.genenames.org/tools/multi-symbol-checker/) 完美解决这个问题【HGNC提供】
+
+接下来把gtf里的Previous symbol导出来，用这个工具就可以得到Approved symbol。
+
+统计得出gtf里的34153个symbol，有11290是在HGNC里找不到名字的，其中1162个是alias，可见gene symbol的历史复杂性，想统一是何其的难。
+
+下载最新的HGNC symbol，以及对应的ENSG ID，https://www.genenames.org/download/custom/。 
+
+
+
+
+
+4. Transcript ID
+isoform
+ENST
+现有的ID都是已知的，由于技术的更新，这部分会飞速更新。
+
+
+
+
+
+5. Protein ID
+Uniprot ID to other ID (ENSG etc.)
+  https://www.uniprot.org/uploadlists/【ID转换】
+  https://www.uniprot.org/uniprot/P09917 【案例】
+
+Uniprot里提供了哪些信息：
+  参与的具体的生化反应
+  涉及到的所有化合物
+  信息太多了，看不过来
+ 
+
+(1)发现：一个 Uniprot ID可能对应多个ENSG ID，但基因名却是一样的。
+  LOX5_HUMAN  ENSG00000012779  ALOX5
+  LOX5_HUMAN  ENSG00000275565  ALOX5
+
+这是为啥？
+
+因为一个蛋白可能是由多个DNA序列产生的，这里就是，
+	ENSG00000012779【This gene maps to 45,869,624-45,941,567 in GRCh37 coordinates.】，
+	ENSG00000275565【This gene maps to 45,916,924-45,988,867 in GRCh37 coordinates.】
+
+而且产生的transcript的名字也不一样。
+
+这里可以明白：一个protein对应一个gene，但一个gene可以对应多个基因组区域，而ENSG ID则可以区别不同区域的同名gene。
+
+ 
+(2) uniprot ID也存在重名的情况，但是很少。【有统一标准】
+E9PEK4_HUMAN    ENSG00000182578
+CSF1R_HUMAN ENSG00000182578
+
+
+
+
+
+6. OMIM ID
+某个基因对应的疾病的信息
+
+https://omim.org/entry/113705
+
+pathology病理学，从病的角度来看一切。
+
+看看这个数据库里有还什么信息：
+	Cytogenetic location，细胞遗传学位置，如：17q21.31  
+	Genomic coordinates
+	Phenotype，疾病的名字
+	历史研究，189篇文献引用，相当于文献综述。
+ 
+会详解这些ID之间的相互转换
+
+
+
+ref:https://www.cnblogs.com/leezx/p/14511763.html
+
 
 
 
