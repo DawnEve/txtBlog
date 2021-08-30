@@ -719,8 +719,127 @@ ref:
 https://blog.csdn.net/xuleisdjn/article/details/79024586
 
 
+
 ========================================
+临时文件夹 /tmp/ 的使用，及生成随机文件名
 ----------------------------------------
+
+1. 遇到一个报错
+(1) 错误: samtools sort 的临时文件夹 -T 不能创建
+
+Error in rule sort_to_bam:
+    jobid: 46      
+    output: map/3.sort.bam 
+    log: map/3.sort.bam.log (check log file(s) for error message)
+    shell:                 
+        samtools sort -@ 2 -O bam -T /tmp/map/3_tmp -o map/3.sort.bam map/3_bwa.sam >map/3.sort.bam.log 2>&1
+        (one of the commands exited with non-zero exit code; note that snakemake uses bash strict mode!)
+$ less map/3.sort.bam.log 说打不开临时文件 /tmp/map/3_tmp_000.bam 类似的，找不到了。
+
+
+难道是两层文件夹不能用？
+$ samtools sort -@ 2 -O bam -T /tmp/map/3_tmp -o tmp_3.sort.bam map/3_bwa.sam
+[E::hts_open_format] Failed to open file /tmp/map/3_tmp.0000.bam
+samtools sort: failed to create temporary file "/tmp/map/3_tmp.0000.bam": No such file or directory
+[E::hts_open_format] Failed to open file /tmp/map/3_tmp.0001.bam
+samtools sort: failed to create temporary file "/tmp/map/3_tmp.0001.bam": No such file or directory
+
+
+
+(2)试试一层文件夹
+$ samtools sort -@ 2 -O bam -T /tmp/map_3_tmp -o tmp_3.sort.bam map/3_bwa.sam
+
+$ ls -lth /tmp/ | head
+total 2.0G
+-rw-rw-r-- 1 wangjl  wangjl  195M Aug 27 10:25 map_3_tmp.0009.bam
+-rw-rw-r-- 1 wangjl  wangjl  195M Aug 27 10:25 map_3_tmp.0008.bam
+-rw-rw-r-- 1 wangjl  wangjl  196M Aug 27 10:23 map_3_tmp.0006.bam
+-rw-rw-r-- 1 wangjl  wangjl  195M Aug 27 10:23 map_3_tmp.0007.bam
+-rw-rw-r-- 1 wangjl  wangjl  197M Aug 27 10:20 map_3_tmp.0004.bam
+-rw-rw-r-- 1 wangjl  wangjl  196M Aug 27 10:20 map_3_tmp.0005.bam
+-rw-rw-r-- 1 wangjl  wangjl  196M Aug 27 10:18 map_3_tmp.0002.bam
+-rw-rw-r-- 1 wangjl  wangjl  197M Aug 27 10:18 map_3_tmp.0003.bam
+-rw-rw-r-- 1 wangjl  wangjl  197M Aug 27 10:15 map_3_tmp.0001.bam
+
+没问题了，说明就是文件夹 /tmp/map/ 不存在。
+该测试表明 sakemake 只能在工作目录创建目录，之外的地方需要自己搞定。
+
+
+
+
+(3) 怎么在 /tmp/ 下创建文件夹呢？
+直接创建文件肯定不行，首先太乱，其次可能会覆盖其他进程的临时文件。
+
+看看其他都是怎么使用的？
+$ ls -lth /tmp/| grep -v "bam$" | head
+total 2.3G
+drwx------ 2 wangjl  wangjl  4.0K Aug 27 09:51 tmpterg0dlwsnakemake-runtime-source-cache
+drwxrwxrwt 2 root    root    4.0K Aug 27 00:09 rstudio-rsession
+drwxr-xr-x 2 wangjl  wangjl  4.0K Aug 26 23:12 hsperfdata_wangjl
+drwx------ 2 wangjl  wangjl  4.0K Aug 14 16:15 Rtmptp5h2l
+drwx------ 2 wangjl  wangjl  4.0K Aug 14 16:09 RtmpwCeDth
+drwx------ 2 wangjl  wangjl  4.0K Aug 14 11:34 ssh-LXkAbrhkbhYb
+
+都是新建 乱码目录，然后在目录中操作。
+$ echo "xx" | md5sum
+102f5037fe6474019fe947b4977bb2a5  -
+
+$ echo "xx" | sha1sum 
+ce3af7760f1289d02bf6a7ad19f3214c4e5c7c2e  -
+
+
+$ echo Sanke_`date |md5sum | cut -c 1-6`
+Sanke_61c202
+
+$ echo Sanke_`date |sha1sum | cut -c 1-6`
+Sanke_89bafe
+
+
+
+
+
+(4) /tmp/ 的文件会自动删除
+https://blog.csdn.net/chao199512/article/details/113920887
+
+每次开机会被自动清空。
+每隔一段时间，会自动清空n天每修改和访问过的文件。
+我没找到哪个文件 //todo
+
+
+1) ## find 了一下36天前的文件删除了
+$ find /tmp/ -type f -atime +10
+
+$ find /tmp/ -type f -atime +1 2>/dev/null 
+/tmp/.X12-lock
+/tmp/.X11-lock
+/tmp/tmpaddon
+/tmp/.X10-lock
+/tmp/hsperfdata_wangjl/11468
+
+$ find /tmp/ -type f -atime +35 2>/dev/null 
+/tmp/.X12-lock
+/tmp/.X11-lock
+/tmp/tmpaddon
+/tmp/.X10-lock
+$ find /tmp/ -type f -atime +36 2>/dev/null
+
+
+
+
+2) 从/var/log/cron 日志中发现，服务器除了调用用户的计划任务外，还会执行系统自己的，比如：
+/etc/cron.d/       3个 anacron  popularity-contest  sysstat
+/etc/cron.daily/   16个
+/etc/cron.hourly/  0个
+/etc/cron.monthly/ 1个 0anacron
+/etc/cron.weekly/  3个 0anacron  man-db  update-notifier-common
+
+
+
+
+
+
+
+
 
 
 

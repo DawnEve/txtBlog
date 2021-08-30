@@ -18,6 +18,7 @@ return array (
       array('C语言基础','c101-base','txt',),
       array('C语言高级话题','c102-adv','txt',),
       array('C语言网络通信','c103-socket','txt',),
+      array('生信中的C','c104-bioInfo','txt',),
       array('C语言100题','c-practise','txt',),
     ),
   ),
