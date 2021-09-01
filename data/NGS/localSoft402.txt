@@ -609,10 +609,9 @@ tar xvzf trim_galore.tar.gz
 
 
 
-3.使用
+3.使用方法
 
-(1)示例
-# 处理双端测序结果
+(1) 双端测序 去接头
 echo " trim_galore cut adapters started at $(date)"
 trim_galore -q 20 --phred33 --stringency 3 --length 20 -e 0.1 \
             --paired $dir/cmp/01raw_data/$fq1 $dir/cmp/01raw_data/$fq2  \
@@ -620,7 +619,19 @@ trim_galore -q 20 --phred33 --stringency 3 --length 20 -e 0.1 \
 echo "trim_galore cut adapters finished at $(date)"
 
 
-# 单端测序结果
+## 实例
+$ id=SRR13730638
+$ trim_galore --quality 20 --phred33 --stringency 3 --length 20 --gzip --fastqc_args "-t 5" --output_dir clean/ --paired raw/${id}_1.fastq raw/${id}_2.fastq
+
+输出文件，注意文件名与单端不一样
+$ ls -lth clean/SRR13730638*gz
+-rw-r--r--. 1 wangjl jinwf 369M Sep  1 18:24 clean/SRR13730638_2_val_2.fq.gz
+-rw-r--r--. 1 wangjl jinwf 332M Sep  1 18:24 clean/SRR13730638_1_val_1.fq.gz
+
+
+
+
+(2) 单端测序 去接头
 $ trim_galore --quality 25 --phred33 --stringency 3 --length 30 --gzip  --fastqc_args "-t 15" --output_dir trim_galore xx.fastq
 
 参数解释(部分参数解释见(2))
@@ -635,9 +646,16 @@ $ trim_galore --help
 -e：允许的错误率
 
 
+实例：
+$ trim_galore --quality 20 --phred33 --stringency 3 --length 20 --gzip --fastqc_args "-t 5" --output_dir /home/wangjl/data/apa/190517R/trim_galore/ /home/wangjl/data/apa/fq_files/bc/c16_ROW01_R2.fastq
+
+输出文件:
+c16_ROW01_R2_trimmed.fq.gz
 
 
-(2) 批量模式
+
+
+(3) 批量模式
 echo "Trim galore reads"
 # ls *.gz | while read id; do echo "Trim ${id}"; trim_galore --quality 25 --phred33 --stringency 3 --length 30 --gzip  --fastqc_args "-t 15" --output_dir trim_galore $id; done
 参数解释
@@ -652,11 +670,20 @@ echo "Trim galore reads"
 #
 
 
+实例: 
+$ cat SRR_Acc_List.txt | head -n 39 | while read id; do echo $id; 
+trim_galore --quality 20 --phred33 --stringency 3 --length 20 --gzip --fastqc_args "-t 5" --output_dir clean/ --paired raw/${id}_1.fastq raw/${id}_2.fastq &
+done;
 
 
-4.质控
+
+
+
+4.质控报告
 $ cd /home/wangjl/data/c1_2019APA/sc/combine/sc_fq/trim/galore
 $ multiqc *fastqc.zip -o /home/wangjl/data/c1_2019APA/sc/combine/sc_fq/
+
+
 
 
 
@@ -1329,6 +1356,104 @@ https://www.cnblogs.com/Dicor/p/4004819.html
 http://www.mamicode.com/info-detail-1163133.html
 http://www.bio-info-trainee.com/727.html
 d:/ STARmanual.pdf
+
+
+
+========================================
+|-- 多线程版 STAR (snakemake 控制并发数)
+----------------------------------------
+
+
+1. 起点是 SRA 下载的人的PE测序文件
+(1) 文件结构
+|-raw/ 从GEO/SRA下载的fastq文件
+
+$ ls raw/ | head -n 2
+SRR13730617_1.fastq
+SRR13730617_2.fastq
+
+$ head SRR_Acc_List.txt 
+SRR13730642
+SRR13730661
+SRR13730617
+
+
+(2) 创建2个文件
+|-config.yaml
+|-map.sf
+
+$ cp SRR_Acc_List.txt config.yaml
+$ sed -i 's/^/ - /' config.yaml
+$ vim config.yaml 
+第1行加上: star_index: /home/wangjl/data/ref/hg19/index/star/
+第2行加上: samples:
+
+
+$ cat map.sf
+configfile: "config.yaml"
+SI=config["samples"]
+rule all:
+    input: "map/tmp/remove_genome.tmp"
+
+rule load_genome:
+	output:"map/tmp/load.tmp"
+	params: index=config["star_index"], out="map/tmp/_load_"
+	log: "map/tmp/load.tmp.log"
+	shell: "touch {output} && \
+		STAR --genomeLoad LoadAndExit \
+		--genomeDir {params.index}  \
+		--outFileNamePrefix  {params.out} >{log} 2>&1"
+
+rule mapping:
+	input: "clean/{sample}_1_val_1.fq.gz", "clean/{sample}_2_val_2.fq.gz", "map/tmp/load.tmp"
+	output: "map/{sample}_Aligned.sortedByCoord.out.bam"
+	params: out="map/{sample}_"
+	log: "map/log/{sample}.star.log"
+	threads: 30
+	shell: "STAR --runThreadN {threads}  \
+		--outSAMtype BAM SortedByCoordinate  \
+		--genomeDir /home/wangjl/data/ref/hg19/index/star/  \
+		--readFilesIn {input[0]} {input[1]} \
+		--readFilesCommand zcat  \
+		--genomeLoad LoadAndKeep  \
+		--limitBAMsortRAM 20000000000  \
+		--outFileNamePrefix {params.out} >{log} 2>&1"
+
+rule remove_genome:
+	input: expand("map/{sample}_Aligned.sortedByCoord.out.bam", sample=SI)
+	output: "map/tmp/remove_genome.tmp"
+	params: index=config["star_index"], out="map/tmp/_remove_"
+	log: "map/tmp/remove_genome.tmp.log"
+	shell: "touch {output} && \
+		STAR --genomeLoad Remove \
+		--genomeDir {params.index}  \
+		--outFileNamePrefix  {params.out} >{log} 2>&1"
+#
+
+(3) 测试运行
+$ snakemake -s map.sf -j 150 -p -n
+
+
+(4) 正式运行
+$ snakemake -s map.sf -j 150 -p 
+## 程序中设定30个cpu核心，外部分配150个cpu核心，也就是一次可以运行 150/30=5个样本。
+## 耗时：~0.5h
+
+查看结果
+$ ls -lht map/*bam |wc
+     40     360    3680
+$ ls map/*bam | head
+map/SRR13730617_Aligned.sortedByCoord.out.bam
+map/SRR13730618_Aligned.sortedByCoord.out.bam
+map/SRR13730619_Aligned.sortedByCoord.out.bam
+
+比对率挺高的：
+map/SRR13730663_Log.final.out:                        Uniquely mapped reads % | 92.88%
+map/SRR13730664_Log.final.out:                        Uniquely mapped reads % | 92.93%
+
+
+
+
 
 
 
