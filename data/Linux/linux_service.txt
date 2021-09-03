@@ -984,6 +984,262 @@ https://www.tightvnc.com/
 
 
 ========================================
+共享文件夹 samba 服务: 可以当 nas 使用
+----------------------------------------
+当然你要在linux(服务端)与windows(客户端)之间互相能ping 通。
+
+
+1. linux 上的操作
+
+(1) 创建目录，作为共享目录
+$ mkdir ~/usb3
+
+或者挂载外部硬件
+$ mkdir /mnt/usb 
+$ mount /dev/sda1 /mnt/usb
+
+
+(2)安装 samba 服务
+$ sudo apt install samba smbclient #Ubuntu
+$ samba --version
+Version 4.7.6-Ubuntu
+
+
+
+$ sudo yum install samba samba-common samba-client cifs-utils #CentOS
+$ samba-regedit --version
+Version 4.10.16
+## 查询安装过的包
+$ rpm -qa | grep samba
+samba-client-4.10.16-15.el7_9.x86_64
+samba-common-libs-4.10.16-15.el7_9.x86_64
+samba-libs-4.10.16-15.el7_9.x86_64
+samba-common-tools-4.10.16-15.el7_9.x86_64
+samba-4.10.16-15.el7_9.x86_64
+samba-client-libs-4.10.16-15.el7_9.x86_64
+samba-common-4.10.16-15.el7_9.noarch
+
+
+添加本地用户
+$ smbpasswd -a wangjl
+输入2次密码。
+重启。
+$ smbd restart
+
+查看用户
+$ sudo pdbedit -L
+wangjl:1012:
+
+
+
+(3)修改配置文件
+$ sudo vim /etc/samba/smb.conf 
+
+默认有一个全局变量
+[global]
+	map to guest = bad user #增加这一行，则允许匿名访问，适合内部访问
+
+最后新增一块，要去掉注释
+[Public]
+	comment=Public Storage   # 浏览时显示的名字
+	path=/home/wangjl/usb3  #挂载的目录
+	read only=no  #只读吗？
+	create mask=777  #可以创建文件
+	directory mask=777 #可以创建文件夹
+	guest ok=yes
+	browseable=yes
+	writable=yes
+	#有人说必须加如下几行，否则不可写
+	;force user = wangjl
+	;valid users = wangjl
+	;write list = wangjl
+
+保存后检查参数
+$ testparm
+
+重启samba服务
+$ sudo systemctl restart smbd.service # for Ubuntu
+
+$ sudo systemctl restart smb # for centOS
+或
+$ sudo service smb status
+$ sudo service nmb status
+
+$ sudo systemctl enable smb
+
+
+
+(4) 授权目录
+$ sudo chmod -R 777 /home/wangjl/usb3/
+drwxrwxrwx  2 wangjl         wangjl         4.0K Sep  2 21:31 usb3
+
+
+
+(5) 查询IP
+$ ifconfig 
+
+
+
+(6) 客户端机器上 查看文件 
+
+在客户端测试
+$ smbclient -L //172.18.5.193     ##没有密码直接回车 匿名登陆
+$ smbclient -L //x.biomooc.com -U wangjl
+
+
+$ smbclient //172.18.5.193/Public
+Enter SAMBA\wangjl's password: 
+Try "help" to get a list of possible commands.
+smb: \> ls
+NT_STATUS_ACCESS_DENIED listing \*  ##拒绝列出来文件名
+//失败，看不到共享文件
+
+## 在 centOS 下，这个很重要: SELinux作怪
+$ sudo setsebool -P samba_export_all_ro on
+$ sudo systemctl restart smb.service
+再试验刚才的命令，可以访问了，像nas一样好用。
+
+smb: \> ls
+  .                                   D        0  Fri Sep  3 10:31:45 2021
+  ..                                  D        0  Fri Sep  3 10:31:45 2021
+  2                                   N        0  Fri Sep  3 09:09:24 2021
+  3                                   N        0  Fri Sep  3 09:09:24 2021
+  4                                   N        0  Fri Sep  3 09:09:24 2021
+  5                                   N        0  Fri Sep  3 09:09:24 2021
+  1                                   N       17  Fri Sep  3 10:31:45 2021
+
+		8782086144 blocks of size 1024. 5943724684 blocks available
+#
+
+
+1)## windows访问 //失败
+win+R打开运行窗口，输入两个反斜线加上samba服务器的地址 \\172.18.5.193\Public
+输入你的用户名和密码即可
+
+
+2)## 挂载（Linux系统之间）
+$ sudo mount -v -t cifs -o username=USERNAME,password=PASSWORD //ServerIP/ShareDIR /LocalDIR
+
+这一句可用: centOS下
+$ sudo mount.cifs //172.18.5.193/Public ~/LocalDIR -o user=wangjl,sec=ntlmssp 
+Password for wangjl@//172.18.5.193/Public:  ******
+
+
+## 在客户端挂载
+在smb下命令与linux不同，为了方便操作我们通常将其挂载后使用
+$ sudo mount //172.18.5.193/Public /home/wangjl/LocalDIR -o username=wangjl,password=123456
+客户端永久挂载 
+vim /etc/fstab
+//172.25.8.11/westos /mnt cifs defaults,username=westos,password=westos 0 0
+
+
+客户端不可写，怎么办？
+在服务端添加root用户，
+$ smbpasswd -a root
+[sudo] password for wangjl: 
+New SMB password:
+Retype new SMB password:
+Added user root.
+
+
+一个客户端不能登陆多个账号，同时最多一个登录。
+$ mount | grep Public
+//172.18.5.193/Public on /home/wangjl/LocalDIR type cifs (rw,relatime,vers=default,cache=strict,username=wangjl,domain=,uid=0,noforceuid,gid=0,noforcegid,addr=172.18.5.193,file_mode=0755,dir_mode=0755,soft,nounix,serverino,mapposix,rsize=1048576,wsize=1048576,echo_interval=60,actimeo=1)
+//172.18.5.193/Public on /home/wangjl/LocalDIR type cifs (rw,relatime,vers=default,cache=strict,username=root,domain=,uid=0,noforceuid,gid=0,noforcegid,addr=172.18.5.193,file_mode=0755,dir_mode=0755,soft,nounix,serverino,mapposix,rsize=1048576,wsize=1048576,echo_interval=60,actimeo=1)
+
+$ sudo umount /home/wangjl/LocalDIR
+在执行一次。
+
+在客户端使用root挂载。
+$ sudo mount //172.18.5.193/Public /home/wangjl/LocalDIR2 -o username=wangjl,password=123456
+$ sudo mount //172.18.5.193/Public /home/wangjl/LocalDIR -o username=root,password=s123456
+
+客户端还是不能写，只能读。
+
+==> 修改目录权限 #chmod 777 /home/wind ; #chmod 777 /home/wind/smbShare; 特别是前面一个做为上层目录权限也需要修改！！！！
+https://blog.csdn.net/u013754317/article/details/53972115
+这个... 有点扯了，我做不到把自己的home目录给可写了。
+
+
+
+
+
+2. 端口
+(1) samba 端口号是多少？ 原来是137,138, 现在是139,445
+$ vim /etc/services
+
+netbios-ns      137/tcp     # NETBIOS Name Service
+netbios-ns      137/udp
+netbios-dgm     138/tcp     # NETBIOS Datagram Service
+netbios-dgm     138/udp
+netbios-ssn     139/tcp     # NETBIOS session service
+netbios-ssn     139/udp
+
+microsoft-ds    445/tcp
+microsoft-ds    445/udp
+
+$ sudo netstat -anop | grep smb
+tcp        0      0 0.0.0.0:139             0.0.0.0:*               LISTEN      95797/smbd           off (0.00/0/0)
+tcp        0      0 0.0.0.0:445             0.0.0.0:*               LISTEN      95797/smbd           off (0.00/0/0)
+tcp6       0      0 :::139                  :::*                    LISTEN      95797/smbd           off (0.00/0/0)
+tcp6       0      0 :::445                  :::*                    LISTEN      95797/smbd           off (0.00/0/0)
+
+
+(2) 打开防火墙一个出口
+我们看到使用了tcp的139和445端口，udp的137和138端口。在防火墙中允许通行：
+在后来的测试中，仅允许tcp协议的139端口通过也能访问到共享。
+
+$ sudo iptables -A INPUT -p tcp --dport 139 -j ACCEPT
+
+
+
+
+ref: 
+https://www.howtoforge.com/how-to-install-samba-server-on-centos-8/
+
+
+
+
+========================================
+----------------------------------------
+
+
+
+
+========================================
+----------------------------------------
+
+
+
+========================================
+----------------------------------------
+
+
+
+
+========================================
+----------------------------------------
+
+
+
+========================================
+----------------------------------------
+
+
+
+
+========================================
+----------------------------------------
+
+
+
+========================================
+----------------------------------------
+
+
+
+
+========================================
 ----------------------------------------
 
 
