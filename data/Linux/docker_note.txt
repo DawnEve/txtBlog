@@ -2362,7 +2362,7 @@ https://blog.csdn.net/kongxx/article/details/97965609
 
 
 ========================================
-容器编排： Kubernetes(k8s) 简介
+容器编排： Kubernetes(k8s) 简介 与 CRI //todo
 ----------------------------------------
 前置知识: Linux和Docker基本使用熟练掌握，一门后端语言 Java or Python.
 
@@ -2372,6 +2372,16 @@ https://blog.csdn.net/kongxx/article/details/97965609
 Kubernetes是一个开源的，用于管理云平台中多个主机上的容器化的应用，Kubernetes的目标是让部署容器化的应用简单并且高效（powerful）,Kubernetes提供了应用部署，规划，更新，维护的一种机制。
 
 Kubernetes一个核心的特点就是能够自主的管理容器来保证云平台中的容器按照用户的期望状态运行着（比如用户想让apache一直运行，用户不需要关心怎么去做，Kubernetes会自动去监控，然后去重启，新建，总之，让apache一直提供服务），管理员可以加载一个微型服务，让规划器来找到合适的位置，同时，Kubernetes也系统提升工具以及人性化方面，让用户能够方便的部署自己的应用（就像canary deployments）。
+
+
+(2) K8s 只能与 CRI 运行时通信。
+K8s 是通过 docker-shim 作为桥接服务，将 CRI 转换为 Docker API，然后与 Dokcer 进行通信的。
+CRI 运行时是啥？我们暂可以简单的将 Ta 理解为与 Docker 同等的存在（另外一个容器容器运行时）。
+	CRI（Container Runtime Interface）是 K8s 定义的一组与容器运行时进行交互的接口，用于将 K8s 平台与特定的容器实现解耦。
+在 K8s 早期的版本中，对于容器环境的支持是通过 hard code 方式直接调用 Docker API 的，后来为了支持更多的容器运行时和更精简的容器运行时，K8s 提出了CRI。
+
+实际对容器的操作最终还是要交给 OCI，CRI 也只是个中转。
+
 
 
 
@@ -2405,7 +2415,64 @@ Kubernetes 以其高效、简便、高水平的可移植性等优势占领了绝
 
 
 ========================================
+理解OCI（Open Container Initiative）及docker的OCI实现
 ----------------------------------------
+1. 今天看到 htop 中有一个 root 运行的 run init 命令。
+搜了一下，貌似与容器有关。
+
+
+(2) runC是一个遵循OCI标准的用来运行容器的命令行工具(CLI Tool)，它也是一个Runtime的实现。尽管你可能对这个概念很陌生，但实际上，你的电脑上的docker底层可能正在使用它。至少在笔者的主机上是这样。
+
+
+$ sudo docker info
+...
+ Runtimes: runc
+ Default Runtime: runc
+ Init Binary: docker-init
+...
+
+(3) runC由Go语言实现。
+
+
+
+
+
+
+2. OCI定义了容器运行时标准，runC是Docker按照开放容器格式标准（OCF, Open Container Format）制定的一种具体实现。
+
+runC是从Docker的libcontainer中迁移而来的，实现了容器启停、资源隔离等功能。Docker默认提供了docker-runc实现，事实上，通过containerd的封装，可以在Docker Daemon启动的时候指定runc的实现。
+
+我们可以通过启动Docker Daemon时增加--add-runtime参数来选择其他的runC 实现。
+
+containerd向上为Docker Daemon提供了gRPC接口，使得Docker Daemon屏蔽下面的结构变化，确保原有接口向下兼容。向下通过containerd-shim结合runC，使得引擎可以独立升级，避免之前Docker Daemon升级会导致所有容器不可用的问题。
+
+Docker一开始就一家独大，并且并不是一种开放的态姿态在做，所以很早之前Google就投资了CoreOS来做竞争的容器--Rocket。那时是三家鼎立：Docker/Rocket/Warden，为了避免惨烈的竞争，大家终于统一意见，决定成立OCI做统一的容器运行时---RunC，OCI成立后加入了大约50家厂商。出于对Docker封闭化商业式发展的担心，OCI商讨出这种方案：以RunC为核心重新构建生态圈，并且通过插件来弱化容器在CaaS生态圈的重要性。
+
+
+
+(2) 官网解释 Open Container Initiative
+https://opencontainers.org/
+该标准是为了
+	- 创建容器格式 image-spec
+	- 运行时格式 runtime-spec
+
+The Open Container Initiative is an open governance structure for the express purpose of creating open industry standards around container formats and runtimes.
+
+Established in June 2015 by Docker and other leaders in the container industry, the OCI currently contains two specifications: the Runtime Specification (runtime-spec) and the Image Specification (image-spec). The Runtime Specification outlines how to run a “filesystem bundle” that is unpacked on disk. At a high-level an OCI implementation would download an OCI Image then unpack that image into an OCI Runtime filesystem bundle. At this point the OCI Runtime Bundle would be run by an OCI Runtime.
+
+
+
+
+
+
+
+
+
+ref:
+探索runC (上) https://segmentfault.com/a/1190000017543294
+探索runC (下) https://blog.csdn.net/weixin_33744141/article/details/88705609
+
+
 
 
 
