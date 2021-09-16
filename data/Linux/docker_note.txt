@@ -1615,6 +1615,49 @@ $ docker run -it     -v /data/:/eMzMyO     --rm     hub.c.163.com/library/node:s
 
 
 
+
+###############
+使用 ubuntu16 虚拟机测试一下：snap 安装的 docker 只能挂载 $HOME 目录。
+$ sudo snap install docker
+
+
+
+$ sudo fdisk -l
+[sudo] password for george: 
+Disk /dev/sda: 50 GiB, 53687091200 bytes, 104857600 sectors
+Units: sectors of 1 * 512 = 512 bytes
+Sector size (logical/physical): 512 bytes / 512 bytes
+I/O size (minimum/optimal): 512 bytes / 512 bytes
+Disklabel type: dos
+Disk identifier: 0x82602f22
+
+Device     Boot     Start       End   Sectors Size Id Type
+/dev/sda1  *         2048 100663295 100661248  48G 83 Linux
+/dev/sda2       100665342 104855551   4190210   2G  5 Extended
+/dev/sda5       100665344 104855551   4190208   2G 82 Linux swap / Solaris
+
+$ df -h
+Filesystem      Size  Used Avail Use% Mounted on
+udev            971M     0  971M   0% /dev
+tmpfs           200M   12M  189M   6% /run
+/dev/sda1        48G  5.4G   40G  12% /
+tmpfs           997M  272K  997M   1% /dev/shm
+tmpfs           5.0M  4.0K  5.0M   1% /run/lock
+tmpfs           997M     0  997M   0% /sys/fs/cgroup
+00              243G  5.5G  237G   3% /media/sf_00
+tmpfs           200M   72K  200M   1% /run/user/1000
+/dev/sr0         56M   56M     0 100% /media/george/VBox_GAs_5.2.8
+
+
+
+
+
+
+
+
+
+
+
 ref:
 不能使用 snap 安装Docker，要用 apt-get 安装 https://github.com/moby/moby/issues/34427
 https://github.com/docker/docker.github.io/issues/4709 跟帖
@@ -1656,7 +1699,7 @@ ed7ee90e50de 9376e "bash"   12 minutes ago Up 12 minutes  0.0.0.0:7000->80/tcp  
 
 (2) 在容器内新建文件路径，现有路径可以直接用
 $ docker exec -it ed7ee90 bash
-# mkdier -p /var/www/html/
+# mkdir -p /var/www/html/
 # exit
 
 (3) 将外部文件拷贝到容器
@@ -1695,7 +1738,7 @@ $ docker cp ed7ee90e50de:/var/www/html/index.html .
 
 
 ========================================
-|-- docker 运行 shell命令
+|-- docker 单行运行 shell命令、指定工作目录
 ----------------------------------------
 1. 如果是简单的一条命令，可以通过在docker run的最后写上命令的方式运行：
 $ docker run -ti --network=host --name mc_controller IMAGE_NAME python3 src/controller.py
@@ -1710,6 +1753,19 @@ $ docker run -ti --network=host --name mc_controller IMAGE_NAME /bin/sh -c  'cd 
 例子:
 在容器中编译java 
 $ docker run -v /home/wangjl/test/cwl_test:/home/wangjl/ openjdk:9.0.1-11-slim bash -c 'cd /home/wangjl/ && javac Hello.java'
+
+
+
+3. 更好的方法是指定工作目录  --workdir=/var/spool/cwl \
+
+$ docker run --rm \
+--volume=/home/wangjl/:/home/tom/:rw \
+--volume=/data/wangjl/test/testCWL/Hello.java:/home/tom/Hello.java:ro \
+--workdir=/home/tom/ \
+openjdk:9.0.1-11-slim \
+javac Hello.java
+
+
 
 
 
@@ -2573,11 +2629,39 @@ ref: https://www.freecodecamp.org/news/where-are-docker-images-stored-docker-con
 把用户添加到docker组
 ----------------------------------------
 1.查看自己是否在docker分组
-$ cat /etc/group | grep docker
+$ cat /etc/group | grep docker # 查找 docker 组，确认其是否存在
 ## docker:x:978:hou,rqfu
 
 
+
 2.添加自己到docker组
+groups # 列出自己的用户组，确认自己在不在 docker 组中
+
+# 如果 docker 组不存在，则添加之：
+sudo groupadd docker
+
+# 将当前用户添加到 docker 组
+sudo gpasswd -a ${USER} docker
+
+# 重启服务
+sudo service docker restart
+systemctl daemon-reload
+
+
+重新登录才能看到组的变动
+$ su wangjl
+
+
+
+# 切换一下用户组（刷新缓存）
+newgrp - docker;
+newgrp - `groups ${USER} | cut -d' ' -f1`; # TODO：必须逐行执行，不知道为什么，批量执行时第二条不会生效
+# 或者，注销并重新登录
+pkill X
+
+
+
+
 http://www.markjour.com/article/docker-no-root.html
 不一定好使。
 
@@ -3058,16 +3142,19 @@ hello, c!
 
 
 ========================================
-singularity 简介
+singularity 简介与安装: for HPC
 ----------------------------------------
 1. 简介
 
 (1).Singularity是劳伦斯伯克利国家实验室专门为大规模、跨节点HPC和DL工作负载而开发的容器化技术。具备轻量级、快速部署、方便迁移等诸多优势，且支持从Docker镜像格式转换为Singularity镜像格式。
 
-官方文档 https://sylabs.io/guides/3.5/user-guide/
+适合不给 root 权限的环境。
+
+官方文档 https://sylabs.io/docs/
+	https://sylabs.io/guides/3.5/user-guide/
 仓库 https://singularity-hub.org/
 代码 https://github.com/hpcng/singularity
-http://getsingularity.com/
+	https://singularity.hpcng.org/
 
 PKU教程: http://hpc.pku.edu.cn/_book/guide/soft_env/Singularity.html
 
@@ -3087,6 +3174,21 @@ Singularity拥有容器技术所包含的大多数优势，例如启动迅速、
 无需运行 daemon 进程：Singularity提供的完全是一个运行时的环境，在不使用时不需要单独的进程，不占用任何资源。不由 daemon 进程代为执行指令，资源限制和权限问题也得以解决。
 
 
+官网说的优点：https://sylabs.io/singularity/
+- A secure, single-file based container format: 一个单文件的镜像格式。
+- Support for data-intensive workloads: 架起了HPC与AI、DL/ML、预测分析的桥梁。
+- Extreme mobility: 使用标准文件和对象复制工具来 转移、共享、分发Singularity 容器。每个Singularity 终端都可以运行该容器。
+- Compatibility: 兼容几乎任何环境
+- Simplicity: 如果可以使用 Linux，就可以使用 Singularity
+- Security: 屏蔽容器内权限提升，使用不可修改的单文件镜像格式来做签名和验证。
+	allowing untrusted users to run untrusted containers in a trusted way.
+- User groups: 
+	https://github.com/sylabs
+	https://groups.google.com/g/singularity-ce
+	https://join.slack.com/t/singularityce/shared_invite/zt-t28zjurl-UnsNlmoggF7DcpMrKSR7Fw
+
+
+
 2) Singularity 的缺点
 上面提到了很多优势，但 singularity 也并非绝对完美的。
 
@@ -3102,12 +3204,11 @@ Singularity拥有容器技术所包含的大多数优势，例如启动迅速、
 
 
 
-2. 安装和使用
-(1) 安装 
+2. 安装 (挺不好安装的)
+(0) 安装 try1 尝试失败
 ## 安装依赖
 $ sudo apt-get install -y build-essential libseccomp-dev pkg-config squashfs-tools cryptsetup
 ## $ sudo yum install -y gcc libuuid-devel squashfs-tools openssl-devel
-
 
 ## Install Golang 安装go (我安装过了)
 export VERSION=1.13 OS=linux ARCH=amd64   
@@ -3117,16 +3218,13 @@ rm -f go$VERSION.$OS-$ARCH.tar.gz
 echo 'export PATH=/usr/local/go/bin:$PATH' >> /etc/profile
 source /etc/profile
 
-
 ## 安装Singularity，这里的安装版本为3.5.2
 $ git clone https://github.com/singularityware/singularity.git
 $ cd singularity
 $ git checkout v3.8.0  #现在的稳定版，查官网 https://sylabs.io/docs/
 
-
 ## ./configure --prefix=/usr/local --sysconfdir=/etc
 $ ./mconfig
-
 $ cd builddir
 $ make  ## 很慢 21:12 --> IO超时
 
@@ -3135,16 +3233,485 @@ go: github.com/AdamKorcz/go-fuzz-headers@v0.0.0-20210319161527-f761c2329661: Get
 安装失败！！ //todo
 
 $ sudo make install
-
 $ cd ../..
 $ rm -rf singularity*
 可以删除刚才下载的安装文件夹了。
+singularity version
+
+
+
+
+(1) try2: 使用虚拟机中的 ubuntu20.04 再次安装
+$ wget https://github.com/sylabs/singularity/releases/download/v3.8.3/singularity-ce-3.8.3.tar.gz
+-rw-rw-r--  1 wangjl wangjl 8.1M Sep  2 01:25 singularity-ce-3.8.3.tar.gz
+
+$ tar zxvf singularity-ce-3.8.3.tar.gz 
+$ cd singularity-ce-3.8.3/
+$ vim README.md 
+安装请看 INSTALL.md
+$ vim INSTALL.md
+
+
+1)安装开发工具和包
+$ sudo apt-get update
+
+$ sudo apt-get install -y build-essential \
+  libseccomp-dev pkg-config squashfs-tools cryptsetup
+
+报错:The following information may help to resolve the situation:
+
+The following packages have unmet dependencies:
+ build-essential : Depends: libc6-dev but it is not going to be installed or
+                            libc-dev
+                   Depends: g++ (>= 4:7.2) but it is not going to be installed
+                   Depends: dpkg-dev (>= 1.17.11) but it is not going to be installed
+ libseccomp-dev : Depends: libseccomp2 (= 2.5.1-1ubuntu1~18.04.1) but 2.5.1-1ubuntu1~20.04.1 is to be installed
+E: Unable to correct problems, you have held broken packages.  ##这是个啥？
+
+虚拟机恢复Ubuntu20.04到出厂设置，使用原版源安装一切正常。
+莫名其妙... 可能是源在同步中？之前的源是tsinghua，现在是默认cn.ubuntu源。
+
+
+2) 安装Go语言 install and configure golang: https://golang.org/doc/install
+$ sudo apt install golang-go
+
+$ which go
+/usr/bin/go
+
+$ go version
+go version go1.13.8 linux/amd64
+
+3) 回去安装
+$ cd singularity-ce-3.8.3/
+$ ./mconfig && \
+  cd ./builddir && \
+  make  ##特别耗时，30min?
+$ sudo make install #也耗时很久
+
+4) 检查版本号
+$ singularity --version
+singularity-ce version 3.8.3
+
+表示安装成功。
+
+
+
+(2) 查看帮助
+$ singularity --version
+singularity-ce version 3.8.3
+
+$ singularity
+$ singularity --help
+Linux container platform optimized for High Performance Computing (HPC) and Enterprise Performance Computing (EPC)
+Usage: singularity [global options...]
+Description:
+  Singularity containers provide an application virtualization layer enabling mobility of compute via both application and environment portability. 
+	Singularity 容器提供了一个应用程序虚拟化层，通过应用程序和环境的可移植性来支持计算的可移植性。
+  With Singularity one is capable of building a root file system that runs on any other Linux system where Singularity is installed.
+	我们可以用Singularity建立一个根文件系统，然后在所有安装Singularity的linux下运行。
+
+Available Commands:
+  build       Build a Singularity image
+  pull        Pull an image from a URI
+  run         Run the user-defined default command within a container
+  inspect     Show metadata for an image
+  exec        Run a command within a container
+  search      Search a Container Library for images
+  sif         Manipulate Singularity Image Format (SIF) images
+For additional help or support, please visit https://www.sylabs.io/docs/
 
 
 
 
 
-$ singularity version
+
+
+
+========================================
+|-- singularity 使用方法和镜像构建
+----------------------------------------
+3. 使用 
+(1) 一个很小的镜像 ubuntu:20.04 | OK
+https://blog.csdn.net/kongxx/article/details/97965609
+
+$ docker pull ubuntu:20.04
+
+
+1) 生成 sif 镜像
+获取预编译镜像 （会在当前目录下下载 ubuntu_<tag>.sif 文件）
+$ singularity pull docker://ubuntu:20.04  #虽然docker下过，还要下载
+
+从 Docker Hub build 镜像
+$ singularity -d build ubuntu.sif docker://ubuntu:20.04 #很多屏的输出，没看出是否下载
+
+从本地缓存生成 镜像
+$ singularity build ubuntu_20.04-v2.sif docker-daemon://ubuntu:20.04
+
+
+从镜像tar文件开始
+$ docker save ubuntu:20.04 -o ubuntu20.04.tar
+-rw------- 1 wangjl wangjl  72M Sep 16 15:15 ubuntu20.04.tar
+
+$ singularity build ubuntu_20.04-v3.sif docker-archive://ubuntu20.04.tar
+
+
+
+
+结果4个文件 大小一样，md5互不一样。
+-rwxr-xr-x 1 wangjl wangjl  27M Sep 16 10:55 ubuntu.sif
+-rwxrwxr-x 1 wangjl wangjl  27M Sep 16 10:53 ubuntu_20.04.sif
+-rwxr-xr-x 1 wangjl wangjl  27M Sep 16 15:10 ubuntu_20.04-v2.sif
+-rwxr-xr-x 1 wangjl wangjl  27M Sep 16 15:16 ubuntu_20.04-v3.sif
+
+
+
+
+
+2) 交互模式运行 singularity shell
+  shell       Run a shell within a container
+
+$ singularity shell ubuntu_20.04.sif
+Singularity> pwd
+/home/wangjl
+Singularity> id
+uid=1000(wangjl) gid=1000(wangjl) groups=1000(wangjl),4(adm),24(cdrom),27(sudo),30(dip),46(plugdev),120(lpadmin),132(lxd),133(sambashare),134(docker)
+
+Singularity> vim ReadMe 
+bash: vim: command not found
+Singularity> ping baidu.com
+bash: ping: command not found
+Singularity> exit
+exit
+
+怎么看着就是宿主机呢？目录是，用户也是。
+宿主的命令ping, vim, 内部没有。
+难道只是虚拟的命令环境，但是文件系统还是宿主机的？如果这样，就特别适合做 java/C的编译了!
+
+
+
+3) 执行一个命令并退出 singularity exec
+  exec        Run a command within a container
+
+$ singularity exec ubuntu.sif bash -c  "pwd && id" 
+/usr/bin/bash: warning: setlocale: LC_ALL: cannot change locale (en_US.UTF-8)
+/home/wangjl
+uid=1000(wangjl) gid=1000(wangjl) groups=1000(wangjl),4(adm),24(cdrom),27(sudo),30(dip),46(plugdev),120(lpadmin),132(lxd),133(sambashare),134(docker)
+$
+
+
+4)运行一个容器 singularity run，感觉和 shell 一样，只不过最后不用放命令了。
+  run         Run the user-defined default command within a container
+
+$ singularity run ubuntu.sif
+bash: warning: setlocale: LC_ALL: cannot change locale (en_US.UTF-8)
+Singularity> pwd
+/home/wangjl
+Singularity> groups
+wangjl adm cdrom sudo dip plugdev lpadmin lxd sambashare docker
+Singularity> exit
+exit
+$ 
+
+
+在内部写一个文件 01.txt
+$ singularity run ubuntu.sif
+bash: warning: setlocale: LC_ALL: cannot change locale (en_US.UTF-8)
+Singularity> echo "line1">01.txt
+Singularity> exit
+exit
+$ cat 01.txt 
+line1
+
+$ ls -lth
+total 184M
+-rw-rw-r-- 1 wangjl wangjl    6 Sep 16 11:11 01.txt
+
+
+5) 后台运行容器实例
+  instance    Manage containers running as services
+
+启动实例
+$ singularity instance start ubuntu.sif test1
+$ singularity instance start ubuntu.sif test2
+
+查看实例：只有IP，没有端口列 (类似于docker ps)
+$ singularity instance list
+INSTANCE NAME    PID      IP    IMAGE
+test1            62541          /home/wangjl/ubuntu.sif
+test2            62581          /home/wangjl/ubuntu.sif
+
+操作实例
+可以通过 shell, exec, run 命令来连到容器中运行命令
+
+使用 shell 命令连入容器
+$ singularity shell instance://test1
+Singularity> cat 01.txt 
+line1
+Singularity> exit
+exit
+
+使用 exec 执行命令
+$ singularity exec instance://test2 cat 01.txt
+line1
+
+停止实例
+$ singularity instance stop test1
+$ singularity instance stop test2
+关闭（并删除）容器，更像是 docker stop + docker rm，所以轻易不要stop，只用 exit 就行了。
+
+
+
+6) 绑定目录 -B 
+在 Singularity 中也可以在 shell, run, instance.start 等命令中通过 “-B” 选项来实现 Docker 中 “-v” 选项提供挂载卷的功能，比如：
+$ singularity shell -B /apps:/apps ubuntu.sif
+
+挂在多个用逗号隔开：  -B /home/tom:/home/tom,/home/tom/dataset:/home/dataset \
+
+
+$ singularity shell --help
+Run a shell within a container
+
+  -B, --bind strings           a user-bind path specification.  
+		spec has the format src[:dest[:opts]], where src and dest are outside and inside paths.  路径内外的映射？
+		If dest is not given, it is set equal to src. 
+		Mount options ('opts') may be specified as 'ro' (read-only) or 'rw' (read/write, which is the default). Multiple bind paths can be given by a comma separated list.
+
+$ singularity shell -B /tmp:/apps ubuntu.sif
+Singularity> ls -lth /apps #虚拟的目录
+total 48K
+drwx------ 2 wangjl wangjl 4.0K Sep 16 11:11 tracker-extract-files.1000
+Singularity> exit
+exit
+
+$ ls -lth /tmp #宿主机的目录
+total 48K
+drwx------ 2 wangjl wangjl 4.0K Sep 16 11:11 tracker-extract-files.1000
+
+
+
+
+7) --fakeroot 啥意思？在容器内有root权限
+The --fakeroot option is available with the following singularity commands:
+shell
+exec
+run
+instance start
+build
+
+$ singularity exec --fakeroot docker://ubuntu:20.04 ls -lth
+
+
+
+
+
+
+
+
+(2) 运行一个试试 mysql 镜像 | ok，不支持端口映射
+https://uh.edu/rcdc/resources/software/Singularity.php
+
+1) Get the docker image and convert it to singularity image,
+$ singularity pull docker://dawneve/mysql  #不好，singularity 没法做端口映射
+INFO:    Converting OCI blobs to SIF format
+INFO:    Starting build...
+Getting image source signatures
+Copying blob d08a2c3112d4 done 
+...
+Writing manifest to image destination
+Storing signatures
+2021/09/16 10:13:20  info unpack layer: sha256:d08a2c3112d431c43e02458a285501d289333380438e760962619c8672bcbe0b
+...
+INFO:    Creating SIF file...
+
+$ ls -lth
+total 131M
+-rwxrwxr-x 1 wangjl wangjl 131M Sep 16 10:17 mysql_latest.sif
+
+
+2) To open an interactive shell inside the container,
+$ singularity shell mysql_latest.sif
+bash: warning: setlocale: LC_ALL: cannot change locale (en_US.UTF-8)
+Singularity> mysql -V
+mysql  Ver 14.14 Distrib 5.7.18, for Linux (x86_64) using  EditLine wrapper
+
+Note: The project directory by default mounts to /mnt instead of /project
+貌似不适合这种带端口映射的情况。
+
+3) To directly execute a command inside your container environment,
+## singularity exec shub://singularityhub/ubuntu cat /etc/os-release
+
+$ pwd 
+/home/wangjl/data/dbFile
+
+$ mkdir -p ${PWD}/mysql/var/lib/mysql ${PWD}/mysql/run/mysqld
+$ singularity instance start --bind ${HOME} \
+    --bind ${PWD}/mysql/var/lib/mysql/:/var/lib/mysql \
+    --bind ${PWD}/mysql/run/mysqld:/run/mysqld \
+    mysql_latest.sif mysql
+## INFO:    instance started successfully
+
+$ singularity instance list
+INSTANCE NAME    PID     IP    IMAGE
+mysql            3115          /home/wangjl/data/dbFile/mysql_latest.sif
+
+
+$ singularity run instance://mysql #报错
+error: database is uninitialized and password option is not specified 
+  You need to specify one of MYSQL_ROOT_PASSWORD, MYSQL_ALLOW_EMPTY_PASSWORD and MYSQL_RANDOM_ROOT_PASSWORD
+这个报错怎么解决？
+docker的-e参数，这里是什么？是 --env 
+$ singularity run --env MYSQL_ROOT_PASSWORD=123456  instance://mysql
+
+
+4) 连接该数据库，并新建库和表
+$ ifconfig #查宿主机的ip
+192.168.2.242
+不支持端口映射，那就是 3306 端口本身了。
+
+$ mysql -h 192.168.2.242 -P 3306 -uroot -p
+mysql> create database wang;
+mysql> use wang;
+Database changed
+
+CREATE TABLE `think_weibo` (
+  `id` int(10) NOT NULL AUTO_INCREMENT,
+  `uid` int(20) NOT NULL,
+  `content` text,
+  `add_time` varchar(30) DEFAULT NULL,
+  `cid` int(10) DEFAULT NULL,
+  `archive` int(10) DEFAULT NULL,
+  PRIMARY KEY (`id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8;
+
+insert into think_weibo values(1,101,"ctx1", "20210901",1, 0),(2,202,"ctx2", "20210902",2, 1);
+
+mysql> select * from think_weibo;
++----+-----+---------+----------+------+---------+
+| id | uid | content | add_time | cid  | archive |
++----+-----+---------+----------+------+---------+
+|  1 | 101 | ctx1    | 20210901 |    1 |       0 |
+|  2 | 202 | ctx2    | 20210902 |    2 |       1 |
++----+-----+---------+----------+------+---------+
+2 rows in set (0.00 sec)
+
+mysql> exit
+Bye
+
+
+查看文件
+$ ls -lth dbFile/mysql/var/lib/mysql/wang
+total 112K
+-rw-r----- 1 wangjl wangjl  96K Sep 16 16:32 think_weibo.ibd
+-rw-r----- 1 wangjl wangjl 8.6K Sep 16 16:29 think_weibo.frm
+-rw-r----- 1 wangjl wangjl   65 Sep 16 16:28 db.opt
+
+
+5) 退出该容器
+$ singularity instance stop mysql
+INFO:    Stopping mysql instance of /home/wangjl/data/dbFile/mysql_latest.sif (PID=3115)
+
+
+
+
+
+
+
+
+
+
+(3) 再试试 java 的镜像 | ok
+#############
+先安装一个 docker 
+$ sudo apt install docker.io
+$ docker --version
+Docker version 20.10.7, build 20.10.7-0ubuntu1~20.04.1
+
+$ sudo groupadd docker #添加docker用户组
+$ sudo gpasswd -a $USER docker #将登陆用户加入到docker用户组中
+Adding user wangjl to group docker
+
+$ newgrp docker #更新用户组
+$ groups 
+
+$ sudo vim /etc/docker/daemon.json 
+{
+  "registry-mirrors": [
+    "http://hub-mirror.c.163.com",
+    "https://registry.cn-hangzhou.aliyuncs.com"
+  ]
+}
+
+$ sudo systemctl daemon-reload #重启守护进程
+$ sudo systemctl restart docker
+
+$ docker login -u dawneve 
+输入密码，登录。
+$ docker pull openjdk:9.0.1-11-slim
+
+$ docker images
+REPOSITORY   TAG             IMAGE ID       CREATED       SIZE
+openjdk      9.0.1-11-slim   5149033ba93d   3 years ago   374MB
+
+$ pwd
+/home/wangjl/test
+
+$ cat Hello.java
+public class Hello { 
+	public static void main(String args[])  {    
+		System.out.println("Hello world, from Java!");  
+	}
+}
+
+$ docker run --rm -v /home/wangjl/test:/test/ openjdk:9.0.1-11-slim bash -c 'cd /test/ && javac Hello.java && java Hello'
+Hello world, from Java!
+#############
+
+
+1) 从本地缓存的镜像构建 sif 文件
+$ singularity build openjava9-v1.sif docker-daemon://openjdk:9.0.1-11-slim
+注意：从原来的docker变成了docker-daemon；必须加tag标签；
+
+报错：是不是也是空间不够？很可能是临时文件夹不够大
+INFO:    Creating SIF file...
+panic: runtime error: invalid memory address or nil pointer dereference
+[signal SIGSEGV: segmentation violation code=0x1 addr=0xa8 pc=0x5631607d5e9a]
+
+
+防止撑爆 /tmp 临时文件夹:
+$ TMPDIR=$PWD singularity build openjava9-v1.sif docker-daemon://openjdk:9.0.1-11-slim
+INFO:    Build complete: openjava9-v1.sif
+
+
+2) 从 tar 文件生成 sif 
+$ docker save openjdk:9.0.1-11-slim -o jdk9.tar
+$ singularity build openjdk9-v2.sif docker-archive://jdk9.tar
+
+生成的文件大小一样，md5不同
+-rwxr-xr-x 1 wangjl wangjl 174M Sep 16 15:40 openjava9-v1.sif
+-rwxr-xr-x 1 wangjl wangjl 174M Sep 16 15:36 openjdk9-v2.sif
+
+编译和运行
+$ singularity run -B /home/wangjl/test:/app/  openjava9-v1.sif bash
+Singularity> cd /app
+Singularity> javac Hello.java
+Singularity> java Hello 
+Hello world, from Java!
+Singularity> exit
+exit
+
+$ ls -lht #注意所有人和组的区别
+total 12K
+-rw-rw-r-- 1 wangjl wangjl 427 Sep 16 15:45 Hello.class #在 Singularity 中生成的
+-rw-r--r-- 1 root   root   427 Sep 16 14:58 Hello.class2 #在docker中生成的，改名2
+
+
+或者执行一行命令
+$ singularity exec -B /home/wangjl/test:/app/ --workdir=/app openjava9-v1.sif bash -c "cd /app && ls -lth"
+/usr/bin/bash: warning: setlocale: LC_ALL: cannot change locale (en_US.UTF-8)
+total 12K
+-rw-rw-r-- 1 wangjl wangjl 427 Sep 16 15:45 Hello.class
+-rw-r--r-- 1 root   root   427 Sep 16 14:58 Hello.class2
+-rw-rw-r-- 1 wangjl wangjl 134 Sep 16 14:57 Hello.java
 
 
 
@@ -3158,8 +3725,202 @@ $ singularity version
 
 
 
+4. 生成 sif 镜像的方法
+
+(1) build可以生成两种不同格式的容器，具体如下。
+- 适用于生产环境使用的压缩只读Singularity Image File (SIF) 格式 (默认)
+- 适用于交互式开发的根目录可写的沙盒 (–sandbox)
 
 
+
+(2) Singularity可以方便地处理Docker镜像
+https://singularity.hpcng.org/user-docs/master/build_a_container.html
+https://blog.csdn.net/weixin_44843824/article/details/119715691
+
+
+方式1：从docker uri开始
+$ singularity pull docker://godlovedc/lolcow # 下载pre-built image，如果没有呢？和下一个一样
+$ singularity build mylolcow_latest.sif docker://godlovedc/lolcow # 下载后再build成镜像
+
+
+方式2：从本地缓存的docker image开始
+假设本地有godlovedc/lolcow镜像
+$ sudo docker images
+REPOSITORY          TAG                 IMAGE ID            CREATED             SIZE
+godlovedc/lolcow    latest              577c1fe8e6d8        16 months ago
+
+$ singularity build lolcow_from_docker_cache.sif docker-daemon://godlovedc/lolcow:latest
+注意: 从原来的docker变成了docker-daemon；
+
+
+
+方式3：从镜像tar文件开始
+首先需要将docker镜像转成tar文件：
+先查看当前的docker镜像
+$ sudo docker images
+REPOSITORY           TAG              IMAGE ID       CREATED        SIZE  
+hello-world          latest           d1165f221234   5 months ago   13.3kB
+
+使用如下命令将hello-world镜像转成tar文件，这里save后面的参数就是IMAGE ID，即上面输出的第三列
+$ sudo docker save d1165f221234 -o hello_world.tar
+这样当前目录下面就出现了hello_world.tar文件。
+
+接着，将该tar文件转成singularity镜像，命令与输出如下：
+$ singularity build hello_world.sif docker-archive://hello_world.tar
+INFO:    Build complete: hello_world.sif
+
+原本的docker://换成了docker-archive://，方式2里面是docker-daemon://；
+这里用的是tar文件，singularity也可以处理tar.gz文件。
+
+
+
+
+(3) 从定义文件构建
+
+1) 定义文件
+$ cat nginx.def
+Bootstrap: docker
+From: nginx
+Includecmd: no
+
+%startscript
+   nginx
+
+执行构建：
+$ sudo singularity build nginx.sif nginx.def #必须使用root权限
+-rwxr-xr-x 1 wangjl wangjl  50M Sep 16 16:54 nginx.sif
+
+
+2)测试 
+$ singularity instance start --writable-tmpfs nginx.sif web 
+$ curl localhost
+curl: (7) Failed to connect to localhost port 80: Connection refused
+#网页不能访问，curl也不行，可能默认的80端口被封了？测试发现，加sudu就好了。
+
+$ singularity instance list
+INSTANCE NAME    PID     IP    IMAGE
+web              3578          /home/wangjl/data/nginx.sif
+$ singularity instance stop web
+
+
+3) 修改配置文件，改端口，再次测试
+查配置文件的位置
+$ singularity shell nginx.sif 
+Singularity> cat /etc/nginx/conf.d/default.conf | grep -i root
+        root   /usr/share/nginx/html;
+Singularity> exit
+exit
+
+
+自定义配置文件：
+$ cat nginx.config 
+server {
+    listen       8008;
+    listen  [::]:8008;
+    server_name  localhost;
+    #access_log  /var/log/nginx/host.access.log  main;
+    location / {
+        root   /usr/share/nginx/html;
+        index  index.html index.htm;
+		
+        # list files
+        autoindex on; 
+        autoindex_exact_size on; 
+        autoindex_localtime on; 
+    }
+}
+
+不加sudo访问不了。可能是网络、端口是系统资源，必须特权用户才能调用。
+$ sudo singularity instance start -B /home/wangjl/data/nginx.config:/etc/nginx/conf.d/default.conf --writable-tmpfs nginx.sif web 
+
+$ sudo singularity instance list
+INSTANCE NAME    PID     IP    IMAGE
+web              4457          /data/wangjl/nginx.sif
+$ sudo singularity instance stop web
+
+
+
+
+
+
+
+
+5. 生信常用的镜像
+(1) 从github 上找
+https://singularityhub.github.io/singularity-hpc/
+
+https://github.com/pscedu/singularity-bowtie2
+https://github.com/pscedu/singularity-samtools
+https://singularityhub.github.io/singularity-hpc/r/biocontainers-samtools/
+
+
+(2) 命令行搜索
+$ singularity search samtools
+Found 15 container images for amd64 matching "samtools":
+
+	library://alesr13/default/samtools_bwa_picard:v0.1
+		Signed by: 6e23de6eac622dd1d96f304af7b50e57f44404e7
+
+	library://btmiller/default/testimg-bowtie2-samtools:latest
+
+	library://daanjg98/rnaseq/samtools:1.11
+
+从搜索结果中选一个靠谱的，建立sif镜像
+$ TMPDIR=$PWD singularity build samtools.sif library://daanjg98/rnaseq/samtools:1.11
+INFO:    Build complete: samtools.sif
+-rwxr-xr-x 1 wangjl wangjl 170M Sep 16 17:43 samtools.sif
+
+
+查看版本号:
+$ singularity exec samtools.sif samtools --version
+samtools 1.11
+Using htslib 1.11
+Copyright (C) 2020 Genome Research Ltd.
+
+据说还能这样执行：
+$ ./samtools.sif samtools --version
+samtools 1.11
+Using htslib 1.11
+Copyright (C) 2020 Genome Research Ltd.
+
+
+拷贝过来一个 bam 文件 
+
+不认识其他目录，只认识 $HOME 目录。
+$ ls /data
+lost+found  wangjl
+
+$ singularity exec samtools.sif bash
+bash: warning: setlocale: LC_ALL: cannot change locale (en_US.UTF-8)
+Singularity> cd /data
+bash: cd: /data: No such file or directory
+Singularity> ls /|grep data
+
+Singularity> cd ~/test
+Singularity> samtools view cgm-90.sort.bam | wc
+  57814  994108 22848219
+Singularity> exit
+exit
+
+
+容器启动时所在的工作目录
+$ singularity exec samtools.sif pwd 
+/home/wangjl
+
+完整运行模式: 要使用完整路径:
+$ singularity exec samtools.sif samtools view ~/test/cgm-90.sort.bam | wc -l #57814
+
+一句话运行
+$ ./samtools.sif samtools view ~/test/cgm-90.sort.bam | wc -l  #57814
+
+
+
+
+
+
+6. 疑难杂症：
+(1) 临时文件夹 /tmp 装不下怎么办？
+$ TMPDIR=$PWD singularity build openjdk9-V2.sif docker-archive://jdk9.tar #能改变临时文件夹位置的命令
 
 
 
@@ -3171,7 +3932,13 @@ $ singularity version
 
 ref:
 http://hpc.pku.edu.cn/_book/guide/soft_env/Singularity.html
-https://blog.csdn.net/kongxx/article/details/97965609
+经典常用命令[推荐] https://blog.csdn.net/kongxx/article/details/97965609
+构建镜像 https://zhuanlan.zhihu.com/p/138806519
+https://biocorecrg.github.io/ELIXIR_containers_nextflow/singularity.html
+
+官方服务文档 https://singularity.hpcng.org/user-docs/master/running_services.html#nginx-hello-world-in-singularity
+
+
 
 
 
