@@ -12,6 +12,9 @@ http://www.imooc.com/video/14623
 
 
 
+
+
+
 ========================================
 docker 权威书籍
 ----------------------------------------
@@ -60,7 +63,27 @@ $ docker run -t -i ubuntu:12.04 /bin/bash
 docker公司提供或建立、验证和支持的。这类镜像可以用一个单词识别，比如 ubuntu
 用户创建的镜像，有创建者的用户名前缀识，比如 training/sinatra 
 
+查询标签
+其实有更简单的v1 API，这个输出信息比较少，结果可以直接肉眼看。
+$ curl -L -s https://registry.hub.docker.com/v1/repositories/biocontainers/vcftools/tags
+[{"layer": "", "name": "0.1.14"}, {"layer": "", "name": "0.1.15"}, {"layer": "", "name": "v0.1.14_cv1"}, {"layer": "", "name": "v0.1.14_cv2"}, {"layer": "", "name": "v0.1.15_cv1"}, {"layer": "", "name": "v0.1.15_cv2"}, {"layer": "", "name": "v0.1.16-1-deb_cv1"}]
+==> chrome 浏览器 F12 console:
+> t2=[...]
+> for(var i=0; i<t2.length; i++){console.log(t2[i].name)}
+结果
+v0.1.16-1-deb_cv1
+v0.1.14_cv2
+v0.1.15_cv2
+v0.1.14_cv1
+v0.1.15_cv1
+0.1.14
+0.1.15
+
+
 (5). 拉取镜像 $ docker pull training/sinatra
+默认是下载 training/sinatra:latest 
+最好是指定标签。
+
 
 (6). 运行镜像 $ docker run -t -i training/sinatra /bin/bash
 root@a8cb6ce02d85:/#
@@ -81,7 +104,23 @@ https://askubuntu.com/questions/977961/unit-docker-service-could-not-be-found
 $ sudo docker ps
 Cannot connect to the Docker daemon at unix:///var/run/docker.sock. Is the docker daemon running?
 
-##
+查2点：
+1)该sock文件是否是docker组？不是的话设置是。
+srw-rw---- 1 root docker 0 Sep 12 23:13 /var/run/docker.sock
+
+2)当前用户是否为docker组？不是的话加进去
+$ id
+uid=1001(wangjl) gid=1001(wangjl) groups=1001(wangjl),1004(docker)
+
+$ sudo groupadd docker #添加docker用户组
+$ sudo gpasswd -a $USER docker #将登陆用户加入到docker用户组中
+Adding user wangjl to group docker
+
+$ newgrp docker #更新用户组
+$ groups #or $ id
+
+
+3) 重启一下服务
 $ sudo snap services
 Service         Startup  Current   Notes
 docker.dockerd  enabled  inactive  -
@@ -92,6 +131,9 @@ Started.
 $ sudo snap services
 Service         Startup  Current  Notes
 docker.dockerd  enabled  active   -
+
+
+
 
 
 
@@ -838,6 +880,16 @@ hub.c.163.com/library/nginx   latest              46102226f2fd        3 months a
 		host模式时容器直接连接主机网卡；
 		bridge模式时，容器虚拟网卡eth0与docker0网桥连接，网桥和主机eth0连；
 
+$ ip addr
+3: docker0: <BROADCAST,MULTICAST,UP,LOWER_UP> mtu 1500 qdisc noqueue state UP group default 
+    link/ether 02:42:e1:d7:48:56 brd ff:ff:ff:ff:ff:ff
+    inet 172.17.0.1/16 brd 172.17.255.255 scope global docker0
+       valid_lft forever preferred_lft forever
+    inet6 fe80::42:e1ff:fed7:4856/64 scope link 
+       valid_lft forever preferred_lft forever
+这是 docker 自己虚拟出来的网卡。
+
+
 (2)查找端口映射的命令参数
 # docker run --help  #参数太多，用port过滤一下
 # docker run --help | grep port
@@ -885,6 +937,24 @@ CONTAINER ID        IMAGE               COMMAND                  CREATED        
 
 
 
+
+(5) 启动一个 tomcat 服务
+$ docker pull tomcat:8.5.41 
+$ docker run -d -p 81:8080 --name tom2 tomcat:8.5.41
+使用浏览器查看，网页正常显示: http://192.168.2.120:81/
+
+查看日志
+$ docker container logs tom2
+## Apache Tomcat/10.0.11
+
+进入容器内部
+$ docker exec -it tom2 bash
+root@8b4b9bb40009:/usr/local/tomcat# 
+# cd webapps/ROOT/
+# mv index.jsp index.jsp2
+# echo 'hello' >index.html
+再看网页 http://192.168.2.120:81/ 显示 hello。
+说明修改生效了。
 
 
 
@@ -1714,6 +1784,8 @@ $ docker cp outer.html ed7ee9:/var/www/html/
 完整命令：docker commit -m 'a new nginx container with outer.html' ed7ee90e50de george/static_web:addOuterFile
 sha256:1222d23b39e9a5fa9b8f7d7ae71
 
+还有参数 -a "auther name"
+
 (5)使用docker images列出所有的容器，可以看到容器first-nginx在其中。
 $ docker images
 REPOSITORY          TAG                 IMAGE ID            CREATED             SIZE
@@ -1812,13 +1884,15 @@ VOLUME ['/data']
 EXPOSE , 暴露哪些端口
 EXPOSE 80 443 
 
-ENTRYPOINT ['executable', 'param1', 'param2']执行命令
+ENTRYPOINT ['executable', 'param1', 'param2']执行命令，不会被覆盖，总是执行。
 ENTRYPOINT ["/usr/sbin/nginx"]
 
-CMD ["param1","param2"]
+CMD ["param1","param2"] 只有最后一个cmd会生效，是启动容器后执行的。会被 docker run 最后跟着的命令覆盖。
 CMD ["start"]
 
-docker创建、启动container时执行的命令，如果设置了ENTRYPOINT，则CMD将作为参数
+docker创建、启动container时执行的命令，如果设置了ENTRYPOINT，则CMD将作为参数？？
+
+
 
 
 
@@ -1826,7 +1900,7 @@ Dockerfile最佳实践
  - 尽量将一些常用不变的指令放到前面
  - CMD和ENTRYPOINT尽量使用json数组方式
 
-通过Dockerfile构建image: docker build csphere/nginx:1.7 .
+通过Dockerfile构建image: $ docker build csphere/nginx:1.7 .
 
 镜像仓库Registry: 镜像从Dockerfile build生成后，需要将镜像推送(push)到镜像仓库。企业内部都需要构建一个私有docker registry，这个registry可以看作二进制的scm，CI/CD也需要围绕registry进行。
 
@@ -1842,8 +1916,11 @@ $ docker push 192.168.1.2/csphere/nginx:1.7
 
 
 
+
+
+
 ========================================
-|-- Dockerfile建立nginx镜像实例( ADD / RUN / EXPOSE )
+|-- Dockerfile建立nginx镜像实例( ADD/COPY, / RUN / EXPOSE )
 ----------------------------------------
 1. 实例1：
 https://dockerbook.com/TheDockerBook_sample.pdf
@@ -1877,6 +1954,9 @@ EXPOSE 80
 指令MAINTAINER指定维护者。
 RUN指令执行一个镜像内部命令，比如安装一个包。
 
+ADD 和 COPY 都是把文件放到新镜像中，
+区别：
+	ADD: 会把压缩包解压。支持来源是url的文件。
 
 
 
@@ -1987,6 +2067,96 @@ $ docker exec -it 8e4c bash
 
 
 
+
+
+
+2. 实例2: 测试 ADD 和 COPY 的功能。
+(1) 测试基础
+$ docker --version
+Docker version 20.10.7, build 20.10.7-0ubuntu1~18.04.1
+
+使用小镜像
+ubuntu       20.04           fb52e22af1b0   2 weeks ago   72.8MB
+
+(2) 造压缩文件
+$ echo "hello, test2" >t2.txt
+$ tar -cf all.tar t2.txt
+$ gzip t2.txt
+
+$ echo "hello, test3" >t3.txt
+$ tar -czf txt.tar.gz *txt
+
+-rw-rw-r-- 1 wangjl wangjl  10K Sep 18 10:26 all.tar
+-rw-rw-r-- 1 wangjl wangjl   40 Sep 18 10:26 t2.txt.gz
+
+-rw-rw-r-- 1 wangjl wangjl  134 Sep 18 10:27 txt.tar.gz
+
+
+(3) 测试 ADD 指令
+$ cat Dockerfile
+FROM ubuntu:20.04
+
+WORKDIR /app
+ADD all.tar /app/
+ADD t2.txt.gz /app/
+ADD txt.tar.gz /app/
+
+生成镜像，镜像名字必须小写
+$ docker build -t "img2:add" .
+
+$ docker images
+REPOSITORY   TAG             IMAGE ID       CREATED          SIZE
+img2         add             be0653dd83c7   4 seconds ago    72.8MB
+
+运行并查看
+$ docker run --rm -it img2:add ls
+t2.txt	t2.txt.gz  t3.txt
+
+只解压tar包。
+如果源文件是个归档文件（压缩文件，比如 .tar, tar.gz文件），则docker会自动帮解压。
+但是.txt.gz文件是不会自动解压的。
+
+
+(4) 测试 COPY 指令
+COPY all.tar /app/
+COPY t2.txt.gz /app/
+COPY txt.tar.gz /app/
+
+$ docker build -t "img2:copy" .
+$ docker run --rm -it img2:copy ls
+all.tar  t2.txt.gz  txt.tar.gz
+
+
+
+(5) 试试下载
+尝试下载百度首页吧:
+$ wget www.baidu.com/index.html -O b1.html
+-rw-rw-r-- 1 wangjl wangjl 2.4K Sep 18 10:13 b1.html
+
+$ cat Dockerfile 
+FROM ubuntu:20.04
+
+WORKDIR /app
+ADD t2.txt.gz /app/
+ADD all.tar /app/
+ADD http://www.baidu.com/index.html B1.html
+
+$ docker build -t "img2:url" .
+$ docker run --rm img2:url ls -lth
+total 312K
+-rw-rw-r-- 1 1000 1000   13 Sep 18 01:52 t2.txt
+-rw-rw-r-- 1 root root   40 Sep 18 01:52 t2.txt.gz
+-rw------- 1 root root 302K Jan  1  1970 B1.html
+
+这个docker下载的文件好大，是wget下载的150倍。
+
+
+
+
+
+
+
+
 ========================================
 |-- 基于tomcat镜像的Jpress展示站点: 使用 COPY 把自定义文件加入到docker镜像中
 ----------------------------------------
@@ -2042,6 +2212,7 @@ Successfully built 1159f08345b2
 REPOSITORY                     TAG                 IMAGE ID            CREATED             SIZE
 <none>                         <none>              1159f08345b2        31 seconds ago      313MB
 dawneve/tomcat                 latest              b226d7ee3462        15 hours ago        292MB
+
 
 (5)重新构建，用-t指定名字（查看帮助 docker build --help）
 # docker build . -t dawneve/jpress:latest
@@ -3105,8 +3276,31 @@ ref:https://www.cnblogs.com/allen2333/p/11645140.html
   ]
 }
 
-(2).然后重启守护进程
+然后重启守护进程
 $ systemctl daemon-reload
+
+
+
+
+(2)阿里云-控制台-容器镜像服务：
+镜像加速器 
+加速器地址 https://cgwjlyc8.mirror.aliyuncs.com
+
+
+配置镜像加速器
+您可以通过修改daemon配置文件/etc/docker/daemon.json来使用加速器
+
+sudo mkdir -p /etc/docker
+sudo tee /etc/docker/daemon.json <<-'EOF'
+{
+  "registry-mirrors": ["https://cgwjlyc8.mirror.aliyuncs.com"]
+}
+EOF
+sudo systemctl daemon-reload
+sudo systemctl restart docker
+
+
+
 
 
 
@@ -3125,17 +3319,41 @@ $ docker pull ubuntu
 
 
 
-(2) 下载一个 gcc 编译器的容器
+
+4. 下载一个 gcc 编译器的镜像
 $ docker pull gcc
-$ docker run gcc gcc --version
+$ docker run --rm gcc gcc --version
 gcc (GCC) 11.2.0
 Copyright (C) 2021 Free Software Foundation, Inc.
 This is free software; see the source for copying conditions.  There is NO
 warranty; not even for MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
 
-$ docker run -v /home/wangjl/test/cwl_test:/home/wangjl/  gcc gcc /home/wangjl/Hello.c -o /home/wangjl/Hello.out
+
+$ cat Hello.c
+#include<stdio.h>
+int main(){
+  printf("hello, c!\n");
+}
+
+
+$ docker run --rm -v /home/wangjl/test/cwl_test:/home/wangjl/  gcc gcc /home/wangjl/Hello.c -o /home/wangjl/Hello.out
 $ ./Hello.out 
 hello, c!
+
+
+(2) 也可以直接一步执行多个shell语句: bash -c "cmd1 && cmd2"
+$ docker run --rm -it ubuntu:20.04 bash -c "cd /etc  && cat hostname"
+c802bd5d2030
+
+$ docker run --rm -v /home/wangjl/test/cwl_test:/app/ --workdir=/app  gcc \
+bash -c "gcc Hello.c -o a.out && ./a.out"
+## hello, c!
+
+-rwxr-xr-x 1 root   root    16K Sep 17 21:51 a.out
+
+
+
+
 
 
 

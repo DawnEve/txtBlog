@@ -132,14 +132,11 @@ http://jingyan.baidu.com/article/2fb0ba40541a5900f2ec5f07.html
 
 # Ubuntu服务器命令行环境下VirtualBox的安装和管理  
 
-http://www.tuicool.com/articles/j6fMfa7
-
-
 1.确认版本号和位数：
 ```
 //version of linux:
 $ cat /etc/issue
-    Ubuntu 15.10 \n \l
+Ubuntu 20.04.3 LTS \n \l
 
 // bits of OS
 $ sudo uname --m
@@ -147,51 +144,160 @@ x86_64
 ```
 
 
-2.下载  
+2.下载与安装 virtualbox
 下载列表：https://www.virtualbox.org/wiki/Linux_Downloads
 
-`$ wget -b http://download.virtualbox.org/virtualbox/5.0.16/virtualbox-5.0_5.0.16-105871~Ubuntu~wily_amd64.deb`
-pid=9097  
+```
+$ wget -b https://download.virtualbox.org/virtualbox/6.1.26/virtualbox-6.1_6.1.26-145957~Ubuntu~eoan_amd64.deb
+-rw-rw-r--  1 wangjl wangjl   87M Jul 29 06:40 virtualbox-6.1_6.1.26-145957~Ubuntu~eoan_amd64.deb
 
-
-3.确保/home所在的分区有足够的空间  
-（因为Virtual Box会在/home下建立一个子目录并用于存放虚拟机配置文件及虚拟硬盘，因此这个目录可能会变得很大！）。
+$ sudo dpkg -i virtualbox-6.1_6.1.26-145957~Ubuntu~eoan_amd64.deb
 安装重启完成后，登录。 
+报错
+dpkg: dependency problems prevent configuration of virtualbox-6.1:
+ virtualbox-6.1 depends on libqt5opengl5 (>= 5.0.2); however:
+  Package libqt5opengl5 is not installed.
+ virtualbox-6.1 depends on libqt5x11extras5 (>= 5.6.0); however:
+  Package libqt5x11extras5 is not installed.
+ virtualbox-6.1 depends on libsdl1.2debian (>= 1.2.11); however:
+  Package libsdl1.2debian is not installed.
+
+E: Unmet dependencies. Try 'apt --fix-broken install' with no packages (or specify a solution).
+$ sudo apt --fix-broken install
+再次安装，正常。
+```
+
+3.下载虚拟机iso系统文件  
+https://mirrorz.org/os/ubuntu
+```
+## https://mirrors.dgut.edu.cn/ubuntu-releases/focal/ubuntu-20.04.3-desktop-amd64.iso #另一个地址？
+$ wget -c  https://mirrors.dgut.edu.cn/ubuntu-releases/20.04.3/ubuntu-20.04.3-desktop-amd64.iso #桌面版
+
+-rw-rw-r-- 1 wangjl wangjl 2.9G Sep 18 16:36 /data/wangjl/soft/ubuntu/ubuntu-20.04.3-desktop-amd64.iso
+```
 
 
-4.共享网卡  
+
+
+
+4.进入vb图形界面操作
+- https://tastethelinux.com/install-virtualbox-on-ubuntu-linux/
+- https://brb.nci.nih.gov/seqtools/installUbuntu.html
+
+(1) 点击 ubuntu 20.04 左上角 activities，输入 vit 点击出现的 vb 图标，打开 vb manager 图形界面。
+(2) 点击 界面右侧 preferences，设定机器文件夹。
+默认是 /home/wangjl/VirtualBox VMs
+改为 /home/wangjl/data/VirtualBox_VMs
+
+(3) 创建新虚拟机，并设置
+界面右侧 new,
+输入名字: ubt20
+内存设置: 2048M
+硬盘设置: 默认 10G;
+
+(4) 安装系统
+点右侧 settings，storage, 选择 IDE -empty，右侧选择 iso系统文件。
+点右侧 start，开始安装系统。
+
+点击 install ubuntu;
+键盘 默认；
+更新与软件：改选最小安装(不需要浏览器/办公/播放器等)，安装时下载更新 保留，不安装第三方软件。
+安装方式：默认 擦除硬盘安装Ubuntu。
+
+时区：上海；
+
+name: 随便写
+computer name: wangVM
+username: wang 
+passwd: 最简单的，三位数。
+然后等待复制文件。 16:57--> 18:43 点击重启按钮。
+
+查看，已经删除 iso 文件了。
+
+(5) 双击启动 虚拟机中的系统。
+回车。等待启动。
+一路选择右上角的 next 跳过这些设置，到桌面。
+右击桌面，选择 打开终端。
+安装基本软件。
+
+$ sudo apt-get install openssh-server net-tools vim
+检查 sshd 进程:
+$ ps -aux | grep sshd
+root        2543  0.0  0.3  12184  6768 ?        Ss   18:51   0:00 sshd: /usr/sbin/sshd -D [listener] 0 of 10-100 startups
+
+
+
+(6) 怎么获取独立ip呢？
+vb 选择settings，network，选择 桥接模式。
+网卡选择 eno1.
+进虚拟机，断网再重连。
+$ ifconfig 
+查看虚拟机的ip地址是: 192.168.2.156
+
+vb所在主机能ping通。
+$ ping 192.168.2.156
+
+
+
+(7) 保存快照
+单机左侧虚拟机，点击三横线，点击snapshot，右侧点击 Take，填写名字 origin0.
+接着就可以随便造了，搞坏了就回到该快照。
+
+
+(8) 安装 docker
+```
+Ubuntu 20.04.3 LTS (GNU/Linux 5.11.0-34-generic x86_64)
+
+$ sudo apt update
+$ sudo apt install docker.io
+$ docker --version
+Docker version 20.10.7, build 20.10.7-0ubuntu1~20.04.1
+
+查看权限
+$ ls -lth /var/run/docker.sock
+srw-rw---- 1 root docker 0 Sep 18 19:07 /var/run/docker.sock
+
+$ sudo gpasswd -a $USER docker #将登陆用户加入到docker用户组中
+$ su wang #重新登陆
+$ groups
+wang adm cdrom sudo dip plugdev lpadmin lxd sambashare docker
+
+
+添加国内镜像源
+$ sudo vim /etc/docker/daemon.json
+{
+  "registry-mirrors": [
+	"https://registry.cn-hangzhou.aliyuncs.com",
+	"https://reg-mirror.qiniu.com/"
+  ]
+}
+sudo systemctl daemon-reload
+sudo systemctl restart docker
+
+下载镜像 
+$ docker pull nginx
+$ docker run --rm -d -p 80:80 nginx
+
+$ docker ps
+CONTAINER ID   IMAGE     COMMAND                  CREATED         STATUS         PORTS                               NAMES
+0dc849217611   nginx     "/docker-entrypoint.…"   6 seconds ago   Up 3 seconds   0.0.0.0:80->80/tcp, :::80->80/tcp   confident_lumiere
+```
+访问主机 ip，能看到nginx欢迎页 http://192.168.2.156/
+
+
+
+<br>
+<br>
+<br>
+<br>
+<br>
+<br>
+一下是命令行操作虚拟机，没尝试成功。
+<hr>
+
+## 共享网卡  
 然后用如下命令安装bridge-utils。这个工具可将一块物理网卡变成一个虚拟网桥，以便使多台虚拟机共享这同一个网卡。
 `sudo apt-get install bridge-utils`
-
-5.安装虚拟机  
-`$ sudo dpkg -i virtualbox-5.0_5.0.16-105971~Ubuntu~wily_amd64.deb`
-
-
-6.下载虚拟机系统文件  
-ubuntu-14.04.4-server-amd64.iso          18-Feb-2016 00:10  579M  Server install image for 64-bit PC (AMD64) computers (standard download)
-`
-$ sudo wget -b  http://releases.ubuntu.com/trusty/ubuntu-14.04.4-server-amd64.iso
-`
-
-http://releases.ubuntu.com/trusty/
-http://releases.ubuntu.com/precise/
-
-Desktop CD
-The desktop cd allows you to try Ubuntu without changing your computer at all, and at your option to install it permanently later. This type of cd is what most people will want to use. You will need at least 384MiB of RAM to install from this cd.
-桌面版CD：可以不更改系统尝试ubuntu，后续决定是否永久安装。这是大多数人想试用的。从这个CD安装至少需要384MB的内存。
-
-Server install CD
-The server install cd allows you to install Ubuntu permanently on a computer for use as a server. It will not install a graphical user interface.
-服务器版CD：永久安装到作为服务器的电脑上。不带图形化界面。
-
-
-
-> 然后切换普通用户，进入该用户的家目录 `$cd` 。
-
-
-
-
-
 
 
 ## 新建虚拟机  
