@@ -52,7 +52,7 @@ return array (
     2 => 
     array (
 	  array('notepad++','npp', 'html'),
-	  array('sublime编辑器','sublime001', 'html'),
+	  array('sublime编辑器txt','sublime_text', 'txt'),
 	  array('vs code','vsCode', 'txt'),
 	  array('Typora','Typora', 'md'),
 	  array('phpStorm','phpStorm001', 'md'),
