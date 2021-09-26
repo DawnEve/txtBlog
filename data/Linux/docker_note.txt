@@ -1743,14 +1743,6 @@ https://github.com/docker/docker.github.io/issues/13503 又开了一个帖
 
 
 
-========================================
-|-- docker不同容器间的通信 //todo
-----------------------------------------
-https://blog.csdn.net/lao_pei/article/details/79157712
-https://blog.csdn.net/wucong60/article/details/83757813
-
-
-
 
 
 ========================================
@@ -2347,6 +2339,204 @@ Deleted: sha256:edb24adf0dd2c4d9c056c62cd38ab89951c0c12a0b5c0cc53ee4f4324d8997e1
 
 
 
+
+========================================
+docker不同容器间的通信 //todo
+----------------------------------------
+https://blog.csdn.net/lao_pei/article/details/79157712
+https://blog.csdn.net/wucong60/article/details/83757813
+
+
+
+
+
+========================================
+|-- docker 版的php: --link下容器间的通信 (现在不提倡使用)
+----------------------------------------
+https://www.runoob.com/docker/docker-install-php.html
+
+不提倡使用文档: https://docs.docker.com/network/links/
+The --link flag is a legacy feature of Docker. It may eventually be removed. Unless you absolutely need to continue using it, we recommend that you use user-defined networks to facilitate communication between two containers instead of using --link.
+建议使用用户自定义网络来实现容器之间的通信。
+--link 特有的功能是共享环境变量。但是也有替代途径：
+
+
+1. 下载php镜像 
+$ docker search php
+NAME                           DESCRIPTION                                     STARS     OFFICIAL   AUTOMATED
+php                            While designed for web development, the PHP …   6167      [OK]       
+phpmyadmin/phpmyadmin          A web interface for MySQL and MariaDB.          1137                 [OK]
+
+搜标签
+$ curl -L -s https://registry.hub.docker.com/v1/repositories/php/tags > tmp
+查了一下本地版本: 5.6.33
+
+$ docker pull php:5.6-fpm #大版本
+$ docker pull php:5.6.33-fpm #或这个
+php          5.6.33-fpm   aaf299648ff3   3 years ago   367MB
+
+
+(2) 找说明书，写的不清楚
+https://hub.docker.com/
+https://hub.docker.com/_/php
+
+$ docker run -p 80:80 --rm -it  php:5.6.33-fpm bash
+root@6b7f9515ae3a:/var/www/html# pwd
+/var/www/html
+root@6b7f9515ae3a:/var/www/html# which php
+/usr/local/bin/php
+
+一句话打印版本号:
+$ docker run -p 80:80 --rm -it  php:5.6.33-fpm php -version
+PHP 5.6.33 (cli) (built: Feb 17 2018 03:00:42) 
+Copyright (c) 1997-2016 The PHP Group
+Zend Engine v2.6.0, Copyright (c) 1998-2016 Zend Technologies
+
+
+单行执行指定php脚本
+$ cat a.php
+<?php
+echo "hello, from php\n";
+
+$ docker run -p 80:80 --rm -it -v ~/:/var/www/html/  php:5.6.33-fpm php a.php
+hello, from php
+
+
+
+
+
+
+(3) 启动 php docker:
+$ mkdir -p ~/nginx/www
+$ docker run --name  myphp-fpm -v ~/nginx/www:/www  -d php:5.6.33-fpm
+
+参数解释：
+--name myphp-fpm : 将容器命名为 myphp-fpm。
+-v ~/nginx/www:/www : 将宿主机中的 ~/nginx/www 挂载到容器的 /www
+
+$ docker ps -a
+CONTAINER ID   IMAGE            COMMAND                  CREATED          STATUS          PORTS      NAMES
+a98cb5ebbe61   php:5.6.33-fpm   "docker-php-entrypoi…"   58 seconds ago   Up 56 seconds   9000/tcp   myphp-fpm
+默认使用的是9000端口。
+
+
+(4) 创建 ~/nginx/conf/conf.d 目录：
+
+$ mkdir -p ~/nginx/conf/conf.d 
+在该目录下添加 ~/nginx/conf/conf.d/test-php.conf 文件，内容如下：
+
+server {
+    listen       80;
+    server_name  localhost;
+
+    location / {
+        root   /usr/share/nginx/html;
+        index  index.html index.htm index.php;
+    }
+
+    error_page   500 502 503 504  /50x.html;
+    location = /50x.html {
+        root   /usr/share/nginx/html;
+    }
+
+    location ~ \.php$ {
+        fastcgi_pass   php:9000;
+        fastcgi_index  index.php;
+        fastcgi_param  SCRIPT_FILENAME  /www/$fastcgi_script_name;
+        include        fastcgi_params;
+    }
+}
+
+解释：
+php:9000: 表示 php-fpm 服务的 URL，下面我们会具体说明。
+/www/: 是 myphp-fpm 中 php 文件的存储路径，映射到本地的 ~/nginx/www 目录。
+
+
+
+
+(5) 启动 nginx
+查版本号
+$ docker run --rm -it  nginx nginx -version
+nginx version: nginx/1.21.3
+
+
+$ docker run --name test2-php-nginx -p 8083:80 -d \
+    -v ~/nginx/www:/usr/share/nginx/html:ro \
+    -v ~/nginx/conf/conf.d:/etc/nginx/conf.d:ro \
+    --link myphp-fpm:php \
+    nginx
+
+参数解释：
+-p 8083:80: 端口映射，把 nginx 中的 80 映射到本地的 8083 端口。
+~/nginx/www: 是本地 html 文件的存储目录，/usr/share/nginx/html 是容器内 html 文件的存储目录。
+~/nginx/conf/conf.d: 是本地 nginx 配置文件的存储目录，/etc/nginx/conf.d 是容器内 nginx 配置文件的存储目录。
+
+--link myphp-fpm:php: 把 myphp-fpm 的网络并入 nginx，并通过修改 nginx 的 /etc/hosts，把域名 php 映射成 127.0.0.1，让 nginx 通过 php:9000 访问 php-fpm。
+// todo 这个不懂
+
+
+#######
+--link <name or id>:alias
+其中，name和id是源容器的name和id，alias是源容器在link下的别名。
+--link list                      Add link to another container
+
+探究一下怎么实现的：
+进入nginx容器
+$ docker exec -it test2-php-nginx /bin/bash
+root@f178011c167d:/# env | grep -i php     
+PHP_NAME=/test2-php-nginx/php
+PHP_PORT_9000_TCP_ADDR=172.17.0.2
+PHP_ENV_PHP_CFLAGS=-fstack-protector-strong -fpic -fpie -O2
+PHP_PORT_9000_TCP_PROTO=tcp
+PHP_ENV_GPG_KEYS=0BD78B5F97500D450838F95DFE857D9A90D90EC1 6E4F6AB321FDC07F2C332E3AC2BF0BC433CFC8B3
+PHP_PORT_9000_TCP=tcp://172.17.0.2:9000
+PHP_ENV_PHP_MD5=
+PHP_ENV_PHP_VERSION=5.6.33
+PHP_ENV_PHP_SHA256=9004995fdf55f111cd9020e8b8aff975df3d8d4191776c601a46988c375f3553
+PHP_ENV_PHP_URL=https://secure.php.net/get/php-5.6.33.tar.xz/from/this/mirror
+PHP_ENV_PHP_EXTRA_CONFIGURE_ARGS=--enable-fpm --with-fpm-user=www-data --with-fpm-group=www-data
+PHP_PORT_9000_TCP_PORT=9000
+PHP_ENV_PHP_INI_DIR=/usr/local/etc/php
+PHP_ENV_PHP_LDFLAGS=-Wl,-O1 -Wl,--hash-style=both -pie
+PHP_ENV_PHPIZE_DEPS=autoconf 		dpkg-dev 		file 		g++ 		gcc 		libc-dev 		make 		pkg-config 	   re2c
+PHP_ENV_PHP_ASC_URL=https://secure.php.net/get/php-5.6.33.tar.xz.asc/from/this/mirror
+PHP_PORT=tcp://172.17.0.2:9000
+PHP_ENV_PHP_CPPFLAGS=-fstack-protector-strong -fpic -fpie -O2
+
+
+可见，确实有名为 PHP_NAME=/test2-php-nginx/php 的环境变量存在。
+
+
+
+
+(6) 接下来我们在 ~/nginx/www 目录下创建 index.php，代码如下：
+
+<?php
+echo phpinfo();
+?>
+
+
+(7) 查看
+$ docker ps
+CONTAINER ID   IMAGE            COMMAND                  CREATED         STATUS         PORTS                                   NAMES
+f178011c167d   nginx            "/docker-entrypoint.…"   2 minutes ago   Up 2 minutes   0.0.0.0:8083->80/tcp, :::8083->80/tcp   test2-php-nginx
+a98cb5ebbe61   php:5.6.33-fpm   "docker-php-entrypoi…"   6 minutes ago   Up 6 minutes   9000/tcp                                myphp-fpm
+
+浏览器打开 http://宿主机ip:8083/index.php，显示 php版本详细信息。
+
+$ tree nginx/
+nginx/
+├── conf #放配置文件
+│   └── conf.d
+│       └── test-php.conf
+└── www #放网页文件
+    ├── index2.php
+    └── index.php
+
+
+
+
+
 ========================================
 进一步学习docker
 ----------------------------------------
@@ -2393,6 +2583,10 @@ Go to Managing Data in Containers.
 	- [Docker on Twitter](https://twitter.com/docker)
 	- Get [Docker help](https://stackoverflow.com/search?q=docker) on StackOverflow
 	- [Docker.com](https://www.docker.com/)
+
+
+
+
 
 
 

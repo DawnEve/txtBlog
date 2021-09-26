@@ -286,13 +286,71 @@ CONTAINER ID   IMAGE     COMMAND                  CREATED         STATUS        
 
 
 
+## 挂载硬盘
+虚拟机关机。
+右侧settings - storage - SATA - ADD Hard disc.
+create - 创建一个 30G 的硬盘，choose。
+
+双击启动虚拟机；
+分区、格式化、挂载硬盘
+$ df -h | grep sd
+/dev/sda5       9.3G  6.6G  2.3G  75% /
+/dev/sda1       511M  4.0K  511M   1% /boot/efi
+
+$ sudo fdisk -l
+Disk /dev/sdb: 30 GiB, 32212254720 bytes, 62914560 sectors
+Disk model: VBOX HARDDISK   
+Units: sectors of 1 * 512 = 512 bytes
+Sector size (logical/physical): 512 bytes / 512 bytes
+I/O size (minimum/optimal): 512 bytes / 512 bytes
+
+2) 分区
+$ sudo fdisk /dev/sdb
+m 查看帮助
+n add a new partition
+p   primary (0 primary, 0 extended, 4 free)
+1
+回车再回车 就要一个分区。
+w   write table to disk and exit
+
+3)用 ext4格式对/dev/sdb1进入格式化
+$ sudo mkfs.ext4 /dev/sdb1
+
+4)创建新的挂载点
+$ sudo mkdir /data
+
+5)将新磁盘分区挂载到 /data 目录下
+$ sudo mount -t ext4 /dev/sdb1 /data  #后两个参数分别是硬件和挂载点  
+
+查看挂载
+$ df -h
+可以看到新加的硬盘：
+/dev/sdb1        30G   45M   28G   1% /data
+
+开机自动挂载
+修改文件 
+$ sudo vim /etc/fstab
+在最后一行加入：
+/dev/sdb1 /data ext4 errors=remount-ro 0 1
+
+6) 添加快捷方式
+$ sudo mkdir /data/wang
+$ sudo chown wang:wang /data/wang
+$ ln -s /data/wang/ data
+
+
+保存虚拟机镜像。以后就可以从这里初始化了。
+
+
+
 <br>
 <br>
 <br>
 <br>
 <br>
 <br>
-一下是命令行操作虚拟机，没尝试成功。
+
+## **以下是命令行操作虚拟机，没尝试 **
 <hr>
 
 ## 共享网卡  

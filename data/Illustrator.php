@@ -30,6 +30,7 @@ return array (
     2 => array (
       array('路径专题','Illustrator102','txt'),
       array('选择与形状','Illustrator201','html'),
+      array('SCI 绘图标准与方法','sci_pics','txt'),
     ),
   ),
 
