@@ -4618,7 +4618,230 @@ ref:
 
 
 ========================================
+使用nsenter进入docker容器的命名空间
 ----------------------------------------
+1. 背景和作用
+docker exec 是进入容器内部。
+nsenter 是一个可以用来进入到目标程序所在 namespace 中运行命令的工具，一般可以用于在容器外 debug 容器中运行的程序。
+
+一个最典型的用途就是进入容器的网络命令空间。
+容器一般比较简化，没有网络调试工具，比如说ip address，ping，telnet，ss，tcpdump等等命令，可以使用 nsenter 进入容器所在命名空间，使用宿主机的命令进行调试。
+
+此外，nsenter也可以进入mnt, uts, ipc, pid, user命令空间，以及指定根目录和工作目录。
+
+
+(2) 安装
+util-linux 是一个开放源码的软件包，是一个对任何 Linux 系统的基本工具套件。含有一些标准 Unix 工具，如 login。
+util-linux 软件包包含许多工具。其中比较重要的是加载、卸载、格式化、分区和管理硬盘驱动器，打开 tty 端口和得到内核消息。
+
+$ sudo yum install -y util-linux
+
+
+我忘了ubuntu是怎么安装的了，版本
+$ nsenter --version
+nsenter from util-linux 2.34
+
+
+
+
+
+2. 使用
+
+$ docker images
+REPOSITORY   TAG       IMAGE ID       CREATED       SIZE
+ubuntu       latest    fb52e22af1b0   3 weeks ago   72.8MB
+
+$ docker run --rm -it -d ubuntu bash
+2e7529
+
+$ docker run --rm -it -d ubuntu bash
+cc1ff
+
+
+(1) 查看帮助
+$ nsenter --help
+Usage:
+ nsenter [options] [<program> [<argument>...]]
+Run a program with namespaces of other processes.
+
+Options:
+ -a, --all              enter all namespaces
+ -t, --target <pid>     target process to get namespaces from
+ -m, --mount[=<file>]   enter mount namespace
+ -u, --uts[=<file>]     enter UTS namespace (hostname etc)
+ -i, --ipc[=<file>]     enter System V IPC namespace
+ -n, --net[=<file>]     enter network namespace
+ -p, --pid[=<file>]     enter pid namespace
+ -C, --cgroup[=<file>]  enter cgroup namespace
+ -U, --user[=<file>]    enter user namespace
+ -S, --setuid <uid>     set uid in entered namespace
+ -G, --setgid <gid>     set gid in entered namespace
+     --preserve-credentials do not touch uids or gids
+ -r, --root[=<dir>]     set the root directory
+ -w, --wd[=<dir>]       set the working directory
+ -F, --no-fork          do not fork before exec'ing <program>
+ -Z, --follow-context   set SELinux context according to --target PID
+
+ -h, --help             display this help
+ -V, --version          display version
+
+
+(2) 简单实例
+在使用nsenter命令之前需要获取到docker容器的进程，然后再使用nsenter工具进去到docker容器中
+每一个容器都有.State.Pid，所以这个命令除了容器的id需要我们根据docker ps -a去查找，其他的全部为固定的格式
+
+$ docker inspect -f {{.State.Pid}} 容器名或者容器id 
+
+比如: 
+$ docker inspect -f {{.State.Pid}} 2e7529
+24226
+
+$ ps -aux | grep 24226
+root       24226  0.0  0.1   4116  3360 pts/0    Ss+  20:39   0:00 bash
+
+输入该命令便进入到容器中
+$ nsenter --target 上面查到的进程id --mount --uts --ipc --net --pid 
+解释nsenter指令中进程id之后的参数的含义： 
+-mount参数是进去到mount namespace中  （文件系统）
+-uts参数是进入到uts namespace中  （主机名与域名）
+-ipc参数是进入到System V IPC namaspace中  （信号量、消息队列和共享内容）
+-net参数是进入到network namespace中   （网络设备、网络栈、端口）
+-pid参数是进入到pid namespace中    （进程编号）
+-user参数是进入到user namespace中 （用户和用户组）
+
+$ sudo nsenter --target 24226 --mount --uts --ipc --net --pid 
+root@2e7529203bbb:/# ls /data
+ls: cannot access '/data': No such file or directory
+root@2e7529203bbb:/# exit
+logout
+$ ls /data
+lost+found  wang
+
+说明在容器内部无法访问 /data 目录。
+
+进入进程的命名空间了，就可以愉快的抓包了。 how?
+
+
+
+
+(3) docker隔离应用应用涉及到的六大名称空间
+1)、pid 命名空间(进程ID)
+不同用户的进程就是通过 pid 命名空间隔离开的，且不同命名空间中可以有相同 pid。所有的 LXC 进程在 Docker 中的父进程为 Docker 进程，每个 LXC 进程具有不同的命名空间。同时由于允许嵌套，因此可以很方便的实现嵌套的 Docker 容器。
+
+2)、net 命名空间(网络)
+有了 pid 命名空间，每个命名空间中的 pid 能够相互隔离，但是网络端口还是共享 host 的端口。网络隔离是通过 net 命名空间实现的， 每个 net 命名空间有独立的 网络设备，IP 地址，路由表，/proc/net 目录。这样每个容器的网络就能隔离开来。Docker 默认采用 veth 的方式，将容器中的虚拟网卡同 host 上的一 个Docker 网桥 docker0 连接在一起。
+
+3)、ipc 命名空间(进程间通信)
+容器中进程交互还是采用了 Linux 常见的进程间交互方法(interprocess communication - IPC)， 包括信号量、消息队列和共享内存等。然而同 VM 不同的是，容器的进程间交互实际上还是 host 上具有相同 pid 命名空间中的进程间交互，因此需要在 IPC 资源申请时加入命名空间信息，每个 IPC 资源有一个唯一的 32 位 id。
+
+4)、mnt 命名空间(挂载文件系统)
+类似 chroot，将一个进程放到一个特定的目录执行。mnt 命名空间允许不同命名空间的进程看到的文件结构不同，这样每个命名空间 中的进程所看到的文件目录就被隔离开了。同 chroot 不同，每个命名空间中的容器在 /proc/mounts 的信息只包含所在命名空间的 mount point。
+
+5)、UTS 命名空间(主机名/域名)
+UTS("UNIX Time-sharing System") 命名空间允许每个容器拥有独立的 hostname 和 domain name， 使其在网络上可以被视作一个独立的节点而非 主机上的一个进程。
+
+6)、user 命名空间(用户)
+每个容器可以有不同的用户和组 id， 也就是说可以在容器内用容器内部的用户执行程序而非主机上的用户。
+
+
+
+
+
+(4) 查看docker的连接
+由于使用DOCKER的时候，ESTABLISHED连接不会出现在netstat中，在运行中的docker容器中列出打开的套接字的方法 ,查找docker的进程号 ：
+
+$ docker inspect -f'{{.State.Pid}}' <containerid>  
+$ docker inspect -f'{{.State.Pid}}' 2e75 
+24226
+
+查看连接： 
+$ sudo nsenter -t <pid> -n netstat | grep ESTABLISHED 
+$ sudo nsenter -t 24226 -n netstat | grep ESTABLISHED 
+Active Internet connections (w/o servers)
+Proto Recv-Q Send-Q Local Address           Foreign Address         State      
+Active UNIX domain sockets (w/o servers)
+Proto RefCnt Flags       Type       State         I-Node   Path
+
+
+
+只进入网络命名空间，这样可以利用主机上的命令来测试
+可以看到，在之前测试时，容器内是没有ip 这个命令的，现在只挂网络命名空间后，就可以通过主机上的ip命令执行了。而执行的结果是容器内的。
+
+$ sudo nsenter -t 24226 -n ifconfig 
+eth0: flags=4163<UP,BROADCAST,RUNNING,MULTICAST>  mtu 1500
+        inet 172.17.0.3  netmask 255.255.0.0  broadcast 172.17.255.255
+        ether 02:42:ac:11:00:03  txqueuelen 0  (Ethernet)
+        RX packets 43  bytes 4702 (4.7 KB)
+        RX errors 0  dropped 0  overruns 0  frame 0
+        TX packets 0  bytes 0 (0.0 B)
+        TX errors 0  dropped 0 overruns 0  carrier 0  collisions 0
+
+lo: flags=73<UP,LOOPBACK,RUNNING>  mtu 65536
+        inet 127.0.0.1  netmask 255.0.0.0
+        loop  txqueuelen 1000  (Local Loopback)
+        RX packets 0  bytes 0 (0.0 B)
+        RX errors 0  dropped 0  overruns 0  frame 0
+        TX packets 0  bytes 0 (0.0 B)
+        TX errors 0  dropped 0 overruns 0  carrier 0  collisions 0
+
+$ sudo nsenter -t 24226 -n ip a
+1: lo: <LOOPBACK,UP,LOWER_UP> mtu 65536 qdisc noqueue state UNKNOWN group default qlen 1000
+    link/loopback 00:00:00:00:00:00 brd 00:00:00:00:00:00
+    inet 127.0.0.1/8 scope host lo
+       valid_lft forever preferred_lft forever
+6: eth0@if7: <BROADCAST,MULTICAST,UP,LOWER_UP> mtu 1500 qdisc noqueue state UP group default 
+    link/ether 02:42:ac:11:00:03 brd ff:ff:ff:ff:ff:ff link-netnsid 0
+    inet 172.17.0.3/16 brd 172.17.255.255 scope global eth0
+       valid_lft forever preferred_lft forever
+
+
+$ sudo nsenter -t 24226 -n ifconfig
+eth0: flags=4163<UP,BROADCAST,RUNNING,MULTICAST>  mtu 1500
+        inet 172.17.0.3  netmask 255.255.0.0  broadcast 172.17.255.255
+        ether 02:42:ac:11:00:03  txqueuelen 0  (Ethernet)
+...
+
+
+
+
+
+(5) Linux的每个进程都具有命名空间，可以在/proc/PID/ns目录中看到命名空间的文件描述符。
+
+$ sudo ls -lth /proc/24226/ns
+total 0
+lrwxrwxrwx 1 root root 0 Sep 26 21:39 cgroup -> 'cgroup:[4026531835]'
+lrwxrwxrwx 1 root root 0 Sep 26 21:39 pid_for_children -> 'pid:[4026532396]'
+lrwxrwxrwx 1 root root 0 Sep 26 21:39 time -> 'time:[4026531834]'
+lrwxrwxrwx 1 root root 0 Sep 26 21:39 time_for_children -> 'time:[4026531834]'
+lrwxrwxrwx 1 root root 0 Sep 26 21:39 user -> 'user:[4026531837]'
+lrwxrwxrwx 1 root root 0 Sep 26 20:42 mnt -> 'mnt:[4026532393]'
+lrwxrwxrwx 1 root root 0 Sep 26 20:42 pid -> 'pid:[4026532396]'
+lrwxrwxrwx 1 root root 0 Sep 26 20:42 uts -> 'uts:[4026532394]'
+lrwxrwxrwx 1 root root 0 Sep 26 20:41 ipc -> 'ipc:[4026532395]'
+lrwxrwxrwx 1 root root 0 Sep 26 20:39 net -> 'net:[4026532398]'
+
+
+
+
+显示父pid
+$ ps -ef | head
+UID          PID    PPID  C STIME TTY          TIME CMD
+root           1       0  0 Sep24 ?        00:00:06 /sbin/init splash
+root           2       0  0 Sep24 ?        00:00:00 [kthreadd]
+
+
+
+
+
+
+
+
+
+ref:
+http://www.huilog.com/?p=1145#more-1145
+https://www.junmajinlong.com/virtual/namespace/ns_overview/
+https://tencentcloudcontainerteam.github.io/tke-handbook/tke-skill/using-nat-gateway-visit-internet.html
+
 
 
 

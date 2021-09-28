@@ -37,6 +37,7 @@
 		
 		//计算机技术类============================后端资料类
 		$links_Back=array(
+			array('https://www.junmajinlong.com/','Linux/Mysql/Perl'),
 			array('http://mingxinglai.com/','Linux命令博客','赖明星，网易/腾讯db工程师(厦门大学数据库实验室林子雨老师的学生http://dblab.xmu.edu.cn/)'),
 			array("http://www.zsythink.net/archives/tag/awk/",'linux/awk等','运维 朱双印个人日志'),
 			//array('http://www.imeixue.cn/','每学网'),// 韩顺平的作品？ 打不开了

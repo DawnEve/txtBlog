@@ -17,21 +17,28 @@ install.packages(packageurl, repos=NULL, type="source")
 
 
 ========================================
-R 的常用设置代码
+R 的常用设置代码：R tips 
 ----------------------------------------
-options(stringsAsFactors = FALSE)
+1.
+options(stringsAsFactors = FALSE) #防止字符列自动转为factor
 
 
+2. 工作目录
+最好使用 .Rpro 文件，避免使用 setwd() 语句。
 setwd("/data/wangjl/scScripts/")
 getwd()
 
 
-
+3. 新建输出文件夹
 dir.create("backup/b2/") #CellTalk/
 
 outputRoot=paste0( getwd(), "/backup/b2/") 
 outputRoot
 
+
+4. 如何使library包时的信息不显示
+# 禁用library的显示在批量跑Rscripts时很有用，便于直观显示错误，前提是已经做好了环境冲突测试。 
+suppressMessages(library(...))
 
 
 
@@ -3224,20 +3231,102 @@ $ docker run -t -p 5000:8004 opencpu/rstudio
 
 
 ========================================
-|-- 直接能用的 Seurat 容器
+直接能用的 Seurat 容器: satijalab/seurat:4.0.3
 ----------------------------------------
-1. 位置
+0. 测试
+(1)下载位置
 https://satijalab.org/seurat/articles/install.html
 https://hub.docker.com/r/satijalab/seurat
 
 $ docker pull satijalab/seurat:4.0.0
 
-
-2. 启动 
+(2)启动 
 $ docker run -d -p 5000:8787 satijalab/seurat:4.0.0 bash 
-
 只能在黑窗口下使用，不知道怎么用Rstudio。
 
+(3) 有2个思路
+- 在这个 seurat 镜像中安装一个 rstudio。
+- 在 rstudio 镜像中安装 seurat 包。貌似这个更容易实现。
+
+
+
+
+
+1. 参考 Seurat 官网 install 目录下最后几行。
+We provide docker images for Seurat via dockerhub.
+rstudio 专栏: https://environments.rstudio.com/docker
+
+
+(1)To pull the latest image from the command line:
+docker pull satijalab/seurat:latest
+
+查看可用标签
+https://hub.docker.com/r/satijalab/seurat
+最新式 4.0.3
+$ docker pull satijalab/seurat:4.0.3
+
+$ docker images
+REPOSITORY                   TAG             IMAGE ID       CREATED        SIZE
+satijalab/seurat             4.0.3           8852687a5c21   3 months ago   3.61GB
+
+2) 如果拉取失败，只能让其他人拉取后打包发过来，再导入。
+$ docker save -o seurat_4.0.3.tar satijalab/seurat:4.0.3
+另一台导入主机
+$ docker load &lt; seurat_4.0.3.tar
+
+
+(2)To use as a base image in a new Dockerfile:
+FROM satijalab/seurat:latest
+
+
+
+
+
+2. 运行 
+
+(1) 运行
+要保证端口没被占用: -p 20180:80
+保证文件夹挂载合理: /home/wangjl/data/dockerHome/
+
+$ docker run -it -d \
+--mount type=bind,source=/home/wangjl/data/dockerHome/,target=/work/ \
+--workdir=/work/ \
+-p 20180:80 \
+satijalab/seurat:4.0.3 bash
+
+为了防止停止时数据被删除，最好不适用--rm参数。
+
+就是个黑窗口。$ R 打开R。
+
+
+(2)貌似没有 Rstudio，安装进去？
+$ docker exec -it 071a bash
+# apt-get update
+# apt-get install gdebi-core
+# wget https://download2.rstudio.org/server/bionic/amd64/rstudio-server-1.4.1717-amd64.deb
+# gdebi rstudio-server-1.4.1717-amd64.deb
+
+## 检查效果
+# service rstudio-server restart
+没有效果，搞不定。
+可能是没有export 端口?
+
+
+2)不过里面的包可以搞出来
+容器内部
+# ls /usr/local/lib/R/site-library/ |wc
+    219     219    1850
+
+容器外
+$ mkdir /data/rawdata/R4.1_pkgs
+$ docker cp 36db:/usr/local/lib/R/site-library/ /data/rawdata/R4.1_pkgs/
+
+这些包大概有1G
+$ du -sh /data/rawdata/R4.1_pkgs/site-library/
+1.1G	/data/rawdata/R4.1_pkgs/site-library/
+
+复制完包，这个容器就可以关闭/删除了。
+$ docker stop 071a
 
 
 
@@ -3245,6 +3334,245 @@ $ docker run -d -p 5000:8787 satijalab/seurat:4.0.0 bash
 
 
 
+
+
+
+3. 尝试从头建立镜像
+(1) 文件准备
+- 拉基础镜像 satijalab/seurat:4.0.3
+- 准备配置文件
+- 下载 rstudio 安装文件
+
+$ cat Dockerfile 
+FROM satijalab/seurat:4.0.3
+RUN apt-get update && apt-get install gdebi-core -y
+# ADD rstudio-server-1.4.1717-amd64.deb /home/
+# RUN cd /home && gdebi rstudio-server-1.4.1717-amd64.deb && rm rstudio-server-1.4.1717-amd64.deb
+EXPOSE 8787
+CMD ["bash"]
+
+(2) 开始构建
+由于 gdebi 命令后需要输入 y，不知道怎么实现，只好采用注释掉，进容器安装后，采用 commit 提交修改。
+
+$ docker build -t r1 ./
+
+
+(3) 安装rstudio
+$ docker run --rm -it -v /home/wangjl/data/dockerHome:/home/work --workdir=/home/work/ r1 bash
+root@906918b93347:/home/work# gdebi rstudio-server-1.4.1717-amd64.deb
+y
+
+(4) 新建用户
+# usr=rstudio
+# useradd -s /bin/bash -d /home/${usr} -m ${usr}
+# passwd rstudio #密码是123456
+加入sudo
+# echo "rstudio ALL=(ALL:ALL) ALL" >> /etc/sudoers
+
+
+(5) 提交修改 
+$ docker ps # 查看容器id
+把该容器提交为新镜像
+$ docker commit -m 'Seurat4.0.3+Rstudio' 002 r2
+r2                       latest              0f9887056dfc        4 seconds ago       4.53GB
+
+(6) 加上可见意义的标签
+$ docker tag r2 dawneve/seurat:4.0.3a
+
+dawneve/seurat           4.0.3a              0f9887056dfc        7 minutes ago       4.53GB
+
+小结：以上过程还能怎么优化？
+
+
+
+
+
+
+
+
+4. 启动容器，加上文件映射
+$ docker run --rm -it -d -p 20180:8787 \
+--mount type=bind,source=/home/wangjl/data/dockerHome/,target=/home/rstudio/data/ \
+--workdir=/home/rstudio/ \
+dawneve/seurat:4.0.3a
+
+进入容器内部
+$ docker exec -it 208 bash
+
+重启rstudio
+# service rstudio-server restart
+# exit
+exit
+
+
+浏览器登陆
+http://172.18.5.193:20180/
+用户 rstudio
+密码 123456
+
+注意：
+- 要先设置宿主机文件夹 /home/wangjl/data/dockerHome/ other可写。
+- 容器内仅 /home/rstudio/data/ 数据会保留，其他数据都会随着容器的停止而被删除。
+
+
+
+
+
+
+
+========================================
+|-- 在 rstudio 镜像中安装 seurat 包
+----------------------------------------
+宿主机是一个 centOS7，硬件较强。
+
+1. 换个思路，从Rstudio 基础镜像，安装 Seurat包
+https://hub.docker.com/r/rocker/rstudio/tags?page=1&ordering=last_updated
+https://github.com/rocker-org/rocker-versioned2/issues
+
+
+(1) 最新版是 4.1.1
+$ docker pull rocker/rstudio:4.1.1
+
+$ docker images
+REPOSITORY               TAG                 IMAGE ID            CREATED             SIZE
+rocker/rstudio           4.1.1               1878e29db52f        13 days ago         1.93GB
+
+
+(2) 精简测试 - 到复杂参数
+$ docker run --rm -it -e PASSWORD=yourpasswordhere -p 20219:8787 rocker/rstudio:4.1.1
+
+警告：一次只能运行一个容器！否则浏览器无法登陆！https://github.com/rocker-org/rocker-versioned2/issues/193
+关闭容器: 
+docker stop xxx
+其中容器编号通过 docker ps 查看。
+
+
+打开浏览器 http://172.18.5.193:20219
+用户名: rstudio
+密码: yourpasswordhere
+
+2)
+-e DISABLE_AUTH=true \ 加上这一句就不用输入密码了，不过不安全。
+加上-d参数，启动后，后台运行。
+$ docker run --rm -it -e DISABLE_AUTH=true -p 20219:8787 rocker/rstudio:4.1.1
+
+
+3) --mount 文件夹映射
+$ docker run --rm -it -p 20219:8787 \
+--mount type=bind,source=/home/wangjl/data/dockerHome/,target=/home/rstudio/ \
+-e DISABLE_AUTH=true rocker/rstudio:4.1.1
+
+报错：
+[rsession-rstudio] ERROR system error 13 (Permission denied) [path: /home/rstudio/.config/rstudio, target-dir: ]
+
+
+
+
+3)更多参数
+--workdir 指定工作目录
+
+$ docker run --rm -it -p 20219:8787 \
+--mount type=bind,source=/home/wangjl/data/dockerHome/,target=/home/rstudio/ \
+-e PASSWORD=yourpasswordhere rocker/rstudio:4.1.1
+
+
+浏览器登录报错：
+Could not connect to the R session on RStudio Server.
+Unable to connect to service (1)
+
+命令行报错
+28 Sep 2021 01:53:50 [rsession-rstudio] ERROR system error 13 (Permission denied) [path: /home/rstudio/.local/share/rstudio, target-dir: ]; OCCURRED AT rstudio::core::Error rstudio::core::FilePath::createDirectory(const string&) const src/cpp/shared_core/FilePath.cpp:812; LOGGED FROM: int main(int, char* const*) src/cpp/session/SessionMain.cpp:1980
+
+据说，这个错误的原因是 selinux 是开着的：
+$ sestatus
+https://community.rstudio.com/t/rserver-1692-error-system-error-13-permission-denied/46972/10
+关掉并重启服务器即可。
+这是共用的，不可能重启。
+
+临时方式
+$ getenforce
+Enforcing
+$ sudo setenforce 0
+$ getenforce
+Permissive
+
+找到原因了，不能完全覆盖掉 /home/rstudio/ 目录。
+恢复seLinux。
+$ sudo setenforce 1
+$ getenforce
+Enforcing
+
+
+(4) 完整命令
+$ docker run --rm -it -p 20181:8787 \
+--mount type=bind,source=/data/rawdata/R4.1_pkgs/site-library/,target=/usr/local/lib/R/site-library/ \
+--mount type=bind,source=/home/wangjl/data/dockerHome/,target=/home/rstudio/data/ \
+--workdir=/home/rstudio/ \
+-e PASSWORD=123 rocker/rstudio:4.1.1
+
+
+还需要进入容器，安装几个包。
+$ docker exec -it xxx bash
+# apt update
+# apt install libxml2 -y
+# apt install libglpk-dev -y #比较大
+## 可以载入 Seurat 了。
+# apt install libxt-dev -y #解决一个warning
+
+把该容器提交为新镜像
+$ docker commit -m 'Rstudio with Seurat4.0.3' 21d dawneve/seurat:4.0.3
+sha256:8966
+
+$ docker images
+REPOSITORY               TAG                 IMAGE ID            CREATED             SIZE
+dawneve/seurat           4.0.3               8966150e1cd9        18 seconds ago      2.1GB
+
+
+(4) 使用该新镜像，启动容器 
+$ docker run --rm -it -d -p 20180:8787 \
+--mount type=bind,source=/data/rawdata/R4.1_pkgs/site-library/,target=/usr/local/lib/R/site-library/ \
+--mount type=bind,source=/home/wangjl/data/dockerHome/,target=/home/rstudio/data/ \
+--workdir=/home/rstudio/ \
+-e PASSWORD=yourpasswordhere dawneve/seurat:4.0.3b
+
+注意2点:
+- 不能覆盖掉 /home/rstudio/ 文件夹，因为很多缓存文件在里面。
+- 要在容器外，对可写文件夹设置可写操作 $ chmod 777 dockerHome/
+
+
+打开浏览器 http://172.18.5.193:20180/
+用户名: rstudio
+密码: yourpasswordhere
+-e DISABLE_AUTH=true \ 加上这一句就不用输入密码了，不过不安全。
+
+
+
+
+
+
+
+2. 推送镜像到 docker hub.
+
+$ docker images
+REPOSITORY               TAG                 IMAGE ID            CREATED             SIZE
+dawneve/seurat           4.0.3a              0f9887056dfc        12 minutes ago      4.53GB
+dawneve/seurat           4.0.3b              7b5fc23f2fd7        2 hours ago         2.1GB
+
+$ docker login -u dawneve
+Password: 
+WARNING! Your password will be stored unencrypted in /home/wangjl/.docker/config.json.
+Configure a credential helper to remove this warning. See
+https://docs.docker.com/engine/reference/commandline/login/#credentials-store
+
+Login Succeeded
+
+
+到网页版新建repo:
+https://hub.docker.com/repository/docker/dawneve/seurat
+https://hub.docker.com/u/dawneve
+
+$ docker push dawneve/seurat:4.0.3a
+$ docker push dawneve/seurat:4.0.3b
 
 
 
