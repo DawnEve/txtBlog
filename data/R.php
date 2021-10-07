@@ -41,7 +41,7 @@ return array (
       array('ggplot2绘图教程','ggplot2','txt'),
       array('ggplot2绘图demo','ggplot2_demo','txt'),
 	  
-      array('可视化R包','R32-visual-pkgs','txt'),
+      array('可视化R包 /最佳实践','R32-visual-pkgs','txt'),
     ),
   ),
 
