@@ -984,12 +984,26 @@ https://www.tightvnc.com/
 
 
 ========================================
-共享文件夹 samba 服务: 可以当 nas 使用
+共享文件夹 samba 服务: win 和 linux 共享文件 (可以当 nas 使用)
 ----------------------------------------
+1. 介绍
+(1) 使用场景：
+- samba 用于 win 和 linux 之间文件共享。
+- 以及两台 linux 之间文件共享。 当然，linux之间文件共享更好的解决方案是 nfs。
+
+(2) 工作模式: C/S 模式。
 当然你要在linux(服务端)与windows(客户端)之间互相能ping 通。
 
+(3) 官网
+https://www.samba.org/
+Samba is the standard Windows interoperability suite of programs for Linux and Unix.
+Samba是用于Linux和Unix的标准Windows互操作性程序套件。
 
-1. linux 上的操作
+
+
+
+2. linux 服务端的操作
+服务端是虚拟机 vm: Ubuntu 20.04.3 LTS (GNU/Linux 5.11.0-34-generic x86_64)
 
 (1) 创建目录，作为共享目录
 $ mkdir ~/usb3
@@ -1002,10 +1016,11 @@ $ mount /dev/sda1 /mnt/usb
 (2)安装 samba 服务
 $ sudo apt install samba smbclient #Ubuntu
 $ samba --version
-Version 4.7.6-Ubuntu
+Version 4.11.6-Ubuntu
+$ apt list | grep samba #查看相关包
 
 
-
+## for CentOS
 $ sudo yum install samba samba-common samba-client cifs-utils #CentOS
 $ samba-regedit --version
 Version 4.10.16
@@ -1020,39 +1035,55 @@ samba-client-libs-4.10.16-15.el7_9.x86_64
 samba-common-4.10.16-15.el7_9.noarch
 
 
-添加本地用户
-$ smbpasswd -a wangjl
+
+
+(3) 添加本地用户为samba用户名
+
+tips: 必须是本地用户名，同时必须添加为 samba用户名。
+
+$ sudo smbpasswd -a wang
 输入2次密码。
 重启。
-$ smbd restart
+$ sudo smbd restart
 
 查看用户
 $ sudo pdbedit -L
-wangjl:1012:
+wang:1000:Wang Junliang
+
+删除用户
+smbpasswd -x   用户名
 
 
 
-(3)修改配置文件
+(4) 修改配置文件，指定要共享的文件夹
 $ sudo vim /etc/samba/smb.conf 
 
 默认有一个全局变量
 [global]
 	map to guest = bad user #增加这一行，则允许匿名访问，适合内部访问
 
-最后新增一块，要去掉注释
+最后新增一块，要去掉每行的注释
 [Public]
-	comment=Public Storage   # 浏览时显示的名字
-	path=/home/wangjl/usb3  #挂载的目录
-	read only=no  #只读吗？
-	create mask=777  #可以创建文件
-	directory mask=777 #可以创建文件夹
+	comment=Public Storage
+	path=/home/wang/usb3
+	read only=no
+	create mask=0755
+	directory mask=0755
+	force create mode = 0644
+	force directory mode = 0755
 	guest ok=yes
 	browseable=yes
 	writable=yes
+	available = yes
+	public = yes
 	#有人说必须加如下几行，否则不可写
-	;force user = wangjl
-	;valid users = wangjl
-	;write list = wangjl
+	force user = wang
+	valid users = wang
+	write list = wang
+
+注释: 
+comment=Public Storage   # 浏览时显示的名字
+
 
 保存后检查参数
 $ testparm
@@ -1062,103 +1093,204 @@ $ sudo systemctl restart smbd.service # for Ubuntu
 
 $ sudo systemctl restart smb # for centOS
 或
-$ sudo service smb status
-$ sudo service nmb status
+$ sudo service smbd status
+$ sudo service nmbd status
 
-$ sudo systemctl enable smb
-
-
-
-(4) 授权目录
-$ sudo chmod -R 777 /home/wangjl/usb3/
-drwxrwxrwx  2 wangjl         wangjl         4.0K Sep  2 21:31 usb3
+$ sudo systemctl enable smbd
 
 
 
-(5) 查询IP
-$ ifconfig 
+(5) 授权目录权限
+$ sudo chmod -R 777 /home/wang/usb3/
+drwxrwxrwx 2 wang wang 4.0K Sep 27 15:05 usb3
+
+
+(6) 查询IP
+$ ifconfig  #192.168.2.156
 
 
 
-(6) 客户端机器上 查看文件 
-
-在客户端测试
-$ smbclient -L //172.18.5.193     ##没有密码直接回车 匿名登陆
-$ smbclient -L //x.biomooc.com -U wangjl
 
 
-$ smbclient //172.18.5.193/Public
-Enter SAMBA\wangjl's password: 
+
+
+3. 客户端机器上 查看文件 
+
+(1) 在客户端测试 sudo apt-get install smbclient 
+
+$ smbclient -L //192.168.2.156     ##没有密码直接回车 匿名登陆
+
+$ smbclient -L //192.168.2.156 -U wang
+Enter WORKGROUP\wang's password: 
+
+	Sharename       Type      Comment
+	---------       ----      -------
+	print$          Disk      Printer Drivers
+	Public          Disk      Public Storage
+	IPC$            IPC       IPC Service (wangVM server (Samba, Ubuntu))
+SMB1 disabled -- no workgroup available
+
+
+==>报错：session setup failed: NT_STATUS_LOGON_FAILURE
+## 本地测试没问题
+$ smbclient -L //127.0.0.1/Public -U jimmy
+换另一台主机
+$ smbclient -L //192.168.2.156/Public -U jimmy
+发现：小键盘莫名其妙的不识别！使用顶部数字键即可。
+
+
+
+(2) 临时查看文件
+$ smbclient //192.168.2.156/Public -U wang
+Enter WORKGROUP\wang's password: 
 Try "help" to get a list of possible commands.
 smb: \> ls
-NT_STATUS_ACCESS_DENIED listing \*  ##拒绝列出来文件名
-//失败，看不到共享文件
+  .                                   D        0  Mon Sep 27 15:08:51 2021
+  ..                                  D        0  Mon Sep 27 15:08:51 2021
+  a.txt                               N       10  Mon Sep 27 15:08:37 2021
+  b                                   N       10  Mon Sep 27 15:08:51 2021
 
-## 在 centOS 下，这个很重要: SELinux作怪
+		9736500 blocks of size 1024. 1728328 blocks available
+smb: \> exit
+
+
+
+
+## for centOS: SELinux 作怪
 $ sudo setsebool -P samba_export_all_ro on
 $ sudo systemctl restart smb.service
-再试验刚才的命令，可以访问了，像nas一样好用。
-
-smb: \> ls
-  .                                   D        0  Fri Sep  3 10:31:45 2021
-  ..                                  D        0  Fri Sep  3 10:31:45 2021
-  2                                   N        0  Fri Sep  3 09:09:24 2021
-  3                                   N        0  Fri Sep  3 09:09:24 2021
-  4                                   N        0  Fri Sep  3 09:09:24 2021
-  5                                   N        0  Fri Sep  3 09:09:24 2021
-  1                                   N       17  Fri Sep  3 10:31:45 2021
-
-		8782086144 blocks of size 1024. 5943724684 blocks available
-#
 
 
-1)## windows访问 //失败
-win+R打开运行窗口，输入两个反斜线加上samba服务器的地址 \\172.18.5.193\Public
-输入你的用户名和密码即可
 
 
-2)## 挂载（Linux系统之间）
-$ sudo mount -v -t cifs -o username=USERNAME,password=PASSWORD //ServerIP/ShareDIR /LocalDIR
+(3) 在windows访问客户端挂载访问
 
-这一句可用: centOS下
+win+R打开运行窗口，输入两个反斜线加上samba服务器的地址 \\192.168.2.156\Public
+没让输入用户名和密码，部分可写：可以新建并修改，但原来的文件是只读的。 //todo
+
+打开 我的电脑，顶部 添加一个网络位置
+输入  \\192.168.2.156\Public
+名字 随便写，比如 sambaOnVM
+
+然后这个网络位置就固定到我的电脑了。
+
+在windows下创建文件，到Linux下看看吧！
+在Linux的共享目录下创建文件，在windows下看看吧！
+
+
+
+
+(4) Linux 客户端挂载，像nas一样好用。
+1) 安装 cifs 
+$ sudo apt install cifs-utils
+$ ls -lth /sbin/mount.*
+
+2) 挂载
+$ sudo mount -v -t cifs -o username=wang,password=123456,uid=1001,gid=1001,rw //192.168.2.156/Public ~/LocalDIR
+mount.cifs kernel mount options: ip=192.168.2.156,unc=\\192.168.2.156\Public,uid=1001,gid=1001,user=wang,pass=********
+
+警告：1001替换成你在Ubuntu上的数字UID和GID，否则挂载后的共享文件夹所有者是root，就是只读！
+　　可用下面命令找出你的数字uid: $ id <用户名>
+
+## for centOS7 //没测试过
 $ sudo mount.cifs //172.18.5.193/Public ~/LocalDIR -o user=wangjl,sec=ntlmssp 
-Password for wangjl@//172.18.5.193/Public:  ******
 
 
-## 在客户端挂载
-在smb下命令与linux不同，为了方便操作我们通常将其挂载后使用
-$ sudo mount //172.18.5.193/Public /home/wangjl/LocalDIR -o username=wangjl,password=123456
-客户端永久挂载 
-vim /etc/fstab
-//172.25.8.11/westos /mnt cifs defaults,username=westos,password=westos 0 0
+3) 读写测试
+$ ls -lth LocalDIR
+total 16K
+-rwxr-xr-x 1 wangjl wangjl   5 Oct  8 16:04 a
+
+$ touch LocalDIR/a2
+$ ls -lth LocalDIR
+total 16K
+-rwxr-xr-x 1 wangjl wangjl   0 Oct  8 21:31 a2
 
 
-客户端不可写，怎么办？
-在服务端添加root用户，
-$ smbpasswd -a root
-[sudo] password for wangjl: 
-New SMB password:
-Retype new SMB password:
-Added user root.
+4) 客户端永久挂载:
+$ sudo vim /etc/fstab
+//192.168.2.156/Public /home/wangjl/LocalDIR cifs username=wang,password=123456,uid=1001,gid=1001 0 0 
+挂载生效
+$ sudo mount -a
+
+5) 卸载
+$ sudo umount local-mount-point
 
 
-一个客户端不能登陆多个账号，同时最多一个登录。
+
+
+
+
+(5) 排错：一个客户端不能登陆多个账号，同时最多一个登录。
 $ mount | grep Public
 //172.18.5.193/Public on /home/wangjl/LocalDIR type cifs (rw,relatime,vers=default,cache=strict,username=wangjl,domain=,uid=0,noforceuid,gid=0,noforcegid,addr=172.18.5.193,file_mode=0755,dir_mode=0755,soft,nounix,serverino,mapposix,rsize=1048576,wsize=1048576,echo_interval=60,actimeo=1)
-//172.18.5.193/Public on /home/wangjl/LocalDIR type cifs (rw,relatime,vers=default,cache=strict,username=root,domain=,uid=0,noforceuid,gid=0,noforcegid,addr=172.18.5.193,file_mode=0755,dir_mode=0755,soft,nounix,serverino,mapposix,rsize=1048576,wsize=1048576,echo_interval=60,actimeo=1)
 
+卸载
 $ sudo umount /home/wangjl/LocalDIR
-在执行一次。
 
-在客户端使用root挂载。
-$ sudo mount //172.18.5.193/Public /home/wangjl/LocalDIR2 -o username=wangjl,password=123456
-$ sudo mount //172.18.5.193/Public /home/wangjl/LocalDIR -o username=root,password=s123456
 
-客户端还是不能写，只能读。
 
-==> 修改目录权限 #chmod 777 /home/wind ; #chmod 777 /home/wind/smbShare; 特别是前面一个做为上层目录权限也需要修改！！！！
-https://blog.csdn.net/u013754317/article/details/53972115
-这个... 有点扯了，我做不到把自己的home目录给可写了。
+
+
+
+
+(6) 测试 在 centOS7 做服务器，Ubuntu做客户端
+
+$ smbclient -L //x.biomooc.com -U wangjl
+Enter WORKGROUP\wangjl's password: 
+
+	Sharename       Type      Comment
+	---------       ----      -------
+	print$          Disk      Printer Drivers
+	Public          Disk      Public Storage
+	IPC$            IPC       IPC Service (Samba 4.10.16)
+	wangjl          Disk      Home Directories
+SMB1 disabled -- no workgroup available
+
+
+查看配置文件，这个Yes和No是首字母大写。
+[Public]
+	comment=Public Storage
+	path=/home/wangjl/usb3
+	read only=No
+	create mask=0777
+	directory mask=0777
+	guest ok=Yes
+	browseable=Yes
+	writable=Yes
+	# 
+	force user = wangjl
+	valid users = wangjl
+	write list = wangjl
+
+$ sudo service smb restart
+
+
+客户端
+$ smbclient //x.biomooc.com/Public -U wangjl
+Enter WORKGROUP\wangjl's password: 
+Try "help" to get a list of possible commands.
+smb: \> mkdir wjl
+NT_STATUS_ACCESS_DENIED making remote directory \wjl
+还是只读，不能写。
+
+
+服务端执行 https://blog.csdn.net/m0_37582216/article/details/106960726
+$ chcon -R -t samba_share_t ~/usb3/
+## chcon - change file SELinux security context
+还是不理解 SELinux 啥作用？ //todo
+
+
+客户端挂载
+$ sudo mount -v -t cifs -o username=wangjl,password=123456,uid=1001,gid=1001,rw //172.18.5.193/Public ~/v193
+
+$ cd ~/v193
+$ touch b
+可写。
+
+
+
+
 
 
 
@@ -1196,23 +1328,29 @@ $ sudo iptables -A INPUT -p tcp --dport 139 -j ACCEPT
 
 ref: 
 https://www.howtoforge.com/how-to-install-samba-server-on-centos-8/
+https://www.cnblogs.com/bandiao/p/10862226.html
+https://adrianmejia.com/how-to-set-up-samba-in-ubuntu-linux-and-access-it-in-mac-os-and-windows/
+
+
+win作为服务器: https://www.cnblogs.com/mountain2011/p/7352708.html
+
+
+
+
 
 
 
 
 ========================================
+|-- 网络文件系统 (NFS, Network File System): 两台 linux 之间文件共享 //todo
 ----------------------------------------
+网络文件系统，英文Network File System(NFS)，是由SUN公司研制的UNIX表示层协议(presentation layer protocol)，能使使用者访问网络上别处的文件就像在使用自己的计算机一样。
 
 
 
 
-========================================
-----------------------------------------
 
 
-
-========================================
-----------------------------------------
 
 
 
