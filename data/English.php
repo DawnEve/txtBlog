@@ -19,7 +19,7 @@ return array (
     1 => '英语读报',
     2 => array (
       array('英语资源代码','en101-code','txt'),
-      array('英语学习统计 项目展','en_statistics','txt'),
+      array('英语学习统计 施工进度','en_statistics','txt'),
       array('疯狂记单词Word','wordStudy','md'),
     ),
   ),

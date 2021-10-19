@@ -1838,6 +1838,147 @@ javac Hello.java
 
 
 
+========================================
+|-- 理解 docker 容器中的 uid 和 gid
+----------------------------------------
+
+1. 默认是使用 root 进入容器的
+$ docker run --name test1 --rm -it -d -v /home/wangjl/:/home/test ubuntu:20.04 bash
+
+$ docker exec -it test1 bash
+root@1b4df2d5d33e:/# cd /home/test
+root@1b4df2d5d33e:/home/test# touch 001.txt
+root@1b4df2d5d33e:/home/test# exit
+exit
+可见，容器内使用root登录了。
+
+$ ls -lth
+total 136K
+-rw-r--r--  1 root   root      0 Oct 19 10:46 001.txt
+容器内创建的文件，在宿主机中查看权限，也是 root。
+
+
+停止容器
+$ docker stop test1
+
+
+
+
+
+
+2. 怎么使用宿主机用户登录呢？添加 -u 参数
+(1) 查询宿主机当前登录用户 wangjl, uid=1001
+$ id
+uid=1001(wangjl) gid=1001(wangjl) groups=1001(wangjl),1004(docker)
+
+(2) 添加参数 -u 
+# docker run --user 0 -d test
+-u, --user string        Username or UID (format: <name|uid>[:<group|gid>])
+
+$ docker run --name test1 -u 1001:1001 --rm -it -d -v /home/wangjl/:/home/test ubuntu:20.04 bash
+
+$ docker exec -it test1 bash #测试表明，这里加不加 -u 1001:1001 效果一样。
+I have no name!@84d106c3f8dd:/$ cd /home/test/
+I have no name!@84d106c3f8dd:/home/test$ touch 002.txt
+I have no name!@84d106c3f8dd:/home/test$ exit
+exit
+
+宿主机文件权限正常了
+-rw-r--r--  1 wangjl wangjl    0 Oct 19 11:00 002.txt
+
+
+
+
+
+
+3. 风险: docker 理论上能修改主机上的任何文件
+
+(1) 容器内的 root 用户和宿主机上的 root 用户是同一个吗？
+答案是：是的，它们对应的是同一个 uid。原因我们在前面已经解释过了：整个系统共享同一个内核，而内核只管理一套 uid 和 gid。
+而且即便容器内外只共享uid和gid，不共享用户名，组名。权限是依赖id的，也就是说可以使用容器修改一些普通用户无法修改的内容。
+
+docker run -u 可以指定宿主机运行docker命令的用户， -u指定的uid就是docker实际运行的进程拥有者。
+
+
+
+(2) 一个 docker 组的用户，在 docker 内部修改 /etc/sudoers 文件。
+
+$ docker run --name test1 --rm -it -v /etc/:/home/test ubuntu:20.04 bash
+root@06095e8b8e4d:/# cd /home/test/
+root@06095e8b8e4d:/home/test# echo "#test this" >> sudoers
+root@06095e8b8e4d:/home/test# exit
+exit
+$ sudo tail -n 1 /etc/sudoers
+#test this
+
+
+完整测试了一下，把新人加入docker组，他自己确实可以拿到sudo。https://blog.csdn.net/wangjunliang/article/details/120842914
+如何解决该风险？
+
+
+
+
+4. 应用
+
+(1) 这样安装在本地的文件所有者是 root ，普通用户无法删除、更新等。
+$ docker run -it --rm  --name ryan  \
+-v `pwd`:`pwd`  \
+-w `pwd`  node \ 
+npm install --registry=https://registry.npm.taobao.org
+
+加上 -u 1001:1001 ，前面是 id wangjl 查到的uid，冒号后面是 gid，则使用该用户进入容器内部，一切正常。
+
+
+
+
+
+
+
+
+ref:
+https://blog.csdn.net/zhu7478848/article/details/88824064
+https://www.cnblogs.com/woshimrf/p/understand-docker-uid.html
+
+
+
+
+
+
+========================================
+|-- 指定工作目录 -w / --workdir
+----------------------------------------
+-w, --workdir string      Working directory inside the container
+
+
+1. 不指定工作目录
+$ docker run --rm -it -v /home/wangjl/:/home/test ubuntu:20.04 bash
+root@7bc3e4457e06:/# pwd
+/
+root@7bc3e4457e06:/# exit
+exit
+
+
+
+2.指定工作目录后，进入容器就自动切换到工作目录
+
+$ docker run --rm -it -v /home/wangjl/:/home/test \
+-w /home/test \
+ubuntu:20.04 bash
+
+root@840d01943c9d:/home/test# pwd
+/home/test
+
+
+(2) 为了易读性，可以使用参数全拼
+$ docker run --rm -it -v /home/wangjl/:/home/test \
+--workdir /home/test \
+ubuntu:20.04 bash
+
+
+
+
+
+
 
 ========================================
 制作自己的docker镜像: Dockerfile文件
