@@ -18,6 +18,8 @@ docker image 仓库:
 	https://hub.docker.com/
 
 
+
+
 ========================================
 docker 权威书籍
 ----------------------------------------
@@ -44,6 +46,25 @@ https://www.oreilly.com/library/view/docker-up/9781491917565/
 
 6. Explore advanced Docker topics, including deployment tools, networking, orchestration, security, and configuration
 docker高级话题： 部署工具，网络，编排，安全性和配置。
+
+
+
+
+二、每天5分钟玩转Docker容器技术
+容器技术是继大数据和云计算之后又一炙手可热的新技术，未来一段时间非常流行。
+
+本书共分为三部分。
+第一部分介绍容器技术生态环境。
+第二部分是容器核心知识，包括架构、镜像、容器、网络和存储。
+第三部分是容器进阶知识，包括多主机管理、跨主机网络方案、监控、日志管理和数据管理。
+
+
+
+
+
+
+
+
 
 
 
@@ -3685,7 +3706,7 @@ $ docker run -d -p 127.0.0.1::5000 training/webapp python app.py
 
 
 ========================================
-通过 apache httpd 容器开启web服务：为本博客创建运行环境
+通过容器为本博客创建运行环境: php + Apache or Nginx
 ----------------------------------------
 1. 测试
 (1) 拉取镜像
@@ -3736,7 +3757,9 @@ $ docker exec -it my-apache-app bash
 
 
 
-2. 创建 txtBlog 运行环境
+
+
+2. 创建 txtBlog 运行环境: apache 
 (1) 基础镜像
 $ docker pull php:5.6.33-apache #神器
 
@@ -3756,6 +3779,741 @@ $ docker run --rm -dit --name txtBlog-app -p 8081:80 -v ~/nginx/www/txtBlog:/var
 
 (4) 查看
 http://IP:8081
+
+
+
+
+
+
+
+
+
+
+
+
+3. 创建 txtBlog 运行环境: nginx 
+nginx         1.21.3 
+php           5.6.33-fpm
+
+(1) 使用php镜像开启php-frm应用容器，默认端口是9000
+# docker run --rm -d --name myphp-fpm php:5.6.33-fpm #不指定文件映射报错，File not found.
+
+$ docker run --rm -d --name myphp-fpm -v ~/nginx/www/txtBlog:/usr/share/nginx/html/ php:5.6.33-fpm
+
+查 IP
+$ docker inspect myphp-fpm | grep IPAddress
+"IPAddress": "172.18.0.4",
+
+
+(2) 启动 nginx
+
+$ docker run --rm -p 80:80 -d --name mynginx  -v ~/nginx/www:/usr/share/nginx/www nginx:1.21.3 #不行
+
+进入正在运行的nginx容器
+$ docker exec -it mynginx bash
+root@abd819f9834f:/# cd /etc/nginx/conf.d/
+root@abd819f9834f:/etc/nginx/conf.d# ls
+default.conf
+
+复制出配置文件
+$ docker cp mynginx:/etc/nginx/conf.d/default.conf ~/nginx/conf/default.conf
+
+$ docker stop mynginx
+server {
+    listen       80;
+    listen  [::]:80;
+    server_name  localhost;
+
+    #access_log  /var/log/nginx/host.access.log  main;
+
+	location / {
+		# 这里是重点 1: 填写nginx上的html代码路径
+        root   /usr/share/nginx/html;
+        index  index.html index.htm;
+    }
+
+修改接下来的php部分
+    #location ~ \.php$ {
+    #    root           html;
+    #    fastcgi_pass   127.0.0.1:9000;
+    #    fastcgi_index  index.php;
+    #    fastcgi_param  SCRIPT_FILENAME  /scripts$fastcgi_script_name;
+    #    include        fastcgi_params;
+    #}
+
+- 去掉前面的注释
+- 修改IP地址 127.0.0.1 为 php 容器的ip地址(不推荐，IP会变动) 或者 容器名字（推荐）
+    location ~ \.php$ {
+        # root         html;
+        fastcgi_pass   myphp-fpm:9000;
+        fastcgi_index  index.php;
+		# 这是重点2: 要填写 php-fpm 上的php代码路径
+        fastcgi_param  SCRIPT_FILENAME  /usr/share/nginx/html/$fastcgi_script_name;
+        include        fastcgi_params;
+    }
+
+
+再次启动 nginx 容器
+$ docker run --rm -p 8081:80 -d --name mynginx \
+--mount type=bind,source=/home/wangjl/nginx/www/txtBlog,target=/usr/share/nginx/html \
+--mount type=bind,source=/home/wangjl/nginx/conf/default.conf,target=/etc/nginx/conf.d/default.conf \
+--link myphp-fpm:myphp-fpm \
+nginx:1.21.3
+
+浏览器检查 OK！
+
+
+
+进容器查看工作目录
+$ docker exec -it mynginx bash
+# cat /etc/nginx/conf.d/default.conf
+
+
+
+
+
+
+
+
+
+========================================
+Docker数据卷(Volume): 数据共享与持久化
+----------------------------------------
+https://docs.docker.com/storage/volumes/
+
+
+1. Docker的数据持久化主要有两种方式：
+bind mount
+volume
+tmpfs：挂载存储在宿主机系统的内存中，而不会写入宿主机的文件系统；（一般不会用）
+
+
+Docker的数据持久化即使数据不随着container的结束而结束，数据存在于host机器上——
+	要么存在于host的某个指定目录中（使用bind mount），
+	要么使用docker自己管理的volume（/var/lib/docker/volumes下）。
+
+
+
+
+
+
+2. 文件挂载时 bind mount
+
+bind mount自docker早期便开始为人们使用了，用于将host机器的目录mount到container中。但是bind mount在不同的宿主机系统时不可移植的，比如Windows和Linux的目录结构是不一样的，bind mount所指向的host目录也不能一样。
+
+这也是为什么bind mount不能出现在Dockerfile中的原因，因为这样Dockerfile就不可移植了。
+
+将host机器上当前目录下的host-data目录mount到container中的/container-data目录：
+$ docker run --rm -it --name=test1 -v $(pwd)/host-dava:/container-data alpine sh
+
+$ docker inspect test1
+...
+        "Mounts": [
+            {
+                "Type": "bind",
+                "Source": "/home/wangjl/nginx/www/host-dava",
+                "Destination": "/container-data",
+...
+
+
+(1) 主机和容器之间的数据共享
+$ docker run -v /home/adrian/data:/data [image]
+-v A:B A是在主机上的地址，B是在容器中的地址，这两个地址如果不存在都会创建，一旦容器运行，AB的会完全同步。
+
+HOST:CONTAINER:ro # 该挂载时只读模式，ro就是readonly。
+
+
+
+有几点需要注意：
+- host机器的目录路径必须为全路径(准确的说需要以/或~/开始的路径)，不然docker会将其当做volume而不是 bind mount 处理
+- 如果host机器上的目录不存在，docker会自动创建该目录
+- 如果container中的目录不存在，docker会自动创建该目录
+- 如果container中的目录已经有内容，那么docker会使用host上的目录将其覆盖掉
+
+
+
+
+
+3.使用volume
+
+(1) 简介
+volume也是绕过container的文件系统，直接将数据写到host机器上，只是volume是被docker管理的，docker下所有的volume都在host机器上的指定目录下/var/lib/docker/volumes。
+
+
+==> 使用Volume有什么优势呢
+Volume可以在容器之间以及容器和主机之间共享和重用
+Volume在某一挂载的位置被修改，所有使用该volume的地方都会同时更新
+Volume的大小不会被加到容器本身上
+Volume会一直存在，直到没有任何容器使用它，才能使用命令docker volume rm [volumes名字]删除
+
+
+$ docker volume --help
+Usage:  docker volume COMMAND
+Manage volumes
+Commands:
+  create      Create a volume
+  inspect     Display detailed information on one or more volumes
+  ls          List volumes
+  prune       Remove all unused local volumes
+  rm          Remove one or more volumes
+
+常用命令
+# docker volume create edc-nginx-vol // 创建一个自定义容器卷
+# docker volume ls // 查看所有容器卷
+# docker volume inspect edc-nginx-vol // 查看指定容器卷详情信息
+
+清理命令
+# docker stop edc-nginx // 暂停容器实例
+# docker rm edc-nginx // 移除容器实例
+# docker volume rm edc-nginx-vol // 删除自定义数据卷
+
+
+
+(2) 创建 volume 
+$ docker volume create --help
+Usage:  docker volume create [OPTIONS] [VOLUME]
+Create a volume
+Options:
+  -d, --driver string   Specify volume driver name (default "local")
+      --label list      Set metadata for a volume
+  -o, --opt map         Set driver specific options (default map[])
+
+$ docker volume create my-volume
+
+$ docker volume ls
+DRIVER    VOLUME NAME
+local     51bcb9b4779a9f07c62299d82189b6bfb65aa3e4314044a74fbd128d8e930a9a
+local     my-volume
+
+
+查看文件所在位置 
+docker下所有的volume都在host机器上的指定目录下 /var/lib/docker/volumes
+这些很长的名字是没有指定名字时，docker自动创建的数据卷。
+$ sudo ls -l /var/lib/docker/volumes
+drwx-----x 3 root root   4096 Oct 21 17:15 51bcb9b4779a9f07c62299d82189b6bfb65aa3e4314044a74fbd128d8e930a9a
+drwx-----x 3 root root   4096 Oct 22 19:35 my-volume
+
+
+使用 inspect 命令查看
+$ docker volume inspect my-volume
+[
+    {
+        "CreatedAt": "2021-10-22T19:35:40+08:00",
+        "Driver": "local",
+        "Labels": {},
+        "Mountpoint": "/var/lib/docker/volumes/my-volume/_data",
+        "Name": "my-volume",
+        "Options": {},
+        "Scope": "local"
+    }
+]
+
+
+
+(3) 将my-volume挂载到container中的/mydata目录：
+$ docker run -it -v my-volume:/mydata alpine sh
+/ # cd /mydata/
+/mydata # echo "hello world! from docker volume" > a.txt
+/mydata # exit
+该容器退出即销毁。
+
+
+inspect 查看，没变化
+$ docker volume inspect my-volume
+[
+    {
+        "CreatedAt": "2021-10-22T19:35:40+08:00",
+        "Driver": "local",
+        "Labels": {},
+        "Mountpoint": "/var/lib/docker/volumes/my-volume/_data",
+        "Name": "my-volume",
+        "Options": {},
+        "Scope": "local"
+    }
+]
+
+可以看到，volume在host机器的目录为/var/lib/docker/volumes/my-volume/_data。
+此时，如果my-volume不存在，那么docker会自动创建my-volume，然后再挂载。
+
+
+查看实际地址，确实有持久化的数据文件
+$ sudo ls /var/lib/docker/volumes/my-volume/_data
+a.txt
+$ sudo cat /var/lib/docker/volumes/my-volume/_data/a.txt
+hello world! from docker volume
+
+
+
+(4) 也可以不指定host上的volume，docker会自动创建宿主目录
+
+$ docker run -it -v /mydata alpine sh
+
+此时docker将自动创建一个匿名的volume，并将其挂载到container中的/mydata目录。
+匿名volume在host机器上的目录路径类似于：
+/var/lib/docker/volumes/300c2264cd0acfe862507eedf156eb61c197720f69e7e9a053c87c2182b2e7d8/_data
+
+
+
+(5) 除了让docker帮我们自动创建volume，我们也可以自行创建
+$ docker volume create my-volume-2
+
+然后将这个已有的my-volume-2挂载到container中:
+$ docker run -it -v my-volume-2:/mydata alpine sh
+
+
+需要注意的是，与bind mount不同的是，
+如果volume是空的而container中的目录有内容，那么docker会将container目录中的内容拷贝到volume中。
+但是如果volume中已经有内容，则会将container中的目录覆盖。
+
+
+(6) 两个容器共享数据：通过宿主机的数据卷
+$ docker run -it -v my-volume-2:/mydata alpine sh
+/ # cd /mydata/
+/mydata # echo "good," >msg.txt
+
+
+$ docker run -it -v my-volume-2:/home/ ubuntu:20.04 bash
+root@d2e27c40b6a2:/# cd /home/
+root@d2e27c40b6a2:/home# cat msg.txt 
+good,
+
+
+
+
+(7) 容器和容器之间的数据共享: 使用--volumes-from，从另一个服务或容器挂载它的所有卷。
+
+$ docker run -it -h NEWCONTAINER --volumes-from container-test debian /bin/bash
+
+意思是，将container-test这个container中的volume挂载到当前将要运行起来的容器中。
+前提是container-test中的volumes必须被创建过，但是container-test可以是被stop的，原因是volume只能被手动删除，不是随着容器停止而被删除。
+
+参数解释：
+  -h, --hostname string                Container host name 给该容器取一个主机名，就是@后的部分
+  -v, --volume list                    Bind mount a volume
+      --volume-driver string           Optional volume driver for the container
+      --volumes-from list              Mount volumes from the specified container(s)
+
+注意 -h 设置的就是 @后面的部分，对应文件是 /etc/hostname
+$ docker run --rm -it -h NGS ubuntu:20.04 bash
+root@NGS:/# cat /etc/hostname 
+NGS
+root@NGS:/# cat /etc/hosts
+127.0.0.1       localhost
+::1     localhost ip6-localhost ip6-loopback
+fe00::0 ip6-localnet
+ff00::0 ip6-mcastprefix
+ff02::1 ip6-allnodes
+ff02::2 ip6-allrouters
+172.18.0.7      NGS
+root@NGS:/# exit
+exit
+
+
+测试:
+$ docker volume ls
+
+启动一个父容器 ccF，带有一个数据卷
+$ docker run --rm -itd --name ccF -v my-volume-3:/mydata alpine sh
+$ docker exec -it ccF sh
+/ # cd mydata
+/mydata # echo "123456" > msg.txt
+/mydata # exit
+
+
+启动容器 ccS1继承 ccF，使用 volumes-from命令
+$ docker run --rm -itd --name ccS1 --volumes-from ccF alpine sh
+$ docker exec -it ccS1 sh
+/ # cd mydata/
+/mydata # ls
+msg.txt
+/mydata # cat msg.txt 
+123456
+
+启动容器 ccS2继承 ccF，使用 volumes-from命令
+$ docker run --rm -itd --name ccS2 --volumes-from ccF alpine sh
+$ docker exec -it ccS2 cat /mydata/msg.txt
+123456
+
+
+删除父容器 ccF 后，数据卷还在
+$ docker stop ccF 
+$ docker exec -it ccS2 cat /mydata/msg.txt
+123456
+
+
+启动容器 ccS3 继承 ccS2
+$ docker run --rm -itd --name ccS3 --volumes-from ccS2 alpine sh
+删除容器 ccS1, ccS2后，数据还在
+$ docker stop ccS1 ccS2
+$ docker exec -it ccS3 cat /mydata/msg.txt
+123456
+
+
+小结: 容器之间配置信息的传递，数据卷的生命周期一直持续到没有容器使用它为止。只能手动删除。
+
+
+
+
+
+
+
+(8) 删除数据卷
+
+$ docker volume ls
+$ docker volume rm my-volume
+$ docker volume ls
+
+删除前后查看一下，确实删了。
+
+
+
+
+
+
+
+4. Dockerfile中的VOLUME
+https://blog.csdn.net/sunxiaoju/article/details/100038588
+
+
+在Dockerfile中，我们也可以使用VOLUME指令来申明contaienr中的某个目录需要映射到某个volume：
+
+#Dockerfile
+VOLUME /foo
+
+
+这表示，在docker运行时，docker会创建一个匿名的volume，并将此volume绑定到container的/foo目录中，如果container的/foo目录下已经有内容，则会将内容拷贝的volume中。
+也即，Dockerfile中的VOLUME /foo与docker run -v /foo alpine的效果一样。
+
+
+Dockerfile中的VOLUME使每次运行一个新的container时，都会为其自动创建一个匿名的volume，如果需要在不同container之间共享数据，那么我们依然需要通过docker run -it -v my-volume:/foo的方式将/foo中数据存放于指定的my-volume中。
+
+因此，VOLUME /foo在某些时候会产生歧义，如果不了解的话将导致问题。
+
+
+
+
+
+
+
+
+
+
+
+
+========================================
+Docker官方编排容器工具: Docker-Compose
+----------------------------------------
+1. 是什么？
+如果您的应用程序需要运行多个服务，那么你就需要Docker-Compose。
+Docker-Compose可以让你使用单个命令来启动所有服务。
+
+Docker用于管理应用程序的单个容器（服务）。
+
+Docker-Compose用于同时管理同一个应用程序下的多个容器。这个工具提供与Docker相同的功能，但允许你管理更复杂的应用程序。
+
+docker-compose 可以通过配置文件管理一组应用的容器，
+docker-compose支持容器的自动启动、自动部署、热更新、热升级，简直太爽了~~
+
+
+
+2. 安装Docker-Compose
+
+(1)方法一: 通过pip安装(推荐)
+Note: pip version 6.0 or greater is required
+
+需要升级到最新版的pip
+$ pip3 -V
+pip 9.0.3 from /usr/lib/python3.6/site-packages (python 3.6)
+$ sudo python3 -m pip install --upgrade pip -i https://pypi.douban.com/simple/
+$ pip3 -V
+pip 21.3 from /usr/local/lib/python3.6/site-packages/pip (python 3.6)
+
+$ pip3 install -U docker-compose -i https://pypi.douban.com/simple/
+
+验证安装成功
+$ pip3 list | grep compose
+docker-compose     1.29.2
+
+
+通过pip卸载
+$ pip uninstall docker-compose
+
+
+
+(2) 方法二: 直接使用二进制文件
+
+$ curl -L https://github.com/docker/compose/releases/download/1.29.2/docker-compose-`uname -s`-`uname -m` > /usr/local/bin/docker-compose
+
+$ chmod +x /usr/local/bin/docker-compose
+你可以通过修改URL中的版本，可以自定义您的需要的版本。
+
+
+Docker Compose存放在GitHub，国内访问比较慢。你可以也通过执行下面的命令，使用国内镜像安装Docker Compose。
+
+$ curl -L https://get.daocloud.io/docker/compose/releases/download/1.29.2/docker-compose-`uname -s`-`uname -m` > /usr/local/bin/docker-compose
+$ chmod +x /usr/local/bin/docker-compose
+
+
+$ uname -s
+Linux
+$ uname -m
+x86_64
+
+
+
+(3) 验证安装成功
+$ docker-compose --version
+docker-compose version 1.29.2, build unknown
+
+
+(4) 添加SHELL的TAB补全
+Centos
+$ sudo yum install bash-completion
+
+
+
+
+
+3. Compose 使用的三个步骤：
+使用 Dockerfile 定义应用程序的环境。
+使用 docker-compose.yml 定义构成应用程序的服务，这样它们可以在隔离环境中一起运行。
+最后，执行 docker-compose up 命令来启动并运行整个应用程序。
+
+
+(1) 获取帮助
+$ docker-compose
+Define and run multi-container applications with Docker.
+
+Usage:
+  docker-compose [-f <arg>...] [--profile <name>...] [options] [--] [COMMAND] [ARGS...]
+  docker-compose -h|--help
+
+Options:
+  -f, --file FILE             Specify an alternate compose file
+                              (default: docker-compose.yml)
+  -p, --project-name NAME     Specify an alternate project name
+                              (default: directory name)
+
+...
+Commands:
+  build              Build or rebuild services
+  config             Validate and view the Compose file
+  create             Create services
+  down               Stop and remove resources
+  events             Receive real time events from containers
+  exec               Execute a command in a running container
+  help               Get help on a command
+  images             List images
+  kill               Kill containers
+  logs               View output from containers
+  pause              Pause services
+  port               Print the public port for a port binding
+  ps                 List containers
+  pull               Pull service images
+  push               Push service images
+  restart            Restart services
+  rm                 Remove stopped containers
+  run                Run a one-off command
+  scale              Set number of containers for a service
+  start              Start services
+  stop               Stop services
+  top                Display the running processes
+  unpause            Unpause services
+  up                 Create and start containers
+  version            Show version information and quit
+
+
+执行 docker-compose [COMMAND] --help 查看具体某个命令的使用说明。
+
+
+
+(2) Docker-Compose YAML语法使用说明
+默认的模板文件是 docker-compose.yml，其中定义的每个服务都必须通过image指令指定镜像或build指令(需要 Dockerfile)来自动构建。其它大部分指令都跟docker run中的类似。
+
+如果使用build指令，在Dockerfile中设置的选项(例如：CMD, EXPOSE, VOLUME, ENV 等) 将会自动被获取，无需在docker-compose.yml中再次设置。
+
+可以去yml文件检测网站进行检测：https://www.bejson.com/validators/yaml_editor/
+
+
+
+build:
+  context: ./webapp
+  dockerfile: Dockerfile-alternate
+  args:
+    - buildno=1
+    - user=someuser
+
+构建镜像必须指定context。context是 docker build 命令的工作目录。默认情况下，如果不额外指定 Dockerfile 的话，会将 Context 下的名为 Dockerfile 的文件作为 Dockerfile。
+
+
+$ cat docker-compose.yml 
+# yaml 配置实例
+version: '3'
+services:
+  web:
+    build: .
+    ports:
+   - "5000:5000"
+    volumes:
+   - .:/code
+    - logvolume01:/var/log
+    links:
+   - redis
+  redis:
+    image: redis
+volumes:
+  logvolume01: {}
+
+
+
+
+4. 示例: mysql+php+nginx 
+https://www.cnblogs.com/cocowool/p/docker-php-dev.html
+
+
+(1) 拉镜像
+$ docker pull nginx:1.21.3
+$ docker pull php:5.6.33-fpm
+$ docker pull mysql:5.6
+
+
+(2) 配置文件 
+在工作目录 lnmp 下准备网站根目录、Nginx配置文件目录、Nginx日志目录。
+
+$ mkdir lnmp
+$ cd lnmp
+$ mkdir -p nginx/www nginx/logs nginx/conf
+
+准备 php 文件
+$ cat nginx/www/index.php 
+<?php
+echo "hi, 123";
+//  phpinfo(); //这个不能显示，不知道愿意 //todo
+phpinfo(INFO_MODULES); //ok 
+
+phpinfo(INFO_LICENSE); //ok
+
+
+
+准备nginx的配置文件。
+$ cat nginx/conf/php.conf
+server {
+	listen	80;
+	server_name	localhost;
+
+	location / {
+		root	/usr/share/nginx/html;
+		index	index.html index.htm index.php;
+	}
+
+	error_page	500 502 503 504	/50x.html;
+	location = /50x.html {
+		root	/usr/share/nginx/html;
+	}
+
+	location ~ \.php$ {
+		fastcgi_pass	php:9000;
+		fastcgi_index	index.php;
+		fastcgi_param	SCRIPT_FILENAME	/www/$fastcgi_script_name;
+		include		fastcgi_params;
+	}
+}
+
+
+(3) 编排文件
+在工作目录下创建docker-compose.yml编排文件。
+
+关于docker-compose的详细介绍可以参考：
+	docker-compose 使用介绍 http://edulinks.cn/2020/04/15/20200415-docker-compose/
+
+$ cat docker-compose.yml
+version: "2.1"
+services:
+    nginx:
+        image: nginx:1.21.3
+        ports:
+            - "81:80"
+        volumes: 
+            - /home/wangjl/lnmp/nginx/www:/usr/share/nginx/html
+            - /home/wangjl/lnmp/nginx/conf:/etc/nginx/conf.d
+            - /home/wangjl/lnmp/nginx/logs:/var/log/nginx
+        networks:
+            - lnmp-network
+    php:
+        image: php:5.6.33-fpm
+        volumes:
+            - /home/wangjl/lnmp/nginx/www:/www
+        networks:
+            - lnmp-network
+    mysql:
+        image: mysql:5.6
+        ports:
+            - "3306:3306"
+        environment:
+            - MYSQL_ROOT_PASSWORD=123456
+        networks:
+            - lnmp-network
+networks: 
+    lnmp-network:
+
+
+(4) 运行效果
+
+$ docker-compose up -d
+Creating network "lnmp_lnmp-network" with the default driver
+Creating lnmp_php_1   ... done
+Creating lnmp_mysql_1 ... done
+Creating lnmp_nginx_1 ... done
+
+$ docker ps
+CONTAINER ID   IMAGE            COMMAND                  CREATED          STATUS          PORTS                                       NAMES
+35b9ba4836c3   nginx:1.21.3     "/docker-entrypoint.…"   19 seconds ago   Up 17 seconds   0.0.0.0:80->80/tcp, :::80->80/tcp           lnmp_nginx_1
+f5460b86cb2b   mysql:5.6        "docker-entrypoint.s…"   19 seconds ago   Up 17 seconds   0.0.0.0:3306->3306/tcp, :::3306->3306/tcp   lnmp_mysql_1
+04cd0a08a6b7   php:5.6.33-fpm   "docker-php-entrypoi…"   19 seconds ago   Up 18 seconds   9000/tcp                                    lnmp_php_1
+
+
+(5) 浏览器打开
+http://110.40.254.15:81/
+hi, 123
+
+
+(6) 停止这一组服务
+$ docker-compose down
+Stopping lnmp_nginx_1 ... done
+Stopping lnmp_mysql_1 ... done
+Stopping lnmp_php_1   ... done
+Removing lnmp_nginx_1 ... done
+Removing lnmp_mysql_1 ... done
+Removing lnmp_php_1   ... done
+Removing network lnmp_lnmp-network
+
+
+(7) 可以放入我的博客
+
+文件夹改名 $ mv txtBlog www
+权限 777
+$ rm my_log.txt
+
+重启。
+
+
+(8)安装扩展
+默认php镜像中提供的扩展比较少，缺少诸如mysql、gd2等常用的扩展，这样我们就需要自己安装并启用扩展。
+
+首先进入到php容器，用php -m命令查看本地有什么扩展。
+
+可以使用docker-php-ext-install命令来安装扩展。
+
+$ docker-php-ext-install mysql
+扩展安装好之后就可以在php.ini中启用。我们从phpinfo中可以看到，容器环境下默认的php.ini没有启用，可以从/usr/local/etc/php下将php.ini-development拷贝为php.ini。通过修改php.ini中配置，启用自己需要的扩展。下面是几个扩展安装的命令，供大家参考。
+
+docker-php-ext-source 在容器中创建一个/usr/src/php目录
+docker-php-ext-enable启用PHP扩展，省去我们手工编辑php.ini的过程
+docker-php-ext-install安装并启用PHP扩展
+docker-php-ext-configure经常与docker-php-ext-install搭配，在需要自定义扩展的配置时使用 
+
+
+
 
 
 
@@ -5709,6 +6467,14 @@ https://www.kubernetes.org.cn/
 Kubernetes 以其高效、简便、高水平的可移植性等优势占领了绝大部分市场，江湖一哥地位毋庸置疑
 脱胎于谷歌的成熟的Borg，围绕Kubernetes的生态正不断完善
 容器编排Kubernetes是最有未来的，要学就学它
+
+
+https://www.cnblogs.com/cocowool/p/kubernetes-articles.html
+
+
+
+
+
 
 
 
