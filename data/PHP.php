@@ -54,28 +54,12 @@ return array (
 	  array('yii简介','yii001','html',),
       array('Laravel简介','Laravel001','html',),
 	  
+	  array('Symfony','symfonyB101','txt',),
       array('cakephp','cakePHP001','html',), //empty
       array('zend','zendPHP001','html',), //empty
 
     ),
   ),
 
-  
-    array (
-		0 => 1,
-		1 => 'Symfony资料',
-		2 => array (
-		  array('Symfony简介','symfony001','html',),
-
-		  array('Symfony Book翻译计划','symfony000','md',),
-		  array('快乐sf开发','joyfullSF001','md',),
-		  
-		  array('sfBook-入门教程','symfonyB101','txt',),
-		  array('sfBook-sf和HTTP继承','sfB001','md',),
-		  array('sfBook-sf V.S.原生PHP','sfB002','md',),
-		),
-	  ),
-
-  
   
 );

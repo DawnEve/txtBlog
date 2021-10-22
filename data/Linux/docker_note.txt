@@ -1914,6 +1914,10 @@ $ sudo tail -n 1 /etc/sudoers
 
 完整测试了一下，把新人加入docker组，他自己确实可以拿到sudo。https://blog.csdn.net/wangjunliang/article/details/120842914
 如何解决该风险？
+issue: https://github.com/docker/for-linux/issues/1318#issuecomment-946433109
+回答1: There is a rootless mode to prevent that。貌似还不成熟。
+
+
 
 
 
@@ -2482,8 +2486,587 @@ Deleted: sha256:edb24adf0dd2c4d9c056c62cd38ab89951c0c12a0b5c0cc53ee4f4324d8997e1
 
 
 ========================================
-docker不同容器间的通信 //todo
+Docker network 网络
 ----------------------------------------
+测试环境为 腾讯云 ubuntu。 110.40.254.15
+$ docker --version
+Docker version 20.10.9, build c2ea9bc
+
+$ docker pull ubuntu:20.04
+$ docker pull nginx:1.21.3
+$ docker pull python:3.8.1
+
+
+1. 简介
+默认情况下容器与容器、容器与宿主机的网络是隔离开来的，
+
+(1) 当你安装docker的时候，docker会创建一个桥接器docker0，通过它才让容器与容器、容器与宿主机之间通信。
+
+$ ifconfig docker0
+docker0: flags=4163<UP,BROADCAST,RUNNING,MULTICAST>  mtu 1500
+        inet 172.18.0.1  netmask 255.255.0.0  broadcast 0.0.0.0
+        inet6 fe80::42:ccff:fee4:4b7b  prefixlen 64  scopeid 0x20<link>
+        ether 02:42:cc:e4:4b:7b  txqueuelen 0  (Ethernet)
+        RX packets 4165  bytes 466072 (455.1 KiB)
+        RX errors 0  dropped 0  overruns 0  frame 0
+        TX packets 4928  bytes 403704 (394.2 KiB)
+        TX errors 0  dropped 0 overruns 0  carrier 0  collisions 0
+
+
+(2) Docker安装的时候默认会创建三个不同的网络，你可以通过命令查看这些网络。
+
+$ docker network --help
+Usage:  docker network COMMAND
+Manage networks
+Commands:
+  connect     Connect a container to a network 将某个容器连接到一个docker网络
+  create      Create a network  创建一个docker局域网络
+  disconnect  Disconnect a container from a network 将某个容器退出某个局域网络
+  inspect     Display detailed information on one or more networks 显示某个局域网络信息
+  ls          List networks 显示所有docker局域网络
+  prune       Remove all unused networks 删除所有未引用的docker局域网络
+  rm          Remove one or more networks 删除docker网络
+
+
+$ docker network ls
+NETWORK ID     NAME      DRIVER    SCOPE
+def701d48b1e   bridge    bridge    local
+416fdec7fe0c   host      host      local
+051fc56342ef   none      null      local
+
+
+
+2. 默认网络
+解释上文的 Name 列。
+Docker内置这三个网络，运行容器时，你可以使用该 --network 标志来指定容器应连接到哪些网络。
+
+(1) None Network
+网络模式为none的，即不会为容器创建任何的网络环境。
+一旦Docker Container采用了none网络模式，那么容器内部就只能使用loopback网络设备，不会再有其他的网络资源。
+
+$ docker run -it --rm --network=none ubuntu:20.04 bash 
+# ifconfig
+# apt install net-tools
+E: Unable to locate package net-tools
+# apt update
+
+
+(2) Host Network
+如果你在创建容器的时候使用 --network=host 选项，那么容器会使用宿主机的网络，容器与宿主机的网络并没有隔离。
+
+使用这种网络类型的好处就是网络性能很好，基本上跟宿主机的网络一样，它很大的弊端就是不安全。
+你可以在容器中更改宿主机的网络，如果你的程序是用root用户运行的，有可能会通过Docker容器来控制宿主机的网络。
+当我们在容器中执行类似ifconfig命令查看网络环境是，看到的都是宿主机上的信息。
+
+$ docker run -it -d --network=host nginx:1.21.3
+$ curl -i localhost
+
+这里我们指定--network=host启动一个运行nginx的容器，然后在宿主机的命令行中请求localhost，在控制台中会输出nginx访问日志，其实这里并没有像以前那样通过-p或-P来暴露容器80端口。
+
+
+
+(3) Bridge Network
+桥接网络是默认的网络类型，我们可以使用下面的命令来查看默认的网络配置信息。
+
+这儿桥接的网络名为docker0。当我们启动一个容器的时候，每个容器会有它自己的虚拟网络接口连接到docker0，并获得一个IP地址。
+
+$ docker inspect bridge
+[
+    {
+        "Name": "bridge",
+        "Id": "def701d48b1e3dd8283f4fdc6ade61919e84437caa7d4147f16019a72ad404fe",
+        "Created": "2021-10-12T10:24:49.095066709+08:00",
+        "Scope": "local",
+        "Driver": "bridge",
+        "EnableIPv6": false,
+        "IPAM": {
+            "Driver": "default",
+            "Options": null,
+            "Config": [
+                {
+                    "Subnet": "172.18.0.0/16",
+                    "Gateway": "172.18.0.1"
+                }
+            ]
+        },
+        "Internal": false,
+        "Attachable": false,
+        "Ingress": false,
+        "ConfigFrom": {
+            "Network": ""
+        },
+        "ConfigOnly": false,
+        "Containers": {
+            "81d91430ec7879c9173104d6792906c5537aa113e9be6a07b7c42cfc91754af2": {
+                "Name": "reverent_buck",
+                "EndpointID": "f2b20949554e71228dafc835304c11c5b5a47e61e3e1f52241249697b961d62a",
+                "MacAddress": "02:42:ac:12:00:02",
+                "IPv4Address": "172.18.0.2/16",
+                "IPv6Address": ""
+            }
+        },
+        "Options": {
+            "com.docker.network.bridge.default_bridge": "true",
+            "com.docker.network.bridge.enable_icc": "true",
+            "com.docker.network.bridge.enable_ip_masquerade": "true",
+            "com.docker.network.bridge.host_binding_ipv4": "0.0.0.0",
+            "com.docker.network.bridge.name": "docker0",
+            "com.docker.network.driver.mtu": "1500"
+        },
+        "Labels": {}
+    }
+]
+
+
+这儿桥接的网络名为 docker0 。当我们启动一个容器的时候，每个容器会有它自己的虚拟网络接口连接到docker0，并获得一个IP地址。
+上面的 Containers 项里有所有连接到这个网络的容器，可以看到这个容器的ip地址。
+
+
+(4) 还有一种container模式：使用 --net=container:NAME_or_ID 指定。
+Container：创建的容器不会创建自己的网卡，配置自己的IP，而是和一个指定的容器共享IP、端口范围。
+
+启动第一个容器，设置网络
+$ docker run --rm -it -d --name=net0 -p 7777:80 nginx:1.21.3 #c2e6
+$ docker inspect c2e6 | grep IPAddress
+"IPAddress": "172.18.0.6",
+$ docker inspect c2e6 | grep -i hostname
+"Hostname": "c2e681f320d5",
+
+$ docker exec -it c2e6 bash
+root@c2e681f320d5:/# nginx -v
+nginx version: nginx/1.21.3
+
+root@c2e681f320d5:/# cat /etc/hosts
+127.0.0.1	localhost
+::1	localhost ip6-localhost ip6-loopback
+fe00::0	ip6-localnet
+ff00::0	ip6-mcastprefix
+ff02::1	ip6-allnodes
+ff02::2	ip6-allrouters
+172.18.0.6	c2e681f320d5
+
+
+
+启动第二个容器，竟然是同样的hash值，但是不识别nginx命令。
+$ docker run --rm -it -d --name=net1 --network=container:net0 ubuntu:20.04 bash #6783
+$ docker inspect 6783 | grep IPAddress
+"IPAddress": "",
+$ docker inspect 6783 | grep -i hostname
+"Hostname": "c2e681f320d5",
+
+$ docker exec -it 6783 bash
+root@c2e681f320d5:/# nginx -v
+bash: nginx: command not found
+
+root@c2e681f320d5:/# cat /etc/hosts
+127.0.0.1	localhost
+::1	localhost ip6-localhost ip6-loopback
+fe00::0	ip6-localnet
+ff00::0	ip6-mcastprefix
+ff02::1	ip6-allnodes
+ff02::2	ip6-allrouters
+172.18.0.6	c2e681f320d5
+
+
+
+
+
+
+3. 端口转发
+如果Docker容器不是使用none网络模式，默认是不需要再做任何配置就可以访问网络。但是，外部网络在默认情况下是不能访问容器的服务的。
+
+(1) 容器暴露端口的2种方法
+
+$ docker run -d -P --expose 443 nginx:1.21.3
+-P选项Docker会把Dockerfile中的通过EXPOSE指令或--expose选项暴露的端口随机映射到临时端口。默认的nginx镜像的Dockerfile中会 EXPOSE 80。
+
+查看端口映射关系
+$ docker port acd64e
+443/tcp -> 0.0.0.0:49153
+443/tcp -> :::49153
+80/tcp -> 0.0.0.0:49154
+80/tcp -> :::49154
+
+许多Linux内核预设的临时端口范围为32768 ~ 61000，你可以查看临时端口范围。
+$ cat /proc/sys/net/ipv4/ip_local_port_range #32768	60999
+
+
+(2) Docker会在宿主机的iptables里添加NAT规则，使得宿主机外的网络能通过宿主机ip:port使用容器提供的服务。
+$ sudo iptables -t nat -L
+...
+Chain DOCKER (2 references)
+target     prot opt source               destination         
+RETURN     all  --  anywhere             anywhere            
+DNAT       tcp  --  anywhere             anywhere             tcp dpt:webcache to:172.18.0.2:80
+DNAT       tcp  --  anywhere             anywhere             tcp dpt:49153 to:172.18.0.3:443
+DNAT       tcp  --  anywhere             anywhere             tcp dpt:49154 to:172.18.0.3:80
+
+
+(3) 你也可以通过-p选项指定端口映射关系：
+$ docker run -d -p 8081:80 nginx:1.21.3
+这儿指定了宿主机的8081端口映射到容器的80端口。
+
+$ docker ps
+CONTAINER ID   IMAGE          COMMAND                  CREATED              STATUS              PORTS                                    NAMES
+323d66c04652   nginx:1.21.3   "/docker-entrypoint.…"   About a minute ago   Up About a minute   0.0.0.0:8081->80/tcp, :::8081->80/tcp    keen_ardinghelli
+PORTS 这一列列出了端口映射关系。
+
+
+(4) --link 连接两个不同的容器示例 (官方不推荐)
+$ docker run --rm -it -v /home/vagrant/test.php:/data/test.php --link redis-server:redis  php /bin/bash
+-link会在hosts文件中添加redis服务对应的ip地址
+$ cat /etc/hosts
+172.17.0.2	redis 41b5db2d1282 redis-server
+
+
+我的测试：
+先启动 python 
+$ docker run --rm -it -d --name python38 python:3.8.1 bash
+$ docker ps
+CONTAINER ID   IMAGE          COMMAND  CREATED         STATUS         PORTS   NAMES
+5f7a00b0a179   python:3.8.1   "bash"   7 minutes ago   Up 7 minutes           python38
+
+在启动 ubuntu 
+$ docker run --rm -it -v /home/wangjl/:/data/ -w /data/ --link python38:python  ubuntu:20.04 /bin/bash
+root@70a89e92d007:/data# cat /etc/hosts
+127.0.0.1	localhost
+::1	localhost ip6-localhost ip6-loopback
+fe00::0	ip6-localnet
+ff00::0	ip6-mcastprefix
+ff02::1	ip6-allnodes
+ff02::2	ip6-allrouters
+172.18.0.5	python 5f7a00b0a179 python38  #这里有 python38 的IP地址
+172.18.0.6	70a89e92d007
+
+接着不知道干啥了
+
+
+
+
+
+
+
+
+
+
+
+
+
+https://loocode.com/post/10107
+https://www.cnblogs.com/zuxing/articles/8780661.html
+https://www.cnblogs.com/leozhanggg/p/12061435.html
+
+
+
+
+
+
+
+========================================
+|-- docker不同容器间的通信: 自定义网络
+----------------------------------------
+https://docs.docker.com/network/
+
+1. 自定义网络
+建议使用自定义的网桥来控制哪些容器可以相互通信，还可以自动DNS解析容器名称到IP地址。
+
+Docker提供了创建这些网络的默认网络驱动程序，你可以创建一个新的 Bridge网络，Overlay网络 或 Macvlan网络。
+
+你还可以创建一个网络插件或远程网络进行完整的自定义和控制。
+
+你可以根据需要创建任意数量的网络，并且可以在任何给定时间将容器连接到这些网络中的零个或多个网络。
+
+此外，你可以连接并断开网络中的运行容器，而无需重新启动容器。当容器连接到多个网络时，其外部连接通过第一个非内部网络以词法顺序提供。
+
+
+
+
+2. 实例 
+实例: 创建1个网络，把2个容器放到该网络中，并测试连通性。
+
+
+(1) 创建网络
+$ docker network create mynet0
+
+查看：
+$ docker network ls
+NETWORK ID     NAME      DRIVER    SCOPE
+def701d48b1e   bridge    bridge    local
+416fdec7fe0c   host      host      local
+733b334e4634   mynet0    bridge    local #新创建的
+051fc56342ef   none      null      local
+
+
+(2) 拉2个镜像
+$ docker pull redis:6.2.6
+$ docker pull nginx:1.21.3
+
+
+(3) 启动容器
+
+运行redis容器
+$ docker run --rm -itd --name redis1  --network mynet0 --network-alias redis -p 6379:6379 redis:6.2.6
+
+运行nginx容器
+$ docker run -d --name nginx1 -p 81:80 --network mynet0 --network-alias nginx --privileged=true -v /home/wangjl/root:/home/wwwroot -v /home/wangjl/logs:/home/wwwlogs nginx:1.21.3
+
+运行容器时候加入命令 --network mynet0 --network-alias redis，
+代表当然容器要加入到 mynet0 局域网络中
+
+--network 指定使用的网络
+--network-alias 设置网络别名
+
+
+
+(4) docker 查询网络信息
+查看mynet的详细信息，发现redis和nginx已在Containers容器内，属于当前mynet网络
+$ docker network inspect mynet0
+...
+        "Containers": {
+            "8e14baadb7f5f6fb6f4d61b727f50667d906d90513cade358d3c8e40a878da65": {
+                "Name": "redis1",
+                "EndpointID": "4a9b1752fb70d237e77c6e23952f6dc3d695963a9f39d6b2302dad151490001d",
+                "MacAddress": "02:42:ac:13:00:02",
+                "IPv4Address": "172.19.0.2/16",
+                "IPv6Address": ""
+            },
+            "e6f8c203b56fde528ed64a1a4b0041640e005f19ed1102c98c9dea2c8d962181": {
+                "Name": "nginx1",
+                "EndpointID": "05a5051ae7f0e6c590f691fdd1380a17e80d1fe91ebb88c940e988ec87fb1fa6",
+                "MacAddress": "02:42:ac:13:00:03",
+                "IPv4Address": "172.19.0.3/16",
+                "IPv6Address": ""
+            }
+        },
+...
+
+
+(5) 验证容器之间网络能否互相ping通
+没有ping命令，需要安装 iputils-ping
+
+$ docker exec -it nginx1 bash
+root@e6f8c203b56f:/# apt update
+root@e6f8c203b56f:/# apt install net-tools #貌似这个是 ifconfig的
+root@e6f8c203b56f:/# ifconfig
+eth0: flags=4163<UP,BROADCAST,RUNNING,MULTICAST>  mtu 1500
+        inet 172.19.0.3  netmask 255.255.0.0  broadcast 172.19.255.255
+
+root@e6f8c203b56f:/# apt install iputils-ping
+root@e6f8c203b56f:/# ping redis1
+PING redis1 (172.19.0.2) 56(84) bytes of data.
+64 bytes from redis1.mynet0 (172.19.0.2): icmp_seq=1 ttl=64 time=0.039 ms
+64 bytes from redis1.mynet0 (172.19.0.2): icmp_seq=2 ttl=64 time=0.043 ms
+^C
+
+
+$ docker exec -it redis1 bash
+root@8e14baadb7f5:/data# apt update
+root@8e14baadb7f5:/data# apt install iputils-ping
+oot@8e14baadb7f5:/data# ping nginx1
+PING nginx1 (172.19.0.3) 56(84) bytes of data.
+64 bytes from nginx1.mynet0 (172.19.0.3): icmp_seq=1 ttl=64 time=0.052 ms
+64 bytes from nginx1.mynet0 (172.19.0.3): icmp_seq=2 ttl=64 time=0.046 ms
+^C
+root@8e14baadb7f5:/data# ping redis  #也可以使用网络别名
+PING redis (172.19.0.2) 56(84) bytes of data.
+64 bytes from 8e14baadb7f5 (172.19.0.2): icmp_seq=1 ttl=64 time=0.019 ms
+
+
+通过容器id /主机名/ 网络别名 都是可以访问的。
+
+
+
+
+
+#将容器删掉重新创建
+$ docker stop nginx1
+$ docker rm -f nginx1
+$ docker stop redis1
+$ docker rm -f redis1
+
+
+
+
+
+(6) 使用docker network connect
+同样也可以不指定网络，直接启动容器，然后使用docker network connect接入网络。
+
+运行nginx和docker容器
+$ docker run -itd --name redis2 -p 6380:6379 redis:6.2.6
+$ docker run -d --name nginx2 -p 82:80 --privileged=true nginx:1.21.3
+
+创建网络
+$ docker network create mynet2
+
+如果容器已创建好但是之前没有指定自己的网络，则使用下面命令修改：docker network connect --alias mysql my-network mysql
+第一个mysql是网络别名 第二个mysql是容器名
+
+
+使用docker network connect命令连接网络
+加入nginx2到mynet网络
+$ docker network connect mynet2 nginx2
+加入redis2到mynet网络
+$ docker network connect mynet2 redis2
+
+
+查看mynet网络包含的容器，会发现两个容器都加入当前网络了，后面使用ping命令是能够ping通容器名称的。
+$ docker network inspect mynet2
+...
+        "Containers": {
+            "15212e6a588760e9d67d2a69ff4cf0b4edcddcd2df80cffae98c545e9406d560": {
+                "Name": "nginx2",
+                "EndpointID": "9d175838f541786453d9e9bb7a652601b9f05188870b8839450863fa5e4827d4",
+                "MacAddress": "02:42:ac:14:00:02",
+                "IPv4Address": "172.20.0.2/16",
+                "IPv6Address": ""
+            },
+            "2dcc499fc4219fa3278754506434246c0f31070a438447351d3e61dd183cab7b": {
+                "Name": "redis2",
+                "EndpointID": "b5de699a79acc8b42d66d3708d315d3782160b7579d4b13c98b22a981fe196b6",
+                "MacAddress": "02:42:ac:14:00:03",
+                "IPv4Address": "172.20.0.3/16",
+                "IPv6Address": ""
+            }
+        },
+...
+
+
+
+(7) docker network disconnect 将nginx移除mynet局域网络
+
+$ docker network disconnect mynet0 nginx1
+$ docker network inspect mynet0
+...
+        "Containers": {
+            "8e14baadb7f5f6fb6f4d61b727f50667d906d90513cade358d3c8e40a878da65": {
+                "Name": "redis1",
+                "EndpointID": "4a9b1752fb70d237e77c6e23952f6dc3d695963a9f39d6b2302dad151490001d",
+                "MacAddress": "02:42:ac:13:00:02",
+                "IPv4Address": "172.19.0.2/16",
+                "IPv6Address": ""
+            }
+        },
+...
+
+使用docker network 很方便的维护和管理docker网络，方便容器之间ip和端口交互。
+
+
+
+
+
+
+(8) 再开一个 redis，加入网络，测试互相访问。
+$ docker run -itd --name redis3 -p 6381:6379 redis:6.2.6
+$ docker network connect mynet2 redis3
+
+
+$ docker run -itd --name redis4 -p 6382:6379 redis:6.2.6
+指定网络别名
+$ docker network connect --alias netRedis4 mynet2 redis4
+      --alias strings           Add network-scoped alias for the container
+
+#创建nginx容器，名为mynginx,并加入到网络congnet中
+$ docker run --rm -itd -p 83:80 --name nginx3 --network mynet2 nginx:1.21.3
+
+
+检查运行状态
+$ docker ps
+CONTAINER ID   IMAGE          COMMAND                  CREATED             STATUS             PORTS                                       NAMES
+c6b0bbb8b987   nginx:1.21.3   "/docker-entrypoint.…"   5 seconds ago       Up 5 seconds       0.0.0.0:83->80/tcp, :::83->80/tcp           nginx3
+ed3923bd99fe   redis:6.2.6    "docker-entrypoint.s…"   3 minutes ago       Up 3 minutes       0.0.0.0:6382->6379/tcp, :::6382->6379/tcp   redis4
+48169656186c   redis:6.2.6    "docker-entrypoint.s…"   13 minutes ago      Up 13 minutes      0.0.0.0:6381->6379/tcp, :::6381->6379/tcp   redis3
+15212e6a5887   nginx:1.21.3   "/docker-entrypoint.…"   32 minutes ago      Up 32 minutes      0.0.0.0:82->80/tcp, :::82->80/tcp           nginx2
+2dcc499fc421   redis:6.2.6    "docker-entrypoint.s…"   32 minutes ago      Up 32 minutes      0.0.0.0:6380->6379/tcp, :::6380->6379/tcp   redis2
+
+
+检查IP地址
+$ docker network inspect mynet2
+redis2  172.20.0.3
+redis3  172.20.0.4
+redis4  172.20.0.5
+
+nginx2 172.20.0.2
+nginx3 172.20.0.6
+
+
+进入到 redis2 容器中，查看hosts，并没有其他容器的IP
+$ docker exec -it redis2 bash
+root@2dcc499fc421:/data# cat /etc/hosts
+127.0.0.1       localhost
+::1     localhost ip6-localhost ip6-loopback
+fe00::0 ip6-localnet
+ff00::0 ip6-mcastprefix
+ff02::1 ip6-allnodes
+ff02::2 ip6-allrouters
+172.18.0.3      2dcc499fc421
+172.20.0.3      2dcc499fc421
+
+安装 curl 
+root@2dcc499fc421:/data# apt-get update -y && apt-get install curl -yqq
+通过容器名访问nginx容器
+root@2dcc499fc421:/data# curl nginx2
+
+
+==> 发现在同一网络中的两个容器，它们之间是可以直接使用容器名进行通信的，但容器名并不保存在/etc/hosts中，容器名直接被当作了网络内部的域名。
+
+
+
+
+
+
+
+都连接 redis4，因为它有网络别名。
+
+
+1)宿主机
+$ redis-cli -h 172.20.0.5
+172.20.0.5:6379> set boy "Tim"
+OK
+172.20.0.5:6379> get boy
+"Tim"
+
+redis4 本身呢
+$ docker exec -it redis4 bash
+root@ed3923bd99fe:/data# redis-cli 
+127.0.0.1:6379> get boy
+"Tim"
+
+
+redis3 尝试使用 IP
+$ docker exec -it redis3 bash
+root@48169656186c:/data# redis-cli -h 172.20.0.5
+172.20.0.5:6379> get boy
+"Tim"
+
+
+尝试使用 容器名
+root@48169656186c:/data# redis-cli -h redis4    
+redis4:6379> get boy
+"Tim"
+
+尝试使用 容器id，不行。
+root@48169656186c:/data# redis-cli -h ed39  
+Could not connect to Redis at ed39:6379: Name or service not known
+not connected>
+
+尝试使用 网络别名
+root@48169656186c:/data# redis-cli -h netRedis4
+netRedis4:6379> get boy
+"Tim"
+
+建议使用网络别名，就是因为重启时IP可能变化。
+
+
+
+
+==> “桥接”和“NAT”的区别：
+使用NAT模式可以实现在虚拟系统里访问互联网，虚拟系统无法和本局域网中的其他真实主机进行通讯。
+而使用桥接模式下虚拟出来的操作系统就像是局域网中的一台独立的主机，它可以访问网内任何一台机器。所以Docker0是属于桥接模式。
+
+
+
+
+
 https://blog.csdn.net/lao_pei/article/details/79157712
 https://blog.csdn.net/wucong60/article/details/83757813
 
@@ -2502,6 +3085,7 @@ The --link flag is a legacy feature of Docker. It may eventually be removed. Unl
 --link 特有的功能是共享环境变量。但是也有替代途径：
 
 
+
 1. 下载php镜像 
 $ docker search php
 NAME                           DESCRIPTION                                     STARS     OFFICIAL   AUTOMATED
@@ -2512,9 +3096,8 @@ phpmyadmin/phpmyadmin          A web interface for MySQL and MariaDB.          1
 $ curl -L -s https://registry.hub.docker.com/v1/repositories/php/tags > tmp
 查了一下本地版本: 5.6.33
 
-$ docker pull php:5.6-fpm #大版本
-$ docker pull php:5.6.33-fpm #或这个
-php          5.6.33-fpm   aaf299648ff3   3 years ago   367MB
+$ docker pull php:5.6.33-fpm
+$ docker pull nginx:1.21.3
 
 
 (2) 找说明书，写的不清楚
@@ -2522,10 +3105,11 @@ https://hub.docker.com/
 https://hub.docker.com/_/php
 
 $ docker run -p 80:80 --rm -it  php:5.6.33-fpm bash
-root@6b7f9515ae3a:/var/www/html# pwd
+root@648c0e4cd6bf:/var/www/html# pwd
 /var/www/html
-root@6b7f9515ae3a:/var/www/html# which php
+root@648c0e4cd6bf:/var/www/html# which php
 /usr/local/bin/php
+
 
 一句话打印版本号:
 $ docker run -p 80:80 --rm -it  php:5.6.33-fpm php -version
@@ -2539,33 +3123,31 @@ $ cat a.php
 <?php
 echo "hello, from php\n";
 
-$ docker run -p 80:80 --rm -it -v ~/:/var/www/html/  php:5.6.33-fpm php a.php
+$ docker run --rm -it -v $PWD:/var/www/html/  php:5.6.33-fpm php a.php
 hello, from php
-
-
-
 
 
 
 (3) 启动 php docker:
 $ mkdir -p ~/nginx/www
-$ docker run --name  myphp-fpm -v ~/nginx/www:/www  -d php:5.6.33-fpm
+$ docker run --rm --name myphp-fpm -v ~/nginx/www:/www  -d php:5.6.33-fpm
 
 参数解释：
 --name myphp-fpm : 将容器命名为 myphp-fpm。
 -v ~/nginx/www:/www : 将宿主机中的 ~/nginx/www 挂载到容器的 /www
 
-$ docker ps -a
+$ docker ps
 CONTAINER ID   IMAGE            COMMAND                  CREATED          STATUS          PORTS      NAMES
-a98cb5ebbe61   php:5.6.33-fpm   "docker-php-entrypoi…"   58 seconds ago   Up 56 seconds   9000/tcp   myphp-fpm
+6f954886b604   php:5.6.33-fpm   "docker-php-entrypoi…"   10 seconds ago   Up 9 seconds    9000/tcp   myphp-fpm
+
 默认使用的是9000端口。
 
 
-(4) 创建 ~/nginx/conf/conf.d 目录：
+(4) 创建 nginx 配置文件
 
 $ mkdir -p ~/nginx/conf/conf.d 
-在该目录下添加 ~/nginx/conf/conf.d/test-php.conf 文件，内容如下：
-
+在该目录下添加文件
+$ cat ~/nginx/conf/conf.d/test-php.conf
 server {
     listen       80;
     server_name  localhost;
@@ -2597,15 +3179,15 @@ php:9000: 表示 php-fpm 服务的 URL，下面我们会具体说明。
 
 (5) 启动 nginx
 查版本号
-$ docker run --rm -it  nginx nginx -version
+$ docker run --rm -it  nginx:1.21.3 nginx -version
 nginx version: nginx/1.21.3
 
 
-$ docker run --name test2-php-nginx -p 8083:80 -d \
-    -v ~/nginx/www:/usr/share/nginx/html:ro \
+$ docker run --rm --name test2-php-nginx -p 8083:80 -d \
+    -v ~/nginx/www:/www/:ro \
     -v ~/nginx/conf/conf.d:/etc/nginx/conf.d:ro \
     --link myphp-fpm:php \
-    nginx
+    nginx:1.21.3
 
 参数解释：
 -p 8083:80: 端口映射，把 nginx 中的 80 映射到本地的 8083 端口。
@@ -2624,13 +3206,13 @@ $ docker run --name test2-php-nginx -p 8083:80 -d \
 探究一下怎么实现的：
 进入nginx容器
 $ docker exec -it test2-php-nginx /bin/bash
-root@f178011c167d:/# env | grep -i php     
+root@91ac94309aa6:/# env | grep -i php
 PHP_NAME=/test2-php-nginx/php
-PHP_PORT_9000_TCP_ADDR=172.17.0.2
+PHP_PORT_9000_TCP_ADDR=172.18.0.4
 PHP_ENV_PHP_CFLAGS=-fstack-protector-strong -fpic -fpie -O2
 PHP_PORT_9000_TCP_PROTO=tcp
 PHP_ENV_GPG_KEYS=0BD78B5F97500D450838F95DFE857D9A90D90EC1 6E4F6AB321FDC07F2C332E3AC2BF0BC433CFC8B3
-PHP_PORT_9000_TCP=tcp://172.17.0.2:9000
+PHP_PORT_9000_TCP=tcp://172.18.0.4:9000
 PHP_ENV_PHP_MD5=
 PHP_ENV_PHP_VERSION=5.6.33
 PHP_ENV_PHP_SHA256=9004995fdf55f111cd9020e8b8aff975df3d8d4191776c601a46988c375f3553
@@ -2639,9 +3221,9 @@ PHP_ENV_PHP_EXTRA_CONFIGURE_ARGS=--enable-fpm --with-fpm-user=www-data --with-fp
 PHP_PORT_9000_TCP_PORT=9000
 PHP_ENV_PHP_INI_DIR=/usr/local/etc/php
 PHP_ENV_PHP_LDFLAGS=-Wl,-O1 -Wl,--hash-style=both -pie
-PHP_ENV_PHPIZE_DEPS=autoconf 		dpkg-dev 		file 		g++ 		gcc 		libc-dev 		make 		pkg-config 	   re2c
+PHP_ENV_PHPIZE_DEPS=autoconf            dpkg-dev                file            g++             gcc             libc-dev                make            pkg-config              re2c
 PHP_ENV_PHP_ASC_URL=https://secure.php.net/get/php-5.6.33.tar.xz.asc/from/this/mirror
-PHP_PORT=tcp://172.17.0.2:9000
+PHP_PORT=tcp://172.18.0.4:9000
 PHP_ENV_PHP_CPPFLAGS=-fstack-protector-strong -fpic -fpie -O2
 
 
@@ -2651,19 +3233,18 @@ PHP_ENV_PHP_CPPFLAGS=-fstack-protector-strong -fpic -fpie -O2
 
 
 (6) 接下来我们在 ~/nginx/www 目录下创建 index.php，代码如下：
-
+$ cat ~/nginx/www/index.php
 <?php
 echo phpinfo();
-?>
+
 
 
 (7) 查看
 $ docker ps
-CONTAINER ID   IMAGE            COMMAND                  CREATED         STATUS         PORTS                                   NAMES
-f178011c167d   nginx            "/docker-entrypoint.…"   2 minutes ago   Up 2 minutes   0.0.0.0:8083->80/tcp, :::8083->80/tcp   test2-php-nginx
-a98cb5ebbe61   php:5.6.33-fpm   "docker-php-entrypoi…"   6 minutes ago   Up 6 minutes   9000/tcp                                myphp-fpm
+CONTAINER ID   IMAGE          COMMAND                  CREATED         STATUS         PORTS                                  NAMES
+91ac94309aa6   nginx:1.21.3   "/docker-entrypoint.…"   2 minutes ago   Up 2 minutes   0.0.0.0:8083->80/tcp, :::8083->80/tcp  test2-php-nginx
+f7e4e8813016   php:5.6-fpm    "docker-php-entrypoi…"   6 minutes ago   Up 6 minutes   9000/tcp                               myphp-fpm
 
-浏览器打开 http://宿主机ip:8083/index.php，显示 php版本详细信息。
 
 $ tree nginx/
 nginx/
@@ -2673,6 +3254,431 @@ nginx/
 └── www #放网页文件
     ├── index2.php
     └── index.php
+
+浏览器打开 http://宿主机ip:8083/index.php，显示 php版本详细信息。
+但是其他脚本正常解析。
+
+
+
+
+//无效。
+有人建议: 找到php目录下的 php.ini ，将short_open_tag的值改成on
+$ docker exec -it myphp-fpm bash
+# php -a
+php > phpinfo();
+_ENV["PHP_INI_DIR"] => /usr/local/etc/php #php.ini 的位置
+_ENV["PWD"] => /var/www/html  #当前文件?
+php > exit
+
+
+php5.6.40有如下文件。
+# cat /usr/local/etc/php/php.ini | grep short_open_tag #确实是 Off
+# apt update 
+# apt install vim -y
+# vim /usr/local/etc/php/php.ini
+搜索并修改 short_open_tag = On
+
+而 php5.6.33 没有示例文件。
+/usr/local/etc/php/php.ini
+
+
+
+
+
+
+
+(8) 安装扩展
+默认php镜像中提供的扩展比较少，缺少诸如mysql、gd2等常用的扩展，这样我们就需要自己安装并启用扩展。
+
+首先进入到php容器，用php -m命令查看本地有什么扩展。
+可以使用docker-php-ext-install命令来安装扩展。
+$ docker-php-ext-install mysql
+
+
+扩展安装好之后就可以在php.ini中启用。
+我们从phpinfo中可以看到，容器环境下默认的php.ini没有启用，可以从/usr/local/etc/php下将php.ini-development拷贝为php.ini。
+通过修改php.ini中配置，启用自己需要的扩展。
+
+
+下面是几个扩展安装的命令，供大家参考。
+docker-php-ext-source 在容器中创建一个/usr/src/php目录
+docker-php-ext-enable 启用PHP扩展，省去我们手工编辑php.ini的过程
+docker-php-ext-install 安装并启用PHP扩展
+docker-php-ext-configure 经常与 docker-php-ext-install 搭配，在需要自定义扩展的配置时使用
+
+
+
+
+
+ref:
+https://www.jianshu.com/p/43037ce40b00
+编排与mysql扩展 https://www.cnblogs.com/cocowool/p/docker-php-dev.html
+编排详解 https://www.sitepoint.com/docker-php-development-environment/
+
+
+
+
+
+========================================
+|-- 容器之间的通信实例: php 容器访问 mysql 容器
+----------------------------------------
+
+1. 拉取镜像
+$ docker pull mysql:8.0
+$ docker pull php:5.6-fpm
+$ docker pull nginx:1.21.3
+
+2. 启动容器
+(1) 启动 mysql 容器
+$ docker run --rm --name myDB -e MYSQL_ROOT_PASSWORD=123456 -d -p 7070:3306 mysql:8.0 #没解决编码问题
+
+$ docker inspect myDB
+...
+            "Ports": {
+                "3306/tcp": [
+                    {
+                        "HostIp": "0.0.0.0", #1.这里是如果用户访问宿主机IP和端口
+                        "HostPort": "7070"
+                    },
+                    {
+                        "HostIp": "::",
+                        "HostPort": "7070"
+                    }
+                ],
+                "33060/tcp": null
+            },
+...
+"IPAddress": "172.18.0.3", #这是IP地址
+
+$ docker port myDB #表示容器的 3306 端口对应着 外面宿主机的 7070 端口
+3306/tcp -> 0.0.0.0:7070
+3306/tcp -> :::7070
+
+$ docker exec -it myDB bash
+root@7b2ff9df5d45:/# mysql -h localhost -u root -p
+mysql> use mysql
+mysql> select Host, User from user;
++-----------+------------------+
+| Host      | User             |
++-----------+------------------+
+| %         | root             |
+| localhost | mysql.infoschema |
+| localhost | mysql.session    |
+| localhost | mysql.sys        |
+| localhost | root             |
++-----------+------------------+
+5 rows in set (0.00 sec)
+mysql> exit
+Bye
+root@7b2ff9df5d45:/# exit
+exit
+
+
+
+## MySQL 8 changed the default charset to utf8mb4. 
+为了防止报错，需要把字符集改回 utf8.
+$ docker exec -it myDB bash
+root@7b2ff9df5d45:/# cat /etc/mysql/my.cnf
+root@7b2ff9df5d45:/# ls -lth /etc/mysql
+total 12K
+drwxrwxr-x 1 root root 4.0K Oct 18 21:35 conf.d
+-rw-rw-r-- 1 root root 1.1K Oct 18 21:35 my.cnf
+-rw-r--r-- 1 root root 1.5K Sep 28 13:27 my.cnf.fallback
+
+$ cat nginx/conf/my.conf
+[mysqld]
+collation-server = utf8_unicode_ci
+character-set-server = utf8
+
+这个也不行，试试低版本的mysql
+$ docker run --rm --name myDB -e MYSQL_ROOT_PASSWORD=123456 -d -p 7070:3306 \
+-v ~/nginx/conf/my.conf:/etc/mysql/conf.d/char.conf \
+mysql:8.0
+
+
+
+
+
+########## 使用老版本的
+$ docker pull mysql:5.6
+$ docker run --rm --name myDB0 -e MYSQL_ROOT_PASSWORD=123456 -d -p 7071:3306 mysql:5.6
+
+$ docker inspect myDB0 | grep -i ipaddress
+"IPAddress": "172.18.0.7",
+后面加入网络会再获得一个ip。
+
+
+
+
+
+
+(2) 启动一个 php 容器
+$ mkdir -p ~/nginx/www
+$ docker run --rm --name  myphp-fpm -v ~/nginx/www:/www -d php:5.6-fpm
+
+
+(3) 创建网络 
+$ docker network create -d bridge my-net
+
+$ docker network ls
+NETWORK ID     NAME      DRIVER    SCOPE
+def701d48b1e   bridge    bridge    local
+416fdec7fe0c   host      host      local
+d6c9841e1b0b   my-net    bridge    local
+051fc56342ef   none      null      local
+
+
+(4) 把这个容器加入网络
+$ docker network connect my-net myDB
+$ docker network connect my-net myphp-fpm
+
+$ docker network connect my-net myDB0
+
+
+
+(5) 还需要添加一个 nginx 容器
+
+还需要启动一个 nginx
+$ cd
+$ mkdir -p nginx/www nginx/logs nginx/conf
+$ cat nginx/www/index.php
+<?php
+  phpinfo();
+?>
+
+$ cat nginx/conf/php.conf
+server {
+	listen	80;
+	server_name	localhost;
+
+	location / {
+		root	/usr/share/nginx/html;
+		index	index.html index.htm index.php;
+	}
+
+	error_page	500 502 503 504	/50x.html;
+	location = /50x.html {
+		root	/usr/share/nginx/html;
+	}
+
+	location ~ \.php$ {
+		fastcgi_pass	myphp-fpm:9000;
+		fastcgi_index	index.php;
+		# fastcgi_param SCRIPT_FILENAME $document_root$fastcgi_script_name;
+		fastcgi_param	SCRIPT_FILENAME	/www/$fastcgi_script_name; 
+		include		fastcgi_params;
+	}
+}
+
+设置使用 myphp-fpm 的 9000 端口，作为php服务提供方。
+# php文件地址在容器内的 $document_root 下，也就是  location.root 指定的 /usr/share/nginx/html。
+php文件地址在容器内的 /www/ 下。
+
+
+
+-v ~/nginx/www:/usr/share/nginx/html \
+
+$ docker run --rm -it -d --name nginx2 \
+-v ~/nginx/www:/www \
+-v ~/nginx/conf:/etc/nginx/conf.d \
+-p 82:80 \
+--network my-net \
+nginx:1.21.3
+其中 -network web-net 是同一个网络，保证Nginx能和php通信。
+
+
+
+检查 
+$ docker network inspect my-net
+myDB 172.21.0.2
+myphp-fpm 172.21.0.3
+nginx2 172.21.0.4
+myDB0 172.21.0.5
+
+
+
+可以正常访问php文件:
+http://110.40.254.15:82/a2.php
+
+$ cat a2.php 
+<?php
+$a=1000;
+print($a);
+echo "<hr>";
+
+但是包含语句 “phpinfo();” 时失败。 //todo
+phpinfo(INFO_LICENSE); #正常显示
+
+$ docker logs myphp-fpm
+
+
+
+
+
+
+(5) 在 php 中使用 mysql 5.6
+$ docker exec -it myphp-fpm bash
+
+mysql 版本
+$ docker exec -it myDB0 bash
+root@76640e7b6620:/# mysql --version
+mysql  Ver 14.14 Distrib 5.6.51, for Linux (x86_64) using  EditLine wrapper
+
+
+php的版本
+root@c91ce97b781a:/var/www/html# php --version
+PHP 5.6.40 (cli) (built: Jan 23 2019 00:16:13) 
+Copyright (c) 1997-2016 The PHP Group
+Zend Engine v2.6.0, Copyright (c) 1998-2016 Zend Technologies
+
+
+测试php的cli模式
+# php -a 
+php > echo "hello, php!";
+hello, php!
+
+
+查看 php.ini 位置
+root@c91ce97b781a:/var/www/html# php -r 'phpinfo();' | grep -i conf
+
+root@c91ce97b781a:/var/www/html# php -r "phpinfo();" | grep php.ini       
+Configuration File (php.ini) Path => /usr/local/etc/php
+
+没有，就按参考文件复制一个
+root@a34f2fd6fbdb:/var/www/html# cp /usr/local/etc/php/php.ini-development /usr/local/etc/php/php.ini
+
+编辑
+root@a34f2fd6fbdb:/var/www/html# apt update
+root@a34f2fd6fbdb:/var/www/html# apt install vim -y
+
+root@a34f2fd6fbdb:/var/www/html# vim /usr/local/etc/php/php.ini
+
+# vim /usr/local/etc/php/php.ini
+extension=php_mysql.dll #取消前面的注释
+
+安装mysql/mysqli驱动
+# docker-php-ext-install mysql
+# docker-php-ext-install mysqli
+# php -m  | grep -i mysql
+mysql
+mysqli
+mysqlnd
+
+
+
+# mysql 8.0 链接失败
+测试链接数据库
+# php test2.php 
+报错：Warning: mysql_connect(): Server sent charset unknown to the client. Please, report to the developers in /www/test2.php on line 22
+就是这一行 mysql_connect()
+
+# php -a #进入交互模式
+php > mysql_connect('172.21.0.2:3306','root','123456'); 
+Warning: mysql_connect(): Server sent charset unknown to the client.
+
+
+
+# mysql 5.6 成功
+php > mysql_connect('172.21.0.5:3306','root','123456'); 
+Deprecated: mysql_connect(): The mysql extension is deprecated and will be removed in the future: use mysqli or PDO instead in php shell code on line 1
+
+php> $mysqli = new mysqli("172.21.0.5:3306", "root", "123456", "mysql");
+php> $result = $mysqli->query("SELECT Host, User FROM user");
+php> while($obj = $result->fetch_object()){ print($obj->Host ."\t". $obj->User ."\n");  }
+%       root
+localhost       root
+
+
+测试脚本
+root@c91ce97b781a:/var/www/html# cd /www
+root@c91ce97b781a:/www# php test2.php # 正常显示查询到的数组
+
+但是网页端报错：
+http://110.40.254.15:82/test2.php
+Fatal error: Class 'mysqli' not found in /www/test2.php on line 22
+
+==> 说明 cli 和 web 使用的php至少配置文件是不一致的。
+
+
+是不是需要查 php 开了哪些扩展?
+root@c91ce97b781a:/www# php phpinfo2.php  | grep ini --color=auto
+Loaded Configuration File => /usr/local/etc/php/php.ini
+
+root@c91ce97b781a:/www# grep mysqli /usr/local/etc/php/php.ini --color=auto
+;extension=php_mysqli.dll
+
+果真没开。使用vim去掉前面的分号。
+# vim /usr/local/etc/php/php.ini
+如何重启php服务呢？一启动这个容器就没了！
+
+# ps aux | grep php-fpm | grep master | grep -v grep
+# kill -USR2 32436
+
+kill 参数解释:
+https://blog.csdn.net/zhangkaiadl/article/details/92763973
+INT, TERM 立刻终止
+QUIT 平滑终止
+USR1 重新打开日志文件
+USR2 平滑重载所有worker进程并重新载入配置和二进制模块
+
+然后网页可以看到了！
+Array
+(
+    [0] => %	root
+    [1] => localhost	root
+)
+
+
+
+
+$ cat test2.php #使用 mysqli 连接数据库
+<?php
+header('Content-Type: text/html; charset=UTF-8');
+date_default_timezone_set('PRC');
+?>
+<title>[ Debuger ]</title>
+<div class=light>[ MySQL Debuger v0.1.2 ]</div>
+<style>
+body,html,div,p{margin:0; padding:0;}
+.red{ color:white;background:red; }
+.light{color:#ddd;}
+</style>
+
+<?php
+function debug($str){
+	echo '<pre>';
+	print_r($str);
+	echo '</pre>';
+}
+
+function query($sql="show tables;"){
+	print('<p class=red>'.$sql.'</p>');
+	$mysqli = new mysqli('172.21.0.5:3306','root','123456', 'mysql') or die('Error: '.mysqli_error());
+	$rs=$mysqli->query($sql);
+	$rows=array();
+	while($row=$rs->fetch_object()){
+		$rows[]=$row->Host . "\t" . $row->User;
+	}
+	$mysqli->close();
+	return $rows;
+}
+//debug(query());
+debug(query('select Host, User from user;'));
+
+
+
+
+
+
+
+??
+端口映射的指令是什么？docker指令：docker run -p ip:hostPort:containerPort redis
+使用 ip::containerPort 绑定 localhost 的任意端口到容器的 5000 端口，本地主机会自动分配一个端口。
+$ docker run -d -p 127.0.0.1::5000 training/webapp python app.py
+
+
+
+
 
 
 
@@ -2727,74 +3733,6 @@ Go to Managing Data in Containers.
 
 
 
-
-
-
-
-
-
-========================================
-|-- 容器之间的通信: 容器端口映射
-----------------------------------------
-端口映射的指令是什么？docker指令：docker run -p ip:hostPort:containerPort redis
-
-ref: https://yeasy.gitbooks.io/docker_practice/network/port_mapping.html#映射到指定地址的指定端口
-使用 ip::containerPort 绑定 localhost 的任意端口到容器的 5000 端口，本地主机会自动分配一个端口。
-$ docker run -d -p 127.0.0.1::5000 training/webapp python app.py
-
-
-
-
-1. 通过sudo docker ps 查看当前的进程
-
-
-2. 通过 sudo docker inspect <id> ；例如我上面的例子 sudo docker inspect 4efcb2f82953
-找到这个ip 
-
-"Ports": {
-	"3306/tcp": [ #2.那么容器的这个端口来响应
-		{
-			"HostIp": "0.0.0.0", #1.这里是如果用户访问宿主机IP和端口
-			"HostPort": "7070"
-		}
-	]
-},
-...
-"IPAddress": "172.17.0.2", ##就是这一行
-
-
-
-
-3. 第三步：设置端口映射  
-$ sudo  docker run -d -p 172.17.0.2::9090 training/webapp python app.py
-注意红色字体(172.17.0.2)前面是docker容器的ip地址，后面是我们需要映射的端口号(9090)
-
-绑定 已有容器172.17.0.2 的任意端口绑定到 将要新建的容器的9090端口，已有容器会自动分配一个端口。
-
-
-
-4. sudo docker ps 查看当前是不是映射成功
-
-出现0.0.0.0:7070->3306/tcp表示宿主机的7070端口映射到了虚拟机的3306端口。
-
-
-
-
-5. 也可以使用docker port NAME查看端口映射情况。
-$ sudo docker port agitated_hawking
-红色字体(agitated_hawking)指的是当前端口号的name。
-
-
-$ sudo docker port 740
-3306/tcp -> 0.0.0.0:7070
-
-表示虚拟机的3306端口映射到了主机的7070端口。
-如果没有任何回复，表示端口映射失败。
-
-
-
-
-https://blog.csdn.net/taowuhua0505/article/details/88255773
 
 
 
