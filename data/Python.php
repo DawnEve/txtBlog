@@ -35,6 +35,7 @@ return array (
     2 => array (
       array('机器学习概述 ML AI','MachineLearning-01','txt',),
       array('Py与算法 algorithm','Py201_algorithm','txt',),
+      array('sklearn基础教程','sklearn','txt',), //https://scikit-learn.org/stable/
       array('python爬虫','webSpider','txt',),
       array('python财经','stocks','txt',),
     ),

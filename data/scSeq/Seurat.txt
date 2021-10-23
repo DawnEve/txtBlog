@@ -538,6 +538,8 @@ https://github.com/DawnEve/scRNAseqCode
 
 
 
+
+
 ========================================
 |-- 多组数据的整合、批次效应 //todo
 ----------------------------------------
@@ -693,6 +695,159 @@ subset(pbmc, subset = MS4A1 > 1)
 
 ref:
 https://satijalab.org/seurat/archive/v3.0/interaction_vignette.html
+
+
+
+
+========================================
+下载 Suerat 官方网站镜像 (2021.9.23)
+----------------------------------------
+总体计划: 使用远端 docker 下载需要的东西，使用 nginx 展示内容并下载
+https://labs.play-with-docker.com/
+
+
+1. 下载一个 nginx ，方便预览文件
+
+$ docker pull nginx
+$ docker run --rm -it nginx nginx -version
+nginx version: nginx/1.21.3
+
+还是使用带版本号的靠谱，后期可重复。
+$ docker pull nginx:1.21
+$ docker run --rm -it nginx:1.21 nginx -version
+nginx version: nginx/1.21.3
+
+
+$ cd /home/tom/
+$ cat nginx.config  #注意改nginx监听的端口号了
+server {
+    listen       8008;
+    listen  [::]:8008;
+    server_name  localhost;
+    #access_log  /var/log/nginx/host.access.log  main;
+    location / {
+        root   /usr/share/nginx/html;
+        index  index.html index.htm;
+		
+        # list files
+        autoindex on; 
+        autoindex_exact_size on; 
+        autoindex_localtime on; 
+    }
+}
+
+
+把本地映射到docker内的web目录
+$ docker run --rm -d -p 8000:8008 \
+--mount type=bind,source=/home/tom/,target=/usr/share/nginx/html/ \
+--mount type=bind,source=/home/tom/nginx.config,target=/etc/nginx/conf.d/default.conf \
+nginx:1.21
+
+下载命令: 约10Mb。
+## curl https://www.dropbox.com/s/3dby3bjsaf5arrw/cell_cycle_vignette_files.zip -o test.zip -J -L -k
+
+$ wget -r -p -np -k http://www.satijalab.org/seurat
+内置的wget不好用，不支持-r参数！！
+
+
+
+
+
+2. 重新搜一个 docker 版的 wget
+
+$ docker pull mwendler/wget
+$ alias wget='docker run -v $PWD:/work --workdir=/work --rm mwendler/wget' #把当前目录挂载到容器的工作目录
+
+
+$ wget -r -p -np -k --no-check-certificate http://www.satijalab.org/seurat
+参数解释:
+-r, –recursive（递归） specify recursive download
+-k, –convert-links（转换链接、将 HTML 页面中的链接转换为相对链接即本地链接）
+	make links in downloaded HTML or CSS point to local files
+-p, –page-requisites（下载所有的图片等页面显示所需的内容）
+	 get all images, etc. needed to display HTML page
+-np, –no-parent（不追溯至父级）
+	don't ascend to the parent directory
+–restrict-file-names=nocontrol 用来解决中文乱码问题（需要可以试试）
+
+
+
+
+(2) 使用 wget 同步网站镜像
+$ wget -m -L –reject = http://www.satijalab.org/seurat
+
+一般情况下使用-m参数就可以：
+$ wget -m --no-check-certificate https://www.satijalab.org/seurat #这个就下载一个首页文件。
+
+$ wget -m --no-check-certificate https://satijalab.org/seurat/index.html #好多文件，应该是都下下来了！
+
+参数解释：
+-m,  --mirror      shortcut for -N -r -l inf --no-remove-listing
+-L,  --relative    follow relative links only
+
+可以设置正则表达式过滤链接
+-R,  --reject=LIST               comma-separated list of rejected extensions
+   --accept-regex=REGEX        regex matching accepted URLs
+   --reject-regex=REGEX        regex matching rejected URLs
+   --regex-type=TYPE           regex type (posix|pcre)
+
+是否显示详细下载情况
+  -v,  --verbose                   be verbose (this is the default)
+  -nv, --no-verbose                turn off verboseness, without being quiet
+       --report-speed=TYPE         output bandwidth as TYPE.  TYPE can be bits
+
+
+(3) 下载过程中卡死了，仔细一看，js控制台报错了
+打不开的js:
+https://cdn.rawgit.com/zenorocha/clipboard.js/master/dist/clipboard.min.js 
+已有的js，不知道怎么注入到当前页面中
+https://raw.githubusercontent.com/zenorocha/clipboard.js/master/dist/clipboard.min.js
+javascript:(function(s){s.src='https://static.runoob.com/assets/clipboard.min.js';document.body.appendChild(s)})(document.createElement('script'));
+
+不知道 墙 啥时候放行这个js文件。。。
+
+
+(4) 先把已经下载的抓到本地
+回到本地宿主机:
+$ cd /home/wangjl/data/web/docs/docs/seurat/
+$ wget -m --no-check-certificate http://ip172-18-0-69-c55t5u7njsv000dv7nk0-8000.direct.labs.play-with-docker.com/site/satijalab.org/seurat/index.html
+
+
+
+最后因为404报错停下了。
+HTTP request sent, awaiting response... 404 Not Found
+2021-09-23 11:13:20 ERROR 404: Not Found.
+
+FINISHED --2021-09-23 11:13:20--
+Total wall clock time: 16m 35s
+Downloaded: 516 files, 324M in 10m 39s (519 KB/s)
+
+
+总共下载326M数据。
+$ du -sh /home/wangjl/data/web/docs/docs/seurat/
+326M	/home/wangjl/data/web/docs/docs/seurat/
+
+最后去掉多余的文件夹外壳，保存在 webPan.py 上。
+/home/wangjl/data/web/docs/docs/satijalab.org
+访问地址: http://y.biomooc.com:8000/file/docs/satijalab.org/index.html
+
+
+压缩:
+$ tar -czvf seurat.tar.gz satijalab.org
+-rw-rw-r-- 1 wangjl wangjl 216M Sep 23 14:09  seurat.tar.gz
+加上日期 seurat-20210923.tar.gz
+
+$ du -sh satijalab.org/
+325M	satijalab.org/
+压缩道原来的 66%。
+
+
+
+(5) 缺一个文件，在线代理查看一下: 未解决
+https://proxysite.page/en
+
+https://satijalab.org/seurat/articles/install.html
+https://satijalab.org/seurat/articles/pbmc3k_tutorial_files/header-attrs-2.10/header-attrs.js
 
 
 

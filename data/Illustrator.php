@@ -30,6 +30,7 @@ return array (
     2 => array (
       array('路径专题','Illustrator102','txt'),
       array('选择与形状','Illustrator201','html'),
+      array('SCI 绘图标准与方法','sci_pics','txt'),
     ),
   ),
 
@@ -55,6 +56,7 @@ return array (
     2 => array (
       array('audition3.0','audition','txt'),
       array('premiere_pro_cs4','premiere_note','txt'),
+      array('LaTeX 排版','LaTeX','txt'),
     ),
   ),
 

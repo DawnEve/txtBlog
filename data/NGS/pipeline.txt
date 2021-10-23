@@ -18,7 +18,6 @@
 
 
 
-
 ========================================
 生信分析流程pipeline概述
 ----------------------------------------
@@ -507,7 +506,7 @@ https://www.cnblogs.com/arkenstone/p/5609063.html
 
 
 ========================================
-基于 Common Workflow language 语言流的流程 / WDL(workflow description language)
+基于 Common Workflow language 语言流的流程 / Broad Institute's  WDL(workflow description language)
 ----------------------------------------
 CWL（Common Workflow Language）普通工作流语言和WDL（Workflow Description Language）工作流描述语言。定义每一个计算过程（脚本）的输入和输出，然后通过连接这些输入和输出，构成数据分析流程。
 
@@ -800,6 +799,205 @@ https://wenlongshen.github.io/2018/09/08/Pipelining-Solution-1/
 
 
 
+========================================
+生信流程工具-CWL (BD 单细胞平台分析流程是cwl写的: bdgenomics/rhapsody 1.9.1)
+----------------------------------------
+https://www.commonwl.org/user_guide/
+
+1. 安装
+依赖 node.js, Java compiler。
+
+$ git clone https://github.com/common-workflow-language/cwltool.git
+$ cd cwltool# Switch to source directory
+$ pip3 install . -i https://pypi.douban.com/simple/ # Install `cwltool` from source
+$ cwltool --version# Check if the installation works correctly
+/home/wangjl/.local/bin/cwltool 3.1.20210825140344
+
+
+2. 使用方法
+user guide:https://www.commonwl.org/user_guide/
+cwltool [tool-or-workflow-description] [input-job-settings]
+	第一个cwl文件描述做什么，第二个yaml文件设置IO
+
+cwl文件需要写成json或yaml格式，或者两者的混合。YAML文件编写格式参考YAML Guide。
+
+需要两个cwl文件，一个进行流程说明，一个设置输入输出和参数。
+
+
+
+(1) 最简版 https://www.commonwl.org/user_guide/02-1st-example/index.html
+$ cat echo.cwl 
+#!/usr/bin/env cwl-runner 
+
+cwlVersion: v1.0        # cwl 版本
+class: CommandLineTool  # 命令行工具
+baseCommand: echo       # 运行的程序名
+inputs:              #工具的输入
+  message:          # 参数id
+    type: string   #参数类型
+    inputBinding:  #参数如何出现在命令行
+      position: 1  # 参数出现在 命令行的位置
+outputs: []
+
+注意：
+- 不能使用 \t 代替空格开头；
+
+$ cat echo_input.yaml 
+message: Hello world! from cwl
+
+
+运行：第一个参数是cwl脚本，第二个参数是yaml配置文件。
+$ cwl-runner echo.cwl echo_input.yaml
+/usr/bin/cwl-runner 1.0.20180302231433
+Resolved 'echo.cwl' to 'file:///home/wangjl/test/cwl_test/echo.cwl'  #解析配置文件
+[job echo.cwl] /tmp/tmpOOdt7U$ echo \    #读取cwl，拼装命令，命令的参数是yaml提供的
+    'Hello world! from cwl'
+Hello world! from cwl    #输出
+[job echo.cwl] completed success
+{}
+Final process status is success
+
+
+(2) 深入学习
+https://www.commonwl.org/user_guide/
+
+
+
+
+
+3. IO 输出到文件
+(1)输入 Input
+在CWL描述文件的input部分描述input；
+如果是输入是文件类型要加class: File
+可以通过inputBinding设置在命令行中input出现时的前缀名，以及前缀和input中间是否有空格。
+
+
+(2) Output
+在CWL描述文件的output部分描述output；
+可以通过outputBinding设置output;
+通配符允许在glob字段使用。
+
+获取标准输出流
+
+$ cat io.yaml
+#!/usr/bin/env cwl-runner
+cwlVersion: v1.0
+class: CommandLineTool
+baseCommand: echo 
+stdout: output.txt # 设置输出文件
+inputs:
+  message:
+    type: string
+    inputBinding:
+      position: 1
+outputs:
+  example_out:
+    type: stdout #设置输出方式
+# end
+
+
+用stdout来将输出内容指定到一个文件名；
+相应的，在output参数中，必须要有type: stdout。
+
+运行：
+$ cwl-runner io.cwl echo_input.yaml
+/usr/bin/cwl-runner 1.0.20180302231433
+Resolved 'io.cwl' to 'file:///data/wangjl/test/testCWL/io.cwl'
+[job io.cwl] /tmp/tmpZnBIPm$ echo \
+    'Hello world! from cwl' > /tmp/tmpZnBIPm/output.txt
+[job io.cwl] completed success
+{
+    "example_out": {
+        "checksum": "sha1$8f24a97752ec555e86e165f8ad005ed389776dda", 
+        "basename": "output.txt", 
+        "location": "file:///data/wangjl/test/testCWL/output.txt", 
+        "path": "/data/wangjl/test/testCWL/output.txt", 
+        "class": "File", 
+        "size": 22
+    }
+}
+Final process status is success
+
+$ cat output.txt #输出内容到新文件
+Hello world! from cwl
+
+
+
+
+4. 更多细节，请参考 biomooc.com/linux/cwl: https://www.biomooc.com/linux/cwl_guide.html
+
+https://www.commonwl.org/user_guide/
+
+
+
+
+
+
+
+
+ref:
+https://www.jianshu.com/p/4b818498dfa9
+https://blog.csdn.net/sinat_39288981/article/details/114990642
+
+
+
+
+
+
+
+
+
+
+
+========================================
+生信流程工具 -- workflow description language (wdl): GATK +Cromwell //todo
+----------------------------------------
+1. 简介
+
+一个优秀的pipeline工具应该具备良好的组织性、复用性、支持多种集群架构，较低的上手及查错成本，而目前WDL就是这样一个具备这种潜力的工具。
+
+WDL是Broad Institute开发的“human readable and writable”定义组织任务与工作流的一种语言。从开发者及开发者赋予的名字中，我们就能看出WDL是一个面向生物信息/基因组学领域的专业的工具。
+
+官网: https://software.broadinstitute.org/wdl/
+官方入门教程: https://software.broadinstitute.org/wdl/documentation/quickstart
+
+该项目貌似要有单独网址: https://sciwiki.fredhutch.org/compdemos/Cromwell/
+https://www.rc.virginia.edu/userinfo/howtos/rivanna/wdl-bioinformatics/
+
+
+wdl 语言
+https://github.com/openwdl/wdl/
+https://www.openwdl.org/
+https://github.com/biowdl
+
+运行环境
+https://github.com/broadinstitute/cromwell
+http://cromwell.readthedocs.io/
+
+
+
+(2) 基本的WDL包括五个重要的概念：workflow, task, call, command and output.
+理解了就可以完成在本地运行的基本的脚本。
+
+除此之外，还有 runtime、parameter_meta、meta等概念，它们可以给流程增加更多的特性，这里我们后面再介绍，先从基本概念开始。
+
+
+
+
+
+
+
+ref:
+https://www.jianshu.com/p/979fd06661cb
+https://www.jianshu.com/p/41f377e20ff7
+
+https://zhuanlan.zhihu.com/p/121599533
+
+Cromwell +WDL学习 https://blog.csdn.net/qq_41551450/article/details/93486438
+https://blog.csdn.net/weixin_43999327/article/details/104245691
+https://blog.csdn.net/theomarker/article/details/79627804
+
+干货 https://www.cnblogs.com/raisok/p/11151430.html
 
 
 
@@ -3433,6 +3631,12 @@ https://www.bilibili.com/video/av45832590?p=6
 
 1.YAML 语言（发音 /ˈjæməl/ ）的设计目标，就是方便人类读写。它实质上是一种通用的数据串行化格式。
 
+Key-Value Pairs
+  冒号分割，比如first_key: value1, value2
+  key不能有空格，value可以有
+  需注意数字，如果是integer可以写123，如果要strings要写"123"。在CWL中所有的baseCommand都需要是strings，所以必须加引号：baseCommand: [echo, "42"]
+
+
 它的基本语法规则如下。
 	大小写敏感
 	使用缩进表示层级关系
@@ -3447,18 +3651,22 @@ YAML 支持的数据结构有三种。
 	纯量（scalars）：单个的、不可再分的值
 
 
-(1)对象
+(1)对象 Maps
 对象的一组键值对，使用冒号结构表示。
 animal: pets
 转为 JavaScript { animal: 'pets' }
 
+用YAML格式进行分级，下一级“children”属于上一级“parent”。
+用两个空格进行缩进，不能用tab。
 
 Yaml 也允许另一种写法，将所有键值对写成一个行内对象。
 hash: { name: Steve, foo: bar } 
 转为 JavaScript { hash: { name: 'Steve', foo: 'bar' } }
 
 
-(2)数组
+(2)数组 Arrays
+用-来为一个key提供多个value或objects（key-value对）。
+
 一组连词线开头的行，构成一个数组。
 - Cat
 - Dog
@@ -3477,6 +3685,36 @@ hash: { name: Steve, foo: bar }
 数组也可以采用行内表示法。
 animal: [Cat, Dog]
 转为 JavaScript { animal: [ 'Cat', 'Dog' ] }
+
+$ cat do.yaml
+touchfiles:
+	- foo.txt
+	- bar.dat
+	- baz.txt
+
+exclusive_parameters:
+	type:
+		- type: record
+		  name: itemC
+		  fileds:
+			itemC:
+				type: string
+				inputBinding: #设置input出现在command命令行的形式(前缀名，是否和前缀名有空格......)
+					prefix: -C
+		- type: record
+		  name: itemD
+		  fields:
+			itemD:
+				type: string
+				inputBinding:
+					prefix: -D
+# end
+
+
+
+
+
+
 
 
 (3)四、复合结构
@@ -3711,17 +3949,80 @@ https://blog.csdn.net/ezreal_tao/article/details/84840679
 
 
 ========================================
-Nextflow 生物信息流程
+Nextflow 生物信息流程 (依赖 java8) //todo
 ----------------------------------------
+
+1. 简介
+(1) 安装
 https://www.nextflow.io/
+https://github.com/nextflow-io/nextflow/releases
 
-还是跟小孩一样，喜欢玩，尤其是这种搭积木的游戏，其实真的没什么技术含量。
-但科研分析是反标准化的，如果你的paper只是pipeline出来的，那最多也就3分。
+https://blog.csdn.net/u011262253/category_10285121.html
 
 
-作为researcher，pipeline这种东西，看懂别人的就行，真没必要耗费大部分精力去自己搭建和完善，除非你是真的想转行做技工了。
+Nextflow: Data-driven computational pipelines
+Nextflow enables scalable and reproducible scientific workflows using software containers. 
+	支持容器。
+It allows the adaptation of pipelines written in the most common scripting languages.
+	支持几乎任意脚本语言。
+Its fluent DSL simplifies the implementation and the deployment of complex parallel and reactive workflows on clouds and clusters.
+	在云和集群上，很容易并行。
 
-找到自己的定位，明确自己的科学问题，协助发现有意义的生物学规律，发paper，申请funding，冲刺顶刊，不要玩物丧志。
+
+
+
+
+
+
+(2) 有一个（付费）在线会议：学习一下广告用语。
+http://seqanswers.com/forums/showthread.php?t=101984
+Online Workshop - Bioinformatics Pipeline Development with Nextflow (Nov 22-25, 2021)
+
+How to manage your own data analysis pipelines using workflow management systems
+
+When? November 22-25, 2021 9 am - 5 pm (CET)
+Where? Online
+Link? https://www.ecseq.com/workshops/work...ne-Course.html
+
+Streamline your research through the development of reproducible analysis pipelines
+
+In a nutshell
+- Learn the fundamental best-practices of bioinformatic pipeline development
+- Understand how workflow management systems can accelerate your research
+- Use state-of-the-art, open source software to make complex analyses routine
+- Perform your own custom analysis pipelines using Nextflow!
+
+
+第一天：简介工作流
+- Introduction to pipeline development and workflow management systems
+- Introduction and overview:. Why build bioinformatic analysis pipelines at all?
+- Workflow Management Systems:. What’s out there and how should I decide what to use? How do I think like an end-user?
+- Where to find example pipelines, how to run them, and get a feel for what output to expect. Get familiar with the Linux command line.
+- Considerations for different types of underlying computational infrastructure.
+- Should my pipeline run locally, on a HPC or in the cloud? How do I make my work scalable?
+- Setting up environmental dependencies and software containers. How do I make my work reproducible?
+- Industry best-practices and optimising your work environment for software development.
+
+
+第2-3天：使用Nextflow写工作流
+- Nextflow for biological data analysis
+- Understanding the concepts of dataflow: processes and channels, input and output
+- Running a pipeline with Nextflow: work directory layout and process execution
+- Language basics: Nextflow scripting and syntax
+- Configuration options: parameters, scopes and profiles
+- Execution abstraction: integrating with resource management software
+- Workflow introspection: runtime metadata and handling errors
+- Sharing your pipeline with online code repositories
+
+
+第4天：建立自己的工作流
+- Build your own analysis pipeline
+- How to outline and approach a new project in pipeline development
+- Getting started: building your pipeline from the ground up
+- Write processes, define the workflow, add dependencies, run and test your pipeline!
+
+
+
 
 
 

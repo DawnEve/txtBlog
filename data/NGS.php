@@ -33,6 +33,7 @@ return array (
 
       array('circos-Cytoscape','circos-Cytoscape','txt'),
       array('富集分析(GO/KEGG)','GO_analysis01','txt'),
+      array('常用生信工具(本地)','bioinfo_tools','txt'),
 
       array('GEO and TCGA','GEO_TCGA','txt'),
     ),

@@ -27,6 +27,7 @@ include(DAWN_PATH . 'function.php');
 /***begin****/
 //定义自动加载
 function myAutoload($class){
+	$class=str_replace('\\',"/",$class); //替换类 反斜线 为 路径 斜线
 	//加载类库
 	$classPath=DAWN_PATH . 'class/';
 	$path=$classPath. $class . '.class.php';

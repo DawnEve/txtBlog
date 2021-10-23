@@ -984,6 +984,604 @@ https://www.tightvnc.com/
 
 
 ========================================
+共享文件夹 samba 服务: win 和 linux 共享文件 (可以当 nas 使用)
+----------------------------------------
+1. 介绍
+(1) 使用场景：
+- samba 用于 win 和 linux 之间文件共享。
+- 以及两台 linux 之间文件共享。 当然，linux之间文件共享更好的解决方案是 nfs。
+
+(2) 工作模式: C/S 模式。
+当然你要在linux(服务端)与windows(客户端)之间互相能ping 通。
+
+(3) 官网
+https://www.samba.org/
+Samba is the standard Windows interoperability suite of programs for Linux and Unix.
+Samba是用于Linux和Unix的标准Windows互操作性程序套件。
+
+
+
+
+2. linux 服务端的操作
+服务端是虚拟机 vm: Ubuntu 20.04.3 LTS (GNU/Linux 5.11.0-34-generic x86_64)
+
+(1) 创建目录，作为共享目录
+$ mkdir ~/usb3
+
+或者挂载外部硬件
+$ mkdir /mnt/usb 
+$ mount /dev/sda1 /mnt/usb
+
+
+(2)安装 samba 服务
+$ sudo apt install samba smbclient #Ubuntu
+$ samba --version
+Version 4.11.6-Ubuntu
+$ apt list | grep samba #查看相关包
+
+
+## for CentOS
+$ sudo yum install samba samba-common samba-client cifs-utils #CentOS
+$ samba-regedit --version
+Version 4.10.16
+## 查询安装过的包
+$ rpm -qa | grep samba
+samba-client-4.10.16-15.el7_9.x86_64
+samba-common-libs-4.10.16-15.el7_9.x86_64
+samba-libs-4.10.16-15.el7_9.x86_64
+samba-common-tools-4.10.16-15.el7_9.x86_64
+samba-4.10.16-15.el7_9.x86_64
+samba-client-libs-4.10.16-15.el7_9.x86_64
+samba-common-4.10.16-15.el7_9.noarch
+
+
+
+
+(3) 添加本地用户为samba用户名
+
+tips: 必须是本地用户名，同时必须添加为 samba用户名。
+
+$ sudo smbpasswd -a wang
+输入2次密码。
+重启。
+$ sudo smbd restart
+
+查看用户
+$ sudo pdbedit -L
+wang:1000:Wang Junliang
+
+删除用户
+smbpasswd -x   用户名
+
+
+
+(4) 修改配置文件，指定要共享的文件夹
+$ sudo vim /etc/samba/smb.conf 
+
+默认有一个全局变量
+[global]
+	map to guest = bad user #增加这一行，则允许匿名访问，适合内部访问
+
+最后新增一块，要去掉每行的注释
+[Public]
+	comment=Public Storage
+	path=/home/wang/usb3
+	read only=no
+	create mask=0755
+	directory mask=0755
+	force create mode = 0644
+	force directory mode = 0755
+	guest ok=yes
+	browseable=yes
+	writable=yes
+	available = yes
+	public = yes
+	#有人说必须加如下几行，否则不可写
+	force user = wang
+	valid users = wang
+	write list = wang
+
+注释: 
+comment=Public Storage   # 浏览时显示的名字
+
+
+保存后检查参数
+$ testparm
+
+重启samba服务
+$ sudo systemctl restart smbd.service # for Ubuntu
+
+$ sudo systemctl restart smb # for centOS
+或
+$ sudo service smbd status
+$ sudo service nmbd status
+
+$ sudo systemctl enable smbd
+
+
+
+(5) 授权目录权限
+$ sudo chmod -R 777 /home/wang/usb3/
+drwxrwxrwx 2 wang wang 4.0K Sep 27 15:05 usb3
+
+
+(6) 查询IP
+$ ifconfig  #192.168.2.156
+
+
+
+
+
+
+
+3. 客户端机器上 查看文件 
+
+(1) 在客户端测试 sudo apt-get install smbclient 
+
+$ smbclient -L //192.168.2.156     ##没有密码直接回车 匿名登陆
+
+$ smbclient -L //192.168.2.156 -U wang
+Enter WORKGROUP\wang's password: 
+
+	Sharename       Type      Comment
+	---------       ----      -------
+	print$          Disk      Printer Drivers
+	Public          Disk      Public Storage
+	IPC$            IPC       IPC Service (wangVM server (Samba, Ubuntu))
+SMB1 disabled -- no workgroup available
+
+
+==>报错：session setup failed: NT_STATUS_LOGON_FAILURE
+## 本地测试没问题
+$ smbclient -L //127.0.0.1/Public -U jimmy
+换另一台主机
+$ smbclient -L //192.168.2.156/Public -U jimmy
+发现：小键盘莫名其妙的不识别！使用顶部数字键即可。
+
+
+
+(2) 临时查看文件
+$ smbclient //192.168.2.156/Public -U wang
+Enter WORKGROUP\wang's password: 
+Try "help" to get a list of possible commands.
+smb: \> ls
+  .                                   D        0  Mon Sep 27 15:08:51 2021
+  ..                                  D        0  Mon Sep 27 15:08:51 2021
+  a.txt                               N       10  Mon Sep 27 15:08:37 2021
+  b                                   N       10  Mon Sep 27 15:08:51 2021
+
+		9736500 blocks of size 1024. 1728328 blocks available
+smb: \> exit
+
+
+
+
+## for centOS: SELinux 作怪
+$ sudo setsebool -P samba_export_all_ro on
+$ sudo systemctl restart smb.service
+
+
+
+
+(3) 在windows访问客户端挂载访问
+
+win+R打开运行窗口，输入两个反斜线加上samba服务器的地址 \\192.168.2.156\Public
+没让输入用户名和密码，部分可写：可以新建并修改，但原来的文件是只读的。 //todo
+
+打开 我的电脑，顶部 添加一个网络位置
+输入  \\192.168.2.156\Public
+名字 随便写，比如 sambaOnVM
+
+然后这个网络位置就固定到我的电脑了。
+
+在windows下创建文件，到Linux下看看吧！
+在Linux的共享目录下创建文件，在windows下看看吧！
+
+
+
+
+(4) Linux 客户端挂载，像nas一样好用。
+1) 安装 cifs 
+$ sudo apt install cifs-utils
+$ ls -lth /sbin/mount.*
+
+2) 挂载
+$ sudo mount -v -t cifs -o username=wang,password=123456,uid=1001,gid=1001,rw //192.168.2.156/Public ~/LocalDIR
+mount.cifs kernel mount options: ip=192.168.2.156,unc=\\192.168.2.156\Public,uid=1001,gid=1001,user=wang,pass=********
+
+警告：1001替换成你在Ubuntu上的数字UID和GID，否则挂载后的共享文件夹所有者是root，就是只读！
+　　可用下面命令找出你的数字uid: $ id <用户名>
+
+## for centOS7 //没测试过
+$ sudo mount.cifs //172.18.5.193/Public ~/LocalDIR -o user=wangjl,sec=ntlmssp 
+
+
+3) 读写测试
+$ ls -lth LocalDIR
+total 16K
+-rwxr-xr-x 1 wangjl wangjl   5 Oct  8 16:04 a
+
+$ touch LocalDIR/a2
+$ ls -lth LocalDIR
+total 16K
+-rwxr-xr-x 1 wangjl wangjl   0 Oct  8 21:31 a2
+
+
+4) 客户端永久挂载:
+$ sudo vim /etc/fstab
+//192.168.2.156/Public /home/wangjl/LocalDIR cifs username=wang,password=123456,uid=1001,gid=1001 0 0 
+挂载生效
+$ sudo mount -a
+
+5) 卸载
+$ sudo umount local-mount-point
+
+
+
+
+
+
+(5) 排错：一个客户端不能登陆多个账号，同时最多一个登录。
+$ mount | grep Public
+//172.18.5.193/Public on /home/wangjl/LocalDIR type cifs (rw,relatime,vers=default,cache=strict,username=wangjl,domain=,uid=0,noforceuid,gid=0,noforcegid,addr=172.18.5.193,file_mode=0755,dir_mode=0755,soft,nounix,serverino,mapposix,rsize=1048576,wsize=1048576,echo_interval=60,actimeo=1)
+
+卸载
+$ sudo umount /home/wangjl/LocalDIR
+
+
+
+
+
+
+
+(6) 测试 在 centOS7 做服务器，Ubuntu做客户端
+
+$ smbclient -L //x.biomooc.com -U wangjl
+Enter WORKGROUP\wangjl's password: 
+
+	Sharename       Type      Comment
+	---------       ----      -------
+	print$          Disk      Printer Drivers
+	Public          Disk      Public Storage
+	IPC$            IPC       IPC Service (Samba 4.10.16)
+	wangjl          Disk      Home Directories
+SMB1 disabled -- no workgroup available
+
+
+查看配置文件，这个Yes和No是首字母大写。
+[Public]
+	comment=Public Storage
+	path=/home/wangjl/usb3
+	read only=No
+	create mask=0777
+	directory mask=0777
+	guest ok=Yes
+	browseable=Yes
+	writable=Yes
+	# 
+	force user = wangjl
+	valid users = wangjl
+	write list = wangjl
+
+$ sudo service smb restart
+
+
+客户端
+$ smbclient //x.biomooc.com/Public -U wangjl
+Enter WORKGROUP\wangjl's password: 
+Try "help" to get a list of possible commands.
+smb: \> mkdir wjl
+NT_STATUS_ACCESS_DENIED making remote directory \wjl
+还是只读，不能写。
+
+
+服务端执行 https://blog.csdn.net/m0_37582216/article/details/106960726
+$ chcon -R -t samba_share_t ~/usb3/
+## chcon - change file SELinux security context
+还是不理解 SELinux 啥作用？ //todo
+
+
+客户端挂载
+$ sudo mount -v -t cifs -o username=wangjl,password=123456,uid=1001,gid=1001,rw //172.18.5.193/Public ~/v193
+
+$ cd ~/v193
+$ touch b
+可写。
+
+
+
+
+
+
+
+
+
+2. 端口
+(1) samba 端口号是多少？ 原来是137,138, 现在是139,445
+$ vim /etc/services
+
+netbios-ns      137/tcp     # NETBIOS Name Service
+netbios-ns      137/udp
+netbios-dgm     138/tcp     # NETBIOS Datagram Service
+netbios-dgm     138/udp
+netbios-ssn     139/tcp     # NETBIOS session service
+netbios-ssn     139/udp
+
+microsoft-ds    445/tcp
+microsoft-ds    445/udp
+
+$ sudo netstat -anop | grep smb
+tcp        0      0 0.0.0.0:139             0.0.0.0:*               LISTEN      95797/smbd           off (0.00/0/0)
+tcp        0      0 0.0.0.0:445             0.0.0.0:*               LISTEN      95797/smbd           off (0.00/0/0)
+tcp6       0      0 :::139                  :::*                    LISTEN      95797/smbd           off (0.00/0/0)
+tcp6       0      0 :::445                  :::*                    LISTEN      95797/smbd           off (0.00/0/0)
+
+
+(2) 打开防火墙一个出口
+我们看到使用了tcp的139和445端口，udp的137和138端口。在防火墙中允许通行：
+在后来的测试中，仅允许tcp协议的139端口通过也能访问到共享。
+
+$ sudo iptables -A INPUT -p tcp --dport 139 -j ACCEPT
+
+
+
+
+ref: 
+https://www.howtoforge.com/how-to-install-samba-server-on-centos-8/
+https://www.cnblogs.com/bandiao/p/10862226.html
+https://adrianmejia.com/how-to-set-up-samba-in-ubuntu-linux-and-access-it-in-mac-os-and-windows/
+
+
+win作为服务器: https://www.cnblogs.com/mountain2011/p/7352708.html
+
+
+
+
+
+
+
+
+========================================
+|-- 网络文件系统 (NFS, Network File System): 两台 linux 之间文件共享 //todo
+----------------------------------------
+网络文件系统，英文Network File System(NFS)，是由SUN公司研制的UNIX表示层协议(presentation layer protocol)，能使使用者访问网络上别处的文件就像在使用自己的计算机一样。
+
+
+
+
+
+
+
+
+
+========================================
+集群 与 分布式
+----------------------------------------
+1. 概念
+(1) 功能上
+集群每一台服务器实现的功能没有什么差别。分布式每一台实现的功能是有差异的
+
+分布式：一个业务分拆多个子业务，部署在不同的服务器上
+集群：同一个业务，部署在多个服务器上
+
+(2) 跑的代码上
+集群：不同的服务器运行同样的代码，干同一件事
+分布式：不同的服务器，运行不同的代码，为了同一个目的
+
+
+
+
+
+
+
+========================================
+|-- 集群管理工具(SGE, Sun Grid Engine): qsub //todo
+----------------------------------------
+1. 简介 
+SGE或者其他集群管理工作做的事情就是将用户投递的任务进行排队，然后将任务交给能够运行的结算节点执行，工作流程可以分为四步:
+- 接受用户投放的任务
+- 在任务运行以前，将任务放到一个存储区域
+- 发送任务到一个执行设备，并监控任务的运行
+- 运行结束写回结果并记录运行日志
+
+
+2. ubuntu 测试
+(1) 安装
+$ qsub
+Command 'qsub' not found, but can be installed with:
+
+sudo apt install gridengine-client  # version 8.1.9+dfsg-9build2, or
+sudo apt install slurm-wlm-torque   # version 19.05.5-1
+
+
+网友提问：
+- 老师的 SGE 用的是商业，还是免费开源版本？
+- 两台服务器可以最小化模拟么？
+- 我有两台服务器，是不是可以通过SGE搭建一个集群，运行qsub来执行相关的运行程序呢🤔很多教程用虚拟机来模拟这个，不晓得是不是一个道理?
+
+
+
+(2) 
+在主控节点上安装 
+
+
+
+
+
+
+
+
+
+
+
+(2) SGE的常用命令
+
+1) 任务投递
+
+SGE中投递任务所用到的命令是qsub. 最简单的用法是下面这种，即,将要执行的命令通过标准输入的方式传递给qsub
+$ echo "ls -l " | qsub
+
+
+2) 投递之后可以用qstat查看自己投递的任务的运行情况
+
+第一列是任务编号, 第二列是优先级，第三列是任务名字，在参数里没有特别说明的情况下，SGE会用任务的来源进行命令，STDIN表示来自于标准输入，
+第四列是用户名，
+第五列是运行状态("r"表示运行中), 
+第六列表示任务投递和开始时间，
+第七列是任务投递的节点，
+第8列则是要申请的线程数。
+
+在执行完成后会在家目录下生成"STDIN.e7883"和"STDIN.o7883", 其中7883就是任务编号, 前者存放标准错误输出, 后者存放标准输出， 因此"cat STDIN.o7883"的内容就是ls -l的内容。
+
+
+3) 另一种方法是先写一个脚本然后投递，比如先编辑一个文件"ls.sh", 内容如下，然后用"qsub ls.sh"投递任务。
+ls -l
+跟之前一样，最后在家目录下产生了"ls.sh.exxxx"和"ls.sh.exxxx"两个文件
+
+
+
+
+(3) 帮助文件
+
+当然实际时肯定没有那么简单，我们需要增加各种参数来调整qsub的行为，
+用qsub -help可以看完整的参数，但是常用的为如下几个
+
+-q xxx : 指定要投递到的队列，如果不指定的话，SGE会在用户可使用的队列中选择一个满足要求的队列。
+-V： 将当前的环境变量传递到执行命令的节点中
+cwd: 在当前目录下执行任务, sge的日志会输出到当前路径。 不增加该指令，所有投递的任务都会在家目录下执行
+-l resource=value: 请求资源数, 例如 -l vf=25G -l h=node1 就是任务的预估内存要25G(内存估计的值应稍微大于真实的内存，内存预估偏小可能会导致节点跑挂), 申请在node1上运行
+-S /bin/bash: 表示在bash环境下执行命令。默认tcsh.
+-pe openmpi 4: 表示使用openmpi进行并行运算，且申请的线程是4，
+-N 任务名: 手动执行任务的名字
+-j y|n ：是否将标准输入和标准输入合并成一个文件
+-sync y|n: 是否等待任务结束，返回退出码
+-o path: 指定标准输出的文件夹
+
+
+例如在命令行里投递一个比对任务
+$ echo "bowtie2 -p 8 -x index/ref -1 data/A_1.fq -2 data/A_2.fq | samtools sort > A.bam" | qsub -V -cwd -l vf=25G -S /bin/bash -pe openmpi 8 -N A.bt2
+
+这些参数除了在外部设置外，还可以在shell脚本里设置，如下
+
+#!/bin/bash
+#$ -S /bin/bash
+#$ -V
+#$ -cwd
+#$ -l vf=25G
+#$ -pe openmpi 8
+#$ -N a.bt2
+bowtie2 -p 8 -x index/ref -1 data/A_1.fq -2 data/A_2.fq | samtools sort > A.bam
+
+
+
+(4) 查询任务
+除了任务投递外，查询任务也是一个非常常用的命令，除了刚才直接用qstat查看，还有如下参数比较好用
+
+qstat -f        # 查看用户任务
+qstat -j jobId  # 按任务id查看
+qstat -explain a|c|A|E -j jobID # 查看任务任务并给出解释
+qstat -u user   # 按用户查看
+
+
+(5) 任务状态：
+
+qw: 表示等待状态
+hqw: 任务挂起等待中，待依赖的任务完成后执行
+Eqw: 投递任务出错
+r: 表示任务正在运行
+s: 暂时挂起
+dr: 节点挂了之后，删除任务就会出现这个状态，只有节点重启之后，任务才会消失
+
+(6) 删除任务
+任务删除也比较重要，毕竟偶尔会出现任务投递出错的情况
+$ qdel -j 1111   删除任务号为1111的任务
+
+
+
+(7) 其他命令
+qrsh：与qsub相比，是交互式的投递任务，注意参数:-now yes|no默认设置为yes
+- 若设置为yes，立即调度作业，如果没有可用资源，则拒绝作业，任务投递失败，任务状态为Eqw。
+- 若设置为no，调度时如果没有可用资源，则将作业排入队列，等待调度。
+- 例子： qrsh -l vf=*G -q all.q -now no -w n *sh
+
+
+qacct 从集群日志中抽取任意账户信息
+qalter 更改已提交但正处于暂挂状态的作业的属性
+qconf 为集群和队列配置提供用户界面
+- qconf -spl查看可用并行环境
+
+qhold 阻止已提交作业的执行
+qhost 显示SGE执行主机（即各个计算节点）的状态信息
+- qhost -j按照节点显示任务
+- qhost -F展示每个节点的资源
+
+qlogin 启动telnet或类似的登录会话。
+
+
+
+(8) 案例：一个投递比对任务的简单脚本
+#!/bin/bash
+
+set -e
+set -u
+set -o pipefail
+
+threads=8
+index=index/hg19
+
+FQ_DIR="analysis/0-raw-data"
+ALIGN_DIR="analysis/2-read-align"
+LOG_DIR="analysis/log"
+TMP_DIR="analysis/tmp"
+
+mkdir -p ${ALIGN_DIR}
+mkdir -p ${LOG_DIR}
+mkdir -p ${TMP_DIR}
+
+tail -n+2 download_table.txt | cut -f 6 | while read id;
+do
+    echo "
+    bowtie2 --very-sensitive-local --mm -p $threads -x $index -U ${FQ_DIR}/$id.fastq.gz 2> ${LOG_DIR}/$id.bt2.log | \
+    samtools sort -@ 2 -m 1G -T ${TMP_DIR}/${id} -o ${ALIGN_DIR}/${id}.sort.bam" | qsub -V -cwd -pe openmpi $threads -N ${id}_bt2 -q all.q -S /bin/bash
+done
+
+
+
+
+
+
+
+ref:
+https://www.jianshu.com/p/b7b540a3c015
+https://blog.csdn.net/wuxianfeng1987/article/details/72874905
+
+
+
+
+
+========================================
+----------------------------------------
+
+
+
+========================================
+----------------------------------------
+
+
+
+
+========================================
+----------------------------------------
+
+
+
+========================================
+----------------------------------------
+
+
+
+
+========================================
 ----------------------------------------
 
 
