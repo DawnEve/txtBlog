@@ -83,7 +83,10 @@ $ docker run -t -i ubuntu:12.04 /bin/bash
 
 (3). 获得一个新的镜像 $ docker pull centos
 
-(4). 查找镜像 $ docker search sinatra
+(4). 查找镜像 
+官网搜索: hub.docker.com
+命令行查询: $ docker search sinatra
+
 docker公司提供或建立、验证和支持的。这类镜像可以用一个单词识别，比如 ubuntu
 用户创建的镜像，有创建者的用户名前缀识，比如 training/sinatra 
 
@@ -109,12 +112,46 @@ v0.1.15_cv1
 最好是指定标签。
 
 
-(6). 运行镜像 $ docker run -t -i training/sinatra /bin/bash
+(6). 运行镜像 
+docker run命令有两个参数，一个是镜像名，一个是要在镜像中运行的命令。
+中间是选项。
+
+$ docker run -t -i training/sinatra /bin/bash
 root@a8cb6ce02d85:/#
 
 
 (7)从主机中移除镜像  $ docker rmi training/sinatra
 注意：从host中移除镜像，请确认没有基于该镜像的容器处于激活状态。
+
+
+(8) 把对容器的修改提交为新的镜像版本
+查看修改过的镜像的id (无需拷贝完整的id，通常来讲最开始的三至四个字母即可区分)
+$ docker ps -l
+
+提交修改
+$ docker commit 70de learn/ubuntu:20.04.vim
+sha256:05df9b7565...
+
+commit命令可以使用更多参数：-m指定评论（和git类似），-a指定此次更新的作者。
+$ docker commit -m "install vim" -a "Robin Smith" 70de learn/ubuntu:20.04.vim2
+sha256:31491...
+
+
+查看构建镜像所用过的命令
+$ docker history php:5.6.33-apache
+IMAGE          CREATED       CREATED BY                                      SIZE      COMMENT
+9b87aacce8e4   3 years ago   /bin/sh -c #(nop)  CMD ["apache2-foreground"]   0B        
+<missing>      3 years ago   /bin/sh -c #(nop)  EXPOSE 80/tcp                0B        
+<missing>      3 years ago   /bin/sh -c #(nop) WORKDIR /var/www/html         0B        
+<missing>      3 years ago   /bin/sh -c #(nop) COPY file:24613ecbb1ce6a09…   1.35kB    
+<missing>      3 years ago   /bin/sh -c #(nop)  ENTRYPOINT ["docker-php-e…   0B   
+...
+
+
+
+(9) 检查容器IP地址等信息
+$ docker inspect 98dd
+
 
 
 
@@ -514,6 +551,42 @@ docker仓库(repo): 先把镜像传到仓库，再在其他机器从仓库拉这
 #curl -s https://get.docker.com | sh 
 
 (3)安装好后查看版本
+$ docker -v
+$ docker --version
+Docker version 19.03.8, build afacb8b
+
+$ docker version
+Client: Docker Engine - Community
+ Version:           19.03.8
+ API version:       1.40
+ Go version:        go1.12.17
+ Git commit:        afacb8b
+ Built:             Wed Mar 11 01:27:04 2020
+ OS/Arch:           linux/amd64
+ Experimental:      false
+
+Server: Docker Engine - Community
+ Engine:
+  Version:          19.03.8
+  API version:      1.40 (minimum version 1.12)
+  Go version:       go1.12.17
+  Git commit:       afacb8b
+  Built:            Wed Mar 11 01:25:42 2020
+  OS/Arch:          linux/amd64
+  Experimental:     false
+ containerd:
+  Version:          1.2.13
+  GitCommit:        7ad184331fa3e55e52b890ea95e65ba581ae3429
+ runc:
+  Version:          1.0.0-rc10
+  GitCommit:        dc9208a3303feef5b3839f4323d9beb36df0a9dd
+ docker-init:
+  Version:          0.18.0
+  GitCommit:        fec3683
+
+
+
+老版本的:
 #docker version
 Client:
  Version:      17.06.0-ce
@@ -2451,19 +2524,525 @@ http://172.16.112.86:8888/jpress-web-newest/
 
 
 
+========================================
+|-- ENV 启动容器时传入参数 -e USER=Tom
+----------------------------------------
+
+
+例1: 传入参数 -e XX=xx
+$ cat s2.df 
+FROM ubuntu:20.04
+ENV USER friend
+
+ENTRYPOINT echo "Welcome, $USER"
+# or
+## CMD echo "Welcome, $USER"
+
+
+构建
+$ docker build -t s2:1 -f s2.df ./
+
+(1) 运行
+$ docker run --name s2 --rm -it s2:1
+Welcome, friend
+然后容器结束并销毁。
+
+(2) 传入环境变量 -e
+$ docker run --name s2 -e USER="Tom" --rm -it s2:1
+Welcome, Tom
+
+
+(3) 最后传入 CMD 参数
+$ docker run --name s2 -e USER="Tom" --rm -it s2:1 "nice"
+Welcome, Tom
+最后一个不起作用，why?
+
+
+(4) 试试exec写法，不支持出入-e参数
+$ cat s2_1.df
+FROM ubuntu:20.04
+ENV USER friend
+
+ENTRYPOINT ["echo", "Welcome"]
+CMD ["bash"]
+
+$ docker build -t s2:2 -f s2_1.df ./
+$ docker run --name s2 --rm -it s2:2
+Welcome bash
+
+$ docker run --name s2 --rm -it s2:2 "nice"
+Welcome nice
+
+
+
+
 
 
 
 ========================================
-|-- 怎么实现启动docker时自动启动服务呢？ //todo
+|-- ENTRYPOINT 与 CMD: 启动docker时执行，实现服务自启动
 ----------------------------------------
-https://www.jb51.net/article/147645.htm
-
-
 在 Dockerfile 最后一行加上
 # 容器默认启动命令
 ENTRYPOINT ["service","nginx","start"]
 好像不起作用！！！
+
+ENTRYPOINT ["/usr/sbin/nginx"] #起作用
+
+
+
+
+Dockerfile 有两个启动配置， CMD 和 ENTRYPOINT ， 可以在 Dockerfile 中来配置容器启动时自动执行的命令， 但是这二者有什么区别呢， 接下来总结一下。
+
+
+1. 首先来看一下 CMD ， 有三种格式的配置， 分别是：
+	CMD [“executable”,”param1”,”param2”] (exec 格式, 推荐的格式)
+	CMD [“param1”,”param2”] (作为 ENTRYPOINT 的默认参数)
+	CMD command param1 param2 (shell 格式)
+
+在使用时， 要注意一下问题：
+	包含可执行文件时， 为容器指定默认执行命令， 这个是主要用途；
+	不包含可执行文件时， 必须提供 ENTRYPOINT 配置， CMD 作为默认参数；
+	Dockerfile 中只能有一个 CMD 起效， 如果出现了多个， 则最后一个起效；
+
+
+而 ENTRYPOINT ， 有两种格式的配置， 分别是：
+	ENTRYPOINT [“executable”, “param1”, “param2”] (exec 格式, 推荐)
+	ENTRYPOINT command param1 param2 (shell 格式)
+
+
+CMD 和 ENTRYPOINT 两种配置格式的区别是：
+	exec 格式：推荐这种格式， 使用这种模式时， 可以不需要 shell 进程， 让 Docker 应用的可执行程序成为容器的 PID 1 进程， 可以接收 Unix 信号， 比如执行 docker stop时能够接收到 SIGTERM。
+	shell 格式：会始终调用一个 shell 进程， 成为 /bin/sh -c 的子命令， 可执行程序不能响应 Unix 信号。
+
+	注意： ENTRYPOINT 使用 shell 格式 时， 会忽略 CMD 和 run 传入的参数， 如果要替换默认的 ENTRYPOINT 命令， 则需要在执行 docker run 的时候指定 --entrypoint 参数。
+
+
+CMD 与 ENTRYPOINT主要区别
+	•当docker run 命令中有参数时，守护进程会忽略CMD命令。
+	•使用ENTRYPOINT指令不会忽略，并且会接收docker run 参数附加到命令行中。
+
+为了使构建的容器可以正常启动，我们编写的dockerfile文件必须包含一个CMD或ENTRYPOINT指令。
+
+
+
+
+
+
+
+2. 举例说明
+
+(1) 一起使用时，ENTRYPOINT 与 CMD 是拼接起来运行的。
+
+$ cat Dockerfile
+FROM ubuntu:20.04
+ENTRYPOINT ["ls", "-l"]
+CMD ["-h", "/var/"]
+
+构建与运行
+$ docker build -t test:r1 ./
+$ docker run --rm -it test:r1 
+确实打印出 $ ls -lh /var/ 的结果了，但是容器立刻退出了。
+
+问题：怎么保证容器不退出呢？
+
+
+
+(2) 最后执行 exec "$@" 语句，能让服务长久运行
+
+1) 最初版
+$ cat Dockerfile
+FROM ubuntu:20.04
+COPY docker-entrypoint.sh /usr/bin/
+ENTRYPOINT ["docker-entrypoint.sh"]
+CMD ["ls", "-lh", "/var/"]
+
+$ cat docker-entrypoint.sh
+#!/bin/sh
+cd /var/
+pwd
+exec "$@"
+
+需要在宿主机上给这些文件加上可执行权限
+$ chmod a+x docker-entrypoint.sh
+否则报错: exec: "docker-entrypoint.sh": executable file not found in $PATH:
+
+构建与运行
+$ docker build -t test:r0 ./
+$ docker run --rm -it test:r0 bash
+/var
+root@7277d44b8f61:/var# exit
+exit
+退出。
+
+$ docker run --rm -it -d test:r0 bash
+$ docker ps 
+确实在运行。
+
+
+
+2) 直接运行版
+$ cat Dockerfile
+FROM ubuntu:20.04
+COPY docker-entrypoint.sh /home/
+ENTRYPOINT ["bash", "/home/docker-entrypoint.sh"]
+CMD ["ls", "-lh", "/var/"]
+
+构建与运行
+$ docker build -t test:r1 ./
+$ docker run --rm -it test:r1 bash
+/var
+root@671bcc3b3691:/var# exit
+exit
+
+这样终于不闪退，可以持久运行了。
+
+据说是因为 ENTRYPOINT 是pid=1的进程，它不能结束。它一旦结束整个容器就结束了。
+不清楚 exec "$@" 怎么实现这一点的。
+
+
+
+
+
+(3) 被 docker run 参数替换
+
+$ cat 2.df
+FROM ubuntu:20.04
+RUN apt-get update && apt-get install -y iputils-ping
+ENTRYPOINT ["/bin/ping"]
+CMD ["localhost"]
+
+构建
+$ docker build -t test:r2 -f 2.df ./
+
+直接运行
+$ docker run --rm -it test:r2
+PING localhost (127.0.0.1) 56(84) bytes of data.
+64 bytes from localhost (127.0.0.1): icmp_seq=1 ttl=64 time=0.019 ms
+^C
+
+
+1)从命令行覆盖掉 CMD
+$ docker run --rm -it test:r2 baidu.com
+PING baidu.com (220.181.38.251) 56(84) bytes of data.
+64 bytes from 220.181.38.251 (220.181.38.251): icmp_seq=1 ttl=48 time=36.8 ms
+^C
+
+
+2)从命令行覆盖掉 ENTRYPOINT
+$ docker run --entrypoint hostname test:r2
+4bbeb05dc0d1
+
+相对而言，CMD 更容易被覆盖。
+
+
+
+3)从命令行传入更多参数，-c 就是重复几次。
+$ docker run --rm -it test:r2 localhost -c 2
+PING localhost (127.0.0.1) 56(84) bytes of data.
+64 bytes from localhost (127.0.0.1): icmp_seq=1 ttl=64 time=0.019 ms
+64 bytes from localhost (127.0.0.1): icmp_seq=2 ttl=64 time=0.049 ms
+
+--- localhost ping statistics ---
+
+
+4) 参数替换也挺好
+使用 ENTRYPOINT 指定命令，而 CMD 指定默认参数，run时可以覆盖掉默认参数。
+
+FROM nginx 
+ENTRYPOINT ["nginx", "-c"] # 定参 
+CMD ["/etc/nginx/nginx.conf"] # 变参
+
+
+
+
+
+(4) exec 和 shell 写法的区别
+
+$ cat 2.e.df
+FROM test:r2
+ENTRYPOINT ["/bin/ping", "localhost"] #推荐 exec 写法
+构建
+$ docker build -t test:e -f 2.e.df ./
+
+$ cat 2.s.df
+FROM test:r2
+ENTRYPOINT /bin/ping localhost
+构建
+$ docker build -t test:s -f 2.s.df ./
+
+
+#########
+$ docker run --name=Exec --rm -it test:e
+再打开一个终端
+$ docker exec Exec ps -aux
+USER         PID %CPU %MEM    VSZ   RSS TTY      STAT START   TIME COMMAND
+root           1  0.0  0.1   4212  2352 pts/0    Ss+  13:59   0:00 /bin/ping localhost
+root          54  0.0  0.1   5904  2864 ?        Rs   14:01   0:00 ps -aux
+exec 格式，PID 1启动的就是ping命令。
+
+
+$ docker run --name=Shell --rm -it test:s
+再打开一个终端
+$ docker exec Shell ps -aux
+USER         PID %CPU %MEM    VSZ   RSS TTY      STAT START   TIME COMMAND
+root           1  0.1  0.0   2616   600 pts/0    Ss+  14:02   0:00 /bin/sh -c /bin/ping localhost
+root           7  0.0  0.1   4212  2320 pts/0    S+   14:02   0:00 /bin/ping localhost
+root           8  0.0  0.1   5904  2908 ?        Rs   14:02   0:00 ps -aux
+shell 格式，PID 1启动的是 sh 命令: /bin/sh -c，我们的ping命令作为sh的子程序运行了。
+
+
+这样会导致的一个问题是，你从外部发给容器的POSIX信号，是被sh接收的，而sh命令并不会将信号转发给ping命令，会导致不能安全的关闭容器。比如用shell方法启动的容器一直在运行，我按Ctrl +C是无法停止的。
+所以最好是使用exec写法。
+
+==> 我的测试是： ctrl+C 都能使ping停止。 //todo
+
+
+
+
+
+
+(5) 怎么在入口 ENTRYPOINT 新建用户？
+用户名就是rstudio，指定uid和gid
+
+$ cat Dockerfile
+FROM ubuntu:20.04
+ENV UID 1001
+ENV GID 1001
+
+COPY docker-entrypoint.sh /home/
+ENTRYPOINT ["bash", "/home/docker-entrypoint.sh"]
+CMD ["ls", "-lh", "/var/"]
+
+
+$ cat docker-entrypoint.sh
+#!/bin/sh
+set -e
+
+DEFAULT_USER=rstudio
+# 获取docker run -e UID=1002 -e UID=1002 传递的参数 
+echo $UID
+echo $GID
+useradd -s /bin/bash -d /home/${DEFAULT_USER} -m ${DEFAULT_USER} -u $UID -g $GID
+echo "${DEFAULT_USER}:${DEFAULT_USER}" | chpasswd
+
+cd /var/
+pwd
+exec "$@"
+
+
+构建与运行
+$ docker build -t test:r1 ./
+$ docker run -e UID=1005 --rm -it test:r1 bash
+1005
+/var
+root@d5ac588151a7:/var# ls -lth /home/
+total 8.0K
+drwxr-xr-x 2 rstudio rstudio 4.0K Oct 24 03:23 rstudio
+-rw-r--r-- 1 root    root     243 Oct 24 03:22 docker-entrypoint.sh
+root@d5ac588151a7:/var# su rstudio
+rstudio@d5ac588151a7:/var$
+切换用户成功！
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+##############
+
+3. 两个风格的区别 (很啰嗦，可跳过)
+
+FROM ubuntu:20.04
+# CMD Instruction
+CMD ["echo", "Hello world,CMD1"] # Exec Form
+CMD echo "Hello world, cmd2"      # Shell Form
+# ENTRYPOINT Instruction
+ENTRYPOINT ["echo", "Hello world_en1"] # Exec Form
+ENTRYPOINT echo "Hello world en2"      # Shell Form
+
+
+exec 风格:
+	ENTRYPOINT ["executables", "parameter1", "parameter2", ...]
+	CMD ["executables", "parameter1", "parameter2:, ...]
+
+shell 风格:
+	ENTRYPOINT <command> "parameter1"
+	CMD <command> "parameter1"
+
+	只有shell风格支持传入变量。
+	不过可以使用脚本，在脚本中接收-e传入的变量。
+
+	缺点是 pid不是1， docker stop 不能停止该服务。
+
+
+(1) 比较两种方法的 pid
+
+构建基础应用
+$ cat n1.df
+FROM ubuntu:20.04
+RUN apt update && apt install -y nginx && apt clean
+
+$ docker build -t n1:0 -f n1.df ./ 
+$ docker images
+REPOSITORY   TAG       IMAGE ID       CREATED          SIZE
+n1           0         8d229f789d81   7 minutes ago    163MB
+
+$ docker run --rm -it -p 8081:80 n1:0
+root@488da1ddd53e:/# service nginx status
+ * nginx is not running
+root@488da1ddd53e:/# service nginx start 
+ * Starting nginx nginx    [ OK ] 
+
+服务没有开，怎么在启动的时候打开呢？
+
+
+1) 使用 exec 格式启动应用 
+
+$ cat n1.1.df
+FROM n1:0
+ENTRYPOINT ["nginx", "-g", "daemon off;"]
+
+参数意义：
+$ nginx -h
+  -g directives : set global directives out of configuration file
+
+
+$ docker build -t n1:1 -f n1.1.df ./
+
+$ docker run --rm -it -p 8081:80 n1:1
+阻塞状态，但是网页可访问。ctrl+C 则网页不可访问。
+
+$ docker run --name N1 -d --rm -it -p 8081:80 n1:1
+返回shell，网页可访问。
+这是，进入容器查看进程编号
+$ docker exec -it N1 sh
+# top 
+PID USER      PR  NI    VIRT    RES    SHR S  %CPU  %MEM     TIME+ COMMAND
+  1 root      20   0   55284  11608  10172 S   0.0   0.6   0:00.03 nginx
+  7 www-data  20   0   55612   3208   1484 S   0.0   0.2   0:00.00 nginx
+
+可见，nginx的pid=1。
+
+容器外检测:
+$ ps -aux | head -n1; ps -aux | grep nginx
+USER         PID %CPU %MEM    VSZ   RSS TTY      STAT START   TIME COMMAND
+root      120535  0.0  0.5  55284 11608 pts/0    Ss+  20:27   0:00 nginx: master process nginx -g daemon off;
+www-data  120569  0.0  0.1  55612  3208 pts/0    S+   20:27   0:00 nginx: worker process
+
+$ docker stop 6c3c
+6c3c
+能使用 docker stop 关闭容器、服务。
+
+
+
+2) 使用 shell 格式启动应用
+
+$ cat n1.2.df
+FROM n1:0
+ENTRYPOINT nginx -g "daemon off;"
+
+$ docker build -t n1:2 -f n1.2.df ./
+
+$ docker run --name N2 -d --rm -it -p 8081:80 n1:2
+$ docker exec -it N2 sh
+# top
+PID USER      PR  NI    VIRT    RES    SHR S  %CPU  %MEM     TIME+ COMMAND
+  1 root      20   0    2616    548    476 S   0.0   0.0   0:00.02 sh
+  7 root      20   0   55284  11580  10136 S   0.0   0.6   0:00.00 nginx
+  8 www-data  20   0   55612   3248   1516 S   0.0   0.2   0:00.00 nginx
+可见，nginx的pid不是1。
+pid=1的是sh，也就是 nginx 在命令 ‘/bin/sh -c’  下运行。
+
+容器外检测：
+$ ps -aux | head -n1; ps -aux | grep nginx
+USER         PID %CPU %MEM    VSZ   RSS TTY      STAT START   TIME COMMAND
+root      121793  0.0  0.0   2616   548 pts/0    Ss+  20:45   0:00 /bin/sh -c nginx -g "daemon off;"
+root      121823  0.0  0.5  55284 11580 pts/0    S+   20:45   0:00 nginx: master process nginx -g daemon off;
+www-data  121824  0.0  0.1  55612  3248 pts/0    S+   20:45   0:00 nginx: worker process
+
+In this way, we cannot stop a long-running ENTRYPOINT executable correctly using the ‘docker stop’ command.
+我测试的可以使用 docker stop 停止容器和服务啊。
+
+
+
+
+3) 使用 exec 命令
+If we want to stop the executable correctly we must use the ‘exec’ before the executable in the Dockerfile as shown below:
+
+$ cat n1.3.df
+FROM n1:0
+ENTRYPOINT exec nginx -g "daemon off;"
+
+$ docker build -t n1:3 -f n1.3.df ./
+
+$ docker run --name N3 -d --rm -it -p 8081:80 n1:3
+$ docker exec -it N3 sh
+# top
+PID USER      PR  NI    VIRT    RES    SHR S  %CPU  %MEM     TIME+ COMMAND
+  1 root      20   0   55284  11400   9948 S   0.0   0.6   0:00.02 nginx
+  7 www-data  20   0   55612   3312   1584 S   0.0   0.2   0:00.00 nginx
+
+可见，nginx 的 pid=1。
+
+
+
+4) 使用 inspect 指令查看 
+$ docker inspect N2
+...
+        "Path": "/bin/sh",                    
+        "Args": [                     
+            "-c",                     
+            "nginx -g \"daemon off;\""      
+        ], 
+...
+
+
+$ docker ps --format "table  {{.ID}} \t {{.Names}} \t {{.Command}}" --no-trunc
+$ docker ps --format "table  {{.Names}} \t {{.Command}}" --no-trunc
+NAMES      COMMAND
+N1         "nginx -g 'daemon off;'"
+N2         "/bin/sh -c 'nginx -g \"daemon off;\"'"
+N3         "/bin/sh -c 'exec nginx -g \"daemon off;\"'"
+
+
+
+
+(2) 命令行传入 –entrypoint 覆盖 ENTRYPOINT 指令 
+
+$ docker run -d --entrypoint sh --name my-web4 n1:1
+$ docker run -d --entrypoint sh --name my-web5 n1:2
+$ docker run -d --entrypoint sh --name my-web6 n1:3
+
+$ docker ps -a --format "table {{.Names}} \t {{.Command}}" --no-trunc
+NAMES       COMMAND
+my-web6     "sh"
+my-web5     "sh"
+my-web4     "sh"
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -4563,6 +5142,15 @@ OpenSSL version: OpenSSL 1.0.2k-fips  26 Jan 2017
 
 
 ========================================
+docker service //todo
+----------------------------------------
+
+
+
+
+
+
+========================================
 进一步学习docker
 ----------------------------------------
 docker inspect imageID #查看分层Layers
@@ -6466,7 +7054,7 @@ https://github.com/snowjet/DaaC
 
 
 1. 简介
-
+(1)
 Kubernetes是一个开源的，用于管理云平台中多个主机上的容器化的应用，Kubernetes的目标是让部署容器化的应用简单并且高效（powerful）,Kubernetes提供了应用部署，规划，更新，维护的一种机制。
 
 Kubernetes一个核心的特点就是能够自主的管理容器来保证云平台中的容器按照用户的期望状态运行着（比如用户想让apache一直运行，用户不需要关心怎么去做，Kubernetes会自动去监控，然后去重启，新建，总之，让apache一直提供服务），管理员可以加载一个微型服务，让规划器来找到合适的位置，同时，Kubernetes也系统提升工具以及人性化方面，让用户能够方便的部署自己的应用（就像canary deployments）。
@@ -6479,6 +7067,14 @@ CRI 运行时是啥？我们暂可以简单的将 Ta 理解为与 Docker 同等�
 在 K8s 早期的版本中，对于容器环境的支持是通过 hard code 方式直接调用 Docker API 的，后来为了支持更多的容器运行时和更精简的容器运行时，K8s 提出了CRI。
 
 实际对容器的操作最终还是要交给 OCI，CRI 也只是个中转。
+
+(3) 凝练
+k8s是开源的Docker容器编排系统，
+他处理计算集群的节点调度，积极应对工作负荷，
+保证节点的状态符合用户声明的意图，
+使用POD和标签的概念，聚合容器把应用组合，
+成为易于管理和发现的逻辑单元。
+
 
 
 
@@ -6498,6 +7094,88 @@ https://www.kubernetes.org.cn/k8s
 https://www.kubernetes.org.cn/
 
 
+基本概念:
+	Node: pod运行在 Node 上；一个node 上可以有无穷多个pod，只要资源够用。
+	pods: 最小的容器管理单元，一个pod通常有一个容器，必要的时候也可以多个；一个pod有一个IP。
+	replicate controller: 保证容器的重复数，一旦有坏的及时补上；
+	Secrets: 保存密码的
+	ReplicaSet: 容器集合
+	DaemonSets: 保证每个节点有一个 Pod 在运行；
+	Ingresses: 一个入口进去后分成几个流向
+	CronJobs：定时任务，适合定期备份、生成报告、做测试等；
+	CRDs: 根据 CRD definition 和 custom controller 调用 K8S API. 
+	
+	Service: 每个pod有自己的IP，多个pod构成一个service，这个服务也有一个IP。即便pod挂掉了，service的IP还在。
+		一个service可以包含多个pod，这些pod可以分布在几个node上。
+		Service 是一个逻辑概念。Pod才是真实存在的。
+		Service 是按照pod的标签识别的，比如 app=B 的pod都属于某个服务。
+		启动过程：master node 上的 Deployment 一个服务A，需要在 worker nodes上扩容4个pod。
+		滚动更新过程： 停掉一个pod, 启动一个pod with new IP address, 然后 updated app；然后更新下一个pod，直到4个pod都更新；
+		在更新和扩容过程中，service的IP是保持不变的。
+
+	集群 master: k8s 的核心服务，认证/授权等入口服务；
+		Scheduler: 负责调度
+		Kube-dns: 负责整个集群的dns服务。实现通过名字访问。
+		ControllerManager: 负责pod的扩容、更新等；
+		dashboard: 集群数据的展示、操作的GUI界面
+		ETCD: 内部数据库；
+		RestAPI：可以把pod的信息保存到ETCD数据库
+	集群 node: 负责维护其pod的更新、volume、网络等。
+		kube-proxy：负责服务发现，和负载均衡。
+	整个过程: 
+		用户执行 kubectl/userClient请求，master进行认证/授权，然后Scheduler经过计算分配资源，
+		APIServer就请求 资源对应的node上的 Kubelet 运行 pod， 然后 APIServer 把pod信息保存到ETCD数据库；
+		pod运行起来后， ControllerManager 就开始管理这些pod。谁挂了就创建一个新的。
+		对于几个node上的属于同一个服务的pods，它们可以通过 kube-proxy 暴露一个端口，通过node的某个端口号直接访问。
+		让每个pod都可以通过名字访问对方，这就是k8s提供的亮点功能。
+		
+
+k8s 设计理念
+	API 设计原则
+		声明式的，每个都是名字
+		从应用出发设计接口
+	控制机设计原则
+		假如任何可能的错误，并作出处理
+		任何模块都可以在出错后自动恢复
+		任何模块都会优雅降级，低级模块不依赖高级模块
+k8s 网络
+	CNI 接口的网络都支持
+	Flannel, Calico, Weave 都提供了
+	Docker本身的网络只能访问本node上的容器，而不能跨主机访问，但是pod可以跨主机互相访问；
+
+
+
+通过打分，确定新建pod的主机:
+Kubernets scheduler - preselect
+	调度时检查的点:
+	NodiskConflict: 先检查是否挂载冲突
+	CheckNodeMemoryPressure: 内存压力检查
+	NodeSelector: 可以选择具有某个标签的节点
+	FitResource: 要满足pod需要的 CPU、GPU、内存等要求；
+	Affinity: 有些pod最好连在一起，有些最好不在一起；
+
+Kubernets scheduler - optimize-select
+	SelectorSpreadPriority: 尽量分散pod
+	LeastRequestedPriority: 主机承载量-已经占用的 ??
+	AffinityPriority
+
+K8s Pod 通讯方式
+	pod内部通讯: 由于同一个pod内的容器共享网络，通过 localhost:端口号 直接访问。
+	Pod间通讯 - 同一个node上: 共享 docker0 网桥，可以通过 pod IP访问。
+	Pod间通讯 - 不同node上: 把pod IP 和node IP 关联起来。
+
+k8s 服务发现
+	kube-proxy(ClusterIP): 虚拟IP，只能集群内部访问，只要service不删除，这个IP是固定的。
+	kube-proxy(NodePort): 暴露到集群上，外部可以通过集群IP和端口号访问。
+	Kube-DNS: 内部插件，负责集群内部的DNS解析，可以让k8s内部的pod通过名字互相访问。
+
+
+第一个难点：构建一个k8s集群。
+https://github.com/liuyi01/kubernetes-starter
+https://blog.csdn.net/weixin_41701308/article/details/115723651
+
+
+
 
 (2) 视频版
 1) https://coding.imooc.com/class/198.html
@@ -6513,6 +7191,9 @@ Kubernetes 以其高效、简便、高水平的可移植性等优势占领了绝
 https://www.cnblogs.com/cocowool/p/kubernetes-articles.html
 
 
+
+《Kubernates权威指南(第5版)》
+https://gitee.com/coderkkx/k-kubernetes-public
 
 
 
@@ -6569,14 +7250,25 @@ Established in June 2015 by Docker and other leaders in the container industry, 
 
 
 
-
-
-
-
-
 ref:
 探索runC (上) https://segmentfault.com/a/1190000017543294
 探索runC (下) https://blog.csdn.net/weixin_33744141/article/details/88705609
+
+
+
+
+
+
+
+========================================
+|-- docker 收费后的替代产品
+----------------------------------------
+“docker替代方案有：OpenVZ、Rancher、Nanobox、Podman、RKT、Singularity、Kubernetes、FreeBSD、Apache Mesos、Vagrant、LXC等等。”
+
+Podman	
+OpenVZ	https://openvz.org/
+
+
 
 
 
