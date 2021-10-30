@@ -401,6 +401,12 @@ CONTAINER ID        IMAGE               COMMAND                  CREATED        
 
 ## 在docker中运行远程桌面 xrdp
 
+
+[在Docker中运行桌面应用](http://www.dockerone.com/article/218)
+2016[Runc Containers on the Desktop](https://blog.jessfraz.com/post/runc-containers-on-the-desktop/)
+2015[Docker Containers on the Desktop](https://blog.jessfraz.com/post/docker-containers-on-the-desktop/)
+
+
 ### Xfce 比 KDE和GNOME 更轻量级。
 
 ```
