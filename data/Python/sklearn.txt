@@ -4972,16 +4972,550 @@ grid.score(X, y) #训练集上的打分
 
 
 ========================================
+chapter 13 文本数据处理: 自然语言处理(Natural Language Processing, NLP)
 ----------------------------------------
+
+概要 
+- 文本数据的特征提取
+- 中文文本的分词方法
+- 用 n-Gram 模型优化文本数据
+- 是引用 tf-idf 模型改善特征提取
+- 删除停用词 (Stopwords)
 
 
 
 ========================================
+|-- 词袋模型
 ----------------------------------------
+1. 英语句子分词
+# 导入向量化工具
+from sklearn.feature_extraction.text import CountVectorizer
+vect = CountVectorizer()
+# 拟合文本数据
+en=["The quick brown fox jumps over a lazy dog"]
+vect.fit(en)
+
+print("words:{}".format( len(vect.vocabulary_) ))
+print("words:{}".format(vect.vocabulary_))
+输出:
+words:8
+words:{'the': 7, 'quick': 6, 'brown': 0, 'fox': 2, 'jumps': 3, 'over': 5, 'lazy': 4, 'dog': 1}
+
+
+
+2. 中文句子分词
+
+# 而中文不能自动分词
+cn=["那只敏捷的棕色狐狸跳过了一只懒惰的狗"]
+vect.fit(cn)
+vect.vocabulary_
+# {'那只敏捷的棕色狐狸跳过了一只懒惰的狗': 0}
+
+
+
+# 中文使用 结巴分词 pip3 install jieba -i https://pypi.douban.com/simple/
+# jieba-0.42.1
+import jieba
+cn1=jieba.lcut(cn[0])
+print("cn1:", cn1)
+# cn1: ['那', '只', '敏捷', '的', '棕色', '狐狸', '跳过', '了', '一只', '懒惰', '的', '狗']
+
+
+
+# 使用空格连起来
+cn2= [' '.join(cn1)]
+print("cn2:", cn2)
+
+vect.fit(cn2)
+vect.vocabulary_
+# cn2: ['那 只 敏捷 的 棕色 狐狸 跳过 了 一只 懒惰 的 狗']
+# {'敏捷': 2, '棕色': 3, '狐狸': 4, '跳过': 5, '一只': 0, '懒惰': 1}
+
+
+
+
+
+3. 句子向量化，词袋模型 bag of words
+# 定义词袋模型
+print(cn2)
+bag_of_words = vect.transform( cn2 )
+print("2->", bag_of_words)
+print("3->", repr(bag_of_words) )
+
+# 打印词袋模型的密度表达
+print( bag_of_words.toarray() )
+输出:
+['那 只 敏捷 的 棕色 狐狸 跳过 了 一只 懒惰 的 狗']
+2->   (0, 0)	1
+  (0, 1)	1
+  (0, 2)	1
+  (0, 3)	1
+  (0, 4)	1
+  (0, 5)	1
+3-> <1x6 sparse matrix of type '<class 'numpy.int64'>'
+	with 6 stored elements in Compressed Sparse Row format>
+[[1 1 1 1 1 1]]
+
+
+
+
+
+
+## 话一句复杂的句子
+cn_1=jieba.lcut("懒惰的狐狸不如敏捷的狐狸敏捷，敏捷的狐狸不如懒惰的狐狸懒惰")
+cn_2=[" ".join(cn_1)]
+print(cn_2)
+
+# 建立新的词袋模型
+new_bag = vect.transform(cn_2)
+print("词袋特征:", repr(new_bag) )
+print("词袋密度:", new_bag.toarray())
+# 0位 一只 出现0次；1位 懒惰 出现3次；... 4位 狐狸 出现4次；...
+
+# 词袋模型，仅仅是用数组表示每个单词出现的频率，并不表示每个单词的位置。
+输出 
+['懒惰 的 狐狸 不如 敏捷 的 狐狸 敏捷 ， 敏捷 的 狐狸 不如 懒惰 的 狐狸 懒惰']
+词袋特征: <1x6 sparse matrix of type '<class 'numpy.int64'>'
+	with 3 stored elements in Compressed Sparse Row format>
+词袋密度: [[0 3 3 0 4 0]]
+
+
+
 
 
 ========================================
+|-- 对文本数据的优化处理
 ----------------------------------------
+
+1. 使用 n-Gram 改善词袋模型
+除了词语的频率，词语的顺序也很重要。
+
+# 随便写一句话
+import jieba
+joke = jieba.lcut("道士看到和尚亲吻了尼姑的嘴唇")
+# 插入空格
+joke = [' '.join(joke)]
+
+# 转为向量
+# 导入向量化工具
+from sklearn.feature_extraction.text import CountVectorizer
+vect = CountVectorizer()
+vect.fit(joke)
+joke_feature = vect.transform(joke)
+# 打印
+print("单词表:", vect.vocabulary_)
+print("特征表达:", joke_feature.toarray())
+输出:
+单词表: {'道士': 5, '看到': 4, '和尚': 1, '亲吻': 0, '尼姑': 3, '嘴唇': 2}
+特征表达: [[1 1 1 1 1 1]]
+
+
+
+
+# 调整顺序
+joke2 = jieba.lcut("尼姑看到道士亲吻了和尚的嘴唇")
+# 插入空格
+joke2=[' '.join(joke2)]
+# 特征提取
+joke_feature2 = vect.transform(joke2)
+
+# 打印
+print("单词表:", vect.vocabulary_)
+print("特征表达:", joke_feature2.toarray())
+# 这2句对于人类是明显不同的，但对于这个机器模型是一模一样的。这肯定有问题。
+输出:
+单词表: {'道士': 5, '看到': 4, '和尚': 1, '亲吻': 0, '尼姑': 3, '嘴唇': 2}
+特征表达: [[1 1 1 1 1 1]]
+
+
+
+
+# 可以使用 CountVectorizer 的 ngram_range 参数进行参数调节。
+# n 是整型，
+#  n=2的模型叫做 bi-Gram，表示 n-Gram 会对相邻的2个单词进行配对；
+#  n=3的模型叫做 tri-Gram，表示 n-Gram 会对相邻的3个单词进行配对。
+
+vect=CountVectorizer(ngram_range=(2,2))
+# 重新进行文本数据的特征提取
+cv=vect.fit(joke)
+joke_feature=cv.transform(joke)
+
+print("单词表:", cv.vocabulary_)
+print("特征表达:", joke_feature.toarray())
+输出 
+单词表: {'道士 看到': 4, '看到 和尚': 3, '和尚 亲吻': 1, '亲吻 尼姑': 0, '尼姑 嘴唇': 2}
+特征表达: [[1 1 1 1 1]]
+
+
+
+# 调整顺序后
+# 特征提取
+joke_feature2 = cv.transform(joke2)
+
+# 打印
+print("单词表:", cv.vocabulary_)
+print("特征表达:", joke_feature2.toarray())
+# 机器已经不认为这是同一句话了。
+输出
+单词表: {'道士 看到': 4, '看到 和尚': 3, '和尚 亲吻': 1, '亲吻 尼姑': 0, '尼姑 嘴唇': 2}
+特征表达: [[0 0 0 0 0]]
+
+
+
+
+
+2. 使用 tf-idf 算法处理文本数据
+tf-idf: term frequency-inverse document frequency,翻译 “词频-逆向文件频率”。
+- 用来评估某个词对于一个语料库中某一份文件的重要程度。
+- 如果一个词在A文件中频率很高，在其他文件中频率很低，那么 tf-idf 就认为这个词能区分文件，很重要。反之则认为该单词重要程度较低。
+
+公式：tf-idf 的计算公式有很多实现，这是其中一种。
+- 单词频率 tf= Nij / 求和(k, Nkj); 其中Nij表示某个词在语料库中某文件中出现的次数；分母表示该文件中所有单词出现的次数之和。
+- idf 的计算公式 idf = log( (N+1)/(Nw+1) ) + 1; 其中 N表示语料库中文件的总数；Nw表示语料库中包含上述单词的文件数量。
+- 最终计算 tf-idf 值的公式: tf-idf = tf * idf
+
+(1) 常规 SVM 分类评价文本
+# 这里使用一套英文 评价数据，一个是文本评论，一个是情感分类 positive or negative
+# http://ai.stanford.edu/~amaas/data/sentiment/
+def readFiles2Array(filename):
+    arr=[];
+    fr=open(filename)
+    for lineR in fr.readlines():
+        line=lineR.strip()
+        arr.append(line)
+    fr.close()
+    return arr;
+
+reviews=readFiles2Array("data/reviews.txt")
+labels=readFiles2Array("data/labels.txt")
+
+# 查看一条评论
+print(reviews[0], "\n", labels[0])
+
+
+
+# 拆分数据
+import numpy as np
+from sklearn.model_selection import train_test_split
+
+# 为了快速，只取前1000条
+total_size=2000
+X_train, X_test, y_train, y_test = train_test_split( np.array(reviews)[:total_size], np.array(labels)[:total_size] )
+print(X_train.shape, X_test.shape) #(18750,) (6250,)
+# (1500,) (500,)
+
+
+
+# 拟合
+vect = CountVectorizer().fit(X_train)
+# 文本转为向量
+X_train_vect = vect.transform(X_train)
+# 
+print("训练集样本特征数量:{}".format(len(vect.get_feature_names_out()) ) )
+print("最后10个训练集样本特征:{}".format( vect.get_feature_names_out()[-10:] ))
+
+X_train_vect.shape #(750, 14330) 有1.4万特征
+输出
+训练集样本特征数量:19861
+最后10个训练集样本特征:['zorro' 'zsigmond' 'zu' 'zubeidaa' 'zucco' 'zuckerman' 'zuzz' 'zwick'
+ 'zz' 'zzzz']
+(1500, 19861)
+
+
+
+
+
+
+# 有监督的学习算法，进行交叉验证评分
+
+# 导入线性SVC分类模型
+from sklearn.svm import LinearSVC
+# 导入交叉验证工具
+from sklearn.model_selection import cross_val_score
+# 使用交叉验证对模型进行打分
+scores = cross_val_score(LinearSVC(max_iter=3000), X_train_vect, y_train)
+print("mean score:{:0.3f}".format(scores.mean()))
+# 1k data: 0.836
+# 2k data: 0.858
+
+
+
+# 泛化到测试集的表现
+X_test_vect = vect.transform(X_test)
+# 使用 SVC 拟合训练数据集
+clf=LinearSVC(max_iter=3000).fit(X_train_vect, y_train)
+print("train score:{:0.3f}".format(clf.score(X_train_vect, y_train)))
+print("test score:{:0.3f}".format(clf.score(X_test_vect, y_test)))
+# test score:
+# 1k data: 0.844
+# 2k data: 0.860
+
+
+
+
+(2) tf-idf 分类
+from sklearn.feature_extraction.text import TfidfTransformer
+# 使用tf-idf工具转化训练集和测试集
+tfidf = TfidfTransformer(smooth_idf=False)
+tfidf.fit(X_train_vect)
+X_train_tfidf = tfidf.transform(X_train_vect)
+X_test_tfidf = tfidf.transform(X_test_vect)
+# 将处理前后的特征打印进行比较
+print("tf-idf前的特征:\n", X_train_vect[:6, 20:30].toarray())
+
+print("tf-idf处理后的特征:")
+import pandas as pd
+display( pd.DataFrame(X_train_tfidf[:6, 20:30].toarray() ) )
+
+# 可见处理前是单词频数，处理后是词频乘以逆向文档频率，是一个浮点数。
+
+
+
+# 使用 tf-idf 后的新数据
+
+# 使用交叉验证对模型进行打分
+scores = cross_val_score(LinearSVC(max_iter=3000), X_train_tfidf, y_train)
+print("mean score of CV:{:0.3f}".format(scores.mean()))
+
+# 训练线性 SVC 模型
+clf=LinearSVC(max_iter=3000).fit(X_train_tfidf, y_train)
+print("train score:{:0.3f}".format(clf.score(X_train_tfidf, y_train)))
+print("test score:{:0.3f}".format(clf.score(X_test_tfidf, y_test)))
+# 测试集有所提升
+
+
+
+
+
+
+3. 删除文本数据中的停用词 stopwords
+停用词 stopwords，指的是出现频率很高，但没有实际意义的单词，通常包括各种语气词、连词、介词等。
+- 筛选策略，就是去掉频率过高的词；或者使查表过滤。sklearn 也内置了一个list。
+- 中文常见的表有: 哈工大停用词表,百度停用词表
+
+
+# 导入停用词表
+from sklearn.feature_extraction.text import ENGLISH_STOP_WORDS
+print("sklearn内置停用词个数:", len(ENGLISH_STOP_WORDS))
+print("前20个和后20个:\n",list(ENGLISH_STOP_WORDS)[:20], "\n", list(ENGLISH_STOP_WORDS)[-20:])
+输出 
+sklearn内置停用词个数: 318
+前20个和后20个:
+['until', 'into', 'whereby', 'anywhere', 'some', 'around', 'us', 'five', 'these', 'ten', 'anyhow', 'interest', 'by', 'couldnt', 'throughout', 'nothing', 'put', 'hundred', 'thence', 'per'] 
+['had', 'may', 'somewhere', 'co', 'therefore', 'with', 'were', 'him', 'many', 'fifteen', 'own', 'me', 'mine', 'being', 'between', 'wherever', 'three', 'done', 'move', 'fifty']
+
+
+
+# 删除停用词后，看模型打分是否有提升
+
+from sklearn.feature_extraction.text import TfidfVectorizer
+# 激活停用词参数
+tfidf = TfidfVectorizer(smooth_idf=False, stop_words="english")
+# 拟合
+tfidf.fit(X_train)
+# 将训练集转为向量
+X_train_tfidf= tfidf.transform(X_train)
+
+
+# 使用交叉验证对模型进行打分
+scores3 = cross_val_score(LinearSVC(max_iter=3000), X_train_tfidf, y_train)
+print("mean score of CV:{:0.3f}".format(scores3.mean()))
+
+# 训练线性 SVC 模型
+X_test_tfidf= tfidf.transform(X_test)
+clf=LinearSVC(max_iter=3000).fit(X_train_tfidf, y_train)
+print("train score:{:0.3f}".format(clf.score(X_train_tfidf, y_train)))
+print("test score:{:0.3f}".format(clf.score(X_test_tfidf, y_test))) #略有提升
+输出
+mean score of CV:0.902
+train score:1.000
+test score:0.918
+
+
+
+
+
+进一步学习
+
+自然语言处理
+- 推荐宝 NLTK， pip install nltk; 功能包括 分词，为文本加标注，词干提取(stemming)及词干还原(Lemmatization)
+- 话题建模(topic modeling) 和 文档聚类(document clustering)，差不多是文本数据的降维。话题指的是ML后，将相似的文本进行聚类的结果。
+    * 和PCA或NMF算法不同，而是使用了 “潜狄利克雷分布”(Latent Dirichlet Alocation, LDA)
+- 自然语言处理的工具 word2vec 库。
+- 使用 TensorFlow 建立 循环神经网络(RNN) 也实现了重大突破。
+
+
+
+========================================
+chapter 14 数据获取到话题提取: 爬虫(Requests/ bs4/ RegExp)
+----------------------------------------
+1. 简单页面的爬取
+! pip list | grep -i request
+# Rrequests 库是基于 urllib的，但是更好用。
+# requests                          2.25.1
+
+(1) 查询User agent
+# 1) 从网页复制
+# https://www.ip138.com/useragent/
+# Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.164 Safari/537.36
+
+# 2) 从网页F12 复制
+# 打开百度，F12键-network，再F5刷新，随便选择一个加载内容，点header - Request，看其中内的 User-Agent:
+UserAgent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.164 Safari/537.36"
+
+
+(2) 熟悉网站结构
+# 政策-最新： http://www.gov.cn/zhengce/zuixin.htm
+url= "http://www.gov.cn/zhengce/content/2021-11/03/content_5648645.htm"
+
+
+
+(3) 爬取并保存到本地
+import requests
+headers={
+    "User-Agent": UserAgent
+}
+
+# 发起请求
+r=requests.get(url, headers=headers)
+#print(r.text)# 主要内容乱码
+
+#打印编码方式
+print(r.encoding) #ISO-8859-1
+# 而原网页正文写的是 charset="utf-8" 
+
+# 重新设置编码方式
+r.encoding="urf-8"
+print(r.encoding) #urf-8
+#print(r.text) #正常打印
+# 但是包含html标记，不需要它们。
+
+
+# 要么保存为 html
+with open("dustbin/test.html", 'w', encoding='utf8') as f:
+    f.write(r.text)
+# 要么解析其中的文本，保存为csv文件，见下文。
+
+
+
+========================================
+|-- 稍微复杂的爬虫
+----------------------------------------
+上面的例子其实降低了我们的效率，单个网址我们直接用浏览器看反而更高效。
+我们希望看到一个列表(部门，标题，链接)，大致判断感兴趣的内容，再点开看细节。怎么获得这样的列表呢？
+
+目标 最新政策 list 的爬取 url="http://www.gov.cn/zhengce/zuixin.htm"
+- 分析细节页面，打开该页面，F12查看，要闻列表
+
+1. 正则表达式简介
+略，看 basic 专题。
+
+
+2. 使用 BeautiSoup 进行 html 解析
+python的两个解析html的库: lxml 和 BeautifulSoup。
+
+# $ pip3 install beautifulsoup4 -i https://pypi.douban.com/simple/
+# $ pip3 list | grep -i soup
+#beautifulsoup4                    4.10.0
+# $ pip3 list | grep -i xml
+#defusedxml                        0.7.1
+#lxml                              4.6.3
+
+
+# 下载html信息
+url= "http://www.gov.cn/zhengce/content/2021-11/03/content_5648645.htm"
+
+import requests
+headers={
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.164 Safari/537.36"
+}
+r=requests.get(url, headers=headers)
+# 重新设置编码方式
+r.encoding="urf-8"
+
+
+# 解析html信息
+from bs4 import BeautifulSoup
+soup = BeautifulSoup(r.text, 'lxml', from_encoding='utf8') #指定使用 lxml 库作为解析库，比自带的标准库快
+#print(soup)
+
+# 获取标题
+print(soup.title) #带着 html 标签
+print(soup.title.string) #去标签
+print(soup.title.get_text()) #或者
+输出:
+<title>国务院关于2020年度国家科学技术奖励的决定（国发〔2021〕22号）_政府信息公开专栏</title>
+国务院关于2020年度国家科学技术奖励的决定（国发〔2021〕22号）_政府信息公开专栏
+国务院关于2020年度国家科学技术奖励的决定（国发〔2021〕22号）_政府信息公开专栏
+
+
+
+
+
+
+# 获取段落
+print(soup.p.string)
+
+# 怎么获取全部的段落？
+texts=soup.find_all('p')
+for text in texts:
+    if text.string == None: #过滤空白段
+        continue
+    print(text.string)
+# 文本略。
+
+
+# 获取链接
+link=soup.find_all('a')[-1] #最后的一个链接
+link.get('href')
+
+
+
+
+
+
+3. 爬取新闻目录页面并保存为csv
+import requests, csv, re
+from bs4 import BeautifulSoup
+
+#下载
+url="http://www.gov.cn/zhengce/zuixin.htm"
+user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.164 Safari/537.36"
+
+policies=requests.get(url, headers={"User-Agent": user_agent})
+policies.encoding='utf-8'
+
+#解析
+p=BeautifulSoup(policies.text, 'lxml')
+
+# 用正则表达式匹配所有包含 content 的单词的a标签
+contents =p.find_all("a", href=re.compile('content'))
+
+# 定义一个空列表
+rows=[]
+
+#设计一个for循环，提取每个链接汇总的标题
+for content in contents:
+    href=content.get('href')
+    row=(content.string[0:4], content.string, href)
+    rows.append(row)
+
+# 定义表头
+header=["发文部门", "标题", "链接"]
+# 保存文件；原文 encoding='gb18030'
+with open("dustbin/policies.csv", 'w', encoding='utf8') as f:
+    writer=csv.writer(f)
+    writer.writerow(header)
+    writer.writerows( rows)
+print("==done==")
+
+
+# check
+$ head -n 3 dustbin/policies.csv
+发文部门,标题,链接
+中共中央,中共中央关于党的百年奋斗重大成就和历史经验的决议,/zhengce/2021-11/16/content_5651269.htm
+国务院办,国务院办公厅关于对国务院第八次大督查发现的典型经验做法给予表扬的通报,http://www.gov.cn/zhengce/content/2021-11/15/content_5650982.htm
+
 
 
 
@@ -4990,30 +5524,285 @@ grid.score(X, y) #训练集上的打分
 
 
 ========================================
+|-- 对文本数据进行话题提取
 ----------------------------------------
+当爬取的内容很多时，看着很花时间。能否快速了解几万字的核心内容呢？
+- 可以使用 “潜在地理克雷分布”(Latent Dirichlet Allocation)对文本做话题提取。
+
+1. 下载大量内容
+# 百度搜 段子，找到一个全是文本段子的网站。
+
+import requests, csv, re
+from bs4 import BeautifulSoup
+
+user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.164 Safari/537.36"
+
+# 定义一个空列表
+rows=[]
+urls=[]
+
+for i in range(1, 10):
+    url="http://www.duanziku.com/gaoxiaoduanzi/gxdz{}.html".format(i)
+    webpage=requests.get(url, headers={"User-Agent": user_agent})
+    webpage.encoding='utf-8'
+
+    #解析
+    p=BeautifulSoup(webpage.text, 'lxml')
+
+    # 用正则表达式匹配所有包含 gaoxiaoduanzi 的单词的a标签
+    contents =p.find_all("a", href=re.compile('gaoxiaoduanzi.*\d+\.html$'))
+
+    #设计一个for循环，提取标题和链接
+    for content in contents:
+        href=content.get('href')
+        if(content.string==None):
+            continue
+        row=(content.string, href)
+        if href in urls:
+            continue;
+        else:
+            urls.append(href)
+            if len(urls)<5:
+                print(row)
+            rows.append(row)
+len(rows)
+
+
+
+def getJoke(url):
+    webpage=requests.get(url, headers={"User-Agent": user_agent})
+    webpage.encoding='utf-8'
+    p=BeautifulSoup(webpage.text, 'lxml')
+    contents =p.find("span", style="font-size:16px;")
+    if contents==None:
+        return;
+    contents=contents.text
+    
+    # 去掉换行
+    w=re.sub("\r\n", "", contents)
+
+    # 切分文本
+    contents2 = re.split("\n+", w)
+    # 保存
+    db=[]
+    for joke in contents2:
+        if joke=="":
+            continue
+        joke = re.sub("\d{1,2}[\.\、]", "", joke) #去掉首数字
+        db.append(joke)
+    return db
+# test
+getJoke( rows[0][1])[0:3]
+# 内容略
+
+
+def getJoke2(url):
+    webpage=requests.get(url, headers={"User-Agent": user_agent})
+    webpage.encoding='utf-8'
+    p=BeautifulSoup(webpage.text, 'lxml')
+
+    p=p.find("table")
+    if p==None:
+        return;
+    contents =p.find_all("p")
+    
+    if contents==None:
+        print("broken page:", url)
+        return;
+    
+    db=[]
+    for text in contents:
+        text2=re.sub("\s+","", text.text)
+        if len(text2)<10 or re.match("[0-9]",text2)==None:
+            #pass
+            continue
+        joke =text2
+        joke = re.sub("\d{1,2}[\.\、]", "", joke) #去掉首数字
+        db.append(joke)
+    return db
+getJoke2( rows[6][1])[0:3]
+# 内容略
+
+
+
+
+import random
+import time
+
+jokes=[]
+for i in range(0, len(rows)):
+    #print(i, len(jokes))
+    url=rows[i][1]
+    # 获取页面并解析出文本
+    time.sleep(0.5 + 2.5*random.random())
+    db=getJoke( url )
+    if db==None:
+        db=getJoke2( url )
+    if db==None or len(db)==0:
+        print("broken:", url )
+        continue
+    for joke in db:
+        if joke not in jokes:
+            jokes.append(joke)
+# 总数
+print(len(jokes)) #411
+
+
+
+
+# 保存到文件
+fw=open("dustbin/jokes.txt", 'w')
+for joke in jokes:
+    fw.write(joke + "\n")
+fw.close()
+
+
+
+
+
+3.使用 潜在狄利克雷分布 进行话题提取
+潜在狄利克雷分布(Latent Dirichlet Allocation, LDA)是基于不同的词语共同出现的频率来进行分组的模型。
+- 比如，某个文档中，“妹子”“吃货”这2个词经常同时出现，LDA模型就会将2个词归入同一个话题(Topic)。
+
+
+# 载入文件
+fr=open("dustbin/jokes.txt", 'r')
+lines=fr.readlines()
+line=str(lines) #把数组变成一个字符串
+fr.close()
+
+print( len(lines) ) #411
+print(len(line)) #23419
+
+# 分词
+import jieba
+line2=jieba.cut(line)
+x=" ".join(line2)
+# 保存
+with open("dustbin/cutjokes.txt", 'w') as f:
+    f.write(x);
+
+
+
+
+from sklearn.feature_extraction.text import TfidfVectorizer
+# 导入 LDA 模型
+from sklearn.decomposition import LatentDirichletAllocation
+
+# 打印提取后的高频词
+def print_topics(model, feature_names, n_top_words):
+    for topic_idx, topic in enumerate(model.components_):
+        message = "topic #%d:" % topic_idx
+        message += " ".join([ feature_names[i]
+                            for i in topic.argsort()[:-n_top_words -1:-1]])
+        print(message)
+    print()
+
+
+#定义每个话题提取20个高频词
+n_top_words=20
+# tfidf 最大特征数 1000
+tf=TfidfVectorizer(max_features=1000)
+
+# 载入分词处理过的文本文件
+fr=open("dustbin/cutjokes.txt")
+#转化训练数据
+X_train = tf.fit_transform(fr)
+fr.close()
+
+# 指定 LDA 模型提取10个话题
+lda=LatentDirichletAllocation(n_components=6)
+lda.fit(X_train)
+
+print_topics(lda, tf.get_feature_names_out(), n_top_words )
+
+
+
+
+# check 
+for topic_idx, topic in enumerate(lda.components_):
+    print(topic_idx, ">>>", topic[0:6])
+
+tmp=tf.get_feature_names_out()
+tmp
+
+for i in topic.argsort()[:-n_top_words -1:-1]:
+    print(i, tmp[i])
+
+
+
+
+
+3. 进一步学习
+爬虫：推荐 Scrapy，是目前最常用的用于开发爬虫的工具之一。
+
+自然语言处理：循环神经网络 RNN。
+
+
 
 
 
 ========================================
+chapter 15:需求现状及未来学习方向
 ----------------------------------------
 
+1. 人工智能的细分领域
 
-========================================
-----------------------------------------
+1: 算法、机器学习等
+2: GPU、智能芯片等
+3: 机器人
+4: 图像识别/计算机视觉
+5: 自然语言处理 
+6: 智能/精准营销
+7: 语音识别
+8: 推荐系统
+9: 搜索引擎
+10: 智能交通/自动驾驶
+
+
+
+
+2. 未来学习方向
+
+(1) 用于大数据分析的计算引擎
+
+核外学习 out-of-core-learning, 外存学习;
+	数据是通过外部硬盘甚至网络提供的
+集群式并行计算;
+	Spark 计算引擎: 主流分布式计算平台, MapReduce 算法，支持Python, scala, java, R 等.
+
+R 语言。
+
+
+(2) 深度学习开源框架 
+TensorFlow，Caffe 和 Keras。
+
+Keras 上手快。
+
+
+(3) 使用概率模型进行推理
+PyMC: 是一个实现贝叶斯统计模型和马尔科夫链蒙特卡洛采样工具拟合算法的库。
+Stan: 是一个非常尖端的用于统计建模和高效统计计算的平台。
+
+2个库都要求用户对概率统计有一定的了解。
 
 
 
 
 
+3. 技能的磨练
+
+(1) Kaggle 算法大赛平台，OpenML平台
+可以看到更多数据和任务。
+
+(2) 工业级场景的应用
+sklearn 适合快速原型。
+而最求效率的，还可以使用 Java, C++, Scalar, Go 等重写。
+
+(3) 对算法的 A/B 测试
 
 
-========================================
-----------------------------------------
 
-
-
-========================================
-----------------------------------------
 
 
 ========================================
