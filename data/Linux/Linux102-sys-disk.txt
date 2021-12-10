@@ -8,6 +8,10 @@ linux简介8|RPM软件包管理
  - 启动终端：快捷键ctrl + alt + t
 
 
+《Linux就该这么学》
+https://www.linuxprobe.com/basic-learning-07.html
+
+
 
 
 ========================================
@@ -1903,6 +1907,181 @@ refer: http://blog.csdn.net/langxianwenye/article/details/50828289
 
 
 https://blog.lmlphp.com/archives/118/How_to_expand_Ubuntu_disk_in_VirtualBox_virtual_machine
+
+
+
+
+
+
+========================================
+|-- Linux LVM(logical volumne manager)分区扩容，与 /dev/mapper目录
+----------------------------------------
+
+1. 正在使用的服务器的硬盘结构
+最近使用LVM，顺带了解了LVM的原理。然后对device-mapper比较困惑。
+
+挂载文件 /etc/fstab
+
+(1) 剩余大小
+$ df -h
+Filesystem               Size  Used Avail Use% Mounted on
+/dev/sda3                318G   82G  237G  26% /
+/dev/sda2                494M  357M  137M  73% /boot
+/dev/sda1                 50M   12M   39M  23% /boot/efi
+/dev/mapper/centos-home  8.2T  3.8T  4.5T  46% /home
+/dev/mapper/mpatha1      146T  136T  2.6T  99% /data
+/dev/sde1                 90T   39T   51T  44% /mnt/test1
+
+
+(2) lsblk - list block devices
+$ lsblk
+NAME            MAJ:MIN RM   SIZE RO TYPE  MOUNTPOINT
+sda               8:0    0 446.1G  0 disk  
+├─sda1            8:1    0    50M  0 part  /boot/efi
+├─sda2            8:2    0   500M  0 part  /boot
+├─sda3            8:3    0 317.6G  0 part  /
+└─sda4            8:4    0   128G  0 part  [SWAP]
+sdb               8:16   0   8.2T  0 disk  
+└─sdb1            8:17   0   8.2T  0 part  
+  └─centos-home 253:2    0   8.2T  0 lvm   /home  ## 看这里
+sdc               8:32   0 145.9T  0 disk  
+├─sdc1            8:33   0 145.9T  0 part  
+└─mpatha        253:0    0 145.9T  0 mpath 
+  └─mpatha1     253:1    0 145.9T  0 part  /data  #C+D挂载到 /data ，总大小变小 160T + 160T 得到了 146T
+sdd               8:48   0 145.9T  0 disk  
+├─sdd1            8:49   0 145.9T  0 part  
+└─mpatha        253:0    0 145.9T  0 mpath 
+  └─mpatha1     253:1    0 145.9T  0 part  /data
+sde               8:64   0    89T  0 disk  
+└─sde1            8:65   0    89T  0 part  /mnt/test1
+
+
+(2) LVM partition
+$ sudo lvmdiskscan
+  /dev/sda1           [      50.00 MiB] 
+  /dev/mapper/mpatha1 [    <145.91 TiB] 
+  /dev/sda2           [     500.00 MiB] 
+  /dev/sda3           [     317.56 GiB] 
+  /dev/sda4           [     128.00 GiB] 
+  /dev/sdb1           [       8.18 TiB] LVM physical volume
+  /dev/sde1           [     <89.05 TiB] 
+  0 disks
+  6 partitions
+  0 LVM physical volume whole disks
+  1 LVM physical volume
+
+
+(3) 查看逻辑卷：lvdisplay
+$ sudo lvdisplay
+  --- Logical volume ---
+  LV Path                /dev/centos/home
+  LV Name                home
+  VG Name                centos
+  LV UUID                zUNTPJ-PRNb-44L9-WQP7-71Pj-o1lv-bKGB9X
+  LV Write Access        read/write
+  LV Creation host, time localhost.localdomain, 2018-12-12 16:18:30 +0800
+  LV Status              available
+  # open                 1
+  LV Size                8.18 TiB
+  Current LE             2144574
+  Segments               1
+  Allocation             inherit
+  Read ahead sectors     auto
+  - currently set to     256
+  Block device           253:2
+
+
+(4) dmsetup — low level logical volume management
+$ sudo dmsetup status
+mpatha: 0 313329156096 multipath 2 0 1 0 2 1 A 0 1 2 8:32 A 0 0 1 E 0 1 2 8:48 A 0 0 1 
+mpatha1: 0 313329154110 linear 
+centos-home: 0 17568350208 linear
+
+
+(5) 查看物理卷、逻辑卷：pvs
+$ sudo pvs
+  PV         VG     Fmt  Attr PSize PFree
+  /dev/sdb1  centos lvm2 a--  8.18t    0 
+
+$ sudo vgs
+  VG     #PV #LV #SN Attr   VSize VFree
+  centos   1   1   0 wz--n- 8.18t    0
+
+
+
+
+
+
+2. LVM 分区是什么？
+https://www.bilibili.com/video/BV16W411t7YY
+
+LVM 可以在零关机的情况下扩充硬盘空间。
+
+
+在介绍逻辑卷管理器（LVM）组件前，我们先介绍二个基本概念：“分区”和“串联”。
+- 划分物理磁盘的过程叫磁盘分区（disk partitioning）；
+- 整合物理磁盘的过程叫串联（concatenation），简单说就是把若干小的物理磁盘整合成一个大的逻辑盘。
+
+
+(1) LVM 结构。
+逻辑卷管理器（LVM）隐藏了物理磁盘的细节和数据在磁盘上的位置，优化了用户对存储的访问，简化了存储资源的管理，在更改存储配置时可以实现无应用程序中断。
+
+LVM主要由三部分组成：物理卷（physical volume）、卷组（volume group）和逻辑卷（logical volume）。
+
+
+多个单独的硬盘(physical hard drive)和/或磁盘分区(physical volume, PV) 组合成 --> 一个单个的卷组(volume group, VG);
+卷组(VG)然后可以再划分为 --> 逻辑卷(logical volume, LV)
+	或者被用于分配成 --> 一个大的单一的卷。
+在一个逻辑卷(LV)上 --> 可以创建 普通的文件系统(File System)，如 EXT3 或 EXT4。
+
+
+1) 物理卷(PV)
+
+物理卷（physical volume）是指每一个连接到主机系统的物理磁盘。LVM将物理卷提供的物理存储空间转换成逻辑存储空间，方便应用程序或操作系统使用。
+
+2) 卷组(VG)
+
+卷组（Volume group）是由一个或多个物理卷组成，LVM在初始化时会为每个物理卷分配一个唯一的物理卷标识（PVID），在卷组使用中，支持物理卷的动态添加或删除，但是一个物理卷只能被一个卷组使用。在创建卷组时，每一个物理卷都会被划分为若干个大小相同的数据块，我们称这些数据块为物理区域（physical extent）。
+
+3) 逻辑卷(LV)
+在指定的卷组中可以创建逻辑卷（logical volume），如果每个卷组可以被看成一个磁盘的话，那么每个逻辑卷都可以看成一个虚拟磁盘分区。一个卷组可以划分为多个逻辑卷，逻辑卷的大小取决于物理磁盘的数量和大小。
+
+
+
+从操作系统的层面，逻辑卷就像一个“物理设备”，但是这个“物理设备”可以跨多个物理卷，并且由不连续的物理分区组成。在逻辑卷上创建文件系统后，就可以直接将逻辑卷分配给应用程序使用了。
+
+
+
+(2) 常用的LVM部署命令
+
+功能/命令	物理卷管理	卷组管理	逻辑卷管理
+扫描		pvscan	    vgscan  	lvscan
+建立		pvcreate	vgcreate	lvcreate
+显示		pvdisplay	vgdisplay	lvdisplay
+删除		pvremove	vgremove	lvremove
+扩展		--------	vgextend	lvextend
+缩小		--------	vgreduce	lvreduce
+
+
+
+
+
+
+
+3. /dev/mapper/ 目录
+https://www.cnblogs.com/amoyzhu/p/6626423.html
+
+若要了解硬盘的具体情况，可通过 fdisk 或者 pvdisplay 命令进行查看。
+
+
+
+
+
+
+
+
+
+
 
 
 

@@ -641,6 +641,7 @@ cd14.mono <- subset(immune.combined, idents = 'CD14 Mono')
 
 scObject <- subset(x = scObject.all, idents = c("Endothelial"), invert = FALSE);
 
+neu_colon <- subset(neu_colon, idents = c(1,2,3), invert=T) #选择除了1,2,3 之外的群。
 
 
 
@@ -1090,11 +1091,12 @@ DotPlotPDF(markers,"top5",width=5,height=4.5)
 
 
 ========================================
-|-- DimPlot()高亮显示某一类细胞: cells.highlight 参数
+|-- DimPlot()高亮显示某一类细胞
 ----------------------------------------
-#
+1. 使用 seurat 包的函数，指定 cells.highlight 参数
+(1) WhichCells 函数获取cid
 Idents(scRNA)="predicted.id"
-sub1 <- WhichCells(scRNA, idents = c("CD8 Naive") )
+sub1 <- WhichCells(scRNA, idents = c("CD8 Naive") ) #返回的是细胞cid
 sub2 <- WhichCells(scRNA, idents = c( "CD4 TEM") )
 p1=DimPlot(scRNA, label=T, group.by="predicted.id", cells.highlight= list(sub1, sub2), 
         cols.highlight = c("blue", 'red'), cols= "grey")
@@ -1109,10 +1111,35 @@ p1+p2 +plot_layout(guides = 'collect')
 
 
 
+(2) 从 meta.data 获取cid
+
+DimPlot(neu_colon, label = F, group.by = "BL2", 
+        cells.highlight = neu_colon@meta.data[which(neu_colon@meta.data$sample == "BL2Y"), "cell"], 
+        cols.highlight = c("darkblue", "darkred"), cols = "grey")
+
+
+(3) 分面: split.by=某指标作为因子，把图分成多个
+
+DimPlot(object = neu_colon,reduction = "umap",label = F, split.by = "sample", ncol = 3)+NoLegend()
 
 
 
 
+2. 自定义函数 
+library(dplyr)
+
+umap_tx = integrated@reductions$umap@cell.embeddings %>% 
+	as.data.frame() %>% cbind(tx = so@meta.data$Treat)
+
+ggplot(umap_tx, aes(x=UMAP_1, y=UMAP_2, color=tx)) + geom_point() + 
+	scale_color_manual(values=c("group1_untreated" = "darkblue", "group1_treated" = "darkred"))
+
+
+
+
+
+ref:
+https://stackoverflow.com/questions/59101791/seurat-dimplot-highlight-specific-groups-of-cells-in-different-colours
 
 
 ========================================
@@ -1148,6 +1175,169 @@ pheatmap(cor_df2, border_color = NA,
          clustering_method="ward.D2",
          main="Cell type correlation")
 #
+
+
+
+
+
+
+========================================
+|-- 常用图的增强: FeaturePlot, VlnPlot, DotPlot, DimPlot
+----------------------------------------
+
+1. FeaturePlot 函数
+(1) FeaturePlot使用了split函数之后就没有legend了
+FeaturePlot(object = obj, features = "Gene", split.by = "Meta_Name", order = T) & theme(legend.position = "right")
+
+只是用+是不可以的，那样就只会只改split图中右边的那个图。使用&符号的时候是会两个都改的，是不是很神奇？
+原来我以前只知道+，后来才发现还有&这个用法。
+
+
+
+(2) 两个 FeaturePlot 左右放，右边的隐藏y轴。
+
+m_featureplot <- FeaturePlot(M_Aggregated_seurat, features = "Lepr", reduction = "tsne",
+                             split.by = "orig.ident", pt.size = 1.8, repel = F, label = F,
+                             order = T, max.cutoff = 1)
+m_featureplot <- m_featureplot & scale_x_continuous(breaks=seq(-30, 20, 10)) ## 改x轴刻度标签
+m_featureplot <- m_featureplot & scale_y_continuous(breaks=seq(-30, 20, 10)) ## 改y轴刻度标签
+m_featureplot <- m_featureplot +  theme(axis.text.y = element_blank()) +   ## 删去所有刻度标签
+                                  theme(axis.ticks.y = element_blank()) +  ##则只删去 Y 轴的刻度线
+                                  theme(axis.line.y = element_blank())
+m_featureplot <- m_featureplot + ylab("")
+
+
+
+(3) # Visualize co-expression of two features simultaneously
+FeaturePlot(pbmc, features = c("MS4A1", "CD79A"), blend = TRUE)
+
+
+(4) # Calculate feature-specific contrast levels based on quantiles of non-zero expression.
+# Particularly useful when plotting multiple markers
+FeaturePlot(pbmc3k.final, features = c("MS4A1", "PTPRCAP"), min.cutoff = "q10", max.cutoff = "q90")
+
+
+(5) 分组 
+# Split visualization to view expression by groups (replaces FeatureHeatmap)
+FeaturePlot(pbmc3k.final, features = c("MS4A1", "CD79A"), split.by = "groups")
+
+
+
+
+
+2. VlnPlot 的堆叠小提琴图
+VlnPlot 中有个stack = T
+但是这里面有个bug
+因为Seurat::VlnPlot有个bug就是当用split的时候 细胞数目小于3个的时候 就不会画出来
+后面又自己想加其他数据所以弄得复杂了点
+但是我发现个很好用的方法就是直接把p1$data <- final_data 直接替换成我们想画图的数据就可以直接修改图片了
+
+https://www.jianshu.com/p/a2fe2549cea1
+
+(2) # metadata and pass it to the split.by argument
+VlnPlot(pbmc, features = "percent.mt", split.by = "groups")
+
+
+
+
+
+
+3. DotPlot 图
+
+(1) 
+dotplot_f_data_1 <- DotPlot(F_Aggregated_seurat, features = rev(ImDEGs),
+                       group.by = "try",col.min=-2, col.max=2)$data
+head(dotplot_f_data_1)
+dim(dotplot_f_data_1)
+
+dotplot_f_data_2 <- DotPlot(F_Aggregated_seurat, features = rev(ImDEGs),
+                            group.by = "try2",col.min=-2, col.max=2)$data
+head(dotplot_f_data_2)
+dim(dotplot_f_data_2)
+
+dotplot_f_data <- rbind(dotplot_f_data_1, dotplot_f_data_2)
+head(dotplot_f_data)
+dim(dotplot_f_data)
+table(dotplot_f_data$id)
+
+p_dotplot_f <- DotPlot(F_Aggregated_seurat, features = rev(ImDEGs),col.min=-2, col.max=2)
+p_dotplot_f$data <- dotplot_f_data
+p_dotplot_f <- p_dotplot_f + coord_flip()
+p_dotplot_f <- p_dotplot_f+ scale_color_gradient2(high="red",mid = "lightgrey",low ="darkblue", midpoint = 0) + theme_classic()+ 
+  theme(axis.text.x = element_text(angle = -45,hjust = -0.1,vjust = 0.8)) 
+p_dotplot_f$data$id <- factor(p_dotplot_f$data$id,
+                              levels = c(levels_define[1:12], 
+                                         "GABA_WT", "GABA_ob/ob",
+                                         levels_define[13:18],
+                                         "Glu_WT", "Glu_ob/ob"))
+p_dotplot_f
+
+
+(2) 分组
+DotPlot(pbmc, features = features, split.by = "groups") + RotatedAxis()
+
+
+
+4. DimPlot 
+
+(1) 加上标题
+baseplot <- DimPlot(pbmc, reduction = "umap")
+# Add custom labels and titles
+baseplot + labs(title = "Clustering of 2,700 PBMCs")
+
+(2) 改变字体，去掉图例
+# Chain themes together
+baseplot + FontSize(x.title = 20, y.title = 20) + NoLegend()
+
+
+
+
+
+5. 系统发育分析（Phylogenetic Analysis of Identity Classes）
+pbmc<-BuildClusterTree(pbmc)
+Tool(object = pbmc, slot = 'BuildClusterTree')
+
+
+
+6. 平均表达谱函数AverageExpression
+?AverageExpression
+
+AverageExp<-AverageExpression(pbmc,features=unique(top10$gene))
+
+
+
+
+7. # Ridge plots - from ggridges. Visualize single cell expression distributions in each cluster
+RidgePlot(pbmc3k.final, features = features, ncol = 2)
+
+
+
+
+
+
+
+
+
+
+
+
+
+100. 富集分析的底层代码： enrichplot 包
+
+https://www.jianshu.com/p/03b94b2034d5
+
+
+
+
+
+ref:
+https://www.jianshu.com/p/a2fe2549cea1
+https://www.jianshu.com/p/484762bb96c2
+https://www.jianshu.com/p/03b94b2034d5
+http://www.360doc.com/content/21/0715/15/76149697_986668012.shtml
+
+
+
 
 
 

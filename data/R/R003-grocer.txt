@@ -2,7 +2,9 @@ R杂货铺-奇淫巧技
 
 
 # 设置镜像，加速下载包。
-options(repos="http://mirrors.usts.edu.cn/CRAN/")
+options(repos="http://mirrors.usts.edu.cn/CRAN/") #不好用
+options(repos=structure(c(CRAN="https://mirrors.tuna.tsinghua.edu.cn/CRAN/"))) # 推荐
+
 
 # 查看当前镜像
 getOption('repos')
@@ -993,7 +995,7 @@ Now at the R prompt:
 
 
 ========================================
-|-- ubuntu如何更新到R的最新版？(3.6.1)
+|-- ubuntu如何更新到R的最新版？(3.6.1) | 过时
 ----------------------------------------
 https://cran.r-project.org/bin/linux/ubuntu/README
 1. 查当前版本
@@ -1938,7 +1940,8 @@ www-port=8788
 rsession-which-r=/usr/local/bin/R
 
 # 无操作自动退出时间(单位是min)，0表示不退出。我希望至少是24小时(1440min)
-session-timeout-minutes=60
+# session-timeout-minutes=60 # 不是这个。
+auth-timeout-minutes=1800
 
 
 # 外部库。通过修改rsession-ld-library-path 添加系统的库路径作为外部库以供RStudio server调用。
@@ -1965,37 +1968,316 @@ $ sudo service rstudio-server restart
 
 
 ========================================
-快速生成R语言报告（markdown+Rstudio）
+快速生成R语言报告 (Rmarkdown + Rstudio): 批量执行、传参
 ----------------------------------------
-优点：可重复研究。
-缺点：在server上还是不能画图。
+
+1. 安装 rmarkdown 包 
+> BiocManager::install("rmarkdown") #2.11
+> BiocManager::install("markdown") #2.11
+
+如果默认镜像太慢，可以换镜像
+> options(repos=structure(c(CRAN="https://mirrors.tuna.tsinghua.edu.cn/CRAN/")))
 
 
-1.使用Rstudio设置：
-https://blog.csdn.net/lixiaomie01/article/details/78012942
-菜单 Tools-Global option-Sweave
-Weave Rnw files using: knitr;
-Typeset LaTeX into PDF using: pdfLaTex
 
-2.安装包
-source("https://bioc.ism.ac.jp/biocLite.R")
-biocLite("rmarkdown")
+In order to make use of this mirror, ask R to
+> chooseBioCmirror()  #选2 Japan
+# https://bioc.ism.ac.jp/
 
-3.新建文件 File-New File-R Markdown...
-需要更新文件。
+and select ISM. Afterwards you can choose repositories hosted on this mirror with:
+> setRepositories() #1
+
+
+
+(2) 报错 
+> BiocManager::install("littler")
+
+/usr/bin/ld: cannot find -lpcre2-8
+/usr/bin/ld: cannot find -llzma
+/usr/bin/ld: cannot find -lbz2
+那就跳过
+
+
+
+
+
+
+
+2. 新建文件
+(1)新建文件 File-New File-R Markdown...
+选择 document，填写 title，author。
+
+生成一个模板示例文件。
+可以编写了。
 
 然后新建文件，需要学习markdown语法，比较简单：https://www.sohu.com/a/194382686_455817
-
 rmarkdown语法 https://www.rstudio.com/wp-content/uploads/2015/02/rmarkdown-cheatsheet.pdf
 
 
+常用模板
+
+```{r, fig.width = 3, fig.height = 3}
+# R code here
+```
 
 
-4.写完文件，做格式转换
-编辑器顶部，在 Knit 可选择不同的文件类型进行浏览：
-Knit to HTML
+(2) 安装好 "rmarkdown"包 就可以选择新建 R notebook，开始书写了。 
+想插入代码，点顶部的Insert；
+想运行代码，ctrl+Enter即可运行光标所在的行，或者选中的代码行。
+
+这个和Rmd 的区别是啥呢？ //todo
+
+
+
+
+
+
+
+3. 写完文件，生成html报告
+
+编辑器顶部，单击 Knit：Knit to HTML。knit时不影响当前R的环境变量。
+最后生成一个 html 文件，图片是内置的base64字符。
 
 注意：选中语句，ctrl+enter或者点击顶部的Run，即可运行这一句代码。
+
+
+
+
+
+4. 高级场景: 怎么并发运行？一次渲染多个？
+注意：防止输出互相覆盖！可以输出到不同文件夹。
+临时文件夹都是相对于输出目录的。
+
+# 记录使用时间
+start_time=as.numeric(Sys.time())
+#...
+print( paste0( round(  (as.numeric(Sys.time()) - start_time)/60, 2), " minutes elapsed." ) )
+
+
+(1)使用 knit，一次一个
+
+(2)在R的命令行执行，一次一个。但是可以多开几个shell终端，多开几个R session，手动多进程。
+> rmarkdown::render("path/to/xx.Rmd")
+
+> rmarkdown::render("test3.Rmd")
+
+(3) 使用jobs执行，可以加载多个jobs。
+在Rmd同目录下，保存这句话为R脚本，使用jobs执行。
+library(rmarkdown)
+rmarkdown::render("test3.Rmd", html_document(toc = TRUE, toc_depth = 2), output_dir="01/")
+
+library(rmarkdown)
+rmarkdown::render("test03-v3.Rmd", html_document(toc = TRUE, toc_depth = 2), 
+                  output_dir="01/", output_file = "APC") #指定文件名
+
+(4) 使用 Rscript 在shell中执行
+
+$ cd /home/wangjl/data/csv/
+准备2个文件和一个文件夹。
+├── 01/ #如果文件夹不存在，则会自动创建该文件夹
+├── test3_render.R
+└── test3.Rmd
+
+$ cat test3.Rmd
+---
+title: "test3"
+author: "wjl"
+date: "`r Sys.time()`"
+output: html_document
+---
+
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## R Markdown
+text here.
+
+```{r pwd}
+print(getwd())
+```
+
+## Including Plots
+Plot a figure
+
+```{r pressure, echo=TRUE}
+plot(pressure)
+```
+
+End
+
+
+$ cat test3_render.R
+library(rmarkdown)
+rmarkdown::render("test3.Rmd", html_document(toc = TRUE, toc_depth = 2), #带目录，深度最多2层
+                  #params=list(),
+                  output_dir="01/", output_file="xxy")  #生成的文件路径和名字
+
+开始渲染
+$ Rscript test3_render.R
+Output created: 01/xxy.html
+├── 01
+│   └── xxy.html
+
+
+
+
+(5)==> 如果不是Rstudio的shell，则会报错 
+$ Rscript Seurat_Render.R 2                                                                       
+Error: pandoc version 1.12.3 or higher is required and was not found (see the help page ?rmarkdown::pandoc_available).                                                                  
+Execution halted
+
+解决方法: https://stackoverflow.com/questions/28432607/pandoc-version-1-12-3-or-higher-is-required-and-was-not-found-r-shiny
+Go into RStudio and find the system environment variable for RSTUDIO_PANDOC
+> Sys.getenv("RSTUDIO_PANDOC") #"/usr/lib/rstudio-server/bin/pandoc"
+
+Then put that in your R script prior to calling the render command.
+> Sys.setenv(RSTUDIO_PANDOC="--- insert directory here ---")
+
+This worked for me after I'd been struggling to find how rmarkdown finds pandoc. I had to check github to look at the source.
+
+
+
+
+
+
+
+
+
+5.怎么传递参数？带参数的报告 Parameterized reports
+https://rmarkdown.rstudio.com/lesson-6.html
+https://bookdown.org/yihui/rmarkdown-cookbook/parameterized-reports.html
+
+(1) 基本用法
+# R 中
+for (state in state.name) {
+  rmarkdown::render('input.Rmd', params = list(state = state))
+}
+
+
+# Rmd中
+---
+title: "A report for `r params$state`"
+output: html_document
+params:
+  state: Nebraska
+  year: 2019
+  midwest: true
+---
+
+The area of `r params$state` is
+`r state.area[state.name == params$state]`
+square miles.
+
+优先级上，在 render() 函数中设置的优先级更高，会覆盖 Rmd中yaml的params中的设置。
+
+
+
+(2) 也可以定义函数，为每个州、每个年份生成报告
+render_one <- function(state, year) {
+  # assuming the output format of input.Rmd is PDF
+  rmarkdown::render(
+    'input.Rmd',
+    output_file = paste0(state, '-', year, '.pdf'),
+    params = list(state = state, year = year),
+    envir = parent.frame()
+  )
+}
+
+# 为每个州、每个年份生成报告
+for (state in state.name) {
+  for (year in 2000:2020) {
+    render_one(state, year)
+  }
+}
+
+
+(3) 使用 GUI 定义参数
+> rmarkdown::render("input.Rmd", params = "ask")
+
+
+(4) 完整示例: shell下使用Rscript传递参数
+需要2个文件。
+
+$ cat test4.Rmd
+---
+title: "test4"
+author: "wjl"
+date: "`r Sys.time()`"
+output:
+  pdf_document:
+    toc: true
+params:
+  a1: "hello, from Rmd!"
+  data: "iris"
+---
+
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## R Markdown
+text here.
+
+```{r pwd}
+print(getwd())
+print(params$a1)
+print(params$data) #字符串
+
+dat2= get(params$data)
+head(dat2)
+```
+
+## Including Plots
+Plot a figure
+
+```{r pressure, echo=TRUE}
+plot(dat2)
+```
+
+End
+
+
+$ cat test4_render.R
+# 接收参数
+myArgs<-commandArgs(TRUE)
+if(length(myArgs)<1){
+  stop("Error: must specify the dataset name!")
+}
+#n1=as.numeric(myArgs[1])
+df1=myArgs[1]
+
+
+# 渲染html报告
+library(rmarkdown)
+rmarkdown::render("test4.Rmd", html_document(toc = TRUE, toc_depth = 2),
+                  params=list(data=df1), #传入参数
+                  output_dir="01/", output_file="xxy2")
+
+
+
+生成报告
+$ Rscript test4_render.R 
+Error: Error: must specify the dataset name!
+Execution halted
+
+$ Rscript test4_render.R iris
+# Output created: 01/xxy2.html
+网页正文是 iris 的预览和点图。
+
+
+
+(5) 批量执行 
+for var in `seq 1 9`; 
+do 
+	echo $var; 
+	Rscript Seurat_Render.R $var; 
+done;
+
+
+
 
 
 
@@ -2003,39 +2285,39 @@ refer:
 R Markdown: The Definitive Guide  https://bookdown.org/yihui/rmarkdown/
 https://www.jianshu.com/p/bc8ff133fc37
 https://blog.csdn.net/lixiaomie01/article/details/78012942
+https://www.math.pku.edu.cn/teachers/lidf/docs/Rbook/html/_Rbook/rmarkdown.html
 
+
+使用Rstudio设置：
+https://blog.csdn.net/lixiaomie01/article/details/78012942
+菜单 Tools-Global option-Sweave
+Weave Rnw files using: knitr;
+Typeset LaTeX into PDF using: pdfLaTex
 
 
 
 
 
 ========================================
-|-- R也有Notebook了，不用再羡慕Python有jupyter了
+|-- Rmarkdown 书写规则
 ----------------------------------------
-1. 安装
+1. 其他部分和标准 markdown 差不多，但是插入代码部分有更多细节。
 
-熟悉python的朋友可能知道jupyter notebook。它是一个Web应用程序，允许你创建和共享代码，方程，可视化和说明性文本文档。现在，我们可以在RStudio中实现R Notebook的功能了。
+(1)一般结构
+```{r chunkName, xx=TRUE, yy=FALSE}
+```
 
-我的配置步骤：
-安装好 biocLite("rmarkdown") 就可以了，选择新建 R notebook，即可开始书写了。 
-想插入代码，点顶部的Insert；
-想运行代码，ctrl+Enter即可运行光标所在的行，或者选中的代码行。
+```{r}
+a=20
+print(a)
+```
 
-
-
-
-网页说的配置步骤，我没试过：
-1、 下载最新的RStudio
-2、 下载最新版本的Rmarkdown包：
-#devtools::install_github("rstudio/rmarkdown")
-
-3、 设置选项：Tools -> Global Options -> Rmarkdown -> Enable R Notebook -> Apply
-4、 像往常一样打开一个新的Rmarkdown文件
-5、 设置YAML输出选项：将output: html_document 改为 output: html_notebook: default
-注：上述的4,5步也可以直接创建一个新的R Markdown Notebook文件。如下图：
-
-完成上述配置后我们就可以在RStudio中开始我们的R Notebook之旅了。
-
+(2) 保存为图片
+```{r mito, fig.height=7, fig.width=13}
+# The [[ operator can add columns to object metadata. This is a great place to stash QC stats
+pbmc[["percent.mt"]] <- PercentageFeatureSet(pbmc, pattern = "^MT-")
+```
+文件名为 mito-1.png ,后面是宽高设置。
 
 
 
@@ -2050,7 +2332,6 @@ Rmd 可以内置代码，可以边写边运行，也可以写好后直接使用 
 	https://github.com/satijalab/seurat/tree/master/vignettes
 	https://github.com/satijalab/seurat/blob/master/vignettes/pbmc3k_tutorial.Rmd
 	
-
 (2) Rstudio中 File- New file- R notebook 
 复制文本进去 https://raw.githubusercontent.com/satijalab/seurat/master/vignettes/pbmc3k_tutorial.Rmd
 保存为 00.Rmd，
@@ -2065,28 +2346,96 @@ Rmd 可以内置代码，可以边写边运行，也可以写好后直接使用 
 
 
 
-3. 书写规则
-其他部分和标准 markdown 差不多，但是插入代码部分有更多细节。
 
-(1) 一般书写，大多数代码就是这样的。
+3. 更多 rmarkdown 使用细节
+https://blog.csdn.net/adan_journal_of_data/article/details/78900476
 
-```{r}
-a=20
-print(a)
+(1).代码块设置
+echo=FALSE 最终的文档中不会显示代码，只会显示代码运行的结果和图像
+results="hide" 隐藏结果，显示图像
+include=FALSE隐藏代码和运行的输出（写报告时可使用include=FALSE来隐藏所有的代码，从而突出图像。）
+warning=FALSE 和 message=FALSE 最终文档中不会显示R软件任何的警告 / 提示信息
+fig.show="hide" 隐藏图像
+
+对于图像，可以通过fig.width和fig.height来设置宽和高，举例：
+```{r scatterplot, fig.width=8, fig.height=6}
+plot(x,y)
+
+使用 include=FALSE 隐藏所有的代码、结果和图像，
+```{r setup, include=FALSE}
 ```
 
+同时使用 include=TRUE 和 results="hide" 则会隐藏结果显示图像
 
-(2) 保存为图片
+eval=FALSE显示代码而不显示运行结果
 
-```{r mito, fig.height=7, fig.width=13}
-# The [[ operator can add columns to object metadata. This is a great place to stash QC stats
-pbmc[["percent.mt"]] <- PercentageFeatureSet(pbmc, pattern = "^MT-")
-```
-
-文件名为 mito-1.png ,后面是宽高设置。
+表格输出设置：
+```{r, results='asis'}
+knitr::kable(mtcars)
 
 
-(3) 其他书写方式
+(2) 全局代码块设置
+避免每次使用代码块都重复敲代码来设置代码块，可按如下设置初始代码块：
+
+```{r global_options, include=FALSE}
+knitr::opts_chunk$set(fig.width=12, fig.height=8, fig.path='Figs/',
+                   echo=FALSE, warning=FALSE, message=FALSE)
+
+warning=FALSE 和message=FALSE最终文档中不会显示R软件任何的提示信息，
+fig.path='Figs/'把图片保存在Figs子文件夹中（默认情况下图片不会被保存，注意Figs后面的斜线“/”不可少，否则图片会以Figs为文件名开头被保存在主目录中）。
+
+如果在某个特定代码块中需要不一样的设置，可以单独设置该代码块，如：
+```{r a_taller_figure, fig.height=32}
+par(mfrow=c(8,2))
+for(i in 1:16)
+  plot(x[,i], y[,i])
+
+在给合作者的报告中，可能会使用 include=FALSE, echo=FALSE 作为全局设置，生成图像时使用 include=TRUE ，这样可以只输出图像。
+
+(3) 行内代码(In-line code)
+在报告中不要写成“There are 168 individuals.” 可以插入一点代码，比如：
+There are `r nrow(my_data)` individuals.
+
+又比如：
+The estimated correlation between x and y was `r cor(x,y)`.
+
+在R Markdown中，行内代码以 `r 和 `来表示，两者间的代码会运行并显示结果。 
+注意：要确保行内代码没有跨行。
+
+(4) YAML header
+YAML 是一种用于指定数据的简洁的文本格式， 与JSON有些类似但可读性更强。
+
+在R Markdown文档开头，编写如下一段代码：
+
+---
+title: "An example Knitr/R Markdown document"
+author: "Karl Broman"
+date: "3 Feb 2015"
+output: html_document
+---
+
+文档的开头会包含格式化的标题、作者名和日期。
+author: "[Karl Broman](http://kbroman.org)"
+
+甚至是R代码：
+date: "`r Sys.Date()`"  #"2021-11-20"
+
+date: "`r Sys.time()`"  #"2021-11-20 13:53:15 UTC"
+
+output: html_document将RMD转化为html，pdf_document 或者word_document分别转为PDF和Word .docx文件。
+
+
+(5) 其他关于代码块设置的代码问题
+必须写在一行内，不含空格和句点，可以使用-和_
+
+fig.path="abc"而不是fig.path=abc, and out.width='\\textwidth'而不是out.width=\textwidth
+
+使用TRUE/FALSE 而不是true/false
+
+[参考文献]：
+1. http://kbroman.org/knitr_knutshell/pages/Rmarkdown.html
+2. https://yihui.name/knitr/options/#package_options
+3. http://rmarkdown.rstudio.com/authoring_rcodechunks.html
 
 
 
@@ -2098,7 +2447,7 @@ pbmc[["percent.mt"]] <- PercentageFeatureSet(pbmc, pattern = "^MT-")
 
 
 ========================================
-|-- 在jupyter中执行R代码、及问题与解决：控制图片宽高
+|-- 在 jupyter notebook 中执行R代码、及问题与解决：控制图片宽高
 ----------------------------------------
 直接在terminal中运行安装代码，不会出现IRkernel等的报错～
 step1:打开terminal，

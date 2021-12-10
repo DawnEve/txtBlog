@@ -150,6 +150,7 @@
 
 		echo '<br />生信: ';
 		print_links(array(
+			array('https://www.math.pku.edu.cn/teachers/lidf/docs/Rbook/html/_Rbook/markdown.html','北大R语言教程'),
 			array('http://www.bioinfo-scrounger.com/','生信笔记'),
 			array('https://www.cnblogs.com/leezx/tag/单细胞/','单细胞'),
 			array('https://divingintogeneticsandgenomics.rbind.io/#publications','Ming Tang(scATAC)'),

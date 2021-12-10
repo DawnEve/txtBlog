@@ -2350,6 +2350,311 @@ http://blog.csdn.net/shmilyringpull/article/details/17529637
 
 
 
+========================================
+networkD3 包画桑基图 sankeyNetwork()
+----------------------------------------
+networkD3 :D3 JavaScript Network Graphs from R
+
+桑基图(Sankey Diagram)是一种显示流量数据的可视化图形，在桑基图中，实体(nodes)由矩形或文本表示，实体之间的连接用箭头或弧线表示，箭头或弧线的宽度与流动的重要性或某种数值成比例。
+
+桑基图是一种特定类型的流型图，其中箭头的宽度与流量成比例显示，桑基图将视觉重点放在数据的流动，有助于确定哪个部分对整体流量有主要贡献。
+
+
+
+1. 桑基图基本示例: 表示一个种类有多少变成了另一个种类
+
+(1) 两列图的情况。
+注: 如果from和to有重叠元素，则可能有多列图。
+
+连接数据框包含三列，分别表示连接的起点和终点以及连接的权重。
+
+library(networkD3)
+# the 1st df should contain: source,target and value; 
+# and Source and Target is the index value
+sankeydf=data.frame(
+  source=c(0,1,1,2,2,3),
+  target=c(4,4,5,6,4,6),
+  value=c(1,2,3,4,5,6)
+)
+# add color to flow
+sankeydf$group="flow"
+
+nodes=data.frame( nodeName= paste0( "node_", seq(1,7)) )
+
+Sankey.p=sankeyNetwork(Links = sankeydf, Nodes = nodes, 
+              Source = "source", Target = "target", Value = "value",
+              NodeID = "nodeName",
+              LinkGroup = "group", #color of flow
+              colourScale = JS("d3.scaleOrdinal(d3.schemeCategory20);"),
+              #sinksRight=FALSE, # 最后一个节点移动到文字的右侧吗？默认是(2个元素时文字在中心)
+              #width=900,
+              #nodePadding=10,
+              fontSize = 12, nodeWidth = 30)
+Sankey.p
+#画出来的图形，还可以直接在R窗口中调整方块上下位置，不过还是建议保存为pdf后用AI调整
+#nodeWidth 每个节点方块的宽度
+#nodePadding 每一列节点方块之间在纵向上的间隔
+#width 是图形横向的宽度
+
+
+(2) 保存为pdf
+library(htmlwidgets)
+saveWidget(Sankey.p, file="/tmp/Sankey.html")
+library(webshot)
+# webshot::install_phantomjs() #建议新开R安装，防止卡死当前进程。
+webshot("/tmp/Sankey.html", "Sankey.pdf")
+
+
+(3) 配置颜色部分，形式相对固定，不必纠结具体的语法规则
+#16进制编码对应的颜色可以用RColorBrewer包结合scales包查看
+my_color <- 'd3.scaleOrdinal() 
+            .domain(["A", "B", "C", "D", "E", "F", "G", "H", "I", "J","flow"]) 
+            .range(["#8DD3C7", "#FFFFB3", "#BEBADA", "#FB8072", "#80B1D3", "#FDB462", "#B3DE69", "#FCCDE5",  "#BC80BD", "#CCEBC5","#BDBDBD"])'
+
+
+(4) 设置flow的颜色和source一致
+# the 1st df should contain: source,target and value; 
+# and Source and Target is the index value
+sankeydf=data.frame(
+  source=c(0,1,1,2,2,3),
+  target=c(4,4,5,6,4,6),
+  value=c(1,2,3,4,5,6)
+)
+
+# 节点
+nodes=data.frame( nodeName= paste0( "node_", seq(0,6)) )
+
+# add color to flow
+#sankeydf$group="flow"
+# use color as node in source
+sankeydf$group= nodes$nodeName[(1+sankeydf$source)]
+
+library(RColorBrewer)
+mypalette_1=brewer.pal(8,"Set1")[1:7]
+
+# 自定义颜色
+library(jsonlite)
+my_color <- paste0('d3.scaleOrdinal().domain(', 
+                   jsonlite::toJSON(nodes$nodeName), 
+                   ').range(', 
+                   jsonlite::toJSON( mypalette_1 ),
+                   ')')
+library(networkD3)
+Sankey.p=sankeyNetwork(Links = sankeydf, Nodes = nodes, 
+              Source = "source", Target = "target", Value = "value",
+              NodeID = "nodeName",
+              LinkGroup = "group", #color of flow
+              
+              colourScale =my_color, #自定义颜色
+              fontSize = 20, nodeWidth = 30)
+Sankey.p
+
+
+
+
+
+
+
+
+
+2. 桑基图包装函数
+
+#' Title: Make Sankey plot data from a table(paraLeft, paraRight)
+#'
+#' @param tbl1 a table produced by table()
+#' @param omit omit which rows/paraLeft
+#' @omitR omit rownames
+#' @omitC omit column names
+#'
+#' @return
+#' @export
+#' ref: https://observablehq.com/@d3/sankey
+#'
+#' @examples
+#' getSankeyData( table(mtcars$gear, mtcars$carb))
+getSankeyData=function(tbl1, prefix_left="old_", prefix_right="new_", omitR=NULL, omitC=NULL, rm.na=T){
+  preL=prefix_left
+  preR=prefix_right
+  #
+  if(!is.null(omitR)){
+    tbl1=tbl1[setdiff( rownames(tbl1), omitR), ]
+  }
+  if(!is.null(omitC)){
+    tbl1=tbl1[ , setdiff( colnames(tbl1), omitC)]
+  }
+  # default, remove all 0 rows and columns
+  tbl1=tbl1[rowSums(tbl1)>0, ]
+  tbl1=tbl1[ , colSums(tbl1)>0]
+  # table to data.frame
+  df2=as.data.frame(tbl1)
+  df2=df2[which(df2$Freq!=0),]
+  #
+  df2$Var1=paste0(preL, df2$Var1)
+  df2$Var2=paste0(preR, df2$Var2)
+  #
+  nodes=data.frame(node=unique( c( paste0(preL, rownames(tbl1)),
+                                   paste0(preR, colnames(tbl1))) ))
+  nodes$index=0:(nrow(nodes)-1) #0-based index, as in JS
+  df3=data.frame(
+    source=nodes$index[match(df2$Var1, nodes$node)],
+    target=nodes$index[match(df2$Var2, nodes$node)],
+    value=df2$Freq
+  )
+  # use color as node in source
+  df3$group= nodes$node[(1+df3$source)]
+  
+  return(list(link=df3, node=nodes))
+}
+
+
+#' Sankey plot from sankeyDt, produced by getSankeyData()
+#'
+#' @param sankeyDt 
+#' @param colors a color list for sankeyDt$node$node
+#' depend getSankeyData()
+#' version: 2.0 define flow color as source//todo
+#'
+#' @return
+#' @export
+#'
+#' @examples
+#' getSankeyData( table(mtcars$gear, mtcars$carb))
+#' sankeyDt2=getSankeyData(table(mtcars$gear, mtcars$carb),"Gear_", "Carb_")
+#' sankeyPlot(sankeyDt2 )
+#' library(RColorBrewer)
+#' mypalette_1=brewer.pal(8,"Set1")
+#' sankeyPlot(sankeyDt2, colors=mypalette_1 )
+sankeyPlot=function(sankeyDt, colors=NULL){
+  library(RColorBrewer)
+  if(is.null(colors)){
+    #define the color of each nodes(from/source, to/target)
+    colors = brewer.pal(8,"Set2")
+    #c("#FF0000", "#00FF00", "#0000FF", "#377EB8", "#4DAF4A", "#984EA3", "#FF7F00", "#FFFF33", "#FF00004D", "#0000FF4D")
+  }
+  #R array to json
+  colorsJson=  paste0('d3.scaleOrdinal().domain(', jsonlite::toJSON(sankeyDt$node$node), ').range(',  jsonlite::toJSON(colors) , ')');
+  #colorsJson <- 'd3.scaleOrdinal().domain(["pH", "C", "N", "P", "K", "1", "-1"]).range(["#377EB8", "#4DAF4A", "#984EA3"])'
+  sankeyNetwork(Links = sankeyDt$link, Nodes = sankeyDt$node,
+                Source = "source", Target = "target", Value = "value",
+                NodeID = "node",
+                LinkGroup = "group", #color of flow
+                colourScale = colorsJson, #JS("d3.scaleOrdinal(d3.schemeCategory20);"),
+                fontSize = 12, nodeWidth = 30)
+}
+# test
+#temp=table(scObj_known2@meta.data$oCluster, scObj_known2@meta.data$seurat_clusters)
+# rownames(temp)[rowSums(temp)<10] #check to remove rows with very small numbers
+#sankeyPlot( getSankeyData(temp) )
+#sankeyPlot( getSankeyData(temp, omitR=c("10", "22", "24", "25", "28", "29") ) )
+#sankeyPlot( getSankeyData(temp, omitR=c("10", "22", "24", "25", "28", "29") ), colors= brewer.pal(8,"Set2") )
+
+
+
+
+
+
+
+
+========================================
+|-- networkD3 包画 力导向图forceNetwork()
+----------------------------------------
+看样子能画基因互作网络图，还想不明白怎么用。
+
+
+1. 最基础示例
+
+edges_d3=data.frame(
+  from=c(0,1,2,0,1,2),
+  to=c(3,3,3,4,4,5),
+  value=c(30,3,10,4,2,3)
+)
+
+nodes_d3=data.frame(
+	id=c(0,1,2,3,4,5),
+	label= c("S1", "s2", "s3", "T1", "t2", 't3')
+)
+
+forceNetwork(
+  Links = edges_d3, Nodes = nodes_d3,
+  Source = "from", Target = "to",      # so the network is directed.
+  Value = "value",
+  
+  NodeID = "label", Group = "id", 
+  legend = TRUE,
+  arrows = TRUE,
+  opacity = 0.8, fontSize = 16, zoom = TRUE
+)
+
+
+
+(2) 设置每个节点的大小
+
+forceNetwork( 
+	Links = MisLinks, Nodes = MisNodes, Source = "source", 
+	Target = "target", Value = "value", 
+	NodeID = "name", Nodesize = 'size', radiusCalculation = "d.nodesize",
+	Group = "group", opacity = 1, legend = T, bounded = F
+)
+
+
+
+
+
+
+
+
+
+========================================
+|-- 弦图(chordDiagram） 
+----------------------------------------
+hairColourData = matrix(
+	c(11975,  1951,  8010, 1013,
+	5871, 10048, 16145,  990,
+	8916,  2060,  8090,  940, 
+	2868,  6171,  8045, 6907), 
+nrow = 4)                              
+
+chordNetwork(hairColourData, 
+	width = 500, height = 500,
+	colourScale = c("#000000", "#FFDD89", "#957244", "#F26223"))
+
+
+
+
+
+========================================
+|-- 树状图 dendroNetwork
+----------------------------------------
+hc <- hclust(dist(USArrests), "ave")
+plot(hc)
+
+使用该包后:
+dendroNetwork(hc, height = 600)
+dendroNetwork(hc, treeOrientation = "vertical")
+
+dendroNetwork(hc, height = 600, linkType = "diagonal")
+dendroNetwork(hc, treeOrientation = "vertical", linkType = "diagonal")
+
+
+# 分成三类染色
+dendroNetwork(hc, textColour = c("red", "green", "orange")[cutree(hc, 3)],height = 600)
+dendroNetwork(hc, textColour = c("red", "green", "orange")[cutree(hc, 3)], treeOrientation = "vertical")
+
+
+
+========================================
+----------------------------------------
+
+
+
+
+
+========================================
+----------------------------------------
+
+
+
+
 
 
 ========================================
