@@ -2210,44 +2210,362 @@ https://blog.csdn.net/Intelligebce/article/details/83958973
 
 
 ========================================
-|-- R语言中do.call()的用法
+|-- R语言中do.call(fn, list)的用法
 ----------------------------------------
+定位: 高端话题。前置知识: apply 家族函数。
+
+
+
+1. 简介 
+do.call这个函数经常能在别人的回答或者R包源码中看到。
 简单参数设置就能搞定的事情，是不会用到do.call的。
+
+(1) 使用场景 
+do.call /call 函数与 for/while/apply/自定义函数 结合使用，especially powerful
+适用2个场景：
+	- 使用它更优: 节省体力
+	- 或不得不使用它。
 
 某些情况下，你知道某个函数接受参数的明确个数，但是太多了，你懒，所以用do.call；但更多的情况是你迫不得已，必须用它。
 
 虽然R语言有类型很丰富的数据结构，但是很多时候数据结构比较复杂，那么基本就会用到list这种结构的数据类型。但是list对象很难以文本的形式导出，因此需要一个函数能快速将复杂的list结构扁平化成dataframe。这里要介绍的就是do.call函数。
 
 
+(2) 作用
 do.call 构造并执行来自字符串名称或直接函数调用来的函数, 并将其传递给它的参数列表。参数列表 即 list, 所以 do.call 针对的就是 list。
 
+do.call constructs and executes a function call from a name or a function and a list of arguments to be passed to it.
+
+# do.call 根据名称或函数以及要传递给它的参数列表构造并执行函数调用。
+# 一句话: do.call(fn, list) 是告诉list一个函数，然后把list里的所有元素当参数来执行这个函数。
+
+简单的讲，do.call 的功能就是执行一个函数，而这个函数的参数呢，放在一个list里面, 是list的每个子元素。
 
 
-
-?do.call
-## Description
-## do.call constructs and executes a function call from a name or a function and a list of arguments to be passed to it.
+(3) 用法
 ## Usage
 ## do.call(what, args, quote = FALSE, envir = parent.frame())
+
 what可以是一个函数也可以是一个 字符串形式的函数名称(eg. kmeans or ‘kmeans’). 
 args 供函数调用的参数设置，这些参数都将被 what 识别并调用. 
 quote 逻辑值, 是否引用参数. 
 envir 评估函数调用时所处的环境. 对于what是字符串形式函数名称且对应的参数都是符号或者引用的表达式时会非常有用.
 
+# 鉴于第三个参数(environment/环境)水太深，我们先忽略。
 
 
 
-1. 实例入门: 给生成随机数的函数传递参数
-do.call(runif,list(n=10))
+
+
+
+
+
+2. 实例入门: 用法示例
+这里主要讲 do.call() 用法，这些场景中 do.call 不一定是更好的选择。
+
+(1) 对数组求和(单个参数)
+x1=1:5
+x1
+sum(x1) #15
+
+# 如果使用 do.call
+do.call(sum, list(x1)) #15
+# 第一个是函数，第二个是list格式的参数列表，可以是命名参数或者普通参数
+
+# 第一个函数可以是字符串，使用 函数名字符串 调用函数，增加了很多灵活性
+do.call("sum", list(x1)) #15
+
+
+# 第一个函数使用自定义函数
+do.call(function(x){
+  sum(x+1) #对每个元素加1，然后求和
+}, list(x1)) #20
+
+
+# 第一个函数能使用变量
+FN1=sum
+do.call(FN1, list(x1)) #15
+do.call(FN2, list(x1)) #object 'FN2' not found
+
+FN2="max"
+do.call(FN2, list(x1)) #5
+
+
+
+
+(2) 对数组求和，忽略NA值(2个参数)
+x2=c(1:5, NA); x2
+sum(x2) #NA
+sum(x2, na.rm=T) #15
+
+#
+do.call(sum, list(x2)) #NA
+do.call(sum, list(x2, na.rm=T)) #15
+
+
+
+(3) do.call 也不是万能的，有时甚至不能达到想要的效果，它只有在合适的场景才能事半功倍。
+
+1) 比如简单合并字符串
+> do.call(paste, list(as.name("A"), as.name("B")), quote = T) #太繁琐，不推荐
+[1] "A B"
+> paste("A", "B") #简洁，推荐
+[1] "A B"
+
+
+2) do.call() 不达预期的例子: list to data.frame 
+> x4=list(A=1:5, B=letters[1:5]); x4
+$A
+[1] 1 2 3 4 5
+
+$B
+[1] "a" "b" "c" "d" "e"
+
+> as1= as.data.frame(x4); as1
+  A B
+1 1 a
+2 2 b
+3 3 c
+4 4 d
+5 5 e
+> str(as1)
+'data.frame':	5 obs. of  2 variables:
+ $ A: int  1 2 3 4 5
+ $ B: chr  "a" "b" "c" "d" ...
+#
+> as2=as.data.frame( do.call(cbind, x4) ); as2
+> str(as2) #不好: 繁琐，且第一列变为字符串了
+'data.frame':	5 obs. of  2 variables:
+ $ A: chr  "1" "2" "3" "4" ...
+ $ B: chr  "a" "b" "c" "d" ...
+
+
+3) do.call() 太繁琐的例子
+x1 = 1:10
+x2 = 11:20
+x3 = 21:30
+data.frame(x1,x2,x3) #返回三列构成的数据框
+# 基本等价于
+do.call("data.frame",list(x1=x1, x2=x2, x3=x3)) #把list中每个元素拿出来，给函数data.frame(理论上传无限参数)
+# https://www.jianshu.com/p/078071c12e77
+
+
+
+
+
+
+
+
+
+3. do.call() 优势案例
+案例欣赏: 使用list()单独设置函数的参数列表，然后再用do.call("pheatmap", hm.parameters )的形式执行。
+# 摘抄自其他人的代码
+plotCycle <- function  ( phaseCorsMatrix ) {
+    library("pheatmap")
+    library("RColorBrewer")
+    breaks <- seq ( -1 , 1 , length.out = 31 )
+    heatColors <- rev (brewer.pal ( 9, 'RdBu'))
+    heatColors <-colorRampPalette(heatColors)
+    colorPallete <- heatColors((length ( breaks ) - 1 ))
+    
+    # create heatmap
+    hm.parameters <- list(phaseCorsMatrix,
+    color = colorPallete,
+    breaks = breaks,
+    cellwidth = NA, cellheight = NA, scale = "none",
+    treeheight_row = 50,
+    kmeans_k = NA,
+    show_rownames = T, show_colnames = F,
+    main = "",
+    clustering_method = "average",
+    cluster_rows = FALSE, cluster_cols = FALSE,
+    clustering_distance_rows = "euclidean",
+    clustering_distance_cols = NA ,
+    legend = T , annotation_legend = F )
+    
+    do.call("pheatmap", hm.parameters )
+}
+
+
+
+
+(1) 怎么传入不确定的参数? 适合封装函数
+# 给生成随机数的函数传递参数
+> do.call(runif,list(n=10))
 
 如果想传入更多参数呢？已经把部分参数写成list形式了，可以使用c()拼接list。
-params <- list(min=10, max=20)
-do.call(runif,list(n=10,min=10,max=20)) # works
-#do.call(runif,list(n=10,params)) # doesn't work
-do.call(runif,c(n=10,params)) # work
+> params <- list(min=10, max=20)
+> do.call(runif,list(n=10,min=10,max=20)) # works
+> do.call(runif,list(n=10,params)) # doesn't work
+> do.call(runif,c(n=10,params)) # work
 
 
-(1) 例1: 数据框操作(求和，合并)
+## 执行未知个数的参数
+# https://adv-r.hadley.nz/quasiquotation.html
+exec <- function(f, ..., .env = caller_env()) {
+  args <- list2(...)
+  do.call(f, args, envir = .env)
+}
+
+
+# 2) 比如一个画 hist 的函数，如果可选参数很多，会很多重复
+my_hist=function(arr, xlim=NULL, n=100){
+	if(!is.null(xlim)){
+		hist(arr, n, xlim=xlim)
+	}else{
+		#hist(arr, n, xlim=xlim) #invalid 'xlim' value
+		hist(arr, n)
+	}
+}
+set.seed(1); arr1=rnorm(1e4)
+my_hist(arr1)
+my_hist(arr1, xlim=c(-1, 5)) #限定显示范围
+
+
+
+#########
+#set.seed(1); arr1=rnorm(1e2)
+params=list(x=arr1, n=100)
+#
+hist(arr1, n=100)
+do.call(hist, params) #处理xlab 和main中的变量失败，直接替换了该变量，导致满屏幕的数字
+do.call(hist, c(params, main="", xlab="X") )
+
+
+#########
+# 使用 do.call() 简化
+my_hist2=function(arr, xlim=NULL, n=100){
+  params=list(x=arr, 
+              n=n,
+              xlab="X", #要设置xlab和main，否则图像上满是数字
+              main="")
+  if(!is.null(xlim)){
+    params$xlim=xlim
+  }
+  do.call(hist, params)
+}
+set.seed(1); arr1=rnorm(1e4)
+my_hist2(arr1)
+my_hist2(arr1, xlim=c(-1, 5)) #限定显示范围
+
+
+
+
+
+
+
+
+
+
+(2) 合并list中的n个相同字段名的数据框，n不确定
+# create a list containing 5 data.frames of different rows
+allframes=lapply(1:5, function(x){
+  data.frame(
+    key=paste0("name", x),
+    value=1:x
+  )
+})
+allframes
+sapply(allframes, nrow) #[1] 1 2 3 4 5
+
+# 1)如何合并该list中5个数据框呢？
+rbind(allframes) #not work
+lapply(allframes, rbind) #not work
+
+rbind(allframes[[1]], allframes[[2]], allframes[[3]], allframes[[4]], allframes[[5]] ) #ok
+
+# 2)如果list中数据框个数n是会变动的呢？
+answer=NULL;
+for(i in 1:length(allframes)){
+  answer=rbind(answer, allframes[[i]])
+}
+answer
+# 这个代码完美实现了“按行合并list中的n个数据框，且n可变”。
+# 我认为已经很好了，直到我遇到了 do.call
+
+# 3) 更精简的
+do.call(rbind, allframes)
+
+# 4) Reduce 也能解决本问题，不过它不能接收更多参数
+Reduce(rbind, allframes)
+
+
+
+
+(3) do.call / lapply 组合: 分类-处理-合并结果，一行搞定。
+# lapply(df, function(x){}) return a list;
+# do.call(rbind, list)
+
+The use of the do.call / lapply combination is a powerful way to leverage functional programming in R. In short, you write a function that performs some actions and apply it to a list of inputs, which can then be fed into a function that combines everything into a single object.
+
+鸢尾花各类指标的均值
+head(iris)
+# 1)method1: 使用apply家族函数 sapply + apply
+as1=sapply( split(iris[,1:4], iris[,5]), function(x){
+  apply(x, 2, mean)
+} )
+as1
+#             setosa versicolor virginica
+#Sepal.Length  5.006      5.936     6.588
+#Sepal.Width   3.428      2.770     2.974
+#Petal.Length  1.462      4.260     5.552
+#Petal.Width   0.246      1.326     2.026
+
+
+# 2)method2: 使用 do.call + lapply实现
+as1=do.call(rbind, lapply( split(iris[,1:4], iris[,5]), function(x){
+  colMeans(x)
+}))
+as1
+#           Sepal.Length Sepal.Width Petal.Length Petal.Width
+#setosa            5.006       3.428        1.462       0.246
+#versicolor        5.936       2.770        4.260       1.326
+#virginica         6.588       2.974        5.552       2.026
+
+
+
+
+
+
+
+
+##################################
+# 补充练习题: do.call()
+##################################
+1. 直接读取同字段的文件并合并为大数据框 https://www.stat.berkeley.edu/~s133/Docall.html
+#allframes = lapply(1:20,function(x)read.csv(paste(x,'csv',sep='.')))
+#answer = do.call(rbind,allframes)
+
+
+2. 合并若干个数据框，相当于split的反操作
+mtcars_byGear = split(mtcars, mtcars$gear)
+mtcars_byGear #按 gear 不同，把数据框分成3个，放到一个list中
+
+do.call(rbind, mtcars_byGear) #缺点：行名都加了gear前缀
+
+
+3. 画列之间的相关系数热图
+library(corrplot)
+do.call('corrplot.mixed',list(cor(iris[,1:4])))
+
+
+4. 用kmeans给每一行元素贴一个聚类标签
+set.seed(100)
+t1=do.call('kmeans',list(x=iris[,1:4],centers=3))
+t1$cluster
+# 等价于
+set.seed(100)
+t2=kmeans(x=iris[,1:4],centers=3)
+t2$cluster
+
+
+5. 定义复数
+complex(imag=1:3)
+# 等价于
+do.call("complex", list(imag = 1:3))
+
+
+6. 数据框操作(求和，合并)
 aa 		<- 	data.frame(matrix(1:25, ncol = 5), matrix(4:28, ncol = 5), matrix(21:45, ncol=5))
 aa
 aa_sum 	<- 	do.call(sum,aa);aa_sum #[1] 1550
@@ -2259,48 +2577,12 @@ bb
 bb_sum 	<- 	do.call(sum,bb);bb_sum #[1] 1550
 bb_bind <-	do.call(cbind,bb);bb_bind #把list的每一个元素拿出来，列之间合并，变宽了。
 
-#list和data.frame都是可以的
-#do.call(fn, list) 是告诉list一个函数fn，然后list里的所有元素来执行这个函数。
-# 不过一定要拿下，这是晋级的方法
-# https://www.douban.com/note/589741782/
-
-
-(2) 例2：生成数据框
-x1 = 1:10
-x2 = 11:20
-x3 = 21:30
-data.frame(x1,x2,x3) #返回三列构成的数据框
-# 基本等价于
-do.call("data.frame",list(x1,x2,x3)) #把list中每个元素拿出来，给函数data.frame(理论上传无限参数)
-# https://www.jianshu.com/p/078071c12e77
-
-
-(3) 例3：定义复数
-complex(imag=1:3)
-# 等价于
-do.call("complex", list(imag = 1:3))
-
-
-(4) 例4：用kmeans给每一行元素贴一个标签
-set.seed(100)
-t1=do.call('kmeans',list(x=iris[,1:4],centers=3))
-t1$cluster
-# 等价于
-set.seed(100)
-t2=kmeans(x=iris[,1:4],centers=3)
-t2$cluster
-
-
-(5) 例5：画列之间的相关系数热图
-library(corrplot)
-do.call('corrplot.mixed',list(cor(iris[,1:4])))
+# do.call(fn, list) 是告诉list一个函数fn，然后list里的所有元素来执行这个函数。
+# do.call() 的第二个参数传入 list和data.frame都是可以的
 
 
 
-
-
-
-2.简单的讲，do.call 的功能就是执行一个函数，而这个函数的参数呢，放在一个list里面, 是list的每个子元素。
+7. 把df的每一行拼接成一个字符串
 > tmp <- data.frame('letter'=letters[1:8],number=seq(1:8), 'value' = c('+','-'))
 > tmp
   letter number value
@@ -2334,51 +2616,12 @@ Levels: - +
 
 
 
-
-
-
-
-
-
-3.例: 使用list()单独设置函数的参数列表，然后再用do.call("pheatmap", hm.parameters )的形式执行。
-plotCycle <- function  ( phaseCorsMatrix ) {
-    library("pheatmap")
-    library("RColorBrewer")
-    breaks <- seq ( -1 , 1 , length.out = 31 )
-    heatColors <- rev (brewer.pal ( 9, 'RdBu'))
-    heatColors <-colorRampPalette(heatColors)
-    colorPallete <- heatColors((length ( breaks ) - 1 ))
-    
-    # create heatmap
-    hm.parameters <- list(phaseCorsMatrix,
-    color = colorPallete,
-    breaks = breaks,
-    cellwidth = NA, cellheight = NA, scale = "none",
-    treeheight_row = 50,
-    kmeans_k = NA,
-    show_rownames = T, show_colnames = F,
-    main = "",
-    clustering_method = "average",
-    cluster_rows = FALSE, cluster_cols = FALSE,
-    clustering_distance_rows = "euclidean",
-    clustering_distance_cols = NA ,
-    legend = T , annotation_legend = F )
-    
-    do.call("pheatmap", hm.parameters )
-}
-
-
-
-
-
-4.例: 对于一系列不确定个数的list，怎么给出每个成员的size呢？
+8. 对于一系列不确定个数的list，怎么给出每个成员的size呢？
 (1) 长度为1的list
 do.call("dim", args=list(iris) )
 等价于 
 dim(iris)
 # [1] 150   5
-
-
 
 (2) 不定长度的list
 aa=list(
@@ -2418,12 +2661,16 @@ getSize( iris ) #按列的长度
 
 
 
-
-
-
-
 refer:
 https://bbs.pinggu.org/thread-3802000-1-1.html
+
+# https://adv-r.hadley.nz/quasiquotation.html
+# https://statisticsglobe.com/do-call-and-call-functions-in-r/
+# https://qiita.com/TomokIshii/items/a34e0a8f86a8c3ff4c42 日语的，看不懂
+# https://www.r-bloggers.com/2021/05/do-call-lapply/
+# 怎么使用"::" https://stackoverflow.com/questions/10022436/do-call-in-combination-with
+# do.call使用merge和eapply https://www.5axxw.com/questions/content/wxiql1
+# R 语言如何实现函数柯里化? https://segmentfault.com/a/1190000010377489
 
 
 
@@ -2468,6 +2715,39 @@ detach(mtcars)
 
 
 
+
+
+
+
+
+
+
+
+========================================
+|-- 元编程（metaprogramming）：很强大的扩展能力
+----------------------------------------
+
+书籍: Metaprogramming in R – pdf
+
+所谓的元编程（metaprogramming）其实就是编写运行时动态修改程序本身的代码（编写产生代码的代码）。 R语言支持元编程，有几个基础函数需要深入了解：
+substitute
+quote(expr)
+eval
+deparse(expr)
+call(name, ...)
+expression(...)
+parse(text="")
+
+https://blog.csdn.net/ofoliao/article/details/103471604
+
+
+1. call() 函数
+my_call=call("sum", x2, na.rm=T) #第一个参数必须是字符串
+my_call #sum(c(1L, 2L, 3L, 4L, 5L, NA), na.rm = TRUE)
+class(my_call) #[1] "call"
+
+# 这行这个 call 对象
+eval(my_call) #15
 
 
 
@@ -3307,122 +3587,6 @@ y :  num [1:1000, 1:2] 1.7688 0.5453 0.0449 0.8503 0.6149 ...
 
 
 
-========================================
-可重复性研究: Rmarkdown
-----------------------------------------
-1.用shiny+Rmarkdown写Assignment报告，在文档中使用shiny，既装逼又实用。
-
-shinny 教程见 专题: R web shinny框架
-
-
-
-2.做数据分析研究时用shiny+dashboard+dygraph开发一个可交互的数据分析应用。方便进行探索性的数据分析，可以选择变量，可以拖动时间轴，可以放大缩小时间范围或者数值y的范围，观察数据更方便。
-（https://www.zhihu.com/question/35224925）
-
-
-
-3. Rmarkdown 
-https://rmarkdown.rstudio.com/
-
-可以使用 notebook 界面，使用R, Python 和 SQL 语言。
-
-Rmarkdown 支持很多输出: html, pdf, word等。
-
-教程： https://rmarkdown.rstudio.com/lesson-1.html
-cheatsheets: https://rmarkdown.rstudio.com/lesson-15.html
-
-
-
-
-(1) 在Rstudio中，新建 .Rmd 文件，
-
-头文件使用 --- 行包围。
-R代码使用```行包围。
-其他地方就是标准 markdown语法。
-
-新建的Rmd中包含的操作提示：
-- 运行：点击代码块中的Run按钮，或快捷键 Ctrl+Shift+Enter
-- 插入代码块：工具栏点击 插入代码块，或 Ctrl+Alt+I
-- 预览：每次保存都会保存预览，也可点击预览按钮，或 Ctrl+Shift+K
-- 预览显示编辑器内容的呈现HTML副本。因此，不像*Knit*， *Preview*不运行任何R代码块。相反，将显示块最后一次在编辑器中运行时的输出。
-
-
-
-
-(2) 运行 
-```{r}
-```
-
-点击R代码旁边的 右箭头图标， 运行这一段R代码。
-
-
-(3) 输出报告 
-
-library(rmarkdown)
-render("1-example.Rmd")
-
-或者使用Rstudio的 Knit 按钮渲染输出到文件。
-
-R markdown 一个文件包含文本、代码、输出结果。
-
-https://rmarkdown.rstudio.com/lesson-9.html
-
-
-
-(4) 内部处理流程
-Rmd -> knitr -> md -> pandoc -> all kinds of docs.
-
-
-
-(5) 行内代码 
-`r ` 在行内展示结果，而不是代码。
-
-比如 
-a="add"
-`r a` 展示为 add 
-
-(6) 执行其他语言的代码
-
-```{bash}
-echo $PATH
-```
-
-knitr包可以执行很多语言的代码:
-Python
-SQL
-Bash
-Rcpp
-Stan
-JavaScript
-CSS
-
-
-
-(7) 参数 
-可以在文档中使用参数 params$<parameter name>
-
-```{r}
-data{list = params$data}
-```
-
-然后在编译的时候传入参数
-> render("5-parameters.Rmd", params = list(data = "aleutians"))
-
-
-
-(8) 表格
-正常表格和R中显示的一样。
-如果想展示成表格样式，可以使用 knitr::kable 函数。
-
-```{r echo =FALSE, results='asis'}
-library(knitr)
-kable(mtcars[1:5, ], caption="A knitr kable.")
-```
-Note the use of the results='asis' chunk option. This is required to ensure that the raw table output isn’t processed further by knitr.
-
-
-
-
 
 
 
@@ -3575,6 +3739,8 @@ S3类型，S4类型，RC类型分别对应R语言支持的三种面向对象编�
 
 换个角度想，只有审核严格才能保证用户在安装第三方的R包时候不会出错。由于CRAN的审核过于严格，Hadley Wickham也受不了了，又开发了devtools包，不仅提供了简化R包的开发的工具函数，还支持Github社区发布。这样就可以脱离CRAN的束缚，以个人的名义发布各种奇思妙想的R包。
 
+
+
 (2) 强大的元编程（metaprogramming）工具。
 R语言的元编程功能可以让你写出简洁而神奇的函数，并为设计特定领域的语言（domain-specific language）（例如ggplot2、dplyr、data.table等）提供了出色的环境。
 
@@ -3583,8 +3749,16 @@ R语言的元编程功能可以让你写出简洁而神奇的函数，并为设�
 欣赏元编程这把双刃剑。你将能在遵守原则的前提下使用tidy运算（tidy evaluation）来创建函数，从而减少代码的输入量并创建优雅的代码来表达重要的运算，还将理解元编程的危险并知道何时避免它。
 
 
+
+
+
 (3)
 使用新的R包，如rlang（http：//rlang.r-lib.org）和purrr（http.//purrr.tidyverse.org／）进行函数式编程。包rlang为低级操作提供了简洁的接口。
+
+
+(4) 开发基于C/C++的扩展包
+提高R语言的执行效率，一个比较简答的方法就是把复杂的工作留给C/C++在低层完成。
+
 
 
 
