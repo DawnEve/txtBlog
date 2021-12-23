@@ -42,6 +42,7 @@ return array (
       array('ggplot2绘图demo','ggplot2_demo','txt'),
 	  
       array('可视化R包 /最佳实践','R32-visual-pkgs','txt'),
+      array('grid包-灵活布局','R33-grid','txt'),
     ),
   ),
 

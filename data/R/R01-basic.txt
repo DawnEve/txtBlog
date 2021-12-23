@@ -766,11 +766,182 @@ unname(obj) #150   6   3   5
 
 
 
+2. data.frame的行列用字符串索引就类似于字典了
+//todo
 
 
 
 
-2. 探索尝试 list 能否保存长度不同的数据类型?可以。
+
+
+
+3. Environments as hash maps 使用环境作为(键值对)字典
+https://riptutorial.com/r/example/18339/environments-as-hash-maps
+
+(1) 创建
+H <- new.env() #等价于 H <- new.env(hash = TRUE) 
+
+object.size(new.env())
+# 56 bytes
+
+object.size(new.env(size = 10e4))
+# 56 bytes 
+
+
+
+(2) 插入值：使用 [[<- or $<- 而不能使用 [<-。
+(object[[key]] <- value) is generally preferred to the second (object$key <- value)，因为第一种方法允许key是变量。
+
+H[["key"]] <- rnorm(1)
+
+key2 <- "xyz"
+H[[key2]] <- data.frame(x = 1:3, y = letters[1:3])
+
+H$another_key <- matrix(rbinom(9, 1, 0.5) > 0, nrow = 3)
+
+H["error"] <- 42
+#Error in H["error"] <- 42 : 
+#  object of type 'environment' is not subsettable 
+
+
+# 同一个key会覆盖掉旧的
+H[["key3"]] <- "original value"
+H[["key3"]] <- "new value"
+H[["key3"]]
+#[1] "new value"
+
+
+(3) 根据键查找值： [[ or $, but not with [。
+H[["key"]]
+#[1] 1.630631
+ 
+H[[key2]]   ## assuming key2 <- "xyz"
+#   x y
+# 1 1 a
+# 2 2 b
+# 3 3 c
+
+H$another_key
+#       [,1]  [,2]  [,3]
+# [1,]  TRUE  TRUE  TRUE
+# [2,] FALSE FALSE FALSE
+# [3,]  TRUE  TRUE  TRUE
+
+H[1]
+#Error in H[1] : object of type 'environment' is not subsettable
+
+
+(4) 查看所有的key
+names(H)
+#[1] "another_key" "xyz"         "key"         "key3"       
+
+ls(H)
+#[1] "another_key" "key"         "key3"        "xyz"        
+ 
+str(H)
+#<environment: 0x7828228> 
+ 
+ls.str(H)
+# another_key :  logi [1:3, 1:3] TRUE FALSE TRUE TRUE FALSE TRUE ...
+# key :  num 1.63
+# key3 :  chr "new value"
+# xyz : 'data.frame':    3 obs. of  2 variables:
+#  $ x: int  1 2 3
+#  $ y: chr  "a" "b" "c"
+
+
+
+(5) 删除 Elements can be removed using rm:
+rm(list = c("key", "key3"), envir = H)
+
+ls.str(H)
+# another_key :  logi [1:3, 1:3] TRUE FALSE TRUE TRUE FALSE TRUE ...
+# xyz : 'data.frame':    3 obs. of  2 variables:
+#  $ x: int  1 2 3
+#  $ y: chr  "a" "b" "c"
+
+
+(6) 好处 Flexibility
+使用 environment 对象能保存几乎所有R数据类型，包括另一个 environment 对象。
+
+H2 <- new.env()
+
+H2[["a"]] <- LETTERS
+H2[["b"]] <- as.list(x = 1:5, y = matrix(rnorm(10), 2))
+H2[["c"]] <- head(mtcars, 3)
+H2[["d"]] <- Sys.Date()
+H2[["e"]] <- Sys.time()
+H2[["f"]] <- (function() {
+    H3 <- new.env()
+    for (i in seq_along(names(H2))) {
+        H3[[names(H2)[i]]] <- H2[[names(H2)[i]]]
+    }
+    H3
+})()
+
+ls.str(H2)
+ls.str(H2$f)
+
+
+(7) Limitations 限制
+One of the major limitations of using environment objects as hash maps is that, unlike many aspects of R, vectorization is not supported for element lookup / insertion:
+不支持查找和插入向量key。
+
+names(H2)
+#[1] "a" "b" "c" "d" "e" "f"
+
+H2[[c("a", "b")]]
+#Error in H2[[c("a", "b")]] : 
+#  wrong arguments for subsetting an environment
+ 
+Keys <- c("a", "b")
+H2[[Keys]]
+#Error in H2[[Keys]] : wrong arguments for subsetting an environment
+
+
+(8) 使用 vapply or list2env 不简洁
+
+Depending on the nature of the data being stored in the object, it may be possible to use vapply or list2env for assigning many elements at once:
+
+
+E1 <- new.env()
+invisible({
+    vapply(letters, function(x) {
+        E1[[x]] <- rnorm(1)
+        logical(0)
+    }, FUN.VALUE = logical(0))
+})
+
+all.equal(sort(names(E1)), letters)
+#[1] TRUE
+
+Keys <- letters
+E2 <- list2env(
+    setNames(
+        as.list(rnorm(26)),
+        nm = Keys), 
+    envir = NULL,
+    hash = TRUE
+)
+
+all.equal(sort(names(E2)), letters)
+#[1] TRUE
+
+Neither of the above are particularly concise, but may be preferable to using a for loop, etc. when the number of key-value pairs is large.
+
+
+
+
+
+
+
+
+
+
+
+
+
+100. 探索尝试 list 能否保存长度不同的数据类型?可以。
 list完全可以作为R中的hash结构来使用(太低效??)//等待验证
 
 #创建
@@ -822,9 +993,6 @@ mydict1[[2]]
 
 
 
-
-
-3.data.frame的行列用字符串索引就类似于字典了
 
 
 
