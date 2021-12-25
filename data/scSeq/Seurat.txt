@@ -606,7 +606,7 @@ R包ccRemover： https://cran.r-project.org/web/packages/ccRemover/vignettes/ccR
 
 
 ========================================
-|-- Seurat包取细胞群体的子集: subset()等函数
+|-- Seurat包取细胞群体的子集: subset()/FetchData()等函数
 ----------------------------------------
 1. 取子集
 
@@ -686,6 +686,30 @@ expr <- FetchData(object = object, vars = var1)
 object[, which(x = expr > low & expr < high)]
 
 
+2) 非交互式
+var1 <- "GeneName"
+expr <- FetchData(object = object, vars = var1)
+object[, which(x = expr > low & expr < high)]
+
+
+# 循环中不能直接用WhichCells/subset,可以用上面的方式
+library(Seurat)
+gene_cells = list()
+items <-c( 'LGALS3', 'S100A11')
+for (gene1 in items)
+{
+    if (gene1 %in% rownames(pbmc_small))
+    {
+        expr <- FetchData(object = pbmc_small, vars = gene1)
+        gene_cells[[gene1]] <- pbmc_small[, which(x = expr >= 0.5)]
+    }
+}
+gene_cells #两个 seurat 对象。
+
+
+
+
+
 
 (3) 按基因表达量选择
 # Can I create a Seurat object based on expression of a feature or value in object metadata?
@@ -696,7 +720,7 @@ subset(pbmc, subset = MS4A1 > 1)
 
 ref:
 https://satijalab.org/seurat/archive/v3.0/interaction_vignette.html
-
+https://www.jianshu.com/p/99cb6dc8de45
 
 
 
@@ -1456,10 +1480,27 @@ pheatmap(matrix2, annotation_col = annotation_col, annotation_colors = ann_color
 
 
 ========================================
-|-- 重绘 PCA,tSNE,UMAP
+|-- 重绘 PCA,tSNE, UMAP
 ----------------------------------------
 
-1.
+1. 获取坐标
+(1) 使用内置函数 Embeddings 获取坐标
+> Embeddings(scRNA, "umap")
+	UMAP_1	UMAP_2
+AAACCCAGTATCGTAC	7.708623	-4.3380356
+AAACCCAGTCGGTGAA	-5.678032	-0.3648236
+AAACCCAGTTAGAAAC	7.154264	-1.0021027
+
+
+> Embeddings(scRNA, "tsne")
+	tSNE_1	tSNE_2
+AAACCCAGTATCGTAC	-14.4581690	-7.5685762
+AAACCCAGTCGGTGAA	5.1615386	27.4283348
+AAACCCAGTTAGAAAC	-1.8349680	-27.0306493
+AAACCCAGTTATCTTC	1.8384106	45.6578343
+
+
+(2) 从对象中获取坐标
 ######## replot: PCA,tSNE,UMAP
 getDimensionData=function(seuratObj){
   df=data.frame(
@@ -1493,25 +1534,222 @@ plot3d(pcaData$PC_1, pcaData$PC_2, pcaData$PC_3)
 #############
 
 
+(3) 把UMAP的坐标放到metadata中：
+pbmc <- AddMetaData(pbmc, 
+		pbmc@reductions$umap@cell.embeddings,
+		col.name = colnames(pbmc@reductions$umap@cell.embeddings))
+
+head(pbmc@meta.data)
 
 
 
 
 
-2. 获取坐标的方法
-> Embeddings(scRNA, "umap")
-	UMAP_1	UMAP_2
-AAACCCAGTATCGTAC	7.708623	-4.3380356
-AAACCCAGTCGGTGAA	-5.678032	-0.3648236
-AAACCCAGTTAGAAAC	7.154264	-1.0021027
 
 
-> Embeddings(scRNA, "tsne")
-	tSNE_1	tSNE_2
-AAACCCAGTATCGTAC	-14.4581690	-7.5685762
-AAACCCAGTCGGTGAA	5.1615386	27.4283348
-AAACCCAGTTAGAAAC	-1.8349680	-27.0306493
-AAACCCAGTTATCTTC	1.8384106	45.6578343
+
+
+2. 精细复原，并个性化定制
+
+# Seurat包的UMAP图
+DimPlot(scObj_known2, group.by = c("ident", 'sample'),reduction = "umap")
+DimPlot(scObj_known2, group.by = c("ident"), reduction = "umap")
+DimPlot(scObj_known2)
+
+
+(1) 自己画
+# step1: 获取数据
+umap_data = scObj_known2@reductions$umap@cell.embeddings %>%  #坐标信息
+  as.data.frame() %>% 
+  cbind(cell_type = scObj_known2@meta.data$ident) # 注释后的 ident 信息 ，改为cell_type
+head(umap_data)
+#                        UMAP_1    UMAP_2   cell_type
+#AAACCCAAGAGCTTTC-1_1  4.289865  2.376387    Platelet
+
+
+# step2: 初步画图
+allcolour=c("#DC143C","#0000FF","#20B2AA","#FFA500","#9370DB","#98FB98","#F08080","#1E90FF","#7CFC00","#FFFF00",
+            "#808000","#FF00FF","#FA8072","#7B68EE","#9400D3","#800080","#A0522D","#D2B48C","#D2691E","#87CEEB","#40E0D0","#5F9EA0",
+            "#FF1493","#0000CD","#008B8B","#FFE4B5","#8A2BE2","#228B22","#E9967A","#4682B4","#32CD32","#F0E68C","#FFFFE0","#EE82EE",
+            "#FF6347","#6A5ACD","#9932CC","#8B008B","#8B4513","#DEB887")
+
+p <- ggplot(umap, aes(x= UMAP_1 , y = UMAP_2 ,color = cell_type))+
+  geom_point(size = 1 , alpha =1 )+
+  scale_color_manual(values = allcolour)
+p
+
+找差异:
+- 主题部分（去掉背景，去掉网格线） ；
+- legend部分（调整legend，去掉背景灰色、title，调整字体） 
+- 注释部分（坐标轴标到左下角，图中标示标签）三部分。
+
+
+(2) 修饰提升: 去背景、去坐标轴
+https://mp.weixin.qq.com/s?__biz=MzIyNDI1MzgzOQ==&mid=2650394998&idx=1&sn=3a37ee30062e880b70564633b51a87c8
+
+p2 = p+theme_classic(base_size = 14)+
+  theme(
+    panel.border = element_blank(), #边框
+    axis.title = element_blank(),  #轴标题
+    axis.text = element_blank(),  #轴刻度文本
+    axis.ticks = element_blank(), #轴刻度
+    axis.line = element_blank() #去掉轴
+  )
+p2
+
+
+# 参考:
+p2_ <- p  +
+  theme(panel.grid.major = element_blank(), #主网格线
+        panel.grid.minor = element_blank(), #次网格线
+        panel.border = element_blank(), #边框
+        axis.title = element_blank(),  #轴标题
+        axis.text = element_blank(), # 文本
+        axis.ticks = element_blank(),
+        panel.background = element_rect(fill = 'white'), #背景色
+        plot.background=element_rect(fill="white"))
+p2_
+
+
+(3) 修饰提升: 图例点变大
+https://mp.weixin.qq.com/s?__biz=MzIyNDI1MzgzOQ==&mid=2650394998&idx=2&sn=a860fb6001d39dbe543a8a970b4a0675
+
+p3=p2+
+  theme(
+    #legend.title = element_blank(), #去掉legend.title 
+    #legend.key=element_rect(fill='white'), #
+    #legend.text = element_text(size=20), #设置legend标签的大小
+    #legend.key.size=unit(1,'cm')  # 设置legend标签之间的大小
+  )+
+  guides(color = guide_legend(override.aes = list(size=5))) #设置legend中 点的大小
+p3
+
+
+(4) 调整umap图 - annotation
+坐标轴放到左下角可以通过ggplot2添加带箭头的线段和文本实现。
+这一步可能需要根据数据调整位置，来获得最佳效果。
+
+p4 <- p3 + 
+  geom_segment(data=data.frame(), aes(x = min(umap_data$UMAP_1), y = min(umap_data$UMAP_2),
+                   xend = min(umap_data$UMAP_1) +5, yend = min(umap_data$UMAP_2) ),
+               colour = "black", #size=0.9,
+               arrow = arrow(length = unit(0.3,"cm")))+ 
+  geom_segment(data=data.frame(), aes(x = min(umap_data$UMAP_1), y = min(umap_data$UMAP_2),
+                   xend = min(umap_data$UMAP_1), yend = min(umap_data$UMAP_2) + 5),
+               colour = "black", #size=0.9,
+               arrow = arrow(length = unit(0.3,"cm"))) +
+  annotate("text", x = min(umap_data$UMAP_1) +2.5, y = min(umap_data$UMAP_2) -1.5, label = "UMAP_1",
+           color="black", size = 3, fontface="bold") + 
+  annotate("text", x = min(umap_data$UMAP_1) -1.5, y = min(umap_data$UMAP_2) + 2.5, label = "UMAP_2",
+           color="black", size = 3, fontface="bold", angle=90)
+p4
+差不多是最终效果了，就差把细胞类型标注到点上了。
+
+
+
+(5)  那如果想把注释加到点之上怎么办呢？
+- 直接使用label 添加，需要先给每个cluster一个单独的坐标，本示例中使用此方法。
+- text 根据cluster的位置，手动添加，需要尝试，倒是效果会好一些。
+
+
+# 1) 计算每个cluster的median 坐标位置
+cell_type_med <- umap %>%
+  group_by(cell_type) %>%
+  summarise(
+    UMAP_1 = median(UMAP_1),
+    UMAP_2 = median(UMAP_2)
+  )
+
+# 2) geom_label_repel 添加注释
+library(ggrepel)
+p4 + #白底标签标注
+  geom_label_repel(data = cell_type_med, aes(label=cell_type), 
+                   fontface="bold", alpha=0.8,#半透光
+                   point.padding=unit(0.5, "lines"))
+
+# 或者黑字标注
+p4 +
+  geom_text_repel(data = cell_type_med, aes(label=cell_type), 
+                  #fontface="bold", 
+                  color="black",
+                  point.padding=unit(0.5, "lines"))
+
+# 3) 去掉 legend 
+p4 + #白底标签标注
+  geom_label_repel(data = cell_type_med, aes(label=cell_type), 
+                   fontface="bold", alpha=0.8,#半透光
+                   point.padding=unit(0.5, "lines"))+
+  theme(legend.position = "none")
+
+
+
+
+
+
+
+
+
+
+3. 画法2
+
+#' Draw UMAP, my method 2
+#'
+#' @param scObj 
+#' @param group.by 
+#'
+#' @return
+#' @export
+#'
+#' @examples
+#' DimPlot_2(scObj_known2, "ident")
+DimPlot_2 = function(scObj, group.by="seurat_clusters"){
+  # (1)为了调用ggplot2我们把UMAP的坐标放到metadata中：
+  pbmc<-AddMetaData(scObj,scObj@reductions$umap@cell.embeddings,col.name = colnames(scObj@reductions$umap@cell.embeddings))
+  #head(pbmc@meta.data)
+  
+  # (2)读入一套我珍藏多年的颜色列表：
+  allcolour=c("#DC143C","#0000FF","#20B2AA","#FFA500","#9370DB","#98FB98","#F08080","#1E90FF","#7CFC00","#FFFF00",
+              "#808000","#FF00FF","#FA8072","#7B68EE","#9400D3","#800080","#A0522D","#D2B48C","#D2691E","#87CEEB","#40E0D0","#5F9EA0",
+              "#FF1493","#0000CD","#008B8B","#FFE4B5","#8A2BE2","#228B22","#E9967A","#4682B4","#32CD32","#F0E68C","#FFFFE0","#EE82EE",
+              "#FF6347","#6A5ACD","#9932CC","#8B008B","#8B4513","#DEB887")
+  
+  # (3) 开始画图
+  df1= as.data.frame(pbmc@meta.data) #[, c("UMAP_1", "UMAP_2", group.by)]
+  df1$cluster=as.data.frame(pbmc@meta.data)[, group.by]
+  # colnames(df1)=c("UMAP_1", "UMAP_2","cluster")
+  
+  class_avg <-  df1%>%
+    group_by(cluster) %>%
+    summarise(
+      UMAP_1 = median(UMAP_1),
+      UMAP_2 = median(UMAP_2)
+    )
+  #print(head(class_avg))
+  umap <-  ggplot(df1, aes(x=UMAP_1,y=UMAP_2))+
+    geom_point(aes(color=cluster))+
+    scale_color_manual(values = allcolour)+
+    geom_text(aes(label = cluster), data = class_avg)+
+    theme(text=element_text(family="Arial",size=18)) +
+    theme(panel.background = element_rect(fill='white', colour='black'), 
+          panel.grid=element_blank(), axis.title = element_text(color='black',
+                                                                family="Arial",size=18),axis.ticks.length = unit(0.4,"lines"), 
+          axis.ticks = element_line(color='black'), 
+          #axis.ticks.margin = unit(0.6,"lines"), 
+          #`axis.ticks.margin` is deprecated. Please set `margin` property of `axis.text` instead 
+          
+          axis.line = element_line(colour = "black"), 
+          axis.title.x=element_text(colour='black', size=18),
+          axis.title.y=element_text(colour='black', size=18),
+          axis.text=element_text(colour='black',size=18),
+          legend.title=element_blank(),
+          legend.text=element_text(family="Arial", size=18),
+          legend.key=element_blank())+
+    #theme(plot.title = element_text(size=22,colour = "black",face = "bold"))  + 
+    guides(colour = guide_legend(override.aes = list(size=5)))
+  return(umap)
+}
+
+
 
 
 
