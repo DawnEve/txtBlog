@@ -17,6 +17,81 @@ library(help = "Seurat")
 
 
 ========================================
+Seurat FAQ: 宏观策略到参数细节
+----------------------------------------
+
+
+
+4. seurat包的UMAP图集群分布的影响因素
+https://zhuanlan.zhihu.com/p/427166749
+
+1).QC阶段（关键步骤），nUMI（nCount_RNA),nGene(nFeature_RNA),percent.ribo线粒体比例的筛选
+2).多样本merge和integrate阶段，影响整合强度等参数的设置以及整合方法的选择（seurat自带的'FindIntegrationAnchors还是Harmony等方法）
+3).ScaleData参数设置，输入的基因''features''(可变基因或全部基因），需要回归的因素''vars.to.regress''（UMI和percent.ribo）都会影响后期的UMAP结果
+4).PCA数量的选择，选择合适的npca数量（elbow图的拐角处对应的参数，尝试多个npca作UMAP图找到最佳分群的npca）作为FindNeighbors的输入
+5).FindClusters阶段，resolution参数（分辨率）的选择决定分群的数量，可以通过''clustree''包查看不同res的分群情况
+
+
+
+
+
+5. 关于降维分析
+
+Q: ElbowPlot 的拐点是指这个点后面基本持平了么？ / 請問如何判斷 elbow 拐點呢?為何不是在 3~4，而是在 9~10/ PC 拐点如何界定？
+A： ElbowPlot 作图后，用肉眼观察，当曲线进入平台期，没有明显继续下降的趋势就可以了。ElbowPlot 默认显示 20 个 PC，如果发现 20 个 PC 还没有到达平台期，可以修改 ElbowPlot 函数的 ndims 参数。 RunPCA 函数默认计算 50 个 PC，如果想看更多的 PC，可以修改 RunPCA 的npcs 参数。
+
+Q：请问 PCA 那页，是细胞和基因都做过 PCA 么？
+A: 在 Seurat 中，我们是对细胞做 PCA 分析，也就是对细胞做降维分析，比如从 2000 维（基因）降到 50 维（ PC）。一般情况下，我们不会对基因做 PCA 分析。
+
+Q： PCA 中的 embedding 可以再解释下么？
+A：比如，原本每个细胞有 2000 个基因，每个基因在各个细胞中都有表达量，做了 PCA 分析后，每个细胞有 50 个 PC，每个 PC 在各个细胞中都有 embedding 值。为了便于理解，你可以把 PC 看成是整合了多个基因的 meta-gene，把 cell embedding 看成是这些 meta-gene 的表达量。
+
+Q: 可不可以讲下 umap 和 tSNE 的主要原理？
+A: UMAP 和 tSNE 都是非线性的降维方法，是把在高维空间中的点（我们人类肉眼无法观察）投射到二维平面上。这些高维空间中的点是有一定结构的，有些点彼此之间距离更近，有些点距离更远。我们在降维的过程要尽量保留这种结构，让在高维空间中更近的点，在二维平面上也更近，如果降维分析打乱了数据原有的结构，就毫无意义了。 tSNE 的目标是在降维的过程中尽量保留数据的局部结构，而 UMAP 除了能保留数据的局部结构，还能更好的保留全局结构。如果想更深入的了解它们的原理，需要一定的数学基础，我推荐两篇解释的相对简单一些的文章供你参考：
+
+https://opentsne.readthedocs.io/en/latest/tsne_algorithm.html，
+
+How UMAP Works - umap 0.4 documentation
+
+Q: 我想问下数据降维为什么先做 PCA 然后再 UMAP 的降维 这俩不都是降维吗？ 不能直接 UMAP？
+A： PCA 分析和 UMAP 分析的目的不同。 PCA 分析把高表达变异基因整合成若干个 PC。这样做一方面降维，一方面降低噪音。做聚类分析和 UMAP 分析的时候，使用的不是基因表达量，而是由 PCA 分析得到的 PC 的值。 UMAP 的主要作用是把高维度中距离接近的点映射到二维平面上距离相近的位置上。 UMAP 返回的结果只有两个维度（ UMAP_1 和 UMAP_2），只能用来做数据可视化。
+
+
+
+
+
+
+6. 关 于 聚 类 分 析
+
+Q: cluster ID 为何从 0 开始？是否可以从 1 开始？从 0 开始是因为有什么‘算法’方面特殊的优势么？
+A： 默认 clusterID 是从 0 开始，没有特殊的优势，可以使用 RenameIdents 函数重命名clusterID。
+
+
+Q： 鉴定出来的细胞类群用 UMAP 绘图后发现聚类效果很差，大量 cluster 相互交叉， 同一类群细胞弥散分布是什么原因？聚类可视化和类群划分不匹配。
+A： 首先要确保聚类和 UMAP 用的 dims 参数是一致的。可以适当降低一下 FindClusters 函数的resolution 参数，减少 cluster 数目，看看能不能把相互交叉的 cluster 聚成一个 cluster。 还可以尝试 FindClusters 函数中不同的 algorithm 参数，看看聚类效果会不会改进。
+
+
+Q： 请问分群过程中，是否有设置邻居个数的函数和参数？
+A： FinderNeighbors 函数的 k.param 参数是用来设置 KNN 算法中最近邻的个数。
+
+
+Q： 请问 finder cluster 只能使用 SNN 进行聚类么？可以有其他选择吗？ / seurat 的聚类方式除了 KNN 外还有其他的选择吗？
+A： Seurat 的聚类方法是基于 SNN 图和 Louvain 或 SLM 算法， FindNeighbors 函数返回的SNN 图是在 KNN 图的基础上得来的，不支持其他方法。
+
+
+
+
+
+
+
+
+
+ref:
+https://zhuanlan.zhihu.com/p/153404850
+
+
+
+========================================
 Seurat对象的slot和处理流程： 从Suerat对象中找可用的数据
 ----------------------------------------
 原始代码： https://github.com/satijalab/seurat/
@@ -721,6 +796,112 @@ subset(pbmc, subset = MS4A1 > 1)
 ref:
 https://satijalab.org/seurat/archive/v3.0/interaction_vignette.html
 https://www.jianshu.com/p/99cb6dc8de45
+
+
+
+========================================
+|-- 使用 AddModuleScore 计算 disassociation induced genes (DIG) 打分
+----------------------------------------
+1.paper: Pan-cancer single-cell landscape of tumor-infiltrating T cells 补充材料
+
+From the first run clustering, in multiple datasets, we identified clusters with marker genes associated with tissue dissociation operation including heat shock protein-encoding genes (50). Recurrent marker genes of these tissue dissociation-related clusters, i.e. those that showed 25 significant high expression in more than 40% tissue dissociation-related clusters, were defined as disassociation induced genes (DIG) and were included in the gene blacklist after the first run clustering.
+
+To minimize the impact of those processes, the S phase score and G2M phase score were calculated with function CellCycleScoring, and the DIG score was calculated with function AddModuleScore. Then those scores were regressed out in the Seurat pipeline.
+
+
+
+
+
+
+
+
+
+
+
+
+========================================
+Seurat 229个函数名： ls("package:Seurat")
+----------------------------------------
+
+> ls("package:Seurat")
+  [1] "AddAzimuthResults"               "AddMetaData"                     "AddModuleScore"                 
+  [4] "AggregateExpression"             "AnnotateAnchors"                 "as.CellDataSet"                 
+  [7] "as.Graph"                        "as.Neighbor"                     "as.Seurat"                      
+ [10] "as.SingleCellExperiment"         "as.sparse"                       "Assays"                         
+ [13] "AugmentPlot"                     "AverageExpression"               "BarcodeInflectionsPlot"         
+ [16] "BGTextColor"                     "BlackAndWhite"                   "BlueAndRed"                     
+ [19] "BoldTitle"                       "BuildClusterTree"                "CalcPerturbSig"                 
+ [22] "CalculateBarcodeInflections"     "CaseMatch"                       "cc.genes"                       
+ [25] "cc.genes.updated.2019"           "CellCycleScoring"                "Cells"                          
+ [28] "CellsByIdentities"               "CellScatter"                     "CellSelector"                   
+ [31] "CenterTitle"                     "CollapseEmbeddingOutliers"       "CollapseSpeciesExpressionMatrix"
+ [34] "ColorDimSplit"                   "CombinePlots"                    "Command"                        
+ [37] "CreateAssayObject"               "CreateDimReducObject"            "CreateSCTAssayObject"           
+ [40] "CreateSeuratObject"              "CustomDistance"                  "CustomPalette"                  
+ [43] "DarkTheme"                       "DEenrichRPlot"                   "DefaultAssay"                   
+ [46] "DefaultAssay<-"                  "DietSeurat"                      "DimHeatmap"                     
+ [49] "DimPlot"                         "DiscretePalette"                 "Distances"                      
+ [52] "DoHeatmap"                       "DotPlot"                         "ElbowPlot"                      
+ [55] "Embeddings"                      "ExpMean"                         "ExpSD"                          
+ [58] "ExpVar"                          "FastRowScale"                    "FeatureLocator"                 
+ [61] "FeaturePlot"                     "FeatureScatter"                  "FetchData"                      
+ [64] "FilterSlideSeq"                  "FindAllMarkers"                  "FindClusters"                   
+ [67] "FindConservedMarkers"            "FindIntegrationAnchors"          "FindMarkers"                    
+ [70] "FindMultiModalNeighbors"         "FindNeighbors"                   "FindSpatiallyVariableFeatures"  
+ [73] "FindSubCluster"                  "FindTransferAnchors"             "FindVariableFeatures"           
+ [76] "FoldChange"                      "FontSize"                        "GeneSymbolThesarus"             
+ [79] "GetAssay"                        "GetAssayData"                    "GetImage"                       
+ [82] "GetIntegrationData"              "GetResidual"                     "GetTissueCoordinates"           
+ [85] "GetTransferPredictions"          "GroupCorrelation"                "GroupCorrelationPlot"           
+ [88] "HoverLocator"                    "HTODemux"                        "HTOHeatmap"                     
+ [91] "HVFInfo"                         "Idents"                          "Idents<-"                       
+ [94] "IFeaturePlot"                    "Images"                          "Index"                          
+ [97] "Index<-"                         "Indices"                         "IntegrateData"                  
+[100] "IntegrateEmbeddings"             "Intensity"                       "IsGlobal"                       
+[103] "ISpatialDimPlot"                 "ISpatialFeaturePlot"             "JackStraw"                      
+[106] "JackStrawPlot"                   "JS"                              "JS<-"                           
+[109] "Key"                             "Key<-"                           "L2CCA"                          
+[112] "L2Dim"                           "LabelClusters"                   "LabelPoints"                    
+[115] "LinkedDimPlot"                   "LinkedFeaturePlot"               "Load10X_Spatial"                
+[118] "LoadAnnoyIndex"                  "Loadings"                        "Loadings<-"                     
+[121] "LoadSTARmap"                     "LocalStruct"                     "LogNormalize"                   
+[124] "LogSeuratCommand"                "LogVMR"                          "Luminance"                      
+[127] "MappingScore"                    "MapQuery"                        "MetaFeature"                    
+[130] "MinMax"                          "Misc"                            "Misc<-"                         
+[133] "MixingMetric"                    "MixscapeHeatmap"                 "MixscapeLDA"                    
+[136] "MULTIseqDemux"                   "Neighbors"                       "NNPlot"                         
+[139] "NoAxes"                          "NoGrid"                          "NoLegend"                       
+[142] "NormalizeData"                   "PCAPlot"                         "PCASigGenes"                    
+[145] "PCHeatmap"                       "PercentageFeatureSet"            "PlotClusterTree"                
+[148] "PlotPerturbScore"                "PolyDimPlot"                     "PolyFeaturePlot"                
+[151] "PredictAssay"                    "PrepLDA"                         "PrepSCTIntegration"             
+[154] "Project"                         "Project<-"                       "ProjectDim"                     
+[157] "ProjectUMAP"                     "PurpleAndYellow"                 "Radius"                         
+[160] "Read10X"                         "Read10X_h5"                      "Read10X_Image"                  
+[163] "ReadMtx"                         "ReadParseBio"                    "ReadSlideSeq"                   
+[166] "ReadSTARsolo"                    "Reductions"                      "RegroupIdents"                  
+[169] "RelativeCounts"                  "RenameCells"                     "RenameIdents"                   
+[172] "ReorderIdent"                    "RestoreLegend"                   "RidgePlot"                      
+[175] "RotatedAxis"                     "RowMergeSparseMatrices"          "RunCCA"                         
+[178] "RunICA"                          "RunLDA"                          "RunMarkVario"                   
+[181] "RunMixscape"                     "RunMoransI"                      "RunPCA"                         
+[184] "RunSPCA"                         "RunTSNE"                         "RunUMAP"                        
+[187] "SampleUMI"                       "SaveAnnoyIndex"                  "ScaleData"                      
+[190] "scalefactors"                    "ScaleFactors"                    "ScoreJackStraw"                 
+[193] "SCTransform"                     "SCTResults"                      "SCTResults<-"                   
+[196] "SelectIntegrationFeatures"       "SetAssayData"                    "SetIdent"                       
+[199] "SetIntegrationData"              "SeuratAxes"                      "SeuratTheme"                    
+[202] "SpatialDimPlot"                  "SpatialFeaturePlot"              "SpatiallyVariableFeatures"      
+[205] "SpatialPlot"                     "SpatialTheme"                    "SplitObject"                    
+[208] "StashIdent"                      "Stdev"                           "SubsetByBarcodeInflections"     
+[211] "SVFInfo"                         "Tool"                            "Tool<-"                         
+[214] "TopCells"                        "TopFeatures"                     "TopNeighbors"                   
+[217] "TransferData"                    "TSNEPlot"                        "UMAPPlot"                       
+[220] "UpdateSCTAssays"                 "UpdateSeuratObject"              "UpdateSymbolList"               
+[223] "VariableFeaturePlot"             "VariableFeatures"                "VariableFeatures<-"             
+[226] "VizDimLoadings"                  "VlnPlot"                         "WhichCells"                     
+[229] "WhiteBackground" 
+
 
 
 

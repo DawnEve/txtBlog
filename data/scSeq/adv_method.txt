@@ -20,8 +20,225 @@ https://mp.weixin.qq.com/mp/appmsgalbum?__biz=MzIyMzMwNDQ2MA==&action=getalbum&a
 
 
 ========================================
+双细胞检测 doublet detection: Scrublet
+----------------------------------------
+什么是doublets？简单的说就是两个细胞混在一起，可能发生在细胞捕获过程中，并且可能会误导认为是两种细胞类型的过渡态（transitory states），所以应该去除
+
+Doublets检测的软件：
+①DoubletFinder
+(https://github.com/chris-mcginnis-ucsf/DoubletFinder)
+②Scrublet
+(https://github.com/AllonKleinLab/scrublet)
+③DoubletDecon
+(https://github.com/EDePasquale/DoubletDecon)
+④DoubletCluster
+
+
+
+1. 张泽民 Science paper方法学描述
+
+看来是对读入Seurat对象的做初步质控的细胞做的 Scrublet 检测。
+
+(1)For the newly generated scRNA-seq data, Cell Ranger (version 3.0, 10x Genomics Inc) was used for sequencing reads mapping against the GRCh38 human reference genome, UMI counting, and cell identification. 
+
+(2)Then cells with fewer than 200 genes detected or >10% mitochondrial UMI counts were filtered out; 
+- genes detected in > 3 cells were kept. 
+- Scrublet (49) was applied to each sequencing library to remove potential doublets, setting the expected doublet rate to 0.05, and the cells with doubletScore larger than 0.3 were filtered out.
+
+(3) We applied Seurat (version 3) with default parameters to identify T/NK clusters.
+
+
+
+
+
+2. Scrublet 的安装
+https://github.com/AllonKleinLab/scrublet
+
+(1) 官方安装会报错
+$ pip3 install --user scrublet -i https://pypi.douban.com/simple/
+一直报错，有人说 I also experienced this and managed to solve this by downgrading annoy to 1.16.3.
+https://github.com/swolock/scrublet/issues/28
+
+# 再次尝试
+$ pip3 install --user annoy==1.16.3 -i https://pypi.douban.com/simple/
+$ pip3 install --user scrublet -i https://pypi.douban.com/simple/
+Successfully installed scrublet-0.2.3
+
+# 版本检测
+$ pip3 freeze | grep scrublet
+scrublet==0.2.3
+
+
+(2) 开 jupyter notebook 
+$ jupyter notebook --no-browser --port 8787 --ip=192.168.2.xx
+## 可能需要开放端口 sudo iptables -I INPUT -p tcp --dport 8787 -j ACCEPT 
+
+
+(3) numpy兼容性报错修复
+ImportError: cannot import name '_validate_lengths' from 'numpy.lib.arraypad' (/home/wangjl/software/anaconda3/lib/python3.7/site-packages/numpy/lib/arraypad.py)
+
+~/software/anaconda3/lib/python3.7/site-packages/skimage/util/arraycrop.py in <module>
+import numpy as np
+----> 8 from numpy.lib.arraypad import _validate_lengths
+
+
+版本太高了，而本工具使用的是 1.15.2: https://github.com/swolock/scrublet/issues/4
+$ pip3 freeze | grep numpy
+numpy==1.18.3
+numpydoc==0.8.0
+
+
+
+1)要么降低 np 版本：有风险，用完再升级回1.18.3。
+$ pip3 install numpy==1.16.2 -i https://pypi.douban.com/simple/ #还是报错
+$ pip3 install numpy==1.15.2 -i https://pypi.douban.com/simple/ #需要重启 jupyter 才能生效！
+
+
+
+
+2) 要么修改该包源码：尝试，没找到地方，放弃
+> import sys
+> print(sys.path)
+
+['/data/jinwf/wangjl/neu/scRNA/202201filter/script', 
+'/home/wangjl/software/anaconda3/lib/python37.zip', 
+'/home/wangjl/software/anaconda3/lib/python3.7', 
+'/home/wangjl/software/anaconda3/lib/python3.7/lib-dynload', 
+'/home/wangjl/.local/lib/python3.7/site-packages', 
+'/home/wangjl/software/anaconda3/lib/python3.7/site-packages', 
+'/home/wangjl/software/anaconda3/lib/python3.7/site-packages/IPython/extensions', 
+'/home/wangjl/.ipython']
+
+
+一个一个找这些路径，肯定能找到:
+$ find /home/wangjl/.local/lib/python3.7/site-packages/. | grep -v -P "(py|pyc)$" | xargs grep -i "scrublet" --color=auto
+
+因为设定了 --user，装到这里了：
+$ cd /home/wangjl/.local/lib/python3.7/site-packages/./scrublet
+$ ls -lht
+total 52K
+drwxr-xr-x. 2 wangjl jinwf 123 Dec 28 09:17 __pycache__
+-rw-r--r--. 1 wangjl jinwf 25K Dec 28 09:17 scrublet.py
+-rw-r--r--. 1 wangjl jinwf 20K Dec 28 09:17 helper_functions.py
+-rw-r--r--. 1 wangjl jinwf  63 Dec 28 09:17 __init__.py
+
+查找这个函数的位置
+$ find . | xargs grep "_validate_lengths" --color=auto 2>/dev/null
+
+没找到位置，放弃。
+
+解决方法: 
+from distutils import LooseVersion as Version
+old_numpy = Version(np.__version__) < Version('1.16')
+if old_numpy:
+    from numpy.lib.arraypad import _validate_lengths
+else:
+    from numpy.lib.arraypad import _as_pairs
+
+
+
+
+(4) 基本使用
+给定原始（非标准化）UMI计算矩阵counts_matrix，其中细胞为行，基因为列，计算每个cell的doublet分数：
+
+import scrublet as scr
+scrub = scr.Scrublet(counts_matrix)
+doublet_scores, predicted_doublets = scrub.scrub_doublets()
+
+scr.scrub_doublets（）模拟数据的doublets，并使用k-最近邻分类器是每个转录组计算连续的doublet_score（在0和1之间）。
+分数是由自动设定的阈值生成 predict_doublets，一个布尔数组，预测是doublets时为True，否则为False。
+
+
+
+
+
+
+
+
+3. 运行
+(1) 我的版本
+import pandas as pd
+counts_matrix = pd.read_csv("../filterSample/data/_BL2Y.counts.df.txt", sep=" ") #, header = None, index_col=None, names=['barcode'])
+counts_matrix.shape
+
+# check
+# print(counts_matrix.shape)
+# counts_matrix.iloc[1:4, 1:4]
+
+import numpy as np
+import scrublet as scr
+
+scrub = scr.Scrublet(counts_matrix)
+doublet_scores, predicted_doublets = scrub.scrub_doublets()
+
+
+最佳实践 Best practices:
+- 处理来自多个样品的数据时，分别对每个样品运行Scrublet。Scrublet用于检测由两个细胞的随机共包封形成的doublets，所以它可能在合并数据集上表现不佳;
+- 在2-D嵌入（例如，UMAP或t-SNE）中可视化doublets预测;
+
+
+
+
+(2) 重要的参数
+https://github.com/swolock/scrublet/blob/master/examples/scrublet_basics.ipynb
+
+1)初始化Scrublet对象
+相关参数为：
+•expected_doublet_rate，doublets的预期占比，通常为0.05-0.1，结果对该参数不是特别敏感。对于此示例数据，预期的doublets占比来自Chromium用户指南[9]
+•sim_doublet_ratio，要模拟的doublets数量相对于转录组的观测值的比例。此值应该足够高，以使所有的doublet状态都能很好地由模拟doublets表示。设置得太高会使计算量增大，默认值是2（尽管设置低至0.5的值也对测试的数据集产生非常相似的结果。
+•n_neighbors，用于构造转录组观测值和模拟doublets的KNN分类器的邻居数。默认值为round（0.5 * sqrt（n_cells）），通常表现比较好。
+
+scrub = scr.Scrublet(counts_matrix, expected_doublet_rate=0.06)
+
+
+
+2) 计算doublet score
+运行下面的代码计算doublet score，内部处理过程包括:
+	1.Doublet simulation
+	2.Normalization, gene filtering, rescaling, PCA
+	3.Doublet score calculation
+	4.Doublet score threshold detection and doublet calling
+
+doublet_scores, predicted_doublets = scrub.scrub_doublets(n_prin_comps=30, mean_center=True, normalize_variance=True)
+
+doublet_scores, predicted_doublets = scrub.scrub_doublets(min_counts=2, min_cells=3, min_gene_variability_pctl=85, n_prin_comps=30)
+
+
+
+
+
+
+
+
+
+
+========================================
+|-- DoubletDetection依赖scanpy，在安装DoubletDetection前务必安装scanpy //todo
+----------------------------------------
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+========================================
 轨迹推断（TI，trajectory inference）也常被称作 伪时间分析（ pseudotime analysis ）
 ----------------------------------------
+
+总体而言，作者发现大多数TI方法在这四个评估标准之间存在很大差异，只有少数方法（例如PAGA，Slingshot和SCORPIUS）比较均衡。
+http://www.seqyuan.com/A%20comparison%20of%20single-cell%20trajectory%20inference%20methods.html
+
+
 
 1. 许多生物过程都伴随着细胞状态的连续性变化，比如研究发育就会经常使用到。我们可以利用单细胞数据在高维空间画一条线，贯穿于多种细胞状态。最简单是点到点的一条路径，更复杂的还有一个点出发再生成多个分支。
 

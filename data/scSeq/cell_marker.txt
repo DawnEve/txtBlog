@@ -237,6 +237,140 @@ c("S100a9", "S100a8", "Retnlg", "Ngp", "Lcn2", "Lyz2", "Mmp8", "Ltf", "Wfdc21", 
 
 
 ========================================
+细胞类型 自动注释: singleR 
+----------------------------------------
+1. 安装 
+
+> BiocManager::install("SingleR")
+Bioconductor version 3.13 (BiocManager 1.30.16), R 4.1.0 (2021-05-18)
+Installing package(s) 'SingleR'
+also installing the dependencies ‘sparseMatrixStats’, ‘RcppHNSW’, ‘ScaledMatrix’, ‘rsvd’, ‘DelayedMatrixStats’, ‘BiocNeighbors’, ‘BiocSingular’, ‘beachmat’
+
+
+> library(SingleR)
+Loading required package: SummarizedExperiment
+Loading required package: MatrixGenerics
+Loading required package: matrixStats
+... 
+
+(2) 解决报错 
+
+1) mouseImmu <- ImmGenData()
+Error in loadNamespace(x) : there is no package called ‘celldex’
+In addition: Warning message:
+'ImmGenData' is deprecated.
+Use 'celldex::ImmGenData' instead.
+See help("Deprecated") 
+
+安装该包: BiocManager::install("celldex") #version 1.2.0  Reference Index for Cell Types
+
+# 探索一下该包
+> table(mouseImmu$label.main) # 各种细胞类型
+> table(mouseImmu$label.fine) # 精细细胞类型
+
+> mouseImmu
+class: SummarizedExperiment 
+dim: 22134 830 
+metadata(0):
+assays(1): logcounts
+rownames(22134): Zglp1 Vmn2r65 ... Tiparp Kdm1a
+rowData names(0):
+colnames(830): GSM1136119_EA07068_260297_MOGENE-1_0-ST-V1_MF.11C-11B+.LU_1.CEL
+  GSM1136120_EA07068_260298_MOGENE-1_0-ST-V1_MF.11C-11B+.LU_2.CEL ...
+  GSM920654_EA07068_201214_MOGENE-1_0-ST-V1_TGD.VG4+24ALO.E17.TH_1.CEL
+  GSM920655_EA07068_201215_MOGENE-1_0-ST-V1_TGD.VG4+24ALO.E17.TH_2.CEL
+colData names(3): label.main label.fine label.ont
+
+
+
+> mouseRNA <- MouseRNAseqData() #等待下载，然后载入
+> mouseRNA
+class: SummarizedExperiment 
+dim: 21214 358 
+metadata(0):
+assays(1): logcounts
+rownames(21214): Xkr4 Rp1 ... LOC100039574 LOC100039753
+rowData names(0):
+colnames(358): ERR525589Aligned ERR525592Aligned ... SRR1044043Aligned SRR1044044Aligned
+colData names(3): label.main label.fine label.ont
+
+
+
+
+
+
+
+
+
+2. 使用
+
+library(SingleR)
+
+#这是测试，为了快，先取个子集
+table(scObj_known2$seurat_clusters)
+sce=subset(scObj_known2, downsample=200) 
+sce #6.4k cells
+
+# 获取数据
+sce_for_SingleR <- GetAssayData(sce, slot="data")
+clusters=sce@meta.data$seurat_clusters
+
+# 获取免疫参考数据
+mouseImmu <- ImmGenData() #需要 celldex 包
+#/home/wangjl2/.cache/R/ExperimentHub
+# does not exist, create directory? (yes/no): yes
+pred.mouseImmu <- SingleR(test = sce_for_SingleR, ref = mouseImmu, labels = mouseImmu$label.main,
+                          #method = "cluster", 
+                          clusters = clusters, 
+                          assay.type.test = "logcounts", assay.type.ref = "logcounts")
+
+# 获取小鼠参考数据
+mouseRNA <- MouseRNAseqData() #等待下载，然后载入
+pred.mouseRNA <- SingleR(test = sce_for_SingleR, ref = mouseRNA, labels = mouseRNA$label.fine ,
+                         #method = "cluster",
+                         clusters = clusters, 
+                         assay.type.test = "logcounts", assay.type.ref = "logcounts")
+
+
+# 两者综合
+cellType=data.frame(ClusterID=levels(sce@meta.data$seurat_clusters),
+                    mouseImmu=pred.mouseImmu$labels,
+                    mouseRNA=pred.mouseRNA$labels )
+head(cellType)
+dim(cellType)
+# 添加上注释
+sce@meta.data$singleR=cellType[match(clusters,cellType$ClusterID),'mouseRNA']
+
+
+
+pro='first_anno'
+DimPlot(sce,reduction = "umap",label=T, group.by = 'singleR')+scale_color_manual(values=allcolour)
+# ggplot2::ggsave(filename = paste0(pro,'_tSNE_singleR.pdf'))
+DimPlot(sce,reduction = "umap",label=F,split.by ='orig.ident',group.by = 'singleR', ncol=4)&scale_color_manual(values=allcolour)
+# ggplot2::ggsave(filename = paste0(pro,'_tSNE_singleR_by_orig.ident.pdf'))
+
+#save(sce,file = 'last_sce.Rdata') 
+# saveRDS(sce,file = 'sce_v0.1_.Rdata')
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+========================================
 My data 
 ----------------------------------------
 
