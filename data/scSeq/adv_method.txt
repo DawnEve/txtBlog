@@ -239,6 +239,19 @@ doublet_scores, predicted_doublets = scrub.scrub_doublets(min_counts=2, min_cell
 http://www.seqyuan.com/A%20comparison%20of%20single-cell%20trajectory%20inference%20methods.html
 
 
+目前常用的轨迹推断软件包括monocle，slingshot，velocyto等，各有优劣。
+
+
+拟时分析的本质是包含一条具有起点和终点的时间轴的细胞轨迹。时间轴的构建是在细胞轨迹的基础上，依据生物学先验知识来确定起点和终点完成的。
+
+细胞轨迹的构建则是通过细胞的表达量特征来完成的，主流方法有三种：
+
+（1）基于基因表达量的树图方法，经典软件是monocle和PAGA，以基因表达量动态变化来构建细胞轨迹；
+（2）无监督聚类，经典算法是UMAP，UMAP的聚类结果包含一条隐匿的时间轴，这也是今年文章中UMAP降维逐渐替代tSNE降维的一个原因；
+（3）基因的降解趋势和合成趋势，也就是今天我们会重点讨论的RNA velocity。
+
+
+
 
 1. 许多生物过程都伴随着细胞状态的连续性变化，比如研究发育就会经常使用到。我们可以利用单细胞数据在高维空间画一条线，贯穿于多种细胞状态。最简单是点到点的一条路径，更复杂的还有一个点出发再生成多个分支。
 
@@ -314,6 +327,8 @@ https://zouter.shinyapps.io/server/
 
 
 
+
+
 ========================================
 |-- Diffusion pseudotime (DPT): 2016
 ----------------------------------------
@@ -354,10 +369,333 @@ https://bioconductor.org/packages/release/bioc/vignettes/slingshot/inst/doc/vign
 
 
 ========================================
-|-- Monocle3
+|-- Monocle3 拟时序分析/细胞轨迹分析
 ----------------------------------------
 
+Monocle的官网在：
+版本2：https://cole-trapnell-lab.github.io/monocle-release/docs/#installing-monocle
+版本3：https://cole-trapnell-lab.github.io/monocle3/monocle3_docs/
+
+
+1. 定义
+本质就是根据每个细胞的基因表达情况找出关键的表达模式来对细胞进行排序，反推出细胞发育轨迹。
+用于细胞分化的研究(胚胎发育，细胞重编程，癌细胞分化，...)
+
+2. 原理 
+一次取样中有不同发育状况的细胞。
+如果根据转录组能推断出细胞的先后顺序，则可以反推出细胞发育轨迹。
+
+达尔文物种进化分析类似，是根据形态学的相似性排序的。
+
+
+
+3. 软件简介
+(1)单细胞轨迹分析的软件: Monocle, SCUBA, STREAM, Wishbone, ...
+
+(2)Monocle 的优势：主流期刊常用，接受度高；功能强大。
+https://cole-trapnell-lab.github.io/monocle3/
+
+功能: trajectories, clustering, Defferential expression.
+
+
+实例: 细胞重编程成功与失败的分界点 Cell Stem Cell 2018 paper:
+Single-Cell RNA-Seq Reveals Dynamic Early Embryonic-like Programs during Chemical Reprogramming
+https://pubmed.ncbi.nlm.nih.gov/29937202/
+
+Reconstruction of Chemical Reprogramming Trajectory in a Pseudotime Manner
+The gene expression profiling data of all the single cells allowed us to deconstruct the population heterogeneity and reconstruct the reprogramming trajectory. We ordered cells in a pseudo-temporal manner using Monocle 2, an algorithm for the lineage reconstruction of biological processes based on transcriptional similarity (Qiu et al., 2017).
+
+
+(3) 流程 workflow
+
+scRNAseq -> Pre-process data(Normalize, Remove batch effect) ->Non_linear dimensionality reduction(UMAP) ->Cluster cells
+-> Compare clusters(Identify top markers, Targeted contrasts) -> Trajectory analysis
+
+导入数据 - 预处理 - 降维 -聚类 - 比较找marker - 拟时序分析 
+
+
+
+(4) 数据导入 
+library(monocle3) #v1.0.0
+
+1)可以导入 cellrange结果(v2, v3)
+gene_bc_matrix <- load_cellranger_data("/home/user/cellranger_output")
+
+2) 否则就要准备三个文件
+expression_matrix 就是表达矩阵，一行一个基因，一列一个cell，值是 raw counts，是一个稀疏矩阵
+cell_metadata 一行一个细胞，一列代表一个细胞属性，比如样本编号、组织类型、分群编号
+gene_metadata 一行一个基因，三列 id, gene_short_name(必须列), num_cell_expressed
+
+new_cell_data_set(expression_data, cell_metadata = NULL, gene_metadata = NULL)
+
+Arguments
+expression_data: expression data matrix for an experiment, can be a sparseMatrix.
+
+cell_metadata: data frame containing attributes of individual cells, where row.names(cell_metadata) = colnames(expression_data).
+
+gene_metadata: data frame containing attributes of features (e.g. genes), where row.names(gene_metadata) = row.names(expression_data).
+
+
+
+3) 比如，导入 Seurat 的结果
+# load data from Seurat
+pbmc
+
+expression_data=as.matrix(pbmc@assays$RNA@counts)
+cell_data=pbmc@meta.data
+gene_data=data.frame(
+  gene_short_name=row.names(pbmc), #must have this column
+  row.names = row.names(pbmc)
+)
+head(gene_data)
+
+cds=new_cell_data_set(expression_data, cell_data, gene_data)
+cds
+
+
+
+
+
+
+4. 分析流程示例
+
+(1) 数据导入 
+pbmc
+DimPlot(pbmc, label = T)
+pbmc$celltype=pbmc@active.ident
+
+sce_T=subset(pbmc, celltype %in%  c("Naive CD4 T", "Memory CD4 T", "CD8 T", "NK"))
+sce_T
+DimPlot(sce_T, label = T)
+
+
+library(monocle3)
+# 1.load data from Seurat
+load_from_Seurat=function(sce){
+  expression_data=GetAssayData(sce, assay = 'RNA', slot = 'counts')
+  cell_data=sce@meta.data
+  gene_data=data.frame(
+    gene_short_name=row.names(sce), #must have this column
+    row.names = row.names(sce)
+  )
+  # head(gene_data)
+
+  new_cell_data_set(expression_data, cell_data, gene_data)
+}
+
+cds=load_from_Seurat(sce_T)
+cds
+
+
+
+
+(2) 预处理 (log预处理)
+#preprocess_cds函数相当于seurat中NormalizeData+ScaleData+RunPCA
+
+# pre-processing(log)
+cds=preprocess_cds(cds, norm_method = "log", method = "PCA",
+                   num_dim=100)
+
+# 标准化: log处理，减小数据的离散程度
+# 线性降维: PCA, LSI。RNA-seq前者更好。ATAC使用后者
+# 使用的PC数，默认为50.
+
+# 判断使用多少个PC
+plot_pc_variance_explained(cds) #从图中看，15个够用了
+
+
+(3) 降维 
+# UMAP
+cds=reduce_dimension(cds, preprocess_method = "PCA", reduction_method = 'UMAP')
+plot_cells(cds, reduction_method="UMAP", color_cells_by="celltype") + ggtitle('cds.umap')
+
+
+# 查看基因表达情况
+gene_list=c("CD3D", "CD4", "CD8A", "CD79A")
+plot_cells(cds,
+           genes=gene_list,
+           label_cell_groups = F,
+           show_trajectory_graph = F)
+
+(4) 细胞聚类(比 Seurat 的粗，大概认为一个发育过程的几个细胞亚群都划分到一个 partition 了)
+目的：找到那些细胞在一个发育轨迹上。
+#cds = cluster_cells(cds)
+#plot_cells(cds, color_cells_by = "partition")
+
+
+
+##从seurat导入整合过的umap坐标(可选)
+cds.embed <- cds@int_colData$reducedDims$UMAP
+
+int.embed <- Embeddings(sce_T, reduction = "umap")
+int.embed <- int.embed[rownames(cds.embed),]
+
+cds@int_colData$reducedDims$UMAP <- int.embed
+p2 <- plot_cells(cds, reduction_method="UMAP", color_cells_by="celltype") + ggtitle('int.umap')
+p2
+
+## Monocle3聚类分区
+# cds <- cluster_cells(cds)
+p1 <- plot_cells(cds, color_cells_by = "seurat_clusters", show_trajectory_graph = FALSE) + ggtitle("label by clusterID")
+p2 <- plot_cells(cds, color_cells_by = "partition", show_trajectory_graph = FALSE) +
+  ggtitle("label by partitionID")
+p1 + p2
+
+
+
+
+
+(5). 找出发育轨迹
+目的：在上一步分群的基础上，找出每个群内的细胞的发育轨迹。
+无监督，没有基于生物学背景知识。需要酌情取舍。
+
+cds=learn_graph(cds)
+plot_cells(cds, color_cells_by = "seurat_clusters",
+           label_groups_by_cluster = F,
+           label_leaves = F,
+           label_branch_points = F)
+#Error: color_cells_by must one of 'cluster', 'partition', 'pseudotime, 
+# or a column in the colData table.
+
+
+(6) 确定轨迹的先后顺序
+对每条轨迹确定头和尾巴
+- 基于算法
+	根据细胞轨迹图中的节点把它们相聚较近的细胞进行分组
+	计算每个节点来自最早时间的细胞(场外信息)所占的比例
+	包含早期细胞最多的节点就是根节点。
+- 手动(每个轨迹均需要指定一个根节点) 大多数情况是手动。
+
+
+cds=order_cells(cds, reduction_method = "UMAP") #手动设定起点
+plot_cells(cds, color_cells_by = "pseudotime")
+
+
+
+
+
+
+
+
+
+
+
+5. monocle3差异分析
+
+##寻找拟时轨迹差异基因 Finding genes that change as a function of pseudotime
+#graph_test分析最重要的结果是莫兰指数（morans_I），其值在-1至1之间，0代表此基因没有
+#空间共表达效应，1代表此基因在空间距离相近的细胞中表达值高度相似。
+Track_genes <- graph_test(cds, neighbor_graph="principal_graph", cores=10)
+
+#挑选top10画图展示
+Track_genes_sig <- Track_genes %>% filter(q_value < 0.05) %>% top_n(n=10, morans_I) %>%
+  pull(gene_short_name) %>% as.character()
+
+plot_cells(cds, genes=Track_genes_sig,
+           show_trajectory_graph=FALSE,
+           label_cell_groups=FALSE,
+           label_leaves=FALSE)
+
+
+#(1)基因表达趋势图
+plot_genes_in_pseudotime(cds[Track_genes_sig,], color_cells_by="seurat_clusters", #celltype
+                         min_expr=0.5, ncol = 2)+
+  guides( color = guide_legend( override.aes = list(size=5)))
+# 可比较基因开始表达时间的早晚。
+
+
+#(2)FeaturePlot图
+plot_cells(cds, genes=Track_genes_sig, show_trajectory_graph=FALSE,
+           label_cell_groups=FALSE,  label_leaves=FALSE)
+
+##(3)寻找共表达模块
+genelist <- pull(Track_genes, gene_short_name) %>% as.character()
+gene_module <- find_gene_modules(cds[genelist,], resolution=1e-2, cores = 10)
+cell_group <- tibble::tibble(cell=row.names(colData(cds)),
+                             cell_group=colData(cds)$celltype)
+agg_mat <- aggregate_gene_expression(cds, gene_module, cell_group)
+row.names(agg_mat) <- stringr::str_c("Module ", row.names(agg_mat))
+pheatmap::pheatmap(agg_mat, scale="column", border_color = NA,
+                   clustering_method="ward.D2")
+
+pheatmap::pheatmap( t(agg_mat), scale="row", border_color = NA,
+                   clustering_method="ward.D2")
+
+plot_cells(cds,
+           genes=gene_module %>% filter(module %in% c(16, 27, 10, 7, 30,13)),
+           label_cell_groups=FALSE,
+           show_trajectory_graph=FALSE)
+
+
+
+
+
+
+
+6. choose one branch
+
+# 手动选择一个分支
+cds_subset <- choose_cells(cds)
+cds_subset
+
+subset_pr_test_res <- graph_test(cds_subset, neighbor_graph="principal_graph", cores=4)
+pr_deg_ids <- row.names(subset(subset_pr_test_res, q_value < 0.05))
+
+gene_module_df <- find_gene_modules(cds_subset[pr_deg_ids,], resolution=0.001)
+
+agg_mat <- aggregate_gene_expression(cds_subset, gene_module_df)
+module_dendro <- hclust(dist(agg_mat))
+gene_module_df$module <- factor(gene_module_df$module,
+                                levels = row.names(agg_mat)[module_dendro$order])
+
+plot_cells(cds_subset,
+           genes= gene_module_df %>% group_by(module) %>% top_n(4) %>% pull(id),
+           label_cell_groups=F,
+           show_trajectory_graph=F)
+
+
+
+
+refer:
 https://mp.weixin.qq.com/s?__biz=MzIyMzMwNDQ2MA==&mid=2247484327&idx=1&sn=46c78c70cbe2b8c3fb5f282458bff0d6
+
+
+
+
+
+
+
+
+
+
+
+
+========================================
+|-- Monocle2 分析
+----------------------------------------
+
+1. Monocle2 拟时序轨迹分支的两种情况处理
+
+区分的关键是要不要分支。要根据情况确定。
+
+(1) 不考虑分支，只考虑随时间变化的基因变化趋势。
+(2) 在变化过程中两个分支差异比较大可以考虑分支变化。
+
+2. 三种图，分别表示不同的意义
+
+- 拟时序基因表达量图: 一个基因在不同cluster中的表达情况
+
+- 拟时序基因表达量图在 UMAP 上：看出在发育过程中的变化
+
+- 基因 switch (开关): x是时间，y是一条线上面是表达to不表达，线下 不表达to表达。距离线越远，表示开关变化越明显。
+
+- 基因密度图：对基因开关进行富集分析，然后把GO画到 拟时间 轴上。
+
+
+
+例子: 对原发和复发HCC放到一起 拟时间分析，然后分析时间轴上哪边细胞多(细胞密度图)
+
+
 
 
 
@@ -370,7 +708,6 @@ https://mp.weixin.qq.com/s?__biz=MzIyMzMwNDQ2MA==&mid=2247484327&idx=1&sn=46c78c
 ----------------------------------------
 
 paper:
-
 Letter | Published: 08 August 2018: RNA velocity of single cells
 https://www.nature.com/articles/s41586-018-0414-6
 
@@ -379,6 +716,10 @@ https://www.nature.com/articles/s41586-018-0414-6
 https://zhuanlan.zhihu.com/p/142327236
 
 1. 背景介绍
+
+- 无需生物学背景的先验经验：研究者可以从向量结果中读出分化轨迹
+- 数据兼容性强：RNA velocity的数据可以嵌入普通的PCA、tSNE、UMAP降维，也可以嵌入monocle、PAGA构建的细胞轨迹
+
 
 (1)
 这就像在所有运动时间凝固的照片，”教授解释斯登Linnarsson在医学生物化学与生物物理系，卡罗林斯卡医学院，谁领导这项研究的研究人员之一。“我们现在已经开发出一种新方法，不仅可以测量遗传活性，还可以测量单个细胞中这种活性的变化。您可以将其与长时间曝光拍摄的照片进行比较，这会导致运动模糊：静止的对象清晰而运动的对象模糊。快速移动的对象会变得模糊，而移动的方向会被模糊的方向所揭示。”
@@ -401,6 +742,122 @@ RNA剪切：成熟mRNA表达时，未成熟的一部分转录本会被剪切掉�
 (3) 论文 
 https://www.biorxiv.org/content/10.1101/820936v1.full.pdf
 https://www.nature.com/articles/s41587-020-0591-3
+
+
+(4) 原理与代码
+
+velocyto 使用 mRNA 的可变剪切来估计 RNA 变化速率。可变剪切（differential splicing）也称选择性剪切（alternative splicing），是前体 RNA 转化为成熟 mRNA 的关键步骤。一般来说基因转录开始后，相关前体 RNA 最开始增加，随后 mRNA 才开始增加，天然具有时间属性。
+
+测序数据比对结果中总存在一定比例无法定义为 counts 的 reads。在传统比对时，一般舍弃。
+
+
+velocyto 通过重新注释比对结果来评估细胞中特定基因的剪接读长（spliced reads）和未剪接读长（unspliced）。根据这些信息对每个基因拟合一个数学模型，认为该模型代表基因表达平衡态。
+
+
+该模型中，u 代表 unspliced reads ，s 代表 spliced reads，γ 代表 RNA 降解和剪接速率的估计，虚线是拟合出来的平衡态。一般认为当 u> γs 时基因处于转录激活态，反之为抑制。这样，对于每个基因，拟合出 γ 后，就可以根据平衡态预测速率；再通过基因预测结果综合判断细胞的速率；最后计算细胞间速率相关性，最终完成轨迹推断。
+
+velocyto 软件有 python 和 R 两种版本，大家可按需取用。
+http://velocyto.org/velocyto.py/tutorial/analysis.html
+
+
+seuratwrapper 整合了 velocyto 软件并提供测试数据下载，大家可以根据示例代码，跑一跑测试数据，直观感受一下运行流程。
+# https://mp.weixin.qq.com/s?__biz=MzU2Nzg3MzYyOA==&mid=2247485100&idx=1&sn=2b8d81881966797497412c508402e9b6
+
+library(Seurat)
+library(velocyto.R)
+library(SeuratWrappers)
+
+# If you don't have velocyto's example mouse bone marrow dataset, download with the CURL command
+# curl::curl_download(url = 'http://pklab.med.harvard.edu/velocyto/mouseBM/SCG71.loom', destfile = '~/Downloads/SCG71.loom')
+
+ldat <- ReadVelocity(file = "~/Downloads/SCG71.loom")
+bm <- as.Seurat(x = ldat)
+bm <- SCTransform(object = bm, assay = "spliced")
+bm <- RunPCA(object = bm, verbose = FALSE)
+bm <- FindNeighbors(object = bm, dims = 1:20)
+bm <- FindClusters(object = bm)
+bm <- RunUMAP(object = bm, dims = 1:20)
+
+# 拟合平衡系数 γ
+bm <- RunVelocity(object = bm, deltaT = 1, kCells = 25, fit.quantile = 0.02)
+ident.colors <- (scales::hue_pal())(n = length(x = levels(x = bm)))
+names(x = ident.colors) <- levels(x = bm)
+cell.colors <- ident.colors[Idents(object = bm)]
+names(x = cell.colors) <- colnames(x = bm)
+
+# 将速率投射在降维空间上画图
+show.velocity.on.embedding.cor(emb = Embeddings(object = bm, reduction = "umap"), vel = Tool(object = bm,
+    slot = "RunVelocity"), n = 200, scale = "sqrt", cell.colors = ac(x = cell.colors, alpha = 0.5),
+    cex = 0.8, arrow.scale = 3, show.grid.flow = TRUE, min.grid.cell.mass = 0.5, grid.n = 40, arrow.lwd = 1,
+    do.par = FALSE, cell.border.alpha = 0.1)
+
+
+
+
+(5) 结果解读
+velocyto 提供在总体细胞和单个基因两个层面上的结果。
+
+1) 总体细胞轨迹推断在特定降维空间的投射结果
+
+如上图，左图在单个细胞层面的投射结果，右图为根据周围细胞计算简化后的结果。
+
+velocyto 会对每个细胞拟合一个速率推断结果，将之投射在降维空间中就能显示轨迹推断的方向。在细胞量较多时，左图轨迹可能会高度重叠看不清楚，常转化为右图简化的形式。
+
+2) 单个基因的速率拟合结果
+
+上图中，从左到右依次是选定基因的 splice reads(s)、unspliced reads(u) 统计、 速率拟合和拟合结果残差分布结果。
+
+velocyto 也可以展示单个细胞的速率拟合结果，包含每个细胞该基因注释出剪切 reads 数和非剪切 reads 数、平衡态 γ 系数和单个细胞距离平衡态的残差。一般来说基因在特定细胞中 u 残差越大其转录越活跃。
+
+
+(6) 文献解读
+
+一项有关肌层浸润性膀胱癌（muscle-invasive bladder cancer ，MIBC）的研究中，发现一类高表达 Cadherin 12（CDH12）的上皮细胞亚型可以用于预测免疫治疗效果[2]。
+[2]. Gouin, Kenneth H 3rd et al. “An N-Cadherin 2 expressing epithelial cell subpopulation predicts response to surgery, chemotherapy and immunotherapy in bladder cancer.” Nature communications vol. 12,1 4906. 12 Aug. 2021, doi:10.1038/s41467-021-25103-7
+
+
+velocyto 预测速率（左图）和拟时变量（中图）在不同上皮细胞亚群聚类图上的投射结果。分化相关基因的unspliced reads 关于拟时变量的分布热图和亚群细胞密度统计（右图）。
+
+为研究 MIBC 上皮细胞亚型间存在的发育演化路径，研究把 velocyto 轨迹推断结果投射在细胞亚型聚类结果中，发现基底层细胞（basal）可以通过是否包含 CDH12 高表达亚型的两条路径转化为伞状细胞（umbrella），该分支相关的 marker gene 可以揭示高表达 CDH12 上皮细胞亚型预测免疫治疗效果的机理。
+
+
+
+
+
+
+
+
+2.学习文献 https://pubmed.ncbi.nlm.nih.gov/34914499/  Fig.2B
+
+(1) Fig. 2. Heterogeneity and dynamics of CD8+ exhausted T cells. 
+	(B) RNA velocities overlaid on UMAP showing two major state transition paths from naïve to exhaustion. 
+	Arrows on a grid show the RNA velocity field, and dots are colored by metaclusters.
+
+可能的代码:
+	w.step1.Figure2.CD8_Tex_velo.ipynb
+
+相关的代码:
+	w.step2.FigureS20.CD8_ovTex_velo.ipynb
+
+	w.step1.Figure3.CD4_global_velo.ipynb
+	w.step2.FigureS26.CD4_Treg_velo.ipynb
+	w.step2.FigureS13.CD8_global_velo.ipynb
+
+
+(2) 复制到 jupyter 目录
+$ cp w.step1.Figure2.CD8_Tex_velo.ipynb /data/wangjl/web/docs/jupyterlab/
+
+jupyter notebook:
+http://y.biomooc.com:9000/notebooks/w.step1.Figure2.CD8_Tex_velo.ipynb
+
+
+
+
+
+
+
+
+
 
 
 
