@@ -1480,7 +1480,7 @@ Gviz 包 - Visualize genomic data (能一定程度上代替IGV的R包: 画bam文
 原创： 生信技能树  生信技能树  2018-12-05
 
 
-1.
+1. 入门
 全称：Plotting data and annotation information along genomic coordinates
 正式发表于期刊：Source Code Biol Med. 2016
 doi: 10.1186/s13029-016-0052-z
@@ -1489,6 +1489,9 @@ doi: 10.1186/s13029-016-0052-z
 http://52.71.54.154/packages/devel/bioc/vignettes/Gviz/inst/doc/Gviz.html
 
 入门教程: http://www.sthda.com/english/wiki/gviz-visualize-genomic-data
+
+learn Gviz
+# https://mp.weixin.qq.com/s?__biz=Mzg5MzYzNTcwNQ==&mid=2247490523&idx=1&sn=4d54c2e0f561c8d6eff88db8e9769928
 
 
 R包的示例数据，都可以 载入慢慢玩：
@@ -1579,7 +1582,170 @@ plotTracks(tracklist)
 
 
 
-// todo
+
+
+
+
+
+
+
+
+
+2. 组合结果
+
+将利用小鼠 mm9 基因组上的 UCSC 基因组和 7 号染色体 (chr7)
+
+# BiocManager::install("Gviz")
+library(Gviz)
+library(GenomicRanges)
+
+#加载数据 : class = GRanges
+data(cpgIslands)
+
+str(cpgIslands)
+head(cpgIslands)
+tail(cpgIslands)
+# 3列，chr/start-end/ Rle不知道最后一列是啥
+
+# (1) Annotation track, 标题命名为"CpG"
+atrack <- AnnotationTrack(cpgIslands, name = "CpG2") #左侧的track名字
+atrack
+p<-plotTracks(atrack)
+p
+
+
+
+## (2) 基因组坐标
+gtrack <- GenomeAxisTrack() #顶部加上基因组track
+plotTracks(list(gtrack, atrack))
+
+
+##(3) 添加染色体表意文字
+#要添加染色体表意文字 (ideogram)，我们必须指明有效的 UCSC 基因组（例如："hg19"）以及染色体名称（例如："chr7"）
+#由于该功能从 UCSC 获取数据，因此需要 Internet 连接，这可能需要很长时间。
+
+# genome : "hg19"
+gen<-genome(cpgIslands)
+gen
+#chr7
+#"hg19"
+
+# Chromosme name : "chr7"
+chr <- as.character(unique(seqnames(cpgIslands))) #"chr7"
+
+# Ideogram track
+itrack <- IdeogramTrack(genome = gen, chromosome = chr) #联网，超慢！
+
+plotTracks(list(itrack, gtrack, atrack)) #一共3行，最顶新增染色体长短臂
+
+# 表意文字轨迹( ideogram track ) 是所有Gviz轨迹对象中的一个例外，因为它们不像所有其他轨迹那样真正显示在同一坐标系上。
+#取而代之的是，当前的基因组位置在染色体上用一个红色方框表示（或者，在本例中，如果宽度太小而无法容纳方框，则用红线表示）。
+
+
+# (4)添加基因模型
+
+# 加载数据
+data(geneModels)
+dim(geneModels) #97 10
+head(geneModels)
+#  chromosome    start      end width strand feature            gene            exon      transcript     symbol
+#1       chr7 26591441 26591829   389      + lincRNA ENSG00000233760 ENSE00001693369 ENST00000420912 AC004947.2
+
+# 画图
+grtrack <- GeneRegionTrack(geneModels, genome = gen,
+                           chromosome = chr, name = "Gene Model4")
+plotTracks(list(itrack, gtrack, atrack, grtrack), col.main="red")
+
+
+# 放大绘图
+# 1)使用 from 和 to 参数进行缩放
+plotTracks(list(itrack, gtrack, atrack, grtrack),
+           from = 26700000, to = 26750000)
+
+# 2) 使用 extend.left 和 extend.right 进行缩放
+# 这些参数是相对于当前显示的范围，
+# 并且可用于在绘图的一端或两端快速扩展视图。
+plotTracks(list(itrack, gtrack, atrack, grtrack),
+           extend.left = 0.1, extend.right = 500000) #
+
+# 删除外显子的边界,更好的展示图片
+plotTracks(list(itrack, gtrack, atrack, grtrack),
+           extend.left = 0.5, extend.right = 500000, col = NULL) #值为 0.5 时将放大到当前显示范围的一半
+
+
+# 添加序列track并放大查看序列
+# 序列信息来自 BSgenome 包
+# BiocManager::install("BSgenome.Hsapiens.UCSC.hg19")
+
+library(BSgenome.Hsapiens.UCSC.hg19)
+strack <- SequenceTrack(Hsapiens, chromosome = chr)
+plotTracks(list(itrack, gtrack, atrack, grtrack,
+                strack), #要放大到30bp，才能看到碱基
+           from = 26591822, to = 26591852, cex = 0.8)
+
+
+# (5) 设置参数
+#Annotation of transcript
+# 更改面板和标题背景颜色
+grtrack <- GeneRegionTrack(geneModels, genome = gen,
+                           chromosome = chr, name = "Gene Model5",
+                           transcriptAnnotation = "symbol",
+                           background.panel = "#dbeeff",
+                           background.title = "darkblue")
+plotTracks(list(itrack, gtrack, atrack, grtrack))
+
+
+# (6) 默认情况下，所有轨迹都将以 5' -> 3' 方向绘制。有时实际显示相对于相反链的数据会很有用。
+plotTracks(list(itrack, gtrack, atrack, grtrack),
+           reverseStrand = TRUE)
+# 数据已绘制在反向链上这也反映在 GenomeAxis track 中。
+
+
+
+
+
+
+
+
+3. 直接由bam文件画 AlignmentsTrack 峰图
+(1) add AlignmentsTrack
+
+afrom=2966000
+ato=afrom + 1e4 #3160000
+#bam file
+alTrack <- AlignmentsTrack(system.file(package = "Gviz", "extdata", "gapped.bam"),
+                           isPaired = TRUE, name="AlignmentsTrack Ctrl")
+bmt <- BiomartGeneRegionTrack(genome = "hg19", chromosome = "chr12",
+                              start = afrom, end = ato,
+                              filter = list(with_ox_refseq_mrna = TRUE),
+                              stacking = "pack")
+plotTracks(c(bmt, alTrack),
+           coverageHeight = 0.48, #控制高度
+           from = afrom, to = ato, chromosome = "chr12")
+
+# type = "coverage", #堆积 (pile-ups) 并不是特别有用，关掉
+plotTracks(c(alTrack, bmt), from = afrom, to = ato, chromosome = "chr12", type = "coverage")
+
+# 再放大
+plotTracks(c(bmt, alTrack), from = afrom + 700,
+           to = afrom + 3000, chromosome = "chr12")
+
+
+#(opt) 单端模式下查看同一文件中的数据: isPaired = FALSE
+if(0){
+  alTrack.s <- AlignmentsTrack(system.file(package = "Gviz",
+                                         "extdata", "gapped.bam"), isPaired = FALSE)
+  plotTracks(c(bmt, alTrack.s), from = afrom + 700,
+             to = afrom + 3000, chromosome = "chr12")
+}
+
+# 只看3'端
+plotTracks(c(bmt, alTrack), from = afrom + 700,
+           type = "coverage",
+           to = afrom + 3000, chromosome = "chr12")
+
+
+
 
 
 ref:
@@ -1587,6 +1753,178 @@ http://www.bioconductor.org/packages/release/bioc/html/Gviz.html
 http://www.bioconductor.org/packages/release/bioc/vignettes/Gviz/inst/doc/Gviz.html
 http://www.sthda.com/english/wiki/gviz-visualize-genomic-data
 https://www.jianshu.com/p/73cbebaefee4
+
+
+
+
+
+
+========================================
+|-- for 10x and c1 reads 峰图
+----------------------------------------
+图片见 https://blog.csdn.net/wangjunliang/article/details/122616156
+
+
+1. for 10x bam file
+
+# 能整合 UCSC或ENSEMBL等来源的公开基因组注释数据
+# bam中染色体必须以 chr 字符串开头，可以决定通过调用 options(ucscChromosomeNames=FALSE) 来关此功能
+
+library(Gviz)
+
+## for 10x
+options(ucscChromosomeNames=FALSE) #10x没有这一行，就没有峰图
+
+rnaTrack1 <- AlignmentsTrack( "/home/wangjl/data/bams/N5_NH_CB_list_filtered_c1.bam",
+                              col.title="black", #左侧标题颜色
+                              #showAxis=F,
+                             isPaired = TRUE, name="cluster1")
+rnaTrack1
+rnaTrack5 <- AlignmentsTrack( "/home/wangjl/data/bams/N5_NH_CB_list_filtered_c5.bam",
+                              col.title="black", #左侧标题颜色
+                           isPaired = TRUE, name="cluster5")
+bmt <- BiomartGeneRegionTrack(genome = "hg38", chromosome = "12",
+                              start = 6534514, end = 6534514 + 10000,
+                              # filter = list(with_ox_refseq_mrna = TRUE),
+                              name="CTLA4",
+                              col.title="red", #左侧标题颜色
+                              stacking = "pack") #pack/dense
+
+#plotTracks(list(rnaTrack1, bmt), #type="coverage", coverageHeight = 0.8)
+
+plotTracks(c(rnaTrack1, rnaTrack5, bmt), type="coverage",
+           main="10x dataset",
+           from = 203873844-3000, to = 203873844 + 500, chromosome = "2",
+           sizes = c(3,3,1))
+#
+
+
+######### for other genes
+# CCR7
+bmt <- BiomartGeneRegionTrack(genome = "hg38", chromosome = "17",
+                              start = 40558899, end = 40558899 + 10000,
+                              # filter = list(with_ox_refseq_mrna = TRUE),
+                              name="CCR7",
+                              col.title="red", #左侧标题颜色
+                              stacking = "pack") #pack/dense
+plotTracks(c(rnaTrack1, rnaTrack5, bmt), type="coverage",
+           main="10x dataset",
+           from = 40558899-10000, to = 40558899 + 8500, chromosome = "17",
+           sizes = c(3,3,1))
+# GZMA
+bmt <- BiomartGeneRegionTrack(genome = "hg38", chromosome = "5",
+                              start = 55110133, end = 55110133 + 10000,
+                              # filter = list(with_ox_refseq_mrna = TRUE),
+                              name="GZMA",
+                              col.title="red", #左侧标题颜色
+                              stacking = "pack") #pack/dense
+plotTracks(c(rnaTrack1, rnaTrack5, bmt), type="coverage",
+           main="10x dataset",
+           from = 55110133-8000, to = 55110133 + 500, chromosome = "5",
+           sizes = c(3,3,1))
+
+
+
+
+
+
+
+
+2. for C1 data
+(1) 基本代码
+library(Gviz)
+
+rnaTrack1 <- AlignmentsTrack( "/home/wangjl/igv/GRB10/c01ROW31_GRB10.bam",
+                              col.title="black", #左侧标题颜色
+                              #showAxis=F,
+                              isPaired = TRUE, name="c01ROW31")
+rnaTrack1
+rnaTrack5 <- AlignmentsTrack( "/home/wangjl/igv/GRB10/c15ROW22_GRB10.bam",
+                              col.title="black", #左侧标题颜色
+                              isPaired = TRUE, name="c15ROW22")
+bmt <- BiomartGeneRegionTrack(genome = "hg19", chromosome = "chr7",
+                              start = 50657767, end = 50657767 + 10000,
+                              # filter = list(with_ox_refseq_mrna = TRUE),
+                              name="GRB10",
+                              col.title="red", #左侧标题颜色
+                              stacking = "pack") #pack/dense
+
+plotTracks(c(rnaTrack1, rnaTrack5, bmt), type="coverage",
+           main="C1 dataset",
+           from = 50657767-500, to = 50657767 + 3000, chromosome = "chr7",
+           sizes = c(3,3,1))
+
+
+
+
+
+(2) 升级版：批量化，并设置自定义颜色
+
+library(Gviz)
+
+# for c1
+#fn1: 获取指定文件夹下的所有bam文件的文件名
+getBamFileNames=function(filepath, suffix=".bam$"){
+  fnames=dir(filepath)[grep(suffix, dir(filepath))]
+  return( paste0(filepath, fnames) )
+}
+
+bam.files=getBamFileNames("/home/wangjl/igv/GRB10/")
+bam.files
+
+# fn2: 从文件名全路径中提取关键词，作为样本名字
+getKeyword=function(fullpath, delete=""){
+  rs1=strsplit(fullpath, "/")[[1]]
+  rs1=rs1[length(rs1)]
+  return(sub(delete, "", rs1))
+}
+getKeyword("/home/wangjl/igv/GRB10/c01ROW31_GRB10.bam", "_GRB10.bam") #"c01ROW31"
+
+{
+  rnaTracks=list()
+  i=0
+  for(fname in bam.files){
+    i=i+1
+    if(i>8) break;
+    fig.keyword=getKeyword(fname, "_GRB10.bam")
+    message(i, "\t", "Adding: ", fig.keyword, "(",fname, ")")
+    rnaTrack1 <- AlignmentsTrack( fname, #"/home/wangjl/igv/GRB10/c01ROW31_GRB10.bam",
+                                  background.legend="blue",
+                                  #background.panel="blue", #整个背景色
+                                  background.title="transparent", #标题背景色
+                                  col.title="red", #左侧标题颜色
+                                  #col.grid="black",
+
+                                  col.border.title="transparent", #左侧坐标轴标签框颜色
+
+                                  fill="lightblue", #峰图填充色
+                                  col.coverage="transparent", #峰图边框颜色
+                                  #coverageHeight=10,
+
+                                  showAxis=T, #不显示坐标轴
+                                  col.axis="black", #左侧坐标轴颜色
+
+                                  #isPaired = TRUE, #pile-up图是否配对，本次不显示该部分，所以不用设置
+                                  name=fig.keyword) #左侧关键词
+    rnaTracks=c(rnaTracks, rnaTrack1)
+  }
+
+  bmt <- BiomartGeneRegionTrack(genome = "hg19", chromosome = "chr7",
+                                start = 50657774, end = 50657774+2e4,
+                                # filter = list(with_ox_refseq_mrna = TRUE),
+                                background.title="transparent", #标题背景色
+                                col.title="black", #左侧标题颜色
+                                col="transparent", #基因结构的边框颜色
+                                stacking = "pack", name="GRB10") #pack/dense
+  plotTracks(trackList=c(rnaTracks, bmt),
+             type="coverage", #不要堆叠图
+             sizes=c(rep(2,i-1), 1), #每个track的高度，要和第一个参数配对
+             from = 50657774-300, to = 50657774 + 3e3, chromosome = "chr7")
+}
+
+
+
+
 
 
 
@@ -2080,6 +2418,231 @@ ref:
 https://bookdown.org/rdpeng/exdata/hierarchical-clustering.html
 
 https://www.cnblogs.com/ywliao/articles/7411835.html
+
+
+
+
+
+
+========================================
+|-- 兰德系数(Rand Index)、调整兰德系数 （聚类评价标准）
+----------------------------------------
+
+兰德系数（Rand index）
+调整兰德系数(Adjusted Rand index)
+
+调整兰德系数（Adjusted Rand index）用于聚类模型的性能评估，但是其需要true_label,在正式介绍兰德系数之前，先介绍调整兰德系数的前身，兰德系数。
+
+
+
+1. 一个小案例说明兰德系数是如何怎么计算的
+http://www.otlet-institute.org/wikics/Clustering_Problems.html#toc-Subsection-4.1
+
+(1)聚类问题
+The clustering problems are a class of optimization problems where the goal is to group a set of objects in different groups, each object being assigned in one group only.
+
+矫正的兰德系数衡量整个方案的整体质量。当聚类不好时，要看 precision and recall。
+The adjusted Rand Index is used to measure the global quality of a solution. When a clustering is not correct, the measures of precision and recall are necessary to determine the reasons. In fact, there is a relation between recall and precision:
+
+- A high value of the recall and a low value of the precision indicate that the resulting clustering has too few clusters: most objects that belongs to the same ideal cluster are grouped together, but are also grouped with objects of other ideal clusters.
+- A low value of the recall and a high value of the precision indicate that the resulting clustering has too many clusters: most objects that are grouped together belongs to the same ideal cluster, but all the objects of the same ideal cluster are not grouped together.
+
+
+
+(2)例子: 给定个对象集合S，假设A和B表示S的两个不同划分
+假设A是外部评价标准即true_label，而B是聚类结果。
+
+理想分类A
+Ideal Clustering
+	t1:1,2,3
+	t2:4,5,6
+	t3:7,8,9
+
+计算方法B：
+Computed Clustering
+	c1:1,2
+	c2:3,4,5,6
+	c3:7,8
+	c4:9
+
+注意：计算方法给出了4类，而理想分类是3类。
+Notice that, while there are 3 ideal cluster, the computed solution provides 4 clusters in this example.
+
+
+
+Adjusted Rand index
+The aim of the adjusted Rand index is to establish an overall comparison between the computed and the ideal clustering. It is based on the Rand index [3], where a comparison is made between the assignments of each pair of objects in the ideal and the computed clustering. Roughly speaking, the Rand index computes the percentage of pairs of objects for which both classification methods, the computed and the ideal one, agree.
+本质：待分类对象的两两随机配对中，两种方法意见(理想、计算)统一的占比。
+兰德系数的值在[0,1]之间，当聚类结果完美匹配时，兰德系数为1。
+
+Let a be the number of pairs of objects in the same topic and the same computed cluster, 
+let b be the number of pairs of objects in the same ideal cluster but not in the same computed cluster, 
+let c be the number of pairs of objects in the same computed cluster but not in the same ideal cluster, and 
+let d be the number of pairs of objects in different computed clusters and in different ideal clusters. 
+
+对于上例
+a=5 {(1,2), (4,5), (4,6), (5,6), (7,8)} #都在一类
+b=4 {(1,3), (2,3), (7,9), (8,9)}
+c=3 {(3,4), (3,5), (3,6)}
+d=24 {(1,4), ...} #都不在一类
+
+混淆矩阵
++----------------#---------------+------------------#-------------------+
+| TP:                            | FN:                                  |
+| Same class + same cluster      | Same class + different clusters      |
++----------------#---------------+------------------#-------------------+
+| FP:                            | TN:                                  |
+| different class + same cluster | different class + different clusters |
++----------------#---------------+------------------#-------------------+
+
+行方向表示same class by A，可求得TP+FN的值；
+列方向表示same cluster by B，可求得TP+FP的值。
+总个数组合“选2个”，可求得总值TP+FN+FP+TN。矩阵的的每个元素组合“选2个”，即可求得TP的值。剩下的，相减即可。
+
+兰德系数(Rand Index) = （TP+TN）/（TP+FP+FN+TN）= (a+d)/(a+b+c+d) = (5+24)/(5+4+3+24)=0.81
+
+准确度（Precision） = （TP）/（TP+FP）；
+召回率（Recall）=（TP）/（TP+FN）；
+
+
+
+d1=data.frame(
+  A=mtcars$gear,
+  B=mtcars$carb
+)
+> table(d1$A)
+ 3  4  5 
+15 12  5 
+> table(d1$A, d1$B)
+    1 2 3 4 6 8
+  3 3 4 3 5 0 0
+  4 4 4 0 4 0 0
+  5 0 2 0 1 1 1
+#
+
+
+
+
+
+2. 调整兰德系数(Adjusted Rand index)
+
+(1) 兰德系数的问题在于对于两个随机的划分,其兰德系数值不是一个接近于0的常数。Hubert和Arabie在1985年提出了调整兰德系数，调整兰德系数假设模型的超分布为随机模型，即和的划分为随机的，那么各类别和各簇的数据点数目是固定的。
+
+# https://scikit-learn.org/stable/modules/clustering.html#adjusted-rand-index
+
+The Rand index does not ensure to obtain a value close to 0.0 for a random labelling. The adjusted Rand index corrects for chance and will give such a baseline.
+
+Poorly agreeing labels (e.g. independent labelings) have lower scores, and for the adjusted Rand index the score will be negative or close to zero. However, for the unadjusted Rand index the score, while lower, will not necessarily be close to zero.
+
+
+RI=(a+d)/C(2,n) #其中 C(2,n)是n个样本挑选2个的组合数，a+d 是两种分类意见一致的样品对数。
+	RI不能保证在类别标签随机分配的情况下，其值接近0(极端情况是类别数和样本数相等)
+	C(2,x)=x(x-1)/2
+	
+为了解决这个问题，ARI被提出，它具有更高的区分度：
+	ARI=( RI-E[RI] ) / (max(RI) -E[RI])
+
+ARI（Adjusted Rand index）其实是去均值归一化的形式。
+
+已经证明，以上形式可以写成
+
+ARI=( Sigma(C(2, nij)) -  ( sigma(C(2, ni.))*sigma(C(2, n.j)) ))/
+	((Sigma(C(2,ni.)) + Sigma(C(2,n.j)))/2  - sigma(C(2,ni.))*sigma(C(2,n.j))/C(2,n) )
+
+where nij represents the number of objects of an ideal cluster, ti, 
+to be grouped into a computed cluster, cj.
+
+其中: C(2, x)=x*(x-1)/2
+
+ARI 需要用到contingency table
+对上例
+ideal\Computed 
+      c1 c2 c3 c4 sums
+t1    2  1  0  0  3
+t2    0  3  0  0  3
+t3    0  0  2  1  3
+sums  2  4  2  1  9
+
+
+少于2的忽略，因为挑选2个配对的方法为0次。
+分子 
+	C(2,2)+C(2,3)+C(2,2)=5
+	(C(2,3)+C(2,3)+C(2,3)) * (C(2,2)+C(2,4)+C(2,2)) / C(2,9) = (3+3+3)*(1+6+1)/ (9*8/2)=2
+分母
+	((C(2,3)+C(2,3)+C(2,3)) + (C(2,2)+C(2,4)+C(2,2)))/2=8.5
+ARI=(5-2)/(8.5-2)=0.46
+
+
+
+(2) ARI的优点:
+- 随机均匀的标签分布的ARI值接近0，这点与raw Rand Index和 V-measure指标不同;
+- ARI值的范围是[-1,1]，负的结果都是较差的，说明标签是独立分布的，相似分布的ARI结果是正的，1是最佳结果，说明两种标签的分布完全一致;
+- 不用对聚类结果做任何假设，可以用来比较任意聚类算法的聚类结果间的相似性。
+
+ARI的缺点：
+- ARI指标需要事先知道样本的真实标签，这和有监督学习的先决条件是一样的。然而ARI也可以作为一个通用的指标，用来评估不同的聚类模型的性能。
+
+
+
+
+3. R 语言
+(1) 使用R语言实现
+d0=data.frame(
+	A=rep( c(1,2,3), each=3),
+	B=c(1,1,2,2,2,2,3,3,4 )
+)
+
+adjusted.Rand.index=function(a, b){
+  tb=table(a, b);
+  
+  tb.num=as.data.frame( t(tb) )$Freq
+  C=function(x){x*(x-1)/2}
+  SigmaC=function(num){
+    rs=0;
+    for(i in num){
+      if(i>=2){
+        rs=rs+C(i)
+      }
+    }
+    return(rs)
+  }
+  
+  eRI = (SigmaC(as.numeric(rowSums(tb))) * SigmaC(as.numeric(colSums(tb)))) / SigmaC(sum(tb))
+  return( (SigmaC(tb.num) - eRI) / ((SigmaC(as.numeric(rowSums(tb))) + SigmaC(as.numeric(colSums(tb))))/2 - eRI) )
+}
+adjusted.Rand.index(d0$A, d0$B) #0.461
+
+
+# 极端情况
+labels_true = c(0, 0, 0, 0, 0, 0, 1, 1)
+labels_pred = c(0, 1, 2, 3, 4, 5, 5, 6)
+adjusted.Rand.index(labels_true, labels_pred) #-0.0720
+
+
+
+
+(2) R 包 
+https://www.rdocumentation.org/packages/fossil/versions/0.4.0/topics/rand.index
+
+fossil (version 0.4.0)
+rand.index: Rand Index and Adjusted Rand Index
+Description: Measures to compare the similarity of two clustering outcomes
+
+
+
+
+
+
+ref:
+https://www.cnblogs.com/devilmaycry812839668/p/10880006.html
+https://blog.csdn.net/myy3075/article/details/86542102
+http://faculty.washington.edu/kayee/pca/supp.pdf
+http://scikit-learn.org/stable/modules/clustering.html#adjusted-rand-index
+https://stats.stackexchange.com/questions/89030/rand-index-calculation
+
+
+
+
 
 
 
