@@ -1,0 +1,806 @@
+Suerat 源码学习
+
+Seurat 4 源码解析 1: Seurat 类怎么定义的？
+	https://zhuanlan.zhihu.com/p/463532779
+
+Seurat 4 源码解析 2：Seurat 对象怎么实例化？
+	https://zhuanlan.zhihu.com/p/463602480
+
+Seurat 4 源码解析 3：Seurat 对象的方法是怎么定义的？
+	https://zhuanlan.zhihu.com/p/463617297
+
+
+
+
+
+我从这些CNS文章里面精挑细选了一个非常值得大家花时间跟下去的，就是新鲜出炉的发表在CELL杂志的：Therapy-Induced Evolution of Human Lung Cancer Revealed by Single-Cell RNA Sequencing 。全套代码在：https://github.com/czbiohub/scell_lung_adenocarcinoma
+
+
+
+
+
+========================================
+|-- 掉包第一步 Read10X()
+----------------------------------------
+标题: Seurat 4 源码解析 4: step1 读入10x数据到内存 Read10X(data.dir=) https://zhuanlan.zhihu.com/p/464317172
+
+
+1. 载入10x pbmc 数据: cellranger 处理fastq后的输出
+
+(1) 读入 cellranger 输出为矩阵 
+# 调用的代码
+# load data
+pbmc.data <- Read10X(data.dir = "~/data/scScripts/backup/data/pbmc3k/filtered_gene_bc_matrices/hg19/")
+class(pbmc.data)
+dim(pbmc.data) #32738  2700
+
+
+# 定位 
+seurat-4.1.0/R/preprocessing.R:781:Read10X <- function( #不含注释共123行
+
+
+1) seq_along() 函数，返回整数向量，长度和第一个参数长度一致。
+# for (i in seq_along(along.with = data.dir)) 
+
+> seq_along(along.with = "~/data")
+[1] 1
+> seq_along(along.with = c("~/data", "~/"))
+[1] 1 2
+
+
+2) 读入稀疏矩阵 Matrix::readMM()
+/seurat-4.1.0/NAMESPACE:382:importFrom(Matrix,readMM)
+
+
+3) 文件、文件夹操作
+    # 如果文件夹不存在
+    if (!dir.exists(paths = run)) {
+      stop("Directory provided does not exist")
+    }
+	
+	# 拼接路径
+	run <- data.dir[i]
+	barcode.loc <- file.path(run, 'barcodes.tsv')
+	
+	
+	# 如果文件不存在
+	if (!file.exists(barcode.loc)) {
+      stop("Barcode file missing. Expecting ", basename(path = barcode.loc))
+    }
+	
+	# basename 拿到路径最后的文件名部分
+	basename("~/data/bams/hg38-RefSeq.bed") #[1] "hg38-RefSeq.bed"
+
+
+4) 正则的差异 grep(返回匹配的元素位置编号)， grepl(返回每一项是否匹配)
+> grep(pattern="[0-9]+", c(1,5, "good", "200"))
+[1] 1 2 4
+> grepl(pattern="[0-9]+", c(1,5, "good", "200"))
+[1]  TRUE  TRUE FALSE  TRUE
+
+
+5) warning 的参数 call.= T(默认)
+
+testit <- function() warning("Some are NA in testit")
+testit() ## shows call 显示函数调用
+# Warning message:
+# In testit() : Some are NA in testit
+#
+testit <- function() warning("Some are NA in testit 2", call. = FALSE)
+testit() ## no call
+#Warning message:
+#Some are NA in testit 2 #没有前缀  in fn()
+#
+suppressWarnings(warning("testit"))
+
+
+6) warning 的参数 immediate.=F(默认)
+# 即使设置 getOption("warn") <= 0，也立刻显示出该警告
+options(warn=0)
+getOption("warn")
+testit <- function() {
+  warning("Some are NA in testit 2", call. = FALSE)
+  Sys.sleep(2)
+}
+testit() #等待函数调用结束再打印warning
+
+testit <- function() {
+  warning("Some are NA in testit 2", call. = FALSE, immediate. = T)
+  Sys.sleep(2)
+}
+testit() #立刻打印warning，然后继续执行其余函数体
+
+
+
+7) 通过在重复字符后添加数字后缀，来返回uniq vector
+> make.unique(c("A", "B", "A", "D"))
+[1] "A"   "B"   "A.1" "D"  
+> make.unique(c("A", "B", "A", "D"), sep="-")
+[1] "A"   "B"   "A-1" "D"
+
+
+
+
+
+
+
+
+
+
+========================================
+|-- 掉包第2步 创建 Seurat 对象 CreateSeuratObject()
+----------------------------------------
+Seurat 4 源码解析 5: step2 创建 Seurat 对象 CreateSeuratObject() https://zhuanlan.zhihu.com/p/464577819
+
+
+1. 掉包侠 出场
+# Initialize the Seurat object with the raw (non-normalized data).
+pbmc <- CreateSeuratObject(counts = pbmc.data,
+                           project = "pbmc3k",
+                           min.cells = 3,
+                           min.features = 200)
+# Warning: Feature names cannot have underscores ('_'), replacing with dashes ('-') 
+pbmc
+# An object of class Seurat 
+# 13714 features across 2700 samples within 1 assay 
+# Active assay: RNA (13714 features, 0 variable features)
+
+
+这涉及到2个函数，
+一个创建 CreateSeuratObject()，解析 2 
+一个show()(见 解析3 2.3，本文略)
+
+
+
+
+
+
+2. 源码及注释
+
+(1) 函数定位
+前面(解析 1)说过，虽然Seurat是S4类，但是这个CreateSeuratObject函数却是一个S3方法，而且定义不在Seurat包中，而是在SeuratObject包中。
+
+$ find .  | grep "R$" | xargs grep -n "CreateSeuratObject" --color=auto
+...
+seurat-object-4.0.4/R/generics.R:179:CreateSeuratObject <- function( #泛型函数的定义
+...
+seurat-object-4.0.4/R/seurat.R:987:CreateSeuratObject.default <- function( #创建对象.默认
+...
+seurat-object-4.0.4/R/seurat.R:1034:CreateSeuratObject.Assay <- function( #创建对象.Assay
+...
+
+
+(2) S3 泛型函数
+seurat-object-4.0.4/R/generics.R:179:CreateSeuratObject <- function( #泛型函数的定义
+
+CreateSeuratObject <- function(
+  counts,
+  project = 'CreateSeuratObject',
+  assay = 'RNA',
+  names.field = 1,
+  names.delim = '_',
+  meta.data = NULL,
+  ...
+) {
+  UseMethod(generic = 'CreateSeuratObject', object = counts)
+}
+
+
+
+(3) 我们输入的是矩阵或者df，不是Assay类的对象，所以使用 CreateSeuratObject.default()函数
+
+> class(pbmc.data)
+[1] "dgCMatrix"
+attr(,"package")
+[1] "Matrix"
+
+seurat-object-4.0.4/R/seurat.R:987:CreateSeuratObject.default <- function( #创建对象.默认
+
+而这个函数的返回值又调用了 CreateSeuratObject.Assay()
+seurat-object-4.0.4/R/seurat.R:1034:CreateSeuratObject.Assay <- function( #创建对象.Assay
+
+
+
+
+3. R tips
+
+(1) meta.data <- meta.data[common.cells, , drop = FALSE] 这个 drop=F啥意思？
+
+找函数名:
+> methods(`[`)[ grep("frame", methods(`[`)) ]
+[1] "[.data.frame" "[.hyperframe"
+
+看这个函数的实现，结尾显示定义在base包中：
+> `[.data.frame`
+function (x, i, j, drop = if (missing(i)) TRUE else length(cols) == 1) 
+{
+    mdrop <- missing(drop)
+    Narg <- nargs() - !mdrop
+    has.j <- !missing(j)
+    if (!all(names(sys.call()) %in% c("", "drop")) && !isS4(x)) 
+        warning("named arguments other than 'drop' are discouraged")
+    if (Narg < 3L) {
+        if (!mdrop) 
+            warning("'drop' argument will be ignored")
+        if (missing(i)) 
+            return(x)
+	#... 太长了，加上也没看懂，先略过吧
+    x
+}
+<bytecode: 0x5654bcce7f48>
+<environment: namespace:base>
+
+看参数列表，如果没有i，则drop=T，否则drop=length(cols) == 1
+这个cols是什么？不知道，猜测可能是总列数，虽然我获取不到这个参数：
+fn1=function(df1, n=cols){
+  print(cols)
+}
+fn1(iris) # Error in print(cols) : object 'cols' not found
+
+
+# 尝试该参数，貌似没有任何影响
+`[.data.frame`(iris, 1:2, 1:2, drop=T)
+`[.data.frame`(iris, 1:2, 1:2, drop=F)
+iris[1:2, , drop=T]
+iris[1:2, , drop=F]
+# drop=T or F，返回值都一样
+
+# 如果输入矩阵只有一列呢
+iris[1:2, 1] #[1] 5.1 4.9 丧失数据框结构
+iris[1:2, 1, drop=F] #保持数据框结构
+#  Sepal.Length
+#1          5.1
+#2          4.9
+
+原来作者是防止 meta.data 只有一列时，取子集后失去数据框结构。
+
+
+
+
+
+(2) Key() 函数是干啥的？
+
+> Key(pbmc_small)
+    RNA     pca    tsne 
+ "rna_"   "PC_" "tSNE_" 
+
+如果输入是Assay，则返回的是该对象的 slot(assay, name="key")
+> class(pbmc_small@assays$RNA)
+[1] "Assay"
+attr(,"package")
+[1] "SeuratObject"
+
+> Key(pbmc_small@assays$RNA)
+[1] "rna_"
+
+# 低层实现还是slot()函数
+> slotNames(pbmc_small@assays$RNA)
+[1] "counts"        "data"          "scale.data"    "key"           "assay.orig"    "var.features" 
+[7] "meta.features" "misc"         
+
+> slot(pbmc_small@assays$RNA, name="key")
+[1] "rna_"
+
+猜测key是用来识别数据来源的，是RNA或者ATAC。
+
+
+
+(3) ExtractField() 自定义函数，内部就是分割字符串函数strsplit()。
+把字符串string按照delim分隔开，提取其中某几个编号的field（单个数字，或逗号隔开的数字字符串），使用delim拼接后返回
+
+seurat-object-4.0.4/R/utils.R:798:ExtractField <- function(string, field = 1, delim = "_") {
+
+ExtractField <- function(string, field = 1, delim = "_") {
+  fields <- as.numeric(x = unlist(x = strsplit(
+	# 把 field 转为字符串，按照逗号分割，解开list，转为数字编号
+    x = as.character(x = field),
+    split = ","
+  )))
+  
+  #如果只有一个数字编号，则直接返回delim分割后的该部分
+  if (length(x = fields) == 1) {
+    return(strsplit(x = string, split = delim)[[1]][field])
+  }
+  
+  #超过1个数字编号，则使用delim把这些域连起来再返回
+  return(paste(
+    strsplit(x = string, split = delim)[[1]][fields],
+    collapse = delim
+  ))
+}
+# test
+ExtractField('Hello World', field = 1, delim = ' ') #[1] "Hello"
+ExtractField("aa1_bb2_cc3", field = "1,3", delim = '_') #"aa1_cc3"
+
+unlist(lapply(
+  X = colnames(x = iris), #就是cid
+  FUN = ExtractField,
+  field = 1, #names.field,
+  delim = "\\."#names.delim
+))
+# [1] "Sepal"   "Sepal"   "Petal"   "Petal"   "Species"
+
+
+
+(3) 在S4对象创建时在其slot中记录该R包版本号，有助于后续版本升级后的兼容、升级。
+
+> ( version = packageVersion(pkg = 'SeuratObject') )
+[1] ‘4.0.4’
+
+
+(4) 自定义函数，计算 counts 这个Assay对象的 nCount 和 nGene
+# seurat-object-4.0.4/R/assay.R:1140:CalcN <- function(object) {
+
+
+#' Calculate nCount and nFeature
+#'
+#' @param object An \code{\link{Assay}} object
+#'
+#' @return A named list with nCount and nFeature
+#'
+#' @importFrom Matrix colSums
+#'
+#' @keywords internal 内部函数
+#'
+#' @noRd
+#'
+#' @examples
+#' \donttest{
+#' calcn <- SeuratObject:::CalcN(pbmc_small[["RNA"]])
+#' head(as.data.frame(calcn))
+#' }
+#'
+CalcN <- function(object) {
+  if (IsMatrixEmpty(x = GetAssayData(object = object, slot = "counts"))) {
+    return(NULL)
+  }
+  return(list(
+    nCount = Matrix::colSums(x = object, slot = 'counts'), #感觉这一句写的不好。
+	# Matrix::colSums 是不支持slot参数的，这样歧义，而且内部还是要用自定义实现，程序内部多了一步歧义空转
+	# nCount = Matrix::colSums(x = GetAssayData(object = object, slot = 'counts') ), #更好的写法
+	
+    nFeature = Matrix::colSums(x = GetAssayData(object = object, slot = 'counts') > 0)
+  ))
+}
+
+
+#' @rdname AssayData
+#' @export
+#' @method GetAssayData Assay
+#'
+#' @examples
+#' # Get the data directly from an Assay object
+#' GetAssayData(pbmc_small[["RNA"]], slot = "data")[1:5,1:5]
+#'
+GetAssayData.Assay <- function(
+  object,
+  slot = c('data', 'scale.data', 'counts'),
+  ...
+) {
+  CheckDots(...)
+  slot <- slot[1]
+  slot <- match.arg(arg = slot) #对参数 slot 做自动补齐
+  return(slot(object = object, name = slot))
+}
+
+
+
+> getMethod("colSums", signature = "Assay") #
+Method Definition:
+
+function (x, na.rm = FALSE, dims = 1, ...) #泛型的定义
+{
+    .local <- function (x, na.rm = FALSE, dims = 1, ..., slot = "data") #针对Assay类的定义
+    {
+        return(Matrix::colSums(x = GetAssayData(object = x, slot = slot), 
+            na.rm = na.rm, dims = dims, ...))
+    }
+    .local(x, na.rm, dims, ...)
+}
+<bytecode: 0x5654c0d80620>
+<environment: namespace:SeuratObject>
+
+Signatures:
+        x      
+target  "Assay"
+defined "Assay"
+
+
+
+#' @describeIn Assay-methods Calculate \code{\link[base]{colSums}} on an
+#' \code{Assay}
+#'
+#' @return \code{colSums}: The column (cell-wise) sums of \code{slot}
+#'
+#' @importFrom Matrix colSums
+#'
+#' @export
+#'
+setMethod(
+  f = 'colSums',
+  signature = c('x' = 'Assay'),
+  definition = function(x, na.rm = FALSE, dims = 1, ..., slot = 'data') {
+    return(Matrix::colSums(
+      x = GetAssayData(object = x, slot = slot),
+      na.rm = na.rm,
+      dims = dims,
+      ...
+    ))
+  }
+)
+
+
+
+(5) is.atomic() 检测一个变量是否是原子的。
+
+# 简单对象都是原子的
+> is.atomic(c(1,2))
+[1] TRUE
+> is.atomic(1)
+[1] TRUE
+> is.atomic("123")
+[1] TRUE
+> is.atomic(vector())
+[1] TRUE
+
+
+# 复合对象都不是原子的
+> is.atomic(list())
+[1] FALSE
+> is.atomic(iris)
+[1] FALSE
+> is.atomic(pbmc_small)
+[1] FALSE
+
+
+
+
+
+
+
+========================================
+|-- 用于创建 Seurat 对象的 Assay类 及方法
+----------------------------------------
+1. 引入
+CreateSeuratObject.default() 函数中有一句很关键：
+
+  # 创建Assay对象
+  assay.data <- CreateAssayObject(
+    counts = counts,
+    min.cells = min.cells,
+    min.features = min.features,
+    row.names = row.names
+  )
+
+这里输入的是 counts 矩阵，在内部怎么转为 data, scale.data 的呢？
+下面来详细解析。
+
+
+2. 源码及解析
+(1) S4类 Assay 的定义
+seurat-object-4.0.4/R/assay.R:38:  Class = 'Assay',
+
+Assay <- setClass(
+  Class = 'Assay',
+  slots = c(
+    counts = 'AnyMatrix',
+    data = 'AnyMatrix',
+    scale.data = 'matrix',
+    key = 'character',
+    assay.orig = 'OptionalCharacter',
+    var.features = 'vector',
+    meta.features = 'data.frame',
+    misc = 'OptionalList'
+  )
+)
+
+
+(2) CreateAssayObject() 方法
+
+
+
+
+
+
+
+
+3. R tips
+
+(1) 定义联合类 setClassUnion()
+slots第一个参数的类型是 'AnyMatrix'，没见过，查一下定义：
+# AnyMatrix 定义在 seurat-object-4.0.4/R/zzz.R:41
+setClassUnion(name = 'AnyMatrix', members = c("matrix", "dgCMatrix"))
+setClassUnion(name = 'OptionalCharacter', members = c('NULL', 'character'))
+setClassUnion(name = 'OptionalList', members = c('NULL', 'list'))
+
+
+例子: 使用已有的类定义一个新类
+
+setClassUnion(name = 'data.frameOrMatrix', members = c("data.frame","matrix"))
+is(iris, "data.frameOrMatrix") #T
+is(c(1,2,3), "data.frameOrMatrix") #F
+is( as.matrix(iris), "data.frameOrMatrix") #T
+
+is( as.matrix(iris), "data.frame") #F
+
+
+(2) anyDuplicated() 函数，返回重复元素的位置编号
+
+> anyDuplicated(colnames(iris))
+[1] 0
+> anyDuplicated(c(1,2,3,1))
+[1] 4
+
+
+(3) make.unique() 添加后缀强制uniq
+
+> make.unique(c("A", "B", "A", "A"))
+[1] "A"   "B"   "A.1" "A.2"
+> make.unique(c("A", "B", "A", "A"), sep="-")
+[1] "A"   "B"   "A-1" "A-2"
+
+
+
+(4) any() 任何一个为T就返回T
+
+> any(c(1,2,-1) < 0)
+[1] TRUE
+> any(c(1,2,3) < 0)
+[1] FALSE
+
+
+
+(5) 好用的自定义函数 CheckMatrix()，检查矩阵的异常值，只警告，不修改，不返回。
+
+> CheckMatrix
+function (object, checks, ...) 
+{
+    UseMethod(generic = "CheckMatrix", object = object)
+}
+<bytecode: 0x5564de914570>
+<environment: namespace:SeuratObject>
+
+定义的位置
+seurat-object-4.0.4/R/utils.R:51:CheckMatrix <- function(object, checks, ...) {
+
+
+主函数就是检查是否含有异常值，有了就警告，没有返回值。
+CheckMatrix.dMatrix <- function(
+  object,
+  checks = c('infinite', 'logical', 'integer', 'na'),
+  ...
+) {
+  checks <- match.arg(arg = checks, several.ok = TRUE)
+  x <- slot(object = object, name = 'x')
+  for (i in checks) {
+    switch(
+      EXPR = i,
+      'infinite' = if (any(is.infinite(x = x))) { #有无穷大，就警告
+        warning("Input matrix contains infinite values")
+      },
+      'logical' = if (any(is.logical(x = x))) { #有逻辑值，就警告
+        warning("Input matrix contains logical values")
+      },
+      'integer' = if (!all(round(x = x) == x, na.rm = TRUE)) { #有非整数，就警告
+        warning("Input matrix contains non-integer values")
+      },
+      'na' = if (anyNA(x = x)) { #有NA，就警告
+        warning("Input matrix contains NA/NaN values")
+      },
+    )
+  }
+  return(invisible(x = NULL))
+}
+
+
+
+(6) match.arg(arg = checks, several.ok = TRUE) 能自动补齐参数，第二个参数是支持多个参数
+
+# 就是只输入长字符串的开头几个字母，自动补齐其余部分
+fn1=function( checks = c('infinite', 'logical', 'integer', 'na'), flag=T){
+  checks= match.arg(arg = checks, several.ok = flag)
+  print(checks)
+}
+
+# several.ok 默认是F，只支持一个参数匹配
+fn1(c("inf", "n"), F) #'arg' must be of length 1 
+fn1(c("inf", "n"), T) #"infinite" "na"
+
+fn1(c("l")) #"logical"
+# 如果输入有歧义，则无法自动补齐
+fn1(c("in"), T) #Error: 'arg' should be one of “infinite”, “logical”, “integer”, “na” 
+fn1(c("int"), T) #[1] "integer"
+
+> fn1(flag=T) # 空白可以匹配全部参数
+[1] "infinite" "logical"  "integer"  "na"
+
+
+
+(7) anyNA() 有NA就返回T
+> anyNA
+function (x, recursive = FALSE)  .Primitive("anyNA")
+> anyNA(c(1,2,3))
+[1] FALSE
+> anyNA(c(1,2,NA))
+[1] TRUE
+
+
+
+(8) invisible() 在没有左变量时隐藏函数的返回值
+fn2=function(x){
+  return(x)
+}
+
+fn2i=function(x){
+  return(invisible(x))
+}
+
+> rs2=fn2(2)
+> fn2(2) #输出返回值
+[1] 2
+> rs2
+[1] 2
+> #
+> rs2i=fn2i(2)
+> fn2i(2) #不输出返回值
+> rs2i
+[1] 2
+
+
+
+
+
+
+
+(9) grepl 的 fixed=T 时，表示第一个参数是字符串，而不是正则表达式。
+fixed: logical. If TRUE, pattern is a string to be matched as is. Overrides all conflicting arguments.
+
+> grepl(pattern = '|', x = c("a|1","b2", "C33" ), fixed = TRUE)
+[1]  TRUE FALSE FALSE
+
+> grepl(pattern = '|', x = c("a|1","b2", "C33" ), fixed = F) #默认是F
+[1] TRUE TRUE TRUE
+
+
+
+
+
+========================================
+----------------------------------------
+
+
+
+
+
+
+
+
+
+
+========================================
+----------------------------------------
+
+
+
+========================================
+----------------------------------------
+
+
+
+
+========================================
+----------------------------------------
+
+
+
+
+
+========================================
+----------------------------------------
+
+
+
+
+========================================
+----------------------------------------
+
+
+
+========================================
+----------------------------------------
+
+
+
+========================================
+*** 其他单细胞R包 ***
+----------------------------------------
+
+
+
+========================================
+1.sc3包适合<5k cell的数据集
+----------------------------------------
+paper:Nat Methods. 2017 May;14(5):483-486. doi: 10.1038/nmeth.4236. Epub 2017 Mar 27.
+SC3: consensus clustering of single-cell RNA-seq data.
+https://www.ncbi.nlm.nih.gov/pubmed/28346451
+
+
+A tool for unsupervised clustering and analysis of single cell RNA-Seq data.
+该工具有很多聚类工具。
+
+
+
+
+========================================
+scran 包: Using scran to analyze single-cell RNA-seq data
+----------------------------------------
+1.
+The scran package implements methods to perform low-level processing of scRNA-seq data, including 
+- cell cycle phase assignment, 
+- scaling normalization, 
+- variance modelling and testing for corrrelated genes. 
+This vignette provides brief descriptions of these methods and some toy examples to demonstrate their use.
+
+http://bioconductor.org/packages/release/bioc/vignettes/scran/inst/doc/scran.html
+
+
+
+========================================
+Scater 包的使用
+----------------------------------------
+1. paper 
+D.J. McCarthy, K.R. Campbell, A.T.L. Lun, Q.F. Wills
+Scater: pre-processing, quality control, normalization and visualization of single-cell RNA-seq data in R
+Bioinformatics (2017), Article btw777
+
+(2) 用的paper
+
+
+J Allergy Clin Immunol. 2021 Jun;147(6):2370-2380. doi: 10.1016/j.jaci.2020.11.028. Epub 2020 Dec 9.
+Single-cell RNA sequencing of psoriatic skin identifies pathogenic Tc17 cell subsets and reveals distinctions between CD8 + T cells in autoimmunity and cancer
+https://pubmed.ncbi.nlm.nih.gov/33309739/
+
+
+
+
+
+
+2.
+Scater需要利用SingleCellExperiment这个对象
+
+## 创建 scater 要求的对象
+sce <- SingleCellExperiment(
+  assays = list(counts = as.matrix(counts)), 
+  colData = meta
+)
+
+
+
+
+
+ref:https://www.jianshu.com/p/869590243d64
+
+
+
+
+========================================
+整合数据 integration
+----------------------------------------
+1. 文章
+
+T. Stuart, A. Butler, P. Hoffman, C. Hafemeister, E. Papalexi, W.M. Mauck, et al.
+Comprehensive integration of single-cell data
+Cell, 177 (2019), pp. 1888-1902.e21
+
+
+
+
+========================================
+----------------------------------------
+
+
+
+
+========================================
+----------------------------------------
+

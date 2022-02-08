@@ -27,7 +27,7 @@ return array (
     1 => 'scRNAseq包',
     2 => array (
       array('Seurat包','Seurat','txt'),
-      array('sc3包等','sc3','txt'),
+      array('Seurat源码阅读','Seurat_source','txt'),
       array('cell_marker','cell_marker','txt'),
     ),
   ),

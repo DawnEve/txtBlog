@@ -1802,8 +1802,9 @@ http://www.bioconductor.org/packages/release/bioc/vignettes/Gviz/inst/doc/Gviz.h
 http://www.sthda.com/english/wiki/gviz-visualize-genomic-data
 https://www.jianshu.com/p/73cbebaefee4
 
-
-
+(2)微信公众号 聊生信 2021-11-03 09:01 346个基因组可视化工具一网打尽！
+GitHub来源：https://github.com/cmdcolin/awesome-genome-visualization
+配套网页：https://cmdcolin.github.io/awesome-genome-visualization/?latest=true
 
 
 
@@ -1973,6 +1974,157 @@ getKeyword("/home/wangjl/igv/GRB10/c01ROW31_GRB10.bam", "_GRB10.bam") #"c01ROW31
 
 
 
+
+
+
+
+
+========================================
+|-- ArchR 单细胞 ATAC-seq 峰图
+----------------------------------------
+1. 
+ArchR https://www.archrproject.com/articles/Articles/tutorial.html
+Publication: (doi link) (2021) (# citations 85) https://www.nature.com/articles/s41588-021-00790-6
+Language: R
+Tags: Single cell
+Github: https://github.com/GreenleafLab/ArchR
+Github Stargazers: 192 (2022.1.27)
+
+https://github.com/GreenleafLab/ArchR
+https://www.archrproject.com/
+https://www.archrproject.com/articles/Articles/tutorial.html
+
+
+(1) 示例图
+https://cmdcolin.github.io/awesome-genome-visualization/archr.png
+
+
+
+(2) 官方代码: Visualizing Genome Browser Tracks
+https://www.archrproject.com/bookdown/index.html
+
+In addition to plotting gene scores per cell as a UMAP overlay, we can browse the local chromatin accessibility at these marker genes on a per cluster basis with genome browser tracks. 
+
+
+# To do this, we use the plotBrowserTrack() function which will create a list of plots, one for each of the genes specified by markerGenes.
+p <- plotBrowserTrack(
+    ArchRProj = proj, 
+    groupBy = "Clusters", 
+    geneSymbol = markerGenes, 
+    upstream = 50000,
+    downstream = 50000
+)
+# 函数定义 https://github.com/GreenleafLab/ArchR/blob/master/R/ArchRBrowser.R
+到底基于哪个包绘制峰图的呢？
+
+
+
+# To plot a track of a specific gene, we can simply select one from the list.
+grid::grid.newpage()
+grid::grid.draw(p$CD14)
+
+
+# We can save a multi-page PDF with a single page for each gene locus in our plot list using the plotPDF() function.
+plotPDF(plotList = p, 
+    name = "Plot-Tracks-Marker-Genes.pdf", 
+    ArchRProj = proj, 
+    addDOC = FALSE, width = 5, height = 5)
+
+
+
+(3) 追踪代码
+1) https://github.com/GreenleafLab/ArchR/blob/master/R/ArchRBrowser.R
+
+p <- .bulkTracks(
+                ArchRProj = ArchRProj, 
+                region = region, 
+                tileSize = tileSize, 
+                useGroups = useGroups,
+                groupBy = groupBy,
+                threads = threads, 
+                minCells = minCells,
+                ylim = ylim,
+                baseSize = baseSize,
+                borderWidth = borderWidth,
+                tickWidth = tickWidth,
+                facetbaseSize = facetbaseSize,
+                normMethod = normMethod,
+                geneAnnotation = geneAnnotation,
+                title = "",
+                pal = pal, 
+                tstart = NULL,
+                logFile = logFile
+              ) + theme(plot.margin = unit(c(0.35, 0.75, 0.35, 0.75), "cm"))
+
+克隆到本地再查找，好吧，还是在本文件定义的：
+	- 一般 点号 开头的变量或函数都是内部使用的，对外不暴露。
+$ find . | xargs grep "bulkTracks" 2>/dev/null 
+./R/ArchRBrowser.R:            p <- .bulkTracks(
+./R/ArchRBrowser.R:            p <- .bulkTracks(
+./R/ArchRBrowser.R:      plotList$bulktrack <- .bulkTracks(
+./R/ArchRBrowser.R:.bulkTracks <- function(
+./R/ArchRBrowser.R:  .logThis(split(df, df[,3]), ".bulkTracks df", logFile = logFile)
+
+
+.bulkTracks <- function(){}中真正画图的函数竟然是 ggplot2
+
+p <- ggplot(df, aes_string("x","y", color = "group", fill = "group")) + 
+    geom_area(stat = "identity") + 
+    facet_wrap(facets = ~group, strip.position = 'right', ncol = 1) +
+    ylab(sprintf("Coverage\n(Norm. ATAC Signal Range (%s-%s) by %s)", round(min(ylim),2), round(max(ylim),2), normMethod)) +
+    scale_color_manual(values = pal) +
+    scale_fill_manual(values = pal) +
+    scale_x_continuous(limits = c(start(region), end(region)), expand = c(0,0)) +
+    scale_y_continuous(limits = ylim, expand = c(0,0)) +
+
+往上看这个df怎么定义的
+
+df <- .groupRegionSumArrows( #line 980
+    ArchRProj = ArchRProj, 
+    groupBy = groupBy, 
+    normMethod = normMethod,
+    useGroups = useGroups,
+    minCells = minCells,
+    region = region, 
+    tileSize = tileSize, 
+    threads = threads,
+    verbose = verbose,
+    logFile = logFile
+  )
+
+继续查这个函数，也在同一个文件内
+	- 作者定义了一个新的文件格式 arrow: 
+# Create Average Tracks from Arrows
+.groupRegionSumArrows <- function(
+  ArchRProj = NULL,
+  useGroups = NULL,
+  groupBy = NULL,
+  region = NULL,
+  tileSize = NULL,
+  normMethod = NULL,
+  verbose = FALSE,
+  minCells = 25,
+  maxCells = 500,
+  threads = NULL,
+  logFile = NULL
+  )
+
+看不懂了，暂停。
+
+
+
+
+(4) 辅助函数是干啥的？
+看名字是记录日志的，看看怎么写的，怎么用的。
+
+
+.logError(e, fn = ".groupRegionSumArrows", info = .sampleName(ArrowFiles[i]), errorList = errorList, logFile = logFile)
+
+
+$ find . | xargs grep "logError <- function" 2>/dev/null 
+./R/LoggerUtils.R:.logError <- function(
+
+https://github.com/GreenleafLab/ArchR/blob/master/R/LoggerUtils.R
 
 
 
