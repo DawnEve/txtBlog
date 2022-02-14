@@ -20,7 +20,7 @@ Seurat 4 源码解析 3：Seurat 对象的方法是怎么定义的？
 
 
 ========================================
-|-- 掉包第一步 Read10X()
+|-- step1: Read10X()
 ----------------------------------------
 标题: Seurat 4 源码解析 4: step1 读入10x数据到内存 Read10X(data.dir=) https://zhuanlan.zhihu.com/p/464317172
 
@@ -128,7 +128,7 @@ testit() #立刻打印warning，然后继续执行其余函数体
 
 
 ========================================
-|-- 掉包第2步 创建 Seurat 对象 CreateSeuratObject()
+|-- step2: 创建 Seurat 对象 CreateSeuratObject()
 ----------------------------------------
 Seurat 4 源码解析 5: step2 创建 Seurat 对象 CreateSeuratObject() https://zhuanlan.zhihu.com/p/464577819
 
@@ -459,7 +459,7 @@ setMethod(
 
 
 ========================================
-|-- 用于创建 Seurat 对象的 Assay类 及方法
+|-- step2: (2) 用于创建 Seurat 对象的 Assay类 及方法
 ----------------------------------------
 1. 引入
 CreateSeuratObject.default() 函数中有一句很关键：
@@ -666,9 +666,1082 @@ fixed: logical. If TRUE, pattern is a string to be matched as is. Overrides all 
 
 
 ========================================
+|-- step3: step3 add meta.data(percent.mt, percent.rp, cell cycle score)
 ----------------------------------------
+1. 掉包侠
+
+# step3 add meta.data
+# The [[ operator can add columns to object metadata. This is a great place to stash QC stats
+pbmc[["percent.mt"]] <- PercentageFeatureSet(pbmc, pattern = "^MT-")
+pbmc[["percent.rp"]] <- PercentageFeatureSet(pbmc, pattern = "^RP[SL]")
+
+# cell cycle
+pbmc <- CellCycleScoring(pbmc,
+                         s.features = cc.genes$s.genes,
+                         g2m.features = cc.genes$g2m.genes)
+
+本文主要看函数 PercentageFeatureSet 的实现。
+后面有空再研究 CellCycleScoring 函数。
+
+要点：
+PercentageFeatureSet 函数是根据counts总数相除算的打分：该基因集的counts总和/所有基因的counts总和。
+
+核心语句：
+  percent.featureset <- colSums(x = GetAssayData(object = object, assay = assay, slot = "counts")[features, , drop = FALSE])/
+    object[[paste0("nCount_", assay)]] * 100
+
+# 基因集占的百分比 = 分子 / 分母 * 100；
+# 分子： GetAssayData 获取 counts矩阵，按列(cell)求 指定基因的 counts种和
+# 分母： 从 meta.data 获取 nCount_RNA 列，就是每个cell中所有基因的 counts总和
 
 
+
+
+
+2. 源码与解析
+(1) 函数定位 
+seurat-4.1.0/R/utilities.R:1153:PercentageFeatureSet <- function(
+
+
+(2) 
+
+
+
+
+
+3. R tips 
+
+(1) `%||%` 设置默认值：如果第一个参数为空，就返回第二个值 
+这是 rlang 包中的函数
+> `%||%`
+function (x, y) 
+{
+    if (is_null(x)) 
+        y
+    else x
+}
+<bytecode: 0x55c79f873e60>
+<environment: namespace:rlang>
+
+
+
+
+
+(2) 检查传入的参数是有命名参数
+
+fn1=function(...){
+  args.names=names(x = list(...))
+  print(args.names)
+  
+  if (is.null(x = args.names)) {
+    stop("No named arguments passed")
+  }
+}
+
+fn1(c(1,2,100), a=1, b=2) 
+# [1] ""  "a" "b"
+
+fn1( c(1,2,100) ) #没有命名的参数就返回T，至少有一个是命名的参数
+fn1() #如果都不传入呢？也报错 #在 CheckDots()中不可能，因为前面还有一个参数长度判断
+# NULL
+# Error:  No named arguments passed
+
+fn1( x=1) 
+#[1] "x"
+
+
+
+(3) 对list循环，获取的是里面的值
+
+a1=list(a=1, b=20, c=33)
+for(i in a1){
+  print(i)
+}
+#[1] 1
+#[1] 20
+#[1] 33
+
+
+# 如果想获取键呢？
+ks=names(a1)
+for(i in 1:length(ks)){
+  k1=ks[i]
+  v1=a1[[k1]]
+  cat(i, k1, v1,  '\n')
+}
+# 1 a 1 
+# 2 b 20 
+# 3 c 33
+
+
+
+
+
+(4) sapply (lapply 的简化版) 第一个参数可以是函数或函数名
+
+# 我们第一个参数一般传入list格式的数据
+sapply( split(iris[,1:4], iris[,5]), function(x){
+  nrow(x)
+})
+# setosa versicolor  virginica 
+#        50         50         50
+
+# 现在传入list格式的函数
+df1=sapply( list(mean, sum, "max", "min"), function(fn){
+  apply(iris[,1:4], 2, fn)
+})
+df1
+#                 [,1]  [,2] [,3] [,4]
+#Sepal.Length 5.843333 876.5  7.9  4.3
+#Sepal.Width  3.057333 458.6  4.4  2.0
+#Petal.Length 3.758000 563.7  6.9  1.0
+#Petal.Width  1.199333 179.9  2.5  0.1
+
+
+
+
+
+(5) 错误处理函数tryCatch()，保证出错了也不退出，而是继续执行后面的代码
+
+# iris总共4列，我们尝试取第10列，不存在的列
+arr1=c(1,10,2,3) 
+for(i in arr1){
+  len=length(iris[,i])
+  cat(i, len, "\n")
+}
+#1 150 
+#Error in `[.data.frame`(iris, , i) : undefined columns selected
+
+
+# 怎么出错后继续执行其余部分呢？使用错误处理语句 tryCatch。
+for(i in arr1){
+  tryCatch(
+    expr={
+      len=length(iris[,i])
+      cat(i, len, "\n")
+    },
+    error=function(e){
+      print(e)
+    }
+  )
+}
+#1 150 
+#<simpleError in `[.data.frame`(iris, , i): undefined columns selected>
+#2 150 
+#3 150 
+
+
+
+
+
+(6) 是否是 S3 泛型函数
+
+# 定义在 <environment: namespace:utils>
+> isS3stdGeneric(show)
+[1] FALSE
+> isS3stdGeneric(print)
+print 
+ TRUE 
+> isS3stdGeneric("print")
+print 
+ TRUE 
+
+
+
+(7) 获取函数的参数列表
+> argsAnywhere
+function (x) 
+{
+    if (tryCatch(!is.character(x), error = function(e) TRUE)) 
+        x <- as.character(substitute(x))
+    fs <- getAnywhere(x)
+    if (sum(!fs$dups) == 0L) 
+        return(NULL)
+    if (sum(!fs$dups) > 1L) 
+        sapply(fs$objs[!fs$dups], function(f) if (is.function(f)) 
+            args(f))
+    else args(fs$objs[[1L]])
+}
+<bytecode: 0x55cea99b7d20>
+<environment: namespace:utils>
+
+
+
+> argsAnywhere("print.data.frame") #能导出内部函数
+function (x, ..., digits = NULL, quote = FALSE, right = TRUE, 
+    row.names = TRUE, max = NULL) 
+NULL
+
+> args("print.data.frame")
+function (x, ..., digits = NULL, quote = FALSE, right = TRUE, 
+    row.names = TRUE, max = NULL) 
+NULL
+
+
+> Seurat::CheckDots
+Error: 'CheckDots' is not an exported object from 'namespace:Seurat'
+
+> args(CheckDots) #只能找到暴露出来的函数
+Error in args(CheckDots) : object 'CheckDots' not found
+
+> argsAnywhere(CheckDots) #能获得任何地方的定义，只要能找到，不局限在暴露的函数
+[[1]]
+function (..., fxns = NULL) 
+NULL
+
+[[2]]
+function (..., fxns = NULL) 
+NULL
+
+
+
+
+
+
+
+(8) 获取R的环境变量，如果没有，就使用默认值。
+getOption(x = "Seurat.checkdots", default = 'warn')
+
+> options() #获取所有环境变量
+
+
+#获取小数点显示位数，默认7位
+> getOption("digits") 
+[1] 7
+> 1/7
+[1] 0.1428571
+
+
+# 改为10位
+> options(digits=10)
+> 1/7
+[1] 0.1428571429
+
+
+
+(9) sapply() 设置参数 simplify=F 和 USE.NAMES = T 返回一个named list。
+
+# 创建S4类 Person
+setClass("Person", 
+         slots=c(name="character", age="numeric"))
+# 实例化
+p1=new("Person", name="Tim", age=20)
+p1
+
+
+# 测试输出其每个slot的值
+sapply(
+  X=slotNames(p1),
+  FUN=function(x){
+    slot(p1, name=x)
+  }
+)
+# name   age 
+# "Tim"  "20" 
+
+sapply(
+  X=slotNames(p1),
+  FUN=function(x){
+    slot(p1, name=x)
+  },
+  simplify = F #不使用简单输出，则输出list
+  # 默认是输出名字的 USE.NAMES = T
+)
+# $name
+#[1] "Tim"
+
+#$age
+#[1] 20
+
+
+
+# 不使用简单输出，且不输出名字，结果和 lapply 的输出一样
+# [[1]]
+#[1] "Tim"
+
+#[[2]]
+#[1] 20
+
+
+# 返回list的好方法
+sapply(X=colnames(iris[,1:4]),
+       function(x){
+         mean( iris[,x] )
+       }, 
+       simplify = F)
+输出：
+$Sepal.Length
+[1] 5.843333
+
+$Sepal.Width
+[1] 3.057333
+
+$Petal.Length
+[1] 3.758
+
+$Petal.Width
+[1] 1.199333
+
+
+
+(10) grep(..., value=T) 直接返回匹配的元素，而不是下标编号
+这一点前面说过，这里再强调一遍，实在是太有用了。
+# grep(pattern = "^HLA", x = rownames(x = pbmc_small[["RNA"]]), value = TRUE)
+
+
+# 我以前匹配基因的方法很繁琐
+grep("^HLA", x = rownames(pbmc_small) )
+# [1]   4   6   8 119 122 124 125 127 128 132
+rownames(pbmc_small)[ grep("^HLA", x = rownames(pbmc_small) ) ]
+# [1] "HLA-DRA"  "HLA-DQB1" "HLA-DMB"  "HLA-DPA1" "HLA-DMA"  "HLA-DPB1" "HLA-DQA1" "HLA-DRB5" "HLA-DRB1" "HLA-DQA2"
+
+
+# 现在发现，只要多设置一个参数即可
+grep("^HLA", x = rownames(pbmc_small), value=T ) #结果同上
+# [1] "HLA-DRA"  "HLA-DQB1" "HLA-DMB"  "HLA-DPA1" "HLA-DMA"  "HLA-DPB1" "HLA-DQA1" "HLA-DRB5" "HLA-DRB1" "HLA-DQA2"
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+========================================
+|-- Seurat 4 源码解析 8: step4 QC可视化 VlnPlot()
+----------------------------------------
+源码解析章节在 bookdown 书中: https://github.com/DawnEve/R_best_practice
+
+1. 调包侠
+# step4 QC
+# Visualize QC metrics as a violin plot
+VlnPlot(pbmc, features = c("nFeature_RNA", "nCount_RNA", "percent.mt", "percent.rp"), ncol = 4, pt.size=0)
+
+# FeatureScatter is typically used to visualize feature-feature relationships, but can be used
+# for anything calculated by the object, i.e. columns in object metadata, PC scores etc.
+plot1 <- FeatureScatter(pbmc, feature1 = "nCount_RNA", feature2 = "percent.mt")
+plot2 <- FeatureScatter(pbmc, feature1 = "nCount_RNA", feature2 = "nFeature_RNA")
+plot1 + plot2
+
+# filter
+pbmc <- subset(pbmc, subset = nFeature_RNA > 200 & nFeature_RNA < 2500 & percent.mt < 5)
+
+
+
+掉包侠小技巧
+
+
+(1) 如何获取 meta.data 某一列，并把其name设置为cell id?
+
+> w1=pbmc_small@meta.data$groups
+> names(w1)=colnames(pbmc_small)
+> head(w1)
+ATGCCAGAACGACT CATGGCCTGTGCAT GAACCTGATGAACC TGACTGGATTCTCA AGTCAGACTGCACA TCTGATACACGTGT 
+          "g2"           "g1"           "g2"           "g2"           "g2"           "g1" 
+
+使用函数"[["后只需要一行，且免去了中间变量：
+> head( pbmc_small[["groups", drop=T]] )
+ATGCCAGAACGACT CATGGCCTGTGCAT GAACCTGATGAACC TGACTGGATTCTCA AGTCAGACTGCACA TCTGATACACGTGT 
+          "g2"           "g1"           "g2"           "g2"           "g2"           "g1" 
+
+
+函数定义：以后再讲。
+$ find .  | grep "R$" | xargs grep -n "\[\[\.Seurat" --color=auto
+./seurat-object-4.0.4/R/seurat.R:2123:"[[.Seurat" <- function(x, i, ..., drop = FALSE) {
+
+
+
+
+
+
+
+
+2. 源码与解析
+VlnPlot
+# seurat-4.1.0/R/visualization.R:575:VlnPlot <- function(
+
+
+
+
+
+
+3. R tips 
+
+(1) 函数参数改变了，本session就提醒用户一次，如何控制显示次数？使用环境变量
+
+fn1= function(x, split.by=NULL){
+  if (
+    !is.null(x = split.by) &
+    getOption(x = 'Seurat.warn.vlnplot.split2', default = TRUE)
+  ) {
+    message(
+      "可以设置多行提醒，结尾加换行符；本次session只提醒这一次\n",
+      "The default behaviour of split.by has changed.\n",
+      "Separate violin plots are now plotted side-by-side.\n",
+      "To restore the old behaviour of a single split violin,\n",
+      "set split.plot = TRUE.
+      \nThis message will be shown once per session."
+    )
+    # 设置全局变量，下次使用不会提醒；重启 R session 会再次提醒。
+    options(Seurat.warn.vlnplot.split2 = FALSE)
+  }
+  return(x)
+}
+
+
+# 假设 该包中 split.by 参数的意义在新版本中调整了，用户不用该参数就不提醒；
+# 用户用了该参数就要红字提醒！但是频率又不能太高，重启前就提醒一次。
+> fn1(1) 
+[1] 1
+
+> fn1(1, split.by=T)
+可以设置多行提醒，结尾加换行符；本次session只提醒这一次
+The default behaviour of split.by has changed.
+Separate violin plots are now plotted side-by-side.
+To restore the old behaviour of a single split violin,
+set split.plot = TRUE.
+      
+This message will be shown once per session.
+[1] 1
+
+> fn1(1, split.by=T)
+[1] 1
+
+
+
+
+(2) base::isTRUE() 判断是否是逻辑值 TRUE？
+
+> isTRUE
+function (x) 
+is.logical(x) && length(x) == 1L && !is.na(x) && x
+<bytecode: 0x55b7d295d998>
+<environment: namespace:base>
+
+看这里做了很多判断: 是逻辑值，且长度是1，且不能是NA，然后再看本身的真假。
+
+> isTRUE(2)
+[1] FALSE
+> isTRUE("TRUE")
+[1] FALSE
+> isTRUE(T)
+[1] TRUE
+
+
+
+(3) 如何合理设置图形列数？
+
+library(rlang)
+fn1=function(features, ncol=NULL){
+  # 如果 ncol 为空，则设置默认值：基因数>9则选4，否则为 基因数和3中的最小值。
+  ncol <- ncol %||% ifelse(
+    test = length(x = features) > 9,
+    yes = 4,
+    no = min(length(x = features), 3)
+  )
+  return(ncol)
+}
+
+
+> fn1(1:10)
+[1] 4
+> fn1(1:5)
+[1] 3
+> fn1(c(1,2))
+[1] 2
+
+
+
+(4) 如何自动获取n个差异尽可能大的颜色？scales::hue_pal()( 5 )
+
+Seurat 4的 VlnPlot 函数使用的方法是: cols <- hue_pal()(length(x = levels(x = idents)))
+
+> scales::hue_pal()( 5 )
+[1] "#F8766D" "#A3A500" "#00BF7D" "#00B0F6" "#E76BF3"
+
+# 直接可视化
+# n=4; barplot(rep(1,n), col=scales::hue_pal()( n ), axes=F, border = NA)
+
+
+
+(5) 把数字转为16进制 as.hexmode(11)
+
+> as.hexmode(11)
+[1] "b"
+
+> as.hexmode(15:0)
+ [1] "f" "e" "d" "c" "b" "a" "9" "8" "7" "6" "5" "4" "3" "2" "1" "0"
+
+
+
+(6) vapply()，类似sapply，优点是参数FUN.VALUE可检查返回值的数据类型
+
+hexadecimal=c("#FF0000", "#FFFF00")
+vapply(
+  X = toupper(x = hexadecimal), #先变大写字母
+  
+  FUN = function(hex) {
+    hex=substring(hex,2)
+    hex=rev(strsplit(hex, split="")[[1]] )
+    hex=paste(hex, collapse = "")
+    return( paste0("#", hex) ) 
+  },
+  FUN.VALUE = character(length = 1L), #返回值是字符串，长度为1
+  USE.NAMES =FALSE #不使用名字
+)
+# [1] "#0000FF" "#00FFFF"
+
+
+
+
+
+
+(7)  InvertHex() 输入16进制颜色，输出互补色
+
+# 取相反的颜色，就是16进制颜色(去掉#后的前6位)的每一位都是 16-x
+cols <- scales::hue_pal()(4); cols
+# [1] "#F8766D" "#7CAE00" "#00BFC4" "#C77CFF"
+cols2=Seurat:::InvertHex(hexadecimal = cols); cols2
+# [1] "#078992" "#8351FF" "#FF403B" "#388300"
+
+barplot(rep(1,8), col=c(cols, cols2),
+        axes=F, border = NA)
+
+
+Seurat:::InvertHex(hexadecimal = c("#FF0000"))
+# [1] "#00FFFF"
+
+
+
+源码也值得研究：
+seurat-4.1.0/R/visualization.R:6274:InvertHex <- function(hexadecimal) {
+
+# Invert a Hexadecimal color
+#
+# @param hexadecimal A character vector of hexadecimal colors
+#
+# @return Hexadecimal representations of the inverted color
+#
+# @author Matt Lagrandeur
+# @references \url{http://www.mattlag.com/scripting/hexcolorinverter.php}
+#
+InvertHex <- function(hexadecimal) {
+  return(vapply(
+    X = toupper(x = hexadecimal), #先变大写字母
+	
+    FUN = function(hex) { #对每个16进制颜色进行循环
+	
+	  ###########
+      # 输入16进制颜色字符串的合法性检查
+      hex <- unlist(x = strsplit(
+        x = gsub(pattern = '#', replacement = '', x = hex), #先去掉#符号
+        split = '' #再用空字符分割
+      )) 
+	  # 获得16进制的每个字符 [1] "F" "8" "7" "6" "6" "D"
+	  
+	  # 把15:0转为16进制，大写，相当于造了个字库
+      key <- toupper(x = as.hexmode(x = 15:0)) #[1] "F" "E" "D" "C" "B" "A" "9" "8" "7" "6" "5" "4" "3" "2" "1" "0"
+	  
+	  # 如果不是所有 输入字符都在 0-f之间，则报错退出
+      if (!all(hex %in% key)) {
+        stop('All hexadecimal colors must be valid hexidecimal numbers from 0-9 and A-F')
+      }
+	  
+	  # 如果长度为8，则最后2位为 alpha
+      if (length(x = hex) == 8) {
+        alpha <- hex[7:8]
+        hex <- hex[1:6] #颜色是前6位
+	  # 如果长度是6，则alpha为NULL
+      } else if (length(x = hex) == 6) {
+        alpha <- NULL
+	  # 其他情况，报错退出
+      } else {
+        stop("All hexidecimal colors must be either 6 or 8 characters in length, excluding the '#'")
+      }
+	  
+	  # 首尾颠倒 key 这个字库
+      value <- rev(x = key)
+	  
+      inv.hex <- vapply(
+        X = hex, # 对于颜色的每一位进行循环
+		
+        FUN = function(x) {
+          return(value[grep(pattern = x, x = key)]) #返回的是每位的下标，对应的字典逆序
+        },
+        FUN.VALUE = character(length = 1L)
+      )
+	  
+	  # 连起来，前面加上#号
+      inv.hex <- paste(inv.hex, collapse = '')
+      return(paste0('#', inv.hex, paste(alpha, collapse = '')))
+    },
+    FUN.VALUE = character(length = 1L), #返回值是字符串
+    USE.NAMES = FALSE #不使用名字
+  ))
+}
+
+
+
+
+(8) Interleave() 把几个向量交错排列成一个向量
+interleave [ˌɪntəˈliːv] v. 交错；插空白页于；插叙
+
+源码位置
+seurat-4.1.0/R/utilities.R:1954:Interleave <- function(...) {
+
+# Interleave vectors together
+#
+# @param ... Vectors to be interleaved
+#
+# @return A vector with the values from each vector in ... interleaved
+#
+Interleave <- function(...) {
+  return(as.vector(x = t(x = as.data.frame(x = list(...)))))
+}
+
+
+# 测试效果
+> Interleave(c(1,2,3), c(10,20,30))
+[1]  1 10  2 20  3 30
+> Interleave(c(1,2,3), c(10,20,30), c(100,200,300))
+[1]   1  10 100   2  20 200   3  30 300
+
+
+解析：主要是4步
+step1: 
+> list(c(1,2,3), c(10,20,30), c(100,200,300))
+[[1]]
+[1] 1 2 3
+
+[[2]]
+[1] 10 20 30
+
+[[3]]
+[1] 100 200 300
+
+
+step2:
+> as.data.frame( list(c(1,2,3), c(10,20,30), c(100,200,300)) )
+  c.1..2..3. c.10..20..30. c.100..200..300.
+1          1            10              100
+2          2            20              200
+3          3            30              300
+
+第三步：
+> t( as.data.frame( list(c(1,2,3), c(10,20,30), c(100,200,300)) ) )
+                 [,1] [,2] [,3]
+c.1..2..3.          1    2    3
+c.10..20..30.      10   20   30
+c.100..200..300.  100  200  300
+
+> as.vector( t( as.data.frame( list(c(1,2,3), c(10,20,30), c(100,200,300)) ) ) )
+[1]   1  10 100   2  20 200   3  30 300
+
+
+
+总结：就是说把 matrix 转为 vector的时候，是按照列向量展开的：
+
+> as.vector(iris[1:2, 1:4])
+  Sepal.Length Sepal.Width Petal.Length Petal.Width
+1          5.1         3.5          1.4         0.2
+2          4.9         3.0          1.4         0.2
+
+# 按列展开成一个向量
+> as.vector( as.matrix(iris[1:2, 1:4]) )
+[1] 5.1 4.9 3.5 3.0 1.4 1.4 0.2 0.2
+
+
+# 想按行展开，就先转置，再按列展开
+> as.vector( t(as.matrix(iris[1:2, 1:4]) ) )
+[1] 5.1 3.5 1.4 0.2 4.9 3.0 1.4 0.2
+
+
+
+
+(9) interaction() 计算因子之间的交互作用
+
+> a <- gl(2, 4, 8);a
+[1] 1 1 1 1 2 2 2 2
+Levels: 1 2
+> b <- gl(2, 2, 8, labels = c("ctrl", "treat"));b
+[1] ctrl  ctrl  treat treat ctrl  ctrl  treat treat
+Levels: ctrl treat
+> interaction(a, b)
+[1] 1.ctrl  1.ctrl  1.treat 1.treat 2.ctrl  2.ctrl  2.treat 2.treat
+Levels: 1.ctrl 2.ctrl 1.treat 2.treat
+
+
+
+(10) 16机制字符串转为10进制数字 strtoi("10", base=16)
+> strtoi("10", base=16)
+[1] 16
+> strtoi("FF", base=16)
+[1] 255
+
+
+
+
+(11) Col2Hex() 把R颜色转为 16进制
+
+> Seurat:::Col2Hex(c("red", "#FF00FF"))
+[1] "#FF0000FF" "#FF00FFFF"
+
+原函数
+/seurat-4.1.0/R/visualization.R:5498:Col2Hex <- function(...) {
+
+
+# Convert R colors to hexadecimal
+#
+# @param ... R colors
+#
+# @return The hexadecimal representations of input colors
+#
+#' @importFrom grDevices rgb col2rgb
+#
+Col2Hex <- function(...) {
+  colors <- as.character(x = c(...)) #转为字符串
+  alpha <- rep.int(x = 255, times = length(x = colors)) #alpha默认是255，都不透明
+  
+  # 如果颜色里 以#开头的元素 总个数不等于0，那就是>0
+  if (sum(sapply(X = colors, FUN = grepl, pattern = '^#')) != 0) {
+    # 获取#开头的元素
+    hex <- colors[which(x = grepl(pattern = '^#', x = colors))]
+    hex.length <- sapply(X = hex, FUN = nchar) #看每个多长
+	
+	#如果有9位的
+    if (9 %in% hex.length) {
+      hex.alpha <- hex[which(x = hex.length == 9)] #获取9位长度的颜色
+      hex.vals <- sapply(X = hex.alpha, FUN = substr, start = 8, stop = 9) #获取第8和9位
+      dec.vals <- sapply(X = hex.vals, FUN = strtoi, base = 16) #把alpha值从16进制转为10进制
+      alpha[match(x = hex[which(x = hex.length == 9)], table = colors)] <- dec.vals #更新alpha数组
+    }
+  }
+  
+  # 颜色字符串，转为rgb一列3行的matrix，转置后是一行3列rgb值。
+  colors <- t(x = col2rgb(col = colors))
+  
+  # 多参数 apply: 
+  colors <- mapply(
+    FUN = function(i, alpha) {
+      return(rgb(colors[i, , drop = FALSE], #不能丢掉df结构，否则rgb()报错: incorrect number of dimensions
+			alpha = alpha, maxColorValue = 255))
+    },
+    i = 1:nrow(x = colors),
+    alpha = alpha
+  )
+  return(colors)
+}
+
+
+
+(12) rep_len(x, length.out) 把向量 x 重复，最终输出长度为 length.out
+
+> rep_len(c("Xx", "Yy"), length.out =4)
+[1] "Xx" "Yy" "Xx" "Yy"
+
+
+
+
+
+(13) 如果没有安装某个包，则报错退出。
+SingleExIPlot() 中提到的 PackageCheck():
+
+if (!PackageCheck('ggrastr', error = FALSE)) {
+  stop("Please install ggrastr from CRAN to enable rasterization.")
+}
+
+
+> PackageCheck
+function (..., error = TRUE) 
+{
+	# 解开为pkg名字
+    pkgs <- unlist(x = c(...), use.names = FALSE)
+	
+	# 检测是否安装了
+    package.installed <- vapply(
+		X = pkgs, #对每个包循环
+		FUN = requireNamespace, 
+        FUN.VALUE = logical(length = 1L), 
+		quietly = TRUE)
+	
+	# 如果让提示 error，且 至少一个包 没安装
+    if (error && any(!package.installed)) {
+		# 报错
+        stop("Cannot find the following packages: ", 
+			paste(pkgs[!package.installed], collapse = ", "), 
+			". Please install")
+    }
+	
+	# 沉默返回 已安装的包
+    invisible(x = package.installed)
+}
+<bytecode: 0x55f2bb3e9700>
+<environment: namespace:SeuratObject>
+
+
+
+
+核心句子：
+> package.installed <- vapply(
+     X = c("ggplot2", "GEB", "AAA"), #对每个包循环
+     FUN = requireNamespace, 
+     FUN.VALUE = logical(length = 1L), 
+     quietly = T)
+
+> package.installed
+ggplot2     GEB     AAA 
+   TRUE    TRUE   FALSE 
+
+> any(!package.installed)
+[1] TRUE
+
+
+
+
+
+
+(14) 任务: 对鸢尾花的分类列转为因子，因子的顺序时按照第2列的最大值排序，支持升序降序。
+
+
+fn1=function(feature=2, fun="mean", sort="de"){ #ASC/DESC 才是排序的标准词汇
+  data=iris;
+  data$ident=iris$Species
+  #
+  data$ident <- factor(
+    x = data$ident,
+    
+    # 原函数这里用rev又逆转一次
+    levels = names(x = (x = sort( # 按均值排序
+      
+      # 按照 ident 对 feature列分割，取每组平均值
+      x = tapply(
+        X = data[, feature],
+        INDEX = data$ident,
+        FUN = fun
+      ),
+      
+      # 小写后的sort能匹配到"decreasing"则降序
+      decreasing = grepl(pattern = paste0('^', tolower(x = sort)), x = 'decreasing')
+      
+    )))
+  )
+ return(data)  
+}
+
+
+# 算出来第2列每类的最大值
+sapply( split(iris[,2], iris[,5]), function(x){
+  max(x)
+})
+# setosa versicolor  virginica 
+#    4.4        3.4        3.8 
+
+
+# 按照第二列的最大值排序
+rs1=fn1(2, "max", "de")#降序
+#str(rs1)
+levels(rs1$ident) 
+# [1] "setosa"     "virginica"  "versicolor"
+
+
+rs1=fn1(2, "max", "asc")#升序
+levels(rs1$ident)
+# [1] "versicolor" "virginica"  "setosa"    
+
+
+
+(15) 去掉无穷大之后的最大值。
+data=data.frame(
+  x1=c(1,2,-3, 1/0)
+)
+data
+feature="x1"
+max(data[, feature][is.finite(x = data[, feature])])
+# [1] 2
+
+
+
+
+
+(16) geom_violin(scale="width") 的参数
+
+library(ggplot2)
+library(cowplot)
+df1=data.frame(
+  value=iris$Sepal.Length,
+  ident=iris$Species
+)
+head(df1)
+
+# 版本1: 
+ggplot(df1, aes(x=ident, y=value, fill=ident)) +
+  geom_violin()+ #scale="area" 默认，每个图形面积相等
+  labs(x = 'Identity', y = "Expression Level", title = "feature", fill = NULL)+
+  theme_cowplot()+
+  theme(plot.title = element_text(hjust = 0.5))
+
+# 版本2: 
+ggplot(df1, aes(x=ident, y=value, fill=ident)) +
+  geom_violin(scale="width")+ #每个图形最宽的地方相同
+  labs(x = 'Identity', y = "Expression Level", title = "feature", fill = NULL)+
+  theme_cowplot()+
+  theme(plot.title = element_text(hjust = 0.5))
+
+# 版本3: 
+ggplot(df1, aes(x=ident, y=value, fill=ident)) +
+  geom_violin(scale="width",#每个图形最宽的地方相同
+              adjust = 1, #默认值就是1，再小就很不光滑
+              trim = F )+ #默认是trim=T, 卡在数据边缘，不出界。但是密度图在边缘一般都是出去的。
+  labs(x = 'Identity', y = "Expression Level", title = "feature", fill = NULL)+
+  theme_cowplot()+
+  theme(plot.title = element_text(hjust = 0.5))
+
+
+
+
+(17) 拆解 ggplot2 构建过程
+接上文。
+原作者做了更多的自定义修饰
+
+plot=ggplot(df1, aes(x=ident, y=value, fill=ident)) +
+  labs(x = 'Identity', y = "Expression Level", title = "feature", fill = NULL)+
+  theme_cowplot()+
+  theme(plot.title = element_text(hjust = 0.5))
+
+# 通过自定义修改  
+vln.geom=geom_violin # 函数重命名
+
+geom <- list(
+  vln.geom(scale = 'width', adjust = 1, trim = TRUE), #geom_violin 的这几个参数
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) #x轴旋转45度
+)
+
+plot <- do.call(what = '+', args = list(plot, geom)) #还能这样给ggplot2添加修改
+plot
+plot + scale_y_log10() #这个 log 看着没啥作用啊
+
+
+
+(18) 栅格化点图
+接上文。
+jitter <- ggrastr::rasterize(geom_jitter(height = 0, size = 0.1, show.legend = FALSE))
+
+plot+jitter
+
+
+
+(19) y轴显示为log10尺度 scale_y_log10()
+library(ggplot2)
+
+df1=data.frame(
+  x=1:100,
+  y=2*(1:100)
+)
+ggplot(df1, aes(x=x, y=y)) + geom_point() #原始
+ggplot(df1, aes(x=x, y=y)) + geom_point() + scale_y_log10() #y轴是log10尺度的，单位距离在log10尺度相等
+# 点的坐标log10转化，同时y轴坐标为 3,10,30,100，也就是能在图中读出来原始y值
+
+ggplot(df1, aes(x=x, y=log10(y) )) + geom_point() #点图完全相同，就是y轴坐标的差异
+# 点的坐标log10转化，同时y的坐标为 0.5, 1, 1.5, 2，也就是图中的y坐标是原始y值的log10后的值
+
+# 可以看到对应关系: 10**(c(0.5,1,1.5,2)) #[1]   3.162278  10.000000  31.622777 100.000000
+
+
+
+
+
+
+(20) 使用 droplevels() 去掉因子中没用到的levels
+# Drop Unused Levels from Factors
+
+a=c(1,2,3,4,1)
+a=factor(a)
+a
+b=a[1:3]
+b
+#[1] 1 2 3
+#Levels: 1 2 3 4 这就多了一个无用的level 4
+
+b2=droplevels(b)
+b2
+#[1] 1 2 3
+#Levels: 1 2 3
+
+
+# 只获取有用的 level
+> levels(x = droplevels( Idents(pbmc_small) ))
+[1] "0" "1" "2"
+
+
+
+
+
+(21) scale_fill_manual(values = cols, labels = labels)
+
+library(ggplot2)
+set.seed(2022)
+df1=data.frame(
+  value=rnorm(120),
+  type= rep( c("A", "B", "C"), 40)
+)
+p1=ggplot(df1, aes(type, value, fill=type))+geom_violin(); p1
+
+
+# Create your own discrete scale
+p1 + scale_fill_manual(values=c("black", "red", "blue"), 
+                       labels=c("someA", "someB", "someC") ) #改变的是图例文字
+					   
+p1 + scale_fill_manual(limits=c("B", "A", "C"), #指定x轴的坐标，按这个顺序染色
+                       
+                       #但是图例按照下面2行染色和添加文字
+                       values=c("black", "red", "blue"), 
+                       labels=c("someA", "someB", "someC") ) #改变的是图例文字
+
+
+
+
+
+
+(22) 使用lapply一次绘制多个基因的表达量boxplot，并拼合成一个整体
+
+# 按am分组
+features=colnames(mtcars)
+plots <- lapply(
+  
+  X = features, #对每一个 feature 循环，进入FUN画图
+  
+  FUN = function(x) {
+    data=mtcars[,x, drop=F]
+    feature2 <- colnames(x = data) #只有一列，取列名
+    
+    # 添加分组变量
+    data$ident=factor(mtcars$am)
+    x2="ident"
+    y=paste0("`", feature2, "`")
+    fill="ident"
+    ggplot(data, aes_string(x=x2, y=y, fill=fill ))+
+      geom_violin( show.legend = F)+ #不显示坐标
+      theme_classic()+
+      labs(title=feature2)+
+      theme(plot.title = element_text(hjust = 0.5),#标题居中
+            #axis.text.x=element_blank(),
+            axis.ticks.x = element_blank())
+  }
+)
+plots[[3]]
+
+plots2 = wrap_plots(plots, ncol = 4)
+plots2
 
 
 
@@ -682,14 +1755,8 @@ fixed: logical. If TRUE, pattern is a string to be matched as is. Overrides all 
 
 
 
-========================================
-----------------------------------------
 
 
-
-
-========================================
-----------------------------------------
 
 
 
