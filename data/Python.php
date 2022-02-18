@@ -9,6 +9,7 @@ return array (
       array('参考资料','Python002','html'),
       //array('FAQ','Python003','html'),
       array('Python准备','Python100','txt',),
+      array('Py 最佳实践','Py_best_practice','txt'),
     ),
   ),
 

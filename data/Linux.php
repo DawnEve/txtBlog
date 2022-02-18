@@ -8,6 +8,7 @@ return array (
       array('项目描述','Linux001','html',),
       array('FAQ','Linux002','html'),
       array('windows','windows','txt'),
+      array('shell_最佳实践','shell_best_practice','txt'),
     ),
   ),
   
