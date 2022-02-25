@@ -615,6 +615,8 @@ $ STAR --version
 STAR_2.5.2b #这个版本没 solo 选项
 
 
+(1) 暂时先使用其他人安装的版本
+
 $ /home/yangwl/anaconda2/bin/STAR --version
 2.7.4a
 
@@ -625,12 +627,24 @@ alias STAR27=/home/yangwl/anaconda2/bin/STAR
 $ STAR27 --version
 2.7.4a
 
+(2) 用到 snakemake 中找不到该命令
+最后在 ~/bin/ 下建立了软链接。
+
+$ whereis STAR27
+STAR27: /home/wangjl/bin/STAR27
+
+$ ls -lth /home/wangjl/bin/STAR27
+lrwxrwxrwx. 1 wangjl jinwf 31 Feb 22 12:55 /home/wangjl/bin/STAR27 -> /home/yangwl/anaconda2/bin/STAR
+
+
+
 
 
 
 
 
 2. 构建索引
+测试了一下，版本 2.5和2.7确实不是一个索引。
 
 The genome index is the same as for normal STAR runs.
 
@@ -653,6 +667,7 @@ $ STAR27 --runMode genomeGenerate \
 	--sjdbGTFfile /home/wangjl/data/ref/GRCm39/gencode/gencode.vM28.annotation.gtf \
 	--sjdbOverhang 100
 # 22:25 -->  #200个核有点多了。不能超过2/3的总核数。
+
 
 
 
@@ -781,6 +796,83 @@ $ samtools view star27/t5/Droplet_Aligned.sortedByCoord.out.bam | head -n 3
 A00679:526:HYVNJDSXY:4:1450:21305:34350 256     chr1    3109499 0       108M42S *       0       0       GTTATACAGACACTAAGAGAACACAAATTCCAGCCCAGGCTACTATACCCAGCCAAACTCTCAATTACCATAGATGGAGAAACCAAAGTATTCCATGACAAAACCAAAAAAAAAAAAAAAAAAAAAAAAAAAAAGGAAAACAAAGATGAA  FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF:,:,FF,,:F,,,FF,F,  CB:Z:GTCATCTC   UB:Z:TGCGTTCCAG
 A00679:526:HYVNJDSXY:4:2419:17011:3709  256     chr1    3109499 0       108M42S *       0       0       GTTATACAGACACTAAGAGAACACAAATTCCAGCCCAGGCTACTATACCCAGCCAAACTCTCAATTACCATAGATGGAGAAACCAAAGTATTCCATGACAAAACCAAAAAAAAAAAAAAAAAAAAAAAAAAAAATGGAACGCAGAGATGA  FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF::FFFFFFFFFFFFFFFFFFFFFFFFFFFFFF,,,,,F:,,FF,:,F,::  CB:Z:GTCATCTC   UB:Z:TGCGTTCCAG
 A00679:526:HYVNJDSXY:4:2450:21414:26866 256     chr1    3109499 0       108M42S *       0       0       GTTATACAGACACTAAGAGAACACAAATTCCAGCCCAGGCTACTATACCCAGCCAAACTCTCAATTACCATAGATGGAGAAACCAAAGTATTCCATGACAAAACCAAAAAAAAAAAAAAAAAAAAAAAAAAATGAAAACACAAGATTAAA  FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF,,,,:F,,,,,:,,,,F,F  CB:Z:GTCATCTC   UB:Z:TGCGTTCCAG
+
+
+
+# 取1e6行做测试，节省时间。
+
+# test6: 仅保留 uniq mapping，输出 CB 和 UB。
+$ STAR27 --runThreadN 100 \
+	--genomeDir /home/wangjl/data/ref/GRCm39/gencode/index/STAR27/ \
+	--readFilesIn raw/S3.R2.fastq.gz raw/S3.R1.fastq.gz \
+	--soloType CB_UMI_Simple \
+	--soloCBstart 1 --soloCBlen 8 \
+	--soloUMIstart 9 --soloUMIlen 10 \
+	--soloBarcodeReadLength 0 \
+	--readFilesCommand zcat \
+	--outSAMtype BAM SortedByCoordinate \
+	--soloCBwhitelist /home/wangjl/data/chenxi/batch0/raw/cell_barcode.txt \
+	--outFilterMultimapNmax 1 \
+	--outSAMattributes CB UB \
+	--outFileNamePrefix tmp/S3_
+
+加入2条：只要uniq map，要输出 CB，UB。能输出 NH 吗？
+# 23:33 -> 23:39
+
+$ samtools view  tmp/S3_Aligned.sortedByCoord.out.bam  | awk '{print $5}' | sort | uniq -c | sort -k1nr
+ 143480 255
+
+$ samtools view  tmp/S3_Aligned.sortedByCoord.out.bam | head
+A00679:526:HYVNJDSXY:4:1101:21847:10927	16	chr1	3700996	255	31S119M	*	0	0	TTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTGGAGTTTAAAACCAAGTATTTAATGTTTTCATTAAATTGTTTCAATACAATTTCAAACAAATGCCAACTGGAAGACAATGTCCAAAAACTCTGAAGC	FF:FFFFFFFFFFFFFFFFFFFF:FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF:FFFFFFFFFFF	CB:Z:CGGTGCTC	UB:Z:CACGTGCTCT
+A00679:526:HYVNJDSXY:4:1101:6343:28385	16	chr1	3700996	255	23S127M	*	0	0	TTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTGGAGTTTAAAACCAAGTATTTAATGTTTTCATTAAATTGTTTCAATACAATTTCAAACAAATGCCAACTGGAAGA
+
+
+
+# test7: 输出其他标签呢？
+去掉 	--outFilterMultimapNmax 1 \，添加更多标签
+$ STAR27 --runThreadN 100 \
+	--genomeDir /home/wangjl/data/ref/GRCm39/gencode/index/STAR27/ \
+	--readFilesIn raw/S3.R2.fastq.gz raw/S3.R1.fastq.gz \
+	--soloType CB_UMI_Simple \
+	--soloCBstart 1 --soloCBlen 8 \
+	--soloUMIstart 9 --soloUMIlen 10 \
+	--soloBarcodeReadLength 0 \
+	--readFilesCommand zcat \
+	--outSAMtype BAM SortedByCoordinate \
+	--soloCBwhitelist /home/wangjl/data/chenxi/batch0/raw/cell_barcode.txt \
+	--outSAMattributes CB UB NH HI AS nM \
+	--outFileNamePrefix tmp/S3_t2_
+# 09:25 -> 09:27
+
+$ samtools view tmp/S3_t2_Aligned.sortedByCoord.out.bam | head
+A00679:526:HYVNJDSXY:4:1101:21847:10927	16	chr1	3700996	255	31S119M	*	0	0	TTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTGGAGTTTAAAACCAAGTATTTAATGTTTTCATTAAATTGTTTCAATACAATTTCAAACAAATGCCAACTGGAAGACAATGTCCAAAAACTCTGAAGC	FF:FFFFFFFFFFFFFFFFFFFF:FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF:FFFFFFFFFFF	NH:i:1	HI:i:1	AS:i:101	nM:i:8 CB:Z:CGGTGCTC	UB:Z:CACGTGCTCT
+
+$ samtools view tmp/S3_t2_Aligned.sortedByCoord.out.bam | wc
+ 208948 3550250 90996710
+
+$ samtools view tmp/S3_t2_Aligned.sortedByCoord.out.bam |awk '{print $5}' | sort | uniq -c | sort -k1nr
+ 143480 255
+  35928 3
+  17027 1
+  12513 0
+
+$ samtools view tmp/S3_t2_Aligned.sortedByCoord.out.bam | awk '{print $12}' | sort | uniq -c | sort -k1nr
+ 143480 NH:i:1
+  35928 NH:i:2
+  12183 NH:i:3
+   4844 NH:i:4
+   3505 NH:i:5
+   2994 NH:i:6
+   2219 NH:i:7
+   1710 NH:i:10
+   1053 NH:i:9
+   1032 NH:i:8
+也就是说，uniq mapping 的 MAPQ=255，且 NH=1，这2个是等价条件。
+
+
+
+
+
 
 
 

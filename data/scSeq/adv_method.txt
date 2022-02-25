@@ -6,6 +6,9 @@
 
 https://github.com/DawnEve/scRNAseqCode
 
+视频讲解 单细胞RNA测序分析图解读： https://www.bilibili.com/video/BV1ev41177i4?
+
+
 
 
 ========================================
@@ -754,7 +757,7 @@ https://mp.weixin.qq.com/s?__biz=MzIyMzMwNDQ2MA==&mid=2247484327&idx=1&sn=46c78c
 paper:
 Letter | Published: 08 August 2018: RNA velocity of single cells
 https://www.nature.com/articles/s41586-018-0414-6
-
+改文章使用的软件：https://scvelo.readthedocs.io/
 
 
 https://zhuanlan.zhihu.com/p/142327236
@@ -783,9 +786,38 @@ RNA剪切：成熟mRNA表达时，未成熟的一部分转录本会被剪切掉�
 
 通过测量单个细胞中每个基因的未剪接转录本与剪接转录本的比率，计算出一个称为RNA速度的量，揭示了基因表达的变化方式。b通过测量组织中成千上万个细胞（此处为发育中的小鼠大脑神经元）中的RNA速度，作者可以生成图，不仅显示相互关联的细胞之间的紧密程度（相似性用相似的颜色表示），而且还根据它们正在经历的基因表达变化，将来与哪些细胞相似（如箭头所示）。RNA速度成功地追踪了早期祖细胞（橙色和黄色），这些祖细胞最终引起了一系列分化的细胞类型（蓝色虚线圆圈）。
 
+
+
+==> 评估RNA速率有哪些方法？
+目前有三种方法:
+  稳态/确定性模型(在velocyto中使用)
+  随机模型(使用二阶矩)，
+  动态模型(使用基于概率的框架)。
+
+
+
+
 (3) 论文 
 https://www.biorxiv.org/content/10.1101/820936v1.full.pdf
 https://www.nature.com/articles/s41587-020-0591-3
+
+
+==> velocity和scVelo哪家强？
+
+scVelo开发团队认为现有的计算RNA velocity的稳态模型(steady-state model)存在一些不足，这种模型有个两个基本的假设前提：
+①在基因水平上，所有具有转录诱导、抑制和稳态mRNA水平的完整剪接动力学被捕捉到；
+②在细胞水平上，所有基因具有共同的剪接率。
+
+但是，当一个种群包含多个具有不同动力学的异质亚种群时，这些假设就不合理。所以，他们开发了seVelo，一个基于似然的动力学模型(likelihood-based dynamical model)，它解决了以上提出的全基因转录动力学的问题，从而将RNA速度估计推广到瞬时状态系统和具有非均匀亚种群动力学的系统。
+scVelo提供了两种扩展：一种是包含二阶矩的随机模型，另一种是捕获全剪接动力学的动力学模型。
+
+
+en教程: https://scvelo.readthedocs.io/getting_started/
+翻译:
+https://mp.weixin.qq.com/mp/appmsgalbum?__biz=MzI1Njk4ODE0MQ==&action=getalbum&album_id=1774746462153687043&subscene=159&subscene=&scenenote=https%3A%2F%2Fmp.weixin.qq.com%2Fs%3Fsrc%3D11%26timestamp%3D1645359169%26ver%3D3632%26signature%3D6mvXUh0qENFPeP3tF3BNVGXRtBulXZTwo71Kop*VZVziXwOYluCjHkePH2vQFWY6e7I9zpEXLWee2qh93Cn1U-Ma0yrXpnu1h1DDQehcN39eYfoVEMffFnL*548RFt7c%26new%3D1&nolastread=1#wechat_redirect
+
+
+
 
 
 (4) 原理与代码
@@ -814,14 +846,18 @@ library(SeuratWrappers)
 # If you don't have velocyto's example mouse bone marrow dataset, download with the CURL command
 # curl::curl_download(url = 'http://pklab.med.harvard.edu/velocyto/mouseBM/SCG71.loom', destfile = '~/Downloads/SCG71.loom')
 
+# 转换为seurat对象
 ldat <- ReadVelocity(file = "~/Downloads/SCG71.loom")
 bm <- as.Seurat(x = ldat)
+
+# 整合降维聚类
 bm <- SCTransform(object = bm, assay = "spliced")
 bm <- RunPCA(object = bm, verbose = FALSE)
 bm <- FindNeighbors(object = bm, dims = 1:20)
 bm <- FindClusters(object = bm)
 bm <- RunUMAP(object = bm, dims = 1:20)
 
+# 速率分析及可视化
 # 拟合平衡系数 γ
 bm <- RunVelocity(object = bm, deltaT = 1, kCells = 25, fit.quantile = 0.02)
 ident.colors <- (scales::hue_pal())(n = length(x = levels(x = bm)))
@@ -829,11 +865,30 @@ names(x = ident.colors) <- levels(x = bm)
 cell.colors <- ident.colors[Idents(object = bm)]
 names(x = cell.colors) <- colnames(x = bm)
 
-# 将速率投射在降维空间上画图
+
+# 将速率投射在降维空间上画图。使用全部100多个CPU核，跑了 15min 出图。
 show.velocity.on.embedding.cor(emb = Embeddings(object = bm, reduction = "umap"), vel = Tool(object = bm,
     slot = "RunVelocity"), n = 200, scale = "sqrt", cell.colors = ac(x = cell.colors, alpha = 0.5),
     cex = 0.8, arrow.scale = 3, show.grid.flow = TRUE, min.grid.cell.mass = 0.5, grid.n = 40, arrow.lwd = 1,
     do.par = FALSE, cell.border.alpha = 0.1)
+
+
+>> Debug:
+# 最后一步的报错：BLAS : Program is Terminated. Because you tried to allocate too many memory regions.
+This worked for me.
+"BLAS stands for Basic Linear Algebra Subprograms. BLAS provides standard interfaces for linear algebra, including BLAS1 (vector-vector operations), BLAS2 (matrix-vector operations), and BLAS3 (matrix-matrix operations).
+As per the documentation, if your application is already multi-threaded, it will conflict with OpenBLAS multi-threading. Therefore, you must set OpenBLAS to use a single thread.
+So, it seems that your application is conflicting with OpenBLAS multi-threading. You need to run the followings on the command line and it should fix the error:"
+
+$ vim ~/.bashrc # 新增行
+export OPENBLAS_NUM_THREADS=1
+export GOTO_NUM_THREADS=1
+export OMP_NUM_THREADS=1
+$ source ~/.bashrc
+
+https://www.discoverbits.in/2509/program-terminated-because-tried-allocate-memory-regions
+
+
 
 
 
@@ -894,6 +949,342 @@ $ cp w.step1.Figure2.CD8_Tex_velo.ipynb /data/wangjl/web/docs/jupyterlab/
 jupyter notebook:
 http://y.biomooc.com:9000/notebooks/w.step1.Figure2.CD8_Tex_velo.ipynb
 
+
+
+
+
+
+
+
+
+========================================
+|-- velocyto
+----------------------------------------
+
+http://pklab.med.harvard.edu/velocyto/notebooks/R/SCG71.nb.html
+
+
+入门教程
+http://velocyto.org/velocyto.py/install/index.html
+
+1. 安装
+# 依赖: numpy scipy cython numba matplotlib scikit-learn h5py click
+$ pip3 install velocyto  #0.17.17
+
+
+2. Tutorial
+(1) 该工具包含2部分：
+Velocyto consists of two main components:
+1) 命令行工具
+A command line interface (CLI), that is used to run the pipeline that generates spliced/unspliced expression matrices.
+2) 一个函数库
+A library including functions to estimate RNA velocity from the above mentioned data matrices.
+
+
+
+
+(2) Running the CLI: 命令行从 bam/sam 文件到 loom 文件。
+It starts from .bam/.sam files to yield a .loom file with counts divided in spliced/unspliced/ambiguous.
+
+$ velocyto --help
+Usage: velocyto [OPTIONS] COMMAND [ARGS]...
+
+Options:
+  --version  Show the version and exit.
+  --help     Show this message and exit.
+
+Commands:
+  run            Runs the velocity analysis outputting a loom file
+  run10x         Runs the velocity analysis for a Chromium Sample
+  run_dropest    Runs the velocity analysis on DropEst preprocessed data
+  run_smartseq2  Runs the velocity analysis on SmartSeq2 data (independent bam file per cell)
+  tools          helper tools for velocyto
+
+
+(3) 准备文件
+下载 GENCODE or Ensembl 的 gtf 文件。
+如果是 10x 的数据，从这里下载: https://support.10xgenomics.com/single-cell-gene-expression/software/pipelines/latest/advanced/references
+
+命令格式: cellranger mkgtf input.gtf output.gtf --attribute=key:allowable_value
+
+cellranger mkgtf Homo_sapiens.GRCh38.ensembl.gtf Homo_sapiens.GRCh38.ensembl.filtered.gtf \
+                   --attribute=gene_biotype:protein_coding \
+                   --attribute=gene_biotype:lincRNA \
+                   --attribute=gene_biotype:antisense \
+                   --attribute=gene_biotype:IG_LV_gene \
+                   --attribute=gene_biotype:IG_V_gene \
+                   --attribute=gene_biotype:IG_V_pseudogene \
+                   --attribute=gene_biotype:IG_D_gene \
+                   --attribute=gene_biotype:IG_J_gene \
+                   --attribute=gene_biotype:IG_J_pseudogene \
+                   --attribute=gene_biotype:IG_C_gene \
+                   --attribute=gene_biotype:IG_C_pseudogene \
+                   --attribute=gene_biotype:TR_V_gene \
+                   --attribute=gene_biotype:TR_V_pseudogene \
+                   --attribute=gene_biotype:TR_D_gene \
+                   --attribute=gene_biotype:TR_J_gene \
+                   --attribute=gene_biotype:TR_J_pseudogene \
+                   --attribute=gene_biotype:TR_C_gene
+
+多物种
+cellranger mkref --genome=GRCh38 --fasta=GRCh38.fa --genes=GRCh38-filtered-ensembl.gtf \
+                 --genome=mm10 --fasta=mm10.fa --genes=mm10-filtered-ensembl.gtf
+
+
+
+
+(4) 运行 10x 数据 
+
+第一个参数是包含子目录的 output 文件夹
+(e.g. this is the folder containing the subfolder: outs, outs/analys and outs/filtered_gene_bc_matrices).
+
+$ velocyto run10x --help
+Usage: velocyto run10x [OPTIONS] SAMPLEFOLDER GTFFILE
+  Runs the velocity analysis for a Chromium 10X Sample
+  10XSAMPLEFOLDER specifies the cellranger sample folder
+  GTFFILE genome annotation file
+Options:
+  -s, --metadatatable PATH        Table containing metadata of the various samples (csv fortmated rows are samples and cols are entries)
+  -m, --mask PATH                 .gtf file containing intervals to mask
+  -l, --logic TEXT                The logic to use for the filtering (default: Default)
+  -M, --multimap                  Consider not unique mappings (not reccomended)
+  -@, --samtools-threads INTEGER  The number of threads to use to sort the bam by cellID file using samtools
+  --samtools-memory INTEGER       The number of MB used for every thread by samtools to sort the bam file
+  -t, --dtype TEXT                The dtype of the loom file layers - if more than 6000 molecules/reads per gene per cell are expected set uint32 to avoid truncation (default run_10x: uint16)
+  -d, --dump TEXT                 For debugging purposes only: it will dump a molecular mapping report to hdf5. --dump N, saves a cell every N cells. If p is prepended a more complete (but huge) pickle report is printed (default: 0)
+  -v, --verbose                   Set the vebosity level: -v (only warinings) -vv (warinings and info) -vvv (warinings, info and debug)
+  --help                          Show this message and exit.
+
+
+
+$ velocyto run10x -m repeat_msk.gtf mypath/sample01 somepath/refdata-cellranger-mm10-1.2.0/genes/genes.gtf
+
+Where genes.gtf is the genome annotation file provided with the cellranger pipeline.  
+repeat_msk.gtf is the repeat masker file described in the Preparation section above. 可选。
+
+#
+
+
+
+(5) 输出的 loom 文件
+About the output .loom file
+The main result file is a 4-layered loom file : sample_id.loom.
+
+A valid .loom file is simply an HDF5 file that contains specific groups representing the main matrix as well as row and column attributes. Because of this, .loom files can be created and read by any language that supports HDF5.
+
+.loom files can be easily handled using the loompy package: http://loompy.org/
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+========================================
+|-- scVelo 的使用
+----------------------------------------
+
+1. 原文推荐的
+https://www.nature.com/articles/s41587-020-0591-3
+
+Tenfold speedup for the steady-state model and large-scale applicability
+The dynamical, the stochastic as well as the steady-state model are available within scVelo as a robust and scalable implementation (https://scvelo.org).
+
+号称比原始实现 velocyto 要快10倍。
+Illustratively, on pancreas development with 25,919 transcriptome profiles, scVelo runs the full pipeline for the steady-state as well as stochastic model from pre-processing the data to velocity estimation to projecting the data in any embedding in less than 1 min (Supplementary Fig. 13). That is obtained by memory-efficient, scalable and parallelized pipelines via integration with scanpy21, by leveraging efficient nearest-neighbor search39, analytical closed-form solutions, sparse implementation and vectorization. The scVelo pipeline thereby achieves more than a tenfold speedup over the original implementation (velocyto).
+
+
+(1) 主要作用 scVelo’s key applications
+https://scvelo.readthedocs.io/
+
+estimate RNA velocity to study cellular dynamics.
+identify putative driver genes and regimes of regulatory changes.
+infer a latent time to reconstruct the temporal sequence of transcriptomic events.
+estimate reaction rates of transcription, splicing and degradation.
+use statistical tests, e.g., to detect different kinetics regimes.
+
+
+
+
+
+
+2. 安装 py 包
+
+(1) 尝试
+$ pip3 install -U scvelo -i https://pypi.douban.com/simple/ --user
+
+-U 是--upgrade 的缩写。如果出现Permission denied错误，请改用pip install -U scvelo --user
+-i 是指定国内镜像。
+
+
+2) 报错，可能是 numpy 版本太低：
+$ pip3 list | grep numpy
+numpy                              1.15.2
+$ pip3 install -U numpy
+$ pip3 list | grep numpy
+numpy                              1.21.5     
+
+3) 报错: AttributeError: module 'enum' has no attribute 'IntFlag'
+reason
+This is likely caused by the package enum34. Since python 3.4 there's a standard library enum module, so you should uninstall enum34, which is no longer compatible with the enum in the standard library since enum.IntFlag was added in python 3.6.
+
+solution
+uninstall enum34:
+$ pip uninstall enum34  
+
+
+升级 conda
+$ conda update conda
+# conda                              4.6.14     
+# conda-build                        3.15.1 
+
+
+
+4) 报错: 
+ERROR: Failed building wheel for llvmlite
+
+ERROR: statsmodels 0.13.2 has requirement pandas>=0.25, but you'll have pandas 0.23.4 which is incompatible.
+ERROR: statsmodels 0.13.2 has requirement patsy>=0.5.2, but you'll have patsy 0.5.0 which is incompatible.
+ERROR: multiqc 1.7 has requirement matplotlib<3.0.0,>=2.1.1, but you'll have matplotlib 3.5.1 which is incompatible.
+ERROR: anndata 0.7.8 has requirement pandas>=1.1.1, but you'll have pandas 0.23.4 which is incompatible.
+
+$ pip3 install -U pandas --user #pandas-1.3.5
+
+
+ERROR: statsmodels 0.13.2 has requirement packaging>=21.3, but you'll have packaging 17.1 which is incompatible.
+ERROR: statsmodels 0.13.2 has requirement patsy>=0.5.2, but you'll have patsy 0.5.0 which is incompatible.
+ERROR: multiqc 1.7 has requirement matplotlib<3.0.0,>=2.1.1, but you'll have matplotlib 3.5.1 which is incompatible.
+ERROR: matplotlib 3.5.1 has requirement packaging>=20.0, but you'll have packaging 17.1 which is incompatible.
+ERROR: anndata 0.7.8 has requirement packaging>=20, but you'll have packaging 17.1 which is incompatible.
+
+$ pip3 install -U patsy --user
+$ pip3 install -U matplotlib --user
+$ pip3 install -U packaging --user
+
+Installing collected packages: llvmlite, numba, pynndescent, umap-learn, natsort, cached-property, h5py, zipp, importlib-metadata, anndata, fonttools, pyparsing, pillow, matplotlib, stdlib-list, sinfo, networkx, statsmodels, scanpy, numpy-groupies, loompy, scvelo
+
+$ pip3 install -U llvmlite --user
+# Error: RuntimeError: Could not find a `llvm-config` binary.
+
+
+
+5) 升级pip版本
+
+$ pip3 install --upgrade pip 
+$ pip3 install -U llvmlite --user #升级 pip3 后就正常了！！
+
+
+$ pip3 install -U scvelo --user
+
+$ pip3 install -U numexpr --user # 测试加载时报warning
+## Pandas requires version '2.7.0' or newer of 'numexpr' (version '2.6.8' currently installed).
+
+$ pip3 install -U tqdm  --user # 测试代码报错：ModuleNotFoundError: No module named 'tqdm.auto' #4.62.3
+$ pip3 install -U seaborn --user # 画图时警告 #0.11.2
+
+
+检查版本：
+$ pip3 list | grep scvelo
+scvelo                             0.2.4
+
+尝试加载：
+$ python3
+>>> import scvelo as scv
+>>> 
+>>> quit()
+$ 
+
+
+小结：
+升级 pip 很关键！
+
+
+
+依赖包
+anndata - 带注释的数据对象。0.7.8
+scanpy - 用于单细胞分析的工具包。1.8.2
+numpy - 1.21.5
+scipy - 1.4.1
+pandas - 1.3.5
+scikit-learn - 0.24.1
+matplotlib - 3.5.1
+notebook - 5.6.0
+
+部分scVelo（定向 PAGA 和 Louvain 模块化）需要安装（可选）：
+$ pip3 install python-igraph louvain  #0.9.9 / 0.7.1
+
+通过hnswlib[7]使用快速邻近搜索进一步需要安装（可选）：
+$ pip3 install pybind11 hnswlib  #2.9.1 / 0.6.2
+
+
+
+
+
+
+
+
+
+
+3. 使用 Seurat 和 scVelo 估计 RNA 速率
+
+(1) 在R中
+library(Seurat)
+library(SeuratDisk)
+
+# BiocManager::install("SeuratWrappers") #failed
+
+# https://github.com/satijalab/seurat-wrappers
+# remotes::install_github('satijalab/seurat-wrappers') #ok
+library(SeuratWrappers)
+
+
+#https://github.com/velocyto-team/velocyto.R
+library(devtools)
+if(0){
+  BiocManager::install("pcaMethods")
+  install_github("velocyto-team/velocyto.R")
+}
+library(velocyto.R)
+
+# 下载 loom 格式的数据
+# $ wget http://pklab.med.harvard.edu/velocyto/mouseBM/SCG71.loom
+ldat <- ReadVelocity(file = "tmp/SCG71.loom")
+bm <- as.Seurat(x = ldat)
+bm[["RNA"]] <- bm[["spliced"]]
+bm <- SCTransform(bm)
+bm <- RunPCA(bm)
+bm <- RunUMAP(bm, dims = 1:20)
+bm <- FindNeighbors(bm, dims = 1:20)
+bm <- FindClusters(bm)
+DefaultAssay(bm) <- "RNA"
+DimPlot(bm, label = T)
+
+SaveH5Seurat(bm, filename = "tmp/mouseBM.h5Seurat")
+Convert("tmp/mouseBM.h5Seurat", dest = "h5ad")
+
+
+
+
+(2) 在py中 jupyter notebook
+
+
+
+
+
+
+
+
+
+
+ref:
+https://mp.weixin.qq.com/s?__biz=MzI1Njk4ODE0MQ==&mid=2247493623&idx=1&sn=539756a4c444665aa6ab2024b44cb64d
 
 
 

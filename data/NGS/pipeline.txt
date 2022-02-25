@@ -2570,6 +2570,86 @@ Finished job 0.
 
 
 ========================================
+|-- 怎么把自己写的脚本用到流程中呢？
+----------------------------------------
+假设自己写了一个脚本，可以这么执行： $ python3 script001.py -I 100 -O aa.txt
+怎么把它整合到流程种呢？
+
+
+1. 实例
+
+$ pwd
+/home/wangjl/data/chenxi/pipeline
+
+$ tree -L 2
+.
+├── config.yaml-backup
+├── main.sf
+├── rules
+│   ├── 01_get_fq_by_cb.sf
+│   ├── 02_trim_adapter.sf
+│   └── 03_select_cut_polyA_reads.sf
+└── scripts
+    └── get_cut_polyA_reads.py #写在这里的py脚本
+
+
+(1) 入口 (流程目录)
+$ cat main.sf 
+configfile: "config.yaml"  ##这里定义snake脚本路径
+SI=config["samples"]
+ScriptPath="/home/wangjl/data/chenxi/pipeline/"
+
+rule all:
+	input:
+		expand( "01_fq_cb/{sample}_extracted.fastq.gz", sample=SI),
+		expand( "01_fq_cb/QC/{sample}_extracted_fastqc.html", sample=SI),
+		expand( "02_trim/{sample}_extracted_trimmed.fq.gz", sample=SI),
+		expand( "03_cutPolyA_reads/{sample}_polyA_reads.fq.gz", sample=SI),
+		expand( "03_cutPolyA_reads/QC/{sample}_polyA_reads_fastqc.html", sample=SI),
+
+include: "rules/01_get_fq_by_cb.sf"
+include: "rules/02_trim_adapter.sf"
+include: "rules/03_select_cut_polyA_reads.sf"
+
+
+(2) 具体的流程细节 (流程目录)
+
+$ cat rules/03_select_cut_polyA_reads.sf
+rule select_cut_polyA_reads:
+	input: "02_trim/{sample}_extracted_trimmed.fq.gz"
+	output: "03_cutPolyA_reads/{sample}_polyA_reads.fq.gz"
+	params: ScriptPath   #中转入口定义的变量: snake 脚本的路径
+	log: "03_cutPolyA_reads/{sample}_polyA_reads.fq.gz.log"
+	shell: "python3 {params}scripts/get_cut_polyA_reads.py -I {input}  -O {output} >{log} 2>&1" #构建该脚本的绝对地址
+
+
+rule QC_after_trim_polyA:
+	input: "03_cutPolyA_reads/{sample}_polyA_reads.fq.gz"
+	output: "03_cutPolyA_reads/QC/{sample}_polyA_reads_fastqc.html"
+	params: output_dir="03_cutPolyA_reads/QC"
+	threads: 50
+	log: "03_cutPolyA_reads/QC/{sample}_polyA_reads_fastqc.html.log"
+	shell: "fastqc -t {threads} {input} -o {params.output_dir} >{log} 2>&1"
+
+
+(3) 运行 (执行目录)
+
+$ snakemake -s /home/wangjl/data/chenxi/pipeline/main.sf -p -j 5
+
+打印出命令本身，其中一行是
+python3 /home/wangjl/data/chenxi/pipeline/scripts/get_cut_polyA_reads.py -I 02_trim/S3_extracted_trimmed.fq.gz  -O 03_cutPolyA_reads/S3_polyA_reads.fq.gz >03_cutPolyA_reads/S3_polyA_reads.fq.gz.log 2>&1
+
+
+
+
+
+
+
+
+
+
+
+========================================
 |-- snakemake 高级：目录结构与模块化(wrapper/include/subworkflow )、依赖的自动部署(conda, Singularity)、集群、环境变量 envvars(提供密码) 
 ----------------------------------------
 1. snakemake 模块化 提供了三个层次

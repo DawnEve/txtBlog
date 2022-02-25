@@ -1751,7 +1751,415 @@ plots2
 
 
 ========================================
+|-- Seurat 4 源码解析 9: FetchData()
 ----------------------------------------
+
+1.
+接着源码解析8.
+
+(1)
+在这里看到 key 的作用了，如果和 meta.data 重名，则返回的是 meta.data；如果想返回 assay中的值，则需要加上 assay的前缀
+警告信息: Returning metadata; if you want the feature, please use the assay's key (eg. "
+
+# 注意 CD8A 和 rna_CD8A
+
+df1=FetchData2(pbmc_small, vars=c("PC_1", "tSNE_1", "CD4", "CD8A", "nCount_RNA"))
+df2=FetchData2(pbmc_small, vars=c("PC_1", "tSNE_1", "CD4", "rna_CD8A", "nCount_RNA"))
+
+可用的前缀：Key(pbmc_small)
+
+
+
+(2) 如果指定的 assay 中没找到，则会从其他assay中找
+//todo 例子？
+
+
+
+
+
+
+2. 源码解析
+见 gitee
+
+
+
+
+3. R tips
+
+(1) Filter 高阶函数，把f函数应用到数组x上，结果是TRUE的返回x上原来位置上的元素。
+
+> Filter(f=function(x){x%%2==0}, 1:10)
+[1]  2  4  6  8 10
+
+
+(2) 异常捕获 tryCatch(expr, error=function(...){})
+tryCatch(
+	#降维类，行名是symbol，这里怎么使用 cells? // todo 可能是错的
+	#测试了一下，这么写是对的，需要好好看看[[]]的实现方式了
+	expr = object[[x]][[cells, vars.use, drop = FALSE]], # if 中返回的就是这一行，如果没报错
+	error = function(...) { #错误处理函数，返回空
+	  return(NULL)
+}
+
+
+> df1=FetchData(pbmc_small, vars=c("PC_1", "tSNE_1", "CD4", "CD8A"), cells = c("ATGCCAGAACGACT"))
+> df1
+                     PC_1    tSNE_1 CD8A
+ATGCCAGAACGACT -0.7740371 0.8675977    0
+
+// 这个需要进一步看[[]]的定义，这在R中也对应着一个函数。
+// pbmc_small[[]] 返回的就是 pbmc_small@meta.data
+
+
+
+
+(3) 根据条件获取值 x=if()else{}
+
+x=if(T){
+  tryCatch(
+    expr=200, #返回这一行，如果没报错
+    error=function(...){
+      return(NULL)
+    }
+  )
+}else{
+  0.1
+}
+x #200
+
+
+
+(4) as.list(x = as.data.frame(x = data.return)) 矩阵转为list是什么？
+
+就是把df按列展开成list的键值对：列名是list的key，一列数字是list的value。
+
+> data.return=iris[1:2,1:4]; data.return
+  Sepal.Length Sepal.Width Petal.Length Petal.Width
+1          5.1         3.5          1.4         0.2
+2          4.9         3.0          1.4         0.2
+> rs1=as.list(x = as.data.frame(x = data.return)); rs1
+$Sepal.Length
+[1] 5.1 4.9
+
+$Sepal.Width
+[1] 3.5 3.0
+
+$Petal.Length
+[1] 1.4 1.4
+
+$Petal.Width
+[1] 0.2 0.2
+
+
+(5) data.fetched <- unlist(x = data.fetched, recursive = FALSE) 展开list成named vector。
+
+
+> data.fetched=rs1; data.fetched
+$Sepal.Length
+[1] 5.1 4.9
+
+$Sepal.Width
+[1] 3.5 3.0
+
+$Petal.Length
+[1] 1.4 1.4
+
+$Petal.Width
+[1] 0.2 0.2
+
+> unlist(x = data.fetched, recursive = FALSE)
+Sepal.Length1 Sepal.Length2  Sepal.Width1  Sepal.Width2 Petal.Length1 Petal.Length2  Petal.Width1  Petal.Width2 
+          5.1           4.9           3.5           3.0           1.4           1.4           0.2           0.2 
+
+
+
+
+(6) 合并几个单list可以使用c()
+
+注意：数据框也是list，每一列都是一个命名元素。
+
+
+list1=list(
+  a=c(1,2,3),
+  b=c(10,20,30)
+)
+list1
+c(list1, iris[1:3, 2, drop=F]) #合并为df，正确做法
+c(list1, iris[1:3, 2, drop=T]) #默认是只有一列时失去df结构
+
+输出：
+> list1
+$a
+[1] 1 2 3
+
+$b
+[1] 10 20 30
+
+> c(list1, iris[1:3, 2, drop=F]) #合并为df
+$a
+[1] 1 2 3
+
+$b
+[1] 10 20 30
+
+$Sepal.Width
+[1] 3.5 3.0 3.2
+
+> c(list1, iris[1:3, 2, drop=T]) #默认是T, 只有一列时失去df结构
+$a
+[1] 1 2 3
+
+$b
+[1] 10 20 30
+
+[[3]]
+[1] 3.5
+
+[[4]]
+[1] 3
+
+[[5]]
+[1] 3.2
+
+
+
+
+(7) 拼接数组为字符串: paste0() 的参数collapse
+
+注意输入的是多个字符串，还是一个字符串数组。
+
+> paste( "this", "is", "a", "book", sep = ":") #输入多个字符串
+[1] "this:is:a:book"
+
+> paste0( c("this", "is", "a", "book"), collapse = "-") #输入一个字符串数组
+[1] "this-is-a-book"
+
+> paste0( colnames(mtcars), collapse = ", ")
+[1] "mpg, cyl, disp, hp, drat, wt, qsec, vs, am, gear, carb"
+
+
+
+
+(8) vector(mode = 'list', length = 2) 定义一个空向量。
+
+vector produces a vector of the given length and mode.
+
+
+> vector(mode = 'list', length = 2)
+[[1]]
+NULL
+
+[[2]]
+NULL
+
+> vector(mode = 'logical', length = 2)
+[1] FALSE FALSE
+
+> vector(mode = 'numeric', length = 5)
+[1] 0 0 0 0 0
+
+
+
+(9) 为vector新增一个元素 append()
+
+> a1=vector(mode = 'numeric', length = 5);a1
+[1] 0 0 0 0 0
+> a1=append(x=a1, value=100)
+> a1
+[1]   0   0   0   0   0 100
+
+
+
+
+例2: 设置list向量，并为其中一个新增2个值，然后判断哪个值大于1。
+
+a2=vector(mode = 'list', length = 3);
+names(a2)=c("box1", "box2", "box3"); a2
+
+a2[['box1']]=append(x=a2[['box1']], value=50)
+a2[["box2"]]=append(x=a2[["box2"]], value=100)
+a2[['box2']]=append(x=a2[['box2']], value=50)
+
+> a2
+$box1
+[1] 50
+
+$box2
+[1] 100  50
+
+$box3
+NULL
+
+
+vars.many <- names(x = Filter(
+  f = function(x) {
+    print(x)
+    return(length(x = x) > 1)
+  },
+  x = a2
+))
+vars.many #[1] "box2"
+
+
+
+
+
+(10) as.vector() 能把矩阵按照列展开。
+
+> df1=iris[1:2, 1:4];df1
+  Sepal.Length Sepal.Width Petal.Length Petal.Width
+1          5.1         3.5          1.4         0.2
+2          4.9         3.0          1.4         0.2
+
+> as.vector(df1)
+  Sepal.Length Sepal.Width Petal.Length Petal.Width
+1          5.1         3.5          1.4         0.2
+2          4.9         3.0          1.4         0.2
+
+> as.vector( as.matrix(df1) )
+[1] 5.1 4.9 3.5 3.0 1.4 1.4 0.2 0.2
+
+
+> unlist(df1) # 对矩阵按列展开使用 unlist，还需要去掉name 才是向量。
+Sepal.Length1 Sepal.Length2  Sepal.Width1  Sepal.Width2 Petal.Length1 Petal.Length2  Petal.Width1  Petal.Width2 
+          5.1           4.9           3.5           3.0           1.4           1.4           0.2           0.2 
+
+
+
+
+(11) 变list为df，指定行名，保持字符串而不是因子
+data.fetched <- as.data.frame(
+	x = data.fetched,
+	row.names = cells,
+	stringsAsFactors = FALSE
+)
+
+
+
+测试: 
+# GetAssayData(object = pbmc_small)[c("LTB", "CD79B"), c("AATGTTGACAGTCA", "AGGTCATGAGTGTC") ]
+
+data.fetched=list(
+  "LTB"=c(7.650169, 5.779448),
+  "CD79B"=c(4.615121, 5.779448)
+)
+data.fetched
+
+cells=c("AATGTTGACAGTCA", "AGGTCATGAGTGTC")
+
+as.data.frame(
+  x = data.fetched,
+  row.names = cells, #换成 rownames 就不行，就没有行名了
+  stringsAsFactors = FALSE
+)
+输出：
+#                     LTB    CD79B
+# AATGTTGACAGTCA 7.650169 4.615121
+# AGGTCATGAGTGTC 5.779448 5.779448
+
+
+
+
+(12) pmatch(): Partial String Matching 部分字符串匹配
+
+pmatch seeks matches for the elements of its first argument among those of its second.
+Usage: pmatch(x, table, nomatch = NA_integer_, duplicates.ok = FALSE)
+
+
+1) x中的每一个元素，在第二个参数table中的位置下标。
+vars=c("a1", "b2", "c3")
+fetched=c("c3", "a1")
+rs= pmatch(
+  x = vars,
+  table = fetched
+); rs
+# [1]  2 NA  1
+
+
+
+
+(13) 数组子集乱序后，怎么恢复原数组中的顺序？
+
+vars=c("a1", "b2", "c3", "d4") #原数组
+fetched=c("c3", "d4", "a1") #子集，对子集排序，和原数组顺序相同
+
+data.order <- na.omit(object = pmatch(
+  x = vars,
+  table = fetched
+))
+fetched[data.order] #[1] "a1" "c3" "d4"
+
+
+
+细节展开：
+vars=c("a1", "b2", "c3", "d4") #原数组
+fetched=c("c3", "d4", "a1") #子集，对子集排序，和原数组顺序相同
+rs= pmatch(
+  x = vars,
+  table = fetched
+); rs # [1]  3 NA  1  2
+
+rs2=na.omit(rs); rs2 # [1] 3 1 2
+as.numeric(rs2)
+fetched[rs2] #[1] "a1" "c3" "d4"
+
+
+
+
+
+(14) inherits(x, what) 的第二个参数还可以是数组。
+只要有一个为真，就返回T。
+
+> inherits(x = 2, what = c("character"))
+[1] FALSE
+> inherits(x = 2, what = c("character", "numeric"))
+[1] TRUE
+
+
+
+
+
+
+========================================
+|-- Seurat 4 源码解析 10: subset()
+----------------------------------------
+
+1.
+接上例。
+
+
+
+2.
+# $ find .  | grep "R$" | xargs grep -n "subset" --color=auto
+# seurat-object-4.0.4/R/seurat.R:2497:subset.Seurat <- function(
+# seurat-object-4.0.4/R/assay.R:858:subset.Assay <- function(x, cells = NULL, features = NULL, ...) {
+
+
+
+
+3. R tips
+
+
+(1) enquo() Defuse R expressions 也叫引用，相当于 原生R的 quote() and substitute().
+
+defuse [diːˈfjuːz] vt. 平息；去掉……的雷管；使除去危险性
+
+The defusing operators expr() and enquo() prevent the evaluation of R code. 
+Defusing is also known as quoting, and is done in base R by quote() and substitute(). 
+When a function argument is defused, R doesn't return its value like it normally would but it returns the R expression describing how to make the value. 
+These defused expressions are like blueprints for computing values.
+
+
+> library(rlang)
+> enquo
+function (arg) 
+{
+    .Call(rlang_enquo, substitute(arg), parent.frame())
+}
+<bytecode: 0x55e51ff25338>
+<environment: namespace:rlang>
+
+
 
 
 
@@ -1764,6 +2172,17 @@ plots2
 
 ========================================
 ----------------------------------------
+
+
+启动一个 docker 学习R
+$ docker run -d -p 8787:8787 -e PASSWORD=123456 rocker/rstudio:4.1.1
+
+交互式
+$ docker exec -it cd36 bash
+
+
+
+
 
 
 
