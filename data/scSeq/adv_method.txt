@@ -632,7 +632,25 @@ plot_cells(cds, color_cells_by = "pseudotime")
 ##寻找拟时轨迹差异基因 Finding genes that change as a function of pseudotime
 #graph_test分析最重要的结果是莫兰指数（morans_I），其值在-1至1之间，0代表此基因没有
 #空间共表达效应，1代表此基因在空间距离相近的细胞中表达值高度相似。
-Track_genes <- graph_test(cds, neighbor_graph="principal_graph", cores=10)
+Track_genes <- graph_test(cds, neighbor_graph="principal_graph", cores=10) #这一句巨慢，很占内存，做好重启Rsession的准备。
+# rbind报错，按如下一行修改。 如果线程报错，可以只使用1个核。
+
+
+#################
+https://www.jianshu.com/p/bbc4384c0651
+修改 monocle3 的graph_test函数报错解决方案
+> Track_genes <- graph_test(cds, neighbor_graph="principal_graph", cores=10)
+Error: 'rBind' is defunct.
+ Since R version 3.2.0, base's rbind() should work fine with S4 objects
+原因：monocle3的bug
+解决方案：
+Console中运行
+> trace('calculateLW', edit = T, where = asNamespace("monocle3"))
+在出现的文档中Matrix::rBind 改为rbind，(或者将rbind 改为Matrix::rBind)
+#################
+
+
+
 
 #挑选top10画图展示
 Track_genes_sig <- Track_genes %>% filter(q_value < 0.05) %>% top_n(n=10, morans_I) %>%
@@ -644,16 +662,19 @@ plot_cells(cds, genes=Track_genes_sig,
            label_leaves=FALSE)
 
 
-#(1)基因表达趋势图
+#(1)基因表达趋势图(常用图)
 plot_genes_in_pseudotime(cds[Track_genes_sig,], color_cells_by="seurat_clusters", #celltype
                          min_expr=0.5, ncol = 2)+
   guides( color = guide_legend( override.aes = list(size=5)))
 # 可比较基因开始表达时间的早晚。
+# 这里进一步分析可以跳到下面的小标题 (4) (5) 
 
 
 #(2)FeaturePlot图
 plot_cells(cds, genes=Track_genes_sig, show_trajectory_graph=FALSE,
            label_cell_groups=FALSE,  label_leaves=FALSE)
+
+
 
 ##(3)寻找共表达模块
 genelist <- pull(Track_genes, gene_short_name) %>% as.character()
@@ -674,12 +695,43 @@ plot_cells(cds,
            show_trajectory_graph=FALSE)
 
 
+## (4) 获取每个细胞的 pseudotime 值。
+#traj.coord<-reducedDimS(cds)
+traj.coord<- cds@principal_graph_aux@listData[["UMAP"]][["pseudotime"]]
+head(traj.coord)
+head(rownames(sce@meta.data))
+identical(rownames(sce@meta.data), names(traj.coord) ) #T
+
+sce@meta.data$pseudotime=as.numeric(traj.coord)
+
+
+
+## (5) 计算每一组的pseudotime平均值
+ptime=sapply( split(sce$pseudotime, sce$seurat_clusters), mean )
+ptime=ptime[order(ptime)]
+ptime
+
+dif=data.frame(
+  x=sce$seurat_clusters,
+  y=sce$pseudotime
+)
+dif$x=factor(dif$x, levels = names(ptime) )
+
+library(ggplot2)
+ggplot(dif, aes(x,y, fill=x))+
+  geom_violin(scale="width", show.legend = F)+
+  #geom_boxplot(fill="white", outlier.color = NA, width=0.1)+
+  theme_bw(base_size = 14)+
+  labs(x="seurat_clusters", y="pseudotime")+
+  theme(
+    axis.text.x = element_text(angle=60, hjust = 1)
+  )
+#
 
 
 
 
-
-6. choose one branch
+6. choose one branch(跳过)
 
 # 手动选择一个分支
 cds_subset <- choose_cells(cds)
@@ -699,6 +751,19 @@ plot_cells(cds_subset,
            genes= gene_module_df %>% group_by(module) %>% top_n(4) %>% pull(id),
            label_cell_groups=F,
            show_trajectory_graph=F)
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -758,6 +823,20 @@ paper:
 Letter | Published: 08 August 2018: RNA velocity of single cells
 https://www.nature.com/articles/s41586-018-0414-6
 改文章使用的软件：https://scvelo.readthedocs.io/
+
+
+Article | Published: 03 August 2020 |(velocyto--> scVelo)
+Generalizing RNA velocity to transient cell states through dynamical modeling
+https://www.nature.com/articles/s41587-020-0591-3
+
+
+
+http://loompy.org/
+http://velocyto.org/velocyto.py/tutorial/cli.html
+https://scvelo.readthedocs.io/VelocityBasics/
+
+https://mp.weixin.qq.com/mp/appmsgalbum?__biz=MzI1Njk4ODE0MQ==&action=getalbum&album_id=1774746462153687043
+
 
 
 https://zhuanlan.zhihu.com/p/142327236
