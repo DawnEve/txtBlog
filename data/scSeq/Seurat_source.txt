@@ -9,6 +9,7 @@ Seurat 4 源码解析 2：Seurat 对象怎么实例化？
 Seurat 4 源码解析 3：Seurat 对象的方法是怎么定义的？
 	https://zhuanlan.zhihu.com/p/463617297
 
+Seurat 4 R包源码解析 总目录: https://zhuanlan.zhihu.com/p/465392721
 
 
 
@@ -3335,6 +3336,604 @@ isSameClass(mtcars, data.frame()) #T
 
 
 
+========================================
+|-- Seurat 4 R包源码解析 14: `[[<-` S4 风格为 S4 类 实现的方法
+----------------------------------------
+1.
+接上文。
+
+
+2.源码解析 
+
+
+
+3. R tips 
+
+(1) 直接查看R包函数的源码
+
+#查看S3形式的实现代码
+> `[[<-.data.frame` 
+function (x, i, j, value) 
+{
+    if (!all(names(sys.call()) %in% c("", "value"))) 
+...
+
+
+
+# 查看S4形式的实现代码
+> getMethod("[[<-", signature = "Seurat")
+Method Definition:
+
+function (x, i, j, ..., value) 
+{
+    x <- UpdateSlots(object = x)
+...
+
+
+
+
+
+(2) 为S4类实现方法: "[", "[<-",  "[[", "[[<-"
+ 
+setClass("Person", slots = c(name="character", age="numeric"))
+p1=new("Person", name="Tom", age=18); p1
+slot(p1, name="age")=21; p1
+
+p1[["age"]] # this S4 class is not subsettable
+p1[["age"]]=22
+# [[<- defined for objects of type "S4" only for subclasses of environment
+# 根据报错，看到其他人也遇到这个问题了，不过都不知道这个报错在说啥：
+# https://stackoverflow.com/questions/46761340/s4-method-subsetting-generic-replace-environment
+
+
+#不返回值：错
+"[[<-.Person"=function(x,i,..., value){
+  slot(x, name=i)=value
+}
+p2=p1
+p2[["age"]]=200; p2 #对象变字符串了
+
+
+#返回值：正确
+"[[<-.Person"=function(x,i,..., value){
+  slot(x, name=i)=value
+  return(x)
+}
+p2=p1
+p2[["age"]]=22; p2
+
+
+
+
+
+# 使用S4的形式定义
+setMethod(
+  f="[[<-",
+  signature = "Person",
+  definition = function(x,i,...,value){
+    slot(x, name=i)=value
+    return(x)
+  }
+)
+p2=p1
+p2[["age"]]=23; p2
+# 经过测试，S3和S4都可以实现读写S4类的数据。注意对同名函数，每次要重启R session后测试。
+
+
+
+
+# 其他方法呢? '[', '[<-', '[['
+# getter
+`[.Person`=function(x,i,...){
+  slot(x, name=i)
+}
+p2=p1; p2
+p2["age"]
+p2
+
+# getter2
+p1[["name"]] #this S4 class is not subsettable
+
+`[[.Person`=function(x,i,...){
+  slot(x, name=i)
+}
+p1[["name"]] #Tom
+p1
+
+
+# setter
+`[<-.Person`=function(x,i,...,value){
+  slot(x, name=i)=value
+  return(x)
+}
+p2=p1
+p2["name"]="Lilei"
+p2
+
+
+#setter2
+`[[<-.Person`=function(x,i,...,value){
+  slot(x, name=i)=value
+  return(x)
+}
+p2=p1; p2
+p2[["name"]]="Lilei2"
+p2
+
+p2[["age"]]=100
+p2
+
+
+
+(3) 使用 setReplaceMethod() 函数实现更一般的setter
+
+setClass("Person", slots = c(name="character", age="numeric"))
+p1=new("Person", name="Tom", age=18); p1
+slot(p1, name="age")=21; p1
+
+
+# 想要更一般化的setter，可以使用 setReplaceMethod() 函数
+setGeneric(name = "setAge<-", def = function(theObject, value){standardGeneric("setAge<-");});
+# setGeneric(name = "setName<-", def = function(theObject, value){standardGeneric("setName<-");});
+
+setReplaceMethod(
+  f = "setAge",
+  signature = "Person",
+  definition = function(theObject, value){
+    theObject@age <- value;
+    return(theObject);
+  })
+setAge(p1)= 100
+p1
+
+
+
+
+
+
+
+
+
+(4) 环境变量
+
+获取
+> class(options())
+[1] "list"
+
+> options()
+
+
+使用关键词检索某个环境变量的名字
+> grep("digit", names(options()), value=T)
+[1] "digits"
+
+
+查看该环境变量的值
+> options("digits")
+$digits
+[1] 7
+
+> a=0.123456789
+> a
+[1] 0.1234568
+
+
+修改/设置 环境变量
+> options("digits"=8)
+> a
+[1] 0.12345679
+
+
+
+(5) R包的 .onAttach() 与 .onLoad() 的区别
+功能上的区别：
+https://community.rstudio.com/t/when-to-use-onload-vs-onattach/21953/2
+onAttach only runs when the library is attached, e.g. when somebody calls library(your_package). 
+onLoad will also run when somebody loads but doesn't attach your package by calling your_package::your_function.
+
+
+功能决定应用。
+.onAttach is only for interactive use, for example startup messages and so forth
+
+# .onAttach()一般用于在包启动时加载有用信息或建议。
+AttachDeps <- function(deps) {
+  for (d in deps) {
+    if (!paste0('package:', d) %in% search()) {
+      packageStartupMessage("Attaching ", d)
+      attachNamespace(ns = d)
+    }
+  }
+}
+
+# library() 事件触发的函数
+.onAttach <- function(libname, pkgname) {
+  AttachDeps(deps = 'SeuratObject')
+}
+
+
+
+
+# .onLoad() 一般用来进行初始化设置
+
+# 定义的环境变量
+seurat_default_options <- list(
+  Seurat.memsafe = FALSE,
+  Seurat.warn.umap.uwot = TRUE,
+  Seurat.checkdots = "warn",
+  Seurat.limma.wilcox.msg = TRUE,
+  Seurat.Rfast2.msg = TRUE,
+  Seurat.warn.vlnplot.split = TRUE
+)
+
+.onLoad <- function(libname, pkgname) {
+  # 获取当前 环境变量
+  op <- options()
+  # Seurat选项中 还没有设置到 当前中的
+  toset <- !(names(x = seurat_default_options) %in% names(x = op))
+  # 如果有没设置的，则设置上默认值
+  if (any(toset)) options(seurat_default_options[toset])
+  # 如果没有左值，则不返回任何结果
+  invisible(x = NULL)
+}
+
+
+通过类似 getOption("Seurat.memsafe") 就能获取设定信息。
+通过 option("Seurat.memsafe"=T) 就能修改环境变量，这个修改是全局的，在重启R session前一直有效。
+
+
+
+
+(6) 如果没有左值，则不返回任何结果 invisible()
+
+fn1=function(x){
+  return( x+10 )
+}
+fn2=function(x){
+  return( invisible(x+10) )
+}
+
+> rs1=fn1(1); rs1
+[1] 11
+> rs2=fn2(1); rs2
+[1] 11
+> fn1(1)
+[1] 11
+> fn2(1) #没有左值，则也不打印结果
+> 
+
+
+
+ref:
+R 包管理: https://www.jianshu.com/p/0733946efae9
+
+https://zhuanlan.zhihu.com/p/477848978
+`[[<-` for Seurat / CheckGC() 
+
+
+
+
+
+========================================
+|-- Seurat 4 R包源码解析 15: step6 找高变基因 FindVariableFeatures()
+----------------------------------------
+1. 调包侠
+# step6 Identification of highly variable features (feature selection)
+
+> pbmc <- FindVariableFeatures(pbmc, selection.method = "vst", nfeatures = 2000)
+Calculating gene variances
+0%   10   20   30   40   50   60   70   80   90   100%
+[----|----|----|----|----|----|----|----|----|----|
+**************************************************|
+Calculating feature variances of standardized and clipped values
+0%   10   20   30   40   50   60   70   80   90   100%
+[----|----|----|----|----|----|----|----|----|----|
+**************************************************|
+
+> # Identify the 10 most highly variable genes
+> top10 <- head(VariableFeatures(pbmc), 10)
+> top10
+ [1] "PPBP"   "LYZ"    "S100A9" "IGLL5"  "GNLY"   "FTL"    "PF4"    "FTH1"   "GNG11"  "S100A8"
+
+
+# plot variable features with and without labels
+plot1 <- VariableFeaturePlot(pbmc)
+plot2 <- LabelPoints(plot = plot1, points = top10, repel = TRUE)
+plot1 + plot2
+# 图片在桌面
+
+
+(1) 影响范围
+执行前
+> head(pbmc@assays$RNA@var.features)
+character(0)
+> head(pbmc@assays$RNA@meta.features)
+data frame with 0 columns and 6 rows
+
+
+执行后
+> head(pbmc@assays$RNA@var.features)
+[1] "PPBP"   "LYZ"    "S100A9" "IGLL5"  "GNLY"   "FTL"   
+> head(pbmc@assays$RNA@meta.features)
+                 vst.mean vst.variance vst.variance.expected vst.variance.standardized vst.variable
+AL627309.1    0.003411676  0.003401325           0.003645407                 0.9330441        FALSE
+AP006222.2    0.001137225  0.001136363           0.001144957                 0.9924937        FALSE
+RP11-206L10.2 0.001895375  0.001892500           0.001965766                 0.9627290        FALSE
+RP11-206L10.9 0.001137225  0.001136363           0.001144957                 0.9924937        FALSE
+
+
+> slotNames(pbmc_small@assays$RNA)
+[1] "counts"        "data"          "scale.data"    "key"           "assay.orig"    "var.features" 
+[7] "meta.features" "misc"
+
+
+
+(2)这个进度条怎么出现的？不知道，也没找到。可能是 C++ 部分控制的。
+包括上一节的 NormalizeData() 也是这个风格的进度条。
+
+
+
+
+(3) "vst" 使用的是 assay@counts 数据作为输入
+  if (selection.method == "vst") {
+    data <- GetAssayData(object = object, slot = "counts")
+	...
+  }
+
+
+vst中计算基因表达的平均值，使用的是 assay@counts。
+如果使用的是 assay@data 则可以先还原为counts，计算完平均值再取log。
+参考C函数: FastExpMean()
+
+
+
+
+
+2. 源码解析
+
+(1)直接使用的函数
+- FindVariableFeatures
+- VariableFeatures
+- VariableFeaturePlot
+- LabelPoints
+
+
+$ find . | grep "R$" | xargs grep -n "FindVariableFeatures" --color=auto
+./seurat-4.1.0/R/generics.R:204:FindVariableFeatures <- function(object, ...) {
+
+./seurat-4.1.0/R/preprocessing.R:2115:FindVariableFeatures.Seurat <- function(
+./seurat-4.1.0/R/preprocessing.R:2014:FindVariableFeatures.Assay <- function(
+./seurat-4.1.0/R/preprocessing.R:1914:FindVariableFeatures.default <- function(
+
+
+(2) 间接使用的函数
+
+# 跳过
+- LogSeuratCommand
+- GetResidual
+
+$ find . | grep "R$" | xargs grep -n "GetResidual" --color=auto
+./seurat-4.1.0/R/preprocessing.R:364:GetResidual <- function(
+./seurat-4.1.0/R/preprocessing.R:3192:GetResidualSCTModel <- function(
+
+
+
+
+# 跳过 c 函数
+- FastLogVMR
+- SparseRowVar2 #C++函数
+
+$ find . | xargs grep -n "SparseRowVar2" --color=auto 2>/dev/null
+./seurat-4.1.0/R/RcppExports.R:52:SparseRowVar2 <- function(mat, mu, display_progress) {
+./seurat-4.1.0/R/RcppExports.R:53:    .Call('_Seurat_SparseRowVar2', PACKAGE = 'Seurat', mat, mu, display_progress)
+
+./seurat-4.1.0/src/RcppExports.cpp:173:// SparseRowVar2
+./seurat-4.1.0/src/RcppExports.cpp:174:NumericVector SparseRowVar2(Eigen::SparseMatrix<double> mat, NumericVector mu, bool display_progress);
+./seurat-4.1.0/src/RcppExports.cpp:175:RcppExport SEXP _Seurat_SparseRowVar2(SEXP matSEXP, SEXP muSEXP, SEXP display_progressSEXP) {
+./seurat-4.1.0/src/RcppExports.cpp:181:    rcpp_result_gen = Rcpp::wrap(SparseRowVar2(mat, mu, display_progress));
+./seurat-4.1.0/src/RcppExports.cpp:420:    {"_Seurat_SparseRowVar2", (DL_FUNC) &_Seurat_SparseRowVar2, 3},
+
+./seurat-4.1.0/src/data_manipulation.h:37:NumericVector SparseRowVar2(Eigen::SparseMatrix<double> mat,
+./seurat-4.1.0/src/data_manipulation.cpp:278:NumericVector SparseRowVar2(Eigen::SparseMatrix<double> mat,
+
+
+
+- SparseRowVarStd #有一个c函数
+
+
+
+
+
+
+
+3. R tips
+
+(1) 如果右值(基因名)中带有_，则警告并替换为-
+  if (any(grepl(pattern = '_', x = value))) {
+
+    warning(
+      "Feature names cannot have underscores '_', replacing with dashes '-'",
+      call. = FALSE,
+      immediate = TRUE
+    )
+    value <- gsub(pattern = '_', replacement = '-', x = value)
+  }
+
+
+
+
+(2) 把基因list按照是否在 assay 中分为2类，放到一个list中。
+
+value=c("CD4", "CD8A", "CXCR4", "CD3G", "LY6G")
+object=pbmc_small@assays$RNA
+
+> split(x = value, f = value %in% rownames(x = object))
+$`FALSE`
+[1] "CD4"  "CD3G" "LY6G"
+
+$`TRUE`
+[1] "CD8A"  "CXCR4"
+
+
+
+
+
+(3) 变数组为 逗号隔开的字符串
+> paste( colnames(mtcars), collapse = ', ')
+[1] "mpg, cyl, disp, hp, drat, wt, qsec, vs, am, gear, carb"
+
+
+
+
+(4) vst 算法第一步: 使用loess() 拟合y值
+
+    not.const <- hvf.info$variance > 0
+
+    fit <- loess(
+      formula = log10(x = variance) ~ log10(x = mean),
+      data = hvf.info[not.const, ],
+      span = loess.span
+    )
+	
+    hvf.info$variance.expected[not.const] <- 10 ^ fit$fitted
+
+
+
+
+(5) 按 相等频率分bin: 分位数
+
+feature.mean=rowMeans(iris[, 1:4])
+num.bin=5
+
+data.x.breaks=quantile(
+  x = feature.mean[feature.mean > 0],
+  probs = seq.int(from = 0, to = 1, length.out = num.bin)
+)
+data.x.breaks
+#
+#     0%    25%    50%    75%   100% 
+# 2.1000 2.6750 3.5750 4.0625 5.1000 
+
+
+
+(6) cut() 把数据放到对应的bin中
+就是把数据转为对应的bin范围。
+
+#1) breaks 可以是切分范围
+data.x.bin <- cut(x = feature.mean, breaks = data.x.breaks,
+                  include.lowest = TRUE)
+> head(data.x.bin)
+[1] [2.1,2.67]  [2.1,2.67]  [2.1,2.67]  [2.1,2.67]  [2.1,2.67]  (2.67,3.58]
+Levels: [2.1,2.67] (2.67,3.58] (3.58,4.06] (4.06,5.1]
+
+画柱状图:
+> barplot(table(data.x.bin))
+
+
+
+#2) breaks 也可以是总份数
+> data.x.bin2 <- cut(x = feature.mean, breaks = 10, include.lowest = TRUE)
+> head(data.x.bin2)
+[1] (2.4,2.7] [2.1,2.4] [2.1,2.4] [2.1,2.4] (2.4,2.7] (2.7,3]  
+10 Levels: [2.1,2.4] (2.4,2.7] (2.7,3] (3,3.3] (3.3,3.6] (3.6,3.9] (3.9,4.2] (4.2,4.5] ... (4.8,5.1]
+
+> head(feature.mean)
+[1] 2.550 2.375 2.350 2.350 2.550 2.850
+
+画柱状图:
+> barplot(table(data.x.bin2))
+
+
+
+
+
+(7) 把table()统计结果加到 ggplot2 图例中
+注意: 想量化操作能节省代码。不过有搭配错乱的风险，需要画图后再次核对。
+
+源码:
+    scale_color_manual( #图例
+      labels = paste(labels.legend, 'count:', table(var.status)),
+      values = cols
+    )
+
+示例:
+library(ggplot2)
+df1=mtcars
+labels.legend=c(3,4,5)
+df1$gear=factor(df1$gear, levels=labels.legend)
+
+var.status=df1$gear
+cols=1:3
+ggplot(df1, aes(mpg, disp, color=gear))+geom_point()+
+  theme_bw()+
+  scale_color_manual( #图例
+    labels = paste0(labels.legend, ' (n=', table(var.status),")"),
+    values = cols
+  )
+#
+
+
+(8) 画ggplot2图时对x轴取log
+  if (log) {
+    plot <- plot + scale_x_log10()
+  }
+
+library(ggplot2)
+plot = ggplot(mtcars, aes(mpg, disp, color=gear))+geom_point()
+plot + scale_x_log10() #x 轴的刻度是 10^-2, 0, 10^2.
+
+
+
+
+(9) ggplot2的数据是存储在 g1$data 中
+
+library(ggplot2)
+g1=ggplot(mtcars, aes(mpg, disp))+geom_point(); g1
+
+> head(g1$data)
+                   mpg cyl disp  hp drat    wt  qsec vs am gear carb
+Mazda RX4         21.0   6  160 110 3.90 2.620 16.46  0  1    4    4
+Mazda RX4 Wag     21.0   6  160 110 3.90 2.875 17.02  0  1    4    4
+
+
+
+(10) ggplot2 画散点图的x轴是数据的哪一列？
+
+library(ggplot2)
+g1=ggplot(mtcars, aes(mpg, disp))+geom_point(); g1
+
+rlang::as_label( g1$mapping$x ) #"mpg"
+
+
+(11) 换算 counts 和 data 的R函数
+> expm1(1)
+[1] 1.718282
+> exp(1)-1
+[1] 1.718282
+
+#
+> log1p(1)
+[1] 0.6931472
+> log(1+1)
+[1] 0.6931472
+
+
+
+
+
+
+
+
+4. 发现的bug
+
+(1) LabelPoints() 中 points 是数字时，错误的使用了全部基因名字。
+提示让提交到 develop 线上。
+
+pr: https://github.com/satijalab/seurat/pull/5727
+
+
+
+
+
 
 
 
@@ -3362,6 +3961,9 @@ function (object)
 ...
 
 
+> DiscretePalette() 配色方案
+
+
 
 
 ()
@@ -3386,6 +3988,9 @@ function (object)
  logi FALSE
 > pbmc_small@reductions$pca@global
 [1] FALSE
+
+
+
 
 
 
@@ -3433,6 +4038,41 @@ function (parent.find = "Seurat", ...)
 }
 <bytecode: 0x0000000018191b28>
 <environment: namespace:Seurat>
+
+
+
+
+
+
+
+2. 文字进度条
+
+# 进度条
+library(utils)
+fn1=function(df1){
+  ## 第一个位置：新建一个其实进度条
+  pb <- txtProgressBar(style=3)
+  
+  star_time <- Sys.time() ## 记录程序开始时间
+  
+  for (i in 1:nrow(df1)){
+    Sys.sleep(0.01 + runif(1)/30 )
+    ## 第二个位置：实时反映进度
+    setTxtProgressBar(pb, i/nrow(df1))
+  }
+  
+  end_time <- Sys.time()  ## 记录程序结束时间
+  
+  ## 第三个位置关闭进度条
+  close(pb)
+  
+  run_time <- end_time - star_time  ## 计算程序运行时间
+  message(paste0("run time: ", round(run_time,2), "seconds"))
+  return(invisible(NULL))
+}
+fn1(iris)
+
+
 
 
 
