@@ -1,8 +1,16 @@
 英语语法教程
 
+英语语法
+* 英语句子3类: 简单句、并列句、复合句;
+	- 复合句包括:
+		* 名词性从句(4): 主语从句、宾语从句、同位语从句、表语从句 
+		* 定语从句(2): 限制性、非限制性
+		* 状语从句(8): 时间、地点、原因、方式、目的、结果、条件、让步
+* 类型：陈述句、祈使句、感叹句、疑问句
+* 特殊句式: 强调句、虚拟语气、倒装句
 
-英语句子3类: 简单句、并列句、复合句;
-复合句主要是定语从句、状语从句。
+
+
 
 语法参考:
 [参考1](https://github.com/codeyu/EnglishGrammarBook)
@@ -46,29 +54,54 @@ https://site.douban.com/195274/widget/notes/12008701/note/267404585/
 像kill这种动作，就必须发生在另一个对象身上，叫做及物动词。
 
 
+
+
 ## 1.Subject(主语)＋Verb (谓语) （谓语为不及物动词）
+He wins.
+Spring comes.
+
+
 The red sun rises in the east.红彤彤的太阳从东方升起来。
+She cried bitterly.（她哭得很伤心。)
+He arrived in the morning.（他早上到的。)
+They apologized to me.（他们向我道歉了。)
+
 
 
 
 
 ## 2.Subject(主语)＋Link. V(系动词) ＋ predicative(表语)
 
+这种句型主要用来表示主语的特点、身份等.
+
 解释为“是”的动词，没有叙述能力，只能把主词和后面构成叙述的部分连接起来，叫做连缀动词（Linking Verb）。
 跟在这种动词后面的部分，替代了动词所扮演的叙述角色，叫做表语。
 
+These books are novels. （这些书是小说。）
+Her voice sounded familiar.（她的声音听起来很熟悉。）
+The future seems hopeful.（未来似乎充满希望。）
+
+系动词总共包括三个类别，分别是
+- be动词：比如 am， is, are, was, were.
+- 感官动词：主要是指五官，look，sound, smell, taste， feel.
+- 变化动词：有become， turn, go, let， grow.
+
+(另一种分类)其系动词一般可分为下列两类：
+- 表示状态，这样的词有：be,look,seem,smell,taste,sound,keep等；
+- 表示变化，这类系动词有：become,turn,get,grow,go等。
+
 ```
-        be     是
-        look   看起来是
-        seem   似乎是
-        appear 显得是
-        sound  听起来是
-        feel   摸起来是（感觉是？）
-        taste  尝起来是
-        turn   转变为
-        prove  证实为
-        become 成为
-        make   做为
+be     是
+look   看起来是
+seem   似乎是
+appear 显得是
+sound  听起来是
+feel   摸起来是（感觉是？）
+taste  尝起来是
+turn   转变为
+prove  证实为
+become 成为
+make   做为
 ```
 表语的词类，应该是名词和形容词比较合理。
 
@@ -90,16 +123,29 @@ To be or not to be, that's a question.
 
 
 ## 3.Subject(主语)＋Verb (谓语)（谓语为及物动词）＋ Object (宾语)
+
+I love you.
+You harm me.
+
+这种句型中的动词一般为及物动词,所谓及物动词,就是这种动词后可以直接接宾语。其宾语通常由名词、代词、动词不定式、动名词或从句等来充当。
+
+Angelia earned a good score in the exam. Angelia在这次考试中取得了好分数。
+Tom broke his leg last week. 上星期Tom摔断了腿。
+I checked my email message every day.
 He put the dictionary in the backpack. 他把词典放进了背包里。
-Mother promised to give me a present.母亲答应要给我一件礼物。
+
+I want (to go). S V O (我想要去。)
+(His girl friend) [asked] (that he should buy her a diamond ring as soon as possible.) S V O
+
+Mother [promised] (to give me a present.)母亲答应要给我一件礼物。
 Would you mind opening the window?打开窗户你介意吗?
 
 
 
 注意：跟不定式to do 作宾语的动词有：
-打算(intend)计划(plan)和期盼(expect) 假装(pretend)喜欢(would like)表祝愿(wish)
-决定(decide)同意(agree)设法(manage)说服(persuade)不拒绝(refuse)
-好像(seem/appear)答应(promise)做努力(attempt)失败(fail)也付得起(afford)
+打算(intend) 计划(plan) 期盼(expect) 假装(pretend) 喜欢(would like) 表祝愿(wish)
+决定(decide) 同意(agree) 设法(manage) 说服(persuade) 不拒绝(refuse)
+好像(seem/appear) 答应(promise) 做努力(attempt) 失败(fail) 支付得起(afford)
 
 注意：常要求接“疑问词＋不定式”作宾语的动词有ask, consider, decide, discover, explain, find out, forget, guess, know, learn, remember, tell, think, understand, wonder等。
 
@@ -113,9 +159,17 @@ keep 保持 mention 提及 mind 介意 miss 逃过 put off 推迟 practice 练�
 
 
 
+
+
 ## 4.Subject(主语)＋Verb(谓语)＋ Indirect object(间接宾语)＋Direct object (直接宾语)
+
+这种句型中,直接宾语为主要宾语,表示动作是对谁做的或为谁做的,在句中不可或缺，常常由表示“物”的名词来充当。
+间接宾语也被称之为第二宾语,去掉之后,对整个句子的影响不大,多由指“人”的名词或代词承担。
+
 Mr.Smith taught us English last year. 史密斯先生去年教我们英语。
 Would you please pass me that dictionary?=Would you please pass that dictionary to me? 请你把那本词典递给我好吗?
+My aunt bought me a book. 婶婶给我买了一本书。 非要保留一个宾语，就是: 买书，所以book是直接宾语，me是间接宾语。
+
 
 注意：主语+谓语+间接宾语(人)+直接宾语(物)。
 如果把表示物的直接宾语放在表示人的间接宾语前,需要借助于介词to或for。
@@ -127,16 +181,35 @@ to表示:朝着,向着,对着;for表示:为(某人),替(某人)。
 
 
 
-## 5.Subject(主语)＋Verb (动词)＋Object (宾语)＋Complement(补语)
-在这一句型中，宾语是动词不定式的逻辑主语。
 
-If you let me go. I’ll make you king. (名词作宾补)
+
+
+## 5.Subject(主语)＋Verb (动词)＋Object (宾语)＋Complement(补语)
+
+这种句型中的“宾语 ＋ 补语”统称为“复合宾语”宾语补足语的主要作用或者是补充，说明宾语的特点、身份等，或者表示让宾语去完成的动作等；担任补语的常常是名词、形容词、副词、介词短语、分词、动词不定式等。
+
+They caught the man stealing.（他们抓到那人正在实施偷窃。） 是不是后置定语？省略 who was 
+The work made me exhausted. （这项工作使我精疲力尽。）
+I find the purse pretty. （我觉得这个包包很漂亮。）
+
+在这一句型中，宾语是动词不定式的逻辑主语。
+John wants his brother to stay. （John让弟弟留下。）
+
+
+主谓宾和主谓宾宾补的区别:
+- 主谓宾补 结构的句子，通常宾语加宾补都可以扩展为一个句子，例如：We call him Tom.其中的 him 是宾语，Tom 是宾补，扩展为句子就是He is Tom.
+- 主谓宾宾 结构的句子，两个宾语一个指人，一个指物，例如：He gave me a book. me指人，a book指物，人和物不能画等号，不能扩展为句子。
+
+
+
+If you let me go, I’ll make you king. (名词作宾补)
 Leave the door open. (形容词作宾补)
 We found Li Ming out when we arrived. (副词作宾补)
 Make yourself at home. (介词短语作宾补)
 I saw a stranger enter the building. (不定式作宾补)
 The boss kept them working all day. (现在分词作宾补)
 Yesterday he had his leg broken. (过去分词作宾补)
+I have my homework done. 
 
 (1) 在表示感觉的动词后面作宾语补足语，并且不定式都不带to.(被动语态里要带to)
 这一类动词有：see, hear, feel, watch, notice, observe, look at, listen to,等。

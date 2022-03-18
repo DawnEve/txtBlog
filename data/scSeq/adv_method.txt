@@ -275,560 +275,36 @@ Total 213 H1 single cells and 247 H1-Fucci single cells were sequenced. The 213 
 
 
 
-
-
-
-========================================
-轨迹推断（TI，trajectory inference）也常被称作 伪时间分析（ pseudotime analysis ）
-----------------------------------------
-
-总体而言，作者发现大多数TI方法在这四个评估标准之间存在很大差异，只有少数方法（例如PAGA，Slingshot和SCORPIUS）比较均衡。
-http://www.seqyuan.com/A%20comparison%20of%20single-cell%20trajectory%20inference%20methods.html
-
-
-目前常用的轨迹推断软件包括monocle，slingshot，velocyto等，各有优劣。
-
-
-拟时分析的本质是包含一条具有起点和终点的时间轴的细胞轨迹。时间轴的构建是在细胞轨迹的基础上，依据生物学先验知识来确定起点和终点完成的。
-
-细胞轨迹的构建则是通过细胞的表达量特征来完成的，主流方法有三种：
-
-（1）基于基因表达量的树图方法，经典软件是monocle和PAGA，以基因表达量动态变化来构建细胞轨迹；
-（2）无监督聚类，经典算法是UMAP，UMAP的聚类结果包含一条隐匿的时间轴，这也是今年文章中UMAP降维逐渐替代tSNE降维的一个原因；
-（3）基因的降解趋势和合成趋势，也就是今天我们会重点讨论的RNA velocity。
-
-
-
-
-1. 许多生物过程都伴随着细胞状态的连续性变化，比如研究发育就会经常使用到。我们可以利用单细胞数据在高维空间画一条线，贯穿于多种细胞状态。最简单是点到点的一条路径，更复杂的还有一个点出发再生成多个分支。
-
-
-
-轨迹推断，英文名词是：Trajectory Analysis。和它相关的另一个名词是：拟时序分析（pseudotime），指的是细胞沿着这个轨迹，并且对潜在的生物活动进行量化。注意这里看字面意思就知道，并不是指真正的时间，而是指细胞与细胞之间的更替、转化的顺序或者是轨迹，可以理解为“一个连续过程的缩影”。
-
-不同的生物过程对应的“拟时序”也是不同的：
-- Receptor Signaling
-- Cell activation
-- Cell proliferation
-- Marker expression 
-
-
-
-
-2. 看一下现在做相关分析的工具：来自
-https://broadinstitute.github.io/2019_scWorkshop/pseudotime-cell-trajectories.html
-
-Comparison: Cell Trajectories
-Diffusion maps for high-dimensional single-cellanalysis
-Diffusion pseudotime
-Slingshot Paper
-Optimal Transport
-RNA Velocity
-
-
-有评测文章发现：Slingshot、TSCAN、Monocle DDRTree这几种方法都不错
-
-
-(2)在数据集上尝试不同TI方法的意义
-在推断感兴趣的数据集的轨迹时，必须考虑另外两点：
-
-• 轨迹以及其下游结果/假设需要在多种TI方法上得到重现，这样做可以确保轨迹的预测不会是由于给定的参数设置或TI方法所基于的特定算法而产出的偏好性的结果。
-• 即使我们知道了预期的轨迹拓扑，也可以尝试一些分支较少的轨迹拓扑假设。如果使用这种方法确认了预期的拓扑，那么它将为用户提供证据支持；当产生更复杂的拓扑时，这可能表明基础生物学比用户预期的要复杂得多。
-
-
-2019年发表在Nature biotechnology的一篇文章A comparison of single-cell trajectory inference methods (Saelensetal., 2019[6]) 对45种TI方法在110个真实数据集和229个合成数据集中进行了全面比较，主要评估了TI方法的准确性、可扩展性、稳定性和可用性四个方面
-
-
-## 以下是文章(Saelens et al., 2019)的主要可参考点：
-• 文章的研究评估发现：发现当前TI方法之间存在很大的互补性，数据集的特性不同，执行效果最佳的TI方法也不同
-• 作者基于评估的结果，制定了一套准则，以帮助用户为自己的数据集选择最佳方法http://guidelines.dynverse.org
-• 开发了一个R包--dyno[7]，把文章中测试过的TI方法进行了封装，目前已封装了55种，允许用户根据guidelines.dynverse推荐的方法，自由选择进行TI分析，dyno采用统一的输入，同时也对不同TI方法的输出做了统一
-
-
-https://zouter.shinyapps.io/server/
-
-作者对几十种TI方法的输入输出接口进行了标准化，并提供的统一的工具包dyno.
-
-
-
-
-
-
-(3)有人整理了一份轨迹推断工具的清单：https://github.com/agitter/single-cell-pseudotime
-
-做这个分析之前，最好先问几个问题：
-- 确定数据会体现发育轨迹吗？也就是研究的样本是不是和发育相关的？
-- 数据中的细胞会体现出中间态吗？
-- 是否认为轨迹会出现分支？
-
-并且要注意：
-- 任何数据都可以强行画出轨迹，但不一定都有生物学意义！
-- 先要保证目前找到的HVGs和降维结果符合我们的预期，才能继续向下分析
-
-
-
-
-
-
-
-
-
-
-
-
-========================================
-|-- Diffusion pseudotime (DPT): 2016
-----------------------------------------
-1. papers
-
-https://academic.oup.com/bioinformatics/article/31/18/2989/241305
-# Bioinformatics, Volume 31, Issue 18, 15 September 2015
-Diffusion maps for high-dimensional single-cell analysis of differentiation data 
-
-https://www.nature.com/articles/nmeth.3971
-# nm|Published: 29 August 2016 | 
-Diffusion pseudotime robustly reconstructs lineage branching
-
-
-
-
-2.
-
-
-
-
-
-
-
-========================================
-|-- slingshot: minimum spanning tree (MST)
-----------------------------------------
-1.官方文档：
-https://bioconductor.org/packages/release/bioc/vignettes/slingshot/inst/doc/vignette.html
-
-它需要两个必须的输入文件：降维结果与细胞分群结果
-
-因为它分析的基础假设就是：在低维空间上，细胞的位置是连续的并且是一个接一个的
-
-
-
-
-
-
-========================================
-|-- Monocle3 拟时序分析/细胞轨迹分析
-----------------------------------------
-
-Monocle的官网在：
-版本2：https://cole-trapnell-lab.github.io/monocle-release/docs/#installing-monocle
-版本3：https://cole-trapnell-lab.github.io/monocle3/monocle3_docs/
-
-
-1. 定义
-本质就是根据每个细胞的基因表达情况找出关键的表达模式来对细胞进行排序，反推出细胞发育轨迹。
-用于细胞分化的研究(胚胎发育，细胞重编程，癌细胞分化，...)
-
-2. 原理 
-一次取样中有不同发育状况的细胞。
-如果根据转录组能推断出细胞的先后顺序，则可以反推出细胞发育轨迹。
-
-达尔文物种进化分析类似，是根据形态学的相似性排序的。
-
-
-
-3. 软件简介
-(1)单细胞轨迹分析的软件: Monocle, SCUBA, STREAM, Wishbone, ...
-
-(2)Monocle 的优势：主流期刊常用，接受度高；功能强大。
-https://cole-trapnell-lab.github.io/monocle3/
-
-功能: trajectories, clustering, Defferential expression.
-
-
-实例: 细胞重编程成功与失败的分界点 Cell Stem Cell 2018 paper:
-Single-Cell RNA-Seq Reveals Dynamic Early Embryonic-like Programs during Chemical Reprogramming
-https://pubmed.ncbi.nlm.nih.gov/29937202/
-
-Reconstruction of Chemical Reprogramming Trajectory in a Pseudotime Manner
-The gene expression profiling data of all the single cells allowed us to deconstruct the population heterogeneity and reconstruct the reprogramming trajectory. We ordered cells in a pseudo-temporal manner using Monocle 2, an algorithm for the lineage reconstruction of biological processes based on transcriptional similarity (Qiu et al., 2017).
-
-
-(3) 流程 workflow
-
-scRNAseq -> Pre-process data(Normalize, Remove batch effect) ->Non_linear dimensionality reduction(UMAP) ->Cluster cells
--> Compare clusters(Identify top markers, Targeted contrasts) -> Trajectory analysis
-
-导入数据 - 预处理 - 降维 -聚类 - 比较找marker - 拟时序分析 
-
-
-
-(4) 数据导入 
-library(monocle3) #v1.0.0
-
-1)可以导入 cellrange结果(v2, v3)
-gene_bc_matrix <- load_cellranger_data("/home/user/cellranger_output")
-
-2) 否则就要准备三个文件
-expression_matrix 就是表达矩阵，一行一个基因，一列一个cell，值是 raw counts，是一个稀疏矩阵
-cell_metadata 一行一个细胞，一列代表一个细胞属性，比如样本编号、组织类型、分群编号
-gene_metadata 一行一个基因，三列 id, gene_short_name(必须列), num_cell_expressed
-
-new_cell_data_set(expression_data, cell_metadata = NULL, gene_metadata = NULL)
-
-Arguments
-expression_data: expression data matrix for an experiment, can be a sparseMatrix.
-
-cell_metadata: data frame containing attributes of individual cells, where row.names(cell_metadata) = colnames(expression_data).
-
-gene_metadata: data frame containing attributes of features (e.g. genes), where row.names(gene_metadata) = row.names(expression_data).
-
-
-
-3) 比如，导入 Seurat 的结果
-# load data from Seurat
-pbmc
-
-expression_data=as.matrix(pbmc@assays$RNA@counts)
-cell_data=pbmc@meta.data
-gene_data=data.frame(
-  gene_short_name=row.names(pbmc), #must have this column
-  row.names = row.names(pbmc)
-)
-head(gene_data)
-
-cds=new_cell_data_set(expression_data, cell_data, gene_data)
-cds
-
-
-
-
-
-
-4. 分析流程示例
-
-(1) 数据导入 
-pbmc
-DimPlot(pbmc, label = T)
-pbmc$celltype=pbmc@active.ident
-
-sce_T=subset(pbmc, celltype %in%  c("Naive CD4 T", "Memory CD4 T", "CD8 T", "NK"))
-sce_T
-DimPlot(sce_T, label = T)
-
-
-library(monocle3)
-# 1.load data from Seurat
-load_from_Seurat=function(sce){
-  expression_data=GetAssayData(sce, assay = 'RNA', slot = 'counts')
-  cell_data=sce@meta.data
-  gene_data=data.frame(
-    gene_short_name=row.names(sce), #must have this column
-    row.names = row.names(sce)
-  )
-  # head(gene_data)
-
-  new_cell_data_set(expression_data, cell_data, gene_data)
-}
-
-cds=load_from_Seurat(sce_T)
-cds
-
-
-
-
-(2) 预处理 (log预处理)
-#preprocess_cds函数相当于seurat中NormalizeData+ScaleData+RunPCA
-
-# pre-processing(log)
-cds=preprocess_cds(cds, norm_method = "log", method = "PCA",
-                   num_dim=100)
-
-# 标准化: log处理，减小数据的离散程度
-# 线性降维: PCA, LSI。RNA-seq前者更好。ATAC使用后者
-# 使用的PC数，默认为50.
-
-# 判断使用多少个PC
-plot_pc_variance_explained(cds) #从图中看，15个够用了
-
-
-(3) 降维 
-# UMAP
-cds=reduce_dimension(cds, preprocess_method = "PCA", reduction_method = 'UMAP')
-plot_cells(cds, reduction_method="UMAP", color_cells_by="celltype") + ggtitle('cds.umap')
-
-
-# 查看基因表达情况
-gene_list=c("CD3D", "CD4", "CD8A", "CD79A")
-plot_cells(cds,
-           genes=gene_list,
-           label_cell_groups = F,
-           show_trajectory_graph = F)
-
-(4) 细胞聚类(比 Seurat 的粗，大概认为一个发育过程的几个细胞亚群都划分到一个 partition 了)
-目的：找到那些细胞在一个发育轨迹上。
-#cds = cluster_cells(cds)
-#plot_cells(cds, color_cells_by = "partition")
-
-
-
-##从seurat导入整合过的umap坐标(可选)
-cds.embed <- cds@int_colData$reducedDims$UMAP
-
-int.embed <- Embeddings(sce_T, reduction = "umap")
-int.embed <- int.embed[rownames(cds.embed),]
-
-cds@int_colData$reducedDims$UMAP <- int.embed
-p2 <- plot_cells(cds, reduction_method="UMAP", color_cells_by="celltype") + ggtitle('int.umap')
-p2
-
-## Monocle3聚类分区
-# cds <- cluster_cells(cds)
-p1 <- plot_cells(cds, color_cells_by = "seurat_clusters", show_trajectory_graph = FALSE) + ggtitle("label by clusterID")
-p2 <- plot_cells(cds, color_cells_by = "partition", show_trajectory_graph = FALSE) +
-  ggtitle("label by partitionID")
-p1 + p2
-
-
-
-
-
-(5). 找出发育轨迹
-目的：在上一步分群的基础上，找出每个群内的细胞的发育轨迹。
-无监督，没有基于生物学背景知识。需要酌情取舍。
-
-cds=learn_graph(cds)
-plot_cells(cds, color_cells_by = "seurat_clusters",
-           label_groups_by_cluster = F,
-           label_leaves = F,
-           label_branch_points = F)
-#Error: color_cells_by must one of 'cluster', 'partition', 'pseudotime, 
-# or a column in the colData table.
-
-
-(6) 确定轨迹的先后顺序
-对每条轨迹确定头和尾巴
-- 基于算法
-	根据细胞轨迹图中的节点把它们相聚较近的细胞进行分组
-	计算每个节点来自最早时间的细胞(场外信息)所占的比例
-	包含早期细胞最多的节点就是根节点。
-- 手动(每个轨迹均需要指定一个根节点) 大多数情况是手动。
-
-
-cds=order_cells(cds, reduction_method = "UMAP") #手动设定起点
-plot_cells(cds, color_cells_by = "pseudotime")
-
-
-
-
-
-
-
-
-
-
-
-5. monocle3差异分析
-
-##寻找拟时轨迹差异基因 Finding genes that change as a function of pseudotime
-#graph_test分析最重要的结果是莫兰指数（morans_I），其值在-1至1之间，0代表此基因没有
-#空间共表达效应，1代表此基因在空间距离相近的细胞中表达值高度相似。
-Track_genes <- graph_test(cds, neighbor_graph="principal_graph", cores=10) #这一句巨慢，很占内存，做好重启Rsession的准备。
-# rbind报错，按如下一行修改。 如果线程报错，可以只使用1个核。
-
-
-#################
-https://www.jianshu.com/p/bbc4384c0651
-修改 monocle3 的graph_test函数报错解决方案
-> Track_genes <- graph_test(cds, neighbor_graph="principal_graph", cores=10)
-Error: 'rBind' is defunct.
- Since R version 3.2.0, base's rbind() should work fine with S4 objects
-原因：monocle3的bug
-解决方案：
-Console中运行
-> trace('calculateLW', edit = T, where = asNamespace("monocle3"))
-在出现的文档中Matrix::rBind 改为rbind，(或者将rbind 改为Matrix::rBind)
-#################
-
-
-
-
-#挑选top10画图展示
-Track_genes_sig <- Track_genes %>% filter(q_value < 0.05) %>% top_n(n=10, morans_I) %>%
-  pull(gene_short_name) %>% as.character()
-
-plot_cells(cds, genes=Track_genes_sig,
-           show_trajectory_graph=FALSE,
-           label_cell_groups=FALSE,
-           label_leaves=FALSE)
-
-
-#(1)基因表达趋势图(常用图)
-plot_genes_in_pseudotime(cds[Track_genes_sig,], color_cells_by="seurat_clusters", #celltype
-                         min_expr=0.5, ncol = 2)+
-  guides( color = guide_legend( override.aes = list(size=5)))
-# 可比较基因开始表达时间的早晚。
-# 这里进一步分析可以跳到下面的小标题 (4) (5) 
-
-
-#(2)FeaturePlot图
-plot_cells(cds, genes=Track_genes_sig, show_trajectory_graph=FALSE,
-           label_cell_groups=FALSE,  label_leaves=FALSE)
-
-
-
-##(3)寻找共表达模块
-genelist <- pull(Track_genes, gene_short_name) %>% as.character()
-gene_module <- find_gene_modules(cds[genelist,], resolution=1e-2, cores = 10)
-cell_group <- tibble::tibble(cell=row.names(colData(cds)),
-                             cell_group=colData(cds)$celltype)
-agg_mat <- aggregate_gene_expression(cds, gene_module, cell_group)
-row.names(agg_mat) <- stringr::str_c("Module ", row.names(agg_mat))
-pheatmap::pheatmap(agg_mat, scale="column", border_color = NA,
-                   clustering_method="ward.D2")
-
-pheatmap::pheatmap( t(agg_mat), scale="row", border_color = NA,
-                   clustering_method="ward.D2")
-
-plot_cells(cds,
-           genes=gene_module %>% filter(module %in% c(16, 27, 10, 7, 30,13)),
-           label_cell_groups=FALSE,
-           show_trajectory_graph=FALSE)
-
-
-## (4) 获取每个细胞的 pseudotime 值。
-#traj.coord<-reducedDimS(cds)
-traj.coord<- cds@principal_graph_aux@listData[["UMAP"]][["pseudotime"]]
-head(traj.coord)
-head(rownames(sce@meta.data))
-identical(rownames(sce@meta.data), names(traj.coord) ) #T
-
-sce@meta.data$pseudotime=as.numeric(traj.coord)
-
-
-
-## (5) 计算每一组的pseudotime平均值
-ptime=sapply( split(sce$pseudotime, sce$seurat_clusters), mean )
-ptime=ptime[order(ptime)]
-ptime
-
-dif=data.frame(
-  x=sce$seurat_clusters,
-  y=sce$pseudotime
-)
-dif$x=factor(dif$x, levels = names(ptime) )
-
-library(ggplot2)
-ggplot(dif, aes(x,y, fill=x))+
-  geom_violin(scale="width", show.legend = F)+
-  #geom_boxplot(fill="white", outlier.color = NA, width=0.1)+
-  theme_bw(base_size = 14)+
-  labs(x="seurat_clusters", y="pseudotime")+
-  theme(
-    axis.text.x = element_text(angle=60, hjust = 1)
-  )
-#
-
-
-
-
-6. choose one branch(跳过)
-
-# 手动选择一个分支
-cds_subset <- choose_cells(cds)
-cds_subset
-
-subset_pr_test_res <- graph_test(cds_subset, neighbor_graph="principal_graph", cores=4)
-pr_deg_ids <- row.names(subset(subset_pr_test_res, q_value < 0.05))
-
-gene_module_df <- find_gene_modules(cds_subset[pr_deg_ids,], resolution=0.001)
-
-agg_mat <- aggregate_gene_expression(cds_subset, gene_module_df)
-module_dendro <- hclust(dist(agg_mat))
-gene_module_df$module <- factor(gene_module_df$module,
-                                levels = row.names(agg_mat)[module_dendro$order])
-
-plot_cells(cds_subset,
-           genes= gene_module_df %>% group_by(module) %>% top_n(4) %>% pull(id),
-           label_cell_groups=F,
-           show_trajectory_graph=F)
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-refer:
-https://mp.weixin.qq.com/s?__biz=MzIyMzMwNDQ2MA==&mid=2247484327&idx=1&sn=46c78c70cbe2b8c3fb5f282458bff0d6
-
-
-
-
-
-
-
-
-
-
-
-
-========================================
-|-- Monocle2 分析
-----------------------------------------
-
-1. Monocle2 拟时序轨迹分支的两种情况处理
-
-区分的关键是要不要分支。要根据情况确定。
-
-(1) 不考虑分支，只考虑随时间变化的基因变化趋势。
-(2) 在变化过程中两个分支差异比较大可以考虑分支变化。
-
-2. 三种图，分别表示不同的意义
-
-- 拟时序基因表达量图: 一个基因在不同cluster中的表达情况
-
-- 拟时序基因表达量图在 UMAP 上：看出在发育过程中的变化
-
-- 基因 switch (开关): x是时间，y是一条线上面是表达to不表达，线下 不表达to表达。距离线越远，表示开关变化越明显。
-
-- 基因密度图：对基因开关进行富集分析，然后把GO画到 拟时间 轴上。
-
-
-
-例子: 对原发和复发HCC放到一起 拟时间分析，然后分析时间轴上哪边细胞多(细胞密度图)
-
-
-
-
-
-
-
-
-
 ========================================
 RNA Velocity 分析
 ----------------------------------------
 
-0. paper:
-(1) 原始 velocyto
+
+1.轨迹推断 (Trajectory Inference, TI):
+	从成千上万的细胞组学数据中推断细胞发育轨迹的方法。
+
+Monocle 基于降维的算法，把高维映射到低维。
+不足: 
+	不能提供方向;
+	不能精确定量细胞的状态，根据转录组的相似性而非细胞的真实状态。
+
+(1) 原始 paper: velocyto
 Letter | Published: 08 August 2018: RNA velocity of single cells
 https://www.nature.com/articles/s41586-018-0414-6
-改文章使用的软件：https://scvelo.readthedocs.io/
+该文章使用的软件：http://velocyto.org/
+目前有2个实现:
+	velocyto.py
+	velocyto.R
+其中py提供了一个命令行工具：http://velocyto.org/velocyto.py/tutorial/index.html#running-the-cli
+
+
 
 (2) 改进 scVelo
 Article | Published: 03 August 2020 |(velocyto--> scVelo)
 Generalizing RNA velocity to transient cell states through dynamical modeling
 https://www.nature.com/articles/s41587-020-0591-3
+该文章使用的软件：https://scvelo.readthedocs.io/
+
 
 这个相较于之前18年的Nature文章提出的RNA速率的概念的基础上，并对之前的数学模型做了进一步优化，在这篇文章中提出了更全面更准确的模型和方法
 
@@ -848,7 +324,66 @@ https://www.nature.com/articles/s41587-020-0591-3
 
 
 
-(3) 中间文件使用 velocyto 生成
+(3) velocyto 和 Monocle 的区别
+velocyto
+	- 研究的维度: mRNA速度(基因表达状态的时间导数)
+	- 展示: 细胞的真实状态
+	- 输入文件: 10X 的bam 文件
+
+Monocle 
+	- 研究的维度: RNA 的表达量
+	- 展示：转录组的相似性
+	- 输入文件: 10X的表达矩阵
+
+
+
+(4) 在RNA成熟的过程中会经历三个主要的阶段：转录---剪接---降解
+当新生 mRNA 速度和 成熟mRNA的降解速度 相等时，达到稳态。
+Reads based  / UMI based;
+
+
+Spliced
+	only to the exonic regions 
+Unspliced 
+	spanned exon-intron boundary
+	mapped to intron 
+Ambiguous:
+	exonic-only and other intronic
+delete:
+	multiple mappings 
+	mapped inside repeat masked
+
+
+那在瞬时状态下：未剪切和剪切成熟的RNA可以表征为如下的两个式子：
+同时The time derivative of mature spliced mRNA, termed RNA velocity, 就是下图中的第二个式子。
+	du(t)/dt = alpha(k)(t) - Beta*u(t);
+	ds(t)/dt = Beta*u(t) - gama*s(t);
+其中 
+	alpha 转录速率 Transcription
+	beta 剪接速率 unsliced mRNA
+	gamma 降解速率 Degradation
+	s: spliced
+	u: unspliced
+
+	v = ds/dt = u - gamma*s
+	constant: 细胞下一个状态
+	correlation: 与每一个细胞的向量，有方向、有大小
+	RNA velocity: velocity
+
+
+
+
+
+
+==> 评估RNA速率有哪些方法？
+目前有三种方法:
+  稳态/确定性模型(在velocyto中使用)
+  随机模型(使用二阶矩)，
+  动态模型(使用基于概率的框架)。
+
+
+
+(4) loom 中间文件使用 velocyto 生成
 http://loompy.org/
 http://velocyto.org/velocyto.py/tutorial/cli.html
 https://scvelo.readthedocs.io/VelocityBasics/
@@ -862,7 +397,11 @@ https://zhuanlan.zhihu.com/p/180253811 评论区说作者有个视频 //todo
 
 
 
-1. 背景介绍
+
+
+
+
+2. 背景介绍
 
 - 无需生物学背景的先验经验：研究者可以从向量结果中读出分化轨迹
 - 数据兼容性强：RNA velocity的数据可以嵌入普通的PCA、tSNE、UMAP降维，也可以嵌入monocle、PAGA构建的细胞轨迹
@@ -889,29 +428,10 @@ RNA剪切：成熟mRNA表达时，未成熟的一部分转录本会被剪切掉�
 通过测量单个细胞中每个基因的未剪接转录本与剪接转录本的比率，计算出一个称为RNA速度的量，揭示了基因表达的变化方式。b通过测量组织中成千上万个细胞（此处为发育中的小鼠大脑神经元）中的RNA速度，作者可以生成图，不仅显示相互关联的细胞之间的紧密程度（相似性用相似的颜色表示），而且还根据它们正在经历的基因表达变化，将来与哪些细胞相似（如箭头所示）。RNA速度成功地追踪了早期祖细胞（橙色和黄色），这些祖细胞最终引起了一系列分化的细胞类型（蓝色虚线圆圈）。
 
 
-在RNA成熟的过程中会经历三个主要的阶段：转录---剪切---降解
-那在瞬时状态下：未剪切和剪切成熟的RNA可以表征为如下的两个式子：
-同时The time derivative of mature spliced mRNA, termed RNA velocity, 就是下图中的第二个式子。
-	du(t)/dt = alpha(k)(t) - Beta*u(t);
-	ds(t)/dt = Beta*u(t) - gama*s(t);
 
 
 
-==> 评估RNA速率有哪些方法？
-目前有三种方法:
-  稳态/确定性模型(在velocyto中使用)
-  随机模型(使用二阶矩)，
-  动态模型(使用基于概率的框架)。
-
-
-
-
-(3) 论文 
-https://www.biorxiv.org/content/10.1101/820936v1.full.pdf
-https://www.nature.com/articles/s41587-020-0591-3
-
-
-==> velocity和scVelo哪家强？
+(3) velocity和scVelo哪家强？
 
 scVelo开发团队认为现有的计算RNA velocity的稳态模型(steady-state model)存在一些不足，这种模型有个两个基本的假设前提：
 ①在基因水平上，所有具有转录诱导、抑制和稳态mRNA水平的完整剪接动力学被捕捉到；
@@ -924,6 +444,8 @@ scVelo提供了两种扩展：一种是包含二阶矩的随机模型，另一�
 en教程: https://scvelo.readthedocs.io/getting_started/
 翻译:
 https://mp.weixin.qq.com/mp/appmsgalbum?__biz=MzI1Njk4ODE0MQ==&action=getalbum&album_id=1774746462153687043&subscene=159&subscene=&scenenote=https%3A%2F%2Fmp.weixin.qq.com%2Fs%3Fsrc%3D11%26timestamp%3D1645359169%26ver%3D3632%26signature%3D6mvXUh0qENFPeP3tF3BNVGXRtBulXZTwo71Kop*VZVziXwOYluCjHkePH2vQFWY6e7I9zpEXLWee2qh93Cn1U-Ma0yrXpnu1h1DDQehcN39eYfoVEMffFnL*548RFt7c%26new%3D1&nolastread=1#wechat_redirect
+
+
 
 
 
@@ -1035,7 +557,7 @@ velocyto 预测速率（左图）和拟时变量（中图）在不同上皮细�
 
 
 
-2.学习文献 https://pubmed.ncbi.nlm.nih.gov/34914499/  Fig.2B
+3.学习文献 https://pubmed.ncbi.nlm.nih.gov/34914499/  Fig.2B
 
 (1) Fig. 2. Heterogeneity and dynamics of CD8+ exhausted T cells. 
 	(B) RNA velocities overlaid on UMAP showing two major state transition paths from naïve to exhaustion. 
@@ -1160,7 +682,7 @@ http://velocyto.org/velocyto.py/fullapi/api_cli_logic.html#logicapi
 
 
 
-(4) 运行 10x 数据 
+(4) 运行 10x 数据，生成 loom 文件
 
 第一个参数是包含子目录的 output 文件夹
 (e.g. this is the folder containing the subfolder: outs, outs/analys and outs/filtered_gene_bc_matrices).
@@ -1185,14 +707,21 @@ Options:
 
 $ velocyto run10x -m repeat_msk.gtf mypath/sample01 somepath/refdata-cellranger-mm10-1.2.0/genes/genes.gtf
 
+参数说明:
 Where genes.gtf is the genome annotation file provided with the cellranger pipeline.  
 repeat_msk.gtf is the repeat masker file described in the Preparation section above. 可选。
 # 下载 mm10 的 mask 的gtf文件，就是重复区域不要。
 https://genome.ucsc.edu/cgi-bin/hgTables?hgsid=611454127_NtvlaW6xBSIRYJEBI0iRDEWisITa&clade=mammal&org=Mouse&db=mm10&hgta_group=allTracks&hgta_track=rmsk&hgta_table=0&hgta_regionType=genome&position=chr12%3A56694976-56714605&hgta_outputType=primaryTable&hgta_outputType=gff&hgta_outFileName=mm10_rmsk.gtf
 
-
 通常一个样品运行3个小时。
 Execution time is ~3h for a typical sample but might vary significantly by sequencing depth and cpu power.
+
+输出:
+$ ls *
+outs/
+	cellsorted_possorted_genome_bam.bam
+velocyto/
+	cellranger.loom #后续使用R包分析，就是基于该文件。
 
 
 
@@ -1234,6 +763,8 @@ $ samtools sort mybam.bam -o sorted_bam.bam
 
 
 
+
+
 对输入文件bam的要求:
 - sorted by mapping position;
 - 一个bam代表一个样品(10x)或者一个细胞(Smart-Seq2)
@@ -1244,6 +775,8 @@ $ samtools sort mybam.bam -o sorted_bam.bam
 
 GTF 文件的要求: http://velocyto.org/velocyto.py/tutorial/cli.html
 	velocyto assumes that the gtf file follows the GENCODE gtf format description. 
+
+
 
 
 
@@ -1262,6 +795,7 @@ A valid .loom file is simply an HDF5 file that contains specific groups represen
 
 
 2) Merging multiple samples/lanes in a single file
+请问能够整合不同样本产生的Loom文件吗？还是只能单样本分析？
 
 loompy.combine(files, output_filename, key="Accession")
 
@@ -1284,6 +818,127 @@ HDF5(https://en.wikipedia.org/wiki/Hierarchical_Data_Format) 文件不支持并�
 
 也不支持日志。所以写入时发生意外，有可能造成整个文件丢失！
 They also do not support journalling, so if something happens during a write, the entire file can be lost. 
+
+
+
+
+
+2. 使用R分析 loom 文件
+http://pklab.med.harvard.edu/velocyto/notebooks/R/SCG71.nb.html
+
+(1) 读入数据
+library(velocyto.R)
+loom="/data/cellranger.loom"
+Idat=read.loom.matrices(loom)
+prefix="cellranger"
+emat=Idat$spliced
+hist( log(colSums(emat)), col="wheat", xlab="cell size")
+
+说明:
+emat 格式:
+	cellranger.TTGGTTACAXx cellranger.TTAACCGGXx
+A1CF                     0                     1
+AACS                     3                     2
+
+- 每个细胞表达基因的统计直方图
+- 大部分基因表达处于中间位置，基因表达过低或者过高的细胞较少
+- Cell size: 值的是每个细胞检测到的编导的基因数(log10)
+
+
+
+
+(2) 数据过滤和标准化
+# 对数据进行过滤：筛选出大于等于 200 个基因的细胞
+emat=emat[, colSums(emat)>=200]
+# 导入 pagoda2 包，生成细胞矩阵
+library(pagoda2)
+rownames(emat) = make.unique(rownames(emat))
+#标准化数据
+r=Pagoda2$new(emat, modelType="plain", trim=10, log.scale=T)
+#作图，挑选变化较大的基因
+r$adjustVariance(plot=T, do.par=T, gam.k=10)
+# 一个点一个基因，x=在左右细胞中该基因的平均表达量，y=该基因的方差
+
+
+
+(3) 细胞聚类与细胞嵌入分析
+# 对细胞进行聚类和细胞嵌入分析
+r$calculatePcaReduction(nPcs=100,n.odgenes=3e3,maxit=300)
+r$makeKnnGraph(k=30,type='PCA',center=T,distance='cosine');
+
+r$getKnnClusters(method=multilevel.community,type='PCA',name='multilevel')
+r$getEmbedding(type='PCA',embeddingType='tSNE',perplexity=50,verbose=T)
+
+# 聚类结果 可视化
+par(mfrow=c(1,2))
+r$plotEmbedding(type='PCA',embeddingType='tSNE',show.legend=F,mark.clusters=T,min.group.size=10,shuffle.colors=F,mark.cluster.cex=1,alpha=0.3,main='cell clusters')
+r$plotEmbedding(type='PCA',embeddingType='tSNE',colors=r$depth,main='depth')  
+
+
+
+(4) RNA 速度可视化
+# 获取剪接、未剪接数据
+# disregarding spanning reads, as there are too few of them
+emat <- ldat$spliced; 
+nmat <- ldat$unspliced; 
+
+
+# 通过p2对细胞进行过滤
+# restrict to cells that passed p2 filter
+emat <- emat[,rownames(r$counts)]; 
+nmat <- nmat[,rownames(r$counts)]; 
+
+
+# 对分类数据进行标记
+# take cluster labels
+cluster.label <- r$clusters$PCA$multilevel # take the cluster factor that was calculated by p2
+cell.colors <- pagoda2:::fac2col(cluster.label)
+# take embedding form p2
+emb <- r$embeddings$PCA$tSNE
+
+# 计算细胞间的距离
+cell.dist <- as.dist(1-armaCor(t(r$reductions$PCA)))
+
+# 基于最小平均表达量筛选基因（至少在一个簇中），输出产生的有效基因数
+emat <- filter.genes.by.cluster.expression(emat,cluster.label,min.max.cluster.average = 0.2)
+nmat <- filter.genes.by.cluster.expression(nmat,cluster.label,min.max.cluster.average = 0.05)
+length(intersect(rownames(emat),rownames(nmat)))
+
+# 计算RNA速度
+fit.quantile <- 0.02
+rvel.cd <- gene.relative.velocity.estimates(emat,nmat,deltaT=1,kCells=25,cell.dist=cell.dist,fit.quantile=fit.quantile)
+
+
+# 可视化RNA速度
+show.velocity.on.embedding.cor(emb,rvel.cd,n=200,scale='sqrt',cell.colors=ac(cell.colors,alpha=0.5),cex=0.8,arrow.scale=3,show.grid.flow=TRUE,min.grid.cell.mass=0.5,grid.n=40,arrow.lwd=1,do.par=F,cell.border.alpha = 0.1)
+# 箭头表示细胞发育方向
+
+
+
+(5) 可视化特定的基因
+# gene="IGHM"
+gene <- "Camp"
+gene.relative.velocity.estimates(
+	emat,nmat,deltaT=1,kCells = 25,kGenes=1,
+	fit.quantile=fit.quantile,	cell.emb=emb,	cell.colors=cell.colors,
+	cell.dist=cell.dist,	show.gene=gene,	old.fit=rvel.cd,	do.par=T)
+
+
+
+
+总结:
+- 指向必须是已经测得的细胞，所以不能揭示潜在路径；
+- 根据提供的坐标轴位置，揭示已知细胞群里最优2可能的发育方向
+- 对数据进行回收利用，通过对 unsplied reads 获得细胞发育轨迹的潜在可能方向
+- 做一些之前做不了的动力学研究，比如人前额大脑细胞
+
+
+
+
+
+
+
+
 
 
 
@@ -1784,8 +1439,33 @@ bioRxiv 2020.07.21.214387; doi: https://doi.org/10.1101/2020.07.21.214387
 
 
 ========================================
-SCENIC转录因子分析
+SCENIC转录因子分析: 单细胞基因调控网络分析
 ----------------------------------------
+
+py https://www.bilibili.com/video/BV1az4y1673b/?spm_id_from=autoNext
+
+1. 主要是4步
+- GENIE3: 共表达模块分析
+- RcisTarget: 调控元件分析
+- AUCell: 细胞网络活动度分析
+- cluster: 鉴定稳定的细胞状态
+
+
+2. SCENIC 和 pySCENIC 的异同点
+
+相同点 
+	- 功能基本相同，都可以进行基因调控子分析和细胞状态的鉴定
+	- 研发团队相同，作者排序略有差异
+不同点
+	- 样本量不同：
+		前者用 GENIE3 适合小样本量数据
+		后者使用 GRNBoost，更适合处理大样本数据
+	- 网址不同
+		https://github.com/aertslab/SCENIC 
+		https://github.com/aertslab/pySCENIC
+
+
+
 
 
 

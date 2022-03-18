@@ -26,9 +26,10 @@ return array (
     0 => 3,
     1 => 'scRNAseq包',
     2 => array (
+      array('cell_marker','cell_marker','txt'),
       array('Seurat包','Seurat','txt'),
       array('Seurat源码阅读','Seurat_source','txt'),
-      array('cell_marker','cell_marker','txt'),
+      array('Monocle包','Monocle_note','txt'),
     ),
   ),
    
