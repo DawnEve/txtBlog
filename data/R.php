@@ -24,6 +24,7 @@ return array (
       array('R基础-机器学习','R05-MachineLearning','txt'),
       array('R调试和测试debug-test','R06-debug_testing','txt'),
       array('apply家族函数','R07-apply','md'),
+      array('R元编程 - 调用类型/表达式','R08_meta','txt'),
 
       array('R包与bioconductor','bioconductor01','txt'),
       array('R加速: 向量化/并行/C++','R_speedUp','txt'),

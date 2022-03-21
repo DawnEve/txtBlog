@@ -1,0 +1,916 @@
+R 元编程（metaprogramming）
+
+	- R语言里的调用类型（call）
+
+
+
+========================================
+元编程（metaprogramming）：很强大的扩展能力
+----------------------------------------
+书籍: Metaprogramming in R – pdf
+
+
+1. 所谓的元编程（metaprogramming）其实就是编写运行时动态修改程序本身的代码（编写产生代码的代码）。 R语言支持元编程，有几个基础函数需要深入了解：
+
+substitute
+quote(expr)
+eval
+deparse(expr)
+call(name, ...)
+expression(...)
+parse(text="")
+
+https://blog.csdn.net/ofoliao/article/details/103471604
+
+
+
+
+2. 总结这些函数的关系
+
+表达式的几个状态：
+表达式字面量 --> 未经eval的表达式 --> 表达式字符串 or 计算结果
+
+(1) 表达式字面量 -> 未经eval的表达式 
+substitute()
+quote()
+
+(2) 未经eval的表达式 -> 求值 
+eval() 
+
+(3) 未经eval的表达式 -> 表达式字符串
+deparse()
+
+(4) 表达式字符串 -> 未经eval的表达式
+parse()
+
+(5) 生成 未经eval的表达式 
+call()
+expression()
+
+
+
+
+========================================
+|-- call(name, ) 函数：构造调用对象，等待用 evel() 执行
+----------------------------------------
+call(name, ...)
+Create or test for objects of mode "call" (or "(", see Details).
+
+构造一个没有eval的函数调用。第一个参数是函数名（字符串），后面是函数的参数。
+
+
+1. call() 函数
+(1) 创建调用对象
+> x2=1:5
+> my_call=call("sum", x2, na.rm=T) #第一个参数必须是字符串
+> my_call
+sum(1:5, na.rm = TRUE)
+> class(my_call)
+[1] "call"
+
+> typeof(my_call)
+[1] "language"
+> str(my_call)
+ language sum(1:5, na.rm = TRUE)
+
+
+(2) 执行该 call 对象
+> eval(my_call)
+[1] 15
+
+
+(3) 转为字符串
+> deparse(my_call)
+[1] "sum(1:5, na.rm = TRUE)"
+
+> class(deparse(my_call))
+[1] "character"
+
+
+
+
+
+
+========================================
+|-- deparse函数: 将表达式转换为字符串
+----------------------------------------
+Turn unevaluated expressions into character strings.
+
+1. 函数定义
+
+deparse(expr, width.cutoff = 60L,
+        backtick = mode(expr) %in%
+            c("call", "expression", "(", "function"),
+        control = c("keepInteger", "showAttributes", "keepNA"),
+        nlines = -1L)
+
+
+> deparse
+function (expr, width.cutoff = 60L, backtick = mode(expr) %in% 
+    c("call", "expression", "(", "function"), 
+    control = c("keepNA", "keepInteger", "niceNames", 
+        "showAttributes"), nlines = -1L) 
+.Internal(deparse(expr, width.cutoff, backtick, .deparseOpts(control), 
+    nlines))
+<bytecode: 0x000000000ac588b0>
+<environment: namespace:base>
+
+
+2. 示例
+
+(1) 未求值的表达式(调用类型) 变字符串
+> quote(2+2)
+2 + 2
+> class(quote(2+2))
+[1] "call"
+
+> deparse(quote(2+2))
+[1] "2 + 2"
+> class(deparse(quote(2+2)))
+[1] "character"
+
+
+
+# 例子2: 定义x、y轴的label为变量名本身
+myplot=function(x, y){
+  plot(x,y,
+       xlab=deparse(substitute(x)),
+       ylab=deparse(substitute(y))
+  )
+}
+myplot(iris$Sepal.Length, iris$Sepal.Width)
+
+
+
+
+
+
+(2) 函数 变字符串
+> class(args(lm))
+[1] "function"
+
+> args(lm)
+function (formula, data, subset, weights, na.action, method = "qr", 
+    model = TRUE, x = FALSE, y = FALSE, qr = TRUE, singular.ok = TRUE, 
+    contrasts = NULL, offset, ...) 
+NULL
+
+> deparse(args(lm))
+[1] "function (formula, data, subset, weights, na.action, method = \"qr\", " 
+[2] "    model = TRUE, x = FALSE, y = FALSE, qr = TRUE, singular.ok = TRUE, "
+[3] "    contrasts = NULL, offset, ...) " 
+[4] "NULL"
+> deparse(args(lm), width.cutoff = 500)
+[1] "function (formula, data, subset, weights, na.action, method = \"qr\", model = TRUE, x = FALSE, y = FALSE, qr = TRUE, singular.ok = TRUE, contrasts = NULL, offset, ...) "
+[2] "NULL"    
+
+
+
+
+
+========================================
+|-- parse(text=): 把表达式字符串解析成为未eval的expression
+----------------------------------------
+parse(text="") 是deparse的逆函数，把字符串转为语法树。
+注意: 第一个参数是 file 一般不用，所以必须指定参数名。
+
+
+
+1. 例1
+> ex1 <- parse(text = "1 + 2 + 3")
+> ex1
+expression(1 + 2 + 3)
+> eval(ex1)
+[1] 6
+
+
+
+2. 例2
+> str2="apply(iris[,1:4], 2,mean)"
+> str2
+[1] "apply(iris[,1:4], 2,mean)"
+
+> ex2=parse(text=str2)
+> ex2
+expression(apply(iris[,1:4], 2,mean))
+
+> eval(ex2)
+Sepal.Length  Sepal.Width Petal.Length  Petal.Width 
+    5.843333     3.057333     3.758000     1.199333 
+> 
+
+
+
+
+========================================
+|-- expressioin() 表达式类型
+----------------------------------------
+1. 表达式
+expression(...)
+
+把参数看成表达式，返回expression类型的对象。
+
+(1) 简单例子
+> ex1=expression(iris)
+> ex1
+expression(iris)
+> class(ex1)
+[1] "expression"
+> head(eval(ex1))
+  Sepal.Length Sepal.Width Petal.Length Petal.Width Species
+1          5.1         3.5          1.4         0.2  setosa
+2          4.9         3.0          1.4         0.2  setosa
+3          4.7         3.2          1.3         0.2  setosa
+
+
+(2) expression类型和list类型类似，是个容器，每个成员可能是call，symbol（name）和constants中的一种。
+
+> ex2=expression(iris, mtcars, 1:20, n<-5)
+> ex2
+expression(iris, mtcars, 1:20, n <- 5)
+> length(ex2)
+[1] 4
+> ex2[[1]]
+iris
+> ex2[[2]]
+mtcars
+> ex2[[3]]
+1:20
+> ex2[[4]]
+n <- 5
+
+
+使用 apply 函数遍历
+> sapply(ex2, class)
+[1] "name" "name" "call" "<-"  
+> sapply(ex2, typeof)
+[1] "symbol"   "symbol"   "language" "language"
+
+
+> sapply(ex2, function(x){
++   x
++ })
+[[1]]
+iris
+
+[[2]]
+mtcars
+
+[[3]]
+1:20
+
+[[4]]
+n <- 5
+
+
+
+> sapply(ex2, function(x){
++   dim(eval(x))
++ })
+[[1]]
+[1] 150   5
+
+[[2]]
+[1] 32 11
+
+[[3]]
+NULL
+
+[[4]]
+NULL
+
+
+(3) 若有多个成员，eval每个成员都会求值一遍，但是只返回最后一个成员eval之后的值，这与绝大多数编程语言多个表达式语句（逗号隔开）返回的结果类似。
+
+> eval(expression(1, 2<10))
+[1] TRUE
+> eval(expression(1, 2>10))
+[1] FALSE
+
+
+确实发生求值了:
+> x=1
+> eval(expression(x<-2, 2>10))
+[1] FALSE
+> x
+[1] 2
+
+
+
+
+
+
+
+
+
+========================================
+|-- eval() 求值，可以指定环境
+----------------------------------------
+1. 函数定义 
+Evaluate an R expression in a specified environment.
+
+> eval
+function (expr, envir = parent.frame(), enclos = if (is.list(envir) || 
+    is.pairlist(envir)) parent.frame() else baseenv()) 
+.Internal(eval(expr, envir, enclos))
+<bytecode: 0x00000000046aa520>
+<environment: namespace:base>
+
+对expr进行计算，默认是当前环境（也就是eval的parent.frame)。
+如果envir是list/data.frame，enclos 参数默认增加当前环境，作为 expr 计算在list/data.frame之外寻找对象定义的闭包。
+
+
+例:
+ex1=quote(x+y)
+
+> x=1; y=2
+> eval(ex1)
+[1] 3
+
+# 还可以指定环境
+> eval(ex1, envir = list(x=10,y=20))
+[1] 30
+
+
+# 如果只指定一个，另一个从环境变量中查找
+> eval(ex1, envir = list(x=10))
+[1] 12
+
+
+
+
+
+
+========================================
+|-- quote() 把表达式变为 未求值的调用类型
+----------------------------------------
+quote(expr)
+简单地返回expr，expr没有进行eval。和substitute相比，没有替换。
+
+
+1. 生成
+> e1 <- quote(x/y)
+> e1
+x/y
+> c(class(e1), typeof(e1))
+[1] "call"     "language"
+
+
+
+
+2. 求值 
+> eval(e1, envir = list(x=3, y=5))
+[1] 0.6
+
+
+
+
+3. 变字符串
+> deparse(e1) #这样才对
+[1] "x/y"
+> class(deparse(e1))
+[1] "character"
+
+
+
+
+4. 访问语法树
+> e1
+x/y
+> as.character(e1) #貌似不对
+[1] "/" "x" "y"
+
+> e1[[1]]
+`/`
+> e1[[2]]
+x
+> e1[[3]]
+y
+
+subtitute/quote返回class/type根据表达式的不同而不同。表达式被解析为抽象语法树，可以访问其中每一个组成，还可以对返回的对象进行修改，即自己构造语法树（meta-programming）。
+
+
+
+
+
+
+
+
+========================================
+|-- substitute(expr, env) 替换，变体函数 bquote()
+----------------------------------------
+
+substitute returns the parse tree for the (unevaluated) expression expr, substituting any variables bound in env.
+
+substitute的用处就是把输入的字符直接使用，不用加引号。
+
+
+1. 把变量名字替换为 name 类型
+很多时候，我们不希望像上文一样，直接修改表达式的内部结构。
+更多的时候，我们仅仅希望获得一个表达式来 deparse 并用于添加画图的标签。
+比如 plot.default:
+
+xlabel <- if (!missing(x))
+    deparse(substitute(x))
+这就把x参数的变量名变成了x轴的标签文字。
+
+测试:
+> deparse(substitute(iris))
+[1] "iris"
+> deparse1(substitute(iris))
+[1] "iris"
+
+> substitute(iris)
+iris
+> class(substitute(iris))
+[1] "name"
+
+
+substitute 会识别一个 promise 变量，替换它的表达式slot值。
+如果函数内触发 substitute ，则函数的局部变量也会被替换。
+
+
+
+
+
+
+(2) 变量名替换
+
+substitute 的参数不仅仅可以是简单变量，还可以是包含几个变量的表达式，并可以对每个变量逐个替换。
+还可以提供一个 environment 或者 list 用于查找变量。
+
+> substitute(a + b, list(a = 1, b = quote(x)))
+1 + x
+
+注意：quote()是必须的，否则就解析并使用了x的值
+> x=120
+> substitute(a + b, list(a = 1, b =x))
+1 + 120
+
+
+这可以很方便的把数学表达式打印到图中：
+> plot(0)
+> for (i in 1:4)
+   text(1, 0.2 * i,
+        substitute(x[ix] == y, list(ix = i, y = pnorm(i))))
+效果：
+[]里的是下标，自动替换为数字i；
+==只保留一个= ??//todo
+右侧的y是数值 pnrom(i)
+
+
+注意：替换是纯语法的，不检查输出的call对象在求值时刻是否合法。比如:
+> substitute(x <- x + 1, list(x = 2))
+2 <- 2 + 1
+
+但是， R的有些部分自己定义了什么是有意义 和什么无意义的规则，而且事实上就是采用了这些形式上有问题的表达式。 例如，使用“图中数学”的特性时常常会有语法上正确，但求值毫无意义的 构造，如 {}>=40*” years”。
+
+
+
+
+
+2) substitute不仅能够替换变量，也能够替换运算符（函数）
+
+> substitute(a + b, list("+" = quote(func)))
+func(a, b)
+
+
+
+
+
+
+
+(3) 两次替换
+Substitute 不对第一个参数求值。这导致了如何对包含在变量中的对象进行替换的难题。解决方法是再调用一次 substitute.
+
+> expr <- quote(x + y)
+> substitute(substitute(e, list(x = 3)), list(e = expr))
+substitute(x + y, list(x = 3))
+> eval(substitute(substitute(e, list(x = 3)), list(e = expr)))
+3 + y
+
+
+替换的精确规则如下： 第一个参数的解析树的每个符号 和第二个参数匹配，既可以是有键名的列表也可以是一个环境变量。
+如果它是一个简单的局部对象，它的值将被插入， 除非它 匹配全局环境。//?
+如果它是一个 promise（常常是函数参数）， promise 表达式会被替换。
+如果符号没有被匹配，它不会有任何改变。 
+而在高层次的替换的特殊例外确实很奇怪。
+这是从 S 继承而来，原理基本上是，没有控制哪个变量可能在那个层次上绑定，所以最好让 substitute  的表现和 quote 一致。
+// 不是很懂
+
+
+
+
+
+
+(4) 如果局部变量在substitute使用前被替换(函数内部)
+
+如果局部变量在substitute使用前被替换，promise 替换的规则和 S相应的规则稍稍有点不同。R 将使用变量的新值，而 S 将无条件地使用参数表达式 —— 除非它是一个常量。这导致一个很古怪的结果，即在S里面 f((1)) 可能和 f(1) 差异很大。但 R 的规则更清晰，尽管它也有一些比较奇怪的和 lazy evaluation(惰性求值) 相关结果。 参看下面的例子
+
+logplot <- function(y, ylab = deparse(substitute(y))) {
+    y <- log(y)
+    plot(y, ylab = ylab)
+}
+height=1:10
+logplot(y=height)
+# 调用之后发现，ylab是丑陋的、log后的数字！
+
+这是因为 y 被修改后才调用的 ylab 变量。
+解决方法是首先强制yalb求值。
+
+logplot <- function(y, ylab = deparse(substitute(y))) {
+  ylab;
+  y <- log(y)
+  plot(y, ylab = ylab)
+}
+height=1:10
+logplot(y=height)
+# 这样 ylab 就是正常的 "height" 值了。
+
+注意：这种情况不能使用 eval(ylab)。如果 ylab 是  language or expression 对象，那样将会导致求值，更不适合传入类似 quote(log[e](y)) 这样的数学表达式。
+
+logplot <- function(y, ylab = deparse(substitute(y))) {
+  ylab
+  #eval(ylab); ##rror: object 'e' not found 
+  y <- log(y)
+  plot(y, ylab = ylab)
+}
+height=1:10
+logplot(y=height, ylab=quote(log[e](y)))
+# 不理想：图中的ylab 是 loge(y) (其中e是下标)，怎么样y变成 height呢？
+//todo
+
+
+A promise捕获(capture)了需要计算的表达式（但是没有计算eval），以及计算表达式所处的environment. 
+第一次访问promise时，触发表达式的计算，从而产生environment中的表达式对应绑定对象的值。
+promise就像“薛定谔的猫”，一旦访问，就触发计算，从而退出promise状态。
+
+
+
+
+
+2. bquote() 函数是 substitute 的变体，用于替换子表达式为值。
+
+bquote(expr, where = parent.frame(), splice = FALSE)
+
+
+> plot(0)
+> for (i in 1:4)
+   text(1, 0.2 * i, substitute(x[ix] == y, list(ix = i, y = pnorm(i))))
+
+可以简写为:
+> plot(0)
+> for(i in 1:4)
+    text(1, 0.2*i, bquote( x[.(i)] == .(pnorm(i)) ))
+
+替换规则就是，.()内的表达式求值，外边的保留表达式。
+第二个参数是可选的，指定计算值的环境。
+bquote 语法来自 LISP 的后置引用宏(backquote macro)。
+
+
+
+
+
+
+ref:
+https://cran.r-project.org/doc/manuals/R-lang.html#Substitutions
+https://blog.csdn.net/tanzuozhev/article/details/50603045
+
+
+
+
+
+
+
+
+
+========================================
+调用类型 (call) 实质上是一个list，可用 quote() 包围表达式生成，调用 eval() 执行
+----------------------------------------
+1. call 对象
+
+(1) 参考资料
+官方: https://cran.r-project.org/doc/manuals/R-lang.html  第6章
+	https://cran.r-project.org/doc/manuals/R-lang.html#Direct-manipulation-of-language-objects
+pdf: https://cran.r-project.org/doc/manuals/r-devel/R-lang.pdf
+	2017: http://web.mit.edu/~r/current/arch/amd64_linux26/lib/R/doc/manual/R-lang.pdf
+
+本质:
+调用类型（call()）这个东西，其实是一个list，如果不执行，就是一个相当于list的东西，如果执行，将会返回一个值。如果想让他执行，就用eval()，一般eval() 里面都有quote之类的函数，来保证里面的函数是表达式。
+
+另外，因为call类型有list的属性，那么用as.list() 和as.call() 之间可以相互转换。比如list转换成了call，然后在eval() 执行。
+
+
+
+
+
+2. 直接操作 语言对象
+There are three kinds of language objects that are available for modification, calls, expressions, and functions. 
+有三种语言对象可用于修改: 调用，表达式和函数。这里集中说调用对象。
+它有时候也被叫做 未求值的表达式 "unevaluated expressions"
+
+
+(1) 最直接的创建方式是给 quote() 函数传递一个表达式参数，比如:
+
+> e1 <- quote(2 + 2)
+
+> x=1:10; y=x**2
+> e2 <- quote(plot(x, y))
+
+查看类型
+> class(e1)
+[1] "call"
+> class(e2)
+[1] "call"
+> str(e1)
+ language 2 + 2
+
+> e1
+2 + 2
+> e2
+plot(x, y)
+
+
+# 也可以通过函数调用形式创建
+> "+"(2, 2)
+[1] 4
+> e1_2 <- quote( "+"(2, 2) )
+> e1_2
+2 + 2
+
+
+
+(2) 这个对象e1、e2没有求值，可以通过 eval() 求值
+> e1
+2 + 2
+
+> eval(e1)
+[1] 4
+> eval(e2) #直接画图
+
+
+
+
+(3) 或者像list一样操作
+
+> e2[[1]]
+plot
+> e2[[2]]
+x
+> e2[[3]]
+y
+
+> class(e2[[3]]) #参数都是 name 类的
+[1] "name"
+
+
+#2) 当使用键值对参数的时候，还可以使用键名访问
+> e3 <- quote(plot(x = age, y = weight))
+> e3
+plot(x = age, y = weight)
+> e3$x
+age
+> e3$y
+weight
+
+> class(e3$y)
+[1] "name"
+
+
+
+#3) 修改元素
+既然每个元素都是 name 类的，我们也可以像操作list一样，使用同类对象替换每个元素。
+
+> e2
+plot(x, y)
+
+这个调用对象本来是画图的，我们把操作符替换为加号:
+> e2[[1]]
+plot
+> e2[[1]]=as.name("+")
+> e2
+x + y
+> eval(e2)
+ [1]   2   6  12  20  30  42  56  72  90 110
+
+
+#4) 调用对象的元素也可以是 call 类型
+> e1
+2 + 2
+> e1[[2]]
+[1] 2
+> e1[[2]] = e2
+> e1 #注意: 第一个元素是操作符+，第二个元素是参数1，第三个元素是参数2
+x + y + 2
+
+
+
+
+
+
+(4) 对于括号的处理
+这两段有点翻译不动，附原文。
+
+所有用来分组的括号，都保留在解析后的表达式中了。它们的形式就是带一个参数的函数调用，所以 4-(2-2) 变成了 "-"(4, "(" ("-"(2, 2)))。求值的时候，"("操作符就是返回它的参数本身。
+# All grouping parentheses in input are preserved in parsed expressions. They are represented as a function call with one argument, so that 4 - (2 - 2) becomes "-"(4, "(" ("-"(2, 2))) in prefix notation. In evaluations, the ‘(’ operator just returns its argument.
+
+
+> a1=quote(4-(2-2))
+> a1
+4 - (2 - 2)
+> as.list(a1)
+[[1]]
+`-`
+
+[[2]]
+[1] 4
+
+[[3]]
+(2 - 2)
+
+
+> a1[[1]]
+`-`
+> a1[[2]]
+[1] 4
+> a1[[3]]
+(2 - 2)
+
+> # 第三个元素又是一个list-like对象，第一个运算符是(，后面作为它的参数
+> a2=a1[[3]]
+> a2[[1]]
+`(`
+> a2[[2]]
+2 - 2
+
+> # (运算符的参数，就是最简单的 2-2 运算符
+> a3=a2[[2]]
+> a3[[1]]
+`-`
+> a3[[2]]
+[1] 2
+> a3[[3]]
+[1] 2
+> 
+
+
+这很不幸，但是写一个好用的 parser/deparser 组合并不容易！
+要能保存用户输入，尽量简短，且能还原回去。 
+# This is a bit unfortunate, but it is not easy to write a parser/deparser combination that both preserves user input, stores it in minimal form and ensures that parsing a deparsed expression gives the same expression back.
+
+
+碰巧的是/偶然情况，R的 parser 不是完全可逆的，它的 deparser 也不是完全可逆的，比如这个例子：
+# As it happens, R’s parser is not perfectly invertible, nor is its deparser, as the following examples show
+
+
+> str(quote(c(1,2)))
+ language c(1, 2)
+> str(c(1,2))
+ num [1:2] 1 2
+
+> deparse(quote(c(1,2)))
+[1] "c(1, 2)"
+> deparse(c(1,2))
+[1] "c(1, 2)"
+
+> quote("-"(2, 2))
+2 - 2
+> quote(2 - 2)
+2 - 2
+
+
+然而，Deparsed 表达式应该计算为与原始表达式等价的值(最多有点舍入误差)。
+# Deparsed expressions should, however, evaluate to an equivalent value to the original expression (up to rounding error).
+
+
+流程控制结构的内部存储，和S+不兼容。
+# ...internal storage of flow control constructs...note Splus incompatibility...
+
+
+
+
+# Q&A
+deparse: Turn unevaluated expressions into character strings.
+
+没有用substitute而是用的quote，没仔细看二者有没有什么区别，就是觉得quote打起来省事点
+aaa=1:5
+as.character(quote(aaa))
+
+> deparse(substitute(deg))
+[1] "deg"
+
+
+
+
+
+
+
+
+========================================
+操作函数
+----------------------------------------
+1. formals()
+Access to and Manipulation of the Formal Arguments
+
+Description: Get or set the formal arguments of a function.
+
+
+
+> formals
+function (fun = sys.function(sys.parent()), envir = parent.frame()) 
+{
+    if (is.character(fun)) 
+        fun <- get(fun, mode = "function", envir = envir)
+    .Internal(formals(fun))
+}
+<bytecode: 0x0000000009ea7e98>
+<environment: namespace:base>
+
+
+例子:
+> formals(plot)
+$x
+
+
+$y
+
+
+$...
+
+> names(formals(plot))
+[1] "x"   "y"   "..."
+
+
+
+
+
+
+========================================
+----------------------------------------
+
+
+
+
+
+
+========================================
+----------------------------------------
+
+
+
+
+
+========================================
+----------------------------------------
+
+
+
+
+
+========================================
+----------------------------------------
+
+
+
+
+
+========================================
+----------------------------------------
+
+
+
+
+
+========================================
+----------------------------------------
+
+
+========================================
+----------------------------------------
+
+
+========================================
+----------------------------------------
+
+
+========================================
+----------------------------------------
+
+
+
+========================================
+----------------------------------------
+
+
+========================================
+----------------------------------------
+
+
+========================================
+----------------------------------------
+
+
+========================================
+----------------------------------------
+
+
