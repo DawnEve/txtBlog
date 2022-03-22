@@ -3937,7 +3937,7 @@ pr: https://github.com/satijalab/seurat/pull/5727
 
 
 ========================================
-|-- Seurat 4 R包源码解析 16: step7 ScaleData() //todo
+|-- Seurat 4 R包源码解析 16: step7 ScaleData()
 ----------------------------------------
 1. 掉包侠
 # step7 Scaling the data
@@ -3945,9 +3945,28 @@ all.genes <- rownames(pbmc)
 pbmc <- ScaleData(pbmc, features = all.genes)
 
 
+(1)处理过程
+linear 模型 输入的是 assay@data，
+可选: 先 regress out 一些噪音变量(比如批次效应等)，
+然后再做 center and scale。
 
-(1) 重要参数 
 
+怎么去噪音?
+其中 regress out 的方法作者提供了三个选项，本文只说默认使用的 linear 模型。
+线性模型 主要是使用 lm() 拟合 Y~X1+X2，每个基因就是一个 Y，噪音列就是X1+X2...部分。 回归曲线，并计算出期望值，然后真实表达值-拟合值得到的残差，就认为是去除了变量X1和X2的影响了。
+然后 center and scale.
+
+
+
+作者为了加快速度，用到了很多小技巧。比如
+- 多线程，分块处理；
+- C++函数: FastSparseRowScale()
+- 线性代数的性质：QR 分解出 噪音矩阵的 qr 矩阵先做一次，循环中求残差时反复使用。
+
+
+
+
+(2) 重要参数 
 1) vars.to.regress=c("mt.pct") 回归掉批次效应等无关变异成分
 
 Scales and centers features in the dataset. If variables are provided in vars.to.regress, they are individually regressed against each feature, and the resulting residuals are then scaled and centered.
@@ -3969,7 +3988,10 @@ Scales and centers features in the dataset. If variables are provided in vars.to
 #' square otherwise.
 
 
-(2) min.cells.to.block 参数干啥的？
+(3) min.cells.to.block 参数干啥的？
+
+
+
 
 
 
@@ -3977,15 +3999,15 @@ Scales and centers features in the dataset. If variables are provided in vars.to
 
 
 2. 源码解析
+(100) todo 
 
 间接使用的函数。
-
 - LogSeuratCommand
 	object <- LogSeuratCommand(object = object)
 
-
 - future_lapply() in ScaleData.default()
 
+- FastSparseRowScale: C 函数
 
 
 
@@ -4013,7 +4035,7 @@ set1[set1 %in% set2] #9 7 5
 
 
 
-(2) sys.calls() 返回函数调用栈，可以解析获得依次调用的函数名。
+(2) sys.calls() 返回函数调用栈，可以解析获得依次调用的函数
 最早调用的函数在list的最后。
 
 #  sys.call returns a call
@@ -4139,7 +4161,7 @@ In fns1:120, 2, 1
 
 
 
-(4) 能否修改 全局环境变量？可以
+(4) 能否在函数内修改 全局环境变量？可以
 modi=function(list2, i=0){
   message(">>> ", as.character(sys.calls()) )
   parent.environ <- sys.frame(which = i)
@@ -4151,9 +4173,9 @@ modi=function(list2, i=0){
     parent.environ[[i]]=list2[[i]]
   }
 }
-#
+a=300
 modi(list(a=1, b=20), i=0)
-#
+a #[1] 1
 
 
 
@@ -4171,7 +4193,7 @@ modi(list(a=1, b=20), i=0)
 
 
 
-(6) split() 把向量按奇偶分成2个
+(6) split() 把向量按奇偶分成2组
 
 > split(x = 1:10, f = (1:10)%%2  )
 $`0`
@@ -4281,6 +4303,8 @@ Capitalize( colnames(mtcars))
 
 
 
+
+
 (10) 文字进度条 utils::txtProgressBar()
 源码:
 pb <- txtProgressBar(min = 0, max = max.block, style = 3, file = stderr())
@@ -4291,6 +4315,14 @@ for (i in 1:max.block) {
 	...
 }
 close(con = pb)
+
+源码2:
+pb <- txtProgressBar(char = '=', style = 3, file = stderr())
+for (i in 1:length(x = features.regress)) {
+	setTxtProgressBar(pb = pb, value = i / length(x = features.regress)) #进度条
+}
+close(con = pb)
+
 
 
 示例:
@@ -4309,7 +4341,7 @@ close(con = pb)
 
 
 
-(11) formals() 返回获取函数参数名字
+(11) formals() 返回获取函数参数列表
 
 > formals(plot)
 $x
@@ -4335,7 +4367,44 @@ $y
 
 
 
-(12) 
+(12) base::sweep() 把一个矩阵整体减去某个统计参数
+Return an array obtained from an input array by sweeping out a summary statistic.
+
+sweep(x, MARGIN, STATS, FUN = "-", check.margin = TRUE, ...)
+
+例1:
+> x=iris[1:2,1:4]
+> x
+  Sepal.Length Sepal.Width Petal.Length Petal.Width
+1          5.1         3.5          1.4         0.2
+2          4.9         3.0          1.4         0.2
+> sweep(x, MARGIN=1, STATS=c(5,4), FUN = "-") #按行减去值
+  Sepal.Length Sepal.Width Petal.Length Petal.Width
+1          0.1        -1.5         -3.6        -4.8
+2          0.9        -1.0         -2.6        -3.8
+> sweep(x, MARGIN=2, STATS=c(5,3,1,0), FUN = "-") #按列减去值
+  Sepal.Length Sepal.Width Petal.Length Petal.Width
+1          0.1         0.5          0.4         0.2
+2         -0.1         0.0          0.4         0.2
+
+
+
+例2: 矩阵每列减去本列的平均值
+> df1=mtcars[1:3, 1:5]
+> df1
+               mpg cyl disp  hp drat
+Mazda RX4     21.0   6  160 110 3.90
+Mazda RX4 Wag 21.0   6  160 110 3.90
+Datsun 710    22.8   4  108  93 3.85
+> sweep(df1, 
+       MARGIN=2, 
+       STATS= apply(df1, 2, mean),
+       FUN="-"
+)
+               mpg        cyl      disp         hp        drat
+Mazda RX4     -0.6  0.6666667  17.33333   5.666667  0.01666667
+Mazda RX4 Wag -0.6  0.6666667  17.33333   5.666667  0.01666667
+Datsun 710     1.2 -1.3333333 -34.66667 -11.333333 -0.03333333
 
 
 
@@ -4343,16 +4412,11 @@ $y
 
 
 
-
-
-
-##1.
-输入的是 assay@data，
-先 scale out 一些混杂变量，然后再做 scale 和 center 。
-
-
-2.
-- FastSparseRowScale: C 函数
+4. PR 
+(1) 有且仅有一个基因作为噪音时会导致错误
+pbmc_small3 <- ScaleData(pbmc_small, features = all.genes,
+                         vars.to.regress = c("nFeature_RNA", "CD79A"))
+# PR: https://github.com/satijalab/seurat/pull/5763
 
 
 
@@ -4360,19 +4424,379 @@ $y
 
 
 
-##
+========================================
+|-- Seurat 4 R包源码解析 17: 使用线性模型去除数据噪音 //todo
+----------------------------------------
+1. 概述
+本文是上一篇 ScaleData() 的解释说明。建议先阅读上一节的相关描述。
 
-() 之前讲过
-./seurat-4.1.0/R/utilities.R:1848:CheckGC <- function() {
-./seurat-object-4.0.4/R/utils.R:179:CheckGC <- function(option = 'SeuratObject.memsafe') {
+主要是使用R手工实现该处理流程，并适当关心数学推导。
+所以本文结构和以往略有不同，还有很多拼图部分，有待未来完善。
 
-# Call gc() to perform garbage collection
-#
-CheckGC <- function() {
-  if (getOption(x = "Seurat.memsafe")) {
-    gc(verbose = FALSE)
-  }
+我们忽略参数验证、日志记录等辅助功能，也暂时不讲 多线程、C++加速代码，这次只看最简单的实现。
+
+
+(1) 打算通过几个实例，通过R手工实现处理流程，得出 Seurat::ScaleData() 的结果。
+数据: Seurat 4 自带的小数据及 pbmc_small.
+方法: 我们先使用普通 lm 拟合，最后关心一下矩阵的QR分解是怎么节省运行时间的。
+基因: 都是 scale 全部基因。
+
+
+	默认参数仅 scale，不回归
+	回归掉 nFeature_RNA
+	回归掉 nFeature_RNA, CD79A #当只有一个基因时，有bug: https://github.com/satijalab/seurat/pull/5763
+	使用 QR 分解求残差
+
+
+
+2. 实例1: 默认参数仅 center and scale，不回归
+(1) 函数处理
+library(Seurat)
+all.genes <- rownames(pbmc_small)
+pbmc_small1 <- ScaleData(pbmc_small, features = all.genes)
+#原始子集可能是先处理再取子集，所以，以新处理的结果为准
+scale1=pbmc_small1@assays$RNA@scale.data
+
+> head(scale1[,1:4])
+         ATGCCAGAACGACT CATGGCCTGTGCAT GAACCTGATGAACC TGACTGGATTCTCA
+MS4A1        -0.4087672     -0.4087672     -0.4087672     -0.4087672
+CD79B         1.6399067     -0.6145940     -0.6145940     -0.6145940
+CD79A        -0.4275544     -0.4275544     -0.4275544     -0.4275544
+HLA-DRA      -1.3746590      0.2874881     -1.3746590     -1.3746590
+TCL1A        -0.3288515     -0.3288515     -0.3288515     -0.3288515
+HLA-DQB1      1.3697287     -0.7501683     -0.7501683     -0.7501683
+
+
+
+(2) 手动处理
+data=as.matrix(pbmc_small@assays$RNA@data)
+out1=sweep(data, 1, apply(data, 1, mean), "-") #每行 减去 改行的均值
+out1_=t(scale(t(out1))) # 除以每行的sd，由于 scale 是按列计算的，所以要
+
+> head(out1_[,1:4])
+         ATGCCAGAACGACT CATGGCCTGTGCAT GAACCTGATGAACC TGACTGGATTCTCA
+MS4A1        -0.4087672     -0.4087672     -0.4087672     -0.4087672
+CD79B         1.6399067     -0.6145940     -0.6145940     -0.6145940
+CD79A        -0.4275544     -0.4275544     -0.4275544     -0.4275544
+HLA-DRA      -1.3746590      0.2874881     -1.3746590     -1.3746590
+TCL1A        -0.3288515     -0.3288515     -0.3288515     -0.3288515
+HLA-DQB1      1.3697287     -0.7501683     -0.7501683     -0.7501683
+
+> # check
+> table(scale1-out1_<1e-10)
+
+ TRUE 
+18400 
+
+
+# scale 步骤也可以使用 sweep 实现，就是每一行除以该行的sd
+# more detail
+out1_m=sweep(out1, 1, apply(out1, 1, sd), "/")
+head(out1_m[,1:4])
+table( abs(out1_m - scale1)<1e-10)
+# TRUE 
+# 18400 
+
+
+(3) 其实可以只用scale函数
+默认 scale() 会做 -mean 处理
+
+> out1_2=t(scale(t(data))); out1_2[1:6, 1:4]
+         ATGCCAGAACGACT CATGGCCTGTGCAT GAACCTGATGAACC TGACTGGATTCTCA
+MS4A1        -0.4087672     -0.4087672     -0.4087672     -0.4087672
+CD79B         1.6399067     -0.6145940     -0.6145940     -0.6145940
+CD79A        -0.4275544     -0.4275544     -0.4275544     -0.4275544
+HLA-DRA      -1.3746590      0.2874881     -1.3746590     -1.3746590
+TCL1A        -0.3288515     -0.3288515     -0.3288515     -0.3288515
+HLA-DQB1      1.3697287     -0.7501683     -0.7501683     -0.7501683
+
+> table(scale1-out1_2<1e-10)
+
+ TRUE 
+18400
+
+
+
+
+
+3. 回归掉 meta.data 中的 nFeature_RNA
+(1) 函数处理
+all.genes <- rownames(pbmc_small)
+pbmc_small2 <- ScaleData(pbmc_small, features = all.genes,
+                         vars.to.regress = c("nFeature_RNA"))
+scale2=pbmc_small2@assays$RNA@scale.data
+> head(scale2[,1:4])
+         ATGCCAGAACGACT CATGGCCTGTGCAT GAACCTGATGAACC TGACTGGATTCTCA
+MS4A1        -0.5697943     -0.4870271     -0.5201340     -0.4208134
+CD79B         1.5871138     -0.6495834     -0.6653221     -0.6181060
+CD79A        -0.5366787     -0.4789847     -0.5020623     -0.4328295
+HLA-DRA      -1.2835170      0.4003885     -1.3552421     -1.4986922
+TCL1A        -0.4787296     -0.3997651     -0.4313509     -0.3365935
+HLA-DQB1      1.5729696     -0.7201429     -0.6867491     -0.7869305
+
+
+(2) 半手动处理
+data=as.matrix(pbmc_small@assays$RNA@data)
+# 先回归掉噪声
+latent.data=pbmc_small[['nFeature_RNA']]
+
+obj = Seurat:::RegressOutMatrix(
+  data.expr = data,
+  latent.data = latent.data, #潜在回归数据 的子集
+  features.regress = rownames(data), #要回归的基因
+  model.use = "linear",
+  use.umi = F,
+  verbose = T
+)
+obj2=t(scale(t(obj)))
+
+> head(obj2[,1:4])
+         ATGCCAGAACGACT CATGGCCTGTGCAT GAACCTGATGAACC TGACTGGATTCTCA
+MS4A1        -0.5697943     -0.4870271     -0.5201340     -0.4208134
+CD79B         1.5871138     -0.6495834     -0.6653221     -0.6181060
+CD79A        -0.5366787     -0.4789847     -0.5020623     -0.4328295
+HLA-DRA      -1.2835170      0.4003885     -1.3552421     -1.4986922
+TCL1A        -0.4787296     -0.3997651     -0.4313509     -0.3365935
+HLA-DQB1      1.5729696     -0.7201429     -0.6867491     -0.7869305
+> table(abs(scale2-obj2)<1e-10)
+
+ TRUE 
+18400 
+
+
+
+(3) 全手动处理
+data=as.matrix(pbmc_small@assays$RNA@data)
+# regress out
+resid.mat=matrix(
+  nrow=nrow(data),
+  ncol=ncol(data)
+)
+dim(resid.mat)
+# begin for each gene: gene ~ vars.
+for(i in 1:nrow(data)){
+  data2=cbind(latent.data, data[i,])
+  colnames(data2)=c(colnames(latent.data), "GENE")
+  model=lm(GENE~nFeature_RNA, data=data2) #模型 Gene~噪音变量名+变量名2
+  resid=data[i,]-predict(model) #残差: 原始值 - 预测值
+  resid.mat[i,]=resid
 }
+# scale
+obj2_m=t(scale(t(resid.mat)))
+#dimnames(obj2_m)=dimnames(data)
+head(obj2_m[,1:4])
+# test matrix equal
+
+> table(scale2-obj2_m<1e-10)
+
+ TRUE 
+18400 
+
+
+
+
+
+
+4. 回归掉 nFeature_RNA, 和一个基因 CD79A，有bug
+
+all.genes <- rownames(pbmc_small)
+pbmc_small3 <- ScaleData(pbmc_small, features = all.genes,
+                         vars.to.regress = c("nFeature_RNA", "CD79A"))
+scale3=pbmc_small2@assays$RNA@scale.data
+head(scale3[,1:4])
+
+# bug 
+vars.to.regress = c("nFeature_RNA", "CD79A")
+object=data
+latent.data=pbmc_small[["nFeature_RNA"]]
+#
+vars.to.regress[vars.to.regress %in% rownames(x = object)]
+t(object[vars.to.regress[vars.to.regress %in% rownames(x = object)], , drop=F])
+t(x = object[vars.to.regress[vars.to.regress %in% rownames(x = object)], ]) #bug: no df shape
+
+#
+if (any(vars.to.regress %in% rownames(x = object))) {
+  # add gene exp to latent.data
+  latent.data <- cbind(
+    latent.data,
+    t(x = object[vars.to.regress[vars.to.regress %in% rownames(x = object)], ]) #bug
+    #t(x = object[vars.to.regress[vars.to.regress %in% rownames(x = object)], ,drop=F])
+  )
+}
+head(latent.data[, 1:4])
+# https://github.com/satijalab/seurat/pull/5763
+
+> head(latent.data[, 1:4])
+               nFeature_RNA ATGCCAGAACGACT CATGGCCTGTGCAT GAACCTGATGAACC
+ATGCCAGAACGACT           47              0              0              0
+CATGGCCTGTGCAT           52              0              0              0
+GAACCTGATGAACC           50              0              0              0
+TGACTGGATTCTCA           56              0              0              0
+AGTCAGACTGCACA           53              0              0              0
+TCTGATACACGTGT           48              0              0              0
+
+
+
+
+
+
+5.回归掉 nFeature_RNA, CD79A CD8A
+(1) 函数计算
+all.genes <- rownames(pbmc_small)
+pbmc_small4 <- ScaleData(pbmc_small, features = all.genes,
+                         vars.to.regress = c("nFeature_RNA", "CD79A", "CD8A"))
+scale4=pbmc_small4@assays$RNA@scale.data
+
+> head(scale4[,1:4])
+         ATGCCAGAACGACT CATGGCCTGTGCAT GAACCTGATGAACC TGACTGGATTCTCA
+MS4A1        -0.2682047     0.02320886     -0.2303838    -0.15474204
+CD79B         2.4493308    -0.33695723     -0.4651794    -0.45852800
+CD79A         1.0269414     0.31089678     -8.7355452     0.13828548
+HLA-DRA      -1.1821658     0.79358748     -1.2895924    -1.50444538
+TCL1A        -0.1812479     0.02156459     -0.1476698    -0.08051371
+HLA-DQB1      2.4832829    -0.30960741     -0.5062450    -0.69271924
+
+
+
+
+(2) 半手动处理
+data=as.matrix(pbmc_small@assays$RNA@data)
+# 先回归掉噪声
+vars.to.regress=c("nFeature_RNA", "CD79A", "CD8A")
+latent.data=pbmc_small[['nFeature_RNA']]
+latent.data=cbind(latent.data, 
+                  t(x = object[vars.to.regress[vars.to.regress %in% rownames(x = object)], ]) )
+head(latent.data)
+
+obj = Seurat:::RegressOutMatrix(
+  data.expr = data,
+  latent.data = latent.data, #潜在回归数据 的子集
+  features.regress = rownames(data), #要回归的基因
+  model.use = "linear",
+  use.umi = F,
+  verbose = T
+)
+obj2=t(scale(t(obj)))
+head(obj2[,1:4])
+
+# check
+> table(abs(scale4-obj2)<1e-10) #no F
+
+ TRUE 
+18400 
+
+
+(3) 手动处理
+# regress out vars
+data=as.matrix(pbmc_small@assays$RNA@data)
+latent.data=FetchData(pbmc_small, vars=c("nFeature_RNA", "CD79A", "CD8A"),
+                      slot="data")
+head(latent.data)
+#vars.to.regress <- colnames(x = latent.data)
+# regress out
+resid.mat=matrix(
+  nrow=nrow(data),
+  ncol=ncol(data)
+)
+dim(resid.mat) #230 80
+# begin for each gene: gene ~ vars.
+for(i in 1:nrow(data)){
+  data2=cbind(latent.data, data[i,])
+  colnames(data2)=c(colnames(latent.data), "GENE")
+  model=lm(GENE~nFeature_RNA+CD79A+CD8A, data=data2) #模型 Gene~噪音变量名+变量名2
+  resid=data[i,]-predict(model) #残差: 原始值 - 预测值
+  resid.mat[i,]=resid
+}
+#check
+table(abs(resid.mat-obj)<1e-10) #no F
+
+
+# scale
+obj4=t(scale(t(resid.mat)))
+dimnames(obj4)=dimnames(data)
+head(obj4[,1:4])
+head(scale4[,1:4]) # Seurat 函数计算结果
+# check
+table(abs(obj4-obj2)<1e-10) #160个F
+table(abs(scale4-obj4)<1e-10) #160个F。
+# 一列80个，正好2个被回归的基因和Seurat结果有差异
+
+FALSE  TRUE 
+  160 18240 
+
+
+
+(4) 查找原因
+a1=obj; a2=obj2;
+b1=resid.mat; b2=obj4;
+dimnames(b1)=dimnames(data)
+#
+table(abs(a1-b1)<1e-10) #no F
+table(abs(a2-b2)<1e-10) #160 F
+#
+#
+table(abs(a1-b1)<1e-10) #no F
+table(abs(a1-b1)<1e-14) #15 F
+table(abs(a1-b1)<1e-15) #1.8k F 说明都是小数点后面13位后的差异
+#
+# 或许应该全部设置为0，而不是留着，否则 (x-mean)/sd 可能特别大
+# 这个舍入误差可能是 QR 分解造成的
+
+> gene1="CD79B";head(a1[gene1,]);head(b1[gene1,])
+ATGCCAGAACGACT CATGGCCTGTGCAT GAACCTGATGAACC TGACTGGATTCTCA AGTCAGACTGCACA TCTGATACACGTGT 
+     4.1709973     -0.5738089     -0.7921601     -0.7808333     -0.7864967     -0.7959357 
+ATGCCAGAACGACT CATGGCCTGTGCAT GAACCTGATGAACC TGACTGGATTCTCA AGTCAGACTGCACA TCTGATACACGTGT 
+     4.1709973     -0.5738089     -0.7921601     -0.7808333     -0.7864967     -0.7959357 
+> gene1="CD79A";head(a1[gene1,]);head(b1[gene1,]) #全是极小的数，
+ATGCCAGAACGACT CATGGCCTGTGCAT GAACCTGATGAACC TGACTGGATTCTCA AGTCAGACTGCACA TCTGATACACGTGT 
+  2.088779e-15   6.323580e-16  -1.776793e-14   2.812700e-16   3.588664e-16   3.031566e-16 
+ATGCCAGAACGACT CATGGCCTGTGCAT GAACCTGATGAACC TGACTGGATTCTCA AGTCAGACTGCACA TCTGATACACGTGT 
+  9.672066e-16   4.330893e-16   9.076219e-16   7.884525e-16   8.480372e-16   9.473450e-16
+
+
+
+
+
+
+6. 手动处理2: 使用 QR 分解
+接上文。
+
+(1) R手工实现 矩阵QR分解求残差
+
+# regress out vars
+data=as.matrix(pbmc_small@assays$RNA@data)
+latent.data=FetchData(pbmc_small, vars=c("nFeature_RNA", "CD79A", "CD8A"),
+                      slot="data")
+head(latent.data)
+vars.to.regress <- colnames(x = latent.data)
+# qr 
+data2=cbind(latent.data, data[1,])
+colnames(data2)=c(colnames(latent.data), "GENE")
+qr=lm(GENE~nFeature_RNA+CD79A+CD8A, data=data2, qr=T)$qr
+str(qr)
+
+# regress out
+resid.mat=matrix(
+  nrow=nrow(data),
+  ncol=ncol(data)
+)
+dim(resid.mat) #230 80
+# begin for each gene: gene ~ vars.
+for(i in 1:nrow(data)){
+  resid.mat[i,]=qr.resid(qr = qr, y = data[i,])
+}
+obj5=t(scale(t(resid.mat)))
+
+> table( abs(scale4 - obj5)<1e-10 )
+
+ TRUE 
+18400 
+
+
+
+(2) 数学原理 //todo
+
+qr 分解 求残差
 
 
 
@@ -4383,7 +4807,13 @@ CheckGC <- function() {
 
 
 
+7. 如何理解施密特（Schmidt）正交化
 
+https://zhuanlan.zhihu.com/p/136627868
+
+根据定义，内积<a1,a2>等于一个的长度另一个再这个上面的投影，所以假设b1是a1在a2上的投影，则 <a1,a2>=|b1| x |a2|;
+而 |a2|^2 = <a2, a2>，a2方向上的单位向量 i=a2 / |a2|
+则 b1=|b1| x i = <a1, a2> /|a2| x a2/|a2| = <a1,a2>/<a2,a2> x a2
 
 
 
