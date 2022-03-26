@@ -1549,8 +1549,328 @@ If you won't, CRAN will do that for you and will send you back to the drawing bo
 
 
 
+
+
+
+
+
 ========================================
-使用 rcpp 和 RcppEigen 进行矩阵计算
+hadley: Rewriting R code in C++ //todo
+----------------------------------------
+1. 教程list
+https://github.com/hadley/adv-r/
+https://adv-r.hadley.nz/rcpp.html
+
+
+(1)Rcpp: Seamless R and C++ Integration
+https://www.rcpp.org/
+
+Extending and growing R applications via an easy-to-use, robust, and performant C++ interface.
+
+All key R data types map naturally into key C++ data structures, and simple interfaces make transfer back and forth very easy. And by composing more complex interfaces become possible.
+
+Numerous examples, as well as extensive documentation, facilitate its use.
+
+
+
+
+(2) 中文版 Rcpp 博客/公众号
+https://mp.weixin.qq.com/mp/appmsgalbum?__biz=MzA5NjAyMzU1OA==&action=getalbum&album_id=1510985345260158978
+
+
+
+
+2. 入门 
+Rcpp是R的一个包，通过调用这个包里的函数，比如cppFunction和sourceCpp来实现R与C++的结合。
+Rcpp是R的扩展包，Windows用户需安装CRAN镜像网络提供的Rtools套件<https://cran.r-project.org/bin/windows/Rtools/> 
+
+Rcpp的使用
+
+(1) cppFunction
+直接在R中运用Rcpp中的cppFunction函数，用法是cppFunction(‘C++语句书写’)
+
+例子：斐波那契数列
+library("Rcpp")
+
+cppFunction(
+  'int fib_cpp_0(int n){
+  if(n==1||n==2) return 1;
+  return(fib_cpp_0(n-1)+fib_cpp_0(n-2));
+  }')
+
+(2) sourceCpp
+运用sourceCpp函数在R中调用cpp格式的文件（也就是C++文件）。
+
+在cpp文件中，头文件要用#include <Rcpp.h>,把需要输出到R中的函数放置在//[[Rcpp::export]]后，如果需要调用其他C++函数，可以把这些函数放在//[[Rcpp::export]]之前
+
+例子：斐波那契数列
+$ cat rcpp2.cpp
+#include <Rcpp.h>
+using namespace Rcpp;
+
+//[[Rcpp::export]]
+int fib_cpp_1(int n){
+  if(n==1||n==2) return 1;
+  return(fib_cpp_1(n-1)+fib_cpp_1(n-2));
+}
+
+# R 中
+Sys.setenv("PKG_CXXFLAGS"="-std=c++11")  #用C++11的标准来编译文件
+sourceCpp("rcpp2.cpp")
+
+
+(3) 本质
+上述两个函数其本质是相同的，其本质都是先写出 C/C++ 的代码，然后用R CMD SHLIB生成一个动态链接库，再用dyn.load载入这个动态链接库。最后用.Call(或者. C），调用库中的函数。
+
+
+(4) Rcpp优势
+R是解释型语言，即在运行时先要把程序翻译成机器语言再运行，每执行一次就要翻译一次，而C++则为编译型语言，只需要编译一次。因此，在循环、递归等内含大量重复性过程的算法中，只用R语言是非常缓慢的，而使用Rcpp则可以提高效率。
+
+例子：斐波那契数列，比较用R代码、cppFunction和sourceCpp三种方式写出的斐波那契数列函数的运行速度
+
+（cppFunction和sourceCpp代码上文已给出，此处为R语言中的代码）：
+
+fib_r <- function(n){
+  if(n==1||n==2) return(1)
+  return(fib_r(n-1)+fib_r(n-2))
+}
+
+*用system.time()函数测算运行时间：
+> system.time(fib_r(30))
+   user  system elapsed 
+  0.547   0.000   0.547 
+> system.time(fib_cpp_0(30))
+   user  system elapsed 
+  0.002   0.000   0.002 
+> system.time(fib_cpp_1(30))
+   user  system elapsed 
+  0.003   0.000   0.002 
+可以很明显地看到使用Rcpp的后两种方法速度远远快于第一种（时间显示为零是由于四舍五入的原因）
+
+
+## 可选: *microbenchmark函数可视化多次运行时间
+library(microbenchmark)
+res<-microbenchmark(30,fib_r(30),fib_cpp_0(30),fib_cpp_1(30),times=100L)  #time为跑100次
+autoplot.microbenchmark(res)   #将这3个函数各运行100次的时间以图像显示
+
+如上图所示，使用Rcpp函数的两个斐波那契数列运算100次每次的时间约在10^5纳秒左右，而使用R语言运行100次每次的时间则超过了10^8纳秒，超过前两个方式用时的1000倍，使用Rcpp的效率提高程度明显。
+
+
+
+(5) R包制作中Rcpp的应用
+在Rstudio中，按顺序点击file - new file - C++file ，然后运行devtools::use_rcpp语句，以此创建了一个.cpp文件和对应DESCRIPTION文件 。在RStudio提供的 默认模板中最重要的是头文件#include和特别属性// [[Rcpp::export]] ，其用法和C++相同。
+
+修改默认模板（注意函数和示例一起修改） 后，点击Build&Reload进行创建即可。
+
+例子：汉诺问题
+
+C++代码：
+#include <Rcpp.h>
+#include<stdio.h>
+using namespace Rcpp;
+
+// [[Rcpp::export]]
+void han(int n,char a,char b, char c)
+{
+  if(n==1)
+  {
+    int move(char x,char y);
+    move(a,b);
+  }else
+  {
+    int move(char x,char y);
+    han(n-1,a,c,b);
+    move(a,c);
+    han(n-1,b,a,c);
+  }
+}
+
+int move(char x,char y)
+{
+  printf("%c>>>%c\n",x,y);
+  return 0;
+}
+
+
+R语言代码：
+> sourceCpp("./backup/hnt_code.cpp")
+> han(4, "a", "b", "c")
+
+
+
+
+
+###
+ref:《Rcpp：R 与 C++ 的无缝整合》.西安交通大学出版社 [法] 德克 · 埃德比特尔著 寇强 张晔译
+
+
+
+
+
+
+========================================
+Rcpp在R语言中实现C++与R的交互
+----------------------------------------
+1.
+在R中如何直接调用C++的函数进行数据的计算。在这里需要用到的包是Rcpp。此工具包中有四个核心的包：RcppArmadillo使得线性代数的引入语法更加接近matlab；RcppEigen 高优化的线性代数计算；RInside实现在C++中调用R代码；RcppParallel基于Rcpp实现计算的并行运算。
+
+install.packages('Rcpp')
+install.packages("inline")
+
+
+(1)C++与R进行数据交互的共有数据格式及其函数名称：
+
+向量:NumericVector、IntegerVector、CharacterVector
+矩阵:NumericMatrix、IntegerMatrix、CharacterMatrix
+数据框:DataFrame
+列表:List
+函数:Function
+其他类型:Environment, ComplexVector, RawVector,DottedPair, Language, Promise, Symbol, WeakReference
+ 
+
+(2)Rcpp中数学运算及处理函数：
+
+数学函数: abs(), acos(), asin(), atan(),beta(), ceil(), ceiling(), choose(), cos(), cosh(), digamma(), exp(), expm1(),factorial(), floor(), gamma(), lbeta(), lchoose(), lfactorial(), lgamma(),log(), log10(), log1p(), pentagamma(), psigamma(), round(), signif(), sin(),sinh(), sqrt(), tan(), tanh(), tetragamma(), trigamma(), trunc().
+汇总函数: mean(), min(), max(), sum(), sd(),and (for vectors) var()
+返回向量的汇总函数: cumsum(), diff(), pmin(), andpmax()
+查找函数: match(), self_match(), which_max(),which_min()
+重复值处理函数: duplicated(), unique()
+
+
+(3) 如何构建一个可以被Rcpp识别的C++文件，我们可以直接在Rstudio中进行构建，构建结果如下：
+
+#include <Rcpp.h>
+#include<stdio.h>
+using namespace Rcpp; //前2行是头文件
+
+//Rcpp 识别标记，放到哪个函数前面，就表示该函数暴漏到R中，该标示符和函数定义之间不能有注释！
+//[[Rcpp::export]]
+NumericVector timesTwo(NumericVector x){ //定义函数
+	return x*2;
+}
+
+
+在R中调用函数 
+> Rcpp::sourceCpp("test.cpp")
+> timesTwo(42)
+
+
+(4) C++函数的定义
+// 返回类型 函数名(参数类型 形参 = 默认值)
+
+#include <Rcpp.h>
+#include<stdio.h>
+using namespace Rcpp;
+
+// [[Rcpp::export]]
+bool is_odd_cpp(int n=10){ //a function defination
+  bool v = (n %2 == 1); //body
+  return v; //return value
+}
+
+// [[Rcpp::export]]
+NumericVector timesTwo(NumericVector x){
+  return x*2;
+}
+
+
+# 直接测试c++函数
+> Rcpp::sourceCpp("./src/hnt_code.cpp")
+> han(3,'a','b','c') #正常了
+> GEB::han(3,'a','b','c') #依然报错
+
+
+
+(5) 在R包中我们需要怎么去调用C++呢？
+那就需要构建对应的代码，引入所需要的库文件。
+
+首先，我们需要在Rstudio中构建包含Rcpp 的R包的框架，具体，可以自己操作下，都是可视化的单击。
+也可以使用命令行新建包框架:  >Rcpp.package.skeleton()
+构建后的文件框架如下：
+	DESCRIPTION
+	NAMESPACE
+	man/
+	R/ 
+	src/ #C++代码、库文件所在地
+
+1) 如果已经有包框架，新添加了 src/ 中的几个函数，
+则需要手动为DESCRIPTION文件添加Rcpp导入: DESCRIPTION 文件添加2行
+Imports: Rcpp (>= 1.0.5)
+LinkingTo: Rcpp
+
+2) [重要!]在 NAMESPACE 中需要添加 importFrom(Rcpp,evalCpp) 引入Rcpp环境。
+useDynLib(GEB, .registration=TRUE)
+importFrom(Rcpp, evalCpp)
+exportPattern("^[[:alpha:]]+")
+
+
+3) 然后构建，安装。
+先清空变量，并重启 Rsession。
+> library(devtools)
+> Rcpp::compileAttributes() #这一句没啥用，貌似可以跳过。
+> load_all() #载入所有函数，测试效果
+
+调试报错:
+> GEB::han(3,'a','b','c') #后来发现，NAMESPACE 文件中加入那3行就能找到了
+Error in .Call("_GEB_han", PACKAGE = "GEB", n, a, b, c) : 
+  "_GEB_han" not available for .Call() for package "GEB"
+而普通R函数正常:
+> GEB::hello()
+[1] "Hello, world!"
+
+
+4) 整体测试需要安装:
+先修改 DESCRIPTION 中的 Version 号，然后:
+#清空变量
+> devtools::document() #需要在 NAMESPACE 中添加那三行(见5.2)
+> devtools::build()
+
+# install and test
+> install.packages("~/data/r-pkg/GEB_0.1.8.tar.gz", repos = NULL, type = "source")
+> library(GEB)
+
+
+报错，可以通过 在 NAMESPACE 中添加那三行解决(见5.2)
+> GEB::han(3,'a','b','c')
+Error: 'han' is not an exported object from 'namespace:GEB'
+
+
+
+
+
+
+(6) 我们看看 load_all() 时发生了什么？怎么用R调用c++函数的?
+
+编译时，自动生成函数文件，都是程序自动维护的，不要手动编辑：
+	一个是 src/RcppExports.cpp，其中看不懂，先跳过。
+	另一个是 R/RcppExports.R，里面的内容类似:
+
+timesTwo <- function(x) {
+    .Call(`_GEB_timesTwo`, x) ##此处为反斜点，不是单引号。不过不用担心细节，反正靠程序生成。
+}
+
+
+当然，有时候我们需要引入外部的库文件以及头文件，那就需要书写 Makevars 进行库的引入，一般我们会放在inst/include,文件中需要加入下面的代码：
+
+PKG_CPPFLAGS+= -I ../inst/include
+
+至此，Rcpp的基础应用已经介绍完了，当然在知道基本的原理后，再加入更深的功能或者需求就是看个人对C++的熟悉程度了。
+
+
+
+
+
+========================================
+|-- how to debug Rcpp
+----------------------------------------
+
+https://stackoverflow.com/questions/53622354/how-to-debug-line-by-line-rcpp-generated-code-in-windows
+https://gist.github.com/alexg9010/1ab89ecb28c43f8bc217d2facca77f0a
+
+
+
+========================================
+|-- 使用 rcpp 和 RcppEigen 进行矩阵计算
 ----------------------------------------
 https://stephenberg.github.io/presentations/materials/bergSeminarPres.pdf
 
@@ -1565,19 +1885,6 @@ Integrating with C++ using Rcpp and RcppEigen: https://kohei-kawaguchi.github.io
 
 
 
-
-
-
-
-========================================
-----------------------------------------
-
-
-
-
-
-========================================
-----------------------------------------
 
 
 

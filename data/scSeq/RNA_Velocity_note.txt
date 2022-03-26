@@ -1,0 +1,1799 @@
+RNA Velocity 分析
+
+
+
+
+
+========================================
+RNA Velocity 分析概述
+----------------------------------------
+
+1.轨迹推断 (Trajectory Inference, TI):
+	从成千上万的细胞组学数据中推断细胞发育轨迹的方法。
+
+Monocle 基于降维的算法，把高维映射到低维。
+不足: 
+	不能提供方向;
+	不能精确定量细胞的状态，根据转录组的相似性而非细胞的真实状态。
+
+(1) 原始 paper: velocyto
+Letter | Published: 08 August 2018: RNA velocity of single cells
+https://www.nature.com/articles/s41586-018-0414-6
+该文章使用的软件：http://velocyto.org/
+目前有2个实现:
+	velocyto.py
+	velocyto.R
+其中py提供了一个命令行工具：http://velocyto.org/velocyto.py/tutorial/index.html#running-the-cli
+
+
+
+(2) 改进 scVelo
+Article | Published: 03 August 2020 |(velocyto--> scVelo)
+Generalizing RNA velocity to transient cell states through dynamical modeling
+https://www.nature.com/articles/s41587-020-0591-3
+该文章使用的软件：https://scvelo.readthedocs.io/
+
+
+这个相较于之前18年的Nature文章提出的RNA速率的概念的基础上，并对之前的数学模型做了进一步优化，在这篇文章中提出了更全面更准确的模型和方法
+
+
+该文献中文阅读笔记: 
+	latent time: https://zhuanlan.zhihu.com/p/168735707
+	翻译 https://zhuanlan.zhihu.com/p/440413581
+
+
+作者 Fabian Theis: https://www.helmholtz-munich.de/icb/institute/staff/staff/ma/2494/index.html
+	https://www.sanger.ac.uk/external_person/theis-fabian/
+	https://www.professoren.tum.de/en/theis-fabian/
+
+
+操作笔记: https://zhuanlan.zhihu.com/p/436419029
+	https://www.jianshu.com/p/fb1cf5806912
+
+
+
+(3) velocyto 和 Monocle 的区别
+velocyto
+	- 研究的维度: mRNA速度(基因表达状态的时间导数)
+	- 展示: 细胞的真实状态
+	- 输入文件: 10X 的bam 文件
+
+Monocle 
+	- 研究的维度: RNA 的表达量
+	- 展示：转录组的相似性
+	- 输入文件: 10X的表达矩阵
+
+
+
+
+(4) velocity和scVelo哪家强？
+
+scVelo开发团队认为现有的计算RNA velocity的稳态模型(steady-state model)存在一些不足，这种模型有个两个基本的假设前提：
+①在基因水平上，所有具有转录诱导、抑制和稳态mRNA水平的完整剪接动力学被捕捉到；
+②在细胞水平上，所有基因具有共同的剪接率。
+
+但是，当一个种群包含多个具有不同动力学的异质亚种群时，这些假设就不合理。所以，他们开发了seVelo，一个基于似然的动力学模型(likelihood-based dynamical model)，它解决了以上提出的全基因转录动力学的问题，从而将RNA速度估计推广到瞬时状态系统和具有非均匀亚种群动力学的系统。
+scVelo提供了两种扩展：一种是包含二阶矩的随机模型，另一种是捕获全剪接动力学的动力学模型。
+
+
+en教程: https://scvelo.readthedocs.io/getting_started/
+翻译:
+https://mp.weixin.qq.com/mp/appmsgalbum?__biz=MzI1Njk4ODE0MQ==&action=getalbum&album_id=1774746462153687043&subscene=159&subscene=&scenenote=https%3A%2F%2Fmp.weixin.qq.com%2Fs%3Fsrc%3D11%26timestamp%3D1645359169%26ver%3D3632%26signature%3D6mvXUh0qENFPeP3tF3BNVGXRtBulXZTwo71Kop*VZVziXwOYluCjHkePH2vQFWY6e7I9zpEXLWee2qh93Cn1U-Ma0yrXpnu1h1DDQehcN39eYfoVEMffFnL*548RFt7c%26new%3D1&nolastread=1#wechat_redirect
+
+
+
+
+
+
+
+========================================
+|-- RNA速度的理论基础
+----------------------------------------
+1. 在RNA成熟的过程中会经历三个主要的阶段：转录---剪接---降解
+
+当新生 mRNA 速度和 成熟mRNA的降解速度 相等时，达到稳态。
+Reads based  / UMI based;
+
+
+Spliced
+	only to the exonic regions 
+Unspliced 
+	spanned exon-intron boundary
+	mapped to intron 
+Ambiguous:
+	exonic-only and other intronic
+delete:
+	multiple mappings 
+	mapped inside repeat masked
+
+
+那在瞬时状态下：未剪切和剪切成熟的RNA可以表征为如下的两个式子：
+同时The time derivative of mature spliced mRNA, termed RNA velocity, 就是下图中的第二个式子。
+	du(t)/dt = alpha(k)(t) - Beta*u(t);
+	ds(t)/dt = Beta*u(t) - gama*s(t);
+其中 
+	alpha 转录速率 Transcription
+	beta 剪接速率 unsliced mRNA
+	gamma 降解速率 Degradation
+	s: spliced
+	u: unspliced
+
+	v = ds/dt = u - gamma*s
+	constant: 细胞下一个状态
+	correlation: 与每一个细胞的向量，有方向、有大小
+	RNA velocity: velocity
+
+
+
+
+
+
+==> 评估RNA速率有哪些方法？
+目前有三种方法:
+  稳态/确定性模型(在velocyto中使用)
+  随机模型(使用二阶矩)，
+  动态模型(使用基于概率的框架)。
+
+
+
+
+
+
+
+
+
+
+2. 背景介绍
+
+- 无需生物学背景的先验经验：研究者可以从向量结果中读出分化轨迹
+- 数据兼容性强：RNA velocity的数据可以嵌入普通的PCA、tSNE、UMAP降维，也可以嵌入monocle、PAGA构建的细胞轨迹
+
+
+(1)
+这就像在所有运动时间凝固的照片，”教授解释斯登Linnarsson在医学生物化学与生物物理系，卡罗林斯卡医学院，谁领导这项研究的研究人员之一。“我们现在已经开发出一种新方法，不仅可以测量遗传活性，还可以测量单个细胞中这种活性的变化。您可以将其与长时间曝光拍摄的照片进行比较，这会导致运动模糊：静止的对象清晰而运动的对象模糊。快速移动的对象会变得模糊，而移动的方向会被模糊的方向所揭示。”
+用于研究肿瘤形成，伤口愈合和免疫系统的方法
+
+新方法利用了这样一个事实，即当基因被激活时，一系列RNA分子会以一定顺序形成。通过分离这些分子，研究人员可以确定一个基因是否刚刚被激活，或者例如它即将被关闭。
+
+Linnarsson教授说：“这种新方法使我们能够详细观察胚胎中包括人类胚胎如何形成专门的细胞类型。” “它也可以用于研究动态的疾病过程，例如肿瘤形成，伤口愈合和免疫系统。”
+
+
+
+
+
+(2)测量跨复杂组织的基因表达的动态变化
+
+RNA剪切：成熟mRNA表达时，未成熟的一部分转录本会被剪切掉。当基因的表达增加时，在细胞中观察到未成熟、未剪接的转录本的比例与成熟的剪接的转录本的比例相比瞬时增加。相反，当基因表达降低时，在短时间内看到较高比例的剪接转录本（未显示）。La Manno等。
+
+原理: 
+
+通过测量单个细胞中每个基因的未剪接转录本与剪接转录本的比率，计算出一个称为RNA速度的量，揭示了基因表达的变化方式。b通过测量组织中成千上万个细胞（此处为发育中的小鼠大脑神经元）中的RNA速度，作者可以生成图，不仅显示相互关联的细胞之间的紧密程度（相似性用相似的颜色表示），而且还根据它们正在经历的基因表达变化，将来与哪些细胞相似（如箭头所示）。RNA速度成功地追踪了早期祖细胞（橙色和黄色），这些祖细胞最终引起了一系列分化的细胞类型（蓝色虚线圆圈）。
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+========================================
+velocyto 原理与 R代码
+----------------------------------------
+
+(3) 原理与代码
+
+velocyto 使用 mRNA 的可变剪切来估计 RNA 变化速率。可变剪切（differential splicing）也称选择性剪切（alternative splicing），是前体 RNA 转化为成熟 mRNA 的关键步骤。一般来说基因转录开始后，相关前体 RNA 最开始增加，随后 mRNA 才开始增加，天然具有时间属性。
+
+测序数据比对结果中总存在一定比例无法定义为 counts 的 reads。在传统比对时，一般舍弃。
+
+
+velocyto 通过重新注释比对结果来评估细胞中特定基因的剪接读长（spliced reads）和未剪接读长（unspliced）。根据这些信息对每个基因拟合一个数学模型，认为该模型代表基因表达平衡态。
+
+
+该模型中，u 代表 unspliced reads ，s 代表 spliced reads，γ 代表 RNA 降解和剪接速率的估计，虚线是拟合出来的平衡态。一般认为当 u> γs 时基因处于转录激活态，反之为抑制。这样，对于每个基因，拟合出 γ 后，就可以根据平衡态预测速率；再通过基因预测结果综合判断细胞的速率；最后计算细胞间速率相关性，最终完成轨迹推断。
+
+velocyto 软件有 python 和 R 两种版本，大家可按需取用。
+http://velocyto.org/velocyto.py/tutorial/analysis.html
+
+
+seuratwrapper 整合了 velocyto 软件并提供测试数据下载，大家可以根据示例代码，跑一跑测试数据，直观感受一下运行流程。
+# https://mp.weixin.qq.com/s?__biz=MzU2Nzg3MzYyOA==&mid=2247485100&idx=1&sn=2b8d81881966797497412c508402e9b6
+
+library(Seurat)
+library(velocyto.R)
+library(SeuratWrappers)
+
+# If you don't have velocyto's example mouse bone marrow dataset, download with the CURL command
+# curl::curl_download(url = 'http://pklab.med.harvard.edu/velocyto/mouseBM/SCG71.loom', destfile = '~/Downloads/SCG71.loom')
+
+# 转换为seurat对象
+ldat <- ReadVelocity(file = "~/Downloads/SCG71.loom")
+bm <- as.Seurat(x = ldat)
+
+# 整合降维聚类
+bm <- SCTransform(object = bm, assay = "spliced")
+bm <- RunPCA(object = bm, verbose = FALSE)
+bm <- FindNeighbors(object = bm, dims = 1:20)
+bm <- FindClusters(object = bm)
+bm <- RunUMAP(object = bm, dims = 1:20)
+
+# 速率分析及可视化
+# 拟合平衡系数 γ
+bm <- RunVelocity(object = bm, deltaT = 1, kCells = 25, fit.quantile = 0.02)
+ident.colors <- (scales::hue_pal())(n = length(x = levels(x = bm)))
+names(x = ident.colors) <- levels(x = bm)
+cell.colors <- ident.colors[Idents(object = bm)]
+names(x = cell.colors) <- colnames(x = bm)
+
+
+# 将速率投射在降维空间上画图。使用全部100多个CPU核，跑了 15min 出图。
+show.velocity.on.embedding.cor(emb = Embeddings(object = bm, reduction = "umap"), vel = Tool(object = bm,
+    slot = "RunVelocity"), n = 200, scale = "sqrt", cell.colors = ac(x = cell.colors, alpha = 0.5),
+    cex = 0.8, arrow.scale = 3, show.grid.flow = TRUE, min.grid.cell.mass = 0.5, grid.n = 40, arrow.lwd = 1,
+    do.par = FALSE, cell.border.alpha = 0.1)
+
+
+
+
+>> Debug:
+# 最后一步的报错：BLAS : Program is Terminated. Because you tried to allocate too many memory regions.
+This worked for me.
+"BLAS stands for Basic Linear Algebra Subprograms. BLAS provides standard interfaces for linear algebra, including BLAS1 (vector-vector operations), BLAS2 (matrix-vector operations), and BLAS3 (matrix-matrix operations).
+As per the documentation, if your application is already multi-threaded, it will conflict with OpenBLAS multi-threading. Therefore, you must set OpenBLAS to use a single thread.
+So, it seems that your application is conflicting with OpenBLAS multi-threading. You need to run the followings on the command line and it should fix the error:"
+
+$ vim ~/.bashrc # 新增行
+export OPENBLAS_NUM_THREADS=1
+export GOTO_NUM_THREADS=1
+export OMP_NUM_THREADS=1
+$ source ~/.bashrc
+
+https://www.discoverbits.in/2509/program-terminated-because-tried-allocate-memory-regions
+
+
+
+
+
+
+
+
+(5) 结果解读
+velocyto 提供在总体细胞和单个基因两个层面上的结果。
+
+1) 总体细胞轨迹推断在特定降维空间的投射结果
+
+如上图，左图在单个细胞层面的投射结果，右图为根据周围细胞计算简化后的结果。
+
+velocyto 会对每个细胞拟合一个速率推断结果，将之投射在降维空间中就能显示轨迹推断的方向。在细胞量较多时，左图轨迹可能会高度重叠看不清楚，常转化为右图简化的形式。
+
+2) 单个基因的速率拟合结果
+
+上图中，从左到右依次是选定基因的 splice reads(s)、unspliced reads(u) 统计、 速率拟合和拟合结果残差分布结果。
+
+velocyto 也可以展示单个细胞的速率拟合结果，包含每个细胞该基因注释出剪切 reads 数和非剪切 reads 数、平衡态 γ 系数和单个细胞距离平衡态的残差。一般来说基因在特定细胞中 u 残差越大其转录越活跃。
+
+
+
+
+(6) 文献解读
+
+一项有关肌层浸润性膀胱癌（muscle-invasive bladder cancer ，MIBC）的研究中，发现一类高表达 Cadherin 12（CDH12）的上皮细胞亚型可以用于预测免疫治疗效果[2]。
+[2]. Gouin, Kenneth H 3rd et al. “An N-Cadherin 2 expressing epithelial cell subpopulation predicts response to surgery, chemotherapy and immunotherapy in bladder cancer.” Nature communications vol. 12,1 4906. 12 Aug. 2021, doi:10.1038/s41467-021-25103-7
+
+
+velocyto 预测速率（左图）和拟时变量（中图）在不同上皮细胞亚群聚类图上的投射结果。分化相关基因的unspliced reads 关于拟时变量的分布热图和亚群细胞密度统计（右图）。
+
+为研究 MIBC 上皮细胞亚型间存在的发育演化路径，研究把 velocyto 轨迹推断结果投射在细胞亚型聚类结果中，发现基底层细胞（basal）可以通过是否包含 CDH12 高表达亚型的两条路径转化为伞状细胞（umbrella），该分支相关的 marker gene 可以揭示高表达 CDH12 上皮细胞亚型预测免疫治疗效果的机理。
+
+
+
+
+
+
+
+
+
+
+
+========================================
+|-- velocyto run 生成 loom 文件
+----------------------------------------
+Mouse BM example, using dropEst and pagoda2
+http://pklab.med.harvard.edu/velocyto/notebooks/R/SCG71.nb.html
+
+velocyto 命令行工具具有直接从 cellranger 输出目录运行的功能，只需要提供 .bam 文件，也可以在任何单细胞平台上使用。
+
+
+入门教程
+http://velocyto.org/velocyto.py/install/index.html
+
+1. 安装
+# 依赖: numpy scipy cython numba matplotlib scikit-learn h5py click
+$ pip3 install velocyto  #0.17.17
+
+
+
+2. Tutorial
+(1) 该工具包含2部分：
+Velocyto consists of two main components:
+1) 命令行工具
+A command line interface (CLI), that is used to run the pipeline that generates spliced/unspliced expression matrices.
+2) 一个函数库
+A library including functions to estimate RNA velocity from the above mentioned data matrices.
+
+
+
+
+(2) Running the CLI: 命令行从 bam/sam 文件到 loom 文件。
+It starts from .bam/.sam files to yield a .loom file with counts divided in spliced/unspliced/ambiguous.
+
+$ velocyto --help
+Usage: velocyto [OPTIONS] COMMAND [ARGS]...
+
+Options:
+  --version  Show the version and exit.
+  --help     Show this message and exit.
+
+Commands:
+  run            Runs the velocity analysis outputting a loom file
+  run10x         Runs the velocity analysis for a Chromium Sample
+  run_dropest    Runs the velocity analysis on DropEst preprocessed data
+  run_smartseq2  Runs the velocity analysis on SmartSeq2 data (independent bam file per cell)
+  tools          helper tools for velocyto
+
+
+$ velocyto --version
+velocyto, version 0.17.17
+
+获取子命令的帮助
+$ velocyto run --help
+
+或者看 子命令的API文档: http://velocyto.org/velocyto.py/fullapi/cliapi.html#cliapi
+
+
+
+
+
+
+(3) 准备文件
+1)下载 GENCODE or Ensembl 的 gtf 文件。
+如果是 10x 的数据，从这里下载: https://support.10xgenomics.com/single-cell-gene-expression/software/pipelines/latest/advanced/references
+
+命令格式: cellranger mkgtf input.gtf output.gtf --attribute=key:allowable_value
+
+cellranger mkgtf Homo_sapiens.GRCh38.ensembl.gtf Homo_sapiens.GRCh38.ensembl.filtered.gtf \
+                   --attribute=gene_biotype:protein_coding \
+                   --attribute=gene_biotype:lincRNA \
+                   --attribute=gene_biotype:antisense \
+                   --attribute=gene_biotype:IG_LV_gene \
+                   --attribute=gene_biotype:IG_V_gene \
+                   --attribute=gene_biotype:IG_V_pseudogene \
+                   --attribute=gene_biotype:IG_D_gene \
+                   --attribute=gene_biotype:IG_J_gene \
+                   --attribute=gene_biotype:IG_J_pseudogene \
+                   --attribute=gene_biotype:IG_C_gene \
+                   --attribute=gene_biotype:IG_C_pseudogene \
+                   --attribute=gene_biotype:TR_V_gene \
+                   --attribute=gene_biotype:TR_V_pseudogene \
+                   --attribute=gene_biotype:TR_D_gene \
+                   --attribute=gene_biotype:TR_J_gene \
+                   --attribute=gene_biotype:TR_J_pseudogene \
+                   --attribute=gene_biotype:TR_C_gene
+
+多物种
+cellranger mkref --genome=GRCh38 --fasta=GRCh38.fa --genes=GRCh38-filtered-ensembl.gtf \
+                 --genome=mm10 --fasta=mm10.fa --genes=mm10-filtered-ensembl.gtf
+
+
+# 对于新技术，支持写自己的逻辑，就是一个输入判断
+http://velocyto.org/velocyto.py/fullapi/api_cli_logic.html#logicapi
+
+
+
+2) 下载 mask.gtf 文件
+https://genome.ucsc.edu/cgi-bin/hgTables?hgsid=611454127_NtvlaW6xBSIRYJEBI0iRDEWisITa&clade=mammal&org=Mouse&db=mm10&hgta_group=allTracks&hgta_track=rmsk&hgta_table=0&hgta_regionType=genome&position=chr12%3A56694976-56714605&hgta_outputType=primaryTable&hgta_outputType=gff&hgta_outFileName=mm10_rmsk.gtf
+
+/home/wangjl/data/ref/mouse_M25/mm10_rmsk.gtf
+
+
+
+
+
+
+(4) 运行 10x 数据，生成 loom 文件(推荐使用 run 子命令)
+
+第一个参数是包含子目录的 output 文件夹
+(e.g. this is the folder containing the subfolder: outs, outs/analys and outs/filtered_gene_bc_matrices).
+
+$ velocyto run10x --help
+Usage: velocyto run10x [OPTIONS] SAMPLEFOLDER GTFFILE
+  Runs the velocity analysis for a Chromium 10X Sample
+  10XSAMPLEFOLDER specifies the cellranger sample folder
+  GTFFILE genome annotation file
+Options:
+  -s, --metadatatable PATH        Table containing metadata of the various samples (csv fortmated rows are samples and cols are entries)
+  -m, --mask PATH                 .gtf file containing intervals to mask
+  -l, --logic TEXT                The logic to use for the filtering (default: Default)
+  -M, --multimap                  Consider not unique mappings (not reccomended)
+  -@, --samtools-threads INTEGER  The number of threads to use to sort the bam by cellID file using samtools
+  --samtools-memory INTEGER       The number of MB used for every thread by samtools to sort the bam file
+  -t, --dtype TEXT                The dtype of the loom file layers - if more than 6000 molecules/reads per gene per cell are expected set uint32 to avoid truncation (default run_10x: uint16)
+  -d, --dump TEXT                 For debugging purposes only: it will dump a molecular mapping report to hdf5. --dump N, saves a cell every N cells. If p is prepended a more complete (but huge) pickle report is printed (default: 0)
+  -v, --verbose                   Set the vebosity level: -v (only warinings) -vv (warinings and info) -vvv (warinings, info and debug)
+  --help                          Show this message and exit.
+
+
+$ velocyto run10x -m repeat_msk.gtf mypath/sample01 somepath/refdata-cellranger-mm10-1.2.0/genes/genes.gtf
+
+参数说明:
+Where genes.gtf is the genome annotation file provided with the cellranger pipeline.  
+repeat_msk.gtf is the repeat masker file described in the Preparation section above. 可选。
+# 下载 mm10 的 mask 的gtf文件，就是重复区域不要。
+https://genome.ucsc.edu/cgi-bin/hgTables?hgsid=611454127_NtvlaW6xBSIRYJEBI0iRDEWisITa&clade=mammal&org=Mouse&db=mm10&hgta_group=allTracks&hgta_track=rmsk&hgta_table=0&hgta_regionType=genome&position=chr12%3A56694976-56714605&hgta_outputType=primaryTable&hgta_outputType=gff&hgta_outFileName=mm10_rmsk.gtf
+
+通常一个样品运行3个小时。
+Execution time is ~3h for a typical sample but might vary significantly by sequencing depth and cpu power.
+
+输出:
+$ ls *
+outs/
+	cellsorted_possorted_genome_bam.bam
+velocyto/
+	cellranger.loom #后续使用R包分析，就是基于该文件。
+
+
+
+
+
+
+
+(5) 对于 SmartSeq2 样品。
+velocyto includes a shortcut to perform the read counting for UMI-less, not stranded, full-length techniques such as SmartSeq2.
+Typically SmartSeq2 bam files are generated and organized by well/cell in a folder structure similar to the following
+
+plateX/A01/A01.bam
+plateX/A02/A02.bam
+plateX/A03/A03.bam
+
+$ velocyto run_smartseq2 -o OUTPUT -m repeat_msk.gtf -e MyTissue plateX/*/*.bam mm10_annotation.gtf
+
+
+
+
+
+
+
+
+(6) 如果使用规定的细胞呢？使用 velocyto run (推荐)
+
+$ velocyto run [OPTIONS] BAMFILE... GTFFILE
+
+$ velocyto run -b filtered_barcodes.tsv -o output_path -m repeat_msk_srt.gtf possorted_genome_bam.bam mm10_annotation.gtf
+参数列表:
+-b, --bcfile FILE               Valid barcodes file, to filter the bam. 
+	如果不提供 -b 参数则使用全部细胞，会占用巨大的内存，花费很长时间，强烈建议提供 cell barcode!
+-o, --outputfolder PATH         Output folder, if it does not exist it will be created.
+
+-@, --samtools-threads INTEGER  The number of threads to use to sort the bam by cellID file using samtools
+--samtools-memory INTEGER       The number of MB used for every thread by samtools to sort the bam file
+	第一步在输入的bam文件夹创建按cellbarcode排序的bam文件特别耗时。建议使用多线程，还要控制每个线程使用的内存: --samtools-threads and --samtools-memory
+	如果同名的 cellsorted_[ORIGINALBAMNAME] 存在，则会跳过第一步，直接使用这个文件。
+	第一步也可以直接使用 samtools sort ，调用结束再运行 velocyto:
+	$ samtools sort -t CB -O BAM -o cellsorted_possorted_genome_bam.bam possorted_genome_bam.bam
+
+需要提前排序，cellranger做过了。
+$ samtools sort mybam.bam -o sorted_bam.bam
+
+
+对输入文件bam的要求:
+- sorted by mapping position;
+- 一个bam代表一个样品(10x)或者一个细胞(Smart-Seq2)
+- 包含CB标签 (Contain an error corrected cell barcodes as a TAG named CB or XC.)
+- 包含UB标签 (Contain an error corrected molecular barcodes as a TAG named UB or XM.)
+对于SmartSeq2不需要(3-4)，因为它没有UMI.
+
+
+GTF 文件的要求: http://velocyto.org/velocyto.py/tutorial/cli.html
+	velocyto assumes that the gtf file follows the GENCODE gtf format description. 
+
+
+
+2) 从Seurat对象中生成 cell barcode 文件
+$ zcat /home/wangjl/data/neu/neutrophils_scRNA/APC_tumor/apc_tumor_2/T1/outs/filtered_feature_bc_matrix/barcodes.tsv.gz | head
+AAACCCACATTACTCT-1
+AAACCCAGTACGACAG-1
+AAACCCAGTGGGTTGA-1
+AAACCCAGTTGACGGA-1
+
+
+
+3) 运行 
+注意: velocyto, 一次只能跑一个，太占内存了。 
+	或者 使用参数控制内存，剩余内存/1G=线程数： 
+		-@ 100 --samtools-memory 1000  #预计占用 100G 内存 
+		-@ 20 --samtools-memory 1000  #预计占用 20G 内存
+工作目录: $ cd /home/wangjl/data/neu/scRNA/202202newTag/scVelo/
+
+
+样品名字: WT2
+$ velocyto run \
+	-@ 100 --samtools-memory 1000 \
+	-b WT/WT2_barcodes.tsv \
+	-o velocyto/WT2 \
+	-m /home/wangjl/data/ref/mouse_M25/mm10_rmsk.gtf \
+	/home/wangjl/data/neu/neutrophils_scRNA/WT/wt_2/cellranger/WT2/outs/possorted_genome_bam.bam \
+	/home/wangjl/data/ref/mouse_M25/gencode.vM25.annotation.gtf
+
+#0:39-->02:01, 1.5h
+#产出文件: velocyto/WT2/possorted_genome_bam_X3HXW.loom #22M
+#控制内存: -@ 线程数， --samtools-memory 每个线程的内存上限
+
+
+
+
+
+4) 批量化 
+$ vim out_paths.txt
+APC1	/home/wangjl/data/neu/neutrophils_scRNA/APC_tumor/apc_tumor_1/Tumor-1/
+APC2	/home/wangjl/data/neu/neutrophils_scRNA/APC_tumor/apc_tumor_2/T1/
+APC3	/home/wangjl/data/neu/neutrophils_scRNA/APC_tumor/apc_tumor_3/apc_tumor2/
+DSS1	/home/wangjl/data/neu/neutrophils_scRNA/inflammation_tumor/inflammation_tumor_1/cellranger/
+DSS2	/home/wangjl/data/neu/neutrophils_scRNA/inflammation_tumor/inflammation_tumor_2/inflammation_tumor_2/
+WT1	/home/wangjl/data/neu/neutrophils_scRNA/WT/wt_1/WT/
+WT2	/home/wangjl/data/neu/neutrophils_scRNA/WT/wt_2/cellranger/WT2/
+
+$ head -n 5 out_paths.txt | while read line; do
+arr=($line);
+key=${arr[0]}; path=${arr[1]};
+echo ${key}  ${path};
+
+velocyto run \
+	-@ 30 --samtools-memory 1000 \
+	-b velocyto/${key}_barcodes.tsv \
+	-o velocyto/${key} \
+	-m /home/wangjl/data/ref/mouse_M25/mm10_rmsk.gtf \
+	${path}/outs/possorted_genome_bam.bam \
+	/home/wangjl/data/ref/mouse_M25/gencode.vM25.annotation.gtf;
+echo "######################## end of ${key}";
+done;
+
+# 2022.3.21 9:54--> 2022-03-21 22:04; 共运行 12h，5个样本。
+时间 内存占用
+9:57 257G
+11:17 295G
+
+
+检查: 
+/home/wangjl/data/neu/scRNA/202202newTag/scVelo/
+$ find . -name "*.loom"
+./velocyto/APC1/possorted_genome_bam_DYW7X.loom
+./velocyto/DSS2/possorted_genome_bam_1JADX.loom
+./velocyto/DSS1/possorted_genome_bam_5NEEZ.loom
+./velocyto/APC3/possorted_genome_bam_RXAXA.loom
+./velocyto/WT1/possorted_genome_bam_3GOFQ.loom
+./velocyto/WT2/possorted_genome_bam_X3HXW.loom
+./velocyto/APC2/possorted_genome_bam_XBHT3.loom
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+========================================
+|-- loom 中间文件的使用
+----------------------------------------
+1. 输出的 loom 文件
+
+http://velocyto.org/velocyto.py/tutorial/cli.html
+https://scvelo.readthedocs.io/VelocityBasics/
+
+https://mp.weixin.qq.com/mp/appmsgalbum?__biz=MzI1Njk4ODE0MQ==&action=getalbum&album_id=1774746462153687043
+https://zhuanlan.zhihu.com/p/142327236
+https://zhuanlan.zhihu.com/p/180253811 评论区说作者有个视频 //todo
+	可以看作者的视频，解释的很清楚，就像拍照拍一个背景快速流动，然后主角不动，是靠拍照人往反方向去甩相机镜头
+
+
+(1) About the output .loom file
+The main result file is a 4-layered loom file : sample_id.loom.
+	http://loompy.org/
+	http://linnarssonlab.org/loompy/index.html
+
+A valid .loom file is simply an HDF5 file that contains specific groups representing the main matrix as well as row and column attributes. Because of this, .loom files can be created and read by any language that supports HDF5.
+
+.loom files can be easily handled using the loompy package: http://loompy.org/
+
+
+
+
+(2) Merging multiple samples/lanes in a single file
+请问能够整合不同样本产生的Loom文件吗？还是只能单样本分析？
+
+loompy.combine(files, output_filename, key="Accession")
+
+或者:
+
+files = ["file1.loom","file2.loom","file3.loom","file4.loom"]
+# on the command line do: cp file1.loom merged.loom
+ds = loompy.connect("merged.loom")
+for fn in files[1:]:
+    ds.add_loom(fn, batch_size=1000)
+
+
+(3) HDF5 的连接就像数据库一样，不是完全载入，只是在必须的时刻载入需要的数据，也可以修改、写入。
+ds = loompy.connect("filename.loom")
+# do something with the connection object ds
+ds.close()
+
+
+HDF5(https://en.wikipedia.org/wiki/Hierarchical_Data_Format) 文件不支持并发读写(They do not support writing and reading concurrently.)
+
+也不支持日志。所以写入时发生意外，有可能造成整个文件丢失！
+They also do not support journalling, so if something happens during a write, the entire file can be lost. 
+
+
+
+
+
+
+
+
+========================================
+|-- 使用R分析 loom 文件
+----------------------------------------
+
+http://pklab.med.harvard.edu/velocyto/notebooks/R/SCG71.nb.html
+
+(1) 读入数据
+library(velocyto.R)
+loom="/data/cellranger.loom"
+Idat=read.loom.matrices(loom)
+prefix="cellranger"
+emat=Idat$spliced
+hist( log(colSums(emat)), col="wheat", xlab="cell size")
+
+说明:
+emat 格式:
+	cellranger.TTGGTTACAXx cellranger.TTAACCGGXx
+A1CF                     0                     1
+AACS                     3                     2
+
+- 每个细胞表达基因的统计直方图
+- 大部分基因表达处于中间位置，基因表达过低或者过高的细胞较少
+- Cell size: 值的是每个细胞检测到的编导的基因数(log10)
+
+
+
+
+(2) 数据过滤和标准化
+# 对数据进行过滤：筛选出大于等于 200 个基因的细胞
+emat=emat[, colSums(emat)>=200]
+# 导入 pagoda2 包，生成细胞矩阵
+library(pagoda2)
+rownames(emat) = make.unique(rownames(emat))
+#标准化数据
+r=Pagoda2$new(emat, modelType="plain", trim=10, log.scale=T)
+#作图，挑选变化较大的基因
+r$adjustVariance(plot=T, do.par=T, gam.k=10)
+# 一个点一个基因，x=在左右细胞中该基因的平均表达量，y=该基因的方差
+
+
+
+(3) 细胞聚类与细胞嵌入分析
+# 对细胞进行聚类和细胞嵌入分析
+r$calculatePcaReduction(nPcs=100,n.odgenes=3e3,maxit=300)
+r$makeKnnGraph(k=30,type='PCA',center=T,distance='cosine');
+
+r$getKnnClusters(method=multilevel.community,type='PCA',name='multilevel')
+r$getEmbedding(type='PCA',embeddingType='tSNE',perplexity=50,verbose=T)
+
+# 聚类结果 可视化
+par(mfrow=c(1,2))
+r$plotEmbedding(type='PCA',embeddingType='tSNE',show.legend=F,mark.clusters=T,min.group.size=10,shuffle.colors=F,mark.cluster.cex=1,alpha=0.3,main='cell clusters')
+r$plotEmbedding(type='PCA',embeddingType='tSNE',colors=r$depth,main='depth')  
+
+
+
+(4) RNA 速度可视化
+# 获取剪接、未剪接数据
+# disregarding spanning reads, as there are too few of them
+emat <- ldat$spliced; 
+nmat <- ldat$unspliced; 
+
+
+# 通过p2对细胞进行过滤
+# restrict to cells that passed p2 filter
+emat <- emat[,rownames(r$counts)]; 
+nmat <- nmat[,rownames(r$counts)]; 
+
+
+# 对分类数据进行标记
+# take cluster labels
+cluster.label <- r$clusters$PCA$multilevel # take the cluster factor that was calculated by p2
+cell.colors <- pagoda2:::fac2col(cluster.label)
+# take embedding form p2
+emb <- r$embeddings$PCA$tSNE
+
+# 计算细胞间的距离
+cell.dist <- as.dist(1-armaCor(t(r$reductions$PCA)))
+
+# 基于最小平均表达量筛选基因（至少在一个簇中），输出产生的有效基因数
+emat <- filter.genes.by.cluster.expression(emat,cluster.label,min.max.cluster.average = 0.2)
+nmat <- filter.genes.by.cluster.expression(nmat,cluster.label,min.max.cluster.average = 0.05)
+length(intersect(rownames(emat),rownames(nmat)))
+
+# 计算RNA速度
+fit.quantile <- 0.02
+rvel.cd <- gene.relative.velocity.estimates(emat,nmat,deltaT=1,kCells=25,cell.dist=cell.dist,fit.quantile=fit.quantile)
+
+
+# 可视化RNA速度
+show.velocity.on.embedding.cor(emb,rvel.cd,n=200,scale='sqrt',cell.colors=ac(cell.colors,alpha=0.5),cex=0.8,arrow.scale=3,show.grid.flow=TRUE,min.grid.cell.mass=0.5,grid.n=40,arrow.lwd=1,do.par=F,cell.border.alpha = 0.1)
+# 箭头表示细胞发育方向
+
+
+
+(5) 可视化特定的基因
+# gene="IGHM"
+gene <- "Camp"
+gene.relative.velocity.estimates(
+	emat,nmat,deltaT=1,kCells = 25,kGenes=1,
+	fit.quantile=fit.quantile,	cell.emb=emb,	cell.colors=cell.colors,
+	cell.dist=cell.dist,	show.gene=gene,	old.fit=rvel.cd,	do.par=T)
+
+
+
+
+总结:
+- 指向必须是已经测得的细胞，所以不能揭示潜在路径；
+- 根据提供的坐标轴位置，揭示已知细胞群里最优2可能的发育方向
+- 对数据进行回收利用，通过对 unsplied reads 获得细胞发育轨迹的潜在可能方向
+- 做一些之前做不了的动力学研究，比如人前额大脑细胞
+
+
+
+
+
+
+
+
+
+
+
+
+
+========================================
+scVelo 简介
+----------------------------------------
+
+1. 原文推荐的
+https://www.nature.com/articles/s41587-020-0591-3
+
+Tenfold speedup for the steady-state model and large-scale applicability
+The dynamical, the stochastic as well as the steady-state model are available within scVelo as a robust and scalable implementation (https://scvelo.org).
+
+号称比原始实现 velocyto 要快10倍。
+Illustratively, on pancreas development with 25,919 transcriptome profiles, scVelo runs the full pipeline for the steady-state as well as stochastic model from pre-processing the data to velocity estimation to projecting the data in any embedding in less than 1 min (Supplementary Fig. 13). That is obtained by memory-efficient, scalable and parallelized pipelines via integration with scanpy21, by leveraging efficient nearest-neighbor search39, analytical closed-form solutions, sparse implementation and vectorization. The scVelo pipeline thereby achieves more than a tenfold speedup over the original implementation (velocyto).
+
+
+(1) 主要作用 scVelo’s key applications
+https://scvelo.readthedocs.io/
+
+estimate RNA velocity to study cellular dynamics.
+identify putative driver genes and regimes of regulatory changes.
+infer a latent time to reconstruct the temporal sequence of transcriptomic events.
+estimate reaction rates of transcription, splicing and degradation.
+use statistical tests, e.g., to detect different kinetics regimes.
+
+
+
+
+
+
+2. 安装 py 包
+
+(1) 尝试
+$ pip3 install -U scvelo -i https://pypi.douban.com/simple/ --user
+
+-U 是--upgrade 的缩写。如果出现Permission denied错误，请改用pip install -U scvelo --user
+-i 是指定国内镜像。
+
+
+2) 报错，可能是 numpy 版本太低：
+$ pip3 list | grep numpy
+numpy                              1.15.2
+$ pip3 install -U numpy
+$ pip3 list | grep numpy
+numpy                              1.21.5     
+
+3) 报错: AttributeError: module 'enum' has no attribute 'IntFlag'
+reason
+This is likely caused by the package enum34. Since python 3.4 there's a standard library enum module, so you should uninstall enum34, which is no longer compatible with the enum in the standard library since enum.IntFlag was added in python 3.6.
+
+solution
+uninstall enum34:
+$ pip uninstall enum34  
+
+
+升级 conda
+$ conda update conda
+# conda                              4.6.14     
+# conda-build                        3.15.1 
+
+
+
+4) 报错: 
+ERROR: Failed building wheel for llvmlite
+
+ERROR: statsmodels 0.13.2 has requirement pandas>=0.25, but you'll have pandas 0.23.4 which is incompatible.
+ERROR: statsmodels 0.13.2 has requirement patsy>=0.5.2, but you'll have patsy 0.5.0 which is incompatible.
+ERROR: multiqc 1.7 has requirement matplotlib<3.0.0,>=2.1.1, but you'll have matplotlib 3.5.1 which is incompatible.
+ERROR: anndata 0.7.8 has requirement pandas>=1.1.1, but you'll have pandas 0.23.4 which is incompatible.
+
+$ pip3 install -U pandas --user #pandas-1.3.5
+
+
+ERROR: statsmodels 0.13.2 has requirement packaging>=21.3, but you'll have packaging 17.1 which is incompatible.
+ERROR: statsmodels 0.13.2 has requirement patsy>=0.5.2, but you'll have patsy 0.5.0 which is incompatible.
+ERROR: multiqc 1.7 has requirement matplotlib<3.0.0,>=2.1.1, but you'll have matplotlib 3.5.1 which is incompatible.
+ERROR: matplotlib 3.5.1 has requirement packaging>=20.0, but you'll have packaging 17.1 which is incompatible.
+ERROR: anndata 0.7.8 has requirement packaging>=20, but you'll have packaging 17.1 which is incompatible.
+
+$ pip3 install -U patsy --user
+$ pip3 install -U matplotlib --user
+$ pip3 install -U packaging --user
+
+Installing collected packages: llvmlite, numba, pynndescent, umap-learn, natsort, cached-property, h5py, zipp, importlib-metadata, anndata, fonttools, pyparsing, pillow, matplotlib, stdlib-list, sinfo, networkx, statsmodels, scanpy, numpy-groupies, loompy, scvelo
+
+$ pip3 install -U llvmlite --user
+# Error: RuntimeError: Could not find a `llvm-config` binary.
+
+
+
+5) 升级pip版本
+
+$ pip3 install --upgrade pip 
+$ pip3 install -U llvmlite --user #升级 pip3 后就正常了！！
+
+
+$ pip3 install -U scvelo --user
+
+$ pip3 install -U numexpr --user # 测试加载时报warning
+## Pandas requires version '2.7.0' or newer of 'numexpr' (version '2.6.8' currently installed).
+
+$ pip3 install -U tqdm  --user # 测试代码报错：ModuleNotFoundError: No module named 'tqdm.auto' #4.62.3
+$ pip3 install -U seaborn --user # 画图时警告 #0.11.2
+
+
+检查版本：
+$ pip3 list | grep scvelo
+scvelo                             0.2.4
+
+尝试加载：
+$ python3
+>>> import scvelo as scv
+>>> 
+>>> quit()
+$ 
+
+
+小结：
+升级 pip 很关键！
+
+
+
+依赖包
+anndata - 带注释的数据对象。0.7.8
+scanpy - 用于单细胞分析的工具包。1.8.2
+numpy - 1.21.5
+scipy - 1.4.1
+pandas - 1.3.5
+scikit-learn - 0.24.1
+matplotlib - 3.5.1
+notebook - 5.6.0
+
+部分scVelo（定向 PAGA 和 Louvain 模块化）需要安装（可选）：
+$ pip3 install python-igraph louvain  #0.9.9 / 0.7.1
+
+通过hnswlib[7]使用快速邻近搜索进一步需要安装（可选）：
+$ pip3 install pybind11 hnswlib  #2.9.1 / 0.6.2
+
+
+
+
+
+
+
+
+
+
+
+========================================
+|-- 使用 Seurat 和 scVelo 估计 RNA 速率(如何把Seurat对象的信息导入到 scVelo中，多样本)
+----------------------------------------
+
+官方:
+	http://velocyto.org/velocyto.py/tutorial/cli.html
+	http://x.biomooc.com:8890/notebooks/scVelo_py/Untitled.ipynb?kernel_name=python3
+
+资料:
+	https://www.jianshu.com/p/fb1cf5806912
+	https://zhuanlan.zhihu.com/p/436419029
+
+	http://y.biomooc.com:8000/file/docs/w.step2.FigureS20.CD8_ovTex_velo.html
+	http://y.biomooc.com:8000/file/docs/w.step1.Figure2.CD8_Tex_velo.html
+
+
+
+
+1. 在R中做细胞分群
+library(Seurat)
+library(SeuratDisk)
+
+# BiocManager::install("SeuratWrappers") #failed
+
+# https://github.com/satijalab/seurat-wrappers
+# remotes::install_github('satijalab/seurat-wrappers') #ok
+library(SeuratWrappers)
+
+
+#https://github.com/velocyto-team/velocyto.R
+library(devtools)
+if(0){
+  BiocManager::install("pcaMethods")
+  install_github("velocyto-team/velocyto.R")
+}
+library(velocyto.R)
+
+# 下载 loom 格式的数据
+# $ wget http://pklab.med.harvard.edu/velocyto/mouseBM/SCG71.loom
+ldat <- ReadVelocity(file = "tmp/SCG71.loom")
+bm <- as.Seurat(x = ldat)
+bm[["RNA"]] <- bm[["spliced"]]
+bm <- SCTransform(bm)
+bm <- RunPCA(bm)
+bm <- RunUMAP(bm, dims = 1:20)
+bm <- FindNeighbors(bm, dims = 1:20)
+bm <- FindClusters(bm)
+DefaultAssay(bm) <- "RNA"
+DimPlot(bm, label = T)
+
+SaveH5Seurat(bm, filename = "tmp/mouseBM.h5Seurat")
+Convert("tmp/mouseBM.h5Seurat", dest = "h5ad")
+
+
+
+
+
+
+(2) 步骤 -1：将数据从 Seurat 转换为 Python / anndata
+在 R 中使用 Seurat 执行了主要数据处理（过滤、归一化、聚类、批量对齐、降维）。可以使用 SeuratDisk R 包在 Seurat 和 anndata 格式之间进行转换。
+
+# assuming that you have some Seurat object called seurat_obj:
+seurat_obj=subset(scObj_nue, subset=sample=="APC1") #取一个小子集，缩短测试时间
+seurat_obj # 3265 samples
+DimPlot(seurat_obj, label = T)
+out_data_dir="202202newTag/scVelo/"
+
+
+# save metadata table:
+seurat_obj$barcode <- colnames(seurat_obj)
+seurat_obj$UMAP_1 <- seurat_obj@reductions$umap@cell.embeddings[,1]
+seurat_obj$UMAP_2 <- seurat_obj@reductions$umap@cell.embeddings[,2]
+write.csv(seurat_obj@meta.data, file='metadata.csv', quote=F, row.names=F)
+
+# write expression counts matrix
+library(Matrix)
+counts_matrix <- GetAssayData(seurat_obj, assay='RNA', slot='counts')
+writeMM(counts_matrix, file=paste0(out_data_dir, 'counts.mtx'))
+
+# write dimesnionality reduction matrix, in this example case pca matrix
+write.csv(seurat_obj@reductions$pca@cell.embeddings, file='pca.csv', quote=F, row.names=F)
+
+# write gene names
+write.table(
+  data.frame('gene'=rownames(counts_matrix)),file='gene_names.csv',
+  quote=F,row.names=F,col.names=F
+)
+
+
+
+
+
+(3) 转到 jupyter notebook
+import os
+os.chdir("/home/wangjl/data/neu/scRNA/202202newTag/scVelo/")
+os.getcwd()
+#
+
+import scanpy as sc
+import anndata
+from scipy import io
+from scipy.sparse import coo_matrix, csr_matrix
+import numpy as np
+import os
+import pandas as pd
+
+# load sparse matrix:
+X = io.mmread("counts.mtx")
+
+# create anndata object
+adata = anndata.AnnData(
+    X=X.transpose().tocsr()
+)
+
+# load cell metadata:
+cell_meta = pd.read_csv("metadata.csv")
+
+# load gene names:
+with open("gene_names.csv", 'r') as f:
+    gene_names = f.read().splitlines()
+
+# set anndata observations and index obs by barcodes, var by gene names
+adata.obs = cell_meta
+adata.obs.index = adata.obs['barcode']
+adata.var.index = gene_names
+
+# load dimensional reduction:
+pca = pd.read_csv("pca.csv")
+pca.index = adata.obs.index
+
+# set pca and umap
+adata.obsm['X_pca'] = pca.to_numpy()
+adata.obsm['X_umap'] = np.vstack((adata.obs['UMAP_1'].to_numpy(), adata.obs['UMAP_2'].to_numpy())).T
+
+# plot a UMAP colored by sampleID to test:
+sc.pl.umap(adata, color=['SampleID'], frameon=False, save=True)
+
+# save dataset as anndata format
+adata.write('my_data.h5ad')
+
+# reload dataset
+# adata = sc.read_h5ad('my_data.h5ad') #报错
+adata.write_loom('out/my_data.loom')
+
+
+
+
+
+
+################
+## 最后一步保存排错:
+ValueError: Unable to create dataset (name already exists)
+Above error raised while writing key 'barcode' of <class 'h5py._hl.group.Group'> from /.
+Above error raised while writing key 'obs' of <class 'h5py._hl.files.File'> from /.
+
+
+$ python3 -m pip install --upgrade pip
+
+$ pip3 list | grep scipy
+## scipy   1.7.3
+## pandas  1.3.5
+## anndata  0.7.8
+## h5py     3.6.0
+$ pip3 install scipy --force-reinstall
+$ pip3 install pandas --force-reinstall
+$ pip3 install anndata --force-reinstall
+
+
+
+ERROR: pip's dependency resolver does not currently take into account all the packages that are installed. This behaviour is the source of the following dependency conflicts.
+tensorflow 2.1.0 requires scipy==1.4.1; python_version >= "3", but you have scipy 1.7.3 which is incompatible.
+multiqc 1.7 requires matplotlib<3.0.0,>=2.1.1, but you have matplotlib 3.5.1 which is incompatible.
+jupyter-console 5.2.0 requires prompt-toolkit<2.0.0,>=1.0.0, but you have prompt-toolkit 2.0.9 which is incompatible.
+
+
+# https://www.jianshu.com/p/fb1cf5806912
+大佬，我希望scVelo做RNA速率分析时使用的降维和聚类结果使用先前Seurat分析得到的。于是我将先前的Seurat转为loom再读入scanpy，可惜只将meta.data转为了.obs，reductinons中的结果并没有转换成功，请问知道如何解决这个问题嘛？？？期待你的回复。
+=> 把降维聚类的结果替换就可以了.
+
+
+
+
+
+
+
+
+2. 由 bam 文件生成 loom 文件(耗时)
+
+Step 0: Constructing spliced and unspliced counts matrices
+与Seurat 中使用的相同的基于 UMI 的基因计数矩阵不同，We need to have a matrix for spliced and unspliced transcripts。 我们可以使用 velocyto 命令行工具或使用 Kallisto-Bustools 构建这个矩阵。 在这里我使用了 velocyto 命令行工具。
+
+velocyto 命令行工具具有直接从 cellranger 输出目录运行的功能，只需要提供 .bam 文件，也可以在任何单细胞平台上使用。
+
+用法：
+$ repeats="/path/to/repeats/mm10_rmsk.gtf"
+$ transcriptome="/path/to/annoation/file/gencode.vM25.annotation.gtf"
+$ cellranger_output="/path/to/cellranger/output/"  #是 out/的上一层文件夹。
+
+$ velocyto run10x -m $repeats \
+	$cellranger_output \
+    $transcriptome
+
+
+
+实例:APC1
+$ cd /home/wangjl/data/neu/scRNA/202202newTag/scVelo/velocyto_apc1/ #这个没用，在哪运行无所谓。
+$ velocyto run10x \
+	-@ 50 \
+	/home/wangjl/data/neu/neutrophils_scRNA/APC_tumor/apc_tumor_1/Tumor-1/ \
+    /home/wangjl/data/ref/GRCm39/gencode/gencode.vM28.annotation.gtf
+# 16:11-->21:38, 耗时 5h30min, 35G bam;
+难怪没有指定输出文件夹，直接在原始文件夹内输出的。
+/home/wangjl/data/neu/neutrophils_scRNA/APC_tumor/apc_tumor_1/Tumor-1/
+outs/
+velocyto/
+
+生成的文件:
+-rw-r--r--. 1 wangjl jinwf 45M Mar  8 21:38 /home/wangjl/data/neu/neutrophils_scRNA/APC_tumor/apc_tumor_1/Tumor-1/velocyto/Tumor-1.loom
+-rw-r--r--. 1 wangjl jinwf 87M Mar  9 03:39 /home/wangjl/data/neu/neutrophils_scRNA/APC_tumor/apc_tumor_2/T1/velocyto/T1.loom
+
+
+
+
+# 推荐
+$ velocyto run 命令，指定 Seurat 中的 cell barcode.
+
+$ cd /home/wangjl/data/neu/scRNA/202202newTag/scVelo/
+1)WT2 (UMAP 看比较理想的样本，而WT1则多是 macrophage)
+$ velocyto run \
+	-@ 100 --samtools-memory 1000 \
+	-b WT/WT2_barcodes.tsv \
+	-o WT/WT2 \
+	-m /home/wangjl/data/ref/mouse_M25/mm10_rmsk.gtf \
+	/home/wangjl/data/neu/neutrophils_scRNA/WT/wt_2/cellranger/WT2/outs/possorted_genome_bam.bam \
+	/home/wangjl/data/ref/mouse_M25/gencode.vM25.annotation.gtf
+#0:39-->02:01, 1.5h
+WT/WT2/possorted_genome_bam_X3HXW.loom #22M
+
+
+
+
+
+
+
+3. 使用 scVelo 进行分析
+(1) Step 1: Load data
+
+Now that we have our input data properly formatted, we can load it into python. 
+Velocyto created a separate spliced and unspliced matrix for each sample, so we first have to merge the different samples into one object. 
+Additionally, I am reformatting the cell barcodes to match my anndata object with the full genes-by-cells data.
+
+
+import scvelo as scv
+import scanpy as sc
+import cellrank as cr
+import numpy as np
+import pandas as pd
+import anndata as ad
+
+scv.settings.verbosity = 3
+scv.settings.set_figure_params('scvelo', facecolor='white', dpi=100, frameon=False)
+
+cr.settings.verbosity = 2
+adata = sc.read_h5ad('my_data.h5ad')
+
+# load loom files for spliced/unspliced matrices for each sample:
+ldata1 = scv.read('Sample1.loom', cache=True)
+ldata2 = scv.read('Sample2.loom', cache=True)
+ldata3 = scv.read('Sample3.loom', cache=True)
+#Variable names are not unique. To make them unique, call `.var_names_make_unique`.
+#Variable names are not unique. To make them unique, call `.var_names_make_unique`.
+#Variable names are not unique. To make them unique, call `.var_names_make_unique`.
+
+# rename barcodes in order to merge:
+barcodes = [bc.split(':')[1] for bc in ldata1.obs.index.tolist()]
+barcodes = [bc[0:len(bc)-1] + '_10' for bc in barcodes]
+ldata1.obs.index = barcodes
+
+barcodes = [bc.split(':')[1] for bc in ldata2.obs.index.tolist()]
+barcodes = [bc[0:len(bc)-1] + '_11' for bc in barcodes]
+ldata2.obs.index = barcodes
+
+barcodes = [bc.split(':')[1] for bc in ldata3.obs.index.tolist()]
+barcodes = [bc[0:len(bc)-1] + '_9' for bc in barcodes]
+ldata3.obs.index = barcodes
+
+
+# make variable names unique
+ldata1.var_names_make_unique()
+ldata2.var_names_make_unique()
+ldata3.var_names_make_unique()
+
+# concatenate the three loom
+ldata = ldata1.concatenate([ldata2, ldata3])
+
+# merge matrices into the original adata object
+adata = scv.utils.merge(adata, ldata)
+
+# 如果报错，可能是没有 obs.names 或者有差异 https://github.com/theislab/scvelo/issues/457
+#adata.obs
+#ldata.obs
+#adata.obs.index=adata.obs["barcode"]
+
+
+# plot umap to check
+# sc.pl.umap(adata, color='celltype', frameon=False, legend_loc='on data', title='', save='_celltypes.pdf')
+sc.pl.umap(adata, color='seurat_clusters', frameon=False, legend_loc='on data', title='', save='_celltypes.pdf')
+
+
+
+
+
+(2) Part 2: Computing RNA velocity using scVelo
+# pre-process
+scv.pp.filter_and_normalize(adata)
+scv.pp.moments(adata)
+
+# compute velocity
+scv.tl.velocity(adata, mode='stochastic')
+scv.tl.velocity_graph(adata)
+#computing velocities
+#    finished (0:01:15) --> added
+#    'velocity', velocity vectors for each individual cell (adata.layers)
+#computing velocity graph
+#    finished (0:15:00) --> added
+#    'velocity_graph', sparse matrix with cosine correlations (adata.uns)
+
+
+#2) Part 2.1: Visualize velocity fields
+# 每个细胞都有箭头，看不清
+scv.pl.velocity_embedding(adata, basis='umap', frameon=False, save='embedding.pdf')
+
+#网格箭头，稍微清晰
+scv.pl.velocity_embedding_grid(adata, basis='umap', color='celltype', save='embedding_grid.pdf', title='', scale=0.25)
+
+#大箭头，最清晰
+scv.pl.velocity_embedding_stream(adata, basis='umap', color=['celltype', 'condition'], save='embedding_stream.pdf', title='')
+
+
+#3) 还可以看几个具体基因的 稳态图+速度图+表达图
+# plot velocity of a selected gene
+scv.pl.velocity(adata, var_names=['Ptgds'], color='celltype')
+
+
+
+
+(3) Part 3: Downstream analysis
+
+scv.tl.rank_velocity_genes(adata, groupby='celltype', min_corr=.3)
+
+df = scv.DataFrame(adata.uns['rank_velocity_genes']['names'])
+df.head()
+# 每个 cluster 的前几个基因
+
+
+#2) 具体基因的散点图
+kwargs = dict(frameon=False, size=10, linewidth=1.5,
+              add_outline='AF6, AF1')
+
+scv.pl.scatter(adata, df['AF6'][:3], ylabel='AF6', frameon=False, color='celltype', size=10, linewidth=1.5)
+scv.pl.scatter(adata, df['AF1'][:3], ylabel='AF1', frameon=False, color='celltype', size=10, linewidth=1.5)
+
+
+#3) confidence
+scv.tl.velocity_confidence(adata)
+keys = 'velocity_length', 'velocity_confidence'
+scv.pl.scatter(adata, c=keys, cmap='coolwarm', perc=[5, 95])
+
+scv.pl.velocity_graph(adata, threshold=.1, color='celltype')
+
+
+#4) 起点 
+x, y = scv.utils.get_cell_transitions(adata, basis='umap', starting_cell=70)
+ax = scv.pl.velocity_graph(adata, c='lightgrey', edge_width=.05, show=False)
+ax = scv.pl.scatter(adata, x=x, y=y, s=120, c='ascending', cmap='gnuplot', ax=ax)
+
+# velocity_pseudotime
+scv.tl.velocity_pseudotime(adata)
+scv.pl.scatter(adata, color='velocity_pseudotime', cmap='gnuplot')
+
+
+
+#5 PAGA 分析
+# this is needed due to a current bug - bugfix is coming soon.
+adata.uns['neighbors']['distances'] = adata.obsp['distances']
+adata.uns['neighbors']['connectivities'] = adata.obsp['connectivities']
+scv.tl.paga(adata, groups='celltype')
+df = scv.get_df(adata, 'paga/transitions_confidence', precision=2).T
+df.style.background_gradient(cmap='Blues').format('{:.2g}')
+#running PAGA using priors: ['velocity_pseudotime']
+#    finished (0:00:04) --> added
+#    'paga/connectivities', connectivities adjacency (adata.uns)
+#    'paga/connectivities_tree', connectivities subtree (adata.uns)
+#    'paga/transitions_confidence', velocity transitions (adata.uns)
+scv.pl.paga(adata, basis='umap', size=50, alpha=.1,
+            min_edge_width=2, node_size_scale=1.5)
+
+
+
+
+
+
+
+
+(4) Part 4: Analyzing a specific cell population
+cur_celltypes = ['AF1', 'AF2', 'AF3', 'AF4', 'AF5', 'AF6', 'PF1', 'PF2']
+adata_subset = adata[adata.obs['celltype'].isin(cur_celltypes)]
+sc.pl.umap(adata_subset, color=['celltype', 'condition'], frameon=False, title=['', ''])
+
+
+#2) 
+sc.pp.neighbors(adata_subset, n_neighbors=15, use_rep='X_pca')
+
+# pre-process
+scv.pp.filter_and_normalize(adata_subset)
+scv.pp.moments(adata_subset)
+
+WARNING: Did not normalize X as it looks processed already. To enforce normalization, set `enforce=True`.
+WARNING: Did not normalize spliced as it looks processed already. To enforce normalization, set `enforce=True`.
+WARNING: Did not normalize unspliced as it looks processed already. To enforce normalization, set `enforce=True`.
+WARNING: Did not modify X as it looks preprocessed already.
+computing neighbors
+    finished (0:00:03) --> added
+    'distances' and 'connectivities', weighted adjacency matrices (adata.obsp)
+computing moments based on connectivities
+    finished (0:00:11) --> added
+    'Ms' and 'Mu', moments of un/spliced abundances (adata.layers)
+computing velocities
+    finished (0:00:31) --> added
+    'velocity', velocity vectors for each individual cell (adata.layers)
+computing velocity graph
+    finished (0:04:00) --> added
+    'velocity_graph', sparse matrix with cosine correlations (adata.uns)
+
+
+#3) 
+#scv.tl.recover_dynamics(adata_subset) #10min
+scv.tl.recover_dynamics(adata, n_jobs=64) #1min 多线程
+scv.pl.velocity_embedding_stream(adata_subset, basis='umap', color=['celltype', 'condition'], save='embedding_stream.pdf', title='')
+
+
+
+#4)
+df = adata_subset.var
+df = df[(df['fit_likelihood'] > .1) & df['velocity_genes'] == True]
+
+kwargs = dict(xscale='log', fontsize=16)
+with scv.GridSpec(ncols=3) as pl:
+    pl.hist(df['fit_alpha'], xlabel='transcription rate', **kwargs)
+    pl.hist(df['fit_beta'] * df['fit_scaling'], xlabel='splicing rate', xticks=[.1, .4, 1], **kwargs)
+    pl.hist(df['fit_gamma'], xlabel='degradation rate', xticks=[.1, .4, 1], **kwargs)
+
+scv.get_df(adata_subset, 'fit*', dropna=True).head()
+
+
+
+
+#5) latent_time
+scv.tl.latent_time(adata_subset)
+scv.pl.scatter(adata_subset, color='latent_time', color_map='gnuplot', size=80)
+
+
+
+#6) heatmap
+top_genes = adata_subset.var['fit_likelihood'].sort_values(ascending=False).index[:300]
+scv.pl.heatmap(adata_subset, var_names=top_genes, sortby='latent_time', col_color='celltype', n_convolve=100)
+
+
+#7) scatter 具体基因的 稳态图
+top_genes = adata_subset.var['fit_likelihood'].sort_values(ascending=False).index
+scv.pl.scatter(adata_subset, color='celltype', basis=top_genes[:15], ncols=5, frameon=False)
+
+#
+var_names = ['Rps3', 'Col1a2', 'Tmeff2']
+scv.pl.scatter(adata_subset, var_names, color='celltype', frameon=False)
+scv.pl.scatter(adata_subset, x='latent_time', y=var_names, color='celltype', frameon=False)
+
+
+
+RNA velocity is the starting point for a cell fate analysis program called CellRank, which can provide further insights for the analysis of cell lineages.
+
+
+
+ref:
+https://mp.weixin.qq.com/s?__biz=MzI1Njk4ODE0MQ==&mid=2247493623&idx=1&sn=539756a4c444665aa6ab2024b44cb64d
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+========================================
+|-- Seurat to scVelo (另一个例子，单样本)
+----------------------------------------
+
+教程: https://github.com/basilkhuder/Seurat-to-RNA-Velocity
+
+#1 推荐这样: 需要提前准备 cell barcode list，可以从 Seurat 导出
+$ velocyto run -b filtered_barcodes.tsv -o output_path -m repeat_msk_srt.gtf bam_file.bam annotation.gtf
+
+#2 从 Seurat 导出数据:
+# Filtered Cell Ids
+write.csv(Cells(seurat_object), file = "cellID_obs.csv", row.names = FALSE)
+# UMAP or TSNE coordinates
+write.csv(Embeddings(seurat_object, reduction = "umap"), file = "cell_embeddings.csv")
+# Clusters (Optional)
+write.csv(seurat_object@meta.data$seurat_clusters, file = "clusters.csv")
+Cluster Colors (Optional)
+
+
+#3 Integrating Loom File and Meta-data
+import anndata
+import scvelo as scv
+import pandas as pd
+import numpy as np
+import matplotlib as plt
+%load_ext rpy2.ipython
+
+sample_one = anndata.read_loom("sample_one.loom")
+.... 
+sample_n = anndata.read_loom("sample_n.loom")
+
+sample_obs = pd.read_csv("cellID_obs.csv")
+umap_cord = pd.read_csv("cell_embeddings.csv")
+cell_clusters = pd.read_csv("clusters_obs.csv")
+
+sample_one = sample_one[np.isin(sample_one.obs.index,sample_obs["x"])]
+
+
+#4 Multiple-Sample Integration
+cellID_obs_sample_one = cellID_obs[cellID_obs_sample_one[0].str.contains("sample1_")]
+cellID_obs_sample_two = cellID_obs[cellID_obs_sample_two[0].str.contains("sample2_")]
+sample_one = sample_one[np.isin(sample_one.obs.index, cellID_obs_sample_one)]
+sample_two = sample_one[np.isin(sample_two.obs.index, cellID_obs_sample_two)]
+# merge 
+sample_one = sample_one.concatenate(sample_two, sample_three, sample_four)
+
+
+#5 add UMAP 
+umap = pd.read_csv("umap.csv")
+sample_one.obs.index #view
+
+# cast our index as a data frame and change the column name
+sample_one_index = pd.DataFrame(sample_one.obs.index)
+sample_one_index = sample_one_index.rename(columns = {0:'Cell ID'})
+
+# change the first column of our UMAP data frame to the same name
+umap = umap.rename(columns = {'Unnamed: 0':'Cell ID'})
+
+# Now if we merge our index dataframe with our UMAP, the order will match our anndata object.
+umap_ordered = sample_one_index.merge(umap, on = "Cell ID")
+
+# Since we're certain the orders are the same, we can remove the first column of the data frame and add the UMAP coordinates to our anndata object.
+umap_ordered = umap_ordered.iloc[:,1:]
+sample_one.obsm['X_umap'] = umap_ordered.values
+
+
+#6 add color
+# Clusters and their cluster colors can be added in the same fashion (and again, they must match the order of the Cell IDs.) Instead of adding them as an multidimensional observation ('obsm'), we'd add them under the unstructured annotation 'uns.'
+sample_one.uns['Cluster_colors']
+
+
+#7 Running RNA Velocity
+scv.pp.filter_and_normalize(sample_one)
+scv.pp.moments(sample_one)
+scv.tl.velocity(sample_one, mode = "stochastic")
+scv.tl.velocity_graph(sample_one)
+scv.pl.velocity_embedding(sample_one, basis = 'umap')
+
+color = sample_one.uns['Cluster_colors']
+
+
+#
+
+
+
+
+添加 Seurat 的数据
+adata.obs['clusters'] = array_of_clusters
+adata.obsm['X_umap'] = np.stack([UMAP1, UMAP2]).T
+
+
+
+
+
+
+
+
+
+
+
+========================================
+|-- CNS 文献给出的 scVelo 代码
+----------------------------------------
+
+1.学习文献 https://pubmed.ncbi.nlm.nih.gov/34914499/  Fig.2B
+
+(1) Fig. 2. Heterogeneity and dynamics of CD8+ exhausted T cells. 
+	(B) RNA velocities overlaid on UMAP showing two major state transition paths from naïve to exhaustion. 
+	Arrows on a grid show the RNA velocity field, and dots are colored by metaclusters.
+
+可能的代码:
+	w.step1.Figure2.CD8_Tex_velo.ipynb
+
+相关的代码:
+	w.step2.FigureS20.CD8_ovTex_velo.ipynb
+
+	w.step1.Figure3.CD4_global_velo.ipynb
+	w.step2.FigureS26.CD4_Treg_velo.ipynb
+	w.step2.FigureS13.CD8_global_velo.ipynb
+
+
+(2) 复制到 jupyter 目录
+$ cp w.step1.Figure2.CD8_Tex_velo.ipynb /data/wangjl/web/docs/jupyterlab/
+
+jupyter notebook:
+http://y.biomooc.com:9000/notebooks/w.step1.Figure2.CD8_Tex_velo.ipynb
+
+
+
+
+
+2. 学习主要核心代码
+w.step1.Figure2.CD8_Tex_velo.html
+
+(1) 载入包和数据
+import numpy as np
+import pandas as pd
+import scanpy as sc
+import scvelo as scv
+import cellrank as cr
+import seaborn as sns
+import matplotlib.cm as cm
+import os
+import scipy.io
+from scipy import sparse
+from anndata import AnnData
+
+
+import matplotlib.pyplot as plt
+
+
+# 设置图形参数
+sc.set_figure_params(dpi=100, color_map='viridis', fontsize=6)
+sc.settings.verbosity=2
+sc.settings.n_jobs=16 #核心数
+cr.settings.verbosity = 2
+scv.settings.verbosity = 3
+#sc.logging.print_versions()
+
+stype = "CD8"
+oDir = os.path.abspath(f"./OUT_Fig2/")
+
+if not os.path.exists(oDir):
+    os.makedirs(oDir)
+os.chdir(oDir)
+
+
+# 读入h5数据
+adata = sc.read(f"{oDir}/../../data/velo/adata_{stype}.h5ad")
+
+
+# 取子集，并添加 UMAP 坐标
+## subset & add reduction
+redim1 = pd.read_csv(f"{oDir}/../../data/metaInfo/{stype}_Tex.umap_harmony.txt.gz", compression="gzip", sep="\t", header=0, index_col=0)
+# subset
+flag = np.isin(np.array(adata.obs.miniCluster), np.array(redim1.index))
+adata = adata[flag,] 
+redim1 = redim1.loc[list(adata.obs.miniCluster), :]
+#
+adata.obsm['X_UMAP'] = np.array(redim1)
+
+
+# 添加颜色
+## add colSet
+adata.obs["meta.cluster"] = adata.obs["meta.cluster"].astype('category')
+color = pd.read_csv(f"{oDir}/../../data/metaInfo/color_meta.cluster_.txt.gz", compression="gzip", sep="\t", header=None, index_col=0)
+color_used = list(color.loc[adata.obs["meta.cluster"].cat.categories,1])
+adata.uns['meta.cluster_colors'] = color_used
+
+
+# 查看
+adata
+AnnData object with n_obs × n_vars = 75308 × 33694
+    obs: 'patient', 'libraryID', 'cancerType', 'loc', 'batchV', 'TCR', 'dataset', 'ClusterID', 'dataset.tech', 'cellID.uniq', 'S.Score', 'G2M.Score', 'Phase', 'DIG.Score1', 'score.MALAT1', 'percent.mito', 'miniCluster', 'meta.cluster', 'meta.cluster.coarse', 'ClusterID.harmony', 'cluster.name', 'stype'
+    var: 'Accession', 'Chromosome', 'End', 'Start', 'Strand'
+    uns: 'meta.cluster_colors'
+    obsm: 'X_UMAP'
+    layers: 'ambiguous', 'matrix', 'spliced', 'unspliced'
+
+
+
+(2) 预处理 preprocess
+scv.pp.filter_and_normalize(adata, min_shared_counts=30, min_shared_cells=30, log=True)
+
+# 忽略一些基因
+## clean some genes
+ignoreGenes = pd.read_csv(f"{oDir}/../../data/external/all.gene.ignore.df.txt.gz", compression="gzip", sep="\t", header=0, index_col=0)
+flag = [not i in list(ignoreGenes['geneSymbol']) for i in list(adata.var.index)]
+adata = adata[:,flag]
+
+# 去掉核糖体基因 
+flag = [not bool(re.match('^RP[LS]', i)) for i in adata.var_names]
+adata = adata[:,flag]
+
+# 去掉高表达基因 MALAT1
+adata = adata[:,adata.var_names != "MALAT1"]
+
+# 
+scv.pp.filter_genes_dispersion(adata, n_top_genes=2000, subset=False)
+# Extracted 2000 highly variable genes.
+
+
+
+
+(3) Velocity
+scv.pp.moments(adata, n_neighbors=30, n_pcs=30)
+
+# this step will take a long while
+import gc
+gc.collect()
+#
+temp_pre= f"{oDir}/{stype}_Tex.in_process"
+if False==os.path.exists(f"{temp_pre}.velo.h5ad.gz"):
+    scv.tl.recover_dynamics(adata, var_names='all', n_jobs=64)
+    scv.tl.velocity(adata, mode='dynamical')
+    adata.write(f"{temp_pre}.velo.h5ad.gz", compression='gzip')
+else:
+    adata = sc.read(f"{temp_pre}.velo.h5ad.gz", compression='gzip')
+
+
+# 读入 指纹基因
+#### read signature genes
+genes = pd.read_csv(f"{oDir}/../../data/metaInfo/signature_genes.txt.gz", compression="gzip", header=None, index_col=None, sep="\t")
+genes = list(genes.loc[genes[0]=="CD8.c12.Tex.CXCL13",1])
+#
+select_genes = list(set(genes) & set(adata.var_names))
+adata.var['select_genes'] = [i in select_genes for i in list(adata.var_names)]
+adata.var['velocity_genes'] = adata.var['select_genes']
+
+# 
+scv.tl.velocity_graph(adata)
+scv.tl.velocity_embedding(adata, basis="UMAP")
+
+
+# 画图 
+scv.settings.set_figure_params('scvelo', dpi=300, dpi_save=300)
+fig, ax = plt.subplots()
+ax.set_aspect(1)
+scv.pl.velocity_embedding_grid(adata, basis='UMAP',color='meta.cluster', title='panC',
+                               arrow_size=1, arrow_length=2, arrow_color="#D2691E",
+                               alpha=0.01,
+                               density=0.9,
+                               legend_loc='right margin',legend_fontsize=5,
+                               show=True,
+                               save=f"{stype}_Tex.pdf", #figsize=(10,10), #这里设置保存
+                               xlim=[-10,10],ylim=[-10,10], ax=ax)
+
+
+
+(4) 按癌症类型 可视化
+# for each cancerType (only T)
+for i in ['UCEC','PACA','THCA','ESCA']:
+    flag = [j == i for j in adata.obs.loc[:,'cancerType']]
+    adata_sub = adata[flag,]
+    flag2 = [j == "T" for j in adata_sub.obs.loc[:,'loc']]
+    adata_sub = adata_sub[flag2,]
+    #
+    scv.settings.set_figure_params('scvelo', dpi=300, dpi_save=300)
+    fig, ax = plt.subplots()
+    ax.set_aspect(1)
+    scv.pl.velocity_embedding_grid(adata_sub, basis='UMAP',color='meta.cluster', title=i,
+                               arrow_size=1, arrow_length=2, arrow_color="#D2691E", alpha=0.05,
+                               legend_loc='right margin',legend_fontsize=5,
+                               density=0.8,
+                               save=f"{stype}_Tex.FigureS14.{i}.pdf",# figsize=(10,9),
+                               xlim=[-10,10],ylim=[-10,10], ax=ax)
+
+
+
+========================================
+|-- 使用心得体会、没搞懂的点
+----------------------------------------
+
+1. 心得
+- 大家更喜欢 grid 放正文，并把背景变淡(调节不透明度 alpha=0.01, 0.05等)
+	* 虽然 stream 线条更明显，但是很多样本不那么理想。
+	* 单个细胞的箭头看不清，没人用;
+- 动力学模型，要使用多线程，否则太慢: 
+	scv.tl.recover_dynamics(adata, var_names='all', n_jobs=64)
+
+
+
+2. 没搞懂
+- 提供了三个模型，静态模型不怎么有人用，那么另两个有啥区别？
+	scv.tl.velocity(adata, mode='steady_state')	
+	scv.tl.velocity(adata, mode='dynamical')	
+	scv.tl.velocity(adata, mode='stochastic')
+
+
+
+
+
+========================================
+----------------------------------------
+
+
+
+========================================
+----------------------------------------
+
+
+
+
+
+
+
+
+
+
+========================================
+----------------------------------------
+
+
+
+========================================
+----------------------------------------
+
+
+
+========================================
+----------------------------------------
+
+
+
+========================================
+----------------------------------------
+
+
+
+
+
+
+
+
+
+
+========================================
+----------------------------------------
+
+
+
+========================================
+----------------------------------------
+
+
+
+========================================
+----------------------------------------
+
+
+
+========================================
+----------------------------------------
+

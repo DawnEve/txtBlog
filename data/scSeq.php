@@ -30,6 +30,7 @@ return array (
       array('Seurat包','Seurat','txt'),
       array('Seurat源码阅读','Seurat_source','txt'),
       array('Monocle包','Monocle_note','txt'),
+      array('RNA_Velocity','RNA_Velocity_note','txt'),
     ),
   ),
    

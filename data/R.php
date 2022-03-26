@@ -19,16 +19,24 @@ return array (
     2 => array (
       array('R语言基础','R01-basic','txt'),
       array('R进阶-数据框data.frame','R02-data.frame','txt'),
-      array('R进阶-统计抽样与分布','R03-statistics','txt'),
-      array('R进阶-OOP面向对象','R04-OOP','txt'),
-      array('R基础-机器学习','R05-MachineLearning','txt'),
-      array('R调试和测试debug-test','R06-debug_testing','txt'),
       array('apply家族函数','R07-apply','md'),
-      array('R元编程 - 调用类型/表达式','R08_meta','txt'),
+      array('R基础-机器学习','R05-MachineLearning','txt'),
+      array('R进阶-统计抽样与分布','R03-statistics','txt'),
 
       array('R包与bioconductor','bioconductor01','txt'),
+    ),
+  ),
+
+
+  array (
+    0 => 2,
+    1 => '高级R话题',
+    2 => array (
+      array('R调试和测试debug-test','R06-debug_testing','txt'),
+      array('R进阶-OOP面向对象','R04-OOP','txt'),
       array('R加速: 向量化/并行/C++','R_speedUp','txt'),
       array('如何写R包?','R20-R-pkgs','txt'),
+      array('R元编程 - 调用类型/表达式','R08_meta','txt'),
     ),
   ),
 
