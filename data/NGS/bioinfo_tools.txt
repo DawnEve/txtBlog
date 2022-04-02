@@ -1176,7 +1176,67 @@ Read lengths：read的长度分布
 
 
 
-11.rmdup 将由PCR duplicates 获得的reads去掉，并保留高比对质量的reads
+========================================
+|-- bam 去重: remove PCR 重复 [推荐 gatk MarkDuplicates 一步法]
+----------------------------------------
+1. 基本原则
+
+RNA-seq一般不去重复
+ChIP-seq一般去重复
+call SNP一般去重复
+
+还需参考起始量和PCR扩增数判断是否去重复。reads mapping覆盖均匀度可以判断是否需要去重复。
+
+PCR去重工具首选Picard
+
+根源上解决去重复问题：起始量高，循环数少，reads能长不短，能双端不单端
+
+
+
+2. PCR重复的危害
+理论上不同序列在PCR扩增时，扩增的倍数应该相同。但是由于聚合酶的偏好性，PCR扩增次数过多的情况下，会导致一些序列持续扩增，而另一些序列扩增到一定程度后便不再进行，也就是常说的PCR偏好性。
+
+这种情况对于定量分析（如ChIP-seq），会造成严重影响。此外，PCR扩增循环数过多，会出现一些扩增偏差，进而影响一些突变识别（比如call SNP)的置信度。
+
+因此，在一些NGS分析流程中需要考虑去除PCR重复。但这并不代表可以无脑去除。
+
+测序所得到的reads是由于超声波或者酶切断裂得到的，这些reads比对到基因组上的位置是完全随机。那么两个reads比对到相同位置的概率是非常低的。如果两个reads比对情况相同或者极其相似，则很有可能是由于PCR重复所导致的。而我们常用的去重工具主要也是遵循这一思想。
+
+
+
+
+
+
+
+
+3. PCR 去重 
+(1) samtools markdup
+操作SAM/BAM文件，samtools肯定是首选的工具。在samtools中也提供了去除PCR重复的命令markdup, 该命令对输入的bam文件有以下两点要求
+
+必须是经过samtools fixmate命令处理之后的文件
+
+必须是按照比对上染色体坐标位置排序之后的文件
+
+另外，由于fixmate命令要求输入的bam文件为按照read name,即序列名称排序之后的文件，所以在使用markdup命令时，需要以下4步转换过程
+ 
+
+# 第一步，按照read name排序bam文件
+samtools sort -n -o namesort.bam input.bam
+# 第二步，运行fixmate命令
+samtools fixmate -m namesort.bam fixmate.bam
+# 第三步，按照coordinate排序bam文件
+samtools sort -o positionsort.bam fixmate.bam
+#第四步，运行markdup命令
+samtools markdup positionsort.bam markdup.bam
+
+虽然samtools处理bam文件的速度很快，但是经过这一系列的排序操作之后，整个duplicate做的过程耗时非常久。
+
+
+
+
+
+(2)【过时】rmdup一般已经过时，一般不要用这个方法！(我的 samtools v1.9 直接输入 samtools 回车已经没有这个子命令了)
+rmdup 将由PCR duplicates 获得的reads去掉，并保留高比对质量的reads
 -s    rmdup for SE reads
 -S    treat PE reads as SE in rmdup (force -s)
 用法：
@@ -1194,6 +1254,7 @@ http://www.bio-info-trainee.com/2003.html
 
 很明显可以看出，去除PCR重复不仅仅需要它们比对到染色体的起始终止坐标一致，尤其是flag，在双端测序里面一大堆的flag情况，所以我们的94741坐标的5个reads，一个都没有去除！
 
+
 这样的话，双端测序数据，用samtools rmdup效果就很差，所以很多人建议用picard工具的MarkDuplicates 功能~~~
 The optimal solution depends on many factors - the consensus seems to be the the picard markduplicates could be the best current solution.
 最优的方案依赖很多因素，最一致的似乎就是picard markduplicates 可以达到目前最好的结果。
@@ -1203,6 +1264,61 @@ The appropriateness of duplicate removal depends on coverage - one would want to
 
 MarkDuplicates is "more correct" in the strict sense. Rmdup is more efficient simply because it does handle those tough cases. Rmdup works for single-end, too, but it cannot do paired-end and single-end at the same time. It does not work properly for mate-pair reads if read lengths are different.
 MarkDuplicates功能在严格模式下更“正确”，rmdup更高效仅仅是因为它确实处理这些事情。rmdup对于SE数据有效，但是对于同时有PE和SE的无效，对于长度不等的 mate-pair数据也无效。
+
+
+
+
+
+
+
+
+4. picard 或者 gatk MarkDuplicates 子命令
+Picard也是一款去重的软件，只不过要用Java来启动它，所以你的服务器上要安装Java
+下载地址：https://github.com/broadinstitute/picard/releases/tag/2.21.6
+选择第一个，直接下载就可以用了.
+
+picard的MarkDuplicates命令称得上是使用的最广泛的去除PCR重复的工具了，要求输入的bam文件为按照比对位置排序之后的文件，用法如下
+但是利用picard去重所用的sam文件或者bam文件是需要加header的，如果你的文件没有，我们可以用samtools加个表头：
+
+#加header
+samtools view -Sb -T genome.fa sample_no_header.sam >sample_with_header.bam
+#genome.fa为参考基因组序列
+并且bam文件还是要按名字排过序的：
+
+#按名字排序
+samtools sort -n -o sorted.bam unsorted.bam
+
+Picard去重：
+$ java -jar ~/biosoft/picard.jar MarkDuplicates
+REMOVE_DUPLICATES=true
+I= input.bam
+O= output.bam
+M= out.txt \ #相当于log文件
+
+
+
+(2) 教程2: 不好
+
+# 第一步，按照coordinate排序bam文件
+samtools sort -o positionsort.bam input.bam
+# 第二步，运行MarkDuplicate命令
+java -jar picard.jar MarkDuplicate \
+I=positionsort.bam \
+O=markdup.bam \
+M=markdup.metrc.csv #相当于日志文件
+
+
+(3) 实例: 对于 STAR 的输出文件进行去重:
+$ gatk MarkDuplicates \
+--REMOVE_DUPLICATES=true \
+-I=map/SRR9689349_Aligned.sortedByCoord.out.bam \
+-O=rmdup/gatk_markdup.bam \
+-M=rmdup/gatk_markdup.metrc.csv
+
+输入文件:
+map/SRR9689349_Aligned.sortedByCoord.out.bam #7536360=7,536,360=7.536M
+输出文件:
+rmdup/gatk_markdup.bam #3250342=3,250,342=3.25M
 
 
 

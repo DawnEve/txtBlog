@@ -4425,18 +4425,47 @@ pbmc_small3 <- ScaleData(pbmc_small, features = all.genes,
 
 
 ========================================
-|-- Seurat 4 R包源码解析 17: 使用线性模型去除数据噪音 //todo
+|-- Seurat 4 R包源码解析 17: 使用模型去除数据噪音 - 续 ScaleData
 ----------------------------------------
 1. 概述
 本文是上一篇 ScaleData() 的解释说明。建议先阅读上一节的相关描述。
 
 主要是使用R手工实现该处理流程，并适当关心数学推导。
-所以本文结构和以往略有不同，还有很多拼图部分，有待未来完善。
+所以本文结构和以往略有不同，还有很多部分留给未来完善。
 
 我们忽略参数验证、日志记录等辅助功能，也暂时不讲 多线程、C++加速代码，这次只看最简单的实现。
 
 
-(1) 打算通过几个实例，通过R手工实现处理流程，得出 Seurat::ScaleData() 的结果。
+(1) 模型去噪音的核心语句
+
+本文接下来重点关注 Seurat 默认使用的线性模型，最后稍微也了解一下其他两个模型，泊松、负二项分布。
+
+    # (B4) 回归后的残差向量
+    regression.mat <- switch(
+      EXPR = model.use,
+      
+      # 默认是 线性 模型:
+      'linear' = qr.resid(qr = qr, y = data.expr[x,]),
+
+      'poisson' = residuals(object = glm(
+        formula = fmla,
+        family = 'poisson',
+        data = regression.mat),
+        type = 'pearson'
+      ),
+
+      'negbinom' = NBResiduals(
+        fmla = fmla,
+        regression.mat = regression.mat,
+        gene = x
+      )
+    )
+    # (B5) 把残差放回到原空 残差矩阵中第i行(symbol)
+    data.resid[i, ] <- regression.mat
+
+
+
+(2) 打算通过几个实例，通过R手工实现处理流程，得出 Seurat::ScaleData() 的结果。
 数据: Seurat 4 自带的小数据及 pbmc_small.
 方法: 我们先使用普通 lm 拟合，最后关心一下矩阵的QR分解是怎么节省运行时间的。
 基因: 都是 scale 全部基因。
@@ -4806,14 +4835,675 @@ qr 分解 求残差
 
 
 
-
-7. 如何理解施密特（Schmidt）正交化
+(3). 如何理解施密特（Schmidt）正交化
 
 https://zhuanlan.zhihu.com/p/136627868
 
 根据定义，内积<a1,a2>等于一个的长度另一个再这个上面的投影，所以假设b1是a1在a2上的投影，则 <a1,a2>=|b1| x |a2|;
 而 |a2|^2 = <a2, a2>，a2方向上的单位向量 i=a2 / |a2|
 则 b1=|b1| x i = <a1, a2> /|a2| x a2/|a2| = <a1,a2>/<a2,a2> x a2
+
+
+
+
+
+
+7. 广义线性模型 之 泊松分布
+
+fitted.model <- glm(formula, family=family.generator, data=data.frame)
+
+其中 formula 是拟合公式，这里的意义与线性模型相同。
+family 是分布族，即前面讲到的广义线性模型的种类，如 正态分布、Poisson 分布、二项分布等。
+data 是数据框，与lm模型相同。
+
+      'poisson' = residuals(object = glm(
+        formula = fmla,
+        family = 'poisson',
+        data = regression.mat),
+        type = 'pearson'
+      ),
+
+实例:
+#
+df1=iris[,1:4]*10 #泊松分布只能输入整数
+colnames(df1)=c("Y", paste0("X", 1:3) )
+head(df1)
+fit=glm(
+  formula=Y~X1+X2+X3,
+  family = 'poisson',
+  data=df1
+)
+fit
+summary(fit)
+y.resid=residuals(fit, type = "pearson")
+
+# 查看残差的分布
+hist(y.resid, n=30)
+
+
+
+
+
+8. 负二项分布模型
+
+      'negbinom' = NBResiduals(
+        fmla = fmla,
+        regression.mat = regression.mat,
+        gene = x
+      )
+
+定义:
+./seurat-4.1.0/R/preprocessing.R:3324:NBResiduals <- function(fmla, regression.mat, gene, return.mode = FALSE) {
+./seurat-4.1.0/NAMESPACE:375:importFrom(MASS,glm.nb)
+
+
+#
+#' @importFrom stats residuals
+#
+NBResiduals <- function(fmla, regression.mat, gene, return.mode = FALSE) {
+  # 
+  fit <- 0
+  
+  try(
+    fit <- glm.nb(
+      formula = fmla,
+      data = regression.mat
+    ),
+    silent = TRUE)
+	
+  if (is.numeric(x = fit)) {
+    message(sprintf('glm.nb failed for gene %s; falling back to scale(log(y+1))', gene))
+    resid <- scale(x = log(x = regression.mat[, 'GENE'] + 1))[, 1]
+    mode <- 'scale'
+  } else {
+    resid <- residuals(fit, type = 'pearson')
+    mode = 'nbreg'
+  }
+  
+  do.return <- list(resid = resid, mode = mode)
+  
+  if (return.mode) {
+    return(do.return)
+  } else {
+    return(do.return$resid)
+  }
+  
+}
+
+
+实例:
+fit2=MASS::glm.nb(
+  formula = Y~X1+X2+X3,
+  data = df1
+)
+fit2
+summary(fit2)
+
+y.resid2 <- residuals(fit2, type = 'pearson')
+# 查看残差的分布
+hist(y.resid2, n=30)
+
+
+
+
+
+
+
+
+
+
+
+
+
+========================================
+|-- Seurat 4 R包源码解析 18: step8 线性降维 RunPCA() 主成分分析及数学原理
+----------------------------------------
+
+1. 调包侠
+# step8 (PCA) Perform linear dimensional reduction
+pbmc <- RunPCA(pbmc, features = VariableFeatures(object = pbmc))
+
+# Examine and visualize PCA results a few different ways
+#print(pbmc[["pca"]], dims = 1:5, nfeatures = 5)
+# VizDimLoadings(pbmc, dims = 1:2, reduction = "pca")
+DimPlot(pbmc, reduction = "pca")
+
+# DimHeatmap(pbmc, dims = 1, cells = 500, balanced = TRUE)
+# DimHeatmap(pbmc, dims = 1:15, cells = 500, balanced = TRUE)
+
+
+(1) run PCA 可以指定基因列表，如果没有指定，则使用高变基因。
+RunPCA(sce, features=c(......))
+
+VariableFeatures() 函数在 源码解析 10 (2.6)中说过。
+返回的就是 assay对象( pbmc_small@assays$RNA )的 var.features slot
+
+> str(pbmc@assays$RNA@var.features )
+chr [1:2000] "PPBP" "LYZ" "S100A9" "IGLL5"
+
+
+RunPCA() 没有指定 features 则使用高变基因。
+做PCA使用的数据是 scale.data。
+features 必须在 scaled data 中，如果不在或者 variance=0 则舍弃，用其余的做PCA。
+
+
+
+(2) 主力函数 #' @importFrom stats prcomp
+
+(3) 主成分分析概述
+主成分分析的主要思想，是选择变异最大的方向作为第一维，然后在垂直第一维的方向选择变异最大的第二维，然后再在垂直第1-2维的方向选择变异最大的方向作为第三维，以此类推。我们发现大部分方差都集中在前面几个新坐标轴中了。忽略其余坐标轴，就完成了数据的线性降维处理。
+数学上，我们一般把数据中心化为A，然后求其协方差矩阵的特征值和特征向量 A.x=lambda.x 。特征向量构成的矩阵就是旋转矩阵，原始矩阵中心化后，点乘该旋转矩阵，就得到了新坐标系统里的位置，也就是embeding。特征根开平方根就是每个PC解释的方差。
+为了简化运算，一般使用奇异值分解 SVD 代替特征值分解: A=U.D.V^T。
+Seurat 使用奇异值/根号(细胞数-1) 最为对应主成分的方差，右奇异矩阵V作为旋转矩阵。左奇异矩阵u 点乘 奇异值对角矩阵 作为细胞的新坐标。
+# object 是 gene*cell 矩阵，scale.data。
+pca.results <- irlba(A = t(x = object), nv = npcs, ...) #转置后，对列(gene)奇异值分解
+feature.loadings <- pca.results$v #右矩阵v是 gene 的loading
+sdev <- pca.results$d/sqrt(max(1, ncol(object) - 1)) #特征根 / 根号(列数 - 1)
+# 左奇异矩阵 u 是 cell embeddings，乘以 var 权重
+cell.embeddings <- pca.results$u %*% diag(pca.results$d)
+
+
+
+
+
+
+
+2. 源码解析
+(1)直接使用的函数
+- RunPCA
+- DimPlot 以后再说 //todo
+- DimHeatmap 下一篇说
+
+
+
+(2)间接使用的函数
+- LogSeuratCommand
+- RowVarSparse: ./seurat-4.1.0/R/utilities.R:2345:RowVarSparse <- function(mat) {
+	* row_var_dgcmatrix: ./seurat-4.1.0/R/RcppExports.R:120:row_var_dgcmatrix <- function(x, i, rows, cols) {
+- RowVar, C 函数 ./seurat-4.1.0/R/RcppExports.R:64:RowVar <- function(x) {
+
+
+
+
+
+
+
+
+
+
+3. R tips
+
+
+(1) 近似PCA: irlba::irlba() 部分奇异值分解
+Find a few approximate singular values and corresponding singular vectors of a matrix.
+
+
+# 定义矩阵
+A=matrix( c(2,1, 1,
+            1, 2, 1,
+            1, 1, 2), nrow=3, byrow = T);A
+
+
+
+
+#1) eigen() 求特征值和特征向量
+> Aeigen=eigen(A); Aeigen
+eigen() decomposition
+$values
+[1] 4 1 1
+# 文档说是降序排列的特征值 values: a vector containing the p eigenvalues of x, sorted in decreasing order, 
+
+$vectors
+           [,1]       [,2]       [,3]
+[1,] -0.5773503  0.0000000  0.8164966
+[2,] -0.5773503 -0.7071068 -0.4082483
+[3,] -0.5773503  0.7071068 -0.4082483
+
+
+# 检查 A*x = lambda*x
+> A %*% Aeigen$vectors
+          [,1]       [,2]       [,3]
+[1,] -2.309401  0.0000000  0.8164966
+[2,] -2.309401 -0.7071068 -0.4082483
+[3,] -2.309401  0.7071068 -0.4082483
+> Aeigen$values * Aeigen$vectors
+           [,1]       [,2]       [,3]
+[1,] -2.3094011  0.0000000  3.2659863
+[2,] -0.5773503 -0.7071068 -0.4082483
+[3,] -0.5773503  0.7071068 -0.4082483
+
+# 检查2: A=U.B.U^-1
+> Aeigen$vectors %*% diag(Aeigen$values) %*% solve(Aeigen$vectors)
+     [,1] [,2] [,3]
+[1,]    2    1    1
+[2,]    1    2    1
+[3,]    1    1    2
+
+
+
+
+
+#2) svd() 奇异值分解 A=U.D.V^T
+> rs=svd(A);rs
+$d
+[1] 4 1 1 #给的是特征值 = 奇异值的平方
+# 文档说降序排列的奇异值: d: a vector containing the singular values of x, of length min(n, p), sorted decreasingly.
+
+$u
+           [,1]       [,2]          [,3]
+[1,] -0.5773503  0.8164966 -5.041791e-17
+[2,] -0.5773503 -0.4082483 -7.071068e-01
+[3,] -0.5773503 -0.4082483  7.071068e-01
+
+$v
+           [,1]       [,2]       [,3]
+[1,] -0.5773503  0.8164966  0.0000000
+[2,] -0.5773503 -0.4082483 -0.7071068
+[3,] -0.5773503 -0.4082483  0.7071068
+
+# 还原矩阵
+> rs$u %*% diag(rs$d) %*% t(rs$v)
+     [,1] [,2] [,3]
+[1,]    2    1    1
+[2,]    1    2    1
+[3,]    1    1    2
+
+
+
+
+
+
+#3) 求部分奇异值，nv<min(nrow(A), ncol(A))
+> pca.results <- irlba(A = A, nv = 2); pca.results
+Warning in irlba(A = A, nv = 2) :
+  You're computing too large a percentage of total singular values, use a standard svd instead.
+$d
+[1] 4 1 
+# 帮助文档说d是近似奇异值 d: max(nu, nv) approximate singular values
+
+$u
+           [,1]       [,2]
+[1,] -0.5773503  0.8164966
+[2,] -0.5773503 -0.4082483
+[3,] -0.5773503 -0.4082483
+
+$v
+           [,1]       [,2]
+[1,] -0.5773503  0.8164966
+[2,] -0.5773503 -0.4082483
+[3,] -0.5773503 -0.4082483
+
+$iter
+[1] 0
+
+$mprod
+[1] 0
+
+
+# 还原矩阵 U.B.V^T
+> pca.results$u %*% diag(pca.results$d) %*% t(pca.results$v)
+     [,1] [,2] [,3]
+[1,]    2  1.0  1.0
+[2,]    1  1.5  1.5
+[3,]    1  1.5  1.5
+有些元素还原的不好，毕竟缺了一个特征向量
+
+
+
+
+
+
+
+
+
+
+
+
+(2) 精确PCA: prcomp()
+pca.results <- prcomp(x = t(object), rank. = npcs, ...)
+
+接上文。
+> A
+     [,1] [,2] [,3]
+[1,]    2    1    1
+[2,]    1    2    1
+[3,]    1    1    2
+
+> pca.results <- prcomp(x = A); pca.results 
+Standard deviations (1, .., p=3):
+[1] 7.071068e-01 7.071068e-01 1.586363e-16
+
+Rotation (n x k) = (3 x 3):
+            PC1        PC2       PC3
+[1,]  0.8164966  0.0000000 0.5773503
+[2,] -0.4082483 -0.7071068 0.5773503
+[3,] -0.4082483  0.7071068 0.5773503
+
+> pca.results$x
+            PC1           PC2          PC3
+[1,]  0.8164966  5.551115e-17 1.665335e-16
+[2,] -0.4082483 -7.071068e-01 8.326673e-17
+[3,] -0.4082483  7.071068e-01 1.110223e-16
+> pca.results$rotation
+
+
+
+
+2) 返回值 Value 
+prcomp returns a list with class "prcomp" containing the following components:
+
+# sdev 主成分的标准误差(协方差矩阵的特征根的开方，虽然这个实际上是用矩阵的奇异值计算的)
+the standard deviations of the principal components (i.e., the square roots of the eigenvalues of the covariance/correlation matrix, though the calculation is actually done with the singular values of the data matrix).
+
+# rotation 特征向量矩阵，每一列是一个特征向量。
+the matrix of variable loadings (i.e., a matrix whose columns contain the eigenvectors). The function princomp returns this in the element loadings.
+
+# x	如果 retx==T，返回旋转后的数据: center后的矩阵 * 旋转矩阵。所以协方差矩阵就是对角矩阵。
+if retx is true the value of the rotated data (the centred (and scaled if requested) data multiplied by the rotation matrix) is returned. Hence, cov(x) is the diagonal matrix diag(sdev^2). For the formula method, napredict() is applied to handle the treatment of values omitted by the na.action.
+
+
+
+
+3) 细节 Details
+使用对center后矩阵的奇异值分解方法，而不是使用协方差矩阵的特征根。
+这也是使数值更精确的推荐方法。
+The calculation is done by a singular value decomposition of the (centered and possibly scaled) data matrix, not by using eigen on the covariance matrix. This is generally the preferred method for numerical accuracy. 
+
+print和plot方法。
+The print method for these objects prints the results in a nice format and the plot method produces a scree plot.
+
+Unlike princomp, variances are computed with the usual divisor N - 1.
+
+有零值或常数项时不能使用 scale=T。
+Note that scale = TRUE cannot be used if there are zero or constant (for center = TRUE) variables.
+
+
+
+
+4) 进一步对 iris 数据做主成分分析
+> iris.pca=prcomp(iris[,1:4])
+> iris.pca #对列求线性组合
+Standard deviations (1, .., p=4):
+[1] 2.0562689 0.4926162 0.2796596 0.1543862
+
+Rotation (n x k) = (4 x 4):
+                     PC1         PC2         PC3        PC4
+Sepal.Length  0.36138659 -0.65658877  0.58202985  0.3154872
+Sepal.Width  -0.08452251 -0.73016143 -0.59791083 -0.3197231
+Petal.Length  0.85667061  0.17337266 -0.07623608 -0.4798390
+Petal.Width   0.35828920  0.07548102 -0.54583143  0.7536574
+
+
+> plot(iris.pca) #每个主成分的占比
+
+可见，默认是对列进行的。
+PC1=0.36*Sepal.Length -0.084*Sepal.Width +0.856*Petal.Length +0.35*Petal.Width
+通过对 feature 线性组合，得到一系列新的 feature 组合，这解决了单细胞矩阵中的大面积0的问题。至于是不是应对 0-inflation 最好的解决方法，有待研究。//todo
+
+
+从方差可见，第一个PC解释的变异最多。
+
+注意：对于 Seurat 的默认输入 gene*cell 矩阵，我们打算对基因进行线性组合，就要先做转置再求PCA。
+
+# 相当于旋转后的坐标系(特征向量组成的矩阵)
+feature.loadings <- pca.results$rotation #见上文。
+
+
+
+# 相当于每个细胞在各个新坐标系的坐标值
+cell.embeddings <- pca.results$x
+
+> head(iris.pca$x)
+           PC1        PC2         PC3          PC4
+[1,] -2.684126 -0.3193972  0.02791483  0.002262437
+[2,] -2.714142  0.1770012  0.21046427  0.099026550
+[3,] -2.888991  0.1449494 -0.01790026  0.019968390
+[4,] -2.745343  0.3182990 -0.03155937 -0.075575817
+[5,] -2.728717 -0.3267545 -0.09007924 -0.061258593
+[6,] -2.280860 -0.7413304 -0.16867766 -0.024200858
+
+对原矩阵做 center 后 * 旋转矩阵，得到每个观测值的新坐标
+注: 是做PCA的矩阵，如果当时转置后做PCA，这里也要用转置后center。
+默认 scale 函数是按照列 center(减去平均值) 和 scale(除以sd) 的。
+> head( scale(iris[,1:4], scale = F) %*% iris.pca$rotation)
+           PC1        PC2         PC3          PC4
+[1,] -2.684126 -0.3193972  0.02791483  0.002262437
+[2,] -2.714142  0.1770012  0.21046427  0.099026550
+[3,] -2.888991  0.1449494 -0.01790026  0.019968390
+[4,] -2.745343  0.3182990 -0.03155937 -0.075575817
+[5,] -2.728717 -0.3267545 -0.09007924 -0.061258593
+[6,] -2.280860 -0.7413304 -0.16867766 -0.024200858
+
+
+
+
+
+
+
+
+
+
+(3) 用R全手工实现 PCA(对比 prcomp() )
+不借助包，按照 《机器学习实战》P246的伪代码进行操作.
+
+1减去平均数
+2计算协方差矩阵
+3计算协方差矩阵的特征值和特征向量
+4将特征值从大到小排列
+5保留最上面的N个特征值
+6将数据转换到上述N个特征向量构建的新空间中。
+
+例1: 针对iris数据集
+
+head(iris)
+df1=iris[,1:4]
+#1) 减去平均值
+df1=sweep(x=df1, 
+          MARGIN=2, 
+          STATS=apply(df1, 2, mean),
+          FUN="-")
+head(df1)
+#2) 计算协方差矩阵
+cor.df1=cov(df1)
+#3) 计算协方差矩阵的特征值和特征向量
+eigen.df1=eigen(cor.df1)
+#4) 特征值默认降序
+eigen.df1
+#5) 保留最前面的几个特征值
+#6) 原center后的坐标 * 旋转矩阵
+coord.df1=as.matrix(df1) %*% eigen.df1$vectors
+dim(coord.df1)
+head(coord.df1)
+# plot
+coord.df1_=as.data.frame(coord.df1)
+colnames(coord.df1_)=paste0("PC_", 1:4)
+coord.df1_$type=iris$Species
+library(ggplot2)
+ggplot(coord.df1_, aes(PC_1, PC_2, color=type))+
+  geom_point()
+
+# prcomp() 做PCA
+pca.iris=prcomp(iris[,1:4])
+pca.iris
+
+# 对比旋转矩阵
+> pca.iris$rotation #prcomp()的计算结果
+                     PC1         PC2         PC3        PC4
+Sepal.Length  0.36138659 -0.65658877  0.58202985  0.3154872
+Sepal.Width  -0.08452251 -0.73016143 -0.59791083 -0.3197231
+Petal.Length  0.85667061  0.17337266 -0.07623608 -0.4798390
+Petal.Width   0.35828920  0.07548102 -0.54583143  0.7536574
+
+> eigen.df1$vectors #协方差矩阵的特征向量构成的矩阵
+            [,1]        [,2]        [,3]       [,4]
+[1,]  0.36138659 -0.65658877 -0.58202985  0.3154872
+[2,] -0.08452251 -0.73016143  0.59791083 -0.3197231
+[3,]  0.85667061  0.17337266  0.07623608 -0.4798390
+[4,]  0.35828920  0.07548102  0.54583143  0.7536574
+
+
+# 对比方差
+# 主成分的标准差，文档说是 协方差矩阵的特征值的平方根，虽然是通过SVD分解实现的
+# square roots of the eigenvalues of the covariance/correlation matrix
+# though the calculation is actually done with the singular values of the data matrix
+> pca.iris$sdev
+[1] 2.0562689 0.4926162 0.2796596 0.1543862
+
+> eigen.df1$values #特征根
+[1] 4.22824171 0.24267075 0.07820950 0.02383509
+
+#开方后确实等于 pca.iris$sdev
+> sqrt(eigen.df1$values)
+[1] 2.0562689 0.4926162 0.2796596 0.1543862
+
+
+
+
+
+
+
+
+
+
+
+(4) 半手工实现Seurat默认的PCA (pbmc_small)
+默认走的是源码解析中标号 A3-B1 的代码。我们去掉验证判断部分，只保留干活的语句。
+
+使用近似求解，部分奇异值，使用函数 irlba 做矩阵的 SVD 分解。
+A=U.D.V^T 
+使用 右奇异矩阵v 作为旋转矩阵;
+使用 左矩阵u . 特征根对角矩阵 作为有var权重的 cell embeding 也就是点的坐标。
+
+
+使用 pbmc_small 做测试。
+
+
+#1) 使用R包计算
+library(Seurat)
+dim(pbmc_small) #230 gene * 80 cell
+pbmc_small2=RunPCA(pbmc_small)
+# 每个细胞的坐标
+rs1=pbmc_small2@reductions$pca@cell.embeddings[1:4, 1:4]; rs1
+#DimPlot(pbmc_small2, reduction = "pca")
+
+
+#2) 手动计算
+# 输入
+object=pbmc_small2@assays$RNA@scale.data
+dim(object) #20 80
+npcs=50
+npcs <- min(npcs, nrow(x = object) - 1) # 至少是 行数-1
+
+set.seed(42)
+pca.results <- irlba::irlba(A = t(x = object), nv = npcs) #转置后，奇异值分解
+#feature.loadings <- pca.results$v #右矩阵v是 gene 的loading
+#sdev <- pca.results$d/sqrt(max(1, ncol(object) - 1)) #特征根 / 根号(列数 - 1)
+# 左奇异矩阵 u 是 cell embeddings * 特征值对角矩阵(var 权重)
+cell.embeddings <- pca.results$u %*% diag(pca.results$d)
+rownames(cell.embeddings) = colnames(object)
+
+> cell.embeddings[1:4, 1:4] #手工计算的
+                      [,1]       [,2]       [,3]       [,4]
+ATGCCAGAACGACT -0.77403708  0.8996461  0.2493078 -0.5585948
+CATGGCCTGTGCAT -0.02602702  0.3466795 -0.6651668 -0.4182900
+GAACCTGATGAACC -0.45650250 -0.1795811 -1.3175907 -2.0137210
+TGACTGGATTCTCA -0.81163243  1.3795340  1.0019320 -0.1390503
+
+> rs1 #Seurat R包生成的细胞坐标
+                      PC_1       PC_2       PC_3      PC_4
+ATGCCAGAACGACT -0.77403708 -0.8996461 -0.2493078 0.5585948
+CATGGCCTGTGCAT -0.02602702 -0.3466795  0.6651668 0.4182900
+GAACCTGATGAACC -0.45650250  0.1795811  1.3175907 2.0137210
+TGACTGGATTCTCA -0.81163243 -1.3795340 -1.0019320 0.1390503
+
+
+# 为什么 PC_2-4 的符号和 Seurat R包计算的相反?
+命名执行的是同样的语句!?
+
+也有人遇到这个问题了，但是是和其他R包函数比较:
+https://www.jianshu.com/p/887056e3123a
+https://github.com/satijalab/seurat/issues/751
+
+you can maybe try the following while computing PCA via stats::prcomp().
+
+# Use Seurat's scaled data to compare prcomp and irlba outputs 
+# using the same input matrix
+pcaRes <-  prcomp(t(x = object@scale.data), center = F, scale. = F) 
+
+Also, Seurat uses irlba::irlba() to compute PCA (links to paper(http://www.math.uri.edu/~jbaglama/papers/paper14.pdf) and package vignette). Typical output difference between prcomp and irlba with my data is that irlba results in PCs with lower cell embedding values (and a flip in the sign for some PCs) compared to prcomp.
+
+
+
+作者认为有些PC发生符号翻转(sign flip)是正常的:
+https://github.com/satijalab/seurat/issues/4848
+We do not sort/order the matrix based on gene or cell names before running it so providing these in different orders could result in a sign flip for some PC embeddings
+
+
+
+
+该包代码 https://github.com/bwlewis/irlba
+# Fast truncated singular value decompositions
+https://github.com/bwlewis/irlba/blob/master/R/irlba.R
+这个函数太难了，不打算看了。 //todo
+
+
+
+
+
+
+
+
+(5) 捕获输出到字符串或文件 capture.output()
+Send Output to a Character String or File
+
+实例1:
+> txt=capture.output(print("Hello, world!"))
+> txt
+[1] "[1] \"Hello, world!\""
+> message(txt)
+[1] "Hello, world!"
+
+
+实例2: 怎么接收返回 invisible() 的函数的输出？
+fn2=function(x){
+  txt=paste0("your input is:", x)
+  return(invisible(txt))
+}
+fn2(20)
+y2=capture.output(fn2(10))
+y2 #没有
+message(y2) #空
+# 需要先print 出来
+y3=capture.output(print(fn2(10)))
+
+> y3
+[1] "[1] \"your input is:10\""
+> message(y3)
+[1] "your input is:10"
+
+
+
+ref:
+https://www.bilibili.com/video/BV1ix411f7Yp?p=30
+https://www.zhihu.com/question/41120789/answer/481966094
+https://www.displayr.com/singular-value-decomposition-in-r/
+https://www.zhihu.com/question/49959130/answer/119452063
+
+
+
+
+
+
+
+========================================
+|-- Seurat 4 R包源码解析 19: step8 RunPCA() - 可视化等 //todo
+----------------------------------------
+list 
+- 降维类 DimReduc
+- CreateDimReducObject()
+
+
+
 
 
 
@@ -4930,35 +5620,9 @@ function (parent.find = "Seurat", ...)
 
 
 
-2. 文字进度条
+2. 表达式处理
 
-# 进度条
-library(utils)
-fn1=function(df1){
-  ## 第一个位置：新建一个其实进度条
-  pb <- txtProgressBar(style=3)
-  
-  star_time <- Sys.time() ## 记录程序开始时间
-  
-  for (i in 1:nrow(df1)){
-    Sys.sleep(0.01 + runif(1)/30 )
-    ## 第二个位置：实时反映进度
-    setTxtProgressBar(pb, i/nrow(df1))
-  }
-  
-  end_time <- Sys.time()  ## 记录程序结束时间
-  
-  ## 第三个位置关闭进度条
-  close(pb)
-  
-  run_time <- end_time - star_time  ## 计算程序运行时间
-  message(paste0("run time: ", round(run_time,2), "seconds"))
-  return(invisible(NULL))
-}
-fn1(iris)
-
-
-
+@importFrom rlang is_quosure enquo eval_tidy
 
 
 
