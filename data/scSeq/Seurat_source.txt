@@ -4972,6 +4972,13 @@ DimPlot(pbmc, reduction = "pca")
 # DimHeatmap(pbmc, dims = 1:15, cells = 500, balanced = TRUE)
 
 
+注:
+本文以实战为主，顺便说一些必要的数学原理。
+数学部分有不严谨的地方，欢迎留言批评指正。
+本文仅讨论最核心的PCA计算过程，后面的可视化及涉及到的内部类放到下一篇。
+
+
+
 (1) run PCA 可以指定基因列表，如果没有指定，则使用高变基因。
 RunPCA(sce, features=c(......))
 
@@ -5002,6 +5009,10 @@ sdev <- pca.results$d/sqrt(max(1, ncol(object) - 1)) #特征根 / 根号(列数 
 # 左奇异矩阵 u 是 cell embeddings，乘以 var 权重
 cell.embeddings <- pca.results$u %*% diag(pca.results$d)
 
+
+
+
+亮点：我们在本篇 3.3 手工实现了一个PCA函数，输出结果和 prcomp() 一致。感兴趣的可以看看，虽然简单但是大致功能都有了。
 
 
 
@@ -5361,6 +5372,97 @@ Petal.Width   0.35828920  0.07548102 -0.54583143  0.7536574
 
 
 
+把 以上过程包装成我们自定义的PCA函数
+
+#' 按列求CPA，结果模仿 prcomp
+#'
+#' @param df0 input a df, PCA on column
+#' @param ndims the total eigenvalue to use
+#'
+#' @return
+#' @export
+#'
+#' @examples
+#' 
+my_PCA=function(df0, ndims=NULL, scale=F){
+  # check params
+  if(!is.null(ndims)){
+    ndims=min(ndims, ncol(df0));
+  }else{
+    ndims=ncol(df0)
+  }
+  
+  #1) 减去平均值
+  center=apply(df0, 2, mean)
+  df1=sweep(x=df0, MARGIN=2, STATS=center, FUN="-")
+  # whether scale?
+  if(scale){
+    df1=scale(df1)
+  }
+  #2) 计算协方差矩阵
+  cor.df1=cov(df1)
+  #3) 计算协方差矩阵的特征值和特征向量
+  eigen.df1=eigen(cor.df1)
+  #4) 特征值默认降序
+  #eigen.df1
+  #5) 保留最前面的几个特征值
+  if(!is.null(ndims)){
+    message(">> Use the first ", ndims, " PCs.");
+    eigen.df1$values=eigen.df1$values[1:ndims]
+    eigen.df1$vectors=eigen.df1$vectors[,1:ndims]
+  }
+  #6) 原center后的坐标 * 旋转矩阵
+  coord.df1=as.matrix(df1) %*% eigen.df1$vectors
+  
+  # 对比旋转矩阵
+  rotation=eigen.df1$vectors #协方差矩阵的特征向量构成的矩阵
+  #
+  colnames(rotation)=paste0("PC_", 1:ndims)
+  rownames(rotation)= colnames(df1)
+  #
+  colnames(coord.df1)=colnames(rotation)
+  rownames(coord.df1)=rownames(df0)
+
+  #eigen.df1$values #特征根
+  sdev=sqrt(eigen.df1$values) #开方后确实等于 pca.iris$sdev
+  # return
+  obj=list(
+    sdev=sdev,
+    rotation=rotation,
+    center=center,
+    scale=scale,
+    x=coord.df1
+  )
+  class(obj)="my_PCA"
+  return(obj)
+}
+
+# test
+pca2.iris=my_PCA(iris[,1:4])
+# prcomp() 做PCA
+pca.iris=prcomp(iris[,1:4])
+
+# compare result
+str(pca.iris)
+str(pca2.iris)
+
+
+# test patial eigenvalue
+my_PCA(iris[,1:4], ndims = 2)
+prcomp(iris[,1:4], rank. = 2)
+
+# plot 
+coord.df1_=as.data.frame(pca2.iris$x)
+colnames(coord.df1_)=paste0("PC_", 1:4)
+coord.df1_$type=iris$Species
+library(ggplot2)
+ggplot(coord.df1_, aes(PC_1, PC_2, color=type))+
+  geom_point()
+
+
+
+
+
 
 
 
@@ -5501,6 +5603,10 @@ https://www.zhihu.com/question/49959130/answer/119452063
 list 
 - 降维类 DimReduc
 - CreateDimReducObject()
+
+
+- DimHeatmap
+
 
 
 

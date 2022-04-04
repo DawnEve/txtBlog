@@ -56,7 +56,7 @@ return array (
     2 => array (
       array('Photoshop使用技巧','Photoshop','txt'),
       array('audition3.0','audition','txt'),
-      array('premiere_pro_cs4','premiere_note','txt'),
+      array('视频处理 premiere等','video_note','txt'),
       array('LaTeX 排版','LaTeX','txt'),
     ),
   ),
