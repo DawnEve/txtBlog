@@ -34,7 +34,8 @@ return array (
     2 => array (
       array('R调试和测试debug-test','R06-debug_testing','txt'),
       array('R进阶-OOP面向对象','R04-OOP','txt'),
-      array('R加速: 向量化/并行/C++','R_speedUp','txt'),
+      array('R加速: 向量化/多核','R10-future','txt'),
+      array('R加速: C/Rcpp','R11-Rcpp','txt'),
       array('如何写R包?','R20-R-pkgs','txt'),
       array('R元编程 - 调用类型/表达式','R08_meta','txt'),
     ),
