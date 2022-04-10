@@ -5598,22 +5598,32 @@ https://www.zhihu.com/question/49959130/answer/119452063
 
 
 ========================================
-|-- Seurat 4 R包源码解析 19: step8 RunPCA() - 可视化等 //todo
+|-- Seurat 4 R包源码解析 19: step8 RunPCA() - PCA 可视化 与 DimReduc 类
 ----------------------------------------
 1. 调包侠
 接上文。
 
+# Examine and visualize PCA results a few different ways
+print(pbmc[["pca"]], dims = 1:5, nfeatures = 5)
+
+
+
+(1) DimHeatmap 是使用 scale.data 画热图的。
+
+DimHeatmap(pbmc, dims=1, nfeatures = 30)
+DimHeatmap(pbmc, dims = 1, cells = 500, balanced = TRUE)
+DimHeatmap(pbmc, dims = 1:15, cells = 500, balanced = TRUE)
+
+
+
+
+
 
 2. 源码解析
-done:
-- 降维类 DimReduc
+
+DimHeatmap
 
 
-
-==> list todo //todo
-- CreateDimReducObject()
-
-- DimHeatmap
 
 
 
@@ -5632,7 +5642,8 @@ embeddings = new(Class = 'matrix')
 
 
 
-(2) 正则替换
+
+(2) 正则替换 regexec() 与 regmatches()
 embeddings=data.frame(
   "PC_1"=c(1,2),
   "PC_2"=c(2,3),
@@ -5652,6 +5663,292 @@ key
 
 
 
+# regexec: returns a list of the same length as text each element of which is either -1 if there is no match, or a sequence of integers with the starting positions of the match and all substrings corresponding to parenthesized subexpressions of pattern, with attribute "match.length" a vector giving the lengths of the matches (or -1 for no match). The interpretation of positions and length and the attributes follows regexpr.
+
+> colnames(iris[,1:2])
+[1] "Sepal.Length" "Sepal.Width" 
+
+# 返回等长的一个list，不匹配则返回-1，匹配则返回起始位置和匹配长度match.length。
+# 位置、长度、性质参考 regexpr。
+> regexec("Wid", text=colnames(iris[,1:2]))
+[[1]]
+[1] -1
+attr(,"match.length")
+[1] -1
+attr(,"index.type")
+[1] "chars"
+attr(,"useBytes")
+[1] TRUE
+
+[[2]]
+[1] 7
+attr(,"match.length")
+[1] 3
+attr(,"index.type")
+[1] "chars"
+attr(,"useBytes")
+[1] TRUE
+
+
+# regmatches(x, m) 从字符串x中拿出来m匹配的部分字符串。
+rs=regmatches(
+	x=colnames(iris[,1:2]), 
+	m=regexec("Wid", text=colnames(iris[,1:2]))
+)
+rs
+输出:
+[[1]]
+character(0)
+
+[[2]]
+[1] "Wid"
+
+需要剥开list，会自动去掉空值。
+> unlist(rs)
+[1] "Wid"
+
+
+
+(3) grepl()返回逻辑值：是否匹配
+
+grepl(pattern = '^[[:alnum:]]+_$', x = "PC") #F
+grepl(pattern = '^[[:alnum:]]+_$', x = "PC_") #T
+
+
+(4) posix 字符串、正则表达式拼接
+源码: else if (!all(grepl(pattern = paste0('^', key, "[[:digit:]]+$"), x = colnames(x = embeddings)))) {
+
+这个例子说明，正则表达式也是字符串，可以像字符串一样拼接，可以使用变量。
+
+POSIX 字符类：R中使用要加上两层方括号
+	[:alnum:]任何一个字母或数字（等价于[a-ZA-Z0-9]）
+	[:alpha:]任何一个字母（等价于[a-ZA-Z]）
+	[:blank:]空格或制表符（等价于[\t ]） 注:t后面有一个空格
+	[:cntrl:]ASCII控制字符（ASCII 0到31，再加上ASCII 127）
+	[:digit:]任何一个数字（等价于[0-9])
+	[:graph:]和[:print:]一样，但不包括空格
+	[:lower:]任何一个小写字母（等价于[a-z])
+	[:print:]任何一个可打印字符
+	[:punct:]既不属于[:alnum:]，也不属于[:cntrl:]的任何一个字符
+	[:space:]任何一个空格字符，包括空格（等价于[f\n\r\t\v ] 注:v后面有一个空格
+	[:upper:]任何一个大写字母（等价于[A-Z])
+	[:xdigit:]任何一个十六进制数字(等价于[a-fA-F0-9])
+
+测试:
+> colnames(x = iris)
+[1] "Sepal.Length" "Sepal.Width"  "Petal.Length" "Petal.Width"  "Species"
+
+> key="S"
+
+# 匹配S开头，后面是字母或数字，直到一个点号: 前2个符合
+> grepl(pattern = paste0('^', key, "[[:alnum:]]+\\."), x = colnames(x = iris) )
+[1]  TRUE  TRUE FALSE FALSE FALSE
+
+# 匹配S开头，后面是字母或数字: 1,2,5符合
+> grepl(pattern = paste0('^', key, "[[:alnum:]]+"), x = colnames(x = iris) )
+[1]  TRUE  TRUE FALSE FALSE  TRUE
+
+
+
+
+
+(5) 对数据框进行 MinMax 截断
+
+MinMax <- function(data, min, max) {
+  data2 <- data
+  data2[data2 > max] <- max
+  data2[data2 < min] <- min
+  return(data2)
+}
+
+例子:
+> A=matrix(1:12, nrow = 3);A
+     [,1] [,2] [,3] [,4]
+[1,]    1    4    7   10
+[2,]    2    5    8   11
+[3,]    3    6    9   12
+> A[A<5]=5
+> A
+     [,1] [,2] [,3] [,4]
+[1,]    5    5    7   10
+[2,]    5    5    8   11
+[3,]    5    6    9   12
+
+
+
+
+
+(6) base::menu() 文字版菜单
+源码:
+menu(c("Continue with plotting", "Quit"), 
+     title = "Plot(s) requested will likely take a while to plot.")
+
+
+测试:
+> menu(c("Continue with plotting", "Quit"), 
++      title = "Plot(s) requested will likely take a while to plot.")
+Plot(s) requested will likely take a while to plot. 
+
+1: Continue with plotting
+2: Quit
+
+Selection: 1
+[1] 1
+
+
+
+
+(7) 获取/设置图形参数 par()
+
+# 前面设置参数
+orig.par <- par()$mfrow
+par(mfrow = c(nrow, ncol))
+
+
+# 后面复原参数
+par(mfrow = orig.par)
+
+
+
+
+(8) 返回多个 ggplot2 对象的list
+如果有多个图，可以在一个函数中画好，装到一个list中返回。
+技巧就是，要新建list的list，否则一个普通的 ggplot2 对象本身就是一个list，会混淆分不清图数据之间的界限。
+
+library(ggplot2)
+library(patchwork)
+draw2=function(dims=1:4, combine=F, ncol=2){
+  plots <- vector(mode = 'list', length = length(x = dims)) #技巧的体现
+  
+  for(i in dims){
+    df1=data.frame(
+      x=iris$Sepal.Length,
+      y=iris[,i],
+      type=iris$Species
+    )
+    plots[[i]]=ggplot(df1, aes(x,y, color=type))+
+      geom_point()+
+      theme_classic()+
+      ggtitle(colnames(iris)[i] )
+  }
+
+  # (A17) 如果要拼接，则拼接并返回
+  if (combine) {
+    plots <- wrap_plots(plots, ncol = ncol, guides = "collect")
+  }
+  return(plots)
+}
+
+# 返回ggplot2 对象list
+rs1=draw2()
+rs1[[2]] #单独画
+wrap_plots(rs1, ncol=3) #画成3列
+
+# 拼接成1个
+rs2=draw2(combine = T)
+rs2
+
+
+
+
+(9) R原生画热图的函数 image()
+
+par(mar = c(1, 1, 3, 3)) #c(bottom, left, top, right)
+
+# 画热图
+image( as.matrix(iris[,1:4]) )
+image( as.matrix(iris[,1:4]), axes=F) #不要坐标轴
+
+
+# 改变颜色
+image( as.matrix(iris[,1:4]), axes=F,
+       col=c("blue", "white", "red") ) #丑!只有三个颜色，没有梯度
+# 使用渐变色
+library(RColorBrewer)
+myColors=c("blue", "white", "red")
+image( as.matrix(iris[,1:4]), axes=F,
+       col=colorRampPalette(colors = myColors, interpolate ="linear")( 100 ) )
+
+
+
+
+
+
+(10) ggplot2 画热图的函数 geom_raster() and geom_tile()
+
+源码:
+raster=T; #默认参数
+my_geom <- ifelse(test = raster, yes = geom_raster, no = geom_tile)
+
+查文档，一共三个功能相同的函数:
+geom_rect() and geom_tile() 功能相同，参数不同。
+- geom_rect() 使用四个角作为参数
+- geom_tile() 使用tile的中心和宽高。
+
+当所有 tile 宽高一样的时候，geom_raster() 效率更高。
+
+geom_rect() and geom_tile() do the same thing, but are parameterised differently: 
+geom_rect() uses the locations of the four corners (xmin, xmax, ymin and ymax), 
+while geom_tile() uses the center of the tile and its size (x, y, width, height). 
+
+geom_raster() is a high performance special case for when all the tiles are the same size.
+
+
+
+例子: 
+# 依赖本文 3.11 的 Melt2()
+df1=Melt2(iris[,1:4] )
+head(df1)
+
+limits=c(min(df1$vals), max(df1$vals))
+library(RColorBrewer)
+colors=colorRampPalette(colors = myColors, interpolate ="linear")( 100 )
+
+library(ggplot2)
+# fig1
+ggplot(df1, aes(x=rows, y=cols, fill=vals))+
+  geom_raster()+
+  theme(axis.text.x = element_blank(), axis.ticks.x = element_blank())+ #去掉x轴文字、刻度
+  scale_fill_gradientn(limits = limits, colors = colors, na.value = "white")+ #数值范围，渐变色
+  labs(x = NULL, y = NULL, fill = 'Expression') #标签
+# fig2
+ggplot(df1, aes(x=rows, y=cols, fill=vals))+
+  geom_tile()+
+  theme(axis.text.x = element_blank(), axis.ticks.x = element_blank())+ #去掉x轴文字、刻度
+  scale_fill_gradientn(limits = limits, colors = colors, na.value = "white")+ #数值范围，渐变色
+  labs(x = NULL, y = NULL, fill = 'Expression') #标签
+#
+# 好像和 image() 的输出还是有点差异。
+
+
+
+
+要想和 image() 的输出完全一样，还需要固定好行、列位置，就是转为因子。
+
+df1=Melt2(iris[,1:4] )
+head(df1)
+# 增加这2行
+df1$rows=factor(df1$rows, levels = rownames(iris[,1:4]))
+df1$cols=factor(df1$cols, levels = colnames(iris[,1:4]))
+
+limits=c(min(df1$vals), max(df1$vals))
+library(RColorBrewer)
+colors=colorRampPalette(colors = myColors, interpolate ="linear")( 100 )
+
+library(ggplot2)
+# fig1
+ggplot(df1, aes(x=rows, y=cols, fill=vals))+
+  geom_raster()+
+  theme(axis.text.x = element_blank(), axis.ticks.x = element_blank())+ #去掉x轴文字、刻度
+  scale_fill_gradientn(limits = limits, colors = colors, na.value = "white")+ #数值范围，渐变色
+  labs(x = NULL, y = NULL, fill = 'Expression') #标签
+# fig2
+ggplot(df1, aes(x=rows, y=cols, fill=vals))+
+  geom_tile()+
+  theme(axis.text.x = element_blank(), axis.ticks.x = element_blank())+ #去掉x轴文字、刻度
+  scale_fill_gradientn(limits = limits, colors = colors, na.value = "white")+ #数值范围，渐变色
+  labs(x = NULL, y = NULL, fill = 'Expression') #标签
+#
 
 
 
@@ -5659,6 +5956,290 @@ key
 
 
 
+
+
+
+(11) 原生宽变长，unlist(df1) 把数据框按列展开
+
+> df1=iris[1:2, 1:4]
+> df1
+  Sepal.Length Sepal.Width Petal.Length Petal.Width
+1          5.1         3.5          1.4         0.2
+2          4.9         3.0          1.4         0.2
+> unlist(df1)
+Sepal.Length1 Sepal.Length2  Sepal.Width1  Sepal.Width2 Petal.Length1 Petal.Length2 
+          5.1           4.9           3.5           3.0           1.4           1.4 
+ Petal.Width1  Petal.Width2 
+          0.2           0.2 
+
+我们观察发现，unlist()能把数据框按列展开，也就是数据框本质上还是 按列的list。
+展开之后怎么把行名、列名信息保留呢？和数据同行，要新增2列。
+
+行名，依次使用，用完了再循环一次：
+> rep(rownames(df1), times=ncol(df1))
+[1] "1" "2" "1" "2" "1" "2" "1" "2"
+
+列名，一列是固定的，每个重复次数等于行数: 
+> rep(colnames(df1), each=nrow(df1))
+[1] "Sepal.Length" "Sepal.Length" "Sepal.Width"  "Sepal.Width"  "Petal.Length"
+[6] "Petal.Length" "Petal.Width"  "Petal.Width"
+
+
+写成函数，如下:
+我修改了一行。
+./seurat-4.1.0/R/utilities.R:2122:Melt <- function(x) {
+
+# Melt a data frame
+#
+# @param x A data frame
+#
+# @return A molten data frame
+#
+Melt2 <- function(x) {
+  # 融化数据，就是变长
+  # 前置转为df
+  if (!is.data.frame(x = x)) {
+    x <- as.data.frame(x = x)
+  }
+  # 就是使用 unlist 解开df成 vals 列的
+  # 然后添加2列：行名 列名
+  return(data.frame(
+    rows = rep.int(x = rownames(x = x), times = ncol(x = x)),
+    # 作者貌似不知道 each 还有一个 each 参数
+    cols = rep(colnames(x), each=nrow(x)),
+    # cols = unlist(x = lapply(X = colnames(x = x), FUN = rep.int, times = nrow(x = x))),
+    vals = unlist(x = x, use.names = FALSE)
+  ))
+}
+
+# 测试 
+> df1
+  Sepal.Length Sepal.Width Petal.Length Petal.Width
+1          5.1         3.5          1.4         0.2
+2          4.9         3.0          1.4         0.2
+> Seurat:::Melt(df1) #结果一样
+> Melt2(df1)
+  rows         cols vals
+1    1 Sepal.Length  5.1
+2    2 Sepal.Length  4.9
+3    1  Sepal.Width  3.5
+4    2  Sepal.Width  3.0
+5    1 Petal.Length  1.4
+6    2 Petal.Length  1.4
+7    1  Petal.Width  0.2
+8    2  Petal.Width  0.2
+
+
+
+
+
+
+
+
+(12) 自定义 ggplot2 主题: 就是返回一个theme()函数。
+
+./seurat-4.1.0/R/visualization.R:5292:WhiteBackground <- function(...) {
+#
+
+#' @importFrom ggplot2 theme element_rect
+#' @export
+#' @concept visualization
+#'
+#' @rdname SeuratTheme
+#' @aliases WhiteBackground
+#'
+WhiteBackground <- function(...) {
+  white.rect = element_rect(fill = 'white') #方框填充白色
+  white.theme <- theme(
+    # Make the plot, panel, and legend key backgrounds white
+    plot.background = white.rect, #背景白色
+    panel.background = white.rect, #每个面板
+    legend.key = white.rect, #图例背景
+    # Validate the theme
+    validate = TRUE,
+    ...
+  )
+  return(white.theme)
+}
+
+测试： 连坐标轴的线也没有了。
+library(ggplot2)
+ggplot(mtcars, aes(mpg, wt)) + geom_point()+
+  WhiteBackground()
+
+
+
+
+
+另一个主题 NoAxes()，也是返回一个theme() 函数，但是提供了更多选项。
+./seurat-4.1.0/R/visualization.R:5118:NoAxes <- function(..., keep.text = FALSE, keep.ticks = FALSE) {
+
+#' @param keep.text Keep axis text
+#' @param keep.ticks Keep axis ticks
+#'
+#' @importFrom ggplot2 theme element_blank
+#' @export
+#' @concept visualization
+#'
+#' @rdname SeuratTheme
+#' @aliases NoAxes
+#'
+#' @examples
+#' # Generate a plot with no axes
+#' library(ggplot2)
+#' df <- data.frame(x = rnorm(n = 100, mean = 20, sd = 2), y = rbinom(n = 100, size = 100, prob = 0.2))
+#' p <- ggplot(data = df, mapping = aes(x = x, y = y)) + geom_point(mapping = aes(color = 'red'))
+#' p + NoAxes()
+#'
+NoAxes <- function(..., keep.text = FALSE, keep.ticks = FALSE) {
+  blank <- element_blank()
+  
+  # 没有坐标轴
+  no.axes.theme <- theme(
+    # Remove the axis elements
+    axis.line.x = blank, #x轴线 不要
+    axis.line.y = blank,
+    # Validate the theme
+    validate = TRUE, #//这个干什么的?
+    ...
+  )
+  
+  # 不要文字
+  if (!keep.text) {
+    no.axes.theme <- no.axes.theme + theme( #theme()函数可加
+      axis.text.x = blank, #刻度文字
+      axis.text.y = blank,
+      axis.title.x = blank, #坐标轴标签
+      axis.title.y = blank,
+      validate = TRUE,
+      ...
+    )
+  }
+  
+  # 不要刻度线
+  if (!keep.ticks){
+    no.axes.theme <- no.axes.theme + theme(
+      axis.ticks.x = blank, #刻度线
+      axis.ticks.y = blank,
+      validate = TRUE,
+      ...
+    )
+  }
+  
+  return(no.axes.theme)
+}
+
+
+
+
+
+
+
+
+(13) 画一层散点图，全透明，就是为了获得一个图例
+
+SingleRasterMap() 源码片段:
+if (!is.null(x = group.by)) {
+  # 散点图，全透明，就是为了获得一个图例！? 骚操作
+  plot2 <- plot + geom_point(
+    mapping = aes_string(x = 'Cell', y = 'Feature', color = 'Identity'),
+    alpha = 0.5
+  ) +
+    guides(color = guide_legend(override.aes = list(alpha = 1))) #一个 color的图例，代替fill的图例
+}
+plot2
+
+
+
+
+
+
+
+
+
+
+###
+
+() new(Class = 'JackStrawData')
+jackstraw [ˈdʒækstrɔː] n. 稻草人；小木片（游戏用）
+./seurat-object-4.0.4/R/jackstraw.R:24:JackStrawData <- setClass(
+./seurat-object-4.0.4/R/jackstraw.R:25:  Class = "JackStrawData",
+
+
+
+
+
+
+
+
+
+
+
+
+() 颜色，留给以后的专题
+./seurat-4.1.0/R/visualization.R:4956:PurpleAndYellow <- function(k = 50) {
+
+
+
+
+
+
+
+
+
+4. PR
+
+(1) Top() 的去重有问题。
+
+#
+test2=function(n=5, top=3){
+  message("0>>total gene:",n, ", selectTop:",top,"\n")
+  data=data.frame(exp=1:n)
+  rownames(data)=paste0("gene",1:nrow(data) )
+  data
+  num=top
+  positive <- head(x = rownames(x = data), n = num);
+  message("1>>positive:", paste0(positive,collapse = ",") )
+  # 取后n个，并倒序
+  negative <- rev(x = tail(x = rownames(x = data), n = num)); negative
+  message("1>>negative:", paste0(negative,collapse = ","))
+  # 去重复，值得怀疑 //todo
+  # remove duplicates
+  if (positive[num] == negative[num]) { #如果最后一个相等
+    negative <- negative[-num] #则删掉 negative 的最后一个值
+  }
+  message("\n2>>negative:", paste0(negative,collapse = ","))
+}
+test2()
+test2(4,3)
+#不过好在这里99.99%的情况用不到，因为大家的基因数都至少上千，而要打印的不超过100
+test2(1000,5)
+
+
+> test2()
+0>>total gene:5, selectTop:3
+
+1>>positive:gene1,gene2,gene3
+1>>negative:gene5,gene4,gene3
+
+2>>negative:gene5,gene4
+
+
+> test2(4,3)
+0>>total gene:4, selectTop:3
+
+1>>positive:gene1,gene2,gene3
+1>>negative:gene4,gene3,gene2
+
+2>>negative:gene4,gene3,gene2
+
+> test2(1000,5)
+0>>total gene:1000, selectTop:5
+
+1>>positive:gene1,gene2,gene3,gene4,gene5
+1>>negative:gene1000,gene999,gene998,gene997,gene996
+
+2>>negative:gene1000,gene999,gene998,gene997,gene996
 
 
 
@@ -5670,6 +6251,11 @@ key
 ========================================
 |-- todo //日志类
 ----------------------------------------
+总目录: https://zhuanlan.zhihu.com/p/465392721
+
+
+
+
 
 2. 
 > Assays(pbmc)
@@ -5780,6 +6366,8 @@ function (parent.find = "Seurat", ...)
 @importFrom rlang is_quosure enquo eval_tidy
 
 
+PCA: https://www.bioinformatics.babraham.ac.uk/training/10XRNASeq/Dimension%20Reduction.pdf
+tSNE: https://distill.pub/2016/misread-tsne/
 
 
 
@@ -5788,15 +6376,27 @@ function (parent.find = "Seurat", ...)
 
 
 ========================================
-//tmp
+准备工作
 ----------------------------------------
-
-
-启动一个 docker 学习R
+1. 启动一个 docker 学习R
 $ docker run -d -p 8787:8787 -e PASSWORD=123456 rocker/rstudio:4.1.1
 
 交互式
 $ docker exec -it cd36 bash
+
+
+
+
+2. win10 安装一个R
+
+(1) 最新版是 R 4.1.3
+https://mirrors.tuna.tsinghua.edu.cn/CRAN/
+install.packages("Seurat")
+
+(2) 更新 Rstudio
+原来的 V 1.1.414
+
+https://www.rstudio.com/products/rstudio/download/
 
 
 
