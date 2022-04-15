@@ -4,6 +4,12 @@ txtBlog v0.6
 
 # 目的：建立一个能组织和阅读txt文件的博客系统，用于管理知识。  
 
+
+每周至少提交一个 commit。
+用输出倒逼输入，让成长有迹可循。
+
+
+
 ![screenShot0.4.6](./public/images/screenShot0.4.6.jpg)
 
 

@@ -6249,6 +6249,594 @@ test2(1000,5)
 
 
 ========================================
+|-- Seurat 4 R包源码解析 20: step9 确定PC的维数-碎石图(选读:怎么求PC的p值?)
+----------------------------------------
+1. 调包侠
+# step9 Determine the 'dimensionality' of the dataset
+
+# 建议跳过这个，太慢!
+# NOTE: This process can take a long time for big datasets, comment out for expediency. More
+# approximate techniques such as those implemented in ElbowPlot() can be used to reduce
+# computation time
+pbmc <- JackStraw(pbmc, num.replicate = 100)
+pbmc <- ScoreJackStraw(pbmc, dims = 1:20)
+JackStrawPlot(pbmc, dims = 1:15)
+
+
+# 推荐使用这个选择PC个数，速度很快!
+ElbowPlot(pbmc) #取碎石图拐角处的PC个数
+
+
+
+
+
+(1) [耗时!](可选步骤)为每个PC计算一个p值的步骤
+
+# 第一个函数 JackStraw() 的影响范围
+计算前
+> pbmc@reductions$pca@jackstraw
+A JackStrawData object simulated on 0 features for 0 dimensions.
+ Scored for: 0 dimensions.
+
+计算PC的p值
+# rep=100时，根据我的测试，可能使用不带进度条的 apply 只需要不到1min。而这里需要7分钟。
+# 选了 rep=325 这个不是很整的数，是为了验证几个猜测
+> pbmc <- JackStraw(pbmc, num.replicate = 325)
+  |++++++++++++++++++++++++++++++++++++++++++++++++++| 100% elapsed=10m 14s
+  |++++++++++++++++++++++++++++++++++++++++++++++++++| 100% elapsed=01s  
+
+
+计算后
+> pbmc@reductions$pca@jackstraw
+A JackStrawData object simulated on 2000 features for 20 dimensions.
+ Scored for: 0 dimensions.
+
+> slotNames(pbmc@reductions$pca@jackstraw)
+[1] "empirical.p.values"      "fake.reduction.scores"   "empirical.p.values.full"
+[4] "overall.p.values" 
+每个PC的 p 值保存的位置 "overall.p.values" 
+
+
+
+# 第二个函数 ScoreJackStraw() 影响范围:
+> head(pbmc@reductions$pca@jackstraw@overall.p.values)
+<0 x 0 matrix>
+> pbmc <- ScoreJackStraw(pbmc, dims = 1:20) 
+#计算后
+> dim(pbmc@reductions$pca@jackstraw@overall.p.values)
+[1] 20  2
+
+
+
+
+
+
+
+(2) 算法(选读): 为每个PC计算一个p值的算法
+求每个PC的p值的整个算法流程，分布在至少2个函数中(JackStraw, 与 ScoreJackStraw)。
+结果保存在 内部对象 pbmc@reductions$pca@jackstraw 的 slot 中。
+
+
+阅读R包文档:
+
+JackStraw: Determine statistical significance of PCA scores.
+Description:
+Randomly permutes a subset of data, and calculates projected PCA scores for these 'random' genes. Then compares the PCA scores for the 'random' genes with the observed PCA scores to determine statistical signifance. End result is a p-value for each gene's association with each principal component.
+文章: Inspired by Chung et al, Bioinformatics (2014)
+这个文章谁找到了告诉我 //todo
+
+
+ScoreJackStraw: Compute Jackstraw scores significance.
+Description: 
+Significant PCs should show a p-value distribution that is strongly skewed to the left compared to the null distribution. The p-value for each PC is based on a proportion test comparing the number of features with a p-value below a particular threshold (score.thresh), compared with the proportion of features expected under a uniform distribution of p-values.
+作者 Author(s): Omri Wurtzel
+这个作者在哪个文章/地方中贡献的这个函数? //todo
+
+
+
+阅读源代码:
+
+1) 按照数据处理步骤，求每个PC的p值的步骤如下:
+- 1.抽样 HVG 的1%基因
+- 2.对每一行洗牌，做PCA
+- 3.记录各PC的loading matrix
+	* 结果保存在 fake.reduction.scores，我感觉是不是应该有基因重复抽样?
+- 4.重复以上1-3过程多次(几百上千次)
+- 5.计数求经验p值: 
+	* 对PC遍历，内层再对基因遍历: 某PC列中超过该基因原始loading(正规不打乱时的PCA)的个数 / 总观测数。
+	* 结果保存在 empirical.p.values
+- 6.对每列，求PC的打分: in ScoreJackStraw()
+	* 经验p值 < 某个阈值的基因个数，与基于经验p值均匀分布时低于该阈值的基因个数(总个数*该阈值)，这两个数字的比例和1:1做卡方检验的p值，作为PC的总体p值。
+	* 结果保存在 overall.p.values 中
+
+> slotNames(pbmc@reductions$pca@jackstraw)
+[1] "empirical.p.values"      "fake.reduction.scores"   "empirical.p.values.full"
+[4] "overall.p.values" 
+
+pbmc@reductions$pca@jackstraw 包含这几个 slot:
+empirical.p.values  = jackStraw.empP, #比较PC列中，比每个基因的系数大的占总行数的比例，经验p值
+fake.reduction.scores = fake.vals, #行乱序后的scaled.data做的PCA的loading矩阵，假得降维打分
+empirical.p.values.full = matrix()
+
+
+
+2) 再按照输出的数据，把以上求每个PC的p值的步骤再说一遍:
+
+step1:对基因抽样，打乱同一个基因的细胞标签后做PCA，记录基因对每个PC的权重矩阵(loadings)。
+> dim(pbmc@reductions$pca@jackstraw$fake.reduction.scores)
+[1] 6500   20
+> 2000*0.01*325 #HVG2000个，每次抽样1%，抽样次数325
+[1] 6500
+> pbmc@reductions$pca@jackstraw$fake.reduction.scores[1:2,1:3]
+              [,1]          [,2]         [,3]
+[1,] -0.0031335730 -0.0019125475 -0.004546701
+[2,]  0.0001275733  0.0000134703  0.003276954
+
+
+step2: 对于一个PC，对于每一个基因: 其权重的绝对值 大于该列绝对值的比例，作为经验p值
+> dim(pbmc@reductions$pca@jackstraw$empirical.p.values)
+[1] 2000   20 #注意这里，已经变成2000行了，和2层循环变量的个数一致。
+> pbmc@reductions$pca@jackstraw$empirical.p.values[1:3,1:3]
+               PC1         PC2          PC3
+PPBP   0.000000000 0.010461538 0.0000000000
+LYZ    0.000000000 0.001846154 0.0150769231
+S100A9 0.000000000 0.000000000 0.0001538462
+
+
+step3: 对 empirical.p.values 矩阵，取每列(某个PC): 小于某阈值的基因个数，基于经验p值均匀分布时的期望的基因个数(总基因个数*该阈值) 是否符合1:1做 prop.test()
+新增一个slot: overall.p.values
+> dim(pbmc@reductions$pca@jackstraw@overall.p.values)
+[1] 20  2
+> head(pbmc@reductions$pca@jackstraw@overall.p.values)
+     PC         Score
+[1,]  1 7.937110e-157
+[2,]  2 6.165783e-105
+[3,]  3  1.981211e-33
+
+
+画图时，既看经验p值是否偏离对角线，向左偏的越远越好；
+又看总体p值，越小越好。
+
+
+
+
+
+
+
+
+
+2. 源码解析
+
+
+## todo 
+
+- LogSeuratCommand()
+- CheckDots()
+- IsSCT()
+./seurat-4.1.0/R/utilities.R:1986:IsSCT <- function(assay) {
+先跳过 sctransform()，后面有空再补上 //todo
+
+
+
+
+
+
+
+
+3. R tips 
+
+(1) 为 apply() 家族函数添加进度条。
+建议不要加，太慢。
+
+pbapply: Adding Progress Bar to '*apply' Functions
+Adding progress bar to *apply functions, possibly leveraging parallel processing.
+https://cran.r-project.org/web/packages/pbapply/index.html
+https://peter.solymos.org/code/2016/09/16/how-to-add-pbapply-to-r-packages.html
+
+在R包中使用: https://www.r-bloggers.com/2016/09/how-to-add-pbapply-to-r-packages-2/
+
+
+测试了一下，确实可以添加进度条，缺点就是添加后太慢了！
+
+# make data
+set.seed(2021)
+df1 <- matrix(runif(5e6), ncol = 5)
+
+library(pbapply)
+system.time({ #10.016s
+  rs0=apply(df1, 1, sd)
+})
+
+system.time({ #111s 太慢了
+  rs5=pbapply(df1, 1, sd)
+})
+# |++++++++++++++++++++++++++++++++++++++++++++++++++| 100% elapsed=01m 51s
+
+table(rs5 - rs0<1e-10) #all TRUE
+
+
+
+
+
+
+
+
+(2) order(x1, x2)排序 的第二个参数
+
+# order returns a permutation which rearranges its first argument into ascending or descending order, breaking ties by further arguments.
+> a1=c(7,1,9);a1
+[1] 7 1 9
+
+# 一般给一个参数，返回该参数每个元素的下标位置编号
+> a1.o=order(a1); a1.o #默认升序，第一个元素最小
+[1] 2 1 3
+> a1[a1.o] #根据下标位置，打印每个元素
+[1] 1 7 9
+
+
+
+
+# 还可以给出第二个参数，当第一个参数有相等元素的时候，按照第二个参数对应位置进行排序。
+In the case of ties in the first vector, values in the second are used to break the ties. If the values are still tied, values in the later arguments are used to break the tie (see the first example). The sort used is stable (except for method = "quick"), so any unresolved ties will be left in their original ordering.
+
+> a1=c(1,1,9);a1
+[1] 1 1 9
+
+> order(a1, c(2,1,0)) #前2个元素相等，则看第二个参数，第二个位置最小，则其下标为1；
+[1] 2 1 3
+> order(a1, c(2,1,10)) #第二个参数的 最后一个值不影响序号
+[1] 2 1 3
+> order(a1, c(2,10,10)) #如果第二个参数的前2个值顺序换了，第一个元素最小，则第一个元素的下标是1
+[1] 1 2 3
+
+
+
+
+
+
+
+
+
+(3) 对一个矩阵的每一行独立的随机洗牌: MatrixRowShuffle
+
+主要思路: col()获取下标，然后 runif()打乱，最后order()排序
+
+#1) col() Column Indexes
+Description: Returns a matrix of integers indicating their column number in a matrix-like object, or a factor of column labels.
+Usage: col(x, as.factor = FALSE)
+
+> x=iris[1:3,1:4];x
+  Sepal.Length Sepal.Width Petal.Length Petal.Width
+1          5.1         3.5          1.4         0.2
+2          4.9         3.0          1.4         0.2
+3          4.7         3.2          1.3         0.2
+> col(t(x))
+     [,1] [,2] [,3]
+[1,]    1    2    3
+[2,]    1    2    3
+[3,]    1    2    3
+[4,]    1    2    3
+> c(col(t(x)))
+ [1] 1 1 1 1 2 2 2 2 3 3 3 3
+
+
+#2) 随机数
+> runif(n = length(x))
+[1] 0.2922186 0.3220882 0.6291032 0.7704804
+
+这个长度不够，df本质是成列的list，长度就是列数；而矩阵的length则是总的元素个数。
+> class(x)
+[1] "data.frame"
+> x_=as.matrix(x)
+> class(x_)
+[1] "matrix" "array" 
+
+> length(x)
+[1] 4
+> length(x_)
+[1] 12
+
+所以使用:
+> runif(n = length( t(t(x)) ))
+ [1] 0.03726171 0.69340549 0.14605814 0.24839075 0.26784137 0.58710378 0.27862248 0.24537888 0.82303043
+[10] 0.75663306 0.47392544 0.13659220
+
+
+#3) order() 排序，相等的元素之间，按照第二个元素排序。
+ind=order(
+  c(col(x = t(x))), 
+  runif(n = length(x = t(x) ))
+)
+> ind
+ [1]  1  4  2  3  7  8  5  6 12 11  9 10
+
+#4) 然后恢复成矩阵形式
+matrix(
+  data=t(x)[ind],
+  ncol=ncol(x),
+  nrow=nrow(x),
+  byrow=F
+)
+输出:
+     [,1] [,2] [,3] [,4]
+[1,]  5.1  1.4  4.9  1.3
+[2,]  0.2  1.4  3.0  4.7
+[3,]  3.5  0.2  0.2  3.2
+> x #对比
+  Sepal.Length Sepal.Width Petal.Length Petal.Width
+1          5.1         3.5          1.4         0.2
+2          4.9         3.0          1.4         0.2
+3          4.7         3.2          1.3         0.2
+
+
+
+
+包装成函数 MatrixRowShuffle()
+./seurat-4.1.0/R/utilities.R:2075:MatrixRowShuffle <- function(x) {
+
+独立的把矩阵的每一行的元素打乱。
+# Independently shuffle values within each row of a matrix
+#
+# Creates a matrix where correlation structure has been removed, but overall values are the same
+#
+# @param x Matrix to shuffle
+#
+# @return Returns a scrambled matrix, where each row is shuffled independently
+#
+#' @importFrom stats runif #使用 均匀分布函数
+#
+# @export
+#
+# @examples
+# mat <- matrix(data = rbinom(n = 25, size = 20, prob = 0.2 ), nrow = 5)
+# mat
+# MatrixRowShuffle(x = mat)
+#
+MatrixRowShuffle <- function(x) {
+  # x2 等于x
+  x2 <- x #没啥用
+  # x2又等于x的转置，那第一行可以删掉了。 //bug
+  x2 <- t(x = x)
+
+  # 获取每个元素的列编号，并在相等时按照第二个参数 对应位置排序
+  ind <- order(c(col(x = x2)), runif(n = length(x = x2)))
+  
+  # 恢复矩阵形式
+  x2 <- matrix(
+    data = x2[ind],
+    nrow = nrow(x = x),
+    ncol = ncol(x = x),
+    byrow = TRUE
+  )
+  return(x2)
+}
+
+
+
+
+
+
+(4) prop.test() 就是卡方检验？
+prop.test( matrix(c(1,200,20,400), nrow=2) )
+chisq.test( matrix(c(1,200,20,400), nrow=2) )
+
+输出:
+> prop.test( matrix(c(1,200,20,400), nrow=2) )
+
+	2-sample test for equality of proportions with continuity correction
+
+data:  matrix(c(1, 200, 20, 400), nrow = 2)
+X-squared = 6.3174, df = 1, p-value = 0.01196
+alternative hypothesis: two.sided
+95 percent confidence interval:
+ -0.4089409 -0.1624877
+sample estimates:
+    prop 1     prop 2 
+0.04761905 0.33333333 
+
+> chisq.test( matrix(c(1,200,20,400), nrow=2) )
+
+	Pearson's Chi-squared test with Yates' continuity correction
+
+data:  matrix(c(1, 200, 20, 400), nrow = 2)
+X-squared = 6.3174, df = 1, p-value = 0.01196
+
+
+
+文档给的例子
+> prop.test(smokers, patients)
+
+	4-sample test for equality of proportions without continuity correction
+
+data:  smokers out of patients
+X-squared = 12.6, df = 3, p-value = 0.005585
+alternative hypothesis: two.sided
+sample estimates:
+   prop 1    prop 2    prop 3    prop 4 
+0.9651163 0.9677419 0.9485294 0.8536585 
+
+
+
+
+
+
+(5) 拼接、输出字符串: paste0(), sprintf()
+
+源码:
+data.plot$PC.Score <- rep(
+	x = paste0("PC ", score.df[ ,"PC"], ": ", sprintf("%1.3g", score.df[ ,"Score"])),
+	each = length(x = unique(x = data.plot$Contig))
+)
+
+
+测试:
+# 1. sprintf() 类似C的打印功能，第一个是带替换字符的字符串，后面是按顺序的参数。
+> sprintf("the height of this %s is %1.3g m", "dog", 0.805789 )
+[1] "the height of this dog is 0.806 m"
+
+# 2. paste0() 拼接字符串，支持输入向量
+> paste0("metric of ", colnames(iris)[1:4])
+[1] "metric of Sepal.Length" "metric of Sepal.Width"  "metric of Petal.Length" "metric of Petal.Width" 
+
+
+# 3. 本文
+> score.df=data.frame(
+   PC=1:3,
+   Score=c(0.1,0.22,0.333)
+)
+> score.df
+  PC Score
+1  1 0.100
+2  2 0.220
+3  3 0.333
+> paste0("PC ", score.df[ ,"PC"], ": ", sprintf("%1.3g", score.df[ ,"Score"]))
+[1] "PC 1: 0.1"   "PC 2: 0.22"  "PC 3: 0.333"
+
+
+
+
+
+
+
+
+
+(6) 快速获取颜色列表: scales::hue_pal()(5)
+
+
+测试:
+> scales::hue_pal()(5)
+[1] "#F8766D" "#A3A500" "#00BF7D" "#00B0F6" "#E76BF3"
+
+> n=5; barplot(rep(1,n), col=scales::hue_pal()(n))
+
+
+
+
+scales::hue_pal是一个返回函数的函数:
+
+> scales::hue_pal
+function (h = c(0, 360) + 15, c = 100, l = 65, h.start = 0, direction = 1) 
+{
+    stopifnot(length(h) == 2)
+    stopifnot(length(c) == 1)
+    stopifnot(length(l) == 1)
+    force_all(h, c, l, h.start, direction)
+	
+	# 最后返回的是下面这个函数，但是可以用母函数的参数等变量: 
+    function(n) {
+        if (n == 0) {
+            stop("Must request at least one colour from a hue palette.", 
+                call. = FALSE)
+        }
+        if ((diff(h)%%360) < 1) {
+            h[2] <- h[2] - 360/n
+        }
+        hues <- seq(h[1], h[2], length.out = n)
+        hcl <- cbind(hues, c, l)
+        pal <- farver::encode_colour(hcl, from = "hcl")
+        if (direction == -1) {
+            rev(pal)
+        }
+        else {
+            pal
+        }
+    }
+}
+<bytecode: 0x55923a23b630>
+<environment: namespace:scales>
+
+
+这个就是返回的函数，只要一个传入参数了，但是可以使用母函数的参数，这就叫闭包(enclosure)。
+# https://www.r-bloggers.com/2015/03/using-closures-as-objects-in-r/
+> scales::hue_pal()
+function (n) 
+{
+    if (n == 0) {
+        stop("Must request at least one colour from a hue palette.", 
+            call. = FALSE)
+    }
+    if ((diff(h)%%360) < 1) {
+        h[2] <- h[2] - 360/n
+    }
+    hues <- seq(h[1], h[2], length.out = n)
+    hcl <- cbind(hues, c, l)
+    pal <- farver::encode_colour(hcl, from = "hcl")
+    if (direction == -1) {
+        rev(pal)
+    }
+    else {
+        pal
+    }
+}
+<bytecode: 0x55923a2420d0>
+<environment: 0x5591d0bd0a50>
+
+
+
+
+
+
+
+
+(7) 检验参数个数，不达标报错
+源码:
+stopifnot(length(h) == 2)
+
+
+测试:
+fn1=function(h=c(1,2)){
+  stopifnot(length(h) == 2)
+  return(h)
+}
+fn1()
+fn1( c(1)) #报错
+fn1( c(1,2,3)) #报错
+
+
+
+
+
+
+(8) 使用 ggplot2 画QQ-plot
+
+# 输入参数 sample 是一列经验p值，然后使用 stat_qq(distribution = qunif) 设置均匀分布。
+gp <- ggplot(data = data.plot, mapping = aes_string(sample = 'Value', color = 'PC.Score')) +
+	stat_qq(distribution = qunif) +
+
+	# 其他绘图参数
+	labs(x = "Theoretical [runif(1000)]", y = "Empirical") +
+	scale_color_manual(values = cols) +
+	xlim(0, ymax) +
+	ylim(0, xmax) +
+	coord_flip() + #交换x、y坐标及标签
+	geom_abline(intercept = 0, slope = 1, linetype = "dashed", na.rm = TRUE) + #添加斜线，斜率1，过原点
+	guides(color = guide_legend(title = "PC: p-value")) + #修改图例标题
+	theme_cowplot() #设置主题
+	#
+
+
+
+
+
+========================================
+|-- Seurat 4 R包源码解析 21: step10 细胞聚类 FindNeighbors() //todo
+----------------------------------------
+
+# step10 Cluster the cells
+pbmc <- FindNeighbors(pbmc, dims = 1:10)
+pbmc <- FindClusters(pbmc, resolution = 0.5)
+
+# Look at cluster IDs of the first 5 cells
+head(Idents(pbmc), 5)
+
+
+
+
+
+
+
+
+========================================
 |-- todo //日志类
 ----------------------------------------
 总目录: https://zhuanlan.zhihu.com/p/465392721

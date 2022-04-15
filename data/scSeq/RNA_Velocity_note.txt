@@ -1713,8 +1713,19 @@ for i in ['UCEC','PACA','THCA','ESCA']:
 
 
 ========================================
-|-- 使用心得体会、没搞懂的点
+|-- scVelo 使用心得体会、没搞懂的点
 ----------------------------------------
+
+没搞懂 //todo
+- 提供了三个模型，静态模型不怎么有人用，那么另两个有啥区别？
+	scv.tl.velocity(adata, mode='steady_state')	
+	scv.tl.velocity(adata, mode='dynamical')	
+	scv.tl.velocity(adata, mode='stochastic')
+
+
+多图的，总结到简书: https://www.jianshu.com/p/e91b02292bc5
+
+
 
 1. 心得
 - 大家更喜欢 grid 放正文，并把背景变淡(调节不透明度 alpha=0.01, 0.05等)
@@ -1725,18 +1736,168 @@ for i in ['UCEC','PACA','THCA','ESCA']:
 
 
 
-2. 没搞懂
-- 提供了三个模型，静态模型不怎么有人用，那么另两个有啥区别？
-	scv.tl.velocity(adata, mode='steady_state')	
-	scv.tl.velocity(adata, mode='dynamical')	
-	scv.tl.velocity(adata, mode='stochastic')
+
+2. 怎么添加自定义颜色? 怎么对分类变量按因子排序?
+
+(1) github 教程
+https://github.com/basilkhuder/Seurat-to-RNA-Velocity
+
+Clusters and their cluster colors can be added in the same fashion (and again, they must match the order of the Cell IDs.) Instead of adding them as an multidimensional observation ('obsm'), we'd add them under the unstructured annotation 'uns.'
+
+sample_one.uns['Cluster_colors']
+
+
+
+
+(2) 张泽民的代码库 w.step1.Figure2.CD8_Tex_velo.html
+## add colSet
+adata.obs["meta.cluster"] = adata.obs["meta.cluster"].astype('category')
+color = pd.read_csv(f"{oDir}/../../data/metaInfo/color_meta.cluster_.txt.gz", compression="gzip", sep="\t", header=None, index_col=0)
+color_used = list(color.loc[adata.obs["meta.cluster"].cat.categories,1])
+adata.uns['meta.cluster_colors'] = color_used
+
+这个只有代码，没有文件，不确定那个 gz 是什么文件结构。
+
+
+
+(3) 我的测试，确实实现了自定义颜色
+
+- 画图时colors变量，加上后缀名 _colors，比如 画图时用 color='cluster_names'，则需要把颜色加到 adata.uns['cluster_names_colors'] 上;
+- 需要的颜色个数和该变量的独特值个数一致	color_used = list(color.loc[adata.obs["cluster_names"].cat.categories,"color"])
+- 怎么按因子排序？ 改变 画图时 cluster 的顺序? 
+	https://stackoverflow.com/questions/38023881/pandas-change-the-order-of-levels-of-factor-type-object
+
+
+#1) add colSet
+adata.obs["cluster_names"] = adata.obs["cluster_names"].astype('category')
+
+
+color = pd.read_csv(f"../merge/data/mergeR3.neutrophil.color.txt", #compression="gzip", 
+            sep=" ", header=0, index_col=0)
+#color.index=color.index.astype("str")
+color.index=color["cluster_names"]
+
+# 对数据 按分类因子 排序
+adata.obs["cluster_names"].cat.reorder_categories(color["cluster_names"], inplace=True)
+
+# 获取颜色列
+color_used = list(color.loc[adata.obs["cluster_names"].cat.categories,"color"])
+adata.uns['cluster_names_colors'] = color_used
+adata
+
+
+
+#2) 绘图
+scv.settings.set_figure_params('scvelo', dpi=300, dpi_save=300)
+fig, ax = plt.subplots()
+ax.set_aspect(1)
+scv.pl.velocity_embedding_grid(adata, basis='umap',color='cluster_names', title='WT',
+                               arrow_size=1, arrow_length=2, arrow_color="#D2691E",
+                               alpha=0.01,
+                               #density=0.9,
+                               legend_loc='right margin',legend_fontsize=5,
+                               show=True,
+                               save=f"{type}.grid.pdf", #figsize=(10,10),
+                               xlim=[-10,10],ylim=[-10,10], ax=ax)
+
+
+
+
+#) trouble shooting history
+adata.obs["cluster_names"] = adata.obs["cluster_names"].astype('category')
+adata.obs["cluster_names"]
+
+
+color = pd.read_csv(f"../merge/data/mergeR3.neutrophil.color.txt", #compression="gzip", 
+            sep=" ", header=0, index_col=0)
+color.index=color["cluster_names"]
+color
+
+
+adata.obs["cluster_names"].cat.categories
+
+
+
+
+
+
+
+
+
+
+
+
+
+3. 最长的步骤怎么缓存/读取文件
+
+# this step will take a long while
+import gc
+gc.collect()
+#
+temp_pre= f"{type}_nue.in_process2"
+if False==os.path.exists(f"{temp_pre}.velo.gz.h5ad"):
+    scv.tl.recover_dynamics(adata, var_names='all', n_jobs=64)
+    scv.tl.velocity(adata, mode='dynamical')
+    adata.write(f"{temp_pre}.velo.gz.h5ad", compression='gzip')
+    print(">>Write to file")
+else:
+    adata = sc.read(f"{temp_pre}.velo.gz.h5ad", compression='gzip', ext="h5ad")
+    print(">>read from file")
+
+
+
+
+
+
 
 
 
 
 
 ========================================
+h5ad 格式: scanpy 保存 Annotated data 数据的格式 (py专用，后来R也兼容了)
 ----------------------------------------
+anndata was initially built for Scanpy. https://scanpy.readthedocs.io/en/stable/
+
+1. Annotated data.
+https://github.com/scverse/anndata
+
+(1) anndata - Annotated data
+anndata is a Python package for handling annotated data matrices in memory and on disk, positioned between pandas and xarray. anndata offers a broad range of computationally efficient features including, among others, sparse data support, lazy operations, and a PyTorch interface.
+
+- 是一个内存、硬盘格式
+- 介于 pandas 和 xarray 之间
+- 提供了高效计算的特性: 稀疏矩阵支持、懒惰操作、PyTorch 接口等
+
+
+(2) 文档 
+https://anndata.readthedocs.io/en/latest/
+
+Getting started with anndata https://anndata-tutorials.readthedocs.io/en/latest/getting-started.html
+上文参考这个博客: https://adamgayoso.com/posts/ten_min_to_adata/
+
+数据格式说明及API: https://anndata.readthedocs.io/en/stable/generated/anndata.AnnData.html#anndata.AnnData
+
+
+
+
+2. R 语言的支持
+(1) ReadH5AD: Read from and write to h5ad files
+https://www.rdocumentation.org/packages/Seurat/versions/3.1.4/topics/ReadH5AD
+
+Description
+Utilize the Anndata h5ad file format for storing and sharing single-cell expression data. Provided are tools for writing objects to h5ad files, as well as reading h5ad files into a Seurat object
+
+
+
+(2) anndata for R
+Porting anndata to R with reticulate.
+https://cannoodt.dev/2021/02/anndata-for-r/
+使用$代替.获取内部数据。
+
+
+
+
 
 
 

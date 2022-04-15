@@ -29,7 +29,7 @@ return array (
 
 
   array (
-    0 => 2,
+    0 => 3,
     1 => '高级R话题',
     2 => array (
       array('R调试和测试debug-test','R06-debug_testing','txt'),
@@ -38,6 +38,7 @@ return array (
       array('R加速: C/Rcpp','R11-Rcpp','txt'),
       array('如何写R包?','R20-R-pkgs','txt'),
       array('R元编程 - 调用类型/表达式','R08_meta','txt'),
+      array('R 高级话题','R30-adv','txt'),
     ),
   ),
 
