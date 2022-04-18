@@ -54,6 +54,7 @@ return array (
 	  array('notepad++','npp', 'html'),
 	  array('sublime编辑器txt','sublime_text', 'txt'),
 	  array('vs code','vsCode', 'txt'),
+	  array('其他编辑器 other_editor','other_editor', 'txt'),
 	  array('Typora','Typora', 'md'),
 	  array('phpStorm','phpStorm001', 'md'),
     ),
