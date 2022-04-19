@@ -7,7 +7,7 @@ return array (
     2 => array (
       array('项目描述','R001','html',),
       array('参考资料','R002','html'),
-      array('R杂项(安装、可重复研究)','R003-grocer','txt'),
+      array('R杂项(安装、脚本化)','R003-grocer','txt'),
       array('R IDE(Rstudio)','R00-IDE','txt'),
     ),
   ),
@@ -62,9 +62,10 @@ return array (
     0 => 4,
     1 => '常用R包',
     2 => array (
+      array('Rmd-notebook 生成报告','Rmd-notebook','txt'),
+      array('R web: shinny交互框架','pkg-shiny','txt'),
       array('分析差异表达基因 DEG','pkg-DEG','txt'),
       array('数据框清理dplyr','pkg-dplyr','txt'),
-      array('R web: shinny框架','pkg-shiny','txt'),
 
     ),
   ),
