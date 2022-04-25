@@ -53,8 +53,6 @@ return array (
     1 => '专业知识库',
     2 => array (
       array('生信编程必练200题','practise501','txt'),
-      array('肿瘤基础理论','cancer_basis','txt'),
-      array('精编免疫学','immunology_basis','txt'),
       array('统计与统计参数','NGS_statistics','txt'),
     ),
   ),

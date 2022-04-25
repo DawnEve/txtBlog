@@ -1740,6 +1740,122 @@ $ docker ps -a #查看全部容器，包括已经停止的容器
 
 
 ========================================
+|-- 在流程中使用 jupyter notebook, 并传递参数
+----------------------------------------
+
+嵌入到流程中的脚本，要满足2个基本要求：可以使用命令行运行，可以接收参数。
+
+1. 测试实例
+有一个 jupyter notebook，需要传入参数才能运行。
+另一个py函数，启动该 notebook，其原理是在 notebook 最前面插入一个 cell，就是传入的变量(只支持基本类型，不支持pandas等复杂类型的数据，复杂类型可以通过json或csv等文件的文件名传递数据)。
+输出是一个新的 notebook。
+
+
+
+(1) 模板 notebook: 接收参数，打印参数，并画饼图
+$ cat test_fig_param.ipynb #有两个 cell 
+#1 settings
+#n=2
+#filename="a1_"+str(n)
+#msg="this is test1"
+print(msg)
+
+
+#2  figure
+import matplotlib.pyplot as plt
+
+labels=['Clothes', 'Food', 'Housing', 'Travel', 'Others']
+data=[0.1, 1.45, 0.3, 0.1, 0.05] #可以不是百分比，直接放原始数据，自动计算百分比
+
+print(filename)
+
+# plt.pie(data, labels=labels) #没有显示百分比
+plt.pie(data[0:n], labels=labels[0:n], autopct="%1.1f%%") #加2个百分号就能正常显示百分号了
+
+plt.savefig(f"{filename}.pdf") #先保存，再显示
+plt.show()
+
+
+
+
+
+(2) 使用脚本运行该 notebook，需要使用 papermill 包。
+$ pip3 install papermill
+
+==> 然后使用如下代码运行 第一个 notebook 
+调用格式: papermill.execute_notebook(input_path, output_path, parameters=None)
+前2个是文件名，字符串类型；最后一个参数，是字典类型。
+
+
+
+import datetime
+import papermill as pm
+#dir(pm.execute_notebook)
+#help(pm.execute_notebook)
+# input_path, output_path, parameters=None,
+
+output="result"
+
+import os
+if not os.path.exists(output):
+    os.mkdir(output)
+
+
+#2
+for i in range(1,5):
+    book=f"book1/book{str(i)}.txt"
+    params={
+        "n":i,
+        "filename": f"nb_test_{str(i)}",
+        "msg":"xxtest"
+    }
+
+    #3
+    pm.execute_notebook(
+        input_path="test_fig_param.ipynb",
+        output_path="{0}/{1}_{2}.ipynb".format(output,
+            book.split("/")[-1].split(".")[0],
+            datetime.datetime.now().strftime("%Y%m%d%H%M"),
+        ),
+        parameters=params
+    )
+
+print("end")
+
+
+
+
+
+(3) 输出结果: 一部分是新生成的 notebook，另一部分是 notebook 生成的 pdf 图片。
+result/
+	book1_202204242248.ipynb
+	book2_202204242248.ipynb
+	book3_202204242248.ipynb
+	book4_202204242248.ipynb
+
+./ 
+nb_test_1.pdf
+nb_test_2.pdf
+nb_test_3.pdf
+nb_test_4.pdf
+
+
+
+
+
+
+
+
+ref:
+https://my.oschina.net/u/4411942/blog/3632024
+https://github.com/IndustrialDataops/notebook-as-pipeline/blob/main/executor.py 如何脚本化 notebook，接收参数
+画图时怎么保存 https://blog.csdn.net/tianxinyiru/article/details/121403165
+
+
+
+
+
+========================================
 使用 anaconda 在centOS无root权限安装python3
 ----------------------------------------
 more文档：https://docs.anaconda.com/anaconda/user-guide/getting-started
