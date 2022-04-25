@@ -19,6 +19,7 @@ return array (
     2 => array (
       array('肿瘤基础理论','cancer_basis','txt'),
       array('精编免疫学','immunology_basis','txt'),
+      array('基因功能','gene_Functions','txt'),
     ),
   ),
 

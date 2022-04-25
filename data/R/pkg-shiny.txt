@@ -2,6 +2,9 @@ pkg-shiny
 
 注意: 官网只有一个s (shiny)，那就不要写成2个s。
 
+Plumber
+OpenCPU 
+httpuv
 
 
 ========================================
@@ -1134,22 +1137,539 @@ subset <- reactive({
 
 
 
+========================================
+shiny 的优化 //todo
+----------------------------------------
+基于shiny-server+docker的部署、维护与发布 https://zhuanlan.zhihu.com/p/53844404
+
+基于shiny的前后端优化 https://zhuanlan.zhihu.com/p/55367267
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 ========================================
+*** 无状态的 web API 接口 ***
 ----------------------------------------
 
 
-========================================
-----------------------------------------
-
 
 
 ========================================
+|-- R工程化 Rest API 之 plumber 包: Turn your R code into a web API
 ----------------------------------------
+
+1. 描述
+https://docs.rstudio.com/resources/plumber/
+https://www.rplumber.io/
+https://github.com/rstudio/plumber
+
+
+Plumber allows you to create a web API by merely decorating your existing R source code with roxygen2-like comments. Take a look at an example.
+
+
+
+
+
+2. 安装测试
+(1) 安装R包 plumber
+> BiocManager::install("plumber")
+报错
+ERROR: dependency ‘sodium’ is not available for package ‘plumber’
+* removing ‘/home/wangjl/R/x86_64-pc-linux-gnu-library/4.1/plumber’
+
+
+
+> install.packages("sodium")
+又报错
+Configuration failed because libsodium was not found. Try installing:
+ * deb: libsodium-dev (Debian, Ubuntu, etc)
+ * rpm: libsodium-devel (Fedora, EPEL)
+ * csw: libsodium_dev (Solaris)
+ * brew: libsodium (OSX)
+If libsodium is already installed, check that 'pkg-config' is in your
+PATH and PKG_CONFIG_PATH contains a libsodium.pc file. If pkg-config
+is unavailable you can set INCLUDE_DIR and LIB_DIR manually via:
+R CMD INSTALL --configure-vars='INCLUDE_DIR=... LIB_DIR=...'
+
+
+$ sudo apt install libsodium-dev
+
+> BiocManager::install("plumber")
+
+
+
+
+(2) 测试文件
+
+$ cat backup/plumber2.R
+# plumber.R
+
+#* Echo back the input
+#* @param msg The message to echo
+#* @get /echo
+function(msg="") {
+  list(msg = paste0("The message is: '", msg, "'"))
+}
+
+#* Plot a histogram
+#* @serializer png
+#* @get /plot
+function() {
+  rand <- rnorm(100)
+  hist(rand)
+}
+
+#* Return the sum of two numbers
+#* @param a The first number to add
+#* @param b The second number to add
+#* @post /sum
+function(a, b) {
+  as.numeric(a) + as.numeric(b)
+}
+
+
+
+(3) 浏览器测试，Rstudio内打开后台
+library(plumber)
+
+# 'plumber.R' is the location of the file shown above
+pr("backup/plumber2.R") %>%
+  pr_run(port=8001)
+
+
+# 启动方式2
+pr <- plumber::plumb("plumber.R")
+pr$run()
+
+# 我们事后查一下pr是什么数据类型，原来是R6类
+> class(pr)
+[1] "Plumber"  "Hookable" "R6"
+
+
+会弹出浏览器页面，在该页面内能测试 API。
+
+
+打开新的浏览器
+http://127.0.0.1:8001/echo?msg=good
+	显示信息 {"msg":["The message is: 'good'"]}
+
+http://127.0.0.1:8001/plot
+	显示一个柱状图
+
+http://127.0.0.1:8001/sum?a=1&b=3
+	{"error":"405 - Method Not Allowed"} #只接收 post 方法，无法处理 get 请求。
+
+
+
+对于 post:
+$ curl -X POST "http://y.biomooc.com:8787/p/9c12f043/sum?a=10&b=120" -H "accept: */*" -d "" #貌似乱码
+$ curl -X POST "http://127.0.0.1:8001/sum?a=10&b=120" -H "accept: */*" -d ""
+	返回: [130]
+
+
+
+
+(4) 测试2：使用命令行启动后台
+$ cd /data/wangjl/rmarkdown_demo/bookdown-demo-main
+$ R 
+> library(plumber)
+> pr("backup/plumber2.R") %>% pr_run(port=8001) #因为我的8000已经在用了，只能换一个其他的端口号。
+Running plumber API at http://127.0.0.1:8001
+Running swagger Docs at http://127.0.0.1:8001/__docs__/
+
+# 默认只能使用 127.0.0.1 访问，怎么指定 IP 呢?
+
+#!/usr/bin/env Rscript
+library(plumber)
+pr("myfile.R") %>%
+  pr_run(port=8001, host="0.0.0.0")
+
+
+> pr("backup/plumber2.R") %>% pr_run(port=8001, host="0.0.0.0")
+Running plumber API at http://0.0.0.0:8001
+Running swagger Docs at http://127.0.0.1:8001/__docs__/
+
+
+(5) 使用命令行 curl 访问
+$ curl "http://localhost:8001/echo"
+ {"msg":["The message is: ''"]}
+$ curl "http://localhost:8001/echo?msg=hello"
+ {"msg":["The message is: 'hello'"]}
+
+参数其实就是字符串参数
+$ curl --data "a=4&b=3" "http://localhost:8001/sum"
+[7]
+
+或者按JSON传递参数
+$ curl -H "Content-Type: application/json" --data '{"a":4, "b":5}' http://localhost:8001/sum
+ [9]
+
+
+
+
+
+
+3. 部署一个简单的逻辑回归模型
+
+(1) 逻辑回归模型调用的例子
+#例子需要处理成二分类
+all.data <- iris[iris$Species != 'setosa', ]
+ 
+#分训练测试
+set.seed(1234)
+ind <- sample(2, nrow(all.data), replace = TRUE, prob = c(0.7, 0.3))
+traindata <- all.data[ind == 1, ]
+testdata <- all.data[ind == 2, ]
+
+#训练模型
+fit <- glm(Species ~ ., family = binomial(link = 'logit'), data = traindata)
+
+#保存模型
+save(fit, file = "fit.RData")
+
+
+################
+> fit
+Call:  glm(formula = Species ~ ., family = binomial(link = "logit"), 
+    data = traindata)
+
+Coefficients:
+ (Intercept)  Sepal.Length   Sepal.Width  Petal.Length   Petal.Width  
+     -42.875        -1.542        -5.889         8.357        16.986  
+
+Degrees of Freedom: 77 Total (i.e. Null);  73 Residual
+Null Deviance:	    108.1 
+Residual Deviance: 10.85 	AIC: 20.85
+################
+
+
+
+
+(2) backup/plumber.R 如下
+#' Echo the parameter that was sent in
+#' @param msg The message to echo back.
+#' @get /predict
+function(v1, v2, v3, v4){
+  predict(fit, type = 'response', newdata = data.frame(
+	Sepal.Length = as.numeric(v1), 
+	Sepal.Width = as.numeric(v2), 
+	Petal.Length = as.numeric(v3), 
+	Petal.Width = as.numeric(v4))
+)}
+
+
+
+(2) 脚本调用或在命令行输入
+load("fit.RData") #载入 fit 这个变量
+pr <- plumber::plumb("backup/plumber.R")
+pr$run(host = "0.0.0.0", port = 8001)
+
+
+输出:
+Running plumber API at http://0.0.0.0:8001
+Running swagger Docs at http://127.0.0.1:8001/__docs__/
+
+
+host为0.0.0.0表示其他机器可以通过该机器在局域网的ip地址调用，port指定一个端口。
+接口启动后在浏览器输入 http://127.0.0.1:8001/predict?v1=6&v2=2&v3=6&v4=1
+返回结果：[0.9616]
+
+
+
+如果需要返回没有中括号包裹的json，在plumber.R对应的函数上方加第二行参数：
+#' Echo the parameter that was sent in
+#' @serializer unboxedJSON
+#' @param msg The message to echo back.
+#' @get /predict
+
+
+
+
+
+
+
+
+
+100. 更多使用方法
+
+(1) plumber似乎有很严重的中文编码问题?
+在Ubuntu上好像没问题，source文件的时候加上encoding="UTF-8"
+
+(2) 用shiny吧?
+场景不一样哈，已经是模型要和后端java对接的场景了啊。shiny-server 是探索阶段。
+
+
+
+docker 中使用: https://www.rplumber.io/articles/hosting.html#rstudio-connect-1
+Cheat Sheet: https://github.com/rstudio/cheatsheets/blob/main/plumber.pdf
+
+
+
+
 
 
 ========================================
+|-- OpenCPU: OpenCPU system for embedded scientific computation and reproducible research[安装失败]
 ----------------------------------------
+
+1. 特点
+https://www.opencpu.org/
+https://github.com/opencpu/opencpu
+
+
+(1) An API for Embedded Scientific Computing
+https://www.opencpu.org/api.html
+
+OpenCPU is a system for embedded scientific computing and reproducible research. The OpenCPU server provides a reliable and interoperable HTTP API for data analysis based on R. You can either use the public servers or host your own.
+
+(2) Seamless R and JavaScript Integration
+https://www.opencpu.org/jslib.html
+
+The OpenCPU JavaScript client library provides the most seamless integration of R and JavaScript available today. Enjoy simple RPC and data I/O through standard Ajax techniques. Check for yourself by trying the jsfiddle examples.
+
+(3) Less is more
+
+No need to learn crazy widgets or obscure framworks. The OpenCPU API is a clean and simple interface to R, nothing more nothing less. It is compatible with any language or framework that speaks HTTP.
+
+(4) Statistical Apps
+https://www.opencpu.org/apps.html
+
+OpenCPU uses standard R packaging to develop, ship and deploy web applications. Several open source example apps are available from Github. Any app can be used on the public server or locally within an R session.
+
+Rmd 实例: https://rwebapps.ocpu.io/markdownapp/www/
+
+
+(5) Concurrency by design
+The OpenCPU API is concurrent by design. Your applications will naturally support parallel computing and asynchronous requests without introducing any additional complexity.
+
+
+(6) Easy Installation, Configuration
+https://www.opencpu.org/download.html
+
+Installing your own OpenCPU server is super easy and only takes a few minutes. The cloud server supports continuous integration and is highly configurable to fit your every need.
+
+
+(7) Reliable, Secure and Scalable
+The cloud server builds on AppArmor to enforce security, and Nginx for caching and load balancing. All profiles and configurations can easily be customized. Our public servers have been steadily online for over a year without any problems.
+
+
+(8) Business Friendly Licensing
+All parts of OpenCPU are released under the Apache2 license. The software can be used, modified and redistributed for both for open source and proprietary projects in academia, industry or elsewhere.
+
+
+
+
+2. 安装 
+https://www.opencpu.org/download.html
+
+$ sudo apt install libprotobuf-dev
+
+> install.packages("protolite")
+
+> install.packages("opencpu")
+
+各种依赖，安装失败 。。。。
+
+
+
+
+
+========================================
+|-- jug: A Simple Web Framework for R [7年不更新，念旧失修，安装失败]
+----------------------------------------
+1. 简介
+http://bart6114.github.io/jug/index.html
+
+依赖 httpuv 包。
+
+It focuses on maximizing the ease with wich you can create web APIs for your R code. 
+
+
+
+2. 安装
+
+# devtools::install_github("Bart6114/jug")
+
+> install.packages("jug")
+package ‘jug’ is not available for this version of R
+
+安装不上。
+看源码上次更新时间，7年前，确实年久失修
+https://github.com/Bart6114/jug-crud-example
+
+
+这个是和Rstudio产品最接近的一个，可惜没有继续开发。
+
+
+
+
+
+
+========================================
+|-- httpuv: HTTP and WebSocket Server Library (低层http包)
+----------------------------------------
+
+1. 简介 
+https://cran.r-project.org/web/packages/httpuv/index.html
+https://github.com/rstudio/httpuv
+
+httpuv provides low-level socket and protocol support for handling HTTP and WebSocket requests directly from within R. It uses a multithreaded architecture, where I/O is handled on one thread, and the R callbacks are handled on another.
+
+Provides low-level socket and protocol support for handling HTTP and WebSocket requests directly from within R. It is primarily intended as a building block for other packages, rather than making it particularly easy to create complete web applications using httpuv alone. httpuv is built on top of the libuv and http-parser C libraries, both of which were developed by Joyent, Inc. 
+(See LICENSE file for libuv and http-parser license information.)
+
+libuv(Cross-platform asynchronous I/O): https://github.com/libuv/libuv
+http-parser(http request/response parser for c): https://github.com/nodejs/http-parser
+
+
+
+
+2. 测试 
+
+(1) 安装
+# install from CRAN
+install.packages("httpuv")
+
+
+(2) 测试
+访问后，返回系统时间和访问路径
+
+library(httpuv)
+s <- startServer(host = "0.0.0.0", port = 8001,
+  app = list(
+    call = function(req) {
+      body <- paste0("Time: ", Sys.time(), "<br>Path requested: ", req$PATH_INFO)
+      list(
+        status = 200L,
+        headers = list('Content-Type' = 'text/html'),
+        body = body
+      )
+    }
+  )
+)
+
+
+# 测试:
+访问 http://127.0.0.1:8001/book
+返回:
+Time: 2022-04-25 20:01:37
+Path requested: /book
+
+
+
+查看该类
+> str(s)
+Classes 'WebServer', 'Server', 'R6' <WebServer>
+  Inherits from: <Server>
+  Public:
+    getHost: function () 
+    getPort: function () 
+    getStaticPathOptions: function () 
+    getStaticPaths: function () 
+    initialize: function (host, port, app, quiet = FALSE) 
+    isRunning: function () 
+    removeStaticPath: function (path) 
+    setStaticPath: function (..., .list = NULL) 
+    setStaticPathOption: function (..., .list = NULL) 
+    stop: function () 
+  Private:
+    appWrapper: AppWrapper, R6
+    handle: 139954797679144
+    host: 0.0.0.0
+    port: 8001
+    running: TRUE
+
+
+
+# 关闭服务器
+> s$stop()
+
+Or, to stop all running httpuv servers:
+> stopAllServers()
+
+
+
+
+
+(3) 设置静态路径 staticPaths 
+
+dir.create("www")
+
+s <- startServer("0.0.0.0", 8001,
+  app = list(
+    staticPaths = list("/" = "www/")
+  )
+)
+
+> writeLines(c("<pre>", "hello", "world"), "www/index.html")
+
+默认，如果/下有index.html则会自动加载。
+http://127.0.0.1:8001/
+显示:
+hello
+world
+
+
+
+
+
+(4) WebSocket server //todo
+
+# 启动服务断端
+s <- startServer("127.0.0.1", 8001,
+  list(
+    onWSOpen = function(ws) {
+      # The ws object is a WebSocket object
+      cat("Server connection opened.\n")
+
+      ws$onMessage(function(binary, message) {
+        cat("Server received message:", message, "\n")
+        ws$send(message)
+      })
+      ws$onClose(function() {
+        cat("Server connection closed.\n")
+      })
+    }
+  )
+)
+
+
+# 客户端 https://github.com/rstudio/websocket
+ws <- websocket::WebSocket$new("ws://127.0.0.1:8080/")
+ws$onMessage(function(event) {
+  cat("Client received message:", event$data, "\n")
+})
+
+# Wait for a moment before running next line
+ws$send("hello world")
+
+# Close client
+ws$close()
+
+
+
+
+
 
 
 
