@@ -2396,12 +2396,213 @@ AnnData object with n_obs × n_vars = 38781 × 55401
 
 
 ========================================
+|-- 利用整合后的bam.h5ad 直接 和 seurat.h5ad 合并，做 scVelo
 ----------------------------------------
+1. 对某个 Seurat 文件进行重新聚类，并输出为 h5ad 文件 
+
+重新聚类过程 略。
+
+输出为 h5ad 文件: 
 
 
 
-========================================
-----------------------------------------
+
+2. 做 scVelo
+(1) 合并数据: bam.h5 + Seurat.h5
+import os
+os.chdir("/home/wangjl/data/neu/scRNA/202202newTag/scVelo/") #for output figures/ in this dir
+os.getcwd()
+
+
+
+# input file names
+file_bam_loom="./velocyto/mergedAll.bam.loom.h5ad"
+
+type="re_mergedAllexAPC1"
+#file_h5=f"Seurat_dataset/{type}/data/{type}.h5ad"
+file_h5=f"../solo/{type}/data/{type}.h5ad"
+#file_h5=f"./Seurat_dataset/{type}.h5ad"
+
+# check
+print("file_bam_loom:", file_bam_loom)
+print("file_h5:", file_h5)
+
+if not os.path.exists(file_bam_loom):
+    raise Exception( "input file not exist or not a file: %s" % file_bam_loom )
+
+if not os.path.exists(file_h5):
+    raise Exception( "input file not exist or not a file: %s" % file_h5 )
+
+
+
+
+
+import scanpy as sc
+import anndata 
+from scipy import io
+from scipy.sparse import coo_matrix, csr_matrix
+import numpy as np
+import os
+import pandas as pd
+
+import scvelo as scv
+import matplotlib.pyplot as plt
+
+scv.settings.verbosity = 3
+scv.settings.set_figure_params('scvelo', facecolor='white', dpi=100, 
+                               fontsize=6, color_map='viridis',
+                               frameon=False)
+
+
+# load bam files in loom
+ldata=scv.read(file_bam_loom)
+ldata
+
+print(ldata.obs.index[0:2])
+
+# load Seurat in h5 
+adata = sc.read(file_h5)
+adata
+
+# merge
+adata = scv.utils.merge(adata, ldata)
+adata
+
+
+
+(2) scVelo 
+import gc
+gc.collect()
+
+
+temp_pre= f"{type}_nue.in_process"
+if False==os.path.exists(f"{temp_pre}.velo.h5ad"):
+    #scv.pp.filter_and_normalize(adata, min_shared_counts=5, min_shared_cells=3, log=True)
+    scv.pp.filter_and_normalize(adata)
+
+    ## clean some genes
+    import re
+    flag = [not bool(re.match('^Rp[ls]', i)) for i in adata.var_names]
+    adata = adata[:,flag]
+    adata = adata[:,adata.var_names != "Malat1"]
+    
+    #adata
+    scv.pp.moments(adata, n_neighbors=30, n_pcs=30)
+
+    # this step will take a long while
+    scv.tl.recover_dynamics(adata, var_names='all', n_jobs=64) #14:27-->14:52(61%)-->15:15(100%), -->save-->
+    scv.tl.velocity(adata, mode='dynamical')
+    adata.write(f"{temp_pre}.velo.h5ad", compression='gzip')
+else:
+    print(">>read from file:", temp_pre)
+    adata = sc.read(f"{temp_pre}.velo.h5ad", compression='gzip')
+
+
+
+adata.var.head()
+adata.var.groupby("velocity_genes")["velocity_genes"].count()
+
+scv.tl.velocity_graph(adata)
+scv.tl.velocity_embedding(adata, basis="umap")
+
+
+
+
+(3) Figures
+
+#1 embedding
+scv.pl.velocity_embedding(adata, basis = 'umap', title=f"{type}",
+                          save=f"{type}.embedding.pdf",
+                          color="seurat_clusters")
+
+scv.pl.velocity_embedding_grid(adata, basis = 'umap', title=f"{type}",
+                                 save=f"{type}.grid2.pdf",
+                               alpha=0.1,
+                               color="seurat_clusters")
+
+#2 grid
+scv.settings.set_figure_params('scvelo', dpi=300, dpi_save=300)
+fig, ax = plt.subplots()
+ax.set_aspect(1)
+scv.pl.velocity_embedding_grid(adata, basis='umap',color='seurat_clusters', title=f"{type}",
+                               arrow_size=1, arrow_length=2, arrow_color="#D2691E",
+                               alpha=0.01,
+                               density=0.9,
+                               legend_loc='right margin',legend_fontsize=5,
+                               show=True,
+                               save=f"{type}.grid.pdf", #figsize=(10,10),
+                               xlim=[-10,10],ylim=[-10,10], ax=ax)
+
+#3 stream 
+import matplotlib.pyplot as plt
+scv.settings.set_figure_params('scvelo', dpi=300, dpi_save=300)
+#fig, ax = plt.subplots()
+#ax.set_aspect(1)
+scv.pl.velocity_embedding_stream(adata, basis='umap',color='seurat_clusters', title=f"{type}",
+                               arrow_size=1, #arrow_length=2, 
+                               arrow_color="#D2691E",
+                               alpha=0.2, density=0.9,
+                               legend_loc='right margin',legend_fontsize=5,
+                               show=True,
+                               save=f"{type}.stream.pdf")
+                                #, #figsize=(10,10),
+                               #xlim=[-10,10],ylim=[-10,10], 
+                               #  ax=ax)
+
+scv.pl.velocity_embedding_stream(adata, basis="umap", title=f"{type}",
+                                 save=f"{type}.stream2.pdf",
+                                 color="seurat_clusters")
+
+
+
+
+#4 for each sample 
+adata.obs.groupby("sample0")["sample0"].count()
+
+# for each cancerType (only T)
+for i in ["APC2", "APC3",'DSS1', "DSS2", "WT2"]:
+    flag = [j == i for j in adata.obs.loc[:,'sample0']]
+    adata_sub = adata[flag,]
+    #flag2 = [j == "T" for j in adata_sub.obs.loc[:,'loc']]
+    #adata_sub = adata_sub[flag2,]
+    #
+    scv.settings.set_figure_params('scvelo', dpi=300, dpi_save=300)
+    fig, ax = plt.subplots()
+    ax.set_aspect(1)
+    scv.pl.velocity_embedding_grid(adata_sub, basis='umap',color='seurat_clusters', title=i,
+                               arrow_size=1, arrow_length=2, arrow_color="#D2691E", alpha=0.1,
+                               legend_loc='right margin',legend_fontsize=5,
+                               density=0.8,
+                               save=f"{type}_Sup.{i}.grid.pdf",# figsize=(10,9),
+                               xlim=[-10,10],ylim=[-10,10], ax=ax)
+
+
+#5 latent_time 
+scv.tl.latent_time(adata)
+scv.pl.scatter(adata, color='latent_time', 
+               save=f"{type}.latent_time.pdf",# figsize=(10,9),
+               color_map='gnuplot', size=80)
+
+scv.pl.scatter(adata, color='latent_time', 
+               save=f"{type}.latent_time2.pdf",# figsize=(10,9),
+               color_map='gnuplot', size=10)
+
+import time;
+time.strftime("%Y/%m/%d %H:%M:%S", time.localtime())
+
+
+
+# source: batch0/scVelo_py/scVelo.re_mergedAllexAPC1.py.ipynb
+
+
+
+
+
+
+
+
+
+
 
 
 

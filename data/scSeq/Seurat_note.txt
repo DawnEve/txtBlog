@@ -2097,6 +2097,126 @@ DimPlot_2 = function(scObj, group.by="seurat_clusters"){
 
 
 
+========================================
+|-- 把细胞的 PC 画到 UMAP 图上：配合样本分类确定批次效应
+----------------------------------------
+
+作用：可能能看到哪个PC对哪个分类有贡献？
+并去掉该 PC: 
+	hpfall.remv1=RegressOut(hpfall,c("PC2","PC5","PC7"),do.scale = T)
+	对于 Seurat 4，使用 ScaleData(, vars.to.regress=) 去掉这些变异
+
+
+
+
+
+1. 获取数据
+使用 PBMC 3k 数据。
+
+# Defining the information in the seurat object of interest
+columns <- c(paste0("PC_", 1:16),
+             "seurat_clusters", "UMAP_1", "UMAP_2")
+
+# Extracting this data from the seurat object
+pc_data <- FetchData(pbmc, vars = columns)
+
+
+
+
+2. 画图 
+
+# 查看有几个类
+ElbowPlot(pbmc3k)
+
+
+(1) 单个画
+# 每个类的核心坐标
+umap_label_pos=FetchData(pbmc, vars = c("seurat_clusters", "UMAP_1", "UMAP_2")) %>% 
+	group_by(seurat_clusters) %>%
+	summarise(x=mean(UMAP_1), y=mean(UMAP_2))
+
+# 画图
+pc="PC_1"
+ggplot(pc_data, aes(UMAP_1, UMAP_2)) +
+  geom_point(aes_string(color=pc), alpha = 0.7, size=0.5) +
+  scale_color_gradient2(#guide = TRUE,
+    low = "blue",
+    mid="white",
+    high = "red")  +
+  geom_text(data=umap_label_pos,
+            aes(label=seurat_clusters, x, y)) +
+  ggtitle(pc)+ theme_bw()
+
+
+
+(2) 批量化
+# Plotting a UMAP plot for each of the PCs
+purrr::map(paste0("PC_", 1:16), function(pc){
+  ggplot(pc_data, aes(UMAP_1, UMAP_2)) +
+    geom_point(aes_string(color=pc), alpha = 0.7) +
+    #scale_color_gradient(guide = FALSE, low = "grey90", high = "red")  +
+    scale_color_gradient2(low = "blue", mid="white", high = "red")  +
+    geom_text(data=umap_label_pos, aes(label=seurat_clusters, x, y)) +
+    ggtitle(pc)+ theme_bw()
+}) %>% 
+  cowplot::plot_grid(plotlist = .)
+
+
+
+
+
+3. 包装成函数
+
+
+#' Plot cell PC score as color on UMAP plot
+#'
+#' @param sce Seurat object
+#' @param nPCs an integer, total number of PC to plot;
+#'
+#' @return a ggplot2 merge obj, by cowplot::plot_grid
+#' @export
+#'
+#' @examples
+#' plot_PC_on_UMAP(pbmc)
+plot_PC_on_UMAP=function(sce, nPCs=16){
+  # Defining the information in the seurat object of interest
+  columns <- c( paste0("PC_", 1:nPCs),  "seurat_clusters", "UMAP_1", "UMAP_2")
+  
+  # Extracting this data from the seurat object
+  pc_data <- FetchData(sce, vars = columns)
+  
+  # Center of cluster on UMAP
+  umap_label_pos=FetchData(sce, vars = c("seurat_clusters", "UMAP_1", "UMAP_2")) %>% 
+    group_by(seurat_clusters) %>%
+    summarise(x=mean(UMAP_1), y=mean(UMAP_2))
+  
+  # Plotting a UMAP plot for each of the PCs
+  purrr::map(paste0("PC_", 1:nPCs), function(pc){
+    ggplot(pc_data, aes(UMAP_1, UMAP_2)) +
+      geom_point(aes_string(color=pc), alpha = 0.7) +
+      #scale_color_gradient(guide = FALSE, low = "grey90", high = "red")  +
+      scale_color_gradient2(low = "blue", mid="white", high = "red")  +
+      geom_text(data=umap_label_pos, aes(label=seurat_clusters, x, y)) +
+      ggtitle(pc)+ theme_bw()
+  }) %>% 
+    cowplot::plot_grid(plotlist = .)
+}
+
+
+
+如果有样本分组信息，自然是可以把这里的细胞类型换成分组信息了，开看哪些样本在哪个PC中高亮，进而推断其是不是特殊的batch，对应的PC以及基因是否需要去掉（或回归掉）。
+
+最后我们再次强调单细胞数据分析的非线性过程，许多时候，如果看不到就不能判断是否需要做某个处理，所以需要一个反馈的过程。在单细胞数据科学中PCA分析是属于特征选择的过程，即，哪些特征拿来分析，这当然是值得谨慎处理的。单细胞数据分析的默认参数（default parameters）时代已经一去不复返了。
+
+
+
+
+
+refer: https://www.jianshu.com/p/bcb0b520e056
+
+
+
+
 
 
 

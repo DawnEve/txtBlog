@@ -6819,9 +6819,9 @@ gp <- ggplot(data = data.plot, mapping = aes_string(sample = 'Value', color = 'P
 
 
 ========================================
-|-- Seurat 4 R包源码解析 21: step10 细胞聚类 FindNeighbors() //todo
+|-- Seurat 4 R包源码解析 21: step10 细胞聚类 FindNeighbors()
 ----------------------------------------
-
+1. 调包侠
 # step10 Cluster the cells
 pbmc <- FindNeighbors(pbmc, dims = 1:10)
 pbmc <- FindClusters(pbmc, resolution = 0.5)
@@ -6829,8 +6829,541 @@ pbmc <- FindClusters(pbmc, resolution = 0.5)
 # Look at cluster IDs of the first 5 cells
 head(Idents(pbmc), 5)
 
+table(pbmc$seurat_clusters)
 
 
+
+(1) FindNeighbors() 的影响范围 
+
+pbmc <- FindNeighbors(pbmc, dims = 1:10) # 的影响范围是 pbmc@graphs
+
+> names(pbmc@graphs)
+ [1] "RNA_nn"  "RNA_snn"
+> class(pbmc@graphs$RNA_nn)
+[1] "Graph"
+
+
+# nn是一个0-1矩阵，一行一个细胞，一行内规定 k 个最近邻的点为1，其他都是0.
+# 该矩阵是通过 C++ 函数求出来的近似KNN算法，具体实现是 Annoy 。
+> dim(pbmc@graphs$RNA_nn) 
+[1] 2638 2638
+
+
+# snn 是对 (nn矩阵) 计算得来的，记录着细胞间的 Jacard 相似度，交集/并集，不重叠为0，重叠为1。也就是值越大越相似。
+# 低于 某个值(默认是1/15=0.06666667)的 统一设定为0.
+> dim(pbmc@graphs$RNA_snn)
+[1] 2638 2638
+
+
+(2) KNN 算法
+KNN就是最近邻算法，最朴素的暴力求距离法，对于高纬度数据速度太慢。有人基于二叉树提出了 KDTree, BallTree， Annoy等方法。Seurat4使用的是Annoy算法实现。
+
+
+其中机器学习领域常用的距离度量方法，有欧式距离、余弦距离、曼哈顿距离、dot内积等
+Seurat 4 中KNN算法中几种可选距离，euclidean(默认), cosine, manhattan, and hamming。
+
+主流的近邻算法都支持上述不同的距离度量。其中n维特征空间的a、b向量的欧式距离: 差的平方和再开方，体现数值上的绝对差异；
+而余弦距离基于余弦相似度（两个向量间夹角的余弦值），体现方向上的相对差异。
+如果对向量做归一化处理，二者的结果基本是等价的。
+
+具体实现步骤看本文 4-1。
+
+
+(3) SNN 算法
+Jacard 相似度: 交集大小/并集大小。没有交集时0，完全重合时1。
+
+可以根据每个细胞的最近邻细胞的重合情况，计算细胞间两两的 Jarcard 相似度。
+
+具体实现步骤看本文 4-2。
+
+
+
+
+
+
+
+2. 源码解析 
+
+直接使用的函数:
+- FindNeighbors 本文。
+- FindClusters 下一篇再说。
+
+
+
+
+
+
+
+3. R tips
+
+(1) 函数参数列表中，可以直接引用其并列的参数，比如取反
+
+fn1=function(a1=F, a2=!a1){
+  print(a2)
+}
+fn1(T) #F
+fn1(F) #T
+
+
+fn2=function(a2=!a1, a1=F){
+  print(a2)
+}
+fn2(a1=T) #F
+fn2(a1=F) #T
+
+
+fn3=function(x, y=x+10){
+  print(y)
+}
+fn3(5) #15
+
+
+
+
+(2) 画细胞的 snn 图: igraph 包擅长画各种网络图
+# 源码见: FindNeighbors.Seurat 的 A7 部分。下文是可以运行的代码
+
+https://igraph.org/
+igraph is a collection of network analysis tools with the emphasis on efficiency, portability and ease of use. 
+igraph is open source and free. 
+igraph can be programmed in R, Python, Mathematica and C/C++.
+R 版本文档: https://igraph.org/r/html/latest/
+
+
+
+# 导入 pbmc 3k 分类好的数据，要带 tSNE坐标，过程略。
+
+library(igraph)
+#graph.adjacency: Create graphs from adjacency matrices
+net <- graph.adjacency( 
+  adjmatrix = as.matrix(x = pbmc@graphs$RNA_snn),
+  mode = "undirected",
+  weighted = TRUE,
+  diag = FALSE
+)
+
+# plot.igraph(): Plotting of graphs
+plot.igraph(
+  x = net,
+  layout = as.matrix(x = Embeddings(object = pbmc[["tsne"]])),
+  edge.width = E(graph = net)$weight,
+  vertex.label = NA,
+  vertex.size = 0
+)
+
+
+# 再画一个 UMAP 的版本
+plot.igraph(
+  x = net,
+  layout = as.matrix(x = Embeddings(object = pbmc[["umap"]])),
+  edge.width = E(graph = net)$weight,
+  vertex.label = NA,
+  vertex.size = 0
+)
+
+
+
+(3) 最近邻算法的种类，可选: rann, annoy //todo 
+源码: FindNeighbors.default()
+
+
+(4) 几种距离的计算，可选: euclidean, cosine, manhattan, and hamming //todo
+
+
+(5) 什么是 L2 标准化?
+https://blog.csdn.net/ningyanggege/article/details/82840233
+
+# 源码 object <- L2Norm(mat = object)
+# 定义: ./seurat-4.1.0/R/utilities.R:1692:L2Norm <- function(mat, MARGIN = 1){
+
+# L2 normalize the columns (or rows) of a given matrix # L2标准化一个矩阵，按行或按列
+# @param mat Matrix to cosine normalize #要进行 cosine 标准化的矩阵
+# @param MARGIN Perform normalization over rows (1) or columns (2) #对行1、列2 进行标准化
+#
+# @return returns l2-normalized matrix
+#
+L2Norm <- function(mat, MARGIN = 1){
+  normalized <- Sweep(
+    x = mat,
+    MARGIN = MARGIN, #默认是1，按行除以
+    STATS = apply( #被除数: 默认是1，每行的 方差和开根号
+      X = mat,
+      MARGIN = MARGIN,
+      FUN = function(x){
+        sqrt(x = sum(x ^ 2))
+      }
+    ),
+    FUN = "/"
+  )
+  # 如果出现 无穷大，则设置为0
+  # 什么时候出现无穷大呢？ 被除数为0，也就是一行全为0的时候
+  normalized[!is.finite(x = normalized)] <- 0
+  return(normalized)
+}
+
+
+
+(6) `%iff%` 函数：如果x非空，则返回y
+
+> `%iff%`
+function (x, y) 
+{
+    if (!is_null(x = x)) { #如果x非空，则返回y
+        return(y)
+    }
+    return(x)
+}
+
+源码: query <- query %iff% L2Norm(mat = query)
+如果 query 有值，则进行 L2 标准化。
+
+
+
+
+
+(7) sys.frame() 与 sys.nframe() 获取当前函数的参数列表，并解析出 ... 参数
+源码 NNHelper(): args <- as.list(x = sys.frame(which = sys.nframe()))
+
+fn1=function(x, ...){
+  message(">>fn1:", x, "\t", sys.nframe())
+  args <- as.list(x = sys.frame(which = sys.nframe()-1)) #穿透到上一层环境(上一个是函数内环境)
+  print(args)
+}
+
+fn2=function(y){
+  message(">>fn2:", y, "\t", sys.nframe())
+  x=y+100
+  fn1(x)
+}
+
+fn3=function(z){
+  message(">>fn3:", z, "\t", sys.nframe())
+  fn2(z+1)
+}
+fn3(5)
+
+输出:
+>>fn3:5	1
+>>fn2:6	2
+>>fn1:106	3
+$x
+[1] 106
+
+$y
+[1] 6
+
+
+
+如果有 ... 参数，则还需要额外步骤来主动获取：
+fn0=function(x, ...){
+  message(">>fn0:", x, "\t", sys.nframe())
+  args <- as.list(x = sys.frame(which = sys.nframe()))
+  args2=c(args, ...)
+  print(args)
+  message("===")
+  print(args2)
+}
+fn0(20, n=3)
+
+输出: 
+>>fn0:20	1
+$x
+[1] 20
+
+===
+$x
+[1] 20
+
+$n
+[1] 3
+
+
+
+
+
+
+(8) 获取任意函数的参数列表，不解析 ... 参数 
+
+接上例: 
+
+> formals(fn0)
+$x
+$...
+
+
+
+
+(9) 获取2个函数的参数的交集：在一个函数内，获取其输入参数和另一个函数的参数的交集
+
+AnnoyNN_my=function(arr=c(), x=1, n=5){}
+fn1=function(arr=c(1,3,5), ...){
+  # 当前函数的参数
+  args <- as.list(x = sys.frame(which = sys.nframe()))
+  args=c(args, ...)
+  # 获取本函数的参数，和AnnoyNN_my()的参数的交集，及其值
+  args <- args[intersect(x = names(x = args), y = names(x = formals(fun = AnnoyNN_my)))]
+  print(args)
+}
+fn1(arr=1:5, x=3)
+
+输出:
+$arr
+[1] 1 2 3 4 5
+
+$x
+[1] 3
+
+
+
+
+(10) on.exit() 退出时执行，有利于重置绘图参数或者进行其他清理工作。
+This is useful for resetting graphical parameters or performing other cleanup actions.
+
+
+library(future)
+fn1=function(x){
+  if (!inherits(x = plan(), what = "multicore")) {
+    # 则记录现在是单核，退出时恢复这个单核状态。
+    oplan <- plan(strategy = "sequential")
+    on.exit(plan(oplan), add = TRUE) #退出函数时执行这个设置
+  }
+  plan(strategy = "multicore", workers=5)
+  message("fn1>>how many cores can use now: ", nbrOfWorkers())
+
+  return(x)
+}
+#
+plan(strategy = "sequential")
+message("outside>>how many cores can use now: ", nbrOfWorkers()) #1
+fn1(150) #5 仅再函数内为多核状态，函数前后都是单核
+message("outside>>how many cores can use now: ", nbrOfWorkers()) #1
+#
+plan(strategy = "multicore", workers=2)
+message("outside>>how many cores can use now: ", nbrOfWorkers()) #2
+
+
+
+(11) 把数据框按行展开成数组 as.numeric(t(x))
+as.numeric(x) 能把x按列展开成数组。
+所以把x先转置，再按列展开，就相当于把原始df按行展开。
+
+
+> iris[1:2,1:4]
+  Sepal.Length Sepal.Width Petal.Length Petal.Width
+1          5.1         3.5          1.4         0.2
+2          4.9         3.0          1.4         0.2
+
+> t(iris[1:2,1:4])
+               1   2
+Sepal.Length 5.1 4.9
+Sepal.Width  3.5 3.0
+Petal.Length 1.4 1.4
+Petal.Width  0.2 0.2
+
+> as.numeric(x=t(iris[1:2,1:4]))
+[1] 5.1 3.5 1.4 0.2 4.9 3.0 1.4 0.2
+
+
+
+
+
+
+(12) 矩阵C++库: Eigen //todo
+Eigen is a C++ template library for linear algebra: matrices, vectors, numerical solvers, and related algorithms.
+https://eigen.tuxfamily.org/index.php?title=Main_Page
+稀疏矩阵: https://eigen.tuxfamily.org/dox/group__TutorialSparse.html
+
+大型矩阵只能使用C++库计算，否则R本身太慢。
+
+
+
+
+
+
+
+
+
+######################################
+######################################
+# 牵涉到的函数
+FindNeighbors.Seurat
+	* CheckDots()
+	* FindNeighbors.Assay()
+	* LogSeuratCommand
+
+FindNeighbors.default
+	* L2Norm()
+	* NNHelper()
+		* nn2()
+		* AnnoyNN() 默认
+			* AnnoyBuildIndex()
+				* RcppAnnoy::AnnoyEuclidean()
+				* RcppAnnoy::AnnoyAngular()
+				* RcppAnnoy::AnnoyManhattan()
+				* RcppAnnoy::AnnoyHamming()
+			* AnnoySearch()
+		* RcppAnnoy 包。KNN的 Annoy 核心包
+	* Indices()
+	* ComputeSNN()
+
+
+
+4. 算法 
+
+(1) 求最近邻的k个细胞的方法: KNN 的 annoy 实现 
+
+#1 使用10个PC
+a=new(Class = RcppAnnoy::AnnoyEuclidean, f=10)
+#class(a)
+#str(a)
+
+#2 求距离的输入数据为每个细胞的RNA表达量的前10个PC
+data=pbmc@reductions$pca@cell.embeddings[,1:10]
+for(ii in seq(nrow(data)) ){
+  a$addItem(ii-1, data[ii,])
+}
+
+#3 建立树的索引，默认建立50棵树
+a$build(50) 
+
+# check
+#class(a)
+#a
+#str(a)
+#
+
+#4 对于每个细胞，求其前k个最近邻细胞
+index=a #第3中建立的索引
+query=data #要搜索的数据，就是每个细胞的PC矩阵
+k=20 #最近邻的几个点？
+
+#5 例子: 第一行，也就是求这个细胞的前k个最近邻点
+x=1
+search.k=-1 #不限制搜索次数
+include.distance=T #是否返回距离
+
+res <- index$getNNsByVectorList(query[x, ], k, search.k, include.distance) //tod 这个函数怎么定义的？怎么实现的？
+res
+res2=list(res$item + 1, res$distance) #C++下标是0-based，变为R的1-based
+sort(res2[[1]])
+# [1]    1  293  422  512  619  964 1149 1265 1332 1339 1386 1505 1574 1992 2015 2080 2297 2318 2548 2602
+
+# 测试 pbmc 数据的第一行中1的下标都是多少？
+grep(1,pbmc@graphs$RNA_nn[1,])
+# [1]    1  293  422  512  619  964 1149 1265 1332 1339 1386 1505 1574 1992 2015 2080 2297 2318 2548 2602
+
+
+写成循环，就可以计算每个细胞的k个最近邻细胞的下标了。
+完成功能后，还可以尝试使用多线程加速。
+
+
+
+
+
+
+(2) SNN 算法
+https://www.jianshu.com/p/72313d70d9ab
+想一个简单情况，每行一个细胞，每行找2个最近邻的细胞，其下标位置为1，其他点则为0。
+
+按照 Jaccard 相似度的定义 交集大小 / 并集大小。
+#   1.该0-1矩阵乘以自己的转置
+#   2.交集就是的每个位置的value，
+#   3.并集就是 2*k-value
+# 极端情况1: 没有交集，则 0/(2k-0)=0; 相似度位0
+# 极端情况2: 完全重合, 则 2/(2k-2)=2/2=1; 相似度最高是1
+# 中间状态: 重合一个元素, 则 1/(2k-1)=1/3;
+
+
+
+SNN1=matrix(c(1,0,0,1,
+              0,1,1,0,
+              1,0,1,0,
+              0,0,1,1), nrow=4, byrow = T)
+SNN1
+
+SNN2=SNN1 %*% t(SNN1)
+SNN2
+
+输出:
+> SNN1
+     [,1] [,2] [,3] [,4]
+[1,]    1    0    0    1
+[2,]    0    1    1    0
+[3,]    1    0    1    0
+[4,]    0    0    1    1
+> SNN2
+     [,1] [,2] [,3] [,4]
+[1,]    2    0    1    1
+[2,]    0    2    1    1
+[3,]    1    1    2    1
+[4,]    1    1    1    2
+
+
+
+# 计算点与点之间的 Jacard 相似度:
+k=2 #每个细胞取2个最近邻细胞
+SNN3=matrix(rep(0,16), nrow = 4, ncol = 4); SNN3
+for(i in 1:nrow(SNN3)){
+  for(j in 1:ncol(SNN3)){
+    val=SNN2[i,j]
+    SNN3[i,j]=val/(2*k - val)
+  }
+}
+
+
+> SNN3
+          [,1]      [,2]      [,3]      [,4]
+[1,] 1.0000000 0.0000000 0.3333333 0.3333333
+[2,] 0.0000000 1.0000000 0.3333333 0.3333333
+[3,] 0.3333333 0.3333333 1.0000000 0.3333333
+[4,] 0.3333333 0.3333333 0.3333333 1.0000000
+
+
+这个例子太平均了，没有交集。
+
+
+ref:
+https://www.jianshu.com/p/72313d70d9ab
+
+
+
+
+
+
+========================================
+|-- Seurat 4 R包源码解析 22: step10 细胞聚类 FindClusters() //todo
+----------------------------------------
+1. 调包侠
+# step10 Cluster the cells
+pbmc <- FindNeighbors(pbmc, dims = 1:10)
+pbmc <- FindClusters(pbmc, resolution = 0.5)
+
+# Look at cluster IDs of the first 5 cells
+head(Idents(pbmc), 5)
+
+table(pbmc$seurat_clusters)
+
+
+
+
+2. 源码解析 
+
+
+
+
+
+3. R tips 
+
+
+
+
+
+
+
+
+
+ref:
+https://www.jianshu.com/p/5b03302f5367
 
 
 
