@@ -1,4 +1,5 @@
 Ubuntu下的用户管理与远程登录
+	安全
 
 
 linux简介3|用户与权限管理, 增加sudo权限
@@ -1378,6 +1379,136 @@ $ sudo vim /etc/sudoers
 比如cat /etc/group
 test:x:500:test3,test4
 test3和test4也属于test组，不过这个是附加组。
+
+
+
+
+
+
+
+========================================
+|-- 又遇到一次服务器 CPU 爆表的，莫名其妙好了
+----------------------------------------
+
+==>又一次遇到病毒了: 2022.5.2 13:48 所有CPU被占满，内存还有至少一半。
+几乎是在一瞬间执行的。
+
+
+1.查看进程
+top 看，CPU 用的最多的是 wuxc 的 Rstudio 用户。
+htop 看，CPU 占用最多的是 root 的 /usr/bin/containerd 进程，不过也仅仅是 100%。
+也就是说，只能看到 htop 满屏幕都是红的，但是排名靠前的CPU使用率又不高，只有不到3个 100%。
+只能在 top 中P排序看到一堆100%的进程，用户名是 wuxc，查看是一个普通用户，不在 docker 组。
+
+$ sudo ps -A -o stat,ppid,pid,user,cmd,uid,uname | grep "wuxc" | head
+$ sudo ps -A -o stat,ppid,pid,user,cmd,uid,uname | grep "wuxc" | awk '{print $3}' | xargs kill -9
+
+$ ps -A -o stat,ppid,pid,user,cmd,uid,uname | grep "wuxc" | awk '{print $3}'| xargs sudo kill -9
+以上命令没有用，使用完依旧htop 中 CPU 全红。
+
+
+(1)怀疑是 docker 中的病毒程序？
+
+* stop 所有的 docker 容器: docker stop xx
+	检查 docker ps -a 没有run状态的容器了。
+* kill 掉 /usr/bin/containerd 进程
+	$ ps -A -o stat,pid,ppid,cmd,uid,uname | grep "/usr/bin/containerd" #没有匹配条
+	$ ps -A -o stat,pid,ppid,cmd,uid,uname | grep "contain" #没有匹配条
+	$ docker ps -a
+	# Cannot connect to the Docker daemon at unix:///var/run/docker.sock. Is the docker daemon running?
+* 然后再次杀 top 中的进程 
+	$ ps -aux | head
+	USER        PID %CPU %MEM    VSZ   RSS TTY      STAT START   TIME COMMAND
+	root          1  0.0  0.0 196264  6632 ?        Ss    2021 145:33 /usr/lib/systemd/systemd --switched-root --system --deserialize 22
+	root          2  0.0  0.0      0     0 ?        S     2021  22:37 [kthreadd]
+
+
+	这个就很奇怪！！rserver-pam 是啥？
+	$ ps -aux | grep "wuxc" | head
+	root        794  1.0  0.0 154936  4492 ?        Sl   14:12   0:01 /usr/lib/rstudio-server/bin/rserver-pam wuxc rstudio 1
+	wangjl     1432 11.0  0.0 123692  1284 pts/64   S+   14:14   0:00 grep --color=auto wuxc
+	wuxc     148274  0.1  0.0      0     0 ?        R    Apr30   3:53 [rsession]
+	wuxc     148275  0.0  0.0      0     0 ?        R    Apr30   2:48 [rsession]
+
+	$ sudo kill -9 794
+
+	$ ps -aux | grep "wuxc" | awk '{print $2}'| xargs sudo kill -9
+	报错: kill: sending signal to 175534 failed: No such process
+
+
+
+(2) 关掉端口 2375 
+https://blog.csdn.net/u012359651/article/details/104443955
+
+$ sudo iptables --list
+看不太懂，内容太多了。
+
+
+另一台主机检查端口，该端口不通，8888是通的。
+$ telnet 172.18.5.193 2375
+Trying 172.18.5.193...
+telnet: Unable to connect to remote host: No route to host
+
+
+
+世界突然就安静了，我啥也没干，周波登录了wuxc的Rstudio界面，然后啥也没干。
+
+
+
+(3) 杀僵尸进程
+$ ps -A -o stat,ppid,pid,user,cmd,uid,uname | grep "^[Zz]" | awk '{print $4}' | sort | uniq -c | sort -k1nr
+     45 alamin
+     34 wangjl
+     17 zhoub
+      9 wuxc
+      2 caow
+      1 huangcy
+      1 root
+
+$ ps -A -o stat,ppid,pid,user,cmd,uid,uname | grep "^[Zz]"  | grep wangjl
+Z+   388783  16903 wangjl   [top] <defunct>              1012 wangjl
+Z+   405296  16916 wangjl   [htop] <defunct>             1012 wangjl
+Z+   405296  23273 wangjl   [htop] <defunct>             1012 wangjl
+Z+   388783  23298 wangjl   [top] <defunct>              1012 wangjl
+Z+    29749  29750 wangjl   [bash] <defunct>             1012 wangjl
+Z+    29747  29751 wangjl   [ps] <defunct>               1012 wangjl
+Z+    29747  29754 wangjl   [ps] <defunct>               1012 wangjl
+Z+    29747  29779 wangjl   [ps] <defunct>               1012 wangjl
+...
+Z+   405296 405425 wangjl   [htop] <defunct>             1012 wangjl
+Z+   405296 405805 wangjl   [htop] <defunct>             1012 wangjl
+Z+   405296 425585 wangjl   [htop] <defunct>             1012 wangjl
+
+
+浏览z的进程
+$ ps -A -o stat,ppid,pid,user,cmd,uid,uname | grep "^[Zz]" | grep wangjl | awk '{print $3}'
+
+开始终止这些 ppid
+$ ps -A -o stat,ppid,pid,user,cmd,uid,uname | grep "^[Zz]" | grep wangjl | awk '{print $2}' | sort | uniq | xargs kill -9
+
+再次查看z进程
+$ ps -A -o stat,ppid,pid,user,cmd,uid,uname | grep "^[Zz]" | grep wangjl
+
+
+
+
+
+(3) 重新启动Docker 及其 Rstudio
+$ docker ps
+Cannot connect to the Docker daemon at unix:///var/run/docker.sock. Is the docker daemon running?
+
+$ sudo service docker status
+$ sudo service docker start
+
+$ docker ps -a
+$ docker start wjl
+
+
+查看用户设置
+$ docker exec -ti wjl bash
+# less /etc/passwd
+
+
 
 
 

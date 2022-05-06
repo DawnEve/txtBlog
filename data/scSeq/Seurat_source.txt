@@ -6967,7 +6967,12 @@ plot.igraph(
 源码: FindNeighbors.default()
 
 
+
+
 (4) 几种距离的计算，可选: euclidean, cosine, manhattan, and hamming //todo
+
+
+
 
 
 (5) 什么是 L2 标准化?
@@ -7242,19 +7247,58 @@ x=1
 search.k=-1 #不限制搜索次数
 include.distance=T #是否返回距离
 
-res <- index$getNNsByVectorList(query[x, ], k, search.k, include.distance) //tod 这个函数怎么定义的？怎么实现的？
+res <- index$getNNsByVectorList(query[x, ], k, search.k, include.distance) //todo 这个函数怎么定义的？怎么实现的？
 res
 res2=list(res$item + 1, res$distance) #C++下标是0-based，变为R的1-based
 sort(res2[[1]])
 # [1]    1  293  422  512  619  964 1149 1265 1332 1339 1386 1505 1574 1992 2015 2080 2297 2318 2548 2602
 
 # 测试 pbmc 数据的第一行中1的下标都是多少？
-grep(1,pbmc@graphs$RNA_nn[1,])
+grep(1, pbmc@graphs$RNA_nn[1,])
 # [1]    1  293  422  512  619  964 1149 1265 1332 1339 1386 1505 1574 1992 2015 2080 2297 2318 2548 2602
 
 
 写成循环，就可以计算每个细胞的k个最近邻细胞的下标了。
 完成功能后，还可以尝试使用多线程加速。
+
+
+
+
+
+
+
+
+==> 如何求出和原文一致的 NN 矩阵?
+
+search.k=-1 #不限制搜索次数
+include.distance=T #是否返回距离
+
+nn = matrix(data=rep(0, nrow(data)**2), nrow=nrow(data), ncol=nrow(data))
+dim(nn) #[1] 2638 2638
+
+for(x in 1:nrow(data)){
+  res <- index$getNNsByVectorList(query[x, ], k, search.k, include.distance)
+  res2=list(res$item + 1, res$distance) #C++下标是0-based，变为R的1-based
+  nn[x, res2[[1]]] = 1
+}
+
+rownames(nn)=rownames(data)
+colnames(nn)=rownames(data)
+
+table(nn[1,] - pbmc@graphs$RNA_nn[1,] ==0) #All T
+table(nn - as.matrix(pbmc@graphs$RNA_nn)==0) #All T
+
+
+
+> dim(nn)
+[1] 2638 2638
+
+> dim(pbmc@graphs$RNA_nn)
+[1] 2638 2638
+
+
+
+
 
 
 
@@ -7303,7 +7347,7 @@ SNN2
 # 计算点与点之间的 Jacard 相似度:
 k=2 #每个细胞取2个最近邻细胞
 SNN3=matrix(rep(0,16), nrow = 4, ncol = 4); SNN3
-for(i in 1:nrow(SNN3)){
+for(i in 1:nrow(SNN)){
   for(j in 1:ncol(SNN3)){
     val=SNN2[i,j]
     SNN3[i,j]=val/(2*k - val)
@@ -7322,8 +7366,47 @@ for(i in 1:nrow(SNN3)){
 这个例子太平均了，没有交集。
 
 
+
+
+
+
+==> 如何使用 nn矩阵 算出 snn矩阵?
+
+nn2=nn %*% t(nn)
+nn2
+
+# 计算点与点之间的 Jacard 相似度:
+k=20 #每个细胞取20个最近邻细胞
+snn = matrix(data=rep(0, nrow(data)**2), nrow=nrow(data), ncol=nrow(data)); 
+
+for(i in 1:nrow(snn)){
+  for(j in 1:ncol(snn)){
+    val=nn2[i,j]
+    snn[i,j]=val/(2*k - val)
+  }
+}
+snn[snn<1/15]=0
+table(snn[1,] - pbmc@graphs$RNA_snn[1,] ==0) #All T
+table(snn - as.matrix(pbmc@graphs$RNA_snn)==0) #All T
+
+
+> dim(snn)
+[1] 2638 2638
+
+> dim(pbmc@graphs$RNA_snn)
+[1] 2638 2638
+
+
+
+
+
+
+
+
 ref:
 https://www.jianshu.com/p/72313d70d9ab
+
+
 
 
 
@@ -7344,15 +7427,79 @@ head(Idents(pbmc), 5)
 table(pbmc$seurat_clusters)
 
 
+(1) 有4种算法 algorithm= 参数，默认是1
+#' @param algorithm Algorithm for modularity optimization (
+# 1 = original Louvain algorithm; 
+# 2 = Louvain algorithm with multilevel refinement; 
+# 3 = SLM algorithm; 
+# 4 = Leiden algorithm). Leiden requires the leidenalg python.
+
+
+(2) 分辨率参数支持数组
+#对象中使用最后一个参数的分组方式
+pbmc=FindClusters(pbmc, resolution = c(0.2,0.8))
+#查看 
+head(pbmc@meta.data)
+
+#修改分组方式:
+Idents(pbmc)="RNA_snn_res.0.2"
+#检查
+DimPlot(tmp, label=T)
+
+
+(3) 
+
+
+
+
+
+
 
 
 2. 源码解析 
+
+* FindClusters.Seurat()
+	* CheckDots() //todo 
+	* names()
+	* levels()
+	* LogSeuratCommand() //todo
+
+* FindClusters.default()
+	* RunModularityClustering()
+
+
+
+
+
+
+()
+./seurat-object-4.0.4/R/seurat.R:2466:names.Seurat <- function(x) {
+
+
+
+
+()
+./seurat-object-4.0.4/R/seurat.R:2240:levels.Seurat <- function(x) {
+
+
+()
+./seurat-4.1.0/R/clustering.R:1737:RunModularityClustering <- function(
+./seurat-4.1.0/R/RcppExports.R:4:RunModularityClusteringCpp <- function(SNN, modularityFunction, resolution, algorithm, nRandomStarts, nIterations, randomSeed, printOutput, edgefilename) {
+./seurat-4.1.0/R/RcppExports.R:5:    .Call('_Seurat_RunModularityClusteringCpp', PACKAGE = 'Seurat', SNN, modularityFunction, resolution, algorithm, nRandomStarts, nIterations, randomSeed, printOutput, edgefilename)
 
 
 
 
 
 3. R tips 
+
+
+
+
+
+
+
+
 
 
 
