@@ -3510,10 +3510,11 @@ ps：sda4就是你看到的启动盘名称
 
 
 
+
 (3) 安装细节
 - 时区：上海； hostname: JinLab
-- 安装哪个系统类型?不建议安装默认的minimal，建议 GENOME desktop，这个版本有图形界面，方便维护和使用，建议优先选择这个。
-	勾选右侧的 开发工具包;
+- 安装哪个系统类型?不建议安装默认的minimal，建议 Server with GUI，这个版本有图形界面，方便维护和使用，建议优先选择这个。
+	建议勾选右侧的 NFS + development tools
 - 磁盘分区? 选择一个新的磁盘，比如 /dev/sdc 1T，其实 500G 也够用了，安装后将会覆盖该硬盘上的数据。
   * 选择 sdc 盘，勾选底下的 手动分区
   * 对于 centOS7，建议分区:
@@ -3991,15 +3992,36 @@ $ mdadm --version
 mdadm - v4.1 - 2018-10-01
 
 
+
+
+
+
 2. 创建 RAID 
+https://zhuanlan.zhihu.com/p/94109810
+
+可以看到创建时有个Note的提示，是说软raid不能当启动设备，这就是软raid比较鸡肋的地方了。
 
 (1) 创建 RAID 0
 $ sudo mdadm -C /dev/md0 -a yes -I 0 -n 2 /dev/sdb /dev/sdc 
-参数 
--C 创建一个 RAID 
--a 自动创建对应设备
+参数 man mdadm
+-C --create 创建一个 RAID 
+-a --auto　自动创建对应设备
 -I 指定要创建的 RAID 级别
--n 指定硬盘的数量
+-n --raid-devices 阵列中活动磁盘的数目，该数目加上备用磁盘的数目应该等于阵列中总的磁盘数目;
+
+
+$ mdadm -C /dev/md0 -ayes -l1 -n2 /dev/xvd[b,c]1
+-l, --level=
+	Set RAID level.  When used with --create, options are: linear, raid0, 0, stripe, raid1, 1, mirror, raid4, 4, raid5, 5, raid6, 6, raid10, 10, multipath, mp, faulty, container.  Obviously some of these are  synonymous.
+
+	When a CONTAINER metadata type is requested, only the container level is permitted, and it does not need to be explicitly given.
+	When used with --build, only linear, stripe, raid0, 0, raid1, multipath, mp, and faulty are valid.
+	Can be used with --grow to change the RAID level in some cases.  See LEVEL CHANGES below.
+
+
+建完成后可以使用cat /proc/mdstat查看阵列状态。
+图略。
+下图中第一次查看的时候提示resync完成了95.7%，第二次查询的时候两块盘才真正同步完。
 
 
 创建配置文件，保证重启时 RAID 都还在: 
@@ -4543,7 +4565,7 @@ https://www.linuxprobe.com/basic-learning-07.html
 
 
 ========================================
-linux 下多路径(multipath)介绍及使用: multipath //todo
+linux 下多路径(multipath)介绍及使用(光纤连接存储): multipath //todo
 ----------------------------------------
 https://zhuanlan.zhihu.com/p/26714897
 配置存储时一定会遇到 multipath 多路径的问题，不同的厂商比如 EMC PowerPath，Veritas VxDMP 等都有独立的多路径软件，而多路径软件的功能也很清晰主要用于IO流量负载均衡和故障切换恢复等。在 Linux 环境中 device-mapper-multipath 是一个免费的通用型多路径管理软件，其配置文件也非常简单，主要通过修改 /etc/multipath.conf 来调整。
@@ -4643,6 +4665,52 @@ $ service multipathd  status
            └─2773 /sbin/multipathd
 
 
+==> 需要设置 multipath 服务为 chkconfig on 开机启动状态才能挂载文件系统。
+
+系统服务目录:
+$ ls -lth /usr/lib/systemd/system/ | grep multipath
+-rw-r--r--. 1 root root     623 Apr  1  2020 multipathd.service
+
+$ sudo vim /usr/lib/systemd/system/multipathd.service
+[Unit]
+Description=Device-Mapper Multipath Device Controller
+Wants=blk-availability.service
+Before=iscsi.service iscsid.service lvm2-activation-early.service
+After=syslog.target systemd-udev-trigger.service
+ConditionPathExists=/etc/multipath.conf
+ConditionKernelCommandLine=!nompath
+DefaultDependencies=no
+Conflicts=shutdown.target
+
+[Service]
+Type=forking
+PIDFile=/run/multipathd/multipathd.pid
+ExecStartPre=/sbin/modprobe dm-multipath
+ExecStartPre=-/sbin/multipath -A
+ExecStart=/sbin/multipathd
+ExecReload=/sbin/multipathd reconfigure
+#ExecStop=/path/to/scrip delete-me if not necessary
+
+[Install]
+WantedBy=sysinit.target
+
+
+
+设置开机启动：systemctl enable *.service
+
+启动服务：systemctl start *.service
+停止服务：systemctl stop *.service
+重启服务：systemctl reload *.service
+linux服务设置为开机启动项,Linux 设置开机启动项的几种方法 https://blog.csdn.net/weixin_34662807/article/details/116870009
+
+
+
+商业化存储，应该可以拉着厂商或者查看最佳实践手册配置
+
+
+
+
+
 
 (3) 配置文件
 
@@ -4660,6 +4728,23 @@ blacklist {
 执行lsblk命令就可以看到多路径磁盘mpatha了
 $ lsblk 
 输出见开头。
+
+
+
+
+Q: 对本地设备启用多路径很可能导致系统无法启动，请问其中的具体原因是什么呢？
+A: 将本地硬盘wwid添加到黑名单应该就好了，这个不常见
+blacklist {
+	wwid "<wwid_of_the_local_disk>"
+}
+
+
+Q: 没有修改配置文件，只是把惠普存储的lum做成xfs，然后挂载到了本地，可以吗？
+A:multipath本身不做配置也可以直接使用，修改配置的目的主要是解决和优化3个方面
+* 屏蔽本地硬盘，blacklist wwid
+* 按需优化特定存储的配置，比如3par/redhat
+* 修改LUN别名，方便后期运维和统计数据
+
 
 
 

@@ -1993,23 +1993,341 @@ $ sudo service rstudio-server restart
 
 
 ========================================
-|-- Build R from source on linux //todo 没测试
+|-- Build R 4.2 from source on centOS7.9 (2022.5.12)
 ----------------------------------------
-# BUILD R FROM SOURCE ON REDHAT LINUX
-# R-3.4.3
 
-# Install Linux dependencies
-$ sudo yum-builddep R
+1. 安装 centOS7 系统
+在 Oracle VM VirtualBox 中安装 centOS7 系统。
+宿主机是 ubuntu1804, vm 版本号是 6.1。
 
-# Download and extract source code
-$ wget https://cran.r-project.org/src/base/R-3/R-3.4.3.tar.gz
-$ tar -xzvf R-3.4.3.tar.gz
-$ cd R-3.4.3
+(1) 新建虚拟机，内存2G，磁盘 15G。
+(2) 导入 iso 文件到光盘
+CentOS-7-x86_64-Everything-2009.iso  9.5GB
 
-# Build R from source
-$ ./configure --prefix=/opt/R/$(cat VERSION) --enable-R-shlib --with-blas --with-lapack
+启动
+授权 硬盘自动分。
+software selection, 选择 Server with GUI/ GNOME Desktop?前者吧。
+点击开始，设置root 密码 123，设置 user wangjl/123 勾选作为管理员。
+等待安装: 15:21--> 16:02
+
+reboot.
+如果默认安装 minimal，是shell界面！
+Server with GUI 是图形界面。
+
+重启同意条款。同意联网。
+
+
+设置自动联网。
+右击，最下面打开终端，修改活动网卡(就是 ifconfig 中你正在使用的IP所在的那个网卡)的配置文件的 ONBOOT 为 yes
+$ grep -i onboot /etc/sysconfig/network-scripts/ifcfg-enp0s3 
+ONBOOT=yes
+
+$ sudo reboot # 重启，看网络正常连接
+
+
+
+(3) 安装基础工具
+$ sudo yum install vim -y
+$ sudo yum install tmux -y
+保存虚拟机快照。万一做错了恢复该快照，重来。
+
+
+(4) 查看系统版本号
+$ cat /etc/redhat-release
+CentOS Linux release 7.9.2009 (Core)
+
+
+# 这一步安装可跳过
+$ sudo yum install redhat-lsb -y
+$ lsb_release -a
+LSB Version:	:core-4.1-amd64:core-4.1-noarch:cxx-4.1-amd64:cxx-4.1-noarch:desktop-4.1-amd64:desktop-4.1-noarch:languages-4.1-amd64:languages-4.1-noarch:printing-4.1-amd64:printing-4.1-noarch
+Distributor ID:	CentOS
+Description:	CentOS Linux release 7.9.2009 (Core)
+Release:	7.9.2009
+Codename:	Core
+
+
+
+
+
+
+
+2.开始安装R
+(1) 检查系统自带的版本号
+$ R
+bash: R: command not found...
+没有。真是个空白系统。
+
+
+(2) yum 安装的R太古老
+之前尝试的，是
+$ which R
+/usr/bin/R
+
+$ R --version
+R version 3.6.0 (2019-04-26) -- "Planting of a Tree"
+
+
+
+==> 另一个工作站的R 
+$ which R
+/usr/local/bin/R
+
+$ R --version
+R version 4.1.1 (2021-08-10) -- "Kick Things"
+Copyright (C) 2021 The R Foundation for Statistical Computing
+Platform: x86_64-pc-linux-gnu (64-bit)
+
+
+
+
+
+
+3. 使用源码安装最新版 R
+
+(1) 下载与解压
+https://cran.rstudio.com/src/base/R-4/
+最新版的是  R-4.2.0.tar.gz          2022-04-22 07:05   36M 
+
+$ cd 
+$ mkdir soft && cd soft
+$ export R_VERSION=4.2.0
+
+$ wget https://cran.rstudio.com/src/base/R-4/R-4.2.0.tar.gz
+$ tar -xzvf R-${R_VERSION}.tar.gz
+$ cd R-${R_VERSION}
+
+
+
+(2) Build and install R
+
+## 升级系统，补充一些包
+$ tmux   #升级时间较长，防止意外中断
+$ sudo yum install epel-release 
+$ sudo yum update #565M, 286个包，可能需要几个小时，取决于网速。中间 GPG key 选 y;  16:47--> 17:05 
+### sudo shutdown -r now  #能跳过重启
+
+
+安装build的依赖
+$ sudo yum-builddep R #188M, 281个包，耐心等待 17:11-->17:19
+
+
+新建安装目标文件夹，R以后就安装到这里:
+$ sudo mkdir -p /opt/R/
+
+配置，主要是--prefix 指定安装位置
+$ ./configure \
+--prefix=/opt/R/${R_VERSION} \
+--enable-memory-profiling \
+--enable-R-shlib \
+--with-blas \
+--with-lapack
+
+最后报警告，可以忽略，没啥影响。
+configure: WARNING: neither inconsolata.sty nor zi4.sty found: PDF vignettes and package manuals will not be rendered optimally
+
+
+编译 17:21-->17:27
 $ make
+
+安装
 $ sudo make install
+
+清理残余
+$ make clean
+
+
+
+
+(3) 检查
+$ ls /opt/R/${R_VERSION}/
+bin lib64 share
+
+$ /opt/R/${R_VERSION}/bin/R --version
+R version 4.2.0 (2022-04-22) -- "Vigorous Calisthenics"
+Copyright (C) 2022 The R Foundation for Statistical Computing
+Platform: x86_64-pc-linux-gnu (64-bit)
+
+
+
+(4) 添加软链接
+Create a symlink to R
+$ sudo ln -s /opt/R/${R_VERSION}/bin/R /usr/local/bin/R
+$ sudo ln -s /opt/R/${R_VERSION}/bin/Rscript /usr/local/bin/Rscript
+
+
+
+
+(5) 再次检查当前R
+重新登录终端
+$ ssh wangjl
+
+$ which R
+/usr/local/bin/R
+
+$ R --version
+R version 4.2.0 (2022-04-22) -- "Vigorous Calisthenics"
+已经是R最新版了
+
+$ whereis R
+R: /usr/local/bin/R
+
+
+
+
+
+
+4. 安装 Rstudio server
+Download RStudio Server
+Download RStudio Server for Red Hat/CentOS: https://www.rstudio.com/products/rstudio/download-server/
+Install for Red Hat / CentOS 7: https://www.rstudio.com/products/rstudio/download-server/redhat-centos/
+
+(1) 下载与安装
+$ cd ~/soft/
+$ wget https://download2.rstudio.org/server/centos7/x86_64/rstudio-server-rhel-2022.02.2-485-x86_64.rpm
+$ sudo yum install rstudio-server-rhel-2022.02.2-485-x86_64.rpm
+
+
+检查服务状态
+$ sudo service rstudio-server status
+看到 active (running) 表示启动了。
+
+
+(2) 查IP
+$ ifconfig
+查询IP地址：192.168.2.105
+对于云服务器，使用公网IP。
+
+
+(3) 打开防火墙的 8787 端口
+//开放8787端口访问
+$ sudo iptables -I IN_public_allow -p tcp --dport 8787 -j ACCEPT
+$ sudo iptables -I INPUT -p tcp --dport 8787 -j ACCEPT
+
+## 这样也行，我没试过。
+sudo firewall-cmd --permanent --zone=public --add-port=8787/tcp
+sudo firewall-cmd --reload
+
+
+
+(4) 浏览器登录 Rstudio server 
+打开浏览器，输入 http://<IP>:8787/ 即可看到 Rstudio server 的登录界面。
+输入自己的 linux 用户名和密码，即可使用R了。
+里面也是R的最新版 R 4.2.0
+
+
+
+
+
+
+5. 个性化设置(可选)
+https://support.rstudio.com/hc/en-us/articles/200552316-Configuring-the-Server
+
+(1) 主要是这2个文件:
+/etc/rstudio/rserver.conf
+/etc/rstudio/rsession.conf
+
+$ sudo vim /etc/rstudio/rserver.conf
+# 修改端口号，一般 6k-60k 之间的整数
+www-port=8788
+
+# 指定使用的R文件，听说在新版本中 Rstudio Pro 才有这个选项。
+rsession-which-r=/usr/local/bin/R
+
+# (推荐设置)无操作自动退出时间(单位是min)，0表示不退出。我希望至少是24小时(1440min)
+# session-timeout-minutes=60 # 不是这个。
+auth-timeout-minutes=1800
+
+
+# 外部库。通过修改rsession-ld-library-path 添加系统的库路径作为外部库以供RStudio server调用。
+# 有时候R需要依赖系统的一些库的时候，就可以添加上系统库的路径让R也可以调用到
+rsession-ld-library-path=/usr/lib64/:/usr/local/lib/:/usr/lib/  #没看出来有啥用
+
+
+
+
+(2) 所有修改的配置文件都是在重启服务后才生效
+$ sudo service rstudio-server restart
+
+开端口
+$ sudo iptables -I IN_public_allow -p tcp --dport 8788 -j ACCEPT
+$ sudo iptables -I INPUT -p tcp --dport 8788 -j ACCEPT
+
+
+再看登录页面 http://192.168.2.105:8788/auth-sign-in
+显示: You will automatically be signed out after 1800 minutes of inactivity.
+
+> .libPaths()
+[1] "/home/wangjl/R/x86_64-pc-linux-gnu-library/4.2"
+[2] "/opt/R/4.2.0/lib64/R/library"
+
+
+
+(3) 启动与停止 rstudio-server 服务
+$ service rstudio-server status #服务状态
+Redirecting to /bin/systemctl status rstudio-server.service
+● rstudio-server.service - RStudio Server
+   Loaded: loaded (/usr/lib/systemd/system/rstudio-server.service; enabled; vendor preset: disabled)
+   Active: active (running) since Thu 2022-05-12 06:07:49 EDT; 5min ago  #表明运行正常
+
+$ sudo service rstudio-server start  #开启服务
+$ sudo service rstudio-server stop # 关闭服务
+
+
+
+
+
+(4) 设置开机启动(主要是设置防火墙)
+
+#重启后，检查服务是否开启
+$ sudo reboot 
+$ service rstudio-server status # 服务状态，开启
+
+但是网页端无法访问，原因是防火墙拦截了。
+之前的端口设置是暂时的，怎么能设置成永久的呢？
+
+$ sudo iptables -I INPUT -p tcp --dport 8788 -j ACCEPT
+
+#保存修改到数据表，报错
+$ sudo service iptables save
+The service command supports only basic LSB actions (start, stop, restart, try-restart, reload, force-reload, status). For other actions, please try to use systemctl.
+
+
+
+解决方法：关掉 firewalld 打开 iptables-services 服务。 
+$ sudo systemctl stop firewalld     #关闭防火墙
+$ sudo systemctl disable firewalld.service #禁止firewall开机启动
+$ sudo yum install iptables-services 　 #安装或更新服务
+$ sudo systemctl enable iptables        #启动iptables
+$ sudo systemctl start iptables        #打开iptables
+$ sudo service iptables save        #保存
+
+重启iptables服务：
+$ sudo service iptables restart
+执行完毕之后 /etc/sysconfig/iptables 文件就有了
+
+查看该文件
+$ sudo cat /etc/sysconfig/iptables
+# Generated by iptables-save v1.4.21 on Thu May 12 06:34:05 2022
+*filter
+:INPUT ACCEPT [0:0]
+:FORWARD ACCEPT [0:0]
+:OUTPUT ACCEPT [332:66077]
+-A INPUT -p tcp -m tcp --dport 8788 -j ACCEPT
+-A INPUT -m state --state RELATED,ESTABLISHED -j ACCEPT
+-A INPUT -p icmp -j ACCEPT
+-A INPUT -i lo -j ACCEPT
+-A INPUT -p tcp -m state --state NEW -m tcp --dport 22 -j ACCEPT
+-A INPUT -j REJECT --reject-with icmp-host-prohibited
+-A FORWARD -j REJECT --reject-with icmp-host-prohibited
+COMMIT
+# Completed on Thu May 12 06:34:05 2022
+
+
+查看防火墙端口状态 
+$ sudo iptables -nL
+
+再重启时，服务本身就启动了，端口也开了，就可以直接登录网页版 rstudio 了。
 
 
 
