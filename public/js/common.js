@@ -258,9 +258,12 @@ function locateURLAnchor(){
 */
 addEvent(window, 'load', function(){
 	var oA=document.getElementById("viewCounter");
-	var url="https://stuff.mit.edu/cgi/counter/txtBlog"
+	//var url="https://stuff.mit.edu/cgi/counter/txtBlog" //10852(2021.12.27)
+	var keyword=["txtBlog", "biomooc"] //4862 biomooc; 
+	// in order to increase Visit Numbers on biomooc; originally, this should be txtBlog;
+	var url="https://stuff.mit.edu/cgi/counter/"+keyword[1]
 	setTimeout(function(){
 		var oImg=createElement("img", {src:url, alt:"浏览次数[异步获取]"})
-		oA.append(oImg)
+		oA.appendChild(oImg)
 	}, 0)
 })

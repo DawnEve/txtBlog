@@ -2626,9 +2626,262 @@ $ sudo find /tmp | grep crypto
 
 
 
+(11) 继续看僵尸进程
+$ ps -A -o stat,ppid,pid,%cpu,user,uid,cmd | grep "^[Zz]" | wc
+    254    2032   15617
+$ ps -A -o stat,ppid,pid,%cpu,user,uid,cmd | grep "^[Zz]" | awk '{print $5}' | sort | uniq -c | sort -k1nr                                                                                                       
+    191 root
+     41 wangjl
+      9 alamin
+      9 dbus
+      6 caow
+
+$ ps -A -o stat,ppid,pid,%cpu,user,uid,cmd | grep "^[Zz]" | grep root | awk '{print $7}' | sort | uniq -c | sort -k1nr                                                                                           
+    105 [systemd-logind]
+     84 [crond]
+      1 [iscsid]
+      1 [run-parts]
+
+
+$ ps -A -o stat,ppid,pid,%cpu,user,uid,cmd | grep "^[Zz]" | less
+Z    416197  36826  0.0 root         0 [crond] <defunct>  
+Z    415705  36169  0.0 root         0 [systemd-logind] <defunct>
+Z    415706 415709  0.0 root         0 [iscsid] <defunct>
+root主要的动作就是: 定时任务，登录。
+
+
+
+$ ps -A -o stat,ppid,pid,%cpu,user,uid,cmd | grep "iscsid"
+S<Ls      1 415706  0.0 root         0 /sbin/iscsid -f
+
+
+首先查看下systemd-logind的pid
+$ systemctl status systemd-logind.service 
+. systemd-logind.service - Login Service
+   Loaded: loaded (/usr/lib/systemd/system/systemd-logind.service; static; vendor preset: disabled)
+   Active: active (running) since Thu 2022-05-12 11:11:26 CST; 10h ago
+     Docs: man:systemd-logind.service(8)
+           man:logind.conf(5)
+           http://www.freedesktop.org/wiki/Software/systemd/logind
+           http://www.freedesktop.org/wiki/Software/systemd/multiseat
+ Main PID: 415705 (systemd-logind)
+   Status: "Processing requests..."
+    Tasks: 106
+   Memory: 568.0K
+   CGroup: /system.slice/systemd-logind.service
+           └─415705 /usr/lib/systemd/systemd-logind
+
+接着通过strace -p pid 进行跟踪
+$ sudo strace -p 415705
+strace: Process 415705 attached                                                                                                                                                                                                     
+epoll_wait(4, [{EPOLLIN, {u32=1151277696, u64=94176899177088}}], 22, -1) = 1
+clock_gettime(CLOCK_BOOTTIME, {tv_sec=278795, tv_nsec=947666702}) = 0                                                                                                                                                               
+recvmsg(12, {msg_name=NULL, msg_namelen=0, msg_iov=[{iov_base="l\4\1\1\37\0\0\0\220\1\0\0\211\0\0\0\1\1o\0\25\0\0\0", iov_len=24}], msg_iovlen=1, msg_controllen=0, msg_flags=MSG_CMSG_CLOEXEC}, MSG_DONTWAIT|MSG_NOSIGNAL|MSG_CMSG_C
+LOEXEC) = 24
+recvmsg(12, {msg_name=NULL, msg_namelen=0, msg_iov=[{iov_base="/org/freedesktop/DBus\0\0\0\2\1s\0\24\0\0\0"..., iov_len=167}], msg_iovlen=1, msg_controllen=0, msg_flags=MSG_CMSG_CLOEXEC}, MSG_DONTWAIT|MSG_NOSIGNAL|MSG_CMSG_CLOEXE
+C) = 167
+epoll_wait(4, [{EPOLLIN, {u32=1151277696, u64=94176899177088}}], 22, -1) = 1
+
+
+
+发现登录过程中，就是调用 /run/systemd/users 下面的文件 ???
+我们看下/run/systemd/users/0 文件中存储的内容
+
+$ cat /run/systemd/users/0
+# This is private data. Do not parse.
+NAME=root
+STATE=closing
+RUNTIME=/run/user/0
+SLICE=user-0.slice
+DISPLAY=c4
+REALTIME=1652328061699429
+MONOTONIC=243356918412
+SESSIONS=c4 237 684
+SEATS=
+ACTIVE_SESSIONS=c4 237 684
+ONLINE_SESSIONS=
+ACTIVE_SEATS=
+ONLINE_SEATS=
+
+记录了用户id为0也就是root用户的session信息，这里发现活动的session很多，但是我登录用户只登录了一个会话
+
+因为每一个session都会创建一个slice，通过slice查看，先查看系统slice
+$ systemctl -t slice
+
+然后查看user.0.silce
+$ systemctl status user-0.slice -l
+[{EPOLLIN, {u32=1151277696, u64=94176899177088}}], 21, -1) = 1
+clock_gettime(CLOCK_BOOTTIME, {tv_sec=279386, tv_nsec=264915518}) = 0
+recvmsg(12, {msg_name=NULL, msg_namelen=0, msg_iov=[{iov_base="l\4\1\1\37\0\0\0\260\1\0\0\211\0\0\0\1\1o\0\25\0\0\0", iov_len=24}], msg_iovlen=1, msg_controllen=0, msg_flags=MSG_CMSG_CLOEXEC}, MSG_DONTWAIT|MSG_NOSIGNAL|MSG_CMSG_CLOEXEC) = 24
+recvmsg(12, {msg_name=NULL, msg_namelen=0, msg_iov=[{iov_base="/org/freedesktop/DBus\0\0\0\2\1s\0\24\0\0\0"..., iov_len=167}], msg_iovlen=1, msg_controllen=0, msg_flags=MSG_CMSG_CLOEXEC}, MSG_DONTWAIT|MSG_NOSIGNAL|MSG_CMSG_CLOEXEC) = 167
+epoll_wait(4, . user-0.slice - User Slice of root
+   Loaded: loaded (/run/systemd/system/user-0.slice; static; vendor preset: disabled)
+  Drop-In: /run/systemd/system/user-0.slice.d
+           └─50-After-systemd-logind\x2eservice.conf, 50-After-systemd-user-sessions\x2eservice.conf, 50-Description.conf, 50-TasksMax.conf
+   Active: active since Thu 2022-05-12 12:01:01 CST; 10h ago
+   CGroup: /user.slice/user-0.slice
+           ├─session-237.scope
+           │ └─51325 strace -p 415705
+           └─session-684.scope
+             └─421759 /usr/sbin/anacron -s
+[{EPOLLIN, {u32=1151277696, u64=94176899177088}}], 21, -1) = 1
+...
+
+
+
+
+
+
+
+
+(12) 继续追踪隐藏的进程
+
+$ python3 ~/unhide_pid.py | grep -v "^#" |head
+STAT PPID  PID   USER     COMMAND
+Z    11166 11233 root     sshd
+Z    11166 11238 root     sshd
+Z    11166 11240 root     sshd
+Z    11166 11245 root     sshd
+Z    11166 11246 root     sshd
+Z    28677 28744 root     sshd
+Z    28677 28749 root     sshd
+Z    28677 28750 root     sshd
+Z    42693 42761 root     sshd
+...
+
+
+$ busybox top
+421759     1 root     S     131m   0% 169   0% /usr/sbin/anacron -s
+121475     1 root     S     130m   0%  74   0% /usr/sbin/lvmetad -f
+
+
+
+
+(13) 有人说是 dbus 版本问题
+$ service dbus status
+Redirecting to /bin/systemctl status dbus.service
+● dbus.service - D-Bus System Message Bus
+   Loaded: loaded (/usr/lib/systemd/system/dbus.service; static; vendor preset: disabled)
+   Active: active (running) since Thu 2022-05-12 11:11:26 CST; 1 day 4h ago
+...
+
+$ dbus-launch --version
+D-Bus Message Bus Launcher 1.13.2
+Copyright (C) 2003 Red Hat, Inc.
+...
+
+
+
+
+
+
+
+
+
+https://www.qiqios.cn/696.html
+$ sudo systemctl stop systemd-logind && sudo rm /run/systemd/sessions/* -rf && sudo systemctl start systemd-logind
+
+
+
+
+
+
+
+
+
 
 ref: 
 转：Linux常见挖矿病毒查杀 https://blog.csdn.net/allway2/article/details/106872151
+
+
+
+
+
+========================================
+升级内核为 CentOS7.9
+----------------------------------------
+1. 升级前
+$ uname -sr
+Linux 3.10.0-1062.18.1.el7.x86_64
+
+$ cat /etc/centos-release
+CentOS Linux release 7.8.2003 (Core)
+
+
+
+
+2. 升级系统
+(1) 清理
+$ yum clean all #清除缓存
+$ yum makecache fast #重新建立缓存
+
+
+(2) 升级
+$ sudo yum update -y #升级系统
+...
+Transaction test succeeded
+Running transaction
+** Found 3 pre-existing rpmdb problem(s), 'yum check' output follows:
+centos-release-7-9.2009.1.el7.centos.x86_64 is a duplicate with centos-release-7-8.2003.0.el7.centos.x86_64
+1:grub2-common-2.02-0.87.el7.centos.7.noarch is a duplicate with 1:grub2-common-2.02-0.81.el7.centos.noarch
+iptables-1.4.21-35.el7.x86_64 is a duplicate with iptables-1.4.21-34.el7.x86_64
+  Updating   : 1:control-center-filesystem-3.28.1-8.el7_9.x86_64           1/1304 
+Segmentation fault
+
+升级失败，说有重复的包。
+
+
+(3) 解决这个 重复 报错
+http://www.javashuo.com/article/p-xbeisoos-v.html
+1) 须要安装yum-util
+$ suod yum install yum-utils -y
+失败，报错同上。
+先跳过。
+
+2) 清除yum缓存code
+$ suod yum clean all
+
+3) 列出重复的包ip
+$ suod package-cleanup --dupes
+
+4) 删除重复的包rem
+$ suod package-cleanup --cleandupes --removenewestdupes
+
+Loaded plugins: fastestmirror, langpacks, priorities                                                                                                                                                                                                                                                  
+There are unfinished transactions remaining. You might consider running yum-complete-transaction, or "yum-complete-transaction --cleanup-only" and "yum history redo last", first to finish them. If those don't work you'll have to try removing/installing packages by hand (maybe package-cleanup can help).
+
+Erasing 几个包，又安装了几个包。
+
+
+5) 清除可能存在的损坏包
+$ sudo package-cleanup --problems
+
+6) 继续升级
+$ sudo yum update -y
+需要下载 661 个包。
+
+下载完开始安装时报错:
+Transaction test succeeded
+Running transaction
+  Updating   : 1:grub2-common-2.02-0.87.el7.centos.7.noarch            1/1310 
+Segmentation fault
+
+
+单独更新这一个包呢?
+$ sudo yum update grub2-common
+
+
+
+(4) 重启系统
+$ sudo reboot
+
+
+
+
+
+
+
+
 
 
 

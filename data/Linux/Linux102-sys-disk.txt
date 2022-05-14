@@ -3806,10 +3806,200 @@ $ date | md5sum | cut -c 1-8
 ========================================
 [重装 server 193] 安装 193 时遇到分区报错: Error Installing CentOS 7 - An unknown error has occurred
 ----------------------------------------
-193 server 是 联想 SR590 /SR850 中的一个。
+1. 基本信息 
+(1) 193 server 是 联想 SR590 /SR850 中的一个。
 因为合同中是买了两个，ip结尾分别是 193 和 194，不过不确定怎么对应起来。
 
+(2) 硬盘结构 
+/dev/sda 0.5T  system /  /boot  /boot/efi
+/dev/sdb 8T    /home 
 
+/dev/sdc  146T  /data
+/dev/sdd  146T  /data
+/dev/sde   89T  /mnt/test1
+
+而重装的时候，只能识别三个盘， sd[a,b,c] 其中c还是U盘系统启动盘。
+其余的数据盘 sd[cde] 找不到，也就不用操心了。
+ab 厂家是 Lenovo 
+cde 厂家是 DELL 
+
+
+(3) ab 盘其实也是 RAID 
+0.5T * 2 SATA = RAID 1, 0.5T, 读写性能，有冗余，每块盘都是冗余，能坏 n-1 块。
+1.6T * 6 SAS  = RAID 5,  8T, N块数据放在 N+1 上，最多坏 1 块，现在已经坏了1块。读取速度很慢，这可能是服务器慢的原因。
+
+
+
+
+(4) /dev/sdc 和 sdd 是 多路径存储 multipath ，可能需要找 DELL 的驱动才能识别这块盘。
+$ ls -ltha /opt/
+drwxr-xr-x   3 root root   26 May  9 22:54 lsi
+drwxrwxr-x.  3 root root   31 Dec 12  2018 dell  #这时间线很对，就是装机器当天装的这个包
+
+$ ls -ltha /opt/dell
+total 0
+drwxrwxr-x. 6 root root 219 Dec 12  2018 mdstoragesoftware
+
+
+$ ls -ltha /opt/dell/mdstoragesoftware/
+total 148K
+-rwxr-xr-x. 1 root root 9.3K Dec 12  2018 Dell_MD_Storage_Software_Install_12_12_2018_06_01_06.log
+drwxrwxrwx. 2 root root  212 Dec 12  2018 Uninstall Dell MD Storage Software
+drwxrwxr-x. 5 root root 4.0K Dec 12  2018 mdconfigurationutility
+drwxrwxr-x. 9 root root 4.0K Dec 12  2018 mdstoragemanager
+-rw-rw-r--. 1 root root 127K Dec 12  2018 installer_postpreinstall_debug.txt
+drwxrwxr-x. 6   10  143  211 Oct  8  2013 jre
+
+
+$ tree -L 3 /opt/dell
+/opt/dell
+└── mdstoragesoftware
+    ├── Dell_MD_Storage_Software_Install_12_12_2018_06_01_06.log
+    ├── installer_postpreinstall_debug.txt
+    ├── jre
+    │   ├── bin
+    │   ├── COPYRIGHT
+    │   ├── lib
+    │   ├── LICENSE
+    │   ├── man
+    │   ├── plugin
+    │   ├── README
+    │   ├── release
+    │   ├── THIRDPARTYLICENSEREADME-JAVAFX.txt
+    │   ├── THIRDPARTYLICENSEREADME.txt
+    │   └── Welcome.html
+    ├── mdconfigurationutility
+    │   ├── javahelp
+    │   ├── jre
+    │   ├── lax.jar
+    │   ├── log4j.xml
+    │   ├── mdcu.desktop
+    │   ├── mdcuIcon.png
+    │   ├── mdcu.jar
+    │   ├── Modular\ Disk\ Configuration\ Utility
+    │   ├── Modular_Disk_Configuration_Utility_Install_12_12_2018_06_01_00.log
+    │   ├── Modular\ Disk\ Configuration\ Utility.lax
+    │   └── Uninstall\ Modular\ Disk\ Configuration\ Utility
+    ├── mdstoragemanager
+    │   ├── agent
+    │   ├── client
+    │   ├── eula.html
+    │   ├── ia
+    │   ├── InstallLogs
+    │   ├── jre
+    │   ├── PowerVault\ Modular\ Disk\ Storage\ Manager_InstallErrorLog.log
+    │   ├── SMagent.rpm
+    │   ├── SMclient.rpm
+    │   ├── SMesm.rpm
+    │   ├── SMruntime.rpm
+    │   ├── SMutil.rpm
+    │   ├── Uninstall\ PowerVault\ Modular\ Disk\ Storage\ Manager
+    │   ├── UpdateJREPath.sh
+    │   └── util
+    └── Uninstall\ Dell\ MD\ Storage\ Software
+        ├── InstallScript.iap_xml
+        ├── installvariables.properties
+        ├── Uninstall\ Dell\ MD\ Storage\ Software
+        ├── Uninstall\ Dell\ MD\ Storage\ Software.lax
+        └── uninstaller.jar
+
+
+确实有2个进程：
+$ ps -aux | grep mdstoragemanager
+root       5629  0.0  0.1 13523852 526088 ?     Sl   May09   4:25 /opt/dell/mdstoragesoftware/mdstoragemanager/jre/bin/java -Xmx768m -no-jre-restrict-search -classpath /opt/dell/mdstoragesoftware/mdstoragemanager/client/SMclient.jar -Ddevmgr.datadir=/var/opt/SM -DstorageManager=6 -Ddevmgr.dmv.featureOption=FULL_SA devmgr.pmlauncher.unix.PMUNIXLauncher
+root       5645  0.2  0.0 13360640 329020 ?     Sl   May09  11:30 /opt/dell/mdstoragesoftware/mdstoragemanager/jre/bin/java -no-jre-restrict-search -classpath /opt/dell/mdstoragesoftware/mdstoragemanager/agent/SMagent.jar -Xmx1024m devmgr.launcher.unix.AgentLauncher -r -c
+
+
+官方网站 https://www.dell.com/support/home/zh-cn/drivers/driversdetails?driverid=vdj1m
+
+
+
+
+
+
+
+(5) 查一下存储软件的版本？方便以后下载使用
+
+$ pwd
+/opt/dell/mdstoragesoftware/mdstoragemanager/client
+
+
+$ sudo SMcli -autoSupportConfig show
+The AutoSupport feature is de-activated on this storage management station.
+The AutoSupport OnDemand feature is activated on this storage management station.
+The AutoSupport Remote Diagnostics feature is activated on this storage management station.
+
+Delivery Method: HTTPS
+ Destination IP address: https://testsupport.netapp.com/put/AsupPut/
+  Connection: Direct
+
+Name     AutoSupport Capable  AutoSupport OnDemand Capable  Chassis Serial Number  IP Address                                            
+Unnamed  No                   No                            8ZLFWS2                172.18.5.195/172.18.5.195, 172.18.5.196/172.18.5.196  
+
+SMcli completed successfully.
+
+
+搜索驱动：
+https://www.dell.com/support/home/zh-cn/?app=drivers
+关键词: 8ZLFWS2
+
+
+
+产品名字: PowerVault MD3800f
+服务编号: 8ZLFWS2 | 快速服务代码: 19566589106
+支持服务: 已过期 11 11月 2021
+发货日期 09 11月 2018 | 位置 China
+
+
+光盘:DELL_MDSS_Consolidated_RDVD_6_5_0_1.iso  文件大小：2.84 GB
+https://www.dell.com/support/home/zh-cn/drivers/driversdetails?driverid=r9g1x&oscode=rhe70&productcode=powervault-md3800f
+历史版本: 
+https://www.dell.com/support/home/zh-cn/drivers/driversdetails?driverid=pcrcj&oscode=rhe70&productcode=powervault-md3800f
+Dell PowerVault MD32/MD34/MD36/MD38系列资源DVD
+https://www.dell.com/support/home/zh-cn/drivers/driversdetails?driverid=pcrcj&oscode=rhe70&productcode=powervault-md3800f
+
+
+
+搜到一个 lsi 
+https://www.dell.com/support/home/zh-cn/drivers/driversdetails?driverid=mrcwr&oscode=rhe70&productcode=powervault-md3800f
+
+$ ls -lth /opt/lsi/3rdpartylibs/x86_64/
+total 92K
+-rwxr-xr-x 1 root root 92K Mar 29  2010 libsysfs.so.2.0.2
+
+
+
+==> 日志文件记录: DVD 版本号是 6.5.0.1
+$ pwd
+/opt/dell/mdstoragesoftware/mdstoragemanager
+$ sudo less InstallLogs/PowerVault_Modular_Disk_Storage_Manager_Install_12_12_2018_06_00_05.log
+
+Wed Dec 12 06:00:39 EST 2018
+
+Free Memory: 56758 kB
+Total Memory: 210432 kB
+
+4 Command Line Args:
+0:  -f
+1:  /mnt/DELL_MDSS_Consolidated_RDVD_6_5_0_1/linux/mdsm/full.properties
+2:  -DUSER_INSTALL_DIR=/opt/dell/mdstoragesoftware/mdstoragemanager
+3:  -DAUTO_START_CHOICE=1
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+2. 可能的解决方法
 
 # https://forums.centos.org/viewtopic.php?t=47091&p=200776
 Boot in rescue mode and try running dmraid -r -E /dev/sda and see if that helps. Please make sure there is no useful data on the disk before you try that!
@@ -3840,6 +4030,17 @@ https://djlab.com/2013/07/removing-raid-metadata/
 You could just zero the whole disk, but that could take hours. This command executes in less than a second.
 $ dd if=/dev/zero of=$YOUR_DEV bs=512 seek=$(( $(blockdev --getsz $YOUR_DEV) - 1024 )) count=1024
 ## Replace $YOUR_DEV with the physical device, such as /dev/sda
+
+
+
+
+
+
+
+
+
+
+
 
 
 
