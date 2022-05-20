@@ -17,8 +17,9 @@ return array (
     0 => 2,
     1 => 'Linux常用操作',
     2 => array (
-	  array('十大常用命令','Linux101', 'txt'),
-	  array('系统_磁盘_软件_进程','Linux102-sys-disk', 'txt'),
+	  array('十大常用命令','Linux100-basic', 'txt'),
+	  array('系统安装与维护_磁盘','Linux101-sys-disk', 'txt'),
+	  array('软件安装_进程','Linux102-soft-process', 'txt'),
 	  array('bash和shell编程','Linux103-shell', 'txt'),
 	  array('字符grep/awk/sed','string_process', 'txt'),
 	  array('用户、权限与日志和安全','linux104-user', 'txt'),
