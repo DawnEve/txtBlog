@@ -1,4 +1,5 @@
 Ubuntu下的用户管理与远程登录
+	安全
 
 
 linux简介3|用户与权限管理, 增加sudo权限
@@ -12,14 +13,26 @@ DB7DW3TQ17
 建立用户的步骤：http://www.2cto.com/os/201211/167632.html
 1).增加用户useradd, 设置密码 passwd; 2).创建家目录 -d 3). 指定shell位置 -s
 
+
+
 一步搞定[推荐方式]：
 # useradd -s /bin/bash -d /home/sam  -m sam
 # passwd sam
 
 
 
-1. Ubuntu下带导引的创建用户方式：$ sudo adduser wangjl
+新建组
+# groupadd -g 1001 docker2
 
+新建用户，指定用户uid和gid
+# useradd -s /bin/bash -d /home/wangjl2  -m wangjl2 -u 1012 -g 1001
+# passwd wangjl2 # 修改密码
+
+
+
+
+1. Ubuntu下带导引的创建用户方式：$ sudo adduser wangjl
+不推荐使用。
 
 2. 添加用户
 $ sudo useradd -m -s /bin/bash steven
@@ -31,6 +44,9 @@ $ sudo passwd
 
 refer:
 http://blog.csdn.net/bxyill/article/details/8076846
+
+
+
 
 
 3.更多用户操作
@@ -1371,6 +1387,1850 @@ test3和test4也属于test组，不过这个是附加组。
 
 
 ========================================
+|-- 又遇到一次服务器 CPU 爆表的，莫名其妙好了
+----------------------------------------
+
+==>又一次遇到病毒了: 2022.5.2 13:48 所有CPU被占满，内存还有至少一半。
+几乎是在一瞬间执行的。
+
+
+1.查看进程
+top 看，CPU 用的最多的是 wuxc 的 Rstudio 用户。
+htop 看，CPU 占用最多的是 root 的 /usr/bin/containerd 进程，不过也仅仅是 100%。
+也就是说，只能看到 htop 满屏幕都是红的，但是排名靠前的CPU使用率又不高，只有不到3个 100%。
+只能在 top 中P排序看到一堆100%的进程，用户名是 wuxc，查看是一个普通用户，不在 docker 组。
+
+$ sudo ps -A -o stat,ppid,pid,user,cmd,uid,uname | grep "wuxc" | head
+$ sudo ps -A -o stat,ppid,pid,user,cmd,uid,uname | grep "wuxc" | awk '{print $3}' | xargs kill -9
+
+$ ps -A -o stat,ppid,pid,user,cmd,uid,uname | grep "wuxc" | awk '{print $3}'| xargs sudo kill -9
+以上命令没有用，使用完依旧htop 中 CPU 全红。
+
+
+(1)怀疑是 docker 中的病毒程序？
+
+* stop 所有的 docker 容器: docker stop xx
+	检查 docker ps -a 没有run状态的容器了。
+* kill 掉 /usr/bin/containerd 进程
+	$ ps -A -o stat,pid,ppid,cmd,uid,uname | grep "/usr/bin/containerd" #没有匹配条
+	$ ps -A -o stat,pid,ppid,cmd,uid,uname | grep "contain" #没有匹配条
+	$ docker ps -a
+	# Cannot connect to the Docker daemon at unix:///var/run/docker.sock. Is the docker daemon running?
+* 然后再次杀 top 中的进程 
+	$ ps -aux | head
+	USER        PID %CPU %MEM    VSZ   RSS TTY      STAT START   TIME COMMAND
+	root          1  0.0  0.0 196264  6632 ?        Ss    2021 145:33 /usr/lib/systemd/systemd --switched-root --system --deserialize 22
+	root          2  0.0  0.0      0     0 ?        S     2021  22:37 [kthreadd]
+
+
+	这个就很奇怪！！rserver-pam 是啥？
+	$ ps -aux | grep "wuxc" | head
+	root        794  1.0  0.0 154936  4492 ?        Sl   14:12   0:01 /usr/lib/rstudio-server/bin/rserver-pam wuxc rstudio 1
+	wangjl     1432 11.0  0.0 123692  1284 pts/64   S+   14:14   0:00 grep --color=auto wuxc
+	wuxc     148274  0.1  0.0      0     0 ?        R    Apr30   3:53 [rsession]
+	wuxc     148275  0.0  0.0      0     0 ?        R    Apr30   2:48 [rsession]
+
+	$ sudo kill -9 794
+
+	$ ps -aux | grep "wuxc" | awk '{print $2}'| xargs sudo kill -9
+	报错: kill: sending signal to 175534 failed: No such process
+
+
+
+(2) 关掉端口 2375 
+https://blog.csdn.net/u012359651/article/details/104443955
+
+$ sudo iptables --list
+看不太懂，内容太多了。
+
+
+另一台主机检查端口，该端口不通，8888是通的。
+$ telnet 172.18.5.193 2375
+Trying 172.18.5.193...
+telnet: Unable to connect to remote host: No route to host
+
+
+
+世界突然就安静了，我啥也没干，周波登录了wuxc的Rstudio界面，然后啥也没干。
+
+
+
+(3) 杀僵尸进程
+$ ps -A -o stat,ppid,pid,user,cmd,uid,uname | grep "^[Zz]" | awk '{print $4}' | sort | uniq -c | sort -k1nr
+     45 alamin
+     34 wangjl
+     17 zhoub
+      9 wuxc
+      2 caow
+      1 huangcy
+      1 root
+
+$ ps -A -o stat,ppid,pid,user,cmd,uid,uname | grep "^[Zz]"  | grep wangjl
+Z+   388783  16903 wangjl   [top] <defunct>              1012 wangjl
+Z+   405296  16916 wangjl   [htop] <defunct>             1012 wangjl
+Z+   405296  23273 wangjl   [htop] <defunct>             1012 wangjl
+Z+   388783  23298 wangjl   [top] <defunct>              1012 wangjl
+Z+    29749  29750 wangjl   [bash] <defunct>             1012 wangjl
+Z+    29747  29751 wangjl   [ps] <defunct>               1012 wangjl
+Z+    29747  29754 wangjl   [ps] <defunct>               1012 wangjl
+Z+    29747  29779 wangjl   [ps] <defunct>               1012 wangjl
+...
+Z+   405296 405425 wangjl   [htop] <defunct>             1012 wangjl
+Z+   405296 405805 wangjl   [htop] <defunct>             1012 wangjl
+Z+   405296 425585 wangjl   [htop] <defunct>             1012 wangjl
+
+
+浏览z的进程
+$ ps -A -o stat,ppid,pid,user,cmd,uid,uname | grep "^[Zz]" | grep wangjl | awk '{print $3}'
+
+开始终止这些 ppid
+$ ps -A -o stat,ppid,pid,user,cmd,uid,uname | grep "^[Zz]" | grep wangjl | awk '{print $2}' | sort | uniq | xargs kill -9
+
+再次查看z进程
+$ ps -A -o stat,ppid,pid,user,cmd,uid,uname | grep "^[Zz]" | grep wangjl
+
+
+
+
+
+(3) 重新启动Docker 及其 Rstudio
+$ docker ps
+Cannot connect to the Docker daemon at unix:///var/run/docker.sock. Is the docker daemon running?
+
+$ sudo service docker status
+$ sudo service docker start
+
+$ docker ps -a
+$ docker start wjl
+
+
+查看用户设置
+$ docker exec -ti wjl bash
+# less /etc/passwd
+
+
+
+
+
+
+
+
+
+
+
+2. 又一次 CPU 爆满(2022.5.10 20:45)，还找不到是哪个进程占用了
+
+############ CPU 又爆满了!!
+# zerotier-one
+$ ps -A -o pid,ppid,user,uid,cmd | grep zerotier 
+  6460      1 zerotie+   983 /usr/sbin/zerotier-one
+
+$ ps 6460
+Signal 17 (CHLD) caught by ps (procps-ng version 3.3.10).
+ps:display.c:66: please report this bug
+   PID TTY      STAT   TIME COMMAND
+  6460 ?        Ssl    4:47 /usr/sbin/zerotier-one
+
+防止其重新运行
+$ sudo mv /usr/sbin/zerotier-one /usr/sbin/zerotier-one-Can-Delete
+
+
+找其子进程
+$ ps -A -o pid,ppid,user,uid,cmd | grep 6460
+  6460      1 zerotie+   983 /usr/sbin/zerotier-one
+没有找到。
+
+
+
+$ ps -A -o pid,ppid,user,uid,cmd,%cpu | sort -k 6nr | head
+110916 305751 wangjl    1012 htop                        68.6
+110518  66868 wangxf    1018 htop                        68.4
+112570   5596 root         0 sleep 60                     0.0   #可能的脚本，
+107155  98371 wangjl    1012 top                         34.3
+ 82738      2 root         0 [kworker/u836:2]             3.4
+ 70493   5406 wuxc      1031 /usr/lib/rstudio-server/bin  2.8
+106681      2 root         0 [kworker/u835:1]             2.7
+ 26328      1 root         0 /usr/bin/containerd          0.7
+401786 188834 qin       1003 /usr/libexec/openssh/sftp-s  0.7
+189573 188834 qin       1003 /usr/libexec/openssh/sftp-s  0.4
+
+杀死该进程
+$ sudo kill -9 6460
+
+查看相关进程
+$ ps -A -o pid,ppid,user,uid,cmd | grep -i zerotier
+
+
+
+
+
+$ ls /etc/ | grep "ld"
+autofs_ldap_auth.conf
+firewalld
+ld.so.cache
+ld.so.conf
+ld.so.conf.d
+openldap
+sudo-ldap.conf
+
+
+$ ps -ef | grep  dbus
+wangjl   113872 326437  0 19:51 pts/15   00:00:00 grep --color=auto dbus
+dbus     122881      1  0 May09 ?        00:00:02 /usr/bin/dbus-daemon --system --address=systemd: --nofork --nopidfile --systemd-activation
+dbus     123225 122881  0 May09 ?        00:00:00 [dbus-daemon] <defunct>
+dbus     128335 122881  0 May09 ?        00:00:00 [dbus-daemon] <defunct>
+dbus     171838 122881  0 09:30 ?        00:00:00 [dbus-daemon] <defunct>
+dbus     193151 122881  0 13:08 ?        00:00:00 [dbus-daemon] <defunct>
+dbus     413680 122881  0 15:40 ?        00:00:00 [dbus-daemon] <defunct>
+
+
+
+
+
+
+杀掉可疑进程： docker
+$ ps -A -o stat,ppid,pid,user,cmd,uid,uname | grep -i contain
+Ssl       1  26328 root     /usr/bin/containerd             0 root
+S+   326437 120575 wangjl   grep --color=auto contain    1012 wangjl
+$ sudo kill -9 26328
+
+过一会又出来了
+$ ps -A -o stat,ppid,pid,user,cmd,uid,uname | grep -i contain
+Ssl       1 120743 root     /usr/bin/containerd             0 root
+$ sudo kill -9 120743
+
+$ sudo service docker status #关着的
+
+
+发现这个服务是开的：
+$ sudo service containerd status
+https://containerd.io/
+怎么办？
+$ containerd --version
+containerd containerd.io 1.6.4 212e8b6fa2f44b9c21b2798135fc6fb7c53efc16
+$ sudo service containerd stop
+
+终于彻底关了。
+
+
+
+
+
+杀死可疑进程 
+$ ps -A -o stat,ppid,pid,user,uid,uname,cmd | grep -i shiny
+Ssl       1   5395 root     /opt/shiny-server/ext/node/     0 root
+S    124001 124046 hou      -bash -c cd \/srv\/shiny-se  1001 hou
+S    124002 124047 hou      -bash -c cd \/srv\/shiny-se  1001 hou
+S+   326531 124530 wangjl   grep --color=auto -i shiny   1012 wangjl
+
+$ ps 5395
+Signal 17 (CHLD) caught by ps (procps-ng version 3.3.10).
+ps:display.c:66: please report this bug       
+   PID TTY      STAT   TIME COMMAND
+  5395 ?        Ssl    0:03 /opt/shiny-server/ext/node/bin/shiny-server /opt/shiny-server/lib/main.js
+124046 ?        S      0:00 -bash -c cd \/srv\/shiny-server\/sample-apps\/hello && R --no-save --slave -f \/opt\/shiny-server\/R\/SockJSAdapter\.R
+
+$ sudo kill -9 5395
+$ ps -A -o stat,ppid,pid,user,uid,uname,cmd | grep -i shiny | awk '{print $3}' | sort | uniq  | sudo xargs kill -9
+
+服务需要关掉:
+$ sudo service shiny-server stop
+
+改名字
+$ sudo mv /opt/shiny-server/ /opt/shiny-server-Can-Delete
+
+
+
+主机卡顿但找不到挖矿进程，可能系统命令被替换了。
+使用 busybox 的 top 命令
+$ wget https://www.busybox.net/downloads/binaries/1.35.0-x86_64-linux-musl/busybox --no-check-certificate
+$ sudo chmod +x busybox
+$ ./busybox top
+
+Keys:
+	N/M/P/T: show CPU usage, sort by pid/mem/cpu/time
+	S: show memory
+	R: reverse sort
+	H: toggle threads, 1: toggle SMP
+	Q,^C: exit
+
+
+
+
+
+
+
+$ ps -aux | grep cimserver
+root      82755  0.0  0.0 489088 31088 ?        Ssl  18:27   0:06 cimserver enableHttpConnection=false enableHttpsConnection=false enableAuthentication=true
+wangjl   137233  8.0  0.0 123692  1356 pts/6    S+   23:20   0:00 grep --color=auto cimserver
+[wangjl@bio_svr1 /]$ ps 82755
+Signal 17 (CHLD) caught by ps (procps-ng version 3.3.10).
+ps:display.c:66: please report this bug
+   PID TTY      STAT   TIME COMMAND
+ 82755 ?        Ssl    0:06 cimserver enableHttpConnection=false enableHttpsConnection=false enableAuthentication=true
+
+$ ps -A -o stat,ppid,pid,%cpu,user,uid,uname,cmd | grep -i cimserver
+Ssl       1  82755  0.0 root         0 root     cimserver enableHttpConnection=false enableHttpsConnection=false enableAuthentication=true
+
+
+
+
+
+$ ss -lnt                                           
+State      Recv-Q Send-Q        Local Address:Port   Peer Address:Port
+LISTEN     0      128                       *:22                *:*  
+LISTEN     0      128               127.0.0.1:631               *:*  
+LISTEN     0      128                       *:8888              *:*  
+LISTEN     0      100               127.0.0.1:25                *:*  
+LISTEN     0      128               127.0.0.1:6011              *:*  
+LISTEN     0      128               127.0.0.1:6013              *:*  
+LISTEN     0      50                        *:445               *:*  
+LISTEN     0      50                        *:139               *:*  
+LISTEN     0      5             192.168.122.1:53                *:*  
+LISTEN     0      128                    [::]:22             [::]:*  
+LISTEN     0      128                   [::1]:631            [::]:*  
+LISTEN     0      100                   [::1]:25             [::]:*  
+LISTEN     0      128                   [::1]:6011           [::]:*  
+LISTEN     0      128                   [::1]:6013           [::]:*  
+LISTEN     0      50                     [::]:445            [::]:*  
+LISTEN     0      128                    [::]:3838           [::]:*  
+LISTEN     0      50                     [::]:2463           [::]:*  
+LISTEN     0      50       [::ffff:127.0.0.1]:41667          [::]:*  
+LISTEN     0      50                     [::]:139            [::]:*  
+LISTEN     0      32                     [::]:21 
+
+根据进程号查端口号
+$ sudo netstat -anp | grep 5395
+tcp6       0      0 :::3838                 :::*                    LISTEN      5395/shiny-server 
+
+
+$ sudo netstat -antp
+
+
+查找打开的端口：
+$ sudo netstat -anpt |grep ' - '
+tcp        0      0 172.18.5.193:22         10.20.57.100:58324      ESTABLISHED -                   
+tcp6       0      0 172.18.5.193:43470      172.18.5.195:2463       TIME_WAIT   -                   
+tcp6       0      0 172.18.5.193:45240      172.18.5.196:2463       TIME_WAIT   -
+
+
+
+
+$ sudo netstat -antp
+[sudo] password for wangjl: 
+Active Internet connections (servers and established)
+Proto Recv-Q Send-Q Local Address           Foreign Address         State       PID/Program name    
+tcp        0      0 127.0.0.1:631           0.0.0.0:*               LISTEN      6465/cupsd          
+tcp        0      0 127.0.0.1:25            0.0.0.0:*               LISTEN      7592/master         
+tcp        0      0 0.0.0.0:445             0.0.0.0:*               LISTEN      6467/smbd           
+tcp        0      0 0.0.0.0:139             0.0.0.0:*               LISTEN      6467/smbd           
+tcp        0      0 192.168.122.1:53        0.0.0.0:*               LISTEN      7627/dnsmasq        
+tcp        1      0 169.254.95.120:50652    169.254.95.118:5989     CLOSE_WAIT  82755/cimserver     
+tcp        0      0 192.168.1.100:36718     192.168.1.101:3260      ESTABLISHED 117578/iscsid       
+tcp        1      0 169.254.95.120:50628    169.254.95.118:5989     CLOSE_WAIT  82755/cimserver     
+tcp6       0      0 ::1:631                 :::*                    LISTEN      6465/cupsd          
+tcp6       0      0 ::1:25                  :::*                    LISTEN      7592/master         
+tcp6       0      0 :::445                  :::*                    LISTEN      6467/smbd           
+tcp6       0      0 :::2463                 :::*                    LISTEN      5645/java           
+tcp6       0      0 127.0.0.1:41667         :::*                    LISTEN      5645/java           
+tcp6       0      0 :::139                  :::*                    LISTEN      6467/smbd           
+tcp6       0      0 :::21                   :::*                    LISTEN      6470/vsftpd         
+tcp6       0      0 172.18.5.193:45102      172.18.5.195:2463       ESTABLISHED 5629/java           
+tcp6       0      0 172.18.5.193:46314      172.18.5.195:2463       TIME_WAIT   -                   
+tcp6       0      0 172.18.5.193:48084      172.18.5.196:2463       TIME_WAIT   -                   
+tcp6       0      0 172.18.5.193:37358      172.18.5.195:2463       ESTABLISHED 5629/java
+## sshd 以下被认为正常
+tcp        0      0 0.0.0.0:8888            0.0.0.0:*               LISTEN      5406/rserver        
+tcp        0      0 0.0.0.0:22              0.0.0.0:*               LISTEN      6466/sshd           
+tcp6       0      0 :::22                   :::*                    LISTEN      6466/sshd           
+tcp        0      0 127.0.0.1:6010          0.0.0.0:*               LISTEN      138077/sshd: huangc 
+tcp        0      0 127.0.0.1:6011          0.0.0.0:*               LISTEN      17811/sshd: zhouwg@ 
+tcp        0      0 127.0.0.1:6013          0.0.0.0:*               LISTEN      19595/sshd: huangcy 
+tcp        0      0 172.18.5.193:22         10.20.14.80:52028       ESTABLISHED 38901/sshd: alamin  
+tcp        0      0 172.18.5.193:22         10.20.11.203:2014       ESTABLISHED 17726/sshd: zhouwg  
+tcp        0      0 172.18.5.193:22         10.20.89.188:53006      ESTABLISHED 138079/sshd: huangc 
+tcp        0      0 172.18.5.193:22         10.20.89.188:61624      ESTABLISHED 283294/sshd: wangjl 
+tcp        0      0 172.18.5.193:22         10.20.89.188:61689      ESTABLISHED 305050/sshd: wangjl 
+tcp        0      0 172.18.5.193:22         10.20.89.188:54984      ESTABLISHED 97792/sshd: wangjl  
+tcp        0    196 172.18.5.193:22         10.20.89.188:54992      ESTABLISHED 98271/sshd: wangjl  
+tcp        0      0 172.18.5.193:22         10.20.89.188:53118      ESTABLISHED 19435/sshd: huangcy 
+tcp        0      0 172.18.5.193:22         10.20.89.188:54905      ESTABLISHED 130587/sshd: wangjl 
+tcp        0      0 172.18.5.193:22         10.20.89.188:53119      ESTABLISHED 19608/sshd: huangcy 
+tcp        0      0 172.18.5.193:22         10.20.89.188:53005      ESTABLISHED 137996/sshd: huangc 
+tcp6       0      0 ::1:6010                :::*                    LISTEN      138077/sshd: huangc 
+tcp6       0      0 ::1:6011                :::*                    LISTEN      17811/sshd: zhouwg@ 
+tcp6       0      0 ::1:6013                :::*                    LISTEN      19595/sshd: huangcy 
+
+
+
+
+find / -name .sh 
+
+
+
+
+
+
+
+
+
+
+kworker 是 Linux 内核的一部分，说明内核本身占用了很多 CPU。
+这可能是内核或驱动程序的bug所致，但也可能是因为某些用户态程序不断的系统调用所致。
+我看到你确实在运行很多消耗CPU的程序，试着把他们逐个关掉，看 kworker 的 CPU 占用是否跟着下降。
+参考：
+https://askubuntu.com/questions/33640/kworker-what-is-it-and-why-is-it-hogging-so-much-cpu
+$ dmesg
+...
+[15951.368442] Pid 103921(node) over core_pipe_limit
+[15951.368448] Skipping core dump
+[15952.362678] Pid 103923(node) over core_pipe_limit
+[15952.362681] Skipping core dump
+...
+
+
+
+
+
+
+
+关键字关联可以进程： 
+$ ps -elf | grep [sh、wget、curl、xmr、mine、ssh] | grep -v grep
+$ ps -elf | grep sh | grep -v grep
+https://www.jianshu.com/p/88365cdde963
+
+
+
+
+
+http://blog.itpub.net/31401608/viewspace-2145324/
+$ sudo cimprovider -ls
+The CIM server may not be running.
+
+$ sudo cimserver -s
+
+重启cimserver里单个组件
+# cimprovider -dm EMSHAProviderModule   #disable EMSHAProviderModule
+# cimprovider -em EMSHAProviderModule   #enable EMSHAProviderModule
+
+
+
+
+
+
+
+$ ps -A -o stat,ppid,pid,user,cmd,uid,uname | grep rstudio
+Ssl       1   5406 rstudio+ /usr/lib/rstudio-server/bin   986 rstudio-server
+S+   326531 120892 wangjl   grep --color=auto rstudio    1012 wangjl
+S      5406 169863 root     /usr/lib/rstudio-server/bin     0 root
+S      5406 170260 rstudio+ /usr/lib/rstudio-server/bin   986 rstudio-server
+S    170260 170261 rstudio+ /usr/lib/rstudio-server/bin   986 rstudio-server
+S      5406 170285 root     /usr/lib/rstudio-server/bin     0 root
+S      5406 185523 root     /usr/lib/rstudio-server/bin     0 root
+S      5406 423583 root     /usr/lib/rstudio-server/bin     0 root
+
+
+$ sudo service rstudio-server status
+...
+May 10 16:00:55 bio_svr1 rsession-zhouwg[4349]: WARNING ASSERTION FAILED: !res; LOGGED FROM: rstudio_boost::mutex::~mutex() /opt/rstudio-tools/boost/boost_1_69_0/include/boost/thread/pthread/mutex.hpp:62
+May 10 16:00:55 bio_svr1 rsession-zhouwg[4350]: WARNING ASSERTION FAILED: !res; LOGGED FROM: rstudio_boost::mutex::~mutex() /opt/rstudio-tools/boost/boost_1_69_0/include/boost/thread/pthread/mutex.hpp:62
+May 10 16:01:07 bio_svr1 rsession-zhouwg[4037]: ERROR session hadabend; LOGGED FROM: rstudio::core::Error {anonymous}::rInit(const rstudio::r::session::RInitInfo&) src/cpp/session/SessionMain.cpp:655
+
+
+
+
+
+2. 安装新 硬盘 后，速度快了很多，但是还有僵尸进程
+
+$ ps -A -o stat,ppid,pid,user,uid,cmd | grep "^[Zz]" | wc
+    172    1204    9596
+
+$ ps -A -o stat,ppid,pid,user,uid,cmd | grep "^[Zz]" | grep "gdm"
+Z     11866  11877 gdm         42 [dbus-launch] <defunct>
+Z     11931  11932 gdm         42 [dbus-daemon] <defunct>
+Z     11931  11937 gdm         42 [dbus-daemon] <defunct>
+Z     12455  12456 gdm         42 [ibus-daemon] <defunct>
+Z     12455  12457 gdm         42 [ibus-daemon] <defunct>
+Z     12032  12552 gdm         42 [gnome-shell] <defunct>
+Z     12673  12711 gdm         42 [gsd-media-keys] <defunct>
+Z     12696  12745 gdm         42 [gsd-smartcard] <defunct>
+Z     12678  12841 gdm         42 [gsd-power] <defunct>
+
+
+
+$ ps -A -o stat,ppid,pid,user,uid,cmd | grep "^[Zz]" | awk '{print $4}' | sort | uniq -c | sort -k1nr
+    124 huangcy
+     76 root
+     13 wangjl
+      9 gdm
+      5 dbus
+      3 zhoub
+#
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+========================================
+CPU被挖矿了，却找不到哪个进程！ 如何关掉 cimserver 进程？
+----------------------------------------
+
+linux病毒查杀 https://www.jianshu.com/p/88365cdde963
+
+https://blog.51cto.com/u_13294304/2955476
+神奇的是，这个进程像是隐身了一般，找不到存在的任何痕迹。
+进程如何隐藏
+现在说回到本文的正题：Linux操作系统上，进程要隐藏起来，有哪些招数？
+要回答这个问题，先来知道ps、top等命令枚举系统的进程列表的原理。
+Linux的设计哲学是：一切皆文件！
+进程也不例外， Linux系统中有一个特殊的目录：/proc/，这个目录下的内容，不是硬盘上的文件系统，而是操作系统内核暴露出的内核中进程、线程相关的数据接口，也就是procfs，里面记录了系统上正在运行的进程和线程信息，来查看一下：
+
+
+
+==> 对抗技巧
+文件/定时任务删除失败---------- ---------文件只读属性保护
+文件/定时任务删完又出现-------- ---------系统文件替换/下载进程残留
+病毒进程刚刚删完又被拉起------- --------恶意进程守护
+主机严重卡顿但找不到挖矿进程---- -------系统命令劫持
+主机杀干净后一段时间又出现病毒-- -------ssh&漏洞再次入侵
+
+
+
+
+(1) 最后修改了 ssh 文件，随时后门登陆进来。
+$ sudo vim /root/.ssh/authorized_keys 
+ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQDJB4KLlbSqREMUi/1HTdIBHbeJdtMA4kXgygUWqSZZ3oQBp0XMa5x/QGzLd98vDu7QODUFLQsZdqLHVMzst1XznqmfJI/emdMtsShm14Z0koLxL+ISY7gC2TOOEGkzD5vGU3ahC77gCSGkD5X7xv1bMqAvjhcRYxDRwT+CYYRjG1V4hZhHwpRGgRhqH/GLMtXJbpxBWUbQLPRJpdahP9K6fg1emfkPb0Ulp7yZp7k8bxLdOektocopdW4UHpOmU3ruloqwvUeDFyIxYDZkuDDKpGZhbLpe3gdOVoOmoLZMB9eL0LT5TE4YpluS6DllcqVlZ7CgqYe3na191yQsPzAj root@nih_jin
+删掉这一行文字。
+
+
+还有 root 用户的vim设置有问题
+
+# Registers:
+""1     LINE    0
+        ^V396
+<ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQDJB4KLlbSqREMUi/1HTdIBHbeJdtMA4kXgygUWqSZZ3oQBp0XMa5x/QGzLd98vDu7QODUFLQsZdqLHVMzst1XznqmfJI/emdMtsShm14Z0koLxL+ISY7gC2TOOEGkzD5vGU3ahC77gCSGkD5X7xv1bMqAvjhcRYxDRwT+CYYRjG1V4hZhHwpRGgRhqH/GLMtXJbpxBWUbQLPRJpdahP9K6fg1emfkPb0Ulp7yZp7k8bxLdOektocopdW4UHpOmU3ruloqwvUeDFyIxYDZkuDDKpGZhbLpe3gdOVoOmoLZMB9eL0LT5TE4YpluS6DllcqVlZ7CgqYe3na191yQsPzAj root@nih_jin
+"2      LINE    0
+        ^V396
+<ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQDJB4KLlbSqREMUi/1HTdIBHbeJdtMA4kXgygUWqSZZ3oQBp0XMa5x/QGzLd98vDu7QODUFLQsZdqLHVMzst1XznqmfJI/emdMtsShm14Z0koLxL+ISY7gC2TOOEGkzD5vGU3ahC77gCSGkD5X7xv1bMqAvjhcRYxDRwT+CYYRjG1V4hZhHwpRGgRhqH/GLMtXJbpxBWUbQLPRJpdahP9K6fg1emfkPb0Ulp7yZp7k8bxLdOektocopdW4UHpOmU3ruloqwvUeDFyIxYDZkuDDKpGZhbLpe3gdOVoOmoLZMB9eL0LT5TE4YpluS6DllcqVlZ7CgqYe3na191yQsPzAj root@nih_jin
+"3      LINE    0
+        #hou    ALL=(ALL)       ALL
+"4      LINE    0
+        #hou    ALL=(ALL)       ALL
+"5      LINE    0
+        # Generated by iptables-save v1.4.21 on Thu May  5 22:42:42 2022
+"6      LINE    0
+        *filter
+"7      LINE    0
+        :INPUT ACCEPT [14873:815810]
+"8      LINE    0
+        :FORWARD ACCEPT [0:0]
+"9      LINE    0
+        :OUTPUT ACCEPT [6084:80894834]
+"-      CHAR    0
+        #
+
+
+# find /home/ | grep authorized_keys
+/home/hou/.ssh/authorized_keys
+/home/qin2/authorized_keys_node1
+/home/rqfu/.ssh/authorized_keys
+/home/chaoy/.ssh/authorized_keys
+/home/zjhan/.ssh/authorized_keys
+/home/zhoub/.ssh/authorized_keys
+/home/caow/.ssh/authorized_keys
+/home/wangxf/.ssh/authorized_keys
+/home/qinpf/.ssh/authorized_keys
+
+
+
+
+
+
+
+(2) 查隐藏进程，使用 busybox
+Busybox: 分享你不知道Top 命令参数
+https://www.csdn.net/tags/NtTaYg4sNDQyNjUtYmxvZwO0O0OO0O0O.html
+https://blog.csdn.net/liuxd3000/article/details/123883324
+
+
+
+$ ps -A -o stat,ppid,pid,user,comm | wc
+   1903    9768   79083
+$ ./busybox ps -A -o stat,ppid,pid,user,comm | wc
+   2118   10593   81282
+
+使用 python 调用系统命令，获取 pid ，看隐藏的 pid 是啥？
+
+$ ./busybox ps  | grep cimserver | awk '{print $1}' | sort | uniq | wc
+    129     129     775
+可能差的就是这 129 个。
+
+特征是，这 129个一直在变换 pid 号？还运行了16小时了？
+$ ~/busybox ps  | grep cimserver | head
+82764 root     16h40 cimserver enableHttpConnection=false enableHttpsConnection=false enableAuthentication=true  #就是这些进程
+82765 root     16h40 cimserver enableHttpConnection=false enableHttpsConnection=false enableAuthentication=true
+82766 root     16h40 cimserver enableHttpConnection=false enableHttpsConnection=false enableAuthentication=true
+82767 root     16h40 cimserver enableHttpConnection=false enableHttpsConnection=false enableAuthentication=true
+
+
+$ ps | grep 82764
+$ sudo ps -aux | grep 82764
+
+它竟然不在进程文件夹中
+$ ls /proc/ | grep "^827"
+$ ls /proc/ | grep "^830"
+
+
+
+
+
+
+(3) 无法停止该服务，杀掉还会产生新的；无法杀掉这些进程，kill 报错 说这些进程不存在。
+$ cimserver --version
+2.14.1
+
+
+$ ps -A -o stat,ppid,pid,user,cmd,uid,uname | grep cimserver
+Ssl       1  82755 root     cimserver enableHttpConnect     0 root
+[wangjl@bio_svr1 ~]$ ps -A -o stat,ppid,pid,user,cmd,uid,uname | grep 82755
+Ssl       1  82755 root     cimserver enableHttpConnect     0 root
+
+
+
+$ ~/busybox ps -A -o stat,ppid,pid,user,comm | grep cimserver | head
+# STAT PPID  PID   USER     COMMAND
+R        1 82764 root     cimserver
+R    82764 82765 root     cimserver
+R        1 82766 root     cimserver
+R    82766 82767 root     cimserver
+R        1 82771 root     cimserver
+R    82771 82772 root     cimserver
+R        1 82773 root     cimserver
+R    82773 82776 root     cimserver
+R        1 82779 root     cimserver
+R    82779 82780 root     cimserver
+...
+
+$ ~/busybox ps -A -o stat,ppid,pid,user,comm | grep cimserver | awk '{print $2}' | sort | uniq | sudo xargs kill -9
+kill: sending signal to 82764 failed: No such process
+kill: sending signal to 82766 failed: No such process
+kill: sending signal to 82771 failed: No such process
+...
+kill: sending signal to 83171 failed: No such process
+kill: sending signal to 83179 failed: No such process
+
+
+也就是说，要使用第三方的 kill 命令 
+$ sudo ~/busybox kill -9 82764
+$ ~/busybox ps -A -o stat,ppid,pid,user,comm | grep cimserver | awk '{print $2}' | sort | uniq | sudo xargs ~/busybox kill -9
+$ ~/busybox ps -A -o stat,ppid,pid,user,comm | grep cimserver | awk '{print $3}' | sort | uniq | sudo xargs ~/busybox kill -9
+突然 CPU 就安静了！
+
+关掉这个进程呢？
+$ busybox ps -A -o stat,ppid,pid,user,comm | grep cimserver
+$ sudo cimserver -s  #关闭
+$ sudo cimserver -s shutdownTimeout=5  #5s后关闭
+
+卸载该程序
+$ cimserver -v
+2.14.1
+
+$ which cimserver
+/usr/sbin/cimserver
+
+$ sudo yum remove cimserver
+$ sudo yum erase cimserver
+Warning: No matches found for: cimserver
+No matches found
+
+
+无法找到
+$ yum list | grep cimserver
+OR
+$ rpm -qa | grep cimserver
+
+
+
+找一下，找到了一个匹配
+$ sudo find /home/ | grep "cimserver" --color=auto 2>/dev/null
+[sudo] password for wangjl: 
+/home/rqfu/.local/share/fish/generated_completions/cimserver.fish
+
+
+
+$ sudo less /home/rqfu/.local/share/fish/generated_completions/cimserver.fish
+# cimserver
+# Autogenerated from man page /usr/share/man/man8/cimserver.8.gz
+complete -c cimserver -s h -l help --description 'Display the command usage.'
+complete -c cimserver -l status --description 'Display the running status of the CIM Server.'
+complete -c cimserver -s s --description 'Stop the CIM Server.'
+complete -c cimserver -s v -l version --description 'Display the version number or running status of the CIM Server.'
+
+
+这个 fish 是什么东西？能自动补齐的命令行工具
+https://fishshell.com/
+https://github.com/fish-shell/fish-shell
+fish - the friendly interactive shell
+
+
+
+继续删除这个服务：
+$ ls -lth /usr/sbin | grep cim
+-rwxr-xr-x. 1 root pegasus   76K Apr  1  2020 cimauth
+-rwxr-xr-x. 1 root pegasus   92K Apr  1  2020 cimconfig
+-rwxr-xr-x. 1 root pegasus   32K Apr  1  2020 cimreparchive
+-rwxr-xr-x. 1 root pegasus   40K Apr  1  2020 cimserver
+-rwxr-xr-x. 1 root pegasus   72K Apr  1  2020 cimtrust
+-rwxr-xr-x. 1 root pegasus   330 Nov 28  2019 cimprovagt
+测试了一下，在新安装的 centOS7 上没有，删了？
+算了，改名字吧
+$ sudo mv /usr/sbin/cimauth /usr/sbin/cimauth-Can-Delete
+$ sudo mv /usr/sbin/cimconfig /usr/sbin/cimconfig-Can-Delete
+$ sudo mv /usr/sbin/cimreparchive /usr/sbin/cimreparchive-Can-Delete
+$ sudo mv /usr/sbin/cimserver /usr/sbin/cimserver-Can-Delete
+$ sudo mv /usr/sbin/cimtrust /usr/sbin/cimtrust-Can-Delete
+$ sudo mv /usr/sbin/cimprovagt /usr/sbin/cimprovagt-Can-Delete
+查看
+$ ls -lth /usr/sbin | grep cim
+
+这就算删了吧
+$ ls -lth /usr/sbin | grep cim
+-rwxr-xr-x. 1 root pegasus   76K Apr  1  2020 cimauth-Can-Delete
+-rwxr-xr-x. 1 root pegasus   92K Apr  1  2020 cimconfig-Can-Delete
+-rwxr-xr-x. 1 root pegasus   32K Apr  1  2020 cimreparchive-Can-Delete
+-rwxr-xr-x. 1 root pegasus   40K Apr  1  2020 cimserver-Can-Delete
+-rwxr-xr-x. 1 root pegasus   72K Apr  1  2020 cimtrust-Can-Delete
+-rwxr-xr-x. 1 root pegasus   330 Nov 28  2019 cimprovagt-Can-Delete
+
+
+$ which cimserver
+/usr/bin/which: no cimserver in ( ...
+
+
+
+
+==> 等等，还有/tmp临时文件夹
+$ sudo find /tmp/ | grep "cimserver" --color=auto 2>/dev/null
+/tmp/lenovotools/el7.x64/Bin/lnvgy_utl_tcli01r-2.0.0_rhel7_x86-64/pegasus/bin/cimserver
+/tmp/lenovotools/el7.x64/Bin/lnvgy_utl_tcli01r-2.0.0_rhel7_x86-64/pegasus/cimserver.passwd
+/tmp/lenovotools/el7.x64/Bin/lnvgy_utl_tcli01r-2.0.0_rhel7_x86-64/pegasus/cimserver_current.conf.bak
+/tmp/lenovotools/el7.x64/Bin/lnvgy_utl_tcli01r-2.0.0_rhel7_x86-64/pegasus/cimserver_current.conf
+
+查看
+$ less /tmp/lenovotools/el7.x64/Bin/lnvgy_utl_tcli01r-2.0.0_rhel7_x86-64/pegasus/cimserver_current.conf
+enableAuthentication=true
+enableHttpsConnection=false
+enableHttpConnection=false
+providerDir=provider/qlogic:provider/emulex:provider/brocade:provider/fusionio:provider/mellanox:
+
+有一个眼熟的一个用户名，新安装的 centOS 没有这个
+pegasus:x:66:65:tog-pegasus OpenPegasus WBEM/CIM services:/var/lib/Pegasus:/sbin/nologin
+
+改文件夹名字:
+$ sudo mv /tmp/lenovotools /tmp/lenovotools-Can-Delete
+
+禁止掉这个用户
+$ sudo vim /etc/shadow
+pegasus:!!:17877:::::: #这个用户本来就不能登陆
+
+
+
+查找容器相关的条目
+$ sudo find /tmp | grep -i contain
+/tmp/lenovotools-Can-Delete/el7.x64/Bin/lnvgy_utl_tcli01r-2.0.0_rhel7_x86-64/dct/data/schema/cim_container.xml
+/tmp/lenovotools-Can-Delete/el7.x64/Bin/lnvgy_utl_tcli01r-2.0.0_rhel7_x86-64/pegasus/repository/root#emulex/classes/ELXUCNA_Container.CIM_Container
+/tmp/lenovotools-Can-Delete/el7.x64/Bin/lnvgy_utl_tcli01r-2.0.0_rhel7_x86-64/pegasus/repository/root#emulex/classes/ELXHBA_ChassisContainsCard.CIM_Container
+/tmp/lenovotools-Can-Delete/el7.x64/Bin/lnvgy_utl_tcli01r-2.0.0_rhel7_x86-64/pegasus/repository/root#emulex/classes/CIM_Container.CIM_Component
+/tmp/lenovotools-Can-Delete/el7.x64/Bin/lnvgy_utl_tcli01r-2.0.0_rhel7_x86-64/pegasus/repository/root#emulex/classes/ELXUCNA_CardContainsChip.CIM_Container
+/tmp/lenovotools-Can-Delete/el7.x64/Bin/lnvgy_utl_tcli01r-2.0.0_rhel7_x86-64/pegasus/repository/root#emulex/classes/ELXHBA_CardContainsConnector.CIM_Container
+/tmp/lenovotools-Can-Delete/el7.x64/Bin/lnvgy_utl_tcli01r-2.0.0_rhel7_x86-64/pegasus/repository/root#emulex/classes/ELXHBA_CardContainsChip.CIM_Container
+/tmp/lenovotools-Can-Delete/el7.x64/Bin/lnvgy_utl_tcli01r-2.0.0_rhel7_x86-64/pegasus/repository/root#emulex/classes/ELXUCNA_ChassisContainsCard.CIM_Container
+/tmp/lenovotools-Can-Delete/el7.x64/Bin/lnvgy_utl_tcli01r-2.0.0_rhel7_x86-64/pegasus/repository/root#qlogic_cmpi/classes/QLogic_Adapter_PhysicalPackagePhysicalPort.CIM_Container
+/tmp/lenovotools-Can-Delete/el7.x64/Bin/lnvgy_utl_tcli01r-2.0.0_rhel7_x86-64/pegasus/repository/root#qlogic_cmpi/classes/CIM_Container.CIM_Component
+/tmp/lenovotools-Can-Delete/el7.x64/Bin/lnvgy_utl_tcli01r-2.0.0_rhel7_x86-64/pegasus/repository/root#qlogic_cmpi/classes/QLogic_Adapter_PhysicalPackagePhysicalConnector.CIM_Container
+/tmp/lenovotools-Can-Delete/el7.x64/Bin/lnvgy_utl_tcli01r-2.0.0_rhel7_x86-64/pegasus/repository/root#LSI_MR_1_3_0/classes/LSIESG_Container.CIM_Container
+/tmp/lenovotools-Can-Delete/el7.x64/Bin/lnvgy_utl_tcli01r-2.0.0_rhel7_x86-64/pegasus/repository/root#LSI_MR_1_3_0/classes/CIM_Container.CIM_Component
+/tmp/lenovotools-Can-Delete/el7.x64/Bin/lnvgy_utl_tcli01r-2.0.0_rhel7_x86-64/pegasus/repository/root#LSI_MR_1_3_0/classes/CIM_ConnectorOnPackage.CIM_Container
+/tmp/lenovotools-Can-Delete/el7.x64/Bin/lnvgy_utl_tcli01r-2.0.0_rhel7_x86-64/pegasus/repository/root#LSI_MR_1_3_0/classes/CIM_PackageInChassis.CIM_Container
+/tmp/lenovotools-Can-Delete/el7.x64/Bin/lnvgy_utl_tcli01r-2.0.0_rhel7_x86-64/pegasus/repository/root#LSI_MR_1_3_0/classes/CIM_PackagedComponent.CIM_Container
+/tmp/lenovotools-Can-Delete/el7.x64/Bin/lnvgy_utl_tcli01r-2.0.0_rhel7_x86-64/pegasus/repository/root#qlgcnxns/classes/CIM_Container.CIM_Component
+/tmp/lenovotools-Can-Delete/el7.x64/Bin/lnvgy_utl_tcli01r-2.0.0_rhel7_x86-64/pegasus/repository/root#PG_InterOp/classes/CIM_ContainedLocation.CIM_Component
+/tmp/lenovotools-Can-Delete/el7.x64/Bin/lnvgy_utl_tcli01r-2.0.0_rhel7_x86-64/pegasus/repository/root#PG_InterOp/classes/CIM_ContainedDomain.CIM_SystemComponent
+/tmp/lenovotools-Can-Delete/el7.x64/Bin/lnvgy_utl_tcli01r-2.0.0_rhel7_x86-64/pegasus/repository/root#brcmbnxns/classes/CIM_Container.CIM_Component
+/tmp/lenovotools-Can-Delete/el7.x64/Bin/lnvgy_utl_tcli01r-2.0.0_rhel7_x86-64/pegasus/repository/root#brocade/classes/BROCADE_PhysicalConnectorContainer.CIM_Container
+/tmp/lenovotools-Can-Delete/el7.x64/Bin/lnvgy_utl_tcli01r-2.0.0_rhel7_x86-64/pegasus/repository/root#brocade/classes/CIM_Container.CIM_Component
+
+
+
+
+
+
+查看残余
+$ rpm -qal  | grep "cimserver"
+/etc/Pegasus/cimserver_current.conf
+/etc/Pegasus/cimserver_planned.conf
+/etc/pki/Pegasus/cimserver_trust
+/usr/sbin/cimserver
+/usr/share/man/man8/cimserver.8.gz
+/var/lib/Pegasus/cache/trace/cimserver.trc
+/var/run/tog-pegasus/cimserver.pid
+/var/run/tog-pegasus/cimserver_start.lock
+
+
+
+
+
+
+
+
+
+
+
+僵尸进程
+$ ps -A -o stat,ppid,pid,user,uid,cmd | grep "^[Zz]" | wc
+    694    4858   38650
+
+$ ps -A -o stat,ppid,pid,%cpu,user,uid,cmd | grep "^[Zz]" | grep root
+Z    117578 117581  0.0 root         0 [iscsid] <defunct>
+Z    117575 117637  0.0 root         0 [systemd-logind] <defunct>
+Z    117575 118525  0.0 root         0 [systemd-logind] <defunct>
+Z    117664 118783  0.0 root         0 [crond] <defunct>
+Z    117664 119848  0.0 root         0 [crond] <defunct>
+...
+
+
+$ ps -A -o stat,ppid,pid,user,uid,cmd | grep "^[Zz]" | awk '{print $4}' | sort | uniq -c | sort -k1nr
+   1523 qin
+    327 root
+     55 wangjl
+     42 chengww
+      5 caow
+      5 dbus
+      5 wxf
+      3 zhoub
+      2 alamin
+      1 huangcy
+      1 wangxf
+#
+
+# id qin
+uid=1003(qin) gid=1003(jin) groups=1003(jin)
+
+# id qin2
+uid=1002(qin2) gid=1002(jin2) groups=1002(jin2)
+
+# id qinpf
+uid=1038(qinpf) gid=1038(qinpf) groups=1038(qinpf)
+
+
+
+
+
+
+
+
+
+
+
+
+(4) 再看进程数
+$ mv ~/busybox ~/bin
+$ busybox ps -A -o stat,ppid,pid,user,comm | wc
+   1994    9973   76859
+$ ps -A -o stat,ppid,pid,user,comm | wc
+   1919    9878   79947
+
+使用py脚本，检测不一致的命令
+$ python3
+Python 3.7.3 (default, Mar 27 2019, 22:11:17) 
+[GCC 7.3.0] :: Anaconda, Inc. on linux
+
+还是写成脚本吧
+$ vim unhide_pid.py
+import subprocess,re
+
+(status1, output1)=subprocess.getstatusoutput('busybox ps -A -o stat,ppid,pid,user,comm')
+(status2, output2)=subprocess.getstatusoutput('ps -A -o stat,ppid,pid,user,comm')
+print('#status1 = ', status1) #0
+print('#status2 = ', status2) #0
+
+#分割字符串为文件名
+arr1=re.split("\n", output1) #2442
+arr2=re.split("\n", output2) #2353
+print("#len1=", len(arr1))
+print("#len2=", len(arr2))
+
+arr1[0]
+
+a2=[]
+for i in range(1, len(arr2)):
+  a2.append( re.split("\s+",arr2[i])[2] )
+
+only_In_a1 = []
+for i in range(1, len(arr1)):
+  pid = re.split("\s+",arr1[i])[2]
+  if pid not in a2:
+    only_In_a1.append( int(pid) )
+
+len(only_In_a1) #96
+
+
+rs=[]
+for i in range(1, len(arr1)):
+  pid=re.split("\s+",arr1[i])[2]
+  if int(pid) in only_In_a1:
+    rs.append(arr1[i])
+
+len(rs)
+
+print(arr1[0])
+for i in rs:
+  print(i)
+
+
+$ python3 unhide_pid.py | grep -v '^#' | grep "^[Zz]" | head
+Z     5493  5522 root     (rngd)  #随机数生成器
+Z     6631  6965 root     libvirtd
+Z     6631  6993 root     libvirtd
+Z    17726 17793 root     sshd
+Z    17726 17802 root     sshd
+...
+Z    121825 124618 root     anacron
+
+猜测: 所以这三个是重点了，ssh 用于登陆，libvirtd 提供虚拟化环境，anacron 用于定期任务的执行。
+
+
+运行以下命令以显示增加的熵级别
+$ cat /proc/sys/kernel/random/entropy_avail
+3741
+
+
+
+
+这几个进程在新 centos7 系统也有：
+$ ps -aux | grep libvirt 
+root       6631  0.0  0.0 1023960 21624 ?       Ssl  May09   0:07 /usr/sbin/libvirtd
+nobody     7627  0.0  0.0  62708  1364 ?        S    May09   0:00 /usr/sbin/dnsmasq --conf-file=/var/lib/libvirt/dnsmasq/default.conf --leasefile-ro --dhcp-script=/usr/libexec/libvirt_leaseshelper
+root       7628  0.0  0.0  62680   428 ?        S    May09   0:00 /usr/sbin/dnsmasq --conf-file=/var/lib/libvirt/dnsmasq/default.conf --leasefile-ro --dhcp-script=/usr/libexec/libvirt_leaseshelper
+
+
+杀掉这些进程
+$ python3 unhide_pid.py | grep -v '^#' | grep "^[Zz]" | wc
+
+$ python3 unhide_pid.py | grep -v '^#' | grep "^[Zz]" | awk '{print $2}' | sort | uniq | sudo xargs kill -9
+$ python3 unhide_pid.py | grep -v '^#' | grep "^[Zz]" | awk '{print $3}' | sort | uniq | sudo xargs kill -9 
+kill: sending signal to 313618 failed: No such process
+kill: sending signal to 313665 failed: No such process
+kill: sending signal to 313752 failed: No such process
+kill: sending signal to 313760 failed: No such process
+
+$ python3 unhide_pid.py | grep -v '^#' | grep "^[Zz]" 
+Z    314124 314202 root     libvirtd
+
+$ sudo kill -9 314124
+
+过了一会，又产生了几个：
+$ python3 unhide_pid.py | grep -v '^#' | grep "^[Zz]" 
+Z    314474 314547 root     libvirtd
+Z    314474 314551 root     libvirtd
+Z    315259 315330 root     sshd
+Z    315259 315337 root     sshd
+Z    316268 316335 root     sshd
+Z    316268 316342 root     sshd
+Z    322480 322548 root     sshd
+Z    322480 322555 root     sshd
+
+https://www.ibm.com/docs/en/zos/2.2.0?topic=provider-start-stop-cim-server
+
+
+新系统也有这个:
+$ ps -aux | grep sleep
+wangjl   327045  0.0  0.0 123688  1220 pts/7    S+   16:37   0:00 grep --color=auto sleep
+root     327054  0.0  0.0 118928   820 ?        S    16:37   0:00 sleep 60
+
+
+新安装 centOS 上也有:
+$ ps -aux | grep dnsmasq
+nobody     7627  0.0  0.0  62708  1364 ?        S    May09   0:00 /usr/sbin/dnsmasq --conf-file=/var/lib/libvirt/dnsmasq/default.conf --leasefile-ro --dhcp-script=/usr/libexec/libvirt_leaseshelper
+root       7628  0.0  0.0  62680   428 ?        S    May09   0:00 /usr/sbin/dnsmasq --conf-file=/var/lib/libvirt/dnsmasq/default.conf --leasefile-ro --dhcp-script=/usr/libexec/libvirt_leaseshelper
+
+
+
+查看主目录的文件详情， 不要忘记查看隐藏文件。
+$ sudo ls -ltha /root
+total 190M
+-rw-------.  1 root  root   21K May 11 18:15 .bash_history
+-rw-------   1 root  root  7.0K May 11 17:06 .viminfo
+drwx------.  2 root  root    77 May 11 10:39 .ssh             #可疑
+-rw-------.  1 root  root  190M May  6 14:01 core.230809
+-rw-------.  1 root  root     0 Nov 19 16:40 .Xauthority
+drwx------. 16 root  root  4.0K Nov 19 16:40 .cache          #可疑
+-rw-------.  1 root  root  2.8K Nov 19 16:38 .ICEauthority
+-rw-------.  1 root  root  1.0K Nov 19 16:31 .rnd
+drwx------.  2 root  root     6 Nov 17 20:14 .gvfs
+-rw-r--r--.  1 root  root   574 Apr 29  2021 .bashrc
+
+
+历史命令:
+yum install clamav  clamav-server clamav-data clamav-update clamav-filesystem clamav-scanner-systemd clamav-devel clamav-lib clamav-server-systemd pcre* gcc zlib zlib-devel libssl-devel libssl openssl
+
+
+
+
+
+
+
+
+
+
+
+
+(5) ss、netstat、ps、lsof 命令被替换为病毒文件，需要将原文件删掉，再将纯净的文件放进去。
+存在如curl、wget等下载进程，反复下载病毒文件
+定时任务 /var/spool/cron/root 被反复创建，杀不干净
+删不干净肯定是有恶意进程在守护，先把可疑进程杀掉
+
+关键字关联可疑进程：sh、wget、curl、xmr、mine、ssh
+找到父进程，结束整个进程树
+
+
+中病毒机器: 
+$ md5sum /usr/bin/ps
+d24f543e423ccda41d95f02cd26f289d  /usr/bin/ps
+a0c32dd6d3bc4d364380e2e65fe9ac64  /usr/bin/ls
+73549d6bea3d87e93eea3f169d0db5f0  /usr/bin/top
+6610ab31b21d9b5941da4a70ef78a57b  /usr/bin/kill
+eca5cbbfa505d58b414e8a4abdc96ca9  /usr/bin/wget
+5a34f7eeeef28f66817c4ce6e19875df  /usr/bin/curl
+5dd77ae17cfb18c674ec4de905776bde  /usr/bin/netstat
+3ee4e2c4f4b70db44e97e201a28db95a  /usr/sbin/ss
+34365de21185d6298e9d7eaa9b06068a  /usr/sbin/lsof
+
+
+
+新装的系统:
+$ md5sum /usr/bin/ps
+7e20c61405e25702e08b83478d0ef76f  /usr/bin/ps
+a0c32dd6d3bc4d364380e2e65fe9ac64  /usr/bin/ls  #一致
+48381853a5aa117164ed13441508d620  /usr/bin/top
+931155fa5effd1d7cf7d68ea942cac9d  /usr/bin/kill
+eca5cbbfa505d58b414e8a4abdc96ca9  /usr/bin/wget #一致
+5dd77ae17cfb18c674ec4de905776bde  /usr/bin/netstat #一致
+22a42b3731d77989a1d5fe5d5dbea53d  /usr/sbin/ss
+34365de21185d6298e9d7eaa9b06068a  /usr/sbin/lsof #一致
+
+
+$ sudo mv /usr/bin/ps  /usr/bin/ps-backup
+
+
+
+
+
+
+
+
+
+(6) 查看 /etc/rc.local 用户下面的开机自启动
+$ ls -lth /etc/rc.local
+lrwxrwxrwx. 1 root root 13 Oct  5  2020 /etc/rc.local -> rc.d/rc.local
+
+$ ls -lth /etc/rc.d/rc.local
+-rw-r--r--. 1 root root 473 Aug  7  2020 /etc/rc.d/rc.local
+
+
+$ ls -lth /etc/init.d/
+total 48K
+-rw-r--r--. 1 root root 1.2K Aug  7  2020 README  ##
+-rwxr-xr-x. 1 root root 2.7K Apr  1  2020 multipathd
+-rw-r--r--. 1 root root  18K Aug 19  2019 functions  ##
+-rwxr-xr-x. 1 root root 4.5K Aug 19  2019 netconsole ##
+-rwxr-xr-x. 1 root root 7.8K Aug 19  2019 network  ##
+-rwxrwxr-x. 1 root root 1007 May 14  2018 phserver #重点怀疑对象。最后删了。
+
+
+$ /etc/init.d/phserver --version
+Usage: /etc/init.d/phserver {start|stop}
+
+
+
+$ cat /etc/rc.d/rc.local 
+#!/bin/bash
+# THIS FILE IS ADDED FOR COMPATIBILITY PURPOSES
+#
+# It is highly advisable to create own systemd services or udev rules
+# to run scripts during boot instead of using this file.
+#
+# In contrast to previous versions due to parallel execution during boot
+# this script will NOT be run after all other services.
+#
+# Please note that you must run 'chmod +x /etc/rc.d/rc.local' to ensure
+# that this script will be executed during boot.
+
+touch /var/lock/subsys/local
+
+
+
+$ ls /etc/rc*.d/
+/etc/rc0.d/:
+K50netconsole  K80phserver  K90network
+
+/etc/rc1.d/:
+K50netconsole  K80phserver  K90network
+
+
+$ cat /etc/init.d/phserver
+#!/bin/bash
+#
+# Use for Open peanuthull DDNS 3.0
+#
+# chkconfig: 2345 80 80
+# description:  will be start phddns with system reboot 
+#
+# processname: phddns
+
+# source function library
+. /etc/rc.d/init.d/functions
+
+ORAYSL=/usr/sbin/oraysl
+ORAYNEWPH=/usr/sbin/oraynewph
+PHDAEMON=/usr/sbin/phdaemon
+RETVAL=0
+start()
+{
+	echo -n $"Starting phddns : "
+	$ORAYSL -a 127.0.0.1 -p 16062 -s phsle02.oray.net:6061 -l /var/log/phddns -L oraysl -f /etc -S /etc/oray/phddns -t /etc/init.status -i /tmp/oraysl.pid -u /tmp/oraysl.status -d >/dev/null 2>&1 
+        $ORAYNEWPH -s 0.0.0.0 -c /var/log/phddns/core.log -p /var/log/phddns -l oraynewph -f /etc -t /etc/init.status -i /tmp/oraynewph.pid -u /tmp/oraynewph.status -x -d >/dev/null 2>&1 
+	$PHDAEMON  >/dev/null  2>&1 &
+	echo 
+}
+
+stop()
+{
+	echo -n $"Stop phddns : "
+	killproc $ORAYSL	
+	killproc $ORAYNEWPH
+	killproc $PHDAEMON
+	echo "uninstall..."
+}
+
+case "$1" in
+	start)
+		start
+		;;
+	stop)
+		stop
+		;;
+	*)
+		echo $"Usage: $0 {start|stop}"
+		RETVAL=1
+esac
+exit $RETVAL
+
+
+
+
+
+$ ls -lth /etc/rc0.d/K80phserver
+lrwxrwxrwx. 1 root root 18 Dec 26  2018 /etc/rc0.d/K80phserver -> ../init.d/phserver
+$ ls /etc/init.d/phserver #又指向了上一个文件。
+
+
+删除掉
+$ sudo rm /etc/init.d/phserver
+
+$ sudo rm /etc/rc0.d/K80phserver
+$ sudo rm /etc/rc1.d/K80phserver
+
+$ sudo rm /etc/rc2.d/S80phserver
+$ sudo rm /etc/rc3.d/S80phserver
+$ sudo rm /etc/rc4.d/S80phserver
+$ sudo rm /etc/rc5.d/S80phserver
+
+$ sudo rm /etc/rc6.d/K80phserver
+
+
+
+
+$ ls /etc/rc*.d/
+/etc/rc0.d/:
+K50netconsole  K90network
+
+/etc/rc1.d/:
+K50netconsole  K90network
+
+/etc/rc2.d/:
+K50netconsole  S10network
+
+/etc/rc3.d/:
+K50netconsole  S10network
+
+/etc/rc4.d/:
+K50netconsole  S10network
+
+/etc/rc5.d/:
+K50netconsole  S10network
+
+/etc/rc6.d/:
+K50netconsole  K90network
+
+/etc/rc.d/:
+init.d  rc0.d  rc1.d  rc2.d  rc3.d  rc4.d  rc5.d  rc6.d  rc.local
+
+
+
+# 测试防火墙拦截端口
+$ python3 -m http.server 16062
+
+端口封上 $ sudo iptables -I INPUT -p tcp --dport 16062 -j DROP
+
+#设置iptables开机启动
+$ systemctl enable iptables.service
+#开启防火墙
+$ systemctl start iptables.service
+#查看状态
+$ systemctl status iptables.service
+
+
+
+
+$ less /etc/init.d/README
+Use "systemctl list-unit-files" to get a listing of all known unit files, including stopped, disabled and masked ones. 
+Use "systemctl start foobar.service" and "systemctl stop foobar.service" to start or stop a service, respectively. 
+For further details, please refer to systemctl(1).
+
+
+
+
+
+
+
+
+
+
+
+
+(7) 查看网卡流量
+
+## 异常 大主机
+$ ifconfig
+enp46s0f0: flags=4163<UP,BROADCAST,RUNNING,MULTICAST>  mtu 1500
+        inet 172.18.5.193  netmask 255.255.255.0  broadcast 172.18.5.255
+        inet6 fe80::b696:91ff:fe31:4084  prefixlen 64  scopeid 0x20<link>
+        ether b4:96:91:31:40:84  txqueuelen 1000  (Ethernet)
+        RX packets 289559166  bytes 390811072877 (363.9 GiB) 
+        RX errors 0  dropped 0  overruns 16957  frame 0
+        TX packets 167007499  bytes 211512432321 (196.9 GiB) # 197G 流量
+
+
+## 正常 小主机
+$ ifconfig
+em1: flags=4163<UP,BROADCAST,RUNNING,MULTICAST>  mtu 1500
+        inet 10.20.57.27  netmask 255.255.128.0  broadcast 10.20.127.255
+        inet6 fe80::7a29:7b2a:73a1:b387  prefixlen 64  scopeid 0x20<link>
+        inet6 2001:da8:201d:1101:9af9:649a:b953:a51a  prefixlen 128  scopeid 0x0<global>
+        ether 18:66:da:9d:59:d2  txqueuelen 1000  (Ethernet)
+        RX packets 2343249  bytes 2420798813 (2.2 GiB) 
+        RX errors 0  dropped 8  overruns 0  frame 0
+        TX packets 828847  bytes 157538715 (150.2 MiB) #150M 流量
+
+
+
+
+(8) .systemd开头的文件，这个文件就是挖矿的文件
+
+# find /tmp | grep "systemd"
+/tmp/systemd-private-e6255ef0e80f4a839fe65e1d9f933152-cups.service-8qIIiD
+/tmp/systemd-private-e6255ef0e80f4a839fe65e1d9f933152-cups.service-8qIIiD/tmp
+/tmp/systemd-private-e6255ef0e80f4a839fe65e1d9f933152-chronyd.service-G5DxEl
+/tmp/systemd-private-e6255ef0e80f4a839fe65e1d9f933152-chronyd.service-G5DxEl/tmp
+/tmp/lenovotools-Can-Delete/el7.x64/Bin/lnvgy_utl_tcli01r-2.0.0_rhel7_x86-64/dct/data/schema/cim_systemdevice.xml
+
+
+
+
+(9)
+# rm -rf /tmp/.X11-unix
+执行命令rm -rf /tmp/.X11-unix，这个文件夹里的据推测是自动启动病毒文件的目录 （这一步非常重要）
+
+
+
+(10)
+$ ps -aux | grep crypto
+USER        PID %CPU %MEM    VSZ   RSS TTY      STAT START   TIME COMMAND
+root       1001  0.0  0.0      0     0 ?        S<   May09   0:00 [crypto]
+
+$ ps -A -o stat,ppid,pid,user,uid,cmd | grep crypto
+STAT   PPID    PID USER       UID CMD
+S<        2   1001 root         0 [crypto]
+
+
+$ sudo find /tmp | grep crypto
+/tmp/lenovotools-Can-Delete/el7.x64/Bin/lnvgy_utl_tcli01r-2.0.0_rhel7_x86-64/libcrypto.so
+/tmp/lenovotools-Can-Delete/el7.x64/Bin/lnvgy_utl_tcli01r-2.0.0_rhel7_x86-64/libcrypto.so.1.0.0
+/tmp/lenovotools-Can-Delete/el7.x64/Bin/lnvgy_utl_tcli01r-2.0.0_rhel7_x86-64/pegasus/lib/libcrypto.so.1.0.
+
+
+
+
+
+(11) 继续看僵尸进程
+$ ps -A -o stat,ppid,pid,%cpu,user,uid,cmd | grep "^[Zz]" | wc
+    254    2032   15617
+$ ps -A -o stat,ppid,pid,%cpu,user,uid,cmd | grep "^[Zz]" | awk '{print $5}' | sort | uniq -c | sort -k1nr                                                                                                       
+    191 root
+     41 wangjl
+      9 alamin
+      9 dbus
+      6 caow
+
+$ ps -A -o stat,ppid,pid,%cpu,user,uid,cmd | grep "^[Zz]" | grep root | awk '{print $7}' | sort | uniq -c | sort -k1nr                                                                                           
+    105 [systemd-logind]
+     84 [crond]
+      1 [iscsid]
+      1 [run-parts]
+
+
+$ ps -A -o stat,ppid,pid,%cpu,user,uid,cmd | grep "^[Zz]" | less
+Z    416197  36826  0.0 root         0 [crond] <defunct>  
+Z    415705  36169  0.0 root         0 [systemd-logind] <defunct>
+Z    415706 415709  0.0 root         0 [iscsid] <defunct>
+root主要的动作就是: 定时任务，登录。
+
+
+
+$ ps -A -o stat,ppid,pid,%cpu,user,uid,cmd | grep "iscsid"
+S<Ls      1 415706  0.0 root         0 /sbin/iscsid -f
+
+
+首先查看下systemd-logind的pid
+$ systemctl status systemd-logind.service 
+. systemd-logind.service - Login Service
+   Loaded: loaded (/usr/lib/systemd/system/systemd-logind.service; static; vendor preset: disabled)
+   Active: active (running) since Thu 2022-05-12 11:11:26 CST; 10h ago
+     Docs: man:systemd-logind.service(8)
+           man:logind.conf(5)
+           http://www.freedesktop.org/wiki/Software/systemd/logind
+           http://www.freedesktop.org/wiki/Software/systemd/multiseat
+ Main PID: 415705 (systemd-logind)
+   Status: "Processing requests..."
+    Tasks: 106
+   Memory: 568.0K
+   CGroup: /system.slice/systemd-logind.service
+           └─415705 /usr/lib/systemd/systemd-logind
+
+接着通过strace -p pid 进行跟踪
+$ sudo strace -p 415705
+strace: Process 415705 attached                                                                                                                                                                                                     
+epoll_wait(4, [{EPOLLIN, {u32=1151277696, u64=94176899177088}}], 22, -1) = 1
+clock_gettime(CLOCK_BOOTTIME, {tv_sec=278795, tv_nsec=947666702}) = 0                                                                                                                                                               
+recvmsg(12, {msg_name=NULL, msg_namelen=0, msg_iov=[{iov_base="l\4\1\1\37\0\0\0\220\1\0\0\211\0\0\0\1\1o\0\25\0\0\0", iov_len=24}], msg_iovlen=1, msg_controllen=0, msg_flags=MSG_CMSG_CLOEXEC}, MSG_DONTWAIT|MSG_NOSIGNAL|MSG_CMSG_C
+LOEXEC) = 24
+recvmsg(12, {msg_name=NULL, msg_namelen=0, msg_iov=[{iov_base="/org/freedesktop/DBus\0\0\0\2\1s\0\24\0\0\0"..., iov_len=167}], msg_iovlen=1, msg_controllen=0, msg_flags=MSG_CMSG_CLOEXEC}, MSG_DONTWAIT|MSG_NOSIGNAL|MSG_CMSG_CLOEXE
+C) = 167
+epoll_wait(4, [{EPOLLIN, {u32=1151277696, u64=94176899177088}}], 22, -1) = 1
+
+
+
+发现登录过程中，就是调用 /run/systemd/users 下面的文件 ???
+我们看下/run/systemd/users/0 文件中存储的内容
+
+$ cat /run/systemd/users/0
+# This is private data. Do not parse.
+NAME=root
+STATE=closing
+RUNTIME=/run/user/0
+SLICE=user-0.slice
+DISPLAY=c4
+REALTIME=1652328061699429
+MONOTONIC=243356918412
+SESSIONS=c4 237 684
+SEATS=
+ACTIVE_SESSIONS=c4 237 684
+ONLINE_SESSIONS=
+ACTIVE_SEATS=
+ONLINE_SEATS=
+
+记录了用户id为0也就是root用户的session信息，这里发现活动的session很多，但是我登录用户只登录了一个会话
+
+因为每一个session都会创建一个slice，通过slice查看，先查看系统slice
+$ systemctl -t slice
+
+然后查看user.0.silce
+$ systemctl status user-0.slice -l
+[{EPOLLIN, {u32=1151277696, u64=94176899177088}}], 21, -1) = 1
+clock_gettime(CLOCK_BOOTTIME, {tv_sec=279386, tv_nsec=264915518}) = 0
+recvmsg(12, {msg_name=NULL, msg_namelen=0, msg_iov=[{iov_base="l\4\1\1\37\0\0\0\260\1\0\0\211\0\0\0\1\1o\0\25\0\0\0", iov_len=24}], msg_iovlen=1, msg_controllen=0, msg_flags=MSG_CMSG_CLOEXEC}, MSG_DONTWAIT|MSG_NOSIGNAL|MSG_CMSG_CLOEXEC) = 24
+recvmsg(12, {msg_name=NULL, msg_namelen=0, msg_iov=[{iov_base="/org/freedesktop/DBus\0\0\0\2\1s\0\24\0\0\0"..., iov_len=167}], msg_iovlen=1, msg_controllen=0, msg_flags=MSG_CMSG_CLOEXEC}, MSG_DONTWAIT|MSG_NOSIGNAL|MSG_CMSG_CLOEXEC) = 167
+epoll_wait(4, . user-0.slice - User Slice of root
+   Loaded: loaded (/run/systemd/system/user-0.slice; static; vendor preset: disabled)
+  Drop-In: /run/systemd/system/user-0.slice.d
+           └─50-After-systemd-logind\x2eservice.conf, 50-After-systemd-user-sessions\x2eservice.conf, 50-Description.conf, 50-TasksMax.conf
+   Active: active since Thu 2022-05-12 12:01:01 CST; 10h ago
+   CGroup: /user.slice/user-0.slice
+           ├─session-237.scope
+           │ └─51325 strace -p 415705
+           └─session-684.scope
+             └─421759 /usr/sbin/anacron -s
+[{EPOLLIN, {u32=1151277696, u64=94176899177088}}], 21, -1) = 1
+...
+
+
+
+
+
+
+
+
+(12) 继续追踪隐藏的进程
+
+$ python3 ~/unhide_pid.py | grep -v "^#" |head
+STAT PPID  PID   USER     COMMAND
+Z    11166 11233 root     sshd
+Z    11166 11238 root     sshd
+Z    11166 11240 root     sshd
+Z    11166 11245 root     sshd
+Z    11166 11246 root     sshd
+Z    28677 28744 root     sshd
+Z    28677 28749 root     sshd
+Z    28677 28750 root     sshd
+Z    42693 42761 root     sshd
+...
+
+
+$ busybox top
+421759     1 root     S     131m   0% 169   0% /usr/sbin/anacron -s
+121475     1 root     S     130m   0%  74   0% /usr/sbin/lvmetad -f
+
+
+
+STAT PPID  PID   USER     COMMAND
+Z     1878  1898 root     lvmetad
+Z     6099  6133 root     libvirtd
+Z     6167  6335 root     X
+Z     6167  6337 root     X
+
+$ ps 6167
+6167 tty1     Ssl+   0:02 /usr/bin/X :0 -background none -noreset -audit 4 -verbose -auth /run/gdm/auth-for-gdm-zazcvq/database -seat seat0 -nolisten tcp vt1
+
+
+
+
+
+
+
+
+
+
+(13) 有人说是 dbus 版本问题
+$ service dbus status
+Redirecting to /bin/systemctl status dbus.service
+● dbus.service - D-Bus System Message Bus
+   Loaded: loaded (/usr/lib/systemd/system/dbus.service; static; vendor preset: disabled)
+   Active: active (running) since Thu 2022-05-12 11:11:26 CST; 1 day 4h ago
+...
+
+$ dbus-launch --version
+D-Bus Message Bus Launcher 1.13.2
+Copyright (C) 2003 Red Hat, Inc.
+...
+
+
+
+
+
+
+
+
+
+https://www.qiqios.cn/696.html
+$ sudo systemctl stop systemd-logind && sudo rm /run/systemd/sessions/* -rf && sudo systemctl start systemd-logind
+
+
+
+
+
+
+
+
+
+
+ref: 
+转：Linux常见挖矿病毒查杀 https://blog.csdn.net/allway2/article/details/106872151
+
+
+
+
+
+========================================
+升级内核为 CentOS7.9
+----------------------------------------
+1. 升级前
+$ uname -sr
+Linux 3.10.0-1062.18.1.el7.x86_64
+
+$ cat /etc/centos-release
+CentOS Linux release 7.8.2003 (Core)
+
+
+
+
+2. 升级系统
+(1) 清理
+$ yum clean all #清除缓存
+$ yum makecache fast #重新建立缓存
+
+
+(2) 升级
+$ sudo yum update -y #升级系统
+...
+Transaction test succeeded
+Running transaction
+** Found 3 pre-existing rpmdb problem(s), 'yum check' output follows:
+centos-release-7-9.2009.1.el7.centos.x86_64 is a duplicate with centos-release-7-8.2003.0.el7.centos.x86_64
+1:grub2-common-2.02-0.87.el7.centos.7.noarch is a duplicate with 1:grub2-common-2.02-0.81.el7.centos.noarch
+iptables-1.4.21-35.el7.x86_64 is a duplicate with iptables-1.4.21-34.el7.x86_64
+  Updating   : 1:control-center-filesystem-3.28.1-8.el7_9.x86_64           1/1304 
+Segmentation fault
+
+升级失败，说有重复的包。
+
+
+(3) 解决这个 重复 报错
+http://www.javashuo.com/article/p-xbeisoos-v.html
+1) 须要安装yum-util
+$ suod yum install yum-utils -y
+失败，报错同上。
+先跳过。
+
+2) 清除yum缓存code
+$ suod yum clean all
+
+3) 列出重复的包ip
+$ suod package-cleanup --dupes
+
+4) 删除重复的包rem
+$ suod package-cleanup --cleandupes --removenewestdupes
+
+Loaded plugins: fastestmirror, langpacks, priorities                                                                                                                                                                                                                                                  
+There are unfinished transactions remaining. You might consider running yum-complete-transaction, or "yum-complete-transaction --cleanup-only" and "yum history redo last", first to finish them. If those don't work you'll have to try removing/installing packages by hand (maybe package-cleanup can help).
+
+Erasing 几个包，又安装了几个包。
+
+
+5) 清除可能存在的损坏包
+$ sudo package-cleanup --problems
+
+6) 继续升级
+$ sudo yum update -y
+需要下载 661 个包。
+
+下载完开始安装时报错:
+Transaction test succeeded
+Running transaction
+  Updating   : 1:grub2-common-2.02-0.87.el7.centos.7.noarch            1/1310 
+Segmentation fault
+
+
+单独更新这一个包呢?
+$ sudo yum update grub2-common
+
+
+
+(4) 重启系统
+$ sudo reboot
+
+
+
+
+
+
+
+
+
+
+
+
+
+========================================
+|-- 查找异常网络端口/定时任务 //todo
+----------------------------------------
+
+# netstat -tulpn  	## To output numerical service sockets
+# netstat -tulp      	## To output literal service sockets
+
+
+$ sudo netstat -tulpn
+Active Internet connections (only servers)
+Proto Recv-Q Send-Q Local Address           Foreign Address         State       PID/Program name    
+tcp        0      0 0.0.0.0:22              0.0.0.0:*               LISTEN      6466/sshd           
+tcp        0      0 127.0.0.1:631           0.0.0.0:*               LISTEN      6465/cupsd          
+tcp        0      0 0.0.0.0:8888            0.0.0.0:*               LISTEN      5406/rserver        
+tcp        0      0 127.0.0.1:25            0.0.0.0:*               LISTEN      7592/master         
+tcp        0      0 0.0.0.0:445             0.0.0.0:*               LISTEN      6467/smbd           
+tcp        0      0 0.0.0.0:139             0.0.0.0:*               LISTEN      6467/smbd           
+tcp        0      0 192.168.122.1:53        0.0.0.0:*               LISTEN      7627/dnsmasq        
+tcp6       0      0 :::22                   :::*                    LISTEN      6466/sshd           
+tcp6       0      0 ::1:631                 :::*                    LISTEN      6465/cupsd          
+tcp6       0      0 ::1:25                  :::*                    LISTEN      7592/master         
+tcp6       0      0 :::445                  :::*                    LISTEN      6467/smbd           
+tcp6       0      0 :::2463                 :::*                    LISTEN      5645/java           
+tcp6       0      0 127.0.0.1:41667         :::*                    LISTEN      5645/java           
+tcp6       0      0 :::139                  :::*                    LISTEN      6467/smbd           
+tcp6       0      0 :::21                   :::*                    LISTEN      6470/vsftpd         
+udp        0      0 0.0.0.0:59012           0.0.0.0:*                           117606/avahi-daemon 
+udp        0      0 192.168.122.1:53        0.0.0.0:*                           7627/dnsmasq        
+udp        0      0 0.0.0.0:67              0.0.0.0:*                           7627/dnsmasq        
+udp        0      0 127.0.0.1:323           0.0.0.0:*                           5503/chronyd        
+udp        0      0 0.0.0.0:5353            0.0.0.0:*                           117606/avahi-daemon 
+udp6       0      0 :::47414                :::*                                5645/java           
+udp6       0      0 :::50342                :::*                                5629/java           
+udp6       0      0 ::1:323                 :::*                                5503/chronyd        
+udp6       0      0 :::2463                 :::*                                5645/java           
+
+
+tcp        0      0 127.0.0.1:6010          0.0.0.0:*               LISTEN      138077/sshd: huangc 
+tcp        0      0 127.0.0.1:6011          0.0.0.0:*               LISTEN      17811/sshd: zhouwg@ 
+tcp        0      0 127.0.0.1:6012          0.0.0.0:*               LISTEN      205136/sshd: zhoub@ 
+tcp        0      0 127.0.0.1:6013          0.0.0.0:*               LISTEN      19595/sshd: huangcy 
+tcp        0      0 127.0.0.1:6014          0.0.0.0:*               LISTEN      256590/sshd: zhouwg 
+tcp        0      0 127.0.0.1:6015          0.0.0.0:*               LISTEN      267106/sshd: qin@pt 
+tcp6       0      0 ::1:6010                :::*                    LISTEN      138077/sshd: huangc 
+tcp6       0      0 ::1:6011                :::*                    LISTEN      17811/sshd: zhouwg@ 
+tcp6       0      0 ::1:6012                :::*                    LISTEN      205136/sshd: zhoub@ 
+tcp6       0      0 ::1:6013                :::*                    LISTEN      19595/sshd: huangcy 
+tcp6       0      0 ::1:6014                :::*                    LISTEN      256590/sshd: zhouwg 
+tcp6       0      0 ::1:6015                :::*                    LISTEN      267106/sshd: qin@pt 
+
+
+ref:https://www.tecmint.com/remove-unwanted-services-in-centos-7/
+
+$ sudo service smb stop
+
+
+$ sudo netstat -tulpn | grep -v sshd
+
+
+
+(2) 把可疑的ip加入黑名单
+$ sudo iptables -I INPUT -s xx.xx.xx. -j DROP
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+2. 查看定时任务:
+$ sudo cat /etc/anacrontab
+# /etc/anacrontab: configuration file for anacron
+# See anacron(8) and anacrontab(5) for details.
+SHELL=/bin/sh
+PATH=/sbin:/bin:/usr/sbin:/usr/bin
+MAILTO=root
+# the maximal random delay added to the base delay of the jobs
+RANDOM_DELAY=45
+# the jobs will be started during the following hours only
+START_HOURS_RANGE=3-22
+
+#period in days   delay in minutes   job-identifier   command
+1	5	cron.daily		nice run-parts /etc/cron.daily
+7	25	cron.weekly		nice run-parts /etc/cron.weekly
+@monthly 45	cron.monthly		nice run-parts /etc/cron.monthly
+
+
+
+$ sudo cat /etc/cron.d/sysstat 
+# Run system activity accounting tool every 10 minutes
+*/10 * * * * root /usr/lib64/sa/sa1 1 1
+# 0 * * * * root /usr/lib64/sa/sa1 600 6 &
+# Generate a daily summary of process accounting at 23:53
+53 23 * * * root /usr/lib64/sa/sa2 -A
+
+
+
+(2) 
+$ sudo ls -lth /var/spool/cron
+total 12K
+-rw-------. 1 root root  77 Apr  8  2021 root
+-rw-------. 1 root root   1 Feb  1  2021 wangw
+-rw-------. 1 caow jinwf 42 May 24  2019 caow
+
+
+
+$ sudo ls -lth /etc/cron.d/
+total 16K
+-rw-------. 1 root root 235 Apr  1  2020 sysstat
+-rw-r--r--. 1 root root 108 Nov 28  2019 raid-check
+-rw-r--r--. 1 root root 128 Aug  9  2019 0hourly
+-rw-r--r--. 1 root root  50 Aug  3  2017 0unixdb
+
+
+
+
+
+
+
+
+
+========================================
+Linux如何查看与测试磁盘IO性能
+----------------------------------------
+
+1.查看磁盘IO性能
+
+(1) top 命令
+
+top 命令通过查看 CPU 的 wa% 值来判断当前磁盘 IO 性能，如果这个数值过大，很可能是磁盘 IO 太高了，当然也可能是其他原因，例如网络 IO 过高等。
+
+
+(2)  sar 命令
+sar 命令查看当前磁盘性能的命令为：sar -d -p12
+
+$ sar -d -p 12
+Linux 3.10.0-1062.18.1.el7.x86_64 (bio_svr1) 	05/11/2022 	_x86_64_	(192 CPU)
+
+10:16:23 PM       DEV       tps  rd_sec/s  wr_sec/s  avgrq-sz  avgqu-sz     await     svctm     %util
+10:16:35 PM       sda      1.00      0.00      8.00      8.00      0.00      0.00      0.00      0.00
+10:16:35 PM       sdb      0.00      0.00      0.00      0.00      0.00      0.00      0.00      0.00
+10:16:35 PM       sdc      0.00      0.00      0.00      0.00      0.00      0.00      0.00      0.00
+10:16:35 PM       sdd      0.00      0.00      0.00      0.00      0.00      0.00      0.00      0.00
+10:16:35 PM    mpatha      0.00      0.00      0.00      0.00      0.00      0.00      0.00      0.00
+10:16:35 PM centos-home      0.00      0.00      0.00      0.00      0.00      0.00      0.00      0.00
+10:16:35 PM   mpatha1      0.00      0.00      0.00      0.00      0.00      0.00      0.00      0.00
+10:16:35 PM       sde      0.00      0.00      0.00      0.00      0.00      0.00      0.00      0.00
+
+10:16:35 PM       DEV       tps  rd_sec/s  wr_sec/s  avgrq-sz  avgqu-sz     await     svctm     %util
+10:16:47 PM       sda      1.00      0.00      8.00      8.00      0.00      0.00      0.00      0.00
+10:16:47 PM       sdb      0.00      0.00      0.00      0.00      0.00      0.00      0.00      0.00
+10:16:47 PM       sdc      0.00      0.00      0.00      0.00      0.00      0.00      0.00      0.00
+10:16:47 PM       sdd      0.00      0.00      0.00      0.00      0.00      0.00      0.00      0.00
+10:16:47 PM    mpatha      0.00      0.00      0.00      0.00      0.00      0.00      0.00      0.00
+10:16:47 PM centos-home      0.00      0.00      0.00      0.00      0.00      0.00      0.00      0.00
+10:16:47 PM   mpatha1      0.00      0.00      0.00      0.00      0.00      0.00      0.00      0.00
+10:16:47 PM       sde      0.00      0.00      0.00      0.00      0.00      0.00      0.00      0.00
+
+await：平均每次设备 I/O 操作的等待时间   
+svctm：平均每次设备 I/O 操作的服务时间
+%util：一秒中有百分之几的时间用于 I/O 操作
+如果 svctm 的值与 await 很接近，表示几乎没有 I/O 等待，磁盘性能很好。
+如果 await 的值远高于 svctm 的值，则表示 I/O 队列等待太长，系统上运行的应用程序将变慢，此时可以通过更换更快的硬盘来解决问题。
+
+查看一天前的报告；可以查看保存在 /var/log/sa/ 下的sar日志
+$ sar -d -p -f /var/log/sa/sa11 | less
+
+
+(3) iostat 命令
+$ vmstat 2
+procs -----------memory---------- ---swap-- -----io---- -system-- ------cpu-----
+ r  b   swpd       free    buff     cache   si   so    bi    bo   in   cs us sy id  wa st
+ 1  0  20480 126338464 10333024 247614096    0    0    18    29    0    1  9 13 78  0  0
+ 1  0  20480 126338976 10333024 247614096    0    0     0    10 1101 1087  0  0 100  0  0
+ 1  0  20480 126338976 10333024 247614096    0    0     0     0 1014 1009  0  0 100  0  0
+ 2  0  20480 126338976 10333024 247614096    0    0     0     8  969 1272  0  0 100  0  0
+ 0  0  20480 126338976 10333024 247614096    0    0     0     0 1034 1281  0  0 100  0  0
+ 0  0  20480 126338976 10333024 247614096    0    0     0     2 1397 1534  0  0 100  0  0
+ 0  0  20480 126338464 10333024 247614096    0    0     0   102  886  860  0  0 100  0  0
+ 1  0  20480 126338464 10333024 247614096    0    0     0     0 1159 1666  0  0 100  0  0
+...
+bi  块设备每秒接收的块数量，这里的块设备是指系统上所有的磁盘和其他块设备，默认块大小是 1024 byte 。
+
+bo 块设备每秒发送的块数量，例如我们读取文件，bo 就要大于0。bi 和 bo 一般都要接近 0，不然就是 IO 过于频繁，需要调整
+
+
+
+
+2. 测试磁盘 IO 性能
+
+(1) hdparm 命令
+hdparm 命令提供了一个命令行的接口用于读取和设置IDE或SCSI硬盘参数，注意该命令只能测试磁盘的读取速率
+
+$ sudo hdparm -Tt /dev/sda
+/dev/sda:
+ Timing cached reads:   18906 MB in  1.99 seconds = 9506.90 MB/sec
+ Timing buffered disk reads: 1264 MB in  3.00 seconds = 420.88 MB/sec
+
+$ sudo hdparm -Tt /dev/sdb
+/dev/sdb:
+ Timing cached reads:   18632 MB in  1.99 seconds = 9369.39 MB/sec
+ Timing buffered disk reads: 242 MB in  3.02 seconds =  80.19 MB/sec
+
+从测试结果看出，带有缓存的读取速率为：9369.39MB/s ，磁盘的实际读取速率为：80.19 MB/s
+
+符合实际情况，因为 /dev/sdb 是一个亚健康的 RAID ，6块盘坏了1块。
+
+
+(2) dd 命令
+==> 测试写性能命令： 此命令为在当前目录下新建一个2G的文件
+$ time dd if=/dev/zero of=test.file bs=1G count=2 oflag=direct
+2+0 records in
+2+0 records out
+2147483648 bytes (2.1 GB) copied, 2.92284 s, 735 MB/s
+
+real	0m3.050s
+user	0m0.004s
+sys	0m1.092s
+
+该分区磁盘写入速率为 735M/s
+
+
+==> 测试读性能命令：
+$ dd if=test.file of=/dev/null iflag=direct
+4194304+0 records in
+4194304+0 records out
+2147483648 bytes (2.1 GB) copied, 414.91 s, 5.2 MB/s
+
+读取速度极慢， 5.2M/s
+
+
+
+/dev/zero 伪设备，会产生空字符流，对它不会产生 IO 。
+if 参数用来指定 dd 命令读取的文件。
+of 参数用来指定 dd 命令写入的文件。
+bs 参数代表每次写入的块的大小。
+count 参数用来指定写入的块的个数。
+offlag=direc 参数测试 IO 时必须指定，代表直接写如磁盘，不使用 cache
+
+
+
+(3) fio 命令
+
+
+
+
+
+
+
+ref:
+https://www.jianshu.com/p/c74036594e54?ivk_sa=1024320u
+
+
+
+
+
+
+========================================
 关掉 teamviewer 进程
 ----------------------------------------
 1. 找到
@@ -1399,6 +3259,8 @@ See "systemctl status teamviewerd.service" and "journalctl -xe" for details.
 
 ========================================
 ----------------------------------------
+
+
 
 
 

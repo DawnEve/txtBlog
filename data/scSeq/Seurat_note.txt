@@ -17,6 +17,81 @@ library(help = "Seurat")
 
 
 ========================================
+Seurat FAQ: 宏观策略到参数细节
+----------------------------------------
+
+
+
+4. seurat包的UMAP图集群分布的影响因素
+https://zhuanlan.zhihu.com/p/427166749
+
+1).QC阶段（关键步骤），nUMI（nCount_RNA),nGene(nFeature_RNA),percent.ribo线粒体比例的筛选
+2).多样本merge和integrate阶段，影响整合强度等参数的设置以及整合方法的选择（seurat自带的'FindIntegrationAnchors还是Harmony等方法）
+3).ScaleData参数设置，输入的基因''features''(可变基因或全部基因），需要回归的因素''vars.to.regress''（UMI和percent.ribo）都会影响后期的UMAP结果
+4).PCA数量的选择，选择合适的npca数量（elbow图的拐角处对应的参数，尝试多个npca作UMAP图找到最佳分群的npca）作为FindNeighbors的输入
+5).FindClusters阶段，resolution参数（分辨率）的选择决定分群的数量，可以通过''clustree''包查看不同res的分群情况
+
+
+
+
+
+5. 关于降维分析
+
+Q: ElbowPlot 的拐点是指这个点后面基本持平了么？ / 請問如何判斷 elbow 拐點呢?為何不是在 3~4，而是在 9~10/ PC 拐点如何界定？
+A： ElbowPlot 作图后，用肉眼观察，当曲线进入平台期，没有明显继续下降的趋势就可以了。ElbowPlot 默认显示 20 个 PC，如果发现 20 个 PC 还没有到达平台期，可以修改 ElbowPlot 函数的 ndims 参数。 RunPCA 函数默认计算 50 个 PC，如果想看更多的 PC，可以修改 RunPCA 的npcs 参数。
+
+Q：请问 PCA 那页，是细胞和基因都做过 PCA 么？
+A: 在 Seurat 中，我们是对细胞做 PCA 分析，也就是对细胞做降维分析，比如从 2000 维（基因）降到 50 维（ PC）。一般情况下，我们不会对基因做 PCA 分析。
+
+Q： PCA 中的 embedding 可以再解释下么？
+A：比如，原本每个细胞有 2000 个基因，每个基因在各个细胞中都有表达量，做了 PCA 分析后，每个细胞有 50 个 PC，每个 PC 在各个细胞中都有 embedding 值。为了便于理解，你可以把 PC 看成是整合了多个基因的 meta-gene，把 cell embedding 看成是这些 meta-gene 的表达量。
+
+Q: 可不可以讲下 umap 和 tSNE 的主要原理？
+A: UMAP 和 tSNE 都是非线性的降维方法，是把在高维空间中的点（我们人类肉眼无法观察）投射到二维平面上。这些高维空间中的点是有一定结构的，有些点彼此之间距离更近，有些点距离更远。我们在降维的过程要尽量保留这种结构，让在高维空间中更近的点，在二维平面上也更近，如果降维分析打乱了数据原有的结构，就毫无意义了。 tSNE 的目标是在降维的过程中尽量保留数据的局部结构，而 UMAP 除了能保留数据的局部结构，还能更好的保留全局结构。如果想更深入的了解它们的原理，需要一定的数学基础，我推荐两篇解释的相对简单一些的文章供你参考：
+
+https://opentsne.readthedocs.io/en/latest/tsne_algorithm.html，
+
+How UMAP Works - umap 0.4 documentation
+
+Q: 我想问下数据降维为什么先做 PCA 然后再 UMAP 的降维 这俩不都是降维吗？ 不能直接 UMAP？
+A： PCA 分析和 UMAP 分析的目的不同。 PCA 分析把高表达变异基因整合成若干个 PC。这样做一方面降维，一方面降低噪音。做聚类分析和 UMAP 分析的时候，使用的不是基因表达量，而是由 PCA 分析得到的 PC 的值。 UMAP 的主要作用是把高维度中距离接近的点映射到二维平面上距离相近的位置上。 UMAP 返回的结果只有两个维度（ UMAP_1 和 UMAP_2），只能用来做数据可视化。
+
+
+
+
+
+
+6. 关 于 聚 类 分 析
+
+Q: cluster ID 为何从 0 开始？是否可以从 1 开始？从 0 开始是因为有什么‘算法’方面特殊的优势么？
+A： 默认 clusterID 是从 0 开始，没有特殊的优势，可以使用 RenameIdents 函数重命名clusterID。
+
+
+Q： 鉴定出来的细胞类群用 UMAP 绘图后发现聚类效果很差，大量 cluster 相互交叉， 同一类群细胞弥散分布是什么原因？聚类可视化和类群划分不匹配。
+A： 首先要确保聚类和 UMAP 用的 dims 参数是一致的。可以适当降低一下 FindClusters 函数的resolution 参数，减少 cluster 数目，看看能不能把相互交叉的 cluster 聚成一个 cluster。 还可以尝试 FindClusters 函数中不同的 algorithm 参数，看看聚类效果会不会改进。
+
+
+Q： 请问分群过程中，是否有设置邻居个数的函数和参数？
+A： FinderNeighbors 函数的 k.param 参数是用来设置 KNN 算法中最近邻的个数。
+
+
+Q： 请问 finder cluster 只能使用 SNN 进行聚类么？可以有其他选择吗？ / seurat 的聚类方式除了 KNN 外还有其他的选择吗？
+A： Seurat 的聚类方法是基于 SNN 图和 Louvain 或 SLM 算法， FindNeighbors 函数返回的SNN 图是在 KNN 图的基础上得来的，不支持其他方法。
+
+
+
+
+
+
+
+
+
+ref:
+https://zhuanlan.zhihu.com/p/153404850
+
+
+
+========================================
 Seurat对象的slot和处理流程： 从Suerat对象中找可用的数据
 ----------------------------------------
 原始代码： https://github.com/satijalab/seurat/
@@ -541,10 +616,43 @@ https://github.com/DawnEve/scRNAseqCode
 
 
 ========================================
-|-- 多组数据的整合、批次效应 //todo
+|-- 多组数据的整合、批次效应: harmony  //todo
 ----------------------------------------
-
+1. 使用方法
 https://satijalab.org/seurat/v3.2/integration.html
+
+
+
+
+
+2. 使用时机：到细分亚群的时候才做 harmony，为什么不一开始就用呢？
+https://mp.weixin.qq.com/s/dxJLVRXWhLnf3w1LRiONIA
+http://www.bio-info-trainee.com/8728.html
+
+
+《Single-cell transcriptomics reveals regulators underlying immune cell diversity and immune subtypes associated with prognosis in nasopharyngeal carcinoma》为例子，15个鼻咽癌样品，加上1个正常人样品。全部的样品的单细胞转录组数据整合后，如果不使用harmony等算法去除样品差异，默认的降维聚类分群
+可以看到，效果还不错。
+
+但是如果我们具体到每个样品，有如下所示的现象：每个亚群中按样本聚到一起。
+
+上皮细胞大的亚群里面，每个病人独立成为小亚群，泾渭分明，这个符合预期，因为每个肿瘤病人都有自己的特异性。但是免疫细胞各个亚群里面，病人之间的界限就模糊很多。值得注意的是P07这个病人的样品，它主要是T细胞和髓系细胞，而且是独立成为一个亚群了，这就是单细胞转录组的样品差异，理论上是需要去除的！
+
+(2) 如果我们在样品层面就开始使用harmony等算法去除样品差异，又会导致另外一个可怕的事情发生，如下所示
+就是本来是应该是具备病人特异性的上皮细胞，这个时候被抹除了样品差异。
+好好的上皮细胞，被拆分的七零八落
+
+按病人样品染色：
+
+这个算法真的是太可怕了，样品差异被抹除的干干净净了！这不是最可怕的，真正的问题是，这个上皮细胞被打散到了其它免疫细胞里面，因为这个harmony算法！
+我们可以对上皮细胞的最重要的marker基因EPCAM进行可视化，并且使用harmony等算法去除样品差异前后可以对比看看。
+
+
+
+
+(3) 我们做肿瘤研究的单细胞数据，一般来说会选择初步很粗狂的定义大的细胞亚群，比如我常用的 第一次分群是通用规则是：
+immune (CD45+,PTPRC),
+epithelial/cancer (EpCAM+,EPCAM),
+stromal (CD10+,MME,fibo or CD31+,PECAM1,endo)
 
 
 
@@ -606,7 +714,7 @@ R包ccRemover： https://cran.r-project.org/web/packages/ccRemover/vignettes/ccR
 
 
 ========================================
-|-- Seurat包取细胞群体的子集: subset()等函数
+|-- Seurat包取细胞群体的子集: subset()/FetchData()等函数
 ----------------------------------------
 1. 取子集
 
@@ -641,6 +749,7 @@ cd14.mono <- subset(immune.combined, idents = 'CD14 Mono')
 
 scObject <- subset(x = scObject.all, idents = c("Endothelial"), invert = FALSE);
 
+neu_colon <- subset(neu_colon, idents = c(1,2,3), invert=T) #选择除了1,2,3 之外的群。
 
 
 
@@ -685,6 +794,30 @@ expr <- FetchData(object = object, vars = var1)
 object[, which(x = expr > low & expr < high)]
 
 
+2) 非交互式
+var1 <- "GeneName"
+expr <- FetchData(object = object, vars = var1)
+object[, which(x = expr > low & expr < high)]
+
+
+# 循环中不能直接用WhichCells/subset,可以用上面的方式
+library(Seurat)
+gene_cells = list()
+items <-c( 'LGALS3', 'S100A11')
+for (gene1 in items)
+{
+    if (gene1 %in% rownames(pbmc_small))
+    {
+        expr <- FetchData(object = pbmc_small, vars = gene1)
+        gene_cells[[gene1]] <- pbmc_small[, which(x = expr >= 0.5)]
+    }
+}
+gene_cells #两个 seurat 对象。
+
+
+
+
+
 
 (3) 按基因表达量选择
 # Can I create a Seurat object based on expression of a feature or value in object metadata?
@@ -695,18 +828,214 @@ subset(pbmc, subset = MS4A1 > 1)
 
 ref:
 https://satijalab.org/seurat/archive/v3.0/interaction_vignette.html
+https://www.jianshu.com/p/99cb6dc8de45
+
+
+
+========================================
+|-- 添加打分列: AddMetaData 添加 ribo 列 / AddModuleScore 计算 disassociation induced genes (DIG) 打分
+----------------------------------------
+1.paper: Pan-cancer single-cell landscape of tumor-infiltrating T cells 补充材料
+
+From the first run clustering, in multiple datasets, we identified clusters with marker genes associated with tissue dissociation operation including heat shock protein-encoding genes (50). Recurrent marker genes of these tissue dissociation-related clusters, i.e. those that showed 25 significant high expression in more than 40% tissue dissociation-related clusters, were defined as disassociation induced genes (DIG) and were included in the gene blacklist after the first run clustering.
+
+To minimize the impact of those processes, the S phase score and G2M phase score were calculated with function CellCycleScoring, and the DIG score was calculated with function AddModuleScore. Then those scores were regressed out in the Seurat pipeline.
+
+
+
+
+2. 或者使用 AddMetaData 添加一列。
+
+(1) 片段1
+rb.genes <- rownames(sce)[grep("^RP[SL]",rownames(sce))]
+percent.ribo <- Matrix::colSums(C[rb.genes,])/Matrix::colSums(C)*100
+sce <- AddMetaData(sce, percent.ribo, col.name = "percent.ribo")
+
+
+(2) 片段2(zhang lab)
+$ find . | xargs grep -i AddModuleScore --color=auto
+./w.step2.FigureS14.CD8_Tex_score.Rmd:seu = AddModuleScore(seu, features=list(Tex.markers.sig50), name="Exhaust.Score")
+
+详情:
+# seu and calculate
+seu = readRDS(sprintf("%s/../../data/expression/%s/integration/%s.thisStudy_10X.seu.rds", oDir, stype, stype))
+seu = seu[,meta$cellID]
+seu = AddModuleScore(seu, features=list(Tex.markers.sig50), name="Exhaust.Score")
+meta$Exhaust.Score = seu$Exhaust.Score1
+
+saveRDS(meta, sprintf("%s/%s_Tex.cellInfo_TexScore.tb.rds", oDir, stype))
+
+
+
+
+
+
+
+
+
+3. 如果错了，想删掉某个 meta.data 列
+https://github.com/satijalab/seurat/issues/1179
+
+
+object$column.to.remove <- NULL
+object[['column.to.remove']] <- NULL
+
+
+批量删除
+test.tc11@meta.data <- test.tc11@meta.data[, -which(colnames(test.tc11@meta.data) %in% 'time')]
+
+
+
+
 
 
 
 
 ========================================
-下载 Suerat 官方网站镜像 (2021.9.23)
+Seurat 4.1.0 的 240 个函数名： ls("package:Seurat")
 ----------------------------------------
+
+> ls("package:Seurat")
+  [1] "AddAzimuthResults"               "AddMetaData"                     "AddModuleScore"                 
+  [4] "AggregateExpression"             "AnnotateAnchors"                 "as.CellDataSet"                 
+  [7] "as.Graph"                        "as.Neighbor"                     "as.Seurat"                      
+ [10] "as.SingleCellExperiment"         "as.sparse"                       "Assays"                         
+ [13] "AugmentPlot"                     "AutoPointSize"                   "AverageExpression"              
+ [16] "BarcodeInflectionsPlot"          "BGTextColor"                     "BlackAndWhite"                  
+ [19] "BlueAndRed"                      "BoldTitle"                       "BuildClusterTree"               
+ [22] "CalcPerturbSig"                  "CalculateBarcodeInflections"     "CaseMatch"                      
+ [25] "cc.genes"                        "cc.genes.updated.2019"           "CellCycleScoring"               
+ [28] "Cells"                           "CellsByIdentities"               "CellScatter"                    
+ [31] "CellSelector"                    "CenterTitle"                     "CollapseEmbeddingOutliers"      
+ [34] "CollapseSpeciesExpressionMatrix" "ColorDimSplit"                   "CombinePlots"                   
+ [37] "Command"                         "CreateAssayObject"               "CreateDimReducObject"           
+ [40] "CreateSCTAssayObject"            "CreateSeuratObject"              "CustomDistance"                 
+ [43] "CustomPalette"                   "DarkTheme"                       "DEenrichRPlot"                  
+ [46] "DefaultAssay"                    "DefaultAssay<-"                  "DietSeurat"                     
+ [49] "DimHeatmap"                      "DimPlot"                         "DiscretePalette"                
+ [52] "Distances"                       "DoHeatmap"                       "DotPlot"                        
+ [55] "ElbowPlot"                       "Embeddings"                      "ExpMean"                        
+ [58] "ExpSD"                           "ExpVar"                          "FastRowScale"                   
+ [61] "FeatureLocator"                  "FeaturePlot"                     "FeatureScatter"                 
+ [64] "FetchData"                       "FilterSlideSeq"                  "FindAllMarkers"                 
+ [67] "FindClusters"                    "FindConservedMarkers"            "FindIntegrationAnchors"         
+ [70] "FindMarkers"                     "FindMultiModalNeighbors"         "FindNeighbors"                  
+ [73] "FindSpatiallyVariableFeatures"   "FindSubCluster"                  "FindTransferAnchors"            
+ [76] "FindVariableFeatures"            "FoldChange"                      "FontSize"                       
+ [79] "GeneSymbolThesarus"              "GetAssay"                        "GetAssayData"                   
+ [82] "GetImage"                        "GetIntegrationData"              "GetResidual"                    
+ [85] "GetTissueCoordinates"            "GetTransferPredictions"          "GroupCorrelation"               
+ [88] "GroupCorrelationPlot"            "HoverLocator"                    "HTODemux"                       
+ [91] "HTOHeatmap"                      "HVFInfo"                         "Idents"                         
+ [94] "Idents<-"                        "IFeaturePlot"                    "Images"                         
+ [97] "Index"                           "Index<-"                         "Indices"                        
+[100] "IntegrateData"                   "IntegrateEmbeddings"             "Intensity"                      
+[103] "IsGlobal"                        "ISpatialDimPlot"                 "ISpatialFeaturePlot"            
+[106] "JackStraw"                       "JackStrawPlot"                   "JS"                             
+[109] "JS<-"                            "Key"                             "Key<-"                          
+[112] "L2CCA"                           "L2Dim"                           "LabelClusters"                  
+[115] "LabelPoints"                     "LinkedDimPlot"                   "LinkedFeaturePlot"              
+[118] "Load10X_Spatial"                 "LoadAnnoyIndex"                  "Loadings"                       
+[121] "Loadings<-"                      "LoadSTARmap"                     "LocalStruct"                    
+[124] "LogNormalize"                    "LogSeuratCommand"                "LogVMR"                         
+[127] "Luminance"                       "MappingScore"                    "MapQuery"                       
+[130] "MetaFeature"                     "MinMax"                          "Misc"                           
+[133] "Misc<-"                          "MixingMetric"                    "MixscapeHeatmap"                
+[136] "MixscapeLDA"                     "MULTIseqDemux"                   "Neighbors"                      
+[139] "NNPlot"                          "NoAxes"                          "NoGrid"                         
+[142] "NoLegend"                        "NormalizeData"                   "PCAPlot"                        
+[145] "PCASigGenes"                     "PCHeatmap"                       "PercentAbove"                   
+[148] "PercentageFeatureSet"            "PlotClusterTree"                 "PlotPerturbScore"               
+[151] "PolyDimPlot"                     "PolyFeaturePlot"                 "PredictAssay"                   
+[154] "PrepLDA"                         "PrepSCTFindMarkers"              "PrepSCTIntegration"             
+[157] "Project"                         "Project<-"                       "ProjectDim"                     
+[160] "ProjectUMAP"                     "PurpleAndYellow"                 "Radius"                         
+[163] "Read10X"                         "Read10X_h5"                      "Read10X_Image"                  
+[166] "ReadMtx"                         "ReadParseBio"                    "ReadSlideSeq"                   
+[169] "ReadSTARsolo"                    "Reductions"                      "RegroupIdents"                  
+[172] "RelativeCounts"                  "RenameCells"                     "RenameIdents"                   
+[175] "ReorderIdent"                    "RestoreLegend"                   "RidgePlot"                      
+[178] "RotatedAxis"                     "RowMergeSparseMatrices"          "RunCCA"                         
+[181] "RunICA"                          "RunLDA"                          "RunMarkVario"                   
+[184] "RunMixscape"                     "RunMoransI"                      "RunPCA"                         
+[187] "RunSLSI"                         "RunSPCA"                         "RunTSNE"                        
+[190] "RunUMAP"                         "SampleUMI"                       "SaveAnnoyIndex"                 
+[193] "ScaleData"                       "scalefactors"                    "ScaleFactors"                   
+[196] "ScoreJackStraw"                  "SCTransform"                     "SCTResults"                     
+[199] "SCTResults<-"                    "SelectIntegrationFeatures"       "SetAssayData"                   
+[202] "SetIdent"                        "SetIntegrationData"              "SetQuantile"                    
+[205] "SeuratAxes"                      "SeuratTheme"                     "SingleCorPlot"                  
+[208] "SingleDimPlot"                   "SingleExIPlot"                   "SingleImageMap"                 
+[211] "SingleRasterMap"                 "SingleSpatialPlot"               "SpatialDimPlot"                 
+[214] "SpatialFeaturePlot"              "SpatiallyVariableFeatures"       "SpatialPlot"                    
+[217] "SpatialTheme"                    "SplitObject"                     "StashIdent"                     
+[220] "Stdev"                           "SubsetByBarcodeInflections"      "SVFInfo"                        
+[223] "Tool"                            "Tool<-"                          "TopCells"                       
+[226] "TopFeatures"                     "TopNeighbors"                    "TransferData"                   
+[229] "TSNEPlot"                        "UMAPPlot"                        "UpdateSCTAssays"                
+[232] "UpdateSeuratObject"              "UpdateSymbolList"                "VariableFeaturePlot"            
+[235] "VariableFeatures"                "VariableFeatures<-"              "VizDimLoadings"                 
+[238] "VlnPlot"                         "WhichCells"                      "WhiteBackground" 
+
+
+
+
+========================================
+下载 Suerat 官方网站镜像 (2022.4.15)
+----------------------------------------
+1. 当可以访问的时候 (2022.4.15)
+备份以防万一: 
+$ wget -m -L –reject = http://www.satijalab.org/seurat
+
+
+(1) 进入工作站目录
+$ cd /home/wangjl/data/web/docs/docs/satijalab.org/
+$ mv seurat seurat-backup
+
+
+换成
+$ cd /home/wangjl/data/web/docs/docs/
+$ rm -rf satijalab.org
+
+
+
+(2)下载好久
+$ wget -m --no-check-certificate https://satijalab.org/seurat/index.html #好多文件，应该是都下下来了！
+16:37 --> 16:65
+Downloaded: 1335 files, 531M in 2m 46s (3.20 MB/s)
+
+
+压缩备份
+$ tar -czvf seurat-docs-20220415.tar.gz satijalab.org
+
+$ ls -lth seurat-docs-20220415.tar.gz
+-rw-rw-r-- 1 wangjl wangjl 392M Apr 15 16:56 seurat-docs-20220415.tar.gz
+
+$ du -sh satijalab.org/
+535M	satijalab.org/
+压缩到原来的 66%。
+
+
+
+(3) 怎么本地化 js 文件呢? //todo
+
+
+
+
+
+
+
+
+
+
+
+
+
+2. 使用 远程 docker 下载 (2021.9.23)
+下载一个 nginx ，方便预览文件
 总体计划: 使用远端 docker 下载需要的东西，使用 nginx 展示内容并下载
 https://labs.play-with-docker.com/
 
-
-1. 下载一个 nginx ，方便预览文件
 
 $ docker pull nginx
 $ docker run --rm -it nginx nginx -version
@@ -839,7 +1168,7 @@ $ tar -czvf seurat.tar.gz satijalab.org
 
 $ du -sh satijalab.org/
 325M	satijalab.org/
-压缩道原来的 66%。
+压缩到原来的 66%。
 
 
 
@@ -853,19 +1182,49 @@ https://satijalab.org/seurat/articles/pbmc3k_tutorial_files/header-attrs-2.10/he
 
 
 
+
+
+
+
+
 ========================================
 算法细节
 ----------------------------------------
 
 ========================================
-|-- FindVariableGenes() plots dispersion是怎么算的？
+|-- counts / data / scale.data 怎么来的
 ----------------------------------------
-1.
-https://satijalab.org/seurat/faq
 
-FindVariableGenes() plots dispersion (a normalized measure of to cell-to-cell variation) as a function of average expression for each gene. Our goal is to identify a set of high-variance genes, and we recommend setting the cutoff parameters in this function by visually evaluating this plot to define outliers.
+1. counts 2 data
+a1=sce@assays$RNA@counts
+a2=sce@assays$RNA@data #counts 怎么变的 data?
+a1[10:20,1:3]
+a2[10:20,1:3]
+a3=apply(a1, 2, function(x){
+log(x/sum(x) * 1e4 +1) #先按列标准化，扩大到1e4，加1，之后取自然对数。
+})
+a3[10:20,1:3] #和a2一样
 
-2.
+# 测试
+table( as.logical( (a2-a3)< 1e-10 ) ) #-10 all T; -20 hase F
+
+# 测试
+hist( apply(expm1(a2), 2, sum), n=100 )
+hist( apply(expm1(a3), 2, sum), n=100 )
+
+
+(2) 取平均表达量
+
+# 求平均，按列。求的是取对数前-1，也就是 counts的平均。
+avg.exp <- apply(X = data.use, MARGIN = 2, FUN = function(x) {
+  return(mean(x = expm1(x = x))) #expm1 是啥？ expm1(x) computes exp(x) - 1 accurately also for |x| << 1.
+})
+
+
+
+
+
+
 
 
 
@@ -935,6 +1294,10 @@ DimPlot(object = pbmc, reduction.use = "mds", pt.size = 2) +
 ----------------------------------------
 
 
+
+
+
+
 ========================================
 |-- 修改 seurat 的分类列，后续按照新 Idents 进行比较marker、画热图等
 ----------------------------------------
@@ -962,6 +1325,29 @@ names(new.cluster.ids) <- levels(pbmc)
 pbmc <- RenameIdents(pbmc, new.cluster.ids)
 DimPlot(pbmc, reduction = "umap", label = TRUE, pt.size = 0.5) + NoLegend()
 #*********
+
+> head(Idents(scObj_known2), n=3)
+AAACCCAAGAGCTTTC-1_1 AAACCCAGTAGTGGCA-1_1 AAACCCATCTTCACGC-1_1 
+            Platelet             Platelet           Ccr2+ Mono
+
+
+
+
+# 如果不小心标错了，怎么恢复会原来的数字编号？
+#1) 最快的方式 Idents(object = scObj_colon) <-"RNA_snn_res.0.2"
+#2) 需要使用 seurat_clusters 构建named vector 覆盖掉 active.ident 这个slot，然后重新来
+scObj_known2@active.ident
+
+> t1=scObj_known2@meta.data$seurat_clusters
+> names(t1)=scObj_known2$cell #或 rownames(scObj_known2@meta.data)
+> head(t1, n=3)
+AAACCCAAGAGCTTTC-1_1 AAACCCAGTAGTGGCA-1_1 AAACCCATCTTCACGC-1_1
+                   0                    2                    4
+> scObj_known2@active.ident=t1
+
+
+
+
 
 
 
@@ -1090,11 +1476,12 @@ DotPlotPDF(markers,"top5",width=5,height=4.5)
 
 
 ========================================
-|-- DimPlot()高亮显示某一类细胞: cells.highlight 参数
+|-- DimPlot()高亮显示某一类细胞
 ----------------------------------------
-#
+1. 使用 seurat 包的函数，指定 cells.highlight 参数
+(1) WhichCells 函数获取cid
 Idents(scRNA)="predicted.id"
-sub1 <- WhichCells(scRNA, idents = c("CD8 Naive") )
+sub1 <- WhichCells(scRNA, idents = c("CD8 Naive") ) #返回的是细胞cid
 sub2 <- WhichCells(scRNA, idents = c( "CD4 TEM") )
 p1=DimPlot(scRNA, label=T, group.by="predicted.id", cells.highlight= list(sub1, sub2), 
         cols.highlight = c("blue", 'red'), cols= "grey")
@@ -1109,6 +1496,35 @@ p1+p2 +plot_layout(guides = 'collect')
 
 
 
+(2) 从 meta.data 获取cid
+
+DimPlot(neu_colon, label = F, group.by = "BL2", 
+        cells.highlight = neu_colon@meta.data[which(neu_colon@meta.data$sample == "BL2Y"), "cell"], 
+        cols.highlight = c("darkblue", "darkred"), cols = "grey")
+
+
+(3) 分面: split.by=某指标作为因子，把图分成多个
+
+DimPlot(object = neu_colon,reduction = "umap",label = F, split.by = "sample", ncol = 3)+NoLegend()
+
+
+
+
+2. 自定义函数 
+library(dplyr)
+
+umap_tx = integrated@reductions$umap@cell.embeddings %>% 
+	as.data.frame() %>% cbind(tx = so@meta.data$Treat)
+
+ggplot(umap_tx, aes(x=UMAP_1, y=UMAP_2, color=tx)) + geom_point() + 
+	scale_color_manual(values=c("group1_untreated" = "darkblue", "group1_treated" = "darkred"))
+
+
+
+
+
+ref:
+https://stackoverflow.com/questions/59101791/seurat-dimplot-highlight-specific-groups-of-cells-in-different-colours
 
 
 
@@ -1148,6 +1564,169 @@ pheatmap(cor_df2, border_color = NA,
          clustering_method="ward.D2",
          main="Cell type correlation")
 #
+
+
+
+
+
+
+========================================
+|-- 常用图的增强: FeaturePlot, VlnPlot, DotPlot, DimPlot
+----------------------------------------
+
+1. FeaturePlot 函数
+(1) FeaturePlot使用了split函数之后就没有legend了
+FeaturePlot(object = obj, features = "Gene", split.by = "Meta_Name", order = T) & theme(legend.position = "right")
+
+只是用+是不可以的，那样就只会只改split图中右边的那个图。使用&符号的时候是会两个都改的，是不是很神奇？
+原来我以前只知道+，后来才发现还有&这个用法。
+
+
+
+(2) 两个 FeaturePlot 左右放，右边的隐藏y轴。
+
+m_featureplot <- FeaturePlot(M_Aggregated_seurat, features = "Lepr", reduction = "tsne",
+                             split.by = "orig.ident", pt.size = 1.8, repel = F, label = F,
+                             order = T, max.cutoff = 1)
+m_featureplot <- m_featureplot & scale_x_continuous(breaks=seq(-30, 20, 10)) ## 改x轴刻度标签
+m_featureplot <- m_featureplot & scale_y_continuous(breaks=seq(-30, 20, 10)) ## 改y轴刻度标签
+m_featureplot <- m_featureplot +  theme(axis.text.y = element_blank()) +   ## 删去所有刻度标签
+                                  theme(axis.ticks.y = element_blank()) +  ##则只删去 Y 轴的刻度线
+                                  theme(axis.line.y = element_blank())
+m_featureplot <- m_featureplot + ylab("")
+
+
+
+(3) # Visualize co-expression of two features simultaneously
+FeaturePlot(pbmc, features = c("MS4A1", "CD79A"), blend = TRUE)
+
+
+(4) # Calculate feature-specific contrast levels based on quantiles of non-zero expression.
+# Particularly useful when plotting multiple markers
+FeaturePlot(pbmc3k.final, features = c("MS4A1", "PTPRCAP"), min.cutoff = "q10", max.cutoff = "q90")
+
+
+(5) 分组 
+# Split visualization to view expression by groups (replaces FeatureHeatmap)
+FeaturePlot(pbmc3k.final, features = c("MS4A1", "CD79A"), split.by = "groups")
+
+
+
+
+
+2. VlnPlot 的堆叠小提琴图
+VlnPlot 中有个stack = T
+但是这里面有个bug
+因为Seurat::VlnPlot有个bug就是当用split的时候 细胞数目小于3个的时候 就不会画出来
+后面又自己想加其他数据所以弄得复杂了点
+但是我发现个很好用的方法就是直接把p1$data <- final_data 直接替换成我们想画图的数据就可以直接修改图片了
+
+https://www.jianshu.com/p/a2fe2549cea1
+
+(2) # metadata and pass it to the split.by argument
+VlnPlot(pbmc, features = "percent.mt", split.by = "groups")
+
+
+
+
+
+
+3. DotPlot 图
+
+(1) 
+dotplot_f_data_1 <- DotPlot(F_Aggregated_seurat, features = rev(ImDEGs),
+                       group.by = "try",col.min=-2, col.max=2)$data
+head(dotplot_f_data_1)
+dim(dotplot_f_data_1)
+
+dotplot_f_data_2 <- DotPlot(F_Aggregated_seurat, features = rev(ImDEGs),
+                            group.by = "try2",col.min=-2, col.max=2)$data
+head(dotplot_f_data_2)
+dim(dotplot_f_data_2)
+
+dotplot_f_data <- rbind(dotplot_f_data_1, dotplot_f_data_2)
+head(dotplot_f_data)
+dim(dotplot_f_data)
+table(dotplot_f_data$id)
+
+p_dotplot_f <- DotPlot(F_Aggregated_seurat, features = rev(ImDEGs),col.min=-2, col.max=2)
+p_dotplot_f$data <- dotplot_f_data
+p_dotplot_f <- p_dotplot_f + coord_flip()
+p_dotplot_f <- p_dotplot_f+ scale_color_gradient2(high="red",mid = "lightgrey",low ="darkblue", midpoint = 0) + theme_classic()+ 
+  theme(axis.text.x = element_text(angle = -45,hjust = -0.1,vjust = 0.8)) 
+p_dotplot_f$data$id <- factor(p_dotplot_f$data$id,
+                              levels = c(levels_define[1:12], 
+                                         "GABA_WT", "GABA_ob/ob",
+                                         levels_define[13:18],
+                                         "Glu_WT", "Glu_ob/ob"))
+p_dotplot_f
+
+
+(2) 分组
+DotPlot(pbmc, features = features, split.by = "groups") + RotatedAxis()
+
+
+
+4. DimPlot 
+
+(1) 加上标题
+baseplot <- DimPlot(pbmc, reduction = "umap")
+# Add custom labels and titles
+baseplot + labs(title = "Clustering of 2,700 PBMCs")
+
+(2) 改变字体，去掉图例
+# Chain themes together
+baseplot + FontSize(x.title = 20, y.title = 20) + NoLegend()
+
+
+
+
+
+5. 系统发育分析（Phylogenetic Analysis of Identity Classes）
+pbmc<-BuildClusterTree(pbmc)
+Tool(object = pbmc, slot = 'BuildClusterTree')
+
+
+
+6. 平均表达谱函数AverageExpression
+?AverageExpression
+
+AverageExp<-AverageExpression(pbmc,features=unique(top10$gene))
+
+
+
+
+7. # Ridge plots - from ggridges. Visualize single cell expression distributions in each cluster
+RidgePlot(pbmc3k.final, features = features, ncol = 2)
+
+
+
+
+
+
+
+
+
+
+
+
+
+100. 富集分析的底层代码： enrichplot 包
+
+https://www.jianshu.com/p/03b94b2034d5
+
+
+
+
+
+ref:
+https://www.jianshu.com/p/a2fe2549cea1
+https://www.jianshu.com/p/484762bb96c2
+https://www.jianshu.com/p/03b94b2034d5
+http://www.360doc.com/content/21/0715/15/76149697_986668012.shtml
+
+
+
 
 
 
@@ -1243,10 +1822,27 @@ pheatmap(matrix2, annotation_col = annotation_col, annotation_colors = ann_color
 
 
 ========================================
-|-- 重绘 PCA,tSNE,UMAP
+|-- 重绘 PCA,tSNE, UMAP
 ----------------------------------------
 
-1.
+1. 获取坐标
+(1) 使用内置函数 Embeddings 获取坐标
+> Embeddings(scRNA, "umap")
+	UMAP_1	UMAP_2
+AAACCCAGTATCGTAC	7.708623	-4.3380356
+AAACCCAGTCGGTGAA	-5.678032	-0.3648236
+AAACCCAGTTAGAAAC	7.154264	-1.0021027
+
+
+> Embeddings(scRNA, "tsne")
+	tSNE_1	tSNE_2
+AAACCCAGTATCGTAC	-14.4581690	-7.5685762
+AAACCCAGTCGGTGAA	5.1615386	27.4283348
+AAACCCAGTTAGAAAC	-1.8349680	-27.0306493
+AAACCCAGTTATCTTC	1.8384106	45.6578343
+
+
+(2) 从对象中获取坐标
 ######## replot: PCA,tSNE,UMAP
 getDimensionData=function(seuratObj){
   df=data.frame(
@@ -1280,26 +1876,343 @@ plot3d(pcaData$PC_1, pcaData$PC_2, pcaData$PC_3)
 #############
 
 
+(3) 把UMAP的坐标放到metadata中：
+pbmc <- AddMetaData(pbmc, 
+		pbmc@reductions$umap@cell.embeddings,
+		col.name = colnames(pbmc@reductions$umap@cell.embeddings))
+
+head(pbmc@meta.data)
 
 
 
 
 
-2. 获取坐标的方法
-> Embeddings(scRNA, "umap")
-	UMAP_1	UMAP_2
-AAACCCAGTATCGTAC	7.708623	-4.3380356
-AAACCCAGTCGGTGAA	-5.678032	-0.3648236
-AAACCCAGTTAGAAAC	7.154264	-1.0021027
 
 
-> Embeddings(scRNA, "tsne")
-	tSNE_1	tSNE_2
-AAACCCAGTATCGTAC	-14.4581690	-7.5685762
-AAACCCAGTCGGTGAA	5.1615386	27.4283348
-AAACCCAGTTAGAAAC	-1.8349680	-27.0306493
-AAACCCAGTTATCTTC	1.8384106	45.6578343
 
+
+2. 精细复原，并个性化定制
+
+# Seurat包的UMAP图
+DimPlot(scObj_known2, group.by = c("ident", 'sample'),reduction = "umap")
+DimPlot(scObj_known2, group.by = c("ident"), reduction = "umap")
+DimPlot(scObj_known2)
+
+
+(1) 自己画
+# step1: 获取数据
+umap_data = scObj_known2@reductions$umap@cell.embeddings %>%  #坐标信息
+  as.data.frame() %>% 
+  cbind(cell_type = scObj_known2@meta.data$ident) # 注释后的 ident 信息 ，改为cell_type
+head(umap_data)
+#                        UMAP_1    UMAP_2   cell_type
+#AAACCCAAGAGCTTTC-1_1  4.289865  2.376387    Platelet
+
+
+# step2: 初步画图
+allcolour=c("#DC143C","#0000FF","#20B2AA","#FFA500","#9370DB","#98FB98","#F08080","#1E90FF","#7CFC00","#FFFF00",
+            "#808000","#FF00FF","#FA8072","#7B68EE","#9400D3","#800080","#A0522D","#D2B48C","#D2691E","#87CEEB","#40E0D0","#5F9EA0",
+            "#FF1493","#0000CD","#008B8B","#FFE4B5","#8A2BE2","#228B22","#E9967A","#4682B4","#32CD32","#F0E68C","#FFFFE0","#EE82EE",
+            "#FF6347","#6A5ACD","#9932CC","#8B008B","#8B4513","#DEB887")
+
+p <- ggplot(umap, aes(x= UMAP_1 , y = UMAP_2 ,color = cell_type))+
+  geom_point(size = 1 , alpha =1 )+
+  scale_color_manual(values = allcolour)
+p
+
+找差异:
+- 主题部分（去掉背景，去掉网格线） ；
+- legend部分（调整legend，去掉背景灰色、title，调整字体） 
+- 注释部分（坐标轴标到左下角，图中标示标签）三部分。
+
+
+(2) 修饰提升: 去背景、去坐标轴
+https://mp.weixin.qq.com/s?__biz=MzIyNDI1MzgzOQ==&mid=2650394998&idx=1&sn=3a37ee30062e880b70564633b51a87c8
+
+p2 = p+theme_classic(base_size = 14)+
+  theme(
+    panel.border = element_blank(), #边框
+    axis.title = element_blank(),  #轴标题
+    axis.text = element_blank(),  #轴刻度文本
+    axis.ticks = element_blank(), #轴刻度
+    axis.line = element_blank() #去掉轴
+  )
+p2
+
+
+# 参考:
+p2_ <- p  +
+  theme(panel.grid.major = element_blank(), #主网格线
+        panel.grid.minor = element_blank(), #次网格线
+        panel.border = element_blank(), #边框
+        axis.title = element_blank(),  #轴标题
+        axis.text = element_blank(), # 文本
+        axis.ticks = element_blank(),
+        panel.background = element_rect(fill = 'white'), #背景色
+        plot.background=element_rect(fill="white"))
+p2_
+
+
+(3) 修饰提升: 图例点变大
+https://mp.weixin.qq.com/s?__biz=MzIyNDI1MzgzOQ==&mid=2650394998&idx=2&sn=a860fb6001d39dbe543a8a970b4a0675
+
+p3=p2+
+  theme(
+    #legend.title = element_blank(), #去掉legend.title 
+    #legend.key=element_rect(fill='white'), #
+    #legend.text = element_text(size=20), #设置legend标签的大小
+    #legend.key.size=unit(1,'cm')  # 设置legend标签之间的大小
+  )+
+  guides(color = guide_legend(override.aes = list(size=5))) #设置legend中 点的大小
+p3
+
+
+(4) 调整umap图 - annotation
+坐标轴放到左下角可以通过ggplot2添加带箭头的线段和文本实现。
+这一步可能需要根据数据调整位置，来获得最佳效果。
+
+p4 <- p3 + 
+  geom_segment(data=data.frame(), aes(x = min(umap_data$UMAP_1), y = min(umap_data$UMAP_2),
+                   xend = min(umap_data$UMAP_1) +5, yend = min(umap_data$UMAP_2) ),
+               colour = "black", #size=0.9,
+               arrow = arrow(length = unit(0.3,"cm")))+ 
+  geom_segment(data=data.frame(), aes(x = min(umap_data$UMAP_1), y = min(umap_data$UMAP_2),
+                   xend = min(umap_data$UMAP_1), yend = min(umap_data$UMAP_2) + 5),
+               colour = "black", #size=0.9,
+               arrow = arrow(length = unit(0.3,"cm"))) +
+  annotate("text", x = min(umap_data$UMAP_1) +2.5, y = min(umap_data$UMAP_2) -1.5, label = "UMAP_1",
+           color="black", size = 3, fontface="bold") + 
+  annotate("text", x = min(umap_data$UMAP_1) -1.5, y = min(umap_data$UMAP_2) + 2.5, label = "UMAP_2",
+           color="black", size = 3, fontface="bold", angle=90)
+p4
+差不多是最终效果了，就差把细胞类型标注到点上了。
+
+
+
+(5)  那如果想把注释加到点之上怎么办呢？
+- 直接使用label 添加，需要先给每个cluster一个单独的坐标，本示例中使用此方法。
+- text 根据cluster的位置，手动添加，需要尝试，倒是效果会好一些。
+
+
+# 1) 计算每个cluster的median 坐标位置
+cell_type_med <- umap %>%
+  group_by(cell_type) %>%
+  summarise(
+    UMAP_1 = median(UMAP_1),
+    UMAP_2 = median(UMAP_2)
+  )
+
+# 2) geom_label_repel 添加注释
+library(ggrepel)
+p4 + #白底标签标注
+  geom_label_repel(data = cell_type_med, aes(label=cell_type), 
+                   fontface="bold", alpha=0.8,#半透光
+                   point.padding=unit(0.5, "lines"))
+
+# 或者黑字标注
+p4 +
+  geom_text_repel(data = cell_type_med, aes(label=cell_type), 
+                  #fontface="bold", 
+                  color="black",
+                  point.padding=unit(0.5, "lines"))
+
+# 3) 去掉 legend 
+p4 + #白底标签标注
+  geom_label_repel(data = cell_type_med, aes(label=cell_type), 
+                   fontface="bold", alpha=0.8,#半透光
+                   point.padding=unit(0.5, "lines"))+
+  theme(legend.position = "none")
+
+
+
+
+
+
+
+
+
+
+3. 画法2
+
+#' Draw UMAP, my method 2
+#'
+#' @param scObj 
+#' @param group.by 
+#'
+#' @return
+#' @export
+#'
+#' @examples
+#' DimPlot_2(scObj_known2, "ident")
+DimPlot_2 = function(scObj, group.by="seurat_clusters"){
+  # (1)为了调用ggplot2我们把UMAP的坐标放到metadata中：
+  pbmc<-AddMetaData(scObj,scObj@reductions$umap@cell.embeddings,col.name = colnames(scObj@reductions$umap@cell.embeddings))
+  #head(pbmc@meta.data)
+  
+  # (2)读入一套我珍藏多年的颜色列表：
+  allcolour=c("#DC143C","#0000FF","#20B2AA","#FFA500","#9370DB","#98FB98","#F08080","#1E90FF","#7CFC00","#FFFF00",
+              "#808000","#FF00FF","#FA8072","#7B68EE","#9400D3","#800080","#A0522D","#D2B48C","#D2691E","#87CEEB","#40E0D0","#5F9EA0",
+              "#FF1493","#0000CD","#008B8B","#FFE4B5","#8A2BE2","#228B22","#E9967A","#4682B4","#32CD32","#F0E68C","#FFFFE0","#EE82EE",
+              "#FF6347","#6A5ACD","#9932CC","#8B008B","#8B4513","#DEB887")
+  
+  # (3) 开始画图
+  df1= as.data.frame(pbmc@meta.data) #[, c("UMAP_1", "UMAP_2", group.by)]
+  df1$cluster=as.data.frame(pbmc@meta.data)[, group.by]
+  # colnames(df1)=c("UMAP_1", "UMAP_2","cluster")
+  
+  class_avg <-  df1%>%
+    group_by(cluster) %>%
+    summarise(
+      UMAP_1 = median(UMAP_1),
+      UMAP_2 = median(UMAP_2)
+    )
+  #print(head(class_avg))
+  umap <-  ggplot(df1, aes(x=UMAP_1,y=UMAP_2))+
+    geom_point(aes(color=cluster))+
+    scale_color_manual(values = allcolour)+
+    geom_text(aes(label = cluster), data = class_avg)+
+    theme(text=element_text(family="Arial",size=18)) +
+    theme(panel.background = element_rect(fill='white', colour='black'), 
+          panel.grid=element_blank(), axis.title = element_text(color='black',
+                                                                family="Arial",size=18),axis.ticks.length = unit(0.4,"lines"), 
+          axis.ticks = element_line(color='black'), 
+          #axis.ticks.margin = unit(0.6,"lines"), 
+          #`axis.ticks.margin` is deprecated. Please set `margin` property of `axis.text` instead 
+          
+          axis.line = element_line(colour = "black"), 
+          axis.title.x=element_text(colour='black', size=18),
+          axis.title.y=element_text(colour='black', size=18),
+          axis.text=element_text(colour='black',size=18),
+          legend.title=element_blank(),
+          legend.text=element_text(family="Arial", size=18),
+          legend.key=element_blank())+
+    #theme(plot.title = element_text(size=22,colour = "black",face = "bold"))  + 
+    guides(colour = guide_legend(override.aes = list(size=5)))
+  return(umap)
+}
+
+
+
+
+
+
+
+========================================
+|-- 把细胞的 PC 画到 UMAP 图上：配合样本分类确定批次效应
+----------------------------------------
+
+作用：可能能看到哪个PC对哪个分类有贡献？
+并去掉该 PC: 
+	hpfall.remv1=RegressOut(hpfall,c("PC2","PC5","PC7"),do.scale = T)
+	对于 Seurat 4，使用 ScaleData(, vars.to.regress=) 去掉这些变异
+
+
+
+
+
+1. 获取数据
+使用 PBMC 3k 数据。
+
+# Defining the information in the seurat object of interest
+columns <- c(paste0("PC_", 1:16),
+             "seurat_clusters", "UMAP_1", "UMAP_2")
+
+# Extracting this data from the seurat object
+pc_data <- FetchData(pbmc, vars = columns)
+
+
+
+
+2. 画图 
+
+# 查看有几个类
+ElbowPlot(pbmc3k)
+
+
+(1) 单个画
+# 每个类的核心坐标
+umap_label_pos=FetchData(pbmc, vars = c("seurat_clusters", "UMAP_1", "UMAP_2")) %>% 
+	group_by(seurat_clusters) %>%
+	summarise(x=mean(UMAP_1), y=mean(UMAP_2))
+
+# 画图
+pc="PC_1"
+ggplot(pc_data, aes(UMAP_1, UMAP_2)) +
+  geom_point(aes_string(color=pc), alpha = 0.7, size=0.5) +
+  scale_color_gradient2(#guide = TRUE,
+    low = "blue",
+    mid="white",
+    high = "red")  +
+  geom_text(data=umap_label_pos,
+            aes(label=seurat_clusters, x, y)) +
+  ggtitle(pc)+ theme_bw()
+
+
+
+(2) 批量化
+# Plotting a UMAP plot for each of the PCs
+purrr::map(paste0("PC_", 1:16), function(pc){
+  ggplot(pc_data, aes(UMAP_1, UMAP_2)) +
+    geom_point(aes_string(color=pc), alpha = 0.7) +
+    #scale_color_gradient(guide = FALSE, low = "grey90", high = "red")  +
+    scale_color_gradient2(low = "blue", mid="white", high = "red")  +
+    geom_text(data=umap_label_pos, aes(label=seurat_clusters, x, y)) +
+    ggtitle(pc)+ theme_bw()
+}) %>% 
+  cowplot::plot_grid(plotlist = .)
+
+
+
+
+
+3. 包装成函数
+
+
+#' Plot cell PC score as color on UMAP plot
+#'
+#' @param sce Seurat object
+#' @param nPCs an integer, total number of PC to plot;
+#'
+#' @return a ggplot2 merge obj, by cowplot::plot_grid
+#' @export
+#'
+#' @examples
+#' plot_PC_on_UMAP(pbmc)
+plot_PC_on_UMAP=function(sce, nPCs=16){
+  # Defining the information in the seurat object of interest
+  columns <- c( paste0("PC_", 1:nPCs),  "seurat_clusters", "UMAP_1", "UMAP_2")
+  
+  # Extracting this data from the seurat object
+  pc_data <- FetchData(sce, vars = columns)
+  
+  # Center of cluster on UMAP
+  umap_label_pos=FetchData(sce, vars = c("seurat_clusters", "UMAP_1", "UMAP_2")) %>% 
+    group_by(seurat_clusters) %>%
+    summarise(x=mean(UMAP_1), y=mean(UMAP_2))
+  
+  # Plotting a UMAP plot for each of the PCs
+  purrr::map(paste0("PC_", 1:nPCs), function(pc){
+    ggplot(pc_data, aes(UMAP_1, UMAP_2)) +
+      geom_point(aes_string(color=pc), alpha = 0.7) +
+      #scale_color_gradient(guide = FALSE, low = "grey90", high = "red")  +
+      scale_color_gradient2(low = "blue", mid="white", high = "red")  +
+      geom_text(data=umap_label_pos, aes(label=seurat_clusters, x, y)) +
+      ggtitle(pc)+ theme_bw()
+  }) %>% 
+    cowplot::plot_grid(plotlist = .)
+}
+
+
+
+如果有样本分组信息，自然是可以把这里的细胞类型换成分组信息了，开看哪些样本在哪个PC中高亮，进而推断其是不是特殊的batch，对应的PC以及基因是否需要去掉（或回归掉）。
+
+最后我们再次强调单细胞数据分析的非线性过程，许多时候，如果看不到就不能判断是否需要做某个处理，所以需要一个反馈的过程。在单细胞数据科学中PCA分析是属于特征选择的过程，即，哪些特征拿来分析，这当然是值得谨慎处理的。单细胞数据分析的默认参数（default parameters）时代已经一去不复返了。
+
+
+
+
+
+refer: https://www.jianshu.com/p/bcb0b520e056
 
 
 
@@ -1593,124 +2506,6 @@ barplot(rep(1, length(hmcols)), col=hmcols, border = NA, space=0, axes=F)
 
 
 
-
-========================================
-源码 | Seurat 包的可视化部分 visualization.R //todo
-----------------------------------------
-Seurat包的绘图函数代码：https://github.com/satijalab/seurat/blob/master/R/visualization.R
-
-
-1. 为什么重复的PCA图和作者的左右反着或者上下反着呢？
-
-#不修改，图就相反，函数默认参数是seed.use = 42
-gbm <- RunPCA(gbm, features = VariableFeatures(object = gbm))
-
-# 修改seed.use会出现与文章中一致的PCA图
-gbm <- RunPCA(gbm, features = VariableFeatures(object = gbm),seed.use = NULL)
-
-
-
-
-
-
-(1) 绘制PCA散点图使用的是：
-p <- DimPlot(gbm, reduction = "pca",group.by="patient.id",pt.size = 1.2)
-p
-
-
-(2) 找到DimPlot绘图使用的横坐标和纵坐标用的值是什么，代码如下：
-DimPlot <- function(
-
-
-(3) 绘图使用的是SingleDimPlot函数，继续查看：
-SingleDimPlot <- function(
-
-
-在这里我们看到了绘图的核心，激动，使用的ggplot2，数据为data，几何对象geom_point，即点图：
-plot <- ggplot(data = data) +
-    geom_point(
-      mapping = aes_string(
-        x = dims[1],
-        y = dims[2],
-        color = paste0("`", col.by, "`"),
-        shape = shape.by,
-        alpha = alpha.by
-      ),
-      size = pt.size
-    ) +
-    guides(color = guide_legend(override.aes = list(size = 3))) +
-    labs(color = NULL)
-#
-
-
-(4) 那么回过头去看data怎么得到的
-reduction <- reduction %||% DefaultDimReduc(object = object)
-cells <- cells %||% colnames(x = object)
-
-data <- Embeddings(object = object[[reduction]])[cells, dims]
-data <- as.data.frame(x = data)
-
-
-
-(5) 找到关键的地方，省略花里胡哨的修饰得到如下：
-cells <- colnames(x = gbm)
-dims <- c(1,2)
-reduction <- "pca"
-data <- Embeddings(object = gbm[[reduction]])[cells, dims]
-data <- as.data.frame(x = data)
-dims <- paste0(Key(object = gbm[[reduction]]), dims)
-
-plot <- ggplot(data = data) +
-  geom_point(
-    mapping = aes_string(
-      x = dims[1],
-      y = dims[2]
-    ),
-    size = 1.2
-  )
-plot
-
-
-(6)看看如何通过Embeddings函数计算得到坐标
-library(irlba)
-npcs = 50
-
-# PCA分析是基于pbmc[["RNA"]]@scale.data这个数据的
-temp <- gbm[["RNA"]]@scale.data
-temp[1:4,1:4]
-dim(temp)
-pca.results <- irlba(A = t(x = temp), nv = npcs)
-cell.embeddings <- pca.results$u %*% diag(pca.results$d)
-data1 <- cell.embeddings[,1:2]
-
-
-# 比较
-head(data)
-                     PC_1       PC_2
-1001000173.G8 -0.03682265   2.699819
-1001000173.D4  4.34592621 -17.398409
-1001000173.B4  9.10210569   5.652316
-1001000173.A2 11.40656422   0.578273
-1001000173.E2  5.38025168   2.970779
-1001000173.F6  6.52216224   1.860002
-
-head(data1)
-            [,1]      [,2]
-[1,] -0.03682265 -2.699819
-[2,]  4.34592621 17.398409
-[3,]  9.10210569 -5.652316
-[4,] 11.40656422 -0.578273
-[5,]  5.38025168 -2.970779
-[6,]  6.52216224 -1.860002
-
-验证了上面得到的data得到的方法。
-绕了一大圈，这下还是回到了irlba函数。至少我们现在知道了这两个坐标是PCA结果的什么值对吧。并且也看见绘制这幅图得核心代码，排除了有一个人的回答，显然不是因为绘图得原因导致得：
-
-
-
-ref:
-https://mp.weixin.qq.com/s?__biz=MzAxMDkxODM1Ng==&mid=2247496475&idx=1&sn=ddcf8a192439dbfa88f602f51ed7fc99
-https://mp.weixin.qq.com/s?__biz=MzAxMDkxODM1Ng==&mid=2247496550&idx=1&sn=c9e60d310807e537b3ca680e7c7281c9
 
 
 

@@ -1,0 +1,1106 @@
+R 并行计算
+
+越来越快
+for 最慢
+apply 很快
+rowSums 全部向量化更快，也可能是最快的
+parallel 可能更快(用到了多个核)
+Rcpp 直接用c++肯定是最快的。 ==> 单独讲。
+
+
+parallel包已经是R的默认安装包了。
+简单用法如下：detectCores检查核数， makeCluster设定核数，然后parApply执行。
+
+
+
+
+========================================
+基准测试: 求矩阵的每一行的sd
+----------------------------------------
+1. 产生数据
+set.seed(2021)
+dt <- matrix(runif(10^6), ncol = 10)
+
+dim(dt) #[1] 100000     10
+head(dt)
+
+(2) invisible() 是干啥的？
+(3) system.time({ }) 能统计其中的代码运行的时间
+
+
+
+
+
+2. 测试
+(1)使用 for 循环
+system.time({
+	rowSd1=c()
+	for (i in 1:nrow(dt)) {
+		rowSd1=c(rowSd1, sd(dt[i,]) )
+	}
+})
+
+用户 系统 流逝 
+22.14  0.36 22.86 
+
+length(rowSd1) #100000
+head(rowSd1) #[1] 0.2329231 0.3028007 0.2722582 
+
+
+
+(2) 使用apply
+system.time({
+	rowSd2=apply(dt, 1, sd)
+})
+用户 系统 流逝 
+1.68 0.00 1.72 
+
+# check
+length(rowSd2) #100000
+head(rowSd2) #0.2329231 0.3028007 0.2722582
+
+
+
+(3) 使用 向量化计算标准化
+system.time({
+   rowSd3=sqrt(rowSums((dt - rowMeans(dt))^2)/(dim(dt)[2] - 1))
+})
+用户 系统 流逝 
+0.02 0.00 0.02
+# check
+length(rowSd3) #100000
+head(rowSd3) #[1] 0.2329231 0.3028007 0.2722582
+
+
+
+(4) 使用多核
+library(parallel)
+detectCores(logical = F)
+cl <- makeCluster(getOption("cl.cores", 4))
+system.time({
+    rowSd4=parApply(cl, dt, 1, sd)
+})
+stopCluster(cl)
+
+#user  system elapsed 
+#用户 系统 流逝 
+#0.25 0.30 1.07
+# check
+length(rowSd4) #100000
+head(rowSd4) #0.2329231 0.3028007 0.2722582
+
+
+
+
+========================================
+|-- 提升R语言运算效率的11个实用方法
+----------------------------------------
+R的 for 循环效率很低，怎么提升需要循环的代码的效率呢?
+
+本文将介绍几种适用于大数据领域的方法，包括简单的逻辑调整设计、并行处理和Rcpp的运用，利用这些方法你可以轻松地处理1亿行以上的数据集。
+
+
+基准测试2: 
+让我们尝试提升往数据框中添加一个新变量过程(该过程中包含循环和判断语句)的运算效率。下面的代码输出原始数据框：
+# Create the data frame
+col1 <- runif (12^5, 0, 2)
+col2 <- rnorm (12^5, 0, 2)
+col3 <- rpois (12^5, 3)
+col4 <- rchisq (12^5, 2)
+df <- data.frame (col1, col2, col3, col4)
+逐行判断该数据框(df)的总和是否大于4，如果该条件满足，则对应的新变量数值为’greaterthan4’，否则赋值为’lesserthan4’。
+
+
+system.time({
+	out0=c();
+	for (i in 1:nrow(df) ){
+		if(df[i,1] + df[i,2] + df[i,3] + df[i,4] > 4 ){
+			out0=c(out0, "greaterthan4")
+		}else{
+			out0=c(out0, "lesserthan4")
+		}
+	}
+})
+
+#  user  system elapsed 
+#129.517   1.449 130.928
+
+
+
+1.向量化处理和预设数据库结构
+循环运算前，记得预先设置好数据结构和输出变量的长度和类型，千万别在循环过程中渐进性地增加数据长度。接下来，我们将探究向量化处理是如何提高处理数据的运算速度。
+
+system.time({
+	out1=character(nrow(df)) #提前设置指定长度的空字符数组 "" "" ""
+	for (i in 1:nrow(df) ){
+		if(df[i,1] + df[i,2] + df[i,3] + df[i,4] > 4 ){
+			out1[i]="greaterthan4"
+		}else{
+			out1[i]="lesserthan4"
+		}
+	}
+})
+
+# user  system elapsed 
+#6.896   0.000   6.894
+
+
+
+
+2. 将条件语句的判断条件移至循环外
+将条件判断语句移至循环外可以提升代码的运算速度，接下来本文将利用包含100,000行数据至1,000,000行数据的数据集进行测试：
+
+system.time({
+	out2=character(nrow(df))
+	conditions=df[,1] + df[,2] + df[,3] + df[,4] > 4 #条件移到循环外
+	
+	for (i in 1:nrow(df) ){
+		if( conditions[i] ){
+			out2[i]="greaterthan4"
+		}else{
+			out2[i]="lesserthan4"
+		}
+	}
+})
+#  user  system elapsed 
+#  0.033   0.000   0.033
+
+
+
+
+3.只在条件语句为真时执行循环过程
+另一种优化方法是预先将输出变量赋值为条件语句不满足时的取值，然后只在条件语句为真时执行循环过程。此时，运算速度的提升程度取决于条件状态中真值的比例。
+
+本部分的测试将和case(2)部分进行比较，和预想的结果一致，该方法确实提升了运算效率。
+
+system.time({
+	out3=rep("lesserthan4", nrow(df)) #提前放上一个预设值
+	conditions=df[,1] + df[,2] + df[,3] + df[,4] > 4
+	
+	for (i in  (1:nrow(df))[conditions] ){ #只在条件为真时进入循环
+		out3[i]="greaterthan4"
+	}
+})
+
+user  system elapsed 
+  0.022   0.000   0.022 
+
+
+
+
+4.尽可能地使用 ifelse()语句
+
+利用ifelse()语句可以使你的代码更加简便。ifelse()的句法格式类似于if()函数，但其运算速度却有了巨大的提升。
+即使是在没有预设数据结构且没有简化条件语句的情况下，其运算效率仍高于上述的两种方法。
+
+system.time({
+	conditions=df[,1] + df[,2] + df[,3] + df[,4] > 4
+	out4= ifelse(conditions, "greaterthan4", "lesserthan4")
+})
+#user  system elapsed 
+#  0.031   0.000   0.031
+
+system.time({
+  out4= ifelse( (df$col1 + df$col2 + df$col3 + df$col4)> 4 , "greaterthan4", "lesserthan4")
+})
+#user  system elapsed 
+#  0.031   0.000   0.031
+
+system.time({
+  out4= ifelse( rowSums(df)> 4 , "greaterthan4", "lesserthan4")  #用上 rowSums 速度也没提升
+})
+#user  system elapsed 
+# 0.035   0.000   0.036
+
+
+可见，目前最快的还是case3.
+
+
+
+5.使用 which()语句
+
+利用which()语句来筛选数据集，我们可以达到Rcpp三分之一的运算速率。
+
+system.time({
+	out5=rep("lesserthan4", nrow(df))
+	out5[ which(rowSums(df)>4) ]="greaterthan4"
+})
+#user  system elapsed 
+# 0.007   0.000   0.007
+
+这是目前最快的。
+
+
+
+
+
+6.利用apply族函数来替代for循环语句
+
+本部分将利用apply()函数来计算上文所提到的案例，并将其与向量化的循环语句进行对比。
+该方法的运算效率优于原始方法，但劣于ifelse()和将条件语句置于循环外端的方法。
+该方法非常有用，但是当你面对复杂的情形时，你需要灵活运用该函数。
+
+system.time({
+	out6=apply(df, 1, function(x){
+		if(sum(x)>4){
+			"greaterthan4"
+		}else{
+			"lesserthan4"
+		}
+	})
+})
+# user  system elapsed 
+#  0.284   0.000   0.283
+
+
+system.time({
+	out6=apply(df, 1, function(x){
+		ifelse(sum(x)>4, "greaterthan4", "lesserthan4") #嵌套ifelse，时间更久了。
+	})
+})
+# user  system elapsed 
+#  0.505   0.000   0.505 
+
+
+
+7. 利用compiler包中的字节码编译函数cmpfun()
+这可能不是说明字节码编译有效性的最好例子，但是对于更复杂的函数而言，字节码编译将会表现地十分优异，因此我们应当了解下该函数。
+
+system.time({
+	library(compiler)
+	myFun=cmpfun(function(x){
+			if(sum(x)>4){
+				"greaterthan4"
+			}else{
+				"lesserthan4"
+			}
+	})
+
+	out7=apply(df, 1, myFun)
+})
+# user  system elapsed 
+# 0.255   0.012   0.267
+
+
+
+# 准备工作不计时
+library(compiler)
+myFun=cmpfun(function(x){
+		if(sum(x)>4){
+			"greaterthan4"
+		}else{
+			"lesserthan4"
+		}
+})
+
+system.time({
+	out7=apply(df, 1, myFun)
+})
+#user  system elapsed 
+#0.294   0.000   0.294 
+
+
+
+
+
+
+8. 利用Rcpp
+
+截至目前，我们已经测试了好几种提升运算效率的方法，其中最佳的方法是利用ifelse()函数 --> 我测试的是which最快。
+如果我们将数据量增大十倍，运算效率将会变成啥样的呢?接下来我们将利用Rcpp来实现该运算过程，并将其与ifelse()进行比较。
+
+setwd("~/data/test/testR")
+
+system.time({
+	library(Rcpp)
+	sourceCpp("MyFunc2.cpp")
+	out8=myFunc(df)
+})
+# user  system elapsed 
+# 0.010   0.004   0.014 
+
+下面是利用C++语言编写的函数代码，将其保存为“MyFunc.cpp”并利用sourceCpp进行调用。
+//source for MyFunc2.cpp 
+#include <Rcpp.h>
+using namespace Rcpp;
+//[[Rcpp::export]]
+CharacterVector myFunc(DataFrame x){
+  NumericVector col1=x["col1"];
+	NumericVector col2=x["col2"];
+  NumericVector col3=x["col3"];
+	NumericVector col4=x["col4"];
+  int n=col1.size();
+  CharacterVector out(n);
+  for (int i=0; i<n; i++) {
+    if (col1[i]+col2[i]+col3[i]+col4[i] >4){
+      out[i]="greaterthan4";
+    }else{
+      out[i]="lesserthan4";
+    }
+  }
+  return out;
+}
+
+
+
+
+9.利用并行运算
+
+并行运算的代码：
+
+# parallel processing
+library(foreach)
+library(doSNOW)
+cl <- makeCluster(4, type="SOCK") # for 4 cores machine
+registerDoSNOW (cl)
+condition <- (df$col1 + df$col2 + df$col3 + df$col4) > 4
+
+# parallelization with vectorization
+system.time({
+  out9 <- foreach(i = 1:nrow(df), .combine=c) %dopar% {
+    if (condition[i]) {
+      return("greater_than_4")
+    } else {
+      return("lesser_than_4")
+    }
+  }
+})
+#user  system elapsed 
+# 72.115   3.935  76.058 
+
+不知道为什么如此慢？？
+
+
+这个提示暴漏出一堆函数:
+The following objects are masked from ‘package:parallel’:
+    clusterApply, clusterApplyLB, clusterCall, clusterEvalQ, clusterExport, clusterMap,
+    clusterSplit, makeCluster, parApply, parCapply, parLapply, parRapply, parSapply, splitIndices,
+    stopCluster
+#
+
+
+
+10.利用内存较小的数据结构
+data.table()是一个很好的例子，因为它可以减少数据的内存，这有助于加快运算速率。
+
+library(data.table)
+dt <- data.table(df)  # create the data.table
+system.time({
+  for (i in 1:nrow (dt)) {
+    if ((dt[i, col1] + dt[i, col2] + dt[i, col3] + dt[i, col4]) > 4) {
+      dt[i, col5:="greater_than_4"]  # assign the output as 5th column
+    } else {
+      dt[i, col5:="lesser_than_4"]  # assign the output as 5th column
+    }
+  }
+})
+
+巨慢！！
+user  system elapsed 
+291.915   2.007 293.892
+
+
+
+
+总结
+方法：速度， nrow(df)/time_taken = n 行每秒
+原始方法：1X, 856.2255行每秒(正则化为1)
+向量化方法：738X, 631578行每秒
+只考虑真值情况：1002X，857142.9行每秒
+ifelse：1752X，1500000行每秒
+which：8806X，7540364行每秒
+Rcpp：13476X，11538462行每秒
+
+
+## 我的评测
+方法：速度， nrow(df)/time_taken = n 行每秒  seconds
+原始方法：1X, 1921行每秒(正则化为1)  129.5s
+向量化方法：18.7X, 36083行每秒  6.896
+判断移到循环外: 3925X, 7540363行每秒  0.033s
+只考虑真值情况：5887X，11310545行每秒 0.022s
+ifelse：4178X，8026838行每秒  0.031s
+which：18504X，35547428行每秒  0.007s
+apply: 456X, 876169行/s, 0.284s
+Rcpp：12953X，24883200行每秒  0.010s
+
+
+
+
+
+
+
+#########################################
+
+tips-1.尽早地移除变量并恢复内存容量
+在进行冗长的循环计算前，尽早地将不需要的变量移除掉。在每次循环迭代运算结束时利用gc()函数恢复内存也可以提升运算速率。
+
+
+
+
+
+
+
+
+ref:
+https://www.r-bloggers.com/2016/01/strategies-to-speedup-r-code/
+http://blog.sina.com.cn/s/blog_13eaccf160102wqlp.html
+https://www.cda.cn/view/17597.html
+
+
+
+
+
+
+========================================
+Future - R的多进程异步框架
+----------------------------------------
+R 默认只有一个线程工作，多个CPU也是闲置。
+future 包为R用户提供了并行与分布处理的统一接口，还有些包会自动开启并行计算，比如 data.table, mlr3 等。
+
+
+
+1. 文档
+https://cran.r-project.org/web/packages/future/vignettes/future-1-overview.html
+https://future.futureverse.org/
+
+
+
+
+
+2. 入门教程
+
+(1) 基本概念
+
+future 是一个抽象概念，指的是一个未来某个时间点可用的值。
+future 的状态有2类：
+	未解析 unresolved
+	解析 resolved
+一旦解析过，该值就会立刻可用。
+如果没有解析过，而且需要这个值，当前进程就会阻塞blocked，直到该 future 解析好。
+可以毫无阻塞的查询一个future是否被解析过。
+具体怎么解析、何时解析取决于取值的策略。
+	一个 future 可以用于顺序策略(sequential)，就是在当前R进程中解析。
+	或者 异步解析(asynchronously)，就是在当前机器上并行(parallel)，或者集群上并发(concurrently)。
+
+
+(2) 简单例子
+
+版本1) 比如这个例子，使用普通R代码执行：
+> v <- {
+   cat("Hello world!\n")
+   3.14
+}
+# Hello world!
+> v
+[1] 3.14
+
+内容就是解析表达式v，并打印出v的值。同时在解析v时我们打印一条消息。
+
+
+版本2) 使用 future 时
+> library("future")
+> v %<-% {
+   cat("Hello world!\n")
+   3.14
+}
+> v #到调用时才计算，之前只是存储未解析
+Hello world!
+[1] 3.14
+> v #再次打印，就只有值了
+[1] 3.14
+
+两个版本的定义不同：
+	普通R使用 <-
+	future 版本使用 %<-%
+后者的输出在第一次调用时，而不是定义时立刻执行。
+
+
+为什么 future 有用呢？因为我们可以通过简单的设置实现异步执行
+
+> library("future")
+> plan(multisession)
+> v %<-% {
+   cat("Hello world!\n")
+   3.14
+}
+> v
+Hello world!
+[1] 3.14
+
+异步时，当前进程不阻塞，意味着future是在独立的后台进程中运行的。
+也就是说 future 为R提供了一个并行/分布式的处理。
+
+现在，如果你不想阅读文档，直接看最后部分，怎么使用并发或非并发模式。
+
+
+
+(3) 明示和暗示的 future 
+# for explicit futures, we use:
+f <- future({ expr }) - creates a future
+v <- value(f) - gets the value of the future (blocks if not yet resolved)
+
+# For implicit futures, we use:
+v %<-% { expr } - creates a future and a promise to its value
+
+后文使用简单的暗示形式，当然讨论的内容也都适用于明示形式。
+
+
+
+
+
+(4) future 怎么解析?
+# synchronous:		non-parallel:
+	sequential: all/ sequentially and in the current R process
+
+# asynchronous:		parallel:
+	multisession	all/	background R sessions (on current machine)
+	multicore	not Windows/not RStudio/	forked R processes (on current machine)
+	cluster	all/	external R sessions on current, local, and remote machines
+
+==> 对于一个服务器的情况，只有 sequential / multisession 两个选项。
+plan(multisession, workers = 6) #使用多线程
+availableCores() #查看几个核可用 总共12个
+nbrOfWorkers() #当前可用的核有多少个 上文pan定义的 6个
+pid = Sys.getpid() #获取当前 pid
+#
+plan(sequential) # 回到单线程
+
+
+
+# 查看是否解析过? resolved(f)
+
+> resolved(a) #未解析
+Future 'a' ... 114768 
+[1] TRUE
+
+> resolved(a) #解析过了
+[1] TRUE
+
+
+
+
+
+
+#例子1: 最简答的例子
+plan(multisession)
+pid <- Sys.getpid()
+pid
+a %<-% {
+	Sys.sleep(6)
+    pid <- Sys.getpid()
+    cat("Future 'a' ...\n")
+    3.14
+}
+b %<-% {
+	Sys.sleep(3)
+    rm(pid)
+    cat("Future 'b' ...\n")
+    Sys.getpid()
+}
+# 如果等待时间过长，则直接0秒出结果。这可能是 Sys.sleep() 的bug
+message(a, b, pid)
+
+
+
+# 例子2: 加速求标准差
+
+
+
+
+
+
+
+
+
+3. future 的基本使用
+
+library(future)
+availableCores() # 查看电脑可用的线程数
+nbrOfWorkers() #当前可用的核有多少个
+
+plan(multisession) # 启用多线程, 参数workers 可设置线程数
+f <- future({
+	... # 要并行加速的代码
+})
+value(f)
+
+plan(sequential) # 回到单线程
+
+
+
+(1) 是否解析了 resolved(f)，传入参数是一个显式 future。
+如果是隐式的，则可以使用 f <- futureOf(a) 获取。
+
+# 在a解析前一直打印数字
+https://cran.r-project.org/web/packages/future/vignettes/future-1-overview.html
+
+library(future)
+plan(multisession)
+a %<-% {
+  cat("Future 'a' ...")
+  Sys.sleep(2)
+  cat("done\n")
+  Sys.getpid()
+}
+cat("Waiting for 'a' to be resolved ...\n")
+# Waiting for 'a' to be resolved ...
+f <- futureOf(a)
+count <- 1
+while (!resolved(f)) {
+  cat(count, "\n")
+  Sys.sleep(0.5)
+  count <- count + 1
+}
+输出
+1 
+2 
+3 
+4 
+
+这说明: future 一旦被创建，就开始解析，经过2s已经解析好。但是此时a还是 future 状态，求值才获取其值:
+> class(a)
+Future 'a' ...done
+[1] "integer"
+> a
+[1] 2314093
+
+
+
+
+
+
+4. 隐式 future 的限制
+
+(1) 对于给list的赋值操作，隐式会触发错误，而显式不会
+
+library(future)
+plan(multisession)
+f <- list()
+for (ii in 1:3) {
+  f[[ii]] <- future({
+    Sys.sleep(5)
+    Sys.getpid()
+  })
+}
+str(f)
+f[[1]]
+#等待5秒，则答案秒出，说明计算一直在进行，future一旦创建，就开始计算了
+v <- lapply(f, FUN = value)
+str(v)
+
+> str(v)
+List of 3
+ $ : int 2309686
+ $ : int 2309687
+ $ : int 2309685
+#
+
+
+# 而使用隐式则报错
+> f2 <- list()
+> for (ii in 1:3) {
++   f2[[ii]] %<-% {
++     Sys.sleep(5)
++     Sys.getpid()
++   }
++ }
+Error: Subsetting can not be done on a ‘list’; only to an environment: ‘f2[[ii]]’
+
+
+
+
+(2) 如果是隐式的，可以赋值给环境(包括当前环境)
+plan(multisession)
+v <- new.env()
+for (name in c("a", "b", "c")) {
+  v[[name]] %<-% {
+    Sys.getpid()
+  }
+}
+class(v$a) #a计算了
+v <- as.list(v) #b和c计算了
+str(v)
+
+
+
+
+
+
+
+
+100. 循环迭代的并行加速
+本书主张用purrr 包中的map_*, walk_*, modify_* 等做循环迭代，对它们做并行加速，
+只需要加载furrr 包，启用多线程，再把每个函数名添加前缀future_ 即可。
+例如，
+library(furrr)
+library(purrr)
+
+# map_dbl(iris[1:4], mean)
+plan(multisession, workers = 6)
+future_map_dbl(iris[1:4], mean)
+
+
+
+
+
+
+
+
+
+
+========================================
+|-- future.apply包: Apply Function to Elements in Parallel using Futures
+----------------------------------------
+==> 总结在知乎上: https://zhuanlan.zhihu.com/p/493477082?
+
+多进程的测试，推荐使用 linux。
+以下都是在 Ubuntu 20.04 下进行的，有 12个核。
+
+https://cran.r-project.org/web/packages/future.apply/index.html
+https://github.com/HenrikBengtsson/future.apply
+
+
+library(future)
+plan(multisession, workers=4)
+availableCores() #12 #查看几个核可用
+nbrOfWorkers() #4 当前可用的核有多少个
+pid <- Sys.getpid()
+pid #2109512
+
+
+1. 基准测试: 求每行的sd 
+# make data
+set.seed(2021)
+df1 <- matrix(runif(5e6), ncol = 5)
+
+dim(df1) #[1] 1e6     5
+head(df1)
+#          [,1]      [,2]       [,3]      [,4]      [,5]
+#[1,] 0.4512674 0.6357780 0.63919673 0.6560204 0.5223098
+#[2,] 0.7837798 0.2826167 0.38206539 0.4423082 0.5610031
+#[3,] 0.7096822 0.1403447 0.19778729 0.4583404 0.5815757
+
+
+# 求每行的 sd
+system.time({ #等不及了，终止了！348s 还没结束，for循环太慢了
+  rs=c();
+  for(i in 1:nrow(df1)){
+    rs=c(rs, sd(df1[1,]))
+  }
+})
+
+# 这个向量化的结果作为基准
+system.time({ #10.016s
+  rs0=apply(df1, 1, sd)
+})
+
+
+
+
+2. 直接使用 future 手动开启多核
+(1) 双核多进程
+{
+  cut1=round(nrow(df1)/2)
+  a %<-% {
+    pid <- Sys.getpid()
+    cat("Future 'a' ...", pid, "\n")
+    #
+    apply(df1[1:cut1, ], 1, sd)
+  }
+  b %<-% {
+    pid=Sys.getpid()
+    cat("Future 'b' ...", pid, "\n")
+    #
+    apply(df1[(cut1+1):nrow(df1), ], 1, sd)
+  }
+}
+# 合并结果
+system.time({ #4.612s
+  rs1=c(a,b)
+})
+
+table(rs1-rs0<1e-10) #all TRUE
+
+
+
+(2) 3核多进程
+注意，这里踩坑了: 开始把第三个变量命名为c，总是各种报错，原因是和函数c()冲突了，改为c1则正常。
+
+{
+  chunk=round(nrow(df1)/3)
+
+  a %<-% {
+    pid <- Sys.getpid()
+    cat("Future 'a' ...", pid, "\n")
+    #
+    apply(df1[1:chunk, ], 1, sd)
+  };
+  b %<-% {
+    pid=Sys.getpid()
+    cat("Future 'b' ...", pid, "\n")
+    #
+    apply(df1[(chunk+1):(2*chunk), ], 1, sd)
+  };
+  c1 %<-% {
+    pid=Sys.getpid()
+    cat("Future 'c' ...", pid, "\n")
+    #
+    apply(df1[(2*chunk+1):nrow(df1), ], 1, sd)
+  };
+}
+
+# 合并结果
+system.time({ #2.815s
+  rs2=c(a,b,c1)
+})
+
+table(rs2-rs0<1e-10) #all TRUE
+
+
+
+(3) 手动8线程
+# 手动8线程呢
+total=nrow(df1)
+block.size=125000
+chunk.num=ceiling(total/block.size)-1; chunk.num
+chunks=data.frame(
+  n1=c(0, (1:chunk.num)*block.size)+1,
+  n2=c((1:chunk.num)*block.size, min(block.size*(chunk.num+1), total))
+)
+head(chunks)
+tail(chunks)
+
+#
+library(future)
+plan(multisession, workers=8)
+
+#https://cran.r-project.org/web/packages/future/vignettes/future-1-overview.html
+system.time({ #3.221s
+  rs0_=lapply(
+    X=1:nrow(chunks),
+    FUN=function(x){
+      n1=chunks[x,1]
+      n2=chunks[x,2]
+      rs0 = future({
+        apply(df1[n1:n2, ], 1, sd)
+      });
+      return(rs0)
+    });
+  rs0_ <- lapply(rs0_, FUN = value)
+  rs0_=do.call(c, rs0_)
+})
+#length(rs0_)
+#str(rs0_)
+table(rs0_-rs0<1e-10)
+
+主要是数据的分开、合并太占用时间，所以5s以下的测试，提速效果十分不明显。我们注意观察 htop，某几秒确实点亮了多个线程。
+
+
+
+
+
+3. 使用 future_apply 函数，貌似没有快多少(是不是我用的不对?)
+
+library(future)
+library(future.apply)
+plan(multisession, workers=8)
+# future.apply::future_apply
+system.time({ #17.079s; 观察 htop 有过1s时间的并发，很快结束。不过总时间太长
+  #rs3=future_apply(df1, 1, sd, future.chunk.size=nrow(df1)/6)
+  rs3=future_apply(df1, 1, sd)
+})
+#
+table(rs3-rs0<1e-10)
+
+
+
+
+
+
+
+4. 使用 future_lapply()，仿照 Seurat 的用例
+
+GetChunks=function(total, chunk_size=20){
+  n=ceiling(total/chunk_size)
+  n1=(0:(n-1) )*chunk_size +1;
+  n2=c(1:(n-1)*chunk_size, min(n*chunk_size, total) )
+  return(data.frame(
+    n1=n1,
+    n2=n2
+  ))
+}
+# test
+#chunks=GetChunks(10, 3)
+
+#
+plan(multisession, workers=8)
+system.time({
+  chunks=GetChunks(nrow(df1), 10000)
+  print(dim(chunks))
+  #
+  object <- future_lapply(
+    X = 1:nrow(x = chunks), #对 chunks 进行循环
+    FUN = function(i) {
+      row <- chunks[i, ] #获取一行。数据框的本质也是 列list
+      n1 <- as.numeric(x = row[[1]]) #第一列
+      n2 <- as.numeric(x = row[[2]]) #第二列
+      return(
+        apply(df1[n1:n2, ], 1, sd)
+      )
+    }
+  )
+  # 对list按行合并为df
+  object <- do.call(what = 'c', args = object)
+}) #3.234s
+#
+
+table(object - rs0<1e-10) #all TRUE
+
+
+
+
+
+
+
+
+
+
+========================================
+|-- furrr::future_map(): Apply Mapping Functions in Parallel using Futures
+----------------------------------------
+https://cran.r-project.org/web/packages/furrr/index.html
+https://github.com/DavisVaughan/furrr
+
+
+5. 使用 future_map()
+(1) Map() 的使用
+x=1:10
+y=Map({function (a) a*2}, x)
+unlist(y)
+
+(2) future_map() 的使用
+# https://purrr.tidyverse.org/reference/map.html
+# https://www.rdocumentation.org/packages/furrr/versions/0.2.3/topics/future_map
+
+library(furrr)
+# Apply Mapping Functions in Parallel using Futures
+
+plan(multisession, workers = 5)
+future_map(
+  .x=1:10,
+  .f=function(x){x*2},
+  #...,
+  .options = furrr_options(),
+  .env_globals = parent.frame(),
+  .progress = FALSE
+)
+
+
+
+(3) 做基准测试
+plan(multisession, workers=8)
+system.time({
+  chunks=GetChunks(nrow(df1), 1000)
+  print(dim(chunks))
+  #
+  rs4 <- future_map(
+    .x = 1:nrow(x = chunks), #对 chunks 进行循环
+    .f = function(i) {
+      row <- chunks[i, ] #获取一行。数据框的本质也是 列list
+      n1 <- as.numeric(x = row[[1]]) #第一列
+      n2 <- as.numeric(x = row[[2]]) #第二列
+      return(
+        apply(df1[n1:n2, ], 1, sd)
+      )
+    }
+  )
+  # 对list按行合并为df
+  rs4 <- do.call(what = 'c', args = rs4)
+}) #2.763s
+#
+
+table(rs4 - rs0<1e-10) #all TRUE
+
+
+
+
+
+小结：
+直接使用 future 也能实现多线程，不过繁琐且容易出错，适合高端玩家把玩。
+而两个基于 future 的包装好的工具 future.apply 和 future_map 则更平民化，适合一般玩家日常使用。
+我们注意到：future_lapply() 被 Seurat 4 选中作为R多线程的主力函数。
+
+
+ref:
+https://zhuanlan.zhihu.com/p/493477082?
+
+
+
+========================================
+----------------------------------------
+
+
+
+
+========================================
+----------------------------------------
+
+
+
+
+========================================
+----------------------------------------
+
+
+
+
+========================================
+----------------------------------------
+
+
+
+========================================
+----------------------------------------
+
+
+
+
+========================================
+----------------------------------------
+
+
+
+
+========================================
+----------------------------------------
+
+
+
+
+========================================
+----------------------------------------
+
+
+
+========================================
+----------------------------------------
+
+
+
+
+========================================
+----------------------------------------
+
+
+
+
+========================================
+----------------------------------------
+
+
+
+
+========================================
+----------------------------------------
+
+

@@ -101,7 +101,7 @@ function addContents(){
 	oMd.parentElement.insertBefore(oContent, oMd) //加入文档流
 
 	//1. add "目录"
-	oContent.append(createElement('h2',{},'Contents' ))
+	oContent.appendChild(createElement('h2',{},'Contents' ))
 		
 	for(var i=0;i<aH.length;i++){
 		var j=i+1;
@@ -132,14 +132,14 @@ function addContents(){
 		}
 	}
 	//2. add contents
-	oContent.append( oUl); //加入文档流
+	oContent.appendChild( oUl); //加入文档流
 	
 	//3.加入左下角菜单中
-	$("f_content").getElementsByTagName("div")[0].append( oUl.cloneNode(true) );
+	$("f_content").getElementsByTagName("div")[0].appendChild( oUl.cloneNode(true) );
 	// 复制节点 https://blog.csdn.net/LLL_liuhui/article/details/79978487
 	
 	//3. add "正文"
-	//oContent.append( createElement('h2',{},'正文' )); //加入文档流
+	//oContent.appendChild( createElement('h2',{},'正文' )); //加入文档流
 }
 
 // 挂载函数到load事件

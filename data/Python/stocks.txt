@@ -300,6 +300,21 @@ show(elements[0]+":"+elements[3]+" ("+elements[4]+"-"+elements[5]+")" + elements
 |-- py从上交所下载当天数据
 ----------------------------------------
 
+沪深股市下载数据 
+	https://zhuanlan.zhihu.com/p/141619484
+	https://www.pythonheidong.com/blog/article/371804/82f03ca1ef1d7c5d11c4/
+
+
+沪市:
+http://www.sse.com.cn/market/price/report/
+F12 能看到这个js行
+http://yunhq.sse.com.cn:32041//v1/sh1/list/exchange/equity?callback=jQuery112409646385342849202_1636983549098&select=code%2Cname%2Copen%2Chigh%2Clow%2Clast%2Cprev_close%2Cchg_rate%2Cvolume%2Camount%2Ctradephase%2Cchange%2Camp_rate%2Ccpxxsubtype%2Ccpxxprodusta&order=&begin=0&end=25&_=1636983549099
+
+
+
+
+
+
 ###########################
 # 1.获取json格式的上交所交易数据
 ###########################
@@ -389,6 +404,125 @@ for alist in alists:
 
 怎么保存这些json数据？还不会。
 要求尽量通用，其他程序也能读懂。json格式。
+
+
+
+
+
+
+
+========================================
+|-- 沪市 涨跌停
+----------------------------------------
+# (1) 获取原始json数据
+import time
+timestamp=str(round(time.time()*1000))
+begin=str(0)
+end=str(2060) #1515
+
+# http://www.sse.com.cn/market/price/report/
+url="http://yunhq.sse.com.cn:32041/v1/sh1/list/exchange/equity?callback=jQuery111208015895779126387_1560941576071&select=date%2Ccode%2Cname%2Copen%2Chigh%2Clow%2Clast%2Cprev_close%2Cchg_rate%2Cvolume%2Camount%2Ctradephase%2Cchange%2Camp_rate%2Ccpxxsubtype%2Ccpxxprodusta&order=&begin="+begin+"&end="+end+"&_="+timestamp;
+print("url=", url)
+
+headers = {
+  'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_13_2) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/65.0.3325.162 Safari/537.36',
+  'Referer': 'http://www.sse.com.cn/market/price/report/'
+}
+
+import requests
+r = requests.get(url, headers=headers) #, auth=('user', 'pass')
+#rs1=r.status_code #200
+#rs2=r.headers['content-type'] #'text/html; charset=utf-8'
+#rs3=r.encoding #'utf-8' 编码，修改编码
+rs4=r.text
+#r.json() #只有r.headers['content-type']为json时才能用。否则报错。
+#print(rs1,rs2,rs3,"\n")
+#rs4 #现在是字符串格式
+
+# (2) 解析json格式为python数组
+import json,re
+#json
+rs=re.sub(r"jQuery111208015895779126387_1560941576071\(", "", rs4)
+rs=re.sub(r"\)$", "", rs)
+rs=eval(rs)
+print( len(rs['list']) )  #25
+
+# (3) 注释每一列的字段名
+# select: code,name,open,high,low,last,prev_close,chg_rate,volume,amount,tradephase,change,amp_rate
+print('date code,name,open,high,low,last,prev_close,chg_rate,volume,amount,tradephase,change,amp_rate cpxxsubtype cpxxprodusta')
+titles='date,code,name,open,high,low,last,prev_close,chg_rate,volume,amount,tradephase,change,amp_rate,cpxxsubtype,cpxxprodusta'.split(",")
+
+#data
+alists=rs['list']
+#len(alist) #1515
+print(alists[0])
+
+alist=alists[0]
+for i in range(len(titles)):
+    print(i, titles[i], "=", alist[i])
+
+import numpy as np
+alists2=np.array(alists)
+print(alists2.shape) #(2052, 16)
+
+import pandas as pd
+stock=pd.DataFrame(alists2, columns=titles)
+# stock.head()
+
+# 涨跌幅 chg_rate(%)
+# 振幅 amp_rate
+
+
+
+# 特征
+#features = stock.loc[:, 'open,high,low,last,prev_close,volume,amount,change,amp_rate'.split(",")].astype(float)
+#X=features.values
+
+#print(X.shape)
+#X[:1]
+
+# target 涨幅列
+y=stock['chg_rate'].astype(float)
+#print(y.shape)
+#y[0]
+
+
+
+# 列举涨跌幅>=10%
+stock['chg_rate']=stock['chg_rate'].astype(np.float16)
+stock['last']=stock['last'].astype(np.float16)
+
+wanted=stock.loc[:, ("date","code","name", "last", "prev_close", "chg_rate")]
+print("涨停榜\n", wanted[y>=9].sort_values(by=['chg_rate', "last"], ascending=[False,True] ))
+
+print("\n跌停榜\n", wanted[y<= -9].sort_values(by=['chg_rate', "last"], ascending=[False,True] ))
+
+
+
+涨停榜
+           date    code    name        last prev_close   chg_rate
+1762  20211116  688182  N灿勤      19.500000       10.5  85.687500
+1056  20211116  603048  N黎明      25.015625      17.37  43.968750
+1668  20211116  688022    瀚川智能   59.312500       52.8  12.328125
+1721  20211116  688105   诺唯赞     95.000000      85.35  11.312500
+1770  20211116  688195    腾景科技   28.937500      26.26  10.171875
+784   20211116  600982    宁波能源    4.148438       3.77  10.078125
+796   20211116  600996    贵广网络    5.031250       4.57  10.070312
+
+
+
+跌停榜
+           date    code   name       last prev_close   chg_rate
+1090  20211116  603105   芯能科技  16.796875       18.5  -9.187500
+550   20211116  600683   京投发展   6.128906        6.8  -9.851562
+387   20211116  600491   龙元建设   6.328125       7.03  -9.960938
+820   20211116  601058   赛轮轮胎  13.539062      15.04  -9.968750
+1500  20211116  603948   建业股份  31.531250      35.03  -9.992188
+1779  20211116  688212   澳华内镜  34.656250      38.51 -10.000000
+
+
+
+
 
 
 

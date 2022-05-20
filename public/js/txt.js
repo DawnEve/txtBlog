@@ -128,7 +128,7 @@ function addContents(){
 	oContent.insertBefore( oUl, oPre); //加入文档流
 	
 	//3.加入左下角菜单中
-	$("f_content").getElementsByTagName("div")[0].append( oUl.cloneNode(true) );
+	$("f_content").getElementsByTagName("div")[0].appendChild( oUl.cloneNode(true) );
 	
 	//3. add "正文"
 	oContent.insertBefore( createElement('h2',{},'正文' ), oPre); //加入文档流

@@ -1,0 +1,6721 @@
+Linux简介1|Linux系统的安装与维护
+系统、磁盘维护
+
+linux简介1|ubuntu 12.04（win7双系统）安装与配置
+linux简介2|常见bash命令-磁盘管理-获取帮助
+linux简介7|系统启动和系统安全
+
+
+ - 启动终端：快捷键ctrl + alt + t
+
+
+《Linux就该这么学》
+https://www.linuxprobe.com/basic-learning-07.html
+
+
+
+
+========================================
+系统启动和系统安全
+----------------------------------------
+系统启动流程
+	BIOS
+	MBR: Boot Code
+	执行引导程序-GRUB
+	加载内核
+	执行init
+	runlevel
+
+建议：同时使用CentOS和Ubuntu系统学习本章节。因为有很大的不同点。
+
+
+1.BIOS(Basic Input Output System)基本输入输出系统。
+一般保存在主板上的BIOS芯片中。
+计算机启动的时候第一个运行的就是BIOS，负责检查硬件并且查找可启动设备；
+可启动设备在BIOS设置中进行定义，如USB、CDROM、HD
+
+2.MBR
+BIOS找到启动设备后执行其引导代码。
+	第一个扇区512字节的最后两个字节是55AA。
+引导代码为MBR的前446字节。
+	一般的PC引导机制都是MBR。
+	高级的设备如Mac等可能是EFI硬件，则引导格式可能不同。
+
+3.GRUB
+Grub是现在Linux使用的主流引导程序。
+可以用来引导现在几乎所有的操作系统: linux, Mac, Windows。
+Grub的相关文件保存在/boot/grub目录中。
+Grub配置文件为/boot/grub/grub.conf  (Ubuntu中是 /boot/grub/grub.cfg)
+配置格式：Ubuntu和CentOS有一定区别。
+
+export linux_gfx_mode
+if [ "${linux_gfx_mode}" != "text" ]; then load_video; fi
+menuentry 'Ubuntu, with Linux 3.11.0-15-generic' --class ubuntu --class gnu-linux --class gnu --class os {
+        recordfail
+        gfxmode $linux_gfx_mode
+        insmod gzio
+        insmod part_msdos
+        insmod ext2
+        set root='(hd0,msdos1)'
+        search --no-floppy --fs-uuid --set=root 889007c7-3c15-4a45-afea-0c22022b7493
+        linux   /boot/vmlinuz-3.11.0-15-generic root=UUID=889007c7-3c15-4a45-afea-0c22022b7493 ro   quiet splash $vt_handoff
+        initrd  /boot/initrd.img-3.11.0-15-generic
+}
+
+
+
+4.Kernel
+	MBR的引导代码将负责找到并加载Linux内核。
+	Linux内核保存在/boot/vmlinuz-3.11.0-15-generic
+		5962944 Feb  4  2014 vmlinuz-3.11.0-15-generic
+
+	一般还会加载内核模块打包文件：/boot/initrd.img-3.11.0-15-generic
+	Linux为保持kernel的精简，将一些不常用的驱动、功能编译成为模块，在需要的时候动态加载，而这些模块被打包保存为一个initramfs文件。
+	早期版本Linux使用initrd文件，initramfs是initrd的替代优化版本，比initrd更加节省空间、更加灵活。
+	命令dmesg可以查看本次启动时内核的输出信息。（对应的文件是 /var/log/dmesg文件 ）
+
+5.INIT
+	init是Linux系统中运行的第一个进程。
+		当使用top命令的时候，发现一个pid（进程id，按照启动顺序排序）为1的进程，名字是init。是所有进程的父进程。
+	调用/etc/rc.d/rc.sysinit（名字不完全相同）负责对系统进行初始化，挂载文件系统，而且根据运行级别启动相应服务。
+
+
+6.Linux运行级别(run level)：
+	0	关机
+	1	单用户模式
+	2	不带网络的多用户模式
+	3	多用户模式	
+	4	未使用
+	5	XII图形化模式
+	6	重新启动
+用的最多的是3和5，区别仅是前者无图形界面。
+
+	可以通过/etc/inittab（Ubuntu没有找到，很可能是/etc/init/rc-sysinit.conf）配置文件修改默认的运行级别（env DEFAULT_RUNLEVEL=2）。
+	每个级别对应的启动服务保存在/etc/rc.d/rc[0123456].d中。
+	命令runlevel可以显示当前及上一个运行级别。 $ runlevel  #N 2 为什么是2呢？
+
+	命令init可以用以改变当前运行级别，需要root权限。
+	# init 3  #进入命令行多用户界面；
+	$ runlevel #3 5 #显示当前和上一个运行级别。
+
+
+
+
+wangjl@ubuntu:/etc$ pwd
+/etc
+wangjl@ubuntu:/etc$ ls | grep rc #
+bash.bashrc
+drirc
+inputrc
+nanorc
+rc0.d
+rc1.d
+rc2.d
+rc3.d
+rc4.d
+rc5.d
+rc6.d
+rc.local
+rcS.d
+wgetrc
+wangjl@ubuntu:/etc$ locate rc0.d
+/etc/rc0.d  #定位文件位置
+
+
+wangjl@ubuntu:/etc/init$ pwd
+/etc/init
+wangjl@ubuntu:/etc/init$ cat control-alt-delete.conf 
+# control-alt-delete - emergency keypress handling
+#
+# This task is run whenever the Control-Alt-Delete key combination is
+# pressed, and performs a safe reboot of the machine.
+
+description	"emergency keypress handling"
+author		"Scott James Remnant <scott@netsplit.com>"
+
+start on control-alt-delete
+
+task
+exec shutdown -r now "Control-Alt-Delete pressed" #建议注释掉这一行，防止意外重启服务器（win是调出任务管理器，linux是直接重启！）。
+
+
+
+
+========================================
+|-- 关机、重启命令
+----------------------------------------
+
+-shutdown 用以关闭、重启计算机
+	-h 关闭计算机
+	-r重新启动
+	如 立即关机 shutdown -h now
+	10分钟后关机 shutdown -h +10
+	23:30分关机 shutdown -h 23:30
+	立即重启 shutdown -r now
+ -poweroff 用以立即关闭计算机
+-reboot用以立即重启计算机
+
+
+========================================
+|-- WIN7下 怎么双系统安装ubuntu 12.04？[过时了]
+----------------------------------------
+[win7 32bits, ubuntu 12.04 32bits]
+
+1，单独划出一块硬盘，大概20G留给ubunbu 用；
+2，下载ubuntu 12.04.iso映像文件；
+3，用WinRAR提取出里面的wubi文件，和ubuntu 12.04映像文件（iso）放在同一个文件夹内；
+4，运行wubi文件，分区选择第一步划出来的那个盘符；
+5，按照界面设置用户名和密码，安装即可进入复制文件；
+6，复制后选择立刻重启，然后选择进入ubuntu（可能出现“。。。 is not set”，等待2min自动跳转到正常界面，不知道什么原因），二次安装更新大约30min即可使用；
+7，以后重启的时候就可以选择进入win7或者ubuntu 12.04了；
+
+
+
+========================================
+|-- Ubuntu下修改主机名称
+----------------------------------------
+http://blog.csdn.net/simplty/article/details/9371103
+
+1.$su root   //或者以下命令使用sudo执行
+
+2.#vim /etc/hostname  /将里面的名字改为你想改的名字，例如myname
+vim不会用的参考百度：    [Linux/Ubuntu] vi/vim 使用方法讲解
+
+3.先查看/etc/hostname里的内容，这是你ubuntu的hostname
+    然后编辑/etc/hosts文件，
+    在终端里输入：sudo vim /etc/hosts 
+    在127.0.0.1 localhost下面输入：127.0.1.1 myname    
+
+4.重启reboot后即可见到新主机名字。
+
+ps:出现ubuntu unable to resolve host xxx  错误的时候也可用第3步解决  
+
+
+
+
+
+
+
+========================================
+|-- UBUNTU中sudo用户如何获得root权限（或重置root密码）
+----------------------------------------
+From URL: http://www.cnblogs.com/wuxinrui/archive/2011/03/26/1996565.html
+
+在终端中输入：
+sudo passwd root
+  Enter new UNIX password: (在这输入你的密码）
+  Retype new UNIX password: (确定你输入的密码）
+  passwd: password updated successfully
+
+以后，如果在想获得root权限，只需进行如下的操作：
+su root
+Password: (在此输入你上面设置的密码）
+
+如果要再次禁用 root 帐号，
+那么可以执行 sudo passwd -l root
+
+想退出就切换用户。
+
+
+
+
+========================================
+|-- ubuntu ssh服务的安装
+----------------------------------------
+1. Ubuntu 下安装 OpenSSH Server 是无比轻松的一件事情，需要的命令只有一条：
+　　$ sudo apt-get install openssh-server   （注意这里是openssh-server哦，不是client）
+2.(查看返回的结果，如果没有出错，则用putty、SecureCRT、SSH Secure Shell Client（中文乱码，不推荐使用）等SSH 客户端软件，输入您服务器的 IP 地址。如果一切正常的话，等一会儿就可以连接上了。并且使用现有的用户名和密码应该就可以登录了。)
+
+然后确认sshserver是否启动了：（或用“netstat -tlp”命令）
+　　ps -e | grep ssh
+如果只有ssh-agent那ssh-server还没有启动，需要/etc/init.d/ssh start，如果看到sshd那说明ssh-server已经启动了。
+
+ssh-server配置文件位于/ etc/ssh/sshd_config，在这里可以定义SSH的服务端口，默认端口是22，你可以自己定义成其他端口号，如222。然后重启SSH服务：
+　　sudo /etc/init.d/ssh resart   
+事实上如果没什么特别需求，到这里 OpenSSH Server 就算安装好了。
+
+3. 查看当前IP:  ifconfig
+
+
+4.登录到远端Linux系统
+(1)Linux/Mac下: 在终端界面用ssh命令: ssh <username>@IP
+(2)windows下常用的ssh客户端软件有putty、 SecureCRT等
+	Putty: http://www.putty.org/。
+	putty注意在Window-Translation的右侧Remote character set选择 UTF-8，防止乱码。新版本putty已经自适应编码，无需修改了。
+(3)Xming远程显示图形界面（win客户端）:
+
+下载地址：
+	https://sourceforge.net/projects/xming/
+	或者http://www.straightrunning.com/XmingNotes/
+
+1)保证Linux server中 /etc/ssh/sshd_config
+X11Forwarding yes
+
+2)Putty中X11 forwarding:
+Putty Configuration-->Preffered SSH protocal version->SSH版本是2.
+Connection-->SSH-->X11-->Enable X11 forwarding, X display location填上localhost:0, 下面的协议选择MIT-Magic-Cookie-1.
+
+3)windows下起linux下的图形界面
+启动Xming,"Display number"中的数字, 使用默认的0.
+使用Putty连接Linux server,在putty终端下运行
+
+
+然后在putty中运行gvim，发现linux下的gvim显示在你的windows桌面上了。
+
+
+(4)Linux下使用sftp命令传递文件
+举例，如远程主机的 IP 是 202.206.64.33或者是域名www.hebust.edu.cn,用户名是  fyt ,在命令行模式下:sftp fyt@202.206.64.33或者  fyt@www.hebust.edu.cn。回车提示输入密码。进入提示符
+sftp>
+
+如果登陆远程机器不是为了上传下载文件，而是要修改远程主机上的某些文件。可以
+ssh  fyt@202.206.64.33 （其实sftp就是ssh 的一个程式。）
+
+下载：sftp> get /var/www/fuyatao/index.php  /home/fuyatao/
+这条语句将从远程主机的  /var/www/fuyatao/目录下将 index.php 下载到本地  /home/fuyatao/目录下。
+
+上传：sftp> put /home/fuyatao/downloads/Linuxgl.pdf /var/www/fuyatao/
+这条语句将把本地 /home/fuyatao/downloads/目录下的 linuxgl.pdf文件上传至远程主机/var/www/fuyatao/ 目录下。
+
+
+你如果不知道远程主机的目录是什么样， pwd命令可以帮您查询远程主机的当前路径。
+查询本机当前工作目录 lpwd.
+改变路径可以用cd ，改变本机路径可以用 lcd;
+ls rm rmdir mkdir 这些命令都可以使用。同理调用本机都是加 l , 即 lls lrm.
+要离开sftp，用exit 或quit、 bye 均可。详细情况可以查阅 man  sftp.
+
+如果觉得在命令行模式下不太方便，可以 sudo apt-get install gftp。在图形界面下操作就简便多了。
+
+
+
+
+
+
+
+
+
+========================================
+|-- Ubuntu 更改国内镜像源（阿里、网易、清华、中科大）
+----------------------------------------
+
+1. 更换地址
+
+(1)打开Ubuntu的终端输入：
+$ sudo vim /etc/apt/sources.list
+输入密码回车即可
+
+将镜像地址更改为以下任意一个地址（下面提供了阿里，网易，清华，中科大镜像源地址），保存即可。
+
+
+(1b)或者源文件备份，新建文件
+$ sudo mv /etc/apt/sources.list /etc/apt/sources.list-backup
+$ sudo vim /etc/apt/sources.list
+填写上清华的源
+
+
+(1c) 查找 google 的源，先屏蔽掉吧，反正也无法访问。
+$ find /etc/apt/. | xargs grep -i google 2>/dev/null --color=auto
+Binary file /etc/apt/./trusted.gpg~ matches
+Binary file /etc/apt/./trusted.gpg matches
+/etc/apt/./sources.list.d/google-chrome.list.distUpgrade:deb [arch=amd64] http://dl.google.com/linux/chrome/deb/ stable main
+/etc/apt/./sources.list.d/google-cloud-sdk.list.distUpgrade:deb [signed-by=/usr/share/keyrings/cloud.google.gpg] https://packages.cloud.google.com/apt cloud-sdk main
+/etc/apt/./sources.list.d/google-cloud-sdk.list:deb [signed-by=/usr/share/keyrings/cloud.google.gpg] https://packages.cloud.google.com/apt cloud-sdk main
+/etc/apt/./sources.list.d/google-cloud-sdk.list.save:deb [signed-by=/usr/share/keyrings/cloud.google.gpg] https://packages.cloud.google.com/apt cloud-sdk main
+/etc/apt/./sources.list.d/google-chrome.list:deb [arch=amd64] http://dl.google.com/linux/chrome/deb/ stable main
+
+全部加上 -backup 后缀
+$ sudo mv /etc/apt/./sources.list.d/google-chrome.list /etc/apt/./sources.list.d/google-chrome.list-backup
+
+
+
+(2)更换好源之后执行下方命令更新：
+$ sudo apt-get update
+$ sudo apt-get upgrade
+
+
+
+
+
+
+3. 
+#阿里源
+deb http://mirrors.aliyun.com/ubuntu/ bionic main restricted universe multiverse
+deb http://mirrors.aliyun.com/ubuntu/ bionic-security main restricted universe multiverse
+deb http://mirrors.aliyun.com/ubuntu/ bionic-updates main restricted universe multiverse
+deb http://mirrors.aliyun.com/ubuntu/ bionic-proposed main restricted universe multiverse
+deb http://mirrors.aliyun.com/ubuntu/ bionic-backports main restricted universe multiverse
+deb-src http://mirrors.aliyun.com/ubuntu/ bionic main restricted universe multiverse
+deb-src http://mirrors.aliyun.com/ubuntu/ bionic-security main restricted universe multiverse
+deb-src http://mirrors.aliyun.com/ubuntu/ bionic-updates main restricted universe multiverse
+deb-src http://mirrors.aliyun.com/ubuntu/ bionic-proposed main restricted universe multiverse
+deb-src http://mirrors.aliyun.com/ubuntu/ bionic-backports main restricted universe multiverse
+
+#网易源
+deb http://mirrors.163.com/ubuntu/ bionic main restricted universe multiverse
+deb http://mirrors.163.com/ubuntu/ bionic-security main restricted universe multiverse
+deb http://mirrors.163.com/ubuntu/ bionic-updates main restricted universe multiverse
+deb http://mirrors.163.com/ubuntu/ bionic-proposed main restricted universe multiverse
+deb http://mirrors.163.com/ubuntu/ bionic-backports main restricted universe multiverse
+deb-src http://mirrors.163.com/ubuntu/ bionic main restricted universe multiverse
+deb-src http://mirrors.163.com/ubuntu/ bionic-security main restricted universe multiverse
+deb-src http://mirrors.163.com/ubuntu/ bionic-updates main restricted universe multiverse
+deb-src http://mirrors.163.com/ubuntu/ bionic-proposed main restricted universe multiverse
+deb-src http://mirrors.163.com/ubuntu/ bionic-backports main restricted universe multiverse
+
+#清华源 https://mirror.tuna.tsinghua.edu.cn/help/ubuntu/
+# 可以把偶数行的 -src 注释掉，如果不看源码的话。会更快。
+deb https://mirrors.tuna.tsinghua.edu.cn/ubuntu/ bionic main restricted universe multiverse
+deb-src https://mirrors.tuna.tsinghua.edu.cn/ubuntu/ bionic main restricted universe multiverse
+deb https://mirrors.tuna.tsinghua.edu.cn/ubuntu/ bionic-updates main restricted universe multiverse
+deb-src https://mirrors.tuna.tsinghua.edu.cn/ubuntu/ bionic-updates main restricted universe multiverse
+deb https://mirrors.tuna.tsinghua.edu.cn/ubuntu/ bionic-backports main restricted universe multiverse
+deb-src https://mirrors.tuna.tsinghua.edu.cn/ubuntu/ bionic-backports main restricted universe multiverse
+deb https://mirrors.tuna.tsinghua.edu.cn/ubuntu/ bionic-security main restricted universe multiverse
+deb-src https://mirrors.tuna.tsinghua.edu.cn/ubuntu/ bionic-security main restricted universe multiverse
+deb https://mirrors.tuna.tsinghua.edu.cn/ubuntu/ bionic-proposed main restricted universe multiverse
+deb-src https://mirrors.tuna.tsinghua.edu.cn/ubuntu/ bionic-proposed main restricted universe multiverse
+
+##中科大源
+deb https://mirrors.ustc.edu.cn/ubuntu/ bionic main restricted universe multiverse
+deb-src https://mirrors.ustc.edu.cn/ubuntu/ bionic main restricted universe multiverse
+deb https://mirrors.ustc.edu.cn/ubuntu/ bionic-updates main restricted universe multiverse
+deb-src https://mirrors.ustc.edu.cn/ubuntu/ bionic-updates main restricted universe multiverse
+deb https://mirrors.ustc.edu.cn/ubuntu/ bionic-backports main restricted universe multiverse
+deb-src https://mirrors.ustc.edu.cn/ubuntu/ bionic-backports main restricted universe multiverse
+deb https://mirrors.ustc.edu.cn/ubuntu/ bionic-security main restricted universe multiverse
+deb-src https://mirrors.ustc.edu.cn/ubuntu/ bionic-security main restricted universe multiverse
+deb https://mirrors.ustc.edu.cn/ubuntu/ bionic-proposed main restricted universe multiverse
+deb-src https://mirrors.ustc.edu.cn/ubuntu/ bionic-proposed main restricted universe multiverse
+
+
+# 南方科技大学
+http://mirrors.sustech.edu.cn/
+搜狐开源镜像站：http://mirrors.sohu.com/
+网易开源镜像站：http://mirrors.163.com/
+阿里云开源镜像：http://mirrors.aliyun.com/
+
+中国科学技术大学：
+http://mirrors.ustc.edu.cn/ (IPv4+IPv6)
+http://mirrors4.ustc.edu.cn/
+http://mirrors6.ustc.edu.cn/
+
+
+
+
+PyPi 镜像
+豆瓣：http://pypi.douban.com/
+
+
+
+
+
+# 上海交大
+https://ftp.sjtu.edu.cn/ubuntu-cd/20.04.3/ubuntu-20.04.3-desktop-amd64.iso
+
+# 教育网软件源镜像整合站 找iso很方便
+https://mirrorz.org/
+
+
+ref: https://blog.csdn.net/u011483658/article/details/95012034
+
+
+
+
+
+
+========================================
+|-- ubuntu 18.04 怎么升级到 20.04？
+----------------------------------------
+
+1. 先备份，再升级。升级失败再退回。
+不知道怎么备份，没备份。
+
+按上文，已经替换成了国内源。
+
+
+(1) 准备
+首先将Ubuntu 18.04系统软件包更新和升级到最新版本。
+$ sudo apt update
+$ sudo apt upgrade
+
+您还可以运行系统完整升级。
+$ sudo apt full-upgrade
+
+根据man 8 apt的说法，完全升级执行升级功能，但如果需要升级当前的软件包则将其删除。
+
+删除不再需要的软件包。
+$ sudo apt autoremove
+
+
+升级完成后，重启，重新引导系统。
+$ sudo systemctl reboot  #很慢，需要5min。
+
+
+
+
+重启后的开机提示：
+Welcome to Ubuntu 18.04.6 LTS (GNU/Linux 4.15.0-157-generic x86_64)
+
+ * Documentation:  https://help.ubuntu.com
+ * Management:     https://landscape.canonical.com
+ * Support:        https://ubuntu.com/advantage
+
+0 updates can be applied immediately.
+
+New release '20.04.3 LTS' available.
+Run 'do-release-upgrade' to upgrade to it.
+
+
+
+
+
+
+(2) 下面正式开始将Ubuntu 18.04 升级到Ubuntu 20.04
+
+Ubuntu附带了一个名为do-release-upgrade的命令实用程序，用于将Ubuntu操作系统升级到最新版本。 默认情况下已安装此实用程序。 如果由于某些原因未安装，则只需安装update-manager-core即可，它通过运行以下命令来安装；
+## sudo apt install update-manager-core
+
+然后，您只需执行即可将系统升级运行到新发行版本。
+
+$ do-release-upgrade
+
+
+
+##########
+该实用程序支持许多命令行选项。 检查，do-release-upgrade -h 。 例如，
+如果您使用的是Ubuntu 18.04桌面版本，则可以执行以下命令将桌面升级运行到新版本：$ sudo do-release-upgrade -m desktop
+为服务器版本运行常规升级；$ sudo do-release-upgrade -m server
+
+do-release-upgrade命令通常仅在主要LTS发行版的第一点版本发布之后。 在这种情况下，该命令仅在Ubuntu 20.04.1可用后才能执行此命令。
+好吧，如果您得到输出，则没有可用的LTS开发版本，这是因为Ubuntu 20.04.1尚不可用。
+
+因此，由于我们正在处理测试版本，因此您可以简单地将Ubuntu 18.04系统升级到Ubuntu 20.04的开发发行版。 将-d或--devel-release选项传递给do-release-upgrade命令。
+$ sudo do-release-upgrade -m desktop -d
+
+键入上面的命令并按Enter，将立即开始系统升级到Ubuntu 20.04的开发版本。
+##########
+
+
+
+1) 输入密码后，
+[sudo] password for wangjl: 
+
+Reading cache
+
+Checking package manager
+
+Continue running under SSH? 
+
+This session appears to be running under ssh. It is not recommended 
+to perform a upgrade over ssh currently because in case of failure it 
+is harder to recover. 
+
+If you continue, an additional ssh daemon will be started at port 
+'1022'. 
+Do you want to continue? 
+
+Continue [yN]
+
+
+
+2) y 同意
+
+Starting additional sshd 
+
+To make recovery in case of failure easier, an additional sshd will 
+be started on port '1022'. If anything goes wrong with the running 
+ssh you can still connect to the additional one. 
+If you run a firewall, you may need to temporarily open this port. As 
+this is potentially dangerous it's not done automatically. You can 
+open the port with e.g.: 
+'iptables -I INPUT -p tcp --dport 1022 -j ACCEPT' 
+
+To continue please press [ENTER]
+
+我路由器没有设置，现在也无法登路由器了。如果出问题再用其他人的电脑设置路由器。
+
+通过其他终端输入了 $ sudo iptables -I INPUT -p tcp --dport 1022 -j ACCEPT
+
+
+3) Enter 
+... 下载一堆东西 10s
+Some third party entries in your sources.list were disabled. You can 
+re-enable them after the upgrade with the 'software-properties' tool 
+or your package manager. 
+
+To continue please press [ENTER]
+
+4) Enter 
+... 下载一堆东西 21:27-> 
+比如 
+Get:95 https://mirrors.tuna.tsinghua.edu.cn/ubuntu focal-backports/main i386 Packages [2,568 B]   
+...
+Get:234 http://cn.archive.ubuntu.com/ubuntu focal-updates amd64 Contents (deb) [62.5 MB]
+...
+Ign https://packages.cloud.google.com/apt cloud-sdk InRelease ##谷歌的包装不上
+  Could not resolve 'packages.cloud.google.com'
+Error during update 
+
+A problem occurred during the update. This is usually some sort of 
+network problem, please check your network connection and retry. 
+
+Restoring original system state
+
+Aborting
+Reading package lists... Done    
+Building dependency tree          
+Reading state information... Done
+
+
+
+
+
+(3) 把 $ find /etc/apt/. | xargs grep -i google 2>/dev/null --color=auto
+查到带 google 字样的都加上 -backup 后缀。
+
+再次升级 
+$ sudo apt update
+$ sudo apt upgrade
+
+$ do-release-upgrade
+
+
+1) Some third party entries in your sources.list were disabled. You can 
+re-enable them after the upgrade with the 'software-properties' tool 
+or your package manager. 
+
+To continue please press [ENTER]
+
+
+2) Enter 
+...
+Calculating the changes
+
+Do you want to start the upgrade? 
+
+
+67 installed packages are no longer supported by Canonical. You can 
+still get support from the community. 
+
+42 packages are going to be removed. 603 new packages are going to be 
+installed. 2179 packages are going to be upgraded. 
+
+You have to download a total of 4,523 M. This download will take  #大概4G数据。
+about 6 minutes with your connection. # 下载6分钟
+
+Installing the upgrade can take several hours. Once the download has  #安装几小时，下载完不可取消。
+finished, the process cannot be canceled. 
+
+ Continue [yN]  Details [d]
+
+
+3) y 
+21:55 --> 22:04 下载结束，直接开始安装
+... 下载一堆
+Get:2091 https://mirrors.tuna.tsinghua.edu.cn/ubuntu focal/universe amd64 libclang-common-10-dev amd64 1:10.0.0-4ubuntu1 [5,012 kB]                                                        
+
+
+4) 弹出窗口，选择包作者维护的版本。
+$ vim /etc/ssh/sshd_config
+PermitRootLogin yes
+ChallengeResponseAuthentication no
+UsePAM yes
+
+X11Forwarding yes
+X11DisplayOffset 10
+PrintMotd no
+AcceptEnv LANG LC_*
+Subsystem       sftp    /usr/lib/openssh/sftp-server
+
+
+5) 很长时间无干预
+Preparing to unpack .../05-texlive-fonts-extra_2019.202000218-1_all.deb ...
+Unpacking texlive-fonts-extra (2019.202000218-1) ...
+
+
+弹出： Configuring libpam0g:amd64
+同意自动停止服务。
+Restarting services possibly affected by the upgrade:
+  xrdp: stopping...starting...done.
+  squid: stopping...
+
+6) Configuration file '/etc/security/limits.conf'
+改动的点：
+* soft nofile 10240
+* hard nofile 10240
+Y or I  : install the package maintainer's versio
+
+7) /etc/nginx/sites-available/default
+server {
+        listen 8080 default_server;
+        listen [::]:8080 default_server;
+		
+		root /var/www/html;
+
+
+        location /wangjl/ {
+                alias /home/wangjl/data/web/;
+                autoindex on;
+        }
+}
+Y or I  : install the package maintainer's version
+
+8) Samba server and utilities
+安装新的，我就没搞明白 samba 服务。
+
+9) /etc/xrdp/xrdp.ini
+port=7000
+Y or I  : install the package maintainer's version
+
+## 23:12 走，明天再看。19:40 继续
+
+10) /etc/gdm3/custom.conf 不知道这是啥，记录一下
+[daemon]
+WaylandEnable=false
+[security]
+[xdmcp]
+[chooser]
+[debug]
+Y or I  : install the package maintainer's version
+
+
+11) refreshing snap gnome-logs
+refreshing snap gnome-system-monitor
+
+Searching for obsolete software
+Reading state information... Done
+
+Remove obsolete packages? 
+
+254 packages are going to be removed. 
+Removing the packages can take several hours. #删除过时的包需要几个小时。
+
+ Continue [yN]  Details [d]
+输入y
+
+
+12) System upgrade is complete.
+
+Restart required 
+
+To finish the upgrade, a restart is required. 
+If you select 'y' the system will be restarted. 
+
+Continue [yN]
+y 最后一步的重启。
+
+19:52 --> 重启需要五分钟 
+19:56 xshell登录报错: 服务器发送了一个意外的数据包 received 3 expected 20
+
+搜了一下，可能是 新版 ubuntu 和xshell 不兼容。使用git bash 正常登录了。
+
+
+
+13)在 /etc/ssh/sshd_config 最后增加以下一行
+KexAlgorithms curve25519-sha256@libssh.org,ecdh-sha2-nistp256,ecdh-sha2-nistp384,ecdh-sha2-nistp521,diffie-hellman-group14-sha1
+
+然后重启sshd服务或者重载服务配置文件
+
+systemctl reload sshd
+或
+systemctl restart sshd
+
+重新使用Xshell连接，成功
+
+
+
+
+14)## 欢迎界面:
+Host 'y.biomooc.com' resolved to 10.20.89.188.
+Connecting to 10.20.89.188:22...
+Connection established.
+To escape to local shell, press 'Ctrl+Alt+]'.
+
+Welcome to Ubuntu 20.04.3 LTS (GNU/Linux 5.4.0-85-generic x86_64)
+
+ * Documentation:  https://help.ubuntu.com
+ * Management:     https://landscape.canonical.com
+ * Support:        https://ubuntu.com/advantage
+
+0 updates can be applied immediately.
+
+Last login: Sun Sep 12 20:02:48 2021 from 192.168.2.1
+
+
+
+15) 恢复远程桌面端口
+$ sudo vim /etc/xrdp/xrdp.ini
+port=7000
+
+$ sudo service xrdp restart
+
+16) 恢复Rstudio 
+重新安装R和Rstudio。
+
+17) 恢复 nginx 8080端口
+
+
+
+
+
+
+
+
+ref:https://www.linuxidc.com/Linux/2020-03/162584.htm
+https://ubuntu.com/blog/how-to-upgrade-from-ubuntu-18-04-lts-to-20-04-lts-today
+
+
+
+
+
+
+========================================
+*** CentOS release ***
+----------------------------------------
+
+
+
+
+
+
+========================================
+|-- [CentOS]单用户修改root密码(忘记root密码了>.<)
+----------------------------------------
+(如果有sudo权限的用户可以登录，可以通过 sudo passwd root 重置root密码。)
+
+1. 对于 CentOS7
+https://blog.csdn.net/weixin_46152207/article/details/113182675
+(1) 重启开机按esc，或上下键
+(2) 对于第一个条目，按字母 e
+(3) 编辑修改两处：
+最下面 fi 后的一行， linux16 /VMlinuz-3.10.0-327.e17.x86_64 ... ro rhgb quiet LANG=en_US.UTF-8
+
+==> ro改为rw,在LANG=en_US.UFT-8后面添加init=/bin/sh
+
+(4) 按Ctrl+X重启，并修改密码
+也可以使用命令 # passwd  root #进行重新设置密码
+
+这里有一个 root 权限的 shell, 如果有什么设置错了，可以在这里修改。
+如果不需要修改密码，则到这里就可以结束了，直接执行第6条，重启系统。
+
+
+(5) 由于selinux开启着的需要执行以下命令更新系统信息,否则重启之后密码未生效
+# touch /.autorelabel
+警告：这一步可能及其慢，取决于你的文件大小。
+
+
+
+(6) 重启系统
+# exec /sbin/init
+
+
+
+
+
+
+
+
+2. 对于 CentOS6
+如果root管理员忘了密码怎么办？只有一种方法，就是进入运行级别1.
+	- 为内核传递参数"1"（数字1）或"single"使系统进入单用户模式。
+	- 单用户模式下不启动任何服务；
+	- 单用户模式直接以root用户登录，并且不需要密码；
+	- 可以使用passwd修改root密码。
+
+
+(1)启动时不停地按上下键，使启动界面卡住：
+(2)按下字母e，进入启动配置项：
+(3)光标移动到kernel条目上，再按下字母e，进入编辑界面，添加一个空格和数字1，回车。
+按下字母b启动系统。内核以运行级别1运行。
+现在是root用户登录的，而且不需要密码！
+
+(4)使用passwd命令修改密码即可。
+输入exit命令，系统会自动正常运行起来。
+
+
+
+缺陷：只要有人能物理的接触到主机，即可修改root密码！只需要重启，并给内核一个1参数。
+应对策略：Grub加密
+通过在/boot/grub/grub.conf中的启动配置（需要root登录才能编辑）中加入如下参数即可对grub进行加密：
+	password --md5 $1$jKbvp$FAbq8vBZYH.2eG.tZoAj20
+
+######
+# grub-md5-crypt  #通过这个命令生成密码（比如123456会生成如下密码）
+Password: 
+Retype password: 
+$1$jKbvp$FAbq8vBZYH.2eG.tZoAj20 #注意不要多或者少拷贝字符，不要漏了.号，不要在末尾多拷贝空格。
+######
+
+
+这时，如果按下字母e想修改，需要按下p输入密码，密码正确后才可以解锁字母e，才能编辑！
+
+如果你把Grub的密码也忘了，那么...
+只好把硬盘卸下来，修改文件后重新启动。
+
+还是有物理机器或硬件被盗而数据泄露的风险，还可以对根分区加密。
+不让无关人员接近物理主机！防止启动、盗窃硬盘等。
+
+
+
+
+========================================
+|-- CentOS7 时间落后12小时，可能是时区timezone错了
+----------------------------------------
+1.
+$ date 
+## Mon May 11 05:20:37 EDT 2020
+
+$ timedatectl
+      Local time: Mon 2020-05-11 05:20:47 EDT
+  Universal time: Mon 2020-05-11 09:20:47 UTC
+        RTC time: Mon 2020-05-11 09:20:47
+       Time zone: America/New_York (EDT, -0400)
+     NTP enabled: yes
+NTP synchronized: yes
+ RTC in local TZ: no
+      DST active: yes
+ Last DST change: DST began at
+                  Sun 2020-03-08 01:59:59 EST
+                  Sun 2020-03-08 03:00:00 EDT
+ Next DST change: DST ends (the clock jumps one hour backwards) at
+                  Sun 2020-11-01 01:59:59 EDT
+                  Sun 2020-11-01 01:00:00 EST
+#
+时区不对。修改：
+$ sudo timedatectl  set-timezone Asia/Shanghai
+## 需要权限
+
+$ date
+Mon May 11 17:29:10 HKT 2020
+
+
+
+ref:
+https://blog.csdn.net/zlt995768025/article/details/79765738
+
+
+
+
+
+
+========================================
+|-- CentOS7 的国内源
+----------------------------------------
+1. 主机位置
+$ ls -lth /etc/yum.repos.d/
+
+$ cd /etc/yum.repos.d/
+查看一下 CentOS-Base.repo文件的内容
+$ less CentOS-Base.repo
+
+备份: $ cp CentOS-Base.repo /data/jinwf/wangjl/software/
+
+
+
+
+
+2. 升级 
+
+$ sudo yum install epel-release 
+
+$ sudo yum update 
+...
+Downloading packages:
+No Presto metadata available for updates
+epel/x86_64/prestodelta                | 4.9 kB  00:00:00     
+Delta RPMs reduced 14 M of updates to 2.8 M (80% saved)
+(1/11): nodejs-16.14.1-1.el7_16.15.0-3.el7.x86_64.drpm            |  25 kB  00:00:00     
+Traceback (most recent call last):
+  File "/bin/yum", line 29, in <module>
+    yummain.user_main(sys.argv[1:], exit_code=True)
+  File "/usr/share/yum-cli/yummain.py", line 375, in user_main
+    errcode = main(args)
+  File "/usr/share/yum-cli/yummain.py", line 281, in main
+    return_code = base.doTransaction()
+  File "/usr/share/yum-cli/cli.py", line 683, in doTransaction
+    problems = self.downloadPkgs(downloadpkgs, callback_total=self.download_callback_total_cb) 
+  File "/usr/lib/python2.7/site-packages/yum/__init__.py", line 2593, in downloadPkgs
+    urlgrabber.grabber.parallel_wait()
+
+
+
+(2) 使用 rpm -q pachagename 可以查询已经安装软件的版本
+$ rpm -qa | grep "nodejs"
+
+$ rpm -qal  | grep "rstudio" #查安装位置
+
+
+
+
+ref: https://blog.csdn.net/qq_36154886/article/details/108253405
+
+
+
+
+
+
+
+
+
+
+
+========================================
+|-- CentOS7 系统 yum 报错: Segmentation fault
+----------------------------------------
+1. 现象
+$ sudo yum install zlib 
+Transaction check error:
+  package zlib-1.2.7-20.el7_9.x86_64 is already installed
+Error Summary
+
+
+$ rpm -qa | grep zlib
+zlib-devel-1.2.7-18.el7.x86_64
+zlib-1.2.7-20.el7_9.x86_64
+zlib-1.2.7-18.el7.x86_64
+
+
+$ sudo yum remove zlib-1.2.7-20.el7_9.x86_64
+Warning: RPMDB altered outside of yum.
+** Found 10 pre-existing rpmdb problem(s), 'yum check' output follows:
+centos-release-7-9.2009.1.el7.centos.x86_64 is a duplicate with centos-release-7-8.2003.0.el7.centos.x86_64
+1:control-center-filesystem-3.28.1-8.el7_9.x86_64 is a duplicate with 1:control-center-filesystem-3.28.1-6.el7.x86_64
+3:docker-ce-20.10.15-3.el7.x86_64 has missing requires of docker-ce-rootless-extras
+1:grub2-common-2.02-0.87.el7.centos.7.noarch is a duplicate with 1:grub2-common-2.02-0.81.el7.centos.noarch
+1:grub2-pc-2.02-0.87.el7.centos.7.x86_64 is a duplicate with 1:grub2-pc-2.02-0.81.el7.centos.x86_64
+1:grub2-pc-modules-2.02-0.87.el7.centos.7.noarch is a duplicate with 1:grub2-pc-modules-2.02-0.81.el7.centos.noarch
+1:grub2-tools-2.02-0.87.el7.centos.7.x86_64 is a duplicate with 1:grub2-tools-2.02-0.81.el7.centos.x86_64
+1:grub2-tools-extra-2.02-0.87.el7.centos.7.x86_64 is a duplicate with 1:grub2-tools-extra-2.02-0.81.el7.centos.x86_64
+1:grub2-tools-minimal-2.02-0.87.el7.centos.7.x86_64 is a duplicate with 1:grub2-tools-minimal-2.02-0.81.el7.centos.x86_64
+kernel-tools-libs-3.10.0-1160.62.1.el7.x86_64 is a duplicate with kernel-tools-libs-3.10.0-1127.el7.x86_64
+  Erasing    : zlib-1.2.7-20.el7_9.x86_64             1/1 
+  Verifying  : zlib-1.2.7-20.el7_9.x86_64             1/1 
+Removed:
+  zlib.x86_64 0:1.2.7-20.el7_9
+
+Complete!
+
+
+
+$ sudo yum update zlib
+Is this ok [y/d/N]: y
+Downloading packages:
+Running transaction check
+Running transaction test
+Transaction test succeeded
+Running transaction
+  Updating   : zlib-1.2.7-20.el7_9.x86_64         1/4 
+Segmentation fault
+
+
+
+
+
+
+
+
+2. You can try repairing your rpm db and re-doing the cache
+
+rm -rf /var/lib/rpm/__db.*
+rpm --rebuilddb
+yum clean all
+yum makecache
+
+yum makecache fast
+
+yum -v check-update
+
+
+(2)
+yum clean all
+yum history sync
+yum history new
+
+
+
+
+
+
+========================================
+|-- 系统命令子集 busybox
+----------------------------------------
+如果系统命令被劫持，则可以 使用 busybox ps 查看是否有隐藏进程。
+
+
+
+
+
+
+
+
+========================================
+磁盘管理基本概念
+----------------------------------------
+磁盘基本概念：
+-柱面 cylinder
+-扇区 sector
+-磁头 head 
+
+磁盘在Linux中的表示
+	- linux所有设备都被抽象为一个文件，保存在/dev目录下；
+	- 设备名称一般为hd[a-z]或sd[a-z]([a-z]为分区号)，如：hda、hdb、sda、sdb
+	- IDE设备的名称为hd[a-z]，SATA、SCSI、USB等设备的名称为sd[a-z]
+	如: 硬盘1（/dev/sda）、硬盘2（/dev/sdb）、硬盘3（/dev/sdc）;
+$ cd /dev/	
+$ ls -l sd*
+brw-rw---- 1 root disk 8,  0  6月 21 10:43 sda
+brw-rw---- 1 root disk 8,  1  6月 21 10:43 sda1
+brw-rw---- 1 root disk 8,  2  6月 21 10:43 sda2
+brw-rw---- 1 root disk 8,  5  6月 21 10:43 sda5
+brw-rw---- 1 root disk 8, 16  6月 21 10:43 sdb
+brw-rw---- 1 root disk 8, 17  6月 21 10:43 sdb1
+
+
+
+
+分区的概念（分区是一个软件概念）
+将一个磁盘逻辑的分为几个区，每个区当做独立磁盘，以方便使用管理。
+	- 不同分区用：设备名称+分区号 方式表示，如sd1、sd2。
+	主流的分区机制分为MBR和GPT两种。
+
+
+	
+MBR（Master Boot Record）分区
+MBR分区是传统的分区机制，应用于绝大多数使用BIOS的PC设备（除了苹果机是UEFI其他都是PC机器）。
+	- MBR支持32bit和64bit系统；
+	- MBR支持分区数量有限
+	- MBR只支持不超过2T的硬盘，超过2T的硬盘将只能使用2T空间（有第三方解决方法）
+
+
+MBR结构（占用前512字节）
+bootstrap code area	占用前446字节，
+中间最多4个主分区。
+结尾肯定是	55A
+
+	
+MBR分区：
+- 主分区：最多只能创建4个主分区；
+- 扩展分区：一个扩展分区会占用一个主分区位置
+	- 逻辑分区：需要先创建一个扩展分区，再基于扩展分区内创建逻辑分区。Linux最多支持63个IDE分区和15个SCSI分区。
+
+
+GPT（GUID Partition Table）是一个较新的分区机制， 解决了很多MBR的很多缺点。
+	- 支持超过2T的硬盘
+	- 向后兼容MBR
+	- 必须在支持UEFI的硬件上才能使用（可以在BIOS中切换成UEFI启动）
+	- 必须使用64bit系统
+	- Mac、Linux系统都能支持GPT分区格式
+	- Windows7 64bit、windowsServer2008 64bit支持GPT
+	
+
+
+
+========================================
+|-- 查看磁盘剩余空间: df命令
+----------------------------------------
+常用命令 
+$ df -h  #查看哪个盘还有空间，还有多少空间
+
+
+
+
+
+一、df 命令；
+df 是来自于coreutils 软件包，系统安装时，就自带的；我们通过这个命令可以查看磁盘的使用情况以及文件系统被挂载的位置；
+
+
+1.举例：
+[root@localhost beinan]# df -lh
+
+	Filesystem 容量 已用 可用 已用% 挂载点
+	/dev/hda8 11G 6.0G 4.4G 58% /
+	/dev/shm 236M 0 236M 0% /dev/shm
+	/dev/sda1 56G 22G 35G 39% /mnt/sda1
+
+我们从中可以看到,系统安装在/dev/hda8 ；还有一个56G的磁盘分区/dev/sda1挂载在 /mnt/sda1中；
+其它的参数请参考 man df
+
+
+
+
+2.相关信息
+df命令: df命令用来检查linux文件系统的磁盘空间占用情况，所有用户均有使用df命令的权限。
+
+语法格式
+df [参数]
+
+主要参数
+-s：对每个Names参数只给出占用的数据块总数。
+-a：递归地显示指定目录中各文件及子目录中各文件占用的数据块数。若既不指定-s，也不指定-a，则只显示Names中的每一个目录及其中的各子目录所占的磁盘块数。
+-k：以1024字节为单位列出磁盘空间使用情况。
+-x：跳过在不同文件系统上的目录不予统计。
+-l：计算所有的文件大小，对硬链接文件则计算多次。
+-i：显示inode信息而非块使用量。
+-h：以容易理解的格式印出文件系统大小，例如124KB、345MB、46GB。
+-P：使用POSIX输出格式。
+-T：显示文件系统类型。
+
+
+
+
+
+========================================
+|-- 查看当前目录下的文件夹大小: du 命令
+----------------------------------------
+常用命令
+$ du ./* -s | sort -k1nr #查看当前文件夹下的文件和文件夹大小，按照从大到小的顺序排列
+如果不想看到 Permission denied 报错：
+$ du ./* -s 2>/dev/null  | sort -k1nr 
+
+
+当前文件的总大小
+$ du -sk ./
+28693248	./
+
+人能读懂的
+$ du -sh
+28G	.
+
+
+
+
+
+1.
+du -sh *   查看当前目录下的文件夹大小
+
+du 命令
+用途: 概述磁盘使用。
+
+语法
+du [ -a | -s ] [ -k ] [ -m ] [ -g ][ -l ] [ -r ] [ -x ] [ -H | -L ][ File ... ]
+
+描述
+du命令显示用于文件的块的数量。如果指定的File参数实际上是一个目录，就要报告该目录内的所有文件。如果没有提供 File参数，du命令使用当前目录内的文件。
+
+如果File参数是一个目录，那么报告的块的数量就是分配到目录中文件以及分配到目录自身的块之和。
+
+指定-a标志，报告个体文件中块数量。不管是否使用了-a标志，由File参数指定的个体文件总是要列出。
+指定-s标志，报告用于所有指定文件和目录中所有文件的全部块。
+
+块计数包括每个文件的间接块。块计数是通过 512 字节单位计算的，它与系统使用的群集大小无关。指定-k标志，通过 1024 字节单位计算块数。
+
+
+注:
+具有多个链接的文件只为一个条目计数和书写。
+由于块计数只基于文件大小，所以在报告的块数中，未分配的块是没有包含进去的。
+如果du得不到文件属性，或者无法读取目录，它就报告一个错误，并且会影响命令的退出状态。
+
+标志
+
+-a	为每个指定文件显示磁盘使用情况，或者为目录中每个文件显示各自磁盘使用情况。将该标志与-s标志进行对比。
+-g	用 GB 单位计算块数，而不是用缺省的 512 字节单位。对磁盘使用情况的输出值要用浮点数，这是因为如果用字节为单位的话，值会非常大。
+-H	如果在命令行指定了符号链接，du 命令将统计链接引用的文件或文件层次结构的大小。
+-k	用 1024 字节单位计算块数，而不是用缺省的 512 字节单位。
+-l	在文件链接和多链接之间均匀地分配块。根据缺省值，有两个或者更多链接的文件只计数一次。
+-L	如果在命令行指定了符号链接或者在文件层次结构的遍历中多次遇到符号链接，则 du 命令应统计链接引用的文件或文件层次结构的大小。
+-m	用 MB 单位计算块数，而不是用缺省的 512 字节单位。对磁盘使用情况的输出值要用浮点数，这是因为如果用字节为单位的话，值会非常大。
+-r	报告不可访问的文件或者目录名。此为缺省设置。
+-s	为所有指定文件显示整个磁盘使用情况，或者为一个目录中的所有文件显示总的磁盘使用情况。将该标志与-a标志进行对比。
+-x	在评估文件大小时，只评估那些与File参数指定的文件或者目录驻留在相同设备上的文件。例如，您可以指定一个在多个设备上包含文件的目录。这种情况下，-x标志就为与目录驻留在相同设备的所有文件显示块的大小。
+如果指定了全部-k、-m和-g标志，或者是其中任意两个，最后指定的那个起作用。用标志-m和-g输出磁盘使用情况就会近似成最接近的第二位十进制数。
+
+
+退出状态
+	此命令返回下列出口值:
+	0	成功结束。
+	>0	发生错误。
+
+示例
+要概述一个目录树及其每个子树的磁盘使用情况，请输入：
+du /home/fran
+这在/home/fran目录及其每个子目录中显示了磁盘块数。
+
+要通过 1024 字节块概述一个目录树及其每个子树的磁盘使用情况，请输入：
+du -k /home/fran
+这在/home/fran目录及其每个子目录中显示了 1024 字节磁盘块数。
+
+
+要通过 MB 磁盘块概述一个目录树及其每个子树的磁盘使用情况，请输入：
+du -m /home/fran
+这在/home/fran目录及其每个子目录中显示了 MB 磁盘块数（近似到最接近的第二位十进制数）。
+
+
+要通过 GB 块概述一个目录树及其每个子树的磁盘使用情况，请输入：
+du -g /home/fran
+这在/home/fran目录及其每个子目录中显示了 GB 磁盘块数（近似到最接近的第二位十进制数）。
+
+
+要显示每个文件磁盘使用情况，请输入：
+du  -a /home/fran
+这显示了包含在每个文件以及目录/home/fran的子目录中的磁盘块数。在目录旁的数字就是该目录树的磁盘使用情况。在常规文件旁的数字就是该文件单独的磁盘使用情况。
+
+
+
+要只显示一个目录树的全部磁盘使用情况，请输入：
+du  -s /home/fran
+-s标志控制du命令，只显示/home/fran目录和其中包含的文件的磁盘使用情况的总和。通过缺省值，如果du命令无法读取一个文件或者目录，就显示一条错误消息。
+
+
+除了在 /home/fran 的遍历中找到的常规文件，还要显示所有符号链接引用的文件或文件层次结构的磁盘使用，请输入：
+du -L /home/fran
+
+
+要报告符号链接 mylink 引用的文件或文件层次结构的磁盘使用，请输入：
+du -H mylink
+
+文件
+/usr/bin/du	包含命令du。
+
+
+
+《AIX 5L V5.2 系统用户指南：操作系统与设备》中的『目录概述』解释了对目录和路径名字的处理。
+《AIX 5L V5.2 系统用户指南：操作系统与设备》中的『文件概述』提供了处理文件的信息
+
+
+
+
+========================================
+|-- 磁盘管理: fdisk 是一款强大的磁盘操作工具
+----------------------------------------
+fdisk -l 显示分区信息；
+
+fdisk是来自IBM的老牌分区工具，支持绝大所数系统。
+几乎所有的Linux发行版都装有fdisk，包括在linux的rescue模式下的依然能够使用。
+	- fdisk是一个基于MBR的分区工具。所以如果需要使用GPT，则无法使用fdisk进行分区。
+
+ - fdisk命令只有具有超级用户权限才能运行。
+ - 使用fdisk -l可以列出所有安装的磁盘及其分区信息。
+ - 使用fdisk /dev/sda可以对目标磁盘进行分区操作。
+	该命令会进入一个交互式界面中。m键是帮助，列出其他单字母命令。
+	n 添加新分区
+	p 打印出当前分区表
+	
+	逻辑分区编号总是从5开始。
+	w 把分区信息写入MBR分区表中。
+ - 分区之后需要使用partprobe命令让内核更新分区信息，否则需要重启才能识别新的分区。
+ - /proc/partitions文件也可以用来查看分区信息。
+
+分区创建好并不能直接使用，还需要在分区内创建文件系统。
+
+
+
+1.
+fdisk 是一款强大的磁盘操作工具，来自util-linux软件包，我们在这里只说他如何查看磁盘分区表及分区结构；参数 -l ，通过-l 参数，能获得机器中所有的硬盘的分区情况；
+
+root@iZ25oz0wv4kZ:/dev# fdisk -l
+Disk /dev/vda: 42.9 GB, 42949672960 bytes
+255 heads, 63 sectors/track, 5221 cylinders, total 83886080 sectors
+Units = sectors of 1 * 512 = 512 bytes
+Sector size (logical/physical): 512 bytes / 512 bytes
+I/O size (minimum/optimal): 512 bytes / 512 bytes
+Disk identifier: 0x000da36d
+
+   Device Boot      Start         End      Blocks   Id  System
+/dev/vda1   *        2048    83884031    41940992   83  Linux
+
+Disk /dev/vdb: 53.7 GB, 53687091200 bytes
+255 heads, 63 sectors/track, 6527 cylinders, total 104857600 sectors
+Units = sectors of 1 * 512 = 512 bytes
+Sector size (logical/physical): 512 bytes / 512 bytes
+I/O size (minimum/optimal): 512 bytes / 512 bytes
+Disk identifier: 0xf08d9718
+
+   Device Boot      Start         End      Blocks   Id  System
+/dev/vdb1            2048   104855551    52426752    7  HPFS/NTFS/exFAT
+
+
+2.
+fdisk -l 能列出机器中所有磁盘的个数，也能列出所有磁盘分区情况.
+
+
+# fdisk -l /dev/vda1
+
+Disk /dev/vda1: 42.9 GB, 42947575808 bytes
+16 heads, 63 sectors/track, 83216 cylinders, total 83881984 sectors
+Units = sectors of 1 * 512 = 512 bytes
+Sector size (logical/physical): 512 bytes / 512 bytes
+I/O size (minimum/optimal): 512 bytes / 512 bytes
+Disk identifier: 0x00000000
+
+Disk /dev/vda1 doesn't contain a valid partition table
+第一个磁盘没有分区。
+
+第二个磁盘系统未知。
+# fdisk -l /dev/vdb1
+
+Disk /dev/vdb1: 53.7 GB, 53684994048 bytes
+16 heads, 63 sectors/track, 104021 cylinders, total 104853504 sectors
+Units = sectors of 1 * 512 = 512 bytes
+Sector size (logical/physical): 512 bytes / 512 bytes
+I/O size (minimum/optimal): 512 bytes / 512 bytes
+Disk identifier: 0x73736572
+
+This doesn't look like a partition table
+Probably you selected the wrong device.
+
+     Device Boot      Start         End      Blocks   Id  System
+/dev/vdb1p1      1920221984  3736432267   908105142   72  Unknown
+/dev/vdb1p2   ?  1936028192  3889681299   976826554   6c  Unknown
+/dev/vdb1p3   ?           0           0           0    0  Empty
+/dev/vdb1p4        27722122    27722568         223+   0  Empty
+
+
+准备换文件格式：
+
+确定是2个硬盘：
+/dev# ls -l vd*
+brw-rw---- 1 root disk 253,  0 Aug 27 20:28 vda
+brw-rw---- 1 root disk 253,  1 Aug 28 18:45 vda1
+brw-rw---- 1 root disk 253, 16 Aug 27 20:28 vdb
+brw-rw---- 1 root disk 253, 17 Aug 28 18:45 vdb1
+
+
+
+
+========================================
+|-- Linux设备查看
+----------------------------------------
+输出、查看命令
+-echo 显色输入内容；
+-cat 显示文件内容；
+-head 显示文件的头几行（默认10行） -n 指定显示的行数；
+-tail显示文件的末尾几行（默认10行）
+	 -n 指定显示的行数，
+	-f 追踪显示文件更新（一般用于查看日历，命令不会退出，而是持续显示新加入的内容）；
+-more 用于显示文件内容（只能向下翻页）
+-less 用于显示文件内容（只能上下翻页）
+
+
+-lspci 查看PCI设备，-v查看详细信息；
+-lsusb 查看usb设备，-v查看详细信息；
+-lsmod查看加载的模块（驱动）；
+
+
+
+
+
+========================================
+Linux文件系统
+----------------------------------------
+操作系统通过文件系统管理文件及数据。
+磁盘需要创建文件系统之后才能够为操作系统使用，创建文件系统的过程又称为【格式化】。
+	- 没有文件系统的设备又称之为裸（raw）设备
+	- 常见的文件系统有fat32、NTFS、ext2、ext3、ext4、xfs、HFS等
+	- 文件系统之间的区别：日志、支持的分区大小、支持的单个文件大小、性能等（主要是性能差别）。
+
+	win下的主流文件系统：NTFS
+	linux下的主流文件系统：Ext3, Ext4
+
+Linux支持的文件系统：
+	ext2-4, fat(msdos), vfat, nfs, iso9660, proc, gfs, jfs
+
+	
+在分区上创建文件系统 mke2fs -t ext4 /dev/sda3
+常用参数：
+	-b blocksize	指定文件系统块大小（4096默认4k文件,还可以2048）
+	-c 	创建文件系统时检查坏损快；
+	-L label	指定卷标（如system、文件、娱乐、软件等）
+	-j	建立文件系统日志（ext3和4默认有日志，不需要指定）
+
+mkfs命令也可用于创建文件系统，相对于mke2fs简单，但是支持的参数较少，不能进行精细化的控制。
+	mkfs.ext3 /dev/sda3 
+	mkfs.ext4 /dev/sda3 
+	mkfs.vfat /dev/sda3 
+	
+	
+查看已经建立好的分区系统(相当详细)
+dumpe2fs /dev/sdb1	
+
+
+查看文件系统格式：df -lhT 的第二列。
+$ df -lhT
+Filesystem     Type      Size  Used Avail Use% Mounted on
+udev           devtmpfs  7.9G     0  7.9G   0% /dev
+tmpfs          tmpfs     1.6G  9.2M  1.6G   1% /run
+/dev/sda1      ext4       19G  9.1G  8.6G  52% /
+tmpfs          tmpfs     7.9G  212K  7.9G   1% /dev/shm
+tmpfs          tmpfs     5.0M  4.0K  5.0M   1% /run/lock
+tmpfs          tmpfs     7.9G     0  7.9G   0% /sys/fs/cgroup
+/dev/sdb1      ext4      197G   37G  151G  20% /home/wangjl/data
+pub            vboxsf    2.2T  491G  1.7T  23% /media/sf_pub
+tmpfs          tmpfs     1.6G   56K  1.6G   1% /run/user/1005
+
+
+
+查看每个盘的分区
+$ lsblk
+sda      8:0    0 238.5G  0 disk 
+├─sda1   8:1    0   512M  0 part /boot/efi
+└─sda2   8:2    0   238G  0 part /
+sdb      8:16   0   3.7T  0 disk /data
+
+
+另一个服务器
+$ lsblk
+NAME            MAJ:MIN RM   SIZE RO TYPE  MOUNTPOINT
+sda               8:0    0 446.1G  0 disk  
+├─sda1            8:1    0    50M  0 part  /boot/efi
+├─sda2            8:2    0   500M  0 part  /boot
+├─sda3            8:3    0 317.6G  0 part  /
+└─sda4            8:4    0   128G  0 part  [SWAP]
+sdb               8:16   0   8.2T  0 disk  
+└─sdb1            8:17   0   8.2T  0 part  
+  └─centos-home 253:2    0   8.2T  0 lvm   /home
+sdc               8:32   0 145.9T  0 disk  
+├─sdc1            8:33   0 145.9T  0 part  
+└─mpatha        253:0    0 145.9T  0 mpath 
+  └─mpatha1     253:1    0 145.9T  0 part  /data
+sdd               8:48   0 145.9T  0 disk  
+├─sdd1            8:49   0 145.9T  0 part  
+└─mpatha        253:0    0 145.9T  0 mpath 
+  └─mpatha1     253:1    0 145.9T  0 part  /data
+sde               8:64   0    89T  0 disk  
+└─sde1            8:65   0    89T  0 part  /mnt/test1
+
+
+$ df -lhT
+Filesystem              Type      Size  Used Avail Use% Mounted on
+devtmpfs                devtmpfs  189G     0  189G   0% /dev
+tmpfs                   tmpfs     189G   40K  189G   1% /dev/shm
+tmpfs                   tmpfs     189G  246M  189G   1% /run
+tmpfs                   tmpfs     189G     0  189G   0% /sys/fs/cgroup
+/dev/sda3               xfs       318G   44G  274G  14% /
+/dev/sda2               xfs       494M  357M  137M  73% /boot
+/dev/sda1               vfat       50M   12M   39M  23% /boot/efi
+/dev/mapper/centos-home xfs       8.2T  2.6T  5.7T  32% /home
+/dev/mapper/mpatha1     ext4      146T  129T   10T  93% /data
+tmpfs                   tmpfs      38G   12K   38G   1% /run/user/42
+/dev/sde1               xfs        90T   33T   57T  37% /mnt/test1
+tmpfs                   tmpfs      38G     0   38G   0% /run/user/1031
+...
+
+
+
+
+
+Journal日志
+带日志的文件系统（ext3、ext4）拥有较强的稳定性，在出现错误时可以进行恢复。
+
+使用带日志的文件系统，文件系统会使用一个叫做“两阶段提交”的方式进行磁盘操作，当进行磁盘操作时，文件系统进行以下操作：
+1.文件系统将准备执行的事务的具体内容写入日志
+2.文件系统进行操作
+3.操作成功后，将事务的具体内容从日志中删除。
+
+这样做的好处是，当事务执行的时候出现意外（如断电或磁盘故障），可以通过查询日志进行恢复操作。
+缺点是会丧失一定的性能（额外的日志读写操作）。
+
+
+
+
+
+另一个给文件系统打标签的命令e2lable
+# e2label /dev/sda2  #单个参数是查询标签，没有标签
+
+# e2label /dev/sda2 VIDEO #双参数是打标签(标签建议用大写)
+# e2label /dev/sda2 #单个参数是查询标签，发现有标签了
+VIDEO
+
+
+
+
+fsck修复
+使用fsck检查并修复损坏的文件系统。
+	fsck /dev/sda2 
+	- 使用-y参数不提示而直接进行修复
+	- 默认fsck会自动判断文件系统类型，如果文件系统损坏较为严重，请使用-t参数指定文件系统类型。
+	- 对于识别为文件的损坏数据（文件系统无记录），fsck会将该文件放入lost+found目录。
+	- 系统启动时会对磁盘进行fsck操作
+
+
+
+
+========================================
+|-- Linux文件系统挂载管理 - CentOS6.8 挂载3T新硬盘
+----------------------------------------
+
+http://blog.sina.com.cn/s/blog_6594d5d30101kjhs.html
+
+今天军舰兄过来让我帮他加装一个3T的硬盘，本来俺想这应该很常规嘛 不过具体操作的时候涉及到  MBR分区表：（MBR含义：主引导记录）失效，需用GPT分区表：（GPT含义：GUID分区表）代替。
+在京东新买的3T硬盘（大概500多RMB）默认是dos分区，支持最大2T多点的单分区，想把3T整体装到一个分区。如下操作：
+
+新硬盘-分区-格式化-挂载-使用-（卸载-取下硬盘）
+
+具体步骤如下：
+（1）parted /dev/sdc  （新加硬盘为/dev/sdc）
+（2）print （查看一下）
+Model: ATA WDC WD3000FYYZ-0 (scsi)
+Disk /dev/sdc: 3001GB
+Sector size (logical/physical): 512B/512B
+Partition Table: msdos
+Number  Start  End  Size  Type  File system  Flags
+（3）mklabel gpt （设置分区类型为gpt）
+（4）mkpart extended 0% 100% （扩展分区，并使用整个硬盘）
+（5）print （查看一下） #已经有一个分区了
+（6）quit                                                            
+Information: You may need to update /etc/fstab.
+（7）mkfs.ext4 /dev/sdc1（格式化新硬盘） long time, enter and wait.
+（8）mount /dev/sdc1 /disk2 （挂载，之后即可使用了）
+df -h #可以查看到刚挂上去的盘，容量、使用率、挂载的目录
+
+
+
+若自动挂载
+blkid (查看硬盘UID)
+vim /etc/fstab
+添加
+# /Works was on /dev/sdb1 during installation
+UUID=0bb52433-1274-4456-a495-84892cdf498d /Works ext4 defaults       0       2
+
+或如下自动挂载：
+
+
+
+如果需要拆除硬盘，需要先解挂
+# umount /disk2 # 解挂文件目录即可。
+## 如果有软件还在使用该硬盘，需要退出这些软件再卸载硬盘。否则会报错：busy
+# df -h #再查就看不到这块盘了。
+
+
+参考：http://hi.baidu.com/firebee201/item/bc25f47a9d3dcb316e29f691
+      http://blog.sina.com.cn/s/blog_034747150100yffz.html
+http://www.mamicode.com/info-detail-1977427.html
+
+
+
+
+
+
+
+========================================
+|-- Linux文件系统挂载管理 - 系统自动加载
+----------------------------------------
+1.格式化后系统需要挂载到一个目录才能够使用。
+linux需要手工进行挂载操作 或 配置系统进行自动挂载。
+
+使用mount命令挂载磁盘。
+mount -a #-a, --all   Mount all filesystems (of the given types) mentioned in fstab.
+
+先卸载，再修改文件系统，再挂载。
+
+
+
+2.系统自动加载
+
+使用vi（vim）修改/etc/fstab， 在该文件中写入一条：
+/dev/sdb1 /home/wangjl/data ext4 defaults 0 0
+这样每次系统启动就能实现自动挂载该分区到/home/wangjl/data下.
+
+
+
+
+========================================
+|-- 实战：ubuntu挂载4T东芝移动硬盘(NTFS格式)，最后转Ext4格式
+----------------------------------------
+1. 直接挂载
+
+## 查看盘符
+$ sudo fdisk -l
+Device      Start        End    Sectors  Size Type
+/dev/sdd1      34     262177     262144  128M Microsoft reserved
+/dev/sdd2  264192 7814035455 7813771264  3.7T Microsoft basic data
+$ df -h  # 看不到该盘了
+
+## 挂载到目录
+$ sudo mkdir /mnt/m
+$ sudo mount -t ntfs /dev/sdd2 /mnt/m
+$ df -h
+Filesystem      Size  Used Avail Use% Mounted on
+/dev/sdd2       3.7T  203M  3.7T   1% /mnt/m
+
+
+## 测试硬链接效果
+$ cd /mnt/m 
+$ ln x1.raw x2.raw #占用大小不变，说明是硬链接效果
+/dev/sdd2       3.7T  1.4G  3.7T   1% /mnt/m
+$ ln a.txt a2.txt
+# 修改一个，另一个也变化了。
+
+$ cp x2.raw x3.raw #占用大小加倍，说明cp确实是复制一份。
+/dev/sdd2       3.7T  2.6G  3.7T   1% /mnt/m
+
+
+## 加软链接
+$ cd 
+$ ln -s /mnt/m/backupAPA data2
+
+
+
+## 卸载硬盘
+$ sudo umount /mnt/m
+
+
+
+
+
+
+
+
+
+
+
+
+
+2. 转为 Ext4格式再挂载
+(1) 测试备份命令
+rsync -av --link-dest ~/data2/apa/01 ~/data2/apa/02/ ~/data2/apa/03/
+rsync -av ~/data2/apa/01/ ~/data2/apa/a1/
+
+rsync -av --link-dest ~/data2/apa/a1 ~/data2/apa/01/ ~/data2/apa/a2/
+rsync -av --link-dest ~/data2/apa/a1 ~/data2/apa/01/ ~/data2/apa/a3/
+ln -s ~/data2/apa/a1 latest
+rsync -av --link-dest ~/data2/apa/latest ~/data2/apa/01/ ~/data2/apa/a4/
+
+rsync -av --link-dest ~/data2/apa/a1 ~/data2/apa/01/ ~/data2/apa/a5/
+
+注意: 
+--link-dest  后面必须是完整路径形式。
+ntfs文件系统挂载到win上不行，必须使用ext4硬盘格式?
+
+sudo rsync -rltDvu --modify-window=1 --progress --delete --delete-excluded --exclude-from=/home/bob/Bash/BackupBigExclude.txt / /media/harddrive/backup
+
+
+
+
+(2) 查看已有文件系统
+$ sudo fdisk -l
+--->> sda 很小
+Disk /dev/sda: 238.5 GiB, 256060514304 bytes, 500118192 sectors
+Units: sectors of 1 * 512 = 512 bytes                           
+Sector size (logical/physical): 512 bytes / 4096 bytes          
+I/O size (minimum/optimal): 4096 bytes / 4096 bytes             
+Disklabel type: gpt                                             
+Disk identifier: 50C196AA-2E44-4E72-8B08-D469A451AC0B
+
+Device       Start       End   Sectors  Size Type
+/dev/sda1     2048   1050623   1048576  512M EFI System
+/dev/sda2  1050624 500117503 499066880  238G Linux filesystem
+
+
+--->> sdb 很大有4T，无分区
+Disk /dev/sdb: 3.7 TiB, 4000787030016 bytes, 7814037168 sectors
+Units: sectors of 1 * 512 = 512 bytes
+Sector size (logical/physical): 512 bytes / 4096 bytes
+I/O size (minimum/optimal): 4096 bytes / 4096 bytes
+
+
+--->> sdd 很大有4T，有分区。是自己的移动硬盘。
+Disk /dev/sdd: 3.7 TiB, 4000787027968 bytes, 7814037164 sectors
+Units: sectors of 1 * 512 = 512 bytes
+Sector size (logical/physical): 512 bytes / 4096 bytes
+I/O size (minimum/optimal): 4096 bytes / 4096 bytes
+Disklabel type: gpt
+Disk identifier: 3C30D4E3-C86A-4F0D-B0C4-B1E748094AF8
+
+Device      Start        End    Sectors  Size Type
+/dev/sdd1      34     262177     262144  128M Microsoft reserved
+/dev/sdd2  264192 7814035455 7813771264  3.7T Microsoft basic data
+
+
+
+
+
+(3) 开始分区
+## 卸载硬盘
+$ df -h
+/dev/sdd2       3.7T  228M  3.7T   1% /mnt/m
+$ sudo umount /mnt/m
+
+
+## 分区
+$ sudo fdisk /dev/sdd
+Command (m for help): t ## change a partition type
+Partition number (1,2, default 2): 2
+Partition type (type L to list all types): 20
+  20 Linux filesystem
+  31 Linux LVM
+Changed type of partition 'Microsoft basic data' to 'Linux filesystem'.
+
+Command (m for help): w
+The partition table has been altered.
+Calling ioctl() to re-read partition table.
+Syncing disks.
+
+
+## 查看分区
+$ sudo fdisk -l
+Disk /dev/sdd: 3.7 TiB, 4000787027968 bytes, 7814037164 sectors
+Units: sectors of 1 * 512 = 512 bytes
+Sector size (logical/physical): 512 bytes / 4096 bytes
+I/O size (minimum/optimal): 4096 bytes / 4096 bytes
+Disklabel type: gpt
+Disk identifier: 3C30D4E3-C86A-4F0D-B0C4-B1E748094AF8
+
+Device      Start        End    Sectors  Size Type
+/dev/sdd1      34     262177     262144  128M Microsoft reserved
+/dev/sdd2  264192 7814035455 7813771264  3.7T Linux filesystem
+
+
+(4) 格式化分区为Ext4
+分区：就是将磁盘分为一个一个的区域，可以方便归类使用。
+格式化：就是在一个个已经分好的区域上建立文件系统。
+
+## 原文件系统
+$ sudo mount -t ntfs /dev/sdd2 /mnt/m
+$ df -Th
+/dev/sdd2      fuseblk   3.7T  227M  3.7T   1% /mnt/m
+这个fuseblk不知道是什么鬼？先变成ext4再说。
+
+## 卸载硬盘
+$ sudo umount /mnt/m
+
+
+## 开始格式化 
+$ sudo mkfs.ext4 /dev/sdd2  #等待几秒。
+mke2fs 1.44.1 (24-Mar-2018)
+/dev/sdd2 contains a ntfs file system labelled 'TOSHIBA EXT'
+Proceed anyway? (y,N) y
+
+Creating filesystem with 976721408 4k blocks and 244187136 inodes
+Filesystem UUID: 6b0ee3c1-0173-410e-b379-2b105044214a
+Superblock backups stored on blocks: 
+	32768, 98304, 163840, 229376, 294912, 819200, 884736, 1605632, 2654208, 
+	4096000, 7962624, 11239424, 20480000, 23887872, 71663616, 78675968, 
+	102400000, 214990848, 512000000, 550731776, 644972544
+
+Allocating group tables: done                            
+Writing inode tables: done                            
+Creating journal (262144 blocks): done
+Writing superblocks and filesystem accounting information: done 
+
+
+(5) 挂载和使用
+
+## 再次查看文件系统
+$ sudo mount /dev/sdd2 /mnt/m #默认挂载
+$ df -Th # 磁盘的文件格式，已经是ext4了。
+/dev/sdd2      ext4      3.6T   89M  3.4T   1% /mnt/m
+
+## 新建文件夹
+$ sudo mkdir /mnt/m/backupAPA
+$ sudo chown wangjl /mnt/m/backupAPA
+$ sudo chgrp wangjl /mnt/m/backupAPA
+
+## 加软链接
+$ cd 
+$ ln -s /mnt/m/backupAPA data2
+
+可以进行rsync增量备份了。
+
+
+
+
+
+
+
+
+
+
+========================================
+|-- 实战：有一个windows重装成了Linux了，结果磁盘还是NTFS格式的。于是决定转化为ext4格式。
+----------------------------------------
+
+问题：有一个windows重装成了Linux了，结果磁盘还是NTFS格式的。于是决定转化为ext4格式。
+
+[root@fedora15 zou]# fdisk -l 
+Disk /dev/sda: 250.1 GB, 250059350016 bytes 
+255 heads, 63 sectors/track, 30401 cylinders, total 488397168 sectors 
+Units = sectors of 1 * 512 = 512 bytes 
+Sector size (logical/physical): 512 bytes / 512 bytes 
+I/O size (minimum/optimal): 512 bytes / 512 bytes 
+Disk identifier: 0xb532b532
+
+Device Boot Start End Blocks Id System 
+/dev/sda1 * 63 62926604 31463271 7 HPFS/NTFS/exFAT 
+/dev/sda2 62926605 488392064 212732730 f W95 Ext'd (LBA) 
+/dev/sda5 62926668 176184854 56629093+ 7 HPFS/NTFS/exFAT 
+/dev/sda6 176184918 289443104 56629093+ 7 HPFS/NTFS/exFAT 
+/dev/sda7 289443168 402701354 56629093+ 7 HPFS/NTFS/exFAT 
+/dev/sda8 402704384 403728383 512000 83 Linux 
+/dev/sda9 403730432 488390655 42330112 8e Linux LVM
+
+现在，要把/dev/sda7 ，即F盘的NTFS格式转换成ext4格式，用linux使用。方法： 
+
+umount /dev/sda7
+
+用fdisk转换分区格式，改为8e 
+fdisk /dev/sda 
+Command (m for help): m (这里有m可以看一下各个参数的意思) 
+Command action 
+a toggle a bootable flag 
+b edit bsd disklabel 
+c toggle the dos compatibility flag 
+d delete a partition 
+l list known partition types 
+m print this menu 
+n add a new partition 
+o create a new empty DOS partition table 
+p print the partition table 
+q quit without saving changes 
+s create a new empty Sun disklabel 
+t change a partition's system id //这个t就是偶们要用的 
+u change display/entry units 
+v verify the partition table 
+w write table to disk and exit 
+x extra functionality (experts only)
+
+下面就是要用t命来修改下分区的id 
+Command (m for help): t 
+Partition number (1-10): 7 //这个是分区号 
+Hex code (type L to list codes):8e // 8e是Linux LVM 的id，可以敲一个“L”查看一下，这样分区的格式就转换完啦。
+Command (m for help): w 
+可以看到/dev/sda7分区
+
+格式化分区： 
+mkfs.ext4 /dev/sda7
+
+创建/Home/jackzou19目录： 
+mkdir /Home/jackzou19
+
+挂载分区： 
+mount /dev/sda7 /home/jackzou19 
+
+然后挂载好，现在的情况如下：
+[root@fedora15 zou]# df -h
+ 
+文件系统 容量 已用 可用 已用%% 挂载点 
+rootfs 36G 9.6G 25G 29% / 
+udev 1.9G 0 1.9G 0% /dev 
+tmpfs 1.9G 2.9M 1.9G 1% /dev/shm 
+tmpfs 1.9G 732K 1.9G 1% /run 
+/dev/mapper/vg_fedora15-lv_root 
+36G 9.6G 25G 29% / 
+tmpfs 1.9G 0 1.9G 0% /sys/fs/cgroup 
+tmpfs 1.9G 0 1.9G 0% /media 
+/dev/sda8 485M 70M 390M 16% /boot 
+/dev/mapper/vg_fedora15-lv_root 
+36G 9.6G 25G 29% /tmp 
+/dev/mapper/vg_fedora15-lv_root 
+36G 9.6G 25G 29% /var/tmp 
+/dev/mapper/vg_fedora15-lv_root 
+36G 9.6G 25G 29% /home 
+/dev/sda7 54G 180M 51G 1% /home/jackzou19 
+/dev/sda6 55G 12G 43G 22% /media/Life 
+/dev/sda5 55G 38G 17G 70% /media/My 
+/dev/sda1 31G 27G 3.6G 89% /media/Fuck
+
+fuck my life 分别对应这windows系统下的C、D、E盘。
+
+# df -lh 
+发现新挂载的硬盘已经在了。
+
+
+最后设置系统自动加载
+[root@fedora15 zou]# cat /etc/fstab
+
+# 
+# /etc/fstab 
+# Created by anaconda on Wed Aug 10 09:42:30 2011 
+# 
+# Accessible filesystems, by reference, are maintained under '/dev/disk' 
+# See man pages fstab(5), findfs(8), mount(8) and/or blkid(8) for more info 
+# 
+/dev/mapper/vg_fedora15-lv_root / ext4 defaults 1 1 
+UUID=9cdeb21c-7032-431d-acd5-06b49037f86e /boot ext4 defaults 1 2 
+/dev/mapper/vg_fedora15-lv_swap swap swap defaults 0 0 
+/dev/sda7 /home/jackzou19 ext4 defaults 1 2 
+tmpfs /dev/shm tmpfs defaults 0 0 
+devpts /dev/pts devpts gid=5,mode=620 0 0 
+sysfs /sys sysfs defaults 0 0 
+proc /proc proc defaults 0 0
+
+
+http://blog.csdn.net/nianhongmin/article/details/27818195
+
+
+
+========================================
+|-- 实战：win10上的ubuntu虚拟机添加共享文件夹
+----------------------------------------
+1. 安装增强包
+菜单 设备 - 安装增强功能。
+
+
+2. 设置
+
+设置 - 共享文件夹；
+路径 选择其他，选择win10中的文件夹
+共享文件夹名称
+勾选 自动挂载 固定分配。
+
+在虚拟机首页 明细 中，可看到 共享文件夹，如果为 空，表示有问题。
+
+
+3. 挂载
+(1) 在老版的virtualbox中，需要先创建目录挂载共享文件夹：
+$ sudo mkdir /mnt/share
+
+然后进行手动挂载：
+$ sudo mount -t vboxsf shared /mnt/share/
+其中shared为之前设置的共享文件夹名称，/mnt/share为先前创建的目录路径。
+但这在新版VirtualBox中行不通，出现如下错误：
+/sbin/mount.vboxsf: mounting failed with the error: Protocol error
+
+(2) 查看发现已经自动挂载
+$ df -h
+Filesystem      Size  Used Avail Use% Mounted on
+udev            971M     0  971M   0% /dev
+00              243G  4.0G  239G   2% /media/sf_00
+
+
+
+
+
+
+4. 修改权限 
+(1) 这样不好使
+$ sudo chown george george /media/sf_00
+
+(2) 添加当前用户到vboxsf组
+此时点击共享文件夹可以看到，“您没有查看sf_shared内容所需的权限”，这是因为当前用户还没有被添加到vboxsf组中，使用命令：
+$ sudo adduser george vboxsf
+添加完成后在此重启Ubuntu即可（必须重启）。
+
+
+
+
+
+
+5. 添加快捷方式
+$ cd 
+$ ln -s /media/sf_00 share
+
+这样就可以方便的访问共享目录了。
+$ cd 
+$ ls share 
+
+
+
+至此完成了VirtualBox中Ubuntu与Windows本机的文件夹共享设置。
+
+
+
+
+
+
+
+
+
+
+========================================
+|-- Ubuntu下挂载U盘或Windows系统下其他盘符的操作方法
+----------------------------------------
+
+1.查看当前所有磁盘信息，找到U盘的设备标示，例如：/dev/sdb
+
+具体操作方法：
+（1）在终端中输入：  sudo fdisk -l 命令后回车，查看当前所有磁盘信息。
+（2）查看U盘或你需要查找的磁盘信息，可以通过已知磁盘大小进行排除。
+
+这个信息查看后，可能会类似看到下面信息：
+Disk /dev/sdb1: 2006 MB, 2006458463 bytes
+
+
+
+
+2.挂载U盘到指定节点
+（1）简单起见，在/home/xl/在下新建目录：media/u,然后我们把 U 盘挂载在 media/u 目录下
+
+若U盘格式是FAT的，可以通过如下命令执行
+# mount  -t vfat /dev/sdb1 /media/u
+
+若是 ntfs 格式的U盘，则类似如下：
+# sudo mount -t ntfs-3g /dev/sdb1 media/u
+
+/media/u 为你要挂载到的节点，这个你可以随便指定之后你就可以通过 cd media/u  访问U盘了。
+
+
+
+
+3.卸载u盘
+输入命令：# sudo umount  media/u U盘卸载了
+（注意：此时不能够在media/u目录下输入前面的卸载命令，否则系统会认为你的“设备忙”而拒绝U盘的卸载）。
+
+
+
+
+========================================
+|-- 在virtualbox中装好Ubuntu后，发现硬盘空间太小，怎样才能增加硬盘容量？那就是再建一个硬盘
+----------------------------------------
+  在virtualbox中装好Ubuntu后，发现硬盘空间太小，怎样才能增加硬盘容量？那就是再建一个硬盘：
+1. 添加新硬盘
+     设置 -> Storage -> SATA控制器->右击，选择&ldquo;添加虚拟硬盘&rdquo;
+     然后，根据需求创建合适的硬盘
+2. 重启虚拟机
+     查看现有系统的磁盘空间
+        sudo fdisk -l
+     可看到新加的虚拟硬盘，一般名为：Disk /dev/sdb
+3. 给新加的硬盘分区
+        fdisk /dev/sdb
+     键入m,可看到帮助信息
+        command (m for help):m
+
+
+执行上面的命令后，会进入输入模式，分别选择 n ,p, ....中间默认，最后别忘了输入 w 保存分区。
+磁盘分区成功后，再次使用 fdisk 命令查看，可以看到多了一个 SDB1 磁盘分区。
+# fdisk -l
+
+        
+     增加新分区
+        command (m for help):n  
+     选择基本分区，输入：p
+     建一个分区
+        Partition number(1-4):1 
+     回车
+        First cylinder (1-15908,default 1):Enter
+     写入并退出
+        command (m for help):w
+4. 格式化磁盘分区
+     用ext4格式对/dev/sdb1进入格式化
+        sudo mkfs.ext4 /dev/sdb1
+		
+        我用的是：# mkfs -t ext4 /dev/sdb1
+		
+		
+		
+5. 挂载分区
+将新的磁盘存储空间挂载到一个空目录下，最好是新建的空目录，不然原来目录上的文件会消失。
+
+     创建新的挂载点
+        sudo mkdir /work
+     将新磁盘分区挂载到/work目录下
+        sudo mount -t ext4 /dev/sdb1 /work
+     查看挂载
+        df -h
+     可以看到新加的硬盘：/dev/sdb1
+     通过 $du -sh /work 命令查看，也发现新挂载的目录有足够大的空间了。
+
+$ df -lhT
+/dev/sdb1      ext4      197G   37G  151G  20% /work
+
+
+6. 开机自动挂载
+     修改文件
+            sudo vim /etc/fstab
+     在最后一行加入：
+            /dev/sdb1 /work ext4 errors=remount-ro 0 1
+            我用的： 
+            /dev/sdb1 /work ext4 defaults 0 0
+     完成!
+ 
+refer: http://blog.csdn.net/langxianwenye/article/details/50828289
+
+
+https://blog.lmlphp.com/archives/118/How_to_expand_Ubuntu_disk_in_VirtualBox_virtual_machine
+
+
+
+
+
+
+========================================
+|-- GPT 分区最多支持 128 个分区 (2022.5.8)
+----------------------------------------
+## 分区
+$ sudo fdisk /dev/sdc  #Welcome to fdisk (util-linux 2.23.2).
+Command (m for help): h
+h: unknown command
+Command action
+   a   toggle a bootable flag
+   b   edit bsd disklabel
+   c   toggle the dos compatibility flag
+   d   delete a partition
+   g   create a new empty GPT partition table
+   G   create an IRIX (SGI) partition table
+   l   list known partition types
+   m   print this menu
+   n   add a new partition
+   o   create a new empty DOS partition table
+   p   print the partition table
+   q   quit without saving changes
+   s   create a new empty Sun disklabel
+   t   change a partition's system id
+   u   change display/entry units
+   v   verify the partition table
+   w   write table to disk and exit
+   x   extra functionality (experts only)
+
+
+
+重新来一次吧:
+$ sudo fdisk /dev/sdc
+Command (m for help): g  #新建 GPT 分区表，gtp可以支持最多128个分区。
+Building a new GPT disklabel (GUID: CB04A22D-4590-4A77-BE13-85E5F788640D)
+
+通过4次n命令，每次前2个默认，只输入最后的end即可，新建4个分区。
+
+Command (m for help): p
+Disk /dev/sdc: 1099.5 GB, 1099511562240 bytes, 2147483520 sectors
+Units = sectors of 1 * 512 = 512 bytes
+Sector size (logical/physical): 512 bytes / 512 bytes
+I/O size (minimum/optimal): 512 bytes / 512 bytes
+Disk label type: gpt
+Disk identifier: 6C75BFAA-129A-426A-9AF0-7DDCAE98A18B
+
+#         Start          End    Size  Type            Name
+ 1         2048       104447     50M  Linux filesyste 
+ 2       104448      1128447    500M  Linux filesyste 
+ 3      1128448   1610612735  767.5G  Linux filesyste 
+ 4   1610612736   2147483486    256G  Linux filesyste
+
+
+写入分区表
+Command (m for help): w
+The partition table has been altered!
+等好一会儿也不结束退出。
+
+==> 强制退出登录，再重新登录。
+检查分区情况，结果同上。
+$ sudo fdisk -l /dev/sdc
+
+
+(这一步可以省略)传统方法，重新分区和格式化
+$ sudo fdisk /dev/sdc
+>t #改变分区类型
+1 EFI
+4 SWAP
+
+
+
+如果查了还是老分区，则强制内核更新磁盘分区
+$ sudo partprobe
+
+$ lsblk /dev/sdc
+NAME   MAJ:MIN RM   SIZE RO TYPE MOUNTPOINT
+sdc      8:32   0  1024G  0 disk 
+├─sdc1   8:33   0    50M  0 part 
+├─sdc2   8:34   0   500M  0 part 
+├─sdc3   8:35   0 767.5G  0 part 
+└─sdc4   8:36   0   256G  0 part
+
+
+step2: 格式化，新建文件系统
+$ sudo mkfs -t vfat /dev/sdc1
+$ sudo mkfs -t xfs /dev/sdc2
+$ sudo mkfs -t xfs /dev/sdc3
+## sudo mkfs.ext4 /dev/sdc4 #swap?
+
+挂载
+$ sudo mount /dev/sdc3 /mnt/wjl
+
+$ df -hT | grep sdc
+/dev/sdc3                  xfs       768G   33M  768G   1% /mnt/wjl
+
+
+
+
+检查:
+$ sudo fdisk -l /dev/sdc
+WARNING: fdisk GPT support is currently new, and therefore in an experimental phase. Use at your own discretion.
+
+Disk /dev/sdc: 1099.5 GB, 1099511562240 bytes, 2147483520 sectors
+Units = sectors of 1 * 512 = 512 bytes
+Sector size (logical/physical): 512 bytes / 512 bytes
+I/O size (minimum/optimal): 512 bytes / 512 bytes
+Disk label type: gpt
+Disk identifier: 6C75BFAA-129A-426A-9AF0-7DDCAE98A18B
+
+#         Start          End    Size  Type            Name
+ 1         2048       104447     50M  EFI System      
+ 2       104448      1128447    500M  Linux filesyste 
+ 3      1128448   1610612735  767.5G  Linux filesyste 
+ 4   1610612736   2147483486    256G  Linux swap
+
+
+
+
+
+
+
+
+
+
+========================================
+Linux LVM(logical volumne manager) 逻辑卷与 分区扩容，与 /dev/mapper目录
+----------------------------------------
+这是一个服务。
+$ service lvm2-lvmetad status
+Redirecting to /bin/systemctl status lvm2-lvmetad.service
+● lvm2-lvmetad.service - LVM2 metadata daemon
+   Loaded: loaded (/usr/lib/systemd/system/lvm2-lvmetad.service; static; vendor preset: enabled)
+   Active: active (running) since Mon 2022-05-09 22:12:16 CST; 2 days ago
+     Docs: man:lvmetad(8)
+ Main PID: 121475 (lvmetad)
+    Tasks: 1
+   Memory: 464.0K
+   CGroup: /system.slice/lvm2-lvmetad.service
+           └─121475 /usr/sbin/lvmetad -f
+
+
+#重启lvm服务是识别共享存储vg信息
+systemctl restart lvm2-lvmetad.service
+pvs
+
+
+配置文件 
+@193$ sudo vim /etc/lvm/lvm.conf
+config {
+	checks = 1
+	abort_on_errors = 0
+	profile_dir = "/etc/lvm/profile"
+}
+
+devices {
+	dir = "/dev"
+	scan = [ "/dev" ]
+	obtain_device_list_from_udev = 1
+	external_device_info_source = "none"
+	preferred_names = [ "^/dev/mpath/", "^/dev/mapper/mpath", "^/dev/[hs]d" ]
+	cache_dir = "/etc/lvm/cache"
+	cache_file_prefix = ""
+...
+
+
+
+
+
+1. 正在使用的服务器的硬盘结构
+最近使用LVM，顺带了解了LVM的原理。然后对device-mapper比较困惑。
+
+挂载文件 /etc/fstab
+@193$ cat /etc/fstab
+
+#
+# /etc/fstab
+# Created by anaconda on Wed Dec 12 03:20:50 2018
+#
+# Accessible filesystems, by reference, are maintained under '/dev/disk'
+# See man pages fstab(5), findfs(8), mount(8) and/or blkid(8) for more info
+#
+UUID=eaab7685-1fc8-4036-8ae6-754c93cd244d /                       xfs     defaults        0 0
+UUID=3bf4f6b5-f497-4c60-8553-bc695d791935 /boot                   xfs     defaults        0 0
+UUID=452C-5FCB          /boot/efi               vfat    umask=0077,shortname=winnt 0 0
+/dev/mapper/centos-home /home                   xfs     defaults        0 0
+UUID=90180f26-bdab-4f0a-80b8-b2a7ecc6b46b swap                    swap    defaults        0 0
+/dev/mapper/mpatha1	/data	ext4	defaults 	0 0
+#/dev/sde1	/mnt/test1	xfs	defaults 	0 0
+#none	/sys/fs/cgroup	cgroup	defaults	0 0
+
+
+
+
+(1) 剩余大小
+@193$ df -h
+Filesystem               Size  Used Avail Use% Mounted on
+/dev/sda3                318G   82G  237G  26% /
+/dev/sda2                494M  357M  137M  73% /boot
+/dev/sda1                 50M   12M   39M  23% /boot/efi
+/dev/mapper/centos-home  8.2T  3.8T  4.5T  46% /home
+/dev/mapper/mpatha1      146T  136T  2.6T  99% /data
+/dev/sde1                 90T   39T   51T  44% /mnt/test1
+
+
+(2) lsblk - list block devices
+@193$ lsblk
+NAME            MAJ:MIN RM   SIZE RO TYPE  MOUNTPOINT
+sda               8:0    0 446.1G  0 disk  
+├─sda1            8:1    0    50M  0 part  /boot/efi
+├─sda2            8:2    0   500M  0 part  /boot
+├─sda3            8:3    0 317.6G  0 part  /
+└─sda4            8:4    0   128G  0 part  [SWAP]
+sdb               8:16   0   8.2T  0 disk  
+└─sdb1            8:17   0   8.2T  0 part  
+  └─centos-home 253:2    0   8.2T  0 lvm   /home  ## 看这里
+sdc               8:32   0 145.9T  0 disk  
+├─sdc1            8:33   0 145.9T  0 part  
+└─mpatha        253:0    0 145.9T  0 mpath 
+  └─mpatha1     253:1    0 145.9T  0 part  /data  #C+D挂载到 /data ，总大小变小 160T + 160T 得到了 146T
+sdd               8:48   0 145.9T  0 disk  
+├─sdd1            8:49   0 145.9T  0 part  
+└─mpatha        253:0    0 145.9T  0 mpath 
+  └─mpatha1     253:1    0 145.9T  0 part  /data
+sde               8:64   0    89T  0 disk  
+└─sde1            8:65   0    89T  0 part  /mnt/test1
+
+
+(2) LVM partition
+@193$ sudo lvmdiskscan
+  /dev/sda1           [      50.00 MiB] 
+  /dev/mapper/mpatha1 [    <145.91 TiB] 
+  /dev/sda2           [     500.00 MiB] 
+  /dev/sda3           [     317.56 GiB] 
+  /dev/sda4           [     128.00 GiB] 
+  /dev/sdb1           [       8.18 TiB] LVM physical volume
+  /dev/sde1           [     <89.05 TiB] 
+  0 disks
+  6 partitions
+  0 LVM physical volume whole disks
+  1 LVM physical volume
+
+
+(3) 查看逻辑卷：lvdisplay
+@193$ sudo lvdisplay
+  --- Logical volume ---
+  LV Path                /dev/centos/home
+  LV Name                home
+  VG Name                centos
+  LV UUID                zUNTPJ-PRNb-44L9-WQP7-71Pj-o1lv-bKGB9X
+  LV Write Access        read/write
+  LV Creation host, time localhost.localdomain, 2018-12-12 16:18:30 +0800
+  LV Status              available
+  # open                 1
+  LV Size                8.18 TiB
+  Current LE             2144574
+  Segments               1
+  Allocation             inherit
+  Read ahead sectors     auto
+  - currently set to     256
+  Block device           253:2
+
+
+(4) dmsetup — low level logical volume management
+$ sudo dmsetup status
+mpatha: 0 313329156096 multipath 2 0 1 0 2 1 A 0 1 2 8:32 A 0 0 1 E 0 1 2 8:48 A 0 0 1 
+mpatha1: 0 313329154110 linear 
+centos-home: 0 17568350208 linear
+
+
+(5) 查看物理卷、逻辑卷：pvs
+$ sudo pvs
+  PV         VG     Fmt  Attr PSize PFree
+  /dev/sdb1  centos lvm2 a--  8.18t    0 
+
+$ sudo vgs
+  VG     #PV #LV #SN Attr   VSize VFree
+  centos   1   1   0 wz--n- 8.18t    0
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+#####################################
+# 10 server
+#####################################
+磁盘挂载和剩余情况
+@10$ df -h
+Filesystem                  Size  Used Avail Use% Mounted on
+/dev/mapper/centos00-root   500G  145G  356G  29% /
+/dev/sda1                   7.3T  5.2T  1.8T  75% /data2
+/dev/sdb1                   7.3T  313G  6.6T   5% /data3
+/dev/sdd1                   497M  338M  160M  68% /boot
+/dev/sde1                    73T   66T  3.2T  96% /data4
+/dev/mapper/centos00-home   400G  301G  100G  76% /home
+/dev/mapper/centos00-data1   17T   13T  3.4T  80% /data1
+/dev/sdf1                   7.3T  4.4T  2.6T  63% /mnt/c
+
+
+磁盘逻辑分区
+@10$ lsblk
+NAME               MAJ:MIN RM    SIZE RO TYPE MOUNTPOINT
+sda                  8:0    0    7.3T  0 disk 
+└─sda1               8:1    0    7.3T  0 part /data2
+sdb                  8:16   0    7.3T  0 disk 
+└─sdb1               8:17   0    7.3T  0 part /data3
+sdc                  8:32   0   1024G  0 disk 
+├─sdc1               8:33   0    500M  0 part 
+└─sdc2               8:34   0 1023.5G  0 part 
+sdd                  8:48   0   17.2T  0 disk 
+├─sdd1               8:49   0    500M  0 part /boot
+└─sdd2               8:50   0   17.2T  0 part 
+  ├─centos00-root  253:0    0    500G  0 lvm  /
+  ├─centos00-swap  253:1    0    128G  0 lvm  [SWAP]
+  ├─centos00-home  253:2    0    400G  0 lvm  /home
+  └─centos00-data1 253:3    0   16.2T  0 lvm  /data1
+sde                  8:64   0   72.8T  0 disk 
+└─sde1               8:65   0   72.8T  0 part /data4
+sdf                  8:80   0    7.3T  0 disk 
+└─sdf1               8:81   0    7.3T  0 part /mnt/c
+sr0                 11:0    1   1024M  0 rom
+
+
+
+物理卷(PV 分区)
+@10$ sudo pvdisplay
+[sudo] password for wangjl: 
+  WARNING: Device for PV eRj3nZ-Hq9W-k17T-buEv-55bL-yHFb-dL3FJd not found or rejected by a filter.
+  Couldn't find device with uuid eRj3nZ-Hq9W-k17T-buEv-55bL-yHFb-dL3FJd.
+  --- Physical volume ---
+  PV Name               /dev/sdc2
+  VG Name               centos
+  PV Size               <1023.51 GiB / not usable 2.00 MiB
+  Allocatable           yes (but full)
+  PE Size               4.00 MiB
+  Total PE              262018
+  Free PE               0
+  Allocated PE          262018
+  PV UUID               3gJkpv-7gnc-BFeo-C6Fa-p3vh-YNjG-KX1Mgn
+   
+  --- Physical volume ---
+  PV Name               [unknown]
+  VG Name               centos
+  PV Size               17.19 TiB / not usable 3.00 MiB
+  Allocatable           yes (but full)
+  PE Size               4.00 MiB
+  Total PE              4506495
+  Free PE               0
+  Allocated PE          4506495
+  PV UUID               eRj3nZ-Hq9W-k17T-buEv-55bL-yHFb-dL3FJd
+   
+  --- Physical volume ---
+  PV Name               /dev/sdd2
+  VG Name               centos00
+  PV Size               17.19 TiB / not usable 3.00 MiB
+  Allocatable           yes (but full)
+  PE Size               4.00 MiB
+  Total PE              4506370
+  Free PE               0
+  Allocated PE          4506370
+  PV UUID               JA7fyJ-oFB8-InCf-NVNg-WSzk-G8sP-NR6h2N
+#
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+2. LVM 分区是什么？
+https://www.bilibili.com/video/BV16W411t7YY
+
+LVM 可以在零关机的情况下扩充硬盘空间。
+
+
+在介绍逻辑卷管理器（LVM）组件前，我们先介绍二个基本概念：“分区”和“串联”。
+- 划分物理磁盘的过程叫磁盘分区（disk partitioning）；
+- 整合物理磁盘的过程叫串联（concatenation），简单说就是把若干小的物理磁盘整合成一个大的逻辑盘。
+
+
+(1) LVM 结构。
+逻辑卷管理器（LVM）隐藏了物理磁盘的细节和数据在磁盘上的位置，优化了用户对存储的访问，简化了存储资源的管理，在更改存储配置时可以实现无应用程序中断。
+
+LVM主要由三部分组成：物理卷（physical volume）、卷组（volume group）和逻辑卷（logical volume）。
+
+
+多个单独的硬盘(physical hard drive)和/或磁盘分区(physical volume, PV) 组合成 --> 一个单个的卷组(volume group, VG);
+卷组(VG)然后可以再划分为 --> 逻辑卷(logical volume, LV)
+	或者被用于分配成 --> 一个大的单一的卷。
+在一个逻辑卷(LV)上 --> 可以创建 普通的文件系统(File System)，如 EXT3 或 EXT4。
+
+
+1) 物理卷(PV)
+
+物理卷（physical volume）是指每一个连接到主机系统的物理磁盘。LVM将物理卷提供的物理存储空间转换成逻辑存储空间，方便应用程序或操作系统使用。
+
+2) 卷组(VG)
+
+卷组（Volume group）是由一个或多个物理卷组成，LVM在初始化时会为每个物理卷分配一个唯一的物理卷标识（PVID），在卷组使用中，支持物理卷的动态添加或删除，但是一个物理卷只能被一个卷组使用。在创建卷组时，每一个物理卷都会被划分为若干个大小相同的数据块，我们称这些数据块为物理区域（physical extent）。
+
+3) 逻辑卷(LV)
+在指定的卷组中可以创建逻辑卷（logical volume），如果每个卷组可以被看成一个磁盘的话，那么每个逻辑卷都可以看成一个虚拟磁盘分区。一个卷组可以划分为多个逻辑卷，逻辑卷的大小取决于物理磁盘的数量和大小。
+
+
+从操作系统的层面，逻辑卷就像一个“物理设备”，但是这个“物理设备”可以跨多个物理卷，并且由不连续的物理分区组成。在逻辑卷上创建文件系统后，就可以直接将逻辑卷分配给应用程序使用了。
+
+
+
+(2) 常用的LVM部署命令
+
+功能/命令	物理卷管理	卷组管理	逻辑卷管理
+扫描		pvscan	    vgscan  	lvscan
+建立		pvcreate	vgcreate	lvcreate
+显示		pvdisplay	vgdisplay	lvdisplay
+删除		pvremove	vgremove	lvremove
+扩展		--------	vgextend	lvextend
+缩小		--------	vgreduce	lvreduce
+#
+显示 简化版  pvs 	vgs	    lvs
+
+
+
+
+
+
+
+
+
+
+
+
+========================================
+|-- 创建 lvm
+----------------------------------------
+
+3. 创建 LVM 
+
+测试机: centOS7; ip=192.168.2.134
+
+(1) 原有的硬件
+
+$ sudo lvm
+[sudo] password for wangjl: 
+lvm> version
+  LVM version:     2.02.187(2)-RHEL7 (2020-03-24)
+  Library version: 1.02.170-RHEL7 (2020-03-24)
+  Driver version:  4.37.0
+
+
+$ df -h
+Filesystem               Size  Used Avail Use% Mounted on
+/dev/mapper/centos-root   13G  7.1G  5.5G  57% /
+/dev/sda1               1014M  219M  796M  22% /boot
+
+
+$ lsblk
+NAME            MAJ:MIN RM  SIZE RO TYPE MOUNTPOINT
+sda               8:0    0   15G  0 disk 
+├─sda1            8:1    0    1G  0 part /boot
+└─sda2            8:2    0   14G  0 part 
+  ├─centos-root 253:0    0 12.5G  0 lvm  /
+  └─centos-swap 253:1    0  1.5G  0 lvm  [SWAP]
+sr0              11:0    1 1024M  0 rom
+
+
+$ sudo pvdisplay
+  --- Physical volume ---
+  PV Name               /dev/sda2
+  VG Name               centos
+  PV Size               <14.00 GiB / not usable 3.00 MiB
+  Allocatable           yes (but full)
+  PE Size               4.00 MiB
+  Total PE              3583
+  Free PE               0
+  Allocated PE          3583
+  PV UUID               2h3lX6-wNyg-42KP-x3Dn-PLRE-H0ul-fMxHIg
+#
+
+
+
+
+
+(2) 新加2块硬盘。
+虚拟机关机 centOS7。 $ sudo shutdown now
+
+VirtualBox 选择该虚拟机，点击 settings
+	Storage -> SATA控制器->右边，选择 add hard disk;
+	新窗口，选择 create 创建硬盘，名字 centOS7_2022.vdi;
+
+重启虚拟机
+	右上角，单击喇叭，wared off -> connect; $ ifconfig 查IP地址。
+	
+    查看现有系统的磁盘空间 $ sudo fdisk -l
+    可看到新加的虚拟硬盘，一般名为：Disk /dev/sdb
+
+Disk /dev/sdb: 8589 MB, 8589934592 bytes, 16777216 sectors
+Units = sectors of 1 * 512 = 512 bytes
+Sector size (logical/physical): 512 bytes / 512 bytes
+I/O size (minimum/optimal): 512 bytes / 512 bytes
+
+
+
+==> 重复以上过程，再加一块硬盘 12G 的硬盘，名字是 centOS7_1.vid。
+Disk /dev/sdc: 12.9 GB, 12884901888 bytes, 25165824 sectors
+Units = sectors of 1 * 512 = 512 bytes
+Sector size (logical/physical): 512 bytes / 512 bytes
+I/O size (minimum/optimal): 512 bytes / 512 bytes
+
+
+
+
+
+
+
+(3) 创建流程 PV-->VG-->LV
+
+1) 将物理磁盘设备初始化为物理卷(PV)
+	$ sudo pvcreate /dev/sdb /dev/sdc
+	输出 
+	Physical volume "/dev/sdb" successfully created.
+	Physical volume "/dev/sdc" successfully created.
+
+查看 
+$ sudo pvdisplay
+
+  "/dev/sdb" is a new physical volume of "8.00 GiB"
+  --- NEW Physical volume ---
+  PV Name               /dev/sdb
+  VG Name               
+  PV Size               8.00 GiB
+  Allocatable           NO
+  PE Size               0   
+  Total PE              0
+  Free PE               0
+  Allocated PE          0
+  PV UUID               mHFGhl-rzCQ-6XUj-0oWZ-CNf2-AmMJ-g5HC2h
+   
+  "/dev/sdc" is a new physical volume of "12.00 GiB"
+...
+
+
+查看，简化信息
+$ sudo pvs
+  PV         VG     Fmt  Attr PSize   PFree 
+  /dev/sda2  centos lvm2 a--  <14.00g     0 
+  /dev/sdb          lvm2 ---    8.00g  8.00g
+  /dev/sdc          lvm2 ---   12.00g 12.00g
+
+ 
+
+
+
+2) 创建卷组(VG)，并将 PV 加入卷组中，需要指定名字，比如 mapper1，后面是物理卷
+	先检查 卷组名字不存在，防止重名 $ ls /dev/mapper1
+
+	$ sudo vgcreate mapper1 /dev/sdb /dev/sdc
+	输出信息 Volume group "mapper1" successfully created
+	相当于把物理卷打包，成为一个大硬盘。
+
+
+查看 
+$ sudo vgdisplay
+ --- Volume group ---
+  VG Name               mapper1
+  System ID             
+  Format                lvm2
+  Metadata Areas        2
+  Metadata Sequence No  1
+  VG Access             read/write
+  VG Status             resizable
+  MAX LV                0
+  Cur LV                0
+  Open LV               0
+  Max PV                0
+  Cur PV                2
+  Act PV                2
+  VG Size               19.99 GiB
+  PE Size               4.00 MiB  #默认的 PE 是4M，所以后续的概念只能是4M的整数倍。
+  Total PE              5118 #目前这个卷组有这么多个PE
+  Alloc PE / Size       0 / 0   
+  Free  PE / Size       5118 / 19.99 GiB
+  VG UUID               RK80Pa-efr8-Q109-MeAY-g1RT-hDkq-DAQl26
+
+简化信息
+$ sudo vgs
+  VG      #PV #LV #SN Attr   VSize   VFree 
+  centos    1   2   0 wz--n- <14.00g     0 
+  mapper1   2   0   0 wz--n-  19.99g 19.99g
+
+# 执行后可以在 ls /dev/ | grep mapper1 查不到这个名字
+
+
+
+
+
+3) 基于卷组创建逻辑卷(这个分区大小仅作为演示): 需要指定名称和大小
+最后是指定卷组GV名字，相当于从哪个卷组创建逻辑卷
+	$ sudo lvcreate -n co-home -L 5G mapper1   #Logical volume "co-home" created.
+	$ sudo lvcreate -n co-root -L 10G mapper1  #Logical volume "co-root" created.
+	# 执行后可以在 ls /dev/mapper1/ | grep co 查看到
+$ ls /dev/mapper1/ | grep co 
+co-home
+co-root
+
+
+名字中不想要减号，删除掉刚创建的逻辑卷:
+$ sudo lvremove mapper1/co-home
+Do you really want to remove active logical volume mapper1/co-home? [y/n]: y
+  Logical volume "co-home" successfully removed
+
+重新创建 逻辑卷
+$ sudo lvcreate -n home -L 5G mapper1  #Logical volume "home" created.
+$ sudo lvcreate -n root -L 10G mapper1  #Logical volume "root" created.
+
+查看
+$ sudo lvs
+  LV   VG      Attr       LSize   Pool Origin Data%  Meta%  Move Log Cpy%Sync Convert
+  root centos  -wi-ao---- <12.50g                                                    
+  swap centos  -wi-ao----   1.50g                                                    
+  home mapper1 -wi-a-----   5.00g                                                    
+  root mapper1 -wi-a-----  10.00g
+
+查看详细信息，输出略
+$ sudo lvdisplay
+...
+--- Logical volume ---
+  LV Path                /dev/mapper1/home #路径
+  LV Name                home
+  VG Name                mapper1
+  LV UUID                K1glBU-jILt-DfcT-ravi-RqJF-KJSy-QIH7To
+  LV Write Access        read/write
+  LV Creation host, time localhost.localdomain, 2022-05-07 03:12:14 -0400
+  LV Status              available
+  # open                 0
+  LV Size                5.00 GiB
+  Current LE             1280
+  Segments               1
+  Allocation             inherit
+  Read ahead sectors     auto
+  - currently set to     8192
+  Block device           253:2
+...
+
+
+这些也同时存在于/dev/目录中
+$ ls -lth /dev/mapper1/
+total 0
+lrwxrwxrwx. 1 root root 7 May  7 03:12 root -> ../dm-3
+lrwxrwxrwx. 1 root root 7 May  7 03:12 home -> ../dm-2
+
+
+
+
+
+4) 为创建好的逻辑卷创建ex4文件系统
+没有 lvm 的时代，我们是直接格式化 /dev/ada1 等；
+	$ sudo mkfs.ext4 /dev/mapper1/root
+
+输出信息 
+mke2fs 1.42.9 (28-Dec-2013)
+Filesystem label=
+OS type: Linux
+Block size=4096 (log=2)
+Fragment size=4096 (log=2)
+Stride=0 blocks, Stripe width=0 blocks
+655360 inodes, 2621440 blocks
+131072 blocks (5.00%) reserved for the super user
+First data block=0
+Maximum filesystem blocks=2151677952
+80 block groups
+32768 blocks per group, 32768 fragments per group
+8192 inodes per group
+Superblock backups stored on blocks: 
+	32768, 98304, 163840, 229376, 294912, 819200, 884736, 1605632
+
+Allocating group tables: done                            
+Writing inode tables: done                            
+Creating journal (32768 blocks): done
+Writing superblocks and filesystem accounting information: done
+
+	$ sudo mkfs.ext4 /dev/mapper1/home
+
+我们可以在2个 /dev/ 目录中找到刚创建的 逻辑卷:
+$ ls -lth /dev/mapper
+lrwxrwxrwx. 1 root root       7 May  7 04:01 mapper1-home -> ../dm-2
+lrwxrwxrwx. 1 root root       7 May  7 04:00 mapper1-root -> ../dm-3
+lrwxrwxrwx. 1 root root       7 May  7 02:24 centos-root -> ../dm-0
+lrwxrwxrwx. 1 root root       7 May  7 02:24 centos-swap -> ../dm-1
+这是一个链接，l开头的文件。
+
+
+$ ls -lth /dev/mapper1/
+total 0
+lrwxrwxrwx. 1 root root 7 May  7 04:01 home -> ../dm-2
+lrwxrwxrwx. 1 root root 7 May  7 04:00 root -> ../dm-3
+这是一个链接，l开头的文件，追查实际路径
+$ ls -lth /dev/dm-2
+brw-rw----. 1 root disk 253, 2 May  7 04:01 /dev/dm-2 #这个b开头的是啥？
+
+
+
+$ ls -lth /dev/centos/
+total 0
+lrwxrwxrwx. 1 root root 7 May  7 02:24 root -> ../dm-0
+lrwxrwxrwx. 1 root root 7 May  7 02:24 swap -> ../dm-1
+
+
+
+
+看 df 的输出，默认安装程序采用的是 /dev/mapper/ 路径，为什么？
+$ df -h
+Filesystem               Size  Used Avail Use% Mounted on
+/dev/mapper/centos-root   13G  6.3G  6.3G  50% /
+
+
+
+
+
+5) 将格式化好的逻辑卷挂载使用
+	$ sudo mount /dev/mapper1/home /home
+
+	执行 $ cd  报错，没有这个文件，需要先把 /home/wangjl 移动过来
+	$ sudo umount /dev/mapper1/home #先卸载 逻辑卷 的挂载
+
+$ cd
+$ sudo mkdir /data3
+$ sudo mv /home/wangjl/ /data3/
+$ sudo mount /dev/mapper1/home /home
+$ sudo mv /data3/wangjl/ /home/
+
+$ ls /data3/ #empty
+$ ls /home/
+lost+found  wangjl
+
+
+查看，发现 /home 目录的背后的文件夹已经修改，且目录格式也是 /dev/mapper/ 然后是 卷组名-逻辑卷名 mapper1-home
+$ df -h
+Filesystem                Size  Used Avail Use% Mounted on
+devtmpfs                  903M     0  903M   0% /dev
+tmpfs                     919M     0  919M   0% /dev/shm
+tmpfs                     919M  9.5M  910M   2% /run
+tmpfs                     919M     0  919M   0% /sys/fs/cgroup
+/dev/mapper/centos-root    13G  6.1G  6.5G  49% /
+/dev/sda1                1014M  232M  783M  23% /boot
+tmpfs                     184M   28K  184M   1% /run/user/1000
+/dev/mapper/mapper1-home  4.8G  295M  4.3G   7% /home
+
+
+
+
+6) 查看 卷组，发现空闲空间 5G，符合预期(8+12 - 5-10=5G)
+$ sudo vgs
+[sudo] password for wangjl: 
+  VG      #PV #LV #SN Attr   VSize   VFree
+  centos    1   2   0 wz--n- <14.00g    0 
+  mapper1   2   2   0 wz--n-  19.99g 4.99g
+
+详细信息 
+$ sudo vgdisplay
+...
+  VG Size               19.99 GiB
+  PE Size               4.00 MiB
+  Total PE              5118
+  Alloc PE / Size       3840 / 15.00 GiB #已经分出去的PE是 3840 个
+  Free  PE / Size       1278 / 4.99 GiB #剩余的PE是 1278 个
+  VG UUID               RK80Pa-efr8-Q109-MeAY-g1RT-hDkq-DAQl26
+#
+
+
+
+
+7) 剩下的是其他命令，比如删除lvm及其组件:
+
+删除 lv: lvremove /dev/mapper1/root 
+删除 vg: vgremove mapper1
+删除 物理卷PV: pvremove /dev/sdb
+
+只能按照这个顺序删除，先删掉最顶层的概念，最后删除最底层的硬盘。
+要删除卷组，就要把其上的逻辑卷删除干净；
+要删除物理卷，就要把其上的 卷组 删除干净。
+
+
+比如上文，
+查询机器的挂载情况: $ mount
+卸载刚才的硬件 $ sudo umount /home
+
+报错，有依赖，先移动位置
+$ lsof /home
+COMMAND     PID   USER   FD   TYPE DEVICE SIZE/OFF   NODE NAME
+gnome-sof  2604 wangjl   20r   DIR  253,2     4096 131259 /home/wangjl/.local/share/flatpak/repo
+gnome-sof  2604 wangjl   21r   DIR  253,2     4096 131269 /home/wangjl/.local/share/flatpak/repo/object
+gnome-ini 31081 wangjl  mem    REG  253,2     4292 131201 /home/wangjl/.config/dconf/user
+
+$ cd /
+$ sudo mv /home/wangjl/ /data3/
+$ ps -aux | grep "gnome-sof" | awk '{print $2}' | xargs kill -9 
+$ ps -aux | grep "gnome-ini" | awk '{print $2}' | xargs kill -9 
+$ sudo umount /home
+
+$ sudo mv /data3/wangjl /home/
+
+$ mount # 查询，确实已经卸载了。
+
+
+==> 删除逻辑卷 
+$ sudo lvs
+[sudo] password for wangjl: 
+  LV   VG      Attr       LSize   Pool Origin Data%  Meta%  Move Log Cpy%Sync Convert
+  root centos  -wi-ao---- <12.50g                                                    
+  swap centos  -wi-ao----   1.50g                                                    
+  home mapper1 -wi-a-----   5.00g                                                    
+  root mapper1 -wi-a-----  10.00g   
+
+$ sudo lvremove /dev/mapper1/home #y
+$ sudo lvremove /dev/mapper1/root #y
+
+
+==> 删除卷组，前提是删干净了依赖它的 逻辑卷
+$ sudo vgs
+  VG      #PV #LV #SN Attr   VSize   VFree 
+  centos    1   2   0 wz--n- <14.00g     0 
+  mapper1   2   0   0 wz--n-  19.99g 19.99g
+$ sudo vgremove mapper1
+
+$ sudo vgs
+  VG     #PV #LV #SN Attr   VSize   VFree
+  centos   1   2   0 wz--n- <14.00g    0
+
+
+==> 删除 物理卷，前提是删干净了依赖它的 卷组 
+$ sudo pvs
+  PV         VG     Fmt  Attr PSize   PFree 
+  /dev/sda2  centos lvm2 a--  <14.00g     0 
+  /dev/sdb          lvm2 ---    8.00g  8.00g
+  /dev/sdc          lvm2 ---   12.00g 12.00g
+$ sudo pvremove /dev/sdb
+$ sudo pvremove /dev/sdc #Labels on physical volume "/dev/sdc" successfully wiped.
+
+
+
+
+
+
+
+
+8) 报错 Couldn‘t find device with uuidLVM底层磁盘丢失，查看lvm设置报错 //todo
+on 10 server:
+
+
+
+
+
+
+
+
+
+
+
+
+
+========================================
+|-- lvm 逻辑卷的拉伸
+----------------------------------------
+1. 拉伸一个逻辑卷
+
+逻辑卷的拉伸是可以在线执行的，不需要卸载逻辑卷。
+	就是逻辑卷正在使用中，可以直接扩充其容量。
+
+拉伸一个逻辑卷，实质上就是为LV增加PE，PE来自于VG。新添加PE后的LV还需要更新文件系统，才能用于读写数据。
+
+
+(1) 保证 vg 中有足够的空闲空间
+$ sudo vgdisplay
+
+现在 / 分区是 13G
+$ df -h
+Filesystem               Size  Used Avail Use% Mounted on
+/dev/mapper/centos-root   13G  6.3G  6.3G  51% /
+
+
+(2) 扩充逻辑卷，前提是保证 vg 中有需要扩容的空间
+$ lvextend -L +1G /dev/mapper1/root
+
+(3) 查看扩充后lv大小
+$ lvdisplay 
+
+(4) 更新文件系统 
+$ resize2fs /dev/mapper1/root
+
+
+(5) 查看更新后的文件系统
+$ df -h
+
+
+
+
+
+
+2.实战执行
+
+(1) 准备硬盘，参考上节
+
+创建物理卷
+$ sudo pvcreate /dev/sdb /dev/sdc
+$ sudo pvs
+
+创建卷组
+$ sudo vgcreate cent2 /dev/sdb /dev/sdc
+$ sudo vgs
+
+创建逻辑卷
+$ sudo lvcreate -n dataA -L 5G cent2 #y
+$ sudo lvs
+
+格式化
+$ sudo mkfs.ext4 /dev/cent2/dataA
+
+挂载到目录
+$ sudo mkdir /data3
+$ sudo mount /dev/cent2/dataA /data3
+
+检查 
+$ df -h
+Filesystem               Size  Used Avail Use% Mounted on
+/dev/mapper/cent2-dataA  4.8G   20M  4.6G   1% /data3
+
+
+在里面新建文件，以便验证扩容不影响文件
+$ cd /data3/ 
+
+$ sudo mkdir test1
+$ sudo vim ReadMe.txt
+$ sudo cat ReadMe.txt
+this is a test of LVM
+
+$ ls -lth
+total 24K
+drwxr-xr-x. 2 root root 4.0K May  7 05:41 test1
+-rw-r--r--. 1 root root   22 May  7 05:40 ReadMe.txt
+drwx------. 2 root root  16K May  7 05:38 lost+found
+
+
+
+(2) 扩容
+
+先保证 vg 中有空间 15G:
+$ sudo vgs 
+  VG     #PV #LV #SN Attr   VSize   VFree 
+  cent2    2   1   0 wz--n-  19.99g 14.99g
+  centos   1   2   0 wz--n- <14.00g     0 
+
+原本 dataA 是 5G:
+$ sudo lvs
+  LV    VG     Attr       LSize   Pool Origin Data%  Meta%  Move Log Cpy%Sync Convert
+  dataA cent2  -wi-ao----   5.00g                                                    
+  root  centos -wi-ao---- <12.50g                                                    
+  swap  centos -wi-ao----   1.50g
+
+
+拉伸1G
+$ sudo lvextend -L +1G /dev/cent2/dataA
+  Size of logical volume cent2/dataA changed from 5.00 GiB (1280 extents) to 6.00 GiB (1536 extents).
+  Logical volume cent2/dataA successfully resized.
+
+再查大小，已经是6G了
+$ sudo lvs
+  LV    VG     Attr       LSize   Pool Origin Data%  Meta%  Move Log Cpy%Sync Convert
+  dataA cent2  -wi-ao----   6.00g 
+
+
+数据挂载点还在:
+$ mount | tail -n1
+/dev/mapper/cent2-dataA on /data3 type ext4 (rw,relatime,seclabel,data=ordered)
+
+
+原文件内容不受影响:
+$ cat ReadMe.txt 
+this is a test of LVM
+
+
+但是，df查看，发现还是 5G。
+$ df -h
+Filesystem               Size  Used Avail Use% Mounted on
+/dev/mapper/cent2-dataA  4.8G   20M  4.6G   1% /data3
+这是因为仅仅硬盘大小变大了，但是文件系统没有更新。
+
+
+
+(3) 更新文件系统
+$ sudo resize2fs /dev/cent2/dataA 
+resize2fs 1.42.9 (28-Dec-2013)
+Filesystem at /dev/cent2/dataA is mounted on /data3; on-line resizing required
+old_desc_blocks = 1, new_desc_blocks = 1
+The filesystem on /dev/cent2/dataA is now 1572864 blocks long.
+
+
+查看更新后的文件系统 
+$ df -h
+Filesystem               Size  Used Avail Use% Mounted on
+/dev/mapper/cent2-dataA  5.8G   20M  5.5G   1% /data3
+
+
+注意:
+lvm扩容那里，老师用的是centos6所以是ext4文件系统，更新文件系统使用的是resize2fs，
+而centos7默认的文件系统是xfs，则是使用xfs_growfs命令，希望能帮助一些同学。
+
+
+
+
+
+
+
+
+
+3. 如果 vg 不够用怎么办？
+
+(1) 先把所有的 vg 的容量都给lv
+$ sudo vgs
+  VG     #PV #LV #SN Attr   VSize   VFree 
+  cent2    2   1   0 wz--n-  19.99g 13.99g
+  centos   1   2   0 wz--n- <14.00g     0
+
+$ sudo lvs
+  LV    VG     Attr       LSize   Pool Origin Data%  Meta%  Move Log Cpy%Sync Convert
+  dataA cent2  -wi-ao----   6.00g  
+
+扩容 15G (其实vg中只剩下14G)
+$ sudo lvextend -L +15G /dev/cent2/dataA
+  Insufficient free space: 3840 extents needed, but only 3582 available
+
+检查，扩容失败，还是原来的 6G:
+$ sudo lvs
+  LV    VG     Attr       LSize   Pool Origin Data%  Meta%  Move Log Cpy%Sync Convert
+  dataA cent2  -wi-ao----   6.00g
+
+再次尝试
+扩容 13G (其实vg中只剩下14G)
+$ sudo lvextend -L +13G /dev/cent2/dataA
+  Size of logical volume cent2/dataA changed from 6.00 GiB (1536 extents) to 19.00 GiB (4864 extents).
+  Logical volume cent2/dataA successfully resized.
+
+更新文件系统
+$ sudo resize2fs /dev/cent2/dataA
+输出:
+resize2fs 1.42.9 (28-Dec-2013)
+Filesystem at /dev/cent2/dataA is mounted on /data3; on-line resizing required
+old_desc_blocks = 1, new_desc_blocks = 3
+The filesystem on /dev/cent2/dataA is now 4980736 blocks long.
+
+查看，确实扩充了:
+$ sudo lvs
+  LV    VG     Attr       LSize   Pool Origin Data%  Meta%  Move Log Cpy%Sync Convert
+  dataA cent2  -wi-ao----  19.00g  
+
+$ df -h
+Filesystem               Size  Used Avail Use% Mounted on
+/dev/mapper/cent2-dataA   19G   28M   18G   1% /data3
+
+
+
+
+(2) 还要再扩容5G，但是vg空间不够了
+$ sudo vgs
+  VG     #PV #LV #SN Attr   VSize   VFree   
+  cent2    2   1   0 wz--n-  19.99g 1016.00m
+  centos   1   2   0 wz--n- <14.00g       0
+
+$ sudo vgdisplay
+  Cur PV                2 #当前PV个数是2
+
+
+新添加一块硬盘 $ sudo shutdown now
+大小7G。重启。
+
+$ sudo fdisk -l
+
+Disk /dev/sdd: 7516 MB, 7516192768 bytes, 14680064 sectors
+Units = sectors of 1 * 512 = 512 bytes
+Sector size (logical/physical): 512 bytes / 512 bytes
+I/O size (minimum/optimal): 512 bytes / 512 bytes
+
+
+1)把硬盘格式化为 物理卷PV:
+$ sudo pvcreate /dev/sdd  
+  Physical volume "/dev/sdd" successfully created.
+
+2) PV添加到指定VG 卷组
+$ sudo vgextend cent2 /dev/sdd
+  Volume group "cent2" successfully extended
+
+3) 查看扩容后的VG大小
+$ sudo vgs
+  VG     #PV #LV #SN Attr   VSize   VFree 
+  cent2    3   1   0 wz--n- <26.99g <7.99g
+  centos   1   2   0 wz--n- <14.00g     0 
+
+$ sudo vgdisplay
+...
+  Cur PV                3 #刚才是2个，现在是3个
+...
+
+$ sudo pvs
+  PV         VG     Fmt  Attr PSize   PFree   
+  /dev/sda2  centos lvm2 a--  <14.00g       0 
+  /dev/sdb   cent2  lvm2 a--   <8.00g       0 
+  /dev/sdc   cent2  lvm2 a--  <12.00g 1016.00m
+  /dev/sdd   cent2  lvm2 a--   <7.00g   <7.00g
+
+
+这样就扩充了VG。
+想扩充 LV， 参考上一步。
+
+
+
+
+
+另一个例子: 扩展根分区的大小。 https://cloud.tencent.com/developer/article/1671893
+创建物理卷pv
+# pvcreate /dev/sdb1 
+加入到vg
+# vgextend centos /dev/sdb1 
+
+把vg剩余空间全给某个分区
+# lvextend -l +100%FREE /dev/mapper/centos-root
+
+然后使用xfs_groupfs进行在线调整xfs格式的文件系统大小
+# xfs_growfs /dev/mapper/centos-root 
+
+查看下根分区的大小是否扩容成功
+# df -h
+
+
+
+
+
+
+
+
+
+
+========================================
+|-- lvm 缩小一个逻辑卷
+----------------------------------------
+
+逻辑卷的缩小必须离线执行，要卸载逻辑卷。
+
+缩小的实质，就是把LV的PE还给 VG。
+
+
+
+
+1. 主要步骤
+(1) 卸载已经挂载的逻辑卷
+$ sudo umount /dev/cent2/dataA
+
+(2) 缩小文件系统
+会提示需要运行 fsck 检查文件系统
+$ sudo resize2fs /dev/cent2/dataA 1G
+
+(3) 缩小 lv
+lvreduce -L -1G /dev/cent2/dataA 
+
+(4) 查看缩小后的 lv 
+lvdisplay 
+
+(5) 挂载 
+mount /dev/cent2/dataA /mnt
+
+
+
+
+
+
+
+2. 实战操作 
+(1) 接上文，已经有一个 逻辑分区 /dev/cent2/dataA 
+
+检查，已经卸载该分区
+$ mount
+
+当前是 19G
+$ sudo lvs
+  LV    VG     Attr       LSize   Pool Origin Data%  Meta%  Move Log Cpy%Sync Convert
+  dataA cent2  -wi-a-----  19.00g  
+
+
+
+(2) 先缩小文件系统，再缩小底层磁盘大小
+
+文件大小缩小到10G
+$ sudo resize2fs /dev/cent2/dataA 10G
+resize2fs 1.42.9 (28-Dec-2013)
+Please run 'e2fsck -f /dev/cent2/dataA' first.
+
+按要求先执行
+$ sudo e2fsck -f /dev/cent2/dataA #-f是遇到错误直接修复
+文件大小缩小到10G
+$ sudo resize2fs /dev/cent2/dataA 10G
+resize2fs 1.42.9 (28-Dec-2013)
+Resizing the filesystem on /dev/cent2/dataA to 2621440 (4k) blocks.
+The filesystem on /dev/cent2/dataA is now 2621440 blocks long.
+
+
+(3) 缩小底层磁盘大小，原来是 19G，目标是10G，要减9G
+
+$ sudo lvreduce -L -9G /dev/cent2/dataA
+  WARNING: Reducing active logical volume to 10.00 GiB. #警告：缩小，可能毁掉数据！就是缩的小于文件系统的情况。
+  THIS MAY DESTROY YOUR DATA (filesystem etc.)
+Do you really want to reduce cent2/dataA? [y/n]: y
+  Size of logical volume cent2/dataA changed from 19.00 GiB (4864 extents) to 10.00 GiB (2560 extents).
+  Logical volume cent2/dataA successfully resized.
+
+
+检查，确实变成10G了
+$ sudo lvdisplay
+$ sudo lvs
+  LV    VG     Attr       LSize   Pool Origin Data%  Meta%  Move Log Cpy%Sync Convert
+  dataA cent2  -wi-a-----  10.00g  
+
+
+(4) 挂载 
+$ sudo mount /dev/cent2/dataA /data3
+$ df -h
+Filesystem               Size  Used Avail Use% Mounted on
+/dev/mapper/centos-root   13G  6.3G  6.3G  51% /
+/dev/sda1               1014M  232M  783M  23% /boot
+/dev/mapper/cent2-dataA  9.8G   23M  9.3G   1% /data3  #这个10G的盘
+
+
+检查内容，都没有影响
+$ ls -lth /data3
+total 24K
+drwxr-xr-x. 2 root root 4.0K May  7 05:41 test1
+-rw-r--r--. 1 root root   22 May  7 05:40 ReadMe.txt
+drwx------. 2 root root  16K May  7 05:38 lost+found
+
+$ cat /data3/ReadMe.txt 
+this is a test of LVM
+
+
+
+
+(5) 查看磁盘挂载情况
+
+$ lsblk
+NAME            MAJ:MIN RM  SIZE RO TYPE MOUNTPOINT
+sda               8:0    0   15G  0 disk 
+├─sda1            8:1    0    1G  0 part /boot
+└─sda2            8:2    0   14G  0 part 
+  ├─centos-root 253:0    0 12.5G  0 lvm  /
+  └─centos-swap 253:1    0  1.5G  0 lvm  [SWAP]
+sdb               8:16   0    8G  0 disk 
+└─cent2-dataA   253:2    0   10G  0 lvm  /data3  #这里是 sdb + sdc 共同构成了 /data3 
+sdc               8:32   0   12G  0 disk 
+└─cent2-dataA   253:2    0   10G  0 lvm  /data3
+sdd               8:48   0    7G  0 disk 
+sr0              11:0    1 1024M  0 rom 
+
+
+
+$ df -h
+Filesystem               Size  Used Avail Use% Mounted on
+devtmpfs                 903M     0  903M   0% /dev
+tmpfs                    919M     0  919M   0% /dev/shm
+tmpfs                    919M  9.5M  910M   2% /run
+tmpfs                    919M     0  919M   0% /sys/fs/cgroup
+/dev/mapper/centos-root   13G  6.3G  6.3G  51% /
+/dev/sda1               1014M  232M  783M  23% /boot
+tmpfs                    184M   32K  184M   1% /run/user/1000
+/dev/mapper/cent2-dataA  9.8G   23M  9.3G   1% /data3
+
+
+
+问题: 为什么 sdb+sdc = 10+10 =20，而 /data3 才10?
+因为 挂载到 /data3 的是 /dev/mapper/cent2-dataA
+$ mount | grep data3
+/dev/mapper/cent2-dataA on /data3 type ext4 (rw,relatime,seclabel,data=ordered)
+而 cent2 卷组下的 逻辑卷 dataA 的大小确实是 10G
+$ sudo lvs
+  LV    VG     Attr       LSize   Pool Origin Data%  Meta%  Move Log Cpy%Sync Convert
+  dataA cent2  -wi-ao----  10.00g
+
+
+
+
+==> 我们尝试为该lv增加2G容量，发现/data3 确实变大了2G。
+$ sudo lvs
+  LV    VG     Attr       LSize   Pool Origin Data%  Meta%  Move Log Cpy%Sync Convert
+  dataA cent2  -wi-ao----  10.00g      #现在lv是10G                                                
+  root  centos -wi-ao---- <12.50g                                                    
+  swap  centos -wi-ao----   1.50g                                                    
+$ sudo vgs
+  VG     #PV #LV #SN Attr   VSize   VFree  
+  cent2    3   1   0 wz--n- <26.99g <16.99g #所在VG还有17G可用
+  centos   1   2   0 wz--n- <14.00g      0 
+
+增加lv的容量
+$ sudo lvextend -L +2G /dev/cent2/dataA
+$ sudo resize2fs /dev/cent2/dataA
+
+$ sudo lvs
+dataA cent2  -wi-ao----  12.00g
+
+$ df -h
+Filesystem               Size  Used Avail Use% Mounted on
+/dev/mapper/cent2-dataA   12G   25M   12G   1% /data3
+
+
+
+
+
+
+
+
+3. 缩小卷组
+比如，从系统中拿出来一块硬盘。
+就是从 VG 中移除一个 PV。
+被移除的 pv 就可以作为一个普通的硬盘使用了。
+
+
+(1) 将一个PV从指定卷组中移除
+vgreduce cent2 /dev/sdd 
+
+(2) 查看缩小后的卷组大小
+vgdisplay 
+
+
+(3) 实战 
+一定要保证 VG 的空闲空间，比要拿掉的 物理卷PV 大，否则数据会破坏。
+
+卷组VG的空闲空间是 15G
+$ sudo vgs
+  VG     #PV #LV #SN Attr   VSize   VFree  
+  cent2    3   1   0 wz--n- <26.99g <14.99g  #由3块PV构成，是那三块呢？
+
+从前2列可见，VG为cent2的，对应3个PV，/dev/sdb-c-d;
+$ sudo pvs
+  PV         VG     Fmt  Attr PSize   PFree 
+  /dev/sda2  centos lvm2 a--  <14.00g     0 
+  /dev/sdb   cent2  lvm2 a--   <8.00g     0 
+  /dev/sdc   cent2  lvm2 a--  <12.00g  7.99g
+  /dev/sdd   cent2  lvm2 a--   <7.00g <7.00g
+
+
+我要去掉的磁盘，貌似sdd不在这里面!?
+$ lsblk
+NAME            MAJ:MIN RM  SIZE RO TYPE MOUNTPOINT
+sda               8:0    0   15G  0 disk 
+├─sda1            8:1    0    1G  0 part /boot
+└─sda2            8:2    0   14G  0 part 
+  ├─centos-root 253:0    0 12.5G  0 lvm  /
+  └─centos-swap 253:1    0  1.5G  0 lvm  [SWAP]
+sdb               8:16   0    8G  0 disk 
+└─cent2-dataA   253:2    0   12G  0 lvm  /data3
+sdc               8:32   0   12G  0 disk 
+└─cent2-dataA   253:2    0   12G  0 lvm  /data3
+sdd               8:48   0    7G  0 disk 
+sr0              11:0    1 1024M  0 rom
+
+重启后：
+$ sudo mount /dev/cent2/dataA /data3
+$ mount | grep data3
+/dev/mapper/cent2-dataA on /data3 type ext4 (rw,relatime,seclabel,data=ordered)
+$ lsblk 同上，最后的 sdd 还是没有显示 /data3;
+
+决定去掉free最低的 sdb，该磁盘总大小是 12G
+
+注：缩减时，不可以卸载正在使用中的LV。另外，只能缩减没有被使用的pv。
+否则会提示以下内容
+$ sudo vgreduce cent2 /dev/sdb
+  Physical volume "/dev/sdb" still in use
+
+缩减之前先确认物理卷是否被使用
+$ sudo pvs
+  PV         VG     Fmt  Attr PSize   PFree 
+  /dev/sda2  centos lvm2 a--  <14.00g     0 
+  /dev/sdb   cent2  lvm2 a--   <8.00g     0 
+  /dev/sdc   cent2  lvm2 a--  <12.00g  7.99g
+  /dev/sdd   cent2  lvm2 a--   <7.00g <7.00g
+
+这么看，bcd中只能删除最后一块了
+$ sudo vgreduce cent2 /dev/sdd
+  Removed "/dev/sdd" from volume group "cent2"
+
+$ sudo vgdisplay
+...
+  Cur PV                2 #已经变成了2块
+...
+
+
+
+删除该物理卷
+$ sudo pvremove /dev/sdd
+  Labels on physical volume "/dev/sdd" successfully wiped.
+
+$ sudo pvs
+  PV         VG     Fmt  Attr PSize   PFree
+  /dev/sda2  centos lvm2 a--  <14.00g    0 
+  /dev/sdb   cent2  lvm2 a--   <8.00g    0 
+  /dev/sdc   cent2  lvm2 a--  <12.00g 7.99g
+
+这时， /dev/sdd 这块硬盘就可以作为别的使用了。
+
+
+
+
+
+
+
+
+
+
+
+
+
+4. /dev/mapper/ 目录
+https://www.cnblogs.com/amoyzhu/p/6626423.html
+
+若要了解硬盘的具体情况，可通过 fdisk 或者 pvdisplay 命令进行查看。
+
+
+
+
+
+
+
+
+
+
+========================================
+[重装 server 10] 怎么在一个逻辑分区中安装 新 centOS7 系统？备份用户信息、制作安装盘、磁盘分区、恢复用户
+----------------------------------------
+
+1. 新安装系统，想保留某个盘的数据怎么做？
+https://www.cnblogs.com/amoyzhu/p/6626423.html
+
+若要了解硬盘的具体情况，可通过fdisk或者pvdisplay命令进行查看。
+
+若你想要重装系统到/dev/sda下，且安装时有些东西不想被格式化想转移到/dev/sdb下，但此时/dev/sda和/dev/sdb被放到VG中了，那该如何解决该问题呢？
+这种情况下，由于此时根本没办法确定数据在哪一个硬盘上，因为这两个硬盘就如同加到池里，被Device mapper管理。
+
+所以解决方案就是再建个逻辑卷出来，把数据移到新的卷里，这样你就可以重装系统时只删掉之前分区里的东西，而新的卷里的东西不动，就不会丢失了。
+
+
+
+(2) 这个靠谱：如何在重装后保留 /home 文件夹
+https://blog.csdn.net/qq_40907977/article/details/109470461
+https://mp.weixin.qq.com/s/4tr9xmhC93sMmBLDd1NFww
+
+- 选择/分区以后，输入挂载点/，选择标准分区，勾选重新格式化，单击更新设置。这样重装的时候，就格式化/分区内的数据。
+- 选择swap分区，勾选重新格式化，单击更新设置。
+- 选择/home，挂载点输入/home，一定不要选择重新格式化，否则后丢失数据，单击更新设置。这样就可以保留/home中的数据了。
+- 设置完后都新的分区方案。单击完成，接受更改，开始安装。
+
+
+
+
+
+
+2. 重装系统后原来的lvm如何挂载
+系统重装后之前创建的lvm无法挂载了，挂载分区信息找不到了
+情况描述：
+1).原系统有个数据盘采用的是lvm分区，可以正常挂载使用，如/dev/mapper/data1vg-data1lv
+2).重装系统后找不到可以挂载的盘符,如/dev/mapper/data1vg-data1lv新系统上已经没有该分区信息
+3).通过pvs、lvscan、lvdisplay都能正常看到信息
+
+
+解决：
+1).需要安装lvm2包
+2).激活卷组就可以进行挂载了，命令是 vgchange -a y data1vg (这里data1vg就是卷组名称)
+3).挂载，如 mount -o noatime /dev/mapper/data1vg-data1lv /data
+
+
+
+
+
+
+
+
+3. 怎么重装 centOS7 系统
+关闭防火墙才能远程访问。
+
+(1) 备份uid和gid
+防止老的数据权限问题无法访问。
+
+$ id pengfei
+uid=1000(pengfei) gid=1001(user) groups=1001(user),10(wheel),983(rstudio-server),1002(Rstudio_users),1004(docker)
+
+$ id wangjl
+uid=1013(wangjl) gid=1001(user) groups=1001(user),1004(docker)
+
+
+$ cat /etc/passwd
+wangjl:x:1013:1001::/home/wangjl:/bin/bash
+pengfei:x:1000:1001:qin pengfei:/home/pengfei:/bin/bash
+
+用户组信息
+$ cat /etc/group | grep wangjl
+docker:x:1004:zhangsj,pengfei,wangjl
+
+$ cat /etc/group | grep pengfei
+wheel:x:10:pengfei
+pengfei:x:1000:
+rstudio-server:x:983:pengfei
+Rstudio_users:x:1002:pengfei,hou
+docker:x:1004:zhangsj,pengfei,wangjl
+
+
+in 10 server
+$ cd /home/wangjl/tmp
+$ cp /etc/passwd 10_passwd
+$ cp /etc/group 10_group
+
+## scp 发送到另一台主机上 Y station
+$ scp 10* wangjl@y.biomooc.com:/data/wangjl/web/docs/DockerImages/
+
+
+
+
+
+
+
+(2) 如何制作启动盘
+https://blog.csdn.net/weixin_44299264/article/details/119958539
+https://blog.csdn.net/JimmyOrigin/article/details/113237429
+
+- 下载好CentOS7系统的 everything iso 文件，按上述链接 使用 UltraISO虚拟光驱 制作U盘启动盘；
+- 设置主板 BIOS : 从 U 盘启动，而不是硬盘启动。硬件厂家自己写的BIOS程序，很不通用，需要根据主板厂家名字百度或手工测试。
+	* 启动类型 BIOS / UEFI，选后者。
+	* 是否搜索硬盘：默认第一块硬盘，如果允许搜索，则第一块找不到启动区时接着搜索第二块；
+- 如果U盘启动后，一般到黑界面 + 3行白字，选择第一行 install centOS
+- 这时无法进入系统，报错，是因为无法找到系统文件的位置，建议看下面的文章:
+https://zhuanlan.zhihu.com/p/111286029
+确定U盘的盘符: cd /dev/; ls -lth sd* ; 比如我们的是 /dev/sde4
+重启: reboot
+
+再次到3行启动界面，第一行，按e键，将最下面的
+vmlinuz initrd=initrd.img inst.stage2=hd:LABEL=CentOS\x207\x20x86_64 rd.live.check quiet 
+改为 vmlinuz initrd=initrd.img inst.stage2=hd:/dev/sde4 quiet
+ps：sda4就是你看到的启动盘名称
+然后 ctrl+X 重启。
+
+
+
+
+(3) 安装细节
+- 时区：上海； hostname: JinLab
+- 安装哪个系统类型?不建议安装默认的minimal，建议 Server with GUI，这个版本有图形界面，方便维护和使用，建议优先选择这个。
+	建议勾选右侧的 NFS + development tools
+- 磁盘分区? 选择一个新的磁盘，比如 /dev/sdc 1T，其实 500G 也够用了，安装后将会覆盖该硬盘上的数据。
+  * 选择 sdc 盘，勾选底下的 手动分区
+  * 对于 centOS7，建议分区:
+sdc1 50MiB /boot/efi  EFI system partition
+sdc2 500M  /boot/ xfs
+sdc3 317G / xfs  #多余的磁盘空间都分给这个，如果是 1T的盘，这这个可以分 800G
+sdc4 128G [swap] linux swap #这个最大就是128G，再大直接自动更改为更小
+
+- 如果是老系统，第一个用户建议使用 uid=1000 的老的用户名，否则他的 老硬盘上的文件夹可能打不开。
+
+
+
+
+(4) 设置开机自动联网
+http://t.zoukankan.com/flying607-p-5730851.html
+
+查看网卡，发现是多个网卡
+$ ls -lth /etc/sysconfig/network-scripts/ifcfg-*
+-rw-r--r--. 1 root root 275 May  8 22:59 /etc/sysconfig/network-scripts/ifcfg-em1
+-rw-r--r--. 1 root root 292 May  8 22:59 /etc/sysconfig/network-scripts/ifcfg-em2
+-rw-r--r--. 1 root root 254 May 22  2020 /etc/sysconfig/network-scripts/ifcfg-lo
+
+
+具体使用的网卡，就是可用 IP 地址所在的网卡
+$ ifconfig
+em1: flags=4163<UP,BROADCAST,RUNNING,MULTICAST>  mtu 1500
+        inet 10.20.57.27  netmask 255.255.128.0  broadcast 10.20.127.255
+        inet6 fe80::7a29:7b2a:73a1:b387  prefixlen 64  scopeid 0x20<link>
+        inet6 2001:da8:201d:1101:9af9:649a:b953:a51a  prefixlen 128  scopeid 0x0<global>
+        ether 18:66:da:9d:59:d2  txqueuelen 1000  (Ethernet)
+        RX packets 452735  bytes 667637520 (636.7 MiB)
+        RX errors 0  dropped 8  overruns 0  frame 0
+        TX packets 117389  bytes 10392961 (9.9 MiB)
+        TX errors 0  dropped 0 overruns 0  carrier 0  collisions 0
+        device memory 0x91b00000-91bfffff  
+
+修改该网卡信息
+$ cat /etc/sysconfig/network-scripts/ifcfg-em1
+TYPE=Ethernet
+PROXY_METHOD=none
+BROWSER_ONLY=no
+BOOTPROTO=dhcp
+DEFROUTE=yes
+IPV4_FAILURE_FATAL=no
+IPV6INIT=yes
+IPV6_AUTOCONF=yes
+IPV6_DEFROUTE=yes
+IPV6_FAILURE_FATAL=no
+IPV6_ADDR_GEN_MODE=stable-privacy
+NAME=em1
+UUID=b1bbda6b-086b-4d09-bb8c-3e90bef1f1e8
+DEVICE=em1
+ONBOOT=no
+
+把最后一行的 ONBOOT=no 改为 ONBOOT=yes
+保存，重启主机。
+
+
+检查: 
+老的10主机设置如下：是不是因为加了引号，导致无法识别，无法自动联网？
+$ sudo tail -n3 /mnt/old_root/etc/sysconfig/network-scripts/ifcfg-em1
+DEVICE="em1"
+ONBOOT="yes"
+ZONE=
+
+
+老的 193 服务器设置如下:
+$ sudo cat /etc/sysconfig/network-scripts/ifcfg-enp46s0f0
+TYPE=Ethernet
+PROXY_METHOD=none
+BROWSER_ONLY=no
+BOOTPROTO=none
+DEFROUTE=yes
+IPV4_FAILURE_FATAL=no
+IPV6INIT=no
+IPV6_AUTOCONF=yes
+IPV6_DEFROUTE=yes
+IPV6_FAILURE_FATAL=no
+IPV6_ADDR_GEN_MODE=stable-privacy
+NAME=enp46s0f0
+UUID=c11e8a78-2013-49a5-95d0-0352ea7b0ad1
+DEVICE=enp46s0f0
+ONBOOT=yes   #这里确实是 yes；后面又加了固定IP，网关等。
+IPADDR=172.18.5.193
+PREFIX=24
+GATEWAY=172.18.5.254
+DNS1=172.18.1.92
+DOMAIN=172.18.1.93
+IPV6_PRIVACY=no
+ZONE=public
+DNS2=172.18.1.93
+PEERDNS=no
+
+
+
+
+
+(5) 修改 /home /data1 等硬盘、lvm的挂载
+$ sudo mv /home/pengfei /mnt
+
+$ lsblk
+NAME               MAJ:MIN RM  SIZE RO TYPE MOUNTPOINT
+sda                  8:0    0  7.3T  0 disk 
+└─sda1               8:1    0  7.3T  0 part 
+sdb                  8:16   0  7.3T  0 disk 
+└─sdb1               8:17   0  7.3T  0 part 
+sdc                  8:32   0 1024G  0 disk 
+├─sdc1               8:33   0  200M  0 part /boot/efi
+├─sdc2               8:34   0  500M  0 part /boot
+├─sdc3               8:35   0  895G  0 part /
+└─sdc4               8:36   0  128G  0 part [SWAP]
+sdd                  8:48   0 17.2T  0 disk 
+├─sdd1               8:49   0  500M  0 part 
+└─sdd2               8:50   0 17.2T  0 part 
+  ├─centos00-root  253:0    0  500G  0 lvm  
+  ├─centos00-home  253:1    0  400G  0 lvm  
+  ├─centos00-swap  253:2    0  128G  0 lvm  
+  └─centos00-data1 253:3    0 16.2T  0 lvm
+
+把 centos00-home 挂载到 /home:
+$ ls -lth /dev/centos00/home
+lrwxrwxrwx. 1 root root 7 May  8 23:36 /dev/centos00/home -> ../dm-1
+
+$ sudo mount /dev/centos00/home /home
+
+把 centos00-data1 挂载到 /data1:
+$ sudo mkdir /data1
+$ sudo mount /dev/centos00/data1 /data1
+
+
+把老系统的 / 也挂载到 /mnt/old_root
+$ sudo mkdir /mnt/old_root
+$ sudo mount /dev/centos00/root /mnt/old_root
+
+
+其他2块盘的挂载
+$ sudo mkdir /data2 && sudo mount /dev/sda1 /data2
+$ sudo mkdir /data3 && sudo mount /dev/sdb1 /data3
+
+
+
+
+检查: 已经挂载上
+$ df -hT
+Filesystem                 Type      Size  Used Avail Use% Mounted on
+devtmpfs                   devtmpfs  126G     0  126G   0% /dev
+tmpfs                      tmpfs     126G     0  126G   0% /dev/shm
+tmpfs                      tmpfs     126G   11M  126G   1% /run
+tmpfs                      tmpfs     126G     0  126G   0% /sys/fs/cgroup
+/dev/sdc3                  xfs       895G  4.8G  890G   1% /
+/dev/sdc2                  xfs       497M  157M  340M  32% /boot
+/dev/sdc1                  vfat      200M   12M  189M   6% /boot/efi
+tmpfs                      tmpfs      26G   32K   26G   1% /run/user/1000
+/dev/mapper/centos00-home  xfs       400G  301G  100G  76% /home
+/dev/mapper/centos00-data1 xfs        17T   13T  3.9T  77% /data1
+/dev/mapper/centos00-root  xfs       500G  144G  357G  29% /mnt/old_root
+/dev/sda1                  ext4      7.3T  5.2T  1.8T  75% /data2
+/dev/sdb1                  ext4      7.3T  313G  6.6T   5% /data3
+
+
+
+
+
+
+==> 这些挂载要写到 /etc/fstab 中，每次重装系统，uuid都会变?
+$ cat /etc/fstab
+#
+# /etc/fstab
+# Created by anaconda on Sun May  8 22:50:49 2022
+#
+# Accessible filesystems, by reference, are maintained under '/dev/disk'
+# See man pages fstab(5), findfs(8), mount(8) and/or blkid(8) for more info
+#
+UUID=fb93a2ae-3962-4450-9adf-294934e84bb4 /                       xfs     defaults        0 0
+UUID=f4d55bc5-ca7b-461b-937c-ce5f46c6902d /boot                   xfs     defaults        0 0
+UUID=8C88-4235          /boot/efi               vfat    umask=0077,shortname=winnt 0 0
+UUID=247f6360-e5fb-4f3b-beb3-9606081be133 swap                    swap    defaults        0 0
+
+
+末尾添加 
+$ sudo vim /etc/fstab
+/dev/sda1		/data2			ext4	  defaults	 0 0
+/dev/sdb1		/data3			ext4	 defaults	0 0
+# /dev/sde1		/data4			ext4	 defaults	0 0
+/dev/mapper/centos00-home             /home                  xfs     defaults       0 0
+#/dev/mapper/centos00-root             /mnt/old_root                  xfs     defaults       0 0
+/dev/mapper/centos00-data1             /data1                  xfs     defaults       0 0
+
+
+
+
+
+
+
+(6) 恢复用户系统 
+
+检查: 很多用户只有uid，没有uname
+$ ls -lth /home
+total 144K
+drwxr-xr-x. 30    1013 user 4.0K May  8 11:16 wangjl
+drwx------. 20    1007 1003 4.0K May  7 21:41 hcy
+drwxr-xr-x. 46    1003 root 4.0K May  7 17:04 hou
+drwx------. 28 pengfei user 4.0K May  7 15:21 pengfei
+drwxr-xr-x. 23    1008 user 4.0K May  7 15:07 xfwang
+drwx------. 15    1018 user 4.0K Apr 29 12:14 yushiya
+...
+
+
+只建立最基础的用户名和用户组信息。
+至少要保证用户名和uid一致，其次是gid最好也一致。
+
+创建分组 user 1001
+新建组
+$ sudo groupadd -g 1001 user
+
+
+添加用户
+$ username="wangjl" && uid=1013 && \
+sudo useradd -s /bin/bash -d /home/${username}  -m ${username} -u ${uid} -g 1001
+  -s, --shell SHELL             login shell of the new account
+  -d, --home-dir HOME_DIR       home directory of the new account
+  -m, --create-home             create the user's home directory
+  -u, --uid UID                 user ID of the new account
+  -g, --gid GROUP               name or ID of the primary group of the new account
+
+
+
+==> 如果已经有用户家目录了呢？
+on 测试机器上: 
+$ sudo groupadd -g 1001 user
+
+$ sudo mkdir /home/tom
+$ username="tom" && uid=1101 && \
+ sudo useradd -s /bin/bash -d /home/${username}  -m ${username} -u ${uid} -g 1001
+useradd: warning: the home directory already exists.
+Not copying any file from skel directory into it
+
+$ echo "123" | sudo passwd --stdin $username
+Changing password for user tom.
+passwd: all authentication tokens updated successfully.
+
+
+
+
+==> 实际加用户
+$ username="wangjl" && uid=1013 && \
+ sudo useradd -s /bin/bash -d /home/${username}  -m ${username} -u ${uid} -g 1001
+$ sudo passwd $username
+
+
+
+$ username="zhouwg" && uid=1037 && \
+ sudo useradd -s /bin/bash -d /home/${username}  -m ${username} -u ${uid} -g 1001
+$ sudo passwd $username
+
+
+
+$ username="xfwang" && uid=1008 && \
+ sudo useradd -s /bin/bash -d /home/${username}  -m ${username} -u ${uid} -g 1001
+$ sudo passwd $username
+
+
+$ username="hcy" && uid=1007 && \
+ sudo useradd -s /bin/bash -d /home/${username}  -m ${username} -u ${uid} -g 1001
+$ sudo passwd $username
+
+
+
+
+
+
+产生随机密码:
+$ date | md5sum | cut -c 1-8
+73d5cf53
+
+
+
+
+
+
+========================================
+|-- 检查 server 10 的磁盘阵列 RAID 
+----------------------------------------
+
+$ lsblk
+NAME               MAJ:MIN RM   SIZE RO TYPE MOUNTPOINT
+sda                  8:0    0   7.3T  0 disk 
+└─sda1               8:1    0   7.3T  0 part /data2
+sdb                  8:16   0   7.3T  0 disk 
+└─sdb1               8:17   0   7.3T  0 part /data3
+sdc                  8:32   0  1024G  0 disk 
+├─sdc1               8:33   0   200M  0 part /boot/efi
+├─sdc2               8:34   0   500M  0 part /boot
+├─sdc3               8:35   0 895.3G  0 part /
+└─sdc4               8:36   0   128G  0 part [SWAP]
+sdd                  8:48   0  17.2T  0 disk 
+├─sdd1               8:49   0   500M  0 part 
+└─sdd2               8:50   0  17.2T  0 part 
+  ├─centos00-root  253:0    0   500G  0 lvm  /mnt/old_root
+  ├─centos00-home  253:1    0   400G  0 lvm  /home
+  ├─centos00-swap  253:2    0   128G  0 lvm  
+  └─centos00-data1 253:3    0  16.2T  0 lvm  /data1
+sde                  8:64   0  72.8T  0 disk 
+└─sde1               8:65   0  72.8T  0 part /data4
+sdf                  8:80   0   7.3T  0 disk 
+└─sdf1               8:81   0   7.3T  0 part /mnt/data6
+sdg                  8:96   0   7.3T  0 disk 
+└─sdg1               8:97   0   7.3T  0 part /mnt/data8
+sr0                 11:0    1  1024M  0 rom 
+
+
+$ df -hT
+Filesystem                 Type      Size  Used Avail Use% Mounted on
+devtmpfs                   devtmpfs  126G     0  126G   0% /dev
+tmpfs                      tmpfs     126G     0  126G   0% /dev/shm
+tmpfs                      tmpfs     126G   19M  126G   1% /run
+tmpfs                      tmpfs     126G     0  126G   0% /sys/fs/cgroup
+/dev/sdc3                  xfs       895G  5.5G  890G   1% /
+/dev/sdc2                  xfs       497M  157M  340M  32% /boot
+/dev/sdc1                  vfat      200M   12M  189M   6% /boot/efi
+tmpfs                      tmpfs      26G   40K   26G   1% /run/user/1000
+/dev/sde1                  ext4       73T   64T  5.8T  92% /data4
+/dev/sdf1                  ext4      7.3T  5.5T  1.4T  80% /mnt/data6
+/dev/sdg1                  ext4      7.3T  5.6T  1.4T  81% /mnt/data8
+tmpfs                      tmpfs      26G     0   26G   0% /run/user/1013
+/dev/mapper/centos00-home  xfs       400G  276G  125G  69% /home
+/dev/mapper/centos00-root  xfs       500G  144G  357G  29% /mnt/old_root
+/dev/mapper/centos00-data1 xfs        17T  9.6T  6.7T  60% /data1
+/dev/sda1                  ext4      7.3T  5.2T  1.8T  75% /data2
+/dev/sdb1                  ext4      7.3T  313G  6.6T   5% /data3
+
+
+
+
+1. 确定厂家
+To find out which RAID you are using
+$ lspci | grep RAID
+03:00.0 RAID bus controller: Broadcom / LSI MegaRAID SAS-3 3108 [Invader] (rev 02)
+04:00.0 RAID bus controller: Broadcom / LSI MegaRAID SAS-3 3108 [Invader] (rev 02)
+
+* 文档: https://docs.broadcom.com/doc/pub-005183
+
+
+
+
+2. 下载软件
+LSI Broadcom RAID Monitoring
+https://www.fractionservers.com/knowledge-base/lsi-raid-monitoring/
+
+$ wget http://dl.marmotte.net/rpms/redhat/el7/x86_64/megacli-8.00.46-2/megacli-8.00.46-2.x86_64.rpm
+$ sudo rpm -ivh megacli-8.00.46-2.x86_64.rpm
+
+
+$ MegaCli -h
+ MegaCLI SAS RAID Management Tool  Ver 8.00.46 Feb 03, 2011
+    (c)Copyright 2010, LSI Corporation, All Rights Reserved.
+...
+
+
+
+
+
+3. 查看几个阵列
+$ sudo MegaCli -LdPdInfo -aALL | grep "RAID Level"
+RAID Level          : Primary-5, Secondary-0, RAID Level Qualifier-3
+RAID Level          : Primary-5, Secondary-0, RAID Level Qualifier-3
+RAID Level          : Primary-6, Secondary-0, RAID Level Qualifier-3
+
+一共3个，分别是 级别 5/5/6
+
+$ sudo MegaCli -ShowSummary -aALL | grep "RAID Level"
+                RAID Level         : 5 
+                RAID Level         : 5 
+                RAID Level         : 6
+
+
+
+==> 查看raid 状态 
+$ sudo MegaCli -LdInfo -lAll -aALL >~/tmp/MegaCli_all.txt
+
+$ cat MegaCli_all.txt
+                                     
+Adapter 0 -- Virtual Drive Information:
+Virtual Drive: 0 (Target Id: 0)
+Name                :os
+RAID Level          : Primary-5, Secondary-0, RAID Level Qualifier-3
+Size                : 1023.999 GB
+State               : Optimal
+Strip Size          : 64 KB
+Number Of Drives    : 6
+Span Depth          : 1
+Default Cache Policy: WriteBack, ReadAhead, Direct, No Write Cache if Bad BBU
+Current Cache Policy: WriteBack, ReadAhead, Direct, No Write Cache if Bad BBU
+Access Policy       : Read/Write
+Disk Cache Policy   : Disk's Default
+Encryption Type     : None
+Default Power Savings Policy: Controller Defined
+Current Power Savings Policy: None
+Can spin up in 1 minute: Yes
+LD has drives that support T10 power conditions: Yes
+LD's IO profile supports MAX power savings with cached writes: No
+Bad Blocks Exist: No
+
+
+Virtual Drive: 1 (Target Id: 1)
+Name                :
+RAID Level          : Primary-5, Secondary-0, RAID Level Qualifier-3
+Size                : 17.190 TB
+State               : Optimal
+Strip Size          : 64 KB
+Number Of Drives    : 6
+Span Depth          : 1
+Default Cache Policy: WriteBack, ReadAhead, Direct, No Write Cache if Bad BBU
+Current Cache Policy: WriteBack, ReadAhead, Direct, No Write Cache if Bad BBU
+Access Policy       : Read/Write
+Disk Cache Policy   : Disk's Default
+Encryption Type     : None
+Default Power Savings Policy: Controller Defined
+Current Power Savings Policy: None
+Can spin up in 1 minute: Yes
+LD has drives that support T10 power conditions: Yes
+LD's IO profile supports MAX power savings with cached writes: No
+Bad Blocks Exist: No
+
+
+Adapter 1 -- Virtual Drive Information:
+Virtual Drive: 0 (Target Id: 0)
+Name                :
+RAID Level          : Primary-6, Secondary-0, RAID Level Qualifier-3
+Size                : 72.768 TB
+State               : Optimal
+Strip Size          : 64 KB
+Number Of Drives    : 12
+Span Depth          : 1
+Default Cache Policy: WriteBack, ReadAhead, Direct, No Write Cache if Bad BBU
+Current Cache Policy: WriteBack, ReadAhead, Direct, No Write Cache if Bad BBU
+Access Policy       : Read/Write
+Disk Cache Policy   : Disk's Default
+Encryption Type     : None
+Default Power Savings Policy: Controller Defined
+Current Power Savings Policy: None
+Can spin up in 1 minute: Yes
+LD has drives that support T10 power conditions: Yes
+LD's IO profile supports MAX power savings with cached writes: No
+Bad Blocks Exist: No
+
+Exit Code: 0x00
+
+
+
+总结: =>按大小对应设备编号
+Adapter 0 -- Virtual Drive Information: 
+	Virtual Drive: 0 (Target Id: 0): RAID 5, 1T, 6块盘, Optimal => /dev/sdc
+	Virtual Drive: 1 (Target Id: 1): RAID 5, 17T, 6块盘, Optimal => /dev/sdd
+Adapter 1 -- Virtual Drive Information: 
+	Virtual Drive: 0 (Target Id: 0): RAID 6, 72T, 12块盘, Optimal => /dev/sde
+
+共2个设备，第一个设备包括2个虚拟 RAIDS。
+
+
+
+
+
+
+
+
+
+4. 查看磁盘
+
+这个 JBOD 什么意思？Just a Bunch of Disks，看意思就是磁盘连起来了，当成一块用，没有各种备份提速等功能。
+https://www.trentonsystems.com/blog/jbod-vs-raid-what-are-the-differences
+
+
+==>查看硬盘数量以及有无损坏，有几行就是有几个硬盘
+$ sudo MegaCli -PDList -aALL | grep "Firmware state"
+## Adapter #0
+Firmware state: Online, Spun Up #6x
+Firmware state: Online, Spun Up
+Firmware state: Online, Spun Up
+Firmware state: Online, Spun Up
+Firmware state: Online, Spun Up
+Firmware state: Online, Spun Up
+
+Firmware state: JBOD #? 6x
+Firmware state: JBOD
+
+## Adapter #1
+Firmware state: Online, Spun Up #12x
+Firmware state: Online, Spun Up
+Firmware state: Online, Spun Up
+Firmware state: Online, Spun Up
+Firmware state: Online, Spun Up
+Firmware state: Online, Spun Up
+Firmware state: Online, Spun Up
+Firmware state: Online, Spun Up
+Firmware state: Online, Spun Up
+Firmware state: Online, Spun Up
+Firmware state: Online, Spun Up
+Firmware state: Online, Spun Up
+
+指标说明 硬盘状态:
+Firmware state: Online, Spun Up 磁盘正常
+Firmware state: Unconfigured(good), Spun Up 磁盘已安装，但未启用
+Firmware state: Unconfigured(bad) 故障
+Firmware state: Failed 故障
+Firmware state: Rebuild 重建，一般在更换磁盘时显示
+
+
+
+
+==> 查看硬盘所有信息
+$ sudo MegaCli -PDList -aALL > ~/tmp/MegaCli_firwaare_state.txt
+
+磁盘大小，后12块毫无争议归 72T的 sde。
+前面的就不理解了，本来要 6x+6x，但现在只有 6+2块。
+	前面6块变成 6*3.6 = 1T ?
+	中间 2 块 JBOD 7.2*2=14T，明显不够用。
+
+$ cat ~/tmp/Megacli_firwaare_state.txt | grep "Raw Size"
+Raw Size: 3.638 TB [0x1d1c0beb0 Sectors] #6x
+Raw Size: 3.638 TB [0x1d1c0beb0 Sectors]
+Raw Size: 3.638 TB [0x1d1c0beb0 Sectors]
+Raw Size: 3.638 TB [0x1d1c0beb0 Sectors]
+Raw Size: 3.638 TB [0x1d1c0beb0 Sectors]
+Raw Size: 3.638 TB [0x1d1c0beb0 Sectors]
+
+Raw Size: 7.277 TB [0x3a3812ab0 Sectors] #6x
+Raw Size: 7.277 TB [0x3a3812ab0 Sectors]
+
+Raw Size: 7.277 TB [0x3a3812ab0 Sectors] #12x
+Raw Size: 7.277 TB [0x3a3812ab0 Sectors]
+Raw Size: 7.277 TB [0x3a3812ab0 Sectors]
+Raw Size: 7.277 TB [0x3a3812ab0 Sectors]
+Raw Size: 7.277 TB [0x3a3812ab0 Sectors]
+Raw Size: 7.277 TB [0x3a3812ab0 Sectors]
+Raw Size: 7.277 TB [0x3a3812ab0 Sectors]
+Raw Size: 7.277 TB [0x3a3812ab0 Sectors]
+Raw Size: 7.277 TB [0x3a3812ab0 Sectors]
+Raw Size: 7.277 TB [0x3a3812ab0 Sectors]
+Raw Size: 7.277 TB [0x3a3812ab0 Sectors]
+Raw Size: 7.277 TB [0x3a3812ab0 Sectors]
+
+
+$ cat ~/tmp/Megacli_firwaare_state.txt | grep "PD Type"
+PD Type: SAS # 都一样，只记录一条。
+
+
+$ cat MegaCli_firwaare_state.txt | grep "Connected Port Number"
+Connected Port Number: 6(path0) 
+Connected Port Number: 7(path0) 
+Connected Port Number: 5(path0) 
+Connected Port Number: 4(path0) 
+Connected Port Number: 2(path0) 
+Connected Port Number: 3(path0) 
+
+Connected Port Number: 1(path0) 
+Connected Port Number: 0(path0) 
+
+Connected Port Number: 1(path0) 0(path1) 
+Connected Port Number: 1(path0) 0(path1) 
+Connected Port Number: 1(path0) 0(path1) 
+Connected Port Number: 1(path0) 0(path1) 
+Connected Port Number: 1(path0) 0(path1) 
+Connected Port Number: 1(path0) 0(path1) 
+Connected Port Number: 1(path0) 0(path1) 
+Connected Port Number: 1(path0) 0(path1) 
+Connected Port Number: 1(path0) 0(path1) 
+Connected Port Number: 1(path0) 0(path1) 
+Connected Port Number: 1(path0) 0(path1) 
+Connected Port Number: 1(path0) 0(path1) 
+
+
+$ cat ~/tmp/MegaCli_firwaare_state.txt | grep "Enclosure Device ID"
+Enclosure Device ID: 32
+Enclosure Device ID: 32
+Enclosure Device ID: 32
+Enclosure Device ID: 32
+Enclosure Device ID: 32
+Enclosure Device ID: 32
+Enclosure Device ID: 32
+Enclosure Device ID: 32
+Enclosure Device ID: 0
+Enclosure Device ID: 0
+Enclosure Device ID: 0
+Enclosure Device ID: 0
+Enclosure Device ID: 0
+Enclosure Device ID: 0
+Enclosure Device ID: 0
+Enclosure Device ID: 0
+Enclosure Device ID: 0
+Enclosure Device ID: 0
+Enclosure Device ID: 0
+Enclosure Device ID: 0
+
+
+厂家?
+$ cat ~/tmp/MegaCli_firwaare_state.txt | grep "^Inquiry Data"
+Inquiry Data: HGST    HUS726040ALS214 KJ03N8GW352Y            
+Inquiry Data: HGST    HUS726040ALS214 KJ03N8GW7H2Y            
+Inquiry Data: HGST    HUS726040ALS214 KJ03N8GW8WKY            
+Inquiry Data: HGST    HUS726040ALS214 KJ03N8GW6TTY            
+Inquiry Data: HGST    HUS726040ALS214 KJ03N8GW6YHY            
+Inquiry Data: HGST    HUS726040ALS214 KJ03N8GW2YUY            
+Inquiry Data: SEAGATE ST8000NM0185    PT51ZA19FP56            
+Inquiry Data: SEAGATE ST8000NM0185    PT51ZA19FN9F            
+Inquiry Data: SEAGATE ST8000NM0185    PT51ZA19FP5D            
+Inquiry Data: SEAGATE ST8000NM0185    PT51ZA19FC1J            
+Inquiry Data: SEAGATE ST8000NM0185    PT51ZA19FN6R            
+Inquiry Data: SEAGATE ST8000NM0185    PT51ZA19EL8K            
+Inquiry Data: SEAGATE ST8000NM0185    PT51ZA19FBTK            
+Inquiry Data: SEAGATE ST8000NM0185    PT51ZA19FBMV            
+Inquiry Data: SEAGATE ST8000NM0185    PT51ZA19FC0S            
+Inquiry Data: SEAGATE ST8000NM0185    PT51ZA19FBLV            
+Inquiry Data: SEAGATE ST8000NM0185    PT51ZA19FP4D            
+Inquiry Data: SEAGATE ST8000NM0185    PT51ZA19FBHX            
+Inquiry Data: SEAGATE ST8000NM0185    PT51ZA19FC6J            
+Inquiry Data: SEAGATE ST8000NM0185    PT51ZA19EXL0
+
+日立环球存储科技公司(HGST)
+希捷（Seagate）
+
+
+(2) 猜想，可能是同6个盘，建立了2个 RAIDS 
+
+https://www.dell.com/community/PowerEdge-Hardware-General/Two-different-RAID-Virtual-Disks-across-same-physical-disks/td-p/5172743
+You could create a second VD across the same set of disks, but ONLY if all disks in the disk group has the space available, and the type (RAID 1, 5, etc.) must match: two RAID 1's, 4 RAID 1's, 2 RAID 5's, 3 RAID 5's, etc.
+
+
+
+
+
+
+
+
+
+========================================
+[重装 server 193] 安装 193 时遇到分区报错: Error Installing CentOS 7 - An unknown error has occurred
+----------------------------------------
+1. 基本信息 
+(1) 193 server 是 联想 SR590 /SR850 中的一个。
+因为合同中是买了两个，ip结尾分别是 193 和 194，不过不确定怎么对应起来。
+
+(2) 硬盘结构 
+/dev/sda 0.5T  system /  /boot  /boot/efi
+/dev/sdb 8T    /home 
+
+/dev/sdc  146T  /data
+/dev/sdd  146T  /data
+/dev/sde   89T  /mnt/test1
+
+而重装的时候，只能识别三个盘， sd[a,b,c] 其中c还是U盘系统启动盘。
+其余的数据盘 sd[cde] 找不到，也就不用操心了。
+ab 厂家是 Lenovo 
+cde 厂家是 DELL 
+
+
+(3) ab 盘其实也是 RAID 
+0.5T * 2 SATA = RAID 1, 0.5T, 读写性能，有冗余，每块盘都是冗余，能坏 n-1 块。
+1.6T * 6 SAS  = RAID 5,  8T, N块数据放在 N+1 上，最多坏 1 块，现在已经坏了1块。读取速度很慢，这可能是服务器慢的原因。
+
+
+
+
+(4) /dev/sdc 和 sdd 是 多路径存储 multipath ，可能需要找 DELL 的驱动才能识别这块盘。
+$ ls -ltha /opt/
+drwxr-xr-x   3 root root   26 May  9 22:54 lsi
+drwxrwxr-x.  3 root root   31 Dec 12  2018 dell  #这时间线很对，就是装机器当天装的这个包
+
+$ ls -ltha /opt/dell
+total 0
+drwxrwxr-x. 6 root root 219 Dec 12  2018 mdstoragesoftware
+
+
+$ ls -ltha /opt/dell/mdstoragesoftware/
+total 148K
+-rwxr-xr-x. 1 root root 9.3K Dec 12  2018 Dell_MD_Storage_Software_Install_12_12_2018_06_01_06.log
+drwxrwxrwx. 2 root root  212 Dec 12  2018 Uninstall Dell MD Storage Software
+drwxrwxr-x. 5 root root 4.0K Dec 12  2018 mdconfigurationutility
+drwxrwxr-x. 9 root root 4.0K Dec 12  2018 mdstoragemanager
+-rw-rw-r--. 1 root root 127K Dec 12  2018 installer_postpreinstall_debug.txt
+drwxrwxr-x. 6   10  143  211 Oct  8  2013 jre
+
+
+$ tree -L 3 /opt/dell
+/opt/dell
+└── mdstoragesoftware
+    ├── Dell_MD_Storage_Software_Install_12_12_2018_06_01_06.log
+    ├── installer_postpreinstall_debug.txt
+    ├── jre
+    │   ├── bin
+    │   ├── COPYRIGHT
+    │   ├── lib
+    │   ├── LICENSE
+    │   ├── man
+    │   ├── plugin
+    │   ├── README
+    │   ├── release
+    │   ├── THIRDPARTYLICENSEREADME-JAVAFX.txt
+    │   ├── THIRDPARTYLICENSEREADME.txt
+    │   └── Welcome.html
+    ├── mdconfigurationutility
+    │   ├── javahelp
+    │   ├── jre
+    │   ├── lax.jar
+    │   ├── log4j.xml
+    │   ├── mdcu.desktop
+    │   ├── mdcuIcon.png
+    │   ├── mdcu.jar
+    │   ├── Modular\ Disk\ Configuration\ Utility
+    │   ├── Modular_Disk_Configuration_Utility_Install_12_12_2018_06_01_00.log
+    │   ├── Modular\ Disk\ Configuration\ Utility.lax
+    │   └── Uninstall\ Modular\ Disk\ Configuration\ Utility
+    ├── mdstoragemanager
+    │   ├── agent
+    │   ├── client
+    │   ├── eula.html
+    │   ├── ia
+    │   ├── InstallLogs
+    │   ├── jre
+    │   ├── PowerVault\ Modular\ Disk\ Storage\ Manager_InstallErrorLog.log
+    │   ├── SMagent.rpm
+    │   ├── SMclient.rpm
+    │   ├── SMesm.rpm
+    │   ├── SMruntime.rpm
+    │   ├── SMutil.rpm
+    │   ├── Uninstall\ PowerVault\ Modular\ Disk\ Storage\ Manager
+    │   ├── UpdateJREPath.sh
+    │   └── util
+    └── Uninstall\ Dell\ MD\ Storage\ Software
+        ├── InstallScript.iap_xml
+        ├── installvariables.properties
+        ├── Uninstall\ Dell\ MD\ Storage\ Software
+        ├── Uninstall\ Dell\ MD\ Storage\ Software.lax
+        └── uninstaller.jar
+
+
+确实有2个进程：
+$ ps -aux | grep mdstoragemanager
+root       5629  0.0  0.1 13523852 526088 ?     Sl   May09   4:25 /opt/dell/mdstoragesoftware/mdstoragemanager/jre/bin/java -Xmx768m -no-jre-restrict-search -classpath /opt/dell/mdstoragesoftware/mdstoragemanager/client/SMclient.jar -Ddevmgr.datadir=/var/opt/SM -DstorageManager=6 -Ddevmgr.dmv.featureOption=FULL_SA devmgr.pmlauncher.unix.PMUNIXLauncher
+root       5645  0.2  0.0 13360640 329020 ?     Sl   May09  11:30 /opt/dell/mdstoragesoftware/mdstoragemanager/jre/bin/java -no-jre-restrict-search -classpath /opt/dell/mdstoragesoftware/mdstoragemanager/agent/SMagent.jar -Xmx1024m devmgr.launcher.unix.AgentLauncher -r -c
+
+
+官方网站 https://www.dell.com/support/home/zh-cn/drivers/driversdetails?driverid=vdj1m
+
+
+
+
+
+
+
+(5) 查一下存储软件的版本？方便以后下载使用
+
+$ pwd
+/opt/dell/mdstoragesoftware/mdstoragemanager/client
+
+
+$ sudo SMcli -autoSupportConfig show
+The AutoSupport feature is de-activated on this storage management station.
+The AutoSupport OnDemand feature is activated on this storage management station.
+The AutoSupport Remote Diagnostics feature is activated on this storage management station.
+
+Delivery Method: HTTPS
+ Destination IP address: https://testsupport.netapp.com/put/AsupPut/
+  Connection: Direct
+
+Name     AutoSupport Capable  AutoSupport OnDemand Capable  Chassis Serial Number  IP Address                                            
+Unnamed  No                   No                            8ZLFWS2                172.18.5.195/172.18.5.195, 172.18.5.196/172.18.5.196  
+
+SMcli completed successfully.
+
+
+搜索驱动：
+https://www.dell.com/support/home/zh-cn/?app=drivers
+关键词: 8ZLFWS2
+
+
+
+产品名字: PowerVault MD3800f
+服务编号: 8ZLFWS2 | 快速服务代码: 19566589106
+支持服务: 已过期 11 11月 2021
+发货日期 09 11月 2018 | 位置 China
+
+
+光盘:DELL_MDSS_Consolidated_RDVD_6_5_0_1.iso  文件大小：2.84 GB
+https://www.dell.com/support/home/zh-cn/drivers/driversdetails?driverid=r9g1x&oscode=rhe70&productcode=powervault-md3800f
+历史版本: 
+https://www.dell.com/support/home/zh-cn/drivers/driversdetails?driverid=pcrcj&oscode=rhe70&productcode=powervault-md3800f
+Dell PowerVault MD32/MD34/MD36/MD38系列资源DVD
+https://www.dell.com/support/home/zh-cn/drivers/driversdetails?driverid=pcrcj&oscode=rhe70&productcode=powervault-md3800f
+
+
+
+搜到一个 lsi 
+https://www.dell.com/support/home/zh-cn/drivers/driversdetails?driverid=mrcwr&oscode=rhe70&productcode=powervault-md3800f
+
+$ ls -lth /opt/lsi/3rdpartylibs/x86_64/
+total 92K
+-rwxr-xr-x 1 root root 92K Mar 29  2010 libsysfs.so.2.0.2
+
+
+
+==> 日志文件记录: DVD 版本号是 6.5.0.1
+$ pwd
+/opt/dell/mdstoragesoftware/mdstoragemanager
+$ sudo less InstallLogs/PowerVault_Modular_Disk_Storage_Manager_Install_12_12_2018_06_00_05.log
+
+Wed Dec 12 06:00:39 EST 2018
+
+Free Memory: 56758 kB
+Total Memory: 210432 kB
+
+4 Command Line Args:
+0:  -f
+1:  /mnt/DELL_MDSS_Consolidated_RDVD_6_5_0_1/linux/mdsm/full.properties
+2:  -DUSER_INSTALL_DIR=/opt/dell/mdstoragesoftware/mdstoragemanager
+3:  -DAUTO_START_CHOICE=1
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+2. 可能的解决方法
+
+# https://forums.centos.org/viewtopic.php?t=47091&p=200776
+Boot in rescue mode and try running dmraid -r -E /dev/sda and see if that helps. Please make sure there is no useful data on the disk before you try that!
+
+
+dmraid - discover, configure and activate software (ATA)RAID
+
+$ dmraid -E -r /dev/sda
+# dmraid	{-r|--raid_devices} *
+	        {-E|--erase_metadata}
+# That removed the RAID metadata friom the drive.
+
+
+# https://www.linuxquestions.org/questions/linux-hardware-18/error-installing-centos-7-boot-loader-4175510932/
+## when you install, press tab for more options (first menu screen on installation)
+then at the string at the bottom, append this to it dmraid -r -E /dev/sda
+Please note that this will erase ALL the data on the disk, so make sure you dont have anything important on the disk.
+
+
+
+联想ThinkServer SR588 重装raid5阵列信息（装完centos7后，找不到硬盘）
+https://blog.csdn.net/leetyou/article/details/116144247
+
+
+
+
+https://djlab.com/2013/07/removing-raid-metadata/
+You could just zero the whole disk, but that could take hours. This command executes in less than a second.
+$ dd if=/dev/zero of=$YOUR_DEV bs=512 seek=$(( $(blockdev --getsz $YOUR_DEV) - 1024 )) count=1024
+## Replace $YOUR_DEV with the physical device, such as /dev/sda
+
+
+
+
+
+
+
+3. 阵列卡和网卡的dd驱动
+https://lenovopress.lenovo.com/lp0877-thinksystem-raid-730-8i-internal-raid-adapters
+老版本的驱动(https://blog.csdn.net/hanzheng260561728/article/details/83307061)
+http://webdoc.lenovo.com.cn/lenovowsi/new_cskb/att/167754/lnvgy_dd_sraidmr_7.702.06.00_rhel7.3_x86-64_dd.zip
+
+(https://iknow.lenovo.com.cn/detail/kd_26173.html)
+http://webdoc.lenovo.com.cn/lenovowsi/new_cskb/att/177724/dd.iso  #这个不行
+
+
+https://lenovopress.lenovo.com/lp0877.pdf
+
+lnvgy_fw_sraidmr_730-24.21.0-0112-1_linux_x86-64.bin
+https://support.lenovo.com/us/en/downloads/ds542084-thinksystem-raid-730-8i-pcie-12gb-adapter-update-bios-and-firmware-for-linux
+
+
+lnvgy_fw_sraidmr_730-24.21.0-0052-1_linux_x86-64.bin
+https://support.lenovo.com/mo/en/downloads/ds504268-bios-and-firmware-update-for-thinksystem-raid-730-8i-1gb-cache-pcie-12gb-adapter-for-linux
+
+
+lnvgy_fw_sraidmr_730-24.21.0-0067-2_linux_x86-64.bin
+https://support.lenovo.com/in/en/downloads/ds505426-thinksystem-raid-730-8i-1gb-cache-pcie-12gb-adapter-update-bios-and-firmware-for-linux
+
+
+lnvgy_fw_raid_mr3.0.730-24.21.0-0143-0_linux_windows_x86-64.7z
+https://datacentersupport.lenovo.com/cn/zc/downloads/ds549941
+
+
+
+(2) 更多下载
+https://datacentersupport.lenovo.com/cn/zc/search?query=RAID%20730-8i&SearchType=Customer%20search&searchLocation=Masthead
+lnvgy_fw_raid_mr3.0.730-24.21.0-0143-0_linux_windows_x86-64.7z
+https://datacentersupport.lenovo.com/cn/zc/downloads/ds549941
+
+
+(3) 机器型号 SR850
+https://datacentersupport.lenovo.com/us/zc/products/servers/thinksystem/sr850/7x18/contactus?linkTrack=Caps%3ABody_SearchProduct&searchType=0&keyWordSearch=
+
+驱动
+https://datacentersupport.lenovo.com/us/zc/products/servers/thinksystem/sr850/7x18/downloads/driver-list/
+
+
+Ctrl+F: raid 730-8i
+https://datacentersupport.lenovo.com/us/zc/products/servers/thinksystem/sr850/7x18/downloads/driver-list/component?name=RAID%2FSAS%20HBA%20Controllers,%20Backplanes,%20Storage%20Expanders%2FSwitches,%20Bootable%20Storage
+
+lnvgy_fw_sraidmr_730-24.21.0-0076-2_linux_x86-64.bin
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+========================================
+磁盘阵列 RAID 原理与级别
+----------------------------------------
+
+1. 硬盘 是绝大多数计算机的性能瓶颈
+
+内存的速度可以达到 5G/s
+
+硬盘类型  速度
+SATA <150M/s
+SAS 200M/s 左右
+
+SSD 500M/s 固态硬盘
+
+IOPS  
+
+
+
+
+2. 现代硬盘的缺陷: IO性能极弱、稳定性极差
+- RAID (Redundant Array of Independent Disks) 廉价磁盘冗余阵列技术是通过多次盘并行运行来提高计算机的存储IO性能。
+
+https://www.enterprisestorageforum.com/management/raid-levels-explained/
+- RAID 分为很多种类，称为 RAID 级别，现代 RAID 共有7类，常用的有以下4类
+	RAID 0 读写性能
+	RAID 1 读写性能、冗余性
+	
+	RAID 5 读写性能、冗余性(1块硬盘故障不损失数据)
+	RAID 6 读写性能、冗余性(2块硬盘故障不损失数据)
+
+实际使用最多的是 RAID 5和6。
+
+
+多块磁盘组成一个 RAID 后，系统只看到一个合成的硬盘，看不到底层的硬盘。
+RAID 需要的底层硬盘大小要一致，最好厂家、品牌、规格也一致。防止因为硬盘不兼容出现问题。
+
+
+(1) RAID 0
+最少使用2块硬盘，在读写时，将数据分开读写到多块硬盘的方式，提高读写性能。
+
+RAID 0 
+	A1 A3 A5 ...
+	A2 A4 A6 ...
+
+空间利用率: 所有硬盘空间之和
+性能: 所有硬盘速度之和
+冗余能力: 无 
+
+
+
+(2) RAID 1
+最少2块硬盘，在写数据的时候，数据复制到多块硬盘上。
+在读数据时，以提供冗余性。
+同时从多块硬盘读取数据，以提高读性能。
+
+RAID 1
+	A1 A2 A3 ...
+	A1 A2 A3 ...
+
+空间利用率: min(所有硬盘空间最小的那块)
+性能: 读性能为所有硬盘速度之和，写性能会有所减弱。
+冗余能力: 只要有一块硬盘正常，数据就正常。
+
+
+
+(3) RAID 5
+RAID 5 最少使用3块硬盘， RAID 5和RAID 0类似，读写数据的时候会将数据分布式的读写在所有硬盘上，但是在写数据的时候会对数据进行奇偶校验运算，将校验信息同时保存在硬盘上，校验信息可以进行数据恢复使用。
+
+RAID 5
+	A1 B1 C1 Dp ... 
+	A2 B2 Cp D2 ... 
+	A3 Bp C3 D3 ... 
+	Ap B4 C4 D4 ... 
+
+空间利用率: 1-1/n
+性能: 读性能接近 RAID 0，写性能较 RAID 0 弱一些。
+冗余能力: 可接受1块硬盘损坏。
+
+
+
+(4) RAID 6
+RAID 6 最少使用4块硬盘， RAID 6和RAID 5类似，读写数据的时候会将数据分布式的读写在所有硬盘上，但是在写数据的时候会对数据进行奇偶校验运算，将校验信息同时保存在硬盘上，校验信息可以进行数据恢复使用。
+但比RAID5多保存了一份校验信息，所以冗余叫RAID 5有所提升。
+
+RAID 6
+	A1 B1 C1 Dp ... 
+	A2 B2 Cp Dq ... 
+	A3 Bp Cq D3 ... 
+	Ap Bq C4 D4 ... 
+	Aa B5 C5 D5 ... 
+
+空间利用率: 1-2/n
+性能: 读性能接近 RAID 5，写性能较 RAID 5 弱一些。
+冗余能力: 可接受2块硬盘损坏。
+
+
+
+(5) 其他少用的级别
+RAID 3 is rarely implemented. It uses byte-level striping and parity, and stores parity calculations on dedicated disk. Like RAID 2, it typically cannot service multiple requests at the same time. This does not affect the performance of large sequential reads and writes, but does slow down random access workloads.
+
+parity [ˈpærəti] n. （尤指薪金或地位）平等，相同；（两个不同国家的货币单位的）平价，等价；（数字）奇偶性；
+
+
+https://baike.baidu.com/item/RAID%203/10898521?fr=aladdin
+RAID 3是把数据分成多个“块”，按照一定的容错算法，存放在N+1个硬盘上，实际数据占用的有效空间为N个硬盘的空间总和，而第N+1个硬盘上存储的数据是校验容错信息，当这N+1个硬盘中的其中一个硬盘出现故障时，从其它N个硬盘中的数据也可以恢复原始数据，这样，仅使用这N个硬盘也可以带伤继续工作（如采集和回放素材），当更换一个新硬盘后，系统可以重新恢复完整的校验容错信息。由于在一个硬盘阵列中，多于一个硬盘同时出现故障率的几率很小，所以一般情况下，使用RAID3，安全性是可以得到保障的。
+
+RAID3更加适合应用于那些写入操作较少，读取操作较多的应用环境，如数据库和web服务器等。
+与RAID0相比，RAID3在读写速度方面相对较慢。
+使用的容错算法和分块大小决定RAID使用的应用场合，在通常情况下，RAID3比较适合大文件类型且安全性要求较高的应用，如视频编辑、硬盘播出机、大型数据库等。
+
+
+
+
+
+
+
+3. RAID 的实现
+(1) 软件 RAID 
+通过系统功能或 RAID 软件实现 RAID，没有独立硬件和接口，需要占用一定的系统资源(CPU、硬盘接口速度)，并且受操作系统稳定性影响。
+
+windows 和 linux 都支持。
+
+
+(2) 硬件 RAID (推荐)
+通过独立的 RAID 硬件卡实现，有些主板集成 RAID 硬件，有些需要购买独立的 RAID 硬件卡，硬件 RAID 实现不需要占用其他硬件资源，稳定性和速度都比软件 RAID 要强。
+
+
+
+
+
+
+========================================
+|-- 软件 RAID 的实现: mdadm (没测试过) //todo
+----------------------------------------
+
+1. linux通过 mdadm 实现的 软件 RAID 
+multi disk admin
+
+- mdadm 支持的 RAID 级别有: 0,1,4,5,6
+- mdadm 可以基于多块硬盘、分区或者逻辑卷创建软件 RAID。
+- 创建好的软件 RAID 对应 /dev/mdn, n为第几个 RAID，如第一个创建的 RAID 为 /dev/md0， 第二个为 /dev/md1
+- RAID 的信息保存在 /proc/mdstat 文件中，或通过 mdadm 命令查看。
+
+$ mdadm --version
+mdadm - v4.1 - 2018-10-01
+
+
+
+
+
+
+2. 创建 RAID 
+https://zhuanlan.zhihu.com/p/94109810
+
+可以看到创建时有个Note的提示，是说软raid不能当启动设备，这就是软raid比较鸡肋的地方了。
+
+(1) 创建 RAID 0
+$ sudo mdadm -C /dev/md0 -a yes -I 0 -n 2 /dev/sdb /dev/sdc 
+参数 man mdadm
+-C --create 创建一个 RAID 
+-a --auto　自动创建对应设备
+-I 指定要创建的 RAID 级别
+-n --raid-devices 阵列中活动磁盘的数目，该数目加上备用磁盘的数目应该等于阵列中总的磁盘数目;
+
+
+$ mdadm -C /dev/md0 -ayes -l1 -n2 /dev/xvd[b,c]1
+-l, --level=
+	Set RAID level.  When used with --create, options are: linear, raid0, 0, stripe, raid1, 1, mirror, raid4, 4, raid5, 5, raid6, 6, raid10, 10, multipath, mp, faulty, container.  Obviously some of these are  synonymous.
+
+	When a CONTAINER metadata type is requested, only the container level is permitted, and it does not need to be explicitly given.
+	When used with --build, only linear, stripe, raid0, 0, raid1, multipath, mp, and faulty are valid.
+	Can be used with --grow to change the RAID level in some cases.  See LEVEL CHANGES below.
+
+
+建完成后可以使用cat /proc/mdstat查看阵列状态。
+图略。
+下图中第一次查看的时候提示resync完成了95.7%，第二次查询的时候两块盘才真正同步完。
+
+
+创建配置文件，保证重启时 RAID 都还在: 
+$ sudo mdadm -D --scan > /etc/mdadm.conf
+
+
+创建文件系统 
+$ mkfs.ext4 /dev/md0 
+挂载使用
+$ mount /dev/md0 /mnt 
+
+
+
+
+
+
+(2) 查看 RAID 信息 
+$ sudo mdadm -D /dev/md0 
+
+/proc 中的文件也包含 RAID 相关信息:
+$ cat /proc/mdstat
+
+
+如果磁盘比较大，则需要一段时间才能创建成功 RAID 5，需要看 /proc/mdstat 进度条。
+
+
+# cat /etc/mdadm.conf
+cat: /etc/mdadm.conf: No such file or directory
+
+# cat /proc/mdstat
+# mdadm --detail /dev/md126
+
+
+
+
+
+
+(3) 也可以使用一个 -x 参数指定一个备份磁盘
+备份磁盘一般不使用，当出现故障盘时，指定的备份磁盘可以自动上线工作:
+$ mdadm -C /dev/md0 -a yes -I 5 -n 3 -x 1 /dev/sdb /dev/sdc /dev/sdd /dev/sde 
+
+最后一个盘 /dev/sde 一般不用，故障时启用，否则就需要人工替换磁盘。
+
+
+
+(4) 关闭 RAID 
+先卸载， umont 
+然后关闭 RAID: $ mdadm -S /dev/md0 
+
+启用一个 RAID: $ mdadm -R /dev/md0 
+
+
+
+(5) 如果不想使用 RAID ，磁盘想单独它用
+
+先卸载，再关闭 RAID。
+然后清空数据: 
+$ mdadm --zero-superblock /dev/sdb
+$ mdadm --zero-superblock /dev/sdc
+
+
+
+
+(6) 模拟故障 
+实验环境中，通过 -f 把一个设备标识位故障
+$ mdadm /dev/md0 -f /dev/sdb 
+
+之后，移除故障硬盘
+$ mdadm /dev/md0 -r /dev/sdb 
+
+换上新的硬盘后，经心得硬盘添加到 RAID 中
+$ mdadm /dev/md0 -a /dev/sdb 
+
+
+
+
+
+
+
+
+
+========================================
+|-- 硬件 RAID, fakeRAID using dmraid, BIOS RAID 
+----------------------------------------
+https://wenku.baidu.com/view/91fae1911937f111f18583d049649b6648d709ee.html
+
+1. 基本信息
+Fake raid is accessed with the dmraid utility, not mdadm.
+https://help.ubuntu.com/community/FakeRaidHowto
+
+$ dmraid -V
+dmraid version:		1.0.0.rc16 (2009.09.16) debug 
+dmraid library version:	1.0.0.rc16 (2009.09.16)
+device-mapper version:	unknown
+
+
+$ dmraid -l
+asr     : Adaptec HostRAID ASR (0,1,10)
+ddf1    : SNIA DDF1 (0,1,4,5,linear)
+hpt37x  : Highpoint HPT37X (S,0,1,10,01)
+hpt45x  : Highpoint HPT45X (S,0,1,10)
+isw     : Intel Software RAID (0,1,5,01)
+jmicron : JMicron ATARAID (S,0,1)
+lsi     : LSI Logic MegaRAID (0,1,10)
+nvidia  : NVidia RAID (S,0,1,10,5)
+pdc     : Promise FastTrack (S,0,1,10)
+sil     : Silicon Image(tm) Medley(tm) (0,1,10)
+via     : VIA Software RAID (S,0,1,10)
+dos     : DOS partitions on SW RAIDs
+
+
+
+
+查看所有的 RAID 磁盘
+$ sudo dmraid -ay
+no raid disks
+
+
+
+
+
+
+2. 检查磁盘硬件
+
+(1) 确定厂家
+使用lspci确保您的服务器已连接到RAID控制器。
+
+To find out which RAID you are using
+$ lspci | grep RAID
+1b:00.0 RAID bus controller: Broadcom / LSI MegaRAID SAS-3 3108 [Invader] (rev 02)
+
+* 文档: https://docs.broadcom.com/doc/pub-005183
+
+这表明我这存在 MegaRaid controller，我可以愉快的使用MegaCli搞事！
+
+
+
+
+(2) 下载软件
+LSI Broadcom RAID Monitoring
+https://www.fractionservers.com/knowledge-base/lsi-raid-monitoring/
+
+$ wget http://dl.marmotte.net/rpms/redhat/el7/x86_64/megacli-8.00.46-2/megacli-8.00.46-2.x86_64.rpm
+$ sudo rpm -ivh megacli-8.00.46-2.x86_64.rpm
+
+
+$ MegaCli -h
+      MegaCLI SAS RAID Management Tool  Ver 8.00.46 Feb 03, 2011
+    (c)Copyright 2010, LSI Corporation, All Rights Reserved.
+NOTE: The following options may be given at the end of any command below: 
+    [-Silent] [-AppLogFile filename] [-NoLog] [-page[N]] 
+                 [-] is optional. 
+                  N - Number of lines per page. 
+
+
+## Checking the RAID status
+$ sudo MegaCli -AdpAllInfo -a0
+...
+                Capabilities
+                ======== ========
+RAID Level Supported             : RAID0, RAID1, RAID5, RAID00, RAID10, RAID50, PRL 11, PRL 11 with spanning, SRL 3 supported, PRL11-RLQ0 DDF layout with no span, PRL11-RLQ0 DDF layout with span
+Supported Drives                 : SAS, SATA
+...
+
+
+
+
+
+
+
+
+https://blog.csdn.net/wojiuwangla/article/details/113940417
+==> 查看raid 状态 
+$ MegaCli -LdInfo -lAll -aALL
+Adapter 0 -- Virtual Drive Information:
+Virtual Drive: 0 (Target Id: 0)
+Name                :System
+RAID Level          : Primary-1, Secondary-0, RAID Level Qualifier-0  #级别0
+Size                : 446.102 GB #这个大小只能是  /dev/sda
+State               : Optimal #状态: 良好
+Strip Size          : 64 KB
+Number Of Drives    : 2 #共2块硬盘
+Span Depth          : 1
+Default Cache Policy: WriteBack, ReadAheadNone, Direct, No Write Cache if Bad BBU
+Current Cache Policy: WriteThrough, ReadAheadNone, Direct, No Write Cache if Bad BBU
+Access Policy       : Read/Write
+Disk Cache Policy   : Disk's Default
+Encryption Type     : None
+
+
+Virtual Drive: 1 (Target Id: 1)
+Name                :localData
+RAID Level          : Primary-5, Secondary-0, RAID Level Qualifier-3 #级别3
+Size                : 8.180 TB  #这个大小可能是 /dev/sdb, 而不是 a
+State               : Degraded #状态: 降级
+Strip Size          : 64 KB
+Number Of Drives    : 6  #共6块硬盘
+Span Depth          : 1
+Default Cache Policy: WriteBack, ReadAheadNone, Direct, No Write Cache if Bad BBU
+Current Cache Policy: WriteThrough, ReadAheadNone, Direct, No Write Cache if Bad BBU
+Access Policy       : Read/Write
+Disk Cache Policy   : Disabled
+Encryption Type     : None
+
+Exit Code: 0x00
+
+指标说明
+State               : Degraded（降级）
+State               : Offline（离线）
+State               : Optimal（正常）
+Number Of Drives    : 2  RAID组包含2块磁盘。
+* degraded [dɪˈɡreɪdɪd] adj. 退化的；堕落的；被降级的
+
+
+
+
+
+==>查看硬盘数量以及有无损坏，有几行就是有几个硬盘
+$ sudo MegaCli -PDList -aALL | grep "Firmware state"
+Firmware state: Online, Spun Up
+Firmware state: Online, Spun Up
+Firmware state: Failed           #故障盘，第三块
+Firmware state: Online, Spun Up
+Firmware state: Online, Spun Up
+Firmware state: Online, Spun Up
+Firmware state: Online, Spun Up
+Firmware state: Online, Spun Up
+
+指标说明
+硬盘状态:
+Firmware state: Online, Spun Up 磁盘正常
+Firmware state: Unconfigured(good), Spun Up 磁盘已安装，但未启用
+Firmware state: Unconfigured(bad) 故障
+Firmware state: Failed 故障
+Firmware state: Rebuild 重建，一般在更换磁盘时显示
+
+
+
+
+==> 查看硬盘所有信息
+$ sudo MegaCli -PDList -aALL > ~/Megacli_firwaare_state.txt
+...
+Enclosure Device ID: 252
+Slot Number: 2  #第三块磁盘，编号从0开始
+Enclosure position: 0
+Device Id: 8
+Sequence Number: 2
+Media Error Count: 0
+Other Error Count: 0
+Predictive Failure Count: 0
+Last Predictive Failure Event Seq Number: 0
+PD Type: SAS
+Raw Size: 1.636 TB [0xd196e9b0 Sectors]
+Non Coerced Size: 1.636 TB [0xd186e9b0 Sectors]
+Coerced Size: 1.635 TB [0xd16e6000 Sectors]
+Firmware state: Failed                #状态是失败
+SAS Address(0): 0x50000398f809389e
+SAS Address(1): 0x0
+Connected Port Number: 2(path0) 
+Inquiry Data: LENOVO  AL15SEB18EQ     TB52T5W2LG6WTB52TB52TB52
+FDE Capable: Not Capable
+FDE Enable: Disable
+Secured: Unsecured
+Locked: Unlocked
+Needs EKM Attention: No
+Foreign State: None 
+Device Speed: Unknown 
+Link Speed: Unknown 
+Media Type: Hard Disk Device
+Drive:  Not Certified
+Drive Temperature :34C (93.20 F)
+...
+
+
+部分参数解释:
+Slot Number: ---硬盘槽号
+PD Type:         -----磁盘接口类型
+InquiryData:               -----硬盘的序列号、型号、固件版本
+Raw Size:  -----磁盘原始大小
+NonCoerced Size:    -----磁盘标准大小
+CoercedSize:  ------磁盘最大可用大小
+Medai Error Count:  ------表示磁盘可能错误，可能是磁盘有坏道，这个值不为0值得注意，数值越大，危险系数越高。
+Other Error Count:   ------表示磁盘可能存在松动，可能需要重新再插入。
+Predictive Failure Count: -----预测故障计数
+
+
+磁盘大小
+$ cat Megacli_firwaare_state.txt | grep "Raw Size"
+Raw Size: 447.130 GB [0x37e436b0 Sectors] # RAID 1
+Raw Size: 447.130 GB [0x37e436b0 Sectors]
+
+Raw Size: 1.636 TB [0xd196e9b0 Sectors]  # RAID 5
+Raw Size: 1.636 TB [0xd196e9b0 Sectors]
+Raw Size: 1.636 TB [0xd196e9b0 Sectors]
+Raw Size: 1.636 TB [0xd196e9b0 Sectors]
+Raw Size: 1.636 TB [0xd196e9b0 Sectors]
+Raw Size: 1.636 TB [0xd196e9b0 Sectors]
+
+
+
+
+==> 查看raid级别
+有时候认出比较难，推荐第二种
+$ sudo MegaCli -LdPdInfo -aALL | grep "RAID Level"
+RAID Level          : Primary-1, Secondary-0, RAID Level Qualifier-0
+RAID Level          : Primary-5, Secondary-0, RAID Level Qualifier-3
+
+raid级别说明:
+RAIDLevel : Primary-0, Secondary-0, RAID Level Qualifier-0     这就是raid0           
+0 0 0 是raid0    
+1 0 0 是raid1  
+5 0 3 是raid5  
+1 3 0 是raid10
+
+raid1 还需要结合Span Depth的值来判断
+Span Depth : 2 表示共2个RAID1盘组做成了RAID10，1表示1个RAID1盘组
+还有一种情况：Primary-1， Secondary-3， RAID LevelQualifier-0 也是表示 RAID-10;
+也可以这么显示raid级别，输入就会返回，这种的基本准确
+
+$ sudo MegaCli -ShowSummary -aALL | grep "RAID Level"
+                RAID Level         : 1 
+                RAID Level         : 5 
+
+
+==> 查看raid级别及查看raid是由哪些硬盘组成的
+$ sudo MegaCli -LdPdInfo -aALL > ~/MegaCli_LdPdInfo.txt
+$ less ~/MegaCli_LdPdInfo.txt
+
+
+硬盘有8块，分别在这些槽位
+$ cat ~/MegaCli_LdPdInfo.txt |  grep "Slot"
+Slot Number: 0
+Slot Number: 1
+Slot Number: 2
+Slot Number: 3
+Slot Number: 4
+Slot Number: 5
+Slot Number: 6
+Slot Number: 7
+
+硬盘类型
+$ cat ~/MegaCli_LdPdInfo.txt |  grep "PD Type"
+PD Type: SATA
+PD Type: SATA
+PD Type: SAS
+PD Type: SAS
+PD Type: SAS
+PD Type: SAS
+PD Type: SAS
+PD Type: SAS
+
+
+
+$ cat ~/MegaCli_LdPdInfo.txt |  grep "Enclosure Device ID"
+Enclosure Device ID: 252
+Enclosure Device ID: 252
+Enclosure Device ID: 252
+Enclosure Device ID: 252
+Enclosure Device ID: 252
+Enclosure Device ID: 252
+Enclosure Device ID: 252
+Enclosure Device ID: 252
+
+硬盘灯闪烁
+$ MegaCli -PdLocate -start -physdrv [32:2] -aALL
+32是 Enclosure Device ID，2是Slot Number
+
+卸载故障盘
+$ MegaCli -PDOffline -PhysDrv[32:2] -a0
+32是Enclosure Device ID，2是Slot Number
+
+关5槽位灯：
+$ MegaCli -PDLocate -stop -physdrv[64:5] -a0
+
+
+查看rebuild进度
+$ MegaCli -PDRbld -ShowProg -PhysDrv[32:2] -aAll
+32是Enclosure Device ID，2是Slot Number
+
+
+
+
+
+
+
+
+
+
+
+==> 获取RAID适配器的信息
+$ sudo MegaCli  -AdpGetPciInfo -aAll
+[sudo] password for wangjl: 
+                                     
+PCI information for Controller 0
+------ -------- ---------- --------
+Bus Number      : 1b
+Device Number   : 0
+Function Number : 0
+
+Exit Code: 0x00
+这里看到适配器信息，适配器id为0。
+
+
+
+==> 获取硬盘背板信息
+##sudo MegaCli -EncInfo -a0  #Function Number : a0
+$ sudo MegaCli -EncInfo -0  #Function Number : 0
+Invalid input at or near token 0                                           
+Exit Code: 0x01
+
+
+$ sudo MegaCli -EncInfo -a0
+    Number of enclosures on adapter 0 -- 1
+	
+    Enclosure 0:
+    Device ID                     : 252
+    Number of Slots               : 8
+    Number of Power Supplies      : 0
+    Number of Fans                : 0
+    Number of Temperature Sensors : 0
+    Number of Alarms              : 0
+    Number of SIM Modules         : 1
+    Number of Physical Drives     : 8
+    Status                        : Normal
+    Position                      : 1
+    Connector Name                : Unavailable
+    Partner Device Id             : 65535
+
+    Inquiry data                  :
+        Vendor Identification     : AVAGO   
+        Product Identification    : SGPIO           
+        Product Revision Level    : N/A 
+        Vendor Specific           :                     
+
+Exit Code: 0x00
+
+Device ID	252
+Number of Slots( 可以连接到这个背板的最大物理驱动器	8
+
+
+获取物理驱动器的信息
+$ sudo MegaCli -LdPdInfo -a0
+Adapter #0
+
+Number of Virtual Disks: 2
+Virtual Drive: 0 (Target Id: 0)
+Name                :System
+RAID Level          : Primary-1, Secondary-0, RAID Level Qualifier-0
+Size                : 446.102 GB
+State               : Optimal
+...
+
+Virtual Drive: 1 (Target Id: 1)
+Name                :localData
+RAID Level          : Primary-5, Secondary-0, RAID Level Qualifier-3
+Size                : 8.180 TB
+State               : Degraded
+Strip Size          : 64 KB
+Number Of Drives    : 6
+Span Depth          : 1
+...
+
+Slot Number是物理驱动器连接的插槽号，也就是对应物理驱动器id
+
+
+获取Virtual drives信息
+只想查询a0上的所有虚拟设备信息，-L表示第几个虚拟设备：
+/opt/MegaRAID/MegaCli/MegaCli64  -LDInfo -Lall -a0
+只想查询a0上的所有物理设备信息：
+/opt/MegaRAID/MegaCli/MegaCli64 -PDList -a0
+
+
+
+
+获取Virtual drives内的物理驱动器信息
+这就有点难了， 其实没什么卵用,记下来留着以后copy
+$ cat MegaCli_LdPdInfo.txt |grep -E "Virtual Drive:|Slot Number:" | xargs | sed -r 's/(Slot Number:)(\s[0-9]+)/\2,/g' | sed 's/(Target Id: .)/Physical Drives ids:/g' | sed 's/Virtual Drive:/\nVirtual Drive:/g'
+
+Virtual Drive: 0 Physical Drives ids:  0,  1, 
+Virtual Drive: 1 Physical Drives ids:  2,  3,  4,  5,  6,  7,
+
+
+
+
+
+
+
+显示的信息差不多，raid的厂商，型号，级别，但无法查看各块硬盘的信息。
+$ dmesg |grep -i raid
+
+$ cat /proc/scsi/scsi 
+Attached devices:
+Host: scsi0 Channel: 02 Id: 00 Lun: 00
+  Vendor: Lenovo   Model: RAID 730-8i 1GB  Rev: 4.68
+  Type:   Direct-Access                    ANSI  SCSI revision: 05
+Host: scsi0 Channel: 02 Id: 01 Lun: 00
+  Vendor: Lenovo   Model: RAID 730-8i 1GB  Rev: 4.68
+  Type:   Direct-Access                    ANSI  SCSI revision: 05
+
+Host: scsi14 Channel: 00 Id: 00 Lun: 00
+  Vendor: DELL     Model: MD38xxf          Rev: 0825
+  Type:   Direct-Access                    ANSI  SCSI revision: 05
+Host: scsi14 Channel: 00 Id: 00 Lun: 31
+  Vendor: DELL     Model: Universal Xport  Rev: 0825
+  Type:   Direct-Access                    ANSI  SCSI revision: 05
+
+Host: scsi15 Channel: 00 Id: 00 Lun: 00
+  Vendor: DELL     Model: MD38xxf          Rev: 0825
+  Type:   Direct-Access                    ANSI  SCSI revision: 05
+Host: scsi15 Channel: 00 Id: 00 Lun: 31
+  Vendor: DELL     Model: Universal Xport  Rev: 0825
+  Type:   Direct-Access                    ANSI  SCSI revision: 05
+
+Host: scsi16 Channel: 00 Id: 00 Lun: 00
+  Vendor: DELL     Model: MD38xxi          Rev: 0825
+  Type:   Direct-Access                    ANSI  SCSI revision: 05
+Host: scsi16 Channel: 00 Id: 00 Lun: 31
+  Vendor: DELL     Model: Universal Xport  Rev: 0825
+  Type:   Direct-Access                    ANSI  SCSI revision: 05
+
+
+
+
+
+
+
+
+
+
+
+ref: 
+https://www.cnblogs.com/xth0331/p/9655593.html
+https://zhuanlan.zhihu.com/p/358739776
+http://t.zoukankan.com/xuefy-p-11153280.html
+https://www.linuxprobe.com/basic-learning-07.html
+
+
+
+
+
+
+
+========================================
+linux 下多路径(multipath)介绍及使用(光纤连接存储): multipath //todo
+----------------------------------------
+https://zhuanlan.zhihu.com/p/26714897
+配置存储时一定会遇到 multipath 多路径的问题，不同的厂商比如 EMC PowerPath，Veritas VxDMP 等都有独立的多路径软件，而多路径软件的功能也很清晰主要用于IO流量负载均衡和故障切换恢复等。在 Linux 环境中 device-mapper-multipath 是一个免费的通用型多路径管理软件，其配置文件也非常简单，主要通过修改 /etc/multipath.conf 来调整。
+
+
+1. 查看重要信息
+
+(1) 硬件映射信息
+@193$ lsblk
+NAME            MAJ:MIN RM   SIZE RO TYPE  MOUNTPOINT
+sda               8:0    0 446.1G  0 disk  
+├─sda1            8:1    0    50M  0 part  /boot/efi
+├─sda2            8:2    0   500M  0 part  /boot
+├─sda3            8:3    0 317.6G  0 part  /
+└─sda4            8:4    0   128G  0 part  [SWAP]
+sdb               8:16   0   8.2T  0 disk  
+└─sdb1            8:17   0   8.2T  0 part  
+  └─centos-home 253:1    0   8.2T  0 lvm   /home
+sdc               8:32   0 145.9T  0 disk  
+└─mpatha        253:0    0 145.9T  0 mpath         ###### 这里
+  └─mpatha1     253:2    0 145.9T  0 part  /data
+sdd               8:48   0 145.9T  0 disk  
+└─mpatha        253:0    0 145.9T  0 mpath         ###### 这里
+  └─mpatha1     253:2    0 145.9T  0 part  /data
+sde               8:64   0    89T  0 disk  
+└─sde1            8:65   0    89T  0 part  /mnt/test1
+
+
+(2) 硬件信息
+执行fdisk -l，可以看到存储已经识别成功，并且多路径配置也正确
+
+$ sudo fdisk -l /dev/mapper/mpatha
+WARNING: fdisk GPT support is currently new, and therefore in an experimental phase. Use at your own discretion.
+
+Disk /dev/mapper/mpatha: 160424.5 GB, 160424527921152 bytes, 313329156096 sectors
+Units = sectors of 1 * 512 = 512 bytes
+Sector size (logical/physical): 512 bytes / 4096 bytes
+I/O size (minimum/optimal): 4096 bytes / 4096 bytes
+Disk label type: gpt
+Disk identifier: AAD8075A-ABE6-40DE-A52D-BF357276F180
+#         Start          End    Size  Type            Name
+ 1           34 313329154143  145.9T  Microsoft basic primary
+Partition 1 does not start on physical sector boundary.
+
+
+
+$ sudo fdisk -l /dev/mapper/mpatha1
+Disk /dev/mapper/mpatha1: 160424.5 GB, 160424526904320 bytes, 313329154110 sectors
+Units = sectors of 1 * 512 = 512 bytes
+Sector size (logical/physical): 512 bytes / 4096 bytes
+I/O size (minimum/optimal): 4096 bytes / 4096 bytes
+Alignment offset: 3072 bytes
+
+
+
+2. 那几个 mpath 是啥？ 
+https://blog.csdn.net/weixin_42316933/article/details/116839610
+https://blog.csdn.net/u011436427/article/details/113662832
+https://access.redhat.com/documentation/en-us/red_hat_enterprise_linux/6/html-single/dm_multipath/index
+
+
+$ which multipath 
+/usr/sbin/multipath
+
+$ multipath --version
+Unknown switch: (null)
+multipath-tools v0.4.9 (05/33, 2016)
+Usage:
+  multipath [-a|-A|-c|-w|-W] [-d] [-T tm:val] [-r] [-i] [-v lvl] [-p pol] [-b fil] [-q] [dev]
+  multipath -l|-ll|-f [-v lvl] [-b fil] [dev]
+  multipath -F [-v lvl]
+  multipath -t
+  multipath -h
+
+
+
+(1) 查看多路径当前状态
+$ sudo multipath -ll
+mpatha (3600a098000e3d282000002885c11248a) dm-0 DELL    ,MD38xxf         #这个是 ELL 的设备
+size=146T features='3 queue_if_no_path pg_init_retries 50' hwhandler='1 rdac' wp=rw
+|-+- policy='service-time 0' prio=14 status=active
+| `- 14:0:0:0 sdc 8:32 active ready running  #底下挂着1/2个盘 /dev/sdc
+`-+- policy='service-time 0' prio=9 status=enabled
+  `- 15:0:0:0 sdd 8:48 active ready running  #底下挂着2/2个盘 /dev/sdd
+
+
+
+(2) multipathd 是一个服务
+$ service multipathd  status
+● multipathd.service - Device-Mapper Multipath Device Controller
+   Loaded: loaded (/usr/lib/systemd/system/multipathd.service; enabled; vendor preset: enabled)
+   Active: active (running) since Mon 2022-05-09 16:25:25 CST; 2 days ago
+ Main PID: 2773 (multipathd)
+    Tasks: 7
+   Memory: 0B
+   CGroup: /system.slice/multipathd.service
+           └─2773 /sbin/multipathd
+
+
+==> 需要设置 multipath 服务为 chkconfig on 开机启动状态才能挂载文件系统。
+
+系统服务目录:
+$ ls -lth /usr/lib/systemd/system/ | grep multipath
+-rw-r--r--. 1 root root     623 Apr  1  2020 multipathd.service
+
+$ sudo vim /usr/lib/systemd/system/multipathd.service
+[Unit]
+Description=Device-Mapper Multipath Device Controller
+Wants=blk-availability.service
+Before=iscsi.service iscsid.service lvm2-activation-early.service
+After=syslog.target systemd-udev-trigger.service
+ConditionPathExists=/etc/multipath.conf
+ConditionKernelCommandLine=!nompath
+DefaultDependencies=no
+Conflicts=shutdown.target
+
+[Service]
+Type=forking
+PIDFile=/run/multipathd/multipathd.pid
+ExecStartPre=/sbin/modprobe dm-multipath
+ExecStartPre=-/sbin/multipath -A
+ExecStart=/sbin/multipathd
+ExecReload=/sbin/multipathd reconfigure
+#ExecStop=/path/to/scrip delete-me if not necessary
+
+[Install]
+WantedBy=sysinit.target
+
+
+
+设置开机启动：systemctl enable *.service
+
+启动服务：systemctl start *.service
+停止服务：systemctl stop *.service
+重启服务：systemctl reload *.service
+linux服务设置为开机启动项,Linux 设置开机启动项的几种方法 https://blog.csdn.net/weixin_34662807/article/details/116870009
+
+
+
+商业化存储，应该可以拉着厂商或者查看最佳实践手册配置
+
+
+
+
+
+
+(3) 配置文件
+
+配置文件只有一个：/etc/multipath.conf
+
+$ sudo cat /etc/multipath.conf
+## Use user friendly names, instead of using WWIDs as names.
+defaults {
+        user_friendly_names yes
+        find_multipaths yes
+}
+blacklist {
+}
+
+执行lsblk命令就可以看到多路径磁盘mpatha了
+$ lsblk 
+输出见开头。
+
+
+
+
+Q: 对本地设备启用多路径很可能导致系统无法启动，请问其中的具体原因是什么呢？
+A: 将本地硬盘wwid添加到黑名单应该就好了，这个不常见
+blacklist {
+	wwid "<wwid_of_the_local_disk>"
+}
+
+
+Q: 没有修改配置文件，只是把惠普存储的lum做成xfs，然后挂载到了本地，可以吗？
+A:multipath本身不做配置也可以直接使用，修改配置的目的主要是解决和优化3个方面
+* 屏蔽本地硬盘，blacklist wwid
+* 按需优化特定存储的配置，比如3par/redhat
+* 修改LUN别名，方便后期运维和统计数据
+
+
+
+
+
+==> 还有一个配置文件夹
+$ ls -lth /etc/multipath
+total 12K
+-rw-------. 1 root root  226 Dec 12  2018 wwids
+-rw-------. 1 root root  241 Dec 12  2018 bindings
+-rw-r--r--. 1 root root 2.4K Dec 12  2018 multipath.conf
+
+$ sudo vim /etc/multipath/multipath.conf #内容更少。哪个起作用呢？
+defaults {
+        user_friendly_names yes
+        find_multipaths yes
+}
+
+
+查看本地存储wwid
+$ sudo cat /etc/multipath/wwids
+# Multipath wwids, Version : 1.0
+# NOTE: This file is automatically maintained by multipath and multipathd.
+# You should not need to edit this file in normal circumstances.
+#
+# Valid WWIDs:
+/3600a098000e3d282000002885c11248a/
+
+
+
+查看存储参数
+$ cat /sys/block/sdb/device/vendor
+Lenovo 
+
+$ cat /sys/block/sdb/device/model
+RAID 730-8i 1GB 
+
+#添加本地盘到blacklist内,不同的存储和系统参考官方的最佳实践
+vim /etc/multipath.conf
+
+
+
+
+
+#固定设备的别名
+$ sudo cat /etc/multipath/bindings 
+# Multipath bindings, Version : 1.0
+# NOTE: this file is automatically maintained by the multipath program.
+# You should not need to edit this file in normal circumstances.
+#
+# Format:
+# alias wwid
+#
+mpatha 3600a098000e3d282000002885c11248a
+
+
+编辑multipath.conf，增加以下字段
+vim /etc/multipath.conf
+
+multipaths {
+  multipath {
+  wwid 3600a098000e3d282000002885c11248a
+  alias lenovo_DEV_patha
+  }
+
+
+
+
+
+
+
+(4) 看主机或者存储交换机上的WWN号，在存储上将LUN映射给需要的主机
+$ cat /sys/class/fc_host/host*/port_name
+0x100000109b33909c
+0x100000109b33909d
+
+
+
+
+(5)查看是否映射到对应的
+fdisk -l
+lsblk
+输出见上文。
+
+
+$ yum search device-mapper-multipath
+有匹配的。
+
+
+(6)
+
+
+#打印诊断信息
+$ sudo multipath -v3
+信息很多，摘录如下:
+
+===== paths list =====
+uuid                              hcil     dev dev_t pri dm_st chk_st vend/pro
+3600605b00da5e76023a3eb7b0df48483 0:2:0:0  sda 8:0   1   undef undef  Lenovo  
+3600605b00da5e76023a3ebb2113e2ca6 0:2:1:0  sdb 8:16  1   undef undef  Lenovo  
+3600a098000e3d282000002885c11248a 14:0:0:0 sdc 8:32  14  undef undef  DELL    
+3600a098000e3d282000002885c11248a 15:0:0:0 sdd 8:48  9   undef undef  DELL    
+3600a098000da19130000019b5aff06e7 16:0:0:0 sde 8:64  11  undef undef  DELL
+## 这里能看到每个设备的 uuid 编号。
+## 看第3列是 /dev/sd[abcde] 设备编号，最后一列是供应商。大存储设备都是 DELL 的。
+
+May 12 10:55:29 | wwid 3600605b00da5e76023a3eb7b0df48483 not in wwids file, skipping sda
+May 12 10:55:29 | const prioritizer refcount 2
+May 12 10:55:29 | directio checker refcount 2
+May 12 10:55:29 | wwid 3600605b00da5e76023a3ebb2113e2ca6 not in wwids file, skipping sdb
+May 12 10:55:29 | const prioritizer refcount 1
+May 12 10:55:29 | directio checker refcount 1
+May 12 10:55:29 | wwid 3600a098000da19130000019b5aff06e7 not in wwids file, skipping sde
+## 跳过了 sd[abe]，也就是只有 sd[cd] 组成了 多路径，目前挂载到 /data 上的 146T。
+
+
+
+$ sudo multipath -v3 | grep -i vendor
+May 12 11:05:29 | sda: vendor = Lenovo  
+May 12 11:05:29 | sdb: vendor = Lenovo  
+May 12 11:05:29 | sdc: vendor = DELL    
+May 12 11:05:29 | sdd: vendor = DELL    
+May 12 11:05:29 | sde: vendor = DELL
+
+
+
+
+
+
+
+
+
+3. 更多操作
+
+接下来，就可以对mpatha做分区、格式化和创建逻辑卷等各种磁盘操作了。
+# /etc/init.d/multipathd start #开启mulitipath服务 
+# multipath -F #删除现有路径 
+# multipath -v2 #格式化路径 
+# multipath -ll #查看多路径
+如果配置正确的话就会在/dev/mapper/目录下多出mpathbp1等之类的设备，用fdisk -l命令可以看到多路径软件创建的磁盘，
+如：/dev/mapper/mpathbp1
+
+
+
+#清空已有的multipath记录
+multipath -F
+
+#启用多路径守护程序以在引导时启动
+mpathconf --enable
+
+#启动多路径服务
+service multipathd start
+
+#如果在启动 multipath 守护程序后更改多路径配置文件，请运行以下命令以使更改生效。
+service multipathd reload 
+
+#重启系统测试
+init 6
+
+#查看多路径当前状态
+multipath -ll
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+========================================
+安装: JKD, eclipse, chrome
+----------------------------------------
+(1)Java JDK
+https://www.digitalocean.com/community/articles/how-to-install-java-on-ubuntu-with-apt-get
+
+https://www.oracle.com/technetwork/java/javase/downloads/jdk8-downloads-2133151.html
+
+
+
+sudo apt-get install default-jdk
+老版本jdk6：sudo apt-get install oracle-java6-installer
+
+(2)eclipse
+方法一：(缺点是安装时附加openjdk等大量程序并无法去除，优点是安装简单)
+$ sudo apt-get install eclipse
+方法二：(优点是安装内容清爽，缺点是配置麻烦)
+
+
+(3) chrome 
+$ wget https://dl.google.com/linux/direct/google-chrome-stable_current_amd64.deb
+$ sudo dpkg -i google-chrome-stable_current_amd64.deb 
+运行 
+$ /usr/bin/google-chrome-stable
+
+放快捷方式
+$ ln -s /usr/bin/google-chrome-stable ~/bin/chrome
+
+
+
+
+
+========================================
+CPU 和 内存的查看与管理: top/ htop/ 
+----------------------------------------
+
+1. top 的快捷键
+m 按一次切换内存显示模式；默认是文字，按1次进度条，第2次进度条2实心，第三次不显示内存。
+输入大写P，则结果按CPU占用降序排序。（注：大写P可以在capslock状态输入p，或者按Shift+p）
+输入大写M，结果按内存占用降序排序。
+
+
+
+
+2. top命令中的VIRT，RES，SHR　，MEM区别
+
+VIRT 表示进程的虚拟(地址)空间大小，其包含进程实际使用的大小(申请的堆栈)，使用mmap映射的大小，包括外设RAM，还有映射到本
+进程的文件（例如动态库)，还有进程间的共享内存。所以VIRT 表⽰的是当前这个进程能够访问到的所有空间大小。
+
+RES 表示进程的常驻内存大小，准确表示当前有多少物理内存被这个进程消费，这个和MEM是对应的，这个大小永远要比VIRT小，因为程
+序大部分使用到c库
+
+SHR 表示多少VIRT 实际可以共享的（包括内存和动态库），举例动态库，SHR的值不总代表整个库都是常驻内存的，因为有些程序使用到
+c库的部分函数，但整个库是被映射到进程的，并且计算到VIRT和SHR，但是只有该库的⼀部分被使用到，即被装载并记到RES。
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+========================================
+DIY一个系统内存监控(记录内存占用top10进程，并可视化)
+----------------------------------------
+
+1. 原理
+# linux 下 取进程占用 cpu 最高的前10个进程
+ps aux|head -1;ps aux|grep -v PID|sort -rn -k +3|head
+
+
+# linux 下 取进程占用内存(MEM)最高的前10个进程
+ps aux|head -1;ps aux|grep -v PID|sort -rn -k +4|head
+
+我的改进
+$ ps aux|head -1;ps aux| grep -v PID |sort -k 4nr -k 5nr | head
+
+
+
+获取数据的方法: https://github.com/aijialin/SysMonitor
+/proc/meminfo
+/proc/cpuinfo
+/proc/stat
+/proc/net/netstat
+
+
+
+
+
+2. 长效内存监视工具(tmux中运行): 使用python写定时脚本,2分钟记录一次，每个月一个文件;
+# coding: UTF-8
+import time
+import subprocess
+
+# every interval second, do cmd; Every month a log file.
+# v0.2
+def myTask(cmd, interval):
+    while True:
+        fname=time.strftime("%Y%m", time.localtime()) 
+        fw=open('mem_'+fname+'.txt','a')
+
+        mytime=time.strftime("%Y-%m-%d %H:%M:%S", time.localtime());
+        (status, output)=subprocess.getstatusoutput(cmd)
+
+        fw.write(mytime+"\n")
+        fw.write(output+"\n\n")
+
+        fw.close()
+        
+        print(mytime)
+        time.sleep(interval)
+#
+
+cmd="ps aux|head -1;ps aux| grep -v PID |sort -k 4nr -k 5nr | head"
+myTask(cmd, 120) #every 2 minutes;
+
+
+日志文件大小:
+一次8次，14464，则一个月 14464/8*30*24*30=39.05e6, 也就是37M, 可以接受，不过还是要定期删除的;
+path: /home/wangjl/data/testCode/
+
+(2). 查找占用最高的记录和时间
+1) 最新的记录，第四列是内存
+$ tail mem_202004.txt -n 13
+2020-04-15 10:42:31
+USER        PID %CPU %MEM    VSZ   RSS TTY      STAT START   TIME COMMAND
+jhsun    124116 96.0  0.8 7086684 3489044 pts/20 Sl  10:24  17:36 /home/jhsun/data/biosoft/bowtie2-2.3.5-sra-linux-x86_64/bowtie2-align-s --wrapper basic-0 --mm -x /data/reference/hg38/gatk/Homo_sapiens_assembly38.fasta -S SRR6013345.sam -U /home/jhsun/data/CNVHap/data/A8/fastq/SRR6013345.fastq.gz
+
+2) 最高记录
+$ grep -v 2020 mem_202004.txt | grep -v USER |sort -k 4rn|head
+yihg      56247 93.0 72.4 291306356 286619104 pts/24 R+ 13:41   7:37 shapeit -check --input-vcf new.nobiallel.yhg.rmdup.chr1.HG01855_12run.bwa_37.bam.sort.realn.bqsr.vcf.gz -M ./impute_HG01855_12run/genetic_map_chr1_combined_b37.txt --input-ref ./impute_HG01855_12run/1000GP_Phase3.sample ./impute_HG01855_12run/1000GP_Phase3_chr1.hap.gz ./impute_HG01855_12run/1000GP_Phase3_chr1.legend.gz --output-log yhg.rmdup.chr1.HG01855_12run.bwa_37.bam.sort.realn.bqsr.alignment
+
+3) 最高纪录的时间
+$ grep '\s72.4 291306356' -B 5 mem_202004.txt
+
+
+
+
+
+
+3. 可视化生成pdf
+(1) 使用py提取数据
+# fileName: log_analysis.py
+# v0.3
+# howToRun: $ python log_analysis.py mem_202004
+# get data, and draw system mem usage plot;
+
+import re, time, sys, os 
+
+def timeStr2timeStamp(strTime):
+    timeArray=time.strptime(strTime, "%Y-%m-%d %H:%M:%S")
+    timeStamp = int(time.mktime(timeArray))
+    return(timeStamp)
+#aa='2020-04-13 11:09:51'
+#timeStr2timeStamp(aa)
+
+
+def saveUser(userDict, cTime, fw):
+    timeStamp=str(timeStr2timeStamp(cTime));
+    for user,pct in userDict.items():
+        fw.write(','.join([timeStamp, cTime, user,  str(pct) ])+"\n");  
+#
+
+
+fName='mem_202004'
+if sys.argv[1].startswith('mem'):
+    fName=sys.argv[1]
+
+#/home/wangjl/data/testCode/
+fr=open(fName+'.txt', 'r')
+fw=open(fName+'.csv', 'w')
+
+
+i=0
+cTime="None-"; #当前时间
+userDict={}
+for lineR in fr.readlines():
+    line=lineR.strip()
+    
+    #空行 or 标题行略过
+    if line=="" or re.match('^USER', line): 
+        continue;
+    
+    i+=1;
+    if i>20:
+        #break;
+        pass;
+
+    
+    #if time line, update time
+    if re.match('^\d{4}-',line):
+        #rint('>>>>>>>>>>',i, line)
+        if userDict!={}:
+            saveUser(userDict, cTime, fw); #save to disc;
+        
+        cTime=line; #current time
+        userDict={}
+    else:
+        arr=re.split('\s+', line); #print(i, arr[0], arr[3]) #['pdyan', '74276', '49.3', '0.9',
+        user=arr[0];
+        if user not in userDict:
+            userDict[user]=0;
+        userDict[user] += float(arr[3]) #内存累加
+
+fr.close();
+fw.close();
+
+print('==end==, i=', i)
+os.system("Rscript log_draw.R "+fName)
+
+
+
+
+(2) 使用ggplot2绘图
+# fileName: log_draw.R
+# v0.3;
+# v0.4.2; 自动白天黑夜条
+# v0.4.3 控制y坐标范围0-100
+# 调用方法 $ Rscript log_draw.R mem_202004
+
+fname="mem_202004"
+path2="/home/wangjl/data/testCode/"
+
+
+myArgs<-commandArgs(TRUE)
+if(length(myArgs)>0){
+  fname=myArgs[1];
+  path2=""
+}
+
+memData=read.csv(paste0(path2,fname, '.csv'), header=F)
+dim(memData) #6687    4
+memData$V2=as.character(memData$V2)
+names(memData)=c('time','timeStr','user','pct')
+head(memData)
+#          V1                  V2     V3  V4
+#         time             timeStr   user pct
+#1 1586747391 2020-04-13 11:09:51  pdyan 0.9
+#2 1586747391 2020-04-13 11:09:51 wangjl 0.7
+
+
+#只保留整点的
+for(i in 1:length(memData$timeStr) ){
+  cTime=memData$timeStr[i]
+  #分钟是00和01的保留，其余空
+  if(!(substr(cTime,15,16) %in% c('00', '01') ) ){
+    memData$timeStr[i]=""
+    next;
+  }
+  hour=as.numeric(substr(cTime,12,13))
+  #小时为偶数的保留，其余为空
+  if(hour%%6!=0){
+    memData$timeStr[i]=""
+    next;
+  }
+}
+length(memData$timeStr)
+table(memData$timeStr!="")
+
+
+
+library('ggplot2')
+g=ggplot(memData, aes(x=time, y=pct, color=user) )+
+  theme_classic()+
+  labs(x=NULL, y="Mem usage(%)", title="Memery usage of top 10 pid every 2 minutes")+
+  theme(axis.text.x=element_text(angle=60, hjust=1,size=8,color="grey50") )+ #坐标轴刻度旋转60度。
+  scale_x_discrete(limits=memData$time, labels =memData$timeStr)
+#g
+
+
+
+
+
+
+#定义黑夜0:00-8:00
+# seq(1,10,3) #86400
+start=min(memData$time) #距离最小的往后最近的0点
+end=max(memData$time) #距离最大的往前最近的8点
+
+#adjust start
+while(1){
+  timeString=as.POSIXct(start, origin="1970-01-01");
+  #print( paste(start, timeString) )
+  if(substr(timeString, 15,16) %in% c('00','01') ){ #min
+    if(substr(timeString, 12,13)=="00"){ #hour
+      break;
+    }
+  }
+  start=start+60
+}
+
+#adjust end
+while(1){
+  timeString=as.POSIXct(end, origin="1970-01-01");
+  #print( paste(end, timeString) )
+  if(substr(timeString, 15,16) %in% c('00','01') ){ #min
+    if(substr(timeString, 12,13)=="08"){ #hour
+      break;
+    }
+  }
+  end=end-60
+}
+
+rec=data.frame(
+  xmin=seq(start, end, 86400),
+  xmax=seq(start, end, 86400)+28800
+)
+rec
+#
+
+
+g2=ggplot()+
+  scale_x_discrete(memData$time)+
+  geom_rect(data = rec, 
+            aes(xmin = xmin, 
+                xmax = xmax), 
+            alpha = 0.1,
+            ymin = -Inf, 
+            ymax = Inf, 
+            fill = "#000000",
+            colour = "blue",
+            size = 0)+
+  geom_line(data=memData, aes(x=time, y=pct, color=user) )+
+  theme_classic()+
+  labs(x=NULL, y="Mem usage(%)", title="Memery usage of top 10 pid every 2 minutes(Grey denotes night[0:00-8:00])")+
+  theme(axis.text.x=element_text(angle=60, hjust=1,size=8,color="grey50"),
+        panel.background = element_rect(fill = "white")
+  )+
+  coord_cartesian(ylim = c(0,100))+
+  scale_x_discrete(limits=memData$time, labels =memData$timeStr)
+#scale_x_discrete( labels =memData$timeStr)
+#g2
+
+library('Cairo')
+#CairoPNG(1200,800, file =paste0(fname,'.png'), res = 100);
+CairoPDF(width=20, height=8, file =paste0(fname,'.pdf'));
+#g+geom_line()
+g2
+g+geom_line(aes(linetype=user))
+g+ geom_line()+facet_wrap(~user)+scale_x_discrete(labels = NULL)+ coord_cartesian(ylim = c(0,100))
+
+dev.off()
+print(getwd())
+#
+
+
+
+
+
+
+4. 把pdf显示到html
+
+(0) 技术测试
+1)##如何从机器A上ssh到机器B上，然后执行机器B上的脚本/命令？如何使之自动化完成？
+思路: 
+- sshpass;
+- https://blog.csdn.net/weixin_34273046/article/details/90283099
+
+
+示例:
+USER=wangjl;
+PASS_J=passwd
+
+sshpass -p ${PASS_J} ssh -t ${USER}@j.biomooc.com<<EOF
+cd /data4/wangjl/test/
+python log_analysis.py mem_202004
+EOF
+
+pwd
+
+
+###
+2)如何获取年月
+year=`date -d "0 month ago" +%Y`
+month=`date -d "0 month ago" +%m`
+yearMonth="${year}${month}"
+echo $yearMonth
+
+
+
+
+
+(1) 更新pdf、获取pdf脚本 updateGetShowHTML.sh
+# 在一台安装有nginx的主机上通过sftp获取其他主机生成的pdf的脚本
+# v0.4 自动更新其他主机信息，之后下载
+# v0.5 自动获取年和月份
+# Run: $ bash updateGetShowHTML.sh
+# https://blog.51cto.com/gavinshaw/545611
+cd /home/wangjl/web/docs/mem/
+
+USER=wangjl;
+PASS_X=passwd1
+PASS_J=passwd2
+
+year=`date -d "0 month ago" +%Y`
+month=`date -d "0 month ago" +%m`
+yearMonth="${year}${month}"
+
+# step1
+echo 'update X'
+sshpass -p ${PASS_X} ssh -t ${USER}@x.biomooc.com<<EOF
+cd /home/wangjl/data/testCode/
+python log_analysis.py mem_${yearMonth}
+EOF
+
+echo 'update J'
+sshpass -p ${PASS_J} ssh -t ${USER}@j.biomooc.com<<EOF
+cd /data4/wangjl/test/
+python log_analysis.py mem_${yearMonth}
+EOF
+
+
+# step2
+echo 'get host X'
+lftp -u ${USER},${PASS_X} sftp://x.biomooc.com:22<<EOF
+cd /home/wangjl/data/testCode
+lcd /home/wangjl/web/docs/mem/
+get mem_${yearMonth}.pdf
+bye
+EOF
+mv mem_${yearMonth}.pdf X_mem_${yearMonth}.pdf
+
+echo 'get host J'
+lftp -u ${USER},${PASS_J} sftp://j.biomooc.com:22<<EOF
+cd /data4/wangjl/test/
+lcd /home/wangjl/web/docs/mem/
+get mem_${yearMonth}.pdf
+bye
+EOF
+mv mem_${yearMonth}.pdf J_mem_${yearMonth}.pdf
+
+# step3
+echo `date`"<br>" | cat >>/home/wangjl/web/docs/mem/index.html
+echo "report: http://y.biomooc.com/wangjl/docs/mem/"
+
+
+
+
+(2) 在/home/wangjl/web/docs/mem/内新建index.html 
+$ cat index.html 
+Mem usage; update time is listed at the bottom of this page;
+<hr>
+
+x.biomooc.com<br>
+<embed width="800" height="600" src="X_mem_202004.pdf"> </embed>
+
+<hr>
+j.biomooc.com<br>
+<embed width="800" height="600" src="J_mem_202004.pdf"> </embed>
+<hr>
+
+
+
+
+(3) 可以通过web查看报告了
+在C上运行脚本，分别更新A和B上内的pdf，然后下载，更新web日期，即可查看
+$ bash updateGetShowHTML.sh 
+
+http://y.biomooc.com/wangjl/docs/mem/
+
+
+
+
+(4) crone定时执行，每天3,15点更新;
+$ crontab -e
+0 3,15 * * * bash /home/wangjl/updateGetShowHTML.sh >>/home/wangjl/web/log.txt
+
+
+
+
+
+
+
+
+
+
+
+========================================
+Ubuntu 转移地方之后不知道IP，插屏幕后不能启动
+----------------------------------------
+1. Ubuntu 工作站从213移动到205后，不能联网了。
+Stuck in emergency mode and nothing works?
+https://askubuntu.com/questions/960790/stuck-in-emergency-mode-and-nothing-works
+
+[  0.824138] Couldn't get size: 0x800000000e
+/dev/sda2: recovering journal
+/dev/sda2: clean, ... files, ... blocks.
+You are in emergency mode. After logging in, type "journalctl -xb" to view system logs, 
+"systemctl reboot" to reboot, "systemctl default" or "exit" to boot into default mode.
+Give root pasword for maintenance
+(or press Control-D to continue):
+
+
+然后输入 root 密码后进入了不能联网的命令行界面。
+$ ping baidu.com 找不到
+$ ifconfig 命令只有一个127.0.0.1信息。
+
+
+
+$ journalctl -xb
+好几屏幕，看不懂。
+
+ 
+到使用systemctl status network发现网络无法正常重启，
+而系统像是重启了。
+
+$ sudo blkid 
+$ cat /etc/fstab
+
+
+
+
+
+2. 高赞回答: 不该挂载 recovery partition!
+
+
+Your /etc/fstab is wrong.
+
+First, you don't need to mount Acer-specific or recovery partitions, or the CD-ROM.
+So, I'd comment out these lines...
+
+
+(1)sudo -H gedit /etc/fstab
+#Entry for /dev/sda3 :
+#UUID=C85AA81A5AA806F2   /media/Acer ntfs-3g defaults,locale=en_US.UTF-8 0 0
+# note that I commented this out and also changed the "00" to "0 0"
+
+#Entry for /dev/sda4 :
+#UUID=4ECAA8ECCAA8D18F   /media/Recovery ntfs-3g defaults,locale=en_US.UTF-8 0 0
+# note that I commented this out and also changed the "00" to "0 0"
+
+#/dev/sr0    /media/cdrom0   udf,iso9660 user,noauto 0   0
+
+
+(2) and change:
+#Entry for /dev/sdb1 :
+UUID=0C08B30A08B2F1B6   /media/DATA ntfs-3g defaults,locale=en_US.UTF-8 00
+
+to this:
+#Entry for /dev/sdb1 :
+UUID=0C08B30A08B2F1B6   /media/DATA ntfs-3g defaults,locale=en_US.UTF-8 0 0
+# note the change from "00" to "0 0"
+
+(3)that will fix your problem.
+However, if you must keep sda4, then the correct line would be...
+
+#Entry for /dev/sda4 :
+UUID=003CAE413CAE3218   /media/Recovery ntfs-3g defaults,locale=en_US.UTF-8 0 0
+# note the new UUID, and the "0 0" at the end of the line.
+
+
+
+#######
+Seeing your answer triggered me to start commenting stuff out in my /etc/fstab file,
+when I commented out the USB thumb drive mounting part, boom! It worked! 
+I replaced the thumb drive, updated my fstab file and now I'm good to go again. 
+
+
+
+
+#######
+1)Type your root password
+2)cat /etc/fstab
+3)blkid (show the device ids)
+4)Now check which which UUID in /etc/fstab does not apper in blkid output
+5)type 'nano /etc/fstab' and Comment out that line (Just put # infront of the line)
+6)type 'reboot' (Now your problem should be fixed and after logging in successfully, you can add the current UUID in /etc/fstab file )
+先注释掉 /etc/fstab 中而不在blkid中的条目，sudo nano /etc/fstab
+然后reboot，等正常启动后，再在 /etc/fstab 中添加上当前在blkid中出现的uuid。
+
+
+
+As an example, this is my output of /etc/fstab file, in which I simply commented out the line ( UUID=C3D1-3CB7 /windows vfat utf8,umask=007,gid=46 0 1), because the UUID=C3D1-3CB7 has been changed.
+
+
+
+
+
+
+3. 删掉 恢复区 还是在无限重启。
+
+I am not able to edit the file using gksudo or vim or emacs. Perhaps nano.
+
+but the problem still continues to exist even after commenting the lines and now on ntfsfix it says that the Linux Swap partition is corrupt. Please Help. – 
+
+
+
+
+
+
+4. 可能是文件系统坏了
+
+All you have to do is perform a file system check using,
+
+$ fsck.ext4 /dev/sda3
+where sda3 can be your partition and if you are using ext3 file system, change the command as follows:
+$ fsck.ext3 /dev/sda3
+
+About the partition number, Linux shows you the partition before arriving at the prompt.
+
+This should solve the problem.
+
+
+####
+fsck -f /dev/xxx
+这条命令输完以后就按提示回车 
+
+
+说明是磁盘错误/dev/sda1的错误，所以可以用fsck来处理错误。
+输入命令：fsck -y /dev/sda1
+
+
+
+####
+Worked like a charm for me as well. Thanks a lot! 
+
+
+### 
+Check /etc/fstab to see what disks are mounted by default, it will be one of those that need to be checked. 
+对所有挂载的磁盘都执行这个命令。Ex: sda1, sda2, sda3, sda4, and so on
+
+Once you run the above command, you'll be prompted to fix the issue right inside the terminal itself.
+Keep hitting y (for yes) until the end of the fix.
+(or you can use -fy for automatically response yes to all.)
+
+
+
+5.  https://www.virten.net/2017/08/vcsa-6-5-broken-filesystem-welcome-to-emergency-mode/
+看到报错时，报错信息已经滚过去了，要回看，
+so the first thing is to scroll up (Shift + Page Up)
+
+
+# df -h
+# cat /etc/fstab
+
+看看相对于后者，前者缺少哪些文件？
+As you can see, the /storage/log filesystem is missing in the output from df -h:
+
+
+然后对缺少的检查
+The next step is to run a filesystem check. Use the -y option to automatically fix all issues or press "y" for each identified error.
+# e2fsck -y /dev/log_vg/log
+
+When all errors are fixed, reboot vCenter Server Appliance:
+
+# reboot -f
+It should now be able to boot the vCenter Service Appliance.
+
+
+
+
+6. 可能是显卡问题: 这是一个新显示器，不一定有显卡驱动
+
+(1) 
+先去BIOS看看有没有禁用显卡之类的。。。或者在grub(就你选择试用那里)添加nomodeset=0
+
+(2)
+https://blog.csdn.net/lh315936716/article/details/112898030
+系统安装完成启动后花屏 提示Couldn't get size: 0x800000000e
+
+原因是NVIDIA GEFORCE RTX2080显卡适配的问题
+
+解决方法：在选择系统的时候按e进入下面第二张图界面，在quiet前面加nomodeset，
+启动后打开terminal输入sudo gedit /etc/modprobe.d/blacklist.conf，输入密码后在最后一行加上blacklist nouveau。（禁用自带的显卡驱动）
+
+保存后在terminal输入sudo update-initramfs -u 使修改生效
+
+然后安装nvidia显卡驱动，重启后正常了
+
+
+
+
+
+
+
+########
+
+总结一下，如何抢救这个Del T5820 工作站的
+1. 按开机键，不干涉启动失败，进入紧急模式；
+2. 紧急模式注释掉 /etc/fstab 中有而 blkid 没有的设备后，reboot 重启，开始在第一个Ubuntu logo，几个小时不动。
+只能再次重启。
+3. F12 进入 bios，选择启动Ubuntu，然后按一下 Esc，进入grub启动选项，选第二项高级，见到3个内核及对应的recovery模式，
+选最老的内核的recovery模式，然后有菜单，选择 大概倒数第二项，drop to root;
+输入root密码后，进入shell。
+这时候可以编辑文件，但是所有服务都是dead。
+
+4. 输入 # init 3 回车，下一屏幕，就是正常tty1终端。
+没有图形界面，但是服务都可用。
+经测试，尝试远程桌面，也可以用。
+
+5. 可能以前工程师上门装系统，用的是工作站主板上的显示器接口，该接口实验室没有可用的连接线。
+而这次外接屏幕用的是 工作站独立显卡上的接口，可能没有显卡驱动。
+
+
+
+
+Ubuntu查看开机日志
+$ dmesg
+
+[    0.866080] Couldn't get size: 0x800000000000000e  //就这一行是红色的
+[    0.866982] MODSIGN: Couldn't get UEFI MokListRT
+[    0.868654] zswap: loaded using pool lzo/zbud
+
+
+
+
+
+ref:
+https://blog.csdn.net/lk142500/article/details/82778165
+https://unix.stackexchange.com/questions/347808/ubuntu-gives-message-welcome-to-emergency-mode
+
+
+
+========================================
+|-- 查看显卡及安装显卡驱动
+----------------------------------------
+1. 查看显卡型号
+$ sudo lshw -c video
+[sudo] password for wangjl: 
+  *-display                 
+       description: VGA compatible controller
+       product: GP106GL
+       vendor: NVIDIA Corporation
+       physical id: 0
+       bus info: pci@0000:65:00.0
+       version: a1
+       width: 64 bits
+       clock: 33MHz
+       capabilities: pm msi pciexpress vga_controller bus_master cap_list rom
+       configuration: driver=nvidia latency=0  ##使用的网卡驱动名称
+       resources: irq:44 memory:d7000000-d7ffffff memory:c0000000-cfffffff memory:d0000000-d1ffffff ioport:b000(size=128) memory:c0000-dffff
+#
+可以看到你的显卡信息，比如我的就是 product: GP106GL
+
+
+$ lshw -C display
+WARNING: you should run this program as super-user.
+  *-display                 
+       description: VGA compatible controller
+       product: GP106GL
+       vendor: NVIDIA Corporation
+       physical id: 0
+       bus info: pci@0000:65:00.0
+       version: a1
+       width: 64 bits
+       clock: 33MHz
+       capabilities: vga_controller bus_master cap_list rom
+       configuration: driver=nvidia latency=0
+       resources: irq:44 memory:d7000000-d7ffffff memory:c0000000-cfffffff memory:d0000000-d1ffffff ioport:b000(size=128) memory:c0000-dffff
+WARNING: output may be incomplete or inaccurate, you should run this program as super-user.
+
+
+
+
+
+2. 查看是否安装驱动
+
+
+## 第一行输出便有硬件厂商、型号名称/序列号和PCI  ID。
+$ lspci -vnn | grep VGA -A 12 
+
+65:00.0 VGA compatible controller [0300]: NVIDIA Corporation GP106GL [10de:1c30] (rev a1) (prog-if 00 [VGA controller])
+	Subsystem: Dell GP106GL [Quadro P2000] [1028:11b3]
+	Flags: bus master, fast devsel, latency 0, IRQ 44, NUMA node 0
+	Memory at d7000000 (32-bit, non-prefetchable) [size=16M]
+	Memory at c0000000 (64-bit, prefetchable) [size=256M]
+	Memory at d0000000 (64-bit, prefetchable) [size=32M]
+	I/O ports at b000 [size=128]
+	Expansion ROM at 000c0000 [disabled] [size=128K]
+	Capabilities: <access denied>
+	Kernel driver in use: nvidia
+	Kernel modules: nvidiafb, nouveau, nvidia_drm, nvidia
+
+65:00.1 Audio device [0403]: NVIDIA Corporation GP106 High Definition Audio Controller [10de:10f1] (rev a1)
+
+
+具体型号: Dell GP106GL [Quadro P2000]
+
+
+
+
+
+3.查找你的显卡的驱动
+(1) 去NVDIA driver search page搜索你的显卡需要的驱动型号并下载(如图）。
+https://www.nvidia.com/Download/Find.aspx
+
+Name	Version	Release Date
+Linux x64 (AMD64/EM64T) Display Driver NFB	465.31	May 18, 2021
+Linux x64 (AMD64/EM64T) Display Driver NVIDIA Certified	460.80	May 11, 2021
+Linux x64 (AMD64/EM64T) Display Driver NFB	465.27	April 29, 2021
+Linux x64 (AMD64/EM64T) Display Driver NVIDIA Certified	450.119.03	April 19, 2021
+
+
+
+(2)为了再次确认一遍，你还可以使用这个命令查看你可以使用的驱动：
+$ ubuntu-drivers devices
+
+$ ubuntu-drivers devices
+== /sys/devices/pci0000:64/0000:64:00.0/0000:65:00.0 ==
+modalias : pci:v000010DEd00001C30sv00001028sd000011B3bc03sc00i00
+vendor   : NVIDIA Corporation
+model    : GP106GL [Quadro P2000]
+manual_install: True
+driver   : nvidia-driver-460-server - distro non-free
+driver   : nvidia-driver-450 - third-party free
+driver   : nvidia-driver-465 - third-party free recommended
+driver   : nvidia-driver-455 - third-party free
+driver   : nvidia-driver-390 - distro non-free
+driver   : nvidia-driver-450-server - distro non-free
+driver   : nvidia-driver-418-server - distro non-free
+driver   : nvidia-driver-460 - third-party free
+driver   : nvidia-driver-418 - third-party free
+driver   : xserver-xorg-video-nouveau - distro free builtin
+
+如果结果显示和搜索到的驱动版本一样，推荐也是390.67，那我们可以安心安装390.67版本。
+但是结果显示的并没有390.67，为了避免出错，建议选择结果显示中的版本号，如460.80。
+
+
+
+
+
+4. 安装驱动
+
+(1). 禁用nouveau。
+打开终端，输入：
+$ sudo gedit /etc/modprobe.d/blacklist.conf
+
+在blacklist.conf文件末尾加上这两行，并保存：
+blacklist nouveau
+options nouveau modeset=0
+
+然后执行命令：
+
+$ sudo update-initramfs -u  //应用更改
+
+重启系统，验证是否禁用nouveau：
+
+lsmod | grep nouveau
+没有信息返回说明已禁用（如图）
+
+
+
+
+(2)安装NVIDIA驱动。
+方法一：
+打开系统设置->软件和更新->附加驱动->选择NVIDIA驱动->应用更改（如图）
+
+
+
+方法二：
+进入命令行界面：
+
+Ctrl+Alt+F1  //（深坑：笔记本的F键有小键盘，需加上Fn），之后输入用户名和密码登录即可。
+
+关闭图形界面：
+sudo service lightdm stop
+
+卸载旧版本nvidia驱动：
+sudo apt-get remove --purge nvidia*
+
+给驱动run文件赋予执行权限：
+sudo chmod  a+x NVIDIA-Linux-x86_64-396.18.run //对应自己下载的驱动名称
+
+安装nvidia驱动:
+sudo ./NVIDIA-Linux-x86_64-396.18.run -no-x-check -no-nouveau-check -no-opengl-files //只有禁用opengl这样安装才不会出现循环登陆的问题
+
+-no-x-check：安装驱动时关闭X服务
+-no-nouveau-check：安装驱动时禁用nouveau
+-no-opengl-files：只安装驱动文件，不安装OpenGL文件
+
+安装过程中的选项：
+
+The distribution-provided pre-install script failed! Are you sure you want to continue? 选择 yes 继续。
+Would you like to register the kernel module souces with DKMS? This will allow DKMS to automatically build a new module, if you install a different kernel later?  选择 No 继续。
+问题没记住，选项是：install without signing
+问题大概是：Nvidia's 32-bit compatibility libraries? 选择 No 继续。
+Would you like to run the nvidia-xconfigutility to automatically update your x configuration so that the NVIDIA x driver will be used when you restart x? Any pre-existing x confile will be backed up.  选择 Yes
+
+这些选项如果选择错误可能会导致安装失败，没关系，只要前面不出错，多尝试几次就好。
+
+打开图形界面：
+sudo service lightdm start
+
+
+(3)查看NVIDIA版本检验是否安装完成
+$ nvidia-smi
+
+$ nvidia-smi
+Wed May 19 11:29:43 2021       
++------------ ----------------- ---------------------- -----------------------+
+| NVIDIA-SMI 460.27.04    Driver Version: 460.27.04    CUDA Version: 11.2     |
+|------------ ------------------+----------------------+----------------------+
+| GPU  Name        Persistence-M| Bus-Id        Disp.A | Volatile Uncorr. ECC |
+| Fan  Temp  Perf  Pwr:Usage/Cap|         Memory-Usage | GPU-Util  Compute M. |
+|                               |                      |               MIG M. |
+|============= =================+======================+========== ===========|
+|   0  Quadro P2000        Off  | 00000000:65:00.0 Off |                  N/A |
+| 78%   40C    P0    19W /  75W |      0MiB /  5050MiB |      0%      Default |
+|                               |                      |                  N/A |
++------------ ------------------+----------------------+----------------------+
+                                                                               
++------------- ----------------- ------------------ ------------ -------------+
+| Processes:                                                                  |
+|  GPU   GI   CI        PID   Type   Process name                  GPU Memory |
+|        ID   ID                                                   Usage      |
+|============ =================== ================== ======== ================|
+|  No running processes found                                                 |
++------------ ------------------- ------------------ -------- ----------------+
+
+
+
+ref:
+https://blog.csdn.net/qiancaobaicheng/article/details/95096354
+https://www.cnblogs.com/vcan123/p/11902213.html
+
+
+
+
+
+
+
+
+========================================
+整理和压缩文件：减少磁盘空间占用的方法--查找并压缩
+----------------------------------------
+1. 找到 fastq/fq 文件，并gzip压缩
+(0) 压缩比
+测序文件是文本文件，压缩后是原来的25%，16.9%。
+
+-r--r--r--. 1 wangjl jinwf 24M May  5  2019 /home/wangjl/data/apa/fq_files/bc/c12_ROW22_R2.fastq
+$ gzip -c /home/wangjl/data/apa/fq_files/bc/c12_ROW22_R2.fastq >c12_ROW22_R2.fastq.gz
+-rw-r--r--. 1 wangjl jinwf 6.1M Sep  3 16:28 c12_ROW22_R2.fastq.gz
+#压缩比 3.9 倍
+
+-rw-r--r--. 1 wangjl jinwf 145G Mar 22 16:16 SRR11094242_2.fastq
+-rw-r--r--. 1 wangjl jinwf  25G Mar 22 16:16 SRR11094242_2.fastq.gz
+# 压缩比 5.8倍
+
+
+当前占用空间
+$ du -sh ~/data/
+7.5T	/home/wangjl/data/
+
+
+
+(1) 查找某一类文件 or 文件夹的命令
+/home/wangjl/data/apa/smart-seq2/sample2/dustbin
+$ find ~/data/apa/ | grep "fastq$" >fastqs.txt
+$ find ~/data/apa/ | grep "\.fq$" >fqs.txt
+
+1806   1806 104704 fastqs.txt
+1438  1438 88846 fqs.txt
+
+
+(2) 按大小查找
+使用find命令找到大于指定大小的文件：
+$ find ~/. -type f -size +10G
+
+查看最大的文件夹
+$ du -s * | sort -k1nr
+
+
+
+
+(3) 压缩命令：默认压缩好后删掉源文件
+$ ls | while read id; do echo $id; 
+gzip $id &
+done;
+
+
+
+
+
+========================================
+----------------------------------------
+
+
+
+
+========================================
+----------------------------------------
+
+
+========================================
+----------------------------------------
+
+
+========================================
+----------------------------------------
+
+
+========================================
+----------------------------------------
+
+
+
+
+
+========================================
+----------------------------------------
+
+
+========================================
+----------------------------------------
+
+
+
+
+========================================
+----------------------------------------
+
+
+========================================
+----------------------------------------
+
+
+========================================
+----------------------------------------
+
+
+========================================
+----------------------------------------
+
+
+
+

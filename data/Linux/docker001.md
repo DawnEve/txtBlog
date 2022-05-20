@@ -93,502 +93,29 @@ Docker是一个改进的容器技术。具体的“改进”体现在，Docker�
 	
 
 
-# 安装docker  
-Docker的安装非常简单，支持目前所有主流操作系统，从Mac到Windows到各种Linux发行版。具体参考： [docker安装](https://docs.docker.com/installation/)
 
-本文仅介绍 [ubuntu1404](http://www.docker.org.cn/book/install/install-docker-trusty-14.04-26.html) 的安装。
 
-依赖关系：Ubuntu 14.04版本无需安装额外的依赖包，可以直接安装。
-安装步骤：
- 1. 使用管理员帐号登录ubuntu 14.04系统，保证该管理有root权限，或者可以执行sudo命令。
- 2. 检查curl包有没有安装。  
-	`$ which curl`
-如果curl没有安装的话，更新apt源之后，安装curl包。
-	`$ sudo apt-get update`
-	`$ sudo apt-get install curl`  
- 3. 获得最新的docker安装包。
-	`$ curl -sSL https://get.docker.com/ | sh` 
-shell会提示你输入sudo的密码，然后开始执行安装过程。
- 4. 确认Docker是否安装成功。
-	`$ docker -v`
-	Docker version 1.10.2, build c3959b1  
 
 
-	
-	
-	
-> 所有 docker 操作都需要 root 权限，需要加 sudo。或者干脆进入root用户：$sudo su -  
 
 
 
 
 
-检查docker服务运行状态：
-`# service docker status`
 
-开启服务:
-```
-# service docker start
-docker start/runing, process 7423  
-```
 
 
-这个命令会下载一个测试用的镜像并启动一个容器运行它(本地找不到，就到远程找)。
-```
-# docker run hello-world
 
-Hello from Docker.来自Docker的问候。
-This message shows that your installation appears to be working correctly. |这条消息表明你的安装看起来正确工作啦。
 
-To generate this message, Docker took the following steps: |为了产生该条消息，Docker经历如下步骤：
- 1. The Docker client contacted the Docker daemon. |Docker客户端和Docker守护进程联系；
- 2. The Docker daemon pulled the "hello-world" image from the Docker Hub. |Docker守护进程从Docker hub推送“hello-world”镜像。 
- 3. The Docker daemon created a new container from that image which runs the 
-    executable that produces the output you are currently reading. |Docker守护进程从镜像创建一个新的容器，执行命令产生你现在阅读的输出结果。
- 4. The Docker daemon streamed that output to the Docker client, which sent it
-    to your terminal. | Docker守护进程把输出结果作为流推送给Docker客户端，最终发送消息到你的终端。
 
-To try something more ambitious, you can run an Ubuntu container with:|试试更激动人心的，你可以运行一个Ubuntu容器：
- $ docker run -it ubuntu bash
 
-Share images, automate workflows, and more with a free Docker Hub account: |分享镜像，自动工作流，以及更多免费Docker
- https://hub.docker.com
 
-For more examples and ideas, visit: | 分享镜像，自动工作流，以及更多免费Docker hub账号：
- https://docs.docker.com/userguide/
-```
 
-我们试试docker推荐的命令：
-```
-root@ubt16:~# docker run -it ubuntu
-Unable to find image 'ubuntu:latest' locally
-latest: Pulling from library/ubuntu
-e0a742c2abfd: Pulling fs layer
-e0a742c2abfd: Pull complete
-486cb8339a27: Pull complete
-dc6f0d824617: Pull complete
-4f7a5649a30e: Pull complete
-672363445ad2: Pull complete
-Digest: sha256:84c334414e2bfdcae99509a6add166bbb4fa4041dc3fa6af08046a66fed3005f
-Status: Downloaded newer image for ubuntu:latest
 
-root@bf835331c62c:/# pwd
-/
-root@bf835331c62c:/#
-```
-经过一些列的下载安装（本地找不到就找远程的，下载需要几分钟，取决于网速）......
 
-注意，#前的主机名已经变了！我们进入了一个虚拟机~~
 
-新打开一个终端，使用命令 `docker -ps` 可见正在运行的容器。
 
-```
-root@ubt16:~# docker ps
-CONTAINER ID        IMAGE               COMMAND             CREATED             STATUS              PORTS               NAMES
-bf835331c62c        ubuntu              "/bin/bash"         5 minutes ago       Up 5 minutes                            frosty_cori
-```
 
-
-
-
-异常检查命令：
-```
-docker ps  #查看容器ID
-docker stop id  #停止容器
-docker rm id    #删除容器
-
-解决方法：
-rm -rf /var/lib/docker/*   #(记得备份重要数据)
-
-哈哈 突然发现是如此的简单，前面都成扯淡的了...
-cat xxx.tar.gz | docker import - name:tag
-
-稍等片刻，成功部署...  
-```
-
-
-
-## 查找版本号
-http://www.docker.org.cn/book/docker/prepare-docker-5.html
-docker包括服务器和客户机，一般是在一台电脑上。
-
-目标：检查docker的版本，这样可以用来确认docker服务在运行并可通过客户端链接。
-
-提示：可以通过在终端输入docker命令来查看所有的参数。
-官网的在线模拟器只提供了有限的命令，无法保证所有的命令可以正确执行。
-
-正确的命令：
-```
-# docker -v
-Docker version 1.10.2, build c3959b1
-
-#docker version
-Client:
- Version:      1.10.2
- API version:  1.22
- Go version:   go1.5.3
- Git commit:   c3959b1
- Built:        Mon Feb 22 21:37:01 2016
- OS/Arch:      linux/amd64
-
-Server:
- Version:      1.10.2
- API version:  1.22
- Go version:   go1.5.3
- Git commit:   c3959b1
- Built:        Mon Feb 22 21:37:01 2016
- OS/Arch:      linux/amd64
-```
-
-
-
-
-## 搜索可用docker镜像
-使用docker最简单的方式莫过于从现有的容器镜像开始。Docker官方网站专门有一个页面来存储所有可用的镜像，网址是：hub.docker.com。你可以通过浏览这个网页来查找你想要使用的镜像，或者使用命令行的工具来检索。
-
-目标：学会使用命令行的工具来检索名字叫做tutorial的镜像。
-
-提示：命令行的格式为：docker search 镜像名字
-
-正确的命令：
-```
-# docker search nodeJS
-NAME                                     DESCRIPTION                                     STARS     OFFICIAL   AUTOMATED
-google/nodejs                                                                            62                   [OK]
-readytalk/nodejs                         Node.js based off the official Debian Whee...   9                    [OK]
-monostream/nodejs-gulp-bower             nodejs-gulp-bower                               3                    [OK]
-```
-
-
-
-
-## 下载容器镜像
-http://www.docker.org.cn/book/docker/docker-download-image-7.html
-
-学会使用docker命令来下载镜像
-
-下载镜像的命令非常简单，使用docker pull命令即可。(译者按：docker命令和git有一些类似的地方）。在docker的镜像索引网站上面，镜像都是按照`用户名/镜像名`的方式来存储的。有一组比较特殊的镜像，比如ubuntu这类基础镜像，经过官方的验证，值得信任，可以直接用`镜像名`来检索到。
-
-
-目标：通过docker命令下载tutorial镜像。
-
-提示：执行pull命令的时候要写完整的名字，比如"learn/tutorial"。
-
-正确的命令：
-```
-#docker pull learn/tutorial
-Using default tag: latest
-latest: Pulling from learn/tutorial
-271134aeb542: Pull complete 
-Digest: sha256:2933b82e7c2a72ad8ea89d58af5d1472e35dacd5b7233577483f58ff8f9338bd
-Status: Downloaded newer image for learn/tutorial:latest
-
-
-#docker pull google/nodejs
-Using default tag: latest
-latest: Pulling from google/nodejs
-a3ed95caeb02: Pull complete 
-14c935ef769c: Pull complete 
-b57d38c2fe81: Pull complete 
-06b0a6c3ea5d: Pull complete 
-ba6860f8f186: Pull complete 
-f94d07a02954: Pull complete 
-d372c664546a: Pull complete 
-Digest: sha256:1346904512c067aa86c682fda60d82f6bece489b71489f11e6bfeb0071d1a1e7
-Status: Downloaded newer image for google/nodejs:latest
-```
-
-
-
-
-
-## 在docker容器中运行hello world!
-
-docker容器可以理解为在沙盒中运行的进程。这个沙盒包含了该进程运行所必须的资源，包括文件系统、系统类库、shell 环境等等。但这个沙盒默认是不会运行任何程序的。你需要在沙盒中运行一个进程来启动某一个容器。这个进程是该容器的唯一进程，所以当该进程结束的时候，容器也会完全的停止。
-
-目标：在我们刚刚下载的镜像中输出"hello word"。为了达到这个目的，我们需要在这个容器中运行"echo"命令，输出"hello word"。
-
-提示：docker run命令有两个参数，一个是镜像名，一个是要在镜像中运行的命令。
-
-正确的命令：
-```
-# docker run learn/tutorial echo "hello world"
-hello world
-
-# docker run google/nodejs npm -v
-2.14.7
-# docker run google/nodejs node -v
-v4.2.3
-```
-
-
-
-
-
-
-
-## 在容器中安装新的程序
-
-下一步我们要做的事情是在容器里面安装一个简单的程序(ping)。我们之前下载的tutorial镜像是基于ubuntu的，所以你可以使用ubuntu的apt-get命令来安装ping程序：`apt-get install -y ping`。
-备注：apt-get 命令执行完毕之后，容器就会停止，但对容器的改动不会丢失。
-
-目标：在learn/tutorial镜像里面安装ping程序。
-
-提示：在执行apt-get 命令的时候，要带上-y参数。如果不指定-y参数的话，apt-get命令会进入交互模式，需要用户输入命令来进行确认，但在docker环境中是无法响应这种交互的。
-
-正确的命令：
-```
-$docker run learn/tutorial apt-get install -y ping
-
-```
-
-
-
-
-
-
-## 保存对容器的修改
-
-当你对某一个容器做了修改之后（通过在容器中运行某一个命令），可以把对容器的修改保存下来，这样下次可以从保存后的最新状态运行该容器。docker中保存状态的过程称之为committing，它保存的新旧状态之间的区别，从而产生一个新的版本。
-
-目标：首先使用`docker ps -l`命令获得安装完ping命令之后容器的id。然后把这个镜像保存为learn/ping。
-
-提示：
-
-1.运行docker commit，可以查看该命令的参数列表。
-```
-# docker commit 
-
-docker: "commit" requires a minimum of 1 argument.
-See 'docker commit --help'.
-
-Usage:	docker commit [OPTIONS] CONTAINER [REPOSITORY[:TAG]]
-
-Create a new image from a container's changes
-```
-
-2.你需要指定要提交保存容器的ID。(译者按：通过docker ps -l 命令获得)
-```
-# docker ps -l
-CONTAINER ID        IMAGE               COMMAND                  CREATED             STATUS                     PORTS               NAMES
-452e5b68930d        learn/tutorial      "apt-get install -y p"   8 seconds ago       Exited (0) 6 seconds ago                       tiny_stallman
-
-
-
-# docker ps -l
-CONTAINER ID        IMAGE               COMMAND             CREATED             STATUS                     PORTS               NAMES
-465cc7ce4613        google/nodejs       "npm -v"            4 minutes ago       Exited (0) 4 minutes ago                       nauseous_swartz
-```
-
-3.无需拷贝完整的id，通常来讲最开始的三至四个字母即可区分。（译者按：非常类似git里面的版本号)
-
-正确的命令：
-```
-# docker commit 452e5b689 learn/ping
-sha256:b478d3dc4ec5edacef822679998c6420ed7448e13963e8b7f90c7682f38e1d60
-```
-请注意：Docker返回一个新的id，就是镜像id。
-
-
-commit命令可以使用更多参数：-m指定评论（和git类似），-a指定此次更新的作者。
-```
-$ docker commit -m "Added json gem" -a "Kate Smith" \
-0b2616b0e5a8 ouruser/sinatra:v2
-4f177bd27a9ff0f6dc2a830403925b5360bfe0b93d476f7fc3231110e7f71b1c
-```
-
-
-
-
-
-
-
-
-
-
-
-## 运行新的镜像
-
-ok，到现在为止，你已经建立了一个完整的、自成体系的docker环境，并且安装了ping命令在里面。它可以在任何支持docker环境的系统中运行啦！(译者按：是不是很神奇呢？)让我们来体验一下吧！
-
-目标：
-在新的镜像中运行ping www.google.com命令。
-
-提示：
-一定要使用新的镜像名`learn/ping`来运行ping命令。(译者按：最开始下载的learn/tutorial镜像中是没有ping命令的)
-
-正确的命令：
-```
-# docker run learn/ping ping www.baidu.com
-PING www.a.shifen.com (119.75.217.109) 56(84) bytes of data.
-64 bytes from 119.75.217.109: icmp_req=1 ttl=49 time=13.7 ms
-64 bytes from 119.75.217.109: icmp_req=2 ttl=49 time=12.4 ms
-64 bytes from 119.75.217.109: icmp_req=3 ttl=49 time=12.4 ms
-64 bytes from 119.75.217.109: icmp_req=4 ttl=49 time=12.5 ms
-^C
---- www.a.shifen.com ping statistics ---
-4 packets transmitted, 4 received, 0% packet loss, time 7294ms
-rtt min/avg/max/mdev = 12.419/12.773/13.708/0.540 ms
-
-```
-提示：你可以通过ctrl+C停止命令。
-
-
-
-
-
-
-
-
-
-## 检查运行中的镜像
-
-现在你已经运行了一个docker容器，让我们来看下正在运行的容器。
-使用`docker ps`命令可以查看所有正在运行中的容器列表，使用`docker inspect`命令我们可以查看更详细的关于某一个容器的信息。
-```
-# docker ps
-CONTAINER ID        IMAGE               COMMAND                CREATED             STATUS              PORTS               NAMES
-98dda58ec02a        learn/ping          "ping www.baidu.com"   3 seconds ago       Up 2 seconds                            reverent_hugle
-
-
-
-# docker inspect
-docker: "inspect" requires a minimum of 1 argument.
-See 'docker inspect --help'.
-
-Usage:	docker inspect [OPTIONS] CONTAINER|IMAGE [CONTAINER|IMAGE...]
-
-Return low-level information on a container or image
-
-
-
-# docker inspect learn/ping
-[
-    {
-        "Id": "sha256:b478d3dc4ec5edacef822679998c6420ed7448e13963e8b7f90c7682f38e1d60",
-        "RepoTags": [
-            "learn/ping:latest"
-        ],
-        "RepoDigests": [],
-        "Parent": "sha256:a7876479f1aae32c0716d7a85b5151af26f533fe48efa086010105cba02f5163",
-        ...
-        "Architecture": "amd64",
-        "Os": "linux",
-        "Size": 139492268,
-        "VirtualSize": 139492268,
-        "GraphDriver": {
-            "Name": "aufs",
-            "Data": null
-        }
-    }
-]
-```
-
-
-目标：
-查找某一个运行中容器的id，然后使用docker inspect命令查看容器的信息。
-
-提示：
-可以使用镜像id的前面部分，不需要完整的id。
-
-正确的命令：
-```
-$ docker inspect 98dd
-```
-看结果：有IP地址[?]，状态等信息。
-
-
-
-
-
-
-
-## 发布docker镜像
-http://www.docker.org.cn/book/docker/docker-push-image-13.html
-
-现在我们已经验证了新镜像可以正常工作，下一步我们可以将其发布到官方的索引网站。还记得我们最开始下载的learn/tutorial镜像吧，我们也可以把我们自己编译的镜像发布到索引页面，一方面可以自己重用，另一方面也可以分享给其他人使用。
-
-目标：
-把learn/ping镜像发布到docker的index网站。
-
-提示：
-1. docker images命令可以列出所有安装过的镜像。
-2. docker push命令可以将某一个镜像发布到官方网站。
-3. 你只能将镜像发布到自己的空间下面。这个模拟器登录的是learn帐号。
-
-预期的命令：
-```
-$ docker push learn/ping
-
-The push refers to a repository [docker.io/learn/ping]
-25da6dc3f0ce: Preparing 
-ee1ba0cc9b81: Preparing 
-unauthorized: access to the requested resource is not authorized
-```
-提示没有授权。。。
-
-话说我已经申请过hub.docker.com的账号了。
-
-继续找官方文档。https://docs.docker.com/engine/reference/commandline/login/
-
-### 看来需要先登录：
-```
-root@wjl-VirtualBox:~# docker login -u dawneve -p yourPassWord
-Email: jimmyMall@live.com
-WARNING: login credentials saved in /root/.docker/config.json
-Login Succeeded
-```
-
-### 查看所有镜像
-```
-root@wjl-VirtualBox:~# docker images
-REPOSITORY          TAG                 IMAGE ID            CREATED             SIZE
-learn/ping          latest              b478d3dc4ec5        About an hour ago   139.5 MB
-<none>              <none>              dfffdd34bc13        About an hour ago   128 MB
-ubuntu              latest              07c86167cdc4        5 days ago          188 MB
-google/nodejs       latest              d1921e7f8e86        6 weeks ago         493.3 MB
-hello-world         latest              690ed74de00f        4 months ago        960 B
-learn/tutorial      latest              a7876479f1aa        2 years ago         128 MB
-root@wjl-VirtualBox:~# 
-```
-
-### 重新命名docker镜像  
-
-```
-root@wjl-VirtualBox:~# docker run learn/ping echo "hi"
-hi
-
-root@wjl-VirtualBox:~# docker ps -l
-CONTAINER ID        IMAGE               COMMAND             CREATED             STATUS                     PORTS               NAMES
-36279ac73153        learn/ping          "echo hi"           7 seconds ago       Exited (0) 7 seconds ago                       dreamy_yalow
-
-root@wjl-VirtualBox:~# docker commit 36279 dawneve/ping
-sha256:5bd062e39404b1c35c57383183b32b48431a43f701aabf093aae016f896cb097
-
-root@wjl-VirtualBox:~# docker images
-REPOSITORY          TAG                 IMAGE ID            CREATED             SIZE
-dawneve/ping        latest              5bd062e39404        5 seconds ago       139.5 MB
-learn/ping          latest              b478d3dc4ec5        About an hour ago   139.5 MB
-<none>              <none>              dfffdd34bc13        About an hour ago   128 MB
-ubuntu              latest              07c86167cdc4        5 days ago          188 MB
-google/nodejs       latest              d1921e7f8e86        6 weeks ago         493.3 MB
-hello-world         latest              690ed74de00f        4 months ago        960 B
-learn/tutorial      latest              a7876479f1aa        2 years ago         128 MB
-```
-
-### 执行上传  
-```
-root@wjl-VirtualBox:~# docker push dawneve/ping
-The push refers to a repository [docker.io/dawneve/ping]
-25da6dc3f0ce: Pushed 
-ee1ba0cc9b81: Pushed 
-latest: digest: sha256:4ce09a01b4193e90d1314b470fc30e670ed619de5b5deb6d148294f10ae76446 size: 2167
-```
-登陆我的账号 https://hub.docker.com/u/dawneve/ ，发现已经有2个pull了，难道不应该是push？
-
-
-
-> 本文减缩版：https://segmentfault.com/a/1190000000482546
 
 
 
@@ -716,122 +243,6 @@ docker rmi $(docker images -q)
 # 几个简单小例子
 
 
-## 容器操作
-
-1.创建并拉取busybox
-```
-# docker run -it --name con01 busybox:latest
-/ # ip addr    #容器里执行
-1: lo: <LOOPBACK,UP,LOWER_UP> mtu 65536 qdisc noqueue state UNKNOWN group default 
-link/loopback 00:00:00:00:00:00 brd 00:00:00:00:00:00
-inet 127.0.0.1/8 scope host lo
-   valid_lft forever preferred_lft forever
-Segmentation fault (core dumped)
-/ # ping www.csphere.cn
-PING www.csphere.cn (117.121.26.243): 56 data bytes
-64 bytes from 117.121.26.243: seq=0 ttl=48 time=3.139 ms
-64 bytes from 117.121.26.243: seq=1 ttl=48 time=3.027 ms
-^C
---- www.csphere.cn ping statistics ---
-2 packets transmitted, 2 packets received, 0% packet loss
-round-trip min/avg/max = 3.027/3.083/3.139 ms
-exit    #退出容器
-
-
-
-2.创建测试容器
-# docker run -d --name con03 csphere/test:0.1
-efc9bda4a2ff2f479b18e0fc4698e42c47c9583a24c93f5ce6b28a828a172709
-
-
-3.登陆到con03中
-# docker exec -it con03 /bin/bash
-[root@efc9bda4a2ff /]# exit
-
-
-4.停止con03
-# docker stop con03
-con03
-
-
-5.开启con03
-# docker start con03
-con03
-
-
-6.删除con03
-# docker ps -a
-CONTAINER ID        IMAGE                    COMMAND                CREATED             STATUS                      PORTS                                             NAMES
-efc9bda4a2ff        csphere/test:0.1         "/usr/local/bin/run    4 minutes ago       Up 17 seconds                                                                 con03               
-99aa6ee25adc        busybox:latest           "/bin/sh"              14 minutes ago      Exited (0) 12 minutes ago                                                     con02               
-831c93de9b9f        busybox:latest           "/bin/sh"              2 hours ago         Up 27 minutes                                                                 con01
-# docker rm con02     #容器停止的状态
-# docker rm -f con03  #容器开启的状态
-```
-
-
-
-## 镜像操作
-```
-1.从docker hub官方镜像仓库拉取镜像
-# docker pull busybox:latest
-atest: Pulling from busybox
-cf2616975b4a: Pull complete 
-6ce2e90b0bc7: Pull complete 
-8c2e06607696: Already exists 
-busybox:latest: The image you are pulling has been verified. Important: image verification is a tech preview feature and should not be relied on to provide security.
-Digest: sha256:38a203e1986cf79639cfb9b2e1d6e773de84002feea2d4eb006b52004ee8502d
-Status: Downloaded newer image for busybox:latest
-
-
-2.从本地上传镜像到镜像仓库
-docker push 192.168.1.2/csphere/nginx:1.7
-
-
-3.查找镜像仓库的某个镜像
-# docker search centos/nginx
-NAME                                     DESCRIPTION     STARS     OFFICIAL   AUTOMATED
-johnnyzheng/centos-nginx-php-wordpress                   1                    [OK]
-sergeyzh/centos6-nginx                                   1                    [OK]
-hzhang/centos-nginx                                      1                    [OK]
-
-
-4.查看本地镜像列表
-# docker images
-TAG                 IMAGE ID            CREATED             VIRTUAL SIZE
-docker.io/csphere/csphere   0.10.3              604c03bf0c9e        3 days ago          62.72 MB
-docker.io/csphere/csphere   latest              604c03bf0c9e        3 days ago          62.72 MB
-csphere/csphere             0.10.3              604c03bf0c9e        3 days ago          62.72 MB
-registry                    2.0                 2971b6ce766c        7 days ago          548.1 MB
-busybox                     latest              8c2e06607696        3 weeks ago         2.43 MB
-
-
-5.删除镜像
-docker rmi busybox:latest        #没有容器使用此镜像创建，如果有容器在使用此镜像会报错：Error response from daemon: Conflict, cannot delete 8c2e06607696 because the running container 831c93de9b9f is using it, stop it and use -f to force
-FATA[0000] Error: failed to remove one or more images
-docker rmi -f busybox:latest     #容器使用此镜像创建，此容器状态为Exited
-
-
-6.查看构建镜像所用过的命令
-# docker history busybox:latest
-IMAGE               CREATED             CREATED BY                                      SIZE
-8c2e06607696        3 weeks ago         /bin/sh -c #(nop) CMD ["/bin/sh"]               0 B
-6ce2e90b0bc7        3 weeks ago         /bin/sh -c #(nop) ADD file:8cf517d90fe79547c4   2.43 MB
-cf2616975b4a        3 weeks ago         /bin/sh -c #(nop) MAINTAINER Jérôme Petazzo     0 B
-```
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 
 
@@ -841,7 +252,7 @@ cf2616975b4a        3 weeks ago         /bin/sh -c #(nop) MAINTAINER Jérôme Pe
 <br>
 ----------------------------------
 
-# 在docker中运行mysql 
+## 在docker中运行mysql 
 
 1.下载mysql官方镜像 
 `# docker pull mysql`
@@ -936,8 +347,9 @@ Uptime:                 6 min 50 sec
 
 Threads: 1  Questions: 5  Slow queries: 0  Opens: 105  Flush tables: 1  Open tab
 les: 98  Queries per second avg: 0.012
---------------
 ```
+
+
 
 
 6.停止/运行/重启MySQL容器  
@@ -951,6 +363,8 @@ app2-db  前面如果不指定端口号，则重启后mysql的端口号会变化
 # docker restart app2-db
 app2-db
 ```
+
+
 
 7.删除mysql容器
 我们先删除刚才的容器
@@ -975,4 +389,181 @@ CONTAINER ID        IMAGE               COMMAND                  CREATED        
 426b74b40571        mysql               "/entrypoint.sh mysql"   8 seconds ago       Up 6 seconds        0.0.0.0:32768->3306/tcp   app2-db
 ```
 参考step5再次测试，局域网内可以连接数据库！
+
+
+
+
+
+
+
+
+
+
+## 在docker中运行远程桌面 xrdp
+
+
+[在Docker中运行桌面应用](http://www.dockerone.com/article/218)
+2016[Runc Containers on the Desktop](https://blog.jessfraz.com/post/runc-containers-on-the-desktop/)
+2015[Docker Containers on the Desktop](https://blog.jessfraz.com/post/docker-containers-on-the-desktop/)
+
+
+### Xfce 比 KDE和GNOME 更轻量级。
+
+```
+运行 ubuntu 基础镜像
+
+$ docker run --rm -d -it --name desk -p 3399:3389 ubuntu:20.04
+$ docker exec -it desk bash
+
+安装xrdp协议
+cd \
+&& sed -i "s/archive.ubuntu/mirrors.aliyun/g;s/security.ubuntu/mirrors.aliyun/g" /etc/apt/sources.list \
+&& apt update \
+&& apt install -y wget unzip \
+## && apt install -y language-pack-zh-han* \
+## && apt install -y language-pack-gnome-zh-han* \
+&& apt install -y xfce4 xfce4-goodies xorg dbus-x11 x11-xserver-utils \
+&& apt install -y xrdp \
+&& service xrdp start
+
+# 地址选择 6亚洲 70上海。
+# 键盘 18china, 2汉语拼音
+# 1 gdm3
+
+提交镜像
+$ docker commit desk ubuntu:20.04d
+
+修改可用的端口
+$ docker run --rm -d -it --name desk2 -p 9000:3389 ubuntu:20.04d
+进入启动服务
+$ docker exec -it desk2 bash
+# service xrdp start
+	xrdp-sesman is already running.
+	if it's not running, try removing /var/run/xrdp/xrdp-sesman.pid
+# service xrdp restart
+# service xrdp status
+
+新建用户
+# useradd -s /bin/bash -m wangjl
+# echo "wangjl:123" | chpasswd
+
+防止闪退
+# su wangjl
+$ cd
+$ touch .xsession
+$ echo xfce4-session >~/.xsession
+
+
+本地win10，左下角搜索 远程桌面连接，
+输入 IP:9000 回车，
+新窗口输入新建的用户名和密码 wangjl/123 回车；
+新窗口就是桌面了!
+
+使用体验：不好，浏览器无法运行。
+```
+
+
+
+
+
+
+### Ubuntu 20.04 in docker 安装 gnome 桌面 (闪退 //todo)
+
+https://hub.docker.com/r/danielguerra/ubuntu-xrdp
+
+
+```
+运行 ubuntu 基础镜像
+$ docker run --rm -d -it --name desk -p 9000:3389 ubuntu:20.04
+$ docker exec -it desk bash
+
+替换为国内源
+# sed -i "s/archive.ubuntu/mirrors.aliyun/g;s/security.ubuntu/mirrors.aliyun/g" /etc/apt/sources.list
+# apt update
+
+安装 Gnome 和 xfce
+# apt install -y ubuntu-desktop xubuntu-desktop
+
+	地址选择 6亚洲 70上海。
+	键盘 回车， 18china, 2汉语拼音
+	选择 1
+
+安装xrdp协议
+# apt install xrdp -y
+
+提交镜像 $ docker commit desk u:1
+
+
+
+
+
+
+
+
+
+
+启动服务
+$ docker run --rm -d -it --name desk -p 9000:3389 u:1
+$ docker exec -it desk bash
+
+新建用户
+# useradd -s /bin/bash -m wangjl
+# echo "wangjl:123" | chpasswd
+
+# adduser xrdp ssl-cert
+## systemctl restart xrdp
+
+还是各种闪退！
+# apt update
+# apt upgrade
+
+
+提交镜像 $ docker commit desk u:2
+
+
+
+
+
+
+启动服务
+$ docker run --rm -d -it --name desk -p 9000:3389 u:2
+$ docker exec -it desk bash
+
+# apt install vim -y
+# service dbus start #解决报错1
+
+# service xrdp start
+		xrdp-sesman is already running.
+		if it's not running, try removing /var/run/xrdp/xrdp-sesman.pid
+	# service xrdp restart
+# service xrdp status
+ * xrdp-sesman is running
+ * xrdp is running
+
+
+
+# apt-get install xfce4
+
+# echo xfce4-session >~/.xsession
+
+
+
+报错1: win10远程桌面登录闪退，
+在linux该用户目录下的错误文件最后一行：
+$ cat ~/.xsession-errors
+gnome-session-binary[25657]: ERROR: Failed to connect to system bus: Could not connect: No such file or directory
+aborting...
+
+
+
+报错2: 再次连接，报错
+$ cat ~/.xsession-errors
+gnome-session-binary[26417]: WARNING: Failed to connect to systemd: Error calling StartServiceByName for org.freedesktop.login1: Launch helper exited with unknown return code 1
+
+
+
+## https://blog.csdn.net/fleaxin/article/details/109163451
+远程桌面 xrdp 问题: https://blog.csdn.net/yyywxk/article/details/106136196
+Linux 用户可以使用一个 RDP 客户端，例如 Remmina 或者 Vinagre： https://www.itcoder.tech/posts/how-to-install-xrdp-on-ubuntu-20-04/
+```
 

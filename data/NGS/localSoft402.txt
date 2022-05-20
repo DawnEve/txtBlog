@@ -1581,8 +1581,6 @@ $ geneBody_coverage.py -r /home/wangjl/data/ref/hg19/hg19_ucsc_genes-20190509.be
 
 
 
-
-
 4. 新版本 geneBody_coverage2.py，据说很快！(线条太粗糙，不好)
 https://github.com/nf-core/rnaseq/issues/195
 BAM -> bigWig -> geneBody_coverage2.py
@@ -1732,6 +1730,254 @@ $ geneBody_coverage.py -r /home/wangjl/data/ref/mouse/UCSC/mm10_refseq_whole_gen
 
 ref:
 https://www.jianshu.com/p/2b386dd437d3
+
+
+
+
+
+
+
+
+========================================
+|-- gtfToGenePred: gtf 转为12列 bed 格式
+----------------------------------------
+1. geneBody_coverage.py 的参数 -r，需要一个bed格式的gene模型文件。
+我们需要把下载的 gtf 转为12列 bed 格式
+-r REF_GENE_MODEL, --refgene=REF_GENE_MODEL
+			Reference gene model in bed format. [required]
+
+http://genomewiki.ucsc.edu/index.php/Genes_in_gtf_or_gff_format
+
+
+(2) GenePred格式简介
+http://www.biotrainee.com/thread-928-1-1.html
+
+GTF的产生和流行有其历史的原因。但是从技术角度来讲，这个文件格式是个非常差劲的格式。
+
+GTF格式非常冗余。以人类转录组为例，Gencode V22的GTF文件为1.2G，压缩之后只有40M。大家知道压缩软件的压缩比是和软件的冗余程度。很少有文件能够压缩到1/30的大小。可见GTF格式多么冗余。GTF格式（及其早期版本GFF等）有很好的替代格式。从信息量上来讲：GTF 等价于 GenePred （Bed12) + Gene_Anno_table。GenePred是Jimmy Kent创建UCSC genome browser的时候建立的文件格式。UCSC的文件格式定义是非常smart的，包括之后我可能会讲到的2bit，bigwig格式。
+
+GTF vs GenePred：
+1) 从文件大小上来看，压缩前：GTF（1.2G) >> Genepred(23M) + Gene_Anno_table (2.8M)。压缩后：GTF(40M) >> GenePred(7.8M) +Gene_Anno_table (580K)
+2) 从可读性来讲，GTF是以gene interval 为单位（行），每行可以是gene，transcript，exon，intron，utr等各种信息，看起来什么都在里面，很全面，其实可读性非常差，而且容易产生各种错误。GenePred格式是以transcript为单位，每行就是一个transcript，简洁直观。
+3) 从程序处理的角度来讲：以GTF文件作为输入的程序，如果换成以GenePred格式为输入，编程的难度会降低一个数量级，运算时间会快很多，代码的可读性强很多。
+
+
+
+
+
+
+
+2. 使用UCSC的 gtfToGenePred 工具从gtf基因组注释文件可以获取reference gene model in bed format。
+这种文件除了包含常用的chromosome, start, end, name, score, strand等信息外，最后一列包含了多个extron和intron等的位置，用逗号隔开。
+Example：http://dldcc-web.brc.bcm.edu/lilab/liguow/RSeQC/dat/sample.bed
+
+(1) 下载安装
+http://hgdownload.soe.ucsc.edu/admin/exe/linux.x86_64/
+
+$ cd ~/bin/
+$ wget http://hgdownload.soe.ucsc.edu/admin/exe/linux.x86_64/gtfToGenePred
+$ wget http://hgdownload.soe.ucsc.edu/admin/exe/linux.x86_64/genePredToBed
+
+$ chmod +x gtfToGenePred #增加执行权限
+$ chmod +x genePredToBed #增加执行权限
+$ gtfToGenePred -v
+
+$ gtfToGenePred #帮助文档
+### kent source version 426 ###
+gtfToGenePred - convert a GTF file to a genePred
+usage:
+   gtfToGenePred gtf genePred
+
+options:
+     -genePredExt - create a extended genePred, including frame information and gene name
+     -allErrors - skip groups with errors rather than aborting.
+		Useful for getting infomation about as many errors as possible.
+     -ignoreGroupsWithoutExons - skip groups contain no exons rather than generate an error.
+     -infoOut=file - write a file with information on each transcript
+     -sourcePrefix=pre - only process entries where the source name has the specified prefix.  May be repeated.
+     -impliedStopAfterCds - implied stop codon in after CDS
+     -simple    - just check column validity, not hierarchy, resulting genePred may be damaged
+     -geneNameAsName2 - if specified, use gene_name for the name2 field instead of gene_id.
+     -includeVersion - it gene_version and/or transcript_version attributes exist, include the version in the corresponding identifiers.
+
+
+(2) 使用
+GTF 转换成GenePred: gtfToGenePred -genePredExt -ignoreGroupsWithoutExons -geneNameAsName2 test.gtf test.gpd
+genepred格式的坐标是0起始，左闭右开。
+
+
+$ cd /home/wangjl/data/ref/GRCm39/gencode/
+$ gtfToGenePred -genePredExt -ignoreGroupsWithoutExons -geneNameAsName2 gencode.vM28.annotation.gtf gencode.vM28.annotation.gpd
+$ head gencode.vM28.annotation.gpd 
+ENSMUST00000193812.2    chr1    +       3143475 3144545 3144545 3144545 1       3143475,        3144545,        0       4933401J01Rik   none    none    -1,
+ENSMUST00000082908.3    chr1    +       3172238 3172348 3172348 3172348 1       3172238,        3172348,        0       Gm26206 none    none    -1,
+ENSMUST00000162897.2    chr1    -       3276123 3286567 3286567 3286567 2       3276123,3283831,        3277540,3286567,        0       Xkr4    none    none    -1,-1,
+ENSMUST00000159265.2    chr1    -       3276745 3285855 3285855 3285855 2       3276745,3283661,        3277540,3285855,        0       Xkr4    none    none    -1,-1,
+ENSMUST00000070533.5    chr1    -       3284704 3741721 3286244 3741571 3       3284704,3491924,3740774,        3287191,3492124,3741721,        0       Xkr4    cmpl    cmpl    1,2,0,
+ENSMUST00000192857.2    chr1    +       3322979 3323459 3323459 3323459 1       3322979,        3323459,        0       Gm18956 none    none    -1,
+ENSMUST00000195335.2    chr1    -       3435953 3438772 3438772 3438772 1       3435953,        3438772,        0       Gm37180 none    none    -1,
+ENSMUST00000192336.2    chr1    -       3445778 3448011 3448011 3448011 1       3445778,        3448011,        0       Gm37363 none    none    -1,
+ENSMUST00000194099.2    chr1    -       3535199 3537508 3537508 3537508 1       3535199,        3537508,        0       Gm37686 none    none    -1,
+ENSMUST00000161581.2    chr1    +       3536809 3583776 3583776 3583776 2       3536809,3583627,        3536910,3583776,        0       Gm1992  none    none    -1,-1,
+# 142376  2135640 30412952 gencode.vM28.annotation.gpd #删掉吧
+
+
+$ gtfToGenePred -genePredExt -geneNameAsName2 gencode.vM28.annotation.gtf gencode.vM28.annotation.all.gpd
+$ head gencode.vM28.annotation.all.gpd
+ENSMUST00000193812.2    chr1    +       3143475 3144545 3144545 3144545 1       3143475,        3144545,        0       4933401J01Rik   none    none    -1,
+ENSMUST00000082908.3    chr1    +       3172238 3172348 3172348 3172348 1       3172238,        3172348,        0       Gm26206 none    none    -1,
+ENSMUST00000162897.2    chr1    -       3276123 3286567 3286567 3286567 2       3276123,3283831,        3277540,3286567,        0       Xkr4    none    none    -1,-1,
+# 142376  2135640 30412952 gencode.vM28.annotation.all.gpd
+
+
+
+2) 第12列是 gene name，转bed时不妨把 $1 替换成 $12。不过仅仅算覆盖度不看基因的话也无所谓了。
+$ cat gencode.vM28.annotation.all.gpd | awk '{print $12}' | sort | uniq -c | wc
+  54456  108912  875275
+$ cat gencode.vM28.annotation.all.gpd | awk '{print $1}' | sort | uniq -c | wc
+ 142376  284752 4139282
+
+
+
+
+
+(3) 从GenePred文件提取信息就可以得到bed文件
+$ awk '{print $2"\t"$4"\t"$5"\t"$1"\t0\t"$3"\t"$6"\t"$7"\t0\t"$8"\t"$9"\t"$10}' gencode.vM28.annotation.all.gpd >  gencode.vM28.annotation.all.bed
+
+
+$ head gencode.vM28.annotation.all.bed
+chr1    3143475 3144545 ENSMUST00000193812.2    0       +       3144545 3144545 0       1       3143475,        3144545,
+chr1    3172238 3172348 ENSMUST00000082908.3    0       +       3172348 3172348 0       1       3172238,        3172348,
+chr1    3276123 3286567 ENSMUST00000162897.2    0       -       3286567 3286567 0       2       3276123,3283831,        3277540,3286567,
+chr1    3276745 3285855 ENSMUST00000159265.2    0       -       3285855 3285855 0       2       3276745,3283661,        3277540,3285855,
+chr1    3284704 3741721 ENSMUST00000070533.5    0       -       3286244 3741571 0       3       3284704,3491924,3740774,        3287191,3492124,3741721,
+#   142376  1708512 26065973 gencode.vM28.annotation.all.bed
+
+这个结尾的,不知道是否受影响。
+
+
+经过测试，这个不能用，无法载入。需要重新排序后使用
+
+
+(4) 排序
+$ bedtools sort -i gencode.vM28.annotation.all.bed > gencode.vM28.annotation.sort.all.bed
+
+# 删除中间文件
+$ rm gencode.vM28.annotation.all.gpd
+$ rm gencode.vM28.annotation.all.bed
+
+
+# 提供1个 mouse genome bed版本
+/home/wangjl/data/ref/GRCm39/gencode/gencode.vM28.annotation.sort.all.bed
+
+经过测试，这个还是不能用，无法载入。原因未知。请使用 3 给出的版本。
+
+
+
+
+
+
+
+3. 排序就是参考这个的。不过这个链接使用的是 gene_name，而不是 ensembl ID。
+该版本还使用到了 genePredToBed 工具。
+https://github.com/deeptools/pyGenomeTracks/issues/72
+So far, we succeeded to convert gtf to bed12 using gtfToGenePred and Genepredtobed as;
+
+(1) pred to bed 
+# 直接执行这一句报错 $ genePredToBed gencode.vM28.annotation.all.bed gencode.vM28.annotation.all.bed12
+invalid unsigned integer: "ENSMUST00000193812.2"
+
+
+(2) 按原文从gtf开始执行执行
+
+$ gtfToGenePred gencode.vM28.annotation.gtf vM28.annotation.gp -geneNameAsName2 -ignoreGroupsWithoutExons -genePredExt
+$ awk '{ print $12"\t"$2"\t"$3"\t"$4"\t"$5"\t"$6"\t"$7"\t"$8"\t"$9"\t"$10"\t"$11"\t"$12"\t"$13"\t"$14"\t"$15"\t"}' vM28.annotation.gp > vM28.annotation.gene_name.gp
+$ genePredToBed vM28.annotation.gene_name.gp vM28.annotation.bed12
+$ bedtools sort -i vM28.annotation.bed12 > vM28.annotation.sort.bed12
+
+# 删除中间文件
+$ rm vM28.annotation.gp vM28.annotation.gene_name.gp vM28.annotation.bed12
+
+
+# 查看文件
+$ head vM28.annotation.sort.bed12
+chr1    3143475 3144545 4933401J01Rik   0       +       3144545 3144545 0       1       1070,   0,
+chr1    3172238 3172348 Gm26206 0       +       3172348 3172348 0       1       110,    0,
+chr1    3276123 3286567 Xkr4    0       -       3286567 3286567 0       2       1417,2736,      0,7708,
+chr1    3276745 3285855 Xkr4    0       -       3285855 3285855 0       2       795,2194,       0,6916,
+chr1    3284704 3741721 Xkr4    0       -       3286244 3741571 0       3       2487,200,947,   0,207220,456070,
+chr1    3322979 3323459 Gm18956 0       +       3323459 3323459 0       1       480,    0,
+chr1    3435953 3438772 Gm37180 0       -       3438772 3438772 0       1       2819,   0,
+
+# 142376  1708512 15865308 /home/wangjl/data/ref/GRCm39/gencode/vM28.annotation.sort.bed12
+
+
+
+(3) 提供另一个 mouse genome bed版本
+/home/wangjl/data/ref/GRCm39/gencode/vM28.annotation.sort.bed12
+
+查看从 UCSC下载的 mm10 的bed文件
+$ wc /home/wangjl/data/ref/mm10/mm10_ucsc_genes-20190510.bed 
+  138930  1667160 17376913 /home/wangjl/data/ref/mm10/mm10_ucsc_genes-20190510.bed
+
+$ head /home/wangjl/data/ref/mm10/mm10_ucsc_genes-20190510.bed 
+chr1	3073252	3074322	ENSMUST00000193812.1	0	+	3073252	3073252	0	1	1070,	0,
+chr1	3102015	3102125	ENSMUST00000082908.1	0	+	3102015	3102015	0	1	110,	0,
+chr1	3206522	3215632	ENSMUST00000159265.1	0	-	3206522	3206522	0	2	795,2194,	0,6916,
+chr1	3205900	3216344	ENSMUST00000162897.1	0	-	3205900	3205900	0	2	1417,2736,	0,7708,
+chr1	3252756	3253236	ENSMUST00000192857.1	0	+	3252756	3252756	0	1	480,	0,
+
+
+
+
+
+
+ref:
+https://www.jianshu.com/p/3d5a772a79af
+https://www.bioinfo-scrounger.com/archives/234/
+
+
+
+
+
+
+
+========================================
+|-- flagstat 命令简介
+----------------------------------------
+统计输入文件的相关数据并将这些数据输出至屏幕显示。
+每一项统计数据都由两部分组成，分别是QC pass和QC failed，表示通过QC的reads数据量和未通过QC的reads数量。以“PASS + FAILED”格式显示。
+
+还可以根据samtools的标志位显示相应的内容，但是这里不做讨论。
+
+1. 命令格式：samtools flagstat <in.bam> |<in.sam> | <in.cram>
+$ samtools flagstat
+Usage: samtools flagstat [options] <in.bam>
+      --input-fmt-option OPT[=VAL]
+          Specify a single input file format option in the form of OPTION or OPTION=VALUE
+  -@, --threads INT
+          Number of additional threads to use [0]
+
+
+2. 实例 
+$ samtools flagstat SRR13730656_Aligned.sortedByCoord.out.bam
+12981789 + 0 in total (QC-passed reads + QC-failed reads)
+1206729 + 0 secondary
+0 + 0 supplementary
+0 + 0 duplicates
+12981789 + 0 mapped (100.00% : N/A)
+11775060 + 0 paired in sequencing
+5889261 + 0 read1
+5885799 + 0 read2
+11771402 + 0 properly paired (99.97% : N/A)
+11771402 + 0 with itself and mate mapped
+3658 + 0 singletons (0.03% : N/A)
+0 + 0 with mate mapped to a different chr
+0 + 0 with mate mapped to a different chr (mapQ>=5)
+
+
+
+
 
 
 
@@ -2411,12 +2657,14 @@ featureCounts v2.0.1
 
 (2) 之前的
 https://sourceforge.net/projects/subread/
-$ wget -b https://sourceforge.net/projects/subread/files/subread-1.6.0/subread-1.6.0-Linux-x86_64.tar.gz/download
-$ mv download subread-1.6.0-Linux-x86_64.tar.gz
+$ wget -b https://sourceforge.net/projects/subread/files/subread-1.6.0/subread-1.6.0-Linux-x86_64.tar.gz --no-check-certificate
 $ tar zxvf subread-1.6.0-Linux-x86_64.tar.gz
 $ vim ~/.bashrc 
 在该文件结尾增加一行
 export PATH=/home/wangjl/software/subread-1.6.0-Linux-x86_64/bin:$PATH
+
+export PATH=/home/wangjl/data/software/subread-1.6.0-Linux-x86_64/bin:$PATH #193 server
+
 保存后加载改文件，使其生效。
 $ source ~/.bashrc
 
@@ -2456,6 +2704,37 @@ $featureCounts -T 6 -p -t exon -g gene_id -a ~/annotation/mm10/gencode.vM13.anno
 
 
 
+Summarize a single-end read dataset using 5 threads:
+$ featureCounts -T 5 -t exon -g gene_id -a annotation.gtf -o counts.txt mapping_results_SE.sam
+
+Summarize a BAM format dataset:
+$ featureCounts -t exon -g gene_id -a annotation.gtf -o counts.txt mapping_results_SE.bam
+
+Summarize multiple datasets at the same time:
+$ featureCounts -t exon -g gene_id -a annotation.gtf -o counts.txt library1.bam library2.bam library3.bam
+
+Perform strand-specific read counting (use '-s 2' if reversely stranded):
+$ featureCounts -s 1 -t exon -g gene_id -a annotation.gtf -o counts.txt mapping_results_SE.bam
+
+
+多个文件，链特异性，单端测序 
+$ featureCounts -s 1 -t exon -g gene_id -a annotation.gtf -o counts.txt library1.bam library2.bam library3.bam
+
+
+try1：链特异吗？Successfully assigned reads : 2048668 (24.1%) 貌似不是
+$ featureCounts -T 50 -s 1 -t exon -g gene_name -a /home/wangjl/data/ref/hg19/gencode.v30lift37.annotation.gtf -o FACS.C1.counts.s1.txt `ls map/*bam |head -n3`
+使用50个进程 -T 50
+
+try2: 试试另一个数字 Successfully assigned reads : 1208275 (24.0%) 
+$ featureCounts -T 50 -s 2 -t exon -g gene_name -a /home/wangjl/data/ref/hg19/gencode.v30lift37.annotation.gtf -o FACS.C1.counts.s2.txt `ls map/*bam|head -n 3`
+
+
+try3: 试试不用链特异呢？Successfully assigned reads : 3659205 (42.6%)
+$ featureCounts -T 50 -t exon -g gene_name -a /home/wangjl/data/ref/hg19/gencode.v30lift37.annotation.gtf -o FACS.C1.counts.t3.txt `ls map/*bam|head -n 3`
+
+怎么办？
+
+
 
 测试：
 $ featureCounts -O -M -Q 30 -p -a genome.gtf -o outputfile input.bam
@@ -2475,6 +2754,7 @@ total 19M
 -rw-r--r--. 1 wangjl user  19M Jan 19 21:54 fC_c12_A1.sam.count
 -rw-r--r--. 1 wangjl user 3.6K Jan 19 21:54 fC_c12_A1.sam.count.log
 -rw-r--r--. 1 wangjl user  330 Jan 19 21:54 fC_c12_A1.sam.count.summary
+
 
 (1).从log也就是屏幕输出可见，输出为
 [wangjl@nih_jin quantify2]$ cat *log

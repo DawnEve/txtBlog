@@ -383,12 +383,576 @@ scran package implements a variant on CPM specialized for single-cell data
 
 
 ========================================
-|-- 如何处理带 UMI 的测序数据？
+|-- 如何处理带 UMI（Unique Molecular Identifiers） 的测序数据？ UMI-tools
 ----------------------------------------
 
 1. 使用 UMI-tools
 ref: https://www.ncbi.nlm.nih.gov/labs/pmc/articles/PMC7655794/
 Reads from bc-Smart-seq2 single cells were demultiplexed with UMI-tools (version 0.5.3; Smith et al., 2017). A cell barcode whitelist was used to filter barcodes for downstream processing. Cell barcodes and the UMI from each read were extracted to the read name of the sequence using the UM-tools extract function. 
+
+CellRanger 之外，
+DropEst、Kallisto-BUStools、UMI-Tools、STARSolo和Alevin都是可选的reads处理方法，它们对运行时长和内存进行了改进，使用户能够处理其scRNA-seq运行时不必在计算基础设施上投入太多。
+
+此外，与CellRanger相比，DropEst、UMI­Tools和Kallisto-BUS Tools提供的对UMI和cell barcode错误的增强校正可改善基因表达估计。
+
+
+
+Demultiplexing：这一步是根据细胞barcode和 mRNA UMI来识别转录分子来源并分配reads；常用的工具有zUMIs，UMI-tools等。
+
+
+(2) 对该工具的评价
+
+可发现Cell Ranger 3.1在识别细胞条形码上最为灵敏；
+
+UMI-tools和zUMIs可在每个细胞中过滤掉大多数低表达基因的同时检测到更多的基因，其检测到的基因表达水平也与每个细胞的共识基因高度相关，即UMI-tools和zUMIs拥有最高的一致性
+
+UMI-­Tools  是另一种纠正细胞barcode和UMIs中测序错误的流程，以提供更准确的基因表达定量。
+
+
+DropEst、Kallisto-BUStools、UMI-Tools、STARSolo和Alevin都是可选的read处理方法，它们对运行时长和内存进行了实质的改进，允许用户处理他们的scRNA-seq数据而不必在计算基础设施上投入太多。
+此外，与CellRanger相比，DropEst、UMI­Tools和Kallisto-BUS Tools提供的对UMI和cell barcode错误的增强校正可以改善基因表达估计。
+
+
+(3) 其他工具 
+方法比较综述： https://www.nature.com/articles/s41581-020-0262-0
+Review Article | Published: 27 March 2020 | Nature Reviews Nephrology
+Tools for the analysis of high-dimensional single-cell RNA sequencing data
+
+
+STARSolo 和Alevin分别是两种比对和伪比对方法的扩展，也可以用来处理scRNA-seq数据。
+STARSolo和Alevin的运行时间都明显快于CellRanger，但STARSolo的最大内存使用量更高。
+
+
+https://github.com/alexdobin/STAR/blob/master/docs/STARsolo.md
+https://cumulus.readthedocs.io/en/latest/starsolo.html
+
+
+
+
+
+2. UMI tools 怎么使用
+
+Smith T, Heger A, Sudbery I. UMI-tools: modeling sequencing errors in Unique Molecular Identifiers to improve quantification accuracy. Genome Res. 2017;27(3):491–499.
+
+Saiful Islam, et al. Quantitative single-cell RNA-seq with unique molecular identifiers. Nature Methods. 2014, 11:163-166.
+
+Kivioja T, et al. Counting absolute numbers of molecules using unique molecular identifiers. Nat Methods. 2011, 9(1):72-4.
+
+
+(1) 安装下载
+https://umi-tools.readthedocs.io/en/latest/Single_cell_tutorial.html
+
+$ pip3 -V
+pip 19.1.1 from /home/wangjl/software/anaconda3/lib/python3.7/site-packages/pip (python 3.7)
+
+$ pip3 install umi_tools
+# Successfully installed pybktree-1.1 regex-2022.1.18 umi-tools-1.1.2
+
+
+(2) 检查版本号
+$ pip3 list | grep umi
+umi-tools                          1.1.2
+
+
+
+(3) 子命令
+
+$ umi_tools
+For full UMI-tools documentation, see: https://umi-tools.readthedocs.io/en/latest/
+umi_tools.py - Tools for UMI analyses
+:Author: Tom Smith & Ian Sudbury, CGAT
+:Release: $Id$
+:Date: |today|
+:Tags: Genomics UMI
+
+There are 6 tools:
+  - whitelist
+  - extract
+  - group
+  - dedup
+  - count
+  - count_tab
+
+To get help on a specific tool, type:
+    umi_tools <tool> --help
+
+To use a specific tool, type::
+    umi_tools <tool> [tool options] [tool arguments]
+
+
+
+(4) 使用UMI-tools之前需要准备的软件：
+https://umi-tools.readthedocs.io/en/latest/Single_cell_tutorial.html
+
+1)、UNI-tools
+2)、STAR
+3)、参考基因组的STAR index文件
+4)、基因组注释文件 gtf
+5)、Subread（版本1.5.3或以上）
+	http://subread.sourceforge.net/
+	$ subread-align -v
+	Subread-align v1.6.0
+
+	$ featureCounts -v #可能是用这个，统计bam中的表达量的
+	featureCounts v1.6.0
+#
+
+
+
+
+
+
+
+3. 使用UMI-tools定量单细胞数据的几个流程
+
+Step:	Inputs	/Output
+Find Cell barcode whitelist:	Read 1 fastq	/whitelist.txt
+Extract CB/UMIs and filter CBs: 	R1 + R2 fastqs + whitelist.txt	/extracted fastqs
+Map reads:	extracted fastqs	/BAM
+Assign reads to genes:	BAM + transcriptome GTF	/BAM
+Count unique reads per genes per cell:	BAM	/Counts.txt
+
+第一步，获得细胞barcode的白名单文件（也就是分细胞）；
+第二步，根据白名单文件提取对应的reads（也就是根据分好的细胞提取每个细胞对应的reads）；
+第三步，将reads比对到参考基因组；
+第四步，利用基因组注释文件将比对的reads对应到相应的基因上；
+第五步，计算每个细胞中每个基因的表达值。
+
+
+(1) step1: 合并成2个fastq.gz文件，R1，R2各一个。
+cat fastqs/hgmm_100_S1_L00?_R1_001.fastq.gz > hgmm_100_R1.fastq.gz;
+cat fastqs/hgmm_100_S1_L00?_R2_001.fastq.gz > hgmm_100_R2.fastq.gz;
+
+
+
+
+(2) step2:  Identify correct cell barcodes 根据R1获取细胞cell barcode
+$ umi_tools whitelist --stdin hgmm_100_R1.fastq.gz \
+                    --bc-pattern=CCCCCCCCCCCCCCCCNNNNNNNNNN \
+                    --set-cell-number=100 \
+                    --log2stderr > whitelist.txt;
+
+其中--bc-pattern 表示的是细胞的barcode和UMI的格式。“CCCCCCCCCCCCCCCCNNNNNNNNNN”代表16bp的barcode和10bp的UMI序列。
+
+# 对于 10x 的试剂:
+	V2试剂盒的R1端长度为26bp，包含16bp的barcode和10bp的UMI序列，
+	V3试剂盒的R1端长度为28bp，包含16bp的barcode和12bp的UMI序列；
+	V2试剂盒的R2端为98bp, V3试剂盒的R2端为91bp。
+
+
+
+
+(3) 根据分好的细胞提取每个细胞对应的reads。
+输入是 R1 + R2 fastqs + whitelist.txt
+
+# Step 3: Extract barcdoes and UMIs and add to read names 提取cb和UMI到 Read 2的 read name上。
+$ umi_tools extract --bc-pattern=CCCCCCCCCCCCCCCCNNNNNNNNNN \
+                  --stdin hgmm_100_R1.fastq.gz \
+                  --stdout hgmm_100_R1_extracted.fastq.gz \
+                  --read2-in hgmm_100_R2.fastq.gz \
+                  --read2-out=hgmm_100_R2_extracted.fastq.gz \
+                  --whitelist=whitelist.txt; 
+
+
+(4) Step 4: Map reads 比对
+
+可以
+	比对到 transcriptome，每个contig代表一个转录本；
+	或者 genome 上，然后把reads归给某个基因。
+
+比对到 transcriptome 做下游分析更方便，但是推荐比对到  genome 上，因为当其他地方有更好的匹配位置的时候，该方法不强制read比对到某个转录本。
+While transcriptome mapping allows for easier downstream analysis, we recommend mapping to the genome because it doesn’t force reads to map to transcripts when a better match outside an annotated gene exists. 
+
+但是，做 Variations 选择的时候还是比对到 transcriptome 更好。
+However, there are cases when transcriptome mapping should be favoured, and we discuss this in the Variations section.
+
+$ STAR --runThreadN 4 \
+     --genomeDir hg38_noalt_junc85_99.dir \
+     --readFilesIn hgmm_100_R2_extracted.fastq.gz \
+     --readFilesCommand zcat \
+     --outFilterMultimapNmax 1 \ #We do not allow multimapping reads.
+	 --outFileNamePrefix fastq/extracted_ \ #添加output文件名前缀
+     --outSAMtype BAM SortedByCoordinate;
+
+
+
+(5) 将比对上的reads对应到注释基因上。
+# Step 5: Assign reads to genes (subread 1.5.3 and above)
+
+This means that two reads from the same gene might have different mapping locations and still represent duplicates, as long as they come from the same gene.
+
+确实没有去重：We can do this with the featureCounts tool from the subread package. As well as outputting a table of (undeduplicated) counts, we can also instruct featureCounts to output a BAM with a new tag containing the identity of any gene the read maps to.
+
+
+
+$ featureCounts -a geneset.gtf \
+              -o gene_assigned \
+              -R BAM Aligned.sortedByCoord.out.bam \
+              -T 4;            
+samtools sort Aligned.sortedByCoord.out.bam.featureCounts.bam -o assigned_sorted.bam;
+samtools index assigned_sorted.bam;
+
+
+(6) 计算每个细胞中每个基因的表达值。
+we can now count the number of distinct UMIs mapping to each gene in each cell.
+
+# Step 6: Count UMIs per gene per cell
+umi_tools count --per-gene --gene-tag=XT --assigned-status-tag=XS --per-cell -I assigned_sorted.bam -S counts.tsv.gz
+
+
+
+
+========================================
+|-- 如何处理带 UMI（Unique Molecular Identifiers） 的测序数据？ STAR solo 更简约
+----------------------------------------
+https://github.com/alexdobin/STAR/blob/master/docs/STARsolo.md
+https://www.biorxiv.org/content/10.1101/2021.05.05.442755v1.full.pdf
+
+
+
+1. 版本号
+$ STAR --version
+STAR_2.5.2b #这个版本没 solo 选项
+
+
+(1) 暂时先使用其他人安装的版本
+
+$ /home/yangwl/anaconda2/bin/STAR --version
+2.7.4a
+
+
+$ vim ~/.bashrc #添加一行
+alias STAR27=/home/yangwl/anaconda2/bin/STAR
+
+$ STAR27 --version
+2.7.4a
+
+(2) 用到 snakemake 中找不到该命令
+最后在 ~/bin/ 下建立了软链接。
+
+$ whereis STAR27
+STAR27: /home/wangjl/bin/STAR27
+
+$ ls -lth /home/wangjl/bin/STAR27
+lrwxrwxrwx. 1 wangjl jinwf 31 Feb 22 12:55 /home/wangjl/bin/STAR27 -> /home/yangwl/anaconda2/bin/STAR
+
+
+
+
+
+
+
+
+2. 构建索引
+测试了一下，版本 2.5和2.7确实不是一个索引。
+
+The genome index is the same as for normal STAR runs.
+
+(1) for human
+$ mkdir /home/wangjl/data/ref/hg38/gencode/index/STAR27/
+$ STAR27 --runMode genomeGenerate \
+	--runThreadN 150 \
+	--genomeDir /home/wangjl/data/ref/hg38/gencode/index/STAR27/ \
+	--genomeFastaFiles /home/wangjl/data/ref/hg38/gencode/GRCh38.p13.genome.fa \
+	--sjdbGTFfile /home/wangjl/data/ref/hg38/gencode/GRCh38.p13.gtf \
+	--sjdbOverhang 100
+
+
+(2) for mouse
+$ mkdir /home/wangjl/data/ref/GRCm39/gencode/index/STAR27/
+$ STAR27 --runMode genomeGenerate \
+	--runThreadN 200 \
+	--genomeDir /home/wangjl/data/ref/GRCm39/gencode/index/STAR27/ \
+	--genomeFastaFiles /home/wangjl/data/ref/GRCm39/gencode/GRCm39.genome.fa \
+	--sjdbGTFfile /home/wangjl/data/ref/GRCm39/gencode/gencode.vM28.annotation.gtf \
+	--sjdbOverhang 100
+# 22:25 -->  #200个核有点多了。不能超过2/3的总核数。
+
+
+
+
+
+
+
+
+
+3. 开始比对
+
+(1) --soloType Droplet 参数
+$ mkdir star27
+$ STAR27 --runThreadN 100 \ #这个用法错误，请看test3。要设置好 cb 和 UMI 的起始位置。
+	--genomeDir /home/wangjl/data/ref/GRCm39/gencode/index/STAR27/ \
+	--readFilesIn /home/wangjl/data/chenxi/batch0/raw/SS3-RNASeq-3_L4_1001279.R2.fastq.gz /home/wangjl/data/chenxi/batch0/raw/SS3-RNASeq-3_L4_1001279.R1.fastq.gz \
+	--soloType Droplet \
+	--soloCBlen 8 \
+	--soloUMIlen 10 \
+	--soloBarcodeReadLength 150 \
+	--readFilesCommand zcat \
+	--soloCBwhitelist /home/wangjl/data/chenxi/batch0/raw/cell_barcode.txt \
+	--outFileNamePrefix star27/t1/Droplet_
+# 13:22 - 13:37, 15min
+
+
+
+
+# test1: --soloBarcodeReadLength 0
+$ STAR27 --runThreadN 100 \
+	--genomeDir /home/wangjl/data/ref/GRCm39/gencode/index/STAR27/ \
+	--readFilesIn /home/wangjl/data/chenxi/batch0/raw/SS3-RNASeq-3_L4_1001279.R2.fastq.gz /home/wangjl/data/chenxi/batch0/raw/SS3-RNASeq-3_L4_1001279.R1.fastq.gz \
+	--soloType CB_UMI_Simple \
+	--soloCBlen 8 \
+	--soloUMIlen 10 \
+	--soloBarcodeReadLength 0 \
+	--readFilesCommand zcat \
+	--soloCBwhitelist /home/wangjl/data/chenxi/batch0/raw/cell_barcode.txt \
+	--outFileNamePrefix star27/t1/Droplet_
+# 20:06-->20:27, 21min;
+$ awk 'NR>3{print $0}' /home/wangjl/data/chenxi/batch0/star27/t1/Droplet_Solo.out/Gene/filtered/matrix.mtx | awk '{a += $3};END{print a}' #3,576,755=3.5 Million Reads
+
+
+# test2: --soloUMIdedup=Exact
+$ STAR27 --runThreadN 100 \
+	--genomeDir /home/wangjl/data/ref/GRCm39/gencode/index/STAR27/ \
+	--readFilesIn /home/wangjl/data/chenxi/batch0/raw/SS3-RNASeq-3_L4_1001279.R2.fastq.gz /home/wangjl/data/chenxi/batch0/raw/SS3-RNASeq-3_L4_1001279.R1.fastq.gz \
+	--soloType CB_UMI_Simple \
+	--soloCBlen 8 \
+	--soloUMIlen 10 \
+	--soloBarcodeReadLength 0 \
+	--readFilesCommand zcat \
+	--soloCBwhitelist /home/wangjl/data/chenxi/batch0/raw/cell_barcode.txt \
+	--soloUMIdedup=Exact \
+	--outFileNamePrefix star27/t2/Droplet_
+# 20:10 --> 20:31; 20min;
+$ awk 'NR>3{print $0}' /home/wangjl/data/chenxi/batch0/star27/t2/Droplet_Solo.out/Gene/filtered/matrix.mtx | awk '{a += $3};END{print a}' #14753223=14,753,223=14 Million Reads
+
+
+
+# test3: --soloCBstart 1  --soloUMIstart 9 --soloUMIdedup=Exact
+$ STAR27 --runThreadN 100 \
+	--genomeDir /home/wangjl/data/ref/GRCm39/gencode/index/STAR27/ \
+	--readFilesIn /home/wangjl/data/chenxi/batch0/raw/SS3-RNASeq-3_L4_1001279.R2.fastq.gz /home/wangjl/data/chenxi/batch0/raw/SS3-RNASeq-3_L4_1001279.R1.fastq.gz \
+	--soloType CB_UMI_Simple \
+	--soloCBstart 1 --soloCBlen 8 \
+	--soloUMIstart 9 --soloUMIlen 10 \
+	--soloBarcodeReadLength 0 \
+	--readFilesCommand zcat \
+	--soloCBwhitelist /home/wangjl/data/chenxi/batch0/raw/cell_barcode.txt \
+	--soloUMIdedup=Exact \
+	--outFileNamePrefix star27/t3/Droplet_
+# 20:23 --> 20:46, 23min;
+$ awk 'NR>3{print $0}' /home/wangjl/data/chenxi/batch0/star27/t3/Droplet_Solo.out/Gene/filtered/matrix.mtx | awk '{a += $3};END{print a}' #49030399=49,030,399=49 Million Reads
+# 这个数字最接近 UMI tools 的 50M reads;
+
+
+
+
+
+# test4: --soloCBstart 1  --soloUMIstart 9
+$ STAR27 --runThreadN 100 \
+	--genomeDir /home/wangjl/data/ref/GRCm39/gencode/index/STAR27/ \
+	--readFilesIn /home/wangjl/data/chenxi/batch0/raw/SS3-RNASeq-3_L4_1001279.R2.fastq.gz /home/wangjl/data/chenxi/batch0/raw/SS3-RNASeq-3_L4_1001279.R1.fastq.gz \
+	--soloType CB_UMI_Simple \
+	--soloCBstart 1 --soloCBlen 8 \
+	--soloUMIstart 9 --soloUMIlen 10 \
+	--soloBarcodeReadLength 0 \
+	--readFilesCommand zcat \
+	--soloCBwhitelist /home/wangjl/data/chenxi/batch0/raw/cell_barcode.txt \
+	--outFileNamePrefix star27/t4/Droplet_
+# 20:51 --> 21:06, 15min;
+$ awk 'NR>3{print $0}' /home/wangjl/data/chenxi/batch0/star27/t4/Droplet_Solo.out/Gene/filtered/matrix.mtx | awk '{a += $3};END{print a}' # 48356229=48,356,229=48 Million Reads
+
+
+
+# test5: 和 cellranger 一样的输出?
+$ STAR27 --runThreadN 100 \
+	--genomeDir /home/wangjl/data/ref/GRCm39/gencode/index/STAR27/ \
+	--readFilesIn /home/wangjl/data/chenxi/batch0/raw/SS3-RNASeq-3_L4_1001279.R2.fastq.gz /home/wangjl/data/chenxi/batch0/raw/SS3-RNASeq-3_L4_1001279.R1.fastq.gz \
+	--soloType CB_UMI_Simple \
+	--soloCBstart 1 --soloCBlen 8 \
+	--soloUMIstart 9 --soloUMIlen 10 \
+	--soloBarcodeReadLength 0 \
+	--readFilesCommand zcat \
+	--soloCBwhitelist /home/wangjl/data/chenxi/batch0/raw/cell_barcode.txt \
+	--outSAMattributes CB UB \
+	--outSAMtype BAM SortedByCoordinate \
+	--outFileNamePrefix star27/t5/Droplet_
+# 16:40 --> 17:09, 29min;
+
+$ head /home/wangjl/data/chenxi/batch0/star27/t5/Droplet_Solo.out/Gene/filtered/matrix.mtx
+%%MatrixMarket matrix coordinate integer general
+%
+55357 371 2600458
+32 1 68
+34 1 11
+
+计算第三列总和:
+$ awk 'NR>3' star27/t5/Droplet_Solo.out/Gene/filtered/matrix.mtx| awk '{a+=$3}END{print a}'
+# 48356229=48,356,229=48 M reads;
+
+
+
+输出的文件，确实有 CB 和 UB 标签了。
+$ samtools view star27/t5/Droplet_Aligned.sortedByCoord.out.bam | head -n 3
+A00679:526:HYVNJDSXY:4:1450:21305:34350 256     chr1    3109499 0       108M42S *       0       0       GTTATACAGACACTAAGAGAACACAAATTCCAGCCCAGGCTACTATACCCAGCCAAACTCTCAATTACCATAGATGGAGAAACCAAAGTATTCCATGACAAAACCAAAAAAAAAAAAAAAAAAAAAAAAAAAAAGGAAAACAAAGATGAA  FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF:,:,FF,,:F,,,FF,F,  CB:Z:GTCATCTC   UB:Z:TGCGTTCCAG
+A00679:526:HYVNJDSXY:4:2419:17011:3709  256     chr1    3109499 0       108M42S *       0       0       GTTATACAGACACTAAGAGAACACAAATTCCAGCCCAGGCTACTATACCCAGCCAAACTCTCAATTACCATAGATGGAGAAACCAAAGTATTCCATGACAAAACCAAAAAAAAAAAAAAAAAAAAAAAAAAAAATGGAACGCAGAGATGA  FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF::FFFFFFFFFFFFFFFFFFFFFFFFFFFFFF,,,,,F:,,FF,:,F,::  CB:Z:GTCATCTC   UB:Z:TGCGTTCCAG
+A00679:526:HYVNJDSXY:4:2450:21414:26866 256     chr1    3109499 0       108M42S *       0       0       GTTATACAGACACTAAGAGAACACAAATTCCAGCCCAGGCTACTATACCCAGCCAAACTCTCAATTACCATAGATGGAGAAACCAAAGTATTCCATGACAAAACCAAAAAAAAAAAAAAAAAAAAAAAAAAATGAAAACACAAGATTAAA  FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF,,,,:F,,,,,:,,,,F,F  CB:Z:GTCATCTC   UB:Z:TGCGTTCCAG
+
+
+
+# 取1e6行做测试，节省时间。
+
+# test6: 仅保留 uniq mapping，输出 CB 和 UB。
+$ STAR27 --runThreadN 100 \
+	--genomeDir /home/wangjl/data/ref/GRCm39/gencode/index/STAR27/ \
+	--readFilesIn raw/S3.R2.fastq.gz raw/S3.R1.fastq.gz \
+	--soloType CB_UMI_Simple \
+	--soloCBstart 1 --soloCBlen 8 \
+	--soloUMIstart 9 --soloUMIlen 10 \
+	--soloBarcodeReadLength 0 \
+	--readFilesCommand zcat \
+	--outSAMtype BAM SortedByCoordinate \
+	--soloCBwhitelist /home/wangjl/data/chenxi/batch0/raw/cell_barcode.txt \
+	--outFilterMultimapNmax 1 \
+	--outSAMattributes CB UB \
+	--outFileNamePrefix tmp/S3_
+
+加入2条：只要uniq map，要输出 CB，UB。能输出 NH 吗？
+# 23:33 -> 23:39
+
+$ samtools view  tmp/S3_Aligned.sortedByCoord.out.bam  | awk '{print $5}' | sort | uniq -c | sort -k1nr
+ 143480 255
+
+$ samtools view  tmp/S3_Aligned.sortedByCoord.out.bam | head
+A00679:526:HYVNJDSXY:4:1101:21847:10927	16	chr1	3700996	255	31S119M	*	0	0	TTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTGGAGTTTAAAACCAAGTATTTAATGTTTTCATTAAATTGTTTCAATACAATTTCAAACAAATGCCAACTGGAAGACAATGTCCAAAAACTCTGAAGC	FF:FFFFFFFFFFFFFFFFFFFF:FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF:FFFFFFFFFFF	CB:Z:CGGTGCTC	UB:Z:CACGTGCTCT
+A00679:526:HYVNJDSXY:4:1101:6343:28385	16	chr1	3700996	255	23S127M	*	0	0	TTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTGGAGTTTAAAACCAAGTATTTAATGTTTTCATTAAATTGTTTCAATACAATTTCAAACAAATGCCAACTGGAAGA
+
+
+
+# test7: 输出其他标签呢？
+去掉 	--outFilterMultimapNmax 1 \，添加更多标签
+$ STAR27 --runThreadN 100 \
+	--genomeDir /home/wangjl/data/ref/GRCm39/gencode/index/STAR27/ \
+	--readFilesIn raw/S3.R2.fastq.gz raw/S3.R1.fastq.gz \
+	--soloType CB_UMI_Simple \
+	--soloCBstart 1 --soloCBlen 8 \
+	--soloUMIstart 9 --soloUMIlen 10 \
+	--soloBarcodeReadLength 0 \
+	--readFilesCommand zcat \
+	--outSAMtype BAM SortedByCoordinate \
+	--soloCBwhitelist /home/wangjl/data/chenxi/batch0/raw/cell_barcode.txt \
+	--outSAMattributes CB UB NH HI AS nM \
+	--outFileNamePrefix tmp/S3_t2_
+# 09:25 -> 09:27
+
+$ samtools view tmp/S3_t2_Aligned.sortedByCoord.out.bam | head
+A00679:526:HYVNJDSXY:4:1101:21847:10927	16	chr1	3700996	255	31S119M	*	0	0	TTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTGGAGTTTAAAACCAAGTATTTAATGTTTTCATTAAATTGTTTCAATACAATTTCAAACAAATGCCAACTGGAAGACAATGTCCAAAAACTCTGAAGC	FF:FFFFFFFFFFFFFFFFFFFF:FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF:FFFFFFFFFFF	NH:i:1	HI:i:1	AS:i:101	nM:i:8 CB:Z:CGGTGCTC	UB:Z:CACGTGCTCT
+
+$ samtools view tmp/S3_t2_Aligned.sortedByCoord.out.bam | wc
+ 208948 3550250 90996710
+
+$ samtools view tmp/S3_t2_Aligned.sortedByCoord.out.bam |awk '{print $5}' | sort | uniq -c | sort -k1nr
+ 143480 255
+  35928 3
+  17027 1
+  12513 0
+
+$ samtools view tmp/S3_t2_Aligned.sortedByCoord.out.bam | awk '{print $12}' | sort | uniq -c | sort -k1nr
+ 143480 NH:i:1
+  35928 NH:i:2
+  12183 NH:i:3
+   4844 NH:i:4
+   3505 NH:i:5
+   2994 NH:i:6
+   2219 NH:i:7
+   1710 NH:i:10
+   1053 NH:i:9
+   1032 NH:i:8
+也就是说，uniq mapping 的 MAPQ=255，且 NH=1，这2个是等价条件。
+
+
+
+
+
+
+
+
+
+
+
+
+
+2)目测t1的输出，前几行的数据
+
+$ head /home/wangjl/data/chenxi/batch0/star27/t1/Droplet_Solo.out/Gene/filtered/matrix.mtx
+%%MatrixMarket matrix coordinate integer general
+%
+55357 382 2596436
+32 1 1
+34 1 1
+36 1 1
+44 1 1
+54 1 1
+68 1 1
+75 1 2
+
+
+
+经过反复核查，发现需要设置 CB和 UMI 的第一个碱基位置，上文 t3, t4 已经添加。
+	soloCBstart
+	soloUMIstart
+采用 t3，删掉t1,t2,t4的结果。
+
+
+
+
+
+参数简介：
+
+The STAR solo algorithm is turned on with:
+	--soloType Droplet
+or, since 2.7.3a, with more descriptive:
+	--soloType CB_UMI_Simple #这两个是一样的，但是这个读起来比 Droplet 更直观。
+
+The CellBarcode whitelist has to be provided with:
+	--soloCBwhitelist /path/to/cell/barcode/whitelist
+
+
+白名单的格式：
+https://github.com/10XGenomics/cellranger/raw/master/lib/python/cellranger/barcodes/737K-august-2016.txt
+好吧，看了一下，就是一列，每行是一个cb: https://raw.githubusercontent.com/10XGenomics/cellranger/master/lib/python/cellranger/barcodes/737K-august-2016.txt
+AAACCTGAGAAACCAT
+AAACCTGAGAAACCGC
+AAACCTGAGAAACCTA
+AAACCTGAGAAACGAG
+AAACCTGAGAAACGCC
+...
+
+
+
+
+(2) 怎么设置 CB 碱基个数
+https://cumulus.readthedocs.io/en/stable/starsolo.html
+The default barcode lengths (CB=16b, UMI=10b) work for 10X Chromium V2. For V3, specify:
+	--soloUMIlen 12
+
+--CBstart 1 --CBlen 8 \
+--UMIstart 9 --UMIlen 10 \
+
+
+
+
+(3) 设置cDNA和 cb+UMI的顺序是固定的：第一个是cDNA，第二个是 cb+UMI
+Importantly, in the --readFilesIn option, the 1st file has to be cDNA read, and the 2nd file has to be the barcode (cell+UMI) read, i.e.
+	--readFilesIn cDNAfragmentSequence.fastq.gz CellBarcodeUMIsequence.fastq.gz
+
+
+
+(4) How to make STARsolo raw gene counts (almost) identical to CellRanger's
+
+
+
+
+
 
 
 
@@ -514,11 +1078,32 @@ $ Rscript script/e07_getMatrix.R
 
 
 ========================================
-数据降维
+数据降维: 常用的Feature selection的方法
 ----------------------------------------
 
+1. 选基因的方法
 
-1. 陷阱和建议：
+1）基于先验信息的方法（如已知细胞的亚型）。比如通过SCDE软件鉴定已知不同细胞亚型间的差异表达基因，然后再基于差异表达基因来聚类分析等。
+
+2）非监督方法。又可细分为：
+(i) 基于highly variable genes (HVG) ；
+(ii) 基于spike-in，如scLVM (Buettner et al., 2015)和BASiCS (Vallejos et al., 2015)等；
+(iii)基于 dropout，如M3Drop (Andrews and Hemberg, 2018)。
+
+
+(2)Highly variable genes (HVG)
+它基于这种假设：基因相当于平均表达值而言，出现的较大的差异是由于生物学影响，而不仅仅是技术噪音。这种方法试图通过权衡方差与平均表达量之间的关系来找到比预期差异性更高的基因。这种关系很难拟合，实际中基因是按照与移动中位数（moving median）的距离进行排序的(Kolodziejczyk et al., 2015)，或者使用另一种源自方差的统计量，比如：方差的平方系数(Brennecke et al. 2013)
+
+先进行spike-in based feature selection，再PCA（Liu et al., 2016; Tasic et al., 2016）；
+先HVG，后tSNE（Segerstolpe et al., 2016）；
+先HVG，后PCA+tSNE(Campbell et al., 2017)
+
+
+
+
+
+
+2. 陷阱和建议：
 - 我们建议根据数据集的复杂程度选择1,000至5,000个高可变基因 (HVG)。
 
 - 当将基因表达值归一化为均值为0和单位方差时，或者将模型拟合的残差用作标准化表达值时，不能使用基于基因表达均-方差的特征选择方法。因此，在选择HVG之前，必须考虑要执行哪些预处理。
@@ -528,6 +1113,8 @@ $ Rscript script/e07_getMatrix.R
 - 我们建议使用UMAP进行探索性分析可视化；使用PCA做为通用数据降维方法；diffusion maps可以在轨迹推断时替代PCA。
 
 - UMAP+PAGA是可视化特别复杂的数据集的合适替代方法。
+
+
 
 
 
@@ -771,7 +1358,6 @@ https://cran.r-project.org/web/packages/diffusionMap/index.html
 
 或: destiny 包(貌似用的比较多)
 https://www.jianshu.com/p/16ebecb3b5fa
-https://www.jianshu.com/p/5022a9255e97
 https://github.com/NBISweden/excelerate-scRNAseq/blob/master/session-trajectories/session-trajectories.md
 
 # (1) 导入数据
@@ -873,14 +1459,6 @@ http://biocc.hrbmu.edu.cn/CellMarker/
 这个数据库其实还是很不成熟的，数据量很小也不太准确，所以只能找个大概，更可靠的来源还是文献
 
 
-
-
-
-
-========================================
-单细胞交响乐14-细胞轨迹推断
-----------------------------------------
-1. https://www.jianshu.com/p/5022a9255e97
 
 
 
@@ -1005,26 +1583,6 @@ threshold2=median(df2$counts) + mad(df2$counts)*3;threshold2
 
 
 
-========================================
-常用的Feature selection的方法有：
-----------------------------------------
-1）基于先验信息的方法（如已知细胞的亚型）。比如通过SCDE软件鉴定已知不同细胞亚型间的差异表达基因，然后再基于差异表达基因来聚类分析等。
-
-2）非监督方法。又可细分为：
-(i) 基于highly variable genes (HVG) ；
-(ii) 基于spike-in，如scLVM (Buettner et al., 2015)和BASiCS (Vallejos et al., 2015)等；
-(iii)基于 dropout，如M3Drop (Andrews and Hemberg, 2018)。
-
-
-(2)Highly variable genes (HVG)
-它基于这种假设：基因相当于平均表达值而言，出现的较大的差异是由于生物学影响，而不仅仅是技术噪音。这种方法试图通过权衡方差与平均表达量之间的关系来找到比预期差异性更高的基因。这种关系很难拟合，实际中基因是按照与移动中位数（moving median）的距离进行排序的(Kolodziejczyk et al., 2015)，或者使用另一种源自方差的统计量，比如：方差的平方系数(Brennecke et al. 2013)
-
-先进行spike-in based feature selection，再PCA（Liu et al., 2016; Tasic et al., 2016）；
-先HVG，后tSNE（Segerstolpe et al., 2016）；
-先HVG，后PCA+tSNE(Campbell et al., 2017)
-
-
-
 
 
 
@@ -1052,7 +1610,7 @@ Published: 06 February 2018
 	https://scanpy.readthedocs.io/en/stable/usage-principles.html
 
 简书 https://www.jianshu.com/p/b190efae4d31
-
+	https://www.jianshu.com/p/4ff1c74f0929
 
 
 

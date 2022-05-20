@@ -26,9 +26,11 @@ return array (
     0 => 3,
     1 => 'scRNAseq包',
     2 => array (
-      array('Seurat包','Seurat','txt'),
-      array('sc3包等','sc3','txt'),
       array('cell_marker','cell_marker','txt'),
+      array('Seurat包','Seurat_note','txt'),
+      array('Seurat源码阅读','Seurat_source','txt'),
+      array('Monocle包','Monocle_note','txt'),
+      array('RNA_Velocity','RNA_Velocity_note','txt'),
     ),
   ),
    
@@ -51,8 +53,6 @@ return array (
     1 => '专业知识库',
     2 => array (
       array('生信编程必练200题','practise501','txt'),
-      array('肿瘤基础理论','cancer_basis','txt'),
-      array('精编免疫学','immunology_basis','txt'),
       array('统计与统计参数','NGS_statistics','txt'),
     ),
   ),

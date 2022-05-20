@@ -1740,6 +1740,210 @@ $ docker ps -a #查看全部容器，包括已经停止的容器
 
 
 ========================================
+|-- 在流程中使用 jupyter notebook, 并传递参数
+----------------------------------------
+
+嵌入到流程中的脚本，要满足2个基本要求：可以使用命令行运行，可以接收参数。
+
+1. 测试实例
+有一个 jupyter notebook，需要传入参数才能运行。
+另一个py函数，启动该 notebook，其原理是在 notebook 最前面插入一个 cell，就是传入的变量(只支持基本类型，不支持pandas等复杂类型的数据，复杂类型可以通过json或csv等文件的文件名传递数据)。
+输出是一个新的 notebook。
+
+
+
+(1) 模板 notebook: 接收参数，打印参数，并画饼图
+$ cat test_fig_param.ipynb #有两个 cell 
+#1 settings
+#n=2
+#filename="a1_"+str(n)
+#msg="this is test1"
+print(msg)
+
+
+#2  figure
+import matplotlib.pyplot as plt
+
+labels=['Clothes', 'Food', 'Housing', 'Travel', 'Others']
+data=[0.1, 1.45, 0.3, 0.1, 0.05] #可以不是百分比，直接放原始数据，自动计算百分比
+
+print(filename)
+
+# plt.pie(data, labels=labels) #没有显示百分比
+plt.pie(data[0:n], labels=labels[0:n], autopct="%1.1f%%") #加2个百分号就能正常显示百分号了
+
+plt.savefig(f"{filename}.pdf") #先保存，再显示
+plt.show()
+
+
+
+
+
+(2) 使用脚本运行该 notebook，需要使用 papermill 包。
+$ pip3 install papermill
+
+==> 然后使用如下代码运行 第一个 notebook 
+调用格式: papermill.execute_notebook(input_path, output_path, parameters=None)
+前2个是文件名，字符串类型；最后一个参数，是字典类型。
+
+
+
+import datetime
+import papermill as pm
+#dir(pm.execute_notebook)
+#help(pm.execute_notebook)
+# input_path, output_path, parameters=None,
+
+output="result"
+
+import os
+if not os.path.exists(output):
+    os.mkdir(output)
+
+
+#2
+for i in range(1,5):
+    book=f"book1/book{str(i)}.txt"
+    params={
+        "n":i,
+        "filename": f"nb_test_{str(i)}",
+        "msg":"xxtest"
+    }
+
+    #3
+    pm.execute_notebook(
+        input_path="test_fig_param.ipynb",
+        output_path="{0}/{1}_{2}.ipynb".format(output,
+            book.split("/")[-1].split(".")[0],
+            datetime.datetime.now().strftime("%Y%m%d%H%M"),
+        ),
+        parameters=params
+    )
+
+print("end")
+
+
+
+
+
+(3) 输出结果: 一部分是新生成的 notebook，另一部分是 notebook 生成的 pdf 图片。
+result/
+	book1_202204242248.ipynb
+	book2_202204242248.ipynb
+	book3_202204242248.ipynb
+	book4_202204242248.ipynb
+
+./ 
+nb_test_1.pdf
+nb_test_2.pdf
+nb_test_3.pdf
+nb_test_4.pdf
+
+
+
+
+
+
+
+
+ref:
+https://my.oschina.net/u/4411942/blog/3632024
+https://github.com/IndustrialDataops/notebook-as-pipeline/blob/main/executor.py 如何脚本化 notebook，接收参数
+画图时怎么保存 https://blog.csdn.net/tianxinyiru/article/details/121403165
+
+
+
+
+
+========================================
+|-- 新建notebook报错，重装 jupyter [2022.5.5]
+----------------------------------------
+$ pip3 install --upgrade nbconvert
+$ pip3 install --upgrade jupyter_contrib_nbextensions
+
+$ pip3 list | grep nbconvert
+nbconvert                          6.5.0
+
+$ pip3 list | grep tornado
+tornado                            6.1
+
+
+
+降低版本号 https://github.com/ipython-contrib/jupyter_contrib_nbextensions/issues/1529
+$ pip3 uninstall nbconvert
+$ pip3 install nbconvert==5.6.1
+
+$ pip3 uninstall jinja2
+
+$ pip3 list | grep jupyter
+jupyter                            1.0.0
+jupyter-client                     7.2.2
+jupyter-console                    5.2.0
+jupyter-contrib-core               0.3.3
+jupyter-contrib-nbextensions       0.5.1
+jupyter-core                       4.10.0
+jupyter-highlight-selected-word    0.2.0
+jupyter-latex-envs                 1.4.6
+jupyter-nbextensions-configurator  0.4.1
+jupyterlab                         0.34.9
+jupyterlab-launcher                0.13.1
+jupyterlab-pygments                0.2.2
+
+
+$ pip3 uninstall jupyter 
+$ pip3 uninstall jupyter_contrib_nbextensions 
+$ pip3 uninstall jupyter-client jupyter-console jupyter-contrib-core
+$ pip3 uninstall jupyter-core jupyter-highlight-selected-word jupyter-latex-envs jupyter-nbextensions-configurator 
+$ pip3 uninstall jupyterlab jupyterlab-launcher jupyterlab-pygments
+
+$ pip3 install jupyter==5.6.1
+
+$ pip3 install jupyter
+$ pip3 uninstall terminado  #https://stackoverflow.com/questions/64940102/kedro-install-cannot-uninstall-terminado
+$ pip3 list | grep terminado
+terminado                          0.8.1
+###$ pip3 install asteroid --ignore-installed terminado
+
+
+$ pip3 install tornado --user --ignore-installed
+$ pip3 install jupyter
+$ pip3 install jupyter --ignore-installed terminado
+
+
+ERROR: pip's dependency resolver does not currently take into account all the packages that are installed. This behaviour is the source of the following dependency conflicts.
+twisted 18.7.0 requires PyHamcrest>=1.9.0, which is not installed.
+scvelo 0.2.4 requires matplotlib>=3.3.0, but you have matplotlib 3.1.1 which is incompatible.
+scanpy 1.8.2 requires matplotlib>=3.1.2, but you have matplotlib 3.1.1 which is incompatible.
+tensorflow 2.1.0 requires scipy==1.4.1; python_version >= "3", but you have scipy 1.7.3 which is incompatible.
+
+
+$ pip3 install --upgrade matplotlib==3.3.0
+$ pip3 install twisted
+$ pip3 install jupyter --ignore-installed terminado
+
+
+ERROR: pip's dependency resolver does not currently take into account all the packages that are installed. This behaviour is the source of the following dependency conflicts.
+tensorflow 2.1.0 requires scipy==1.4.1; python_version >= "3", but you have scipy 1.7.3 which is incompatible.
+
+$ pip3 uninstall tensorflow tensorflow-estimator
+$ pip3 install jupyter --ignore-installed terminado
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+========================================
 使用 anaconda 在centOS无root权限安装python3
 ----------------------------------------
 more文档：https://docs.anaconda.com/anaconda/user-guide/getting-started
@@ -2171,6 +2375,9 @@ the body is a lot of text
 
 
 refer: https://tendcode.com/article/python-shell/
+
+
+
 
 
 

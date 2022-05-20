@@ -3,6 +3,108 @@ APA 分析
 
 
 
+========================================
+polyA / scPolyA 原理、算法、实现
+----------------------------------------
+
+APA方法的综述(DaPars作者)：https://pubmed.ncbi.nlm.nih.gov/34183123/
+
+- 基于数据库的
+  Methods depending on annotated poly (A) sites
+- 基于转录本组装的？三代测序？
+  Methods depending on transcript assembly
+- 基于被模板的mRNA末端的连续A定位
+  Methods using reads that contain a string of untemplated adenosines
+- 基于RNA-seq的3‘端密度变化
+  Methods based on fluctuations in RNA-seq density near 3'UTR
+
+
+
+
+
+
+1. 预处理
+(1) 怎么过滤 APA位置？
+
+(2) 研究范围
+- 只研究 3UTR区域的：推荐。需要先获取3UTR区域。
+- 只研究 intron区域的
+- 全部都包括
+
+
+
+
+2. 核心指标
+(1). 怎么量化 APA？
+
+- 使用 3UTR 长度，每个polyA位置到上游stop coden的长度(去掉中间的intron)，按reads数加权
+- 使用远端使用率的百分比，按位置加权
+- 使用远端/近端 转录本ratio
+
+
+(2). 怎么计算p值？
+
+
+
+(3). 怎么合并相近的 peak? 相差多少bp？
+
+
+
+
+
+3. 文献的具体操作
+(1)  https://pubmed.ncbi.nlm.nih.gov/34429411/
+Nat Commun. 2021 | The landscape of alternative polyadenylation in single cells of the developing mouse embryo
+	* 3′-UTR length corresponding to a given read (i.e., which remained after read filtering) was computed as the distance from the stop codon to the read’s assigned PAS, minus the length of any intervening intron(s).
+	* These 3′-UTR lengths were used to compute a “gene by cell” sparse matrix of the mean length among all 3′-UTR isoforms, weighted by their respective counts.
+	* For each gene, we then computed each cell’s deviation from the mean of 3′-UTR lengths across cells, considering only nonmissing values.
+
+标题: Calculation of 3′-UTR lengths, relative length differences, and corresponding visualizations
+
+下载的数据
+Reads were mapped to the mm10 genome and collected from previous work31 (GEO ID: GSE119945). 
+
+根据距离已知PAS位置过滤reads。?? 这样又变成db依赖的方法了。
+Reads were then filtered according to their proximity to a known PAS. 
+
+motif查找使用 DREME v5.0.576，使用 lasso 回归检测，这样过滤会提高3UTR变体的数量。
+Associated motif analyses using DREME v5.0.576 and lasso regression models77 demonstrated that these read filtering criterion improved the quantitation of 3′-UTR isoforms. 
+
+3UTR长度的计算：pas到上游stop coden 的距离，去掉intron。
+3′-UTR length corresponding to a given read (i.e., which remained after read filtering) was computed as the distance from the stop codon to the read’s assigned PAS, minus the length of any intervening intron(s). 
+
+这些3UTR长度用来计算 gene X cell 矩阵，计算mean 3UTR时使用reads作为权重。
+These 3′-UTR lengths were used to compute a “gene by cell” sparse matrix of the mean length among all 3′-UTR isoforms, weighted by their respective counts. 
+
+对于每个基因，计算每个细胞距离所有细胞的3UTR的偏移，只考虑非缺失值。
+For each gene, we then computed each cell’s deviation from the mean of 3′-UTR lengths across cells, considering only nonmissing values. 
+
+对于热图，这些偏移值按细胞标签(t-SNE 聚类，UMAP 分化树，或者发育阶段)进行平均。
+For heatmaps, these deviation values were then averaged according to the labels assigned to each cell (i.e., with respect to t-SNE cluster, UMAP trajectory, and/or developmental stage). 
+
+细胞标签使用之前的。
+Cell labels were based upon those previously assigned31. 
+
+当说明的时候，有些情况热图是进一步按照行或列中心化：减去行或者列的均值。
+When indicated in the legend, in some instances the heatmaps were further centered by subtracting the mean of the row or column. 
+
+t-SNE 图使用 pyplot 中的 hexbin 可视化，对bin内细胞求均值。
+t-SNE plots were visualized using the hexbin (gridsize = 500, vmin = −50, vmax = 50) function from pyplot, which averages values from cells captured in local bins. 
+
+UMAP图是把x,y,z分别分成150等份。
+UMAP plots were binned by splitting each of the x, y, and z coordinates into 150 equally sized bins. 
+
+对于图2和3，我们尝试逐渐增加严谨度来保留稀疏矩阵中的 gene and/or 细胞，然后获得了高度可靠的、不依赖所选threshold的结果。
+For all of our analyses presented in Figs. 2 and 3, we experimented with testing increasingly stringent minimal read count thresholds to retain genes and/or cells in our sparse matrix, and achieved highly robust results independent of the thresholds selected.
+
+
+
+
+
+
+
+
+
 
 
 ========================================
@@ -2047,6 +2149,7 @@ DaPars2 //todo
 ----------------------------------------
 https://github.com/3UTR/DaPars2
 
+新闻报道: https://www.szbl.ac.cn/infomation/research/2096.html
 
 
 
@@ -2059,12 +2162,37 @@ Analysis of alternative polyadenylation from single-cell RNA-seq using scDaPars 
 Genome Res. gr.271346.120Published in Advance May 25, 2021,
 
 
-
+新闻报道: https://www.seqchina.cn/14138.html
 
 
 
 ========================================
+化学平衡理论
 ----------------------------------------
+1.速率方程的确定 [3]  主要有以下三种方式：
+https://baike.baidu.com/item/%E5%8C%96%E5%AD%A6%E5%8F%8D%E5%BA%94%E9%80%9F%E7%8E%87%E6%96%B9%E7%A8%8B/4811007?fr=aladdin
+
+(1).微分法：两边求对数，得到：
+- d[A]/dt = k*[A]^n
+ln( d[A]/dt ) = ln k + n*ln[A]
+
+然后取若干个不同的初始浓度[A]0，然后分别从 [A]~t 上求出相应的斜率 d[A]0/dt，求出 ln(-d[A]0/dt) - ln[A]0 直线的斜率，并进一步求出反应物 A 的反应级数。
+
+
+(2). 尝试法/试差法：分别将某一化学反应的 [A] 和 t 代入各种级数反应的积分速率方程，看哪一个最准确。
+
+(3). 半衰期法：求得两个不同初始浓度下的反应半衰期，然后根据总结一节中的半衰期通式，求出反应级数。
+
+
+
+2.
+
+
+
+
+
+
+
 
 
 

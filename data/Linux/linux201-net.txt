@@ -925,6 +925,43 @@ sudo systemctl restart network
 
 
 ========================================
+|-- 实时显示 tcp 访问请求和响应
+----------------------------------------
+$ sudo tcpdump -s0 -A -n -i any | grep -o -E '(GET|POST|HEAD) .*' 
+[sudo] password for wangjl: 
+tcpdump: verbose output suppressed, use -v or -vv for full protocol decode
+listening on any, link-type LINUX_SLL (Linux cooked), capture size 262144 bytes
+POST /events/get_events HTTP/1.1
+POST /rpc/set_workbench_metrics HTTP/1.1
+POST /rpc/console_input HTTP/1.1
+POST /rpc/console_input HTTP/1.1
+
+
+请求pdf图片
+GET /file_show?path=%2Fdata%2Fjinwf%2Fwangjl%2Fapa%2Fmouse%2FRNA_matrix%2Fcluster%2Fmef02_dotplot.pdf HTTP/1.1
+
+
+
+
+
+
+2. 什么是RPC
+https://zhuanlan.zhihu.com/p/139688497
+
+提到RPC（Remote Procedure Call），就躲不开提到分布式，这个促使RPC诞生的领域。
+
+
+
+
+
+
+
+
+
+
+
+
+========================================
 用iptables搭建一套强大的安全防护盾
 ----------------------------------------
 http://blog.chinaunix.net/uid-26495963-id-3279216.html
@@ -954,63 +991,6 @@ http://www.imooc.com/learn/389
 详情参考本博客： Linux/网络与iptables
 
 
-========================================
-|-- iptables安全防护盾
-----------------------------------------
-1.
-定义：iptables是常见的应用于linux下的应用层防火墙工具。
-常用人员：系统管理人员、网络工程人员、安全人员等等。
-视频：http://www.imooc.com/learn/389
-	http://www.imooc.com/search/?words=iptables
-
-2.场景：模拟用iptables控制并发的http访问。
-ab命令通过100(win7)机器访问117(CentOS6.5)http服务.
-
-(1)启动http服务
-[wangjl@NGSL ~]$ sudo /etc/init.d/httpd status
-httpd (pid  3756) is running...
-##关掉防火墙
-$ sudo service iptables stop
-##写入http文件
-# cd /var/www/html/
-# cat >test.txt
-test
-访问]http://192.168.1.117/test.txt
-可以看到文字：test
-
-(2)win7客户端开始并发访问
-使用apache的ab工具做压力测试。
-I:\xampp\apache\bin>ab
-ab: wrong number of arguments
-Usage: ab [options] [http://]hostname[:port]/path
-
-#-n总请求数，-c每次并发的数量。
-I:\xampp\apache\bin>ab -n 100000 -c 40 http://192.168.1.117/test.txt
-
-(3)赶快查看服务端的压力和连接数
-$ netstat -an|grep 80|grep 192.168.1.100|grep EST -c
-31
-$ w
- 12:35:08 up  4:37,  4 users,  load average: 6.39, 2.70, 1.18
-
-而静息状态下，这两个参数分别是：
-$ netstat -an|grep 80|grep 192.168.1.100|grep EST -c
-0
-$ w
- 12:42:18 up  4:44,  4 users,  load average: 0.05, 0.68, 0.76
-
-
-(4)在服务端控制并发
-如果想控制一下这些高并发，可以使用iptables工具在服务端设置
-# iptables -I INPUT -p tcp --dport 80 -s 192.168.1.100 -m connlimit --connlimit-above 10 -j REJECT
-
-客户端再次并发访问：
->ab -n 100000 -c 40 http://192.168.1.117/test.txt
-直接报错，而-c修改为5的时候就正常了。
-
-
-
-
 
 
 
@@ -1021,6 +1001,204 @@ $ w
 4）明白iptables的强大及实际使用的意义。
 
 
+
+
+4. 参考资料 
+2 小时玩转 iptables: https://zhuanlan.zhihu.com/p/279919870
+CentOS7 下iptables安装与iptables使用 https://blog.csdn.net/a568418299/article/details/103472754
+iptables相关操作以及简单理解端口和服务之间关系 https://blog.csdn.net/weixin_33922670/article/details/86464154
+
+
+
+
+
+
+========================================
+|-- iptables安全防护盾实例: 拒绝高并发访问源
+----------------------------------------
+2022.5.6 更新
+
+1.
+定义：iptables是常见的应用于linux下的应用层防火墙工具。
+常用人员：
+	系统管理人员: 安全策略
+	网络工程人员: 网络控制，人员的上网行为等
+	安全人员: 
+
+
+视频：http://www.imooc.com/learn/389
+	http://www.imooc.com/search/?words=iptables
+
+
+
+(2) iptables v1.4.21 和 iptables-services 的区别?
+centos7.2 (1511) 最小安装好以后，默认没有firewalld（经过rpm -qa查看的确没有），但有iptables，并且部分iptables命令却可以用，比如：
+执行命令：iptables --version，可以看到iptables的版本号为1.4.21
+执行命令：iptables -A INPUT -p tcp --dport 22 -j ACCEPT，这个命令敲完是立刻生效的，但重启后规则就没了，并且像service iptables save这样的命令也没有, /etc/sysconfig/iptables文件也不存在，即时手工建立这个文件也不管用。
+
+网上查了些信息，基本都是要安装这个 yum install iptables-services
+安装完以后，所有iptables的正常命令就可以用了。
+
+现在问题来了：iptables v1.4.21和iptables-services的区别是什么？
+
+有一个帖子说 后者 提供了一些脚本: https://forums.centos.org/viewtopic.php?t=69433
+The iptables-services package supplies the scripts required to stop/start/restore iptables rules. 
+Run rpm -ql iptables-services to see the files it supplies.
+$ rpm -ql iptables-services
+/etc/sysconfig/ip6tables
+/etc/sysconfig/iptables
+/usr/lib/systemd/system/ip6tables.service
+/usr/lib/systemd/system/iptables.service
+/usr/libexec/initscripts/legacy-actions/ip6tables
+/usr/libexec/initscripts/legacy-actions/ip6tables/panic
+/usr/libexec/initscripts/legacy-actions/ip6tables/save
+/usr/libexec/initscripts/legacy-actions/iptables
+/usr/libexec/initscripts/legacy-actions/iptables/panic
+/usr/libexec/initscripts/legacy-actions/iptables/save
+/usr/libexec/iptables
+/usr/libexec/iptables/ip6tables.init
+/usr/libexec/iptables/iptables.init
+
+另一个回答
+Playing around with a server some more, I think I answered my own question...
+iptables is always "running". The only way to disable it would be to change the rules and allow all traffic. iptables-services makes this easy. If I write a rule to iptables, run iptables save, and run systemctl stop iptables it essentially clears the rules. Running systemctl start iptables restores the rules. Without iptables-services, I couldn't "disable" and "enable" the firewall - it would always be there and my only option is changing rules.
+
+如果向 iptables 写入一条规则，
+	运行 iptables save
+	运行 systemctl stop iptables 就清除了这条规则
+	运行 systemctl start iptables 就恢复了这条规则
+
+
+
+
+
+
+
+
+
+2.场景：模拟用iptables控制并发的http访问。
+ab命令通过 192.168.2.199(win10)/120(ubuntu20.04) 机器访问 134(CentOS7)http服务.
+
+先关闭 SELinux
+$ sudo setenforce 0
+
+
+
+
+(1)启动http服务
+$ sudo yum install httpd
+$ sudo service httpd start
+
+## Linux中修改httpd默认端口
+$ sudo vim /etc/httpd/conf/httpd.conf
+修改为
+Listen 8004
+
+
+重启 httpd 服务
+## systemctl restart httpd.service
+$ sudo service httpd restart
+
+$ sudo service httpd status
+Redirecting to /bin/systemctl status httpd.service
+● httpd.service - The Apache HTTP Server
+   Loaded: loaded (/usr/lib/systemd/system/httpd.service; disabled; vendor preset: disabled)
+   Active: active (running) since Sun 2021-10-10 10:39:32 EDT; 4s ago
+     Docs: man:httpd(8)
+           man:apachectl(8)
+ Main PID: 9402 (httpd)
+
+
+查端口号
+$ sudo netstat -antlupe | grep  httpd
+tcp6       0      0 :::8004                 :::*                    LISTEN      0          247540     9402/httpd 
+
+
+##写入http文件
+$ cd /var/www/html/
+$ sudo vim test.txt
+test
+
+内部访问 
+$ curl http://127.0.0.1:8004/test.txt
+test
+
+
+
+
+(2) 先关掉防火墙等软件
+查看iptables版本
+$ iptables --version
+iptables v1.4.21
+$ sudo yum install iptables-services
+
+
+##关掉防火墙，要同时关掉 iptables 和 firewalld
+$ sudo service iptables stop
+$ sudo service firewalld stop
+
+
+必须加入规则，关掉都不行？ 再关掉 firewalld 可以了。
+$ sudo iptables -I INPUT -p tcp --dport 8005 -j ACCEPT
+
+浏览器访问 http://192.168.2.134:8004/test.txt
+可以看到文字：test
+
+
+
+
+(3)win7客户端开始并发访问
+使用apache的ab工具做压力测试。
+G:\xampp\apache\bin>ab
+ab: wrong number of arguments
+Usage: ab [options] [http://]hostname[:port]/path
+
+#-n总请求数，-c每次并发的数量。
+G:\xampp\apache\bin> ab -n 100000 -c 40 http://192.168.2.134:8004/test.txt
+
+
+
+(3)赶快查看服务端的压力和连接数
+$ netstat -an|grep 8004|grep 192.168.2.134|grep EST -c
+31
+$ w
+  11:55:36 up  4:11,  6 users,  load average: 0.84, 0.20, 0.10
+
+
+而静息状态下，这两个参数分别是：
+$ netstat -an|grep 8004|grep 192.168.2.134|grep EST -c
+0
+$ w
+ 11:58:28 up  4:14,  6 users,  load average: 0.47, 0.44, 0.22
+
+
+
+(4)在服务端控制并发
+如果想控制一下这些高并发，可以使用iptables工具在服务端设置，最多并发为10，否则拒绝
+$ sudo iptables -I INPUT -p tcp --dport 8004 -s 192.168.2.199 -m connlimit --connlimit-above 10 -j REJECT
+
+客户端再次并发访问：
+> ab -n 100000 -c 40 http://192.168.2.134:8004/test.txt
+直接报错，而-c修改为5的时候就正常了。
+
+
+
+查看规则 
+$ sudo iptables -L -n
+
+删掉该规则
+$ sudo iptables -D INPUT -p tcp --dport 8004 -s 192.168.2.199 -m connlimit --connlimit-above 10 -j REJECT
+
+
+
+
+
+
+
+
+========================================
+|-- iptables “四表五链”
+----------------------------------------
 4.Netfilter
 Netfilter是linux操作系统核心层内部的一个数据包处理模块；
 什么是Hook point？数据包在Netfilter中的挂载点共5个(防火墙“四表五链”中的五链)：
@@ -1071,7 +1249,15 @@ Filter表：用来处理是否放行
 NAT表：实现数据包转发，修改源地址 端口 目标地址 端口，实现地址转换
 
 
-2)
+
+2) 数据包在规则表/链匹配流程:
+IN => PREROUTING(nat/mangle/raw)==>
+	destination == localhost: INPUT(filter/mangle) ==> localhost ==> OUTPUT(filter/nat/mangle/raw)==>
+	destination != localhost: FORWARD(filter/mangle) ==>
+POSTROUTING(nat/raw/mangle)==> OUT
+
+
+
 PREROUTING是不经过内核路由之前的信息
 INPUT和OUTPUT均包括经过内核和不经过内核的信息
 FORWARD是经过内核的路由转发信息
@@ -1082,26 +1268,51 @@ POSTROUTING是不经过内核路由之后的信息
 
 
 
-(2)iptable规则的组成
 
+========================================
+|-- iptable规则的组成
+----------------------------------------
 数据包访问控制： ACCEPT、DROP、REJECT
 数据包改写：SNAT、DNAT
 信息记录：LOG
 
 DROP没有返回消息，而REJECT给客户端有返回消息。
-SNAT是对发起端地址改写，DNAT对目标地址改写。
+SNAT是对发起端(source)地址改写，DNAT对目标地址(destination)改写。
 
+
+
+1. iptable规则的组成
 
 iptables命令常用方法: 
-iptables [-p table] 链管理 chain
--t table : filter,nat,mangle,raw (默认为 filter)
+iptables [table] [command] [chain] [parameter & Xmatch] [target]
 
-链管理：
+比如
+$ iptables -t filter -A INPUT -p tcp --dport 20185 -j ACCEPT
+
+
+链名必须大写(INPUT/OUTPUT/FORWARD/PREROUTING/PPOSTROUTING)，
+表名必须小写(filter/nat/mangle)，
+动作大写(ACCEPT/DROP/SNAT/DNAT/MASQUERADE)，
+匹配小写(-s/-d/-m <module_name>/-p)
+
+
+
+
+
+
+2. 参数解释:
+(1) table 4个
+-t 后跟着的table可以是4表之一: filter,nat,mangle,raw (默认为 filter)
+
+(2) 命令
+链管理命令(都是立即生效的)：
 -F : 清空规则链
+	iptables -t nat -F 清空nat表的所有链
 -N：创建新的自定义规则链
 -X : drop 删除用户自定义的规则链
 -P : Policy 为指定链设置默认策略；iptables -t filter -P FORWARD DROP
 	-P设置默认iptables规则。
+	iptables -P INPUT (DROP|ACCEPT)默认是关的/默认是开的，比如： iptables -P INPUT DROP
 -E：重命令自定义链
 
 
@@ -1112,10 +1323,16 @@ iptables [-p table] 链管理 chain
 -R：替代指定链上的规则
 
 查看：
--L：列表，列出指定链上的指定的规则
+-L：列表，列出指定链上的指定的规则。显示当前的规则
 -n -v –line-numbers -x 等参数
 -L和-n一般连用。
 
+
+(3) chain 5个
+INPUT/FORWARD/OUTPUT/PRETOUTING/POSTROUTING/
+
+
+(4) 参数与匹配
 
 匹配条件 - 基本匹配：
 -s 原地址IP。-s 发起源有哪些
@@ -1125,22 +1342,26 @@ iptables [-p table] 链管理 chain
 -o 数据报文的流出接口
 
 匹配条件 - 扩展匹配：-m match_name
--m 在原有基础上做个补充，tcp, state, multiport
+-p udp|tcp|icmp 协议类型
+--sport PORT:源端口
 --dport PORT:目标端口，可以是单个端口
 --dports 端口段
---sport PORT:源端口
--p udp|tcp|icmp
 –icmp-type
 0 : echo-reply
 8 : echo-request
+-m 在原有基础上做个补充，tcp, state, multiport
 
-目标：
+
+(5) targeet 目标
 -j TARGET：jump至指定的TARGET
 - ACCEPT 接受
 - DROP 丢弃
 - REJECT 拒绝访问
+
 - RETURN 返回调用链
 
+- DNAT
+- SNAT
 
 
 
@@ -1151,6 +1372,7 @@ iptables [-p table] 链管理 chain
 ACCEPT	允许数据包通过
 DROP	直接丢弃数据包，不给任何回应，此时客户端会不停地去向服务器发送数据包，发送超时才会有反应
 REJECT	拒绝数据包通过，必要时会给数据发送端一个响应信息，如果客户端的请求被拒绝，就会收到拒绝的信息
+
 SNAT	源地址转换，解决内网用户用同一个公网地址上网的问题
 MASQUERADE	是SNAT的一种特殊形式，适用于动态的，临时会变的ip上
 DNAT	目的地址转换
@@ -1159,6 +1381,9 @@ DNAT	目的地址转换
 
 refer:
 https://blog.csdn.net/u011456940/article/details/52634184
+
+
+
 
 
 
@@ -1172,7 +1397,7 @@ https://blog.csdn.net/u011456940/article/details/52634184
 服务端查看所有开放端口：
 $ netstat -luntp
 $ iptables --version
-iptables v1.4.7
+iptables v1.4.21
 
 
 #-L列出之前设置过的iptables规则
@@ -1190,11 +1415,22 @@ target     prot opt source               destination
 
 
 $ sudo iptables -nL #-n是数字化显示主机ip和端口号
+## target     prot opt source               destination         
+## ACCEPT     udp  --  anywhere             anywhere             udp dpt:domain # 不加-n的时候都是显示的主机名
+
+## target     prot opt source               destination         
+## ACCEPT     udp  --  0.0.0.0/0            0.0.0.0/0            udp dpt:53 # 加-n的时候数字化显示
+
+
+
 
 $ iptables -F # -F更新为新的规则，如果没有新规则，相当于逐条删除已有规则。
  -F, --flush [chain]   Flush the selected chain (all the chains in the table if none is given).  This is equivalent to deleting all the  rules  one  by one.
 
-（1）设置新的规则
+
+
+
+（1）设置新的规则 3 条
 # iptables -I INPUT -p tcp --dport 80 -j ACCEPT #允许访问80端口
 # iptables -I INPUT -p tcp --dport 22 -j ACCEPT #允许访问22端口: ssh。一定要允许，否则服务器失控。
 # iptables -I INPUT -p tcp --dport 10:21 -j ACCEPT
@@ -1211,7 +1447,13 @@ target     prot opt source               destination
 Chain OUTPUT (policy ACCEPT)
 target     prot opt source               destination
 
-$ sudo iptables -L
+
+
+
+
+
+## 没有 -n 则没有数字化端口，比如 -n 时是22，不加-n时是ssh
+$ sudo iptables -L 
 Chain INPUT (policy ACCEPT)
 target     prot opt source               destination
 ACCEPT     tcp  --  anywhere             anywhere            tcp dpts:10:ftp
@@ -1235,9 +1477,11 @@ target     prot opt source               destination
 设置规则2：
 # iptables -I INPUT -p icmp -j ACCEPT
 
+
+
 设置规则3的拒绝：
 # iptables -A INPUT -j REJECT
-## -A表示是追加到末尾。
+## -A表示是追加到末尾。优先级最低，如果错误的使用了-I，则加到最前面，生效后拒绝全部访问请求。
 
 $ sudo iptables -nL
 Chain INPUT (policy ACCEPT)
@@ -1254,6 +1498,10 @@ target     prot opt source               destination
 Chain OUTPUT (policy ACCEPT)
 target     prot opt source               destination
 
+
+
+
+看本机监听了哪些端口
 $ netstat -lntp
 (Not all processes could be identified, non-owned process info
  will not be shown, you would have to be root to see it all.)
@@ -1272,11 +1520,16 @@ tcp        0      0 ::1:25                      :::*                        LIST
 tcp        0      0 :::44731                    :::*                        LISTEN      -
 
 
-使用一个Ubuntu机器上的端口扫描工具：
+
+
+
+
+使用另一个Ubuntu机器上的端口扫描工具：
 $ sudo apt install nmap
-$ sudo nmap -sS -p 0-1000 192.168.1.117
-Starting Nmap 7.01 ( https://nmap.org ) at 2017-09-07 15:28 CST
-Nmap scan report for bogon (192.168.1.117)
+$ sudo nmap -sS -p 0-1000 192.168.2.134
+[sudo] password for wangjl: 
+Starting Nmap 7.80 ( https://nmap.org ) at 2022-05-06 21:56 CST
+Nmap scan report for 192.168.2.134
 Host is up (0.00030s latency).
 Not shown: 987 filtered ports
 PORT   STATE  SERVICE
@@ -1288,15 +1541,18 @@ PORT   STATE  SERVICE
 15/tcp closed netstat
 16/tcp closed unknown
 17/tcp closed qotd
-18/tcp closed unknown
+18/tcp closed msp
 19/tcp closed chargen
 20/tcp closed ftp-data
 21/tcp closed ftp
 22/tcp open   ssh
 80/tcp open   http
-MAC Address: 08:00:27:59:54:C6 (Oracle VirtualBox virtual NIC)
+MAC Address: 08:00:27:FF:E5:D4 (Oracle VirtualBox virtual NIC)
 
-Nmap done: 1 IP address (1 host up) scanned in 23.94 seconds
+Nmap done: 1 IP address (1 host up) scanned in 5.32 seconds
+
+确实只有有限的2个端口开放，其他都是关闭状态。
+
 
 
 
@@ -1306,13 +1562,24 @@ Nmap done: 1 IP address (1 host up) scanned in 23.94 seconds
 
 
 （2）在服务器上删除一条80端口的访问规则：
- # iptables -D INPUT -p tcp --dport 80 -j ACCEPT
+$ sudo iptables -D INPUT -p tcp --dport 80 -j ACCEPT
+
+检查，确实没有 80 端口了
+$ sudo iptables -nL
+Chain INPUT (policy ACCEPT)
+target     prot opt source               destination         
+ACCEPT     icmp --  0.0.0.0/0            0.0.0.0/0           
+ACCEPT     tcp  --  0.0.0.0/0            0.0.0.0/0            tcp dpts:10:21
+ACCEPT     tcp  --  0.0.0.0/0            0.0.0.0/0            tcp dpt:22
+REJECT     all  --  0.0.0.0/0            0.0.0.0/0            reject-with icmp-port-unreachable
+
+
 
 在Ubuntu上扫描该服务器端口，发现80端口已经不能外部访问了。
-~$ sudo nmap -sS -p 0-1000 192.168.1.117
-Starting Nmap 7.01 ( https://nmap.org ) at 2017-09-07 15:32 CST
-Nmap scan report for bogon (192.168.1.117)
-Host is up (0.00035s latency).
+$ sudo nmap -sS -p 0-1000 192.168.2.134
+Starting Nmap 7.80 ( https://nmap.org ) at 2022-05-06 21:59 CST
+Nmap scan report for 192.168.2.134
+Host is up (0.00030s latency).
 Not shown: 988 filtered ports
 PORT   STATE  SERVICE
 10/tcp closed unknown
@@ -1323,14 +1590,15 @@ PORT   STATE  SERVICE
 15/tcp closed netstat
 16/tcp closed unknown
 17/tcp closed qotd
-18/tcp closed unknown
+18/tcp closed msp
 19/tcp closed chargen
 20/tcp closed ftp-data
 21/tcp closed ftp
 22/tcp open   ssh
-MAC Address: 08:00:27:59:54:C6 (Oracle VirtualBox virtual NIC)
+MAC Address: 08:00:27:FF:E5:D4 (Oracle VirtualBox virtual NIC)
 
-Nmap done: 1 IP address (1 host up) scanned in 23.06 seconds
+Nmap done: 1 IP address (1 host up) scanned in 4.72 seconds
+
 
 
 
@@ -1341,6 +1609,7 @@ Nmap done: 1 IP address (1 host up) scanned in 23.06 seconds
 
 （3）如果服务器上明确禁止访问80端口呢？
 $ sudo iptables -I INPUT -p tcp --dport 80 -j REJECT
+
 查看现有规则：
 $ sudo iptables -nL
 Chain INPUT (policy ACCEPT)
@@ -1358,11 +1627,12 @@ Chain OUTPUT (policy ACCEPT)
 target     prot opt source               destination
 
 
+
 在其他机器上扫描的结果：
-$ sudo nmap -sS -p 0-1000 192.168.1.117
-Starting Nmap 7.01 ( https://nmap.org ) at 2017-09-07 17:21 CST
-Nmap scan report for bogon (192.168.1.117)
-Host is up (0.00049s latency).
+$ sudo nmap -sS -p 0-1000 192.168.2.134
+Starting Nmap 7.80 ( https://nmap.org ) at 2022-05-06 22:05 CST
+Nmap scan report for 192.168.2.134
+Host is up (0.00032s latency).
 Not shown: 988 filtered ports
 PORT   STATE  SERVICE
 10/tcp closed unknown
@@ -1373,16 +1643,20 @@ PORT   STATE  SERVICE
 15/tcp closed netstat
 16/tcp closed unknown
 17/tcp closed qotd
-18/tcp closed unknown
+18/tcp closed msp
 19/tcp closed chargen
 20/tcp closed ftp-data
 21/tcp closed ftp
 22/tcp open   ssh
-MAC Address: 08:00:27:59:54:C6 (Oracle VirtualBox virtual NIC)
+MAC Address: 08:00:27:FF:E5:D4 (Oracle VirtualBox virtual NIC)
 
-Nmap done: 1 IP address (1 host up) scanned in 21.87 seconds
+Nmap done: 1 IP address (1 host up) scanned in 4.92 seconds
 
 和上一个一样，80端口看不到状态，也就是不能访问。
+
+
+
+
 
 
 
@@ -1408,16 +1682,26 @@ tcp        0      0 ::1:25                      :::*                        LIST
 tcp        0      0 :::44731                    :::*                        LISTEN      -
 
 
+
+
 问题1：本机不能访问本机
+
 $ ssh wangjl@127.0.0.1
 一直连接中...
 也就是外网可以访问，但是本机不能访问本机的22端口（回环地址）。
 
 解决方法：如要对回环网卡lo做允许。
-# iptables -I INPUT -i lo -j ACCEPT #允许所有数据包通过lo网卡。
+
+查看 127.0.0.1 的网卡名，一般是 lo。
+$ ifconfig
+lo: flags=73<UP,LOOPBACK,RUNNING>  mtu 65536
+        inet 127.0.0.1  netmask 255.0.0.0
+
+
+$ sudo iptables -I INPUT -i lo -j ACCEPT #允许所有数据包通过lo网卡。
 
 [!] -i, --in-interface name
-              Name of an interface via which a packet was received (only for packets entering the INPUT, FORWARD and PREROUTING chains).  When the "!" argument is used before the interface name, the sense is inverted.  If the interface name ends in a "+", then any interface which begins with this name will match.  If this option is omitted, any interface name will match.
+	Name of an interface via which a packet was received (only for packets entering the INPUT, FORWARD and PREROUTING chains).  When the "!" argument is used before the interface name, the sense is inverted.  If the interface name ends in a "+", then any interface which begins with this name will match.  If this option is omitted, any interface name will match.
 
 
 再用ssh登陆自己就可以了。
@@ -1427,18 +1711,26 @@ RSA key fingerprint is 8d:96:7a:f8:9f:0b:3e:e1:e5:49:dc:70:dd:89:8c:57.
 Are you sure you want to continue connecting (yes/no)? yes
 Warning: Permanently added '127.0.0.1' (RSA) to the list of known hosts.
 wangjl@127.0.0.1's password:
-Last login: Fri Aug 19 12:23:24 2016 from 192.168.1.100
+Last login: Sun Oct 10 18:59:45 2021 from desktop-6tss3vl.lan (win10上的虚拟机)
+
+##Last login: Fri Aug 19 12:23:24 2016 from 192.168.1.100
+
+
+$ sudo yum install telnet
+$ telnet 127.0.0.1 22
+
 
 
 
 问题2：本机不能访问其他主机
+
 $ wget http://www.imooc.com/
 --2016-08-19 14:05:39--  http://www.imooc.com/
 Resolving www.imooc.com...
 一直连接不上。
 
-对已经建立的监听，设置允许
-# iptables -I INPUT -m state --state ESTABLISHED,RELATED -j ACCEPT
+对本地主动建立的监听(http 和 ftp)，设置允许
+$ sudo iptables -I INPUT -m state --state ESTABLISHED,RELATED -j ACCEPT
 
 match = -m matchname [per-match-options]
 state: This module, when combined with connection tracking, allows access to the connection tracking state for this packet.
@@ -1464,36 +1756,84 @@ Saving to: “index.html”
 $ curl -I http://imooc.com
 返回消息头。
 
+$ curl -I http://www.baidu.com
+HTTP/1.1 200 OK
+Server: bfe/1.0.8.18
+Date: Fri, 06 May 2022 14:28:07 GMT
+Content-Type: text/html
+Content-Length: 277
+Connection: keep-alive
+Accept-Ranges: bytes
+Etag: "575e1f72-115"
+Last-Modified: Mon, 13 Jun 2016 02:50:26 GMT
+Pragma: no-cache
+
+
+
+
+
+
+
+
 
 （5）只允许IP为具体值的主机访问httpd服务
 删除这条拒绝所有人访问的规则
 $ sudo iptables -D INPUT -p tcp --dport 80 -j REJECT
 
 允许-s源机器IP访问
-$ sudo iptables -I INPUT -p tcp -s 192.168.1.110 --dport 80 -j ACCEPT
+$ sudo iptables -I INPUT -p tcp -s 192.168.2.199 --dport 80 -j ACCEPT
 
-在110上访问目标主机
-$ curl -I http://192.168.1.117/
-HTTP/1.1 403 Forbidden
-Date: Fri, 19 Aug 2016 06:40:02 GMT
-Server: Apache/2.2.15 (CentOS)
+$ sudo iptables -nL
+Chain INPUT (policy ACCEPT)
+target     prot opt source               destination         
+ACCEPT     tcp  --  192.168.2.199        0.0.0.0/0            tcp dpt:80
+ACCEPT     all  --  0.0.0.0/0            0.0.0.0/0            state RELATED,ESTABLISHED
+ACCEPT     all  --  0.0.0.0/0            0.0.0.0/0           
+ACCEPT     icmp --  0.0.0.0/0            0.0.0.0/0           
+ACCEPT     tcp  --  0.0.0.0/0            0.0.0.0/0            tcp dpts:10:21
+ACCEPT     tcp  --  0.0.0.0/0            0.0.0.0/0            tcp dpt:22
+REJECT     all  --  0.0.0.0/0            0.0.0.0/0            reject-with icmp-port-unreachable
+
+
+
+在 199 上访问目标主机
+$ curl -I http://192.168.2.134/
+TP/1.1 200 OK
+Date: Sun, 10 Oct 2021 23:59:24 GMT
+Server: Apache/2.4.6 (CentOS)
+Last-Modified: Sun, 10 Oct 2021 15:03:20 GMT
+ETag: "12-5ce00e9c3b52f"
 Accept-Ranges: bytes
-Content-Length: 4961
-Connection: close
+Content-Length: 18
 Content-Type: text/html; charset=UTF-8
 
-换个115的主机:
-$ curl http://192.168.1.117
-curl: (7) Failed to connect to 192.168.1.117 port 80: Connection refused
 
-说明只允许110访问设置成功了。
+换个 199 的主机:
+$ curl -I http://192.168.2.134/
+curl: (7) Failed to connect to 192.168.2.134 port 80: Connection refused
 
-
-
+说明只允许 199 访问设置成功了。
 
 
+
+
+删除掉刚才的规则
+$ sudo iptables -D INPUT -p tcp -s 192.168.2.199 --dport 80 -j ACCEPT
+
+
+
+========================================
+|-- iptables配制-场景2: ftp主动模式和被动模式下的设置 //todo
+----------------------------------------
 iptables配制-场景2
 ftp主动模式和被动模式下的设置。http://www.imooc.com/video/7609
+
+
+
+
+
+
+
 
 
 
@@ -1646,7 +1986,7 @@ iptables: Applying firewall rules:                         [  OK  ]
     iptables -A INPUT -i lo -j ACCEPT  
     iptables -A INPUT -m state --state ESTABLISHED -j ACCEPT  
 
-$ ~$ iptables -h
+$ iptables -h
 查找参数意义。
 
 
@@ -1687,7 +2027,7 @@ sudo iptables -L -n --line-numbers |less
 
 
 ========================================
-centOS7 中的防火墙
+|-- centOS7 中的防火墙
 ----------------------------------------
 Linux中存在iptables和firewalld两种防火墙
 iptables：更接近数据的原始操作，精度更高

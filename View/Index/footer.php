@@ -150,6 +150,7 @@
 
 		echo '<br />生信: ';
 		print_links(array(
+			array('https://www.math.pku.edu.cn/teachers/lidf/docs/Rbook/html/_Rbook/markdown.html','北大R语言教程'),
 			array('http://www.bioinfo-scrounger.com/','生信笔记'),
 			array('https://www.cnblogs.com/leezx/tag/单细胞/','单细胞'),
 			array('https://divingintogeneticsandgenomics.rbind.io/#publications','Ming Tang(scATAC)'),
@@ -194,7 +195,7 @@ var cnzz_protocol = (("https:" == document.location.protocol) ? " https://" : " 
 		<div class='small fade'>
 			♥ Do have faith in what you're doing. 
 			[<?php echo date('Y-m-d H:i:s',time());?>] 
-			Powered by <a target='_blank' href='https://github.com/DawnEve/txtBlog' title='txtBlog(A simple yet powerful php blog system for reading and organizing txt files.)'>txtBLog v0.5</a>
+			Powered by <a target='_blank' href='https://github.com/DawnEve/txtBlog' title='txtBlog(A simple yet powerful php blog system for reading and organizing txt files.)'>txtBLog v0.6.4</a>
 			
 			
 			

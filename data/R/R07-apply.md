@@ -1232,6 +1232,59 @@ rbind(Ozone,Solar.R,Wind,Temp)
 
 
 
+
+## base::sweep() 把一个矩阵整体减去某个统计参数
+Return an array obtained from an input array by sweeping out a summary statistic.
+
+sweep(x, MARGIN, STATS, FUN = "-", check.margin = TRUE, ...)
+
+
+例1:
+```
+> x=iris[1:2,1:4]
+> x
+  Sepal.Length Sepal.Width Petal.Length Petal.Width
+1          5.1         3.5          1.4         0.2
+2          4.9         3.0          1.4         0.2
+> sweep(x, MARGIN=1, STATS=c(5,4), FUN = "-") #按行减去值
+  Sepal.Length Sepal.Width Petal.Length Petal.Width
+1          0.1        -1.5         -3.6        -4.8
+2          0.9        -1.0         -2.6        -3.8
+> sweep(x, MARGIN=2, STATS=c(5,3,1,0), FUN = "-") #按列减去值
+  Sepal.Length Sepal.Width Petal.Length Petal.Width
+1          0.1         0.5          0.4         0.2
+2         -0.1         0.0          0.4         0.2
+```
+
+
+
+
+例2: 矩阵每列减去本列的平均值
+```
+> df1=mtcars[1:3, 1:5]
+> df1
+               mpg cyl disp  hp drat
+Mazda RX4     21.0   6  160 110 3.90
+Mazda RX4 Wag 21.0   6  160 110 3.90
+Datsun 710    22.8   4  108  93 3.85
+> sweep(df1, 
+       MARGIN=2, 
+       STATS= apply(df1, 2, mean),
+       FUN="-"
+)
+               mpg        cyl      disp         hp        drat
+Mazda RX4     -0.6  0.6666667  17.33333   5.666667  0.01666667
+Mazda RX4 Wag -0.6  0.6666667  17.33333   5.666667  0.01666667
+Datsun 710     1.2 -1.3333333 -34.66667 -11.333333 -0.03333333
+```
+
+
+
+
+
+
+
+
 # 进阶 Next
 ```
 # R语言plyr包——超越apply族的数据分块处理包 https://blog.csdn.net/emy_zj/article/details/46508653

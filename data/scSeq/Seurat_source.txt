@@ -1,0 +1,7778 @@
+Suerat 源码学习
+
+Seurat 4 源码解析 1: Seurat 类怎么定义的？
+	https://zhuanlan.zhihu.com/p/463532779
+
+Seurat 4 源码解析 2：Seurat 对象怎么实例化？
+	https://zhuanlan.zhihu.com/p/463602480
+
+Seurat 4 源码解析 3：Seurat 对象的方法是怎么定义的？
+	https://zhuanlan.zhihu.com/p/463617297
+
+Seurat 4 R包源码解析 总目录: https://zhuanlan.zhihu.com/p/465392721
+
+
+
+
+我从这些CNS文章里面精挑细选了一个非常值得大家花时间跟下去的，就是新鲜出炉的发表在CELL杂志的：Therapy-Induced Evolution of Human Lung Cancer Revealed by Single-Cell RNA Sequencing 。全套代码在：https://github.com/czbiohub/scell_lung_adenocarcinoma
+
+
+
+
+
+========================================
+|-- step1: Read10X()
+----------------------------------------
+标题: Seurat 4 源码解析 4: step1 读入10x数据到内存 Read10X(data.dir=) https://zhuanlan.zhihu.com/p/464317172
+
+
+1. 载入10x pbmc 数据: cellranger 处理fastq后的输出
+
+(1) 读入 cellranger 输出为矩阵 
+# 调用的代码
+# load data
+pbmc.data <- Read10X(data.dir = "~/data/scScripts/backup/data/pbmc3k/filtered_gene_bc_matrices/hg19/")
+class(pbmc.data)
+dim(pbmc.data) #32738  2700
+
+
+# 定位 
+seurat-4.1.0/R/preprocessing.R:781:Read10X <- function( #不含注释共123行
+
+
+1) seq_along() 函数，返回整数向量，长度和第一个参数长度一致。
+# for (i in seq_along(along.with = data.dir)) 
+
+> seq_along(along.with = "~/data")
+[1] 1
+> seq_along(along.with = c("~/data", "~/"))
+[1] 1 2
+
+
+2) 读入稀疏矩阵 Matrix::readMM()
+/seurat-4.1.0/NAMESPACE:382:importFrom(Matrix,readMM)
+
+
+3) 文件、文件夹操作
+    # 如果文件夹不存在
+    if (!dir.exists(paths = run)) {
+      stop("Directory provided does not exist")
+    }
+	
+	# 拼接路径
+	run <- data.dir[i]
+	barcode.loc <- file.path(run, 'barcodes.tsv')
+	
+	
+	# 如果文件不存在
+	if (!file.exists(barcode.loc)) {
+      stop("Barcode file missing. Expecting ", basename(path = barcode.loc))
+    }
+	
+	# basename 拿到路径最后的文件名部分
+	basename("~/data/bams/hg38-RefSeq.bed") #[1] "hg38-RefSeq.bed"
+
+
+4) 正则的差异 grep(返回匹配的元素位置编号)， grepl(返回每一项是否匹配)
+> grep(pattern="[0-9]+", c(1,5, "good", "200"))
+[1] 1 2 4
+> grepl(pattern="[0-9]+", c(1,5, "good", "200"))
+[1]  TRUE  TRUE FALSE  TRUE
+
+
+5) warning 的参数 call.= T(默认)
+
+testit <- function() warning("Some are NA in testit")
+testit() ## shows call 显示函数调用
+# Warning message:
+# In testit() : Some are NA in testit
+#
+testit <- function() warning("Some are NA in testit 2", call. = FALSE)
+testit() ## no call
+#Warning message:
+#Some are NA in testit 2 #没有前缀  in fn()
+#
+suppressWarnings(warning("testit"))
+
+
+6) warning 的参数 immediate.=F(默认)
+# 即使设置 getOption("warn") <= 0，也立刻显示出该警告
+options(warn=0)
+getOption("warn")
+testit <- function() {
+  warning("Some are NA in testit 2", call. = FALSE)
+  Sys.sleep(2)
+}
+testit() #等待函数调用结束再打印warning
+
+testit <- function() {
+  warning("Some are NA in testit 2", call. = FALSE, immediate. = T)
+  Sys.sleep(2)
+}
+testit() #立刻打印warning，然后继续执行其余函数体
+
+
+
+7) 通过在重复字符后添加数字后缀，来返回uniq vector
+> make.unique(c("A", "B", "A", "D"))
+[1] "A"   "B"   "A.1" "D"  
+> make.unique(c("A", "B", "A", "D"), sep="-")
+[1] "A"   "B"   "A-1" "D"
+
+
+
+
+
+
+
+
+
+
+========================================
+|-- step2: 创建 Seurat 对象 CreateSeuratObject()
+----------------------------------------
+Seurat 4 源码解析 5: step2 创建 Seurat 对象 CreateSeuratObject() https://zhuanlan.zhihu.com/p/464577819
+
+
+1. 掉包侠 出场
+# Initialize the Seurat object with the raw (non-normalized data).
+pbmc <- CreateSeuratObject(counts = pbmc.data,
+                           project = "pbmc3k",
+                           min.cells = 3,
+                           min.features = 200)
+# Warning: Feature names cannot have underscores ('_'), replacing with dashes ('-') 
+pbmc
+# An object of class Seurat 
+# 13714 features across 2700 samples within 1 assay 
+# Active assay: RNA (13714 features, 0 variable features)
+
+
+这涉及到2个函数，
+一个创建 CreateSeuratObject()，解析 2 
+一个show()(见 解析3 2.3，本文略)
+
+
+
+
+
+
+2. 源码及注释
+
+(1) 函数定位
+前面(解析 1)说过，虽然Seurat是S4类，但是这个CreateSeuratObject函数却是一个S3方法，而且定义不在Seurat包中，而是在SeuratObject包中。
+
+$ find .  | grep "R$" | xargs grep -n "CreateSeuratObject" --color=auto
+...
+seurat-object-4.0.4/R/generics.R:179:CreateSeuratObject <- function( #泛型函数的定义
+...
+seurat-object-4.0.4/R/seurat.R:987:CreateSeuratObject.default <- function( #创建对象.默认
+...
+seurat-object-4.0.4/R/seurat.R:1034:CreateSeuratObject.Assay <- function( #创建对象.Assay
+...
+
+
+(2) S3 泛型函数
+seurat-object-4.0.4/R/generics.R:179:CreateSeuratObject <- function( #泛型函数的定义
+
+CreateSeuratObject <- function(
+  counts,
+  project = 'CreateSeuratObject',
+  assay = 'RNA',
+  names.field = 1,
+  names.delim = '_',
+  meta.data = NULL,
+  ...
+) {
+  UseMethod(generic = 'CreateSeuratObject', object = counts)
+}
+
+
+
+(3) 我们输入的是矩阵或者df，不是Assay类的对象，所以使用 CreateSeuratObject.default()函数
+
+> class(pbmc.data)
+[1] "dgCMatrix"
+attr(,"package")
+[1] "Matrix"
+
+seurat-object-4.0.4/R/seurat.R:987:CreateSeuratObject.default <- function( #创建对象.默认
+
+而这个函数的返回值又调用了 CreateSeuratObject.Assay()
+seurat-object-4.0.4/R/seurat.R:1034:CreateSeuratObject.Assay <- function( #创建对象.Assay
+
+
+
+
+3. R tips
+
+(1) meta.data <- meta.data[common.cells, , drop = FALSE] 这个 drop=F啥意思？
+
+找函数名:
+> methods(`[`)[ grep("frame", methods(`[`)) ]
+[1] "[.data.frame" "[.hyperframe"
+
+看这个函数的实现，结尾显示定义在base包中：
+> `[.data.frame`
+function (x, i, j, drop = if (missing(i)) TRUE else length(cols) == 1) 
+{
+    mdrop <- missing(drop)
+    Narg <- nargs() - !mdrop
+    has.j <- !missing(j)
+    if (!all(names(sys.call()) %in% c("", "drop")) && !isS4(x)) 
+        warning("named arguments other than 'drop' are discouraged")
+    if (Narg < 3L) {
+        if (!mdrop) 
+            warning("'drop' argument will be ignored")
+        if (missing(i)) 
+            return(x)
+	#... 太长了，加上也没看懂，先略过吧
+    x
+}
+<bytecode: 0x5654bcce7f48>
+<environment: namespace:base>
+
+看参数列表，如果没有i，则drop=T，否则drop=length(cols) == 1
+这个cols是什么？不知道，猜测可能是总列数，虽然我获取不到这个参数：
+fn1=function(df1, n=cols){
+  print(cols)
+}
+fn1(iris) # Error in print(cols) : object 'cols' not found
+
+
+# 尝试该参数，貌似没有任何影响
+`[.data.frame`(iris, 1:2, 1:2, drop=T)
+`[.data.frame`(iris, 1:2, 1:2, drop=F)
+iris[1:2, , drop=T]
+iris[1:2, , drop=F]
+# drop=T or F，返回值都一样
+
+# 如果输入矩阵只有一列呢
+iris[1:2, 1] #[1] 5.1 4.9 丧失数据框结构
+iris[1:2, 1, drop=F] #保持数据框结构
+#  Sepal.Length
+#1          5.1
+#2          4.9
+
+原来作者是防止 meta.data 只有一列时，取子集后失去数据框结构。
+
+
+
+
+
+(2) Key() 函数是干啥的？
+
+> Key(pbmc_small)
+    RNA     pca    tsne 
+ "rna_"   "PC_" "tSNE_" 
+
+如果输入是Assay，则返回的是该对象的 slot(assay, name="key")
+> class(pbmc_small@assays$RNA)
+[1] "Assay"
+attr(,"package")
+[1] "SeuratObject"
+
+> Key(pbmc_small@assays$RNA)
+[1] "rna_"
+
+# 低层实现还是slot()函数
+> slotNames(pbmc_small@assays$RNA)
+[1] "counts"        "data"          "scale.data"    "key"           "assay.orig"    "var.features" 
+[7] "meta.features" "misc"         
+
+> slot(pbmc_small@assays$RNA, name="key")
+[1] "rna_"
+
+猜测key是用来识别数据来源的，是RNA或者ATAC。
+
+
+
+(3) ExtractField() 自定义函数，内部就是分割字符串函数strsplit()。
+把字符串string按照delim分隔开，提取其中某几个编号的field（单个数字，或逗号隔开的数字字符串），使用delim拼接后返回
+
+seurat-object-4.0.4/R/utils.R:798:ExtractField <- function(string, field = 1, delim = "_") {
+
+ExtractField <- function(string, field = 1, delim = "_") {
+  fields <- as.numeric(x = unlist(x = strsplit(
+	# 把 field 转为字符串，按照逗号分割，解开list，转为数字编号
+    x = as.character(x = field),
+    split = ","
+  )))
+  
+  #如果只有一个数字编号，则直接返回delim分割后的该部分
+  if (length(x = fields) == 1) {
+    return(strsplit(x = string, split = delim)[[1]][field])
+  }
+  
+  #超过1个数字编号，则使用delim把这些域连起来再返回
+  return(paste(
+    strsplit(x = string, split = delim)[[1]][fields],
+    collapse = delim
+  ))
+}
+# test
+ExtractField('Hello World', field = 1, delim = ' ') #[1] "Hello"
+ExtractField("aa1_bb2_cc3", field = "1,3", delim = '_') #"aa1_cc3"
+
+unlist(lapply(
+  X = colnames(x = iris), #就是cid
+  FUN = ExtractField,
+  field = 1, #names.field,
+  delim = "\\."#names.delim
+))
+# [1] "Sepal"   "Sepal"   "Petal"   "Petal"   "Species"
+
+
+
+(3) 在S4对象创建时在其slot中记录该R包版本号，有助于后续版本升级后的兼容、升级。
+
+> ( version = packageVersion(pkg = 'SeuratObject') )
+[1] ‘4.0.4’
+
+
+(4) 自定义函数，计算 counts 这个Assay对象的 nCount 和 nGene
+# seurat-object-4.0.4/R/assay.R:1140:CalcN <- function(object) {
+
+
+#' Calculate nCount and nFeature
+#'
+#' @param object An \code{\link{Assay}} object
+#'
+#' @return A named list with nCount and nFeature
+#'
+#' @importFrom Matrix colSums
+#'
+#' @keywords internal 内部函数
+#'
+#' @noRd
+#'
+#' @examples
+#' \donttest{
+#' calcn <- SeuratObject:::CalcN(pbmc_small[["RNA"]])
+#' head(as.data.frame(calcn))
+#' }
+#'
+CalcN <- function(object) {
+  if (IsMatrixEmpty(x = GetAssayData(object = object, slot = "counts"))) {
+    return(NULL)
+  }
+  return(list(
+    nCount = Matrix::colSums(x = object, slot = 'counts'), #感觉这一句写的不好。
+	# Matrix::colSums 是不支持slot参数的，这样歧义，而且内部还是要用自定义实现，程序内部多了一步歧义空转
+	# nCount = Matrix::colSums(x = GetAssayData(object = object, slot = 'counts') ), #更好的写法
+	
+    nFeature = Matrix::colSums(x = GetAssayData(object = object, slot = 'counts') > 0)
+  ))
+}
+
+
+#' @rdname AssayData
+#' @export
+#' @method GetAssayData Assay
+#'
+#' @examples
+#' # Get the data directly from an Assay object
+#' GetAssayData(pbmc_small[["RNA"]], slot = "data")[1:5,1:5]
+#'
+GetAssayData.Assay <- function(
+  object,
+  slot = c('data', 'scale.data', 'counts'),
+  ...
+) {
+  CheckDots(...)
+  slot <- slot[1]
+  slot <- match.arg(arg = slot) #对参数 slot 做自动补齐
+  return(slot(object = object, name = slot))
+}
+
+
+
+> getMethod("colSums", signature = "Assay") #
+Method Definition:
+
+function (x, na.rm = FALSE, dims = 1, ...) #泛型的定义
+{
+    .local <- function (x, na.rm = FALSE, dims = 1, ..., slot = "data") #针对Assay类的定义
+    {
+        return(Matrix::colSums(x = GetAssayData(object = x, slot = slot), 
+            na.rm = na.rm, dims = dims, ...))
+    }
+    .local(x, na.rm, dims, ...)
+}
+<bytecode: 0x5654c0d80620>
+<environment: namespace:SeuratObject>
+
+Signatures:
+        x      
+target  "Assay"
+defined "Assay"
+
+
+
+#' @describeIn Assay-methods Calculate \code{\link[base]{colSums}} on an
+#' \code{Assay}
+#'
+#' @return \code{colSums}: The column (cell-wise) sums of \code{slot}
+#'
+#' @importFrom Matrix colSums
+#'
+#' @export
+#'
+setMethod(
+  f = 'colSums',
+  signature = c('x' = 'Assay'),
+  definition = function(x, na.rm = FALSE, dims = 1, ..., slot = 'data') {
+    return(Matrix::colSums(
+      x = GetAssayData(object = x, slot = slot),
+      na.rm = na.rm,
+      dims = dims,
+      ...
+    ))
+  }
+)
+
+
+
+(5) is.atomic() 检测一个变量是否是原子的。
+
+# 简单对象都是原子的
+> is.atomic(c(1,2))
+[1] TRUE
+> is.atomic(1)
+[1] TRUE
+> is.atomic("123")
+[1] TRUE
+> is.atomic(vector())
+[1] TRUE
+
+
+# 复合对象都不是原子的
+> is.atomic(list())
+[1] FALSE
+> is.atomic(iris)
+[1] FALSE
+> is.atomic(pbmc_small)
+[1] FALSE
+
+
+
+
+
+
+
+========================================
+|-- step2: (2) 用于创建 Seurat 对象的 Assay类 及方法
+----------------------------------------
+1. 引入
+CreateSeuratObject.default() 函数中有一句很关键：
+
+  # 创建Assay对象
+  assay.data <- CreateAssayObject(
+    counts = counts,
+    min.cells = min.cells,
+    min.features = min.features,
+    row.names = row.names
+  )
+
+这里输入的是 counts 矩阵，在内部怎么转为 data, scale.data 的呢？
+下面来详细解析。
+
+
+2. 源码及解析
+(1) S4类 Assay 的定义
+seurat-object-4.0.4/R/assay.R:38:  Class = 'Assay',
+
+Assay <- setClass(
+  Class = 'Assay',
+  slots = c(
+    counts = 'AnyMatrix',
+    data = 'AnyMatrix',
+    scale.data = 'matrix',
+    key = 'character',
+    assay.orig = 'OptionalCharacter',
+    var.features = 'vector',
+    meta.features = 'data.frame',
+    misc = 'OptionalList'
+  )
+)
+
+
+(2) CreateAssayObject() 方法
+
+
+
+
+
+
+
+
+3. R tips
+
+(1) 定义联合类 setClassUnion()
+slots第一个参数的类型是 'AnyMatrix'，没见过，查一下定义：
+# AnyMatrix 定义在 seurat-object-4.0.4/R/zzz.R:41
+setClassUnion(name = 'AnyMatrix', members = c("matrix", "dgCMatrix"))
+setClassUnion(name = 'OptionalCharacter', members = c('NULL', 'character'))
+setClassUnion(name = 'OptionalList', members = c('NULL', 'list'))
+
+
+例子: 使用已有的类定义一个新类
+
+setClassUnion(name = 'data.frameOrMatrix', members = c("data.frame","matrix"))
+is(iris, "data.frameOrMatrix") #T
+is(c(1,2,3), "data.frameOrMatrix") #F
+is( as.matrix(iris), "data.frameOrMatrix") #T
+
+is( as.matrix(iris), "data.frame") #F
+
+
+(2) anyDuplicated() 函数，返回重复元素的位置编号
+
+> anyDuplicated(colnames(iris))
+[1] 0
+> anyDuplicated(c(1,2,3,1))
+[1] 4
+
+
+(3) make.unique() 添加后缀强制uniq
+
+> make.unique(c("A", "B", "A", "A"))
+[1] "A"   "B"   "A.1" "A.2"
+> make.unique(c("A", "B", "A", "A"), sep="-")
+[1] "A"   "B"   "A-1" "A-2"
+
+
+
+(4) any() 任何一个为T就返回T
+
+> any(c(1,2,-1) < 0)
+[1] TRUE
+> any(c(1,2,3) < 0)
+[1] FALSE
+
+
+
+(5) 好用的自定义函数 CheckMatrix()，检查矩阵的异常值，只警告，不修改，不返回。
+
+> CheckMatrix
+function (object, checks, ...) 
+{
+    UseMethod(generic = "CheckMatrix", object = object)
+}
+<bytecode: 0x5564de914570>
+<environment: namespace:SeuratObject>
+
+定义的位置
+seurat-object-4.0.4/R/utils.R:51:CheckMatrix <- function(object, checks, ...) {
+
+
+主函数就是检查是否含有异常值，有了就警告，没有返回值。
+CheckMatrix.dMatrix <- function(
+  object,
+  checks = c('infinite', 'logical', 'integer', 'na'),
+  ...
+) {
+  checks <- match.arg(arg = checks, several.ok = TRUE)
+  x <- slot(object = object, name = 'x')
+  for (i in checks) {
+    switch(
+      EXPR = i,
+      'infinite' = if (any(is.infinite(x = x))) { #有无穷大，就警告
+        warning("Input matrix contains infinite values")
+      },
+      'logical' = if (any(is.logical(x = x))) { #有逻辑值，就警告
+        warning("Input matrix contains logical values")
+      },
+      'integer' = if (!all(round(x = x) == x, na.rm = TRUE)) { #有非整数，就警告
+        warning("Input matrix contains non-integer values")
+      },
+      'na' = if (anyNA(x = x)) { #有NA，就警告
+        warning("Input matrix contains NA/NaN values")
+      },
+    )
+  }
+  return(invisible(x = NULL))
+}
+
+
+
+(6) match.arg(arg = checks, several.ok = TRUE) 能自动补齐参数，第二个参数是支持多个参数
+
+# 就是只输入长字符串的开头几个字母，自动补齐其余部分
+fn1=function( checks = c('infinite', 'logical', 'integer', 'na'), flag=T){
+  checks= match.arg(arg = checks, several.ok = flag)
+  print(checks)
+}
+
+# several.ok 默认是F，只支持一个参数匹配
+fn1(c("inf", "n"), F) #'arg' must be of length 1 
+fn1(c("inf", "n"), T) #"infinite" "na"
+
+fn1(c("l")) #"logical"
+# 如果输入有歧义，则无法自动补齐
+fn1(c("in"), T) #Error: 'arg' should be one of “infinite”, “logical”, “integer”, “na” 
+fn1(c("int"), T) #[1] "integer"
+
+> fn1(flag=T) # 空白可以匹配全部参数
+[1] "infinite" "logical"  "integer"  "na"
+
+
+
+(7) anyNA() 有NA就返回T
+> anyNA
+function (x, recursive = FALSE)  .Primitive("anyNA")
+> anyNA(c(1,2,3))
+[1] FALSE
+> anyNA(c(1,2,NA))
+[1] TRUE
+
+
+
+(8) invisible() 在没有左变量时隐藏函数的返回值
+fn2=function(x){
+  return(x)
+}
+
+fn2i=function(x){
+  return(invisible(x))
+}
+
+> rs2=fn2(2)
+> fn2(2) #输出返回值
+[1] 2
+> rs2
+[1] 2
+> #
+> rs2i=fn2i(2)
+> fn2i(2) #不输出返回值
+> rs2i
+[1] 2
+
+
+
+
+
+
+
+(9) grepl 的 fixed=T 时，表示第一个参数是字符串，而不是正则表达式。
+fixed: logical. If TRUE, pattern is a string to be matched as is. Overrides all conflicting arguments.
+
+> grepl(pattern = '|', x = c("a|1","b2", "C33" ), fixed = TRUE)
+[1]  TRUE FALSE FALSE
+
+> grepl(pattern = '|', x = c("a|1","b2", "C33" ), fixed = F) #默认是F
+[1] TRUE TRUE TRUE
+
+
+
+
+
+========================================
+|-- step3: step3 add meta.data(percent.mt, percent.rp, cell cycle score)
+----------------------------------------
+1. 掉包侠
+
+# step3 add meta.data
+# The [[ operator can add columns to object metadata. This is a great place to stash QC stats
+pbmc[["percent.mt"]] <- PercentageFeatureSet(pbmc, pattern = "^MT-")
+pbmc[["percent.rp"]] <- PercentageFeatureSet(pbmc, pattern = "^RP[SL]")
+
+# cell cycle
+pbmc <- CellCycleScoring(pbmc,
+                         s.features = cc.genes$s.genes,
+                         g2m.features = cc.genes$g2m.genes)
+
+本文主要看函数 PercentageFeatureSet 的实现。
+后面有空再研究 CellCycleScoring 函数。
+
+要点：
+PercentageFeatureSet 函数是根据counts总数相除算的打分：该基因集的counts总和/所有基因的counts总和。
+
+核心语句：
+  percent.featureset <- colSums(x = GetAssayData(object = object, assay = assay, slot = "counts")[features, , drop = FALSE])/
+    object[[paste0("nCount_", assay)]] * 100
+
+# 基因集占的百分比 = 分子 / 分母 * 100；
+# 分子： GetAssayData 获取 counts矩阵，按列(cell)求 指定基因的 counts种和
+# 分母： 从 meta.data 获取 nCount_RNA 列，就是每个cell中所有基因的 counts总和
+
+
+
+
+
+2. 源码与解析
+(1) 函数定位 
+seurat-4.1.0/R/utilities.R:1153:PercentageFeatureSet <- function(
+
+
+(2) 
+
+
+
+
+
+3. R tips 
+
+(1) `%||%` 设置默认值：如果第一个参数为空，就返回第二个值 
+这是 rlang 包中的函数
+> `%||%`
+function (x, y) 
+{
+    if (is_null(x)) 
+        y
+    else x
+}
+<bytecode: 0x55c79f873e60>
+<environment: namespace:rlang>
+
+
+
+
+
+(2) 检查传入的参数是有命名参数
+
+fn1=function(...){
+  args.names=names(x = list(...))
+  print(args.names)
+  
+  if (is.null(x = args.names)) {
+    stop("No named arguments passed")
+  }
+}
+
+fn1(c(1,2,100), a=1, b=2) 
+# [1] ""  "a" "b"
+
+fn1( c(1,2,100) ) #没有命名的参数就返回T，至少有一个是命名的参数
+fn1() #如果都不传入呢？也报错 #在 CheckDots()中不可能，因为前面还有一个参数长度判断
+# NULL
+# Error:  No named arguments passed
+
+fn1( x=1) 
+#[1] "x"
+
+
+
+(3) 对list循环，获取的是里面的值
+
+a1=list(a=1, b=20, c=33)
+for(i in a1){
+  print(i)
+}
+#[1] 1
+#[1] 20
+#[1] 33
+
+
+# 如果想获取键呢？
+ks=names(a1)
+for(i in 1:length(ks)){
+  k1=ks[i]
+  v1=a1[[k1]]
+  cat(i, k1, v1,  '\n')
+}
+# 1 a 1 
+# 2 b 20 
+# 3 c 33
+
+
+
+
+
+(4) sapply (lapply 的简化版) 第一个参数可以是函数或函数名
+
+# 我们第一个参数一般传入list格式的数据
+sapply( split(iris[,1:4], iris[,5]), function(x){
+  nrow(x)
+})
+# setosa versicolor  virginica 
+#        50         50         50
+
+# 现在传入list格式的函数
+df1=sapply( list(mean, sum, "max", "min"), function(fn){
+  apply(iris[,1:4], 2, fn)
+})
+df1
+#                 [,1]  [,2] [,3] [,4]
+#Sepal.Length 5.843333 876.5  7.9  4.3
+#Sepal.Width  3.057333 458.6  4.4  2.0
+#Petal.Length 3.758000 563.7  6.9  1.0
+#Petal.Width  1.199333 179.9  2.5  0.1
+
+
+
+
+
+(5) 错误处理函数tryCatch()，保证出错了也不退出，而是继续执行后面的代码
+
+# iris总共4列，我们尝试取第10列，不存在的列
+arr1=c(1,10,2,3) 
+for(i in arr1){
+  len=length(iris[,i])
+  cat(i, len, "\n")
+}
+#1 150 
+#Error in `[.data.frame`(iris, , i) : undefined columns selected
+
+
+# 怎么出错后继续执行其余部分呢？使用错误处理语句 tryCatch。
+for(i in arr1){
+  tryCatch(
+    expr={
+      len=length(iris[,i])
+      cat(i, len, "\n")
+    },
+    error=function(e){
+      print(e)
+    }
+  )
+}
+#1 150 
+#<simpleError in `[.data.frame`(iris, , i): undefined columns selected>
+#2 150 
+#3 150 
+
+
+
+
+
+(6) 是否是 S3 泛型函数
+
+# 定义在 <environment: namespace:utils>
+> isS3stdGeneric(show)
+[1] FALSE
+> isS3stdGeneric(print)
+print 
+ TRUE 
+> isS3stdGeneric("print")
+print 
+ TRUE 
+
+
+
+(7) 获取函数的参数列表
+> argsAnywhere
+function (x) 
+{
+    if (tryCatch(!is.character(x), error = function(e) TRUE)) 
+        x <- as.character(substitute(x))
+    fs <- getAnywhere(x)
+    if (sum(!fs$dups) == 0L) 
+        return(NULL)
+    if (sum(!fs$dups) > 1L) 
+        sapply(fs$objs[!fs$dups], function(f) if (is.function(f)) 
+            args(f))
+    else args(fs$objs[[1L]])
+}
+<bytecode: 0x55cea99b7d20>
+<environment: namespace:utils>
+
+
+
+> argsAnywhere("print.data.frame") #能导出内部函数
+function (x, ..., digits = NULL, quote = FALSE, right = TRUE, 
+    row.names = TRUE, max = NULL) 
+NULL
+
+> args("print.data.frame")
+function (x, ..., digits = NULL, quote = FALSE, right = TRUE, 
+    row.names = TRUE, max = NULL) 
+NULL
+
+
+> Seurat::CheckDots
+Error: 'CheckDots' is not an exported object from 'namespace:Seurat'
+
+> args(CheckDots) #只能找到暴露出来的函数
+Error in args(CheckDots) : object 'CheckDots' not found
+
+> argsAnywhere(CheckDots) #能获得任何地方的定义，只要能找到，不局限在暴露的函数
+[[1]]
+function (..., fxns = NULL) 
+NULL
+
+[[2]]
+function (..., fxns = NULL) 
+NULL
+
+
+
+
+
+
+
+(8) 获取R的环境变量，如果没有，就使用默认值。
+getOption(x = "Seurat.checkdots", default = 'warn')
+
+> options() #获取所有环境变量
+
+
+#获取小数点显示位数，默认7位
+> getOption("digits") 
+[1] 7
+> 1/7
+[1] 0.1428571
+
+
+# 改为10位
+> options(digits=10)
+> 1/7
+[1] 0.1428571429
+
+
+
+(9) sapply() 设置参数 simplify=F 和 USE.NAMES = T 返回一个named list。
+
+# 创建S4类 Person
+setClass("Person", 
+         slots=c(name="character", age="numeric"))
+# 实例化
+p1=new("Person", name="Tim", age=20)
+p1
+
+
+# 测试输出其每个slot的值
+sapply(
+  X=slotNames(p1),
+  FUN=function(x){
+    slot(p1, name=x)
+  }
+)
+# name   age 
+# "Tim"  "20" 
+
+sapply(
+  X=slotNames(p1),
+  FUN=function(x){
+    slot(p1, name=x)
+  },
+  simplify = F #不使用简单输出，则输出list
+  # 默认是输出名字的 USE.NAMES = T
+)
+# $name
+#[1] "Tim"
+
+#$age
+#[1] 20
+
+
+
+# 不使用简单输出，且不输出名字，结果和 lapply 的输出一样
+# [[1]]
+#[1] "Tim"
+
+#[[2]]
+#[1] 20
+
+
+# 返回list的好方法
+sapply(X=colnames(iris[,1:4]),
+       function(x){
+         mean( iris[,x] )
+       }, 
+       simplify = F)
+输出：
+$Sepal.Length
+[1] 5.843333
+
+$Sepal.Width
+[1] 3.057333
+
+$Petal.Length
+[1] 3.758
+
+$Petal.Width
+[1] 1.199333
+
+
+
+(10) grep(..., value=T) 直接返回匹配的元素，而不是下标编号
+这一点前面说过，这里再强调一遍，实在是太有用了。
+# grep(pattern = "^HLA", x = rownames(x = pbmc_small[["RNA"]]), value = TRUE)
+
+
+# 我以前匹配基因的方法很繁琐
+grep("^HLA", x = rownames(pbmc_small) )
+# [1]   4   6   8 119 122 124 125 127 128 132
+rownames(pbmc_small)[ grep("^HLA", x = rownames(pbmc_small) ) ]
+# [1] "HLA-DRA"  "HLA-DQB1" "HLA-DMB"  "HLA-DPA1" "HLA-DMA"  "HLA-DPB1" "HLA-DQA1" "HLA-DRB5" "HLA-DRB1" "HLA-DQA2"
+
+
+# 现在发现，只要多设置一个参数即可
+grep("^HLA", x = rownames(pbmc_small), value=T ) #结果同上
+# [1] "HLA-DRA"  "HLA-DQB1" "HLA-DMB"  "HLA-DPA1" "HLA-DMA"  "HLA-DPB1" "HLA-DQA1" "HLA-DRB5" "HLA-DRB1" "HLA-DQA2"
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+========================================
+|-- Seurat 4 源码解析 8: step4 QC可视化 VlnPlot()
+----------------------------------------
+源码解析章节在 bookdown 书中: https://github.com/DawnEve/R_best_practice
+
+1. 调包侠
+# step4 QC
+# Visualize QC metrics as a violin plot
+VlnPlot(pbmc, features = c("nFeature_RNA", "nCount_RNA", "percent.mt", "percent.rp"), ncol = 4, pt.size=0)
+
+# FeatureScatter is typically used to visualize feature-feature relationships, but can be used
+# for anything calculated by the object, i.e. columns in object metadata, PC scores etc.
+plot1 <- FeatureScatter(pbmc, feature1 = "nCount_RNA", feature2 = "percent.mt")
+plot2 <- FeatureScatter(pbmc, feature1 = "nCount_RNA", feature2 = "nFeature_RNA")
+plot1 + plot2
+
+# filter
+pbmc <- subset(pbmc, subset = nFeature_RNA > 200 & nFeature_RNA < 2500 & percent.mt < 5)
+
+
+
+掉包侠小技巧
+
+
+(1) 如何获取 meta.data 某一列，并把其name设置为cell id?
+
+> w1=pbmc_small@meta.data$groups
+> names(w1)=colnames(pbmc_small)
+> head(w1)
+ATGCCAGAACGACT CATGGCCTGTGCAT GAACCTGATGAACC TGACTGGATTCTCA AGTCAGACTGCACA TCTGATACACGTGT 
+          "g2"           "g1"           "g2"           "g2"           "g2"           "g1" 
+
+使用函数"[["后只需要一行，且免去了中间变量：
+> head( pbmc_small[["groups", drop=T]] )
+ATGCCAGAACGACT CATGGCCTGTGCAT GAACCTGATGAACC TGACTGGATTCTCA AGTCAGACTGCACA TCTGATACACGTGT 
+          "g2"           "g1"           "g2"           "g2"           "g2"           "g1" 
+
+
+函数定义：以后再讲。
+$ find .  | grep "R$" | xargs grep -n "\[\[\.Seurat" --color=auto
+./seurat-object-4.0.4/R/seurat.R:2123:"[[.Seurat" <- function(x, i, ..., drop = FALSE) {
+
+
+
+
+
+
+
+
+2. 源码与解析
+VlnPlot
+# seurat-4.1.0/R/visualization.R:575:VlnPlot <- function(
+
+
+
+
+
+
+3. R tips 
+
+(1) 函数参数改变了，本session就提醒用户一次，如何控制显示次数？使用环境变量
+
+fn1= function(x, split.by=NULL){
+  if (
+    !is.null(x = split.by) &
+    getOption(x = 'Seurat.warn.vlnplot.split2', default = TRUE)
+  ) {
+    message(
+      "可以设置多行提醒，结尾加换行符；本次session只提醒这一次\n",
+      "The default behaviour of split.by has changed.\n",
+      "Separate violin plots are now plotted side-by-side.\n",
+      "To restore the old behaviour of a single split violin,\n",
+      "set split.plot = TRUE.
+      \nThis message will be shown once per session."
+    )
+    # 设置全局变量，下次使用不会提醒；重启 R session 会再次提醒。
+    options(Seurat.warn.vlnplot.split2 = FALSE)
+  }
+  return(x)
+}
+
+
+# 假设 该包中 split.by 参数的意义在新版本中调整了，用户不用该参数就不提醒；
+# 用户用了该参数就要红字提醒！但是频率又不能太高，重启前就提醒一次。
+> fn1(1) 
+[1] 1
+
+> fn1(1, split.by=T)
+可以设置多行提醒，结尾加换行符；本次session只提醒这一次
+The default behaviour of split.by has changed.
+Separate violin plots are now plotted side-by-side.
+To restore the old behaviour of a single split violin,
+set split.plot = TRUE.
+      
+This message will be shown once per session.
+[1] 1
+
+> fn1(1, split.by=T)
+[1] 1
+
+
+
+
+(2) base::isTRUE() 判断是否是逻辑值 TRUE？
+
+> isTRUE
+function (x) 
+is.logical(x) && length(x) == 1L && !is.na(x) && x
+<bytecode: 0x55b7d295d998>
+<environment: namespace:base>
+
+看这里做了很多判断: 是逻辑值，且长度是1，且不能是NA，然后再看本身的真假。
+
+> isTRUE(2)
+[1] FALSE
+> isTRUE("TRUE")
+[1] FALSE
+> isTRUE(T)
+[1] TRUE
+
+
+
+(3) 如何合理设置图形列数？
+
+library(rlang)
+fn1=function(features, ncol=NULL){
+  # 如果 ncol 为空，则设置默认值：基因数>9则选4，否则为 基因数和3中的最小值。
+  ncol <- ncol %||% ifelse(
+    test = length(x = features) > 9,
+    yes = 4,
+    no = min(length(x = features), 3)
+  )
+  return(ncol)
+}
+
+
+> fn1(1:10)
+[1] 4
+> fn1(1:5)
+[1] 3
+> fn1(c(1,2))
+[1] 2
+
+
+
+(4) 如何自动获取n个差异尽可能大的颜色？scales::hue_pal()( 5 )
+
+Seurat 4的 VlnPlot 函数使用的方法是: cols <- hue_pal()(length(x = levels(x = idents)))
+
+> scales::hue_pal()( 5 )
+[1] "#F8766D" "#A3A500" "#00BF7D" "#00B0F6" "#E76BF3"
+
+# 直接可视化
+# n=4; barplot(rep(1,n), col=scales::hue_pal()( n ), axes=F, border = NA)
+
+
+
+(5) 把数字转为16进制 as.hexmode(11)
+
+> as.hexmode(11)
+[1] "b"
+
+> as.hexmode(15:0)
+ [1] "f" "e" "d" "c" "b" "a" "9" "8" "7" "6" "5" "4" "3" "2" "1" "0"
+
+
+
+(6) vapply()，类似sapply，优点是参数FUN.VALUE可检查返回值的数据类型
+
+hexadecimal=c("#FF0000", "#FFFF00")
+vapply(
+  X = toupper(x = hexadecimal), #先变大写字母
+  
+  FUN = function(hex) {
+    hex=substring(hex,2)
+    hex=rev(strsplit(hex, split="")[[1]] )
+    hex=paste(hex, collapse = "")
+    return( paste0("#", hex) ) 
+  },
+  FUN.VALUE = character(length = 1L), #返回值是字符串，长度为1
+  USE.NAMES =FALSE #不使用名字
+)
+# [1] "#0000FF" "#00FFFF"
+
+
+
+
+
+
+(7)  InvertHex() 输入16进制颜色，输出互补色
+
+# 取相反的颜色，就是16进制颜色(去掉#后的前6位)的每一位都是 16-x
+cols <- scales::hue_pal()(4); cols
+# [1] "#F8766D" "#7CAE00" "#00BFC4" "#C77CFF"
+cols2=Seurat:::InvertHex(hexadecimal = cols); cols2
+# [1] "#078992" "#8351FF" "#FF403B" "#388300"
+
+barplot(rep(1,8), col=c(cols, cols2),
+        axes=F, border = NA)
+
+
+Seurat:::InvertHex(hexadecimal = c("#FF0000"))
+# [1] "#00FFFF"
+
+
+
+源码也值得研究：
+seurat-4.1.0/R/visualization.R:6274:InvertHex <- function(hexadecimal) {
+
+# Invert a Hexadecimal color
+#
+# @param hexadecimal A character vector of hexadecimal colors
+#
+# @return Hexadecimal representations of the inverted color
+#
+# @author Matt Lagrandeur
+# @references \url{http://www.mattlag.com/scripting/hexcolorinverter.php}
+#
+InvertHex <- function(hexadecimal) {
+  return(vapply(
+    X = toupper(x = hexadecimal), #先变大写字母
+	
+    FUN = function(hex) { #对每个16进制颜色进行循环
+	
+	  ###########
+      # 输入16进制颜色字符串的合法性检查
+      hex <- unlist(x = strsplit(
+        x = gsub(pattern = '#', replacement = '', x = hex), #先去掉#符号
+        split = '' #再用空字符分割
+      )) 
+	  # 获得16进制的每个字符 [1] "F" "8" "7" "6" "6" "D"
+	  
+	  # 把15:0转为16进制，大写，相当于造了个字库
+      key <- toupper(x = as.hexmode(x = 15:0)) #[1] "F" "E" "D" "C" "B" "A" "9" "8" "7" "6" "5" "4" "3" "2" "1" "0"
+	  
+	  # 如果不是所有 输入字符都在 0-f之间，则报错退出
+      if (!all(hex %in% key)) {
+        stop('All hexadecimal colors must be valid hexidecimal numbers from 0-9 and A-F')
+      }
+	  
+	  # 如果长度为8，则最后2位为 alpha
+      if (length(x = hex) == 8) {
+        alpha <- hex[7:8]
+        hex <- hex[1:6] #颜色是前6位
+	  # 如果长度是6，则alpha为NULL
+      } else if (length(x = hex) == 6) {
+        alpha <- NULL
+	  # 其他情况，报错退出
+      } else {
+        stop("All hexidecimal colors must be either 6 or 8 characters in length, excluding the '#'")
+      }
+	  
+	  # 首尾颠倒 key 这个字库
+      value <- rev(x = key)
+	  
+      inv.hex <- vapply(
+        X = hex, # 对于颜色的每一位进行循环
+		
+        FUN = function(x) {
+          return(value[grep(pattern = x, x = key)]) #返回的是每位的下标，对应的字典逆序
+        },
+        FUN.VALUE = character(length = 1L)
+      )
+	  
+	  # 连起来，前面加上#号
+      inv.hex <- paste(inv.hex, collapse = '')
+      return(paste0('#', inv.hex, paste(alpha, collapse = '')))
+    },
+    FUN.VALUE = character(length = 1L), #返回值是字符串
+    USE.NAMES = FALSE #不使用名字
+  ))
+}
+
+
+
+
+(8) Interleave() 把几个向量交错排列成一个向量
+interleave [ˌɪntəˈliːv] v. 交错；插空白页于；插叙
+
+源码位置
+seurat-4.1.0/R/utilities.R:1954:Interleave <- function(...) {
+
+# Interleave vectors together
+#
+# @param ... Vectors to be interleaved
+#
+# @return A vector with the values from each vector in ... interleaved
+#
+Interleave <- function(...) {
+  return(as.vector(x = t(x = as.data.frame(x = list(...)))))
+}
+
+
+# 测试效果
+> Interleave(c(1,2,3), c(10,20,30))
+[1]  1 10  2 20  3 30
+> Interleave(c(1,2,3), c(10,20,30), c(100,200,300))
+[1]   1  10 100   2  20 200   3  30 300
+
+
+解析：主要是4步
+step1: 
+> list(c(1,2,3), c(10,20,30), c(100,200,300))
+[[1]]
+[1] 1 2 3
+
+[[2]]
+[1] 10 20 30
+
+[[3]]
+[1] 100 200 300
+
+
+step2:
+> as.data.frame( list(c(1,2,3), c(10,20,30), c(100,200,300)) )
+  c.1..2..3. c.10..20..30. c.100..200..300.
+1          1            10              100
+2          2            20              200
+3          3            30              300
+
+第三步：
+> t( as.data.frame( list(c(1,2,3), c(10,20,30), c(100,200,300)) ) )
+                 [,1] [,2] [,3]
+c.1..2..3.          1    2    3
+c.10..20..30.      10   20   30
+c.100..200..300.  100  200  300
+
+> as.vector( t( as.data.frame( list(c(1,2,3), c(10,20,30), c(100,200,300)) ) ) )
+[1]   1  10 100   2  20 200   3  30 300
+
+
+
+总结：就是说把 matrix 转为 vector的时候，是按照列向量展开的：
+
+> as.vector(iris[1:2, 1:4])
+  Sepal.Length Sepal.Width Petal.Length Petal.Width
+1          5.1         3.5          1.4         0.2
+2          4.9         3.0          1.4         0.2
+
+# 按列展开成一个向量
+> as.vector( as.matrix(iris[1:2, 1:4]) )
+[1] 5.1 4.9 3.5 3.0 1.4 1.4 0.2 0.2
+
+
+# 想按行展开，就先转置，再按列展开
+> as.vector( t(as.matrix(iris[1:2, 1:4]) ) )
+[1] 5.1 3.5 1.4 0.2 4.9 3.0 1.4 0.2
+
+
+
+
+(9) interaction() 计算因子之间的交互作用
+
+> a <- gl(2, 4, 8);a
+[1] 1 1 1 1 2 2 2 2
+Levels: 1 2
+> b <- gl(2, 2, 8, labels = c("ctrl", "treat"));b
+[1] ctrl  ctrl  treat treat ctrl  ctrl  treat treat
+Levels: ctrl treat
+> interaction(a, b)
+[1] 1.ctrl  1.ctrl  1.treat 1.treat 2.ctrl  2.ctrl  2.treat 2.treat
+Levels: 1.ctrl 2.ctrl 1.treat 2.treat
+
+
+
+(10) 16机制字符串转为10进制数字 strtoi("10", base=16)
+> strtoi("10", base=16)
+[1] 16
+> strtoi("FF", base=16)
+[1] 255
+
+
+
+
+(11) Col2Hex() 把R颜色转为 16进制
+
+> Seurat:::Col2Hex(c("red", "#FF00FF"))
+[1] "#FF0000FF" "#FF00FFFF"
+
+原函数
+/seurat-4.1.0/R/visualization.R:5498:Col2Hex <- function(...) {
+
+
+# Convert R colors to hexadecimal
+#
+# @param ... R colors
+#
+# @return The hexadecimal representations of input colors
+#
+#' @importFrom grDevices rgb col2rgb
+#
+Col2Hex <- function(...) {
+  colors <- as.character(x = c(...)) #转为字符串
+  alpha <- rep.int(x = 255, times = length(x = colors)) #alpha默认是255，都不透明
+  
+  # 如果颜色里 以#开头的元素 总个数不等于0，那就是>0
+  if (sum(sapply(X = colors, FUN = grepl, pattern = '^#')) != 0) {
+    # 获取#开头的元素
+    hex <- colors[which(x = grepl(pattern = '^#', x = colors))]
+    hex.length <- sapply(X = hex, FUN = nchar) #看每个多长
+	
+	#如果有9位的
+    if (9 %in% hex.length) {
+      hex.alpha <- hex[which(x = hex.length == 9)] #获取9位长度的颜色
+      hex.vals <- sapply(X = hex.alpha, FUN = substr, start = 8, stop = 9) #获取第8和9位
+      dec.vals <- sapply(X = hex.vals, FUN = strtoi, base = 16) #把alpha值从16进制转为10进制
+      alpha[match(x = hex[which(x = hex.length == 9)], table = colors)] <- dec.vals #更新alpha数组
+    }
+  }
+  
+  # 颜色字符串，转为rgb一列3行的matrix，转置后是一行3列rgb值。
+  colors <- t(x = col2rgb(col = colors))
+  
+  # 多参数 apply: 
+  colors <- mapply(
+    FUN = function(i, alpha) {
+      return(rgb(colors[i, , drop = FALSE], #不能丢掉df结构，否则rgb()报错: incorrect number of dimensions
+			alpha = alpha, maxColorValue = 255))
+    },
+    i = 1:nrow(x = colors),
+    alpha = alpha
+  )
+  return(colors)
+}
+
+
+
+(12) rep_len(x, length.out) 把向量 x 重复，最终输出长度为 length.out
+
+> rep_len(c("Xx", "Yy"), length.out =4)
+[1] "Xx" "Yy" "Xx" "Yy"
+
+
+
+
+
+(13) 如果没有安装某个包，则报错退出。
+SingleExIPlot() 中提到的 PackageCheck():
+
+if (!PackageCheck('ggrastr', error = FALSE)) {
+  stop("Please install ggrastr from CRAN to enable rasterization.")
+}
+
+
+> PackageCheck
+function (..., error = TRUE) 
+{
+	# 解开为pkg名字
+    pkgs <- unlist(x = c(...), use.names = FALSE)
+	
+	# 检测是否安装了
+    package.installed <- vapply(
+		X = pkgs, #对每个包循环
+		FUN = requireNamespace, 
+        FUN.VALUE = logical(length = 1L), 
+		quietly = TRUE)
+	
+	# 如果让提示 error，且 至少一个包 没安装
+    if (error && any(!package.installed)) {
+		# 报错
+        stop("Cannot find the following packages: ", 
+			paste(pkgs[!package.installed], collapse = ", "), 
+			". Please install")
+    }
+	
+	# 沉默返回 已安装的包
+    invisible(x = package.installed)
+}
+<bytecode: 0x55f2bb3e9700>
+<environment: namespace:SeuratObject>
+
+
+
+
+核心句子：
+> package.installed <- vapply(
+     X = c("ggplot2", "GEB", "AAA"), #对每个包循环
+     FUN = requireNamespace, 
+     FUN.VALUE = logical(length = 1L), 
+     quietly = T)
+
+> package.installed
+ggplot2     GEB     AAA 
+   TRUE    TRUE   FALSE 
+
+> any(!package.installed)
+[1] TRUE
+
+
+
+
+
+
+(14) 任务: 对鸢尾花的分类列转为因子，因子的顺序时按照第2列的最大值排序，支持升序降序。
+
+
+fn1=function(feature=2, fun="mean", sort="de"){ #ASC/DESC 才是排序的标准词汇
+  data=iris;
+  data$ident=iris$Species
+  #
+  data$ident <- factor(
+    x = data$ident,
+    
+    # 原函数这里用rev又逆转一次
+    levels = names(x = (x = sort( # 按均值排序
+      
+      # 按照 ident 对 feature列分割，取每组平均值
+      x = tapply(
+        X = data[, feature],
+        INDEX = data$ident,
+        FUN = fun
+      ),
+      
+      # 小写后的sort能匹配到"decreasing"则降序
+      decreasing = grepl(pattern = paste0('^', tolower(x = sort)), x = 'decreasing')
+      
+    )))
+  )
+ return(data)  
+}
+
+
+# 算出来第2列每类的最大值
+sapply( split(iris[,2], iris[,5]), function(x){
+  max(x)
+})
+# setosa versicolor  virginica 
+#    4.4        3.4        3.8 
+
+
+# 按照第二列的最大值排序
+rs1=fn1(2, "max", "de")#降序
+#str(rs1)
+levels(rs1$ident) 
+# [1] "setosa"     "virginica"  "versicolor"
+
+
+rs1=fn1(2, "max", "asc")#升序
+levels(rs1$ident)
+# [1] "versicolor" "virginica"  "setosa"    
+
+
+
+(15) 去掉无穷大之后的最大值。
+data=data.frame(
+  x1=c(1,2,-3, 1/0)
+)
+data
+feature="x1"
+max(data[, feature][is.finite(x = data[, feature])])
+# [1] 2
+
+
+
+
+
+(16) geom_violin(scale="width") 的参数
+
+library(ggplot2)
+library(cowplot)
+df1=data.frame(
+  value=iris$Sepal.Length,
+  ident=iris$Species
+)
+head(df1)
+
+# 版本1: 
+ggplot(df1, aes(x=ident, y=value, fill=ident)) +
+  geom_violin()+ #scale="area" 默认，每个图形面积相等
+  labs(x = 'Identity', y = "Expression Level", title = "feature", fill = NULL)+
+  theme_cowplot()+
+  theme(plot.title = element_text(hjust = 0.5))
+
+# 版本2: 
+ggplot(df1, aes(x=ident, y=value, fill=ident)) +
+  geom_violin(scale="width")+ #每个图形最宽的地方相同
+  labs(x = 'Identity', y = "Expression Level", title = "feature", fill = NULL)+
+  theme_cowplot()+
+  theme(plot.title = element_text(hjust = 0.5))
+
+# 版本3: 
+ggplot(df1, aes(x=ident, y=value, fill=ident)) +
+  geom_violin(scale="width",#每个图形最宽的地方相同
+              adjust = 1, #默认值就是1，再小就很不光滑
+              trim = F )+ #默认是trim=T, 卡在数据边缘，不出界。但是密度图在边缘一般都是出去的。
+  labs(x = 'Identity', y = "Expression Level", title = "feature", fill = NULL)+
+  theme_cowplot()+
+  theme(plot.title = element_text(hjust = 0.5))
+
+
+
+
+(17) 拆解 ggplot2 构建过程
+接上文。
+原作者做了更多的自定义修饰
+
+plot=ggplot(df1, aes(x=ident, y=value, fill=ident)) +
+  labs(x = 'Identity', y = "Expression Level", title = "feature", fill = NULL)+
+  theme_cowplot()+
+  theme(plot.title = element_text(hjust = 0.5))
+
+# 通过自定义修改  
+vln.geom=geom_violin # 函数重命名
+
+geom <- list(
+  vln.geom(scale = 'width', adjust = 1, trim = TRUE), #geom_violin 的这几个参数
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) #x轴旋转45度
+)
+
+plot <- do.call(what = '+', args = list(plot, geom)) #还能这样给ggplot2添加修改
+plot
+plot + scale_y_log10() #这个 log 看着没啥作用啊
+
+
+
+(18) 栅格化点图
+接上文。
+jitter <- ggrastr::rasterize(geom_jitter(height = 0, size = 0.1, show.legend = FALSE))
+
+plot+jitter
+
+
+
+(19) y轴显示为log10尺度 scale_y_log10()
+library(ggplot2)
+
+df1=data.frame(
+  x=1:100,
+  y=2*(1:100)
+)
+ggplot(df1, aes(x=x, y=y)) + geom_point() #原始
+ggplot(df1, aes(x=x, y=y)) + geom_point() + scale_y_log10() #y轴是log10尺度的，单位距离在log10尺度相等
+# 点的坐标log10转化，同时y轴坐标为 3,10,30,100，也就是能在图中读出来原始y值
+
+ggplot(df1, aes(x=x, y=log10(y) )) + geom_point() #点图完全相同，就是y轴坐标的差异
+# 点的坐标log10转化，同时y的坐标为 0.5, 1, 1.5, 2，也就是图中的y坐标是原始y值的log10后的值
+
+# 可以看到对应关系: 10**(c(0.5,1,1.5,2)) #[1]   3.162278  10.000000  31.622777 100.000000
+
+
+
+
+
+
+(20) 使用 droplevels() 去掉因子中没用到的levels
+# Drop Unused Levels from Factors
+
+a=c(1,2,3,4,1)
+a=factor(a)
+a
+b=a[1:3]
+b
+#[1] 1 2 3
+#Levels: 1 2 3 4 这就多了一个无用的level 4
+
+b2=droplevels(b)
+b2
+#[1] 1 2 3
+#Levels: 1 2 3
+
+
+# 只获取有用的 level
+> levels(x = droplevels( Idents(pbmc_small) ))
+[1] "0" "1" "2"
+
+
+
+
+
+(21) scale_fill_manual(values = cols, labels = labels)
+
+library(ggplot2)
+set.seed(2022)
+df1=data.frame(
+  value=rnorm(120),
+  type= rep( c("A", "B", "C"), 40)
+)
+p1=ggplot(df1, aes(type, value, fill=type))+geom_violin(); p1
+
+
+# Create your own discrete scale
+p1 + scale_fill_manual(values=c("black", "red", "blue"), 
+                       labels=c("someA", "someB", "someC") ) #改变的是图例文字
+					   
+p1 + scale_fill_manual(limits=c("B", "A", "C"), #指定x轴的坐标，按这个顺序染色
+                       
+                       #但是图例按照下面2行染色和添加文字
+                       values=c("black", "red", "blue"), 
+                       labels=c("someA", "someB", "someC") ) #改变的是图例文字
+
+
+
+
+
+
+(22) 使用lapply一次绘制多个基因的表达量boxplot，并拼合成一个整体
+
+# 按am分组
+features=colnames(mtcars)
+plots <- lapply(
+  
+  X = features, #对每一个 feature 循环，进入FUN画图
+  
+  FUN = function(x) {
+    data=mtcars[,x, drop=F]
+    feature2 <- colnames(x = data) #只有一列，取列名
+    
+    # 添加分组变量
+    data$ident=factor(mtcars$am)
+    x2="ident"
+    y=paste0("`", feature2, "`")
+    fill="ident"
+    ggplot(data, aes_string(x=x2, y=y, fill=fill ))+
+      geom_violin( show.legend = F)+ #不显示坐标
+      theme_classic()+
+      labs(title=feature2)+
+      theme(plot.title = element_text(hjust = 0.5),#标题居中
+            #axis.text.x=element_blank(),
+            axis.ticks.x = element_blank())
+  }
+)
+plots[[3]]
+
+plots2 = wrap_plots(plots, ncol = 4)
+plots2
+
+
+
+
+
+
+
+
+========================================
+|-- Seurat 4 源码解析 9: FetchData()
+----------------------------------------
+
+1.
+接着源码解析8.
+
+(1)
+在这里看到 key 的作用了，如果和 meta.data 重名，则返回的是 meta.data；如果想返回 assay中的值，则需要加上 assay的前缀
+警告信息: Returning metadata; if you want the feature, please use the assay's key (eg. "
+
+# 注意 CD8A 和 rna_CD8A
+
+df1=FetchData2(pbmc_small, vars=c("PC_1", "tSNE_1", "CD4", "CD8A", "nCount_RNA"))
+df2=FetchData2(pbmc_small, vars=c("PC_1", "tSNE_1", "CD4", "rna_CD8A", "nCount_RNA"))
+
+可用的前缀：Key(pbmc_small)
+
+
+
+(2) 如果指定的 assay 中没找到，则会从其他assay中找
+//todo 例子？
+
+
+
+
+
+
+2. 源码解析
+见 gitee
+
+
+
+
+3. R tips
+
+(1) Filter 高阶函数，把f函数应用到数组x上，结果是TRUE的返回x上原来位置上的元素。
+
+> Filter(f=function(x){x%%2==0}, 1:10)
+[1]  2  4  6  8 10
+
+
+(2) 异常捕获 tryCatch(expr, error=function(...){})
+tryCatch(
+	#降维类，行名是symbol，这里怎么使用 cells? // todo 可能是错的
+	#测试了一下，这么写是对的，需要好好看看[[]]的实现方式了
+	expr = object[[x]][[cells, vars.use, drop = FALSE]], # if 中返回的就是这一行，如果没报错
+	error = function(...) { #错误处理函数，返回空
+	  return(NULL)
+}
+
+
+> df1=FetchData(pbmc_small, vars=c("PC_1", "tSNE_1", "CD4", "CD8A"), cells = c("ATGCCAGAACGACT"))
+> df1
+                     PC_1    tSNE_1 CD8A
+ATGCCAGAACGACT -0.7740371 0.8675977    0
+
+// 这个需要进一步看[[]]的定义，这在R中也对应着一个函数。
+// pbmc_small[[]] 返回的就是 pbmc_small@meta.data
+
+
+
+
+(3) 根据条件获取值 x=if()else{}
+
+x=if(T){
+  tryCatch(
+    expr=200, #返回这一行，如果没报错
+    error=function(...){
+      return(NULL)
+    }
+  )
+}else{
+  0.1
+}
+x #200
+
+
+
+(4) as.list(x = as.data.frame(x = data.return)) 矩阵转为list是什么？
+
+就是把df按列展开成list的键值对：列名是list的key，一列数字是list的value。
+
+> data.return=iris[1:2,1:4]; data.return
+  Sepal.Length Sepal.Width Petal.Length Petal.Width
+1          5.1         3.5          1.4         0.2
+2          4.9         3.0          1.4         0.2
+> rs1=as.list(x = as.data.frame(x = data.return)); rs1
+$Sepal.Length
+[1] 5.1 4.9
+
+$Sepal.Width
+[1] 3.5 3.0
+
+$Petal.Length
+[1] 1.4 1.4
+
+$Petal.Width
+[1] 0.2 0.2
+
+
+(5) data.fetched <- unlist(x = data.fetched, recursive = FALSE) 展开list成named vector。
+
+
+> data.fetched=rs1; data.fetched
+$Sepal.Length
+[1] 5.1 4.9
+
+$Sepal.Width
+[1] 3.5 3.0
+
+$Petal.Length
+[1] 1.4 1.4
+
+$Petal.Width
+[1] 0.2 0.2
+
+> unlist(x = data.fetched, recursive = FALSE)
+Sepal.Length1 Sepal.Length2  Sepal.Width1  Sepal.Width2 Petal.Length1 Petal.Length2  Petal.Width1  Petal.Width2 
+          5.1           4.9           3.5           3.0           1.4           1.4           0.2           0.2 
+
+
+
+
+(6) 合并几个单list可以使用c()
+
+注意：数据框也是list，每一列都是一个命名元素。
+
+
+list1=list(
+  a=c(1,2,3),
+  b=c(10,20,30)
+)
+list1
+c(list1, iris[1:3, 2, drop=F]) #合并为df，正确做法
+c(list1, iris[1:3, 2, drop=T]) #默认是只有一列时失去df结构
+
+输出：
+> list1
+$a
+[1] 1 2 3
+
+$b
+[1] 10 20 30
+
+> c(list1, iris[1:3, 2, drop=F]) #合并为df
+$a
+[1] 1 2 3
+
+$b
+[1] 10 20 30
+
+$Sepal.Width
+[1] 3.5 3.0 3.2
+
+> c(list1, iris[1:3, 2, drop=T]) #默认是T, 只有一列时失去df结构
+$a
+[1] 1 2 3
+
+$b
+[1] 10 20 30
+
+[[3]]
+[1] 3.5
+
+[[4]]
+[1] 3
+
+[[5]]
+[1] 3.2
+
+
+
+
+(7) 拼接数组为字符串: paste0() 的参数collapse
+
+注意输入的是多个字符串，还是一个字符串数组。
+
+> paste( "this", "is", "a", "book", sep = ":") #输入多个字符串
+[1] "this:is:a:book"
+
+> paste0( c("this", "is", "a", "book"), collapse = "-") #输入一个字符串数组
+[1] "this-is-a-book"
+
+> paste0( colnames(mtcars), collapse = ", ")
+[1] "mpg, cyl, disp, hp, drat, wt, qsec, vs, am, gear, carb"
+
+
+
+
+(8) vector(mode = 'list', length = 2) 定义一个空向量。
+
+vector produces a vector of the given length and mode.
+
+
+> vector(mode = 'list', length = 2)
+[[1]]
+NULL
+
+[[2]]
+NULL
+
+> vector(mode = 'logical', length = 2)
+[1] FALSE FALSE
+
+> vector(mode = 'numeric', length = 5)
+[1] 0 0 0 0 0
+
+
+
+(9) 为vector新增一个元素 append()
+
+> a1=vector(mode = 'numeric', length = 5);a1
+[1] 0 0 0 0 0
+> a1=append(x=a1, value=100)
+> a1
+[1]   0   0   0   0   0 100
+
+
+
+
+例2: 设置list向量，并为其中一个新增2个值，然后判断哪个值大于1。
+
+a2=vector(mode = 'list', length = 3);
+names(a2)=c("box1", "box2", "box3"); a2
+
+a2[['box1']]=append(x=a2[['box1']], value=50)
+a2[["box2"]]=append(x=a2[["box2"]], value=100)
+a2[['box2']]=append(x=a2[['box2']], value=50)
+
+> a2
+$box1
+[1] 50
+
+$box2
+[1] 100  50
+
+$box3
+NULL
+
+
+vars.many <- names(x = Filter(
+  f = function(x) {
+    print(x)
+    return(length(x = x) > 1)
+  },
+  x = a2
+))
+vars.many #[1] "box2"
+
+
+
+
+
+(10) as.vector() 能把矩阵按照列展开。
+
+> df1=iris[1:2, 1:4];df1
+  Sepal.Length Sepal.Width Petal.Length Petal.Width
+1          5.1         3.5          1.4         0.2
+2          4.9         3.0          1.4         0.2
+
+> as.vector(df1)
+  Sepal.Length Sepal.Width Petal.Length Petal.Width
+1          5.1         3.5          1.4         0.2
+2          4.9         3.0          1.4         0.2
+
+> as.vector( as.matrix(df1) )
+[1] 5.1 4.9 3.5 3.0 1.4 1.4 0.2 0.2
+
+
+> unlist(df1) # 对矩阵按列展开使用 unlist，还需要去掉name 才是向量。
+Sepal.Length1 Sepal.Length2  Sepal.Width1  Sepal.Width2 Petal.Length1 Petal.Length2  Petal.Width1  Petal.Width2 
+          5.1           4.9           3.5           3.0           1.4           1.4           0.2           0.2 
+
+
+
+
+(11) 变list为df，指定行名，保持字符串而不是因子
+data.fetched <- as.data.frame(
+	x = data.fetched,
+	row.names = cells,
+	stringsAsFactors = FALSE
+)
+
+
+
+测试: 
+# GetAssayData(object = pbmc_small)[c("LTB", "CD79B"), c("AATGTTGACAGTCA", "AGGTCATGAGTGTC") ]
+
+data.fetched=list(
+  "LTB"=c(7.650169, 5.779448),
+  "CD79B"=c(4.615121, 5.779448)
+)
+data.fetched
+
+cells=c("AATGTTGACAGTCA", "AGGTCATGAGTGTC")
+
+as.data.frame(
+  x = data.fetched,
+  row.names = cells, #换成 rownames 就不行，就没有行名了
+  stringsAsFactors = FALSE
+)
+输出：
+#                     LTB    CD79B
+# AATGTTGACAGTCA 7.650169 4.615121
+# AGGTCATGAGTGTC 5.779448 5.779448
+
+
+
+
+(12) pmatch(): Partial String Matching 部分字符串匹配
+
+pmatch seeks matches for the elements of its first argument among those of its second.
+Usage: pmatch(x, table, nomatch = NA_integer_, duplicates.ok = FALSE)
+
+
+1) x中的每一个元素，在第二个参数table中的位置下标。
+vars=c("a1", "b2", "c3")
+fetched=c("c3", "a1")
+rs= pmatch(
+  x = vars,
+  table = fetched
+); rs
+# [1]  2 NA  1
+
+
+
+
+(13) 数组子集乱序后，怎么恢复原数组中的顺序？
+
+vars=c("a1", "b2", "c3", "d4") #原数组
+fetched=c("c3", "d4", "a1") #子集，对子集排序，和原数组顺序相同
+
+data.order <- na.omit(object = pmatch(
+  x = vars,
+  table = fetched
+))
+fetched[data.order] #[1] "a1" "c3" "d4"
+
+
+
+细节展开：
+vars=c("a1", "b2", "c3", "d4") #原数组
+fetched=c("c3", "d4", "a1") #子集，对子集排序，和原数组顺序相同
+rs= pmatch(
+  x = vars,
+  table = fetched
+); rs # [1]  3 NA  1  2
+
+rs2=na.omit(rs); rs2 # [1] 3 1 2
+as.numeric(rs2)
+fetched[rs2] #[1] "a1" "c3" "d4"
+
+
+
+
+
+(14) inherits(x, what) 的第二个参数还可以是数组。
+只要有一个为真，就返回T。
+
+> inherits(x = 2, what = c("character"))
+[1] FALSE
+> inherits(x = 2, what = c("character", "numeric"))
+[1] TRUE
+
+
+
+
+
+
+========================================
+|-- Seurat 4 源码解析 10: subset()
+----------------------------------------
+
+1. 调包侠
+接上例。
+
+(1) subset() 中会按照cells自动重新计算 meta.data 中的2列：Recalculate nCount and nFeature
+
+
+2. 源码解析
+见 gitee
+
+
+# $ find .  | grep "R$" | xargs grep -n "subset" --color=auto
+# seurat-object-4.0.4/R/seurat.R:2497:subset.Seurat <- function(
+# seurat-object-4.0.4/R/assay.R:858:subset.Assay <- function(x, cells = NULL, features = NULL, ...) {
+
+
+
+
+3. R tips
+
+
+
+==> enquo() Defuse R expressions 也叫引用，相当于 原生R的 quote() and substitute().
+
+defuse [diːˈfjuːz] vt. 平息；去掉……的雷管；使除去危险性
+
+The defusing operators expr() and enquo() prevent the evaluation of R code. 
+Defusing is also known as quoting, and is done in base R by quote() and substitute(). 
+When a function argument is defused, R doesn't return its value like it normally would but it returns the R expression describing how to make the value. 
+These defused expressions are like blueprints for computing values.
+
+
+> library(rlang)
+> enquo
+function (arg) 
+{
+    .Call(rlang_enquo, substitute(arg), parent.frame())
+}
+<bytecode: 0x55e51ff25338>
+<environment: namespace:rlang>
+
+
+
+
+
+(1) 表达式类型的函数 #' @importFrom rlang is_quosure enquo eval_tidy //todo 没搞懂
+enquo() Defuse R expressions 也叫引用，相当于 原生R的 quote() and substitute().
+
+
+# 例1:
+fn1=function(x, subset2=NULL){
+  if( !missing(subset2)){
+    subset2=enquo(subset2)
+  }
+  subset2;
+}
+a1=fn1(1, subset2=CD4>3)
+
+> a1
+<quosure>
+expr: ^CD4 > 3
+env:  global
+> class(a1)
+[1] "quosure" "formula"
+
+
+
+
+例2: WhichCells.Seurat() 也有这么几个函数:
+    # 获取表达式 expression。
+    # 把整个try语句放到一个if中
+    expr <- if (tryCatch(expr = is_quosure(x = expression), error = function(...) FALSE)) {
+      expression
+    } else if (is.call(x = enquo(arg = expression))) {
+      enquo(arg = expression)
+    } else {
+      parse(text = expression)
+    }
+
+
+
+> library(rlang)
+> is_quosure
+function (x) 
+{
+    inherits(x, "quosure")
+}
+<bytecode: 0x000000001ce0f4d8>
+<environment: namespace:rlang>
+
+
+> enquo
+function (arg) 
+{
+    .Call(rlang_enquo, substitute(arg), parent.frame())
+}
+<bytecode: 0x000000001f7e2618>
+<environment: namespace:rlang>
+
+
+> eval_tidy
+function (expr, data = NULL, env = caller_env()) 
+{
+    .External2(rlang_ext2_eval_tidy, expr, data, env)
+}
+<bytecode: 0x000000001d17bec8>
+<environment: namespace:rlang>
+
+
+
+
+
+
+(2) 同名的函数和参数名字，在函数内部默认使用参数。想使用函数，建议加R包前缀
+
+# df 是定义在 stats 包中的函数，给出F分布的密度。
+df(1:10)
+plot(df(1:10, df1=3, df2=3), type="o", ylab="Density of F Distribution")
+
+nrow(df) #NULL
+print(args(stats::df))
+# function (x, df1, df2, ncp, log = FALSE) 
+# NULL
+
+# 如果定义一个函数，其参数有同名的df，
+# 在函数内部会根据情况选择当参数还是函数。
+# 如果指定R包前缀，则当做函数。我们尽量使用确定性强的方式！
+fn1=function(df){
+  print(df) #当参数处理的
+  
+  print(args(df))#NULL 当参数
+  print(args(stats::df))#NULL #当函数
+  
+  df(1:10) #当函数
+}
+fn1(iris[1:2,])
+
+
+
+(3) 获取与修改 error 对象中的消息内容: e$message
+
+如果 e$message 的内容是某个值，则对应处理。
+
+tryCatch(
+  expr = iris[,6],
+  error = function(e) {
+    if (e$message == "undefined columns selected") {
+      e$message="捕获该错误，可以自定义错误信息，或返回值\n"
+      #stop(e)
+      message(e)
+      return(NULL)
+    } else {
+      stop(e)
+    }
+  }
+)
+
+
+
+(4) na.omit() 忽略掉NA，但是不管无穷大
+
+> na.omit
+function (object, ...) 
+UseMethod("na.omit")
+<bytecode: 0x0000000002c626b8>
+<environment: namespace:stats>
+
+> df1=c("a1", "b2", NA, "D4", Inf, "F6"); df1
+[1] "a1"  "b2"  NA    "D4"  "Inf" "F6" 
+
+> df2=na.omit(df1); df2
+[1] "a1"  "b2"  "D4"  "Inf" "F6" 
+attr(,"na.action")
+[1] 3
+attr(,"class")
+[1] "omit"
+
+
+> length(df1)
+[1] 6
+> length(df2)
+[1] 5
+
+
+
+(5) 取小集合在大集合的子集，并保持在大集合中的位置顺序。
+cells.scaled <- cells.scaled[na.omit(object = match(x = colnames(x = x), table = cells.scaled))]
+
+
+一步一步展开:
+x=c(1:100)
+cells.scaled=c(3, 80,1000,20,500)
+
+rs1=match(x = x, table = cells.scaled); rs1
+rs2=na.omit(rs1); rs2 #1,4, 2
+cells.scaled[rs2] #3 20 80
+
+
+
+
+
+例2: 在函数 WhichCells.Seurat 最后，也使用到了这个套路
+cell.order =seq(100,1, -1) # 是最早的大集合。
+cells =c(20, 4, 60, 8) # 是经过各种筛选后留下的小集合。
+
+# 排序: 大集合在小集合中的下标，去掉na，然后是小集合的元素，按照大集合的顺序输出
+cells2 <- cells[na.omit(object = match(x = cell.order, table = cells))]
+cells2
+# [1] 60 20  8  4
+
+
+
+
+
+
+
+(6) `%iff%`函数，尽可能取 NULL，如果第一个不是再看第二个参数
+
+这是 SeuratObject 包定义的函数。
+> ?`%iff%`
+Set a default value depending on if an object is NULL
+仿照 rlang包的 x %||% y
+但是作用相反: 
+For %||%: y if x is NULL otherwise x
+For %iff%: y if x is not NULL; otherwise x
+
+
+> `%iff%`
+function (x, y) 
+{
+    if (!is_null(x = x)) {
+        return(y)
+    }
+    return(x)
+}
+<bytecode: 0x0000000010039870>
+<environment: namespace:SeuratObject>
+
+
+
+
+(7) dim(sce) 是怎么实现的？nrow(), ncol()
+源码:
+#' @describeIn Seurat-methods Number of cells and features for the active assay
+#'
+#' @return \code{dim}: The number of features (\code{nrow}) and cells
+#' (\code{ncol}) for the default assay; \strong{note}: while the number of
+#' features changes depending on the active assay, the number of cells remains
+#' the same across all assays
+#'
+#' @export
+#' @method dim Seurat
+#'
+#' @examples
+#' # Get the number of features in an object
+#' nrow(pbmc_small)
+#'
+#' # Get the number of cells in an object
+#' ncol(pbmc_small)
+#'
+dim.Seurat <- function(x) {
+  x <- UpdateSlots(object = x)
+  return(dim(x = x[[DefaultAssay(object = x)]]))
+}
+
+
+
+示例:
+# 定义一个S4类
+setClass("Person", slots = c(name="character", assets="data.frame"))
+# 实现这一个方法 dim，相当于实现了三个: nrow, ncol, dim
+dim.Person <- function(x) {
+  return(dim(x = x@assets))
+}
+
+p1=new("Person", assets=iris[1:2,], name="Jim")
+p1
+dim(p1) #2 5
+dim(p1@assets) #2 5
+nrow(p1) #2
+ncol(p1) #5
+
+
+
+
+(8) rownames(sce) 是怎么实现的？
+源码 
+#' @describeIn Seurat-methods The cell and feature names for the active assay
+#'
+#' @return \code{dimnames}: The feature (row) and cell (column) names;
+#' \strong{note}: while the features change depending on the active assay, the
+#' cell names remain the same across all assays
+#'
+#' @export
+#' @method dimnames Seurat
+#'
+#' @examples
+#' # Get the feature names of an object
+#' rownames(pbmc_small)
+#'
+#' # Get the cell names of an object
+#' colnames(pbmc_small)
+#'
+dimnames.Seurat <- function(x) {
+  x <- UpdateSlots(object = x)
+  return(dimnames(x = x[[DefaultAssay(object = x)]]))
+}
+
+
+# 实现这一个方法 dimnames，相当于实现了三个: rownames(), colnames(). dimnames()
+示例：
+接上例:
+> rownames(p1) #定义前，返回NULL
+NULL
+
+> dimnames.Person <- function(x) {
++   return(dimnames(x = x@assets))
++ }
+> rownames(p1) #定以后，返回某个slot元素的行名
+[1] "1" "2"
+> colnames(p1) #列名
+[1] "Sepal.Length" "Sepal.Width"  "Petal.Length" "Petal.Width"  "Species"  
+
+
+
+
+
+(9) paste()的 collapse=参数，可以把数组变为一行字符串
+
+> paste(colnames(mtcars), collapse = ", ")
+[1] "mpg, cyl, disp, hp, drat, wt, qsec, vs, am, gear, carb"
+
+
+
+给大佬提了修改建议，看是否采纳吧。
+https://github.com/mojaveazure/seurat-object/pull/40 
+
+
+idents=c(1,2,40, 41, 42)
+x=1:30
+
+# not good
+stop(
+  "Cannot find the following identities in the object: ",
+  paste(
+    idents[!idents %in% x],
+    sep = ', '
+  )
+) 
+#404142
+
+# good
+stop(
+  "Cannot find the following identities in the object: ",
+  paste(
+    idents[!idents %in% x],
+    collapse = ', '
+  ) 
+)
+#40, 41, 42
+
+
+
+
+
+(10) stop() 中可以有多个句子，之间没有间隔号
+用法参考上一条。
+
+> stop("this is wrong", "; today is Sunday", ". I love it!")
+Error: this is wrong; today is Sunday. I love it!
+
+恰如其分的警告和错误提醒，是一个包成熟的标志。
+能让用户自动纠正自己的行为，在使用中学习。
+
+
+
+
+
+
+(11) unlist(x = lapply()) 代替for循环
+
+例1: 一个数组包含几个句子，一个句子有若干单词，把一个数组分割成单词。
+expr.char=c("this is a book", "the code works")
+
+# 使用 lapply 并指定使用函数的参数
+unlist(x = lapply(X = expr.char, FUN = strsplit, split = ' '))
+# [1] "this"  "is"    "a"     "book"  "the"   "code"  "works"
+
+
+# 使用 for 循环要好几行
+rs=c()
+for(i in expr.char){
+  rs2=strsplit(i, split=" ")[[1]]
+  rs=c(rs, rs2)  
+}
+rs
+
+
+
+
+
+例2: 拿到某些 Idents的cell barcode 字符串。
+
+library(Seurat)
+head(Idents(pbmc_small))
+table(Idents(pbmc_small))
+#0  1  2 
+#36 25 19 
+
+idents=c(0, 2)
+object=pbmc_small
+
+
+# 方法1: lapply
+cells.idents <- unlist(x = lapply(
+  X = idents,
+  FUN = function(i) {
+    # 取出等于某个ident的，返回的是 T or F 的list
+    cells.use <- which(x = as.vector(x = Idents(object = object)) == i)
+    # 返回cell id
+    cells.use <- names(x = Idents(object = object)[cells.use])
+    return(cells.use)
+  }
+)) #解开list unlist
+head(cells.idents)
+length(cells.idents) #55
+
+
+# 方法2: for 循环
+cells.idents2_all=c()
+for(i in idents){
+  cells.use2 <- which(x = as.vector(x = Idents(object = object)) == i)
+  cells.use2 <- names(x = Idents(object = object)[cells.use2])
+  cells.idents2_all=c(cells.idents2_all, cells.use2)
+}
+length(cells.idents2_all) #55
+
+identical(cells.idents2_all, cells.idents) #T
+
+
+
+
+
+
+
+(12) suppressWarnings() 抑制提醒
+
+expr.char <- suppressWarnings(expr = as.character(x = expr))
+
+
+
+
+(13) substitute() //todo
+substitute returns the parse tree for the (unevaluated) expression expr, substituting any variables bound in env.
+
+
+> a1=substitute(CD4>0.5); a1
+CD4 > 0.5
+> as.character(a1)
+[1] ">"   "CD4" "0.5"
+
+
+
+
+
+
+
+
+
+
+
+========================================
+|-- 源码解析 11: HVFInfo/Loadings/"Idents<-"
+----------------------------------------
+1. 调包侠
+
+(1) Seurat 的 Command() 是干啥的？ //todo
+源码: find.command <- Command(object = object)[Command(object = object) %in% cmds]
+
+> Command(pbmc_small)
+ [1] "NormalizeData.RNA"        "ScaleData.RNA"           
+ [3] "RunPCA.RNA"               "BuildSNN.RNA.pca"        
+ [5] "FindClusters"             "RunTSNE.pca"             
+ [7] "JackStraw.RNA.pca"        "ScoreJackStraw.pca"      
+ [9] "ProjectDim.RNA.pca"       "FindVariableFeatures.RNA"
+
+
+> Command(
+  object = pbmc_small,
+  command = "FindVariableFeatures.RNA",
+  value = 'selection.method'
+)
+#"vst"
+
+
+
+粗略看了一下，感觉像是重要的步骤的记录，类似日志系统，在 pbmc_small@commands 中保存。
+我决定先跳过去，看样子以后还能多次遇到，或许在最后总结效果更好。
+
+
+
+(2) "[[.Assay" 怎么定义的？
+
+hvf.info$variable <- object[[paste0(selection.method, '.variable')]]
+
+
+> head(pbmc_small@assays$RNA[[c("vst.mean", "vst.variance")]])
+         vst.mean vst.variance
+MS4A1      0.3875    1.0251582
+CD79B      0.6000    1.2810127
+CD79A      0.7000    4.3645570
+
+> head(HVFInfo(pbmc_small@assays$RNA, selection.method = "vst"))
+            mean    variance variance.standardized
+MS4A1     0.3875   1.0251582             0.8983463
+CD79B     0.6000   1.2810127             0.4731134
+CD79A     0.7000   4.3645570             1.0862810
+
+
+添加 status=T 参数
+> head(HVFInfo(pbmc_small@assays$RNA, selection.method = "vst", status=T))
+            mean    variance variance.standardized vst.variable
+MS4A1     0.3875   1.0251582             0.8983463        FALSE
+CD79B     0.6000   1.2810127             0.4731134        FALSE
+
+
+
+
+
+
+2. 源码解析 
+
+
+
+
+
+
+
+
+
+
+3. R tips
+
+(1) expand.grid() 通过多个因子的组合创建数据框
+Create a Data Frame from All Combinations of Factor Variables
+
+例1: 创建3个地点 + 2个时间的组合
+expand.grid(
+  place=c("a", "c", "Z"),
+  time=c(1,20)
+)
+输出:
+  place time
+1     a    1
+2     c    1
+3     Z    1
+4     a   20
+5     c   20
+6     Z   20
+
+
+例2: 源码
+expand.grid(
+  c('FindVariableFeatures', 'SCTransform'),
+  FilterObjects(object = pbmc_small, classes.keep = 'Assay')
+)
+输出:
+#                  Var1 Var2
+#1 FindVariableFeatures  RNA
+#2          SCTransform  RNA
+
+
+
+
+
+
+(2) apply() 中的函数怎么指定参数？直接在后面指定
+cmds <- apply(
+  X = expand.grid(
+    c('FindVariableFeatures', 'SCTransform'),
+    FilterObjects(object = pbmc_small, classes.keep = 'Assay')
+  ),
+  MARGIN = 1,
+  FUN = paste,
+  collapse = '.'
+)
+
+> cmds
+[1] "FindVariableFeatures.RNA" "SCTransform.RNA"   
+
+
+
+
+(3) 大集合在小集合中的元素，其实就是交集，并保持在大集合的顺序
+small_set=c(1,20,100)
+big_set=1:50
+big_set[big_set %in% small_set]
+输出: [1]  1 20
+
+
+
+
+
+(4) file_path_sans_ext() 是啥？去掉后缀名
+sans [sænz] prep. 无，没有（等于 without）
+
+
+看该函数的注释，可知它来自 tools 包: 
+#' @importFrom tools file_path_sans_ext
+
+查F1: Utilities for listing files, and manipulating file paths.
+
+> tools::file_path_sans_ext
+function (x, compression = FALSE) 
+{
+    if (compression) 
+        x <- sub("[.](gz|bz2|xz)$", "", x)
+    sub("([^.]+)\\.[[:alnum:]]+$", "\\1", x)
+}
+<bytecode: 0x000000001989d9b0>
+<environment: namespace:tools>
+
+传入一个参数，默认只执行最后一行。
+这个正则替换，意思是：至少一个字符开头，一个点号，然后至少一个字母或数字结尾。
+只保留点号前面的部分。
+默认贪婪匹配，多个点号按最后一个。
+总结：去掉最后一个点号及之后的部分。
+
+> tools::file_path_sans_ext("data/xx/aa.1")
+[1] "data/xx/aa"
+> tools::file_path_sans_ext("data/xx/aa.12")
+[1] "data/xx/aa"
+> tools::file_path_sans_ext("data/xx/aa.980.txt")
+[1] "data/xx/aa.980"
+
+
+
+
+(5) droplevels() 去掉factor数据类型中用不到的水平 
+
+> droplevels
+function (x, ...) 
+UseMethod("droplevels")
+<bytecode: 0x000000000b5996c8>
+<environment: namespace:base>
+
+
+> a1=c(1,2,3,2,1)
+> a1.f=factor(a1); a1.f
+[1] 1 2 3 2 1
+Levels: 1 2 3
+
+# 取子集后，水平3就多余了
+> a2=a1.f[c(1,2,4,5)]; a2
+[1] 1 2 2 1
+Levels: 1 2 3
+
+# 该函数去掉多余的水平
+> a3=droplevels(a2); a3
+[1] 1 2 2 1
+Levels: 1 2
+
+
+
+
+========================================
+|-- 源码解析 12: 二维散点图 FeatureScatter()
+----------------------------------------
+
+1. 
+QC 质控
+
+
+(1) 如果看着可疑，可以试试参数 jitter=F
+不jitter才是本来的面目，有可能很多点重合在原点(x和y都是0)。
+FeatureScatter(pbmc, feature1 = "S100A9", feature2 = "DUSP1", jitter=F)
+
+
+(2)group.by=可以输入一个值，也可以输入一个数组
+FeatureScatter(pbmc, feature1 = "TMSB4X", feature2 = "B2M",
+               group.by = c("seurat_clusters", 'ident', "orig.ident"),
+               jitter=F)
+
+
+
+
+
+(3) 列名替换'-'为'.'，以及 ':' 为 '.'
+也即是基因名不要有-或者:，否则会被替换为点号。
+names.plot <- colnames(x = data) <- gsub(
+	pattern = '-',
+	replacement = '.',
+	x = colnames(x = data),
+	fixed = TRUE
+)
+
+
+
+
+(4) 该图顶部的相关系数怎么计算的？
+
+# (A7) 如果需要相关系数，就计算；否则空字符串
+# 直接使用的 cor(x,y)，默认的 pearson 相关系数
+plot.cor <- if (isTRUE(x = plot.cor)) {
+	round(x = cor(x = data[, 1], y = data[, 2]), digits = 2)
+}
+else(
+	""
+)
+
+就是默认的 cor(x,y).
+
+
+(5) 添加LOESS 局部拟合曲线
+FeatureScatter(pbmc, feature1 = "TMSB4X", feature2 = "B2M", 
+               cols=c(1:9), #每个类的颜色
+               span=0.1, #越大越平滑，也越失去细节
+               jitter=F)
+
+
+
+
+
+
+
+
+2. 源码解析
+见 gitee 
+
+
+
+
+3. R tips
+
+(1) 如何做 shuffle(打乱样品顺序)?
+> sample(1:10)
+ [1]  2  8  9 10  4  5  1  3  6  7
+> sample(1:10)
+ [1]  9  7  1  3  4  8  5 10  6  2
+
+如果想固定顺序的随机，可以指定随机数种子
+> set.seed(1)
+> sample(1:10)
+ [1]  9  4  7  1  2  5  3 10  6  8
+
+
+
+
+(2) globalVariables() 函数干啥呢？//todo
+源码：
+globalVariables(names = '..density..', package = 'Seurat')
+
+查文档：
+globalVariables returns the current list of declared global variables, possibly modified by this call.
+
+
+有一个说R包技巧的提到：https://zhuanlan.zhihu.com/p/95992937
+使用的局部变量（函数中定义的瞬时变量）和语法糖（如“:=”）也要用全局变量函数GlobalVariables加以定义。
+比如“globalVariables(c(":=","!!",".",".SD"))”。
+
+
+
+
+
+载入 Seurat 包后再执行报错：
+> globalVariables(names = '..density..', package = 'Seurat')
+Error in registerNames(names, package, ".__global__", add) : 
+  The namespace for package "Seurat" is locked; no changes in the global variables list may be made.
+
+> globalVariables()
+[1] "localvariable"
+
+> globalVariables(c(":=","!!",".",".SD"))
+[1] "localvariable" ":="            "!!"            "."             ".SD" 
+
+
+
+
+
+
+(3) aes() 与 aes_string() 的用法区别？
+后者可以使用变量。例子如下:
+
+library(ggplot2)
+head(mtcars)
+ggplot(mtcars, aes(mpg, cyl))+geom_point()
+
+params=c("mpg", "cyl")
+ggplot(mtcars, aes_string(x=params[1], y=params[2]))+geom_point()
+
+
+
+(4) 栅格化以降低pdf文件大小： scattermore::geom_scattermore 
+ggplot2::ggplot() integration. This cooperates with the rest of ggplot (so you can use it to e.g. add rasterized scatterplots to vector output in order to reduce PDF size). 
+
+> scattermore::geom_scattermore
+function (mapping = NULL, data = NULL, stat = "identity", 
+    position = "identity", ..., na.rm = FALSE, show.legend = NA, 
+    inherit.aes = TRUE, interpolate = FALSE, pointsize = 0, pixels = c(512, 
+        512)) 
+{
+    ggplot2::layer(data = data, mapping = mapping, stat = stat, 
+        position = position, geom = GeomScattermore, show.legend = show.legend, 
+        inherit.aes = inherit.aes, params = list(na.rm = na.rm, 
+            interpolate = interpolate, pointsize = pointsize, 
+            pixels = pixels, ...))
+}
+<bytecode: 0x000000003346b238>
+<environment: namespace:scattermore>
+
+源码:
+    if (raster) {
+      plot <- plot + geom_scattermore(
+        mapping = aes_string(color = 'colors'),
+        position = position,
+        pointsize = pt.size, #这一行参数名不同
+        pixels = raster.dpi #多了这一行
+      )
+    # 如果不栅格化
+    } else {
+      plot <- plot + geom_point(
+        mapping = aes_string(color = 'colors'),
+        position = position,
+        size = pt.size
+      )
+    }
+
+
+例：使用钻石数据集画散点图pdf，尝试降低pdf磁盘占用。
+
+head(diamonds)
+pt.size=min(1583 / nrow(x = diamonds), 1); pt.size #0.02934
+
+pdf(file="01.pdf", width=4, height=4, useDingbats = F)
+ggplot(diamonds, aes(carat, price, color=cut))+
+  geom_point(size = pt.size)+
+  theme_classic()
+dev.off()
+
+pdf(file="01.raster.pdf", width=4, height=4, useDingbats = F)
+raster.dpi=c(512, 512)
+ggplot(diamonds, aes(carat, price, color=cut))+
+  scattermore::geom_scattermore(
+    pixels = raster.dpi,
+    pointsize = pt.size*50
+  )+
+  theme_classic()
+dev.off()
+
+文件大小对比: 是原来的 1/16
+栅格前后: 1427k vs 88k
+
+
+
+(5) sort() 的参数 na.last 什么意思？
+源码:
+plot.order <- sort(x = unique(x = highlight), na.last = TRUE)
+
+na.last	
+for controlling the treatment of NAs. 
+If TRUE, missing values in the data are put last; 
+if FALSE, they are put first; 
+if NA, they are removed.
+
+
+> highlight=c(1, NA, -4)
+> #默认na.last=NA 去掉NA值；
+> sort(x = unique(x = highlight)) 
+[1] -4  1
+> # na.last=T 放到最后
+> sort(x = unique(x = highlight), na.last = TRUE)
+[1] -4  1 NA
+> # na.last=F 放到首位
+> sort(x = unique(x = highlight), na.last = F)
+[1] NA -4  1
+
+
+
+
+(6) stat_density2d() 2D 密度图怎么画？
+源码：
+stat_density2d(
+      mapping = aes(fill = ..density.. ^ 0.25),
+      geom = 'tile',
+      contour = FALSE,
+      n = 200,
+      h = Bandwidth(data = data[, names.plot])
+    )
+
+
+测试这几个参数:
+# 
+ggplot(diamonds, aes(x = carat, y = price)) +
+  stat_density2d(aes(fill = ..density..), 
+                 geom = 'tile', 
+                 contour = F)
+
+# 加上 0.25 后对比度更清晰
+ggplot(diamonds, aes(x = carat, y = price)) +
+  stat_density2d(aes(fill = ..density..^0.25), 
+                 geom = 'tile', 
+                 contour = F)
+
+# n=200, 没有明显变化
+ggplot(diamonds, aes(x = carat, y = price)) +
+  stat_density2d(aes(fill = ..density..^0.25), 
+                 geom = 'tile', 
+                 n=200, #每个方向上的grid点数
+                 contour = F)
+# h=1 有明显 水平擦除痕迹；
+# 0.1 太小，看不到趋势, 0.5还是小;
+# 2太大，水平擦除到全图均匀了; 1.5能看吧
+ggplot(diamonds, aes(x = carat, y = price)) +
+  stat_density2d(aes(fill = ..density..^0.25), 
+                 geom = 'tile', 
+                 n=200, #每个方向上的grid点数
+                 h=0.58,
+                 contour = F)
+
+# 自定义颜色
+ggplot(diamonds, aes(x = carat, y = price)) +
+  stat_density2d(aes(fill = ..density..^0.25), 
+                 geom = 'tile', 
+                 n=200, #每个方向上的grid点数
+                 #h=0.58, #不要貌似更符合实际点图
+                 contour = F)+
+  geom_point(alpha=0.1)+
+  theme_classic()+
+  scale_fill_gradient(low="skyblue2", high="firebrick1")
+
+
+
+
+(7) base::diff() 返回下一行减去上一行的差。
+Lagged Differences 滞后差分项
+Description: Returns suitably lagged and iterated differences.
+
+> diff
+function (x, ...) 
+UseMethod("diff")
+<bytecode: 0x0000000009d6b7e0>
+<environment: namespace:base>
+
+测试：
+> apply(iris[, 1:4], 2, quantile, probs=c(0.05, 0.95), na.rm=T, names=F )
+     Sepal.Length Sepal.Width Petal.Length Petal.Width
+[1,]        4.600       2.345          1.3         0.2
+[2,]        7.255       3.800          6.1         2.3
+> diff(apply(iris[, 1:4], 2, quantile, probs=c(0.05, 0.95), na.rm=T, names=F ))
+     Sepal.Length Sepal.Width Petal.Length Petal.Width
+[1,]        2.655       1.455          4.8         2.1
+
+就是第下一行减去上一行。
+
+> apply(iris[, 1:4], 2, quantile)
+     Sepal.Length Sepal.Width Petal.Length Petal.Width
+0%            4.3         2.0         1.00         0.1
+25%           5.1         2.8         1.60         0.3
+50%           5.8         3.0         4.35         1.3
+75%           6.4         3.3         5.10         1.8
+100%          7.9         4.4         6.90         2.5
+
+> diff(apply(iris[, 1:4], 2, quantile))
+     Sepal.Length Sepal.Width Petal.Length Petal.Width
+25%           0.8         0.8         0.60         0.2
+50%           0.7         0.2         2.75         1.0
+75%           0.6         0.3         0.75         0.5
+100%          1.5         1.1         1.80         0.7
+
+
+
+(8) n个ggplot2对象保存在list中，如果只有1图个则直接返回该图，如果是多个则拼合后返回
+@importFrom patchwork wrap_plots
+
+# 如果是多个元素，则绘图结果也是多个组成的list
+  plots <- lapply(
+    X = group.by,
+    FUN = function(x) {
+      # 这个函数，是画图的主力函数
+      SingleCorPlot(
+        data = data[,c(feature1, feature2)],
+        col.by = data[, x],
+        cols = cols,
+        pt.size = pt.size,
+        smooth = smooth,
+        legend.title = 'Identity',
+        span = span,
+        plot.cor = plot.cor,
+        raster = raster,
+        raster.dpi = raster.dpi,
+        jitter = jitter
+      )
+    }
+  )
+
+  #(A11) 如果list长度为1，直接返回其内容
+  if (isTRUE(x = length(x = plots) == 1)) {
+    return(plots[[1]])
+  }
+
+  #(A12) 如果合并，则返回合并后的拼图
+  if (isTRUE(x = combine)) {
+    plots <- wrap_plots(plots, ncol = length(x = group.by))
+  }
+
+
+
+
+
+
+========================================
+|-- Seurat 4 源码解析 13: step5 NormalizeData()
+----------------------------------------
+1.
+(1)
+# step5 Normalizing the data
+pbmc <- NormalizeData(pbmc, normalization.method = "LogNormalize", scale.factor = 10000)
+
+
+counts=pbmc@assays$RNA@counts
+data=pbmc@assays$RNA@data
+data2=apply(counts, 2, function(x){ log(x/sum(x)*1e4 +1) }) #R语言实现该过程
+
+
+
+(2) LogNormalize() 调用C++
+
+
+(3) 行名(symbol)中不能用_，全部替换为-
+  	# 替换行名(symbol)中的_为-
+    if (any(grepl(pattern = '_', x = rownames(x = new.data)))) {
+      warning(
+        "Feature names cannot have underscores ('_'), replacing with dashes ('-')",
+        call. = FALSE,
+        immediate. = TRUE
+      )
+      rownames(x = new.data) <- gsub(
+        pattern = '_',
+        replacement = '-',
+        x = rownames(x = new.data)
+      )
+    }
+
+
+
+
+
+
+2. 源码解析 
+
+$ find . | grep "R$" | xargs grep -n "NormalizeData" --color=auto
+seurat-4.1.0/R/generics.R:339:NormalizeData <- function(object, ...) {
+seurat-4.1.0/R/preprocessing.R:2387:NormalizeData.default <- function(
+seurat-4.1.0/R/preprocessing.R:2494:NormalizeData.Assay <- function(
+seurat-4.1.0/R/preprocessing.R:2531:NormalizeData.Seurat <- function(
+
+
+
+
+$ find . | grep "R$" | xargs grep -n "GetAssay" | grep -v "GetAssayData" | grep "GetAssay" --color=auto
+seurat-4.1.0/R/generics.R:256:GetAssay <- function(object, ...) {
+seurat-4.1.0/R/objects.R:1351:GetAssay.Seurat <- function(object, assay = NULL, ...) {
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+3. R tips
+
+(1) 使用 switch 语句能简化if...else结构
+
+例: 输入数据，返回该数据的重要特征，
+比如，df返回 dim(), character 返回 nchar().
+
+fn1=function(x){
+  switch(
+    EXPR = class(x),
+    'data.frame' = dim(x),
+    "character"=nchar(x),
+    stop("Unknown type")
+  )
+}
+fn1(iris) #[1] 150   5
+fn1(iris$Sepal.Length) #Unknown type
+fn1("this is") #[1] 7
+fn1(123) #Unknown type
+fn1( c(1,2,"30")) #[1] 1 1 2
+
+
+
+
+
+(2) cat() 的 file 参数能用于重定向消息到 标准错误
+
+if (verbose) {
+	cat("Performing log-normalization\n", file = stderr())
+}
+
+
+查 cat 函数，发现 file 参数默认是 stdout()
+> cat
+function (..., file = "", sep = " ", fill = FALSE, 
+    labels = NULL, append = FALSE) 
+{
+    if (is.character(file)) 
+        if (file == "") 
+            file <- stdout()
+        else if (startsWith(file, "|")) {
+            file <- pipe(substring(file, 2L), "w")
+            on.exit(close(file))
+        }
+        else {
+            file <- file(file, ifelse(append, "a", "w"))
+            on.exit(close(file))
+        }
+    .Internal(cat(list(...), file, sep, fill, labels, append))
+}
+<bytecode: 0x00000000131e12a8>
+<environment: namespace:base>
+
+测试：区别是文字颜色不同。
+> cat("Performing log-normalization\n", file = stderr())
+Performing log-normalization #红色
+> cat("Performing log-normalization\n", file = stdout())
+Performing log-normalization #黑色
+
+
+
+(3) make.names() 生成合法的变量名字
+Make syntactically valid names out of character vectors.
+
+> make.names(c("a and b", "a-and-b"))
+[1] "a.and.b" "a.and.b"
+
+> make.names(c("a and b", "a-and-b"), unique = TRUE)
+[1] "a.and.b"   "a.and.b.1"
+
+
+可用于用户指定变量名的合法性检查，如果有非法字符，则给出警告
+if (any(i != newi)) {
+  warning(
+	"Invalid name supplied, making object name syntactically valid. New object name is ",
+	newi,
+	"; see ?make.names for more details on syntax validity",
+	call. = FALSE,
+	immediate. = TRUE
+  )
+  i <- newi
+}
+
+
+
+
+(4) 把新子集 按照老顺序输出
+# 老 在 新 的下标
+old1=c(1:20)
+new1=c(15,6,2,10)
+index1=match(old1, new1)
+index1
+
+new1[na.omit(index1)]
+# [1]  2  6 10 15
+
+
+
+(5) inherits(x, what=c())第二个参数可以是多个字符串
+源码：
+  if (!inherits(x = value, what = c('SeuratCommand', 'NULL', 'SpatialImage', 'Neighbor')) && !all(Cells(x = value) == Cells(x = x))) {
+	stop("All cells in the object being added must match the cells in this object", call. = FALSE)
+  }
+
+例: 如果x是df或矩阵
+> inherits(iris, what=c("matrix"))
+[1] FALSE
+> inherits(iris, what=c("matrix", "data.frame"))
+[1] TRUE
+
+
+
+(6) 判断2个向量 不是逐一相等
+源码见上文: !all(Cells(x = value) == Cells(x = x))
+
+> !all( c(1,2,3) == c(1,2,3) )
+[1] FALSE
+> !all( c(1,2,3) == c(1,2,4) )
+[1] TRUE
+
+
+
+(7) 2个元素不能是同类，怎么判断？
+互相不继承
+
+isSameClass=function(x,y){
+  inherits(x = x, what = class(x = y)) ||
+    inherits(x = y, what = class(x = x))
+}
+isSameClass(1,2) #T
+isSameClass(1,"2") #F
+isSameClass(mtcars, data.frame()) #T
+
+
+
+
+========================================
+|-- Seurat 4 R包源码解析 14: `[[<-` S4 风格为 S4 类 实现的方法
+----------------------------------------
+1.
+接上文。
+
+
+2.源码解析 
+
+
+
+3. R tips 
+
+(1) 直接查看R包函数的源码
+
+#查看S3形式的实现代码
+> `[[<-.data.frame` 
+function (x, i, j, value) 
+{
+    if (!all(names(sys.call()) %in% c("", "value"))) 
+...
+
+
+
+# 查看S4形式的实现代码
+> getMethod("[[<-", signature = "Seurat")
+Method Definition:
+
+function (x, i, j, ..., value) 
+{
+    x <- UpdateSlots(object = x)
+...
+
+
+
+
+
+(2) 为S4类实现方法: "[", "[<-",  "[[", "[[<-"
+ 
+setClass("Person", slots = c(name="character", age="numeric"))
+p1=new("Person", name="Tom", age=18); p1
+slot(p1, name="age")=21; p1
+
+p1[["age"]] # this S4 class is not subsettable
+p1[["age"]]=22
+# [[<- defined for objects of type "S4" only for subclasses of environment
+# 根据报错，看到其他人也遇到这个问题了，不过都不知道这个报错在说啥：
+# https://stackoverflow.com/questions/46761340/s4-method-subsetting-generic-replace-environment
+
+
+#不返回值：错
+"[[<-.Person"=function(x,i,..., value){
+  slot(x, name=i)=value
+}
+p2=p1
+p2[["age"]]=200; p2 #对象变字符串了
+
+
+#返回值：正确
+"[[<-.Person"=function(x,i,..., value){
+  slot(x, name=i)=value
+  return(x)
+}
+p2=p1
+p2[["age"]]=22; p2
+
+
+
+
+
+# 使用S4的形式定义
+setMethod(
+  f="[[<-",
+  signature = "Person",
+  definition = function(x,i,...,value){
+    slot(x, name=i)=value
+    return(x)
+  }
+)
+p2=p1
+p2[["age"]]=23; p2
+# 经过测试，S3和S4都可以实现读写S4类的数据。注意对同名函数，每次要重启R session后测试。
+
+
+
+
+# 其他方法呢? '[', '[<-', '[['
+# getter
+`[.Person`=function(x,i,...){
+  slot(x, name=i)
+}
+p2=p1; p2
+p2["age"]
+p2
+
+# getter2
+p1[["name"]] #this S4 class is not subsettable
+
+`[[.Person`=function(x,i,...){
+  slot(x, name=i)
+}
+p1[["name"]] #Tom
+p1
+
+
+# setter
+`[<-.Person`=function(x,i,...,value){
+  slot(x, name=i)=value
+  return(x)
+}
+p2=p1
+p2["name"]="Lilei"
+p2
+
+
+#setter2
+`[[<-.Person`=function(x,i,...,value){
+  slot(x, name=i)=value
+  return(x)
+}
+p2=p1; p2
+p2[["name"]]="Lilei2"
+p2
+
+p2[["age"]]=100
+p2
+
+
+
+(3) 使用 setReplaceMethod() 函数实现更一般的setter
+
+setClass("Person", slots = c(name="character", age="numeric"))
+p1=new("Person", name="Tom", age=18); p1
+slot(p1, name="age")=21; p1
+
+
+# 想要更一般化的setter，可以使用 setReplaceMethod() 函数
+setGeneric(name = "setAge<-", def = function(theObject, value){standardGeneric("setAge<-");});
+# setGeneric(name = "setName<-", def = function(theObject, value){standardGeneric("setName<-");});
+
+setReplaceMethod(
+  f = "setAge",
+  signature = "Person",
+  definition = function(theObject, value){
+    theObject@age <- value;
+    return(theObject);
+  })
+setAge(p1)= 100
+p1
+
+
+
+
+
+
+
+
+
+(4) 环境变量
+
+获取
+> class(options())
+[1] "list"
+
+> options()
+
+
+使用关键词检索某个环境变量的名字
+> grep("digit", names(options()), value=T)
+[1] "digits"
+
+
+查看该环境变量的值
+> options("digits")
+$digits
+[1] 7
+
+> a=0.123456789
+> a
+[1] 0.1234568
+
+
+修改/设置 环境变量
+> options("digits"=8)
+> a
+[1] 0.12345679
+
+
+
+(5) R包的 .onAttach() 与 .onLoad() 的区别
+功能上的区别：
+https://community.rstudio.com/t/when-to-use-onload-vs-onattach/21953/2
+onAttach only runs when the library is attached, e.g. when somebody calls library(your_package). 
+onLoad will also run when somebody loads but doesn't attach your package by calling your_package::your_function.
+
+
+功能决定应用。
+.onAttach is only for interactive use, for example startup messages and so forth
+
+# .onAttach()一般用于在包启动时加载有用信息或建议。
+AttachDeps <- function(deps) {
+  for (d in deps) {
+    if (!paste0('package:', d) %in% search()) {
+      packageStartupMessage("Attaching ", d)
+      attachNamespace(ns = d)
+    }
+  }
+}
+
+# library() 事件触发的函数
+.onAttach <- function(libname, pkgname) {
+  AttachDeps(deps = 'SeuratObject')
+}
+
+
+
+
+# .onLoad() 一般用来进行初始化设置
+
+# 定义的环境变量
+seurat_default_options <- list(
+  Seurat.memsafe = FALSE,
+  Seurat.warn.umap.uwot = TRUE,
+  Seurat.checkdots = "warn",
+  Seurat.limma.wilcox.msg = TRUE,
+  Seurat.Rfast2.msg = TRUE,
+  Seurat.warn.vlnplot.split = TRUE
+)
+
+.onLoad <- function(libname, pkgname) {
+  # 获取当前 环境变量
+  op <- options()
+  # Seurat选项中 还没有设置到 当前中的
+  toset <- !(names(x = seurat_default_options) %in% names(x = op))
+  # 如果有没设置的，则设置上默认值
+  if (any(toset)) options(seurat_default_options[toset])
+  # 如果没有左值，则不返回任何结果
+  invisible(x = NULL)
+}
+
+
+通过类似 getOption("Seurat.memsafe") 就能获取设定信息。
+通过 option("Seurat.memsafe"=T) 就能修改环境变量，这个修改是全局的，在重启R session前一直有效。
+
+
+
+
+(6) 如果没有左值，则不返回任何结果 invisible()
+
+fn1=function(x){
+  return( x+10 )
+}
+fn2=function(x){
+  return( invisible(x+10) )
+}
+
+> rs1=fn1(1); rs1
+[1] 11
+> rs2=fn2(1); rs2
+[1] 11
+> fn1(1)
+[1] 11
+> fn2(1) #没有左值，则也不打印结果
+> 
+
+
+
+ref:
+R 包管理: https://www.jianshu.com/p/0733946efae9
+
+https://zhuanlan.zhihu.com/p/477848978
+`[[<-` for Seurat / CheckGC() 
+
+
+
+
+
+========================================
+|-- Seurat 4 R包源码解析 15: step6 找高变基因 FindVariableFeatures()
+----------------------------------------
+1. 调包侠
+# step6 Identification of highly variable features (feature selection)
+
+> pbmc <- FindVariableFeatures(pbmc, selection.method = "vst", nfeatures = 2000)
+Calculating gene variances
+0%   10   20   30   40   50   60   70   80   90   100%
+[----|----|----|----|----|----|----|----|----|----|
+**************************************************|
+Calculating feature variances of standardized and clipped values
+0%   10   20   30   40   50   60   70   80   90   100%
+[----|----|----|----|----|----|----|----|----|----|
+**************************************************|
+
+> # Identify the 10 most highly variable genes
+> top10 <- head(VariableFeatures(pbmc), 10)
+> top10
+ [1] "PPBP"   "LYZ"    "S100A9" "IGLL5"  "GNLY"   "FTL"    "PF4"    "FTH1"   "GNG11"  "S100A8"
+
+
+# plot variable features with and without labels
+plot1 <- VariableFeaturePlot(pbmc)
+plot2 <- LabelPoints(plot = plot1, points = top10, repel = TRUE)
+plot1 + plot2
+# 图片在桌面
+
+
+(1) 影响范围
+执行前
+> head(pbmc@assays$RNA@var.features)
+character(0)
+> head(pbmc@assays$RNA@meta.features)
+data frame with 0 columns and 6 rows
+
+
+执行后
+> head(pbmc@assays$RNA@var.features)
+[1] "PPBP"   "LYZ"    "S100A9" "IGLL5"  "GNLY"   "FTL"   
+> head(pbmc@assays$RNA@meta.features)
+                 vst.mean vst.variance vst.variance.expected vst.variance.standardized vst.variable
+AL627309.1    0.003411676  0.003401325           0.003645407                 0.9330441        FALSE
+AP006222.2    0.001137225  0.001136363           0.001144957                 0.9924937        FALSE
+RP11-206L10.2 0.001895375  0.001892500           0.001965766                 0.9627290        FALSE
+RP11-206L10.9 0.001137225  0.001136363           0.001144957                 0.9924937        FALSE
+
+
+> slotNames(pbmc_small@assays$RNA)
+[1] "counts"        "data"          "scale.data"    "key"           "assay.orig"    "var.features" 
+[7] "meta.features" "misc"
+
+
+
+(2)这个进度条怎么出现的？不知道，也没找到。可能是 C++ 部分控制的。
+包括上一节的 NormalizeData() 也是这个风格的进度条。
+
+
+
+
+(3) "vst" 使用的是 assay@counts 数据作为输入
+  if (selection.method == "vst") {
+    data <- GetAssayData(object = object, slot = "counts")
+	...
+  }
+
+
+vst中计算基因表达的平均值，使用的是 assay@counts。
+如果使用的是 assay@data 则可以先还原为counts，计算完平均值再取log。
+参考C函数: FastExpMean()
+
+
+
+
+
+2. 源码解析
+
+(1)直接使用的函数
+- FindVariableFeatures
+- VariableFeatures
+- VariableFeaturePlot
+- LabelPoints
+
+
+$ find . | grep "R$" | xargs grep -n "FindVariableFeatures" --color=auto
+./seurat-4.1.0/R/generics.R:204:FindVariableFeatures <- function(object, ...) {
+
+./seurat-4.1.0/R/preprocessing.R:2115:FindVariableFeatures.Seurat <- function(
+./seurat-4.1.0/R/preprocessing.R:2014:FindVariableFeatures.Assay <- function(
+./seurat-4.1.0/R/preprocessing.R:1914:FindVariableFeatures.default <- function(
+
+
+(2) 间接使用的函数
+
+# 跳过
+- LogSeuratCommand
+- GetResidual
+
+$ find . | grep "R$" | xargs grep -n "GetResidual" --color=auto
+./seurat-4.1.0/R/preprocessing.R:364:GetResidual <- function(
+./seurat-4.1.0/R/preprocessing.R:3192:GetResidualSCTModel <- function(
+
+
+
+
+# 跳过 c 函数
+- FastLogVMR
+- SparseRowVar2 #C++函数
+
+$ find . | xargs grep -n "SparseRowVar2" --color=auto 2>/dev/null
+./seurat-4.1.0/R/RcppExports.R:52:SparseRowVar2 <- function(mat, mu, display_progress) {
+./seurat-4.1.0/R/RcppExports.R:53:    .Call('_Seurat_SparseRowVar2', PACKAGE = 'Seurat', mat, mu, display_progress)
+
+./seurat-4.1.0/src/RcppExports.cpp:173:// SparseRowVar2
+./seurat-4.1.0/src/RcppExports.cpp:174:NumericVector SparseRowVar2(Eigen::SparseMatrix<double> mat, NumericVector mu, bool display_progress);
+./seurat-4.1.0/src/RcppExports.cpp:175:RcppExport SEXP _Seurat_SparseRowVar2(SEXP matSEXP, SEXP muSEXP, SEXP display_progressSEXP) {
+./seurat-4.1.0/src/RcppExports.cpp:181:    rcpp_result_gen = Rcpp::wrap(SparseRowVar2(mat, mu, display_progress));
+./seurat-4.1.0/src/RcppExports.cpp:420:    {"_Seurat_SparseRowVar2", (DL_FUNC) &_Seurat_SparseRowVar2, 3},
+
+./seurat-4.1.0/src/data_manipulation.h:37:NumericVector SparseRowVar2(Eigen::SparseMatrix<double> mat,
+./seurat-4.1.0/src/data_manipulation.cpp:278:NumericVector SparseRowVar2(Eigen::SparseMatrix<double> mat,
+
+
+
+- SparseRowVarStd #有一个c函数
+
+
+
+
+
+
+
+3. R tips
+
+(1) 如果右值(基因名)中带有_，则警告并替换为-
+  if (any(grepl(pattern = '_', x = value))) {
+
+    warning(
+      "Feature names cannot have underscores '_', replacing with dashes '-'",
+      call. = FALSE,
+      immediate = TRUE
+    )
+    value <- gsub(pattern = '_', replacement = '-', x = value)
+  }
+
+
+
+
+(2) 把基因list按照是否在 assay 中分为2类，放到一个list中。
+
+value=c("CD4", "CD8A", "CXCR4", "CD3G", "LY6G")
+object=pbmc_small@assays$RNA
+
+> split(x = value, f = value %in% rownames(x = object))
+$`FALSE`
+[1] "CD4"  "CD3G" "LY6G"
+
+$`TRUE`
+[1] "CD8A"  "CXCR4"
+
+
+
+
+
+(3) 变数组为 逗号隔开的字符串
+> paste( colnames(mtcars), collapse = ', ')
+[1] "mpg, cyl, disp, hp, drat, wt, qsec, vs, am, gear, carb"
+
+
+
+
+(4) vst 算法第一步: 使用loess() 拟合y值
+
+    not.const <- hvf.info$variance > 0
+
+    fit <- loess(
+      formula = log10(x = variance) ~ log10(x = mean),
+      data = hvf.info[not.const, ],
+      span = loess.span
+    )
+	
+    hvf.info$variance.expected[not.const] <- 10 ^ fit$fitted
+
+
+
+
+(5) 按 相等频率分bin: 分位数
+
+feature.mean=rowMeans(iris[, 1:4])
+num.bin=5
+
+data.x.breaks=quantile(
+  x = feature.mean[feature.mean > 0],
+  probs = seq.int(from = 0, to = 1, length.out = num.bin)
+)
+data.x.breaks
+#
+#     0%    25%    50%    75%   100% 
+# 2.1000 2.6750 3.5750 4.0625 5.1000 
+
+
+
+(6) cut() 把数据放到对应的bin中
+就是把数据转为对应的bin范围。
+
+#1) breaks 可以是切分范围
+data.x.bin <- cut(x = feature.mean, breaks = data.x.breaks,
+                  include.lowest = TRUE)
+> head(data.x.bin)
+[1] [2.1,2.67]  [2.1,2.67]  [2.1,2.67]  [2.1,2.67]  [2.1,2.67]  (2.67,3.58]
+Levels: [2.1,2.67] (2.67,3.58] (3.58,4.06] (4.06,5.1]
+
+画柱状图:
+> barplot(table(data.x.bin))
+
+
+
+#2) breaks 也可以是总份数
+> data.x.bin2 <- cut(x = feature.mean, breaks = 10, include.lowest = TRUE)
+> head(data.x.bin2)
+[1] (2.4,2.7] [2.1,2.4] [2.1,2.4] [2.1,2.4] (2.4,2.7] (2.7,3]  
+10 Levels: [2.1,2.4] (2.4,2.7] (2.7,3] (3,3.3] (3.3,3.6] (3.6,3.9] (3.9,4.2] (4.2,4.5] ... (4.8,5.1]
+
+> head(feature.mean)
+[1] 2.550 2.375 2.350 2.350 2.550 2.850
+
+画柱状图:
+> barplot(table(data.x.bin2))
+
+
+
+
+
+(7) 把table()统计结果加到 ggplot2 图例中
+注意: 想量化操作能节省代码。不过有搭配错乱的风险，需要画图后再次核对。
+
+源码:
+    scale_color_manual( #图例
+      labels = paste(labels.legend, 'count:', table(var.status)),
+      values = cols
+    )
+
+示例:
+library(ggplot2)
+df1=mtcars
+labels.legend=c(3,4,5)
+df1$gear=factor(df1$gear, levels=labels.legend)
+
+var.status=df1$gear
+cols=1:3
+ggplot(df1, aes(mpg, disp, color=gear))+geom_point()+
+  theme_bw()+
+  scale_color_manual( #图例
+    labels = paste0(labels.legend, ' (n=', table(var.status),")"),
+    values = cols
+  )
+#
+
+
+(8) 画ggplot2图时对x轴取log
+  if (log) {
+    plot <- plot + scale_x_log10()
+  }
+
+library(ggplot2)
+plot = ggplot(mtcars, aes(mpg, disp, color=gear))+geom_point()
+plot + scale_x_log10() #x 轴的刻度是 10^-2, 0, 10^2.
+
+
+
+
+(9) ggplot2的数据是存储在 g1$data 中
+
+library(ggplot2)
+g1=ggplot(mtcars, aes(mpg, disp))+geom_point(); g1
+
+> head(g1$data)
+                   mpg cyl disp  hp drat    wt  qsec vs am gear carb
+Mazda RX4         21.0   6  160 110 3.90 2.620 16.46  0  1    4    4
+Mazda RX4 Wag     21.0   6  160 110 3.90 2.875 17.02  0  1    4    4
+
+
+
+(10) ggplot2 画散点图的x轴是数据的哪一列？
+
+library(ggplot2)
+g1=ggplot(mtcars, aes(mpg, disp))+geom_point(); g1
+
+rlang::as_label( g1$mapping$x ) #"mpg"
+
+
+(11) 换算 counts 和 data 的R函数
+> expm1(1)
+[1] 1.718282
+> exp(1)-1
+[1] 1.718282
+
+#
+> log1p(1)
+[1] 0.6931472
+> log(1+1)
+[1] 0.6931472
+
+
+
+
+
+
+
+
+4. 发现的bug
+
+(1) LabelPoints() 中 points 是数字时，错误的使用了全部基因名字。
+提示让提交到 develop 线上。
+
+pr: https://github.com/satijalab/seurat/pull/5727
+
+
+
+
+
+
+
+========================================
+|-- Seurat 4 R包源码解析 16: step7 ScaleData()
+----------------------------------------
+1. 掉包侠
+# step7 Scaling the data
+all.genes <- rownames(pbmc)
+pbmc <- ScaleData(pbmc, features = all.genes)
+
+
+(1)处理过程
+linear 模型 输入的是 assay@data，
+可选: 先 regress out 一些噪音变量(比如批次效应等)，
+然后再做 center and scale。
+
+
+怎么去噪音?
+其中 regress out 的方法作者提供了三个选项，本文只说默认使用的 linear 模型。
+线性模型 主要是使用 lm() 拟合 Y~X1+X2，每个基因就是一个 Y，噪音列就是X1+X2...部分。 回归曲线，并计算出期望值，然后真实表达值-拟合值得到的残差，就认为是去除了变量X1和X2的影响了。
+然后 center and scale.
+
+
+
+作者为了加快速度，用到了很多小技巧。比如
+- 多线程，分块处理；
+- C++函数: FastSparseRowScale()
+- 线性代数的性质：QR 分解出 噪音矩阵的 qr 矩阵先做一次，循环中求残差时反复使用。
+
+
+
+
+(2) 重要参数 
+1) vars.to.regress=c("mt.pct") 回归掉批次效应等无关变异成分
+
+Scales and centers features in the dataset. If variables are provided in vars.to.regress, they are individually regressed against each feature, and the resulting residuals are then scaled and centered.
+
+#' ScaleData now incorporates the functionality of the function formerly known
+#' as RegressOut (which regressed out given the effects of provided variables
+#' and then scaled the residuals). To make use of the regression functionality,
+#' simply pass the variables you want to remove to the vars.to.regress parameter.
+
+
+2) do.center=T, 
+#' Setting center to TRUE will center the expression for each feature by subtracting
+#' the average expression for that feature. 
+
+3) do.scale=T
+# Setting scale to TRUE will scale the
+#' expression level for each feature by dividing the centered feature expression
+#' levels by their standard deviations if center is TRUE and by their root mean
+#' square otherwise.
+
+
+(3) min.cells.to.block 参数干啥的？
+
+
+
+
+
+
+
+
+
+2. 源码解析
+(100) todo 
+
+间接使用的函数。
+- LogSeuratCommand
+	object <- LogSeuratCommand(object = object)
+
+- future_lapply() in ScaleData.default()
+
+- FastSparseRowScale: C 函数
+
+
+
+
+
+3. R tips
+
+(1) set1 在 set2 中的元素，保持在 set1 中的顺序
+如何不用中间变量解答？
+
+源码
+if (any(vars.to.regress %in% colnames(x = object[[]]))) {...}
+
+测试 
+set1=seq(9,5,-1)
+set2=seq(1,20,2)
+set1[set1 %in% set2] #9 7 5
+
+
+# 其实直接取交集，输出时按照第一个参数的元素顺序
+> intersect(set1, set2)
+[1] 9 7 5
+> intersect(set2, set1)
+[1] 5 7 9
+
+
+
+(2) sys.calls() 返回函数调用栈，可以解析获得依次调用的函数
+最早调用的函数在list的最后。
+
+#  sys.call returns a call
+message("out>>",sys.calls())
+fn1=function(x){
+  calls <- as.character(x = sys.calls())
+  # 
+  calls <- lapply(
+    X = strsplit(x = calls, split = '(', fixed = TRUE),
+    FUN = '[',
+    1
+  )
+  print(calls)
+  #
+  message("fn1>> ", as.character(sys.calls()) )
+  x+1
+}
+
+> fn1(1)
+[[1]]
+[1] "fn1"
+
+fn1>> fn1(1)
+[1] 2
+
+
+
+#
+fn2=function(y){
+  #message("fn2>>",sys.calls())
+  message("fn2>> ", as.character(sys.calls()) )
+  fn1(y)+2
+}
+
+> fn2(2)
+fn2>> fn2(2)
+[[1]]
+[1] "fn2"
+
+[[2]]
+[1] "fn1"
+
+fn1>> fn2(2)fn1(y)
+[1] 5
+
+
+
+#
+fn3=function(y){
+  #message("fn3>>",sys.calls())
+  #message("fn3>>"); print(sys.calls())
+  message("fn3>> ", as.character(sys.calls()) )
+  fn2(y)+3
+}
+
+> fn3(3)
+fn3>> fn3(3)
+fn2>> fn3(3)fn2(y)
+[[1]]
+[1] "fn3"
+
+[[2]]
+[1] "fn2"
+
+[[3]]
+[1] "fn1"
+
+fn1>> fn3(3)fn2(y)fn1(y)
+[1] 9
+
+
+
+
+(3) 根据编号回溯程序堆栈，可以打印、修改父函数的环境
+# parent.environ = sys.frame(which = parent.index)
+
+fn_Parenting=function(parent.index, ...){
+  message("fn_Parenting>> ", as.character(sys.calls()) )
+  to.parent <- list(...)
+  # 获取上一个函数栈的环境
+  parent.environ <- sys.frame(which = parent.index)
+  print(ls(parent.environ)) #打印环境中的变量
+  # 把值逐个写入
+  for (j in 1:length(x = to.parent)) {
+    parent.environ[[names(x = to.parent)[j]]] <- to.parent[[j]]
+  }
+}
+#
+fns1=function(a, b, i){
+  f1= 10
+  x=fns2(a, b, i)
+  message("In fns1:", paste0(x, collapse = ", ") )
+  return( c(a, b) )
+}
+
+fns2=function(a, b, i){
+  f2=20
+  fn_Parenting(i, a=120)
+  message("In fns2:", paste0(c(a,b,i), collapse = ", ") )
+  return( c(a,b,i) )
+}
+
+
+
+> fns1(1, 2, i=2) #2
+fn_Parenting>> fns1(1, 2, i = 2)fns2(a, b, i)fn_Parenting(i, a = 120)
+[1] "a"  "b"  "f2" "i" #i=2，就是追溯堆栈第二个函数，该函数特有变量f2
+In fns2:120, 2, 2
+In fns1:120, 2, 2
+[1] 1 2 #修改 fns2() 中的a，返回给fns1后覆盖掉x值，但是没有改变 fns1 中的a
+
+
+
+> fns1(1, 2, i=1) #1
+fn_Parenting>> fns1(1, 2, i = 1)fns2(a, b, i)fn_Parenting(i, a = 120)
+[1] "a"  "b"  "f1" "i"  #i=1，就是追溯堆栈第1个函数，该函数特有变量f1
+In fns2:120, 2, 1
+In fns1:120, 2, 1
+[1] 120   2 #修改 fns1() 中的a，最终返回值a是fns1中的，所以受影响
+
+
+
+
+
+
+(4) 能否在函数内修改 全局环境变量？可以
+modi=function(list2, i=0){
+  message(">>> ", as.character(sys.calls()) )
+  parent.environ <- sys.frame(which = i)
+  # 1是本函数
+  # 0是全局环境
+  print(ls(parent.environ))
+  for(i in names(list2)){
+    print(i)
+    parent.environ[[i]]=list2[[i]]
+  }
+}
+a=300
+modi(list(a=1, b=20), i=0)
+a #[1] 1
+
+
+
+
+
+(5) dimnames() 获取矩阵的行名、列名，list形式
+
+> dimnames(iris[1:3,])
+[[1]]
+[1] "1" "2" "3"
+
+[[2]]
+[1] "Sepal.Length" "Sepal.Width"  "Petal.Length" "Petal.Width"  "Species"  
+
+
+
+
+(6) split() 把向量按奇偶分成2组
+
+> split(x = 1:10, f = (1:10)%%2  )
+$`0`
+[1]  2  4  6  8 10
+
+$`1`
+[1] 1 3 5 7 9
+
+
+
+
+
+(7) ChunkPoints() 把向量按每份x个分开，给出分块点起止点
+./seurat-4.1.0/R/utilities.R:1671:ChunkPoints <- function(dsize, csize) {
+
+# Generate chunk points
+#
+# @param dsize How big is the data being chunked 总大小
+# @param csize How big should each chunk be 每个小块的大小
+#
+# @return A matrix where each column is a chunk, row 1 is start points, row 2 is end points
+# 返回值每列是一个块，第一行是起点，第二行是终点
+#
+ChunkPoints <- function(dsize, csize) {
+  return(vapply( #vapply 比其他apply相对安全: 能校验返回值的数据类型和个数。
+    X = 1L:ceiling(x = dsize / csize), # 要分的块数，有小数了取后一个整数
+    FUN = function(i) {
+      return(c(
+        start = (csize * (i - 1L)) + 1L, #起点是1, (2-1)*csize+1, ...
+        end = min(csize * i, dsize) #终点是 csize, csize*2, ..., dsize
+      ))
+    },
+    FUN.VALUE = numeric(length = 2L) #返回值是2个整数
+  ))
+}
+
+
+测试:
+> Seurat:::ChunkPoints(100, 10)
+      [,1] [,2] [,3] [,4] [,5] [,6] [,7] [,8] [,9] [,10]
+start    1   11   21   31   41   51   61   71   81    91
+end     10   20   30   40   50   60   70   80   90   100
+
+> Seurat:::ChunkPoints(100, 35)
+      [,1] [,2] [,3]
+start    1   36   71
+end     35   70  100
+
+
+
+
+
+
+(8) 把数字分组: 从n1到n2之间的整数，每隔by=n个数字的整数分到一组
+> seq.int(4, to=100, by=10)
+ [1]  4 14 24 34 44 54 64 74 84 94
+
+> seq(4,100, 10)
+ [1]  4 14 24 34 44 54 64 74 84 94
+
+
+源码
+merge.indices <- lapply(
+  X = 1:length(x = split.cells),
+  FUN = seq.int,
+  to = length(x = object),
+  by = length(x = split.cells)
+)
+示例 
+lapply(
+  X = 1:3,
+  FUN = seq.int,
+  to = 20,
+  by = 3
+)
+输出:
+[[1]]
+[1]  1  4  7 10 13 16 19
+
+[[2]]
+[1]  2  5  8 11 14 17 20
+
+[[3]]
+[1]  3  6  9 12 15 18
+
+
+
+
+
+(9) 首字母大写的函数
+源码:
+msg <- paste0(
+  toupper(x = substr(x = msg, start = 1, stop = 1)), #首字母大写
+  substr(x = msg, start = 2, stop = nchar(x = msg)), #取其余字母
+  ' data matrix'
+)
+
+实现:
+Capitalize=function(arr){
+   paste0(
+    toupper(x = substr(x = arr, start = 1, stop = 1)), #首字母大写
+    substr(x = arr, start = 2, stop = nchar(x = arr)) #取其余字母
+  )
+}
+Capitalize( colnames(mtcars))
+# [1] "Mpg"  "Cyl"  "Disp" "Hp"   "Drat" "Wt"   "Qsec" "Vs"   "Am"   "Gear" "Carb"
+
+
+
+
+
+(10) 文字进度条 utils::txtProgressBar()
+源码:
+pb <- txtProgressBar(min = 0, max = max.block, style = 3, file = stderr())
+...
+for (i in 1:max.block) {
+	...
+	setTxtProgressBar(pb = pb, value = i)
+	...
+}
+close(con = pb)
+
+源码2:
+pb <- txtProgressBar(char = '=', style = 3, file = stderr())
+for (i in 1:length(x = features.regress)) {
+	setTxtProgressBar(pb = pb, value = i / length(x = features.regress)) #进度条
+}
+close(con = pb)
+
+
+
+示例:
+library(utils)
+max.block=100
+pb <- txtProgressBar(min = 0, max = max.block, style = 3, file = stderr())
+
+for (i in 1:max.block) {
+  Sys.sleep(0.01+runif(1)/10)
+  setTxtProgressBar(pb = pb, value = i)
+}
+close(con = pb)
+
+
+
+
+
+
+(11) formals() 返回获取函数参数列表
+
+> formals(plot)
+$x
+
+$y
+
+$...
+
+> names(formals(plot))
+[1] "x"   "y"   "..."
+
+
+# 如果有默认参数
+fn1=function(x, y=1){
+  x+y
+}
+formals(fn1)
+$x
+
+$y
+[1] 1
+
+
+
+
+(12) base::sweep() 把一个矩阵整体减去某个统计参数
+Return an array obtained from an input array by sweeping out a summary statistic.
+
+sweep(x, MARGIN, STATS, FUN = "-", check.margin = TRUE, ...)
+
+例1:
+> x=iris[1:2,1:4]
+> x
+  Sepal.Length Sepal.Width Petal.Length Petal.Width
+1          5.1         3.5          1.4         0.2
+2          4.9         3.0          1.4         0.2
+> sweep(x, MARGIN=1, STATS=c(5,4), FUN = "-") #按行减去值
+  Sepal.Length Sepal.Width Petal.Length Petal.Width
+1          0.1        -1.5         -3.6        -4.8
+2          0.9        -1.0         -2.6        -3.8
+> sweep(x, MARGIN=2, STATS=c(5,3,1,0), FUN = "-") #按列减去值
+  Sepal.Length Sepal.Width Petal.Length Petal.Width
+1          0.1         0.5          0.4         0.2
+2         -0.1         0.0          0.4         0.2
+
+
+
+例2: 矩阵每列减去本列的平均值
+> df1=mtcars[1:3, 1:5]
+> df1
+               mpg cyl disp  hp drat
+Mazda RX4     21.0   6  160 110 3.90
+Mazda RX4 Wag 21.0   6  160 110 3.90
+Datsun 710    22.8   4  108  93 3.85
+> sweep(df1, 
+       MARGIN=2, 
+       STATS= apply(df1, 2, mean),
+       FUN="-"
+)
+               mpg        cyl      disp         hp        drat
+Mazda RX4     -0.6  0.6666667  17.33333   5.666667  0.01666667
+Mazda RX4 Wag -0.6  0.6666667  17.33333   5.666667  0.01666667
+Datsun 710     1.2 -1.3333333 -34.66667 -11.333333 -0.03333333
+
+
+
+
+
+
+
+4. PR 
+(1) 有且仅有一个基因作为噪音时会导致错误
+pbmc_small3 <- ScaleData(pbmc_small, features = all.genes,
+                         vars.to.regress = c("nFeature_RNA", "CD79A"))
+# PR: https://github.com/satijalab/seurat/pull/5763
+
+
+
+
+
+
+
+========================================
+|-- Seurat 4 R包源码解析 17: 使用模型去除数据噪音 - 续 ScaleData
+----------------------------------------
+1. 概述
+本文是上一篇 ScaleData() 的解释说明。建议先阅读上一节的相关描述。
+
+主要是使用R手工实现该处理流程，并适当关心数学推导。
+所以本文结构和以往略有不同，还有很多部分留给未来完善。
+
+我们忽略参数验证、日志记录等辅助功能，也暂时不讲 多线程、C++加速代码，这次只看最简单的实现。
+
+
+(1) 模型去噪音的核心语句
+
+本文接下来重点关注 Seurat 默认使用的线性模型，最后稍微也了解一下其他两个模型，泊松、负二项分布。
+
+    # (B4) 回归后的残差向量
+    regression.mat <- switch(
+      EXPR = model.use,
+      
+      # 默认是 线性 模型:
+      'linear' = qr.resid(qr = qr, y = data.expr[x,]),
+
+      'poisson' = residuals(object = glm(
+        formula = fmla,
+        family = 'poisson',
+        data = regression.mat),
+        type = 'pearson'
+      ),
+
+      'negbinom' = NBResiduals(
+        fmla = fmla,
+        regression.mat = regression.mat,
+        gene = x
+      )
+    )
+    # (B5) 把残差放回到原空 残差矩阵中第i行(symbol)
+    data.resid[i, ] <- regression.mat
+
+
+
+(2) 打算通过几个实例，通过R手工实现处理流程，得出 Seurat::ScaleData() 的结果。
+数据: Seurat 4 自带的小数据及 pbmc_small.
+方法: 我们先使用普通 lm 拟合，最后关心一下矩阵的QR分解是怎么节省运行时间的。
+基因: 都是 scale 全部基因。
+
+
+	默认参数仅 scale，不回归
+	回归掉 nFeature_RNA
+	回归掉 nFeature_RNA, CD79A #当只有一个基因时，有bug: https://github.com/satijalab/seurat/pull/5763
+	使用 QR 分解求残差
+
+
+
+2. 实例1: 默认参数仅 center and scale，不回归
+(1) 函数处理
+library(Seurat)
+all.genes <- rownames(pbmc_small)
+pbmc_small1 <- ScaleData(pbmc_small, features = all.genes)
+#原始子集可能是先处理再取子集，所以，以新处理的结果为准
+scale1=pbmc_small1@assays$RNA@scale.data
+
+> head(scale1[,1:4])
+         ATGCCAGAACGACT CATGGCCTGTGCAT GAACCTGATGAACC TGACTGGATTCTCA
+MS4A1        -0.4087672     -0.4087672     -0.4087672     -0.4087672
+CD79B         1.6399067     -0.6145940     -0.6145940     -0.6145940
+CD79A        -0.4275544     -0.4275544     -0.4275544     -0.4275544
+HLA-DRA      -1.3746590      0.2874881     -1.3746590     -1.3746590
+TCL1A        -0.3288515     -0.3288515     -0.3288515     -0.3288515
+HLA-DQB1      1.3697287     -0.7501683     -0.7501683     -0.7501683
+
+
+
+(2) 手动处理
+data=as.matrix(pbmc_small@assays$RNA@data)
+out1=sweep(data, 1, apply(data, 1, mean), "-") #每行 减去 改行的均值
+out1_=t(scale(t(out1))) # 除以每行的sd，由于 scale 是按列计算的，所以要
+
+> head(out1_[,1:4])
+         ATGCCAGAACGACT CATGGCCTGTGCAT GAACCTGATGAACC TGACTGGATTCTCA
+MS4A1        -0.4087672     -0.4087672     -0.4087672     -0.4087672
+CD79B         1.6399067     -0.6145940     -0.6145940     -0.6145940
+CD79A        -0.4275544     -0.4275544     -0.4275544     -0.4275544
+HLA-DRA      -1.3746590      0.2874881     -1.3746590     -1.3746590
+TCL1A        -0.3288515     -0.3288515     -0.3288515     -0.3288515
+HLA-DQB1      1.3697287     -0.7501683     -0.7501683     -0.7501683
+
+> # check
+> table(scale1-out1_<1e-10)
+
+ TRUE 
+18400 
+
+
+# scale 步骤也可以使用 sweep 实现，就是每一行除以该行的sd
+# more detail
+out1_m=sweep(out1, 1, apply(out1, 1, sd), "/")
+head(out1_m[,1:4])
+table( abs(out1_m - scale1)<1e-10)
+# TRUE 
+# 18400 
+
+
+(3) 其实可以只用scale函数
+默认 scale() 会做 -mean 处理
+
+> out1_2=t(scale(t(data))); out1_2[1:6, 1:4]
+         ATGCCAGAACGACT CATGGCCTGTGCAT GAACCTGATGAACC TGACTGGATTCTCA
+MS4A1        -0.4087672     -0.4087672     -0.4087672     -0.4087672
+CD79B         1.6399067     -0.6145940     -0.6145940     -0.6145940
+CD79A        -0.4275544     -0.4275544     -0.4275544     -0.4275544
+HLA-DRA      -1.3746590      0.2874881     -1.3746590     -1.3746590
+TCL1A        -0.3288515     -0.3288515     -0.3288515     -0.3288515
+HLA-DQB1      1.3697287     -0.7501683     -0.7501683     -0.7501683
+
+> table(scale1-out1_2<1e-10)
+
+ TRUE 
+18400
+
+
+
+
+
+3. 回归掉 meta.data 中的 nFeature_RNA
+(1) 函数处理
+all.genes <- rownames(pbmc_small)
+pbmc_small2 <- ScaleData(pbmc_small, features = all.genes,
+                         vars.to.regress = c("nFeature_RNA"))
+scale2=pbmc_small2@assays$RNA@scale.data
+> head(scale2[,1:4])
+         ATGCCAGAACGACT CATGGCCTGTGCAT GAACCTGATGAACC TGACTGGATTCTCA
+MS4A1        -0.5697943     -0.4870271     -0.5201340     -0.4208134
+CD79B         1.5871138     -0.6495834     -0.6653221     -0.6181060
+CD79A        -0.5366787     -0.4789847     -0.5020623     -0.4328295
+HLA-DRA      -1.2835170      0.4003885     -1.3552421     -1.4986922
+TCL1A        -0.4787296     -0.3997651     -0.4313509     -0.3365935
+HLA-DQB1      1.5729696     -0.7201429     -0.6867491     -0.7869305
+
+
+(2) 半手动处理
+data=as.matrix(pbmc_small@assays$RNA@data)
+# 先回归掉噪声
+latent.data=pbmc_small[['nFeature_RNA']]
+
+obj = Seurat:::RegressOutMatrix(
+  data.expr = data,
+  latent.data = latent.data, #潜在回归数据 的子集
+  features.regress = rownames(data), #要回归的基因
+  model.use = "linear",
+  use.umi = F,
+  verbose = T
+)
+obj2=t(scale(t(obj)))
+
+> head(obj2[,1:4])
+         ATGCCAGAACGACT CATGGCCTGTGCAT GAACCTGATGAACC TGACTGGATTCTCA
+MS4A1        -0.5697943     -0.4870271     -0.5201340     -0.4208134
+CD79B         1.5871138     -0.6495834     -0.6653221     -0.6181060
+CD79A        -0.5366787     -0.4789847     -0.5020623     -0.4328295
+HLA-DRA      -1.2835170      0.4003885     -1.3552421     -1.4986922
+TCL1A        -0.4787296     -0.3997651     -0.4313509     -0.3365935
+HLA-DQB1      1.5729696     -0.7201429     -0.6867491     -0.7869305
+> table(abs(scale2-obj2)<1e-10)
+
+ TRUE 
+18400 
+
+
+
+(3) 全手动处理
+data=as.matrix(pbmc_small@assays$RNA@data)
+# regress out
+resid.mat=matrix(
+  nrow=nrow(data),
+  ncol=ncol(data)
+)
+dim(resid.mat)
+# begin for each gene: gene ~ vars.
+for(i in 1:nrow(data)){
+  data2=cbind(latent.data, data[i,])
+  colnames(data2)=c(colnames(latent.data), "GENE")
+  model=lm(GENE~nFeature_RNA, data=data2) #模型 Gene~噪音变量名+变量名2
+  resid=data[i,]-predict(model) #残差: 原始值 - 预测值
+  resid.mat[i,]=resid
+}
+# scale
+obj2_m=t(scale(t(resid.mat)))
+#dimnames(obj2_m)=dimnames(data)
+head(obj2_m[,1:4])
+# test matrix equal
+
+> table(scale2-obj2_m<1e-10)
+
+ TRUE 
+18400 
+
+
+
+
+
+
+4. 回归掉 nFeature_RNA, 和一个基因 CD79A，有bug
+
+all.genes <- rownames(pbmc_small)
+pbmc_small3 <- ScaleData(pbmc_small, features = all.genes,
+                         vars.to.regress = c("nFeature_RNA", "CD79A"))
+scale3=pbmc_small2@assays$RNA@scale.data
+head(scale3[,1:4])
+
+# bug 
+vars.to.regress = c("nFeature_RNA", "CD79A")
+object=data
+latent.data=pbmc_small[["nFeature_RNA"]]
+#
+vars.to.regress[vars.to.regress %in% rownames(x = object)]
+t(object[vars.to.regress[vars.to.regress %in% rownames(x = object)], , drop=F])
+t(x = object[vars.to.regress[vars.to.regress %in% rownames(x = object)], ]) #bug: no df shape
+
+#
+if (any(vars.to.regress %in% rownames(x = object))) {
+  # add gene exp to latent.data
+  latent.data <- cbind(
+    latent.data,
+    t(x = object[vars.to.regress[vars.to.regress %in% rownames(x = object)], ]) #bug
+    #t(x = object[vars.to.regress[vars.to.regress %in% rownames(x = object)], ,drop=F])
+  )
+}
+head(latent.data[, 1:4])
+# https://github.com/satijalab/seurat/pull/5763
+
+> head(latent.data[, 1:4])
+               nFeature_RNA ATGCCAGAACGACT CATGGCCTGTGCAT GAACCTGATGAACC
+ATGCCAGAACGACT           47              0              0              0
+CATGGCCTGTGCAT           52              0              0              0
+GAACCTGATGAACC           50              0              0              0
+TGACTGGATTCTCA           56              0              0              0
+AGTCAGACTGCACA           53              0              0              0
+TCTGATACACGTGT           48              0              0              0
+
+
+
+
+
+
+5.回归掉 nFeature_RNA, CD79A CD8A
+(1) 函数计算
+all.genes <- rownames(pbmc_small)
+pbmc_small4 <- ScaleData(pbmc_small, features = all.genes,
+                         vars.to.regress = c("nFeature_RNA", "CD79A", "CD8A"))
+scale4=pbmc_small4@assays$RNA@scale.data
+
+> head(scale4[,1:4])
+         ATGCCAGAACGACT CATGGCCTGTGCAT GAACCTGATGAACC TGACTGGATTCTCA
+MS4A1        -0.2682047     0.02320886     -0.2303838    -0.15474204
+CD79B         2.4493308    -0.33695723     -0.4651794    -0.45852800
+CD79A         1.0269414     0.31089678     -8.7355452     0.13828548
+HLA-DRA      -1.1821658     0.79358748     -1.2895924    -1.50444538
+TCL1A        -0.1812479     0.02156459     -0.1476698    -0.08051371
+HLA-DQB1      2.4832829    -0.30960741     -0.5062450    -0.69271924
+
+
+
+
+(2) 半手动处理
+data=as.matrix(pbmc_small@assays$RNA@data)
+# 先回归掉噪声
+vars.to.regress=c("nFeature_RNA", "CD79A", "CD8A")
+latent.data=pbmc_small[['nFeature_RNA']]
+latent.data=cbind(latent.data, 
+                  t(x = object[vars.to.regress[vars.to.regress %in% rownames(x = object)], ]) )
+head(latent.data)
+
+obj = Seurat:::RegressOutMatrix(
+  data.expr = data,
+  latent.data = latent.data, #潜在回归数据 的子集
+  features.regress = rownames(data), #要回归的基因
+  model.use = "linear",
+  use.umi = F,
+  verbose = T
+)
+obj2=t(scale(t(obj)))
+head(obj2[,1:4])
+
+# check
+> table(abs(scale4-obj2)<1e-10) #no F
+
+ TRUE 
+18400 
+
+
+(3) 手动处理
+# regress out vars
+data=as.matrix(pbmc_small@assays$RNA@data)
+latent.data=FetchData(pbmc_small, vars=c("nFeature_RNA", "CD79A", "CD8A"),
+                      slot="data")
+head(latent.data)
+#vars.to.regress <- colnames(x = latent.data)
+# regress out
+resid.mat=matrix(
+  nrow=nrow(data),
+  ncol=ncol(data)
+)
+dim(resid.mat) #230 80
+# begin for each gene: gene ~ vars.
+for(i in 1:nrow(data)){
+  data2=cbind(latent.data, data[i,])
+  colnames(data2)=c(colnames(latent.data), "GENE")
+  model=lm(GENE~nFeature_RNA+CD79A+CD8A, data=data2) #模型 Gene~噪音变量名+变量名2
+  resid=data[i,]-predict(model) #残差: 原始值 - 预测值
+  resid.mat[i,]=resid
+}
+#check
+table(abs(resid.mat-obj)<1e-10) #no F
+
+
+# scale
+obj4=t(scale(t(resid.mat)))
+dimnames(obj4)=dimnames(data)
+head(obj4[,1:4])
+head(scale4[,1:4]) # Seurat 函数计算结果
+# check
+table(abs(obj4-obj2)<1e-10) #160个F
+table(abs(scale4-obj4)<1e-10) #160个F。
+# 一列80个，正好2个被回归的基因和Seurat结果有差异
+
+FALSE  TRUE 
+  160 18240 
+
+
+
+(4) 查找原因
+a1=obj; a2=obj2;
+b1=resid.mat; b2=obj4;
+dimnames(b1)=dimnames(data)
+#
+table(abs(a1-b1)<1e-10) #no F
+table(abs(a2-b2)<1e-10) #160 F
+#
+#
+table(abs(a1-b1)<1e-10) #no F
+table(abs(a1-b1)<1e-14) #15 F
+table(abs(a1-b1)<1e-15) #1.8k F 说明都是小数点后面13位后的差异
+#
+# 或许应该全部设置为0，而不是留着，否则 (x-mean)/sd 可能特别大
+# 这个舍入误差可能是 QR 分解造成的
+
+> gene1="CD79B";head(a1[gene1,]);head(b1[gene1,])
+ATGCCAGAACGACT CATGGCCTGTGCAT GAACCTGATGAACC TGACTGGATTCTCA AGTCAGACTGCACA TCTGATACACGTGT 
+     4.1709973     -0.5738089     -0.7921601     -0.7808333     -0.7864967     -0.7959357 
+ATGCCAGAACGACT CATGGCCTGTGCAT GAACCTGATGAACC TGACTGGATTCTCA AGTCAGACTGCACA TCTGATACACGTGT 
+     4.1709973     -0.5738089     -0.7921601     -0.7808333     -0.7864967     -0.7959357 
+> gene1="CD79A";head(a1[gene1,]);head(b1[gene1,]) #全是极小的数，
+ATGCCAGAACGACT CATGGCCTGTGCAT GAACCTGATGAACC TGACTGGATTCTCA AGTCAGACTGCACA TCTGATACACGTGT 
+  2.088779e-15   6.323580e-16  -1.776793e-14   2.812700e-16   3.588664e-16   3.031566e-16 
+ATGCCAGAACGACT CATGGCCTGTGCAT GAACCTGATGAACC TGACTGGATTCTCA AGTCAGACTGCACA TCTGATACACGTGT 
+  9.672066e-16   4.330893e-16   9.076219e-16   7.884525e-16   8.480372e-16   9.473450e-16
+
+
+
+
+
+
+6. 手动处理2: 使用 QR 分解
+接上文。
+
+(1) R手工实现 矩阵QR分解求残差
+
+# regress out vars
+data=as.matrix(pbmc_small@assays$RNA@data)
+latent.data=FetchData(pbmc_small, vars=c("nFeature_RNA", "CD79A", "CD8A"),
+                      slot="data")
+head(latent.data)
+vars.to.regress <- colnames(x = latent.data)
+# qr 
+data2=cbind(latent.data, data[1,])
+colnames(data2)=c(colnames(latent.data), "GENE")
+qr=lm(GENE~nFeature_RNA+CD79A+CD8A, data=data2, qr=T)$qr
+str(qr)
+
+# regress out
+resid.mat=matrix(
+  nrow=nrow(data),
+  ncol=ncol(data)
+)
+dim(resid.mat) #230 80
+# begin for each gene: gene ~ vars.
+for(i in 1:nrow(data)){
+  resid.mat[i,]=qr.resid(qr = qr, y = data[i,])
+}
+obj5=t(scale(t(resid.mat)))
+
+> table( abs(scale4 - obj5)<1e-10 )
+
+ TRUE 
+18400 
+
+
+
+(2) 数学原理 //todo
+
+qr 分解 求残差
+
+
+
+
+
+
+
+
+
+(3). 如何理解施密特（Schmidt）正交化
+
+https://zhuanlan.zhihu.com/p/136627868
+
+根据定义，内积<a1,a2>等于一个的长度另一个再这个上面的投影，所以假设b1是a1在a2上的投影，则 <a1,a2>=|b1| x |a2|;
+而 |a2|^2 = <a2, a2>，a2方向上的单位向量 i=a2 / |a2|
+则 b1=|b1| x i = <a1, a2> /|a2| x a2/|a2| = <a1,a2>/<a2,a2> x a2
+
+
+
+
+
+
+7. 广义线性模型 之 泊松分布
+
+fitted.model <- glm(formula, family=family.generator, data=data.frame)
+
+其中 formula 是拟合公式，这里的意义与线性模型相同。
+family 是分布族，即前面讲到的广义线性模型的种类，如 正态分布、Poisson 分布、二项分布等。
+data 是数据框，与lm模型相同。
+
+      'poisson' = residuals(object = glm(
+        formula = fmla,
+        family = 'poisson',
+        data = regression.mat),
+        type = 'pearson'
+      ),
+
+实例:
+#
+df1=iris[,1:4]*10 #泊松分布只能输入整数
+colnames(df1)=c("Y", paste0("X", 1:3) )
+head(df1)
+fit=glm(
+  formula=Y~X1+X2+X3,
+  family = 'poisson',
+  data=df1
+)
+fit
+summary(fit)
+y.resid=residuals(fit, type = "pearson")
+
+# 查看残差的分布
+hist(y.resid, n=30)
+
+
+
+
+
+8. 负二项分布模型
+
+      'negbinom' = NBResiduals(
+        fmla = fmla,
+        regression.mat = regression.mat,
+        gene = x
+      )
+
+定义:
+./seurat-4.1.0/R/preprocessing.R:3324:NBResiduals <- function(fmla, regression.mat, gene, return.mode = FALSE) {
+./seurat-4.1.0/NAMESPACE:375:importFrom(MASS,glm.nb)
+
+
+#
+#' @importFrom stats residuals
+#
+NBResiduals <- function(fmla, regression.mat, gene, return.mode = FALSE) {
+  # 
+  fit <- 0
+  
+  try(
+    fit <- glm.nb(
+      formula = fmla,
+      data = regression.mat
+    ),
+    silent = TRUE)
+	
+  if (is.numeric(x = fit)) {
+    message(sprintf('glm.nb failed for gene %s; falling back to scale(log(y+1))', gene))
+    resid <- scale(x = log(x = regression.mat[, 'GENE'] + 1))[, 1]
+    mode <- 'scale'
+  } else {
+    resid <- residuals(fit, type = 'pearson')
+    mode = 'nbreg'
+  }
+  
+  do.return <- list(resid = resid, mode = mode)
+  
+  if (return.mode) {
+    return(do.return)
+  } else {
+    return(do.return$resid)
+  }
+  
+}
+
+
+实例:
+fit2=MASS::glm.nb(
+  formula = Y~X1+X2+X3,
+  data = df1
+)
+fit2
+summary(fit2)
+
+y.resid2 <- residuals(fit2, type = 'pearson')
+# 查看残差的分布
+hist(y.resid2, n=30)
+
+
+
+
+
+
+
+
+
+
+
+
+
+========================================
+|-- Seurat 4 R包源码解析 18: step8 线性降维 RunPCA() 主成分分析及数学原理
+----------------------------------------
+
+1. 调包侠
+# step8 (PCA) Perform linear dimensional reduction
+pbmc <- RunPCA(pbmc, features = VariableFeatures(object = pbmc))
+
+# Examine and visualize PCA results a few different ways
+#print(pbmc[["pca"]], dims = 1:5, nfeatures = 5)
+# VizDimLoadings(pbmc, dims = 1:2, reduction = "pca")
+DimPlot(pbmc, reduction = "pca")
+
+# DimHeatmap(pbmc, dims = 1, cells = 500, balanced = TRUE)
+# DimHeatmap(pbmc, dims = 1:15, cells = 500, balanced = TRUE)
+
+
+注:
+本文以实战为主，顺便说一些必要的数学原理。
+数学部分有不严谨的地方，欢迎留言批评指正。
+本文仅讨论最核心的PCA计算过程，后面的可视化及涉及到的内部类放到下一篇。
+
+
+
+(1) run PCA 可以指定基因列表，如果没有指定，则使用高变基因。
+RunPCA(sce, features=c(......))
+
+VariableFeatures() 函数在 源码解析 10 (2.6)中说过。
+返回的就是 assay对象( pbmc_small@assays$RNA )的 var.features slot
+
+> str(pbmc@assays$RNA@var.features )
+chr [1:2000] "PPBP" "LYZ" "S100A9" "IGLL5"
+
+
+RunPCA() 没有指定 features 则使用高变基因。
+做PCA使用的数据是 scale.data。
+features 必须在 scaled data 中，如果不在或者 variance=0 则舍弃，用其余的做PCA。
+
+
+
+(2) 主力函数 #' @importFrom stats prcomp
+
+(3) 主成分分析概述
+主成分分析的主要思想，是选择变异最大的方向作为第一维，然后在垂直第一维的方向选择变异最大的第二维，然后再在垂直第1-2维的方向选择变异最大的方向作为第三维，以此类推。我们发现大部分方差都集中在前面几个新坐标轴中了。忽略其余坐标轴，就完成了数据的线性降维处理。
+数学上，我们一般把数据中心化为A，然后求其协方差矩阵的特征值和特征向量 A.x=lambda.x 。特征向量构成的矩阵就是旋转矩阵，原始矩阵中心化后，点乘该旋转矩阵，就得到了新坐标系统里的位置，也就是embeding。特征根开平方根就是每个PC解释的方差。
+为了简化运算，一般使用奇异值分解 SVD 代替特征值分解: A=U.D.V^T。
+Seurat 使用奇异值/根号(细胞数-1) 最为对应主成分的方差，右奇异矩阵V作为旋转矩阵。左奇异矩阵u 点乘 奇异值对角矩阵 作为细胞的新坐标。
+# object 是 gene*cell 矩阵，scale.data。
+pca.results <- irlba(A = t(x = object), nv = npcs, ...) #转置后，对列(gene)奇异值分解
+feature.loadings <- pca.results$v #右矩阵v是 gene 的loading
+sdev <- pca.results$d/sqrt(max(1, ncol(object) - 1)) #特征根 / 根号(列数 - 1)
+# 左奇异矩阵 u 是 cell embeddings，乘以 var 权重
+cell.embeddings <- pca.results$u %*% diag(pca.results$d)
+
+
+
+
+亮点：我们在本篇 3.3 手工实现了一个PCA函数，输出结果和 prcomp() 一致。感兴趣的可以看看，虽然简单但是大致功能都有了。
+
+
+
+
+
+
+2. 源码解析
+(1)直接使用的函数
+- RunPCA
+- DimPlot 以后再说 //todo
+- DimHeatmap 下一篇说
+
+
+
+(2)间接使用的函数
+- LogSeuratCommand
+- RowVarSparse: ./seurat-4.1.0/R/utilities.R:2345:RowVarSparse <- function(mat) {
+	* row_var_dgcmatrix: ./seurat-4.1.0/R/RcppExports.R:120:row_var_dgcmatrix <- function(x, i, rows, cols) {
+- RowVar, C 函数 ./seurat-4.1.0/R/RcppExports.R:64:RowVar <- function(x) {
+
+
+
+
+
+
+
+
+
+
+3. R tips
+
+
+(1) 近似PCA: irlba::irlba() 部分奇异值分解
+Find a few approximate singular values and corresponding singular vectors of a matrix.
+
+
+# 定义矩阵
+A=matrix( c(2,1, 1,
+            1, 2, 1,
+            1, 1, 2), nrow=3, byrow = T);A
+
+
+
+
+#1) eigen() 求特征值和特征向量
+> Aeigen=eigen(A); Aeigen
+eigen() decomposition
+$values
+[1] 4 1 1
+# 文档说是降序排列的特征值 values: a vector containing the p eigenvalues of x, sorted in decreasing order, 
+
+$vectors
+           [,1]       [,2]       [,3]
+[1,] -0.5773503  0.0000000  0.8164966
+[2,] -0.5773503 -0.7071068 -0.4082483
+[3,] -0.5773503  0.7071068 -0.4082483
+
+
+# 检查 A*x = lambda*x
+> A %*% Aeigen$vectors
+          [,1]       [,2]       [,3]
+[1,] -2.309401  0.0000000  0.8164966
+[2,] -2.309401 -0.7071068 -0.4082483
+[3,] -2.309401  0.7071068 -0.4082483
+> Aeigen$values * Aeigen$vectors
+           [,1]       [,2]       [,3]
+[1,] -2.3094011  0.0000000  3.2659863
+[2,] -0.5773503 -0.7071068 -0.4082483
+[3,] -0.5773503  0.7071068 -0.4082483
+
+# 检查2: A=U.B.U^-1
+> Aeigen$vectors %*% diag(Aeigen$values) %*% solve(Aeigen$vectors)
+     [,1] [,2] [,3]
+[1,]    2    1    1
+[2,]    1    2    1
+[3,]    1    1    2
+
+
+
+
+
+#2) svd() 奇异值分解 A=U.D.V^T
+> rs=svd(A);rs
+$d
+[1] 4 1 1 #给的是特征值 = 奇异值的平方
+# 文档说降序排列的奇异值: d: a vector containing the singular values of x, of length min(n, p), sorted decreasingly.
+
+$u
+           [,1]       [,2]          [,3]
+[1,] -0.5773503  0.8164966 -5.041791e-17
+[2,] -0.5773503 -0.4082483 -7.071068e-01
+[3,] -0.5773503 -0.4082483  7.071068e-01
+
+$v
+           [,1]       [,2]       [,3]
+[1,] -0.5773503  0.8164966  0.0000000
+[2,] -0.5773503 -0.4082483 -0.7071068
+[3,] -0.5773503 -0.4082483  0.7071068
+
+# 还原矩阵
+> rs$u %*% diag(rs$d) %*% t(rs$v)
+     [,1] [,2] [,3]
+[1,]    2    1    1
+[2,]    1    2    1
+[3,]    1    1    2
+
+
+
+
+
+
+#3) 求部分奇异值，nv<min(nrow(A), ncol(A))
+> pca.results <- irlba(A = A, nv = 2); pca.results
+Warning in irlba(A = A, nv = 2) :
+  You're computing too large a percentage of total singular values, use a standard svd instead.
+$d
+[1] 4 1 
+# 帮助文档说d是近似奇异值 d: max(nu, nv) approximate singular values
+
+$u
+           [,1]       [,2]
+[1,] -0.5773503  0.8164966
+[2,] -0.5773503 -0.4082483
+[3,] -0.5773503 -0.4082483
+
+$v
+           [,1]       [,2]
+[1,] -0.5773503  0.8164966
+[2,] -0.5773503 -0.4082483
+[3,] -0.5773503 -0.4082483
+
+$iter
+[1] 0
+
+$mprod
+[1] 0
+
+
+# 还原矩阵 U.B.V^T
+> pca.results$u %*% diag(pca.results$d) %*% t(pca.results$v)
+     [,1] [,2] [,3]
+[1,]    2  1.0  1.0
+[2,]    1  1.5  1.5
+[3,]    1  1.5  1.5
+有些元素还原的不好，毕竟缺了一个特征向量
+
+
+
+
+
+
+
+
+
+
+
+
+(2) 精确PCA: prcomp()
+pca.results <- prcomp(x = t(object), rank. = npcs, ...)
+
+接上文。
+> A
+     [,1] [,2] [,3]
+[1,]    2    1    1
+[2,]    1    2    1
+[3,]    1    1    2
+
+> pca.results <- prcomp(x = A); pca.results 
+Standard deviations (1, .., p=3):
+[1] 7.071068e-01 7.071068e-01 1.586363e-16
+
+Rotation (n x k) = (3 x 3):
+            PC1        PC2       PC3
+[1,]  0.8164966  0.0000000 0.5773503
+[2,] -0.4082483 -0.7071068 0.5773503
+[3,] -0.4082483  0.7071068 0.5773503
+
+> pca.results$x
+            PC1           PC2          PC3
+[1,]  0.8164966  5.551115e-17 1.665335e-16
+[2,] -0.4082483 -7.071068e-01 8.326673e-17
+[3,] -0.4082483  7.071068e-01 1.110223e-16
+> pca.results$rotation
+
+
+
+
+2) 返回值 Value 
+prcomp returns a list with class "prcomp" containing the following components:
+
+# sdev 主成分的标准误差(协方差矩阵的特征根的开方，虽然这个实际上是用矩阵的奇异值计算的)
+the standard deviations of the principal components (i.e., the square roots of the eigenvalues of the covariance/correlation matrix, though the calculation is actually done with the singular values of the data matrix).
+
+# rotation 特征向量矩阵，每一列是一个特征向量。
+the matrix of variable loadings (i.e., a matrix whose columns contain the eigenvectors). The function princomp returns this in the element loadings.
+
+# x	如果 retx==T，返回旋转后的数据: center后的矩阵 * 旋转矩阵。所以协方差矩阵就是对角矩阵。
+if retx is true the value of the rotated data (the centred (and scaled if requested) data multiplied by the rotation matrix) is returned. Hence, cov(x) is the diagonal matrix diag(sdev^2). For the formula method, napredict() is applied to handle the treatment of values omitted by the na.action.
+
+
+
+
+3) 细节 Details
+使用对center后矩阵的奇异值分解方法，而不是使用协方差矩阵的特征根。
+这也是使数值更精确的推荐方法。
+The calculation is done by a singular value decomposition of the (centered and possibly scaled) data matrix, not by using eigen on the covariance matrix. This is generally the preferred method for numerical accuracy. 
+
+print和plot方法。
+The print method for these objects prints the results in a nice format and the plot method produces a scree plot.
+
+Unlike princomp, variances are computed with the usual divisor N - 1.
+
+有零值或常数项时不能使用 scale=T。
+Note that scale = TRUE cannot be used if there are zero or constant (for center = TRUE) variables.
+
+
+
+
+4) 进一步对 iris 数据做主成分分析
+> iris.pca=prcomp(iris[,1:4])
+> iris.pca #对列求线性组合
+Standard deviations (1, .., p=4):
+[1] 2.0562689 0.4926162 0.2796596 0.1543862
+
+Rotation (n x k) = (4 x 4):
+                     PC1         PC2         PC3        PC4
+Sepal.Length  0.36138659 -0.65658877  0.58202985  0.3154872
+Sepal.Width  -0.08452251 -0.73016143 -0.59791083 -0.3197231
+Petal.Length  0.85667061  0.17337266 -0.07623608 -0.4798390
+Petal.Width   0.35828920  0.07548102 -0.54583143  0.7536574
+
+
+> plot(iris.pca) #每个主成分的占比
+
+可见，默认是对列进行的。
+PC1=0.36*Sepal.Length -0.084*Sepal.Width +0.856*Petal.Length +0.35*Petal.Width
+通过对 feature 线性组合，得到一系列新的 feature 组合，这解决了单细胞矩阵中的大面积0的问题。至于是不是应对 0-inflation 最好的解决方法，有待研究。//todo
+
+
+从方差可见，第一个PC解释的变异最多。
+
+注意：对于 Seurat 的默认输入 gene*cell 矩阵，我们打算对基因进行线性组合，就要先做转置再求PCA。
+
+# 相当于旋转后的坐标系(特征向量组成的矩阵)
+feature.loadings <- pca.results$rotation #见上文。
+
+
+
+# 相当于每个细胞在各个新坐标系的坐标值
+cell.embeddings <- pca.results$x
+
+> head(iris.pca$x)
+           PC1        PC2         PC3          PC4
+[1,] -2.684126 -0.3193972  0.02791483  0.002262437
+[2,] -2.714142  0.1770012  0.21046427  0.099026550
+[3,] -2.888991  0.1449494 -0.01790026  0.019968390
+[4,] -2.745343  0.3182990 -0.03155937 -0.075575817
+[5,] -2.728717 -0.3267545 -0.09007924 -0.061258593
+[6,] -2.280860 -0.7413304 -0.16867766 -0.024200858
+
+对原矩阵做 center 后 * 旋转矩阵，得到每个观测值的新坐标
+注: 是做PCA的矩阵，如果当时转置后做PCA，这里也要用转置后center。
+默认 scale 函数是按照列 center(减去平均值) 和 scale(除以sd) 的。
+> head( scale(iris[,1:4], scale = F) %*% iris.pca$rotation)
+           PC1        PC2         PC3          PC4
+[1,] -2.684126 -0.3193972  0.02791483  0.002262437
+[2,] -2.714142  0.1770012  0.21046427  0.099026550
+[3,] -2.888991  0.1449494 -0.01790026  0.019968390
+[4,] -2.745343  0.3182990 -0.03155937 -0.075575817
+[5,] -2.728717 -0.3267545 -0.09007924 -0.061258593
+[6,] -2.280860 -0.7413304 -0.16867766 -0.024200858
+
+
+
+
+
+
+
+
+
+
+(3) 用R全手工实现 PCA(对比 prcomp() )
+不借助包，按照 《机器学习实战》P246的伪代码进行操作.
+
+1减去平均数
+2计算协方差矩阵
+3计算协方差矩阵的特征值和特征向量
+4将特征值从大到小排列
+5保留最上面的N个特征值
+6将数据转换到上述N个特征向量构建的新空间中。
+
+例1: 针对iris数据集
+
+head(iris)
+df1=iris[,1:4]
+#1) 减去平均值
+df1=sweep(x=df1, 
+          MARGIN=2, 
+          STATS=apply(df1, 2, mean),
+          FUN="-")
+head(df1)
+#2) 计算协方差矩阵
+cor.df1=cov(df1)
+#3) 计算协方差矩阵的特征值和特征向量
+eigen.df1=eigen(cor.df1)
+#4) 特征值默认降序
+eigen.df1
+#5) 保留最前面的几个特征值
+#6) 原center后的坐标 * 旋转矩阵
+coord.df1=as.matrix(df1) %*% eigen.df1$vectors
+dim(coord.df1)
+head(coord.df1)
+# plot
+coord.df1_=as.data.frame(coord.df1)
+colnames(coord.df1_)=paste0("PC_", 1:4)
+coord.df1_$type=iris$Species
+library(ggplot2)
+ggplot(coord.df1_, aes(PC_1, PC_2, color=type))+
+  geom_point()
+
+# prcomp() 做PCA
+pca.iris=prcomp(iris[,1:4])
+pca.iris
+
+# 对比旋转矩阵
+> pca.iris$rotation #prcomp()的计算结果
+                     PC1         PC2         PC3        PC4
+Sepal.Length  0.36138659 -0.65658877  0.58202985  0.3154872
+Sepal.Width  -0.08452251 -0.73016143 -0.59791083 -0.3197231
+Petal.Length  0.85667061  0.17337266 -0.07623608 -0.4798390
+Petal.Width   0.35828920  0.07548102 -0.54583143  0.7536574
+
+> eigen.df1$vectors #协方差矩阵的特征向量构成的矩阵
+            [,1]        [,2]        [,3]       [,4]
+[1,]  0.36138659 -0.65658877 -0.58202985  0.3154872
+[2,] -0.08452251 -0.73016143  0.59791083 -0.3197231
+[3,]  0.85667061  0.17337266  0.07623608 -0.4798390
+[4,]  0.35828920  0.07548102  0.54583143  0.7536574
+
+
+# 对比方差
+# 主成分的标准差，文档说是 协方差矩阵的特征值的平方根，虽然是通过SVD分解实现的
+# square roots of the eigenvalues of the covariance/correlation matrix
+# though the calculation is actually done with the singular values of the data matrix
+> pca.iris$sdev
+[1] 2.0562689 0.4926162 0.2796596 0.1543862
+
+> eigen.df1$values #特征根
+[1] 4.22824171 0.24267075 0.07820950 0.02383509
+
+#开方后确实等于 pca.iris$sdev
+> sqrt(eigen.df1$values)
+[1] 2.0562689 0.4926162 0.2796596 0.1543862
+
+
+
+
+
+
+把 以上过程包装成我们自定义的PCA函数
+
+#' 按列求CPA，结果模仿 prcomp
+#'
+#' @param df0 input a df, PCA on column
+#' @param ndims the total eigenvalue to use
+#'
+#' @return
+#' @export
+#'
+#' @examples
+#' 
+my_PCA=function(df0, ndims=NULL, scale=F){
+  # check params
+  if(!is.null(ndims)){
+    ndims=min(ndims, ncol(df0));
+  }else{
+    ndims=ncol(df0)
+  }
+  
+  #1) 减去平均值
+  center=apply(df0, 2, mean)
+  df1=sweep(x=df0, MARGIN=2, STATS=center, FUN="-")
+  # whether scale?
+  if(scale){
+    df1=scale(df1)
+  }
+  #2) 计算协方差矩阵
+  cor.df1=cov(df1)
+  #3) 计算协方差矩阵的特征值和特征向量
+  eigen.df1=eigen(cor.df1)
+  #4) 特征值默认降序
+  #eigen.df1
+  #5) 保留最前面的几个特征值
+  if(!is.null(ndims)){
+    message(">> Use the first ", ndims, " PCs.");
+    eigen.df1$values=eigen.df1$values[1:ndims]
+    eigen.df1$vectors=eigen.df1$vectors[,1:ndims]
+  }
+  #6) 原center后的坐标 * 旋转矩阵
+  coord.df1=as.matrix(df1) %*% eigen.df1$vectors
+  
+  # 对比旋转矩阵
+  rotation=eigen.df1$vectors #协方差矩阵的特征向量构成的矩阵
+  #
+  colnames(rotation)=paste0("PC_", 1:ndims)
+  rownames(rotation)= colnames(df1)
+  #
+  colnames(coord.df1)=colnames(rotation)
+  rownames(coord.df1)=rownames(df0)
+
+  #eigen.df1$values #特征根
+  sdev=sqrt(eigen.df1$values) #开方后确实等于 pca.iris$sdev
+  # return
+  obj=list(
+    sdev=sdev,
+    rotation=rotation,
+    center=center,
+    scale=scale,
+    x=coord.df1
+  )
+  class(obj)="my_PCA"
+  return(obj)
+}
+
+# test
+pca2.iris=my_PCA(iris[,1:4])
+# prcomp() 做PCA
+pca.iris=prcomp(iris[,1:4])
+
+# compare result
+str(pca.iris)
+str(pca2.iris)
+
+
+# test patial eigenvalue
+my_PCA(iris[,1:4], ndims = 2)
+prcomp(iris[,1:4], rank. = 2)
+
+# plot 
+coord.df1_=as.data.frame(pca2.iris$x)
+colnames(coord.df1_)=paste0("PC_", 1:4)
+coord.df1_$type=iris$Species
+library(ggplot2)
+ggplot(coord.df1_, aes(PC_1, PC_2, color=type))+
+  geom_point()
+
+
+
+
+
+
+
+
+
+
+(4) 半手工实现Seurat默认的PCA (pbmc_small)
+默认走的是源码解析中标号 A3-B1 的代码。我们去掉验证判断部分，只保留干活的语句。
+
+使用近似求解，部分奇异值，使用函数 irlba 做矩阵的 SVD 分解。
+A=U.D.V^T 
+使用 右奇异矩阵v 作为旋转矩阵;
+使用 左矩阵u . 特征根对角矩阵 作为有var权重的 cell embeding 也就是点的坐标。
+
+
+使用 pbmc_small 做测试。
+
+
+#1) 使用R包计算
+library(Seurat)
+dim(pbmc_small) #230 gene * 80 cell
+pbmc_small2=RunPCA(pbmc_small)
+# 每个细胞的坐标
+rs1=pbmc_small2@reductions$pca@cell.embeddings[1:4, 1:4]; rs1
+#DimPlot(pbmc_small2, reduction = "pca")
+
+
+#2) 手动计算
+# 输入
+object=pbmc_small2@assays$RNA@scale.data
+dim(object) #20 80
+npcs=50
+npcs <- min(npcs, nrow(x = object) - 1) # 至少是 行数-1
+
+set.seed(42)
+pca.results <- irlba::irlba(A = t(x = object), nv = npcs) #转置后，奇异值分解
+#feature.loadings <- pca.results$v #右矩阵v是 gene 的loading
+#sdev <- pca.results$d/sqrt(max(1, ncol(object) - 1)) #特征根 / 根号(列数 - 1)
+# 左奇异矩阵 u 是 cell embeddings * 特征值对角矩阵(var 权重)
+cell.embeddings <- pca.results$u %*% diag(pca.results$d)
+rownames(cell.embeddings) = colnames(object)
+
+> cell.embeddings[1:4, 1:4] #手工计算的
+                      [,1]       [,2]       [,3]       [,4]
+ATGCCAGAACGACT -0.77403708  0.8996461  0.2493078 -0.5585948
+CATGGCCTGTGCAT -0.02602702  0.3466795 -0.6651668 -0.4182900
+GAACCTGATGAACC -0.45650250 -0.1795811 -1.3175907 -2.0137210
+TGACTGGATTCTCA -0.81163243  1.3795340  1.0019320 -0.1390503
+
+> rs1 #Seurat R包生成的细胞坐标
+                      PC_1       PC_2       PC_3      PC_4
+ATGCCAGAACGACT -0.77403708 -0.8996461 -0.2493078 0.5585948
+CATGGCCTGTGCAT -0.02602702 -0.3466795  0.6651668 0.4182900
+GAACCTGATGAACC -0.45650250  0.1795811  1.3175907 2.0137210
+TGACTGGATTCTCA -0.81163243 -1.3795340 -1.0019320 0.1390503
+
+
+# 为什么 PC_2-4 的符号和 Seurat R包计算的相反?
+命名执行的是同样的语句!?
+
+也有人遇到这个问题了，但是是和其他R包函数比较:
+https://www.jianshu.com/p/887056e3123a
+https://github.com/satijalab/seurat/issues/751
+
+you can maybe try the following while computing PCA via stats::prcomp().
+
+# Use Seurat's scaled data to compare prcomp and irlba outputs 
+# using the same input matrix
+pcaRes <-  prcomp(t(x = object@scale.data), center = F, scale. = F) 
+
+Also, Seurat uses irlba::irlba() to compute PCA (links to paper(http://www.math.uri.edu/~jbaglama/papers/paper14.pdf) and package vignette). Typical output difference between prcomp and irlba with my data is that irlba results in PCs with lower cell embedding values (and a flip in the sign for some PCs) compared to prcomp.
+
+
+
+作者认为有些PC发生符号翻转(sign flip)是正常的:
+https://github.com/satijalab/seurat/issues/4848
+We do not sort/order the matrix based on gene or cell names before running it so providing these in different orders could result in a sign flip for some PC embeddings
+
+
+
+
+该包代码 https://github.com/bwlewis/irlba
+# Fast truncated singular value decompositions
+https://github.com/bwlewis/irlba/blob/master/R/irlba.R
+这个函数太难了，不打算看了。 //todo
+
+
+
+
+
+
+
+
+(5) 捕获输出到字符串或文件 capture.output()
+Send Output to a Character String or File
+
+实例1:
+> txt=capture.output(print("Hello, world!"))
+> txt
+[1] "[1] \"Hello, world!\""
+> message(txt)
+[1] "Hello, world!"
+
+
+实例2: 怎么接收返回 invisible() 的函数的输出？
+fn2=function(x){
+  txt=paste0("your input is:", x)
+  return(invisible(txt))
+}
+fn2(20)
+y2=capture.output(fn2(10))
+y2 #没有
+message(y2) #空
+# 需要先print 出来
+y3=capture.output(print(fn2(10)))
+
+> y3
+[1] "[1] \"your input is:10\""
+> message(y3)
+[1] "your input is:10"
+
+
+
+ref:
+https://www.bilibili.com/video/BV1ix411f7Yp?p=30
+https://www.zhihu.com/question/41120789/answer/481966094
+https://www.displayr.com/singular-value-decomposition-in-r/
+https://www.zhihu.com/question/49959130/answer/119452063
+
+
+
+
+
+
+
+========================================
+|-- Seurat 4 R包源码解析 19: step8 RunPCA() - PCA 可视化 与 DimReduc 类
+----------------------------------------
+1. 调包侠
+接上文。
+
+# Examine and visualize PCA results a few different ways
+print(pbmc[["pca"]], dims = 1:5, nfeatures = 5)
+
+
+
+(1) DimHeatmap 是使用 scale.data 画热图的。
+
+DimHeatmap(pbmc, dims=1, nfeatures = 30)
+DimHeatmap(pbmc, dims = 1, cells = 500, balanced = TRUE)
+DimHeatmap(pbmc, dims = 1:15, cells = 500, balanced = TRUE)
+
+
+
+
+
+
+2. 源码解析
+
+DimHeatmap
+
+
+
+
+
+
+
+
+
+3. R tips 
+
+(1) 创建空矩阵
+embeddings = new(Class = 'matrix')
+
+> new(Class = 'matrix')
+<0 x 0 matrix>
+
+
+
+
+
+(2) 正则替换 regexec() 与 regmatches()
+embeddings=data.frame(
+  "PC_1"=c(1,2),
+  "PC_2"=c(2,3),
+  "PC_3"=c(3,3)
+)
+embeddings
+
+key <- regmatches(
+  x = colnames(x = embeddings),
+  # 获取 字母数字开头，到下划线结尾的部分_
+  m = regexec(pattern = '^[[:alnum:]]+_', text = colnames(x = embeddings))
+)
+key
+key <- unique(x = unlist(x = key, use.names = FALSE))
+key
+# [1] "PC_"
+
+
+
+# regexec: returns a list of the same length as text each element of which is either -1 if there is no match, or a sequence of integers with the starting positions of the match and all substrings corresponding to parenthesized subexpressions of pattern, with attribute "match.length" a vector giving the lengths of the matches (or -1 for no match). The interpretation of positions and length and the attributes follows regexpr.
+
+> colnames(iris[,1:2])
+[1] "Sepal.Length" "Sepal.Width" 
+
+# 返回等长的一个list，不匹配则返回-1，匹配则返回起始位置和匹配长度match.length。
+# 位置、长度、性质参考 regexpr。
+> regexec("Wid", text=colnames(iris[,1:2]))
+[[1]]
+[1] -1
+attr(,"match.length")
+[1] -1
+attr(,"index.type")
+[1] "chars"
+attr(,"useBytes")
+[1] TRUE
+
+[[2]]
+[1] 7
+attr(,"match.length")
+[1] 3
+attr(,"index.type")
+[1] "chars"
+attr(,"useBytes")
+[1] TRUE
+
+
+# regmatches(x, m) 从字符串x中拿出来m匹配的部分字符串。
+rs=regmatches(
+	x=colnames(iris[,1:2]), 
+	m=regexec("Wid", text=colnames(iris[,1:2]))
+)
+rs
+输出:
+[[1]]
+character(0)
+
+[[2]]
+[1] "Wid"
+
+需要剥开list，会自动去掉空值。
+> unlist(rs)
+[1] "Wid"
+
+
+
+(3) grepl()返回逻辑值：是否匹配
+
+grepl(pattern = '^[[:alnum:]]+_$', x = "PC") #F
+grepl(pattern = '^[[:alnum:]]+_$', x = "PC_") #T
+
+
+(4) posix 字符串、正则表达式拼接
+源码: else if (!all(grepl(pattern = paste0('^', key, "[[:digit:]]+$"), x = colnames(x = embeddings)))) {
+
+这个例子说明，正则表达式也是字符串，可以像字符串一样拼接，可以使用变量。
+
+POSIX 字符类：R中使用要加上两层方括号
+	[:alnum:]任何一个字母或数字（等价于[a-ZA-Z0-9]）
+	[:alpha:]任何一个字母（等价于[a-ZA-Z]）
+	[:blank:]空格或制表符（等价于[\t ]） 注:t后面有一个空格
+	[:cntrl:]ASCII控制字符（ASCII 0到31，再加上ASCII 127）
+	[:digit:]任何一个数字（等价于[0-9])
+	[:graph:]和[:print:]一样，但不包括空格
+	[:lower:]任何一个小写字母（等价于[a-z])
+	[:print:]任何一个可打印字符
+	[:punct:]既不属于[:alnum:]，也不属于[:cntrl:]的任何一个字符
+	[:space:]任何一个空格字符，包括空格（等价于[f\n\r\t\v ] 注:v后面有一个空格
+	[:upper:]任何一个大写字母（等价于[A-Z])
+	[:xdigit:]任何一个十六进制数字(等价于[a-fA-F0-9])
+
+测试:
+> colnames(x = iris)
+[1] "Sepal.Length" "Sepal.Width"  "Petal.Length" "Petal.Width"  "Species"
+
+> key="S"
+
+# 匹配S开头，后面是字母或数字，直到一个点号: 前2个符合
+> grepl(pattern = paste0('^', key, "[[:alnum:]]+\\."), x = colnames(x = iris) )
+[1]  TRUE  TRUE FALSE FALSE FALSE
+
+# 匹配S开头，后面是字母或数字: 1,2,5符合
+> grepl(pattern = paste0('^', key, "[[:alnum:]]+"), x = colnames(x = iris) )
+[1]  TRUE  TRUE FALSE FALSE  TRUE
+
+
+
+
+
+(5) 对数据框进行 MinMax 截断
+
+MinMax <- function(data, min, max) {
+  data2 <- data
+  data2[data2 > max] <- max
+  data2[data2 < min] <- min
+  return(data2)
+}
+
+例子:
+> A=matrix(1:12, nrow = 3);A
+     [,1] [,2] [,3] [,4]
+[1,]    1    4    7   10
+[2,]    2    5    8   11
+[3,]    3    6    9   12
+> A[A<5]=5
+> A
+     [,1] [,2] [,3] [,4]
+[1,]    5    5    7   10
+[2,]    5    5    8   11
+[3,]    5    6    9   12
+
+
+
+
+
+(6) base::menu() 文字版菜单
+源码:
+menu(c("Continue with plotting", "Quit"), 
+     title = "Plot(s) requested will likely take a while to plot.")
+
+
+测试:
+> menu(c("Continue with plotting", "Quit"), 
++      title = "Plot(s) requested will likely take a while to plot.")
+Plot(s) requested will likely take a while to plot. 
+
+1: Continue with plotting
+2: Quit
+
+Selection: 1
+[1] 1
+
+
+
+
+(7) 获取/设置图形参数 par()
+
+# 前面设置参数
+orig.par <- par()$mfrow
+par(mfrow = c(nrow, ncol))
+
+
+# 后面复原参数
+par(mfrow = orig.par)
+
+
+
+
+(8) 返回多个 ggplot2 对象的list
+如果有多个图，可以在一个函数中画好，装到一个list中返回。
+技巧就是，要新建list的list，否则一个普通的 ggplot2 对象本身就是一个list，会混淆分不清图数据之间的界限。
+
+library(ggplot2)
+library(patchwork)
+draw2=function(dims=1:4, combine=F, ncol=2){
+  plots <- vector(mode = 'list', length = length(x = dims)) #技巧的体现
+  
+  for(i in dims){
+    df1=data.frame(
+      x=iris$Sepal.Length,
+      y=iris[,i],
+      type=iris$Species
+    )
+    plots[[i]]=ggplot(df1, aes(x,y, color=type))+
+      geom_point()+
+      theme_classic()+
+      ggtitle(colnames(iris)[i] )
+  }
+
+  # (A17) 如果要拼接，则拼接并返回
+  if (combine) {
+    plots <- wrap_plots(plots, ncol = ncol, guides = "collect")
+  }
+  return(plots)
+}
+
+# 返回ggplot2 对象list
+rs1=draw2()
+rs1[[2]] #单独画
+wrap_plots(rs1, ncol=3) #画成3列
+
+# 拼接成1个
+rs2=draw2(combine = T)
+rs2
+
+
+
+
+(9) R原生画热图的函数 image()
+
+par(mar = c(1, 1, 3, 3)) #c(bottom, left, top, right)
+
+# 画热图
+image( as.matrix(iris[,1:4]) )
+image( as.matrix(iris[,1:4]), axes=F) #不要坐标轴
+
+
+# 改变颜色
+image( as.matrix(iris[,1:4]), axes=F,
+       col=c("blue", "white", "red") ) #丑!只有三个颜色，没有梯度
+# 使用渐变色
+library(RColorBrewer)
+myColors=c("blue", "white", "red")
+image( as.matrix(iris[,1:4]), axes=F,
+       col=colorRampPalette(colors = myColors, interpolate ="linear")( 100 ) )
+
+
+
+
+
+
+(10) ggplot2 画热图的函数 geom_raster() and geom_tile()
+
+源码:
+raster=T; #默认参数
+my_geom <- ifelse(test = raster, yes = geom_raster, no = geom_tile)
+
+查文档，一共三个功能相同的函数:
+geom_rect() and geom_tile() 功能相同，参数不同。
+- geom_rect() 使用四个角作为参数
+- geom_tile() 使用tile的中心和宽高。
+
+当所有 tile 宽高一样的时候，geom_raster() 效率更高。
+
+geom_rect() and geom_tile() do the same thing, but are parameterised differently: 
+geom_rect() uses the locations of the four corners (xmin, xmax, ymin and ymax), 
+while geom_tile() uses the center of the tile and its size (x, y, width, height). 
+
+geom_raster() is a high performance special case for when all the tiles are the same size.
+
+
+
+例子: 
+# 依赖本文 3.11 的 Melt2()
+df1=Melt2(iris[,1:4] )
+head(df1)
+
+limits=c(min(df1$vals), max(df1$vals))
+library(RColorBrewer)
+colors=colorRampPalette(colors = myColors, interpolate ="linear")( 100 )
+
+library(ggplot2)
+# fig1
+ggplot(df1, aes(x=rows, y=cols, fill=vals))+
+  geom_raster()+
+  theme(axis.text.x = element_blank(), axis.ticks.x = element_blank())+ #去掉x轴文字、刻度
+  scale_fill_gradientn(limits = limits, colors = colors, na.value = "white")+ #数值范围，渐变色
+  labs(x = NULL, y = NULL, fill = 'Expression') #标签
+# fig2
+ggplot(df1, aes(x=rows, y=cols, fill=vals))+
+  geom_tile()+
+  theme(axis.text.x = element_blank(), axis.ticks.x = element_blank())+ #去掉x轴文字、刻度
+  scale_fill_gradientn(limits = limits, colors = colors, na.value = "white")+ #数值范围，渐变色
+  labs(x = NULL, y = NULL, fill = 'Expression') #标签
+#
+# 好像和 image() 的输出还是有点差异。
+
+
+
+
+要想和 image() 的输出完全一样，还需要固定好行、列位置，就是转为因子。
+
+df1=Melt2(iris[,1:4] )
+head(df1)
+# 增加这2行
+df1$rows=factor(df1$rows, levels = rownames(iris[,1:4]))
+df1$cols=factor(df1$cols, levels = colnames(iris[,1:4]))
+
+limits=c(min(df1$vals), max(df1$vals))
+library(RColorBrewer)
+colors=colorRampPalette(colors = myColors, interpolate ="linear")( 100 )
+
+library(ggplot2)
+# fig1
+ggplot(df1, aes(x=rows, y=cols, fill=vals))+
+  geom_raster()+
+  theme(axis.text.x = element_blank(), axis.ticks.x = element_blank())+ #去掉x轴文字、刻度
+  scale_fill_gradientn(limits = limits, colors = colors, na.value = "white")+ #数值范围，渐变色
+  labs(x = NULL, y = NULL, fill = 'Expression') #标签
+# fig2
+ggplot(df1, aes(x=rows, y=cols, fill=vals))+
+  geom_tile()+
+  theme(axis.text.x = element_blank(), axis.ticks.x = element_blank())+ #去掉x轴文字、刻度
+  scale_fill_gradientn(limits = limits, colors = colors, na.value = "white")+ #数值范围，渐变色
+  labs(x = NULL, y = NULL, fill = 'Expression') #标签
+#
+
+
+
+
+
+
+
+
+
+
+(11) 原生宽变长，unlist(df1) 把数据框按列展开
+
+> df1=iris[1:2, 1:4]
+> df1
+  Sepal.Length Sepal.Width Petal.Length Petal.Width
+1          5.1         3.5          1.4         0.2
+2          4.9         3.0          1.4         0.2
+> unlist(df1)
+Sepal.Length1 Sepal.Length2  Sepal.Width1  Sepal.Width2 Petal.Length1 Petal.Length2 
+          5.1           4.9           3.5           3.0           1.4           1.4 
+ Petal.Width1  Petal.Width2 
+          0.2           0.2 
+
+我们观察发现，unlist()能把数据框按列展开，也就是数据框本质上还是 按列的list。
+展开之后怎么把行名、列名信息保留呢？和数据同行，要新增2列。
+
+行名，依次使用，用完了再循环一次：
+> rep(rownames(df1), times=ncol(df1))
+[1] "1" "2" "1" "2" "1" "2" "1" "2"
+
+列名，一列是固定的，每个重复次数等于行数: 
+> rep(colnames(df1), each=nrow(df1))
+[1] "Sepal.Length" "Sepal.Length" "Sepal.Width"  "Sepal.Width"  "Petal.Length"
+[6] "Petal.Length" "Petal.Width"  "Petal.Width"
+
+
+写成函数，如下:
+我修改了一行。
+./seurat-4.1.0/R/utilities.R:2122:Melt <- function(x) {
+
+# Melt a data frame
+#
+# @param x A data frame
+#
+# @return A molten data frame
+#
+Melt2 <- function(x) {
+  # 融化数据，就是变长
+  # 前置转为df
+  if (!is.data.frame(x = x)) {
+    x <- as.data.frame(x = x)
+  }
+  # 就是使用 unlist 解开df成 vals 列的
+  # 然后添加2列：行名 列名
+  return(data.frame(
+    rows = rep.int(x = rownames(x = x), times = ncol(x = x)),
+    # 作者貌似不知道 each 还有一个 each 参数
+    cols = rep(colnames(x), each=nrow(x)),
+    # cols = unlist(x = lapply(X = colnames(x = x), FUN = rep.int, times = nrow(x = x))),
+    vals = unlist(x = x, use.names = FALSE)
+  ))
+}
+
+# 测试 
+> df1
+  Sepal.Length Sepal.Width Petal.Length Petal.Width
+1          5.1         3.5          1.4         0.2
+2          4.9         3.0          1.4         0.2
+> Seurat:::Melt(df1) #结果一样
+> Melt2(df1)
+  rows         cols vals
+1    1 Sepal.Length  5.1
+2    2 Sepal.Length  4.9
+3    1  Sepal.Width  3.5
+4    2  Sepal.Width  3.0
+5    1 Petal.Length  1.4
+6    2 Petal.Length  1.4
+7    1  Petal.Width  0.2
+8    2  Petal.Width  0.2
+
+
+
+
+
+
+
+
+(12) 自定义 ggplot2 主题: 就是返回一个theme()函数。
+
+./seurat-4.1.0/R/visualization.R:5292:WhiteBackground <- function(...) {
+#
+
+#' @importFrom ggplot2 theme element_rect
+#' @export
+#' @concept visualization
+#'
+#' @rdname SeuratTheme
+#' @aliases WhiteBackground
+#'
+WhiteBackground <- function(...) {
+  white.rect = element_rect(fill = 'white') #方框填充白色
+  white.theme <- theme(
+    # Make the plot, panel, and legend key backgrounds white
+    plot.background = white.rect, #背景白色
+    panel.background = white.rect, #每个面板
+    legend.key = white.rect, #图例背景
+    # Validate the theme
+    validate = TRUE,
+    ...
+  )
+  return(white.theme)
+}
+
+测试： 连坐标轴的线也没有了。
+library(ggplot2)
+ggplot(mtcars, aes(mpg, wt)) + geom_point()+
+  WhiteBackground()
+
+
+
+
+
+另一个主题 NoAxes()，也是返回一个theme() 函数，但是提供了更多选项。
+./seurat-4.1.0/R/visualization.R:5118:NoAxes <- function(..., keep.text = FALSE, keep.ticks = FALSE) {
+
+#' @param keep.text Keep axis text
+#' @param keep.ticks Keep axis ticks
+#'
+#' @importFrom ggplot2 theme element_blank
+#' @export
+#' @concept visualization
+#'
+#' @rdname SeuratTheme
+#' @aliases NoAxes
+#'
+#' @examples
+#' # Generate a plot with no axes
+#' library(ggplot2)
+#' df <- data.frame(x = rnorm(n = 100, mean = 20, sd = 2), y = rbinom(n = 100, size = 100, prob = 0.2))
+#' p <- ggplot(data = df, mapping = aes(x = x, y = y)) + geom_point(mapping = aes(color = 'red'))
+#' p + NoAxes()
+#'
+NoAxes <- function(..., keep.text = FALSE, keep.ticks = FALSE) {
+  blank <- element_blank()
+  
+  # 没有坐标轴
+  no.axes.theme <- theme(
+    # Remove the axis elements
+    axis.line.x = blank, #x轴线 不要
+    axis.line.y = blank,
+    # Validate the theme
+    validate = TRUE, #//这个干什么的?
+    ...
+  )
+  
+  # 不要文字
+  if (!keep.text) {
+    no.axes.theme <- no.axes.theme + theme( #theme()函数可加
+      axis.text.x = blank, #刻度文字
+      axis.text.y = blank,
+      axis.title.x = blank, #坐标轴标签
+      axis.title.y = blank,
+      validate = TRUE,
+      ...
+    )
+  }
+  
+  # 不要刻度线
+  if (!keep.ticks){
+    no.axes.theme <- no.axes.theme + theme(
+      axis.ticks.x = blank, #刻度线
+      axis.ticks.y = blank,
+      validate = TRUE,
+      ...
+    )
+  }
+  
+  return(no.axes.theme)
+}
+
+
+
+
+
+
+
+
+(13) 画一层散点图，全透明，就是为了获得一个图例
+
+SingleRasterMap() 源码片段:
+if (!is.null(x = group.by)) {
+  # 散点图，全透明，就是为了获得一个图例！? 骚操作
+  plot2 <- plot + geom_point(
+    mapping = aes_string(x = 'Cell', y = 'Feature', color = 'Identity'),
+    alpha = 0.5
+  ) +
+    guides(color = guide_legend(override.aes = list(alpha = 1))) #一个 color的图例，代替fill的图例
+}
+plot2
+
+
+
+
+
+
+
+
+
+
+###
+
+() new(Class = 'JackStrawData')
+jackstraw [ˈdʒækstrɔː] n. 稻草人；小木片（游戏用）
+./seurat-object-4.0.4/R/jackstraw.R:24:JackStrawData <- setClass(
+./seurat-object-4.0.4/R/jackstraw.R:25:  Class = "JackStrawData",
+
+
+
+
+
+
+
+
+
+
+
+
+() 颜色，留给以后的专题
+./seurat-4.1.0/R/visualization.R:4956:PurpleAndYellow <- function(k = 50) {
+
+
+
+
+
+
+
+
+
+4. PR
+
+(1) Top() 的去重有问题。
+
+#
+test2=function(n=5, top=3){
+  message("0>>total gene:",n, ", selectTop:",top,"\n")
+  data=data.frame(exp=1:n)
+  rownames(data)=paste0("gene",1:nrow(data) )
+  data
+  num=top
+  positive <- head(x = rownames(x = data), n = num);
+  message("1>>positive:", paste0(positive,collapse = ",") )
+  # 取后n个，并倒序
+  negative <- rev(x = tail(x = rownames(x = data), n = num)); negative
+  message("1>>negative:", paste0(negative,collapse = ","))
+  # 去重复，值得怀疑 //todo
+  # remove duplicates
+  if (positive[num] == negative[num]) { #如果最后一个相等
+    negative <- negative[-num] #则删掉 negative 的最后一个值
+  }
+  message("\n2>>negative:", paste0(negative,collapse = ","))
+}
+test2()
+test2(4,3)
+#不过好在这里99.99%的情况用不到，因为大家的基因数都至少上千，而要打印的不超过100
+test2(1000,5)
+
+
+> test2()
+0>>total gene:5, selectTop:3
+
+1>>positive:gene1,gene2,gene3
+1>>negative:gene5,gene4,gene3
+
+2>>negative:gene5,gene4
+
+
+> test2(4,3)
+0>>total gene:4, selectTop:3
+
+1>>positive:gene1,gene2,gene3
+1>>negative:gene4,gene3,gene2
+
+2>>negative:gene4,gene3,gene2
+
+> test2(1000,5)
+0>>total gene:1000, selectTop:5
+
+1>>positive:gene1,gene2,gene3,gene4,gene5
+1>>negative:gene1000,gene999,gene998,gene997,gene996
+
+2>>negative:gene1000,gene999,gene998,gene997,gene996
+
+
+
+
+
+
+
+
+========================================
+|-- Seurat 4 R包源码解析 20: step9 确定PC的维数-碎石图(选读:怎么求PC的p值?)
+----------------------------------------
+1. 调包侠
+# step9 Determine the 'dimensionality' of the dataset
+
+# 建议跳过这个，太慢!
+# NOTE: This process can take a long time for big datasets, comment out for expediency. More
+# approximate techniques such as those implemented in ElbowPlot() can be used to reduce
+# computation time
+pbmc <- JackStraw(pbmc, num.replicate = 100)
+pbmc <- ScoreJackStraw(pbmc, dims = 1:20)
+JackStrawPlot(pbmc, dims = 1:15)
+
+
+# 推荐使用这个选择PC个数，速度很快!
+ElbowPlot(pbmc) #取碎石图拐角处的PC个数
+
+
+
+
+
+(1) [耗时!](可选步骤)为每个PC计算一个p值的步骤
+
+# 第一个函数 JackStraw() 的影响范围
+计算前
+> pbmc@reductions$pca@jackstraw
+A JackStrawData object simulated on 0 features for 0 dimensions.
+ Scored for: 0 dimensions.
+
+计算PC的p值
+# rep=100时，根据我的测试，可能使用不带进度条的 apply 只需要不到1min。而这里需要7分钟。
+# 选了 rep=325 这个不是很整的数，是为了验证几个猜测
+> pbmc <- JackStraw(pbmc, num.replicate = 325)
+  |++++++++++++++++++++++++++++++++++++++++++++++++++| 100% elapsed=10m 14s
+  |++++++++++++++++++++++++++++++++++++++++++++++++++| 100% elapsed=01s  
+
+
+计算后
+> pbmc@reductions$pca@jackstraw
+A JackStrawData object simulated on 2000 features for 20 dimensions.
+ Scored for: 0 dimensions.
+
+> slotNames(pbmc@reductions$pca@jackstraw)
+[1] "empirical.p.values"      "fake.reduction.scores"   "empirical.p.values.full"
+[4] "overall.p.values" 
+每个PC的 p 值保存的位置 "overall.p.values" 
+
+
+
+# 第二个函数 ScoreJackStraw() 影响范围:
+> head(pbmc@reductions$pca@jackstraw@overall.p.values)
+<0 x 0 matrix>
+> pbmc <- ScoreJackStraw(pbmc, dims = 1:20) 
+#计算后
+> dim(pbmc@reductions$pca@jackstraw@overall.p.values)
+[1] 20  2
+
+
+
+
+
+
+
+(2) 算法(选读): 为每个PC计算一个p值的算法
+求每个PC的p值的整个算法流程，分布在至少2个函数中(JackStraw, 与 ScoreJackStraw)。
+结果保存在 内部对象 pbmc@reductions$pca@jackstraw 的 slot 中。
+
+
+阅读R包文档:
+
+JackStraw: Determine statistical significance of PCA scores.
+Description:
+Randomly permutes a subset of data, and calculates projected PCA scores for these 'random' genes. Then compares the PCA scores for the 'random' genes with the observed PCA scores to determine statistical signifance. End result is a p-value for each gene's association with each principal component.
+文章: Inspired by Chung et al, Bioinformatics (2014)
+这个文章谁找到了告诉我 //todo
+
+
+ScoreJackStraw: Compute Jackstraw scores significance.
+Description: 
+Significant PCs should show a p-value distribution that is strongly skewed to the left compared to the null distribution. The p-value for each PC is based on a proportion test comparing the number of features with a p-value below a particular threshold (score.thresh), compared with the proportion of features expected under a uniform distribution of p-values.
+作者 Author(s): Omri Wurtzel
+这个作者在哪个文章/地方中贡献的这个函数? //todo
+
+
+
+阅读源代码:
+
+1) 按照数据处理步骤，求每个PC的p值的步骤如下:
+- 1.抽样 HVG 的1%基因
+- 2.对每一行洗牌，做PCA
+- 3.记录各PC的loading matrix
+	* 结果保存在 fake.reduction.scores，我感觉是不是应该有基因重复抽样?
+- 4.重复以上1-3过程多次(几百上千次)
+- 5.计数求经验p值: 
+	* 对PC遍历，内层再对基因遍历: 某PC列中超过该基因原始loading(正规不打乱时的PCA)的个数 / 总观测数。
+	* 结果保存在 empirical.p.values
+- 6.对每列，求PC的打分: in ScoreJackStraw()
+	* 经验p值 < 某个阈值的基因个数，与基于经验p值均匀分布时低于该阈值的基因个数(总个数*该阈值)，这两个数字的比例和1:1做卡方检验的p值，作为PC的总体p值。
+	* 结果保存在 overall.p.values 中
+
+> slotNames(pbmc@reductions$pca@jackstraw)
+[1] "empirical.p.values"      "fake.reduction.scores"   "empirical.p.values.full"
+[4] "overall.p.values" 
+
+pbmc@reductions$pca@jackstraw 包含这几个 slot:
+empirical.p.values  = jackStraw.empP, #比较PC列中，比每个基因的系数大的占总行数的比例，经验p值
+fake.reduction.scores = fake.vals, #行乱序后的scaled.data做的PCA的loading矩阵，假得降维打分
+empirical.p.values.full = matrix()
+
+
+
+2) 再按照输出的数据，把以上求每个PC的p值的步骤再说一遍:
+
+step1:对基因抽样，打乱同一个基因的细胞标签后做PCA，记录基因对每个PC的权重矩阵(loadings)。
+> dim(pbmc@reductions$pca@jackstraw$fake.reduction.scores)
+[1] 6500   20
+> 2000*0.01*325 #HVG2000个，每次抽样1%，抽样次数325
+[1] 6500
+> pbmc@reductions$pca@jackstraw$fake.reduction.scores[1:2,1:3]
+              [,1]          [,2]         [,3]
+[1,] -0.0031335730 -0.0019125475 -0.004546701
+[2,]  0.0001275733  0.0000134703  0.003276954
+
+
+step2: 对于一个PC，对于每一个基因: 其权重的绝对值 大于该列绝对值的比例，作为经验p值
+> dim(pbmc@reductions$pca@jackstraw$empirical.p.values)
+[1] 2000   20 #注意这里，已经变成2000行了，和2层循环变量的个数一致。
+> pbmc@reductions$pca@jackstraw$empirical.p.values[1:3,1:3]
+               PC1         PC2          PC3
+PPBP   0.000000000 0.010461538 0.0000000000
+LYZ    0.000000000 0.001846154 0.0150769231
+S100A9 0.000000000 0.000000000 0.0001538462
+
+
+step3: 对 empirical.p.values 矩阵，取每列(某个PC): 小于某阈值的基因个数，基于经验p值均匀分布时的期望的基因个数(总基因个数*该阈值) 是否符合1:1做 prop.test()
+新增一个slot: overall.p.values
+> dim(pbmc@reductions$pca@jackstraw@overall.p.values)
+[1] 20  2
+> head(pbmc@reductions$pca@jackstraw@overall.p.values)
+     PC         Score
+[1,]  1 7.937110e-157
+[2,]  2 6.165783e-105
+[3,]  3  1.981211e-33
+
+
+画图时，既看经验p值是否偏离对角线，向左偏的越远越好；
+又看总体p值，越小越好。
+
+
+
+
+
+
+
+
+
+2. 源码解析
+
+
+## todo 
+
+- LogSeuratCommand()
+- CheckDots()
+- IsSCT()
+./seurat-4.1.0/R/utilities.R:1986:IsSCT <- function(assay) {
+先跳过 sctransform()，后面有空再补上 //todo
+
+
+
+
+
+
+
+
+3. R tips 
+
+(1) 为 apply() 家族函数添加进度条。
+建议不要加，太慢。
+
+pbapply: Adding Progress Bar to '*apply' Functions
+Adding progress bar to *apply functions, possibly leveraging parallel processing.
+https://cran.r-project.org/web/packages/pbapply/index.html
+https://peter.solymos.org/code/2016/09/16/how-to-add-pbapply-to-r-packages.html
+
+在R包中使用: https://www.r-bloggers.com/2016/09/how-to-add-pbapply-to-r-packages-2/
+
+
+测试了一下，确实可以添加进度条，缺点就是添加后太慢了！
+
+# make data
+set.seed(2021)
+df1 <- matrix(runif(5e6), ncol = 5)
+
+library(pbapply)
+system.time({ #10.016s
+  rs0=apply(df1, 1, sd)
+})
+
+system.time({ #111s 太慢了
+  rs5=pbapply(df1, 1, sd)
+})
+# |++++++++++++++++++++++++++++++++++++++++++++++++++| 100% elapsed=01m 51s
+
+table(rs5 - rs0<1e-10) #all TRUE
+
+
+
+
+
+
+
+
+(2) order(x1, x2)排序 的第二个参数
+
+# order returns a permutation which rearranges its first argument into ascending or descending order, breaking ties by further arguments.
+> a1=c(7,1,9);a1
+[1] 7 1 9
+
+# 一般给一个参数，返回该参数每个元素的下标位置编号
+> a1.o=order(a1); a1.o #默认升序，第一个元素最小
+[1] 2 1 3
+> a1[a1.o] #根据下标位置，打印每个元素
+[1] 1 7 9
+
+
+
+
+# 还可以给出第二个参数，当第一个参数有相等元素的时候，按照第二个参数对应位置进行排序。
+In the case of ties in the first vector, values in the second are used to break the ties. If the values are still tied, values in the later arguments are used to break the tie (see the first example). The sort used is stable (except for method = "quick"), so any unresolved ties will be left in their original ordering.
+
+> a1=c(1,1,9);a1
+[1] 1 1 9
+
+> order(a1, c(2,1,0)) #前2个元素相等，则看第二个参数，第二个位置最小，则其下标为1；
+[1] 2 1 3
+> order(a1, c(2,1,10)) #第二个参数的 最后一个值不影响序号
+[1] 2 1 3
+> order(a1, c(2,10,10)) #如果第二个参数的前2个值顺序换了，第一个元素最小，则第一个元素的下标是1
+[1] 1 2 3
+
+
+
+
+
+
+
+
+
+(3) 对一个矩阵的每一行独立的随机洗牌: MatrixRowShuffle
+
+主要思路: col()获取下标，然后 runif()打乱，最后order()排序
+
+#1) col() Column Indexes
+Description: Returns a matrix of integers indicating their column number in a matrix-like object, or a factor of column labels.
+Usage: col(x, as.factor = FALSE)
+
+> x=iris[1:3,1:4];x
+  Sepal.Length Sepal.Width Petal.Length Petal.Width
+1          5.1         3.5          1.4         0.2
+2          4.9         3.0          1.4         0.2
+3          4.7         3.2          1.3         0.2
+> col(t(x))
+     [,1] [,2] [,3]
+[1,]    1    2    3
+[2,]    1    2    3
+[3,]    1    2    3
+[4,]    1    2    3
+> c(col(t(x)))
+ [1] 1 1 1 1 2 2 2 2 3 3 3 3
+
+
+#2) 随机数
+> runif(n = length(x))
+[1] 0.2922186 0.3220882 0.6291032 0.7704804
+
+这个长度不够，df本质是成列的list，长度就是列数；而矩阵的length则是总的元素个数。
+> class(x)
+[1] "data.frame"
+> x_=as.matrix(x)
+> class(x_)
+[1] "matrix" "array" 
+
+> length(x)
+[1] 4
+> length(x_)
+[1] 12
+
+所以使用:
+> runif(n = length( t(t(x)) ))
+ [1] 0.03726171 0.69340549 0.14605814 0.24839075 0.26784137 0.58710378 0.27862248 0.24537888 0.82303043
+[10] 0.75663306 0.47392544 0.13659220
+
+
+#3) order() 排序，相等的元素之间，按照第二个元素排序。
+ind=order(
+  c(col(x = t(x))), 
+  runif(n = length(x = t(x) ))
+)
+> ind
+ [1]  1  4  2  3  7  8  5  6 12 11  9 10
+
+#4) 然后恢复成矩阵形式
+matrix(
+  data=t(x)[ind],
+  ncol=ncol(x),
+  nrow=nrow(x),
+  byrow=F
+)
+输出:
+     [,1] [,2] [,3] [,4]
+[1,]  5.1  1.4  4.9  1.3
+[2,]  0.2  1.4  3.0  4.7
+[3,]  3.5  0.2  0.2  3.2
+> x #对比
+  Sepal.Length Sepal.Width Petal.Length Petal.Width
+1          5.1         3.5          1.4         0.2
+2          4.9         3.0          1.4         0.2
+3          4.7         3.2          1.3         0.2
+
+
+
+
+包装成函数 MatrixRowShuffle()
+./seurat-4.1.0/R/utilities.R:2075:MatrixRowShuffle <- function(x) {
+
+独立的把矩阵的每一行的元素打乱。
+# Independently shuffle values within each row of a matrix
+#
+# Creates a matrix where correlation structure has been removed, but overall values are the same
+#
+# @param x Matrix to shuffle
+#
+# @return Returns a scrambled matrix, where each row is shuffled independently
+#
+#' @importFrom stats runif #使用 均匀分布函数
+#
+# @export
+#
+# @examples
+# mat <- matrix(data = rbinom(n = 25, size = 20, prob = 0.2 ), nrow = 5)
+# mat
+# MatrixRowShuffle(x = mat)
+#
+MatrixRowShuffle <- function(x) {
+  # x2 等于x
+  x2 <- x #没啥用
+  # x2又等于x的转置，那第一行可以删掉了。 //bug
+  x2 <- t(x = x)
+
+  # 获取每个元素的列编号，并在相等时按照第二个参数 对应位置排序
+  ind <- order(c(col(x = x2)), runif(n = length(x = x2)))
+  
+  # 恢复矩阵形式
+  x2 <- matrix(
+    data = x2[ind],
+    nrow = nrow(x = x),
+    ncol = ncol(x = x),
+    byrow = TRUE
+  )
+  return(x2)
+}
+
+
+
+
+
+
+(4) prop.test() 就是卡方检验？
+prop.test( matrix(c(1,200,20,400), nrow=2) )
+chisq.test( matrix(c(1,200,20,400), nrow=2) )
+
+输出:
+> prop.test( matrix(c(1,200,20,400), nrow=2) )
+
+	2-sample test for equality of proportions with continuity correction
+
+data:  matrix(c(1, 200, 20, 400), nrow = 2)
+X-squared = 6.3174, df = 1, p-value = 0.01196
+alternative hypothesis: two.sided
+95 percent confidence interval:
+ -0.4089409 -0.1624877
+sample estimates:
+    prop 1     prop 2 
+0.04761905 0.33333333 
+
+> chisq.test( matrix(c(1,200,20,400), nrow=2) )
+
+	Pearson's Chi-squared test with Yates' continuity correction
+
+data:  matrix(c(1, 200, 20, 400), nrow = 2)
+X-squared = 6.3174, df = 1, p-value = 0.01196
+
+
+
+文档给的例子
+> prop.test(smokers, patients)
+
+	4-sample test for equality of proportions without continuity correction
+
+data:  smokers out of patients
+X-squared = 12.6, df = 3, p-value = 0.005585
+alternative hypothesis: two.sided
+sample estimates:
+   prop 1    prop 2    prop 3    prop 4 
+0.9651163 0.9677419 0.9485294 0.8536585 
+
+
+
+
+
+
+(5) 拼接、输出字符串: paste0(), sprintf()
+
+源码:
+data.plot$PC.Score <- rep(
+	x = paste0("PC ", score.df[ ,"PC"], ": ", sprintf("%1.3g", score.df[ ,"Score"])),
+	each = length(x = unique(x = data.plot$Contig))
+)
+
+
+测试:
+# 1. sprintf() 类似C的打印功能，第一个是带替换字符的字符串，后面是按顺序的参数。
+> sprintf("the height of this %s is %1.3g m", "dog", 0.805789 )
+[1] "the height of this dog is 0.806 m"
+
+# 2. paste0() 拼接字符串，支持输入向量
+> paste0("metric of ", colnames(iris)[1:4])
+[1] "metric of Sepal.Length" "metric of Sepal.Width"  "metric of Petal.Length" "metric of Petal.Width" 
+
+
+# 3. 本文
+> score.df=data.frame(
+   PC=1:3,
+   Score=c(0.1,0.22,0.333)
+)
+> score.df
+  PC Score
+1  1 0.100
+2  2 0.220
+3  3 0.333
+> paste0("PC ", score.df[ ,"PC"], ": ", sprintf("%1.3g", score.df[ ,"Score"]))
+[1] "PC 1: 0.1"   "PC 2: 0.22"  "PC 3: 0.333"
+
+
+
+
+
+
+
+
+
+(6) 快速获取颜色列表: scales::hue_pal()(5)
+
+
+测试:
+> scales::hue_pal()(5)
+[1] "#F8766D" "#A3A500" "#00BF7D" "#00B0F6" "#E76BF3"
+
+> n=5; barplot(rep(1,n), col=scales::hue_pal()(n))
+
+
+
+
+scales::hue_pal是一个返回函数的函数:
+
+> scales::hue_pal
+function (h = c(0, 360) + 15, c = 100, l = 65, h.start = 0, direction = 1) 
+{
+    stopifnot(length(h) == 2)
+    stopifnot(length(c) == 1)
+    stopifnot(length(l) == 1)
+    force_all(h, c, l, h.start, direction)
+	
+	# 最后返回的是下面这个函数，但是可以用母函数的参数等变量: 
+    function(n) {
+        if (n == 0) {
+            stop("Must request at least one colour from a hue palette.", 
+                call. = FALSE)
+        }
+        if ((diff(h)%%360) < 1) {
+            h[2] <- h[2] - 360/n
+        }
+        hues <- seq(h[1], h[2], length.out = n)
+        hcl <- cbind(hues, c, l)
+        pal <- farver::encode_colour(hcl, from = "hcl")
+        if (direction == -1) {
+            rev(pal)
+        }
+        else {
+            pal
+        }
+    }
+}
+<bytecode: 0x55923a23b630>
+<environment: namespace:scales>
+
+
+这个就是返回的函数，只要一个传入参数了，但是可以使用母函数的参数，这就叫闭包(enclosure)。
+# https://www.r-bloggers.com/2015/03/using-closures-as-objects-in-r/
+> scales::hue_pal()
+function (n) 
+{
+    if (n == 0) {
+        stop("Must request at least one colour from a hue palette.", 
+            call. = FALSE)
+    }
+    if ((diff(h)%%360) < 1) {
+        h[2] <- h[2] - 360/n
+    }
+    hues <- seq(h[1], h[2], length.out = n)
+    hcl <- cbind(hues, c, l)
+    pal <- farver::encode_colour(hcl, from = "hcl")
+    if (direction == -1) {
+        rev(pal)
+    }
+    else {
+        pal
+    }
+}
+<bytecode: 0x55923a2420d0>
+<environment: 0x5591d0bd0a50>
+
+
+
+
+
+
+
+
+(7) 检验参数个数，不达标报错
+源码:
+stopifnot(length(h) == 2)
+
+
+测试:
+fn1=function(h=c(1,2)){
+  stopifnot(length(h) == 2)
+  return(h)
+}
+fn1()
+fn1( c(1)) #报错
+fn1( c(1,2,3)) #报错
+
+
+
+
+
+
+(8) 使用 ggplot2 画QQ-plot
+
+# 输入参数 sample 是一列经验p值，然后使用 stat_qq(distribution = qunif) 设置均匀分布。
+gp <- ggplot(data = data.plot, mapping = aes_string(sample = 'Value', color = 'PC.Score')) +
+	stat_qq(distribution = qunif) +
+
+	# 其他绘图参数
+	labs(x = "Theoretical [runif(1000)]", y = "Empirical") +
+	scale_color_manual(values = cols) +
+	xlim(0, ymax) +
+	ylim(0, xmax) +
+	coord_flip() + #交换x、y坐标及标签
+	geom_abline(intercept = 0, slope = 1, linetype = "dashed", na.rm = TRUE) + #添加斜线，斜率1，过原点
+	guides(color = guide_legend(title = "PC: p-value")) + #修改图例标题
+	theme_cowplot() #设置主题
+	#
+
+
+
+
+
+========================================
+|-- Seurat 4 R包源码解析 21: step10 细胞聚类 FindNeighbors()
+----------------------------------------
+1. 调包侠
+# step10 Cluster the cells
+pbmc <- FindNeighbors(pbmc, dims = 1:10)
+pbmc <- FindClusters(pbmc, resolution = 0.5)
+
+# Look at cluster IDs of the first 5 cells
+head(Idents(pbmc), 5)
+
+table(pbmc$seurat_clusters)
+
+
+
+(1) FindNeighbors() 的影响范围 
+
+pbmc <- FindNeighbors(pbmc, dims = 1:10) # 的影响范围是 pbmc@graphs
+
+> names(pbmc@graphs)
+ [1] "RNA_nn"  "RNA_snn"
+> class(pbmc@graphs$RNA_nn)
+[1] "Graph"
+
+
+# nn是一个0-1矩阵，一行一个细胞，一行内规定 k 个最近邻的点为1，其他都是0.
+# 该矩阵是通过 C++ 函数求出来的近似KNN算法，具体实现是 Annoy 。
+> dim(pbmc@graphs$RNA_nn) 
+[1] 2638 2638
+
+
+# snn 是对 (nn矩阵) 计算得来的，记录着细胞间的 Jacard 相似度，交集/并集，不重叠为0，重叠为1。也就是值越大越相似。
+# 低于 某个值(默认是1/15=0.06666667)的 统一设定为0.
+> dim(pbmc@graphs$RNA_snn)
+[1] 2638 2638
+
+
+(2) KNN 算法
+KNN就是最近邻算法，最朴素的暴力求距离法，对于高纬度数据速度太慢。有人基于二叉树提出了 KDTree, BallTree， Annoy等方法。Seurat4使用的是Annoy算法实现。
+
+
+其中机器学习领域常用的距离度量方法，有欧式距离、余弦距离、曼哈顿距离、dot内积等
+Seurat 4 中KNN算法中几种可选距离，euclidean(默认), cosine, manhattan, and hamming。
+
+主流的近邻算法都支持上述不同的距离度量。其中n维特征空间的a、b向量的欧式距离: 差的平方和再开方，体现数值上的绝对差异；
+而余弦距离基于余弦相似度（两个向量间夹角的余弦值），体现方向上的相对差异。
+如果对向量做归一化处理，二者的结果基本是等价的。
+
+具体实现步骤看本文 4-1。
+
+
+(3) SNN 算法
+Jacard 相似度: 交集大小/并集大小。没有交集时0，完全重合时1。
+
+可以根据每个细胞的最近邻细胞的重合情况，计算细胞间两两的 Jarcard 相似度。
+
+具体实现步骤看本文 4-2。
+
+
+
+
+
+
+
+2. 源码解析 
+
+直接使用的函数:
+- FindNeighbors 本文。
+- FindClusters 下一篇再说。
+
+
+
+
+
+
+
+3. R tips
+
+(1) 函数参数列表中，可以直接引用其并列的参数，比如取反
+
+fn1=function(a1=F, a2=!a1){
+  print(a2)
+}
+fn1(T) #F
+fn1(F) #T
+
+
+fn2=function(a2=!a1, a1=F){
+  print(a2)
+}
+fn2(a1=T) #F
+fn2(a1=F) #T
+
+
+fn3=function(x, y=x+10){
+  print(y)
+}
+fn3(5) #15
+
+
+
+
+(2) 画细胞的 snn 图: igraph 包擅长画各种网络图
+# 源码见: FindNeighbors.Seurat 的 A7 部分。下文是可以运行的代码
+
+https://igraph.org/
+igraph is a collection of network analysis tools with the emphasis on efficiency, portability and ease of use. 
+igraph is open source and free. 
+igraph can be programmed in R, Python, Mathematica and C/C++.
+R 版本文档: https://igraph.org/r/html/latest/
+
+
+
+# 导入 pbmc 3k 分类好的数据，要带 tSNE坐标，过程略。
+
+library(igraph)
+#graph.adjacency: Create graphs from adjacency matrices
+net <- graph.adjacency( 
+  adjmatrix = as.matrix(x = pbmc@graphs$RNA_snn),
+  mode = "undirected",
+  weighted = TRUE,
+  diag = FALSE
+)
+
+# plot.igraph(): Plotting of graphs
+plot.igraph(
+  x = net,
+  layout = as.matrix(x = Embeddings(object = pbmc[["tsne"]])),
+  edge.width = E(graph = net)$weight,
+  vertex.label = NA,
+  vertex.size = 0
+)
+
+
+# 再画一个 UMAP 的版本
+plot.igraph(
+  x = net,
+  layout = as.matrix(x = Embeddings(object = pbmc[["umap"]])),
+  edge.width = E(graph = net)$weight,
+  vertex.label = NA,
+  vertex.size = 0
+)
+
+
+
+(3) 最近邻算法的种类，可选: rann, annoy //todo 
+源码: FindNeighbors.default()
+
+
+
+
+(4) 几种距离的计算，可选: euclidean, cosine, manhattan, and hamming //todo
+
+
+
+
+
+(5) 什么是 L2 标准化?
+https://blog.csdn.net/ningyanggege/article/details/82840233
+
+# 源码 object <- L2Norm(mat = object)
+# 定义: ./seurat-4.1.0/R/utilities.R:1692:L2Norm <- function(mat, MARGIN = 1){
+
+# L2 normalize the columns (or rows) of a given matrix # L2标准化一个矩阵，按行或按列
+# @param mat Matrix to cosine normalize #要进行 cosine 标准化的矩阵
+# @param MARGIN Perform normalization over rows (1) or columns (2) #对行1、列2 进行标准化
+#
+# @return returns l2-normalized matrix
+#
+L2Norm <- function(mat, MARGIN = 1){
+  normalized <- Sweep(
+    x = mat,
+    MARGIN = MARGIN, #默认是1，按行除以
+    STATS = apply( #被除数: 默认是1，每行的 方差和开根号
+      X = mat,
+      MARGIN = MARGIN,
+      FUN = function(x){
+        sqrt(x = sum(x ^ 2))
+      }
+    ),
+    FUN = "/"
+  )
+  # 如果出现 无穷大，则设置为0
+  # 什么时候出现无穷大呢？ 被除数为0，也就是一行全为0的时候
+  normalized[!is.finite(x = normalized)] <- 0
+  return(normalized)
+}
+
+
+
+(6) `%iff%` 函数：如果x非空，则返回y
+
+> `%iff%`
+function (x, y) 
+{
+    if (!is_null(x = x)) { #如果x非空，则返回y
+        return(y)
+    }
+    return(x)
+}
+
+源码: query <- query %iff% L2Norm(mat = query)
+如果 query 有值，则进行 L2 标准化。
+
+
+
+
+
+(7) sys.frame() 与 sys.nframe() 获取当前函数的参数列表，并解析出 ... 参数
+源码 NNHelper(): args <- as.list(x = sys.frame(which = sys.nframe()))
+
+fn1=function(x, ...){
+  message(">>fn1:", x, "\t", sys.nframe())
+  args <- as.list(x = sys.frame(which = sys.nframe()-1)) #穿透到上一层环境(上一个是函数内环境)
+  print(args)
+}
+
+fn2=function(y){
+  message(">>fn2:", y, "\t", sys.nframe())
+  x=y+100
+  fn1(x)
+}
+
+fn3=function(z){
+  message(">>fn3:", z, "\t", sys.nframe())
+  fn2(z+1)
+}
+fn3(5)
+
+输出:
+>>fn3:5	1
+>>fn2:6	2
+>>fn1:106	3
+$x
+[1] 106
+
+$y
+[1] 6
+
+
+
+如果有 ... 参数，则还需要额外步骤来主动获取：
+fn0=function(x, ...){
+  message(">>fn0:", x, "\t", sys.nframe())
+  args <- as.list(x = sys.frame(which = sys.nframe()))
+  args2=c(args, ...)
+  print(args)
+  message("===")
+  print(args2)
+}
+fn0(20, n=3)
+
+输出: 
+>>fn0:20	1
+$x
+[1] 20
+
+===
+$x
+[1] 20
+
+$n
+[1] 3
+
+
+
+
+
+
+(8) 获取任意函数的参数列表，不解析 ... 参数 
+
+接上例: 
+
+> formals(fn0)
+$x
+$...
+
+
+
+
+(9) 获取2个函数的参数的交集：在一个函数内，获取其输入参数和另一个函数的参数的交集
+
+AnnoyNN_my=function(arr=c(), x=1, n=5){}
+fn1=function(arr=c(1,3,5), ...){
+  # 当前函数的参数
+  args <- as.list(x = sys.frame(which = sys.nframe()))
+  args=c(args, ...)
+  # 获取本函数的参数，和AnnoyNN_my()的参数的交集，及其值
+  args <- args[intersect(x = names(x = args), y = names(x = formals(fun = AnnoyNN_my)))]
+  print(args)
+}
+fn1(arr=1:5, x=3)
+
+输出:
+$arr
+[1] 1 2 3 4 5
+
+$x
+[1] 3
+
+
+
+
+(10) on.exit() 退出时执行，有利于重置绘图参数或者进行其他清理工作。
+This is useful for resetting graphical parameters or performing other cleanup actions.
+
+
+library(future)
+fn1=function(x){
+  if (!inherits(x = plan(), what = "multicore")) {
+    # 则记录现在是单核，退出时恢复这个单核状态。
+    oplan <- plan(strategy = "sequential")
+    on.exit(plan(oplan), add = TRUE) #退出函数时执行这个设置
+  }
+  plan(strategy = "multicore", workers=5)
+  message("fn1>>how many cores can use now: ", nbrOfWorkers())
+
+  return(x)
+}
+#
+plan(strategy = "sequential")
+message("outside>>how many cores can use now: ", nbrOfWorkers()) #1
+fn1(150) #5 仅再函数内为多核状态，函数前后都是单核
+message("outside>>how many cores can use now: ", nbrOfWorkers()) #1
+#
+plan(strategy = "multicore", workers=2)
+message("outside>>how many cores can use now: ", nbrOfWorkers()) #2
+
+
+
+(11) 把数据框按行展开成数组 as.numeric(t(x))
+as.numeric(x) 能把x按列展开成数组。
+所以把x先转置，再按列展开，就相当于把原始df按行展开。
+
+
+> iris[1:2,1:4]
+  Sepal.Length Sepal.Width Petal.Length Petal.Width
+1          5.1         3.5          1.4         0.2
+2          4.9         3.0          1.4         0.2
+
+> t(iris[1:2,1:4])
+               1   2
+Sepal.Length 5.1 4.9
+Sepal.Width  3.5 3.0
+Petal.Length 1.4 1.4
+Petal.Width  0.2 0.2
+
+> as.numeric(x=t(iris[1:2,1:4]))
+[1] 5.1 3.5 1.4 0.2 4.9 3.0 1.4 0.2
+
+
+
+
+
+
+(12) 矩阵C++库: Eigen //todo
+Eigen is a C++ template library for linear algebra: matrices, vectors, numerical solvers, and related algorithms.
+https://eigen.tuxfamily.org/index.php?title=Main_Page
+稀疏矩阵: https://eigen.tuxfamily.org/dox/group__TutorialSparse.html
+
+大型矩阵只能使用C++库计算，否则R本身太慢。
+
+
+
+
+
+
+
+
+
+######################################
+######################################
+# 牵涉到的函数
+FindNeighbors.Seurat
+	* CheckDots()
+	* FindNeighbors.Assay()
+	* LogSeuratCommand
+
+FindNeighbors.default
+	* L2Norm()
+	* NNHelper()
+		* nn2()
+		* AnnoyNN() 默认
+			* AnnoyBuildIndex()
+				* RcppAnnoy::AnnoyEuclidean()
+				* RcppAnnoy::AnnoyAngular()
+				* RcppAnnoy::AnnoyManhattan()
+				* RcppAnnoy::AnnoyHamming()
+			* AnnoySearch()
+		* RcppAnnoy 包。KNN的 Annoy 核心包
+	* Indices()
+	* ComputeSNN()
+
+
+
+4. 算法 
+
+(1) 求最近邻的k个细胞的方法: KNN 的 annoy 实现 
+
+#1 使用10个PC
+a=new(Class = RcppAnnoy::AnnoyEuclidean, f=10)
+#class(a)
+#str(a)
+
+#2 求距离的输入数据为每个细胞的RNA表达量的前10个PC
+data=pbmc@reductions$pca@cell.embeddings[,1:10]
+for(ii in seq(nrow(data)) ){
+  a$addItem(ii-1, data[ii,])
+}
+
+#3 建立树的索引，默认建立50棵树
+a$build(50) 
+
+# check
+#class(a)
+#a
+#str(a)
+#
+
+#4 对于每个细胞，求其前k个最近邻细胞
+index=a #第3中建立的索引
+query=data #要搜索的数据，就是每个细胞的PC矩阵
+k=20 #最近邻的几个点？
+
+#5 例子: 第一行，也就是求这个细胞的前k个最近邻点
+x=1
+search.k=-1 #不限制搜索次数
+include.distance=T #是否返回距离
+
+res <- index$getNNsByVectorList(query[x, ], k, search.k, include.distance) //todo 这个函数怎么定义的？怎么实现的？
+res
+res2=list(res$item + 1, res$distance) #C++下标是0-based，变为R的1-based
+sort(res2[[1]])
+# [1]    1  293  422  512  619  964 1149 1265 1332 1339 1386 1505 1574 1992 2015 2080 2297 2318 2548 2602
+
+# 测试 pbmc 数据的第一行中1的下标都是多少？
+grep(1, pbmc@graphs$RNA_nn[1,])
+# [1]    1  293  422  512  619  964 1149 1265 1332 1339 1386 1505 1574 1992 2015 2080 2297 2318 2548 2602
+
+
+写成循环，就可以计算每个细胞的k个最近邻细胞的下标了。
+完成功能后，还可以尝试使用多线程加速。
+
+
+
+
+
+
+
+
+==> 如何求出和原文一致的 NN 矩阵?
+
+search.k=-1 #不限制搜索次数
+include.distance=T #是否返回距离
+
+nn = matrix(data=rep(0, nrow(data)**2), nrow=nrow(data), ncol=nrow(data))
+dim(nn) #[1] 2638 2638
+
+for(x in 1:nrow(data)){
+  res <- index$getNNsByVectorList(query[x, ], k, search.k, include.distance)
+  res2=list(res$item + 1, res$distance) #C++下标是0-based，变为R的1-based
+  nn[x, res2[[1]]] = 1
+}
+
+rownames(nn)=rownames(data)
+colnames(nn)=rownames(data)
+
+table(nn[1,] - pbmc@graphs$RNA_nn[1,] ==0) #All T
+table(nn - as.matrix(pbmc@graphs$RNA_nn)==0) #All T
+
+
+
+> dim(nn)
+[1] 2638 2638
+
+> dim(pbmc@graphs$RNA_nn)
+[1] 2638 2638
+
+
+
+
+
+
+
+
+
+
+(2) SNN 算法
+https://www.jianshu.com/p/72313d70d9ab
+想一个简单情况，每行一个细胞，每行找2个最近邻的细胞，其下标位置为1，其他点则为0。
+
+按照 Jaccard 相似度的定义 交集大小 / 并集大小。
+#   1.该0-1矩阵乘以自己的转置
+#   2.交集就是的每个位置的value，
+#   3.并集就是 2*k-value
+# 极端情况1: 没有交集，则 0/(2k-0)=0; 相似度位0
+# 极端情况2: 完全重合, 则 2/(2k-2)=2/2=1; 相似度最高是1
+# 中间状态: 重合一个元素, 则 1/(2k-1)=1/3;
+
+
+
+SNN1=matrix(c(1,0,0,1,
+              0,1,1,0,
+              1,0,1,0,
+              0,0,1,1), nrow=4, byrow = T)
+SNN1
+
+SNN2=SNN1 %*% t(SNN1)
+SNN2
+
+输出:
+> SNN1
+     [,1] [,2] [,3] [,4]
+[1,]    1    0    0    1
+[2,]    0    1    1    0
+[3,]    1    0    1    0
+[4,]    0    0    1    1
+> SNN2
+     [,1] [,2] [,3] [,4]
+[1,]    2    0    1    1
+[2,]    0    2    1    1
+[3,]    1    1    2    1
+[4,]    1    1    1    2
+
+
+
+# 计算点与点之间的 Jacard 相似度:
+k=2 #每个细胞取2个最近邻细胞
+SNN3=matrix(rep(0,16), nrow = 4, ncol = 4); SNN3
+for(i in 1:nrow(SNN)){
+  for(j in 1:ncol(SNN3)){
+    val=SNN2[i,j]
+    SNN3[i,j]=val/(2*k - val)
+  }
+}
+
+
+> SNN3
+          [,1]      [,2]      [,3]      [,4]
+[1,] 1.0000000 0.0000000 0.3333333 0.3333333
+[2,] 0.0000000 1.0000000 0.3333333 0.3333333
+[3,] 0.3333333 0.3333333 1.0000000 0.3333333
+[4,] 0.3333333 0.3333333 0.3333333 1.0000000
+
+
+这个例子太平均了，没有交集。
+
+
+
+
+
+
+==> 如何使用 nn矩阵 算出 snn矩阵?
+
+nn2=nn %*% t(nn)
+nn2
+
+# 计算点与点之间的 Jacard 相似度:
+k=20 #每个细胞取20个最近邻细胞
+snn = matrix(data=rep(0, nrow(data)**2), nrow=nrow(data), ncol=nrow(data)); 
+
+for(i in 1:nrow(snn)){
+  for(j in 1:ncol(snn)){
+    val=nn2[i,j]
+    snn[i,j]=val/(2*k - val)
+  }
+}
+snn[snn<1/15]=0
+table(snn[1,] - pbmc@graphs$RNA_snn[1,] ==0) #All T
+table(snn - as.matrix(pbmc@graphs$RNA_snn)==0) #All T
+
+
+> dim(snn)
+[1] 2638 2638
+
+> dim(pbmc@graphs$RNA_snn)
+[1] 2638 2638
+
+
+
+
+
+
+
+
+ref:
+https://www.jianshu.com/p/72313d70d9ab
+
+
+
+
+
+
+
+
+========================================
+|-- Seurat 4 R包源码解析 22: step10 细胞聚类 FindClusters() //todo
+----------------------------------------
+1. 调包侠
+# step10 Cluster the cells
+pbmc <- FindNeighbors(pbmc, dims = 1:10)
+pbmc <- FindClusters(pbmc, resolution = 0.5)
+
+# Look at cluster IDs of the first 5 cells
+head(Idents(pbmc), 5)
+
+table(pbmc$seurat_clusters)
+
+
+(1) 有4种算法 algorithm= 参数，默认是1
+#' @param algorithm Algorithm for modularity optimization (
+# 1 = original Louvain algorithm; 
+# 2 = Louvain algorithm with multilevel refinement; 
+# 3 = SLM algorithm; 
+# 4 = Leiden algorithm). Leiden requires the leidenalg python.
+
+
+(2) 分辨率参数支持数组
+#对象中使用最后一个参数的分组方式
+pbmc=FindClusters(pbmc, resolution = c(0.2,0.8))
+#查看 
+head(pbmc@meta.data)
+
+#修改分组方式:
+Idents(pbmc)="RNA_snn_res.0.2"
+#检查
+DimPlot(tmp, label=T)
+
+
+(3) 
+
+
+
+
+
+
+
+
+2. 源码解析 
+
+* FindClusters.Seurat()
+	* CheckDots() //todo 
+	* names()
+	* levels()
+	* LogSeuratCommand() //todo
+
+* FindClusters.default()
+	* RunModularityClustering()
+
+
+
+
+
+
+()
+./seurat-object-4.0.4/R/seurat.R:2466:names.Seurat <- function(x) {
+
+
+
+
+()
+./seurat-object-4.0.4/R/seurat.R:2240:levels.Seurat <- function(x) {
+
+
+()
+./seurat-4.1.0/R/clustering.R:1737:RunModularityClustering <- function(
+./seurat-4.1.0/R/RcppExports.R:4:RunModularityClusteringCpp <- function(SNN, modularityFunction, resolution, algorithm, nRandomStarts, nIterations, randomSeed, printOutput, edgefilename) {
+./seurat-4.1.0/R/RcppExports.R:5:    .Call('_Seurat_RunModularityClusteringCpp', PACKAGE = 'Seurat', SNN, modularityFunction, resolution, algorithm, nRandomStarts, nIterations, randomSeed, printOutput, edgefilename)
+
+
+
+
+
+3. R tips 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+ref:
+https://www.jianshu.com/p/5b03302f5367
+
+
+
+
+
+========================================
+|-- todo //日志类
+----------------------------------------
+总目录: https://zhuanlan.zhihu.com/p/465392721
+
+
+
+
+
+2. 
+> Assays(pbmc)
+[1] "RNA"
+
+> UpdateKey()
+
+
+查 S3 风格的方法的代码 
+> getAnywhere("Key.Seurat") #用到了 vapply 
+
+
+查 S4 风格的方法的代码 
+> getMethod("show", signature="Seurat")
+Method Definition:
+function (object) 
+{
+    object <- UpdateSlots(object = object)
+...
+
+
+> DiscretePalette() 配色方案
+
+
+
+
+()
+# $ find . | grep "R$" | xargs grep -n "LogSeuratCommand" --color=auto
+# seurat-object-4.0.4/R/command.R:59:LogSeuratCommand <- function(object, return.command = FALSE) {
+
+
+
+
+
+
+
+# IsGlobal()
+> slotNames(pbmc_small@reductions$pca)
+[1] "cell.embeddings"            "feature.loadings"          
+[3] "feature.loadings.projected" "assay.used"                
+[5] "global"                     "stdev"                     
+[7] "key"                        "jackstraw"                 
+[9] "misc" 
+
+> str(pbmc_small@reductions$pca@global)
+ logi FALSE
+> pbmc_small@reductions$pca@global
+[1] FALSE
+
+
+
+
+
+
+
+
+
+1. 多进程中的函数
+
+$ find . | grep "R$" |xargs grep -n -i "Parenting" --color=auto
+./seurat-4.1.0/R/utilities.R:2232:Parenting <- function(parent.find = 'Seurat', ...) {
+
+
+
+> Seurat:::Parenting
+function (parent.find = "Seurat", ...) 
+{
+    calls <- as.character(x = sys.calls())
+    calls <- lapply(X = strsplit(x = calls, split = "(", 
+        fixed = TRUE), FUN = "[", 1)
+    parent.index <- grep(pattern = parent.find, x = calls)
+    if (length(x = parent.index) != 1) {
+        warning("Cannot find a parent environment called ", 
+            parent.find, immediate. = TRUE, call. = FALSE)
+    }
+    else {
+        to.parent <- list(...)
+        if (length(x = to.parent) == 0) {
+            warning("Nothing to parent", immediate. = TRUE, 
+                call. = FALSE)
+        }
+        else if (is.null(x = names(x = to.parent))) {
+            stop("All input must be in a key = value pair")
+        }
+        else if (length(x = Filter(f = nchar, x = names(x = to.parent))) != 
+            length(x = to.parent)) {
+            stop("All inputs must be named")
+        }
+        else {
+            parent.environ <- sys.frame(which = parent.index)
+            for (i in 1:length(x = to.parent)) {
+                parent.environ[[names(x = to.parent)[i]]] <- to.parent[[i]]
+            }
+        }
+    }
+}
+<bytecode: 0x0000000018191b28>
+<environment: namespace:Seurat>
+
+
+
+
+
+
+
+2. 表达式处理
+
+@importFrom rlang is_quosure enquo eval_tidy
+
+
+PCA: https://www.bioinformatics.babraham.ac.uk/training/10XRNASeq/Dimension%20Reduction.pdf
+tSNE: https://distill.pub/2016/misread-tsne/
+
+
+
+
+
+
+
+========================================
+准备工作
+----------------------------------------
+1. 启动一个 docker 学习R
+$ docker run -d -p 8787:8787 -e PASSWORD=123456 rocker/rstudio:4.1.1
+
+交互式
+$ docker exec -it cd36 bash
+
+
+
+
+2. win10 安装一个R
+
+(1) 最新版是 R 4.1.3
+https://mirrors.tuna.tsinghua.edu.cn/CRAN/
+install.packages("Seurat")
+
+(2) 更新 Rstudio
+原来的 V 1.1.414
+
+https://www.rstudio.com/products/rstudio/download/
+
+
+
+
+
+
+
+
+========================================
+----------------------------------------
+
+
+
+========================================
+----------------------------------------
+
+
+
+========================================
+*** 其他单细胞R包 ***
+----------------------------------------
+
+
+
+========================================
+1.sc3包适合<5k cell的数据集
+----------------------------------------
+paper:Nat Methods. 2017 May;14(5):483-486. doi: 10.1038/nmeth.4236. Epub 2017 Mar 27.
+SC3: consensus clustering of single-cell RNA-seq data.
+https://www.ncbi.nlm.nih.gov/pubmed/28346451
+
+
+A tool for unsupervised clustering and analysis of single cell RNA-Seq data.
+该工具有很多聚类工具。
+
+
+
+
+========================================
+scran 包: Using scran to analyze single-cell RNA-seq data
+----------------------------------------
+1.
+The scran package implements methods to perform low-level processing of scRNA-seq data, including 
+- cell cycle phase assignment, 
+- scaling normalization, 
+- variance modelling and testing for corrrelated genes. 
+This vignette provides brief descriptions of these methods and some toy examples to demonstrate their use.
+
+http://bioconductor.org/packages/release/bioc/vignettes/scran/inst/doc/scran.html
+
+
+
+========================================
+Scater 包的使用
+----------------------------------------
+1. paper 
+D.J. McCarthy, K.R. Campbell, A.T.L. Lun, Q.F. Wills
+Scater: pre-processing, quality control, normalization and visualization of single-cell RNA-seq data in R
+Bioinformatics (2017), Article btw777
+
+(2) 用的paper
+
+
+J Allergy Clin Immunol. 2021 Jun;147(6):2370-2380. doi: 10.1016/j.jaci.2020.11.028. Epub 2020 Dec 9.
+Single-cell RNA sequencing of psoriatic skin identifies pathogenic Tc17 cell subsets and reveals distinctions between CD8 + T cells in autoimmunity and cancer
+https://pubmed.ncbi.nlm.nih.gov/33309739/
+
+
+
+
+
+
+2.
+Scater需要利用SingleCellExperiment这个对象
+
+## 创建 scater 要求的对象
+sce <- SingleCellExperiment(
+  assays = list(counts = as.matrix(counts)), 
+  colData = meta
+)
+
+
+
+
+
+ref:https://www.jianshu.com/p/869590243d64
+
+
+
+
+========================================
+整合数据 integration
+----------------------------------------
+1. 文章
+
+T. Stuart, A. Butler, P. Hoffman, C. Hafemeister, E. Papalexi, W.M. Mauck, et al.
+Comprehensive integration of single-cell data
+Cell, 177 (2019), pp. 1888-1902.e21
+
+
+
+
+========================================
+----------------------------------------
+
+
+
+
+========================================
+----------------------------------------
+

@@ -1,0 +1,1581 @@
+
+
+
+
+========================================
+轨迹推断（TI，trajectory inference）也常被称作 伪时间分析（ pseudotime analysis ）
+----------------------------------------
+
+总体而言，作者发现大多数TI方法在这四个评估标准之间存在很大差异，只有少数方法（例如PAGA，Slingshot和SCORPIUS）比较均衡。
+http://www.seqyuan.com/A%20comparison%20of%20single-cell%20trajectory%20inference%20methods.html
+
+
+目前常用的轨迹推断软件包括monocle，slingshot，velocyto等，各有优劣。
+
+
+拟时分析的本质是包含一条具有起点和终点的时间轴的细胞轨迹。时间轴的构建是在细胞轨迹的基础上，依据生物学先验知识来确定起点和终点完成的。
+
+细胞轨迹的构建则是通过细胞的表达量特征来完成的，主流方法有三种：
+
+（1）基于基因表达量的树图方法，经典软件是monocle和PAGA，以基因表达量动态变化来构建细胞轨迹；
+（2）无监督聚类，经典算法是UMAP，UMAP的聚类结果包含一条隐匿的时间轴，这也是今年文章中UMAP降维逐渐替代tSNE降维的一个原因；
+（3）基因的降解趋势和合成趋势，也就是今天我们会重点讨论的RNA velocity。
+
+
+
+
+1. 许多生物过程都伴随着细胞状态的连续性变化，比如研究发育就会经常使用到。我们可以利用单细胞数据在高维空间画一条线，贯穿于多种细胞状态。最简单是点到点的一条路径，更复杂的还有一个点出发再生成多个分支。
+
+
+
+轨迹推断，英文名词是：Trajectory Analysis。和它相关的另一个名词是：拟时序分析（pseudotime），指的是细胞沿着这个轨迹，并且对潜在的生物活动进行量化。注意这里看字面意思就知道，并不是指真正的时间，而是指细胞与细胞之间的更替、转化的顺序或者是轨迹，可以理解为“一个连续过程的缩影”。
+
+不同的生物过程对应的“拟时序”也是不同的：
+- Receptor Signaling
+- Cell activation
+- Cell proliferation
+- Marker expression 
+
+
+
+
+2. 看一下现在做相关分析的工具：来自
+https://broadinstitute.github.io/2019_scWorkshop/pseudotime-cell-trajectories.html
+
+Comparison: Cell Trajectories
+Diffusion maps for high-dimensional single-cellanalysis
+Diffusion pseudotime
+Slingshot Paper
+Optimal Transport
+RNA Velocity
+
+
+有评测文章发现：Slingshot、TSCAN、Monocle DDRTree这几种方法都不错
+
+
+(2)在数据集上尝试不同TI方法的意义
+在推断感兴趣的数据集的轨迹时，必须考虑另外两点：
+
+• 轨迹以及其下游结果/假设需要在多种TI方法上得到重现，这样做可以确保轨迹的预测不会是由于给定的参数设置或TI方法所基于的特定算法而产出的偏好性的结果。
+• 即使我们知道了预期的轨迹拓扑，也可以尝试一些分支较少的轨迹拓扑假设。如果使用这种方法确认了预期的拓扑，那么它将为用户提供证据支持；当产生更复杂的拓扑时，这可能表明基础生物学比用户预期的要复杂得多。
+
+
+2019年发表在Nature biotechnology的一篇文章A comparison of single-cell trajectory inference methods (Saelensetal., 2019[6]) 对45种TI方法在110个真实数据集和229个合成数据集中进行了全面比较，主要评估了TI方法的准确性、可扩展性、稳定性和可用性四个方面
+
+
+## 以下是文章(Saelens et al., 2019)的主要可参考点：
+• 文章的研究评估发现：发现当前TI方法之间存在很大的互补性，数据集的特性不同，执行效果最佳的TI方法也不同
+• 作者基于评估的结果，制定了一套准则，以帮助用户为自己的数据集选择最佳方法http://guidelines.dynverse.org
+• 开发了一个R包--dyno[7]，把文章中测试过的TI方法进行了封装，目前已封装了55种，允许用户根据guidelines.dynverse推荐的方法，自由选择进行TI分析，dyno采用统一的输入，同时也对不同TI方法的输出做了统一
+
+
+https://zouter.shinyapps.io/server/
+
+作者对几十种TI方法的输入输出接口进行了标准化，并提供的统一的工具包dyno.
+
+
+
+
+
+
+(3)有人整理了一份轨迹推断工具的清单：https://github.com/agitter/single-cell-pseudotime
+
+做这个分析之前，最好先问几个问题：
+- 确定数据会体现发育轨迹吗？也就是研究的样本是不是和发育相关的？
+- 数据中的细胞会体现出中间态吗？
+- 是否认为轨迹会出现分支？
+
+并且要注意：
+- 任何数据都可以强行画出轨迹，但不一定都有生物学意义！
+- 先要保证目前找到的HVGs和降维结果符合我们的预期，才能继续向下分析
+
+
+
+
+
+
+
+
+
+
+
+
+========================================
+Diffusion pseudotime (DPT): 2016 //todo
+----------------------------------------
+1. papers
+
+https://academic.oup.com/bioinformatics/article/31/18/2989/241305
+# Bioinformatics, Volume 31, Issue 18, 15 September 2015
+Diffusion maps for high-dimensional single-cell analysis of differentiation data 
+
+https://www.nature.com/articles/nmeth.3971
+# nm|Published: 29 August 2016 | 
+Diffusion pseudotime robustly reconstructs lineage branching
+
+
+
+
+2.
+
+
+
+
+
+
+
+========================================
+slingshot: minimum spanning tree (MST) //todo
+----------------------------------------
+1.官方文档：
+https://bioconductor.org/packages/release/bioc/vignettes/slingshot/inst/doc/vignette.html
+
+它需要两个必须的输入文件：降维结果与细胞分群结果
+
+因为它分析的基础假设就是：在低维空间上，细胞的位置是连续的并且是一个接一个的
+
+
+
+
+
+
+========================================
+Monocle3 拟时序分析/细胞轨迹分析
+----------------------------------------
+
+Monocle的官网在：
+版本2：https://cole-trapnell-lab.github.io/monocle-release/docs/#installing-monocle
+版本3：https://cole-trapnell-lab.github.io/monocle3/monocle3_docs/
+
+
+1. 定义
+本质就是根据每个细胞的基因表达情况找出关键的表达模式来对细胞进行排序，反推出细胞发育轨迹。
+用于细胞分化的研究(胚胎发育，细胞重编程，癌细胞分化，...)
+
+
+
+(2) 用户使用体验
+先验知识大于算法
+
+https://www.jianshu.com/p/e94cff521ebc
+- 还是别用monocle3了，不但运算慢，细胞数多了或者节点多了直接报错了。推荐scanpy的PAGA 算法，速度快而且好用
+- 我也感觉monocle2 比较好用，monocle2也是可以认可的
+- Seurat3都已经聚过类了，这个monocle再聚一次是否多余？它提供这个功能，你可以不用呀。可以用seurat的聚类结果
+
+
+
+2. 原理 
+一次取样中有不同发育状况的细胞。
+如果根据转录组能推断出细胞的先后顺序，则可以反推出细胞发育轨迹。
+
+达尔文物种进化分析类似，是根据形态学的相似性排序的。
+
+
+
+
+
+3. 软件简介
+(1)单细胞轨迹分析的软件: Monocle, SCUBA, STREAM, Wishbone, ...
+
+(2)Monocle 的优势：主流期刊常用，接受度高；功能强大。
+https://cole-trapnell-lab.github.io/monocle3/
+
+功能: trajectories, clustering, Defferential expression.
+
+
+实例: 细胞重编程成功与失败的分界点 Cell Stem Cell 2018 paper:
+Single-Cell RNA-Seq Reveals Dynamic Early Embryonic-like Programs during Chemical Reprogramming
+https://pubmed.ncbi.nlm.nih.gov/29937202/
+
+Reconstruction of Chemical Reprogramming Trajectory in a Pseudotime Manner
+The gene expression profiling data of all the single cells allowed us to deconstruct the population heterogeneity and reconstruct the reprogramming trajectory. We ordered cells in a pseudo-temporal manner using Monocle 2, an algorithm for the lineage reconstruction of biological processes based on transcriptional similarity (Qiu et al., 2017).
+
+
+(3) 流程 workflow
+
+scRNAseq -> Pre-process data(Normalize, Remove batch effect) ->Non_linear dimensionality reduction(UMAP) ->Cluster cells
+-> Compare clusters(Identify top markers, Targeted contrasts) -> Trajectory analysis
+
+导入数据 - 预处理 - 降维 -聚类 - 比较找marker - 拟时序分析 
+
+
+
+
+https://zhuanlan.zhihu.com/p/451727080
+除了常规广义模型进行差异分析之外，Monocle3还提供了一种空间差异分析的算法——Moran指数。Moran的I统计量是一种多向多维空间自相关的度量。统计数据通过最近邻图对数据点之间的空间关系进行编码，使其特别适合于分析大型scRNA-seq数据集。Moran指数的范围为-1到1之间，0表示在空间中不相关，而1表示高度正相关，小于0的Moran指数一般都没有统计学意义。
+
+
+
+
+
+(4) 数据导入 
+library(monocle3) #v1.0.0
+
+1)可以导入 cellrange结果(v2, v3)
+gene_bc_matrix <- load_cellranger_data("/home/user/cellranger_output")
+
+2) 否则就要准备三个文件
+expression_matrix 就是表达矩阵，一行一个基因，一列一个cell，值是 raw counts，是一个稀疏矩阵
+cell_metadata 一行一个细胞，一列代表一个细胞属性，比如样本编号、组织类型、分群编号
+gene_metadata 一行一个基因，三列 id, gene_short_name(必须列), num_cell_expressed
+
+new_cell_data_set(expression_data, cell_metadata = NULL, gene_metadata = NULL)
+
+Arguments
+expression_data: expression data matrix for an experiment, can be a sparseMatrix.
+
+cell_metadata: data frame containing attributes of individual cells, where row.names(cell_metadata) = colnames(expression_data).
+
+gene_metadata: data frame containing attributes of features (e.g. genes), where row.names(gene_metadata) = row.names(expression_data).
+
+
+
+3) 比如，导入 Seurat 的结果
+# load data from Seurat
+pbmc
+
+expression_data=as.matrix(pbmc@assays$RNA@counts)
+cell_data=pbmc@meta.data
+gene_data=data.frame(
+  gene_short_name=row.names(pbmc), #must have this column
+  row.names = row.names(pbmc)
+)
+head(gene_data)
+
+cds=new_cell_data_set(expression_data, cell_data, gene_data)
+cds
+
+
+
+
+
+
+4. 分析流程示例
+
+(1) 数据导入 
+pbmc
+DimPlot(pbmc, label = T)
+pbmc$celltype=pbmc@active.ident
+
+sce_T=subset(pbmc, celltype %in%  c("Naive CD4 T", "Memory CD4 T", "CD8 T", "NK"))
+sce_T
+DimPlot(sce_T, label = T)
+
+
+library(monocle3)
+# 1.load data from Seurat
+load_from_Seurat=function(sce){
+  expression_data=GetAssayData(sce, assay = 'RNA', slot = 'counts')
+  cell_data=sce@meta.data
+  gene_data=data.frame(
+    gene_short_name=row.names(sce), #must have this column
+    row.names = row.names(sce)
+  )
+  # head(gene_data)
+
+  new_cell_data_set(expression_data, cell_data, gene_data)
+}
+
+cds=load_from_Seurat(sce_T)
+cds
+
+
+
+
+
+
+(2) 预处理 (log预处理)
+#preprocess_cds函数相当于seurat中NormalizeData+ScaleData+RunPCA
+
+# pre-processing(log)
+cds=preprocess_cds(cds, norm_method = "log", method = "PCA",
+                   num_dim=100)
+
+# 标准化: log处理，减小数据的离散程度
+# 线性降维: PCA, LSI。RNA-seq前者更好。ATAC使用后者
+# 使用的PC数，默认为50.
+
+# 判断使用多少个PC
+plot_pc_variance_explained(cds) #从图中看，15个够用了
+
+
+(3) 降维 
+# UMAP
+cds=reduce_dimension(cds, preprocess_method = "PCA", reduction_method = 'UMAP')
+plot_cells(cds, reduction_method="UMAP", color_cells_by="celltype") + ggtitle('cds.umap')
+
+
+# 查看基因表达情况
+gene_list=c("CD3D", "CD4", "CD8A", "CD79A")
+plot_cells(cds,
+           genes=gene_list,
+           label_cell_groups = F,
+           show_trajectory_graph = F)
+
+(4) 细胞聚类(比 Seurat 的粗，大概认为一个发育过程的几个细胞亚群都划分到一个 partition 了)
+目的：找到那些细胞在一个发育轨迹上。
+#cds = cluster_cells(cds)
+#plot_cells(cds, color_cells_by = "partition")
+
+
+
+##从seurat导入整合过的umap坐标(可选)
+cds.embed <- cds@int_colData$reducedDims$UMAP
+
+int.embed <- Embeddings(sce_T, reduction = "umap")
+int.embed <- int.embed[rownames(cds.embed),]
+
+cds@int_colData$reducedDims$UMAP <- int.embed
+p2 <- plot_cells(cds, reduction_method="UMAP", color_cells_by="celltype") + ggtitle('int.umap')
+p2
+
+## Monocle3聚类分区
+# cds <- cluster_cells(cds)
+p1 <- plot_cells(cds, color_cells_by = "seurat_clusters", show_trajectory_graph = FALSE) + ggtitle("label by clusterID")
+p2 <- plot_cells(cds, color_cells_by = "partition", show_trajectory_graph = FALSE) +
+  ggtitle("label by partitionID")
+p1 + p2
+
+
+
+
+
+(5). 找出发育轨迹
+目的：在上一步分群的基础上，找出每个群内的细胞的发育轨迹。
+无监督，没有基于生物学背景知识。需要酌情取舍。
+
+cds=learn_graph(cds)
+plot_cells(cds, color_cells_by = "seurat_clusters",
+           label_groups_by_cluster = F,
+           label_leaves = F,
+           label_branch_points = F)
+#Error: color_cells_by must one of 'cluster', 'partition', 'pseudotime, 
+# or a column in the colData table.
+
+
+
+
+
+(6) 确定轨迹的先后顺序
+对每条轨迹确定头和尾巴
+- 基于算法
+	根据细胞轨迹图中的节点把它们相聚较近的细胞进行分组
+	计算每个节点来自最早时间的细胞(场外信息)所占的比例
+	包含早期细胞最多的节点就是根节点。
+- 手动(每个轨迹均需要指定一个根节点) 大多数情况是手动。
+
+
+cds=order_cells(cds, reduction_method = "UMAP") #手动设定起点
+plot_cells(cds, color_cells_by = "pseudotime")
+
+
+
+
+
+
+
+
+
+
+
+5. monocle3差异分析
+
+##寻找拟时轨迹差异基因 Finding genes that change as a function of pseudotime
+#graph_test分析最重要的结果是莫兰指数（morans_I），其值在-1至1之间，0代表此基因没有
+#空间共表达效应，1代表此基因在空间距离相近的细胞中表达值高度相似。
+Track_genes <- graph_test(cds, neighbor_graph="principal_graph", cores=10) #这一句巨慢，很占内存，做好重启Rsession的准备。
+# rbind报错，按如下一行修改。 如果线程报错，可以只使用1个核。
+
+
+#################
+https://www.jianshu.com/p/bbc4384c0651
+修改 monocle3 的graph_test函数报错解决方案
+> Track_genes <- graph_test(cds, neighbor_graph="principal_graph", cores=10)
+Error: 'rBind' is defunct.
+ Since R version 3.2.0, base's rbind() should work fine with S4 objects
+原因：monocle3的bug
+解决方案：使用1个核，并修改代码。
+Console中运行
+> trace('calculateLW', edit = T, where = asNamespace("monocle3"))
+在出现的文档中Matrix::rBind 改为rbind，(或者将rbind 改为Matrix::rBind)
+#################
+
+
+
+
+#挑选top10画图展示
+Track_genes_sig <- Track_genes %>% filter(q_value < 0.05) %>% top_n(n=10, morans_I) %>%
+  pull(gene_short_name) %>% as.character()
+
+plot_cells(cds, genes=Track_genes_sig,
+           show_trajectory_graph=FALSE,
+           label_cell_groups=FALSE,
+           label_leaves=FALSE)
+
+
+#(1)基因表达趋势图(常用图)
+plot_genes_in_pseudotime(cds[Track_genes_sig,], color_cells_by="seurat_clusters", #celltype
+                         min_expr=0.5, ncol = 2)+
+  guides( color = guide_legend( override.aes = list(size=5)))
+# 可比较基因开始表达时间的早晚。
+# 这里进一步分析可以跳到下面的小标题 (4) (5) 
+
+
+#(2)FeaturePlot图
+plot_cells(cds, genes=Track_genes_sig, show_trajectory_graph=FALSE,
+           label_cell_groups=FALSE,  label_leaves=FALSE)
+
+
+
+##(3)寻找共表达模块
+genelist <- pull(Track_genes, gene_short_name) %>% as.character()
+gene_module <- find_gene_modules(cds[genelist,], resolution=1e-2, cores = 10)
+cell_group <- tibble::tibble(cell=row.names(colData(cds)),
+                             cell_group=colData(cds)$celltype)
+agg_mat <- aggregate_gene_expression(cds, gene_module, cell_group)
+row.names(agg_mat) <- stringr::str_c("Module ", row.names(agg_mat))
+pheatmap::pheatmap(agg_mat, scale="column", border_color = NA,
+                   clustering_method="ward.D2")
+
+pheatmap::pheatmap( t(agg_mat), scale="row", border_color = NA,
+                   clustering_method="ward.D2")
+
+plot_cells(cds,
+           genes=gene_module %>% filter(module %in% c(16, 27, 10, 7, 30,13)),
+           label_cell_groups=FALSE,
+           show_trajectory_graph=FALSE)
+
+
+## (4) 获取每个细胞的 pseudotime 值。
+#traj.coord<-reducedDimS(cds)
+traj.coord<- cds@principal_graph_aux@listData[["UMAP"]][["pseudotime"]]
+head(traj.coord)
+head(rownames(sce@meta.data))
+identical(rownames(sce@meta.data), names(traj.coord) ) #T
+
+sce@meta.data$pseudotime=as.numeric(traj.coord)
+
+
+
+## (5) 计算每一组的pseudotime平均值
+ptime=sapply( split(sce$pseudotime, sce$seurat_clusters), mean )
+ptime=ptime[order(ptime)]
+ptime
+
+dif=data.frame(
+  x=sce$seurat_clusters,
+  y=sce$pseudotime
+)
+dif$x=factor(dif$x, levels = names(ptime) )
+
+library(ggplot2)
+ggplot(dif, aes(x,y, fill=x))+
+  geom_violin(scale="width", show.legend = F)+
+  #geom_boxplot(fill="white", outlier.color = NA, width=0.1)+
+  theme_bw(base_size = 14)+
+  labs(x="seurat_clusters", y="pseudotime")+
+  theme(
+    axis.text.x = element_text(angle=60, hjust = 1)
+  )
+#
+
+
+
+
+
+
+6. choose one branch(跳过)
+
+# 手动选择一个分支
+cds_subset <- choose_cells(cds)
+cds_subset
+
+subset_pr_test_res <- graph_test(cds_subset, neighbor_graph="principal_graph", cores=4)
+pr_deg_ids <- row.names(subset(subset_pr_test_res, q_value < 0.05))
+
+gene_module_df <- find_gene_modules(cds_subset[pr_deg_ids,], resolution=0.001)
+
+agg_mat <- aggregate_gene_expression(cds_subset, gene_module_df)
+module_dendro <- hclust(dist(agg_mat))
+gene_module_df$module <- factor(gene_module_df$module,
+                                levels = row.names(agg_mat)[module_dendro$order])
+
+plot_cells(cds_subset,
+           genes= gene_module_df %>% group_by(module) %>% top_n(4) %>% pull(id),
+           label_cell_groups=F,
+           show_trajectory_graph=F)
+
+
+
+
+
+
+
+
+
+(2) 选择细胞类型，对不同类型分别画 pseudotime
+https://satijalab.org/signac/articles/monocle.html
+
+# 获取2个 子集对象
+DefaultAssay(bone) <- "ATAC"
+
+# in 后面是cluster名字
+erythroid <- bone[,  bone$assigned_celltype %in% c("HSC", "MEP", "CMP-BMP")]
+lymphoid <- bone[, bone$assigned_celltype %in% c("HSC", "LMPP", "GMP", "CLP", "Pro-B", "pDC", "MDP", "GMP")]
+
+
+
+# Building trajectories with Monocle 3
+erythroid.cds <- as.cell_data_set(erythroid)
+erythroid.cds <- cluster_cells(cds = erythroid.cds, reduction_method = "UMAP")
+erythroid.cds <- learn_graph(erythroid.cds, use_partition = TRUE)
+
+lymphoid.cds <- as.cell_data_set(lymphoid)
+lymphoid.cds <- cluster_cells(cds = lymphoid.cds, reduction_method = "UMAP")
+lymphoid.cds <- learn_graph(lymphoid.cds, use_partition = TRUE)
+
+
+# Monocle 3 includes an interactive function to select cells as the root nodes in the graph. This function will be launched if calling order_cells() without specifying the root_cells parameter. Here we’ve pre-selected some cells as the root, and saved these to a file for reproducibility. This file can be downloaded here.
+打不开 https://www.dropbox.com/s/w5jbokcj9u6iq04/hsc_cells.txt
+
+# load the pre-selected HSCs
+hsc <- readLines("../vignette_data/hsc_cells.txt")
+
+# 画第一个UMAP上的 pseudotime 图
+# order cells
+erythroid.cds <- order_cells(erythroid.cds, reduction_method = "UMAP", root_cells = hsc)
+lymphoid.cds <- order_cells(lymphoid.cds, reduction_method = "UMAP", root_cells = hsc)
+
+# plot trajectories colored by pseudotime
+plot_cells(
+  cds = erythroid.cds,
+  color_cells_by = "pseudotime",
+  show_trajectory_graph = TRUE
+)
+
+
+# 画第2个UMAP上的 pseudotime 图
+plot_cells(
+  cds = lymphoid.cds,
+  color_cells_by = "pseudotime",
+  show_trajectory_graph = TRUE
+)
+
+
+
+# Extract the pseudotime values and add to the Seurat object
+# 提出来 pseudotime 值，然后添加到 Seurat 对象中
+bone <- AddMetaData(
+  object = bone,
+  metadata = erythroid.cds@principal_graph_aux@listData$UMAP$pseudotime,
+  col.name = "Erythroid"
+)
+
+bone <- AddMetaData(
+  object = bone,
+  metadata = lymphoid.cds@principal_graph_aux@listData$UMAP$pseudotime,
+  col.name = "Lymphoid"
+)
+FeaturePlot(bone, c("Erythroid", "Lymphoid"), pt.size = 0.1) & scale_color_viridis_c()
+
+
+
+
+
+
+
+refer:
+https://mp.weixin.qq.com/s?__biz=MzIyMzMwNDQ2MA==&mid=2247484327&idx=1&sn=46c78c70cbe2b8c3fb5f282458bff0d6
+https://cole-trapnell-lab.github.io/monocle3/docs/differential/
+
+
+
+
+========================================
+Monocle2: 经典拟时序分析包
+----------------------------------------
+
+1. Monocle2 拟时序轨迹分支的两种情况处理
+区分的关键是要不要分支。要根据情况确定。
+
+(1) 不考虑分支，只考虑随时间变化的基因变化趋势。
+(2) 在变化过程中两个分支差异比较大可以考虑分支变化。
+
+
+
+(3) 三种图，分别表示不同的意义
+
+- 拟时序基因表达量图: 一个基因在不同cluster中的表达情况
+
+- 拟时序基因表达量图在 UMAP 上：看出在发育过程中的变化
+
+- 基因 switch (开关): x是时间，y是一条线上面是表达to不表达，线下 不表达to表达。距离线越远，表示开关变化越明显。
+
+- 基因密度图：对基因开关进行富集分析，然后把GO画到 拟时间 轴上。
+
+
+例子: 对原发和复发HCC放到一起 拟时间分析，然后分析时间轴上哪边细胞多(细胞密度图)
+
+
+
+
+2. 使用时的三个核心问题
+
+- 如何选取基因集
+- 如何排序
+- 如何确定分支
+
+通过关键基因的表达，对细胞进行排序模拟出随着时间的改变，细胞的发育状态的改变。
+
+
+经过多年的发展，排序技术依然是一种在低维空间排布高维数据的降维技术。
+当我们讲到排序的时候，离不开降维；
+讲到降维的时候，离不开特征提取（或者选择）。
+
+那么对应到拟时分析的描述中：1)关键基因就是特征选择的结果，2)拟时间就是排序空间，3)排序就是细胞的演化轨迹。所有的拟时分析都离不开这三点。
+
+
+
+
+(1) 差异基因
+可以使用内置的差异基因选择方法；
+也可以使用Seurat的高变基因；
+也可以自己指定
+
+
+(2) 如何排序
+
+1) Monocle1默认采用 ICA 算法进行数据降维，
+ICA算法使用MST(Minimum spanning tree) 获得细胞间分化轨迹的最小路径。
+
+MST 假设
+	- 数据点是无关的，细胞之间明显是有互作的。
+	- 假设数据是符合高斯分布的，
+
+
+2) Monocle2 DDRTRee (v2)
+Monocle2 默认采用 DDRTRee算法进行数据降维(更适用于细胞轨迹分析)。
+
+- 筛选细胞类 (cluster) 的所有差异表达基因
+- 降维并构建最小生成树
+- 对单细胞进行在高维和低维空间搜索最优排序；
+- 拟合最佳细胞发育或者分化拟时序轨迹曲线
+
+
+3) Monocle UMAP (v3)  难点是不好安装。
+处理的细胞数量增加，支持UMAP推断发育轨迹。
+raw matrix -> Preprocess(PCA) -> 
+Non-linear dimension reduction(tSNE, UMAP, Louvain clustering)->
+Learn graph: DDRTree, SimplePPT, L1-graph ->
+
+
+
+
+
+
+
+========================================
+|-- 导入数据: 从 Seurat 导入到 Monocle2
+----------------------------------------
+
+3. 操作流程
+数据的导入与质控、细胞分群、差异分析、拟时分析等。
+我们其实只用 monocle 做 拟时序分析，前面几个功能使用 Seurat 做。
+
+
+install.packages("devtools")
+devtools::install_github("cole-trapnell-lab/monocle-release@develop")
+library(monocle)
+
+
+示例代码，原理解释、名词解释:
+https://cole-trapnell-lab.github.io/monocle-release/docs/#installing-monocle
+
+中文参考:
+https://blog.csdn.net/weixin_42960896/article/details/115059706
+https://blog.csdn.net/qq_40966210/article/details/114021216
+踩坑记录: https://www.jianshu.com/p/66c387e1de3d
+简化步骤: https://www.jianshu.com/p/12ce02a032f9
+
+
+对于pseudotime分析，我们需要明白它的基本输入就是一张基因在细胞中表达量的表格，与细胞的聚类结果无关，只不过在可视化的时候根据聚类的结果填充了颜色而已。
+
+
+
+主要基于关键基因的表达模式，在拟时间中对单个细胞进行排序，模拟出时间发育过程的动态变化。
+
+构建拟时间轨迹一共分为三步，其中第一步选择较多，二三步基本一致：
+第一步：确定合适的基因（这里仅针对前两种进行说明）；
+· 简单地比较过程开始时和结束时收集的细胞，找出差异表达的基因；
+· 基于不同的cluster找差异基因（官网推荐使用的）；
+· 选择细胞间高度分散的基因(这里没有提到)；
+
+第二步：用DDRTree算法降维
+cds <- setOrderingFilter(cds, ordering_genes)
+cds <- reduceDimension(cds, max_components = 2,
+                       method = 'DDRTree')
+
+第三步：构建拟时间曲线
+HSMM_myo <-orderCells(HSMM_myo)
+HSMM_myo <-orderCells(HSMM_myo, root_state = GM_state(HSMM_myo))
+plot_cell_trajectory(HSMM_myo, color_by = "Hours")
+
+
+
+
+(1) 创建 cds 对象
+需要3个文件
+	matrix文件
+	barcodes.txt 
+	genes.tsv #第二列必须是 symbol
+
+可以使用 Seurat 对象获取数据。
+
+
+library("monocle")
+
+# subset of 1 sample: APC1 为了快，只展示一个小集合
+sce=subset(scObj_nue, subset= orig.ident=="APC1")
+sce #3265
+DimPlot(sce, label=T)
+
+#
+#' get Monocle2 obj from Seurat obj
+#'
+#' @param sce Seurat obj
+#'
+#' @return Monocle2 obj
+#' @export
+#'
+#' @examples
+Seurat2Monocle2=function(sce){
+  #expr_matrix=as.matrix(sce@assays$RNA@counts)
+  #expr_matrix=GetAssayData(sce, assay = 'RNA', slot = 'counts')
+  expr_matrix= as(as.matrix(sce@assays$RNA@counts), 'sparseMatrix')
+  cell_data=sce@meta.data
+  gene_data=data.frame(
+    gene_short_name=row.names(sce), #must have this column
+    row.names = row.names(sce)
+  )
+  #
+  pd <- new("AnnotatedDataFrame", data = cell_data)
+  fd <- new("AnnotatedDataFrame", data = gene_data)
+  cds <- newCellDataSet(expr_matrix, 
+                        phenoData = pd, 
+                        featureData = fd,
+                        expressionFamily=negbinomial.size())
+  return(cds)
+}
+
+cds = Seurat2Monocle(sce)
+
+# 当数据为UMIs, Transcript counts时，数据分布需要设为负二项分布，即 negbinomial.size()。
+
+需要注意的是，如果是UMI数据，不应该在创建CellDataSet之前自己对其进行标准化。也不应该试图将UMI计数转换为相对丰度(通过将其转换为FPKM/TPM数据)。Monocle将在内部执行所有需要的标准化步骤。自己将其正常化可能会破坏Monocle的一些关键步骤。
+
+
+这里简单提一下，之前如果想直接将Seurat、scater包的数据对象转成CDS，可以使用 importCDS() 函数，反过来，可以用exportCDS()函数将CDS转成Seurat、scater包专用的数据对象。
+但随着版本更替，对于Seurat3.0之后的数据对象，importCDS()已失去作用，按照官方教程操作会报错。
+Seurat2.4的版本：
+	monocle_cds <-importCDS(spleen,import_all=TRUE) 
+Seurat3.0及更高版本：
+	data <- as(as.matrix(spleen@assays$RNA@counts), 'sparseMatrix')
+
+
+
+
+
+
+(2) QC 过滤(可选)
+# sizefactor per cell; 对细胞做归一化
+# detectGenes() #过滤低质量细胞
+
+
+# 估计size factor和离散度
+# 计算size factors 和 dispersions，用于后期分析；
+HSMM <- estimateSizeFactors(HSMM)
+HSMM <- estimateDispersions(HSMM)
+
+monocle_cds <- detectGenes(monocle_cds, min_expr = 0.1) #过滤掉低质量的基因。
+print(head(fData(monocle_cds)))
+
+
+
+2) 可选(optional)
+这里的fData()函数用于提取CDS对象中的基因注释表格，得到的结果为数据框；pData()函数作用类似，提取CDS对象中的细胞表型表格，可以发现在phenoData表格添加了1列Size_Factor。
+
+这里的离散度表格中会有不同基因的平均表达量和离散度（推测是标准差）。
+
+#查看计算结果；
+head(pData(HSMM))
+head(dispersionTable(HSMM))
+
+
+
+#统计当前细胞的表达gene数量和当前基因表达的细胞数量；
+HSMM <- detectGenes(HSMM, min_expr = 0.1)
+#运行结果是在featureData表格中添加num_cells_expressed列；
+#同时在phenoData表格中添加num_genes_expressed列；
+head(fData(HSMM))
+head(pData(HSMM))
+
+
+
+# 1)过滤基因
+#过滤至少在10个细胞中表达的基因；
+expressed_genes <- row.names(subset(fData(HSMM),num_cells_expressed >= 10))
+length(expressed_genes)
+
+使用中括号[]操作符可以直接进行提取过滤，可以把HSMM对象视作行名为gene id而列名为细胞id的数据框或矩阵，逗号前面对行过滤，逗号后面对列过滤。
+
+HSMM <- HSMM[expressed_genes,]
+
+
+
+
+# 2)过滤细胞
+官方的数据已经过滤了，我这里参考下Seurat的过滤标准，去掉低质量的细胞。
+
+valid_cells <- row.names(subset(pData(HSMM),num_genes_expressed >= 200 & Mapped.Fragments > 1000000))
+length(valid_cells)
+HSMM <- HSMM[,valid_cells]
+
+#使用exprs()提取表达量稀疏矩阵；
+expdt <- exprs(HSMM)
+dim(expdt)
+#计算细胞的mRNA（UMI、cout）总数，即对矩阵的列求和，并在phenoData表格中添加Total_mRNAs列；
+pData(HSMM)$Total_mRNAs <- Matrix::colSums(expdt)
+head(pData(HSMM))
+dim(HSMM)
+
+
+#根据总mRNA数（小于100万）进一步过滤细胞；
+valid_cells2 <- pData(HSMM)$Total_mRNAs < 1e6
+HSMM <- HSMM[,valid_cells2]
+#根据细胞总mRNA数的核密度分布曲线进一步过滤总mRNA异常的细胞；
+#异常值范围边界确定：mean ± 2sd；
+upper_bound <- 10^(mean(log10(pData(HSMM)$Total_mRNAs)) +
+2*sd(log10(pData(HSMM)$Total_mRNAs)))
+lower_bound <- 10^(mean(log10(pData(HSMM)$Total_mRNAs)) -
+2*sd(log10(pData(HSMM)$Total_mRNAs)))
+
+#绘制细胞总mRNA数的核密度分布曲线：
+qplot(Total_mRNAs, data = pData(HSMM), color = Hours, geom ="density") +
+	geom_vline(xintercept = lower_bound) +
+	geom_vline(xintercept = upper_bound)
+
+#保留“中间”区域；
+valid_cells3 <- pData(HSMM)$Total_mRNAs > lower_bound & pData(HSMM)$Total_mRNAs < upper_bound
+HSMM <- HSMM[,valid_cells3]
+dim(HSMM)
+# 从结果看由原来的271个细胞过滤到262个细胞。
+
+
+
+# 3)数据分布展示
+
+#对表达量矩阵取对数得到新矩阵；
+L <- log(exprs(HSMM[expressed_genes,]))
+# 使用scale()函数对基因表达量进行标准化,函数默认对列标准化，需转置；
+M <- Matrix::t(scale(Matrix::t(L)))
+#使用Melt函数进行表格“整形”；
+library(reshape2)
+melted_dens_df <- melt(M)
+
+# 使用标准化后的基因表达量绘制分布曲线；
+qplot(value, geom = "density", data = melted_dens_df) +
+	stat_function(fun = dnorm, size = 0.5, color = 'red') +
+	xlab("Standardized log(FPKM)") +
+	ylab("Density")
+# 我们可以看到标准化后的数据符合正态分布
+
+
+
+
+
+
+(3) 降维、细胞聚类(可选 optional)
+
+1) 根据基因的离散程度筛选基因
+disp_table <- dispersionTable(HSMM)
+unsup_clustering_genes <- subset(disp_table, mean_expression >= 0.1) 
+HSMM_ myo <- setOrderingFilter(HSMM, unsup_clustering_genes$gene_id)
+plot_ordering_genes(HSMM)
+
+
+2) 去除混杂因素
+Monocle允许我们减去“无趣的”变异源的影响，以减少它们对集群的影响。您可以使用到clusterCells和其他几个Monocle函数的residualmodelformula astr参数来实现这一点。此参数接受一个R模型公式字符串，该字符串指定要在cluster之前减去。
+
+HSMM <- reduceDimension(HSMM, max_components = 2, num_dim = 2,
+                        reduction_method = 'tSNE',
+                        residualModelFormulaStr = "~Size_Factor + num_genes_expressed",
+                        verbose = T)
+HSMM <- clusterCells(HSMM, num_clusters = 5)
+plot_cell_clusters(HSMM, 1, 2, color = "Cluster")
+
+plot_cell_clusters(HSMM, 1, 2, color = "Cluster") +
+  facet_wrap(~CellType)
+
+
+3) tSNE 降维
+HSMM_myo <- reduceDimension(HSMM_myo, max_components= max_components, num_dim = 3, norm_method = 'log', reduction_method = 'tSNE',verbose = T)
+对细胞进行聚类，在Seurat中采用的是分辨率来确定cluster的数目。而monocle中可以直接指定聚类数目。主要指出的这里所聚类获得的cluster数目比我们赋值的要少一个。即当num_clusters=3时，你只获得了2个cluster，可能是个 bug。
+
+
+
+
+(4) 寻找差异基因 (可选 optional)
+
+1) 获得对细胞排序起到关键作用的基因集。
+marker_genes <- row.names(subset(fData(HSMM),
+	 gene_short_name %in% c("MEF2C", "MEF2D", "MYF5",
+							"ANPEP", "PDGFRA","MYOG",
+							"TPM1",  "TPM2",  "MYH2",
+							"MYH3",  "NCAM1", "TNNT1",
+							"TNNT2", "TNNC1", "CDK1",
+							"CDK2",  "CCNB1", "CCNB2",
+							"CCND1", "CCNA1", "ID1")))
+
+#也可以输入之前按 cell number 过滤的基因名字 HSMM_myo[HSMM_expressed_genes,]，多核 cores=4
+diff_test_res <- differentialGeneTest(HSMM[marker_genes,], 
+                                      fullModelFormulaStr = "~percent.mt")
+
+differentialGeneTest这个函数测试每个基因的差异表达，取决于伪时间或根据指定的其他协变量。
+“ differentialGeneTest”是Monocle的主要差异分析函数， 它接受一个CellDataSet和两个模型公式作为输入，指定由实现的广义谱系模型“VGAM”包。 也就是说我们可以根据指定’~cluster’或者拟时间值来获得差异基因。差异基因的结果如下表所示：
+
+> head(diff_test_res)
+      status           family       pval      qval gene_short_name num_cells_expressed use_for_ordering
+MEF2D     OK negbinomial.size 0.10544931 0.4590520           MEF2D                   1            FALSE
+CCNB1     OK negbinomial.size 0.45277970 0.7043240           CCNB1                   1            FALSE
+MEF2C     OK negbinomial.size 0.28733226 0.5028315           MEF2C                   2            FALSE
+
+在这个表格中，我们先看一下表头对应的关键列。第一列没有列名，为基因名称。pval,qval 为差异基因的显著检验打分。num_cells_expressed为表达这个基因的细胞数。use_for_ordering该基因是否是作为排序的差异基因。
+
+
+
+# 可视化几个基因的表达值，黑白图(可选)
+MYOG_ID1 <- HSMM[row.names(subset(fData(HSMM),
+                 gene_short_name %in% c("CCND1", "CCNB2"))),]
+plot_genes_jitter(MYOG_ID1, grouping = "seurat_clusters", ncol= 2)
+
+
+
+
+
+
+
+2) 选择对区分 细胞类型/状态 有意义的基因（Finding Genes that Distinguish Cell Type or State ）
+
+# Finding Genes that Distinguish Cell Type or State 
+to_be_tested <- row.names(subset(fData(HSMM),
+                                 gene_short_name %in% c("CDC20", "NCAM1", "ANPEP")))
+cds_subset <- HSMM[to_be_tested,]
+
+diff_test_res <- differentialGeneTest(cds_subset,
+                                      fullModelFormulaStr = "~CellType")
+diff_test_res[,c("gene_short_name", "pval", "qval")]
+
+plot_genes_jitter(cds_subset,
+                  grouping = "CellType",
+                  color_by = "CellType",
+                  nrow= 1,
+                  ncol = NULL,
+                  plot_trend = TRUE)
+
+
+3) //todo
+Monocle中的差异分析过程非常灵活:您在测试中使用的模型公式可以包含pData表中作为列存在的任何项，包括Monocle在其他分析步骤中添加的列。例如，如果您使用集群细胞，您可以使用集群作为模型公式来测试cluster之间不同的基因。
+
+full_model_fits <- fitModel(cds_subset,  modelFormulaStr = "~CellType")
+reduced_model_fits <- fitModel(cds_subset, modelFormulaStr = "~1")
+diff_test_res <- compareModels(full_model_fits, reduced_model_fits)
+diff_test_res
+
+      status           family        pval       qval
+CDC20     OK negbinomial.size 0.007822883 0.02346865
+NCAM1     OK negbinomial.size 0.791131484 0.88906005
+ANPEP     OK negbinomial.size 0.889060052 0.88906005
+
+
+
+
+
+
+
+
+========================================
+|-- monocle2 做轨迹分析 (指控、聚类、DEG不建议使用monocle做)
+----------------------------------------
+(5) 轨迹分析
+可以直接看这个博客做完: https://www.cnblogs.com/TOP-Bio/p/14856979.html
+解释1 https://www.jianshu.com/p/66c387e1de3d
+
+The ordering workflow
+Step 1: choosing genes that define progress (见4，或者使用 Seurat 的DEG？)
+Step 2: reducing the dimensionality of the data
+Step 3: ordering the cells in pseudotime
+
+
+## Trajectory Step 1: choosing genes that define progress----
+#第1步) 获取 输入用于排序的基因 symbol list
+	Monocle官网教程提供了4个选择方法：
+		* 选择发育差异表达基因
+		* 选择clusters差异表达基因
+		* 选择离散程度高的基因
+		* 自定义发育marker基因
+		
+		前三种都是无监督分析方法，细胞发育轨迹生成完全不受人工干预；
+		最后一种是半监督分析方法，可以使用先验知识辅助分析。
+
+##1)使用clusters差异表达基因
+deg.cluster <- FindAllMarkers(scRNA.Osteoclastic)
+diff.genes <- subset(deg.cluster,p_val_adj<0.05)$gene
+HSMM <- setOrderingFilter(HSMM, diff.genes)
+plot_ordering_genes(HSMM)
+
+##2)使用seurat选择的高变基因
+var.genes <- VariableFeatures(scRNA.Osteoclastic)
+HSMM <- setOrderingFilter(HSMM, var.genes)
+plot_ordering_genes(HSMM)
+
+##3)使用monocle选择的高变基因
+disp_table <- dispersionTable(HSMM)
+disp.genes <- subset(disp_table, mean_expression >= 0.1 & dispersion_empirical >= 1 * dispersion_fit)$gene_id
+HSMM <- setOrderingFilter(HSMM, disp.genes)
+plot_ordering_genes(HSMM)
+
+
+##4) Monocle2 的 differentialGeneTest() 计算的差异基因，比如保留 qval<1e-10 且 cell number >10 的基因
+diff_test_res <- differentialGeneTest(cds[expressed_genes,],
+                                      fullModelFormulaStr = "~percent.mt")
+# 20:35 --> 20:37 特别慢，仅仅1k个细胞就需要10min。
+
+ordering_genes <- row.names (subset(diff_test_res, qval < 0.01))
+cds <- setOrderingFilter(cds, ordering_genes)
+plot_ordering_genes(cds)
+
+
+
+
+## Trajectory step 2: reduce data dimensionality----
+#第2步) 降维
+cds <- reduceDimension(cds, max_components = 2, method = 'DDRTree')
+
+
+
+## Trajectory step 3: order cells along the trajectory ----
+#3) 按照轨迹排序细胞
+cds <- orderCells(cds)
+# ==> 可视化
+plot_cell_trajectory(cds, color_by = "seurat_clusters")
+
+plot_cell_trajectory(cds, color_by = "State")
+# "State" is just Monocle's term for the segment of the tree.
+
+# 如果自动指定的不对，还可以手动指定哪个 state 是起点。
+# 如果没有时间序列，就需要根据生物学知识找到root
+# 比如: 高度增殖的祖细胞群产生两种有丝分裂后的细胞。所以根应该有表达高水平增殖标记的细胞。
+HSMM_myo <- orderCells(HSMM_myo, root_state = 1)
+plot_cell_trajectory(HSMM_myo, color_by = "Pseudotime")
+
+
+
+
+
+
+
+
+
+
+========================================
+|-- 绘制轨迹，可视化基因分支(State/Pseudotime/cluster/ 与分面)、热图、基因在伪时间上的分布 
+----------------------------------------
+(6)
+plot_cell_trajectory(HSMM, color_by="State")
+# state 什么意思？是对轨迹不同位置的区分。 在 monocle2 中一个分支就是一个 state。
+# 而 cluster 可以认为是 细胞分类，是 Seurat 的结果。
+# state 的缺点是，无法判断哪是起始点，需要根据
+
+plot_cell_trajectory(HSMM, color_by = "State") +
+    facet_wrap(~State, nrow = 1) #分面查看
+
+plot_cell_trajectory(HSMM, color_by="seurat_clusters")
+plot_cell_trajectory(HSMM, color_by="seurat_clusters")+
+	facet_wrap(~seurat_clusters, nrow = 1) #分面查看
+	
+plot_cell_trajectory(HSMM, color_by="Pseudotime")
+
+
+## 如何重叠太厉害，还可以分面
+plot_cell_trajectory(HSMM, color_by="XXX") +
+	facet_wrap(~XXX, nrow=1)
+
+
+# 更多可视化函数用法 参考:
+plot_cell_trajectory(HSMM_myo, color_by = "State",cell_size = 0.75) ####以state进行着色
+plot_cell_trajectory(HSMM_myo, color_by = "State",cell_size = 0.75)+facet_wrap(~State, nrow = Cluster_num) ##绘制state的分面图
+
+plot_cell_trajectory(HSMM_myo, color_by = "Pseudotime",cell_size = 0.75) ##根据拟时间值着色
+
+plot_cell_trajectory(HSMM_myo, color_by = "Cluster",cell_size = 0.75) ##根据细胞聚类的进行着色
+plot_cell_trajectory(HSMM_myo, color_by = "Cluster",cell_size = 0.75)+facet_wrap(~Cluster, nrow =Cluster_num) ###绘制clusster的分面图
+
+plot_cell_trajectory(HSMM_myo, color_by = "seurat_clusters",cell_size = 0.75) +scale_color_manual(values=col) ##如果有Seurat生的rds文件的话，按照seurat中分的群进行着色，如果不想用ggplot的默认色，可以提供颜色列表col list。
+plot_cell_trajectory(HSMM_myo, color_by = "seurat_clusters", cell_size = 0.75) + facet_wrap (~seurat_clusters, nrow =Cluster_num) ###按照seurat中分的群绘制分面图。
+
+plot_cell_trajectory(HSMM_myo, color_by = "stim",cell_size = 0.75) ###按照样本进行着色
+plot_cell_trajectory(HSMM_myo, color_by = "stim",cell_size = 0.75)+facet_wrap(~stim, ncol = 2)
+##绘制样本着色的分面图。
+
+
+自定义颜色可以直接对接ggsci，也可以使用scale_color_manual()自己设置颜色
+library(ggsci)
+p1=plot_cell_trajectory(cds, color_by = "cell_type")  + scale_color_npg() 
+p2=plot_cell_trajectory(cds, color_by = "State")  + scale_color_nejm()
+#
+colour=c("#DC143C","#0000FF","#20B2AA","#FFA500","#9370DB","#98FB98","#F08080")
+p3=plot_cell_trajectory(cds, color_by = "State")  + scale_color_manual(values = colour)
+p1|p2|p3
+
+
+# 觉得这种轨迹不太直观的也可以画成树形图
+p1 <- plot_cell_trajectory(cds, x = 1, y = 2, color_by = "celltype") + 
+  theme(legend.position='none',panel.border = element_blank()) + #去掉第一个的legend
+  scale_color_manual(values = colour) 
+p2 <- plot_complex_cell_trajectory(cds, x = 1, y = 2,
+                                   color_by = "celltype")+
+  scale_color_manual(values = colour) +
+  theme(legend.title = element_blank()) 
+p1|p2
+
+
+# 还可以画沿时间轴的细胞密度图
+library(ggpubr)
+df <- pData(cds) 
+## pData(cds)取出的是cds对象中cds@phenoData@data的内容
+View(df)
+ggplot(df, aes(Pseudotime, colour = cell_type, fill=cell_type)) +
+  geom_density(bw=0.5,size=1,alpha = 0.5)+theme_classic2()
+# 手动设置颜色注意
+ClusterName_color_panel <- c(
+  "Naive CD4 T" = "#DC143C", "Memory CD4 T" = "#0000FF", "CD14+ Mono" = "#20B2AA",
+  "B" = "#FFA500", "CD8 T" = "#9370DB", "FCGR3A+ Mono" = "#98FB98",
+  "NK" = "#F08080", "DC" = "#0000FF", "Platelet" = "#20B2AA"
+)
+ggplot(df, aes(Pseudotime, colour = cell_type, fill=cell_type)) +
+  geom_density(bw=0.5,size=1,alpha = 0.5)+
+  theme_classic2()+ 
+  scale_fill_manual(name = "", values = ClusterName_color_panel)+
+  scale_color_manual(name = "", values = ClusterName_color_panel)
+
+
+# 提取感兴趣的细胞（进行后续分析）
+#比如对State7的细胞感兴趣
+pdata <- Biobase::pData(cds)
+s.cells <- subset(pdata, State=="7") %>% rownames()
+save(s.cells, file = "Monocle_state7.rda")
+# 保存结果
+write.csv(pData(cds), "pseudotime.csv")
+save(cds, file = "cds.rda")
+
+
+
+
+
+
+2) 查看核心基因轨迹 # plot_genes_in_pseudotime(cds[genes.use,], color_by="XXX")
+# 获取基因列表，也可以自己指定
+HSMM_expressed_genes <-  row.names(subset(fData(HSMM),
+                                          num_cells_expressed >= 10))
+HSMM_filtered <- HSMM[HSMM_expressed_genes,]
+my_genes <- row.names(subset(fData(HSMM_filtered),
+                             gene_short_name %in% c("YWHAB", "ICAM2", "ICAM2")))
+
+# 根据 cds子集对象 画伪时间上的基因表达
+cds_subset <- HSMM_filtered[my_genes,]
+plot_genes_in_pseudotime(cds_subset, color_by = "seurat_clusters")
+plot_genes_in_pseudotime(cds_subset, color_by =  "State")
+
+
+
+# 其他可视化函数
+genes <- c("TNNT2", "TNNC1", "CDK1")
+p1 <- plot_genes_jitter(HSMM[genes,], grouping = "State", color_by = "State")
+p2 <- plot_genes_violin(HSMM[genes,], grouping = "State", color_by = "State")
+p3 <- plot_genes_in_pseudotime(HSMM[genes,], color_by = "State")
+plotc <- p1|p2|p3
+
+
+
+
+
+3) Finding Genes that Change as a Function of Pseudotime 根据伪时间功能寻找差异基因
+
+Monocle的主要工作是将细胞按照生物过程(如细胞分化)的顺序排列，而不事先知道要查看哪些基因。一旦这样做了，你就可以分析细胞，找到随着细胞进步而变化的基因。例如，你可以发现当细胞“成熟”时，基因显著上调。
+
+to_be_tested <- row.names(subset(fData(HSMM),
+                                 gene_short_name %in% c("MYH3", "MEF2C", "CCNB2", "TNNT1")))
+cds_subset <- HSMM[to_be_tested,]
+
+diff_test_res <- differentialGeneTest(cds_subset,
+                                      fullModelFormulaStr = "~sm.ns(Pseudotime)")
+# 也可以不取子集，直接做
+# my_pseudotime_de <- differentialGeneTest(HSMM_myo, fullModelFormulaStr= " ~sm.ns(Pseudotime)" , cores = 4) ###这里是对拟时间值来计算差异基因。依然花的时间比较长。
+
+
+diff_test_res[,c("gene_short_name", "pval", "qval")]
+
+      gene_short_name         pval         qval
+MEF2C           MEF2C 2.996841e-02 3.995789e-02
+CCNB2           CCNB2 5.328721e-03 1.065744e-02
+MYH3             MYH3 6.371156e-01 6.371156e-01
+TNNT1           TNNT1 1.634704e-12 6.538818e-12
+
+plot_genes_in_pseudotime(cds_subset, color_by = "State")
+plot_genes_in_pseudotime(cds_subset, color_by = "seurat_clusters")
+
+这个sm.ns函数指出Monocle应该通过表达式值拟合自然样条曲线，以帮助它将表达式的变化描述为进程的函数。让我们加入基因注释，这样就很容易看出哪些基因是重要的。
+
+
+
+
+
+
+
+(7) 查看核心基因表达热图 
+
+1)Clustering Genes by Pseudotemporal Expression Pattern /根据伪时间表达pattern聚类基因
+
+在研究时间序列基因表达研究时，一个常见的问题是:“哪些基因遵循相似的动力学趋势?”Monocle可以通过将具有相似趋势的基因分组来帮助你回答这个问题，这样你就可以分析这些基因组，看看它们有什么共同之处。Monocle提供了一种方便的方法来可视化所有伪时间相关的基因。函数plot_pseudotime_heatmap接受一个CellDataSet对象(通常只包含重要基因的子集)，并生成与plot_genes_in_pseudotime类似的平滑表达曲线.然后，它将这些基因聚类并使用pheatmap包绘制它们。这允许您可视化基因模块，这些模块在伪时间内共同变化。
+
+注意下面的num_clusters 指的是基因可以聚成几个类，而不是细胞。
+
+marker_genes <- row.names(subset(fData(HSMM),
+	 gene_short_name %in% c("MEF2C", "MEF2D", "MYF5",
+							"ANPEP", "PDGFRA","MYOG",
+							"TPM1",  "TPM2",  "MYH2",
+							"MYH3",  "NCAM1", "TNNT1",
+							"TNNT2", "TNNC1", "CDK1",
+							"CDK2",  "CCNB1", "CCNB2",
+							"CCND1", "CCNA1", "ID1")))
+
+diff_test_res = differentialGeneTest(HSMM[marker_genes,], fullModelFormulaStr="~sm.ns(Pseudotime)")
+sig_gene_names = row.names(subset(diff_test_rtes, qval<0.01)) #原文例子是 0.1，是不是太大了？
+
+plot_pseudotime_heatmap(HSMM[sig_gene_names,], num_clusters=6, cores=1, show_rownames=T)
+# 热图可以采用top50的基因进行展示，当然，也可以自己筛选。
+一行为每个基因对应的表达量。一列为一个拟时间点，一个拟时间值可能代表多个细胞。
+
+
+
+
+
+
+
+2) Multi-Factorial Differential Expression Analysis (可选)
+
+在下面的简单例子中，Monocle测试了三个基因在成肌细胞和成纤维细胞之间的差异表达，同时减去percent.mt的影响。为此，我们必须同时指定完整模型和简化模型。完整的模型同时捕捉细胞类型和percent.mt的影响。
+
+to_be_tested <-
+  row.names(subset(fData(HSMM),
+                   gene_short_name %in% c("TPM1", "MYH3", "CCNB2", "GAPDH")))
+
+cds_subset <- HSMM[to_be_tested,]
+
+diff_test_res <- differentialGeneTest(cds_subset,
+                                      fullModelFormulaStr = "~CellType + percent.mt", #完整模型
+                                      reducedModelFormulaStr = "~percent.mt") #减去模型
+diff_test_res[,c("gene_short_name", "pval", "qval")]
+
+      gene_short_name       pval      qval
+GAPDH           GAPDH 0.07990737 0.1598147
+CCNB2           CCNB2 0.04148172 0.1598147
+TPM1             TPM1 0.90861287 0.9086129
+MYH3             MYH3 0.77085745 0.9086129
+
+plot_genes_jitter(cds_subset,
+                  grouping = "seurat_clusters", color_by = "CellType", plot_trend = TRUE) +
+  facet_wrap( ~ feature_label, scales= "free_y")
+
+
+
+
+
+========================================
+|-- BEAM 分析: 单细胞轨迹的“分支”分析
+----------------------------------------
+
+Monocle为您提供了一个特殊的统计测试:分支表达式分析建模，或BEAM。
+比较分支起点和分支末端的差异。
+
+通常，单细胞的轨迹包括分支。分支的产生是因为细胞执行替代基因表达程序。在发育过程中，当细胞做出命运的选择时，分支就会出现在轨迹中:一个发育谱系沿着一条路径前进，而另一个谱系产生第二条路径。Monocle包含用于分析这些分支事件的广泛功能。
+
+在monocle中的分析中发现，细胞群能从一个轨迹分叉成不同的分支点，在科研中，我们会比较关注发生分支的原因是什么，即分析分支点之间的差异。Monocle采用分支表达式分析建模，主要是BEAM函数，可以将分叉过程重构为一个分支轨迹，从而分析不同细胞命运下的差异。
+
+
+# 查看分支点：就是黑色圆圈中的白色数字
+plot_cell_trajectory(HSMM, color_by = "State")
+
+# 可选
+# my_pseudotime_de <- differentialGeneTest(HSMM_myo, fullModelFormulaStr= " ~sm.ns(Pseudotime)" , cores = 4) ###这里是对拟时间值来计算差异基因。依然花的时间比较长。
+
+
+# BEAM进行统计分析：我们分析branch_point = 1这个分支处的细胞命名分叉是如何进行的。
+BEAM_res = BEAM(HSMM[expressed_genes, ], branch_point=1, cores=4)
+
+# 对影响分析的基因根据qvalue进行排序
+BEAM_res=BEAM_res[order(BEAM_res$qval),]
+BEAM_res=BEAM_res[, c("gene_short_name", "pval", "qval")]
+
+
+# 绘制分支热图
+my_branched_heatmap = plot_genes_branched_heatmap(
+	HSMM[row.names(subset(BEAM_res, qval<1e-4)),], 
+	branch_point=1,
+	num_clusters=4, cores=2, 
+	use_gene_short_name=T,
+	show_rownames=T)
+关键参数: subset(BEAM_res, qval < 1e-4))，挑选基因进行热图绘制，也可以设置成其他的阈值。
+branch_point=1，分支点选为1。num_clusters=4，将基因根据表达相似性分成4个模块。
+
+
+# 怎么看这个热图?
+monocle2 拟时间分支点分析结果解读 https://github.com/cole-trapnell-lab/monocle-release/issues/219
+
+然后沿着拟时序的方向，State 1对应的枝是fate 1（对应图中的Gcell），State 2对应的枝是fate 2（对应Ccell）。软件作者是这么说的：Cell fate 1 corresponds to the state with small id while cell fate 2 corresponds to state with bigger id
+
+该热图显示的是同一时间点两个谱系的变化。热图的列是伪时间的点，行是基因。从热图中间往右读，是伪时间的一个谱系；往左是另一个谱系。基因是被按照等级聚类的，所以你看到的基因表达模式和谱系的表达模式是非常相似的。
+
+每一行代表一个基因。不同的聚类代表不同的基因模块。图例中上面灰色为分之前的细胞，红色为细胞命运1，蓝色为细胞命运2。每一列是指将所有细胞的拟时间值从小到大分成100个bin，用bin的形式代表拟时间值的变化，与细胞数目无关。
+
+
+
+# 能自定义颜色吗？如果基因过多，就别不显示了，看不清。
+tmp1=plot_genes_branched_heatmap(test[row.names(subset(BEAM_res,qval<1e-4)),],
+	branch_point = 1,
+	num_clusters = 4, #这些基因被分成几个group
+	cores = 1,
+	branch_labels = c("Cell fate 1", "Cell fate 2"), #规定标签
+	#hmcols = NULL, #默认值
+	hmcols = colorRampPalette(rev(brewer.pal(9, "PRGn")))(62), #自定义热图颜色
+	branch_colors = c("#979797", "#F05662", "#7990C8"), #pre-branch, Cell fate 1, Cell fate 2分别用什么颜色
+	use_gene_short_name = T,
+	show_rownames = F,
+	return_heatmap = T #是否返回一些重要信息
+)
+
+pdf("branched_heatmap.pdf",width = 5,height = 6)
+tmp1$ph_res
+dev.off()
+
+返回的列表tmp1包含热图对象，热图的数值矩阵，热图主题颜色，每一行的注释（基因属于哪一个group）等信息。
+根据行注释提取出基因group，可以去做富集分析，后期加到热图的旁边。像这样:
+https://www.cnblogs.com/TOP-Bio/p/14856979.html
+
+gene_group=tmp1$annotation_row
+gene_group$gene=rownames(gene_group)
+
+library(clusterProfiler)
+library(org.Hs.eg.db)
+allcluster_go=data.frame()
+for (i in unique(gene_group$Cluster)) {
+  small_gene_group=filter(gene_group,gene_group$Cluster==i)
+  df_name=bitr(small_gene_group$gene, fromType="SYMBOL", toType=c("ENTREZID"), OrgDb="org.Hs.eg.db")
+  go <- enrichGO(gene         = unique(df_name$ENTREZID),
+                 OrgDb         = org.Hs.eg.db,
+                 keyType       = 'ENTREZID',
+                 ont           = "BP",
+                 pAdjustMethod = "BH",
+                 pvalueCutoff  = 0.05,
+                 qvalueCutoff  = 0.2,
+                 readable      = TRUE)
+  go_res=go@result
+  if (dim(go_res)[1] != 0) {
+    go_res$cluster=i
+    allcluster_go=rbind(allcluster_go,go_res)
+  }
+}
+head(allcluster_go[,c("ID","Description","qvalue","cluster")])
+
+
+
+
+
+#2) 单个基因的伪时间曲线，类似 plot_genes_in_pseudotime()，不同的是该函数显示2个发育路径。
+展示具体的基因，这些基因可以是：
+- 随拟时序、state而改变的基因（第5步）
+- 细胞亚群的marker基因（seurat得到的差异基因）
+- 分支点分析得到的分支特异的基因（第6步BEAM函数得到的基因）
+
+
+We can plot a couple of these genes, such as Pdpn and Sftpb (both known markers of fate in this system), using the plot_genes_branched_pseudotime function, which works a lot like the plot_genes_in_pseudotime function, except it shows two kinetic trends, one for each lineage, instead of one.
+
+另外，可以绘制基因在所有细胞中的表达量在不同分支上的表达量情况。我们可以根据分叉的state位置来判定这个基因对分支的影响。在拟时间分支树构建的过程中，其实是有很多细小的分支，最终被拟合成一条直线，便于可视化的友好性。下图中的Branch表示挑选了两个不同的未被拟合的实际分支。
+
+plot_genes_branched_pseudotime(
+	HSMM[rownames(subset(BEAM_res, qval<1e-8)),], 
+	branch_point=1,
+	color_by="orig.ident",
+	ncol=3)
+
+> str(HSMM)
+
+
+
+# 示例2
+test_genes=c("TFF3","GUCA2B")
+pdf("genes_branched_pseudotime.pdf",width = 9,height = 4)
+plot_genes_branched_pseudotime(test[test_genes,],
+                               branch_point = 1,
+                               color_by = "celltype",
+                               cell_size=2,
+                               ncol = 2)
+dev.off()
+
+
+
+
+
+
+
+
+
+
+
+========================================
+|-- 注意事项、文献用法、问题
+----------------------------------------
+1. 注意事项
+
+注意：不同分组间的细胞尽量不要放在一起做轨迹分析，同一组的生物学重复可以一起分析。明显没有生物学相关性的细胞也不要放在一起做轨迹分析。
+
+有时候细胞群不会完美的按照分叉排列。如下，只要一类细胞占某一个分叉细胞的大部分也可以。
+
+
+
+
+2.文献案例
+(1) 化学诱导 小鼠胚胎成纤维细胞(MEFs)
+12 time points
+36 199 cells
+6 clusters
+	MEFs 
+	reprogrammed cells in stage I 
+	XEN-like cells 
+	further reprogrammed cells in stage II and III 
+	CiPSCs
+	Ci2C-like cells
+
+
+作者观点：
+分支前(pre-branch)，MEFs 会转化为 XEN-like 细胞，在 XEN-like 细胞形成后，会立刻分成两支。
+其中一个分支(successful branch) 的末端细胞表达多能性基因，
+而另一个分支(failed branch)的末端细胞则表达XEN基因，表示重编程失败的细胞。
+
+
+
+
+
+3. 问题
+(1) 在Monocle2中，可以比较在同一cluster中，case组与control组的差异基因吗。
+
+(2) monocle 2中横纵坐标有什么含义吗？轨迹的升支和降支有没有什么特殊含义？
+对于升支和降支，由细胞在该component中的坐标决定的。使得细胞分在了不同的cluster中，主要看细胞对应的拟时间值是否和研究的生物学问题相关。
+好像 张泽民 一篇文章中用到了 monocle 的坐标轴的意义，作为一个打分值。
+
+
+
+
+
+
+========================================
+----------------------------------------
+
+
+
+
+========================================
+----------------------------------------
+
+
+
+
+========================================
+----------------------------------------
+
+
+
+
+
+========================================
+----------------------------------------
+
+
+
+
+========================================
+----------------------------------------
+
+
+
+
+========================================
+----------------------------------------
+
+
+
+
+========================================
+----------------------------------------
+
+
+
+
+
+========================================
+----------------------------------------
+
+
+
+
+========================================
+----------------------------------------
+
+
+
+
+========================================
+----------------------------------------
+
+
+
+
+========================================
+----------------------------------------
+
+
+
+
+
+========================================
+----------------------------------------
+
+
+
+
+========================================
+----------------------------------------
+
+
+
+
+========================================
+----------------------------------------
+
+
+
+
+========================================
+----------------------------------------
+
+

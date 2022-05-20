@@ -2570,6 +2570,86 @@ Finished job 0.
 
 
 ========================================
+|-- 怎么把自己写的脚本用到流程中呢？
+----------------------------------------
+假设自己写了一个脚本，可以这么执行： $ python3 script001.py -I 100 -O aa.txt
+怎么把它整合到流程种呢？
+
+
+1. 实例
+
+$ pwd
+/home/wangjl/data/chenxi/pipeline
+
+$ tree -L 2
+.
+├── config.yaml-backup
+├── main.sf
+├── rules
+│   ├── 01_get_fq_by_cb.sf
+│   ├── 02_trim_adapter.sf
+│   └── 03_select_cut_polyA_reads.sf
+└── scripts
+    └── get_cut_polyA_reads.py #写在这里的py脚本
+
+
+(1) 入口 (流程目录)
+$ cat main.sf 
+configfile: "config.yaml"  ##这里定义snake脚本路径
+SI=config["samples"]
+ScriptPath="/home/wangjl/data/chenxi/pipeline/"
+
+rule all:
+	input:
+		expand( "01_fq_cb/{sample}_extracted.fastq.gz", sample=SI),
+		expand( "01_fq_cb/QC/{sample}_extracted_fastqc.html", sample=SI),
+		expand( "02_trim/{sample}_extracted_trimmed.fq.gz", sample=SI),
+		expand( "03_cutPolyA_reads/{sample}_polyA_reads.fq.gz", sample=SI),
+		expand( "03_cutPolyA_reads/QC/{sample}_polyA_reads_fastqc.html", sample=SI),
+
+include: "rules/01_get_fq_by_cb.sf"
+include: "rules/02_trim_adapter.sf"
+include: "rules/03_select_cut_polyA_reads.sf"
+
+
+(2) 具体的流程细节 (流程目录)
+
+$ cat rules/03_select_cut_polyA_reads.sf
+rule select_cut_polyA_reads:
+	input: "02_trim/{sample}_extracted_trimmed.fq.gz"
+	output: "03_cutPolyA_reads/{sample}_polyA_reads.fq.gz"
+	params: ScriptPath   #中转入口定义的变量: snake 脚本的路径
+	log: "03_cutPolyA_reads/{sample}_polyA_reads.fq.gz.log"
+	shell: "python3 {params}scripts/get_cut_polyA_reads.py -I {input}  -O {output} >{log} 2>&1" #构建该脚本的绝对地址
+
+
+rule QC_after_trim_polyA:
+	input: "03_cutPolyA_reads/{sample}_polyA_reads.fq.gz"
+	output: "03_cutPolyA_reads/QC/{sample}_polyA_reads_fastqc.html"
+	params: output_dir="03_cutPolyA_reads/QC"
+	threads: 50
+	log: "03_cutPolyA_reads/QC/{sample}_polyA_reads_fastqc.html.log"
+	shell: "fastqc -t {threads} {input} -o {params.output_dir} >{log} 2>&1"
+
+
+(3) 运行 (执行目录)
+
+$ snakemake -s /home/wangjl/data/chenxi/pipeline/main.sf -p -j 5
+
+打印出命令本身，其中一行是
+python3 /home/wangjl/data/chenxi/pipeline/scripts/get_cut_polyA_reads.py -I 02_trim/S3_extracted_trimmed.fq.gz  -O 03_cutPolyA_reads/S3_polyA_reads.fq.gz >03_cutPolyA_reads/S3_polyA_reads.fq.gz.log 2>&1
+
+
+
+
+
+
+
+
+
+
+
+========================================
 |-- snakemake 高级：目录结构与模块化(wrapper/include/subworkflow )、依赖的自动部署(conda, Singularity)、集群、环境变量 envvars(提供密码) 
 ----------------------------------------
 1. snakemake 模块化 提供了三个层次
@@ -3948,6 +4028,59 @@ https://blog.csdn.net/ezreal_tao/article/details/84840679
 
 
 
+
+
+========================================
+工作流管理平台 Apache Airflow (Python写的) //todo
+----------------------------------------
+
+
+1. 简介
+Airflow is a platform to programmatically author, schedule and monitor workflows.
+Airflow是一个编程编写、调度和监控工作流的平台。
+
+https://airflow.apache.org/
+https://github.com/apache/airflow
+https://airflow.incubator.apache.org/
+
+
+Apache Airflow was started at Airbnb as open source from the very first commit. The community has about 500 active members who support each other in solving problems
+
+
+
+(2)教程：https://blog.csdn.net/qazplm12_3/article/details/53065654
+
+
+
+
+
+
+2. 测试容器版
+(1) 下载容器 https://hub.docker.com/r/puckel/docker-airflow/
+SOURCE: https://github.com/puckel/docker-airflow
+docker: https://hub.docker.com/r/puckel/docker-airflow/~/dockerfile/
+
+# sudo docker pull puckel/docker-airflow
+
+(2).运行容器，并做端口映射、文件映射
+# sudo docker run -d -p 8080:8080 -v /home/wangjl/docker_airFlow:/home/wangjl/ puckel/docker-airflow
+fc1a921581
+
+(3).进入容器
+$ sudo docker exec -it fc1a bash
+
+$ airflow version
+v1.10.0
+
+(4) 
+
+
+
+
+
+
+
+
 ========================================
 Nextflow 生物信息流程 (依赖 java8) //todo
 ----------------------------------------
@@ -3958,6 +4091,8 @@ https://www.nextflow.io/
 https://github.com/nextflow-io/nextflow/releases
 
 https://blog.csdn.net/u011262253/category_10285121.html
+纽约大学 https://learn.gencore.bio.nyu.edu/intro-to-nextflow/
+
 
 
 Nextflow: Data-driven computational pipelines
@@ -4033,6 +4168,50 @@ ref: https://www.cnblogs.com/leezx/p/14768059.html
 
 
 ========================================
+R 脚本的流水线: drake (依赖 Java >= 6.0)
+----------------------------------------
+
+1. 简介
+(1) 怎么看到的?
+https://community.rstudio.com/t/question-on-managing-long-and-heavy-r-code-one-script-vs-multiple-pieces/11917/6
+Have you thought about {drake} :package: to organize your big project workflow?
+
+drake 类似 C的 make，好像又不是为R单独写的: https://github.com/Factual/drake
+
+
+
+(2) 中文
+大数据工作流开源系统之DRAKE 
+	https://blog.csdn.net/qq1226317595/article/details/82833816
+
+一个面向R的可再现性和高性能计算的流水线工具箱
+	https://www.5axxw.com/wiki/content/q4g9cv
+
+
+2. R 包 
+(1) 安装
+# Install the latest stable release from CRAN.
+install.packages("drake")
+
+# Alternatively, install the development version from GitHub.
+install.packages("devtools")
+library(devtools)
+install_github("ropensci/drake")
+
+(2) 
+
+
+
+
+
+
+
+
+
+
+
+
+========================================
 可视化报告的生成技术
 ----------------------------------------
 现在的测序报告，就是一个有序的网页。
@@ -4049,7 +4228,80 @@ ref: https://www.cnblogs.com/leezx/p/14768059.html
 ========================================
 |-- 网页嵌入pdf，使用embed、iframe或object
 ----------------------------------------
-1.embed
+
+There are several ways to include a PDF file in your HTML document:
+
+Using the <embed> and <object> tags, which are considered to be old-fashioned ways, because they are deprecated now.
+Using the <a> or the <iframe> tag.
+
+
+
+1. 推荐方式 iframe
+<iframe src="URL"></iframe>
+<iframe src="URL" height="200" width="300"></iframe>
+
+(1) 主动指出单位
+<iframe src="/uploads/media/xxfc.pdf" width="100%" height="500px">
+</iframe>
+
+
+(2) 中间插入文字
+<iframe src="test_pdf.pdf" width="800" height="600"></iframe> 
+通过的浏览器：360、Firefox、IE、Chrome
+
+<iframe src="../pdf/sample-3pp.pdf#page=2" width="100%" height="100%">
+	This browser does not support PDFs. Please download the PDF to view it: 
+	<a href="../pdf/sample-3pp.pdf">Download PDF</a>
+</iframe>
+
+
+(3) 如何避免顶部工具条呢？在pdf文件名后加后缀 #toolbar=0
+yy
+<br>
+<iframe src="00test.pdf#toolbar=0" width="240" height="320" ></iframe>
+<br>
+zz
+
+
+(4) 更多后缀名
+page=pagenum – Specifies a number (integer) of the page in the document. The document’s first page has a pagenum value of 1.
+zoom=scale – Sets the zoom and scroll factors, using float or integer values. For example, a scale value of 100 indicates a zoom value of 100%.
+view=Fit – Set the view of the displayed page.
+scrollbar=1|0 – Turns scrollbars on or off.
+toolbar=1|0 – Turns the toolbar on or off.
+statusbar=1|0 – Turns the status bar on or off.
+navpanes=1|0 – Turns the navigation panes and tabs on or off.
+
+
+第一个后缀选项前面加上#，多个后缀选项之间使用&。
+http://example.com/doc.pdf#Chapter5
+http://example.com/doc.pdf#page=5
+http://example.com/doc.pdf#page=3&zoom=200,250,100
+http://example.com/doc.pdf#zoom=100
+http://example.com/doc.pdf#page=72&view=fitH,100
+
+
+remove or hide toolbar of embedded PDF.
+<embed src="files/Brochure.pdf#toolbar=0&navpanes=0&scrollbar=0" type="application/pdf" width="100%" height="600px" />
+
+
+对比发现，对于尺寸差不多的图，最大的是 svg，最小的是 pdf，以后可以考虑把pdf图嵌入网页。
+-rw-r--r-- 1 wangjl wangjl  48K Nov  3 10:08 00test.svg
+-rw-r--r-- 1 wangjl wangjl  19K Nov  2 23:01 00test.png
+-rw-r--r-- 1 wangjl wangjl 6.6K Nov  2 23:00 00test.pdf
+
+
+<iframe src="00test.pdf#toolbar=0&view=fit,100" width="340" height="380" ></iframe>
+
+
+
+
+
+
+
+
+2. 过时的方式
+(1) embed
 <embed width="800" height="600" src="test_pdf.pdf"> </embed>
 通过的浏览器：360、Firefox、IE、Chrome
 
@@ -4062,24 +4314,7 @@ ref: https://www.cnblogs.com/leezx/p/14768059.html
 <embed src="../pdf/sample-3pp.pdf#page=2" type="application/pdf" width="100%" height="100%" internalinstanceid="8">
 
 
-
-
-
-2. iFrame框架
-<iframe src="test_pdf.pdf" width="800" height="600"></iframe> 
-通过的浏览器：360、Firefox、IE、Chrome
-
-
-<iframe src="../pdf/sample-3pp.pdf#page=2" width="100%" height="100%">
-	This browser does not support PDFs. Please download the PDF to view it: 
-	<a href="../pdf/sample-3pp.pdf">Download PDF</a>
-</iframe>
-
-
-
-
-
-3.Object 要在其data属性中设置pdf路径。
+(2) Object 要在其data属性中设置pdf路径。
 <object classid="clsid:CA8A9780-280D-11CF-A24D-444553540000" width="800" height="600" border="0"> <param name="SRC" value="test_pdf.pdf"></object> 
 通过的浏览器：360、IE
 未通过的浏览器：Firefox、Chrome
@@ -4113,8 +4348,8 @@ ref: https://www.cnblogs.com/leezx/p/14768059.html
 
 
 
-
-4. <object><iframe></object>
+3. 其他看到的例子
+(1) <object><iframe></object>
 Using an <object> with an <iframe> provides extra insurance if <object> is not supported.
 
 <object data="../pdf/sample-3pp.pdf#page=2" type="application/pdf" width="100%" height="100%" internalinstanceid="9">
@@ -4129,13 +4364,20 @@ Using an <object> with an <iframe> provides extra insurance if <object> is not s
 
 
 
+
+
+
 10. 使用js插件 
 PDFObject.js https://pdfobject.com/
 pdf.js https://github.com/mozilla/pdf.js/
 
 
-refer: https://pdfobject.com/static/
 
+
+
+refer: 
+https://pdfobject.com/static/
+https://www.codexworld.com/embed-pdf-document-file-in-html-web-page/
 
 
 ========================================
