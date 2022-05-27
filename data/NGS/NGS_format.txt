@@ -1334,6 +1334,21 @@ Bigwig files were obtained with the bamCoverage function from deepTools. Values 
 
 
 https://deeptools.readthedocs.io/en/develop/content/list_of_tools.html
+$ pip3 install deeptools 
+$ deeptools --version
+deeptools 3.5.1
+
+$ bamCoverage --help
+usage: An example usage is:$ bamCoverage -b reads.bam -o coverage.bw
+
+This tool takes an alignment of reads or fragments as input (BAM file) and generates a coverage track (bigWig or bedGraph) as output. 
+
+The coverage is calculated as the number of reads per bin, where bins are short consecutive counting windows of a defined size. It is possible to extended the length of the reads to better reflect the actual fragment length. 
+
+*bamCoverage* offers normalization by scaling factor, Reads Per Kilobase per Million mapped reads (RPKM), counts per million (CPM), bins per million mapped reads (BPM) and 1x depth (reads per genome coverage, RPGC).
+
+
+(1) 开始尝试 (可以跳过)
 $ bamCoverage --bam myAlignedReads.bam \
 --outFileName myCoverageFile.bigWig \
 --outFileFormat bigwig \
@@ -1352,8 +1367,10 @@ $ bamCoverage --bam ../map/ADK_KO_1Aligned.sortedByCoord.out.bam \
 
 想多进程就加入参数 -p 20
 $ bamCoverage --bam ../map/ADK_KO_2Aligned.sortedByCoord.out.bam --outFileName myCoverageFile_KO_2.bigWig --outFileFormat bigwig --ignoreDuplicates --scaleFactor 0.5 -p 20
-看屏幕输出，numberOfProcessors: 12，而默认是1，貌似有最高值？
+看屏幕输出，numberOfProcessors: 12，而默认是1，貌似有最高值？没有，是因为我的工作站确实只有 12 个核。
 分成12块确实快很多。
+默认是单核。
+
 
 
 遇到报错: bamCoverage: error: unrecognized arguments: --fragmentLength 200
@@ -1364,6 +1381,137 @@ $ bamCoverage --bam ../map/ADK_KO_2Aligned.sortedByCoord.out.bam --outFileName m
 --maxFragmentLength INT
 	The maximum fragment length needed for read/pair inclusion. (Default: 0)
 删除该参数接着跑。
+
+
+
+
+
+(2) 测试参数
+对于基因 EEF1D, 10x bam 最大366;
+# v1 # 去掉的过多了！ 最大是 75
+$ bamCoverage --bam BMMC_donor1_cluster6.bam \
+--outFileName bw/BMMC_donor1_cluster6.bigWig \
+--outFileFormat bigwig \
+--ignoreDuplicates \
+-p 12 \
+--scaleFactor 0.5
+其中 -p 12 是多进程，最大12;
+
+
+
+# v2 no --ignoreDuplicates \  #最大是 3851
+$ bamCoverage --bam BMMC_donor1_cluster6.bam \
+--outFileName bw/BMMC_donor1_cluster6.v2.bigWig \
+--outFileFormat bigwig \
+-p 12 \
+--scaleFactor 0.5
+--ignoreDuplicates    If set, reads that have the same orientation and start position will be considered only once. 
+	If reads are paired, the mate's position also has to coincide to ignore a read. (default: False)
+	# 方向一致，起点一致就算一次！ 如果是配对的，另一个位置也要一致才可以忽略一个 read。 默认 F
+
+
+# v3 no --ignoreDuplicates , no --scaleFactor 0.5 #最大是 v2 的2倍，7701
+$ bamCoverage --bam BMMC_donor1_cluster6.bam \
+--outFileName bw/BMMC_donor1_cluster6.v3.bigWig \
+--outFileFormat bigwig \
+-p 12
+
+
+
+# v4 binSize 更精细的变化
+$ bamCoverage --bam BMMC_donor1_cluster6.bam \
+--outFileName bw/BMMC_donor1_cluster6.v4.bigWig \
+--outFileFormat bigwig \
+--binSize 10 \
+-p 12
+
+--binSize INT bp, -bs INT bp
+     Size of the bins, in bases, for the output of the bigwig/bedgraph file. (Default: 50)
+	 分区间的大小，默认 50
+
+当改为1bp分辨率时，生成时间突然变长了：
+$ bamCoverage --bam BMMC_donor1_cluster6.bam \
+--outFileName bw/BMMC_donor1_cluster6.v4_1.bigWig \
+--outFileFormat bigwig \
+--binSize 1 \
+-p 12
+
+
+$ ls -lth bam/bw
+total 29M
+-rw-rw-r-- 1 wangjl wangjl  13M May 23 13:42 BMMC_donor1_cluster6.v4_1.bigWig
+-rw-rw-r-- 1 wangjl wangjl 4.6M May 23 13:34 BMMC_donor1_cluster6.v4.bigWig
+-rw-rw-r-- 1 wangjl wangjl 1.9M May 23 13:19 BMMC_donor1_cluster6.v3.bigWig
+-rw-rw-r-- 1 wangjl wangjl 1.9M May 23 11:30 BMMC_donor1_cluster6.v2.bigWig
+-rw-rw-r-- 1 wangjl wangjl 1.9M May 22 22:44 BMMC_donor1_cluster6.bigWig
+-rw-rw-r-- 1 wangjl wangjl 3.2M May 22 22:44 BMMC_donor1_cluster1.bigWig
+-rw-rw-r-- 1 wangjl wangjl 2.5M May 22 22:42 BMMC_donor1_cluster3.bigWig
+
+
+
+# v5 smoothLength 加平滑化，会特别慢 13:54-->14:11 还没结束，算了，强制退出。其他都是1-2min结束。
+$ bamCoverage --bam BMMC_donor1_cluster6.bam \
+--outFileName bw/BMMC_donor1_cluster6.v5.bigWig \
+--outFileFormat bigwig \
+--binSize 10 \
+--smoothLength 20
+-p 12
+
+--smoothLength INT bp
+	The smooth length defines a window, larger than the binSize, to average the number of reads. 
+	For example, if the --binSize is set to 20 and the --smoothLength is set to 60, then, for each bin, the average of the bin and its left and right neighbors is considered.
+	Any value smaller than --binSize will be ignored and no smoothing will be applied. (default: None)
+	平滑长度，低于 --binSize 则忽略，不做平滑化。默认不做平滑化。
+
+$ bamCoverage --bam BMMC_donor1_cluster6.bam \
+--outFileName bw/BMMC_donor1_cluster6.v5.bigWig \
+--outFileFormat bigwig \
+--binSize 10 \
+--smoothLength 10 \
+-p 12
+# 提示 
+Warning: the smooth length given (10) is smaller than the bin size (10).
+No smoothing will be done
+比较了一下，md5值和加--smoothLength 10前的一模一样。
+8dcd6ae1db8dacb29229b46a0425561f  BMMC_donor1_cluster6.v4.bigWig
+8dcd6ae1db8dacb29229b46a0425561f  BMMC_donor1_cluster6.v5.bigWig
+
+
+
+
+
+
+# v6 按照正负链生成2个bw文件 --filterRNAstrand forward or --filterRNAstrand reverse 
+$ bamCoverage --bam BMMC_donor1_cluster6.bam \
+--outFileName bw/BMMC_donor1_cluster6.v6f.bigWig \
+--outFileFormat bigwig \
+--binSize 1 \
+--filterRNAstrand forward \
+-p 12
+
+$ bamCoverage --bam BMMC_donor1_cluster6.bam \
+--outFileName bw/BMMC_donor1_cluster6.v6r.bigWig \
+--outFileFormat bigwig \
+--binSize 1 \
+--filterRNAstrand reverse \
+-p 12
+# 14:32-->14:44 单碱基分辨率很慢
+
+
+
+(3) 为什么峰的形状不一样？bam 和 BigWig 差别很大？
+
+必应搜 “deeptools bam and bigwig peak not the same”，有人也遇到这个问题了:https://github.com/deeptools/deepTools/issues/92
+fragmentLength 设置为 1 试试
+
+现在已经没有这个参数了。
+$ bamCoverage --help | grep -i -n "fragmentLength"
+35:                        --minFragmentLength and --maxFragmentLength options,
+205:  --minFragmentLength INT
+210:  --maxFragmentLength INT
+
+我也提问了， deepTools 作者还没有回复: https://github.com/deeptools/deepTools/issues/1139
+
 
 
 
@@ -1913,10 +2061,30 @@ pathology病理学，从病的角度来看一切。
 ref:https://www.cnblogs.com/leezx/p/14511763.html
 
 
+========================================
+*** 综述 ***
+----------------------------------------
+
 
 
 ========================================
+RNA-seq 综述: RNA sequencing: the teenage years
 ----------------------------------------
+
+https://zhuanlan.zhihu.com/p/494673082
+https://www.nature.com/articles/s41576-019-0150-2
+
+nature reviews genetics | Review Article | Published: 24 July 2019
+RNA sequencing: the teenage years
+Rory Stark, Marta Grzelak & James Hadfield
+
+Over the past decade, RNA sequencing (RNA-seq) has become an indispensable tool for transcriptome-wide analysis of differential gene expression and differential splicing of mRNAs. However, as next-generation sequencing technologies have developed, so too has RNA-seq. Now, RNA-seq methods are available for studying many different aspects of RNA biology, including single-cell gene expression, translation (the translatome) and RNA structure (the structurome). Exciting new applications are being explored, such as spatial transcriptomics (spatialomics). Together with new long-read and direct RNA-seq technologies and better computational tools for data analysis, innovations in RNA-seq are contributing to a fuller understanding of RNA biology, from questions such as when and where transcription occurs to the folding and intermolecular interactions that govern RNA function.
+
+
+
+
+
+
 
 
 
