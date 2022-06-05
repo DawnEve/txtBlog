@@ -451,7 +451,7 @@ $d
 不用管C的形式参数名字，传入相同类型的实参即可。
 其他R对象也能传入.C()，但是最好使用其他接口。
 
-- 在.()中，R对象在传递给C前先复制一份，在编译后的C代码返回时再拷贝一份给R。
+- 在.C()中，R对象在传递给C前先复制一份，在编译后的C代码返回时再拷贝一份给R。
 - 而.Call() 和 .External() 接口都不复制他们的参数。
 - 你应该把通过接口传入的参数当作只读的。
 
@@ -462,10 +462,38 @@ $d
 |-- 2. .Call 是更高级的调用接口 
 ----------------------------------------
 
+1. .Call() 接口简介
+https://www.r-bloggers.com/2012/11/using-r-callhello/
+
+
+(1) .Call() 和 .C() 的区别
+
+.C()
+	allows you to write simple C code that knows nothing about R | 无须知道R及其头文件，就可以写C语言;
+	only simple data types can be passed
+	all argument type conversion and checking must be done in R
+	all memory allocation must be done in R
+	all arguments are copied locally before being passed to the C function (memory bloat)
+
+.Call()
+	allows you to write simple R code | 一般需要加载 Rxx.h 头文件
+	allows for complex data types 
+	allows for a C function return value
+	allows C function to allocate memory
+	does not require wasteful argument copying | 参数传递不用耗时的复制
+	requires much more knowledge of R internals | 需要知道R的内部细节
+	is the recommended, modern approach for serious C programmers | 推荐，现代、严肃的C程序员使用
+
+To allow readers to compare for themselves how difficult or easy it is to switch from .C() to .Call() we will re-implement our three “Hello World!” examples using the .Call() interface.
+
+
 https://github.com/cjgeyer/qux/blob/master/package/qux/src/qux.c
 
-该接口：
-- 没那么多复制了。
+逐条总结一下.Call() 接口的优缺点（相对于 .C()）：
+- 需要对 R 的头文件有足够的了解; 而 .C() 只需要会C语言;
+- 能传递复杂参数; 而 .C() 只能传递简单参数;
+- 能返回值了；而 .C() 不能返回值，只能依靠指针传递计算结果;
+- 没那么多复制了: 传递R参数给C时不复制数据;
 - 在C代码中对答案进行维度划分的能力
 - 获取其他类型。Access to other types, e.g. expressions, raw type and the ability to easily execute R code (call_R is a pain).
 - 能获取vector的name属性等。Access to the attributes of the vectors, for example the names.
@@ -482,7 +510,56 @@ The following code, stored in the file, doubler2.c, illustrates its use.
 
 
 
+(2) R 调用C的接口教程:
 
+Calling C code from R (Sigal Blay, 2004) * http://www.sfu.ca/~sblay/R-C-interface.ppt
+Calling other languages from R (R.M. Ripley, 2009) * http://www.stat.purdue.edu/~liu105/STAT598G_lab/Rcourse94up.pdf
+R API cheat sheet (Simon Urbanek, 2012) * http://tolstoy.newcastle.edu.au/R/e17/devel/att-0724/R_API_cheat_sheet.pdf
+
+
+(3) 认识 SEXP
+
+We’ll get the definition of SEXP and everything else we need by including both R.h and Rdefines.h in our code.  
+
+An SEXP (or S-Expression Pointer) is used for everything
+(An older C trick approximating object-oriented programming)
+
+We can ignore the details but retain that
+	• everything in R is a SEXP
+	• the SEXP is self-describing
+	• can matrix, vector, list, function, …
+	• 27 types in total
+
+The key thing for Rcpp is that via C++ features we can map
+	• each of the (limited number of ) SEXP types
+	• to a specific C++ class representing that type
+	• and the conversion is automated back and forth
+
+
+Key Features
+	• (Fairly) Easy to learn: as it really does not have to be that complicated – there are numerous examples
+		相对好学，例子多。
+	• Easy to use: as it avoids build and OS system complexities thanks to the R infrastrucure
+		易用。建立在R之上，消除了操作系统的复杂性。
+	• Expressive: as it allows for vectorised C++ using Rcpp Sugar
+		表达性强: 可以使用 Rcpp语法糖实现 向量化 C++
+	• Seamless access to all R objects: vector, matrix, list, S3/S4/RefClass, Environment, Function, …
+		可以无缝访问R对象: vector, matrix, list, S3/S4/RefClass, Environment, Function, …
+	• Speed gains for a variety of tasks Rcpp excels precisely where R struggles: loops, function calls, …
+		速度快: R 慢的地方都可以使用 Rcpp: 循环、函数等
+	• Extensions greatly facilitates access to external libraries directly or via eg Rcpp modules
+		扩展性强: 可以访问外部 cpp 库。
+
+
+
+
+
+
+
+
+
+
+2. 实战操作
 
 (1) 也是四个步骤
 
@@ -616,6 +693,9 @@ SEXP helloB1() {
 为一个字符串向量分配内存使用的是 NEW_CHARACTER(长度)。
 我们该看看R包含的头文件中这一类的宏是怎么定义的。
 Note that we allocate memory for a character vector of length # with NEW_CHARACTER(#).  It is worth taking a look in the R include files to see how this and similar macros are defined:
+
+$ R RHOME
+/usr/share/R
 
 $ grep NEW_ /usr/lib/R/include/*.h
 $ grep NEW_ /usr/share/R/include/*.h
