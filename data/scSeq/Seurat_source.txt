@@ -7529,6 +7529,117 @@ DimPlot(tmp, label=T)
 
 
 
+(4) 尝试用 Leiden 算法对细胞分群
+
+Leiden 发文章时提供的是 Java 版本的实现: https://github.com/CWTSLeiden/networkanalysis
+搞不定 Java 的编译，先跳过吧。
+
+Seurat 4 中的 Leiden 是调用 python 包实现的。
+不确定是不是这个(c++/py)，虽然名字一致: https://github.com/vtraag/leidenalg
+这个repo和上文 Java 实现有一个共同的作者:Vincent Traag。
+
+我推测下一个版本中，Seurat 会把 Leiden 的 Python 实现替换为 C++ 的实现。
+
+
+> pbmc2=FindClusters(pbmc, algorithm = 4)
+Error: Cannot find Leiden algorithm, please install through pip (e.g. pip install leidenalg).
+
+$ pip3 install leidenalg
+Successfully installed igraph-0.9.11 leidenalg-0.8.10 texttable-1.6.4
+
+再次调用R函数还是报同样的错，可能是R使用的py路径不对。
+按下面走应该就可以了。
+
+
+1) 先安装2个python依赖包:
+$ which python3
+/home/wangjl/anaconda3/bin/python3
+$ which python
+/home/wangjl/anaconda3/bin/python
+
+$ pip3 -V
+pip 20.3.3 from /home/wangjl/anaconda3/lib/python3.7/site-packages/pip (python 3.7)
+$ pip3 install leidenalg
+$ pip3 install igraph
+
+检查版本号
+$ pip list | grep leidenalg
+leidenalg                         0.8.10
+$ pip list | grep igraph
+igraph                            0.9.11
+
+
+
+
+2) 在R中设置py环境: 
+https://blog.csdn.net/weixin_30642029/article/details/95210474
+https://blog.csdn.net/tandelin/article/details/88031770
+
+# 先启动一个 R session
+# 指定R上使用的python的环境 (有可能要求重启R 进程)
+# reticulate::use_virtualenv("/home/wangjl/anaconda3/lib/python3.7/") #不行
+library("reticulate")
+use_python("/home/wangjl/anaconda3/bin/python", required = T) #设置要使用的 python
+py_config()
+
+# 检查py环境
+py_discover_config(required_module = NULL, use_environment = NULL)
+
+# 检查是否有这个包
+py_module_available("igraph") #T
+py_module_available("leidenalg") #T
+#
+
+注意
+i) 每开启一个session，第一次设置生效，之后再使用这个命令不生效，需要重启session
+ii) py_config()命令要放在最后，使设置生效
+
+
+
+3) 开始调用 Leiden 算法对细胞分群[算法4]
+
+library(Seurat)
+library(dplyr)
+library(ggplot2)
+
+# 载入 Seurat 4 分析过的 pbmc 3k 数据集
+pbmc=readRDS("/data/wangjl/r-pkg/data/pbmc3k_tutorial.rds")
+
+# 分群和可视化
+pbmc2=FindClusters(pbmc, algorithm = 4, resolution = 0.6) #使用算法4分群
+table(pbmc2$seurat_clusters)
+p1=DimPlot(pbmc2, label = T)+ggtitle("Leiden[4]")
+#
+p2=DimPlot(pbmc, label = T)+ggtitle("Louvain[1]")
+pbmc_=pbmc
+Idents(pbmc_)=pbmc_$seurat_clusters
+p2_=DimPlot(pbmc_, label = T)+ggtitle("Louvain[1]")
+
+p1+p2_+p2 #图形的比较
+
+
+# 比较一下各个类的细微差别
+> table(pbmc$seurat_clusters, pbmc2$seurat_clusters)
+    1   2   3   4   5   6   7   8   9
+  0 643  18   0   0  23   0   0   0   0
+  1   0   0 480   0   0   1   0   0   0
+  2   0 476   0   0   0   0   0   0   0
+  3   0   0   0 344   0   0   0   0   0
+  4   0   0   0   0 290   0   1   0   0
+  5   0   0   0   0   0 162   0   0   0
+  6   0   0   0   0   0   0 155   0   0
+  7   0   0   0   0   0   0   0  32   0
+  8   0   0   0   0   0   0   0   0  13
+
+
+Leiden 和 Louvain 结果只有细微的差异，可能是因为顶点(3k)还是太少，如果细胞数达到20k-30k差异就明显了: 有些在UMAP上撕裂开的 cluster在Leiden下就真的分成2个 cluster了。
+- Leiden 的分类是1-based。
+- 和Louvain主体都在对角线上，只有在大团的交界处有一些不一致。
+
+
+
+
+
 
 
 
@@ -8563,7 +8674,15 @@ this was calc by C function 'add'
 
 (3) 但是怎么自动加载该 so 文件呢？
 
+参考例子: https://r-pkgs.org/src.html
+#' @useDynLib mypackage add_
+add <- function(x, y) .Call(add_, x, y)
+它会在执行 devtools::document() 时，自动在 NAMESPACE 中生成一行: useDynLib(mypackage, add_)
+
+
 可以在R包装函数的注释中添加 #' @useDynLib pkgS3
+它会在执行 devtools::document() 时，自动在 NAMESPACE 中生成一行: useDynLib(pkgS3)
+
 
 #' add two number by C
 #'
@@ -8784,7 +8903,14 @@ $ tree
 
 
 
+结论：.C() 这个接口学不会就算了，有疑问也可以不提... 因为现在的R主要用 .Call() 接口调用 C/C++ 函数。
 
+著名的 data.table 就是用纯C写的R扩展，没有用到C++。用 .Call() 接口调用的C函数。
+那么，C和C++的区别是什么呢？
+
+
+
+ref: https://r-pkgs.org/src.html
 
 
 
@@ -8794,6 +8920,7 @@ $ tree
 ========================================
 |-- 如何写R包 4: 使用更高级的 .Call() 接口调用 C 代码(熟悉 SEXP 类型 )
 ----------------------------------------
+https://zhuanlan.zhihu.com/p/525648754
 
 我们新建R包项目 pkgS4，生成文件结构。
 
@@ -8823,11 +8950,15 @@ To allow readers to compare for themselves how difficult or easy it is to switch
 但是 .Call() 需要对 R 的内部结构有一些了解，因为需要加 R的 .h 头文件。
 
 
+
 (2) R 的.h 头文件 
+
+R 语言本身就是C写的，所以自己也带了好几个C语言特有的头文件。
 
 $ R RHOME
 /data/public/R-4.1.1/lib/R
 
+继续看这个目录的 include/ 子目录
 $ ls -1 `R RHOME`/include
 Rconfig.h    # various configuration flags
 Rdefines.h   # lots of macros of interest, includes Rinternals.h
@@ -8842,22 +8973,63 @@ S.h       # macros for S/R compatibility
 
 
 
-(3) C函数：返回值必须是 SEXP 类型
+(3) C函数的参数和返回值必须是 SEXP 类型
 
-使用 .Call() 接口，C函数的返回值必须是 SEXP 类型，这是指向 SEXPREC(Simple EXPression RECord)的指针类型。
-可以在代码中引用 R.h 和 Rdefines.h 来获取 SEXP 等的定义。
+使用 .Call() 接口，C函数的返回值必须是 SEXP 类型，参数也必须是 SEXP 类型。
+SEXP 类型是一种指向 SEXPREC(Simple EXPression RECord)的指针类型，在 Rinternals.h 中定义。也可能是 S-expression 的简写。它是R语言和C语言之间变量传递的纽带。
+可以在代码中引用 R.h 和 Rdefines.h (包含了 Rinternals.h) 来获取 SEXP 等的定义。
 
 $ vim src/helloA1.c
 #include <R.h>
 #include <Rdefines.h>
 #include <stdio.h>
+
 SEXP helloA1() {
   printf("Hello World!\n");
   return(R_NilValue);
 }
+//虽然返回值是 R_NilValue 也就是 NULL，但是函数类型依旧是 SEXP ，它只能是这一个类型。参数也只能是这个类型。
 
-虽然返回值是 R_NilValue 也就是 NULL，但是函数类型依旧是 SEXP ，它只能是这一个类型。参数也只能是这个类型。
+int main(){
+  SEXP helloA1();
+  return 0;
+}
 
+
+
+
+
+
+
+
+
+(4) 如何调试C/C++代码 
+
+==> 尝试1：使用 gcc 编译，局限在C/C++范围内，不牵涉R。
+$ gcc -I"/data/public/R-4.1.1/lib/R/include" -DNDEBUG   -I/usr/local/include   -fpic  -g -O2  -UNDEBUG -Wall -pedantic -g -O0 -fdiagnostics-color=always -c src/helloA1.c -o src/helloA1_.o
+
+$ gcc -shared -L/data/public/R-4.1.1/lib/R/lib -L/usr/local/lib -o src/pkgS4_.so src/helloA1_.o -L/data/public/R-4.1.1/lib/R/lib -lR
+
+$ ./src/pkgS4_.so 
+Segmentation fault (core dumped)
+失败，难道无法在C/C++范围内单独调试？就是不进入R而是使用shell命令行测试？ //todo
+
+只能载入编译后的文件，然后在R中测试？
+> dyn.load("src/pkgS4_.so")
+> .Call("helloA1")
+NULL
+Hello World!
+
+
+貌似调试R的C代码确实不容易: 
+	https://www.maths.ed.ac.uk/~swood34/RCdebug/RCdebug.html
+	https://contributions.bioconductor.org/debugging-cc-code.html
+
+
+
+
+
+==> 尝试2: 编译动态链接库，在R中调用调试。
 编译
 $ R CMD SHLIB src/helloA1.c
 
@@ -8877,7 +9049,8 @@ Hello World!
 
 
 
-我们可以把该函数写到 R 文件中，后面我们就略过这个常规步骤了。
+我们可以把该函数写到 R 文件中，后面我们从略。
+
 该步骤由R包帮我们自动完成编译、连接、加载C语言部分。
 $ vim R/hello.R 
 #' test1: func must be SEXP type
@@ -8902,7 +9075,7 @@ Hello World!
 
 
 
-(4) 在C函数中分配内存，对抗垃圾回收机制
+(5) 在C函数中分配内存，对抗垃圾回收机制
 
 R会自动回收垃圾，这是很有用的。
 为了防止C的数据被回收，需要标记一下，就是函数 PROTECT 和 UNPROTECT。
@@ -8939,6 +9112,12 @@ $ grep -n NEW_ /data/public/R-4.1.1/lib/R/include/*.h
 /data/public/R-4.1.1/lib/R/include/Rdefines.h:166:/* NEW_OBJECT is recommended; NEW is for green book compatibility */
 /data/public/R-4.1.1/lib/R/include/Rdefines.h:167:#define NEW_OBJECT(class_def)	R_do_new_object(class_def)
 
+在R中也能获取该路径:
+> rinternals <- file.path(R.home("include"), "Rinternals.h")
+> rinternals
+[1] "/data/public/R-4.1.1/lib/R/include/Rinternals.h"
+> file.show(rinternals)
+
 也就是说，我们可以使用 allocVector(STRSXP,1) 而不是 NEW_CHARACTER(1)，且前者使用挺多的。
 	搜索发现，allocVector 是一个 C++ 函数。
 	更多 Rf_allocVector 函数示例: https://www.itcodet.com/cpp/cpp-rf_allocvector-function-examples.html
@@ -8952,31 +9131,7 @@ $ grep -n _ELT /data/public/R-4.1.1/lib/R/include/*.h
 /data/public/R-4.1.1/lib/R/include/Rinternals.h:789://SEXP (STRING_ELT)(SEXP x, R_xlen_t i);
 /data/public/R-4.1.1/lib/R/include/Rinternals.h:790:SEXP (VECTOR_ELT)(SEXP x, R_xlen_t i);
 /data/public/R-4.1.1/lib/R/include/Rinternals.h:791:void SET_STRING_ELT(SEXP x, R_xlen_t i, SEXP v); ## 这一行
-/data/public/R-4.1.1/lib/R/include/Rinternals.h:792:SEXP SET_VECTOR_ELT(SEXP x, R_xlen_t i, SEXP v);
-/data/public/R-4.1.1/lib/R/include/Rinternals.h:815:int ALTINTEGER_ELT(SEXP x, R_xlen_t i);
-/data/public/R-4.1.1/lib/R/include/Rinternals.h:816:void ALTINTEGER_SET_ELT(SEXP x, R_xlen_t i, int v);
-/data/public/R-4.1.1/lib/R/include/Rinternals.h:817:int ALTLOGICAL_ELT(SEXP x, R_xlen_t i);
-/data/public/R-4.1.1/lib/R/include/Rinternals.h:818:void ALTLOGICAL_SET_ELT(SEXP x, R_xlen_t i, int v);
-/data/public/R-4.1.1/lib/R/include/Rinternals.h:819:double ALTREAL_ELT(SEXP x, R_xlen_t i);
-/data/public/R-4.1.1/lib/R/include/Rinternals.h:820:void ALTREAL_SET_ELT(SEXP x, R_xlen_t i, double v);
-/data/public/R-4.1.1/lib/R/include/Rinternals.h:821:SEXP ALTSTRING_ELT(SEXP, R_xlen_t);
-/data/public/R-4.1.1/lib/R/include/Rinternals.h:822:void ALTSTRING_SET_ELT(SEXP, R_xlen_t, SEXP);
-/data/public/R-4.1.1/lib/R/include/Rinternals.h:823:Rcomplex ALTCOMPLEX_ELT(SEXP x, R_xlen_t i);
-/data/public/R-4.1.1/lib/R/include/Rinternals.h:824:void ALTCOMPLEX_SET_ELT(SEXP x, R_xlen_t i, Rcomplex v);
-/data/public/R-4.1.1/lib/R/include/Rinternals.h:825:Rbyte ALTRAW_ELT(SEXP x, R_xlen_t i);
-/data/public/R-4.1.1/lib/R/include/Rinternals.h:826:void ALTRAW_SET_ELT(SEXP x, R_xlen_t i, Rbyte v);
-/data/public/R-4.1.1/lib/R/include/Rinternals.h:1782:int (INTEGER_ELT)(SEXP x, R_xlen_t i);
-/data/public/R-4.1.1/lib/R/include/Rinternals.h:1783:double (REAL_ELT)(SEXP x, R_xlen_t i);
-/data/public/R-4.1.1/lib/R/include/Rinternals.h:1784:int (LOGICAL_ELT)(SEXP x, R_xlen_t i);
-/data/public/R-4.1.1/lib/R/include/Rinternals.h:1785:Rcomplex (COMPLEX_ELT)(SEXP x, R_xlen_t i);
-/data/public/R-4.1.1/lib/R/include/Rinternals.h:1786:Rbyte (RAW_ELT)(SEXP x, R_xlen_t i);
-/data/public/R-4.1.1/lib/R/include/Rinternals.h:1787:SEXP (STRING_ELT)(SEXP x, R_xlen_t i);
-/data/public/R-4.1.1/lib/R/include/Rinternals.h:1806:void SET_LOGICAL_ELT(SEXP x, R_xlen_t i, int v);
-/data/public/R-4.1.1/lib/R/include/Rinternals.h:1807:void SET_INTEGER_ELT(SEXP x, R_xlen_t i, int v);
-/data/public/R-4.1.1/lib/R/include/Rinternals.h:1808:void SET_REAL_ELT(SEXP x, R_xlen_t i, double v);
-/data/public/R-4.1.1/lib/R/include/Rinternals.h:1809:void SET_COMPLEX_ELT(SEXP x, R_xlen_t i, Rcomplex v);
-/data/public/R-4.1.1/lib/R/include/Rinternals.h:1810:void SET_RAW_ELT(SEXP x, R_xlen_t i, Rbyte v);
-
+...
 
 
 $ grep -n mkChar /data/public/R-4.1.1/lib/R/include/*.h
@@ -8993,7 +9148,8 @@ $ grep -n mkChar /data/public/R-4.1.1/lib/R/include/*.h
 
 
 值的花时间好好研读 Rinternals.h 和 Rdefines.h.
-
+R的源码: https://svn.r-project.org/R/
+Github 的只读备份(updated hourly): https://github.com/wch/r-source
 
 
 编译
@@ -9016,9 +9172,90 @@ $ R CMD SHLIB src/helloB1.c #教训，之前命名为 .cpp ，结果后面调用
 
 
 
+(6) SEXP 数据类型
+
+R语言中的变量必须以SEXP变量类型传递给C函数，C函数的返回值类型必须以SEXP类型返回给R语言。实际上，SEXP是一个结构体的指针。
+
+其中包含了具体的变量类型，与R中数据类型的对应关系如下：
+
+REALSXP: 实数向量
+INTSXP : 整数向量
+LGLSXP : 逻辑向量
+STRSXP : 字符向量
+VECSXP : 列表
+CLOSXP : 函数
+ENVSXP : 环境变量
 
 
-(5) 数据类型映射(SEXP 对象与其他数据类型之间)
+$ vim /data/public/R-4.1.1/lib/R/include/Rinternals.h
+...
+#define NILSXP       0    /* nil = NULL */
+#define SYMSXP       1    /* symbols */
+#define LISTSXP      2    /* lists of dotted pairs */
+#define CLOSXP       3    /* closures */
+#define ENVSXP       4    /* environments */
+#define PROMSXP      5    /* promises: [un]evaluated closure arguments */
+#define LANGSXP      6    /* language constructs (special lists) */
+#define SPECIALSXP   7    /* special forms */
+#define BUILTINSXP   8    /* builtin non-special forms */
+#define CHARSXP      9    /* "scalar" string type (internal only)*/
+#define LGLSXP      10    /* logical vectors */
+/* 11 and 12 were factors and ordered factors in the 1990s */
+#define INTSXP      13    /* integer vectors */
+#define REALSXP     14    /* real variables */
+#define CPLXSXP     15    /* complex variables */
+#define STRSXP      16    /* string vectors */
+#define DOTSXP      17    /* dot-dot-dot object */
+#define ANYSXP      18    /* make "any" args work.
+                             Used in specifying types for symbol
+                             registration to mean anything is okay  */
+#define VECSXP      19    /* generic vectors */
+#define EXPRSXP     20    /* expressions vectors */
+#define BCODESXP    21    /* byte code */
+#define EXTPTRSXP   22    /* external pointer */
+#define WEAKREFSXP  23    /* weak reference */
+#define RAWSXP      24    /* raw bytes */
+#define S4SXP       25    /* S4, non-vector */
+
+/* used for detecting PROTECT issues in memory.c */
+#define NEWSXP      30    /* fresh node created in new page */
+#define FREESXP     31    /* node released by GC */
+
+#define FUNSXP      99    /* Closure or Builtin or Special */
+
+...
+typedef struct SEXPREC *SEXP;
+...
+
+
+/* The standard node structure consists of a header followed by the
+   node data. */
+typedef struct SEXPREC {
+    SEXPREC_HEADER;
+    union {
+        struct primsxp_struct primsxp;
+        struct symsxp_struct symsxp;
+        struct listsxp_struct listsxp;
+        struct envsxp_struct envsxp;
+        struct closxp_struct closxp;
+        struct promsxp_struct promsxp;
+    } u;
+} SEXPREC;
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+(7) 数据类型映射(SEXP 对象与其他数据类型之间)
 Casting about in the R header files 
 
 怎么把 字符串映射为 SEXP 对象，把 SEXP 对象映射为 整数等。
@@ -9062,6 +9299,13 @@ $ R CMD SHLIB src/helloC1.c
 
 
 
+(8) GetRNGstate() PutRNGstate(); //todo
+
+
+
+https://vimsky.com/examples/detail/cpp-ex-----PutRNGstate-function.html
+
+
 
 
 
@@ -9102,7 +9346,8 @@ Error: INTEGER() can only be applied to a 'integer', not a 'double'
 
 
 
-(2) 做卷积
+(2) 向量卷积
+2个列向量的卷积，就是 a.b^T 得到的矩阵，按垂直于主对角线画线，把连线上的元素相加得到的向量。
 
 $ vim src/helloC1.c
 //#include <R. h>
@@ -9192,6 +9437,17 @@ $ R CMD SHLIB src/helloC1.c
 
 
 
+> devtools::document()
+> devtools::build()
+[1] "/data/wangjl/project/learn_R_pkg/pkgS4_0.1.1.tar.gz"
+> install.packages("~/data/project/learn_R_pkg/pkgS4_0.1.1.tar.gz", repos = NULL, type = "source")
+
+重启R session(shift+ctrl+F10)
+> library(pkgS4)
+> pkgS4::convolve2_R(1:2, 1:3)
+[1] 1 4 7 6
+
+
 
 
 3. 进一步学习 
@@ -9204,12 +9460,15 @@ $ R CMD SHLIB src/helloC1.c
 	#define isS4                    Rf_isS4
 
 
-- 这些非标准的 C/C++ 代码真头疼，他们不是常见的 C/C++ 代码，有很多怪异的用法需要记忆，比如数据类型声明和前置转换函数。
 
-
+个人感觉: 这些非标准的 C/C++ 代码（R定义的数据类型、宏和函数）真头疼，他们不是常见的 C/C++ 代码，有很多怪异的用法需要记忆，比如数据类型声明和强制转换函数。
 
 https://github.com/BioMooc/learn_R_pkg/tree/master/pkgS4
 
+
+
+ref:
+https://zhuanlan.zhihu.com/p/362328760
 
 
 
@@ -9217,11 +9476,19 @@ https://github.com/BioMooc/learn_R_pkg/tree/master/pkgS4
 
 
 ========================================
-|-- 如何写R包 5: 使用更便捷的 Rcpp 调用 C 代码
+|-- 如何写R包 5: 使用更便捷的 Rcpp包 调用 C/C++ 代码
 ----------------------------------------
+https://zhuanlan.zhihu.com/p/527549223
 
-Rcpp 的作者: Dirk Eddelbuettel
-Rcpp 是被引用最多的R包，远远超过第二名 ggplot2.
+
+
+Rcpp 的作者: Dirk Eddelbuettel http://dirk.eddelbuettel.com/
+	https://dirk.eddelbuettel.com/code/rcpp.html
+Rcpp 作者的广告片: 
+	https://dirk.eddelbuettel.com/papers/rcpp_rfinance_may2012.pdf
+	https://www.r-project.org/conferences/useR-2010/slides/Eddelbuettel+Francois.pdf
+
+据作者的某个ppt中的数据，Rcpp 是被引用最多的R包，远远超过第二名 ggplot2.
 
 
 0. 相关资料
@@ -9259,7 +9526,7 @@ Rcpp 更多总结 https://blog.csdn.net/iamsuperman2/article/details/73251928
 
 
 
-新建R包项目 pkgS5;
+新建R包项目 pkgS5，过程参考 R 包第一篇;
 
 (1) 默认示例
 菜单 File - New File - C++ File，保存为 src/simple.cpp，该文件内容如下:
@@ -9322,7 +9589,8 @@ You can include R code blocks in C++ files processed with sourceCpp (useful for 
 The R code will be automatically run after the compilation.
 
 
-我们直接删掉这几行吧，写到这里明显不合适。
+尝试编译后确实能自动运行这里的R代码。
+不过，我们还是直接删掉这几行吧，写到这里明显不合适。
 /*** R
 timesTwo(42)
 */
@@ -9350,9 +9618,12 @@ Now 22
 
 这是一个很好的测试形式，能迅速给出答案，适合调试、探索。
 
-还可以逐句执行
+还可以逐句执行C++代码
 > evalCpp("NAN == 1")
 [1] FALSE
+> Rcpp::evalCpp("1+10")
+[1] 11
+
 
 
 
@@ -9517,7 +9788,16 @@ Error in timesTwo(3) : could not find function "timesTwo"
 Seurat 4 也确实很多内部函数，它有没有暴露出来C/C++函数呢？怎么做的？
 	目前看到的是，Seurat 4 的R使用 RunModularityClustering() 调用 C++函数 RunModularityClusteringCpp();
 	// 看到了再来补充。
+	补充: 我确实看到直接暴露的方法 (https://r-pkgs.org/src.html)，在C++函数前加一行注释: //' @export
 
+//' Multiply a number by two
+//' 
+//' @param x A single integer.
+//' @export
+// [[Rcpp::export]]
+int timesTwo(int x) {
+   return x * 2;
+}
 
 
 
@@ -9566,6 +9846,17 @@ timesTwo <- function(x) {
 }
 
 这是一个普通的R包装函数，在R代码中使用.Call() 接口调用 C/C++ 函数。
+注意，我们在C中定义的函数名是 timesTwo，而这里 .Call() 调用的却加了R包名字前缀。原始的C函数名字不能调用了。
+这是在哪一步调整的函数名？老函数名又是怎么不可访问的？都在 src/RcppExports.cpp 中完成的。
+
+> devtools::document()
+> dyn.load("src/pkgS5.so")
+> .Call("timesTwo", 20)
+Error in .Call("timesTwo", 20) : 
+  C symbol name "timesTwo" not in load table
+> .Call("_pkgS5_timesTwo", 20)
+[1] 40
+
 
 
 
@@ -9587,23 +9878,26 @@ Rcpp::Rostream<false>& Rcpp::Rcerr = Rcpp::Rcpp_cerr_get();
 #endif
 
 // timesTwo
-NumericVector timesTwo(NumericVector x); #函数声明，其定义 timesTwo() 在 src/simple.cpp 中。
-RcppExport SEXP _pkgS5_timesTwo(SEXP xSEXP) {  #把该函数暴露出去，函数名加R包前缀：_pkgS5_timesTwo
+NumericVector timesTwo(NumericVector x);  //函数声明，其定义 timesTwo() 在 src/simple.cpp 中。
+
+RcppExport SEXP _pkgS5_timesTwo(SEXP xSEXP) {  //把该函数暴露出去，函数名加R包前缀：_pkgS5_timesTwo
+
 BEGIN_RCPP
-    Rcpp::RObject rcpp_result_gen;
-    Rcpp::RNGScope rcpp_rngScope_gen;
-    Rcpp::traits::input_parameter< NumericVector >::type x(xSEXP);
-    rcpp_result_gen = Rcpp::wrap(timesTwo(x));
+    Rcpp::RObject rcpp_result_gen;  //定义返回值类型
+    Rcpp::RNGScope rcpp_rngScope_gen; // ?
+    Rcpp::traits::input_parameter< NumericVector >::type x(xSEXP); //输入值
+    rcpp_result_gen = Rcpp::wrap(timesTwo(x)); //调用 老函数名
     return rcpp_result_gen;
 END_RCPP
 }
 
-static const R_CallMethodDef CallEntries[] = {  #定义一个数组，R呼叫时函数映射关系
-    {"_pkgS5_timesTwo", (DL_FUNC) &_pkgS5_timesTwo, 1},
+static const R_CallMethodDef CallEntries[] = {  //定义一个数组，R调用时函数映射关系
+    {"_pkgS5_timesTwo", (DL_FUNC) &_pkgS5_timesTwo, 1}, //字符串，函数名，参数个数
     {NULL, NULL, 0}
 };
 
-RcppExport void R_init_pkgS5(DllInfo *dll) {  # 初始化载入该包时
+
+RcppExport void R_init_pkgS5(DllInfo *dll) {  // 初始化载入该包时。固定2行。
     R_registerRoutines(dll, NULL, CallEntries, NULL, NULL);
     R_useDynamicSymbols(dll, FALSE);
 }
@@ -10069,12 +10363,13 @@ double rcpparma_innerproduct(const arma::colvec & x) {
 
 
 (2) 矩阵的乘法 RcppEigen 库
+优点
+	成熟，Seurat 4 广泛使用这个库进行矩阵计算 https://github.com/RcppCore/RcppEigen
+	Rcpp 作者早期作品 https://dirk.eddelbuettel.com/code/rcpp.eigen.html
+	CRAN 包 质量有保证 https://cran.rstudio.com/web/packages/RcppEigen/index.html
+	论文 https://r-forge.r-project.org/scm/viewvc.php/*checkout*/pkg/RcppEigen/vignettes/RcppEigen-Intro.pdf?revision=3274&root=rcpp&pathrev=3274
 
-https://github.com/RcppCore/RcppEigen
-
-https://r-forge.r-project.org/scm/viewvc.php/*checkout*/pkg/RcppEigen/vignettes/RcppEigen-Intro.pdf?revision=3274&root=rcpp&pathrev=3274
 https://www.jb51.net/article/227483.htm
-
 
 R object type  | Eigen class typedef
 ------------ ------------ ------------ 
@@ -10091,6 +10386,7 @@ $ vim src/get_max.cpp
 #include <Rcpp.h>
 using namespace Rcpp;
 
+//' @export
 // [[Rcpp::export]]
 double getMaxCpp(Rcpp::NumericVector v) {
   int n = v.size(); // vectors are describing
@@ -10104,34 +10400,58 @@ double getMaxCpp(Rcpp::NumericVector v) {
   return(m);
 }
 
+提示: C++函数前面添加 //' @export 就能把该函数暴露到R包外部。
 
 编译找不到某个头文件了，赶紧到 DESCRIPTION 中添加 LinkingTo: Rcpp (>= 0.11.0), RcppArmadillo, RcppEigen
 
+
+
+
+==> (这段可以跳过)Rstudio 异常出现4个红叉，无解，不过编译正常: https://github.com/rstudio/rstudio/issues/11364
 貌似这两个矩阵库不兼容，那就先去掉一个。
 LinkingTo: Rcpp (>= 0.11.0), RcppArmadillo, RcppEigen #会出现各种莫名其妙的输出，虽然还不算报错的级别。
 那就只保留一个: LinkingTo: Rcpp (>= 0.11.0), RcppEigen
 同时把使用 RcppArmadillo 库的cpp文件改名字: $ mv src/arma.cpp src/arma.cppWJL
 
-
 很奇怪，只要加上 RcppEigen 就出现很多错误提示。
-可能是 Rstudio 的bug，已经给 Rstudio 提交了 issue: https://github.com/rstudio/rstudio/issues/11364
+可能是 Rstudio 的bug，已经给 Rstudio 提交了 issue，大神的建议是在R包的 src/Makevars 中添加一行 PKG_CXXFLAGS = -DEIGEN_DONT_VECTORIZE
+别人的解释: https://www.5axxw.com/questions/content/6cwm5k
+感觉这仅仅是IDE的问题，我又把文件改回去了：DESCRIPTION 的 LinkingTo 行加入 RcppArmadillo; 文件名 src/arma.cpp;
+
+
 
 
 接着可以正常编译:
 
-> devtools::document()
+> devtools::document()  #
 > devtools::load_all()
+> getMaxCpp( c(10,50,3,60))
+Now 10
+Now 50
+[1] 60
+> callFunction(1:10, min)
+[1] 1
+> callFunction(1:10, max)
+[1] 10
+
+
+修改 DESCRIPTION 文件中的版本号，生成R包并安装:
+> devtools::build()
+[1] "/data/wangjl/project/learn_R_pkg/pkgS5_0.1.1.tar.gz"
+> install.packages("~/data/project/learn_R_pkg/pkgS5_0.1.1.tar.gz", repos = NULL, type = "source")
+重启R session: shift+ctrl+F10;
+> library(pkgS5)
+> pkgS5::callFunction(1:3, max) #暴露出去的C++函数
+[1] 3
+> pkgS5:::timesTwo(-1:3) #内有暴露出去的C++函数
+[1] -2  0  2  4  6
 
 
 
 
 
 
-
-
-
-
-6. 进一步学习
+8. 进一步学习
 
 - 两本书: Effective C++ and Effective STL.
 
@@ -10145,9 +10465,13 @@ The Rcpp quick reference guide, vignette("Rcpp-quickref"), contains a useful sum
 
 
 
-7. 小结
+9. 小结
 R包制作，到这一步差不多走完主线了。
-其余的细节还有很多，按照能看懂 Seurat 的标准来判断，接下来可以死扣一下 Louvain 函数的 C++ 实现了，既学习算法，又巩固刚学的Rcpp。
+其余的细节还有很多，比如怎么把R包上传到 CRAN、 Bioconductor 等。
+
+按照能看懂 Seurat 的标准来判断，接下来可以死扣一下 Louvain 函数的 C++ 实现，既学习算法，又巩固刚学的Rcpp。
+
+
 
 
 
@@ -10187,7 +10511,19 @@ DimPlot(pbmc, reduction = "umap")
 
 
 
+
+
+
+
+
 3. R tips 
+
+
+
+
+
+
+
 
 
 
