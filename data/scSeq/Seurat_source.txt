@@ -10483,13 +10483,14 @@ R包制作，到这一步差不多走完主线了。
 
 
 ========================================
-|-- Seurat 4 R包源码解析 23: step11 非线性降维 RunUMAP() //todo
+|-- Seurat 4 R包源码解析 23: step11 非线性降维 RunUMAP()
 ----------------------------------------
+https://zhuanlan.zhihu.com/p/533447633
+
 1. 调包侠
 
 # step 11 Run non-linear dimensional reduction (UMAP/tSNE)
-# If you haven't installed UMAP, you can do so via reticulate::py_install(packages =
-# 'umap-learn')
+# If you haven't installed UMAP, you can do so via reticulate::py_install(packages = 'umap-learn')
 pbmc <- RunUMAP(pbmc, dims = 1:10)
 
 # note that you can set `label = TRUE` or use the LabelClusters function to help label
@@ -10499,12 +10500,759 @@ DimPlot(pbmc, reduction = "umap")
 # saveRDS(pbmc, file = "../output/pbmc_tutorial.rds")
 
 
+本文只看 RunUMAP() 的R源码。
+UMAP是一种高维到低维映射的方法，可以看做一种降维方法，也可以用作可视化方法。
+它比tSNE更有优势：1.速度快；2.不仅能保留局部结构，还能兼顾全局结构。也就是UMAP的距离是有一定意义的。
+
+
+
+
+(1) umap是调用python包执行的还是调用 R 包执行的？
+UMAP 全称是 Uniform Manifold Approximation and Projection.
+Finds a low dimensional embedding of the data that approximates an underlying manifold.
+原作者提供的是py实现。
+
+
+测试当前系统是否安装该py包
+$ pip3 list | grep -i umap
+umap-learn                        0.5.2
+
+
+R 中调用py的依赖包是: reticulate, 版本 1.21。
+
+
+
+
+
+==> try1. 默认是用R 原生的 uwot 包实现的 UMAP，我当前使用的版本是  uwot 0.1.10。
+
+> pbmc1 <- RunUMAP(pbmc, dims = 1:10) #默认参数 umap.method = "uwot", metric = "cosine",
+Warning: The default method for RunUMAP has changed from calling Python UMAP via reticulate to the R-native UWOT using the cosine metric
+To use Python UMAP via reticulate, set umap.method to 'umap-learn' and metric to 'correlation'
+# 默认使用R原生的 UWOT 使用 cosine 距离，而不是 用 reticulate 包调用 python 包 UMAP。
+# 如果想 通过 reticulate 调用 Python UMAP 包，可以设置 umap.method='umap-learn', metric='correlation'
+
+This message will be shown once per session
+# 本提醒每个R session 只显示一次。
+
+14:32:22 UMAP embedding parameters a = 0.9922 b = 1.112 # UMAP 嵌入参数a,b
+14:32:22 Read 2638 rows and found 10 numeric columns    # 读入 2638 行(细胞)，发现10列(PC)
+14:32:22 Using Annoy for neighbor search, n_neighbors = 30       #使用 Annoy 找到最近的 n_neighbors=30个细胞
+14:32:22 Building Annoy index with metric = cosine, n_trees = 50 #使用 metric=cosine 距离，构建 n_trees=50 棵树
+0%   10   20   30   40   50   60   70   80   90   100%
+[----|----|----|----|----|----|----|----|----|----|
+**************************************************|
+14:32:22 Writing NN index file to temp file /tmp/RtmpMbVSJL/file3bf4611d337478 #写入NN 索引到临时文件
+14:32:22 Searching Annoy index using 1 thread, search_k = 3000 #单线程搜索 Annoy 索引，search_k = 3000
+14:32:23 Annoy recall = 100%
+14:32:23 Commencing smooth kNN distance calibration using 1 thread #使用单线程平滑化 KNN 距离。
+14:32:24 Initializing from normalized Laplacian + noise            # 标准化过的 Laplacian + 噪音
+14:32:24 Commencing optimization for 500 epochs, with 105124 positive edges  # 遍历 500 epochs, 有 105124 条正边。
+0%   10   20   30   40   50   60   70   80   90   100%
+[----|----|----|----|----|----|----|----|----|----|
+**************************************************|
+14:32:26 Optimization finished #优化结束。
+
+
+
+
+
+
+
+==> try2. 尝试调用 py UMAP包:
+> pbmc2 <- RunUMAP(pbmc, dims = 1:10, umap.method='umap-learn', metric='correlation')
+Epochs completed: 100%| ██████████ 500/500 [00:03]UMAP(angular_rp_forest=True, local_connectivity=1, metric='correlation', min_dist=0.3, n_neighbors=30, random_state=RandomState(MT19937) at 0x7FEDD6687258, verbose=True)
+Fri Jun 24 14:34:10 2022 Construct fuzzy simplicial set #构建模糊简化集合
+Fri Jun 24 14:34:12 2022 Finding Nearest Neighbors      #KNN 找最近邻
+Fri Jun 24 14:34:12 2022 Finished Nearest Neighbor Search
+Fri Jun 24 14:34:12 2022 Construct embedding     #构建嵌入
+Fri Jun 24 14:34:16 2022 Finished embedding
+
+
+运行 RunUMAP() 后，在 pbmc@reductions 这个list中放入新的名字为 umap 的DimReduc对象。
+> names(pbmc@reductions)
+[1] "pca"
+> names(pbmc1@reductions)
+[1] "pca"  "umap"
+> names(pbmc2@reductions)
+[1] "pca"  "umap"
+> class(pbmc2@reductions$umap)
+[1] "DimReduc"
+attr(,"package")
+[1] "SeuratObject"
+
+
+目测UMAP的坐标数值，不一致，也看不出来个所以然：
+> head(Embeddings(pbmc1, reduction = "umap"))
+                    UMAP_1    UMAP_2
+AAACATACAACCAC-1 -3.304555 -3.914703
+AAACATTGAGCTAC-1 -5.620712 10.682330
+AAACATTGATCAGC-1 -5.630144 -6.400627
+AAACCGTGCTTCCG-1  9.145644  5.535673
+AAACCGTGTATGCG-1 -5.354362  2.053312
+AAACGCACTGGTAC-1 -3.218432 -6.085276
+
+> head(Embeddings(pbmc2, reduction = "umap"))
+                     UMAP_1     UMAP_2
+AAACATACAACCAC-1 -2.1560519 -1.8735013
+AAACATTGAGCTAC-1  0.3027341 12.8482037
+AAACATTGATCAGC-1 -1.4721704  1.8719281
+AAACCGTGCTTCCG-1 14.9450207  0.7575974
+AAACCGTGTATGCG-1  3.1465802 -4.9975662
+AAACGCACTGGTAC-1 -3.4616749  0.2224449
+
+
+同时拿到umap坐标和cluster编号：
+> head(FetchData(pbmc1, vars=c("UMAP_1", "UMAP_2", "seurat_clusters")))
+                    UMAP_1    UMAP_2 seurat_clusters
+AAACATACAACCAC-1 -3.304555 -3.914703               2
+AAACATTGAGCTAC-1 -5.620712 10.682330               3
+AAACATTGATCAGC-1 -5.630144 -6.400627               2
+AAACCGTGCTTCCG-1  9.145644  5.535673               1
+AAACCGTGTATGCG-1 -5.354362  2.053312               6
+AAACGCACTGGTAC-1 -3.218432 -6.085276               2
+
+
+
+
+可视化查看效果，貌似 py版的坐标范围更大，cluster7 分的更开。
+tips: 以后似乎可以试试 Py 版的 UMAP 实现，理论上更标准。
+> library(ggplot2)
+> p1=DimPlot(pbmc1, reduction = "umap", label=T)+ggtitle("R:uwot | cosine")
+> p2=DimPlot(pbmc2, reduction = "umap", label=T)+ggtitle("Py:umap-learn | correlation")
+> p1+p2
+
+# fig here:
+
+
+
+
+
+==> try3: umap.method = "uwot-learn" 参数已经作废了，尝试确实和p1图一致。
+> pbmc3 <- RunUMAP(pbmc, dims = 1:10, umap.method = "uwot-learn")
+最后有一个警告
+Warning message:
+In RunUMAP.default(object = data.use, reduction.model = reduction.model,  :
+  'uwot-learn' is deprecated. Set umap.method = 'uwot' and return.model = TRUE #按这个提示再来一遍，看返回的是个啥。
+
+> p3=DimPlot(pbmc3, reduction = "umap", label=T)+ggtitle("R:umap-learn | cosine")
+> p1+p3 #一致
+
+
+
+==> try3B: umap.method = "uwot", return.model = TRUE
+pbmc3_2 <- RunUMAP(pbmc, dims = 1:10, umap.method = "uwot", return.model = TRUE)
+
+p3_2=DimPlot(pbmc3_2, reduction = "umap", label=T)+ggtitle("R:uwot return | cosine")
+p1+p3_2 #还是一致
+
+
+到底模型返回到哪里了？有啥用？
+根据函数 RunUMAP.default() 最后一行知道保存位置。
+> class(pbmc3_2@reductions$umap@misc$model)
+[1] "list"
+> names(pbmc3_2@reductions$umap@misc$model)
+ [1] "embedding"            "scale_info"           "n_neighbors"          "search_k"            
+ [5] "local_connectivity"   "n_epochs"             "alpha"                "negative_sample_rate"
+ [9] "method"               "a"                    "b"                    "gamma"               
+[13] "approx_pow"           "metric"               "norig_col"            "pcg_rand"            
+[17] "pca_models"
+
+> names(pbmc3@reductions$umap@misc$model) 输出同上。
+> names(pbmc2@reductions$umap@misc$model) #NULL
+> names(pbmc1@reductions$umap@misc$model) #NULL
+
+用处？可能就是备查当时umap模型的各种参数吧？比如 
+> pbmc3_2@reductions$umap@misc$model$a
+        a 
+0.9921756 
+
+
+
+
+
+
+==> try4: UMAP 的最新版本是 densmap，可以尝试
+> pbmc4 <- RunUMAP(pbmc, dims = 1:10, umap.method = "umap-learn", densmap=T)
+Epochs completed: 100%| ██████████ 700/700 [00:06]UMAP(angular_rp_forest=True, densmap=True, local_connectivity=1, metric='cosine', min_dist=0.3, n_neighbors=30, random_state=RandomState(MT19937) at 0x7FEDD6687258, verbose=True)
+Fri Jun 24 14:29:06 2022 Construct fuzzy simplicial set
+Fri Jun 24 14:29:09 2022 Finding Nearest Neighbors
+Fri Jun 24 14:29:10 2022 Finished Nearest Neighbor Search
+Fri Jun 24 14:29:12 2022 Construct embedding
+Fri Jun 24 14:29:12 2022 Computing original densities
+Fri Jun 24 14:29:35 2022 Finished embedding
+
+> p4=DimPlot(pbmc4, reduction = "umap", label=T)+ggtitle("Py:umap-learn densmap")
+> p2+p4 #densMAP figure
+
+
+
+# 使用 metric='correlation'
+> pbmc4_2 <- RunUMAP(pbmc, dims = 1:10, umap.method = "umap-learn", densmap=T, metric='correlation')
+> p4_cor=DimPlot(pbmc4_2, reduction = "umap", label=T)+ggtitle("Py:umap-learn densmap | correlation")
+> p2+p4_cor #基本一致
+
+
+densMap 适合哪些场景呢？至少不适合pbmc，是否细胞过万会好点？ //todo
+
+
+
+
+
+
+(2) UMAP的输入可以是PC还可以是基因集
+可以设置 dims=1:30 使用PCA的某些维度作为UMAP的输入。
+还可以设置 features=someGenes 使用这些基因作为UMAP的输入。默认使用的 slot="data"。
+
+HVG=pbmc@assays$RNA@var.features
+length(HVG) #2000
+head(HVG) #"PPBP"   "LYZ"    "S100A9" "IGLL5"  "GNLY"   "FTL" 
+pbmc5 <- RunUMAP(pbmc, #dims = 1:10, 
+                 features = HVG,
+                 umap.method = "umap-learn", metric='correlation')
+library(ggplot2)
+DimPlot(pbmc5)+ggtitle("RunUMAP using HVGs, not dims")
+
+
+# fig here
+
+
+
+
+
+
+
+
+(3) 目前 umap-learn py包支持的距离
+
+# 版本号:
+$ pip3 list | grep -i umap
+umap-learn                        0.5.2
+
+
+# 目前支持的距离
+$ python3
+>>> import umap
+>>> help(umap.UMAP)
+
+* euclidean
+* manhattan
+* chebyshev
+* minkowski
+* canberra
+* braycurtis
+* mahalanobis
+* wminkowski
+* seuclidean
+* cosine
+* correlation
+* haversine
+* hamming
+* jaccard
+* dice
+* russelrao
+* kulsinski
+* ll_dirichlet
+* hellinger
+* rogerstanimoto
+* sokalmichener
+* sokalsneath
+* yule
+
+定义另外补充。
+效果见下图，如果没画出来。
+
+
+
+
+# 有些距离能画，有些报错。过半效果很差。其他效果类似。
+dist.defines=c("euclidean", "manhattan", "chebyshev", "minkowski", "canberra", "braycurtis",
+               "mahalanobis", "wminkowski", "seuclidean", "cosine", "correlation", "haversine",
+               "hamming", "jaccard", "dice", "russelrao", "kulsinski", "ll_dirichlet",
+               "hellinger", "rogerstanimoto", "sokalmichener", "sokalsneath", "yule")
+length(dist.defines) #23
+library(ggplot2)
+figs=list()
+#for(i in 1:length(dist.defines)){
+
+i=0
+{
+  i=i+1
+  dist=dist.defines[i]
+  message(">>[", i, "/", length(dist.defines), "] ", dist)
+  #
+  if( !(i %in% c(4, #minkowski too slow
+                 8,  #wminkowski too slow
+                 9,  #seuclidean Error ZeroDivisionError: division by zero
+                 12, #ValueError: haversine is only defined for 2 dimensional data
+                 # have warnings:13, 14, 15, 17,21,
+                 16, #russelrao: ValueError: metric is neither callable nor a recognised string
+                 19, #hellinger:ValueError: Metric 'hellinger' does not support negative values
+                  -1) ) ){
+    pbmc5 <- RunUMAP(pbmc, dims = 1:10, umap.method = "umap-learn", metric=dist)
+    p1=DimPlot(pbmc5, label=T)+
+      ggtitle(dist)
+    figs[[i]]=list(p1)
+  }
+}
+#}
+
+length(figs)
+class(figs[[1]][[1]])
+
+#fig1
+pics=list()
+j=0
+for(i in 1:length(figs)){
+  #if("gg" %in% class(figs[[i]][[1]]) ){
+  if( inherits(figs[[i]][[1]], what=c("ggplot")) ){
+    j=j+1
+    pics[[j]]=figs[[i]][[1]]+theme(legend.position = "none")
+  }else{
+    print(i)
+  }
+}
+length(pics) #17
+library(patchwork)
+plots1 = wrap_plots(pics, ncol = 5)
+plots1 #fig1
+
+
+#fig2: only first 8 figs
+pics=list()
+j=0
+for(i in 1:length(figs)){
+  #if("gg" %in% class(figs[[i]][[1]]) ){
+  if( inherits(figs[[i]][[1]], what=c("ggplot")) ){
+    j=j+1
+    pics[[j]]=figs[[i]][[1]]+theme(legend.position = "none")
+    if(j>8) break;
+  }else{
+    print(i)
+  }
+}
+length(pics) #17
+library(patchwork)
+plots2 = wrap_plots(pics, ncol = 3)
+plots2 #fig2
+
+
+
+
+
+
+
+
 
 
 
 
 2. 源码解析 
 
+// todo 
+RunUMAP
+	* RunUMAP.Graph 
+	* RunUMAP.Neighbor
+
+
+
+
+
+
+3. R tips
+
+
+(1) 手动调用R包做UMAP
+
+准备数据: pbmc 3k 数据集，做好PCA后，取前10个PC。
+> data.use <- Embeddings(pbmc[['pca']])[, 1:10]
+> dim(data.use) #[1] 2638   10
+> data.use[1:3,1:4]
+                       PC_1       PC_2      PC_3      PC_4
+AAACATACAACCAC-1 -4.7296855 -0.5184265 -0.762322 -2.315679
+AAACATTGAGCTAC-1 -0.5174029  4.5918957  5.909192  6.911886
+AAACATTGATCAGC-1 -3.1891063 -3.4695154 -0.831371 -2.001998
+
+> is.list(data.use)
+[1] FALSE
+
+> class(data.use)
+[1] "matrix" "array" 
+
+
+> library(future)
+> nbrOfWorkers()
+[1] 1
+
+
+
+
+==> 关于umap的更多参数的意义，见源码解析 2.2 RunUMAP.Seurat() 参数解释部分。
+UMAP可以设置的主要参数如下：
+n_neighbors：这决定了在流形结构的局部近似中使用的相邻点的数量。较大的值将导致在丢失详细的局部结构的情况下保留更多的全局结构。一般来说，这个参数应该经常在 5 到 50 的范围内，选择 10 到 15 是一个合理的默认值。Seurat 默认是 30。
+
+min_dist：这控制嵌入允许将点压缩在一起的紧密程度。较大的值确保嵌入点分布更均匀，而较小的值允许算法更准确地针对局部结构进行优化。合理的值在 0.001 到 0.5 的范围内，0.1 是合理的默认值。Seurat 默认是 0.3。
+
+metric：这决定了用于测量输入空间中距离的度量的选择。已经编码了各种各样的度量标准，并且可以传递用户定义的函数，只要它已经通过 numba 进行了 JITd。
+
+
+
+
+library(uwot)
+result=umap(
+	X = data.use, #矩阵: 前dims个PC列
+	n_threads = nbrOfWorkers(), #线程数
+	n_neighbors = as.integer(x = 30), #默认30
+	n_components = as.integer(x = 2), #默认2
+	metric = 'cosine', #这个参数
+	n_epochs = NULL,
+	learning_rate = 1,
+	min_dist = 0.3,
+	spread = 1,
+	set_op_mix_ratio = 1,
+	local_connectivity = 1,
+	repulsion_strength = 1,
+	negative_sample_rate = 5,
+	a = NULL,
+	b = NULL,
+	fast_sgd = F, #uwot.sgd
+	verbose = T,
+	ret_model = F #return.model
+)
+
+输出:
+16:28:32 UMAP embedding parameters a = 0.9922 b = 1.112
+16:28:32 Read 2638 rows and found 10 numeric columns
+16:28:32 Using Annoy for neighbor search, n_neighbors = 30
+16:28:32 Building Annoy index with metric = cosine, n_trees = 50
+0%   10   20   30   40   50   60   70   80   90   100%
+[----|----|----|----|----|----|----|----|----|----|
+**************************************************|
+16:28:33 Writing NN index file to temp file /tmp/RtmpMbVSJL/file3bf46128949cc1
+16:28:33 Searching Annoy index using 1 thread, search_k = 3000
+16:28:33 Annoy recall = 100%
+16:28:33 Commencing smooth kNN distance calibration using 1 thread
+16:28:34 Initializing from normalized Laplacian + noise
+16:28:34 Commencing optimization for 500 epochs, with 105124 positive edges
+0%   10   20   30   40   50   60   70   80   90   100%
+[----|----|----|----|----|----|----|----|----|----|
+**************************************************|
+16:28:36 Optimization finished
+
+
+> class(result)
+[1] "matrix" "array" 
+> head(result)
+          [,1]      [,2]
+[1,] -3.304555 -3.914703
+[2,] -5.620712 10.682330
+[3,] -5.630144 -6.400627
+[4,]  9.145644  5.535673
+[5,] -5.354362  2.053312
+[6,] -3.218432 -6.085276
+> dim(result)
+[1] 2638    2
+
+
+> result2=as.data.frame(result)
+> colnames(result2)=c("umap1", "umap2")
+> head(result2, n=2)
+      umap1     umap2
+1 -3.304555 -3.914703
+2 -5.620712 10.682330
+
+
+> library(ggplot2)
+> ggplot(result2, aes(umap1, umap2))+geom_point()
+> result2$cluster=pbmc$seurat_clusters
+> p_r=ggplot(result2, aes(umap1, umap2, color=cluster))+
+	geom_point(size=0.5)+
+	theme_classic()+ggtitle("R uwot pkg")
+> p1+p_r #和之前的 DimPlot(pbmc1) 结果一样。
+
+
+
+
+
+(2) 使用R调用py函数: reticulate R包
+
+很值得参考的R调用py包的源码:
+
+library(reticulate)
+...
+#' @importFrom reticulate py_module_available py_set_seed import
+...
+  umap.output <- switch(
+    EXPR = umap.method,
+
+    #(B1) 执行py包 umap-learn (可选)
+    'umap-learn' = {
+      # 检查几个py包: umap, sklearn
+      if (!py_module_available(module = 'umap')) {
+        stop("Cannot find UMAP, please install through pip (e.g. pip install umap-learn).")
+      }
+      if (!py_module_available(module = 'sklearn')) {
+        stop("Cannot find sklearn, please install through pip (e.g. pip install scikit-learn).")
+      }
+
+      # 设置随机数种子
+      if (!is.null(x = seed.use)) {
+        py_set_seed(seed = seed.use)
+      }
+
+      # n.epochs 默认为空，跳过
+      if (typeof(x = n.epochs) == "double") {
+        n.epochs <- as.integer(x = n.epochs)
+      }
+
+      # import umap, sklearn
+      umap_import <- import(module = "umap", delay_load = TRUE)
+      sklearn <- import("sklearn", delay_load = TRUE)
+
+      # 检查版本号，如果是 densmap，则需要 umap-learn >=0.5.0
+      if (densmap &&
+          numeric_version(x = umap_import$pkg_resources$get_distribution("umap-learn")$version) <
+          numeric_version(x = "0.5.0")) {
+        stop("densmap is only supported by versions >= 0.5.0 of umap-learn. Upgrade umap-learn (e.g. pip install --upgrade umap-learn).")
+      }
+
+      # 随机数种子
+      random.state <- sklearn$utils$check_random_state(seed = as.integer(x = seed.use))
+
+      # umap 参数列表
+      umap.args <- list(
+        n_neighbors = as.integer(x = n.neighbors),
+        n_components = as.integer(x = n.components),
+        metric = metric,
+        n_epochs = n.epochs,
+        learning_rate = learning.rate,
+        min_dist = min.dist,
+        spread = spread,
+        set_op_mix_ratio = set.op.mix.ratio,
+        local_connectivity = local.connectivity,
+        repulsion_strength = repulsion.strength,
+        negative_sample_rate = negative.sample.rate,
+        random_state = random.state,
+        a = a,
+        b = b,
+        metric_kwds = metric.kwds,
+        angular_rp_forest = angular.rp.forest,
+        verbose = verbose
+      )
+
+      # 如果版本号大于 0.5.0 ，还可以加入 densmap 参数
+      if (numeric_version(x = umap_import$pkg_resources$get_distribution("umap-learn")$version) >=
+          numeric_version(x = "0.5.0")) {
+        umap.args <- c(umap.args, list(
+          densmap = densmap,
+          dens_lambda = dens.lambda,
+          dens_frac = dens.frac,
+          dens_var_shift = dens.var.shift,
+          output_dens = FALSE
+        ))
+      }
+      # 执行umap: 参数、执行
+      umap <- do.call(what = umap_import$UMAP, args = umap.args)
+      umap$fit_transform(as.matrix(x = object))
+    },
+...
+
+
+官网教程: https://rstudio.github.io/reticulate/index.html
+# install.packages("reticulate")
+
+> library(reticulate)
+# use_python("/usr/local/bin/python") # 设置使用哪个python
+
+> Sys.which("python")
+                             python 
+"/home/wangjl/anaconda3/bin/python" 
+
+# 调用py的模块
+> os <- import("os")
+> os$listdir(".") #同 dir()
+> os$getcwd() #同 getwd()
+
+> time = import("time")
+> time$time() #[1] 1656060594
+
+
+> py_module_available(module = 'sklearn') #查看py包是否可用
+[1] TRUE
+
+> sklearn <- import("sklearn", delay_load = TRUE)
+> sklearn$show_versions()
+System:
+    python: 3.7.0 (default, Jun 28 2018, 13:22:42)  [GCC 7.2.0]
+...
+
+
+
+
+==> 还可以在R中引入 py 脚本，直接使用py函数。
+$ vim a1.py 
+import pandas
+def read_flights(file):
+	flights = pandas.read_csv(file)
+	flights = flights[flights['dest'] == "ORD"]
+	flights = flights[['carrier', 'dep_delay', 'arr_delay']]
+	flights = flights.dropna()
+	return flights
+
+import time
+def now():
+	return time.strftime("%Y/%m/%d %H:%M:%S", time.localtime())
+
+# in R 
+> source_python("a1.py")
+> # flights <- read_flights("flights.csv")
+> now() #测试效果，符合预期
+[1] "2022/06/24 17:01:20"
+
+
+
+==> 可以在 R markdown 中使用python
+```{pyhton}
+import time;
+print(time.time())
+```
+
+
+
+==> 在R console 中交互式运行py和R
+> repl_python () #进入 Python 环境
+>>> a=[1,2,3]
+>>> print(len(a))
+>>> exit #退出 Python 环境，好像不好使，要用快捷键 Ctrl+D 
+> 
+
+
+
+==> R 中运行一行py命令，貌似无法获取返回值
+> py_run_string("a = [1, 2, 3]; b = [2, 3, 4]; c = list(zip(a, b)); print(c)") #好像无法获取返回值
+[(1, 2), (2, 3), (3, 4)]
+
+
+
+==> 随机数
+> py_set_seed(seed = seed.use) #为py和numpy设置随机数种子
+等价于 
+import os
+os.environ["PYTHONHASHSEED"] = "0"
+import random 
+random.seed(5)
+
+# 如果有 numpy 
+import numpy as np
+np.random.seed(5)
+
+
+> sklearn$utils$check_random_state(seed = as.integer(x = seed.use))
+
+
+
+
+
+
+(3) 比较两个R包版本号的大小 
+这是两个问题：怎么获取R包版本号，怎么比较版本号。
+
+> numeric_version
+function (x, strict = TRUE) 
+.make_numeric_version(x, strict, .standard_regexps()$valid_numeric_version)
+<bytecode: 0x55d6a1974110>
+<environment: namespace:base>
+
+> numeric_version(x = "0.5.0") 
+[1] ‘0.5.0’
+
+> class(numeric_version(x = "0.5.0") )
+[1] "numeric_version"
+
+> numeric_version(x = "0.5.0") > numeric_version(x = "1.3.0")
+[1] FALSE
+
+> packageVersion("Seurat")
+[1] ‘4.1.0’
+
+> if( packageVersion("Seurat") > numeric_version(x = "3") ){ print("Greater than 3")}
+[1] "Greater than 3"
+
+
+
+
+
+(4) 使用 py 调用 UMAP
+在R中导出数据到文件，在py中读入数据并计算umap坐标，然后用R画图。
+
+> dim(data.use)
+[1] 2638   10
+> data.use[1:2,1:4]
+                       PC_1       PC_2      PC_3      PC_4
+AAACATACAACCAC-1 -4.7296855 -0.5184265 -0.762322 -2.315679
+AAACATTGAGCTAC-1 -0.5174029  4.5918957  5.909192  6.911886
+
+> write.table(data.use, "backup/dims.data.txt",quote = F)
+
+
+
+
+在Py中
+# pip install umap-lear
+# pip install scikit-learn
+
+import umap 
+import sklearn
+
+# 设置随机数
+import os
+os.environ["PYTHONHASHSEED"] = "0"
+import random 
+import sklearn
+random.seed(42)
+
+# 如果有 numpy 
+import numpy as np
+np.random.seed(42)
+
+
+random.state = sklearn.utils.check_random_state(seed = 42)
+
+model=umap.UMAP(
+	n_neighbors = 30,
+	n_components = 2,
+	metric = "correlation",
+	n_epochs = None,
+	learning_rate = 1,
+	min_dist = 0.3,
+	spread = 1,
+	set_op_mix_ratio = 1,
+	local_connectivity = 1,
+	repulsion_strength = 1,
+	negative_sample_rate = 5,
+	random_state = random.state,
+	a = None,
+	b = None,
+	metric_kwds = None, #metric.kwds,
+	angular_rp_forest = None, #angular.rp.forest,
+	verbose = True
+)
+
+dat=np.loadtxt("backup/dims.data.txt",delimiter=" ", skiprows=1, usecols=[x for x in range(1,11)])
+print(dat.shape) #(2638, 10)
+
+result=model.fit_transform(dat)
+print(result.shape) #(2638, 2)
+
+# output 
+np.savetxt("backup/umap_output.py.txt", result)
+
+
+# 使用R画图
+> umap.py=read.table("backup/umap_output.py.txt")
+> umap.py$cluster=pbmc1$seurat_clusters
+> library(ggplot2)
+> ggplot(umap.py, aes(V1, V2, color=cluster))+geom_point()
 
 
 
@@ -10516,7 +11264,17 @@ DimPlot(pbmc, reduction = "umap")
 
 
 
-3. R tips 
+
+
+========================================
+|-- Seurat 4 R包源码解析 24: step11 降维可视化 DimPlot() //todo
+----------------------------------------
+
+
+
+
+
+
 
 
 
