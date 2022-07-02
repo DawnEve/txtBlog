@@ -17,13 +17,14 @@
 		//计算机技术类============================工具类
 		$links_IT_tools=array(
 			//api手册
+			array('http://www.runoob.com/','菜鸟教程网'),
+			array('http://www.codebaoku.com/','编程宝库','编程宝库！'),
 			array('http://jsbin.com/','jsbin','练习前端的好工具！'),
 			array('https://tool.lu/','在线工具'),
 
 			array('http://jquery.cuishifeng.cn/','jQuery手册'),
 			array('http://css.cuishifeng.cn/','css手册'),
 
-			array('http://www.runoob.com/','菜鸟教程网'),
 			array('http://www.w3school.com.cn/','w3school'),
 			array('http://mioweb.biomooc.com/','miostudio'),
 			array('http://www.shouce.ren/api/index','在线手册下载'),
@@ -38,6 +39,7 @@
 		//计算机技术类============================后端资料类
 		$links_Back=array(
 			array('https://www.junmajinlong.com/','Linux/Mysql/Perl'),
+			array('https://normaluhr.github.io/2020/12/31/Effective-C++/','Effective C++读书笔记'),
 			array('http://mingxinglai.com/','Linux命令博客','赖明星，网易/腾讯db工程师(厦门大学数据库实验室林子雨老师的学生http://dblab.xmu.edu.cn/)'),
 			array("http://www.zsythink.net/archives/tag/awk/",'linux/awk等','运维 朱双印个人日志'),
 			//array('http://www.imeixue.cn/','每学网'),// 韩顺平的作品？ 打不开了

@@ -25,7 +25,7 @@
 - QQ群: 
 	* `生物信息与R语言交流群(187923577)`
 	* NGS分析群(322719050) 
-	* `生物信息与python/ML/AI(572686844)`
+	* `生物信息流程与python/ML/AI(572686844)`
 	* 英语读报&英文名著QQ群(755650994) 
 	* js/php熟手交流群(369578518)
 
@@ -65,7 +65,22 @@
 ## 技术博客  
 
 - 网易博客停止运营(仅自己可见): [我的前端博客](http://poster469.blog.163.com/ "最早的PS到后来的JS,服务器设置") / [javascript研究所](http://miostudio.blog.163.com/ "javascript的地位空前高涨，值得独立研究")  / [php-mysql](http://firecloudphp.blog.163.com/ "php和mysql是黄金搭档")  / [java EE/java设计模式](http://zhengzhi2014.blog.163.com/ "java的思想是横强大的")  
-- [博客园](https://www.cnblogs.com/dawnEve/ "JS"), [CSDN](https://blog.csdn.net/wangjunliang/ "生信/js"), [简书](https://www.jianshu.com/u/82f22e65aa90)
+
+- [博客园](https://www.cnblogs.com/dawnEve/ "JS"): js
+- [CSDN](https://blog.csdn.net/wangjunliang/ "生信/js"): 生信
+- [简书](https://www.jianshu.com/u/82f22e65aa90): 生信，英语
+- [51CTO](https://blog.51cto.com/u_15693947): 算法
+
+
+
+### 其他人的技术笔记
+
+- [《Effective C++》读书笔记](https://normaluhr.github.io/2020/12/31/Effective-C++/)
+
+
+
+
+
 
 
 
@@ -115,11 +130,12 @@
 	* msql优化 索引 只会memcache不行哦 还要学redis msql 备份 shell编程 搭建调试liunx lamp nginx 负载均衡
 	* 博客点赞功能：cookie或者memcache都可以
 	
-- DRY的三重境界：function, class, plugin, package, libarary,   	
+- 编程抽象的几重境界：function, class, plugin, package, libarary,   	
 	
 > 更新日期: 20170303   
 > 更新日期: 20190509 update   
 > 更新日期: 2019.8.28 更新
+> 更新日期: 2021.7.1 更新
 
 
 
