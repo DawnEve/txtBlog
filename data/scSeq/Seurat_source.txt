@@ -11267,8 +11267,163 @@ np.savetxt("backup/umap_output.py.txt", result)
 
 
 ========================================
-|-- Seurat 4 R包源码解析 24: step11 降维可视化 DimPlot() //todo
+|-- Seurat 4 R包源码解析 24: step11 降维可视化 DimPlot()
 ----------------------------------------
+1. 调包侠 
+# step 11 Run non-linear dimensional reduction (UMAP/tSNE)
+# If you haven't installed UMAP, you can do so via reticulate::py_install(packages = 'umap-learn')
+pbmc <- RunUMAP(pbmc, dims = 1:10)
+
+# note that you can set `label = TRUE` or use the LabelClusters function to help label
+# individual clusters
+DimPlot(pbmc, reduction = "umap")
+
+# saveRDS(pbmc, file = "../output/pbmc_tutorial.rds")
+
+本文看 DimPlot(). 
+
+
+(1) cols= 参数
+颜色向量，对应着 ident 分类。 
+也可以是一个字符串或数字，对应着 RColorBrewer::brewer.pal.info，对数字支持不好，不建议使用。详情见本文 3.8.
+默认使用 ggplot2 的颜色。
+本包也提供了5个颜色板，DiscretePalette 回车查看。
+
+library(RColorBrewer)
+dim(RColorBrewer::brewer.pal.info) #35 3
+RColorBrewer::brewer.pal.info
+RColorBrewer::brewer.pal.info[1,]
+barplot( rep(1,11), col=RColorBrewer::brewer.pal(11, "BrBG") )
+
+# 颜色
+g1=DimPlot(pbmc)
+g2=DimPlot(pbmc, cols='Set1')+ggtitle("cols='Set1'") #使用R内置颜色版(35个)
+# brewer.pal.info
+# rownames(brewer.pal.info)
+
+g3=DimPlot(pbmc, cols=1)+ggtitle("cols=1") #seq 系列的第1个(Blues)
+# 不建议使用数字，函数写的不完善，不支持 type 参数
+
+g4=DimPlot(pbmc, cols='alphabet', )+ggtitle("cols='alphabet'") #Seurat 内置颜色版(5个)
+# c('alphabet', 'alphabet2', 'glasbey', 'polychrome', 'stepped')
+
+(g1+g2)/(g3+g4)
+
+图fa1
+
+
+
+
+
+
+
+(2) group.by=分组，默认是 ident 分组
+
+1) 看基因数高的细胞在哪里？
+DimPlot(pbmc)
+# Fig1 添加一列 isGeneNumHigh: 细胞表达的基因书是否超过1000个?
+pbmc$isGeneNumHigh=pbmc$nFeature_RNA>1000
+pbmc$isGeneNumHigh=factor(pbmc$isGeneNumHigh, levels = c(T,F))
+table(pbmc$isGeneNumHigh)
+# TRUE FALSE
+# 524  2114
+DimPlot(pbmc, group.by = "isGeneNumHigh", cols = c("red", "grey"))
+# 图
+
+
+2) 看基因数高、counts数高的细胞在哪里？
+# fig2 再添加一列 isCountsHigh: 细胞表达的基因书是否超过1000个?
+pbmc$isCountsHigh=pbmc$nCount_RNA>2500
+pbmc$isCountsHigh=factor(pbmc$isCountsHigh, levels = c(T,F))
+table(pbmc$isCountsHigh)
+#TRUE FALSE
+#932  1706
+#当有2个group.by时，变为分面
+DimPlot(pbmc, group.by = c("isGeneNumHigh", "isCountsHigh"),
+        cols = c("red", "grey"))
+# 图
+
+
+
+
+
+
+(3) CellSelector() 手工圈起来一部分细胞
+显示到 Rstudio 的 Viewer 选项卡，而不是 Plots 选项卡。这是一个支持js的画图设备。
+
+./seurat-4.1.0/R/visualization.R:4154:CellSelector <- function(plot, object = NULL, ident = 'SelectedCells', ...) {
+
+# CellSelector
+p1=DimPlot(pbmc); p1
+# Follow instructions in the terminal to select points
+cells.located <- CellSelector(plot = p1)
+cells.located #返回细胞id
+# [1] "ACGTCGCTCCTGAA-1" "ACTTCAACAAGCAA-1" "CACCGGGACTTCTA-1" "CGATACGACAGGAG-1" "CGCAGGTGGGAACG-1"
+# [6] "GCCCATACAGCGTT-1" "GCCTCAACTCTTTG-1" "GTATTAGAAACAGA-1"
+
+
+# Automatically set the identity class of selected cells and return a new Seurat object
+pbmc2 <- CellSelector(plot = p1, object = pbmc, ident = 'SelectedCells')
+> table(pbmc2@meta.data$seurat_clusters) #没变
+  0   1   2   3   4   5   6   7   8 
+684 481 476 344 291 162 155  32  13
+
+> table(pbmc2@active.ident) #新增一类
+SelectedCells             0             1             2             3             4             5 
+           36           681           480           476           344           291           162 
+            6             8 
+          155            13
+
+> levels(pbmc2) #新增一类
+[1] "SelectedCells" "0"             "1"             "2"             "3"             "4"            
+[7] "5"             "6"             "8" 
+
+
+
+
+
+
+(4) HoverLocator() 鼠标悬停可见细胞id及其它 meta.data
+显示到 Rstudio 的 Viewer 选项卡，而不是 Plots 选项卡。这是一个支持js的画图设备。
+
+./seurat-4.1.0/R/visualization.R:4575:HoverLocator <- function(
+p1=DimPlot(pbmc); p1
+HoverLocator(p1)
+HoverLocator(plot = p1, information = FetchData(object = pbmc, vars = 'percent.mt'))  #细胞的其他信息
+HoverLocator(plot = p1, information = FetchData(object = pbmc, vars = c('percent.mt', "CD79A") )) #更多信息
+
+
+
+
+
+(5) 高亮显示一部分细胞
+DimPlot(pbmc, label=T)
+DimPlot(pbmc, cells.highlight=5) #一个细胞
+DimPlot(pbmc, cells.highlight=WhichCells(pbmc, idents=5)) #一群细胞，method1
+DimPlot(pbmc, cells.highlight=WhichCells(pbmc, idents=5),
+        cols.highlight = "blue" ) #指定高亮细胞的颜色
+DimPlot(pbmc, cells.highlight=WhichCells(pbmc, idents=5),
+        cols.highlight = "blue",
+        sizes.highlight = 2) #指定高亮细胞的大小
+
+DimPlot(pbmc, cells.highlight=WhichCells(pbmc, expression = CD79A>3)) #一群细胞，method2
+# 取子集后，取细胞名字
+DimPlot(pbmc, #group.by = "isExpHigh", #该参数在高亮显示时不影响显示
+        cells.highlight=Cells(subset(pbmc, subset=isExpHigh==T)) ) #一群细胞，method3
+
+# 多群细胞
+DimPlot(pbmc,
+        cells.highlight=list(
+          c5=WhichCells(pbmc, idents=5),
+          c8=WhichCells(pbmc, idents=8),
+          c2=WhichCells(pbmc, idents=2)
+        ),
+        sizes.highlight = c(4.5, 1.5, 0.5), #这就很奇怪了，尺寸和出现的对应
+        #cols.highlight=list(c5="red", c8="orange")
+        cols.highlight=c("orange", "blue", "purple") #颜色对应关系总是不对
+        # 貌似它总是按照order(listNames)的顺序染色
+)
+# 此处有bug，而且不容忽视的bug: 多个高亮细胞list时刻，和指定颜色对应不上。 //todo 见本文 4.1
 
 
 
@@ -11277,6 +11432,901 @@ np.savetxt("backup/umap_output.py.txt", result)
 
 
 
+
+2. 源码解析 
+
+函数:
+DimPlot |ok;
+	DefaultDimReduc | ok;
+		* FilterObjects |had in 3;
+	SingleDimPlot | ok;
+	LabelClusters | ok,  需要更深入的理解 ggplot2.
+		* GetXYAesthetics |详解 15-2.10
+		* GeomSpatial
+		* layer_scales
+		* coord_fixed
+	cowplot::theme_cowplot | ok 3.10
+	FacetTheme | ok 3.16
+	CenterTitle | ok 3.16
+	
+	HoverLocator | todo
+	CellSelector | todo
+	
+	SetHighlight //再看一遍 ./seurat-4.1.0/R/visualization.R:6716:SetHighlight <- function(
+
+
+
+
+
+
+
+
+
+
+3. R tips 
+
+(1) 按列名取数据框子集，列名为NULL时
+
+# 添加一列
+df1=mtcars[1:4, 1:2]; df1
+newCol='xx0'
+df1[, newCol]=1:4; df1
+
+# 取列名为null的一列
+df1[, c("mpg", newCol)]
+split.by=NULL
+df1[, c('mpg', newCol, split.by)] #列名为NULL时就相当于不存在
+#                mpg xx0
+#Mazda RX4      21.0   1
+#Mazda RX4 Wag  21.0   2
+#Datsun 710     22.8   3
+#Hornet 4 Drive 21.4   4
+
+
+
+
+
+
+(2) rlang::`!!` 注入表达式功能（较难）
+如果读不懂，可以跳过。后面会再开一篇细说。
+
+源码: facets = vars(!!sym(x = split.by)),
+
+> library(rlang)
+> `!!`
+function (x) 
+{
+    abort("`!!` can only be used within a defused argument.", 
+        call = caller_env())
+}
+<bytecode: 0x55cf5a0a5cd8>
+<environment: namespace:rlang>
+
+defuse / diːˈfjuːz / vt. 平息；去掉……的雷管；使除去危险性
+
+
+示例1:
+> sym("x")  #字符串 转为 符号
+x
+> class(sym("x"))
+[1] "name"
+> x=3
+> eval(sym("x")) #求值，使用环境中的变量值
+[1] 3
+> eval(sym("x"), data.frame(x=50)) #求值，在指定环境中寻找值
+[1] 50
+
+注入表达式: 把一个表达式注入到另一个中，实现组装表达式效果。
+> a1=quo(exp(x))
+> a2=quo( (1-!!a1)/(1+!!a1) )
+> a2
+<quosure>
+expr: ^(1 - (^exp(x))) / (1 + (^exp(x)))
+env:  global
+
+求值:
+> eval_tidy(a2, data.frame(x=0))
+[1] 0
+> eval_tidy(a2, data.frame(x=100))
+[1] -1
+> eval_tidy(a2, data.frame(x=-100))
+[1] 1
+
+
+
+示例2: 从函数参数传入公式。
+mean_in_data_rl <- function(data, expr) {
+  quosure0 <- enquo(expr)           # capture user expression
+  print(quosure0)
+  quosure <- quo(mean(!!quosure0))  # wrap it in `mean`
+  print(quosure)
+  eval_tidy(quosure, data)
+}
+
+l.per.cubic.i <- 2.54^3 / 1000
+> mean_in_data_rl(mtcars, disp * l.per.cubic.i)
+<quosure> #第一个捕获传入的表达式
+expr: ^disp * l.per.cubic.i
+env:  global
+<quosure>  #第二个，把第一个表达式注入到第二个表达式中，相当于变量替换
+expr: ^mean(^disp * l.per.cubic.i)
+env:  0x5612f0ee7f70
+[1] 3.780854
+
+实质上就是如下计算，只不过实现了把公式传入函数。
+> mean(mtcars$disp * 2.54^3 / 1000 ) 
+[1] 3.780854
+
+
+
+(3) match(x, table) 返回x在table中的编号
+> match(c(1,5), -5:5) 
+[1]  7 11
+
+
+(4) 修改数据框的某几个列名
+tmp=iris[1:2,]
+colnames(tmp)[ c(2,3) ]=c("x2", "x3") #修改第2和第三个列名
+> tmp
+  Sepal.Length  x2  x3 Petal.Width Species
+1          5.1 3.5 1.4         0.2  setosa
+2          4.9 3.0 1.4         0.2  setosa
+
+
+
+(5) 栅格化点图 scattermore::geom_scattermore()
+栅格化能显著降低密集点图的文件大小。
+
+> scattermore::geom_scattermore
+function (mapping = NULL, data = NULL, stat = "identity", position = "identity", 
+    ..., na.rm = FALSE, show.legend = NA, inherit.aes = TRUE, 
+    interpolate = FALSE, pointsize = 0, pixels = c(512, 512)) 
+{
+    ggplot2::layer(data = data, mapping = mapping, stat = stat, 
+        position = position, geom = GeomScattermore, show.legend = show.legend, 
+        inherit.aes = inherit.aes, params = list(na.rm = na.rm, 
+            interpolate = interpolate, pointsize = pointsize, 
+            pixels = pixels, ...))
+}
+<bytecode: 0x55b5a01b3988>
+<environment: namespace:scattermore>
+
+R文档例子:
+library(ggplot2)
+library(scattermore)
+set.seed(2022)
+ggplot(data.frame(x=rnorm(100000), y=rexp(100000))) +
+  geom_scattermore(aes(x,y,color=x),
+                   pointsize=3,
+                   alpha=0.1,
+                   pixels=c(1000,1000),
+                   interpolate=TRUE) +
+  scale_color_viridis_c()
+
+
+源码:
+	plot=ggplot(data=data)
+    
+	plot + geom_scattermore(
+      mapping = aes_string(
+        x = dims[1],
+        y = dims[2],
+        color = paste0("`", col.by, "`"), #
+        shape = shape.by,
+        alpha = alpha.by
+      ),
+      pointsize = pt.size,
+      pixels = raster.dpi
+    )
+
+
+
+
+(6) 放大 ggplot2 图例的点，修改图例的标题
+library(ggplot2)
+g1=ggplot(mtcars, aes(mpg, disp, color= factor(gear) ))+
+  geom_point()+
+  theme_bw()+ggtitle("Fig1")
+g1 #原图
+g2=g1+guides(color = guide_legend(override.aes = list(size = 3)))+ #图例放大
+  ggtitle("Fig2"); g2
+g3=g2+labs(color = NULL, title = "Fig3") #修改图例的标题
+g3
+g1+g2+g3
+
+图6
+
+
+(7) R语言布尔运算的性质
+问题: if (length(x = cols) == 1 && (is.numeric(x = cols) || cols %in% rownames(x = brewer.pal.info))) {}
+这个布尔运算是怎么结合的？
+盲猜：从左到右依次进行。
+
+验证: 前2个为T，则与第三个无关
+> 1 && 1 || 0
+[1] TRUE
+> 1 && 1 || 1
+[1] TRUE
+
+验证2: 前2个为F，则看第三个
+> 1 && 0 || 0
+[1] FALSE
+> 1 && 0 || 1
+[1] TRUE
+
+
+布尔运算中，一个&是按向量分别求布尔值:
+> c(1,1) & c(1,0)
+[1]  TRUE FALSE
+
+两个&&则是只看第一个元素的运算结果:
+> c(1,1) && c(1,0)
+[1] TRUE
+> c(0,1) && c(1,0)
+[1] FALSE
+> c(0,1) && c(1,1)
+[1] FALSE
+
+
+
+
+
+(8) ggplot2 使用色板: scale_color_brewer(palette =)
+源码: scale_color_brewer(palette = cols, na.value = na.value)
+
+函数原型:
+scale_colour_brewer(
+  ...,
+  type = "seq",
+  palette = 1,
+  direction = 1,
+  aesthetics = "colour"
+)
+
+重点是 palette	参数
+If a string, will use that named palette. 
+If a number, will index into the list of palettes of appropriate type. 
+The list of available palettes can found in the Palettes section.
+
+使用字符串时，毫无争议，是从 brewer.pal.info 的名字中选一个:
+> library(RColorBrewer)
+> rownames(x = brewer.pal.info)
+ [1] "BrBG"     "PiYG"     "PRGn"     "PuOr"     "RdBu"     "RdGy"     "RdYlBu"   "RdYlGn"  
+ [9] "Spectral" "Accent"   "Dark2"    "Paired"   "Pastel1"  "Pastel2"  "Set1"     "Set2"    
+[17] "Set3"     "Blues"    "BuGn"     "BuPu"     "GnBu"     "Greens"   "Greys"    "Oranges" 
+[25] "OrRd"     "PuBu"     "PuBuGn"   "PuRd"     "Purples"  "RdPu"     "Reds"     "YlGn"    
+[33] "YlGnBu"   "YlOrBr"   "YlOrRd" 
+
+
+使用数字时，根据参数 type='seq' 索引到 brewer.pal.info 中的一个。
+type: One of seq (sequential), div (diverging) or qual (qualitative)
+Palettes: The following palettes are available for use with these scales:
+Diverging: BrBG, PiYG, PRGn, PuOr, RdBu, RdGy, RdYlBu, RdYlGn, Spectral
+Qualitative: Accent, Dark2, Paired, Pastel1, Pastel2, Set1, Set2, Set3
+Sequential: Blues, BuGn, BuPu, GnBu, Greens, Greys, Oranges, OrRd, PuBu, PuBuGn, PuRd, Purples, RdPu, Reds, YlGn, YlGnBu, YlOrBr, YlOrRd
+Modify the palette through the palette argument.
+
+
+library(ggplot2)
+g1=ggplot(mtcars, aes(mpg, disp, color= factor(gear) ))+
+  geom_point()+theme_classic(); g1
+
+# palette=字符串
+brewer.pal.info #查看全部调色板
+rownames(x = brewer.pal.info)
+g2=g1+scale_color_brewer(palette = 'Set2')+
+  labs(color="Gear")+
+  ggtitle("palette='Set2'")
+g2
+
+# palette=数字时，在 type(共三个，默认'seq') 的调色板名字中索引
+g3=g1+scale_color_brewer(type=c('seq', 'div','qual')[3], palette = 7)+
+  labs(color="Gear")+
+  ggtitle("type='qual',palette=1");g3
+g1+g2+g3
+
+图 8
+
+
+
+
+
+
+
+
+(9) DiscretePalette(n, palette = NULL) 获取Seurat 定义的色板
+
+> DiscretePalette
+function (n, palette = NULL) 
+{
+    palettes <- list(
+		alphabet = c("#F0A0FF", "#0075DC", "#993F00", 
+			"#4C005C", "#191919", "#005C31", "#2BCE48", "#FFCC99", 
+			"#808080", "#94FFB5", "#8F7C00", "#9DCC00", "#C20088", 
+			"#003380", "#FFA405", "#FFA8BB", "#426600", "#FF0010", 
+			"#5EF1F2", "#00998F", "#E0FF66", "#740AFF", "#990000", 
+			"#FFFF80", "#FFE100", "#FF5005"), 
+		alphabet2 = c("#AA0DFE", 
+			"#3283FE", "#85660D", "#782AB6", "#565656", "#1C8356", 
+			"#16FF32", "#F7E1A0", "#E2E2E2", "#1CBE4F", "#C4451C", 
+			"#DEA0FD", "#FE00FA", "#325A9B", "#FEAF16", "#F8A19F", 
+			"#90AD1C", "#F6222E", "#1CFFCE", "#2ED9FF", "#B10DA1", 
+			"#C075A6", "#FC1CBF", "#B00068", "#FBE426", "#FA0087"), 
+		glasbey = c("#0000FF", "#FF0000", "#00FF00", "#000033", 
+			"#FF00B6", "#005300", "#FFD300", "#009FFF", "#9A4D42", 
+			"#00FFBE", "#783FC1", "#1F9698", "#FFACFD", "#B1CC71", 
+			"#F1085C", "#FE8F42", "#DD00FF", "#201A01", "#720055", 
+			"#766C95", "#02AD24", "#C8FF00", "#886C00", "#FFB79F", 
+			"#858567", "#A10300", "#14F9FF", "#00479E", "#DC5E93", 
+			"#93D4FF", "#004CFF", "#F2F318"), 
+		polychrome = c("#5A5156", 
+			"#E4E1E3", "#F6222E", "#FE00FA", "#16FF32", "#3283FE", 
+			"#FEAF16", "#B00068", "#1CFFCE", "#90AD1C", "#2ED9FF", 
+			"#DEA0FD", "#AA0DFE", "#F8A19F", "#325A9B", "#C4451C", 
+			"#1C8356", "#85660D", "#B10DA1", "#FBE426", "#1CBE4F", 
+			"#FA0087", "#FC1CBF", "#F7E1A0", "#C075A6", "#782AB6", 
+			"#AAF400", "#BDCDFF", "#822E1C", "#B5EFB5", "#7ED7D1", 
+			"#1C7F93", "#D85FF7", "#683B79", "#66B0FF", "#3B00FB"), 
+		stepped = c("#990F26", "#B33E52", "#CC7A88", "#E6B8BF", 
+			"#99600F", "#B3823E", "#CCAA7A", "#E6D2B8", "#54990F", 
+			"#78B33E", "#A3CC7A", "#CFE6B8", "#0F8299", "#3E9FB3", 
+			"#7ABECC", "#B8DEE6", "#3D0F99", "#653EB3", "#967ACC", 
+			"#C7B8E6", "#333333", "#666666", "#999999", "#CCCCCC")
+	)
+	# 如果没有指定色板名，则根据n确定
+    if (is.null(x = palette)) {
+        if (n <= 26) {
+            palette <- "alphabet"
+        }
+        else if (n <= 32) {
+            palette <- "glasbey"
+        }
+        else {
+            palette <- "polychrome"
+        }
+    }
+    palette.vec <- palettes[[palette]] #根据色板名字获取颜色
+	# 如果长度不够，给警告
+    if (n > length(x = palette.vec)) {
+        warning("Not enough colours in specified palette")
+    }
+	# 取出该长度的颜色字符
+	# 如果n长度超了，则返回NA: c("A", "b")[1:4] #[1] "A" "b" NA  NA
+    palette.vec[seq_len(length.out = n)]
+}
+<bytecode: 0x55b5b2ecdcc0>
+<environment: namespace:Seurat>
+这个函数也太简陋了。。。
+
+
+每个色板的长度:
+alphabet  alphabet2    glasbey polychrome    stepped 
+      26         26         32         36         24 
+
+测试效果:
+# ggplot2 使用色板
+library(ggplot2)
+g1=ggplot(mtcars, aes(mpg, disp, color= factor(gear) ))+
+  geom_point()+theme_classic(); g1
+
+# palette=字符串
+brewer.pal.info #查看全部调色板
+rownames(x = brewer.pal.info)
+g2=g1+scale_color_brewer(palette = 'Set2')+
+  labs(color="Gear")+
+  ggtitle("palette='Set2'")
+g2
+
+# palette=数字时，在 type(共三个，默认'seq') 的调色板名字中索引
+g3=g1+scale_color_brewer(type=c('seq', 'div','qual')[3], palette = 7)+
+  labs(color="Gear")+
+  ggtitle("type='qual',palette=1");g3
+g1+g2+g3
+
+
+# Color list in Seurat
+pname=c('alphabet', 'alphabet2', 'glasbey', 'polychrome', 'stepped')
+nArr=c(26, 26, 32, 36, 24)
+par(mfrow=c(5,1), mar=c(0,0,1.5,0))
+for(i in 1:5 ){
+  title=sprintf( "%s(n=%s)", pname[i], nArr[i] )
+  message(i, " | ", title)
+  colors=Seurat::DiscretePalette(n=nArr[i], pname[i])
+  barplot( rep(1, length(colors)), col=colors, main=title,
+           yaxt='n', space=0, border = NA )
+}
+
+图9
+
+
+
+
+
+(10) 大佬钟爱的 ggplot2 主题: cowplot::theme_cowplot
+
+> cowplot::theme_cowplot
+function (font_size = 14, font_family = "", line_size = 0.5, 
+          rel_small = 12/14, rel_tiny = 11/14, rel_large = 16/14) 
+{
+  half_line <- font_size/2
+  small_size <- rel_small * font_size
+  theme_grey(base_size = font_size, base_family = font_family) %+replace% 
+    theme(
+      line = element_line(color = "black", size = line_size, linetype = 1, lineend = "butt"), 
+      rect = element_rect(fill = NA, color = NA, size = line_size, linetype = 1), 
+      text = element_text(family = font_family, face = "plain", color = "black", size = font_size, 
+                          hjust = 0.5, vjust = 0.5, angle = 0, lineheight = 0.9, 
+                          margin = margin(), debug = FALSE), 
+      axis.line = element_line(color = "black", size = line_size, lineend = "square"), 
+      axis.line.x = NULL, axis.line.y = NULL, 
+      axis.text = element_text(color = "black", size = small_size), 
+      axis.text.x = element_text(margin = margin(t = small_size/4), vjust = 1), 
+      axis.text.x.top = element_text(margin = margin(b = small_size/4), vjust = 0), 
+      axis.text.y = element_text(margin = margin(r = small_size/4), hjust = 1), 
+      axis.text.y.right = element_text(margin = margin(l = small_size/4), hjust = 0), 
+      axis.ticks = element_line(color = "black", size = line_size), 
+      axis.ticks.length = unit(half_line/2, "pt"), 
+      axis.title.x = element_text(margin = margin(t = half_line/2), vjust = 1), 
+      axis.title.x.top = element_text(margin = margin(b = half_line/2), vjust = 0), 
+      axis.title.y = element_text(angle = 90, margin = margin(r = half_line/2), vjust = 1), 
+      axis.title.y.right = element_text(angle = -90, margin = margin(l = half_line/2), vjust = 0), 
+      legend.background = element_blank(), 
+      legend.spacing = unit(font_size, "pt"), 
+      legend.spacing.x = NULL, legend.spacing.y = NULL, 
+      legend.margin = margin(0, 0, 0, 0), 
+      legend.key = element_blank(), 
+      legend.key.size = unit(1.1 * font_size, "pt"), 
+      legend.key.height = NULL, legend.key.width = NULL, 
+      legend.text = element_text(size = rel(rel_small)), 
+      legend.text.align = NULL, 
+      legend.title = element_text(hjust = 0), 
+      legend.title.align = NULL, legend.position = "right", 
+      legend.direction = NULL, 
+      legend.justification = c("left", "center"), 
+      legend.box = NULL, 
+      legend.box.margin = margin(0, 0, 0, 0), 
+      legend.box.background = element_blank(), 
+      legend.box.spacing = unit(font_size, "pt"), 
+      panel.background = element_blank(), 
+      panel.border = element_blank(), panel.grid = element_blank(), 
+      panel.grid.major = NULL, panel.grid.minor = NULL, 
+      panel.grid.major.x = NULL, panel.grid.major.y = NULL, 
+      panel.grid.minor.x = NULL, panel.grid.minor.y = NULL, 
+      panel.spacing = unit(half_line, "pt"), panel.spacing.x = NULL, 
+      panel.spacing.y = NULL, panel.ontop = FALSE, 
+      strip.background = element_rect(fill = "grey80"), 
+      strip.text = element_text(size = rel(rel_small), 
+                                margin = margin(half_line/2, half_line/2, half_line/2, half_line/2)), 
+      strip.text.x = NULL, strip.text.y = element_text(angle = -90), 
+      strip.placement = "inside", 
+      strip.placement.x = NULL, strip.placement.y = NULL, 
+      strip.switch.pad.grid = unit(half_line/2, "pt"), 
+      strip.switch.pad.wrap = unit(half_line/2, "pt"), 
+      plot.background = element_blank(), 
+      plot.title = element_text(face = "bold", size = rel(rel_large), hjust = 0, vjust = 1, margin = margin(b = half_line)), 
+      plot.subtitle = element_text(size = rel(rel_small), 
+                                   hjust = 0, vjust = 1, margin = margin(b = half_line)), 
+      plot.caption = element_text(size = rel(rel_tiny), 
+                                  hjust = 1, vjust = 1, margin = margin(t = half_line)), 
+      plot.tag = element_text(face = "bold", hjust = 0, vjust = 0.7), 
+      plot.tag.position = c(0, 1), 
+      plot.margin = margin(half_line, half_line, half_line, half_line), 
+      complete = TRUE
+    )
+}
+<bytecode: 0x55cf5c04f048>
+<environment: namespace:cowplot>
+
+
+重点1: 使用后面的主题条目替换前面的 theme(1) %+replace% theme(2)
+	我的测试表明，没啥区别，是不是哪里不对？ //todo 
+
+重点2: 文章的图片要求使用大号字体，该函数规定了基本字体、相对大号和小号(14, 16, 11/12)
+
+# 使用后面的主题条目替换前面的。
+library(ggplot2)
+g1=ggplot(mtcars, aes(mpg, disp, color= factor(gear) ))+
+  geom_point()+ggtitle("g1"); g1
+
+g2=g1+cowplot::theme_cowplot()+ggtitle("g4")+labs(color="gear");g2
+
+# + 与 %+replace% 貌似没有区别??
+g3=g1+ theme_grey() %+replace% theme(
+  panel.background = element_blank()
+)+ggtitle("g2");g3
+g4=g1+ theme(
+  panel.background = element_blank()
+)+ggtitle("g3");g4
+
+library(patchwork)
+(g1+g2)/(g3+g4)
+
+图 10
+
+
+
+(11) lapply循环执行正则匹配，并忽略大小写 grep(, ignore.case = T)
+# 2个向量的匹配
+> index=lapply(
+  X = c('umap', 'tsne', 'pca'), #遍历，并作为FUN的参数1
+  FUN = grep,
+  x = c("umap", "tsne"), #FUN 的参数2，可选
+  ignore.case = TRUE     #FUN 的参数3，可选
+)
+> index
+[[1]]
+[1] 1
+
+[[2]]
+[1] 2
+
+[[3]]
+integer(0)
+
+# 每一个循环实际执行的语句：
+> grep('umap', c("umap", "tsne"), ignore.case = T)
+[1] 1
+
+
+# R循环提倡使用apply家族函数，而不是for
+lapply(
+  X=c(-1,0,5), #遍历其中的每个元素
+  FUN=function(param1, p2, p3=""){
+    return( paste(param1, p2, p3, sep = "_"))
+  },
+  p2="gene1",
+  p3="sample1"
+)
+输出:
+[[1]]
+[1] "-1_gene1_sample1"
+
+[[2]]
+[1] "0_gene1_sample1"
+
+[[3]]
+[1] "5_gene1_sample1"
+
+
+
+
+
+
+
+
+(12) 由 ggplot2 对象，获取其x和y轴的变量名
+> library(ggplot2)
+> g1=ggplot(mtcars, aes(mpg, disp, color= factor(gear) ))+
+  geom_point()+ggtitle("g1"); g1
+> g1$mapping$x
+<quosure>
+expr: ^mpg
+env:  global
+
+
+x轴的变量名
+> as_label(g1$mapping$x)
+[1] "mpg"
+
+
+数据集也在ggplot2对象中:
+> head(g1$data)
+                   mpg cyl disp  hp drat    wt  qsec vs am gear carb
+Mazda RX4         21.0   6  160 110 3.90 2.620 16.46  0  1    4    4
+Mazda RX4 Wag     21.0   6  160 110 3.90 2.875 17.02  0  1    4    4
+Datsun 710        22.8   4  108  93 3.85 2.320 18.61  1  1    4    1
+
+
+
+
+
+
+
+
+
+
+
+(13) df 本质上是按列的list
+
+> tmp = iris[1:3, ]
+> tmp
+
+> lapply(tmp, function(x){
+  x
+})
+
+$Sepal.Length
+[1] 5.1 4.9 4.7
+
+$Sepal.Width
+[1] 3.5 3.0 3.2
+
+$Petal.Length
+[1] 1.4 1.4 1.3
+
+$Petal.Width
+[1] 0.2 0.2 0.2
+
+$Species
+[1] setosa setosa setosa
+Levels: setosa versicolor virginica
+
+
+
+
+
+(14) 求类别标注的坐标: RANN::nn2() Nearest Neighbour Search
+
+源码: nearest.point <- nn2(data = group.data[, 1:2], query = as.matrix(x = x[c(1,2)]), k = 1)$nn.idx
+
+使用 kd-tree 找距离某个点最近的p个点。优点是快，时间复杂度是 O(n log n)。
+Uses a kd-tree to find the p number of near neighbours for each point in an input/output dataset. The advantage of the kd-tree is that it runs in O(M log M) time.
+
+Usage
+nn2(data, query = data, k = min(10, nrow(data)), treetype = c("kd", "bd"), searchtype = c("standard", "priority", "radius"), radius = 0, eps = 0)
+第一个参数是数据库，M行d列；
+第二个参数是要查询的点，N行d列；
+第三个参数是k，最近的几个点？默认是 min(10, M)
+然后返回值是一个list，包含2个元素：
+nn.idx, N行k列，每个查询点一行，k个最近的点的下标。
+nn.dists, N行k列，每个查询点一行，k个最近的点的距离。
+
+
+例子: 尝试为 iris 标记群体名
+df1=data.frame(
+  x=iris$Petal.Length,
+  y=iris$Petal.Width,
+  type=iris$Species
+)
+head(df1)
+index=match(df1$type, c("setosa", "versicolor", "virginica"))
+colors=c("#4A9D47", "#5F9BBE", "#F5B375")
+
+
+###################
+# 画图：主图
+plot(df1$x, df1$y, col=colors[index],
+     main="Fig1",
+     pch=19)
+
+# 求A点最近的5个点
+indexA=99
+set.seed(2022)
+p1.ann=RANN::nn2(data=df1[, 1:2], query=df1[indexA, 1:2], k=10); p1.ann
+df1[p1.ann$nn.idx,] #目测，有重叠的点
+# 画图: 标记点A
+points(df1$x[indexA], df1$y[indexA], col="#ff000055",  pch=18, cex=3)
+# 画图: 标记点A周围最近的5个点
+pos=as.numeric( p1.ann$nn.idx )
+points(df1$x[pos], df1$y[pos], col="red", pch=21, cex=2)
+
+
+
+###################
+## fig2:
+#1.获取每类的median
+data.medians=lapply(
+    X=as.character( unique(df1$type) ),
+    FUN=function(x){
+      data.use=df1[which(df1$type==x), ,drop=F]
+      medians=apply(data.use[, 1:2],2, median)
+      medians=as.data.frame(t(medians))
+      medians$type=x
+      return(medians)
+    }
+  )
+data.medians #list 格式的数据
+labels.loc=do.call(rbind, data.medians);
+labels.loc #df格式
+
+# 画图: 主体
+plot(df1$x, df1$y, col=colors[index],
+     main="Fig2",
+     pch=19)
+# 画图：标记这些点的位置
+points(labels.loc$x, labels.loc$y, col="#FF000099", pch=17, cex=1.5)
+# 画图：标记文字
+text(labels.loc$x, labels.loc$y, labels=labels.loc$type, col="#FF0000")
+
+#2.获取每个类median的最近的点坐标 nearest
+# 输入list，函数获取的每个x都是一个list
+set.seed(2022)
+data.medians2=lapply( data.medians, function(x){
+  group.data=df1[which(as.character(df1$type)==as.character(x[3])),]
+  nearest.point=RANN::nn2(data=group.data[,1:2], query=as.matrix(x = x[c(1,2)]), k=1 )$nn.idx
+  #坐标更新
+  x[1:2] <- group.data[nearest.point, 1:2]
+  return(x)
+});data.medians2
+labels.loc2=do.call(rbind, data.medians2); #list to df
+labels.loc2
+
+# 画图：标记这些点的位置
+points(labels.loc2$x, labels.loc2$y, col="#0000FFaa", pch=21, cex=2, lwd=3)
+# 画图：标记文字, 有重叠，不画了
+#text(labels.loc2$x, labels.loc2$y, labels=labels.loc2$type, col="#0000FF")
+图14_0
+
+
+
+
+# ggplot2 演示
+library(ggplot2)
+g1=ggplot(mtcars, aes(mpg, disp, color= factor(gear) ))+
+  geom_point()+ggtitle("g1"); g1
+g1=DimPlot(pbmc)+ggtitle("g1"); g1
+head(g1$data)
+g2=LabelClusters(g1, id='ident')+ggtitle("g2");g2 #加文字标注
+g3=LabelClusters(g1, id='ident', box=T)+ggtitle("g3");g3 #文字标注加方框
+g4=LabelClusters(g1, id='ident', box=T, position="nearest")+ggtitle("g4");g4
+(g1+g2)/(g3+g4)
+
+
+图14
+
+
+
+
+
+
+(15) 类别标注文字是否加背景框? geom_label vs geom_text
+geom_text 标注的是文字，没有背景框。
+geom_label 标注的标签，有背景框。
+
+
+
+# 加标签背景盒子
+df1=data.frame(
+  x=iris$Petal.Length,
+  y=iris$Petal.Width,
+  type=iris$Species
+)
+library(ggplot2)
+g1=ggplot(df1)+ #为了防止 aes() 对其他图层的影响，把aes放到每层自身的语句中
+  geom_point(aes(x, y, color= type ))+
+  theme_classic()+
+  ggtitle("g1"); g1
+# 从图形获取颜色值
+pb <- ggplot_build(plot = g1)
+df1$color=pb$data[[1]][[1]]
+
+#1.获取每类的median
+data.medians=lapply(
+  X=as.character( unique(df1$type) ),
+  FUN=function(x){
+    data.use=df1[which(df1$type==x), ,drop=F]
+    medians=apply(data.use[, 1:2],2, median)
+    medians=as.data.frame(t(medians))
+    medians$type=x
+    medians$color=data.use$color[1]
+    return(medians)
+  }
+)
+data.medians #list
+labels.loc=do.call(rbind, data.medians);
+labels.loc
+# 排序，按照type列，给color列排序
+labels.loc$color[order(labels.loc[, 'type'])]
+
+# 加外框
+g2=g1 +  geom_label(
+  data = labels.loc,
+  aes(x,y, label=type, fill=type),
+  show.legend = F
+)+
+  scale_fill_manual(values=labels.loc$color[order(labels.loc[, 'type'])] )+
+  ggtitle("g2 geom_label");g2
+
+# 不要外框 -- 失败！ geom_label 一直有框
+g3=g1 +  geom_label(
+  data = labels.loc,
+  aes(x,y, label=type),
+  show.legend = F
+)+ggtitle("g3 geom_label");g3
+
+# 不要外框 -- 成功！ geom_text 没有框
+g4=g1 +  geom_text(
+  data = labels.loc,
+  aes(x,y, label=type),
+  show.legend = F
+)+ggtitle("g4 geom_text");g4
+(g1+g2)/(g3+g4)
+
+图 15
+
+
+
+
+
+
+
+(16) ggplot2 主题的创建：返回一个 theme() 函数。
+
+1) 分面主题
+# Make a theme for facet plots
+#
+# @inheritParams SeuratTheme
+# @export
+#
+# @rdname SeuratTheme
+# @aliases FacetTheme
+#
+FacetTheme <- function(...) {
+  return(theme(
+    strip.background = element_blank(), #分面的标题空白，文字粗体
+    strip.text = element_text(face = 'bold'),
+    # Validate the theme
+    validate = TRUE,
+    ...
+  ))
+}
+
+
+
+2) 标题居中
+
+#' @importFrom ggplot2 theme element_text
+#'
+#' @rdname SeuratTheme
+#' @export
+#' @concept visualization
+#'
+#' @aliases CenterTitle
+#'
+CenterTitle <- function(...) {
+  return(theme(plot.title = element_text(hjust = 0.5), validate = TRUE, ...))
+}
+
+
+
+
+
+
+
+4. bugs
+
+(1) bug: 多群细胞高亮时颜色经常对不上 //todo
+低频
+DimPlot(pbmc,
+        cells.highlight=list(
+          c5=WhichCells(pbmc, idents=5),
+          c8=WhichCells(pbmc, idents=8),
+          c2=WhichCells(pbmc, idents=2)
+        ),
+        sizes.highlight = c(4.5, 1.5, 0.5), #这就很奇怪了，尺寸和出现的对应
+        #cols.highlight=list(c5="red", c8="orange")
+        cols.highlight=c("orange", "blue", "purple") #颜色对应关系总是不对
+        # 貌似它总是按照order(listNames)的顺序染色
+)
+# 此处有bug，而且不容忽视的bug: 多个高亮细胞list时刻，和指定颜色对应不上。 //todo
+
+
+
+highlight.info=Seurat:::SetHighlight(
+  cells.highlight=list(
+    c5=WhichCells(pbmc, idents=5),
+    c8=WhichCells(pbmc, idents=8),
+    c2=WhichCells(pbmc, idents=2)
+  ),
+  cells.all=Cells(pbmc),
+  sizes.highlight = c(4.5, 1.5, 0.5),
+  cols.highlight = c("orange", "blue", "purple"),
+  col.base="#C3C3C3"
+)
+str(highlight.info)
+#List of 4
+#$ plot.order: chr [1:4] "c2" "c5" "c8" "Unselected"
+#$ highlight : Factor w/ 4 levels "c2","c5","c8",..: 1 4 1 4 4 1 4 4 4 2 ...
+#$ size      : num [1:2638] 0.5 1 0.5 1 1 0.5 1 1 1 4.5 ...
+#$ color     : chr [1:4] "#C3C3C3" "orange" "blue" "purple"
+order <- highlight.info$plot.order
+data=FetchData(pbmc, vars=c("UMAP_1", 'UMAP_2', "seurat_clusters"))
+data$highlight <- highlight.info$highlight
+col.by <- 'highlight'
+pt.size <- highlight.info$size
+cols <- highlight.info$color
+
+unique(data$highlight)
 
 
 
@@ -11424,6 +12474,11 @@ tSNE: https://distill.pub/2016/misread-tsne/
 
 3. 测试用例
 /tests/testthat/
+
+
+
+
+
 
 
 

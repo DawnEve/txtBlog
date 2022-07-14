@@ -809,6 +809,227 @@ as.character(quote(aaa))
 
 
 
+========================================
+rlang 包: 拆解R表达式(Defusing R expressions):  expr(), quo()/enquo(), !!, eval_tidy()
+----------------------------------------
+
+1. 拆解后的R表达式，不再是正常的R表达式，二是一个树状结构，可看作计算结果的蓝图。
+
+(1) 举例
+> 1 + 1 #表达式，常规是直接计算值
+[1] 2
+
+> expr(1 + 1) #而加上 expr() 后返回的是一个"call" 对象
+1 + 1
+> class(expr(1 + 1))
+[1] "call"
+
+> eval( expr(1 + 1) ) #"call" 对象可以通过 eval() 求值
+[1] 2
+
+
+(2) 使用场景
+拆解表达式的最常用的场景，是在一个指定环境中使用该表达式。
+eval()的第二个参数是环境，给出查找的范围。
+
+> e = expr(mean(cyl)); e
+# mean(cyl) #相当于该表达式被静态化了，暂时不求值。
+> eval(e, mtcars)
+#[1] 6.1875
+
+
+
+(3) sym() 字符串 to symbol 
+> class(sym('1+2')) 
+[1] "name"
+> sym('1+2')
+`1+2`
+> class(sym('1+2'))
+[1] "name"
+
+> parse(text=sym('1+2') ) #转为表达式
+expression(1+2)
+> eval(parse(text=sym('1+2') ))
+[1] 3
+
+
+
+2. quo() 和 quo() 类似 expr() 但是返回的是 quosure 对象，可以记录环境。
+
+(1) 示例
+> quo(1+2) #返回一个对象
+<quosure>
+expr: ^1 + 2
+env:  global
+> class(quo(1+2))
+[1] "quosure" "formula"
+
+
+> quos(1+2) #返回要给list
+<list_of<quosure>>
+
+[[1]]
+<quosure>
+expr: ^1 + 2
+env:  global
+
+
+(2) 求值
+> eval_tidy(expr=quo(1+2))
+[1] 3
+
+
+
+(3) 嵌套并解析
+> a1=quo(iris[,1]); a1
+<quosure>
+expr: ^iris[, 1]
+env:  global
+> a2=quo(mean(!!a1)); a2 #嵌套进去一个 quosure 对象，使用 !!可以替换其内容。 
+<quosure>
+expr: ^mean(^iris[, 1])
+env:  global
+> eval_tidy(a2)
+[1] 5.843333
+
+
+
+
+
+
+
+3. enquo() 拆解函数的参数
+(1) enquo() 能拆解函数
+> enquo(arg=mean) #把函数拆开了，貌似不是我们需要的
+<quosure>
+expr: ^<function(x, ...) UseMethod("mean")>
+env:  empty
+
+求值后是一个函数的定义。
+> eval_tidy(enquo(arg=mean))
+function (x, ...) 
+UseMethod("mean")
+<bytecode: 0x5612e33a7378>
+<environment: namespace:base>
+
+可以给该函数一个名字:
+> fn2=eval_tidy(enquo(arg=mean))
+> fn2(iris$Sepal.Length)
+[1] 5.843333
+效果确实和原函数一样:
+> mean(iris$Sepal.Length)
+[1] 5.843333
+
+
+(2) 拆解函数的参数
+使用 quo() 获取参数失败
+fn1=function(x){
+  quo(x)
+}
+> fn1(c(1,2)) #获取失败
+<quosure>
+expr: ^x
+env:  0x5612f86e0150
+
+# 使用 enquo() 获取函数参数成功
+fn2=function(x){
+  enquo(x)
+}
+> fn2(c(1,2)) #获取成功
+<quosure>
+expr: ^c(1, 2)
+env:  global
+
+
+
+
+
+(3) 神奇的求值：把公式传入函数
+# try1
+mean_in_data <- function(data, expr) {
+  expr0 <- substitute(expr)           # capture user expression
+  print(expr0)
+  expr <- bquote(mean(.(expr0)))      # wrap it in `mean`
+  print(expr)
+  print(parent.frame())
+  eval(expr, data, parent.frame())
+}
+> l.per.cubic.i <- 2.54^3 / 1000
+> mean_in_data(mtcars, disp * l.per.cubic.i)
+disp * l.per.cubic.i
+mean(disp * l.per.cubic.i)
+<environment: R_GlobalEnv>
+[1] 3.780854
+
+
+到底计算了什么？
+> exp1=parse(text="mean(disp * l.per.cubic.i)")
+> exp1
+expression(mean(disp * l.per.cubic.i))
+> eval(exp1, mtcars)
+[1] 3.780854
+就一句话:
+> mean(mtcars$disp * 2.54^3 / 1000)
+[1] 3.780854
+
+
+
+#try2
+mean_in_data_rl <- function(data, expr) {
+  quosure0 <- enquo(expr)           # capture user expression
+  print(quosure0)
+  quosure <- quo(mean(!!quosure0))  # wrap it in `mean`
+  print(quosure)
+  eval_tidy(quosure, data)
+}
+> mean_in_data_rl(mtcars, disp * l.per.cubic.i)
+<quosure>  #第一个是捕获公式
+expr: ^disp * l.per.cubic.i
+env:  global
+<quosure> #第二个是把第一个变量替换掉
+expr: ^mean(^disp * l.per.cubic.i)
+env:  0x5612fcb7a2d8
+[1] 3.780854
+
+
+
+
+
+3. rlang 和 base 的对标
+(1) rlang::quo 对应 base::bquote
+
+rlang::quo is used similarly to base::bquote, but is lexically closer to base::quote, and at same time gives no indication of its special environment capture abilities in its name.
+
+
+(2) rlang::enquo 对应 base::substitute
+
+rlang::enquo is used similarly to base::substitute, but bears no relation to base::enquote. This clash with base::enquote is particularly confusing to me given that the “en” gives no indication of how enquo is different from quo (my personal experience was that the lexical similarity between quo and enquo made it harder to figure out what was going on).
+
+
+(3) !! 对应 .() ,实现注入表达式
+
+rlang designates partial evaluation with !! instead of .() as in base, which is probably the most controversial design decision.
+
+
+
+
+
+
+
+
+
+
+
+
+ref: https://www.brodieg.com/2020/08/11/quosures/
+https://github.com/r-lib/rlang
+https://rlang.r-lib.org/reference/enquo.html
+https://rlang.r-lib.org/reference/topic-metaprogramming.html
+https://rlang.r-lib.org/reference/topic-metaprogramming.html
+
+
+
+
 
 
 ========================================
@@ -851,7 +1072,55 @@ $...
 
 
 ========================================
+local(): Evaluate an R expression in a specified environment. //todo
 ----------------------------------------
+1. 语法
+eval(expr, envir = parent.frame(),
+           enclos = if(is.list(envir) || is.pairlist(envir))
+                       parent.frame() else baseenv())
+
+
+https://adv-r.hadley.nz/evaluation.html
+
+
+
+
+2. 示例
+可以在指定环境解析表达式的值。
+
+(1) 全局环境
+x=20
+y1=local(
+  expr={
+    add10=function(x){
+      return (x+10)
+    }
+    add10(x);
+  },
+  
+  envir=parent.frame()
+)
+x=25 #这个不影响评估值
+y1 #30
+
+
+
+(2) 自定义环境
+e1=environment()
+e1$x=-1
+ls(envir = e1)
+y2=local(
+  expr={
+    add10=function(x){
+      return (x+10)
+    }
+    add10(x);
+  },
+  
+  envir=e1
+)
+y2 #9
+
 
 
 

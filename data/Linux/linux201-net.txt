@@ -1825,6 +1825,9 @@ $ sudo iptables -D INPUT -p tcp -s 192.168.2.199 --dport 80 -j ACCEPT
 
 
 
+
+
+
 ========================================
 |-- iptables配制-场景2: ftp主动模式和被动模式下的设置 //todo
 ----------------------------------------
@@ -2008,6 +2011,10 @@ https://blog.csdn.net/qzc70919700/article/details/79784566
 
 #查看规则
 sudo iptables -L -n --line-numbers |less
+$ sudo iptables -nL | head
+
+
+
 
 
 #插入规则，插入第一条
@@ -2020,9 +2027,121 @@ sudo iptables -L -n --line-numbers |less
 # sudo iptables -D INPUT 1 
 
 
+将第三条规则改为ACCEPT：
+# iptables -R INPUT 3 -j ACCEPT
+
 
 //开放8787端口访问
 # iptables -I IN_public_allow -p tcp --dport 8787 -j ACCEPT
+
+
+// 配置默认规则
+iptables -P INPUT DROP #不允许进。不能执行，执行完22端口也无法登陆了。
+iptables -P FORWARD DROP #不允许转发
+iptables -P OUTPUT ACCEPT #允许出
+
+
+
+//规则的保存
+# iptables -F #清空规则缓存区(这个操作将会清空上面增加的操作，若想保留建议先执行下一句：保存)
+# service iptables save # 保存规则到文件 /etc/sysconfig/iptables 
+# service iptables restart #重启 iptables 服务
+
+# chkconfig iptables on #开机自动启用
+
+
+其他发行版：
+保存 iptables-save > /root/iptables.conf
+恢复 iptables-restore < /root/iptables.conf
+
+
+打印规则到控制台，而不是文件
+# iptables-save
+# iptables-save > /etc/sysconfig/iptables #保存到文件
+保存在/etc/sysconfig/iptables中效果和service iptables save命令一样。
+
+如果保存在其他路径，重启后可以使用 iptables-restore命令恢复防火墙规则。
+iptables-restore < path(path为保存的路径)
+
+
+
+
+
+
+1. 查看是否开启启动
+
+(1) 设置开机自启动
+$ sudo systemctl enable iptables.service
+
+$ systemctl is-enabled iptables.service 
+enabled
+
+$ sudo chkconfig –level 345 iptables on
+$ chkconfig --list
+
+
+(2) 
+$ tail /etc/sysctl.conf
+net.ipv4.ip_forward=1
+$ sudo cat /proc/sys/net/ipv4/ip_forward 开启内核转发
+1
+
+
+$ sudo iptables -t filter -A FORWARD -j ACCEPT
+
+(3) 需关闭firewalld防火墙
+systemctl stop firewalld.service
+systemctl disable firewalld.service
+
+
+
+
+
+2. 空白 centOS7.9 虚拟机测试
+(1) 尝试1: 不保存到文件
+开服务
+$ python3 -m http.server 8787
+
+浏览器无法访问
+http://192.168.2.105:8787/
+
+开放8787端口访问
+$ sudo iptables -I INPUT -p tcp --dport 8787 -j ACCEPT
+浏览器可以访问了。
+
+查看当前状态，有8787端口的设置.
+$ sudo iptables -nL
+Chain INPUT (policy ACCEPT)
+target     prot opt source               destination         
+ACCEPT     tcp  --  0.0.0.0/0            0.0.0.0/0            tcp dpt:8787
+
+查看文件，没有找到 8787端口的设置。
+$ sudo cat /etc/sysconfig/iptables | grep 8787
+
+$ sudo reboot 
+重启后，端口是关着的。
+
+
+
+
+(2) 尝试2: 保存到文件
+$ python3 -m http.server 8787 #开服务
+
+$ sudo iptables -I INPUT -p tcp --dport 8787 -j ACCEPT #开端口，可以访问了
+$ sudo service iptables save #保存设置到文件, 如果没有该命令，就安装 yum install iptables-services
+iptables: Saving firewall rules to /etc/sysconfig/iptables:[  OK  ]
+
+$ sudo service iptables restart #重启服务，端口还可以访问
+
+$ sudo cat /etc/sysconfig/iptables | grep 8787 #文件中可以查到该端口设置
+-A INPUT -p tcp -m tcp --dport 8787 -j ACCEPT
+
+$ sudo reboot 
+重启后，端口可以访问。
+文件中可查。
+
+
+
 
 
 
