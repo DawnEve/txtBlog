@@ -1,10 +1,31 @@
 R 元编程（metaprogramming）
 
+	元编程的操作对象是代码。code as data。
+	元编程一言以蔽之，就是用代码生成（操纵）代码。
+	如果编程的本质是抽象，那么元编程就是更高层次的抽象。
+	Metaprogramming is writing code that writes code.
+
+
 	- R语言里的调用类型（call）
 
 大佬的书 有几节: https://adv-r.hadley.nz/metaprogramming.html
-https://cran.r-project.org/doc/manuals/R-lang.html  第6章
+pdf	book: https://www.programmer-books.com/wp-content/uploads/2019/05/Metaprogramming-in-R.pdf
+		https://github.com/Apress/metaprogramming-in-r
 
+https://cran.r-project.org/doc/manuals/R-lang.html  第6章
+https://liripo.github.io/noteWeb/R-metaprogramming.html
+https://shixiangwang.github.io/home/cn/post/2019-11-20-meta-programming/
+https://wutaoblog.com.cn/2021/01/14/r-meta/
+
+
+
+
+C++ 的五种编程范式
+	面向过程
+	面向对象
+	泛型
+	模板元
+	函数式
 
 
 
@@ -15,7 +36,15 @@ https://cran.r-project.org/doc/manuals/R-lang.html  第6章
 书籍: Metaprogramming in R – pdf
 
 
-1. 所谓的元编程（metaprogramming）其实就是编写运行时动态修改程序本身的代码（编写产生代码的代码）。 R语言支持元编程，有几个基础函数需要深入了解：
+1. 所谓的元编程（metaprogramming）其实就是编写运行时动态修改程序本身的代码（编写产生代码的代码）。 
+
+元编程概念：编写运行时动态修改程序本身的代码（编写产生代码的代码）【使用编程语言来操作或修改自己的代码,代码就是数据】
+
+R中进行元编程的操作可以使用base R中的函数，也可以使用rlang函数【Tidy evaluation的实现】，当然，data.table也有自己的元编程。
+
+
+
+R语言支持元编程，有几个基础函数需要深入了解：
 
 substitute
 quote(expr)
@@ -51,6 +80,49 @@ parse()
 (5) 生成 未经eval的表达式 
 call()
 expression()
+
+
+
+3. 类 
+
+> getClass("expression")
+Class "expression" [package "methods"]
+
+No Slots, prototype of class "expression"
+
+Extends: "vector"
+
+
+> getClass("language")
+Virtual Class "language" [package "methods"]
+
+No Slots, prototype of class "name"
+
+Known Subclasses: 
+Class "name", directly
+Class "call", directly
+Class "{", directly
+Class "if", directly
+Class "<-", directly
+Class "for", directly
+Class "while", directly
+Class "repeat", directly
+Class "(", directly
+Class ".name", by class "name", distance 2, with explicit coerce
+
+可以看到expression类由向量 vector 派生得到。
+language类是虚拟类，它包括我们熟悉的程序控制关键词/符号和name、call 子类。
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -95,9 +167,87 @@ sum(1:5, na.rm = TRUE)
 
 
 
+2. 获取语法树
+> (cl_list <- as.list(my_call))
+[[1]]
+sum
+
+[[2]]
+[1] 1 2 3 4 5
+
+$na.rm
+[1] TRUE
+
+查看类型:
+> class(cl_list)
+[1] "list"
+> typeof(cl_list)
+[1] "list"
+
+
+还可以再转为 call 类型
+> as.call(cl_list)
+sum(1:5, na.rm = TRUE)
+> eval(as.call(cl_list))
+[1] 15
+
+
+还可以修改 mode()方式转为 call 类型:
+> mode(cl_list) <- "call"
+> cl_list
+sum(1:5, na.rm = TRUE)
+
+
+
+
+
+
+
+3. do.call(what, args, quote = FALSE, envir = parent.frame())命令则是直接在envir中执行 what 命令。
+这个和call 只是名字相似。
+
+> c2=call("sum", quote(1:n), na.rm=T)
+> c2
+sum(1:n, na.rm = TRUE)
+> class(c2)
+[1] "call"
+
+#新建一个环境
+e1=new.env()
+e1$n=100
+e1
+ls(e1)
+e1$n
+do.call(what='eval', args=list(c2), envir = e1 ) #5050
+
+
+
+
+4. quote(expr)函数捕获未执行的代码。enquote(cl)捕获代码的运行结果,cl为call对象。
+
+> enquote(c2)
+base::quote(sum(1:n, na.rm = TRUE))
+
+
+> quote(1:9+5)
+1:9 + 5
+> enquote(1:9+5)
+base::quote(c(6, 7, 8, 9, 10, 11, 12, 13, 14))
+
+
+
+
+
+
+
+
+
+
+
+
 
 ========================================
-|-- deparse函数: 将表达式转换为字符串
+|-- deparse函数: 将未求值的表达式转换为字符串
 ----------------------------------------
 Turn unevaluated expressions into character strings.
 
@@ -139,13 +289,12 @@ function (expr, width.cutoff = 60L, backtick = mode(expr) %in%
 # 例子2: 定义x、y轴的label为变量名本身
 myplot=function(x, y){
   plot(x,y,
-       xlab=deparse(substitute(x)),
+       xlab=xlab=paste0("xx_",deparse(substitute(x))),
        ylab=deparse(substitute(y))
   )
 }
-myplot(iris$Sepal.Length, iris$Sepal.Width)
-
-
+myplot(iris$Sepal.Length, iris$Sepal.Width) #这样 xlab 就是 "xx_iris$Sepal.Length"
+plot(iris$Sepal.Length, iris$Sepal.Width) #默认的plot的 xlab 是 "iris$Sepal.Length"
 
 
 
@@ -214,6 +363,9 @@ Sepal.Length  Sepal.Width Petal.Length  Petal.Width
 expression(...)
 
 把参数看成表达式，返回expression类型的对象。
+expression类型和list类型类似，是个容器，每个成员可能是call，symbol（name）和constants中的一种。
+若有多个成员，eval每个成员都会求值一遍，但是只返回最后一个成员eval之后的值，这与绝大多数编程语言多个表达式语句（逗号隔开）返回的结果类似。
+
 
 (1) 简单例子
 > ex1=expression(iris)
@@ -402,7 +554,7 @@ subtitute/quote返回class/type根据表达式的不同而不同。表达式被�
 
 
 ========================================
-|-- substitute(expr, env) 替换，变体函数 bquote()
+|-- substitute(expr, env) 替换，变体函数 bquote(expr)
 ----------------------------------------
 
 substitute returns the parse tree for the (unevaluated) expression expr, substituting any variables bound in env.
@@ -425,11 +577,10 @@ xlabel <- if (!missing(x))
 > deparse1(substitute(iris))
 [1] "iris"
 
-> substitute(iris)
+> res0=substitute(iris);res0
 iris
-> class(substitute(iris))
-[1] "name"
-
+> c(class(res0), typeof(res0))
+[1] "name"   "symbol"
 
 substitute 会识别一个 promise 变量，替换它的表达式slot值。
 如果函数内触发 substitute ，则函数的局部变量也会被替换。
@@ -444,8 +595,13 @@ substitute 会识别一个 promise 变量，替换它的表达式slot值。
 substitute 的参数不仅仅可以是简单变量，还可以是包含几个变量的表达式，并可以对每个变量逐个替换。
 还可以提供一个 environment 或者 list 用于查找变量。
 
-> substitute(a + b, list(a = 1, b = quote(x)))
+> res=substitute(a + b, list(a = 1, b = quote(x)))
+> res
 1 + x
+
+> c(class(res), typeof(res))  #这个和简单变量替换的分类不同，是因为这是函数？
+[1] "call"     "language"
+
 
 注意：quote()是必须的，否则就解析并使用了x的值
 > x=120
@@ -468,14 +624,14 @@ substitute 的参数不仅仅可以是简单变量，还可以是包含几个变
 > substitute(x <- x + 1, list(x = 2))
 2 <- 2 + 1
 
-但是， R的有些部分自己定义了什么是有意义 和什么无意义的规则，而且事实上就是采用了这些形式上有问题的表达式。 例如，使用“图中数学”的特性时常常会有语法上正确，但求值毫无意义的 构造，如 {}>=40*” years”。
-
-
+但是，R的有些部分自己定义了什么是有意义 和什么无意义的规则，而且事实上就是采用了这些形式上有问题的表达式。 
+例如，使用“图中数学”的特性时常常会有语法上正确，但求值毫无意义的 构造，如 {}>=40*" years"。
+> plot(0)
+> text(1, 0.2 * i,  labels=substitute({}>=40*" years") )
 
 
 
 2) substitute不仅能够替换变量，也能够替换运算符（函数）
-
 > substitute(a + b, list("+" = quote(func)))
 func(a, b)
 
@@ -518,7 +674,7 @@ logplot <- function(y, ylab = deparse(substitute(y))) {
 }
 height=1:10
 logplot(y=height)
-# 调用之后发现，ylab是丑陋的、log后的数字！
+# 调用之后发现，ylab是丑陋的、log求值后的数字！
 
 这是因为 y 被修改后才调用的 ylab 变量。
 解决方法是首先强制yalb求值。
@@ -542,8 +698,8 @@ logplot <- function(y, ylab = deparse(substitute(y))) {
 }
 height=1:10
 logplot(y=height, ylab=quote(log[e](y)))
-# 不理想：图中的ylab 是 loge(y) (其中e是下标)，怎么样y变成 height呢？
-//todo
+# 不理想：图中的ylab 是 loge(y) (其中e是下标)，怎么变成 log e(height)?
+> logplot(y=height, ylab=quote(log[e](height)))
 
 
 A promise捕获(capture)了需要计算的表达式（但是没有计算eval），以及计算表达式所处的environment. 
@@ -558,7 +714,27 @@ promise就像“薛定谔的猫”，一旦访问，就触发计算，从而退�
 
 bquote(expr, where = parent.frame(), splice = FALSE)
 
+简单地返回expr，expr没有进行eval。和substitute相比，没有替换。
 
+
+> res1 <- quote(height); res1
+height
+> c(class(res1), typeof(res1))
+[1] "name"   "symbol"
+
+
+> res3 <- quote(a/b); res3
+# a/b
+> c(class(res3), typeof(res3))
+[1] "call"     "language"
+
+subtitute/quote返回class/type根据表达式的不同而不同。
+表达式被解析为抽象语法树，可以访问其中每一个组成，还可以对返回的对象进行修改，即自己构造语法树（meta-programming）。
+
+
+
+
+图形中打字的例子:
 > plot(0)
 > for (i in 1:4)
    text(1, 0.2 * i, substitute(x[ix] == y, list(ix = i, y = pnorm(i))))
@@ -589,8 +765,13 @@ https://blog.csdn.net/tanzuozhev/article/details/50603045
 
 
 
+
+
+
+
+
 ========================================
-调用类型 (call) 实质上是一个list，可用 quote() 包围表达式生成，调用 eval() 执行
+|-- 获取并修改R表达式的语法树：调用类型 (call) 实质上是一个list(可修改)，可用 quote() 包围表达式生成，调用 eval() 执行
 ----------------------------------------
 1. call 对象
 
@@ -803,6 +984,8 @@ as.character(quote(aaa))
 
 > deparse(substitute(deg))
 [1] "deg"
+
+
 
 
 
@@ -1032,15 +1215,50 @@ https://rlang.r-lib.org/reference/topic-metaprogramming.html
 
 
 
+
+
+
 ========================================
-操作函数
+assign("para", value): 给字符串变量赋值
 ----------------------------------------
-1. formals()
+1. 如果我们不确定有几个变量时怎么赋值？
+例: 生成变量，并赋值。
+
+for(i in 1:5){
+  assign(paste0("x",i),i)
+}
+
+
+赋值需要用assign函数，第一个参数是变量名的字符串；第二个则是我们需要赋值的具体对象（可以是数字、字符、以及任意对象）
+
+然后我们就有了5个变量：x1/x2/x3/x4/x5。
+
+
+
+
+
+========================================
+函数的拆解与组装
+----------------------------------------
+1. 基本结构
+f <- function(x) x
+
+formals(f)
+## $x
+
+body(f)
+## x
+
+environment(f)
+## <environment: R_GlobalEnv>
+
+
+
+
+
+2. 修改参数 formals()
 Access to and Manipulation of the Formal Arguments
-
 Description: Get or set the formal arguments of a function.
-
-
 
 > formals
 function (fun = sys.function(sys.parent()), envir = parent.frame()) 
@@ -1065,6 +1283,211 @@ $...
 
 > names(formals(plot))
 [1] "x"   "y"   "..."
+
+
+(2) 替换参数
+> f <- function(x) x
+> formals(f) # $x
+$x
+
+> class(formals(f))
+[1] "pairlist"
+> typeof(formals(f))
+[1] "pairlist"
+
+
+> formals(f)=list(x=quote(y)) #如果不解析，要加 quote()
+> f
+function (x = y) #参数已经被修改了
+x
+
+调用函数
+> y=10
+> f()
+[1] 10
+> y=2
+> f()
+[1] 2
+
+
+
+
+
+3. 修改函数体 body(f)
+
+> f=function(x)x
+> body(f)
+x
+> c(class(body(f)), typeof(body(f)))
+[1] "call"     "language"
+
+
+> body(f)= quote(2*x) #修改函数体
+> body(f)
+2 * x
+> f
+function (x) 
+2 * x  #函数体已经被改变
+
+
+调用函数:
+> f(5)
+[1] 10
+> f(15)
+[1] 30
+
+
+
+
+
+
+4. 组装函数
+rs=alist(a=, b=, a+b)
+f=as.function(rs)
+f
+f(4, 5) #9
+
+
+
+(2) alist 经常和 formals 连用
+f=function(x)x
+formals(f) <- alist(x =, y =)
+> f
+function (x, y) 
+x
+
+
+(3) 定义函数的等价形式
+nested <- function(y) {
+ as.function(alist(x =, y = y, x + y))
+}
+
+nested2 <- function(y) {
+ function(x, y = y) x + y
+}
+
+获取返回的函数:
+> f1=nested()
+> f2=nested2()
+> f1
+function (x, y = y) 
+x + y
+<environment: 0x55cabdd10f40>
+> f2
+function(x, y = y) x + y
+<environment: 0x55cabdb64338>
+
+求值
+> f1(1,3)
+[1] 4
+> f2(1,3)
+[1] 4
+
+
+(4) 怎么设置函数的环境
+nested3 <- function(z) {
+ as.function(alist(x =, y = z, x + y))
+}
+
+nested4 <- function(z) {
+ as.function(alist(x =, y = z, x + y),
+ envir = globalenv())
+}
+
+f3=nested3(3)
+f4=nested4(3)
+
+查看函数
+> f3
+function (x, y = z) 
+x + y
+<environment: 0x55cacf5f0490>
+> f4
+function (x, y = z) 
+x + y
+
+求值:
+> z=10
+> f3(1) #使用内部环境中的z，就是第一次调用函数时传入的z=3
+[1] 4
+> f4(1) #使用全局环境中的z
+[1] 11
+
+#还可以使用连续圆括号调用
+> z=10
+> nested3(3)(1)
+[1] 4
+> nested4(3)(1)
+[1] 11
+
+
+查看函数所在环境中的变量名
+> ls(environment(f3))
+[1] "z"
+
+> ls(environment(f4))
+ [1] "counter"  ... "y"           "z" 
+
+
+
+
+
+
+5. 函数内部获取函数信息
+
+f <- function(x = 5) {
+ y <- 2 * x
+ sys.function()
+}
+
+该函数的返回值是它自己:
+> f
+function(x = 5) {
+    y <- 2 * x
+    sys.function()
+}
+> f()
+function(x = 5) {
+    y <- 2 * x
+    sys.function()
+}
+
+
+(2) 函数内获取参数列表
+可以直接调用无参数的 formals()
+
+f <- function(x, y = 2 * x) formals()
+params <- f(1, 2)
+class(params)
+# [1] "pairlist"
+
+> params
+$x
+
+
+$y
+2 * x
+
+
+
+(3) 函数内部获取函数体
+f <- function(x, y = 2 * x) {
+ z <- x - y
+ body()
+}
+> f(2)
+{
+    z <- x - y
+    body()
+}
+
+
+
+
+
+
+
+
 
 
 
@@ -1128,7 +1551,83 @@ y2 #9
 
 
 ========================================
+元编程实例1: 怎么实现 subset(data, expr)?
 ----------------------------------------
+1. 实例
+subset(iris, Sepal.Length>7)
+> subset(iris, Sepal.Length>7 & Sepal.Width<=2.8)
+    Sepal.Length Sepal.Width Petal.Length Petal.Width   Species
+119          7.7         2.6          6.9         2.3 virginica
+123          7.7         2.8          6.7         2.0 virginica
+131          7.4         2.8          6.1         1.9 virginica
+
+
+
+2. 源码
+
+> getAnywhere("subset.data.frame")
+A single object matching ‘subset.data.frame’ was found
+It was found in the following places
+  package:base
+  registered S3 method for subset from namespace base
+  namespace:base
+with value
+
+function (x, subset, select, drop = FALSE, ...) 
+{
+    r <- if (missing(subset)) 
+        rep_len(TRUE, nrow(x))
+    else {
+        e <- substitute(subset)
+        r <- eval(e, x, parent.frame())
+        if (!is.logical(r)) 
+            stop("'subset' must be logical")
+        r & !is.na(r)
+    }
+    vars <- if (missing(select)) 
+        rep_len(TRUE, ncol(x))
+    else {
+        nl <- as.list(seq_along(x))
+        names(nl) <- names(x)
+        eval(substitute(select), nl, parent.frame())
+    }
+    x[r, vars, drop = drop]
+}
+<bytecode: 0x55e6e1ce9b48>
+<environment: namespace:base>
+> 
+
+
+(2) 解析
+去掉异常检测之外。
+
+> e1=substitute(Sepal.Length>7 & Sepal.Width<=2.8) #捕获表达式
+> e1
+Sepal.Length > 7 & Sepal.Width <= 2.8
+> class(e1)
+[1] "call"
+
+
+> rs=eval(e1, iris, parent.frame()) #计算e1，后面是环境
+> table(rs) #结果是一个布尔值向量，T or F
+rs
+FALSE  TRUE 
+  147     3 
+
+
+> rs=rs & !is.na(rs) #过滤掉NA
+
+> vars=rep_len(TRUE, ncol(iris)); vars #获取列
+[1] TRUE TRUE TRUE TRUE TRUE
+
+
+> iris[rs, vars, drop = F] #
+    Sepal.Length Sepal.Width Petal.Length Petal.Width   Species
+119          7.7         2.6          6.9         2.3 virginica
+123          7.7         2.8          6.7         2.0 virginica
+131          7.4         2.8          6.1         1.9 virginica
+
+
 
 
 

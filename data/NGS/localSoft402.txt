@@ -1360,6 +1360,111 @@ d:/ STARmanual.pdf
 
 
 ========================================
+|-- STAR: too many too short!
+----------------------------------------
+1. issues on github:
+https://github.com/alexdobin/STAR/issues/577
+
+In your case, the mapping mismatch rate is very high, ~5%, This is typically caused by either
+(i) poor sequencing quality - you can check the quality scores with FASTQC tool
+(ii) sample RNA divergent from the reference genome
+
+Note that (by default) STAR does not set the limit for the mapped bases, but rather limits the minimum mapped length to ~0.66 of each read length, which on average will be 38b in your case.
+The parameters that control this are --outFilterScoreMinOverLread and --outFilterMatchNminOverLread , both 0.66 by default.
+
+最短长度是按照百分比计算的，默认 0.66 倍的序列长度。
+150*0.66=99
+奇怪，对不上。38/0.66=58 倒着算长度也对不上。
+
+
+
+老版本:
+$ cd /data/jinwf/wangjl/chenxi/MDA/H/
+$ cat 04_map/H_polyA_Log.out | grep "outFilter"
+
+$ STAR --runThreadN 5 \
+	--genomeDir /home/wangjl/data/ref/hg38/gencode/index/STAR/ \
+	--readFilesIn 03_cutPolyA_reads/H_polyA_reads.fq.gz \
+	--readFilesCommand zcat \
+	--outFileNamePrefix 04_map/H_polyA_ \
+	--outSAMtype BAM SortedByCoordinate  \
+	--outFilterMultimapNmax 1
+
+v2: try --outFilterMatchNminOverLread 0.13 --outFilterScoreMinOverLread 0.13 保证 20/150=0.133 和qrtPCR一致，也就是 20bp 的引物就认为够特异了。
+$ mv 04_map 04_map_v1
+$ mkdir 04_map
+$ STAR --runThreadN 5 \
+	--genomeDir /home/wangjl/data/ref/hg38/gencode/index/STAR/ \
+	--readFilesIn 03_cutPolyA_reads/H_polyA_reads.fq.gz \
+	--readFilesCommand zcat \
+	--outFileNamePrefix 04_map/H_polyA_ \
+	--outSAMtype BAM SortedByCoordinate  \
+	--outFilterMultimapNmax 1 \
+	--outFilterMatchNminOverLread 0.13 \
+	--outFilterScoreMinOverLread 0.13
+
+
+For STAR solo:
+$ less B01_STAR_solo/H_Log.out
+$ STAR27 --runThreadN 30 \
+	--genomeDir /home/wangjl/data/ref/hg38/gencode/index/STAR27/ \
+	--readFilesIn raw/H.R2.fastq.gz raw/H.R1.fastq.gz \
+	--soloType CB_UMI_Simple --soloCBstart 1 --soloCBlen 8 --soloUMIstart 9 --soloUMIlen 10 --soloBarcodeReadLength 0  \
+	--readFilesCommand zcat \
+	--outSAMtype BAM SortedByCoordinate \
+	--soloCBwhitelist raw/cell_barcode.txt \
+	--outSAMattributes CB UB NH HI AS nM \
+	--outFileNamePrefix B01_STAR_solo/H_
+# 11:15-->
+
+
+v2: try --outFilterMatchNminOverLread 0.13 --outFilterScoreMinOverLread 0.13 保证 20/150=0.133 和qrtPCR一致，也就是 20bp 的引物就认为够特异了。
+$ mv B01_STAR_solo B01_STAR_solo_v1
+$ mkdir B01_STAR_solo
+
+$ STAR27 --runThreadN 30 \
+	--genomeDir /home/wangjl/data/ref/hg38/gencode/index/STAR27/ \
+	--readFilesIn raw/H.R2.fastq.gz raw/H.R1.fastq.gz \
+	--soloType CB_UMI_Simple --soloCBstart 1 --soloCBlen 8 --soloUMIstart 9 --soloUMIlen 10 --soloBarcodeReadLength 0  \
+	--readFilesCommand zcat \
+	--outSAMtype BAM SortedByCoordinate \
+	--soloCBwhitelist raw/cell_barcode.txt \
+	--outSAMattributes CB UB NH HI AS nM \
+	--outFileNamePrefix B01_STAR_solo/H_ \
+	--outFilterMatchNminOverLread 0.13 --outFilterScoreMinOverLread 0.13
+#11:25-->
+
+
+
+
+
+
+
+
+(1) 根据map位置分类
+https://github.com/alexdobin/STAR/issues/577
+
+Q: What happens when 1 read maps to 2+ in the reference? Is the read discarded, is the locus with the highest score used, or are all of them used?
+A: Such reads will be reported as multi-mappers, unless they map to more than --outFilterMultimapNmax loci (=10 by default).
+map 到1个地方的叫 uniq;
+map 到 [2,10]的叫 multi;
+
+
+(2) 
+$ cat MDA/H/04_map/H_polyA_Log.out | grep "outFilterScoreMinOverLread"
+outFilterScoreMinOverLread        0.66
+outFilterScoreMinOverLread        0.66
+
+[wangjl@bio_svr1 chenxi]$ cat MDA/H/04_map/H_polyA_Log.out | grep "outFilterMatchNminOverLread"
+outFilterMatchNminOverLread       0.66
+outFilterMatchNminOverLread       0.66
+
+
+
+
+
+
+========================================
 |-- 多线程版 STAR (snakemake 控制并发数)
 ----------------------------------------
 
