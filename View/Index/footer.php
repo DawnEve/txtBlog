@@ -54,6 +54,12 @@
 			array("https://www.shiyanlou.com/",'实验楼','第一家以实验为核心的IT在线教育平台'),
 			
 			array('http://fex.baidu.com/ueditor/#start-config','uEditor','百度富文本编辑器'),
+
+			//高阶技能
+			array('https://colobu.com/about/','鸟窝(blog)','在微博 做架构和开发工作'),
+			array('https://github.com/leohxj/a-programmer-prepares','程序员的自我修养'),
+			array('https://github.com/itwanger/toBeBetterJavaer','toBeBetterJavaer'),
+			array('https://www.qtmuniao.com/about/','青藤木鸟(分布式)'),
 		);
 		echo '<br />后端资料: ';
 		print_links($links_Back);

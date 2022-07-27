@@ -28,6 +28,8 @@ C++ 的五种编程范式
 	函数式
 
 
+Quite true. R was originally build on top of Lisp and it shows in many places, such as in the metaprogramming stuff that you mention.
+
 
 
 ========================================
@@ -1252,6 +1254,10 @@ body(f)
 environment(f)
 ## <environment: R_GlobalEnv>
 
+功能分别是:
+获取参数列表
+获取函数体
+获取运行环境
 
 
 
@@ -1483,6 +1489,73 @@ f <- function(x, y = 2 * x) {
 
 
 
+(4) environment() 不带参数则是获取其执行的环境
+
+f=function(){
+  x=1
+  y=2
+  z=3
+  environment()
+}
+env=f()
+> env
+<environment: 0x55cace385110>
+
+> as.list(env)
+$z
+[1] 3
+
+$y
+[1] 2
+
+$x
+[1] 1
+
+
+注意：直接传入函数名，返回的是函数运行时所在的空间，比如:
+> environment(f)
+<environment: R_GlobalEnv>
+
+
+(5) 获取运行时的父环境 parent.env()
+f <- function() {
+ x <- 1
+ y <- 2
+ z <- 3
+ parent.env(environment())
+}
+
+> f()
+<environment: R_GlobalEnv>
+
+
+
+
+
+
+
+6. 获取函数的真实参数
+
+f <- function(x = 1:3) {
+ print(formals()$x)
+ x
+}
+f(x = 4:6)
+## 1:3
+## [1] 4 5 6
+
+
+
+
+========================================
+// todo P28/106
+----------------------------------------
+https://www.programmer-books.com/wp-content/uploads/2019/05/Metaprogramming-in-R.pdf
+
+
+
+
+
 
 
 
@@ -1598,8 +1671,9 @@ function (x, subset, select, drop = FALSE, ...)
 > 
 
 
+
 (2) 解析
-去掉异常检测之外。
+去掉异常检测之外的代码。
 
 > e1=substitute(Sepal.Length>7 & Sepal.Width<=2.8) #捕获表达式
 > e1
@@ -1630,11 +1704,218 @@ FALSE  TRUE
 
 
 
+(3) 仿写一个交互版的 subset2 函数 
+subset(airquality, Ozone > 50 & Temp >= 50 & Wind >= 10)
+subset(airquality, Ozone > 50 & Temp >= 90)
+
+filter1=function(dt=airquality, O1=50, T2=90){
+  dt=subset(dt, Ozone > O1 & Temp >= T2)
+  return(dt)
+}
+filter1(airquality)
+filter1(airquality, 95)
+filter1(airquality, 95, 92)
+
+#
+subset2=function(dt=airquality, expr){
+  expr=substitute(expr)
+  #dt=subset(dt, subset=deparse(expr) ) #这个一直无法通过
+  rs=eval(expr, dt) #在dt的环境下，求 expr 的布尔值
+  rs=rs & !is.na(rs) #remove NA
+  return(dt[rs,]) #返回布尔值为T的行
+}
+subset2(airquality, expr=Ozone > 95 & Temp >= 92)
+
+
+
+
+(4) 用到函数中报错
+filter3=function(dt=airquality, expr){
+  dt=subset(dt, expr)
+  return(dt)
+}
+
+> filter3(airquality, Temp>95)
+Error in eval(e, x, parent.frame()) : object 'Temp' not found
+
+
+try2:
+filter3=function(dt=airquality, expr){
+  expr=substitute(expr)
+  dt=subset(dt, expr)
+  return(dt)
+}
+filter3(airquality, Temp>95)
+> filter3(airquality, Temp>95)
+Error in subset.data.frame(dt, expr) : 'subset' must be logical
+
+
+
+try3:
+
+
+
+
+
+
+
+
+3. 在函数中使用 subset //todo
+
+# https://github.com/satijalab/seurat/issues/1538
+
+> library(Seurat)
+> testFunction <- function(pbmc, threshold=c(200,2500)){
+  sub <- subset(pbmc, subset = nFeature_RNA > threshold[1] )
+    return(sub)
+}
+
+> testFunction(pbmc)
+An object of class Seurat 
+13714 features across 2638 samples within 1 assay 
+Active assay: RNA (13714 features, 2000 variable features)
+ 3 dimensional reductions calculated: pca, umap, tsne
+
+> testFunction(pbmc, threshold=c(500,3000))
+An object of class Seurat 
+13714 features across 2450 samples within 1 assay 
+Active assay: RNA (13714 features, 2000 variable features)
+ 3 dimensional reductions calculated: pca, umap, tsne
+
+
+说明 Seurat 的 subset() 已经可以在函数内使用了，而之前是不能在函数内使用的。
+
+
+
+
+(2) 源码解析
+
+没读懂精华在哪几句。。。
+
+> getAnywhere("subset.Seurat")
+A single object matching ‘subset.Seurat’ was found
+It was found in the following places
+  registered S3 method for subset from namespace SeuratObject
+  namespace:SeuratObject
+with value
+
+function (x, subset, cells = NULL, features = NULL, idents = NULL, 
+    return.null = FALSE, ...) 
+{
+    x <- UpdateSlots(object = x)
+    if (!missing(x = subset)) {
+        subset <- enquo(arg = subset)
+    }
+    cells <- WhichCells(object = x, cells = cells, idents = idents, 
+        expression = subset, return.null = TRUE, ...)
+    if (length(x = cells) == 0) {
+        if (isTRUE(x = return.null)) {
+            return(NULL)
+        }
+        stop("No cells found", call. = FALSE)
+    }
+    if (all(cells %in% Cells(x = x)) && length(x = cells) == 
+        length(x = Cells(x = x)) && is.null(x = features)) {
+        return(x)
+    }
+    if (!all(colnames(x = x) %in% cells)) {
+        slot(object = x, name = "graphs") <- list()
+        slot(object = x, name = "neighbors") <- list()
+    }
+    assays <- FilterObjects(object = x, classes.keep = "Assay")
+    for (assay in assays) {
+        assay.features <- features %||% rownames(x = x[[assay]])
+        slot(object = x, name = "assays")[[assay]] <- tryCatch(expr = base::subset(x = x[[assay]], 
+            cells = cells, features = assay.features), error = function(e) {
+            if (e$message == "Cannot find features provided") {
+                return(NULL)
+            }
+            else {
+                stop(e)
+            }
+        })
+    }
+    slot(object = x, name = "assays") <- Filter(f = Negate(f = is.null), 
+        x = slot(object = x, name = "assays"))
+    if (length(x = FilterObjects(object = x, classes.keep = "Assay")) == 
+        0 || is.null(x = x[[DefaultAssay(object = x)]])) {
+        stop("Under current subsetting parameters, the default assay will be removed. Please adjust subsetting parameters or change default assay.", 
+            call. = FALSE)
+    }
+    for (dimreduc in FilterObjects(object = x, classes.keep = "DimReduc")) {
+        x[[dimreduc]] <- tryCatch(expr = subset.DimReduc(x = x[[dimreduc]], 
+            cells = cells, features = features), error = function(e) {
+            if (e$message %in% c("Cannot find cell provided", 
+                "Cannot find features provided")) {
+                return(NULL)
+            }
+            else {
+                stop(e)
+            }
+        })
+    }
+    slot(object = x, name = "meta.data") <- slot(object = x, 
+        name = "meta.data")[cells, , drop = FALSE]
+    for (assay in FilterObjects(object = x, classes.keep = "Assay")) {
+        n.calc <- CalcN(object = x[[assay]])
+        if (!is.null(x = n.calc)) {
+            names(x = n.calc) <- paste(names(x = n.calc), assay, 
+                sep = "_")
+            x[[names(x = n.calc)]] <- n.calc
+        }
+    }
+	
+    Idents(object = x, drop = TRUE) <- Idents(object = x)[cells]
+    for (image in Images(object = x)) {
+        x[[image]] <- base::subset(x = x[[image]], cells = cells)
+    }
+    return(x)
+}
+<bytecode: 0x55cacb7e89b8>
+<environment: namespace:SeuratObject>
+
+
+
+
+
+
+
+
+
+
 
 
 
 ========================================
+元编程实例2: 实现一种编写 html 的 DSL //todo
 ----------------------------------------
+
+http://adv-r.had.co.nz/dsl.html
+https://adv-r.hadley.nz/translation.html
+https://www.apress.com/gp/blog/all-blog-posts/domain-specific-languages-in-r/15742536
+
+Domain-Specific Languages in R: Advanced Statistical Programming: https://link.springer.com/book/10.1007/978-1-4842-3588-1 
+	可下载: Mailund2018_Book_Domain-SpecificLanguagesInR.pdf
+
+
+组装逻辑表达式: https://stackoverflow.com/questions/69721004/r-meta-programming-paste-logic-expressions-with-function-call
+
+https://combine-australia.github.io/r-pkg-dev/advanced-topics.html
+https://search.r-project.org/CRAN/refmans/rlang/html/topic-metaprogramming.html
+https://tidyeval.tidyverse.org/
+
+	https://livebook.manning.com/book/dsls-in-action/appendix-b/1
+
+
+
+
+
+
+
+
+
+
+
 
 
 

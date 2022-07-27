@@ -57,6 +57,7 @@ return array (
     array (
       array('Maven','Maven','txt'),
       array('算法(4th)','algorithm_4th','txt'),
+      array('架构模式','architecture','txt'),
     ),
   ),    
   
