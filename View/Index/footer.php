@@ -31,6 +31,7 @@
 			array('http://tool.chinaz.com/tools/jsformat.aspx','html/js格式化','代码美化'),
 			//
 			array('https://iconarchive.com/tag/google-chrome','icon'),
+			array('https://icon-icons.com/search/icons/?filtro=cplusplus&sort=popular','icon2'),
 		);
 		echo '<br />友情链接[IT Tools]: ';
 		print_links($links_IT_tools);

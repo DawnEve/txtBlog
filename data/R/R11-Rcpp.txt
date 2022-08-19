@@ -4,8 +4,6 @@ C++ 很繁杂，可以说是最艰巨的计算机方向了。
 
 
 
-
-
 ========================================
 R 调用 C 语言：Rcpp包等
 ----------------------------------------
@@ -1562,9 +1560,148 @@ https://github.com/RcppCore/RcppParallel
 
 我写的实例: https://blog.csdn.net/wangjunliang/article/details/126273684?
 
+1. 基于2个C++库 
+Intel TBB(v4.3): C++库，基于x86系统；
+TinyThread: C++库。
+
+这两个库负责高层工作，比如分配工作任务到不同的核心/处理器上。
+
+RcppParallel 默认在 Win, OS X, Linux 是哪个使用TBB，其他不支持的则使用 TinyThread.
+
+(2) TBB 库改名为 oneTBB
+https://github.com/ManyThreads/tbb 这里说转载自: https://github.com/intel/tbb
+点开后已经改名为: https://github.com/oneapi-src/oneTBB
+新的官网: https://oneapi-src.github.io/oneTBB/
+
+中文介绍: http://t.zoukankan.com/ybqjymy-p-13679446.html
+intel: https://www.intel.com/content/www/us/en/developer/articles/guide/get-started-with-tbb.html
 
 
 
+
+2. 解决的问题
+
+paralleleFor(): 顺序for变并行
+parallelReduce(): 并行计算并累加结果。
+
+使用TBB机制，Worker 类接受任务。
+
+//C++代码
+parallelFor(std::size_t begin, std::size_t end, Worker worker);
+
+用户可以实现 RcppParallel::Worker 的子类，实现对每一部分data的处理的处理方法。
+
+
+3. 使用方法
+
+(1) RcppParallel: Using a Worker
+// stub for our LogWorker class
+struct LogWorker: public RcppParallel::Worker{ /* ... */}
+
+// [[Rcpp::export]]
+Rcpp::NumericVector paralleleLog(Rcpp::NumericVector input){
+	Rcpp::NumericVector output = no_init(input.size());
+	LogWorker worker(input, output);
+	RcppParallel::parallelFor(0, input.size(), worker);
+	return output;
+}
+
+
+(2) RcppParallel: implementing a Worker 
+
+//[[Rcpp::depends(RcppParallel)]]
+#include<RcppParallel.h>
+#include<Rcpp.h>
+
+// define a small functor that computes the logarithm of a value 
+struct log {
+	double operator()(double value){
+		return ::log(value);
+	}
+}
+
+// implement our worker (subclass RcppParallel::Worker)
+struct LogWorker: public RcppParallel::Worker{
+	// initialize inputs + outputs
+	RcppParallel::Rvector<double> input, output;
+	LogWorker(Rcpp::NumericVector input, Rcpp::NumericVector output)
+		: input(input), output(output){}
+	
+	// define work (accepts a range of items to work on)
+	void operator()(std::size_t begin, std::size_t end){
+		std::transform(
+			input.begin() + begin, input.begin()+end,
+			output.begin()+begin,
+			Log()
+		);
+	}
+};
+
+
+
+(3) 性能比较
+
+library(microbenchmark)
+x=as.numeric(1:1E7)
+microbenchmark(R = log(x),
+	RcppParallel= parallelLog(x),
+	time=10
+)
+
+并行块 ~3-4倍节省时间，取决于核心个数。
+
+
+(4) 为什么块？
+
+TBB 做了调度优化
+- Grain size 粒度 ?? 不懂
+- 看哪个 thread 空闲，就把任务派发过去
+
+
+(5) 内积
+
+// [[Rcpp::export]]
+Rcpp::NumericVector parallelInnerProduct(Rcpp::NumericVector input){
+	Rcpp::NumericVector output = no_init(input.size());
+	InnerProductWorker worker(input, output);
+	RcppParallel::parallelFor(0, input.size(), worker);
+	return output;
+}
+
+double product(double lhs, double rhs){
+	return lhs * rhs;
+}
+
+struct InnerProductWorker: public RcppParallel::Worker{
+	RcppParallel::RVector<double> lsh_, rhs_;
+	double output_;
+	
+	InnerProductWorker(const InnerProductWorker& self, RcppParallel::Split)
+		: lhs_(self.lsh_), rhs_(self.rhs_), output_(0) {}
+	void operator()(std::size_t begin, std::size_t end){
+		output_ += std::inner_product(
+			lhs_.begin() + begin,
+			lhs_.begin() + end,
+			rhs_.begin() + begin,
+			0.0		
+		); 
+	}
+	
+	double value() const { return output_;}
+	
+	void join(const InnerProductWorker& worker){
+		output_ += worker.output_;
+	}
+};
+
+
+in R 
+> Rcpp::sourceCpp("inner-product.cpp");
+
+> n=1e6
+lhs=rnorm(n);
+rhs=rnorm(n);
+all.equal( sum(lhs*rhs), parallelInnerProduct(lhs, rhs) )
 
 
 
