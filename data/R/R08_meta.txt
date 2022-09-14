@@ -4,11 +4,15 @@ R 元编程（metaprogramming）
 	元编程一言以蔽之，就是用代码生成（操纵）代码。
 	如果编程的本质是抽象，那么元编程就是更高层次的抽象。
 	Metaprogramming is writing code that writes code.
+	一般代码的操作对象是数据，元编程操作的对象是其他代码。
+
 
 
 	- R语言里的调用类型（call）
 
 大佬的书 有几节: https://adv-r.hadley.nz/metaprogramming.html
+                 http://adv-r.had.co.nz/   Metaprogramming
+                 http://adv-r.had.co.nz/Computing-on-the-language.html
 pdf	book: https://www.programmer-books.com/wp-content/uploads/2019/05/Metaprogramming-in-R.pdf
 		https://github.com/Apress/metaprogramming-in-r
 
@@ -479,6 +483,7 @@ function (expr, envir = parent.frame(), enclos = if (is.list(envir) ||
 如果envir是list/data.frame，enclos 参数默认增加当前环境，作为 expr 计算在list/data.frame之外寻找对象定义的闭包。
 
 
+(1) 简单例子
 例:
 ex1=quote(x+y)
 
@@ -486,7 +491,8 @@ ex1=quote(x+y)
 > eval(ex1)
 [1] 3
 
-# 还可以指定环境
+
+(2) 还可以指定环境
 > eval(ex1, envir = list(x=10,y=20))
 [1] 30
 
@@ -495,6 +501,24 @@ ex1=quote(x+y)
 > eval(ex1, envir = list(x=10))
 [1] 12
 
+
+
+(3) 可以指定数据框作为环境，执行某个表达式
+
+在环境 mtcars 下，求表达式 gear>4 的值
+> eval( quote(gear>4), mtcars)
+ [1] FALSE FALSE FALSE FALSE FALSE FALSE FALSE FALSE FALSE FALSE FALSE FALSE FALSE FALSE FALSE FALSE FALSE FALSE FALSE
+[20] FALSE FALSE FALSE FALSE FALSE FALSE FALSE  TRUE  TRUE  TRUE  TRUE  TRUE FALSE
+
+
+可以使用该值过滤 mtcars 的行
+> mtcars[eval( quote(gear>4), mtcars), ]
+                mpg cyl  disp  hp drat    wt qsec vs am gear carb
+Porsche 914-2  26.0   4 120.3  91 4.43 2.140 16.7  0  1    5    2
+Lotus Europa   30.4   4  95.1 113 3.77 1.513 16.9  1  1    5    2
+Ford Pantera L 15.8   8 351.0 264 4.22 3.170 14.5  0  1    5    4
+Ferrari Dino   19.7   6 145.0 175 3.62 2.770 15.5  0  1    5    6
+Maserati Bora  15.0   8 301.0 335 3.54 3.570 14.6  0  1    5    8
 
 
 
@@ -1760,6 +1784,9 @@ try3:
 
 
 
+========================================
+|-- 怎么在函数中使用  subset? //todo
+----------------------------------------
 3. 在函数中使用 subset //todo
 
 # https://github.com/satijalab/seurat/issues/1538
@@ -1922,7 +1949,468 @@ https://tidyeval.tidyverse.org/
 
 
 ========================================
+实例3: 怎么实现管道符?  //todo
 ----------------------------------------
+R 有magrittr包提供的管道符 `%>%`，也有最近原生提供的 `|>`。
+
+本文向探究一下它们是怎么实现的。
+
+
+
+
+1. 目标效果
+
+(1) R包提供的管道符
+> library(magrittr)
+> iris %>% dim %>% sum
+[1] 155
+> iris %>% dim() %>% sum()
+[1] 155
+
+> iris %>% dim() %>% sum(100,2000) #额外加2个参数
+[1] 2255
+
+
+(2) R 原生管道符
+> iris |> dim() |> sum(100,2000)
+[1] 2255
+
+
+(3) 查看源代码
+
+> `%>%`
+function (lhs, rhs) 
+{
+    lhs <- substitute(lhs)
+    rhs <- substitute(rhs)
+    kind <- 1L
+    env <- parent.frame()
+    lazy <- TRUE
+    .External2(magrittr_pipe)
+}
+<bytecode: 0x55efd70e97b0>
+<environment: namespace:magrittr>
+
+
+> `|>`
+Error: object '|>' not found
+
+> `+`
+function (e1, e2)  .Primitive("+")
+
+
+查看不到源码。
+
+
+
+
+
+
+
+
+2. 我的尝试
+https://stackoverflow.com/questions/13354048/r-pipelining-functions
+
+(1) version1: 不支持圆括号，那么就不能有参数了
+"%>>%" <- function(x, fun){
+  if(is.function(x)) {
+    function(...) fun(x(...))
+  } else {
+    fun(x)
+  }
+}
+
+> iris %>>% dim %>>% sum
+[1] 155
+
+
+
+# 这个相当于把函数写成整体，没法使用额外的参数
+"%|>%" <- function(fun1, fun2){
+    function(x){fun2(fun1(x))}
+}
+> fn001=dim %|>% sum  #合并函数
+> fn001(iris)
+[1] 155
+
+
+
+
+
+
+(2) 可能需要对函数进行拆解: 传入函数调用，拆出来其函数名和参数列表；不能跨函数传递
+
+fn=function(x=dim()){
+  x1=substitute(x);
+  x2=deparse(x1) #"dim()"
+  #
+  fname=""
+  arg.str=""
+  if( endsWith(x2, ")") ){
+    #找到第一个(
+    start=grepRaw("\\(", x2);
+    fname=substr(x2, 1, start-1)
+    arg.str=substr(x2, start+1, nchar(x2)-1)
+  }else{
+    #没有() 时是不是函数?怎么判断
+    if( is.function(x) ){
+      fname=x2;
+    }else{
+      arg.str="not a fun"
+    }
+  }
+  # string to list
+  if(fname!="")
+    arg.list=parse(text = paste0( "list(", arg.str, ")" ))
+  else
+    arg.list=arg.str;
+  message("fun name:", fname)
+  message("arg list:", arg.list)
+}
+
+#
+> fn( dim() )
+fun name:dim
+arg list:list()
+
+> fn( sum(iris[,1:4]) )
+fun name:sum
+arg list:list(iris[, 1:4])
+
+> fn("dog")
+fun name:
+arg list:not a fun
+
+> fn( ls )
+fun name:ls
+arg list:list()
+
+> fn( ls('./', pattern = "R$") )
+fun name:ls
+arg list:list("./", pattern = "R$")
+
+
+不能嵌套
+# 能通过函数传递吗？目前不能 //todo
+fn2=function(x, y){
+  #x2=substitute(x)
+  #print(x2)
+  #print( class(x2) )
+  fn( x)
+}
+
+> fn(ls)
+fun name:ls  #函数名正常
+arg list:list()
+
+> fn2(ls)
+fun name:x  #函数名失效
+arg list:list()
+
+
+
+
+
+
+(3) 能跨函数传递版本：传入字符串
+
+# 可以把函数调用转为字符串，支持多个函数传递
+parse_func=function(x2){
+  if(!is.character(x2)){
+    stop("must input a character!")
+  }
+
+  fname=-1
+  arg.str=""
+  if( endsWith(x2, ")") ){
+    #找到第一个(
+    start=grepRaw("\\(", x2);
+    fname=substr(x2, 1, start-1)
+    arg.str=substr(x2, start+1, nchar(x2)-1)
+  }else{
+    #没有() 时是不是函数?怎么判断
+    tryCatch({
+      if( is.function(eval(parse(text=x2)) ) ){
+        fname=x2;
+      }
+    })
+  }
+  # string to list
+  if(fname!="")
+    arg.list=parse(text = paste0( "list(", arg.str, ")" ))
+  else{
+    fname=-1
+    arg.list=""
+  }
+  #
+  return(list(
+    fname=fname,
+    args=arg.list
+  ))
+}
+
+# 传入字符串
+parse_func( "ls" )
+parse_func( "ls(a=2,b=3)" )
+
+
+# test: 能通过函数传递吗？
+fn2=function(x, y){
+  x3=deparse( substitute(x) )
+  parse_func( x3)
+}
+fn2(ls)
+fn2(iris)
+
+
+> fn2(ls)
+$fname
+[1] "ls"
+
+$args
+expression(list())
+
+> fn2(iris) #不是函数，则函数名是 -1
+$fname
+[1] -1
+
+$args
+expression(list())
+
+
+
+# 尝试制作自己的管道符
+
+"%>>2%" <- function(x, fun){
+  # 1. 函数调用表达式 to 字符串
+  x2=deparse(substitute(x));
+  fun2=deparse(substitute(fun));
+  # 2.提取函数名字和参数列表
+  x3=parse_func(x2);
+  fun3=parse_func(fun2);
+  # 3.调用函数: 第2个的函数名( 第一个参数作为第一个参数，紧随第二个函数的其余参数)
+  arg.list=c( list(eval(parse(text=x2))), eval(fun3$args) ) #如果参数中有表达式，这样写有问题
+  do.call(fun3$fname, arg.list)
+};
+iris %>>2% head()
+iris %>>2% head() %>>2% dim() %>>2% sum()
+
+
+
+> iris %>>2% head(n=3)
+  Sepal.Length Sepal.Width Petal.Length Petal.Width Species
+1          5.1         3.5          1.4         0.2  setosa
+2          4.9         3.0          1.4         0.2  setosa
+3          4.7         3.2          1.3         0.2  setosa
+
+> iris %>>2% head() %>>2% dim() %>>2% sum()
+[1] 11
+
+> iris %>>2% dim() %>>2% sum(100,2000)
+[1] 2255
+
+
+
+
+# 自定义函数，一个不带其他参数，一个带其他参数
+square=function(x){x**2}
+add= function(x, n=1){x+n}
+
+1:5
+1:5 %>>2% square()
+1:5 %>>2% square() %>>2% add(5)
+
+1:5 %>% square() %>% add(5)
+
+
+
+
+
+# 支持设置参数: 修改列名
+> iris %>% setNames( paste0("c",c(1,2,3,4, 5))) %>>2% head(n=3)
+   c1  c2  c3  c4     c5
+1 5.1 3.5 1.4 0.2 setosa
+2 4.9 3.0 1.4 0.2 setosa
+3 4.7 3.2 1.3 0.2 setosa
+
+
+
+# 可以使用 ggplot2 绘图
+
+library(ggplot2)
+mtcars %>>2% head(n=30) %>%
+  ggplot(aes(wt, mpg, col=factor(gear) )) + geom_point()
+
+
+# 支持按列选择数据 http://adv-r.had.co.nz/Computing-on-the-language.html
+select <- function(df, vars) {
+  vars <- substitute(vars)
+  var_pos <- setNames(as.list(seq_along(df)), names(df))
+  pos <- eval(vars, var_pos)
+  df[, pos, drop = FALSE]
+}
+
+> mtcars %>>2% head(n=3) %>>2% select(c("wt", "am", "mpg"))
+                 wt am  mpg
+Mazda RX4     2.620  1 21.0
+Mazda RX4 Wag 2.875  1 21.0
+Datsun 710    2.320  1 22.8
+
+
+
+
+
+
+# 无法处理表达式参数: //todo 这又回到了问题(2)，表达式无法嵌套
+
+iris %>% subset( Petal.Length>6 )
+iris %>>2% subset( Petal.Length>6 ) #not work
+
+
+# http://adv-r.had.co.nz/Computing-on-the-language.html
+subset2a <- function(x, condition) {
+  condition_call <- substitute(condition)
+  env <- list2env(x, parent = parent.frame())
+  r <- eval(condition_call, env)
+  x[r, ]
+}
+
+> subset2a(iris, Petal.Length>6.5)
+    Sepal.Length Sepal.Width Petal.Length Petal.Width   Species
+106          7.6         3.0          6.6         2.1 virginica
+118          7.7         3.8          6.7         2.2 virginica
+119          7.7         2.6          6.9         2.3 virginica
+123          7.7         2.8          6.7         2.0 virginica
+
+> iris %>>2% subset2a( Petal.Length>6 )
+Error in eval(fun3$args) : object 'Petal.Length' not found
+
+
+
+
+
+
+
+
+3. 表达式做为函数参数，怎么传递给其他函数？
+
+http://adv-r.had.co.nz/Computing-on-the-language.html
+
+- 替换(quote/substitute)一次为 call 就可以在函数之间传递了
+- call 可以嵌套替换。
+
+
+(1) 第一个函数可以筛选：给出数据框和条件
+X=30
+f1=function(x, condition){
+  condition_call=substitute(condition)
+  sel=eval(condition_call, x, parent.frame())
+  #sel=eval(condition_call, x)
+  x[sel,]
+}
+
+> f1(mtcars, mpg>X)
+                mpg cyl disp  hp drat    wt  qsec vs am gear carb
+Fiat 128       32.4   4 78.7  66 4.08 2.200 19.47  1  1    4    1
+Honda Civic    30.4   4 75.7  52 4.93 1.615 18.52  1  1    4    2
+Toyota Corolla 33.9   4 71.1  65 4.22 1.835 19.90  1  1    4    1
+Lotus Europa   30.4   4 95.1 113 3.77 1.513 16.90  1  1    5    2
+
+
+(2) 第二个函数固定数据框，只需要给出条件，然后调用第一个函数：失败
+
+f2=function(x){
+  f1(mtcars, x)
+}
+f2(mpg>30) #这里是x，不是传入的 mpg>30
+
+> f2(mpg>30)
+[1] mpg  cyl  disp hp   drat wt   qsec vs   am   gear carb
+<0 rows> (or 0-length row.names)
+
+
+
+(3) 第二个函数 v2: 成功
+f2_b=function(x){
+  x=substitute(x)
+  call=substitute( substitute( f1(mtcars, y)), list(y=x) )
+  #print(call)
+  call2=eval(call) #为什么要 eval 两次？
+  eval(call2)
+}
+
+> f2_b(mpg>30)
+                mpg cyl disp  hp drat    wt  qsec vs am gear carb
+Fiat 128       32.4   4 78.7  66 4.08 2.200 19.47  1  1    4    1
+Honda Civic    30.4   4 75.7  52 4.93 1.615 18.52  1  1    4    2
+Toyota Corolla 33.9   4 71.1  65 4.22 1.835 19.90  1  1    4    1
+Lotus Europa   30.4   4 95.1 113 3.77 1.513 16.90  1  1    5    2
+> f2_b(mpg>30 & carb==1)
+                mpg cyl disp hp drat    wt  qsec vs am gear carb
+Fiat 128       32.4   4 78.7 66 4.08 2.200 19.47  1  1    4    1
+Toyota Corolla 33.9   4 71.1 65 4.22 1.835 19.90  1  1    4    1
+
+
+
+
+
+
+4. 回到主线2(3)，接着修复主线
+
+(1) 发现只需要修改一行即可: 倒数第二行 eval(fun3$args) 改为  eval(fun3$args,x) 即可支持输入表达式。
+
+"%>>3%" <- function(x, fun){
+  # 1. 函数调用表达式 to 字符串
+  x2=deparse(substitute(x));
+  fun2=deparse(substitute(fun));
+  # 2.提取函数名字和参数列表
+  x3=parse_func(x2);
+  fun3=parse_func(fun2);
+  # 3.调用函数: 第2个的函数名( 第一个参数作为第一个参数，紧随第二个函数的其余参数)
+  arg.list=c( list(eval(parse(text=x2))),  eval(fun3$args, x) ) #只需要修改这一行即可
+  do.call(fun3$fname, arg.list)
+};
+
+> iris %>>3% head() %>>3% subset(Sepal.Length>5) #第三版正常
+  Sepal.Length Sepal.Width Petal.Length Petal.Width Species
+1          5.1         3.5          1.4         0.2  setosa
+6          5.4         3.9          1.7         0.4  setosa
+
+> iris %>>3% head() %>>2% subset(Sepal.Length>5) #第二版还是报错的
+Error in eval(fun3$args) : object 'Sepal.Length' not found
+
+
+
+更多对比测试，输出结果相同:
+> subset(iris, Petal.Length>6.5)
+> iris %>% subset( Petal.Length>6.5)
+> iris %>>3% subset( Petal.Length>6.5)
+    Sepal.Length Sepal.Width Petal.Length Petal.Width   Species
+106          7.6         3.0          6.6         2.1 virginica
+118          7.7         3.8          6.7         2.2 virginica
+119          7.7         2.6          6.9         2.3 virginica
+123          7.7         2.8          6.7         2.0 virginica
+
+
+(2) 发现新的bug //todo
+
+> iris %>>3% head() %>>3% dim() %>>2% sum()
+Error in eval(fun3$args, x) : numeric 'envir' arg not of length one
+
+> iris %>>3% dim() %>>3% sum(100,2000)
+Error in eval(fun3$args, x) : numeric 'envir' arg not of length one
+
+
+> iris %>>2% subset( Petal.Length>6.5) %>>2% dim() %>>% head()
+Error in checkHT(n, dx <- dim(x)) :
+argument "x" is missing, with no default
+
+
+
+
+ref: https://oomake.com/question/3745806
+http://adv-r.had.co.nz/Computing-on-the-language.html
+
 
 
 
