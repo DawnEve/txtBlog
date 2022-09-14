@@ -1,6 +1,11 @@
 http协议
 
 
+https://developer.mozilla.org/en-US/docs/Web/HTTP
+
+
+
+
 ========================================
 HTTP格式
 ----------------------------------------
@@ -63,11 +68,214 @@ https://read.douban.com/column/1788114/
 
 
 ========================================
+http 协议的 range header: 支持按范围下载数据，特别适合 基因组大数据 的按需获取
 ----------------------------------------
+1. 使用 igv.js 时发现的问题
+本地 fasta 文件加载特别慢，需要好几分钟，
+请教作者 https://github.com/igvteam/igv.js/issues/1508
+
+作者说数据服务器需要支持 range 头: https://github.com/igvteam/igv.js/wiki/Data-Server-Requirements
+
+
+
+
+
+2. 支持 range header 的服务器程序
+(1) RangeHTTPServer
+
+安装方式: pip 安装，然后按照报错修改文件即可。
+$ pip3 install rangehttpserver
+$ pip3 list | grep -i range
+rangehttpserver                   1.2.0
+
+$ python3 -m RangeHTTPServer --port 8890
+报错: OSError: [Errno 98] Address already in use
+测试发现 8890 没有占用，实际上，这个版本使用默认的 8000 端口，这个端口是占用的。
+
+
+按照 其 github 的文件来修改代码: https://github.com/danvk/RangeHTTPServer/blob/master/RangeHTTPServer/__main__.py
+$ vim /home/wangjl/anaconda3/lib/python3.7/site-packages/RangeHTTPServer/__main__.py
+## 删除最后一行，添加下面几行:
+import argparse
+parser = argparse.ArgumentParser()
+parser.add_argument('port', action='store',
+                    default=8000, type=int,
+                    nargs='?', help='Specify alternate port [default: 8000]')
+
+args = parser.parse_args()
+SimpleHTTPServer.test(HandlerClass=RangeRequestHandler, port=args.port)
+
+
+$ python3 -m RangeHTTPServer 8890
+可以了， IGV.js 加载也正常了，几秒加载好，而之前需要好几分钟。
+
+
+
+
+(2) flask script by IGV
+https://github.com/igvteam/igv.js-flask
+
+
+(3) flask 
+partial.py 支持 range 的server
+https://programtalk.com/vs4/python/2323/scout/scout/blueprints/pileup/partial.py/
+
+
+
+
+
+
+
+
+
+
 
 
 ========================================
+|-- http断点续传原理：http头 Range、Content-Range
 ----------------------------------------
+
+1. HTTP Header里的Range和Content-Range参数
+https://blog.csdn.net/thewindkee/article/details/80189434
+
+这个话题是从实现一个http资源的静态访问引发的。http协议从1.1开始支持获取文件的部分内容，这为并行下载以及断点续传提供了技术支持。它通过在Header里两个参数实现的，
+- 客户端发请求时对应的是Range，
+- 服务器端响应时对应的是Content-Range；
+
+
+(1) Range 头部的格式有以下几种情况：
+https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Range
+
+Range: bytes=0-499 表示第 0-499 字节范围的内容 
+Range: bytes=500-999 表示第 500-999 字节范围的内容 
+Range: bytes=-500 表示最后 500 字节的内容 
+Range: bytes=500- 表示从第 500 字节开始到文件结束部分的内容 
+Range: bytes=0-0,-1 表示第一个和最后一个字节 
+Range: bytes=500-600,601-999 同时指定几个范围
+
+
+(2) 服务器是否支持断点续传
+$ curl -i --range 0-9 http://www.baidu.com/img/bdlogo.gif
+HTTP/1.1 206 Partial Content
+Server: Apache
+Date: Wed, 25 May 2022 06:55:39 GMT
+Content-Type: image/gif
+Content-Length: 10
+Connection: keep-alive
+Accept-Ranges: bytes
+Content-Range: bytes 0-9/1575  ##这里是from to / 总长度
+Etag: "627-4d648041f6b80"
+Last-Modified: Fri, 22 Feb 2013 03:45:02 GMT
+P3p: CP=" OTI DSP COR IVA OUR IND COM "
+Set-Cookie: BAIDUID=E9AEC63F210B4D706FCC37FD5035B61E:FG=1; expires=Thu, 25-May-23 06:55:39 GMT; max-age=31536000; path=/; domain=.baidu.com; version=1
+
+Warning: Binary output can mess up your terminal. Use "--output -" to tell 
+Warning: curl to output it to your terminal anyway, or consider "--output 
+Warning: <FILE>" to save to a file.
+
+服务器的返回头: https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Content-Range
+
+
+
+
+(3) 尝试分2次下载一个图片
+## 第一次下载
+$ curl -D "resp-header1.txt" -H 'Range: bytes=0-2000' \
+    http://localhost:8080/chain.jpg > /tmp/test.jpg 
+
+$ cat resp-header1.txt
+HTTP/1.1 206 Partial Content # 返回状态码是206
+Server: Apache-Coyote/1.1
+Accept-Ranges: bytes
+ETag: W/"4932-1447753566000"
+Last-Modified: Tue, 17 Nov 2015 09:46:06 GMT
+Content-Range: bytes 0-2000/4932
+Content-Type: image/jpeg
+Content-Length: 2001
+Date: Tue, 17 Nov 2015 17:27:45 GMT 
+
+这时在mac下用preview程序打开图片看到是部分的，把剩余部分数据也下载下来才行:
+$ curl -H 'Range: bytes=2001-4932' \
+    http://localhost:8080/chain.jpg >> /tmp/test.jpg
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+========================================
+用 flask 建立服务器，支持 CORS 跨域访问
+----------------------------------------
+1. 跨域访问越来越严格了
+
+(1) 访问: http://ielts.biomooc.com/listening/player.html?url=http://y.biomooc.com:8000/file/audio/HarryPotter1-7StephenFry/Harry%20Potter%204/fry_4_01.mp3
+报错:
+Access to fetch at 'http://y.biomooc.com:8000/file/audio/HarryPotter1-7StephenFry/Harry%20Potter%204/fry_4_01.mp3' from origin 'http://ielts.biomooc.com' has been blocked by CORS policy: The request client is not a secure context and the resource is in more-private address space `private`.
+
+翻译： 客户端不是https，且资源更私密。
+
+
+(2) 原因
+Chrome浏览器94及以后的版本，引入了弃用试验 Block insecure private network requests，就是当目标站点的ip地址比请求发起者的ip地址更加私密时，会进行阻止。 
+
+http://localhost > https://abc.xxx.com > http://yyy.cn 
+
+所以从 http://ielts.biomooc.com 向 http://y.biomooc.com:8000/file/audio/HarryPotter1-7StephenFry/Harry%20Potter%204/fry_4_01.mp3 发起请求会报错！
+
+
+(3) 解决
+以下任意一种方法即可
+1. 使用Chrome低版本或其他浏览器。
+2. 将网站升级为https。
+3. 在Chrome浏览器地址栏搜索 chrome://flags, 然后在搜索框搜索 Block insecure private network requests，最后将其Default改为Disabled。
+
+
+
+
+
+
+2. 设置一个最简单的 flask 数据服务器
+- 支持跨域 cors: 作为 data server 必须的
+- 支持 range header: 作为生物大数据必须的，bam和fa都很大
+- 支持设定根目录 root dir 
+- 支持list出文件名，看看 json or pre 显示
+
+(1) 参考: 
+	https://github.com/igvteam/igv.js/wiki/Data-Server-Requirements
+	https://github.com/igvteam/igv.js-flask
+
+(2) 
+
+
+
+
+========================================
+|-- 我的版本 DaisyHttp: 支持 range 和 cors 的基于 flask 的服务器脚本
+----------------------------------------
+Yi station: /home/wangjl/data/project/DaisyHttp/
+github: https://github.com/BioMooc/DaisyHttp
+
+
+todo
+1. 重写 range 
+2. 结构更清晰化
+
+
+
+
 
 
 ========================================

@@ -444,8 +444,526 @@ https://wiki.ubuntu.org.cn/%E8%B7%9F%E6%88%91%E4%B8%80%E8%B5%B7%E5%86%99Makefile
 
 
 ========================================
+|-- 静态链接库、动态链接库
+----------------------------------------
+
+库是一种可执行的二进制文件，是编译好的代码。使用库可以提高开发效率。在 Linux 下有静态库和动态库。
+
+在linux中，静态库为lib*.a，动态库为lib*.so。
+
+静态库在程序编译的时候会被链接到目标代码里面。所以程序在运行的时候不再需要静态库了。因此编译出来的体积就比较大。以 lib 开头，以.a 结尾。
+
+动态库（动态库也叫共享库）在程序编译的时候不会被链接到目标代码里面，而是在程序运行的时候被载入的。所以程序在运行的时候需要动态库了。因此编译出来的体积就比较小。以 lib 开头，以.so 结尾。
+
+
+
+gcc 的命令
+
+编译 -c
+$ gcc -c helloWorld.c  
+生成一个helloWorld.o文件，该文件是将源文件编译成的汇编文件，在链接之前，该文件不是可执行文件。
+
+
+编译并链接
+$ gcc -o helloWorld helloWorld.c  
+$ gcc -o helloWorld helloWorld.o #这样也行  
+生成的是一个helloWorld的执行文件，格式为ELF（与windows不一样）。该文件为链接后的可执行文件。
+
+
+
+
+
+
+1. 直接编译
+gcc file1.c file2.c file3.c main.c -o out
+
+前提是main.c要include其他文件的头文件，来避免main文件中没有声明就使用没定义的函数导致的报错。
+如果要写的挫点，也可以不include头文件，而在main文件里手写那几个声明。
+
+$ cat my_max.c
+#include "my_lib.h"
+int mmax(int x, int y){
+	return x>y? x : y;
+}
+
+$ cat my_min.c
+#include "my_lib.h"
+int mmin(int x, int y){
+	return x<y? x : y;
+}
+
+$ cat my_abs.c
+#include "my_lib.h"
+int mabs(int x){
+	return x<0? -x : x;
+}
+
+$ cat my_lib.h
+int mmax(int x, int y);
+int mmin(int x, int y);
+int mabs(int x);
+
+
+$ cat main.c
+#include<stdio.h>
+#include "my_lib.h"
+
+int main(){
+	int a=-3, b=5;
+	printf("max: %d\n", mmax(a,b));
+	printf("min: %d\n", mmin(a,b));
+	printf("abs: %d\n", mabs(a));
+	
+	return 0;
+}
+
+$ gcc main.c my_max.c my_min.c my_abs.c  -o out
+$ ./out 
+max: 5
+min: -3
+abs: 3
+
+
+
+(2) 也可以分别编译，再最后链接
+$ gcc -c main.c
+$ gcc -c my_max.c
+$ gcc -c my_min.c
+$ gcc -c my_abs.c
+这样，这些单个文件就可分别编译。节约时间。
+
+$ gcc main.o my_max.o my_min.o my_abs.o  -o out
+$ ./out
+max: 5
+min: -3
+abs: 3
+
+
+
+
+
+
+2. 动态共享库，又称 共享库 /shared library
+把3个文件编译成动态共享库，再编译main
+
+动态库在程序编译时并不会被连接到目标代码中，而是在程序运行是才被载入。
+有两点要注意，
+	shared library是在程序起始时就要被加载，而不是执行中用到才加载，
+	而且在连结阶段需要有该链接库才能进行连结。
+
+不同的应用程序如果调用相同的库，那么在内存里只需要有一份该共享库的实例；可增量更新。
+
+动态库特点：
+ 动态库把函数库的链接载入到程序运行时期；
+ 可实现进程之间资源共享（共享库）；
+ 增量更新；
+ 可以真正做到链接载入完全由程序员在程序代码中控制（显示调用）。
+
+动态库命名形式：libxxx.so，前缀是lib，后缀名为".so"。
+
+
+分2步创建动态库
+	gcc –fPIC –c DynamicMath.c #生成目标文件，此时要加编译器选项-fpic
+	gcc –shared –o libdynamicmath.so DynamicMath.o # 然后，生成动态库，此时要加链接器选项-shared
+	通常，合成一步
+	gcc –fPIC  –shared –o libdynamicmath.so DynamicMath.c
+
+动态库制作步骤：
+	编写或准备库的源代码
+	将源码.c 文件编译生成.so 文件
+	使用 gcc 命令创建动态库
+	测试库文件
+
+gcc -shared -fPIC file1.c -o libfile1.so
+gcc -shared -fPIC file2.c -o libfile2.so
+gcc -shared -fPIC file3.c -o libfile3.so
+gcc main.c -L. -lfile1 -lfile2 -lfile3 -o out
+
+-l:指定动态库的库名。lib开头，so结尾，中间是库的名字。
+-L:指定动态库的查找位置。
+-L . 表示在当前目录下去查找
+-fPIC 创建与地址无关的编译程序（pic，position independent code），是为了能够在多个应用程序间共享。
+-shared指定生成动态链接库。
+
+通过so产生的out，依赖so文件，好处是如果 file2.c 更新了那么只需要替换新的libfile2.so，就可以直接运行原来的out获得新功能，而不需要再次编译出out替换。
+
+
+实例: 
+$ gcc -shared -fPIC my_max.c -o libmy_max.so
+$ gcc -shared -fPIC my_min.c -o libmy_min.so
+$ gcc -shared -fPIC my_abs.c -o libmy_abs.so
+$ gcc main.c -L. -lmy_max -lmy_min -lmy_abs -o out2
+
+$ ./out2
+./out2: error while loading shared libraries: libmy_max.so: cannot open shared object file: No such file or directory
+因为找不到 libmylib.so.1 所以无法执行程序。
+
+编译时，使用-L参数指定动态库地址即可。
+运行时，需要把动态库放到系统指定目录，否则无法运行。
+
+
+(1) 动态库找不到怎么办？
+
+有几个方式可以处理。
+a. 把 libmylib.so.1 安装到系统的library目录，如/usr/lib下
+b. 设定 /etc/ld.so.conf ，加入一个新的library搜寻目录，并执行ldconfig更新快取
+c. 设定 LD_LIBRARY_PATH 环境变量来搜寻library
+这个例子是加入当前目录来搜寻要载作的library
+
+
+在动态库使用是，系统会默认去/lib，/usr/lib 目录下去查找动态函数库，如果我们使用的库不在里面，就会提示错误。
+
+解决办法：https://zhuanlan.zhihu.com/p/509748321
+将libraries 所在的目录加到 /etc/ld.so.conf 中
+执行 /sbin/ldconfig –v
+
+简单策略:
+$ export LD_LIBRARY_PATH=$PWD:$LD_LIBRARY_PATH
+$ echo $LD_LIBRARY_PATH
+/home/wangjl/data/test/testC/1:
+$ ./out2
+max: 5
+min: -3
+abs: 3
+
+
+
+
+(2)修改一个函数:
+
+$ cat my_abs2.c
+#include "my_lib.h"
+int mabs(int x){
+	int a = x<0? -x : x;
+	return a+10;
+}
+
+只编译更新这一个文件
+$ gcc -shared -fPIC my_abs2.c -o libmy_abs.so
+
+$ gcc main.c -L. -lmy_max -lmy_min -lmy_abs -o out2
+
+$ ./out2
+max: 5
+min: -3
+abs: 13  #这个结果变了。
+
+如果不行，尝试以root身份运行 /sbin/ldconfig -v 更新库缓存。
+
+
+
+
+
+(3) 几个名词解释: soname、real name与linker name
+
+soname 用来表示是一个特定 library 的名称，像是 libmylib.so.1 。前面以 ‘lib’ 开头，接着是该 library 的名称，然后是 ‘.so’ ，接着是版号，用来表名他的界面；如果接口改变时，就会增加版号来维护兼容度。
+
+real name 是实际放有library程序的文件名，后面会再加上 minor 版号与release 版号，像是 libmylib.so.1.0.0 。
+
+一般来说，版号的改变规则是(在 APress-Difinitive Guide to GCC)，最后缀的release版号用于程序内容的修正，接口完全没有改变。中间的minor用于有新增加接口，但相旧接口没改变，所以与旧版本兼容。最前面的version版号用于原接口有移除或改变，与旧版不兼容时。
+
+linker name是用于连结时的名称，是不含版号的 soname ，如: libmylib.so。
+
+通常 linker name 是用 ln 指到对应的 real name ，用来提供弹性与维护性。
+
+
+
+$ rm libmy_abs.so
+$ gcc -shared -fPIC my_abs.c -o libmy_abs.so.1
+$ gcc -shared -fPIC my_abs2.c -o libmy_abs.so.2
+$ ln -s libmy_abs.so.1 libmy_abs.so
+$ ls -lht
+total 148K
+lrwxrwxrwx 1 wangjl wangjl   14 Sep 14 14:32 libmy_abs.so -> libmy_abs.so.1
+-rwxrwxr-x 1 wangjl wangjl  16K Sep 14 14:31 libmy_abs.so.1
+
+$ ./out2
+max: 5
+min: -3
+abs: 3
+
+
+$ ln -s -f libmy_abs.so.2 libmy_abs.so
+$ ls -lth
+total 164K
+lrwxrwxrwx 1 wangjl wangjl   14 Sep 14 14:33 libmy_abs.so -> libmy_abs.so.2
+-rwxrwxr-x 1 wangjl wangjl  16K Sep 14 14:32 libmy_abs.so.2
+-rwxrwxr-x 1 wangjl wangjl  16K Sep 14 14:31 libmy_abs.so.1
+
+$ ./out2
+max: 5
+min: -3
+abs: 13
+
+
+
+
+
+(4) 多个文件合成一个共享库
+# https://zhuanlan.zhihu.com/p/368363594
+gcc -shared -Wl,-soname,libmylib.so.1 -o libmylib.so.1.0.0 hello.o world.o
+
+-shared 表示要编译成 shared library
+-Wl 用于参递参数给linker，因此-soname与libmylib.so.1会被传给linker处理。
+-soname用来指名 soname 为 limylib.so.1
+library会被输出成libmylib.so.1.0.0 (也就是real name)
+若不指定 soname 的话，在编译结连后的执行档会以连时的library档名为soname，并载入他。
+否则是载入soname指定的library档案。
+
+$ gcc -c my_max.c
+$ gcc -c my_min.c
+$ gcc -c my_abs.c
+$ gcc -shared -Wl,-soname,libmylib.so.1 -o libmylib.so.1.0.0 my_max.o my_min.o my_abs.o
+$ ls -lth
+-rwxrwxr-x 1 wangjl wangjl  16K Sep 14 15:04 libmylib.so.1.0.0
+
+
+$ objdump -p libmylib.so.1.0.0 | grep SONAME
+SONAME               libmylib.so.1
+若不指名-soname参数的话，则library不会有这个字段数据。
+
+在编译后再用 ln 来建立 soname 与 linker name 两个链接。
+
+$ ln -s libmylib.so.1.0.0 libmylib.so
+$ ln -s libmylib.so.1.0.0 libmylib.so.1
+
+使用1: 直接指定与 libmylib.so 连结。
+$ gcc main.c libmylib.so -o out2a
+$ ./out2a
+max: 5
+min: -3
+abs: 3
+
+
+
+使用2: 
+$ gcc main.c -L. -lmylib -o out2b
+$ ./out2b
+max: 5
+min: -3
+abs: 3
+
+linker会搜寻 libmylib.so 来进行连结。
+如果目录下同时有static与shared library的话，会以shared为主。
+
+使用 -static 参数可以避免使用shared连结。
+$ ln -s libmy_lib.a libmylib.a  #静态库，见3
+$ gcc main.c -static -L. -lmylib -o out2c
+$ ./out2c
+max: 5
+min: -3
+abs: 3
+
+查看大小:
+$ ls -lth out2*
+-rwxrwxr-x 1 wangjl wangjl 852K Sep 14 15:21 out2c #如此之大！使用了同名的静态库
+-rwxrwxr-x 1 wangjl wangjl  17K Sep 14 15:18 out2b
+-rwxrwxr-x 1 wangjl wangjl  17K Sep 14 15:17 out2a
+
+
+此时可以用 ldd 看编译出的执行档与shared链接库的相依性
+$ ldd out2a
+	linux-vdso.so.1 (0x00007ffec43db000)
+	libmylib.so.1 => /home/wangjl/data/test/testC/1/libmylib.so.1 (0x00007f1f0672a000)
+	libc.so.6 => /lib/x86_64-linux-gnu/libc.so.6 (0x00007f1f06514000)
+	/lib64/ld-linux-x86-64.so.2 (0x00007f1f06736000)
+$ ldd out2b
+	linux-vdso.so.1 (0x00007fff933e8000)
+	libmylib.so.1 => /home/wangjl/data/test/testC/1/libmylib.so.1 (0x00007fc26d79d000)
+	libc.so.6 => /lib/x86_64-linux-gnu/libc.so.6 (0x00007fc26d587000)
+	/lib64/ld-linux-x86-64.so.2 (0x00007fc26d7a9000)
+$ ldd out2c
+	not a dynamic executable
+
+
+
+
+
+
+
+
+
+
+
+3.静态链接库 /static libraries
+
+什么是静态链接呢？即在链接阶段，将源文件中用到的库函数与汇编生成的目标文件.o合并生成可执行文件。该可执行文件可能会比较大。
+优点: 方便程序移植，因为可执行程序与库函数再无关系，放在如何环境当中都可以执行。
+缺点: 文件太大，一个全静态方式生成的简单print文件都有857K。而动态链接生成的一样的可执行文件却只要8.4K。
+
+静态库的制作步骤：
+	编写或准备库的源代码
+	将源码.c 文件编译生成.o 文件
+	使用 ar 命令创建静态库
+	测试库文件
+
+gcc -c file1.c 
+gcc -c file2.c 
+gcc -c file3.c
+ar -rc liballfiles.a file1.o file2.o file3.o
+gcc main.c -L. -lallfiles -o out 
+
+大点项目手写makefile，偷懒点靠ide直接搞定。
+
+
+实例:
+$ gcc -c my_max.c
+$ gcc -c my_min.c
+$ gcc -c my_abs.c
+$ ar -rc libmy_lib.a my_max.o my_min.o my_abs.o
+$ ls -lth
+total 172K
+-rw-rw-r-- 1 wangjl wangjl 4.4K Sep 14 14:45 libmy_lib.a
+-rw-rw-r-- 1 wangjl wangjl 1.4K Sep 14 14:44 my_abs.o
+-rw-rw-r-- 1 wangjl wangjl 1.4K Sep 14 14:44 my_min.o
+-rw-rw-r-- 1 wangjl wangjl 1.4K Sep 14 14:44 my_max.o
+
+$ gcc main.c libmy_lib.a -o out3
+$ ./out3
+max: 5
+min: -3
+abs: 3
+
+
+如果想要配合 gcc 的 ‘-l’ 参数来连结，一定要以 ‘lib’ 开头，中间是你要的library名称，然后紧接着 ‘.a’ 结尾。
+$ gcc main.c -L. -lmy_lib -o out3_1
+$ ./out3_1
+max: 5
+min: -3
+abs: 3
+
+
+-Ldir 参数用来指定要搜寻链接库的目录，'.' 表示搜寻现在所在的目录。通常默认会搜 /usr/lib 或 /lib 等目录。
+'-llibrary' 参数用来指定要连结的链接库，-lmy_lib 表示要与my_lib进行连结，他会搜寻library名称前加'lib'后接'.a'的档案来连结。
+
+
+
+
+
+
+
+
+
+
+
+4. 同时使用静态库和动态库
+https://zhuanlan.zhihu.com/p/368363594
+
+gcc –static a.c -Wl,-Bstatic -lm -Wl,-Bdynamic -lc
+
+其中用到的两个选项：-Wl,-Bstatic和-Wl,-Bdynamic。
+这两个选项是gcc的特殊选项，它会将选项的参数传递给链接器，作为 链接器的选项。
+
+比如-Wl,-Bstatic告诉链接器使用-Bstatic选项，该选项是告诉链接器，对接下来的-l选项使用静态链 接；
+-Wl,-Bdynamic就是告诉链接器对接下来的-l选项使用动态链接。
+
+下面是man gcc对-Wl,option的描述
+
+-Wl,option  
+   Pass option as an option to the linker.  If option contains commas, it is split into multiple options at the commas.  You can use this syntax to pass an argument to the option.  For example, -Wl,-Map,output.map passes -Map output.map to the linker.  When using the GNU linker, you can also get the same effect with -Wl,-Map=output.map.
+
+
+下面是man ld分别对-Bstatic和-Bdynamic的描述，
+-Bdynamic  
+-dy  
+-call_shared  
+   Link against dynamic libraries. You may use this option multiple times on the  
+   command line: it affects library searching for -l options which follow it.  
+
+-Bstatic  
+-dn  
+-non_shared  
+-static  
+   Do not link against shared libraries. You may use this option multiple times on   
+   the command line: it affects library searching for -l options which follow it.   
+   This option also implies --unresolved-symbols=report-all.  This option can be   
+   used with -shared.  Doing so means that a shared library is being created but   
+   that all of the library's external references must be resolved by pulling in   
+   entries from static libraries.  
+
+值得注意的是对-static的描述：-static和-shared可以同时存在，这样会创建共享库，但该共享库引用的其他库会静态地链接到该共享库中。
+
+
+
+
+
+
+
+
+
+
+
+5. Dynamically loaded libraries
+
+Dynamicaaly loaded libraries 才是像 windows 所用的 DLL ，在使用到时才加载，编译连结时不需要相关的library。动态载入库常被用于像plug-ins的应用。
+
+(1) 使用方式
+
+动态加载是透过一套 dl function来处理。
+
+
+
+
+
+
+
+
+
+ref:
+https://zhuanlan.zhihu.com/p/103167579
+
+
+
+
+
+
+
+
+
+
+
+========================================
 Linux 下的 C语言
 ----------------------------------------
+
+
+========================================
+|- gcc 编译选项
+----------------------------------------
+
+g++(gcc)编译选项
+-shared ：指定生成动态链接库。
+-static ：指定生成静态链接库。
+
+-fPIC ：表示编译为位置独立的代码，用于编译共享库。目标文件需要创建成位置无关码，就是在可执行程序装载它们的时候，它们可以放在可执行程序的内存里的任何地方。
+
+-L. ：表示要连接的库所在的目录。
+
+-l：指定链接时需要的动态库。编译器查找动态连接库时有隐含的命名规则，即在给出的名字前面加上lib，后面加上.a/.so来确定库的名称。
+
+-Wall ：生成所有警告信息。
+
+-ggdb ：此选项将尽可能的生成gdb的可以使用的调试信息。
+
+-g ：编译器在编译的时候产生调试信息。
+
+-c ：只激活预处理、编译和汇编,也就是把程序做成目标文件(.o文件)。
+
+-Wl,options ：把参数(options)传递给链接器ld。如果options中间有逗号,就将options分成多个选项,然后传递给链接程序。
+
+
+-I  (大写的i)参数是用来指定头文件目录
+-I ( i 的大写)  ：指定头文件路径（相对路径或绝对路径，建议相对路径）
+-i ：指定头文件名字 (一般不使用，而是直接放在**.c 文件中通过#include<***.h> 添加)
+-L ：指定连接的动态库或者静态库路径（相对路径或觉得路径，建议相对路径）
+-l (L的小写)：指定需要链接的库的名字（链接 libc.a :-lc  链接动态库：libc.so  : -lc   
+	注意：-l后面直接添加库名，省去“lib”开头和“.so”或“.a”结尾）；同名时，优先使用动态库。
+
+
+通过 ldd 命令查看生成的 目标文件链接的动态库，使用方法： ldd  ***.o
+
+
+
 
 
 
@@ -783,6 +1301,238 @@ $ ./count.out | ./mean.out
 20
 0
 15.000000
+
+
+
+========================================
+|-- C_INCLUDE_PATH, LIBRARY_PATH, LD_LIBRARY_PATH (动态链接库路径)
+----------------------------------------
+C函数库的分类：静态库、共享库、动态链接库。
+区别：
+    1.静态库的链接应用是在编译时期完成的，程序在运行时与静态库再无瓜葛，移植方便。
+    2.静态库使用浪费空间和资源，因为所有相关的目标文件与牵涉到的函数库被链接合成一个可执行文件。
+	3.如果静态库更新了，所以使用它的应用程序都需要重新编译、发布。
+	 （对于客户端来说，可能一个很小的改动，却导致整个程序重新下载，全量更新）。共享库将一些程序升级变得简单。
+	
+    4.共享库把对一些库函数的链接载入推迟到程序运行的时期。
+    5.共享库实现了进程之间的资源共享,节省了空间。
+    6.共享库可以真正做到链接载入完全由程序员在程序代码中控制（动态加载）。
+
+
+
+1. 定义
+利用系统的环境变量。
+
+(1) 对于头文件的搜索路径:
+C_INCLUDE_PATH=<your include path>;
+export C_INCLUDE_PATH
+
+
+(2) 对于库文件的搜索路径:
+LIBRARY_PATH=<your lib path>;
+export LIBRARY_PATH
+
+
+(3) 对于链接程序ld使用的库文件搜索路径：
+LD_LIBRARY_PATH=<your ldlib path>;
+export LD_LIBRARY_PATH
+
+LIBRARY_PATH is used by gcc before compilation to search for directories containing libraries that need to be linked to your program.
+
+LD_LIBRARY_PATH is used by your program to search for directories containing the libraries after it has been successfully compiled and linked.
+
+EDIT:As pointed below, your libraries can be static or shared. If it is static then the code is copied over into your program and you don't need to search for the library after your program is compiled and linked. If your library is shared then it needs to be dynamically linked to your program and that's when LD_LIBRARY_PATH comes into play.
+
+开发(编译)时，设置 LIBRARY_PATH, 以便gcc能够找到编译时需要的动态链接库。
+
+发布(运行)时，设置 LD_LIBRARY_PATH, 以便程序加载运行时能够自动找到需要的动态链接库。
+
+
+
+
+2. 修改的位置
+(1) 对所有用户有效在/etc/profile增加以下内容。
+
+(2) 只对当前用户有效在Home目录下的。
+.bashrc或.bash_profile里增加下面的内容。
+
+export LD_LIBRARY_PATH=LIBDIR1:LIBDIR2:$LD_LIBRARY_PATH
+
+
+
+
+3. 创建 shared libraries
+在启动时加载。
+
+gcc -shared -Wl,-soname,your_soname \
+    -o library_name file_list library_list
+
+gcc -shared -o libmySharedLib.so mySharedLib.o  
+    (-shared表明创建一个能被其它目标文件链接的共享库)
+
+
+(1) 创建 so 文件
+$ vim a.c 
+int myAdd(int a, int b){
+	return(a+b);
+}
+
+$ vim b.c 
+int myMultiply(int a, int b){
+	return(a*b);
+}
+
+$ gcc -fPIC -g -c -Wall a.c
+$ gcc -fPIC -g -c -Wall b.c
+$ gcc -shared -Wl,-soname,libMyStuff.so.1 \
+	-o libMyStuff.so.1.0.1 a.o b.o -lc
+库的文件名是 libMyStuff.so.1.0.1。
+库的名字是 libMyStuff.so.1，记住，后面有用到。
+
+
+参数解释：
+$ gcc --help
+-c		Compile and assemble, but do not link #只编译和组装，不连接
+-g 选项，可以生成一个debug模式的可执行文件
+	debugging information (-g)
+	generate warnings (-Wall)
+	compilation generates object files (using -c)
+
+-fpic 编译器就生成位置无关目标码.适用于共享库(shared library).
+-fPIC 编译器就输出位置无关目标码.适用于动态连接(dynamic linking),即使分支需要大范围转移.
+
+
+检查:
+$ pwd
+/home/wangjl/local/myXX
+
+$ ls -lth
+total 28K
+-rwxrwxr-x. 1 wangjl wangjl 9.0K Jul  6 05:20 libMyStuff.so.1.0.1
+-rw-rw-r--. 1 wangjl wangjl 2.6K Jul  6 05:20 b.o
+-rw-rw-r--. 1 wangjl wangjl 2.6K Jul  6 05:19 a.o
+-rw-rw-r--. 1 wangjl wangjl   46 Jul  6 05:19 b.c
+-rw-rw-r--. 1 wangjl wangjl   41 Jul  6 05:19 a.c
+
+
+
+(2) 在C代码中使用该库
+$ vim libMyStuff.h 
+int myAdd(int a, int b);
+int myMultiply(int a, int b);
+
+
+$ vim test.c 
+#include<stdio.h>
+#include "libMyStuff.h"
+
+int main(){
+	int x=3, y=5;
+	printf("%d+%d=%d\n", x,y, myAdd(x,y));
+	printf("%d*%d=%d\n", x,y, myMultiply(x,y));
+	return 0;
+}
+
+使用库进行编译
+$ gcc -L ./ test.c
+/tmp/ccFPN10B.o: In function `main':
+test.c:(.text+0x21): undefined reference to `myAdd'
+test.c:(.text+0x49): undefined reference to `myMultiply'
+collect2: error: ld returned 1 exit status
+
+
+编译2:还是报错
+$ ln -s libMyStuff.so.1.0.1 libMyStuff.so
+$ gcc -l libMyStuff test.c
+/usr/bin/ld: cannot find -llibMyStuff
+collect2: error: ld returned 1 exit status
+
+编译3: 通过
+$ gcc libMyStuff.so.1.0.1 test.c -o test.out
+
+
+运行1：
+$ ./test.out #报错
+./test.out: error while loading shared libraries: libMyStuff.so.1: cannot open shared object file: No such file or directory
+
+运行2：
+$ export LIBRARY_PATH=$LIBRARY_PATH:/home/wangjl/local/myXX
+$ ./test.out  #报错
+./test.out: error while loading shared libraries: libMyStuff.so.1: cannot open shared object file: No such file or directory
+
+
+运行3:
+$ ln -s libMyStuff.so.1.0.1 libMyStuff.so.1 #必须
+$ ./test.out
+
+$ ./test.out
+3+5=8
+3*5=15
+
+
+再次编译、运行：
+$ gcc libMyStuff.so.1.0.1 test.c -o test2.out
+$ ./test2.out 
+3+5=8
+3*5=15
+
+
+再次编译、运行
+gcc -o testSharedLib testSharedLib.c -lmySharedLib -L.
+   （注意：lmySharedLib来自于libmySharedLib.so，所以在上一步生成.so文件时，必须带前缀lib，否则这里找不到lmySharedLib。
+$ ln -s libMyStuff.so.1.0.1 libMyStuff.so
+$ gcc -o test3 test.c -lMyStuff -L.
+$ ./test3
+3+5=8
+3*5=15
+
+
+
+
+
+(3) 在R中使用该库 (失败)
+$ R
+> dyn.load("/home/wangjl/local/myXX/libMyStuff.so.1.0.1")
+> .C("myAdd", 3, 5)
+[[1]]
+[1] 3
+
+[[2]]
+[1] 5
+无法调用。
+
+> .Call("myAdd", a, y)
+
+ *** caught segfault ***
+address 0x6a3a863, cause 'memory not mapped'
+
+Possible actions:
+1: abort (with core dump, if enabled)
+2: normal R exit
+3: exit R without saving workspace
+4: exit R saving workspace
+
+
+
+
+
+
+4. 创建 Dynamically Loaded (DL) Libraries
+运行过程中加载的库。
+
+https://blog.csdn.net/shenhuan1104/article/details/79166149
+
+
+
+
+
+
+ref:
+https://stackoverflow.com/questions/4250624/ld-library-path-vs-library-path
+https://www.shuzhiduo.com/A/ke5j6BDo5r/
+https://tldp.org/HOWTO/Program-Library-HOWTO/
+https://www.it610.com/article/1291589798045229056.htm
+
 
 
 
@@ -2764,6 +3514,78 @@ int main(){
 value of var=100
 value by ptr=0x7ffedff40f04, *ptr=100
 value by pptr=0x7ffedff40f08, *pptr=0x7ffedff40f04( == ptr), **pptr=100
+
+
+
+
+例2: 二维数组与指针
+$ cat a1.c
+#include <stdio.h>
+int main() {
+	int i, j, b[3][3]={1, 2, 3, 4, 5, 6, 7, 8, 9}, *pt; 
+	printf("The original array is:\n");
+	for(i=0; i<3; i++) {
+		for(j=0; j<3; j++) {
+			printf(" %d", b[i][j]); 
+		}
+		printf("\n");
+	}
+	printf("\n\n");
+	
+	printf("The following variables are equivalent:\n");
+	printf("*b=%p\n", *b);
+	printf("b[0]=%p\n", b[0]);
+	printf("&b[0][0]=%p\n", &b[0][0]);
+	printf("\n\n"); 
+	
+	/*Here is the method to access the content using double pointer. */
+	for(i=0; i<3; i++) {
+		for(j=0; j<3; j++) {
+			printf(" %d", *(*(b+i)+j));
+		}
+		printf("\n"); 
+	}
+}
+
+编译和运行
+$ gcc a1.c -o a1.out
+$ ./a1.out 
+The original array is:
+ 1 2 3
+ 4 5 6
+ 7 8 9
+
+
+The following variables are equivalent:
+*b=0x7ffdbec16380
+b[0]=0x7ffdbec16380
+&b[0][0]=0x7ffdbec16380
+
+
+ 1 2 3
+ 4 5 6
+ 7 8 9
+
+
+
+####
+And as you may notice, in the example above, b is the name of the 2-dimensional array. It’s also the address of its first element. But differing from one-dimensional array, the first element is an array which contains 3 integers. 
+So the following pairs of variable are equivalent
+'b' and '&b[0]', '(b+1)' and '&b[1]', '(b+2)' and '&b[2]'
+'b[0]' and '&b[0][0]', 'b[1]' and '&b[1][0]', 'b[2]' and '&b[2][0]'
+
+That means: in the 2-dimensional array, the array name b is a double pointer which points to the pointer b[0]. And then the pointer b[0] points to the first element b[0][0].
+对于二维数组，数组名b是一个双指针，指向指针 b[0]，而 b[0] 又指向第一个元素 b[0][0]。
+
+
+
+
+
+
+
+
+
+
 
 
 

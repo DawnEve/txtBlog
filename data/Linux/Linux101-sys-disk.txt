@@ -1048,6 +1048,29 @@ yum history new
 
 
 ========================================
+系统设置：英语语言/
+----------------------------------------
+
+1. 设置系统语言
+
+$ cat /etc/locale.conf 
+#LANG="zh_CN.UTF-8"
+LANG="en_US.UTF-8"
+
+
+
+2. 如果还不行
+位于/etc/profile.d/目录下的这个lang.sh优先度高于locale.conf
+LANG=zh_CN.UTF-8 改为默认的 LANG=en_US.UTF-8
+
+
+
+
+
+
+
+
+========================================
 磁盘管理基本概念
 ----------------------------------------
 磁盘基本概念：
@@ -2231,6 +2254,151 @@ Disk identifier: 6C75BFAA-129A-426A-9AF0-7DDCAE98A18B
 
 
 
+
+
+
+
+
+
+
+========================================
+swap 分区的管理: 扩容、清空
+----------------------------------------
+
+1.查看交换文件的大小
+free -m
+
+$ free -m
+              total        used        free      shared  buff/cache   available
+Mem:          31792        8124        1153         130       22514       23086
+Swap:          2047        2047           0
+
+
+
+(2) swap清理
+警示：清理时，空闲内存 （free 命令的空闲内存一定要大于交换内存)
+$ swapoff -a && swapon -a
+
+
+
+
+
+
+2. 修改交换文件的小，建议和物理内存一样
+(1) 创建文件
+sudo fallocate -l 16.0G /data/swapfile
+
+关闭交换文件
+sudo swapoff /data/swapfile
+
+启用交换文件
+sudo swapon /data/swapfile
+
+
+
+(2).如果新建时报错，建议修改权限、格式化
+$ sudo chmod 600 /data/swapfile 
+
+格式化
+$ sudo mkswap /data/swapfile 
+Setting up swapspace version 1, size = 16 GiB (17179865088 bytes)
+no label, UUID=513884f1-139a-458d-b736-e07216cfff73
+
+
+启动该 swap 文件
+$ sudo swapon /data/swapfile
+再看 htop，真的是 16G内存了。
+
+
+
+(3) 可选，对于需要重启的机器，添加系统启动自动挂载
+vim /etc/fstab
+末尾添加: (可能不对)
+/data/swapfile  swap   swap  defaults  0 0
+
+另一个教程添加的语句是：(可能是对的)
+/data/swapfile none swap sw 0 0
+
+
+原来有一行
+/swapfile                                 none            swap    sw              0       0
+不敢替换，等用虚拟机验证过再试。
+
+
+
+
+
+3. 如何删除swap?
+#首先输入以下命令停用 SWAP 空间：
+sudo swapoff -v /swapfile
+
+#在 /etc/fstab 文件中删除有效 swap 的行
+
+#最后执行以下命令删除 swapfile 文件：
+sudo rm /swapfile
+
+
+
+
+
+
+4. 设置多大的swap合理呢?
+
+物理内存RAM	/Swap虚拟内存
+RAM<=2GB	SWAP = RAM*2
+3GB<=RAM<=8GB	SWAP = RAM
+RAM>8GB	SWAP <=4GB
+
+一般物理内存小于2GB就设置为内存的两倍，小于8GB设置为等于内存，大于8GB的设置小于4GB
+
+实例1: 物理内存 252G，swap 128G 
+$ lsblk
+NAME               MAJ:MIN RM   SIZE RO TYPE MOUNTPOINT
+sda                  8:0    0   7.3T  0 disk 
+└─sda1               8:1    0   7.3T  0 part /data2
+sdb                  8:16   0   7.3T  0 disk 
+└─sdb1               8:17   0   7.3T  0 part /data3
+sdc                  8:32   0  1024G  0 disk 
+├─sdc1               8:33   0   200M  0 part /boot/efi
+├─sdc2               8:34   0   500M  0 part /boot
+├─sdc3               8:35   0 895.3G  0 part /
+└─sdc4               8:36   0   128G  0 part [SWAP]
+
+
+
+
+5. 还有说swappiness参数调小的
+
+查询:
+$ cat /proc/sys/vm/swappiness
+60
+
+
+当该参数= 0，表示只要有可能就尽力避免交换进程移出物理内存; 
+该参数=100，这告诉内核疯狂的将数据移出物理内存移到swap缓存中。
+
+这个值只是一个Linux在判断是否交换内存(swap)的一个“倾向”参考值，而并不是说，设置为0以后，Linux就完全不会使用内存交换空间
+然后 ubuntu 和 centos 一般默认都是 60 ，就是当内存使用=(100%-60%)*内存总量时移到 swap 区。
+
+
+$ sysctl vm.swappiness=10 #临时修改
+
+$ echo "vm.swappiness=10" >> /etc/sysctl.conf #永久修改
+$ sysctl -p #生效
+
+
+改完之后就会使用物理内存了，刚才卡的情况也解决了
+
+
+
+
+
+
+
+ref:
+https://www.csdn.net/tags/MtTaIg0sNzU2OTIzLWJsb2cO0O0O.html
+https://blog.csdn.net/qq_33505611/article/details/110501166
+https://blog.csdn.net/m0_37750806/article/details/120377304
 
 
 
@@ -5409,7 +5577,7 @@ Usage:
 
 (1) 查看多路径当前状态
 $ sudo multipath -ll
-mpatha (3600a098000e3d282000002885c11248a) dm-0 DELL    ,MD38xxf         #这个是 ELL 的设备
+mpatha (3600a098000e3d282000002885c11248a) dm-0 DELL    ,MD38xxf         #这个是 DELL 的设备
 size=146T features='3 queue_if_no_path pg_init_retries 50' hwhandler='1 rdac' wp=rw
 |-+- policy='service-time 0' prio=14 status=active
 | `- 14:0:0:0 sdc 8:32 active ready running  #底下挂着1/2个盘 /dev/sdc
@@ -5676,6 +5844,76 @@ multipath -ll
 
 
 
+
+
+========================================
+戴尔存储服务器 MD3800f 怎么连接?
+----------------------------------------
+存储机器的名字: MD38xxf
+
+
+1. 老的历史记录 under /etc/ 
+./fstab:15:#/dev/sde1	/mnt/test1	xfs	defaults 	0 0
+
+
+其他人的配置方法:
+https://www.zhihu.com/column/c_1320845523092815872
+https://blog.csdn.net/weixin_35775608/article/details/119587480
+
+
+2. 
+$ sudo mount /dev/sr0 /mnt/t1/
+$ lsblk
+NAME              MAJ:MIN RM   SIZE RO TYPE  MOUNTPOINT
+sr0                11:0    1   928K  0 rom   /mnt/t1
+
+$ cd /mnt/t1
+$ cd /mnt/t1/rpms/x86_64
+$ sudo rpm -ivh kmod-megaraid_sas-07.720.04.00_el7.9-1.x86_64.rpm
+
+$ rpm -qa | grep -i mega
+kmod-megaraid_sas-07.720.04.00_el7.9-1.x86_64
+
+
+$ cd /opt/dell/mdstoragesoftware/mdstoragemanager/agent
+
+
+
+
+
+3. 关于存储的光盘资料: Dell PowerVault MD32/MD34/MD36/MD38 Series Resource DVD
+https://www.dell.com/support/home/en-ca/drivers/driversdetails?driverid=r9g1x
+
+
+
+挂载光盘:
+## mount -o loop -t iso9660 CentOS-7.0-1406-x86_64-bin-DVD.iso /media/_local_repo_DVD
+
+$ sudo mkdir /mnt/t2
+$ mount -o loop -t iso9660 data/software/DELL_MDSS_Consolidated_RDVD_6_5_0_1.iso /mnt/t2
+mount: /dev/loop0 is write-protected, mounting read-only
+
+$ cd /mnt/t2
+
+
+$ ls -lth
+total 12M
+dr-xr-xr-x.  9 root root 2.0K Nov 23  2016 linux
+dr-xr-xr-x.  6 root root 2.0K Nov 23  2016 windows
+-r-xr-xr-x.  1 root root  755 Nov 23  2016 autorun
+-r-xr-xr-x.  1 root root   33 Nov 23  2016 Autorun.inf
+dr-xr-xr-x. 12 root root 2.0K Nov 23  2016 launcher_data
+-r-xr-xr-x.  1 root root 3.7K Nov 23  2016 linux_hostnameupdates.sh
+-r-xr-xr-x.  1 root root 1.5M Nov 23  2016 md_launcher.exe
+-r-xr-xr-x.  1 root root 3.6M Nov 23  2016 md_launcher_rhel_x86_64.bin
+-r-xr-xr-x.  1 root root 3.2M Nov 23  2016 md_launcher_rhel_x86.bin
+-r-xr-xr-x.  1 root root 2.0K Nov 23  2016 md_launcher.sh
+-r-xr-xr-x.  1 root root 3.4M Nov 23  2016 md_launcher_sles_x86_64.bin
+-r-xr-xr-x.  1 root root 5.7K Nov 23  2016 md_prereq_install.sh
+-r-xr-xr-x.  1 root root  12K Nov 23  2016 Readme.txt
+
+
+//todo
 
 
 

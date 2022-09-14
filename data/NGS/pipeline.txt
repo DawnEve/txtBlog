@@ -18,6 +18,12 @@
 
 
 
+todo:
+	一个流程可视化py工具 https://github.com/spotify/luigi
+
+
+
+
 ========================================
 生信分析流程pipeline概述
 ----------------------------------------
@@ -3137,10 +3143,263 @@ https://www.jianshu.com/p/8e57fd2b81b2
 
 
 
+========================================
+|-- 怎么嵌套 子流程 Sub-Workflows? 表示依赖? //todo
+----------------------------------------
+
+https://snakemake.readthedocs.io/en/stable/snakefiles/modularization.html#snakefiles-modules
+官方给的例子极其精简，很难流畅的运行。
+
+subworkflow otherworkflow:
+    workdir:
+        "../path/to/otherworkflow"
+    snakefile:
+        "../path/to/otherworkflow/Snakefile"
+    configfile:
+        "path/to/custom_configfile.yaml"
+
+rule a:
+    input:
+        otherworkflow("test.txt")
+    output: ...
+    shell:  ...
+
+探索如下：
+怎么运行子流程？done;
+怎么解决几个子流程的依赖顺序？ -np 参数报错，去掉后可能按顺序正常。
+
+
+
+
+
+1. flowA
+$ cd /data/wangjl/test/snake/
+$ mkdir flowA
+$ cat flowA/main.sf 
+rule all:
+  input:"A.txt", "B.txt"
+  output:"C.txt"
+  shell: "cat {input} >{output}"
+
+准备两个文本文件:
+$ cat A.txt 
+This is A.txt
+$ cat B.txt 
+from B.txt
+运行:
+$ snakemake -s flowA/main.sf -j 2
+
+新生成的文件:
+$ cat C.txt 
+This is A.txt
+from B.txt
+
+
+
+
+
+2. flowB
+和A类似，不过调用了一个py脚本，多停留几秒钟。
+$ mkdir flowB
+$ vim flowB/mergeWithPy.sf
+#SI=["A", "B"]
+configfile: "configfile.yaml"
+SI=config["sample"]
+
+rule all:
+  input:expand("{index}.txt", index=SI)
+  output:"C2.txt"
+  run: 
+    import time
+    with open(output[0], "w") as out:
+      for i in input:
+        sample=i.split('.')[0]
+        for line in open(i):
+          time.sleep(1)
+          out.write(sample+": "+ line)
+
+配置文件
+$ vim configfile.yaml
+sample:
+ - A
+ - B
+ - C
+
+
+运行:
+$ rm C2.txt 
+$ snakemake -s flowB/mergeWithPy.sf -j 2
+
+检查输入
+$ cat C2.txt 
+A: This is A.txt
+B: from B.txt
+C: This is A.txt
+C: from B.txt
+
+
+
+
+3. flowC 检查前两个生成的文件有几行
+需要依赖前A/B个流程结束后的文件。
+而B又依赖A。
+
+第一版：
+仅仅使用一个嵌套: 
+特别注意：没有配置文件语句则报错：https://github.com/snakemake/snakemake/issues/24
+$ vim mainC1.sf
+subworkflow otherworkflow1:
+	snakefile: "flowA/main.sf"
+	configfile: "configfile.yaml" #虽然不用，也要指定一个配置文件。
+
+rule all:
+	input: otherworkflow1("C.txt")
+
+
+运行:
+$ snakemake -s mainC1.sf -j 2 -np
+$ snakemake -s mainC1.sf -j 2
+
+
+
+
+
+第2版：C依赖A+B
+$ vim mainC2.sf
+subworkflow otherworkflow1:
+	workdir:
+		"./"
+	snakefile:
+		"flowA/main.sf"
+	configfile: "configfile.yaml"
+
+subworkflow otherworkflow2:
+	workdir:
+		"./"
+	snakefile:
+		"flowB/mergeWithPy.sf"
+	configfile:
+		"configfile.yaml"
+
+rule all:
+	input:
+		"WC.txt"
+
+rule run1:
+	input:
+		otherworkflow1("C.txt"),
+		otherworkflow2("C2.txt"),
+	output:"WC.txt"
+	shell: "wc {input} > {output}"
+
+删除中间文件
+$ rm C.txt C2.txt
+
+运行总流程
+$ snakemake -s mainC2.sf -j 2 -np #报错，C2.txt的依赖没解决
+$ snakemake -s mainC2.sf -j 2
+
+检查结果
+$ cat WC.txt 
+ 2  5 25 /data/wangjl/test/snake/C.txt
+ 4 14 62 /data/wangjl/test/snake/C2.txt
+
+
+
+
+
+
+第3版：B依赖A，C依赖A+B 失败
+$ vim mainC3.sf
+subworkflow otherworkflow1:
+	workdir:
+		"./"
+	snakefile:
+		"flowA/main.sf"
+	configfile: "configfile.yaml"
+
+subworkflow otherworkflow2:
+	workdir:
+		"./"
+	snakefile:
+		"flowB/mergeWithPy.sf"
+	configfile:
+		"configfile.yaml"
+
+rule all:
+	input:
+		"WC.txt"
+
+rule run1:
+	input: otherworkflow1("C.txt")
+	output: temp("done1.txt")
+	shell: "touch {output[0]}"
+
+rule run2:
+	input: otherworkflow2("C2.txt"), "done1.txt"
+	output: temp("done2.txt")
+	shell: "touch {output}"
+
+
+rule run3:
+	input: "done1.txt", "done2.txt"
+	output: "WC.txt"
+	shell: "wc C.txt C2.txt > {output}"
+
+删除中间文件
+$ rm C.txt C2.txt WC.txt
+
+运行总流程
+$ snakemake -s mainC3.sf -j 2 -np #还是报错，flowB 无法找到以来的C.txt
+$ snakemake -s mainC3.sf -j 2
+
+
+
+
+第4版：B依赖A，C依赖A+B 
+这个语法最终没有通过 https://github.com/snakemake/snakemake/issues/743
+而是使用了 Module: https://github.com/snakemake/snakemake/pull/888
+
+$ vim mainC4.sf
+configfile: "configfile.yaml"
+
+rule all:
+	input:
+		"WC.txt"
+
+rule run1:
+	input: "A.txt", "B.txt"
+	output: "C.txt"
+	subworkflow: "flowA/main.sf"
+
+rule run2:
+	input: "C.txt"
+	output: "C2.txt"
+	subworkflow: "flowB/mergeWithPy.sf"
+
+rule run3:
+	input: "C.txt", "C2.txt"
+	output: "WC.txt"
+	shell: "wc {input} > {output}"
+
+删除中间文件
+$ rm C.txt C2.txt WC.txt
+
+运行总流程
+$ snakemake -s mainC4.sf -j 2 -np #还是报错，flowB 无法找到以来的C.txt
+$ snakemake -s mainC4.sf -j 2
+
+
+
+
+
 
 ========================================
 |-- *** 疑难杂症 ***
 ----------------------------------------
+
+
+
 
 ========================================
 |-- shell命令各种问题，如：怎么处理 awk 同时有单引号、双引号的报错？

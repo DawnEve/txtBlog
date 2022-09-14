@@ -21,6 +21,26 @@ Seurat 4 R包源码解析 总目录: https://zhuanlan.zhihu.com/p/465392721
 
 
 ========================================
+问题汇总
+----------------------------------------
+
+1. 调用 tSNE 后还做了一次 PCA 
+两次PCA基本一致。除了浪费时间。后面的聚类不依赖 tSNE，它仅仅用于可视化。
+2 次 PCA 的差异: https://github.com/satijalab/seurat/issues/47
+
+
+
+
+
+
+
+
+
+
+
+
+
+========================================
 |-- step1: Read10X()
 ----------------------------------------
 标题: Seurat 4 源码解析 4: step1 读入10x数据到内存 Read10X(data.dir=) https://zhuanlan.zhihu.com/p/464317172
@@ -7414,8 +7434,9 @@ https://www.jianshu.com/p/72313d70d9ab
 
 
 ========================================
-|-- Seurat 4 R包源码解析 22: step10 细胞聚类 FindClusters() //todo
+|-- Seurat 4 R包源码解析 22: step10 细胞聚类 FindClusters()
 ----------------------------------------
+
 1. 调包侠
 # step10 Cluster the cells
 pbmc <- FindNeighbors(pbmc, dims = 1:10)
@@ -7428,14 +7449,71 @@ table(pbmc$seurat_clusters)
 
 
 (1) 有4种算法 algorithm= 参数，默认是1
+
 #' @param algorithm Algorithm for modularity optimization (
-# 1 = original Louvain algorithm; 
-# 2 = Louvain algorithm with multilevel refinement; 
+# 1 = original Louvain algorithm;  #原始鲁汶算法
+# 2 = Louvain algorithm with multilevel refinement;  #多级细化的Louvain算法;
 # 3 = SLM algorithm; 
 # 4 = Leiden algorithm). Leiden requires the leidenalg python.
 
+其中，smart local moving (SLM) algorithm[算法3] 是 2015 年提出的，原文用 java 写的。
+该软件包还提供了 
+* [算法1]the well-known Louvain algorithm for large-scale community detection developed by Blondel, Guillaume, Lambiotte, and Lefebvre (2008). 
+* [算法2]An extension of the Louvain algorithm with a multilevel refinement procedure, as proposed by Rotta and Noack (2011)。
 
-(2) 分辨率参数支持数组
+
+Louvain 算法的作者，推荐使用 Leiden algorithm[算法4]，说后者提供了多种改进。
+Instead of the smart local moving algorithm, we recommend to use the Leiden algorithm. The Leiden algorithm offers various improvements to the smart local moving algorithm. 
+
+
+
+==> 基于模块的大规模社群检测，也是一个重要的研究方向。//todo
+
+
+
+参考：
+* A smart local moving algorithm for large-scale modularity-based community detection http://www.ludowaltman.nl/slm/
+* (作者答疑) Using the Leiden algorithm to find well-connected clusters in networks https://www.cwts.nl/blog?article=n-r2u2a4
+* (论文)From Louvain to Leiden: guaranteeing well-connected communities https://www.nature.com/articles/s41598-019-41695-z
+
+
+
+
+VOS Clustering 相关资料: 
+Comparing Louvain method and VOS Clustering http://mrvar.fdv.uni-lj.si/pajek/community/LouvainVOS.htm 
+Detecting Communities with Louvain Method and VOS Clustering http://mrvar.fdv.uni-lj.si/pajek/community/CommunityDrawExample.htm
+java: https://github.com/dwslab/melt/blob/melt-3.2/matching-jena-matchers/src/main/java/de/uni_mannheim/informatik/dws/melt/matching_jena_matchers/multisource/clustering/ComputeErrDegree.java
+https://dwslab.github.io/melt/javadoc_latest/de/uni_mannheim/informatik/dws/melt/matching_jena_matchers/multisource/clustering/VOSClusteringTechnique.html
+
+
+
+
+
+
+
+(2) 输出
+> pbmc <- FindClusters(pbmc, resolution = 0.5)
+Modularity Optimizer version 1.3.0 by Ludo Waltman and Nees Jan van Eck #C++代码的输出
+
+Number of nodes: 2638
+Number of edges: 95965
+
+Running Louvain algorithm...
+0%   10   20   30   40   50   60   70   80   90   100%
+[----|----|----|----|----|----|----|----|----|----|
+**************************************************|
+Maximum modularity in 10 random starts: 0.8723
+Number of communities: 9
+Elapsed time: 0 seconds
+
+
+
+
+
+
+
+
+(3) 分辨率参数支持数组
 #对象中使用最后一个参数的分组方式
 pbmc=FindClusters(pbmc, resolution = c(0.2,0.8))
 #查看 
@@ -7447,7 +7525,122 @@ Idents(pbmc)="RNA_snn_res.0.2"
 DimPlot(tmp, label=T)
 
 
-(3) 
+
+
+
+
+(4) 尝试用 Leiden 算法对细胞分群
+
+Leiden 发文章时提供的是 Java 版本的实现: https://github.com/CWTSLeiden/networkanalysis
+搞不定 Java 的编译，先跳过吧。
+
+Seurat 4 中的 Leiden 是调用 python 包实现的。
+不确定是不是这个(c++/py)，虽然名字一致: https://github.com/vtraag/leidenalg
+这个repo和上文 Java 实现有一个共同的作者:Vincent Traag。
+
+我推测下一个版本中，Seurat 会把 Leiden 的 Python 实现替换为 C++ 的实现。
+
+
+> pbmc2=FindClusters(pbmc, algorithm = 4)
+Error: Cannot find Leiden algorithm, please install through pip (e.g. pip install leidenalg).
+
+$ pip3 install leidenalg
+Successfully installed igraph-0.9.11 leidenalg-0.8.10 texttable-1.6.4
+
+再次调用R函数还是报同样的错，可能是R使用的py路径不对。
+按下面走应该就可以了。
+
+
+1) 先安装2个python依赖包:
+$ which python3
+/home/wangjl/anaconda3/bin/python3
+$ which python
+/home/wangjl/anaconda3/bin/python
+
+$ pip3 -V
+pip 20.3.3 from /home/wangjl/anaconda3/lib/python3.7/site-packages/pip (python 3.7)
+$ pip3 install leidenalg
+$ pip3 install igraph
+
+检查版本号
+$ pip list | grep leidenalg
+leidenalg                         0.8.10
+$ pip list | grep igraph
+igraph                            0.9.11
+
+
+
+
+2) 在R中设置py环境: 
+https://blog.csdn.net/weixin_30642029/article/details/95210474
+https://blog.csdn.net/tandelin/article/details/88031770
+
+# 先启动一个 R session
+# 指定R上使用的python的环境 (有可能要求重启R 进程)
+# reticulate::use_virtualenv("/home/wangjl/anaconda3/lib/python3.7/") #不行
+library("reticulate")
+use_python("/home/wangjl/anaconda3/bin/python", required = T) #设置要使用的 python
+py_config()
+
+# 检查py环境
+py_discover_config(required_module = NULL, use_environment = NULL)
+
+# 检查是否有这个包
+py_module_available("igraph") #T
+py_module_available("leidenalg") #T
+#
+
+注意
+i) 每开启一个session，第一次设置生效，之后再使用这个命令不生效，需要重启session
+ii) py_config()命令要放在最后，使设置生效
+
+
+
+3) 开始调用 Leiden 算法对细胞分群[算法4]
+
+library(Seurat)
+library(dplyr)
+library(ggplot2)
+
+# 载入 Seurat 4 分析过的 pbmc 3k 数据集
+pbmc=readRDS("/data/wangjl/r-pkg/data/pbmc3k_tutorial.rds")
+
+# 分群和可视化
+pbmc2=FindClusters(pbmc, algorithm = 4, resolution = 0.6) #使用算法4分群
+table(pbmc2$seurat_clusters)
+p1=DimPlot(pbmc2, label = T)+ggtitle("Leiden[4]")
+#
+p2=DimPlot(pbmc, label = T)+ggtitle("Louvain[1]")
+pbmc_=pbmc
+Idents(pbmc_)=pbmc_$seurat_clusters
+p2_=DimPlot(pbmc_, label = T)+ggtitle("Louvain[1]")
+
+p1+p2_+p2 #图形的比较
+
+
+# 比较一下各个类的细微差别
+> table(pbmc$seurat_clusters, pbmc2$seurat_clusters)
+    1   2   3   4   5   6   7   8   9
+  0 643  18   0   0  23   0   0   0   0
+  1   0   0 480   0   0   1   0   0   0
+  2   0 476   0   0   0   0   0   0   0
+  3   0   0   0 344   0   0   0   0   0
+  4   0   0   0   0 290   0   1   0   0
+  5   0   0   0   0   0 162   0   0   0
+  6   0   0   0   0   0   0 155   0   0
+  7   0   0   0   0   0   0   0  32   0
+  8   0   0   0   0   0   0   0   0  13
+
+
+Leiden 和 Louvain 结果只有细微的差异，可能是因为顶点(3k)还是太少，如果细胞数达到20k-30k差异就明显了: 有些在UMAP上撕裂开的 cluster在Leiden下就真的分成2个 cluster了。
+- Leiden 的分类是1-based。
+- 和Louvain主体都在对角线上，只有在大团的交界处有一些不一致。
+
+
+
+
+
+
 
 
 
@@ -7461,31 +7654,30 @@ DimPlot(tmp, label=T)
 * FindClusters.Seurat()
 	* CheckDots() //todo 
 	* names()
+	* AddMetaData() //todo
 	* levels()
 	* LogSeuratCommand() //todo
 
 * FindClusters.default()
-	* RunModularityClustering()
+	* RunModularityClustering() //todo  #R代码的尽头通常是C++，这里又出来了 java。
+		* RunModularityClusteringCpp() #下一节看看 Rcpp 包怎么写。又不然被迫中断好几次了。
+		* #include "ModularityOptimizer.h"
+		* ModularityOptimizer.cpp 这个文件。 //todo
+	* GroupSingletons()
 
 
 
 
-
+intermediate [ˌɪntəˈmiːdiət] adj. 居中的，中间的；中等程度的，中级的
+modularity [ˌmɒdjʊˈlærɪtɪ] n. [计] 模块性
 
 ()
 ./seurat-object-4.0.4/R/seurat.R:2466:names.Seurat <- function(x) {
-
-
-
 
 ()
 ./seurat-object-4.0.4/R/seurat.R:2240:levels.Seurat <- function(x) {
 
 
-()
-./seurat-4.1.0/R/clustering.R:1737:RunModularityClustering <- function(
-./seurat-4.1.0/R/RcppExports.R:4:RunModularityClusteringCpp <- function(SNN, modularityFunction, resolution, algorithm, nRandomStarts, nIterations, randomSeed, printOutput, edgefilename) {
-./seurat-4.1.0/R/RcppExports.R:5:    .Call('_Seurat_RunModularityClusteringCpp', PACKAGE = 'Seurat', SNN, modularityFunction, resolution, algorithm, nRandomStarts, nIterations, randomSeed, printOutput, edgefilename)
 
 
 
@@ -7493,15 +7685,41 @@ DimPlot(tmp, label=T)
 
 3. R tips 
 
+(1) 创建空数据框，并添加每列(数据框的一列数据类型要一致)
+gene=paste0("gene", 1:5)
+df1=data.frame(row.names=gene) #创建空数据框，只有行名
+df1 
+# data frame with 0 columns and 5 rows
+
+for(i in 1:3){
+  df1[, paste0("cell", i)]=rep(i, 5)
+}
+df1
+# 输出 
+      cell1 cell2 cell3
+gene1     1     2     3
+gene2     1     2     3
+gene3     1     2     3
+gene4     1     2     3
+gene5     1     2     3
 
 
 
+(2) 找向量中只出现一次的元素
+
+源码: singletons <- names(x = which(x = table(ids) == 1))
 
 
-
-
-
-
+> arr1=c(1,2,2,3,3,3,4,5,5)
+> table(arr1)
+arr1
+1 2 3 4 5 
+1 2 3 1 2 
+> which( table(arr1)==1 )
+1 4 
+1 4 
+> names(which( table(arr1)==1 ))
+[1] "1" "4"
 
 
 
@@ -7511,6 +7729,4679 @@ DimPlot(tmp, label=T)
 
 ref:
 https://www.jianshu.com/p/5b03302f5367
+
+
+
+
+
+========================================
+|-- 社区发现，模块度(modularity) 与 Louvain 算法
+----------------------------------------
+
+1. 社区发现 
+https://blog.csdn.net/itplus/article/details/41348651
+
+那些内部连接比较紧密的节点子集合对应的子图叫做社区（community）。
+* 各社区节点集合彼此没有交集的称为非重叠型（disjoint）社区，
+* 有交集的称为重叠型（overlapping）社区。
+
+网络图中包含一个个社区的现象称为社区结构，社区结构是网络中的一个普遍特征。
+给定一个网络图，找出其社区结构的过程叫做社区发现（community detection）。
+
+
+
+
+
+
+
+2. modularity 的定义 
+
+(1) 论文
+paper: [Finding community structure in very large networks](http://ece-research.unm.edu/ifis/papers/community-moore.pdf)
+
+模块度（Modularity）用来衡量一个社区的划分是不是相对比较好的结果。一个相对好的结果在社区内部的节点相似度较高，而在社区外部节点的相似度较低。
+
+在进行每次划分的时候计算Q值，Q取值最大的时候则是此网路较理想的划分。Q值的范围在0-1之间，Q值越大说明网络划分的社区结构准确度越高，在实际的网络分析中，Q值的最高点一般出现在0.3-0.7之间。
+
+
+
+
+
+3. 算法实现
+(1) 论文
+paper: [Fast unfolding of communities in large networks](http://antipaedo.lip6.fr/T12/communities.pdf) 这个公式多了一个2，可能不对。
+	v2: https://arxiv.org/pdf/0803.0476v2.pdf #这个公式正确。
+
+Louvain算法来自于Vincent等人发表的文章《Fast unfolding of communities in large networks》，是基于模块度（modularity）进行社区发现，该算法的优点在于速度快，可以在较短时间内实现大规模网络以不同粒度的社区划分。
+
+基于R的图挖掘库igraph: https://cran.r-project.org/web/packages/igraph/igraph.pdf
+
+
+(2)
+算法解释: https://www.jianshu.com/p/3518fb2f7fd2
+	https://wenku.baidu.com/view/248b721a5427a5e9856a561252d380eb629423bd.html
+	算法图示: https://zhuanlan.zhihu.com/p/178790546
+	https://www.jianshu.com/p/4ebe42dfa8ec
+	Louvain 算法原理 及设计实现 https://blog.csdn.net/xsqlx/article/details/79078867
+	https://mp.weixin.qq.com/s?__biz=MzAwMjI2MTQyNQ%3D%3D&idx=1&mid=2247483692&scene=21&sn=33973cada0f86460ee2cd2a5e606c288
+单细胞中的使用: https://blog.csdn.net/AstreChen/article/details/105421544
+
+
+参考实现1: https://github.com/xmweijh/CommunityDetection (.py 已经可以运行)
+参考实现2: https://zenodo.org/record/35117#.YpN7L6hByUl (.h, .py,)
+参考实现3: https://github.com/zzz24512653/CommunityDetection/blob/master/algorithm/graphx/Louvain/src/main/scala/Louvain.scala (Java 版)
+参考实现4: https://github.com/liuzhiqiangruc/dml/blob/master/cls/louvain.c (C/C++ 版)
+
+spark 版: https://github.com/Sotera/spark-distributed-louvain-modularity
+
+
+
+
+
+(3) 主要读那2篇论文
+
+
+
+
+最新进展见:
+==> 知乎文章: https://zhuanlan.zhihu.com/p/522751212
+==> github 尝试: https://github.com/DawnEve/bioToolKit/tree/master/Python/Louvain
+
+==> 带分辨率参数的 Louvain 算法实现 C++版: https://github.com/satijalab/seurat/blob/master/src/ModularityOptimizer.cpp
+
+
+
+
+
+
+
+
+
+==> 图神经网络 GNN
+通俗版: https://baijiahao.baidu.com/s?id=1675371629861051208&wfr=spider&for=pc
+图神经网络(GNN)的简介 https://baijiahao.baidu.com/s?id=1628693684916891399&wfr=spider&for=pc
+图神经网络从入门到入门 https://zhuanlan.zhihu.com/p/136521625
+
+
+
+==> Louvain vs Leiden:
+描述 https://blog.csdn.net/weixin_39609500/article/details/111268529
+
+
+
+
+
+
+========================================
+|-- 如何写R包 1: 最简流程
+----------------------------------------
+https://zhuanlan.zhihu.com/p/524041227
+
+当你需要 source() 的函数越来越多时，Rstudio 右上角进度条越来越细时，你想过怎么改善一下体验吗？写个R包吧，把这些函数丢进去即可。
+
+
+
+本文主题: 怎么创建一个R包?
+- 操作原则: 依赖 Rstudio，及尽可能少的R包，主要用命令。
+- 本次测试的包都创建在目录 ~/data/r-pkg/ 下。
+- 包的名字暂时叫 pkgS 后加上数字。
+
+
+1. 新建工程
+菜单 File - new project，点击 New Directory - R Package,
+填写 包名 pkgS1
+选择路径 ~/data/r-pkg
+点击右下角 Create project
+
+然后刷新后，就位于该 project 下了。
+> getwd()
+[1] "/data/wangjl/r-pkg/pkgS1"
+
+
+目录结构如下
+$ pwd
+/data/wangjl/r-pkg/pkgS1
+
+$ tree
+.
+├── DESCRIPTION #说明文档，主要修改该R包的信息，包括R包名title、版本号version、作者author等
+├── man   #按F1时显示的帮助文档。手写太麻烦，现在一般自动生成该文件夹下的文档
+│   └── hello.Rd
+├── NAMESPACE  #命名空间，也基本依赖自动生成
+├── pkgS1.Rproj #项目信息，一般不要修改
+└── R #你的自定义函数，要严格按规定写注释，方便自动生成 man/ 下的帮助文档。
+    └── hello.R
+
+2 directories, 5 files
+
+
+
+也可以使用纯脚本方式生成该R包目录结构
+> library('devtools') # 开发 R 包黑魔法工具
+> create('~/data/r_pkg/somePkg') # 建立 R 包的目录， somePkg 就是你想要的包的名称
+> setwd('~/data/r_pkg/somePkg') # 把工作目录放到 R 包中的目录，开发 R 包过程中始终推荐这样做。
+> dir() # 列出当前工作目录的文件和文件夹
+# [1] "DESCRIPTION"   "NAMESPACE"     "R"             "somePkg.Rproj"
+
+
+
+
+2. 写函数和注释
+以上是自动生成的脚手架，接下来要自定义R包的代码和注释了。
+
+最简单的R包，只需要 R/文件夹和 DESCRIPTION 即可。
+但是没有注释的大函数确实没法用~~有位名人说过“代码不写注释是万恶之源”。
+
+所以，我们主要精力都花在 R/ 目录下，努力写函数及其注释。
+我们新建R包时，系统默认帮我们新建了一个模板示例文件 R/hello.R，可以忽略或删除或改写。
+内容如下:
+# Hello, world!
+#
+# This is an example function named 'hello' 
+# which prints 'Hello, world!'.
+#
+# You can learn more about package authoring with RStudio at:
+#
+#   http://r-pkgs.had.co.nz/
+#
+# Some useful keyboard shortcuts for package authoring:
+#
+#   Install Package:           'Ctrl + Shift + B'
+#   Check Package:             'Ctrl + Shift + E'
+#   Test Package:              'Ctrl + Shift + T'
+
+hello <- function() {
+  print("Hello, world!")
+}
+
+这里给出了大神的 如何写R包的书，电子版全文免费阅读：http://r-pkgs.had.co.nz/
+
+
+
+我们新建一个文件 比如 R/calc.R，里面可以包含很多函数。
+比如对数字加100的函数
+add100=function(x){
+	x+100
+}
+
+
+tips: 光标放在函数名上，使用 Ctrl+Shift+Alt+R 快捷键即可生成一个基本模板，我们根据需要进行相应修改即可。
+
+#' Title
+#'
+#' @param x 
+#'
+#' @return
+#' @export
+#'
+#' @examples
+add100=function(x){
+  x+100
+}
+
+注意，这些注释都是有格式化要求的，开头三个字符是固定的 "#' "。
+第一行Title 换成函数的一句话说明，更详细的说明可以空一行 "#' " 后接着写更多说明。
+@param x 必须在后面写该输入参数的说明
+@return 必须在后面写返回值类型说明
+@export 这一行表明该函数是暴露出去的，用户library()该包后直接使用该函数。
+	如果没有这一行，用户 使用 包名::函数名() 找不到该函数，必须使用 包名:::函数名() 才能找到。
+@examples 的下一行要至少给出一个可执行的例子，或者把这一行去掉。
+
+比如，我们的函数添加注释后是
+
+#' Add 100 to the given number
+#'
+#' @param x a number, float or int
+#'
+#' @return a number
+#' @export
+#'
+#' @examples
+#' add100(5)
+#' add100(-90)
+add100=function(x){
+  x+100
+}
+
+
+
+
+
+3. 继续写函数和注释
+我们按照这个方式，继续在 R/ 下添加文件，在文件中添加函数及注释。
+
+我们不新建文件了，直接在 R/calc.R 中添加第二个函数，计算一列数字的百分比:
+
+#' Get the proportion of each number in an array
+#'
+#' @param x an array of numbers
+#'
+#' @return an array of proportions
+#' @export
+#'
+#' @examples
+#' prop(c(1,2,3,4,5))
+prop=function(x){
+  return(x/sum(x))
+}
+
+
+
+4. 测试
+其实我们要边写边测试，把错误消灭在萌芽状态。
+load_all() 函数很神奇地把包骨架文件夹中的 R 文件夹中的所有 .R 文件读进来了；
+每一次你改进你的 *.R 文件，只要运行一次 load_all() 就会把最新的自创函数们拉进来，在 R 环境中就可以测试最新的代码是否正常。
+
+> library('devtools')
+> load_all()
+> add100(2)
+[1] 102
+> prop(c(1,2,3,4))
+[1] 0.1 0.2 0.3 0.4
+
+
+
+5. 生成文档
+
+devtools::document() 会在 man/ 文件夹下生成该函数的Rd文件。
+
+首次执行会提示我们 Warning: The existing 'NAMESPACE' file was not generated by roxygen2, and will not be overwritten.
+看来要先删除 NAMESPACE 这个文件了。
+打开看，里面只要一行 exportPattern("^[[:alpha:]]+")，那就删了吧。
+
+> devtools::document()
+i Updating pkgS1 documentation
+i Loading pkgS1
+Writing NAMESPACE
+Writing NAMESPACE
+
+这一次正常，没有红字。
+
+检查目录结构，发现 man/ 下确实多了几个文件:
+$ tree
+.
+├── DESCRIPTION
+├── man
+│   ├── add100.Rd
+│   ├── hello.Rd
+│   └── prop.Rd
+├── NAMESPACE
+├── pkgS1.Rproj
+└── R
+    ├── calc.R
+    └── hello.R
+
+
+6. 修改DESCRIPTION
+点击 DESCRIPTION 对模块进行修改。
+这是包的描述文件，根据情况修改即可。
+
+我就修改了 Title，Version，Author，其他没动
+
+Package: pkgS1
+Type: Package
+Title: A R pkg test S1
+Version: 0.1.1
+Author: BioMooc
+Maintainer: The package maintainer <yourself@somewhere.net>
+Description: More about what it does (maybe more than one line)
+    Use four spaces when indenting paragraphs within the Description.
+License: What license is it under?
+Encoding: UTF-8
+LazyData: true
+RoxygenNote: 7.1.2
+
+
+教训: 后续如果有依赖，则 Depends中>=后面要有一个空格。
+
+
+7. 构建包
+
+就是生成 R包 安装文件。
+
+使用菜单 Rstudio -> Build，可构建源码包或者二进制包。
+	源码包："/data/wangjl/r-pkg/pkgS1_0.1.1.tar.gz"
+	二进制包: "/data/wangjl/r-pkg/pkgS1_0.1.1_R_x86_64-pc-linux-gnu.tar.gz"
+
+或者使用命令 
+> devtools::build()
+✓  checking for file ‘/data/wangjl/r-pkg/pkgS1/DESCRIPTION’ ...
+─  preparing ‘pkgS1’:
+✓  checking DESCRIPTION meta-information ...
+─  checking for LF line-endings in source and make files and shell scripts
+─  checking for empty or unneeded directories
+   Omitted ‘LazyData’ from DESCRIPTION
+─  building ‘pkgS1_0.1.1.tar.gz’
+   
+[1] "/data/wangjl/r-pkg/pkgS1_0.1.1.tar.gz"
+
+现在已经有R包文件了，可以发给被人使用了。
+
+
+8. 安装R包，测试效果
+收到该R包，然后安装该包，并测试。或在本机直接使用::测试函数。这里采用前者。
+tips: 为了减少副作用，建议先重启R进程(菜单 Session - Restart R).
+
+共三种安装方式:
+
+1) Tool - Install pkgs, 选择 from: tar.gz, archive: 选择该包 pkgS1_0.1.0.tar.gz
+
+2) 相当于语句
+> install.packages("~/data/r-pkg/pkgS1_0.1.1.tar.gz", repos = NULL, type = "source")
+
+3) 使用shell安装
+$ cd ~/data/r_pkg/
+$ R CMD INSTALL pkgS1_0.1.1.tar.gz
+
+
+安装后就可以使用了：
+> library(pkgS1)
+
+> hello()
+Error in hello() : could not find function "hello"
+> pkgS1:::hello()
+[1] "Hello, world!"
+
+> add100(-80)
+[1] 20
+
+> ?prop
+# 右侧显示了帮助文档。
+
+
+9. 分享R包
+可以把源文件上传到 github ，分享给大家了。
+
+
+
+10. 进一步学习
+- 如何依赖其他包?
+- 如何使用 C/C++ 代码提速? 
+
+
+
+
+
+
+
+
+
+附录: 如何上传到github
+1. 准备文件
+(1) 新建一个更合适的项目文件夹 (可选)
+$ cd /home/wangjl/data/project/learn_R_pkg
+
+把上一个R包源码移动到该新目录
+$ mv  ~/data/r-pkg/pkgS1 .
+
+
+(2) 设置忽略文件/文件夹 
+这些中间文件/文件夹不会被git记录。
+模仿 https://github.com/tidyverse/ggplot2
+
+$ vim .gitignore
+backup
+dustbin
+*.tar.gz
+
+docs
+.Rproj.user
+.Rhistory
+.RData
+inst/doc
+.httr-oauth
+.*.Rnb.cached
+
+man/.Rapp.history
+.DS_Store
+revdep/checks
+revdep/library
+revdep/checks.noindex
+revdep/library.noindex
+revdep/data.sqlite
+revdep/cloud.noindex
+
+
+(3) 添加许可证
+比如我们可以选择 MIT 许可证，规定了如何授权给其他用户使用我们的代码。
+$ vim LICENSE.md
+MIT License
+Copyright (c) 2020 learn_R_pkg authors
+
+Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated documentation files (the "Software"), to deal in the Software without restriction, including without limitation the rights to use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of the Software, and to permit persons to whom the Software is furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+
+
+(4) 添加 ReadMe
+项目的说明文档:
+$ vim ReadMe.md 
+
+# Learn how to build R packages
+
+- https://r-pkgs.org/
+- https://github.com/hadley/r-pkgs
+- Local: Y station:/home/wangjl/data/project/learn_R_pkg
+- github: https://github.com/BioMooc/learn_R_pkg
+
+
+# Examples
+
+- pkgS1 the basic R package build process
+
+
+
+一般我喜欢再加一个变更记录文件:
+$ cat changeLog.txt 
+v0.0.1 pkgS1 the basic R package build process
+
+
+
+2. 开始用git记录第一版，并提交github
+(1) 创建提交点
+$ git init
+
+设置用户名和邮箱
+$ git config --global user.name "jimmy"
+$ git config user.email  "JimmyMall@live.com" # 不建议加--global 
+
+
+$ git add .
+$ git status # 查看记录的文件是否符合预期
+
+创建提交点
+$ git commit -m 'v0.0.1 pkgS1 the basic R package build process'
+
+
+
+
+(3) 配置 github 地址
+由于Y station 有多个 账号信息，每个分别有自己的URL缩写，所以和官方给的略有差异。
+$ cat ~/.ssh/config
+
+### git remote add origin git@github.com:BioMooc/learn_R_pkg.git
+$ git remote add origin git@eve:BioMooc/learn_R_pkg.git
+
+$ git push origin master
+
+
+========================================
+|-- 如何写R包 2: 如何引用其他R包的函数？
+----------------------------------------
+https://zhuanlan.zhihu.com/p/524315994
+
+1. 新建R包 
+$ pwd
+/data/wangjl/project/learn_R_pkg/pkgS2
+
+
+
+
+2. 添加函数和注释
+
+$ vim R/visual.R
+#' Using a specific column of a data frame to plot a pie plot
+#'
+#' @param data a dataframe or tibble
+#' @param ncol specific column, factor
+#'
+#' @return a figure as ggplot2 object
+#' @export
+#'
+#' @importFrom ggplot2 ggplot geom_col theme aes element_text element_blank labs position_stack
+#' @importFrom ggrepel geom_text_repel
+#' @importFrom dplyr `%>%`
+#'
+#' @examples
+#' my_pie(mtcars,ncol=2)
+#' my_pie(diamonds,ncol=3)
+#' my_pie(diamonds,ncol=3)+guides(fill="none")
+my_pie <- function(data, ncol, title=""){
+  plotdat <- as.data.frame(table(data[,ncol])) %>% dplyr::arrange(-Freq)
+  plotdat$Label <- paste(plotdat$Var1, paste0("(",round(((plotdat$Freq/sum(plotdat$Freq))*100),2),"%)"))
+
+  p <- ggplot(plotdat, aes (x="", y = Freq, fill = factor(Var1))) +
+    geom_col(position = 'stack', width = 1) +
+    geom_text_repel(aes(label = Label, x = 1.3),size=5,
+                    position = position_stack(vjust = 0.5)) +
+    theme_classic() +
+    theme(plot.title = element_text(hjust=0.5),
+          axis.line = element_blank(),
+          axis.text = element_blank(),
+          axis.ticks = element_blank()) +
+    labs(fill = "Category",x = NULL,y = NULL) +
+    coord_polar("y")+ggtitle(title)
+  return(p)
+}
+
+
+
+
+
+3. 生成函数文档 和 NAMESPACE 文件
+$ rm NAMESPACE
+
+> devtools::document()
+生成文档 man/ 和 /NAMESPACE 文件。
+
+注意到 /NAMESPACE 文件中，除了要暴露的函数:
+export(my_pie)
+
+还有从其他包引入的函数列表:
+importFrom(dplyr,`%>%`)
+importFrom(ggplot2,theme)
+importFrom(ggrepel,geom_text_repel)
+
+
+
+
+
+4.测试 
+> devtools::load_all()
+
+如果在函数的注释中添加 @importFrom 语句，且执行过 devtools::document()，则可以跳过以上 library() 语句。
+否则，还需要加载要用到的包：
+library(dplyr)
+library(ggplot2)
+library(ggrepel)
+
+
+画图:
+> my_pie(mtcars,ncol=2)
+
+
+
+
+
+
+5. 修改包说明 DESCRIPTION
+修改标题
+Title: Pie plot depend on ggplot2
+
+末尾添加
+Depends:
+	R(>= 3.6.0)
+Suggest:
+	roxygen2
+Imports:
+	dplyr,
+	ggplot2,
+	ggrepel
+
+教训: Depends中>=后面要有一个空格。
+
+
+
+6. 构建 R 包 
+> devtools::build()
+## "/data/wangjl/project/learn_R_pkg/pkgS2_0.1.0.tar.gz"
+
+
+7. 测试 
+
+重启R session: 菜单 Session - Restart R;
+使用菜单安装该R包: 
+> install.packages("../pkgS2_0.1.0.tar.gz", repos = NULL, type = "source")
+
+> library(pkgS2)
+> pkgS2::my_pie(mtcars, 2)
+报错 Error in theme_classic() : could not find function "theme_classic"
+说明没有完全引入这些包中的函数，是不是应该直接引用包本身？
+
+> library(ggplot2)
+> my_pie(mtcars, 2)
+
+
+
+
+
+
+
+
+8. 改进的 @Import 注释符
+
+当只用一个或少量一个函数时，使用 #' @importFrom 包名 函数名1 函数名2 的形式。
+当使用的较多时，不如直接使用 #' @import ggplot2
+
+
+新增函数:
+$ vim R/visual.R
+
+#' Using a specific column of a data frame to plot a pie plot-v2
+#'
+#' @param data a dataframe or tibble
+#' @param ncol specific column, factor
+#'
+#' @return a figure as ggplot2 object
+#' @export
+#'
+#' @import ggplot2
+#' @importFrom ggrepel geom_text_repel
+#' @importFrom dplyr `%>%`
+#'
+#' @examples
+#' my_pie2(mtcars,ncol=2)
+#' my_pie2(diamonds,ncol=3)
+#' my_pie2(diamonds,ncol=3)+guides(fill="none")
+#my_pie2 = function(...){
+#  my_pie(...);
+#}
+my_pie2=my_pie
+
+
+同理，在放入一个和 pkgS1 同名的函数:
+$ vim R/calc.R 
+#' Add 100 to the given number
+#'
+#' @param x a number, float or int
+#'
+#' @return a number
+#' @export
+#'
+#' @examples
+#' add100(5)
+#' add100(-90)
+add100=function(x){
+  message("This is pkgS2")
+  x+100
+}
+
+
+
+生成文档
+> devtools::document()
+发现 NAMESPACE 多了一行: 
+import(ggplot2)
+
+
+重启R session(shift+ctrl+F10)
+
+测试:
+> devtools::load_all()
+> my_pie(mtcars, 2)
+> my_pie2(mtcars, 2)
+> add100(30)
+This is pkgS2
+[1] 130
+
+
+修改版本号: 
+$ vim DESCRIPTION
+Version: 0.1.3
+License: MIT
+
+
+生成R安装包
+> devtools::build()
+## "/data/wangjl/project/learn_R_pkg/pkgS2_0.1.3.tar.gz"
+
+
+安装使用: 
+> install.packages("../pkgS2_0.1.3.tar.gz", repos = NULL, type = "source")
+
+重启R session: 快捷键 ctrl+shift+F10
+> library(pkgS2)
+> my_pie(mtcars, 2)
+> add100(6)
+This is pkgS2
+[1] 106
+
+
+
+
+
+
+
+
+
+
+
+9. DESCRIPTION 中的关键词
+
+(1) 影响范围
+说法1: DESCRIPTION主要影响软件包的安装，而不是运行时的行为。
+说法2: Imports and depends are identical for the purpose of installation - they only differ in their package-load-time behaviour.
+
+
+(2) 书写示例: 可以指定最低版本号，也可以不指定。
+参考权威包，似乎都可以避免在 Depends 中添加东西:
+	https://github.com/satijalab/seurat/blob/master/DESCRIPTION
+	https://github.com/tidyverse/ggplot2/blob/main/DESCRIPTION
+
+Depends:
+    R (>= 4.0.0),
+    methods
+Imports:
+	ggplot2 (>= 3.3.0),
+	grid,
+	leiden (>= 0.3.1),
+	knitr (>= 1.13),
+	rmarkdown (>= 1.0)
+Suggests:
+    enrichR,
+    mixtools,
+    ggrastr
+
+永远不要在一个包中使用require()或library()，相反， 应该在 DESCRIPTION 的 Depends 或 Imports 字段部分填入包名。
+
+
+
+(3) 那么，Imports与Depends部分到底有什么区别呢？什么时候该使用它们呢？
+
+Imports和Depends包部分会确保你所需要的依赖包被安装，主要的区别是Imports中的包仅仅会被导入，而Depends中的包会被绑定，没有其他的区别了。
+
+假设你开发的包需要dplyr，你把它列到了Depends，那么载入你开发的包的用户它会发现dplyr也被载入了，而且能够直接使用里面的函数。
+而写在Imports的话，dplyr里面的函数用户是不可以直接使用的。
+
+
+举例：使用 Imports 的包只能该包使用，用户不能直接使用
+> ggplot(mtcars, aes(mpg, cyl))+geom_point()
+Error in ggplot(mtcars, aes(mpg, cyl)) : could not find function "ggplot"
+
+而如果是  Depends 里写 ggplot2，则导入包后，包的函数可以用，用户也可以直接使用该包，就像 library() 过该 Depends 包一样。
+
+
+
+
+
+10. 一个github 仓库包含多个R包怎么安装？
+
+卸载R包
+> remove.packages("pkgS2", lib="~/R/x86_64-pc-linux-gnu-library/4.1")
+
+注: 也可以把几个包都保存到一个目录下，然后把该目录推送到github的一个repo中，然后这样安装:
+##devtools::install_github("userName/repoName/subDir")
+> devtools::install_github("BioMooc/learn_R_pkg/pkgS2")
+
+
+
+
+
+
+
+========================================
+|-- 如何写R包 3: 如何使用 .C() 接口调用 C 代码？
+----------------------------------------
+https://zhuanlan.zhihu.com/p/525123593
+
+前置知识：读者要理解C语言基础及其编译运行。
+
+主要包括4步:
+- 编写并调试 C 代码;
+- 生成动态链接库 .so 文件: $ R CMD SHLIB xx.c
+- 载入动态链接库: > dyn.load("xx.so")
+- R 中调用: > .C("c_func_names", para_1=, para_2=)
+
+
+
+1. 新建R包项目 pkgS3 
+参考第一篇，创建R包目录结构。
+
+
+
+2. 计算累加的函数 addTo(x): R 函数版
+$ vim R/calc.R 
+#' Add to number x
+#'
+#' @param x an int
+#'
+#' @return an int
+#' @export
+#'
+#' @examples
+#' addTo(100)
+#' addTo(10)
+addTo=function(x){
+  sum=0
+  for(i in 1:x){
+    sum=sum+i;
+  }
+  return(sum)
+}
+
+
+生成文档:
+$ rm NAMESPACE
+
+> devtools::document()
+
+
+测试:
+> devtools::load_all()
+> addTo(100)
+[1] 5050
+
+
+
+
+3. 计算累加的函数 addTo(x): C 函数版
+
+(1) 先写好C代码: 最简单的 x+y 函数
+不能使用返回值，只能使用指针。
+
+$ cat src/func2.c
+#include<stdio.h>
+void add(int* x, int* y){
+	*x = *x + *y;
+}
+
+int main(){
+	int a=1, b=2, a0;
+	a0=a;
+	add(&a,&b);
+	printf("Hello R, from C, %d+%d=%d\n", a0, b, a);
+    return 0;
+}
+
+
+查看编译器版本
+$ gcc --version
+gcc (Ubuntu 9.4.0-1ubuntu1~20.04.1) 9.4.0
+Copyright (C) 2019 Free Software Foundation, Inc.
+This is free software; see the source for copying conditions.  There is NO
+warranty; not even for MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
+
+
+$ gcc src/func2.c -o src/func2.out
+$ ./src/func2.out
+Hello R, from C, 1+2=3
+
+
+2) 编译写好的c/c++代码为 a shared library (.dll in Windows and .so (.o) in linux)
+win下安装 Rtools、mingw并配置环境; linux下不需要。
+
+## 在RStudio中运行
+## setwd("/data/wangjl/project/learn_R_pkg/pkgS3/") #设置c文件的路径
+system("R CMD SHLIB src/func2.c") #编译c文件
+
+## 或者直接在shell下编译
+$ R CMD SHLIB src/func2.c
+
+输出2个文件
+$ ls -lth src/
+total 52K
+-rwxr-xr-x 1 wangjl wangjl  20K Jun  4 16:34 func2.so
+-rw-r--r-- 1 wangjl wangjl 7.9K Jun  4 16:34 func2.o
+
+
+3) 加载共享库
+load the shared library by dyn.load("LIBNAME"), 在R中载入.dll文件(win)/.so(linux), 
+> dyn.load('src/func2.so')
+
+
+4) 调用C文件的函数
+call the compiled C function by .C("FUNNAME",...). 
+Here LIBNAME is the name of the shared library file and FUNNAME is the name of the C function.
+
+# y = .C("massdisttest", x = as.double(xtrunc), xmass = as.double(tau[trunc]/sum(tau[trunc])), nx = nx, xlo = as.double(lo), xhi = as.double(up),y = double(2 * n), ny = as.integer(n))$y
+
+> y = .C("add", a=as.integer(100), b=as.integer(123) )$a
+> y #223
+
+
+(2) R包装函数
+R Wrapper Functions
+It is considered user-friendly to wrap the call to .C in an R function.
+为了方便使用R风格的代码，把.C包装到R函数中。
+
+#' add two number by C
+#'
+#' @param x int
+#' @param y int
+#'
+#' @return int
+#' @export
+#'
+#' @examples
+#' addNum(20, 35)
+addNum=function(x, y){
+  message("this was calc by C function 'add'")
+  y = .C("add", a=as.integer(x), b=as.integer(y) )$a
+  return(y)
+}
+
+清空工作区，并重启R session(shift+ctrl+F10).
+手动载入该函数：光标放到函数上，ctrl+Enter；
+> dyn.load('src/func2.so')
+> addNum(20, 35)
+this was calc by C function 'add'
+[1] 55
+
+
+
+
+(3) 但是怎么自动加载该 so 文件呢？
+
+参考例子: https://r-pkgs.org/src.html
+#' @useDynLib mypackage add_
+add <- function(x, y) .Call(add_, x, y)
+它会在执行 devtools::document() 时，自动在 NAMESPACE 中生成一行: useDynLib(mypackage, add_)
+
+
+可以在R包装函数的注释中添加 #' @useDynLib pkgS3
+它会在执行 devtools::document() 时，自动在 NAMESPACE 中生成一行: useDynLib(pkgS3)
+
+
+#' add two number by C
+#'
+#' @param x int
+#' @param y int
+#'
+#' @return int
+#' @export
+#' @useDynLib pkgS3
+#'
+#' @examples
+#' addNum(20, 35)
+addNum=function(x, y){
+  message("this was calc by C function 'add'")
+  y = .C("add", a=as.integer(x), b=as.integer(y) )$a
+  return(y)
+}
+
+
+清空工作区，并重启R session(shift+ctrl+F10).
+
+> devtools::document() #自动生成的名字是 包名.so; 并更新到了 NAMESPACE 中
+> devtools::load_all()
+> addNum(20, 35)
+this was calc by C function 'add'
+[1] 55
+
+
+
+
+(4) 完成 C 语言版的 addTo() 函数
+
+1) 编写C并测试
+$ vim src/addTo.c
+#include<stdio.h>
+
+void addTo(int* x, int* y){
+  int i=0;
+  *y=0;
+  for (i=0; i<=*x; i++){
+    *y += i;
+  }
+}
+
+int main(){
+  int a=100, b=0;
+  addTo(&a, &b);
+  printf("Hello R, from C, add 1+2+...+%d=%d\n", a, b);
+  return 0;
+}
+
+编译并运行:
+$ gcc src/addTo.c -o src/addTo.out
+
+$ ls -lth src/*
+-rwxr-xr-x 1 wangjl wangjl  17K Jun  4 17:19 src/addTo.out
+
+$ ./src/addTo.out
+Hello R, from C, add 1+2+...+100=5050
+
+
+
+2) 先用R编译
+$ R CMD SHLIB src/addTo.c
+在R中调用
+> dyn.load("src/addTo.so")
+> .C("addTo", a=as.integer(100), b=as.integer(0) )$a
+[1] 100
+> .C("addTo", a=as.integer(100), b=as.integer(0) )$b
+[1] 5050
+
+
+3) 写R包装函数
+#' Add to number from 1 to x, in C
+#'
+#' @param x an int
+#'
+#' @return an int
+#' @export
+#' @useDynLib pkgS3
+#'
+#' @examples
+#' addTo_wrapper(100)
+#' addTo_wrapper(10)
+addTo_wrapper=function(x){
+  if (!is.numeric(x)){ stop("argument x must be numeric") }
+  message("this was calc by C function 'addTo'")
+  y=0
+  out = .C("addTo", a=as.integer(x), b=as.integer(y) )
+  return(out$b)
+}
+
+> devtools::document() #自动生成的名字是 包名.so; 并更新到了 NAMESPACE 中
+报错了，不能有两个 main 函数，那就注释掉第二个的main函数。
+
+目前该文件相当于只有 addTo() 一个C函数：
+$ cat src/addTo.c 
+#include<stdio.h>
+
+void addTo(int* x, int* y){
+  int i=0;
+  *y=0;
+  for (i=0; i<=*x; i++){
+    *y += i;
+  }
+}
+
+/*
+int main(){
+  int a=100, b=0;
+  addTo(&a, &b);
+  printf("Hello R, from C, add 1+2+...+%d=%d\n", a, b);
+  return 0;
+}
+*/
+
+
+
+
+
+清空工作区，并重启R session(shift+ctrl+F10).
+> devtools::document()
+> devtools::load_all()
+> addNum(20, 35)
+this was calc by C function 'add'
+[1] 55
+> addTo_wrapper(100)
+this was calc by C function 'addTo'
+[1] 5050
+
+> addTo_wrapper("100")
+Error in addTo_wrapper("100") : argument x must be numeric
+
+
+
+
+
+4. 怎么支持数组输入呢？
+Calling C with different vector types
+这里只使用最简单的
+
+$ vim src/func2.c #添加函数
+/* useC2.c */
+void useC2(int *i, double *d, char **c, int *l) {
+  i[0] = 11;
+  d[0] = 2.333;
+  c[1] = "g";
+  l[0] = 0;
+}
+
+> devtools::document()
+> .C("useC2", 
+	a = as.integer(1:4), 
+	b=as.double(3.1415926), 
+	c=as.character( c("this", "is", "a string") ), 
+	d=c(T, F) )
+输出:
+$a
+[1] 11  2  3  4
+
+$b
+[1] 2.333
+
+$c
+[1] "this"     "g"        "a string"
+
+$d
+[1] FALSE FALSE
+
+不用管C的形式参数名字，传入相同类型的实参即可。
+其他R对象也能传入.C()，但是最好使用其他接口。
+
+
+
+
+
+
+5. 怎么在加载R包时进行启动设置？
+参考 .onLoad() 等命名空间钩子函数。
+见本文的 R/zzz.R。
+
+
+# 这是启动函数，可以用于初始化设置，包参数设置等 https://oomake.com/question/213412
+# .onLoad 是命名空间钩子，细节 F1 查看
+
+.onLoad=function(lib, pkg){
+  message("===>>> This is the function called when loading this pkg. \
+          Very suit to load .so file here.")
+  message("libName:",lib)
+  message("pkgName:",pkg)
+}
+
+
+
+
+
+6. 当前目录结构
+$ tree
+.
+├── DESCRIPTION
+├── man
+│   ├── addNum.Rd
+│   ├── addTo.Rd
+│   ├── addTo_wrapper.Rd
+│   └── hello.Rd
+├── NAMESPACE
+├── pkgS3.Rproj
+├── R
+│   ├── calc.R
+│   ├── hello.R
+│   └── zzz.R
+└── src
+    ├── addTo.c
+    ├── addTo.o
+    ├── func2.c
+    ├── func2.o
+    └── pkgS3.so
+
+
+
+结论：.C() 这个接口学不会就算了，有疑问也可以不提... 因为现在的R主要用 .Call() 接口调用 C/C++ 函数。
+
+著名的 data.table 就是用纯C写的R扩展，没有用到C++。用 .Call() 接口调用的C函数。
+那么，C和C++的区别是什么呢？
+
+
+
+ref: https://r-pkgs.org/src.html
+
+
+
+
+
+
+========================================
+|-- 如何写R包 4: 使用更高级的 .Call() 接口调用 C 代码(熟悉 SEXP 类型 )
+----------------------------------------
+https://zhuanlan.zhihu.com/p/525648754
+
+我们新建R包项目 pkgS4，生成文件结构。
+
+
+1. .Call() 接口时更高级、现在更常用的接口
+
+(1) 区别
+.C()
+	allows you to write simple C code that knows nothing about R
+	only simple data types can be passed
+	all argument type conversion and checking must be done in R
+	all memory allocation must be done in R
+	all arguments are copied locally before being passed to the C function (memory bloat)
+
+.Call()
+	allows you to write simple R code
+	allows for complex data types
+	allows for a C function return value
+	allows C function to allocate memory
+	does not require wasteful argument copying
+	requires much more knowledge of R internals
+	is the recommended, modern approach for serious C programmers
+
+To allow readers to compare for themselves how difficult or easy it is to switch from .C() to .Call() we will re-implement our three “Hello World!” examples using the .Call() interface.
+
+简单说， .Call()可以传递更复杂的数据类型，允许返回值，传递参数时不复制。
+但是 .Call() 需要对 R 的内部结构有一些了解，因为需要加 R的 .h 头文件。
+
+
+
+(2) R 的.h 头文件 
+
+R 语言本身就是C写的，所以自己也带了好几个C语言特有的头文件。
+
+$ R RHOME
+/data/public/R-4.1.1/lib/R
+
+继续看这个目录的 include/ 子目录
+$ ls -1 `R RHOME`/include
+Rconfig.h    # various configuration flags
+Rdefines.h   # lots of macros of interest, includes Rinternals.h
+Rembedded.h  # function declarations for embedding R in C programs
+R_ext      # directory of include files for specific data types, etc.
+R.h        # includes all the files found in R_ext
+Rinterface.h  # provides hooks for external GUIs
+Rinternals.h  # core R data structures (重点)
+Rmath.h     # math constants and function declarations
+Rversion.h  # version string components
+S.h       # macros for S/R compatibility
+
+
+
+(3) C函数的参数和返回值必须是 SEXP 类型
+
+使用 .Call() 接口，C函数的返回值必须是 SEXP 类型，参数也必须是 SEXP 类型。
+SEXP 类型是一种指向 SEXPREC(Simple EXPression RECord)的指针类型，在 Rinternals.h 中定义。也可能是 S-expression 的简写。它是R语言和C语言之间变量传递的纽带。
+可以在代码中引用 R.h 和 Rdefines.h (包含了 Rinternals.h) 来获取 SEXP 等的定义。
+
+$ vim src/helloA1.c
+#include <R.h>
+#include <Rdefines.h>
+#include <stdio.h>
+
+SEXP helloA1() {
+  printf("Hello World!\n");
+  return(R_NilValue);
+}
+//虽然返回值是 R_NilValue 也就是 NULL，但是函数类型依旧是 SEXP ，它只能是这一个类型。参数也只能是这个类型。
+
+int main(){
+  SEXP helloA1();
+  return 0;
+}
+
+
+
+
+
+
+
+
+
+(4) 如何调试C/C++代码 
+
+==> 尝试1：使用 gcc 编译，局限在C/C++范围内，不牵涉R。
+$ gcc -I"/data/public/R-4.1.1/lib/R/include" -DNDEBUG   -I/usr/local/include   -fpic  -g -O2  -UNDEBUG -Wall -pedantic -g -O0 -fdiagnostics-color=always -c src/helloA1.c -o src/helloA1_.o
+
+$ gcc -shared -L/data/public/R-4.1.1/lib/R/lib -L/usr/local/lib -o src/pkgS4_.so src/helloA1_.o -L/data/public/R-4.1.1/lib/R/lib -lR
+
+$ ./src/pkgS4_.so 
+Segmentation fault (core dumped)
+失败，难道无法在C/C++范围内单独调试？就是不进入R而是使用shell命令行测试？ //todo
+
+只能载入编译后的文件，然后在R中测试？
+> dyn.load("src/pkgS4_.so")
+> .Call("helloA1")
+NULL
+Hello World!
+
+
+貌似调试R的C代码确实不容易: 
+	https://www.maths.ed.ac.uk/~swood34/RCdebug/RCdebug.html
+	https://contributions.bioconductor.org/debugging-cc-code.html
+
+
+
+
+
+==> 尝试2: 编译动态链接库，在R中调用调试。
+编译
+$ R CMD SHLIB src/helloA1.c
+
+在R中调用 
+# wrapper function to invoke helloA1
+> dyn.load("src/helloA1.so")
+> helloA1 <- function() {
+  result <- .Call("helloA1")
+}
+
+> greeting <- helloA1()
+Hello World!
+> class(greeting)
+[1] "NULL"
+
+
+
+
+
+我们可以把该函数写到 R 文件中，后面我们从略。
+
+该步骤由R包帮我们自动完成编译、连接、加载C语言部分。
+$ vim R/hello.R 
+#' test1: func must be SEXP type
+#'
+#' @return null
+#' @export
+#' @useDynLib pkgS4
+#'
+#' @examples
+#' helloA1()
+helloA1 <- function() {
+  result <- .Call("helloA1")
+}
+
+清空工作区，重启R session，删除 NAMESPACE 文件。
+> devtools::document() #查看 NAMESPACE 中添加了一行 useDynLib(pkgS4)
+> devtools::load_all()
+> helloA1()
+Hello World!
+
+
+
+
+
+(5) 在C函数中分配内存，对抗垃圾回收机制
+
+R会自动回收垃圾，这是很有用的。
+为了防止C的数据被回收，需要标记一下，就是函数 PROTECT 和 UNPROTECT。
+
+
+$ vim src/helloB1.cpp #添加代码
+#include <R.h>
+#include <Rdefines.h>
+SEXP helloB1() {
+  SEXP result;
+  PROTECT(result = NEW_CHARACTER(1));
+  SET_STRING_ELT(result, 0, mkChar("Hello World!"));
+  UNPROTECT(1);
+  return(result);
+}
+
+
+为一个字符串向量分配内存使用的是 NEW_CHARACTER(长度)。
+我们看看这个宏是怎么定义的:
+
+
+$ R RHOME
+/data/public/R-4.1.1/lib/R
+
+$ grep -n NEW_ /data/public/R-4.1.1/lib/R/include/*.h
+/data/public/R-4.1.1/lib/R/include/Rdefines.h:93:#define NEW_LOGICAL(n)		Rf_allocVector(LGLSXP,n)
+/data/public/R-4.1.1/lib/R/include/Rdefines.h:94:#define NEW_INTEGER(n)		Rf_allocVector(INTSXP,n)
+/data/public/R-4.1.1/lib/R/include/Rdefines.h:95:#define NEW_NUMERIC(n)		Rf_allocVector(REALSXP,n)
+/data/public/R-4.1.1/lib/R/include/Rdefines.h:96:#define NEW_CHARACTER(n)	Rf_allocVector(STRSXP,n)
+/data/public/R-4.1.1/lib/R/include/Rdefines.h:97:#define NEW_COMPLEX(n)		Rf_allocVector(CPLXSXP,n)
+/data/public/R-4.1.1/lib/R/include/Rdefines.h:98:#define NEW_LIST(n)		Rf_allocVector(VECSXP,n)
+/data/public/R-4.1.1/lib/R/include/Rdefines.h:99:#define NEW_STRING(n)		NEW_CHARACTER(n)
+/data/public/R-4.1.1/lib/R/include/Rdefines.h:100:#define NEW_RAW(n)		Rf_allocVector(RAWSXP,n)
+/data/public/R-4.1.1/lib/R/include/Rdefines.h:166:/* NEW_OBJECT is recommended; NEW is for green book compatibility */
+/data/public/R-4.1.1/lib/R/include/Rdefines.h:167:#define NEW_OBJECT(class_def)	R_do_new_object(class_def)
+
+在R中也能获取该路径:
+> rinternals <- file.path(R.home("include"), "Rinternals.h")
+> rinternals
+[1] "/data/public/R-4.1.1/lib/R/include/Rinternals.h"
+> file.show(rinternals)
+
+也就是说，我们可以使用 allocVector(STRSXP,1) 而不是 NEW_CHARACTER(1)，且前者使用挺多的。
+	搜索发现，allocVector 是一个 C++ 函数。
+	更多 Rf_allocVector 函数示例: https://www.itcodet.com/cpp/cpp-rf_allocvector-function-examples.html
+
+
+还有两个没见过的: SET_STRING_ELT 和 mkChar，接着匹配
+$ grep -n _ELT /data/public/R-4.1.1/lib/R/include/*.h
+/data/public/R-4.1.1/lib/R/include/Rdefines.h:142:#define SET_ELEMENT(x, i, val)	SET_VECTOR_ELT(x, i, val)
+/data/public/R-4.1.1/lib/R/include/Rinternals.h:504:#define VECTOR_ELT(x,i)	((SEXP *) DATAPTR(x))[i]
+/data/public/R-4.1.1/lib/R/include/Rinternals.h:715:   The function STRING_ELT is used as an argument to arrayAssign even
+/data/public/R-4.1.1/lib/R/include/Rinternals.h:789://SEXP (STRING_ELT)(SEXP x, R_xlen_t i);
+/data/public/R-4.1.1/lib/R/include/Rinternals.h:790:SEXP (VECTOR_ELT)(SEXP x, R_xlen_t i);
+/data/public/R-4.1.1/lib/R/include/Rinternals.h:791:void SET_STRING_ELT(SEXP x, R_xlen_t i, SEXP v); ## 这一行
+...
+
+
+$ grep -n mkChar /data/public/R-4.1.1/lib/R/include/*.h
+/data/public/R-4.1.1/lib/R/include/Rdefines.h:193:#define COPY_TO_USER_STRING(x)	mkChar(x)
+/data/public/R-4.1.1/lib/R/include/Rdefines.h:194:#define CREATE_STRING_VECTOR(x)	mkChar(x)
+/data/public/R-4.1.1/lib/R/include/Rinternals.h:1177:SEXP Rf_mkChar(const char *);
+/data/public/R-4.1.1/lib/R/include/Rinternals.h:1178:SEXP Rf_mkCharLen(const char *, int);
+/data/public/R-4.1.1/lib/R/include/Rinternals.h:1250:SEXP Rf_mkCharCE(const char *, cetype_t);
+/data/public/R-4.1.1/lib/R/include/Rinternals.h:1251:SEXP Rf_mkCharLenCE(const char *, int, cetype_t);
+/data/public/R-4.1.1/lib/R/include/Rinternals.h:1642:#define mkChar			Rf_mkChar #这一行
+/data/public/R-4.1.1/lib/R/include/Rinternals.h:1643:#define mkCharCE		Rf_mkCharCE
+/data/public/R-4.1.1/lib/R/include/Rinternals.h:1644:#define mkCharLen		Rf_mkCharLen
+/data/public/R-4.1.1/lib/R/include/Rinternals.h:1645:#define mkCharLenCE		Rf_mkCharLenCE
+
+
+值的花时间好好研读 Rinternals.h 和 Rdefines.h.
+R的源码: https://svn.r-project.org/R/
+Github 的只读备份(updated hourly): https://github.com/wch/r-source
+
+
+编译
+$ R CMD SHLIB src/helloB1.c #教训，之前命名为 .cpp ，结果后面调用找不到该函数。
+
+测试
+# wrapper function to return a greeting.
+> dyn.load("src/helloB1.so")
+> helloB1 <- function() {
+  result <- .Call("helloB1")
+  return(result)
+}
+
+> greeting <- helloB1()
+> greeting
+[1] "Hello World!"
+> class(greeting)
+[1] "character"
+
+
+
+
+(6) SEXP 数据类型
+
+R语言中的变量必须以SEXP变量类型传递给C函数，C函数的返回值类型必须以SEXP类型返回给R语言。实际上，SEXP是一个结构体的指针。
+
+其中包含了具体的变量类型，与R中数据类型的对应关系如下：
+
+REALSXP: 实数向量
+INTSXP : 整数向量
+LGLSXP : 逻辑向量
+STRSXP : 字符向量
+VECSXP : 列表
+CLOSXP : 函数
+ENVSXP : 环境变量
+
+
+$ vim /data/public/R-4.1.1/lib/R/include/Rinternals.h
+...
+#define NILSXP       0    /* nil = NULL */
+#define SYMSXP       1    /* symbols */
+#define LISTSXP      2    /* lists of dotted pairs */
+#define CLOSXP       3    /* closures */
+#define ENVSXP       4    /* environments */
+#define PROMSXP      5    /* promises: [un]evaluated closure arguments */
+#define LANGSXP      6    /* language constructs (special lists) */
+#define SPECIALSXP   7    /* special forms */
+#define BUILTINSXP   8    /* builtin non-special forms */
+#define CHARSXP      9    /* "scalar" string type (internal only)*/
+#define LGLSXP      10    /* logical vectors */
+/* 11 and 12 were factors and ordered factors in the 1990s */
+#define INTSXP      13    /* integer vectors */
+#define REALSXP     14    /* real variables */
+#define CPLXSXP     15    /* complex variables */
+#define STRSXP      16    /* string vectors */
+#define DOTSXP      17    /* dot-dot-dot object */
+#define ANYSXP      18    /* make "any" args work.
+                             Used in specifying types for symbol
+                             registration to mean anything is okay  */
+#define VECSXP      19    /* generic vectors */
+#define EXPRSXP     20    /* expressions vectors */
+#define BCODESXP    21    /* byte code */
+#define EXTPTRSXP   22    /* external pointer */
+#define WEAKREFSXP  23    /* weak reference */
+#define RAWSXP      24    /* raw bytes */
+#define S4SXP       25    /* S4, non-vector */
+
+/* used for detecting PROTECT issues in memory.c */
+#define NEWSXP      30    /* fresh node created in new page */
+#define FREESXP     31    /* node released by GC */
+
+#define FUNSXP      99    /* Closure or Builtin or Special */
+
+...
+typedef struct SEXPREC *SEXP;
+...
+
+
+/* The standard node structure consists of a header followed by the
+   node data. */
+typedef struct SEXPREC {
+    SEXPREC_HEADER;
+    union {
+        struct primsxp_struct primsxp;
+        struct symsxp_struct symsxp;
+        struct listsxp_struct listsxp;
+        struct envsxp_struct envsxp;
+        struct closxp_struct closxp;
+        struct promsxp_struct promsxp;
+    } u;
+} SEXPREC;
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+(7) 数据类型映射(SEXP 对象与其他数据类型之间)
+Casting about in the R header files 
+
+怎么把 字符串映射为 SEXP 对象，把 SEXP 对象映射为 整数等。
+这个是有限的组合，但数量不少，可以参考上文链接，及 http://dirk.eddelbuettel.com/papers/uofc_acm_feb2010.pdf
+
+例子展示，Rdefines.h 定义的R宏怎么从向量中提取元素，怎么把向量转为字符和整数，怎么 UNPROTECT 你之前 PROTECT  放堆中的元素，保证个数一致？
+
+$ vim src/helloC1.c
+#include <R.h>
+#include <Rdefines.h>
+#include <string.h>
+
+SEXP helloC1(SEXP greeting) {
+  int i, vectorLength, stringLength;
+  SEXP result;
+
+  PROTECT(greeting = AS_CHARACTER(greeting)); //获取字符串
+  vectorLength = LENGTH(greeting); //数组长度
+  PROTECT(result = NEW_INTEGER(vectorLength)); //新建整数
+  for (i=0; i<vectorLength; i++) { //遍历 数组元素
+    stringLength = strlen(CHAR(STRING_ELT(greeting, i))); //字符串元素长度
+    INTEGER(result)[i] = stringLength;
+  }
+  UNPROTECT(2); //参数个数要和 PROTECT 个数一致。
+  return(result);
+}
+
+$ R CMD SHLIB src/helloC1.c
+
+
+# wrapper function to invoke helloC1 
+> dyn.load("src/helloC1.so")
+> helloC1 <- function(greeting) {
+  result <- .Call("helloC1", greeting)
+  return(result)
+}
+
+> helloC1( c("this is me!", "morning") )
+[1] 11  7
+
+
+
+
+(8) GetRNGstate() PutRNGstate(); //todo
+
+
+
+https://vimsky.com/examples/detail/cpp-ex-----PutRNGstate-function.html
+
+
+
+
+
+
+
+
+
+2. 更多例子
+
+(1) 返回输入值的二倍
+
+$ vim src/helloC1.c 
+//#include <R.h>
+//#include <Rdefines.h>
+SEXP double_me2(SEXP x) {
+  // Doubles the value of the first integer element of the SEXP input
+  SEXP result;
+  PROTECT(result = NEW_INTEGER(1)); // i.e., a scalar quantity
+  INTEGER(result)[0] = INTEGER(x)[0] * 2;
+  UNPROTECT(1); // Release the one item that was protected
+  return result;
+}
+
+$ R CMD SHLIB src/helloC1.c
+
+> dyn.load("src/helloC1.so")
+> double_me_R <- function(x) {
+  result <- .Call("double_me", x)
+  return(result)
+}
+> double_me_R(1) #看来R中整数默认是 double，要强制转换类型 as.integer()
+Error: INTEGER() can only be applied to a 'integer', not a 'double'
+
+> double_me_R(as.integer(5))
+[1] 10
+
+
+
+
+
+(2) 向量卷积
+2个列向量的卷积，就是 a.b^T 得到的矩阵，按垂直于主对角线画线，把连线上的元素相加得到的向量。
+
+$ vim src/helloC1.c
+//#include <R. h>
+//#include <Rdefines . h>
+//extern "C" SEXP convolve2(SEXP a , SEXP b)
+SEXP convolve2(SEXP a , SEXP b)
+{
+  int i, j, na, nb, nab;
+  double *xa, *xb, *xab;
+  SEXP ab;
+
+  PROTECT( a = AS_NUMERIC( a ) );
+  PROTECT( b = AS_NUMERIC( b ) );
+  na = LENGTH( a ); nb = LENGTH( b ); nab = na + nb - 1;
+
+  PROTECT( ab = NEW_NUMERIC( nab ) );
+  xa = NUMERIC_POINTER ( a );
+  xb = NUMERIC_POINTER ( b );
+  xab = NUMERIC_POINTER ( ab );
+  for ( i = 0; i < nab; i++)
+    xab[i] = 0.0; //初始化为0
+
+  for ( i = 0; i < na; i++)
+    for ( j = 0; j < nb; j++)
+      xab [i+j] += xa[i] * xb[j];
+
+  UNPROTECT(3);
+  return(ab);
+}
+
+
+
+$ R CMD SHLIB src/helloC1.c
+> dyn.load("src/helloC1.so")
+> convolve2_R <- function(arr1, arr2) {
+  result <- .Call("convolve2", arr1, arr2)
+  return(result)
+}
+> convolve2_R(1:3, 1:10)
+[1]  1  4 10 16 22 28 34 40 46 52 47 30
+
+
+
+
+
+
+
+(3) 加法
+
+$ vim src/helloC1.c
+// 两个数的加法
+SEXP add2(SEXP a, SEXP b) {
+  SEXP result = PROTECT(allocVector(REALSXP, 1));
+  REAL(result)[0] = asReal(a) + asReal(b);
+  UNPROTECT(1);
+
+  return result;
+}
+
+$ R CMD SHLIB src/helloC1.c
+> dyn.load("src/helloC1.so")
+> .Call("add2", 10, 20)
+[1] 30
+
+> .Call("add2", c(1,10), c(2, 20)) # 默认写法不支持向量
+[1] 3
+
+
+
+> devtools::document()
+> .Call("add2", 10, 20, PACKAGE = "pkgS4") #这个适合使用 devtools::document() 后的代码
+[1] 30
+
+
+
+
+(4) 整体编译测试
+- 清空工作区，并重启R session;
+- 更新 DESCRIPTION 中的版本号;
+
+> devtools::document()
+> devtools::load_all()
+> .Call("add2", 10, 20)
+[1] 30
+> convolve2_R(1:3, 1:4)
+[1]  1  4 10 16 17 12
+
+
+
+> devtools::document()
+> devtools::build()
+[1] "/data/wangjl/project/learn_R_pkg/pkgS4_0.1.1.tar.gz"
+> install.packages("~/data/project/learn_R_pkg/pkgS4_0.1.1.tar.gz", repos = NULL, type = "source")
+
+重启R session(shift+ctrl+F10)
+> library(pkgS4)
+> pkgS4::convolve2_R(1:2, 1:3)
+[1] 1 4 7 6
+
+
+
+
+3. 进一步学习 
+
+- C/C++ 基础: 精简版Rcpp教程 https://teuder.github.io/rcpp4everyone_en/
+
+- 值的花时间好好研读 Rinternals.h 和 Rdefines.h. 里面有很多 #define 宏定义;
+	* 1853  7544 63180 /data/public/R-4.1.1/lib/R/include/Rinternals.h
+	* 201  831 6791 /data/public/R-4.1.1/lib/R/include/Rdefines.h
+	#define isS4                    Rf_isS4
+
+
+
+个人感觉: 这些非标准的 C/C++ 代码（R定义的数据类型、宏和函数）真头疼，他们不是常见的 C/C++ 代码，有很多怪异的用法需要记忆，比如数据类型声明和强制转换函数。
+
+https://github.com/BioMooc/learn_R_pkg/tree/master/pkgS4
+
+
+
+ref:
+https://zhuanlan.zhihu.com/p/362328760
+
+
+
+
+
+
+========================================
+|-- 如何写R包 5: 使用更便捷的 Rcpp包 调用 C/C++ 代码
+----------------------------------------
+https://zhuanlan.zhihu.com/p/527549223
+
+
+
+Rcpp 的作者: Dirk Eddelbuettel http://dirk.eddelbuettel.com/
+	https://dirk.eddelbuettel.com/code/rcpp.html
+Rcpp 作者的广告片: 
+	https://dirk.eddelbuettel.com/papers/rcpp_rfinance_may2012.pdf
+	https://www.r-project.org/conferences/useR-2010/slides/Eddelbuettel+Francois.pdf
+
+据作者的某个ppt中的数据，Rcpp 是被引用最多的R包，远远超过第二名 ggplot2.
+
+
+0. 相关资料
+https://gallery.rcpp.org/
+https://www.rcpp.org/
+https://cran.r-project.org/web/packages/Rcpp/vignettes/Rcpp-introduction.pdf
+https://dirk.eddelbuettel.com/code/rcpp.html
+http://adv-r.had.co.nz/C-interface.html
+http://adv-r.had.co.nz/Rcpp.html
+
+
+book: https://link.springer.com/content/pdf/10.1007/978-1-4614-6868-4.pdf
+ebook: https://teuder.github.io/rcpp4everyone_en/
+Rcpp 需要的C++ 知识: https://zhuanlan.zhihu.com/p/150630210
+
+精简版Rcpp教程: https://teuder.github.io/rcpp4everyone_en/
+
+作者的大会报告: https://dirk.eddelbuettel.com/papers/useR2019_rcpp_tutorial.pdf P35
+http://dirk.eddelbuettel.com/papers/uofc_acm_feb2010.pdf P24
+
+
+Rcpp 简单用法: https://zhuanlan.zhihu.com/p/149975938
+Rcpp 数据类型 https://blog.csdn.net/weixin_41929524/article/details/81975484
+Rcpp 更多总结 https://blog.csdn.net/iamsuperman2/article/details/73251928
+(矩阵库) RcppArmadillo简明手册 https://blog.csdn.net/iamsuperman2/article/details/73143393
+	http://arma.sourceforge.net/docs.html
+
+
+
+
+1. 尝试使用 Rcpp
+
+使用 .Call() 接口可以直接访问复杂的R数据类型(vectors, matrices, lists, ...)，不用再传一个维度参数。
+使用 C++ 的类，我们就不用直接操作 SEXP 对象了。
+
+
+
+新建R包项目 pkgS5，过程参考 R 包第一篇;
+
+(1) 默认示例
+菜单 File - New File - C++ File，保存为 src/simple.cpp，该文件内容如下:
+
+$ cat src/simple.cpp
+#include <Rcpp.h>
+using namespace Rcpp;
+
+// This is a simple example of exporting a C++ function to R. You can
+// source this function into an R session using the Rcpp::sourceCpp
+// function (or via the Source button on the editor toolbar). Learn
+// more about Rcpp at:
+//
+//   http://www.rcpp.org/
+//   http://adv-r.had.co.nz/Rcpp.html
+//   http://gallery.rcpp.org/
+//
+
+// [[Rcpp::export]]
+NumericVector timesTwo(NumericVector x) {
+  return x * 2;
+}
+
+
+// You can include R code blocks in C++ files processed with sourceCpp
+// (useful for testing and development). The R code will be automatically
+// run after the compilation.
+//
+
+/*** R
+timesTwo(42)
+*/
+
+
+测试 
+> library(Rcpp)
+> sourceCpp("src/simple.cpp") #引入cpp文件到R中
+# 自动完成C/C++代码的编译、连接、引入到R。可以看到Rstudio右上角工作区出现函数名。
+输出 
+#> timesTwo(42)
+#[1] 84
+> timesTwo(2:5) #支持数组
+[1]  4  6  8 10
+> timesTwo(2:5+0.2) #支持实数
+[1]  4.4  6.4  8.4 10.4
+
+
+示例说明：
+- 第一行要加入Rcpp 头文件 #include <Rcpp.h>
+- 然后命名空间  using namespace Rcpp;
+- 接着就是添加函数，注意：每个暴露给R的函数前都要加一行 “// [[Rcpp::export]]”，否则无法访问到。
+
+
+
+
+(2) 末尾的R代码
+
+我们看到一行注释: 说这里的R代码会被 sourceCpp 处理，然后在C/C++编译后自动执行。
+You can include R code blocks in C++ files processed with sourceCpp (useful for testing and development). 
+The R code will be automatically run after the compilation.
+
+
+尝试编译后确实能自动运行这里的R代码。
+不过，我们还是直接删掉这几行吧，写到这里明显不合适。
+/*** R
+timesTwo(42)
+*/
+
+
+
+(3) 在代码中使用 Rcpp 推荐使用 cppFunction() 函数 
+cppFunction("double getMax(NumericVector v) {
+  int n = v.size(); // vectors are describing
+  double m = v[0]; // initialize
+  for (int i=0; i<n; i++) {
+    if (v[i] > m) {
+      m = v[i];
+      Rcpp::Rcout << \"Now \" << m << std::endl;
+    }
+  }
+  return(m);
+}")
+
+> getMax(c(4,5,22,8))
+Now 5
+Now 22
+[1] 22
+
+
+这是一个很好的测试形式，能迅速给出答案，适合调试、探索。
+
+还可以逐句执行C++代码
+> evalCpp("NAN == 1")
+[1] FALSE
+> Rcpp::evalCpp("1+10")
+[1] 11
+
+
+
+
+
+
+
+
+
+
+
+2. 尝试在R包中使用Rcpp
+
+刚才我们可以在R代码中使用Rcpp，怎么在R包中使用呢？
+
+
+(1) 自动编译并生成文档
+1) 清空工作区:> rm(list=ls()); 重启R session: shift+ctrl+F10;
+
+2) 注意：这时不能删除 NAMESPACE 文件，否则会报错，这和我们之前的经验并不一致。
+> devtools::document()
+报错：
+Error in Rcpp::compileAttributes(path, verbose = !quiet) : 
+  pkgdir must refer to the directory containing an R package
+
+
+> devtools::document()
+报错
+ simple.cpp:1:10:fatal error: h: No such file or directory
+       1 | #include <Rcpp.h>
+         |          ^~~~~~~~
+
+
+
+(2) [特别注意] 在 DESCRITION 文件默认添加一行，否则会编译失败: LinkingTo: Rcpp (>= 0.11.0)
+
+看一下 Seurat 4 的 DESCRITION 文件这一行的内容: https://github.com/satijalab/seurat/blob/master/DESCRIPTION
+LinkingTo: Rcpp (>= 0.11.0), RcppEigen, RcppProgress
+
+The LinkingTo declaration indicates that the client package needs to use header files exposed by Rcpp.
+
+
+
+编译并生成文档:
+> devtools::document()
+i Updating pkgS5 documentation #生成文档
+First time using roxygen2. Upgrading automatically...
+i Loading pkgS5
+Exports from /data/wangjl/project/learn_R_pkg/pkgS5/src/simple.cpp: #导出2个函数签名
+   NumericVector timesTwo(NumericVector x)
+   int double_me(int x)
+
+/data/wangjl/project/learn_R_pkg/pkgS5/src/RcppExports.cpp updated. #更新 src/RcppExports.cpp
+/data/wangjl/project/learn_R_pkg/pkgS5/R/RcppExports.R updated.     #更新 R/RcppExports.R
+Re-compiling pkgS5    #再 编译
+─  installing *source* package ‘pkgS5’ ...
+   ** using staged installation
+   ** libs
+
+   ## 编译为.o 文件
+   g++ -std=gnu++14 -I"/data/public/R-4.1.1/lib/R/include" -DNDEBUG  -I'/data/public/R-4.1.1/lib/R/library/Rcpp/include' -I/usr/local/include   -fpic  -g -O2  -UNDEBUG -Wall -pedantic -g -O0 -fdiagnostics-color=always -c RcppExports.cpp -o RcppExports.o
+
+   ## 编译为 .o 文件
+   g++ -std=gnu++14 -I"/data/public/R-4.1.1/lib/R/include" -DNDEBUG  -I'/data/public/R-4.1.1/lib/R/library/Rcpp/include' -I/usr/local/include   -fpic  -g -O2  -UNDEBUG -Wall -pedantic -g -O0 -fdiagnostics-color=always -c simple.cpp -o simple.o
+
+   ##连接为 .so 文件 
+   g++ -std=gnu++14 -shared -L/data/public/R-4.1.1/lib/R/lib -L/usr/local/lib -o pkgS5.so RcppExports.o simple.o -L/data/public/R-4.1.1/lib/R/lib -lR
+   installing to /tmp/RtmpMR9xJx/devtools_install_930cc30508d27/00LOCK-pkgS5/00new/pkgS5/libs
+   ** checking absolute paths in shared objects and dynamic libraries
+─  DONE (pkgS5)
+Warning: The existing 'NAMESPACE' file was not generated by roxygen2, and will not be overwritten.
+
+
+警告说 NAMESPACE 不是自动维护的版本，所以没有修改。
+
+
+
+(3) 删掉 NAMESPACE 再生成一次
+
+> unlink("NAMESPACE")
+> devtools::document()
+i Updating pkgS5 documentation
+First time using roxygen2. Upgrading automatically...
+i Loading pkgS5
+Writing NAMESPACE
+
+
+测试 
+> devtools::load_all()
+i Loading pkgS5
+> timesTwo(1:3)
+Error in .Call("_pkgS5_timesTwo", PACKAGE = "pkgS5", x) : 
+  "_pkgS5_timesTwo" not available for .Call() for package "pkgS5"
+
+应该是无法找到 pkgS5.so 文件，怎么办？
+
+
+
+(4) 怎么在R包中导入C/C++ 编译后的文件？
+参考 Seurat 的做法，它为一个NULL添加了函数注释，内容如下
+seurat-4.1.0/R/objects.R:8:#' @useDynLib Seurat
+
+#' @include reexports.R
+#' @include generics.R
+#' @importFrom Rcpp evalCpp
+#' @importFrom Matrix colSums rowSums colMeans rowMeans
+#' @importFrom methods setClass setOldClass setClassUnion slot
+#' slot<- setMethod new signature slotNames is setAs setValidity .hasSlot
+#' @importClassesFrom Matrix dgCMatrix
+#' @useDynLib Seurat
+#'
+NULL
+
+我们也照着做:
+$ vim R/hello.R #开头部分添加
+#' @useDynLib pkgS5
+#' @import Rcpp
+#'
+NULL
+
+
+测试
+清空工作区，并重启R session;
+> devtools::document()
+> devtools::load_all()
+> timesTwo(4)
+[1] 8
+> hello()
+[1] "Hello, world!"
+> timesTwo(1:4)
+[1] 2 4 6 8
+
+
+查看文件:
+$ cat NAMESPACE
+import(Rcpp)
+useDynLib(pkgS5)
+
+
+
+
+
+(5) 生成安装包
+> devtools::build()
+## "/data/wangjl/project/learn_R_pkg/pkgS5_0.1.0.tar.gz"
+
+把这个文件分发给想使用这个R包的人即可，最简单的就是把源码上传 github。
+
+
+(6) 安装测试 
+> install.packages("~/data/project/learn_R_pkg/pkgS5_0.1.0.tar.gz", repos = NULL, type = "source")
+
+清空工作区，并重启R session;
+> library(pkgS5)
+> timesTwo(3)
+Error in timesTwo(3) : could not find function "timesTwo"
+> pkgS5:::timesTwo(3)
+[1] 6
+
+说明这些函数都没有暴露出来，都只能内部使用。
+想要暴露，只能使用R包装函数，再包一层，然后在这个函数的注释中添加 @export 声明。
+
+Seurat 4 也确实很多内部函数，它有没有暴露出来C/C++函数呢？怎么做的？
+	目前看到的是，Seurat 4 的R使用 RunModularityClustering() 调用 C++函数 RunModularityClusteringCpp();
+	// 看到了再来补充。
+	补充: 我确实看到直接暴露的方法 (https://r-pkgs.org/src.html)，在C++函数前加一行注释: //' @export
+
+//' Multiply a number by two
+//' 
+//' @param x A single integer.
+//' @export
+// [[Rcpp::export]]
+int timesTwo(int x) {
+   return x * 2;
+}
+
+
+
+
+
+
+3. Rcpp 到底做了什么？
+
+目录结构:
+$ tree
+.
+├── DESCRIPTION
+├── man
+│   └── hello.Rd
+├── NAMESPACE
+├── pkgS5.Rproj
+├── R
+│   ├── hello.R
+│   └── RcppExports.R
+└── src
+    ├── pkgS5.so
+    ├── RcppExports.cpp
+    ├── RcppExports.o
+    ├── simple.cpp
+    └── simple.o
+
+我们注意到执行 devtools::document() 后，新生成2个文件，分别是:
+	R/RcppExports.R #R包装函数
+	src/RcppExports.cpp #数据格式映射
+
+这两个文件都是自动生成的。
+特别是第二个文件，数据格式映射，可能是使用 .Call() 接口最棘手的地方，Rcpp帮我们自动完成了。
+我们只需要聚精会神把 C++ 代码写好调试好。
+
+这两个文件似乎不重要，反正是自动生成的，不让修改，不妨先跳过。
+
+
+
+(1) R/目录下的Rcpp 输出文件
+$ cat R/RcppExports.R
+# Generated by using Rcpp::compileAttributes() -> do not edit by hand
+# Generator token: 10BE3573-1514-4C36-9D1C-5A225CD40393
+
+timesTwo <- function(x) {
+    .Call('_pkgS5_timesTwo', PACKAGE = 'pkgS5', x)
+}
+
+这是一个普通的R包装函数，在R代码中使用.Call() 接口调用 C/C++ 函数。
+注意，我们在C中定义的函数名是 timesTwo，而这里 .Call() 调用的却加了R包名字前缀。原始的C函数名字不能调用了。
+这是在哪一步调整的函数名？老函数名又是怎么不可访问的？都在 src/RcppExports.cpp 中完成的。
+
+> devtools::document()
+> dyn.load("src/pkgS5.so")
+> .Call("timesTwo", 20)
+Error in .Call("timesTwo", 20) : 
+  C symbol name "timesTwo" not in load table
+> .Call("_pkgS5_timesTwo", 20)
+[1] 40
+
+
+
+
+
+
+(2) src/目录下的Rcpp 输出文件
+
+$ cat src/RcppExports.cpp
+// Generated by using Rcpp::compileAttributes() -> do not edit by hand
+// Generator token: 10BE3573-1514-4C36-9D1C-5A225CD40393
+
+#include <Rcpp.h>
+
+using namespace Rcpp;
+
+#ifdef RCPP_USE_GLOBAL_ROSTREAM
+Rcpp::Rostream<true>&  Rcpp::Rcout = Rcpp::Rcpp_cout_get();
+Rcpp::Rostream<false>& Rcpp::Rcerr = Rcpp::Rcpp_cerr_get();
+#endif
+
+// timesTwo
+NumericVector timesTwo(NumericVector x);  //函数声明，其定义 timesTwo() 在 src/simple.cpp 中。
+
+RcppExport SEXP _pkgS5_timesTwo(SEXP xSEXP) {  //把该函数暴露出去，函数名加R包前缀：_pkgS5_timesTwo
+
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;  //定义返回值类型
+    Rcpp::RNGScope rcpp_rngScope_gen; // ?
+    Rcpp::traits::input_parameter< NumericVector >::type x(xSEXP); //输入值
+    rcpp_result_gen = Rcpp::wrap(timesTwo(x)); //调用 老函数名
+    return rcpp_result_gen;
+END_RCPP
+}
+
+static const R_CallMethodDef CallEntries[] = {  //定义一个数组，R调用时函数映射关系
+    {"_pkgS5_timesTwo", (DL_FUNC) &_pkgS5_timesTwo, 1}, //字符串，函数名，参数个数
+    {NULL, NULL, 0}
+};
+
+
+RcppExport void R_init_pkgS5(DllInfo *dll) {  // 初始化载入该包时。固定2行。
+    R_registerRoutines(dll, NULL, CallEntries, NULL, NULL);
+    R_useDynamicSymbols(dll, FALSE);
+}
+
+
+
+
+
+
+
+4. 数据类型映射 
+
+向量->向量；向量->矩阵；标量->矩阵等等
+	https://adv-r.hadley.nz/rcpp.html
+	http://adv-r.had.co.nz/Rcpp.html
+
+
+http://gallery.rcpp.org
+	相当于一个搜索库，要使用Rcpp进行矩阵运算、并行计算、常用算法等操作，直接在里面进行搜索，就可以看到大神写的一些相应代码，
+	同时知道该调用哪些库中的函数。
+
+
+Basic C and C++: Scalar
+	• int
+	• double
+	• char[]; std::string
+	• bool
+	• complex
+
+Rcpp Vectors
+	• IntegerVector
+	• NumericVector
+	• CharacterVector
+	• LogicalVector
+	• ComplexVector
+
+IntegerMatrix	整型矩阵
+NumericMatrix	数值型矩阵(元素的类型为double)
+Function	函数型
+List	列表；lists;类似于R中列表，其元素可以使任何数据类型
+DataFrame	数据框；data frames；在Rcpp内部，数据框其实是通过列表实现的
+
+
+
+
+5. 关于对矩阵以及数据框的一些基础操作与常用函数
+操作	描述
+[n]	对于向量类型或者列表，访问第n个元素。对于矩阵类型，首先把矩阵的下一列接到上一列之下，从而构成一个长列向量，并访问第n个元素。不同于R，n从0开始。
+(i,j)	对于矩阵类型，访问第(i,j)个元素。不同于R，i和j从0开始。不同于向量，此处用圆括号。
+List["name1"]	访问List中名为name1的元素。
+DataFrame["name2"]	访问DataFrame中，名为name2的列。
+X.size()	返回X的长度；适用于向量或者矩阵，如果是矩阵，则先向量化
+X.push_back(a)	将a添加进X的末尾；适用于向量
+X.push_front(b)	将b添加进X的开头；适用于向量
+X.ncol()	返回X的列数
+X.nrow()	返回X的行数
+
+
+
+
+
+
+
+
+
+6. 更多实例: 向量
+
+(1) 求数组中元素的最大值
+$ vim src/get_max.cpp
+#include <Rcpp.h>
+using namespace Rcpp;
+
+
+// [[Rcpp::export]]
+double getMaxCpp(NumericVector v) {
+  int n = v.size(); // vectors are describing
+  double m = v[0]; // initialize
+  for (int i=0; i<n; i++) {
+    if( v[i] > m ){
+      Rcpp::Rcout << "Now " << m << std::endl;
+      m = v[i];
+    }
+  }
+  return(m);
+}
+
+在R中添加包装函数
+$ vim R/hello.R 
+#' Get max of an array
+#'
+#' @param x an array of numbers
+#'
+#' @return a number
+#' @export
+#'
+#' @examples
+#' getMax(1:10)
+getMax=function(x){
+  return(getMaxCpp(x))
+}
+
+清空工作区，并重启R session;
+> devtools::document()
+> devtools::load_all()
+> getMax(c(5,10,12,-6))
+Now 5
+Now 10
+[1] 12
+
+
+C++ 数组的标准写法是 std::vector<T> ，其中T可以是任何支持的类型。
+> cppFunction("double getMax2(std::vector<double> v) {
+	int n = v.size(); // vectors are describing
+	double m = v[0]; // initialize
+	for (int i=0; i<n; i++) {
+	if (v[i] > m) {
+			m = v[i];
+		}
+	}
+	return(m);
+}")
+> getMax2(c(4,5,2))
+[1] 5
+
+解释:
+	* STL 数组广泛使用，Rcpp也支持；
+	* 这对访问其他C++代码或库很有帮助；
+	* 一个警告: Rcpp 向量 reuse R 内存，所以 不复制；
+	* STL 向量有不同的支持，所以 复制；
+	* 但是不用担心，除非：巨大的数据结构，或者很多很多的调用;
+
+
+==> 有一些边缘反例，需要特别注意:
+cppFunction("void setSecond(Rcpp::NumericVector v) {
+	v[1] = 42;
+}")
+v <- c(1,2,3); setSecond(v); v # as expected
+## [1] 1 42 3
+
+v <- c(1L,2L,3L); setSecond(v); v # different
+## [1] 1 2 3
+
+是什么导致的上述问题呢？ //todo 
+> class(c(1,2,3))
+[1] "numeric"
+
+> class(c(1L,2L,3L))
+[1] "integer"
+
+
+
+==> 语法糖：Rcpp 数据结构中，有很多对 C++代码的函数，和对应的R函数名字和功能一致。
+	* 注意：需要 Rcpp 数组，而不是 STL 。
+> cppFunction("
+double getMax3(NumericVector v) {
+	return( max( v ) );
+}
+")
+
+> getMax3(1:6)
+[1] 6
+
+
+
+
+
+
+(2) 求每一列的和
+
+$ vim src/vectors.cpp
+#include <Rcpp.h>
+using namespace Rcpp;
+
+// [[Rcpp::export]]
+Rcpp::NumericVector colSumsCpp(Rcpp::NumericMatrix mat) {
+  size_t cols = mat.cols();
+  Rcpp::NumericVector res(cols);
+  for (size_t i=0; i<cols; i++) {
+    res[i] = sum(mat.column(i));
+  }
+  return(res);
+}
+
+解释：
+	* NumericMatrix and NumericVector 都是针对浮点数的；
+	* 使用 Rcpp:: 前缀，明确命名空间
+	* 获取维度 .rows() and .cols()
+	* 返回值的长度，就是输入矩阵的列数
+	* column(i) 获取一列，然后 sum() 求和
+	* 最后的 sum() 函数内部实现了向量化，不用再循环了。
+
+
+包装函数
+$ vim R/hello.R 
+#' Get sums of each column
+#'
+#' @param mat a matrix
+#'
+#' @return a vector
+#' @export
+#'
+#' @examples
+#' colSums2(mtcars)
+colSums2=function(mat){
+  mat=as.matrix(mat)
+  return( colSumsCpp(mat) )
+}
+
+
+清空工作区，并重启R session;
+> devtools::document()
+> devtools::load_all()
+> colSums2(mtcars)
+ [1]  642.900  198.000 7383.100 4694.000  115.090  102.952  571.160   14.000   13.000  118.000   90.000
+
+系统默认的
+> colSums(mtcars)
+     mpg      cyl     disp       hp     drat       wt     qsec       vs       am     gear     carb 
+ 642.900  198.000 7383.100 4694.000  115.090  102.952  571.160   14.000   13.000  118.000   90.000 
+
+
+
+
+(3) 一个基本的循环
+
+$ vim src/loop.cpp
+
+#include <Rcpp.h>
+#include <numeric> // for std::partial_sum
+using namespace Rcpp;
+
+// [[Rcpp::export]]
+NumericVector cumsum1(NumericVector x){
+	double acc = 0; // init an accumulator variable
+	NumericVector res(x.size()); // init result vector
+	for(int i = 0; i < x.size(); i++){
+		acc += x[i];
+		res[i] = acc;
+	}
+	return res;
+}
+
+
+// An STL variant:
+// [[Rcpp::export]]
+NumericVector cumsum2(NumericVector x){
+	// initialize the result vector
+	NumericVector res(x.size());
+	std::partial_sum(x.begin(), x.end(), res.begin());
+	return res;
+}
+
+
+//Or just Rcpp sugar:
+// [[Rcpp::export]]
+NumericVector cumsum_sug(NumericVector x){
+	return cumsum(x); // compute + return result vector
+}
+
+
+> devtools::document()
+> devtools::load_all()
+> cumsum1(1:5)
+[1]  1  3  6 10 15
+> cumsum2(1:5)
+[1]  1  3  6 10 15
+> cumsum_sug(1:5)
+[1]  1  3  6 10 15
+
+
+
+(4) 在 C++ 中调用 R 函数 
+
+$ vim src/callR_from_cpp.cpp
+#include <Rcpp.h>
+using namespace Rcpp;
+
+// [[Rcpp::export]]
+NumericVector callFunction(NumericVector x, Function f) {
+	NumericVector res = f(x);
+	return res;
+}
+
+> devtools::document()
+> devtools::load_all()
+> callFunction(x=1:5, fivenum)
+[1] 1 2 3 4 5
+> callFunction(x=1:5, cumsum1)
+[1]  1  3  6 10 15
+
+
+
+(5) 取子集 
+
+$ vim src/subsetting.cpp
+#include <Rcpp.h>
+using namespace Rcpp;
+
+// [[Rcpp::export]]
+NumericVector positives(NumericVector x) {
+	return x[x > 0];
+}
+
+// [[Rcpp::export]]
+List first_three(List x) {
+	IntegerVector idx = IntegerVector::create(0, 1, 2);
+	return x[idx];
+}
+
+// [[Rcpp::export]]
+List with_names(List x, CharacterVector y) {
+	return x[y];
+}
+
+> devtools::document()
+> devtools::load_all()
+
+> positives(-5:5)
+[1] 1 2 3 4 5
+
+> first_three(-5:5)
+[[1]]
+[1] -5
+
+[[2]]
+[1] -4
+
+[[3]]
+[1] -3
+
+> x=-5:5; names(x)=x; with_names(x, c(1,3,4))
+$`1`
+[1] 1
+
+$`3`
+[1] 3
+
+$`4`
+[1] 4
+
+
+
+
+
+
+
+
+
+
+7. 更多实例: 矩阵
+
+
+(1) 矩阵的乘法 RcppArmadillo 库
+做矩阵计算等线性代数，使用 Armadillo: C++ library for linear algebra & scientific computing
+http://arma.sourceforge.net/
+https://github.com/RcppCore/RcppArmadillo
+R语言科学计算RcppArmadillo简明手册 https://blog.csdn.net/buduoduoorg/article/details/121185266
+
+
+特点:
+	* C++ 线性代数库，平衡速度和好用
+	* 语法类似 matlab
+	* 支持整数、浮点数和复数，向量、矩阵、立方体和场的常规运算
+	* 延迟计算:
+	* 研究 to 生产，如果考虑 C++ 的话，因为速度和整合能力
+	* 文档齐全，论文: http://arma.sourceforge.net/arma_spmat_icms_2018.pdf
+	* 现代代码
+	* 积极维护
+
+要点： 
+	* 有 Rcpp 就能用
+	* 使用简单，添加 LinkingTo: RcppArmadillo, Rcpp to DESCRIPTION
+	* 通过Rcpp后确实简单
+	* 经常更新，使用广泛，超过 600 个 CPAN 包使用；
+
+
+1)先安装
+> install.packages("RcppArmadillo")
+
+
+2)在 DESCRIPTION 中添加 LinkingTo: Rcpp, RcppArmadillo
+https://gallery.rcpp.org/articles/armadillo-eigenvalues/
+
+
+3) 写代码
+
+$ vim src/arma.cpp
+#include <RcppArmadillo.h>
+using namespace Rcpp;
+//using namespace arma;
+
+// [[Rcpp::depends(RcppArmadillo)]]  // 告诉 g++ 要加头文件
+
+#define CONDIT 1000  //宏定义
+
+// [[Rcpp::export]]
+arma::rowvec colSums(arma::mat mat) {
+  size_t cols = mat.n_cols; //获取维度 n_rows and n_cols，类似功能，不同包的名字略有不同
+  arma::rowvec res(cols);
+  for (size_t i=0; i<cols; i++) {
+    res[i] = sum(mat.col(i));
+  }
+  return(res);
+}
+
+
+// [[Rcpp::export]]
+RObject getRndMt(){
+  arma::cube A(3,4,5,arma::fill::randu);
+  std::cout<<CONDIT<<std::endl;
+  return wrap(A);
+}
+
+/*
+// 总是报错，原因未知 //todo
+// [[Rcpp::export]]
+arma::vec getEigenValues(arma::mat M) {
+  return arma::eig_sym(M);
+}
+*/
+
+
+// another simple example: outer product of a vector,
+// returning a matrix
+//
+// [[Rcpp::export]]
+arma::mat rcpparma_outerproduct(const arma::colvec & x) {
+  arma::mat m = x * x.t();
+  return m;
+}
+
+// and the inner product returns a scalar
+//
+// [[Rcpp::export]]
+double rcpparma_innerproduct(const arma::colvec & x) {
+  double v = arma::as_scalar(x.t() * x);
+  return v;
+}
+
+
+
+编译
+> devtools::document()
+> devtools::load_all()
+> pkgS5::positives(-5:3)
+[1] 1 2 3
+
+> pkgS5:::colSums(as.matrix(mtcars))
+      [,1] [,2]   [,3] [,4]   [,5]    [,6]   [,7] [,8] [,9] [,10] [,11]
+[1,] 642.9  198 7383.1 4694 115.09 102.952 571.16   14   13   118    90
+
+> rcpparma_outerproduct( matrix(1:4, nrow=2) )
+     [,1] [,2] [,3] [,4]
+[1,]    1    2    3    4
+[2,]    2    4    6    8
+[3,]    3    6    9   12
+[4,]    4    8   12   16
+
+> rcpparma_innerproduct( matrix(1:4, nrow=2) )
+[1] 30
+
+
+
+
+(2) 矩阵的乘法 RcppEigen 库
+优点
+	成熟，Seurat 4 广泛使用这个库进行矩阵计算 https://github.com/RcppCore/RcppEigen
+	Rcpp 作者早期作品 https://dirk.eddelbuettel.com/code/rcpp.eigen.html
+	CRAN 包 质量有保证 https://cran.rstudio.com/web/packages/RcppEigen/index.html
+	论文 https://r-forge.r-project.org/scm/viewvc.php/*checkout*/pkg/RcppEigen/vignettes/RcppEigen-Intro.pdf?revision=3274&root=rcpp&pathrev=3274
+
+https://www.jb51.net/article/227483.htm
+
+R object type  | Eigen class typedef
+------------ ------------ ------------ 
+numeric matrix | MatrixXd
+integer matrix | MatrixXi
+complex matrix | MatrixXcd
+numeric vector | VectorXd
+integer vector | VectorXi
+complex vector | VectorXcd
+Matrix::dgCMatrix | SparseMatrix<double>
+
+
+$ vim src/get_max.cpp
+#include <Rcpp.h>
+using namespace Rcpp;
+
+//' @export
+// [[Rcpp::export]]
+double getMaxCpp(Rcpp::NumericVector v) {
+  int n = v.size(); // vectors are describing
+  double m = v[0]; // initialize
+  for (int i=0; i<n; i++) {
+    if( v[i] > m ){
+      Rcpp::Rcout << "Now " << m << std::endl;
+      m = v[i];
+    }
+  }
+  return(m);
+}
+
+提示: C++函数前面添加 //' @export 就能把该函数暴露到R包外部。
+
+编译找不到某个头文件了，赶紧到 DESCRIPTION 中添加 LinkingTo: Rcpp (>= 0.11.0), RcppArmadillo, RcppEigen
+
+
+
+
+==> (这段可以跳过)Rstudio 异常出现4个红叉，无解，不过编译正常: https://github.com/rstudio/rstudio/issues/11364
+貌似这两个矩阵库不兼容，那就先去掉一个。
+LinkingTo: Rcpp (>= 0.11.0), RcppArmadillo, RcppEigen #会出现各种莫名其妙的输出，虽然还不算报错的级别。
+那就只保留一个: LinkingTo: Rcpp (>= 0.11.0), RcppEigen
+同时把使用 RcppArmadillo 库的cpp文件改名字: $ mv src/arma.cpp src/arma.cppWJL
+
+很奇怪，只要加上 RcppEigen 就出现很多错误提示。
+可能是 Rstudio 的bug，已经给 Rstudio 提交了 issue，大神的建议是在R包的 src/Makevars 中添加一行 PKG_CXXFLAGS = -DEIGEN_DONT_VECTORIZE
+别人的解释: https://www.5axxw.com/questions/content/6cwm5k
+感觉这仅仅是IDE的问题，我又把文件改回去了：DESCRIPTION 的 LinkingTo 行加入 RcppArmadillo; 文件名 src/arma.cpp;
+
+
+
+
+接着可以正常编译:
+
+> devtools::document()  #
+> devtools::load_all()
+> getMaxCpp( c(10,50,3,60))
+Now 10
+Now 50
+[1] 60
+> callFunction(1:10, min)
+[1] 1
+> callFunction(1:10, max)
+[1] 10
+
+
+修改 DESCRIPTION 文件中的版本号，生成R包并安装:
+> devtools::build()
+[1] "/data/wangjl/project/learn_R_pkg/pkgS5_0.1.1.tar.gz"
+> install.packages("~/data/project/learn_R_pkg/pkgS5_0.1.1.tar.gz", repos = NULL, type = "source")
+重启R session: shift+ctrl+F10;
+> library(pkgS5)
+> pkgS5::callFunction(1:3, max) #暴露出去的C++函数
+[1] 3
+> pkgS5:::timesTwo(-1:3) #内有暴露出去的C++函数
+[1] -2  0  2  4  6
+
+
+
+
+
+
+8. 进一步学习
+
+- 两本书: Effective C++ and Effective STL.
+
+- 几个自带的 短篇教程:
+Additional features of attributes including specifying default arguments, linking in external C++ dependencies, and exporting C++ interfaces from packages. These features and more are covered in the Rcpp attributes vignette, vignette("Rcpp-attributes").
+
+Automatically creating wrappers between C++ data structures and R data structures, including mapping C++ classes to reference classes. A good introduction to this topic is Rcpp modules vignette, vignette("Rcpp-modules")
+
+The Rcpp quick reference guide, vignette("Rcpp-quickref"), contains a useful summary of Rcpp classes and common programming idioms.
+
+
+
+
+9. 小结
+R包制作，到这一步差不多走完主线了。
+其余的细节还有很多，比如怎么把R包上传到 CRAN、 Bioconductor 等。
+
+按照能看懂 Seurat 的标准来判断，接下来可以死扣一下 Louvain 函数的 C++ 实现，既学习算法，又巩固刚学的Rcpp。
+
+
+
+
+
+
+
+
+
+
+
+
+========================================
+|-- Seurat 4 R包源码解析 23: step11 非线性降维 RunUMAP()
+----------------------------------------
+https://zhuanlan.zhihu.com/p/533447633
+
+1. 调包侠
+
+# step 11 Run non-linear dimensional reduction (UMAP/tSNE)
+# If you haven't installed UMAP, you can do so via reticulate::py_install(packages = 'umap-learn')
+pbmc <- RunUMAP(pbmc, dims = 1:10)
+
+# note that you can set `label = TRUE` or use the LabelClusters function to help label
+# individual clusters
+DimPlot(pbmc, reduction = "umap")
+
+# saveRDS(pbmc, file = "../output/pbmc_tutorial.rds")
+
+
+本文只看 RunUMAP() 的R源码。
+UMAP是一种高维到低维映射的方法，可以看做一种降维方法，也可以用作可视化方法。
+它比tSNE更有优势：1.速度快；2.不仅能保留局部结构，还能兼顾全局结构。也就是UMAP的距离是有一定意义的。
+
+
+
+
+(1) umap是调用python包执行的还是调用 R 包执行的？
+UMAP 全称是 Uniform Manifold Approximation and Projection.
+Finds a low dimensional embedding of the data that approximates an underlying manifold.
+原作者提供的是py实现。
+
+
+测试当前系统是否安装该py包
+$ pip3 list | grep -i umap
+umap-learn                        0.5.2
+
+
+R 中调用py的依赖包是: reticulate, 版本 1.21。
+
+
+
+
+
+==> try1. 默认是用R 原生的 uwot 包实现的 UMAP，我当前使用的版本是  uwot 0.1.10。
+
+> pbmc1 <- RunUMAP(pbmc, dims = 1:10) #默认参数 umap.method = "uwot", metric = "cosine",
+Warning: The default method for RunUMAP has changed from calling Python UMAP via reticulate to the R-native UWOT using the cosine metric
+To use Python UMAP via reticulate, set umap.method to 'umap-learn' and metric to 'correlation'
+# 默认使用R原生的 UWOT 使用 cosine 距离，而不是 用 reticulate 包调用 python 包 UMAP。
+# 如果想 通过 reticulate 调用 Python UMAP 包，可以设置 umap.method='umap-learn', metric='correlation'
+
+This message will be shown once per session
+# 本提醒每个R session 只显示一次。
+
+14:32:22 UMAP embedding parameters a = 0.9922 b = 1.112 # UMAP 嵌入参数a,b
+14:32:22 Read 2638 rows and found 10 numeric columns    # 读入 2638 行(细胞)，发现10列(PC)
+14:32:22 Using Annoy for neighbor search, n_neighbors = 30       #使用 Annoy 找到最近的 n_neighbors=30个细胞
+14:32:22 Building Annoy index with metric = cosine, n_trees = 50 #使用 metric=cosine 距离，构建 n_trees=50 棵树
+0%   10   20   30   40   50   60   70   80   90   100%
+[----|----|----|----|----|----|----|----|----|----|
+**************************************************|
+14:32:22 Writing NN index file to temp file /tmp/RtmpMbVSJL/file3bf4611d337478 #写入NN 索引到临时文件
+14:32:22 Searching Annoy index using 1 thread, search_k = 3000 #单线程搜索 Annoy 索引，search_k = 3000
+14:32:23 Annoy recall = 100%
+14:32:23 Commencing smooth kNN distance calibration using 1 thread #使用单线程平滑化 KNN 距离。
+14:32:24 Initializing from normalized Laplacian + noise            # 标准化过的 Laplacian + 噪音
+14:32:24 Commencing optimization for 500 epochs, with 105124 positive edges  # 遍历 500 epochs, 有 105124 条正边。
+0%   10   20   30   40   50   60   70   80   90   100%
+[----|----|----|----|----|----|----|----|----|----|
+**************************************************|
+14:32:26 Optimization finished #优化结束。
+
+
+
+
+
+
+
+==> try2. 尝试调用 py UMAP包:
+> pbmc2 <- RunUMAP(pbmc, dims = 1:10, umap.method='umap-learn', metric='correlation')
+Epochs completed: 100%| ██████████ 500/500 [00:03]UMAP(angular_rp_forest=True, local_connectivity=1, metric='correlation', min_dist=0.3, n_neighbors=30, random_state=RandomState(MT19937) at 0x7FEDD6687258, verbose=True)
+Fri Jun 24 14:34:10 2022 Construct fuzzy simplicial set #构建模糊简化集合
+Fri Jun 24 14:34:12 2022 Finding Nearest Neighbors      #KNN 找最近邻
+Fri Jun 24 14:34:12 2022 Finished Nearest Neighbor Search
+Fri Jun 24 14:34:12 2022 Construct embedding     #构建嵌入
+Fri Jun 24 14:34:16 2022 Finished embedding
+
+
+运行 RunUMAP() 后，在 pbmc@reductions 这个list中放入新的名字为 umap 的DimReduc对象。
+> names(pbmc@reductions)
+[1] "pca"
+> names(pbmc1@reductions)
+[1] "pca"  "umap"
+> names(pbmc2@reductions)
+[1] "pca"  "umap"
+> class(pbmc2@reductions$umap)
+[1] "DimReduc"
+attr(,"package")
+[1] "SeuratObject"
+
+
+目测UMAP的坐标数值，不一致，也看不出来个所以然：
+> head(Embeddings(pbmc1, reduction = "umap"))
+                    UMAP_1    UMAP_2
+AAACATACAACCAC-1 -3.304555 -3.914703
+AAACATTGAGCTAC-1 -5.620712 10.682330
+AAACATTGATCAGC-1 -5.630144 -6.400627
+AAACCGTGCTTCCG-1  9.145644  5.535673
+AAACCGTGTATGCG-1 -5.354362  2.053312
+AAACGCACTGGTAC-1 -3.218432 -6.085276
+
+> head(Embeddings(pbmc2, reduction = "umap"))
+                     UMAP_1     UMAP_2
+AAACATACAACCAC-1 -2.1560519 -1.8735013
+AAACATTGAGCTAC-1  0.3027341 12.8482037
+AAACATTGATCAGC-1 -1.4721704  1.8719281
+AAACCGTGCTTCCG-1 14.9450207  0.7575974
+AAACCGTGTATGCG-1  3.1465802 -4.9975662
+AAACGCACTGGTAC-1 -3.4616749  0.2224449
+
+
+同时拿到umap坐标和cluster编号：
+> head(FetchData(pbmc1, vars=c("UMAP_1", "UMAP_2", "seurat_clusters")))
+                    UMAP_1    UMAP_2 seurat_clusters
+AAACATACAACCAC-1 -3.304555 -3.914703               2
+AAACATTGAGCTAC-1 -5.620712 10.682330               3
+AAACATTGATCAGC-1 -5.630144 -6.400627               2
+AAACCGTGCTTCCG-1  9.145644  5.535673               1
+AAACCGTGTATGCG-1 -5.354362  2.053312               6
+AAACGCACTGGTAC-1 -3.218432 -6.085276               2
+
+
+
+
+可视化查看效果，貌似 py版的坐标范围更大，cluster7 分的更开。
+tips: 以后似乎可以试试 Py 版的 UMAP 实现，理论上更标准。
+> library(ggplot2)
+> p1=DimPlot(pbmc1, reduction = "umap", label=T)+ggtitle("R:uwot | cosine")
+> p2=DimPlot(pbmc2, reduction = "umap", label=T)+ggtitle("Py:umap-learn | correlation")
+> p1+p2
+
+# fig here:
+
+
+
+
+
+==> try3: umap.method = "uwot-learn" 参数已经作废了，尝试确实和p1图一致。
+> pbmc3 <- RunUMAP(pbmc, dims = 1:10, umap.method = "uwot-learn")
+最后有一个警告
+Warning message:
+In RunUMAP.default(object = data.use, reduction.model = reduction.model,  :
+  'uwot-learn' is deprecated. Set umap.method = 'uwot' and return.model = TRUE #按这个提示再来一遍，看返回的是个啥。
+
+> p3=DimPlot(pbmc3, reduction = "umap", label=T)+ggtitle("R:umap-learn | cosine")
+> p1+p3 #一致
+
+
+
+==> try3B: umap.method = "uwot", return.model = TRUE
+pbmc3_2 <- RunUMAP(pbmc, dims = 1:10, umap.method = "uwot", return.model = TRUE)
+
+p3_2=DimPlot(pbmc3_2, reduction = "umap", label=T)+ggtitle("R:uwot return | cosine")
+p1+p3_2 #还是一致
+
+
+到底模型返回到哪里了？有啥用？
+根据函数 RunUMAP.default() 最后一行知道保存位置。
+> class(pbmc3_2@reductions$umap@misc$model)
+[1] "list"
+> names(pbmc3_2@reductions$umap@misc$model)
+ [1] "embedding"            "scale_info"           "n_neighbors"          "search_k"            
+ [5] "local_connectivity"   "n_epochs"             "alpha"                "negative_sample_rate"
+ [9] "method"               "a"                    "b"                    "gamma"               
+[13] "approx_pow"           "metric"               "norig_col"            "pcg_rand"            
+[17] "pca_models"
+
+> names(pbmc3@reductions$umap@misc$model) 输出同上。
+> names(pbmc2@reductions$umap@misc$model) #NULL
+> names(pbmc1@reductions$umap@misc$model) #NULL
+
+用处？可能就是备查当时umap模型的各种参数吧？比如 
+> pbmc3_2@reductions$umap@misc$model$a
+        a 
+0.9921756 
+
+
+
+
+
+
+==> try4: UMAP 的最新版本是 densmap，可以尝试
+> pbmc4 <- RunUMAP(pbmc, dims = 1:10, umap.method = "umap-learn", densmap=T)
+Epochs completed: 100%| ██████████ 700/700 [00:06]UMAP(angular_rp_forest=True, densmap=True, local_connectivity=1, metric='cosine', min_dist=0.3, n_neighbors=30, random_state=RandomState(MT19937) at 0x7FEDD6687258, verbose=True)
+Fri Jun 24 14:29:06 2022 Construct fuzzy simplicial set
+Fri Jun 24 14:29:09 2022 Finding Nearest Neighbors
+Fri Jun 24 14:29:10 2022 Finished Nearest Neighbor Search
+Fri Jun 24 14:29:12 2022 Construct embedding
+Fri Jun 24 14:29:12 2022 Computing original densities
+Fri Jun 24 14:29:35 2022 Finished embedding
+
+> p4=DimPlot(pbmc4, reduction = "umap", label=T)+ggtitle("Py:umap-learn densmap")
+> p2+p4 #densMAP figure
+
+
+
+# 使用 metric='correlation'
+> pbmc4_2 <- RunUMAP(pbmc, dims = 1:10, umap.method = "umap-learn", densmap=T, metric='correlation')
+> p4_cor=DimPlot(pbmc4_2, reduction = "umap", label=T)+ggtitle("Py:umap-learn densmap | correlation")
+> p2+p4_cor #基本一致
+
+
+densMap 适合哪些场景呢？至少不适合pbmc，是否细胞过万会好点？ //todo
+
+
+
+
+
+
+(2) UMAP的输入可以是PC还可以是基因集
+可以设置 dims=1:30 使用PCA的某些维度作为UMAP的输入。
+还可以设置 features=someGenes 使用这些基因作为UMAP的输入。默认使用的 slot="data"。
+
+HVG=pbmc@assays$RNA@var.features
+length(HVG) #2000
+head(HVG) #"PPBP"   "LYZ"    "S100A9" "IGLL5"  "GNLY"   "FTL" 
+pbmc5 <- RunUMAP(pbmc, #dims = 1:10, 
+                 features = HVG,
+                 umap.method = "umap-learn", metric='correlation')
+library(ggplot2)
+DimPlot(pbmc5)+ggtitle("RunUMAP using HVGs, not dims")
+
+
+# fig here
+
+
+
+
+
+
+
+
+(3) 目前 umap-learn py包支持的距离
+
+# 版本号:
+$ pip3 list | grep -i umap
+umap-learn                        0.5.2
+
+
+# 目前支持的距离
+$ python3
+>>> import umap
+>>> help(umap.UMAP)
+
+* euclidean
+* manhattan
+* chebyshev
+* minkowski
+* canberra
+* braycurtis
+* mahalanobis
+* wminkowski
+* seuclidean
+* cosine
+* correlation
+* haversine
+* hamming
+* jaccard
+* dice
+* russelrao
+* kulsinski
+* ll_dirichlet
+* hellinger
+* rogerstanimoto
+* sokalmichener
+* sokalsneath
+* yule
+
+定义另外补充。
+效果见下图，如果没画出来。
+
+
+
+
+# 有些距离能画，有些报错。过半效果很差。其他效果类似。
+dist.defines=c("euclidean", "manhattan", "chebyshev", "minkowski", "canberra", "braycurtis",
+               "mahalanobis", "wminkowski", "seuclidean", "cosine", "correlation", "haversine",
+               "hamming", "jaccard", "dice", "russelrao", "kulsinski", "ll_dirichlet",
+               "hellinger", "rogerstanimoto", "sokalmichener", "sokalsneath", "yule")
+length(dist.defines) #23
+library(ggplot2)
+figs=list()
+#for(i in 1:length(dist.defines)){
+
+i=0
+{
+  i=i+1
+  dist=dist.defines[i]
+  message(">>[", i, "/", length(dist.defines), "] ", dist)
+  #
+  if( !(i %in% c(4, #minkowski too slow
+                 8,  #wminkowski too slow
+                 9,  #seuclidean Error ZeroDivisionError: division by zero
+                 12, #ValueError: haversine is only defined for 2 dimensional data
+                 # have warnings:13, 14, 15, 17,21,
+                 16, #russelrao: ValueError: metric is neither callable nor a recognised string
+                 19, #hellinger:ValueError: Metric 'hellinger' does not support negative values
+                  -1) ) ){
+    pbmc5 <- RunUMAP(pbmc, dims = 1:10, umap.method = "umap-learn", metric=dist)
+    p1=DimPlot(pbmc5, label=T)+
+      ggtitle(dist)
+    figs[[i]]=list(p1)
+  }
+}
+#}
+
+length(figs)
+class(figs[[1]][[1]])
+
+#fig1
+pics=list()
+j=0
+for(i in 1:length(figs)){
+  #if("gg" %in% class(figs[[i]][[1]]) ){
+  if( inherits(figs[[i]][[1]], what=c("ggplot")) ){
+    j=j+1
+    pics[[j]]=figs[[i]][[1]]+theme(legend.position = "none")
+  }else{
+    print(i)
+  }
+}
+length(pics) #17
+library(patchwork)
+plots1 = wrap_plots(pics, ncol = 5)
+plots1 #fig1
+
+
+#fig2: only first 8 figs
+pics=list()
+j=0
+for(i in 1:length(figs)){
+  #if("gg" %in% class(figs[[i]][[1]]) ){
+  if( inherits(figs[[i]][[1]], what=c("ggplot")) ){
+    j=j+1
+    pics[[j]]=figs[[i]][[1]]+theme(legend.position = "none")
+    if(j>8) break;
+  }else{
+    print(i)
+  }
+}
+length(pics) #17
+library(patchwork)
+plots2 = wrap_plots(pics, ncol = 3)
+plots2 #fig2
+
+
+
+
+
+
+
+
+
+
+
+
+2. 源码解析 
+
+// todo 
+RunUMAP
+	* RunUMAP.Graph 
+	* RunUMAP.Neighbor
+
+
+
+
+
+
+3. R tips
+
+
+(1) 手动调用R包做UMAP
+
+准备数据: pbmc 3k 数据集，做好PCA后，取前10个PC。
+> data.use <- Embeddings(pbmc[['pca']])[, 1:10]
+> dim(data.use) #[1] 2638   10
+> data.use[1:3,1:4]
+                       PC_1       PC_2      PC_3      PC_4
+AAACATACAACCAC-1 -4.7296855 -0.5184265 -0.762322 -2.315679
+AAACATTGAGCTAC-1 -0.5174029  4.5918957  5.909192  6.911886
+AAACATTGATCAGC-1 -3.1891063 -3.4695154 -0.831371 -2.001998
+
+> is.list(data.use)
+[1] FALSE
+
+> class(data.use)
+[1] "matrix" "array" 
+
+
+> library(future)
+> nbrOfWorkers()
+[1] 1
+
+
+
+
+==> 关于umap的更多参数的意义，见源码解析 2.2 RunUMAP.Seurat() 参数解释部分。
+UMAP可以设置的主要参数如下：
+n_neighbors：这决定了在流形结构的局部近似中使用的相邻点的数量。较大的值将导致在丢失详细的局部结构的情况下保留更多的全局结构。一般来说，这个参数应该经常在 5 到 50 的范围内，选择 10 到 15 是一个合理的默认值。Seurat 默认是 30。
+
+min_dist：这控制嵌入允许将点压缩在一起的紧密程度。较大的值确保嵌入点分布更均匀，而较小的值允许算法更准确地针对局部结构进行优化。合理的值在 0.001 到 0.5 的范围内，0.1 是合理的默认值。Seurat 默认是 0.3。
+
+metric：这决定了用于测量输入空间中距离的度量的选择。已经编码了各种各样的度量标准，并且可以传递用户定义的函数，只要它已经通过 numba 进行了 JITd。
+
+
+
+
+library(uwot)
+result=umap(
+	X = data.use, #矩阵: 前dims个PC列
+	n_threads = nbrOfWorkers(), #线程数
+	n_neighbors = as.integer(x = 30), #默认30
+	n_components = as.integer(x = 2), #默认2
+	metric = 'cosine', #这个参数
+	n_epochs = NULL,
+	learning_rate = 1,
+	min_dist = 0.3,
+	spread = 1,
+	set_op_mix_ratio = 1,
+	local_connectivity = 1,
+	repulsion_strength = 1,
+	negative_sample_rate = 5,
+	a = NULL,
+	b = NULL,
+	fast_sgd = F, #uwot.sgd
+	verbose = T,
+	ret_model = F #return.model
+)
+
+输出:
+16:28:32 UMAP embedding parameters a = 0.9922 b = 1.112
+16:28:32 Read 2638 rows and found 10 numeric columns
+16:28:32 Using Annoy for neighbor search, n_neighbors = 30
+16:28:32 Building Annoy index with metric = cosine, n_trees = 50
+0%   10   20   30   40   50   60   70   80   90   100%
+[----|----|----|----|----|----|----|----|----|----|
+**************************************************|
+16:28:33 Writing NN index file to temp file /tmp/RtmpMbVSJL/file3bf46128949cc1
+16:28:33 Searching Annoy index using 1 thread, search_k = 3000
+16:28:33 Annoy recall = 100%
+16:28:33 Commencing smooth kNN distance calibration using 1 thread
+16:28:34 Initializing from normalized Laplacian + noise
+16:28:34 Commencing optimization for 500 epochs, with 105124 positive edges
+0%   10   20   30   40   50   60   70   80   90   100%
+[----|----|----|----|----|----|----|----|----|----|
+**************************************************|
+16:28:36 Optimization finished
+
+
+> class(result)
+[1] "matrix" "array" 
+> head(result)
+          [,1]      [,2]
+[1,] -3.304555 -3.914703
+[2,] -5.620712 10.682330
+[3,] -5.630144 -6.400627
+[4,]  9.145644  5.535673
+[5,] -5.354362  2.053312
+[6,] -3.218432 -6.085276
+> dim(result)
+[1] 2638    2
+
+
+> result2=as.data.frame(result)
+> colnames(result2)=c("umap1", "umap2")
+> head(result2, n=2)
+      umap1     umap2
+1 -3.304555 -3.914703
+2 -5.620712 10.682330
+
+
+> library(ggplot2)
+> ggplot(result2, aes(umap1, umap2))+geom_point()
+> result2$cluster=pbmc$seurat_clusters
+> p_r=ggplot(result2, aes(umap1, umap2, color=cluster))+
+	geom_point(size=0.5)+
+	theme_classic()+ggtitle("R uwot pkg")
+> p1+p_r #和之前的 DimPlot(pbmc1) 结果一样。
+
+
+
+
+
+(2) 使用R调用py函数: reticulate R包
+
+很值得参考的R调用py包的源码:
+
+library(reticulate)
+...
+#' @importFrom reticulate py_module_available py_set_seed import
+...
+  umap.output <- switch(
+    EXPR = umap.method,
+
+    #(B1) 执行py包 umap-learn (可选)
+    'umap-learn' = {
+      # 检查几个py包: umap, sklearn
+      if (!py_module_available(module = 'umap')) {
+        stop("Cannot find UMAP, please install through pip (e.g. pip install umap-learn).")
+      }
+      if (!py_module_available(module = 'sklearn')) {
+        stop("Cannot find sklearn, please install through pip (e.g. pip install scikit-learn).")
+      }
+
+      # 设置随机数种子
+      if (!is.null(x = seed.use)) {
+        py_set_seed(seed = seed.use)
+      }
+
+      # n.epochs 默认为空，跳过
+      if (typeof(x = n.epochs) == "double") {
+        n.epochs <- as.integer(x = n.epochs)
+      }
+
+      # import umap, sklearn
+      umap_import <- import(module = "umap", delay_load = TRUE)
+      sklearn <- import("sklearn", delay_load = TRUE)
+
+      # 检查版本号，如果是 densmap，则需要 umap-learn >=0.5.0
+      if (densmap &&
+          numeric_version(x = umap_import$pkg_resources$get_distribution("umap-learn")$version) <
+          numeric_version(x = "0.5.0")) {
+        stop("densmap is only supported by versions >= 0.5.0 of umap-learn. Upgrade umap-learn (e.g. pip install --upgrade umap-learn).")
+      }
+
+      # 随机数种子
+      random.state <- sklearn$utils$check_random_state(seed = as.integer(x = seed.use))
+
+      # umap 参数列表
+      umap.args <- list(
+        n_neighbors = as.integer(x = n.neighbors),
+        n_components = as.integer(x = n.components),
+        metric = metric,
+        n_epochs = n.epochs,
+        learning_rate = learning.rate,
+        min_dist = min.dist,
+        spread = spread,
+        set_op_mix_ratio = set.op.mix.ratio,
+        local_connectivity = local.connectivity,
+        repulsion_strength = repulsion.strength,
+        negative_sample_rate = negative.sample.rate,
+        random_state = random.state,
+        a = a,
+        b = b,
+        metric_kwds = metric.kwds,
+        angular_rp_forest = angular.rp.forest,
+        verbose = verbose
+      )
+
+      # 如果版本号大于 0.5.0 ，还可以加入 densmap 参数
+      if (numeric_version(x = umap_import$pkg_resources$get_distribution("umap-learn")$version) >=
+          numeric_version(x = "0.5.0")) {
+        umap.args <- c(umap.args, list(
+          densmap = densmap,
+          dens_lambda = dens.lambda,
+          dens_frac = dens.frac,
+          dens_var_shift = dens.var.shift,
+          output_dens = FALSE
+        ))
+      }
+      # 执行umap: 参数、执行
+      umap <- do.call(what = umap_import$UMAP, args = umap.args)
+      umap$fit_transform(as.matrix(x = object))
+    },
+...
+
+
+官网教程: https://rstudio.github.io/reticulate/index.html
+# install.packages("reticulate")
+
+> library(reticulate)
+# use_python("/usr/local/bin/python") # 设置使用哪个python
+
+> Sys.which("python")
+                             python 
+"/home/wangjl/anaconda3/bin/python" 
+
+# 调用py的模块
+> os <- import("os")
+> os$listdir(".") #同 dir()
+> os$getcwd() #同 getwd()
+
+> time = import("time")
+> time$time() #[1] 1656060594
+
+
+> py_module_available(module = 'sklearn') #查看py包是否可用
+[1] TRUE
+
+> sklearn <- import("sklearn", delay_load = TRUE)
+> sklearn$show_versions()
+System:
+    python: 3.7.0 (default, Jun 28 2018, 13:22:42)  [GCC 7.2.0]
+...
+
+
+
+
+==> 还可以在R中引入 py 脚本，直接使用py函数。
+$ vim a1.py 
+import pandas
+def read_flights(file):
+	flights = pandas.read_csv(file)
+	flights = flights[flights['dest'] == "ORD"]
+	flights = flights[['carrier', 'dep_delay', 'arr_delay']]
+	flights = flights.dropna()
+	return flights
+
+import time
+def now():
+	return time.strftime("%Y/%m/%d %H:%M:%S", time.localtime())
+
+# in R 
+> source_python("a1.py")
+> # flights <- read_flights("flights.csv")
+> now() #测试效果，符合预期
+[1] "2022/06/24 17:01:20"
+
+
+
+==> 可以在 R markdown 中使用python
+```{pyhton}
+import time;
+print(time.time())
+```
+
+
+
+==> 在R console 中交互式运行py和R
+> repl_python () #进入 Python 环境
+>>> a=[1,2,3]
+>>> print(len(a))
+>>> exit #退出 Python 环境，好像不好使，要用快捷键 Ctrl+D 
+> 
+
+
+
+==> R 中运行一行py命令，貌似无法获取返回值
+> py_run_string("a = [1, 2, 3]; b = [2, 3, 4]; c = list(zip(a, b)); print(c)") #好像无法获取返回值
+[(1, 2), (2, 3), (3, 4)]
+
+
+
+==> 随机数
+> py_set_seed(seed = seed.use) #为py和numpy设置随机数种子
+等价于 
+import os
+os.environ["PYTHONHASHSEED"] = "0"
+import random 
+random.seed(5)
+
+# 如果有 numpy 
+import numpy as np
+np.random.seed(5)
+
+
+> sklearn$utils$check_random_state(seed = as.integer(x = seed.use))
+
+
+
+
+
+
+(3) 比较两个R包版本号的大小 
+这是两个问题：怎么获取R包版本号，怎么比较版本号。
+
+> numeric_version
+function (x, strict = TRUE) 
+.make_numeric_version(x, strict, .standard_regexps()$valid_numeric_version)
+<bytecode: 0x55d6a1974110>
+<environment: namespace:base>
+
+> numeric_version(x = "0.5.0") 
+[1] ‘0.5.0’
+
+> class(numeric_version(x = "0.5.0") )
+[1] "numeric_version"
+
+> numeric_version(x = "0.5.0") > numeric_version(x = "1.3.0")
+[1] FALSE
+
+> packageVersion("Seurat")
+[1] ‘4.1.0’
+
+> if( packageVersion("Seurat") > numeric_version(x = "3") ){ print("Greater than 3")}
+[1] "Greater than 3"
+
+
+
+
+
+(4) 使用 py 调用 UMAP
+在R中导出数据到文件，在py中读入数据并计算umap坐标，然后用R画图。
+
+> dim(data.use)
+[1] 2638   10
+> data.use[1:2,1:4]
+                       PC_1       PC_2      PC_3      PC_4
+AAACATACAACCAC-1 -4.7296855 -0.5184265 -0.762322 -2.315679
+AAACATTGAGCTAC-1 -0.5174029  4.5918957  5.909192  6.911886
+
+> write.table(data.use, "backup/dims.data.txt",quote = F)
+
+
+
+
+在Py中
+# pip install umap-lear
+# pip install scikit-learn
+
+import umap 
+import sklearn
+
+# 设置随机数
+import os
+os.environ["PYTHONHASHSEED"] = "0"
+import random 
+import sklearn
+random.seed(42)
+
+# 如果有 numpy 
+import numpy as np
+np.random.seed(42)
+
+
+random.state = sklearn.utils.check_random_state(seed = 42)
+
+model=umap.UMAP(
+	n_neighbors = 30,
+	n_components = 2,
+	metric = "correlation",
+	n_epochs = None,
+	learning_rate = 1,
+	min_dist = 0.3,
+	spread = 1,
+	set_op_mix_ratio = 1,
+	local_connectivity = 1,
+	repulsion_strength = 1,
+	negative_sample_rate = 5,
+	random_state = random.state,
+	a = None,
+	b = None,
+	metric_kwds = None, #metric.kwds,
+	angular_rp_forest = None, #angular.rp.forest,
+	verbose = True
+)
+
+dat=np.loadtxt("backup/dims.data.txt",delimiter=" ", skiprows=1, usecols=[x for x in range(1,11)])
+print(dat.shape) #(2638, 10)
+
+result=model.fit_transform(dat)
+print(result.shape) #(2638, 2)
+
+# output 
+np.savetxt("backup/umap_output.py.txt", result)
+
+
+# 使用R画图
+> umap.py=read.table("backup/umap_output.py.txt")
+> umap.py$cluster=pbmc1$seurat_clusters
+> library(ggplot2)
+> ggplot(umap.py, aes(V1, V2, color=cluster))+geom_point()
+
+
+
+
+
+
+
+
+
+
+
+
+
+========================================
+|-- Seurat 4 R包源码解析 24: step11 降维可视化 DimPlot()
+----------------------------------------
+1. 调包侠 
+# step 11 Run non-linear dimensional reduction (UMAP/tSNE)
+# If you haven't installed UMAP, you can do so via reticulate::py_install(packages = 'umap-learn')
+pbmc <- RunUMAP(pbmc, dims = 1:10)
+
+# note that you can set `label = TRUE` or use the LabelClusters function to help label
+# individual clusters
+DimPlot(pbmc, reduction = "umap")
+
+# saveRDS(pbmc, file = "../output/pbmc_tutorial.rds")
+
+本文看 DimPlot(). 
+
+
+(1) cols= 参数
+颜色向量，对应着 ident 分类。 
+也可以是一个字符串或数字，对应着 RColorBrewer::brewer.pal.info，对数字支持不好，不建议使用。详情见本文 3.8.
+默认使用 ggplot2 的颜色。
+本包也提供了5个颜色板，DiscretePalette 回车查看。
+
+library(RColorBrewer)
+dim(RColorBrewer::brewer.pal.info) #35 3
+RColorBrewer::brewer.pal.info
+RColorBrewer::brewer.pal.info[1,]
+barplot( rep(1,11), col=RColorBrewer::brewer.pal(11, "BrBG") )
+
+# 颜色
+g1=DimPlot(pbmc)
+g2=DimPlot(pbmc, cols='Set1')+ggtitle("cols='Set1'") #使用R内置颜色版(35个)
+# brewer.pal.info
+# rownames(brewer.pal.info)
+
+g3=DimPlot(pbmc, cols=1)+ggtitle("cols=1") #seq 系列的第1个(Blues)
+# 不建议使用数字，函数写的不完善，不支持 type 参数
+
+g4=DimPlot(pbmc, cols='alphabet', )+ggtitle("cols='alphabet'") #Seurat 内置颜色版(5个)
+# c('alphabet', 'alphabet2', 'glasbey', 'polychrome', 'stepped')
+
+(g1+g2)/(g3+g4)
+
+图fa1
+
+
+
+
+
+
+
+(2) group.by=分组，默认是 ident 分组
+
+1) 看基因数高的细胞在哪里？
+DimPlot(pbmc)
+# Fig1 添加一列 isGeneNumHigh: 细胞表达的基因书是否超过1000个?
+pbmc$isGeneNumHigh=pbmc$nFeature_RNA>1000
+pbmc$isGeneNumHigh=factor(pbmc$isGeneNumHigh, levels = c(T,F))
+table(pbmc$isGeneNumHigh)
+# TRUE FALSE
+# 524  2114
+DimPlot(pbmc, group.by = "isGeneNumHigh", cols = c("red", "grey"))
+# 图
+
+
+2) 看基因数高、counts数高的细胞在哪里？
+# fig2 再添加一列 isCountsHigh: 细胞表达的基因书是否超过1000个?
+pbmc$isCountsHigh=pbmc$nCount_RNA>2500
+pbmc$isCountsHigh=factor(pbmc$isCountsHigh, levels = c(T,F))
+table(pbmc$isCountsHigh)
+#TRUE FALSE
+#932  1706
+#当有2个group.by时，变为分面
+DimPlot(pbmc, group.by = c("isGeneNumHigh", "isCountsHigh"),
+        cols = c("red", "grey"))
+# 图
+
+
+
+
+
+
+(3) CellSelector() 手工圈起来一部分细胞
+显示到 Rstudio 的 Viewer 选项卡，而不是 Plots 选项卡。这是一个支持js的画图设备。
+
+./seurat-4.1.0/R/visualization.R:4154:CellSelector <- function(plot, object = NULL, ident = 'SelectedCells', ...) {
+
+# CellSelector
+p1=DimPlot(pbmc); p1
+# Follow instructions in the terminal to select points
+cells.located <- CellSelector(plot = p1)
+cells.located #返回细胞id
+# [1] "ACGTCGCTCCTGAA-1" "ACTTCAACAAGCAA-1" "CACCGGGACTTCTA-1" "CGATACGACAGGAG-1" "CGCAGGTGGGAACG-1"
+# [6] "GCCCATACAGCGTT-1" "GCCTCAACTCTTTG-1" "GTATTAGAAACAGA-1"
+
+
+# Automatically set the identity class of selected cells and return a new Seurat object
+pbmc2 <- CellSelector(plot = p1, object = pbmc, ident = 'SelectedCells')
+> table(pbmc2@meta.data$seurat_clusters) #没变
+  0   1   2   3   4   5   6   7   8 
+684 481 476 344 291 162 155  32  13
+
+> table(pbmc2@active.ident) #新增一类
+SelectedCells             0             1             2             3             4             5 
+           36           681           480           476           344           291           162 
+            6             8 
+          155            13
+
+> levels(pbmc2) #新增一类
+[1] "SelectedCells" "0"             "1"             "2"             "3"             "4"            
+[7] "5"             "6"             "8" 
+
+
+
+
+
+
+(4) HoverLocator() 鼠标悬停可见细胞id及其它 meta.data
+显示到 Rstudio 的 Viewer 选项卡，而不是 Plots 选项卡。这是一个支持js的画图设备。
+
+./seurat-4.1.0/R/visualization.R:4575:HoverLocator <- function(
+p1=DimPlot(pbmc); p1
+HoverLocator(p1)
+HoverLocator(plot = p1, information = FetchData(object = pbmc, vars = 'percent.mt'))  #细胞的其他信息
+HoverLocator(plot = p1, information = FetchData(object = pbmc, vars = c('percent.mt', "CD79A") )) #更多信息
+
+
+
+
+
+(5) 高亮显示一部分细胞
+DimPlot(pbmc, label=T)
+DimPlot(pbmc, cells.highlight=5) #一个细胞
+DimPlot(pbmc, cells.highlight=WhichCells(pbmc, idents=5)) #一群细胞，method1
+DimPlot(pbmc, cells.highlight=WhichCells(pbmc, idents=5),
+        cols.highlight = "blue" ) #指定高亮细胞的颜色
+DimPlot(pbmc, cells.highlight=WhichCells(pbmc, idents=5),
+        cols.highlight = "blue",
+        sizes.highlight = 2) #指定高亮细胞的大小
+
+DimPlot(pbmc, cells.highlight=WhichCells(pbmc, expression = CD79A>3)) #一群细胞，method2
+# 取子集后，取细胞名字
+DimPlot(pbmc, #group.by = "isExpHigh", #该参数在高亮显示时不影响显示
+        cells.highlight=Cells(subset(pbmc, subset=isExpHigh==T)) ) #一群细胞，method3
+
+# 多群细胞
+DimPlot(pbmc,
+        cells.highlight=list(
+          c5=WhichCells(pbmc, idents=5),
+          c8=WhichCells(pbmc, idents=8),
+          c2=WhichCells(pbmc, idents=2)
+        ),
+        sizes.highlight = c(4.5, 1.5, 0.5), #这就很奇怪了，尺寸和出现的对应
+        #cols.highlight=list(c5="red", c8="orange")
+        cols.highlight=c("orange", "blue", "purple") #颜色对应关系总是不对
+        # 貌似它总是按照order(listNames)的顺序染色
+)
+# 此处有bug，而且不容忽视的bug: 多个高亮细胞list时刻，和指定颜色对应不上。 //todo 见本文 4.1
+
+
+
+
+
+
+
+
+
+2. 源码解析 
+
+函数:
+DimPlot |ok;
+	DefaultDimReduc | ok;
+		* FilterObjects |had in 3;
+	SingleDimPlot | ok;
+	LabelClusters | ok,  需要更深入的理解 ggplot2.
+		* GetXYAesthetics |详解 15-2.10
+		* GeomSpatial
+		* layer_scales
+		* coord_fixed
+	cowplot::theme_cowplot | ok 3.10
+	FacetTheme | ok 3.16
+	CenterTitle | ok 3.16
+	
+	HoverLocator | todo
+	CellSelector | todo
+	
+	SetHighlight //再看一遍 ./seurat-4.1.0/R/visualization.R:6716:SetHighlight <- function(
+
+
+
+
+
+
+
+
+
+
+3. R tips 
+
+(1) 按列名取数据框子集，列名为NULL时
+
+# 添加一列
+df1=mtcars[1:4, 1:2]; df1
+newCol='xx0'
+df1[, newCol]=1:4; df1
+
+# 取列名为null的一列
+df1[, c("mpg", newCol)]
+split.by=NULL
+df1[, c('mpg', newCol, split.by)] #列名为NULL时就相当于不存在
+#                mpg xx0
+#Mazda RX4      21.0   1
+#Mazda RX4 Wag  21.0   2
+#Datsun 710     22.8   3
+#Hornet 4 Drive 21.4   4
+
+
+
+
+
+
+(2) rlang::`!!` 注入表达式功能（较难）
+如果读不懂，可以跳过。后面会再开一篇细说。
+
+源码: facets = vars(!!sym(x = split.by)),
+
+> library(rlang)
+> `!!`
+function (x) 
+{
+    abort("`!!` can only be used within a defused argument.", 
+        call = caller_env())
+}
+<bytecode: 0x55cf5a0a5cd8>
+<environment: namespace:rlang>
+
+defuse / diːˈfjuːz / vt. 平息；去掉……的雷管；使除去危险性
+
+
+示例1:
+> sym("x")  #字符串 转为 符号
+x
+> class(sym("x"))
+[1] "name"
+> x=3
+> eval(sym("x")) #求值，使用环境中的变量值
+[1] 3
+> eval(sym("x"), data.frame(x=50)) #求值，在指定环境中寻找值
+[1] 50
+
+注入表达式: 把一个表达式注入到另一个中，实现组装表达式效果。
+> a1=quo(exp(x))
+> a2=quo( (1-!!a1)/(1+!!a1) )
+> a2
+<quosure>
+expr: ^(1 - (^exp(x))) / (1 + (^exp(x)))
+env:  global
+
+求值:
+> eval_tidy(a2, data.frame(x=0))
+[1] 0
+> eval_tidy(a2, data.frame(x=100))
+[1] -1
+> eval_tidy(a2, data.frame(x=-100))
+[1] 1
+
+
+
+示例2: 从函数参数传入公式。
+mean_in_data_rl <- function(data, expr) {
+  quosure0 <- enquo(expr)           # capture user expression
+  print(quosure0)
+  quosure <- quo(mean(!!quosure0))  # wrap it in `mean`
+  print(quosure)
+  eval_tidy(quosure, data)
+}
+
+l.per.cubic.i <- 2.54^3 / 1000
+> mean_in_data_rl(mtcars, disp * l.per.cubic.i)
+<quosure> #第一个捕获传入的表达式
+expr: ^disp * l.per.cubic.i
+env:  global
+<quosure>  #第二个，把第一个表达式注入到第二个表达式中，相当于变量替换
+expr: ^mean(^disp * l.per.cubic.i)
+env:  0x5612f0ee7f70
+[1] 3.780854
+
+实质上就是如下计算，只不过实现了把公式传入函数。
+> mean(mtcars$disp * 2.54^3 / 1000 ) 
+[1] 3.780854
+
+
+
+(3) match(x, table) 返回x在table中的编号
+> match(c(1,5), -5:5) 
+[1]  7 11
+
+
+(4) 修改数据框的某几个列名
+tmp=iris[1:2,]
+colnames(tmp)[ c(2,3) ]=c("x2", "x3") #修改第2和第三个列名
+> tmp
+  Sepal.Length  x2  x3 Petal.Width Species
+1          5.1 3.5 1.4         0.2  setosa
+2          4.9 3.0 1.4         0.2  setosa
+
+
+
+(5) 栅格化点图 scattermore::geom_scattermore()
+栅格化能显著降低密集点图的文件大小。
+
+> scattermore::geom_scattermore
+function (mapping = NULL, data = NULL, stat = "identity", position = "identity", 
+    ..., na.rm = FALSE, show.legend = NA, inherit.aes = TRUE, 
+    interpolate = FALSE, pointsize = 0, pixels = c(512, 512)) 
+{
+    ggplot2::layer(data = data, mapping = mapping, stat = stat, 
+        position = position, geom = GeomScattermore, show.legend = show.legend, 
+        inherit.aes = inherit.aes, params = list(na.rm = na.rm, 
+            interpolate = interpolate, pointsize = pointsize, 
+            pixels = pixels, ...))
+}
+<bytecode: 0x55b5a01b3988>
+<environment: namespace:scattermore>
+
+R文档例子:
+library(ggplot2)
+library(scattermore)
+set.seed(2022)
+ggplot(data.frame(x=rnorm(100000), y=rexp(100000))) +
+  geom_scattermore(aes(x,y,color=x),
+                   pointsize=3,
+                   alpha=0.1,
+                   pixels=c(1000,1000),
+                   interpolate=TRUE) +
+  scale_color_viridis_c()
+
+
+源码:
+	plot=ggplot(data=data)
+    
+	plot + geom_scattermore(
+      mapping = aes_string(
+        x = dims[1],
+        y = dims[2],
+        color = paste0("`", col.by, "`"), #
+        shape = shape.by,
+        alpha = alpha.by
+      ),
+      pointsize = pt.size,
+      pixels = raster.dpi
+    )
+
+
+
+
+(6) 放大 ggplot2 图例的点，修改图例的标题
+library(ggplot2)
+g1=ggplot(mtcars, aes(mpg, disp, color= factor(gear) ))+
+  geom_point()+
+  theme_bw()+ggtitle("Fig1")
+g1 #原图
+g2=g1+guides(color = guide_legend(override.aes = list(size = 3)))+ #图例放大
+  ggtitle("Fig2"); g2
+g3=g2+labs(color = NULL, title = "Fig3") #修改图例的标题
+g3
+g1+g2+g3
+
+图6
+
+
+(7) R语言布尔运算的性质
+问题: if (length(x = cols) == 1 && (is.numeric(x = cols) || cols %in% rownames(x = brewer.pal.info))) {}
+这个布尔运算是怎么结合的？
+盲猜：从左到右依次进行。
+
+验证: 前2个为T，则与第三个无关
+> 1 && 1 || 0
+[1] TRUE
+> 1 && 1 || 1
+[1] TRUE
+
+验证2: 前2个为F，则看第三个
+> 1 && 0 || 0
+[1] FALSE
+> 1 && 0 || 1
+[1] TRUE
+
+
+布尔运算中，一个&是按向量分别求布尔值:
+> c(1,1) & c(1,0)
+[1]  TRUE FALSE
+
+两个&&则是只看第一个元素的运算结果:
+> c(1,1) && c(1,0)
+[1] TRUE
+> c(0,1) && c(1,0)
+[1] FALSE
+> c(0,1) && c(1,1)
+[1] FALSE
+
+
+
+
+
+(8) ggplot2 使用色板: scale_color_brewer(palette =)
+源码: scale_color_brewer(palette = cols, na.value = na.value)
+
+函数原型:
+scale_colour_brewer(
+  ...,
+  type = "seq",
+  palette = 1,
+  direction = 1,
+  aesthetics = "colour"
+)
+
+重点是 palette	参数
+If a string, will use that named palette. 
+If a number, will index into the list of palettes of appropriate type. 
+The list of available palettes can found in the Palettes section.
+
+使用字符串时，毫无争议，是从 brewer.pal.info 的名字中选一个:
+> library(RColorBrewer)
+> rownames(x = brewer.pal.info)
+ [1] "BrBG"     "PiYG"     "PRGn"     "PuOr"     "RdBu"     "RdGy"     "RdYlBu"   "RdYlGn"  
+ [9] "Spectral" "Accent"   "Dark2"    "Paired"   "Pastel1"  "Pastel2"  "Set1"     "Set2"    
+[17] "Set3"     "Blues"    "BuGn"     "BuPu"     "GnBu"     "Greens"   "Greys"    "Oranges" 
+[25] "OrRd"     "PuBu"     "PuBuGn"   "PuRd"     "Purples"  "RdPu"     "Reds"     "YlGn"    
+[33] "YlGnBu"   "YlOrBr"   "YlOrRd" 
+
+
+使用数字时，根据参数 type='seq' 索引到 brewer.pal.info 中的一个。
+type: One of seq (sequential), div (diverging) or qual (qualitative)
+Palettes: The following palettes are available for use with these scales:
+Diverging: BrBG, PiYG, PRGn, PuOr, RdBu, RdGy, RdYlBu, RdYlGn, Spectral
+Qualitative: Accent, Dark2, Paired, Pastel1, Pastel2, Set1, Set2, Set3
+Sequential: Blues, BuGn, BuPu, GnBu, Greens, Greys, Oranges, OrRd, PuBu, PuBuGn, PuRd, Purples, RdPu, Reds, YlGn, YlGnBu, YlOrBr, YlOrRd
+Modify the palette through the palette argument.
+
+
+library(ggplot2)
+g1=ggplot(mtcars, aes(mpg, disp, color= factor(gear) ))+
+  geom_point()+theme_classic(); g1
+
+# palette=字符串
+brewer.pal.info #查看全部调色板
+rownames(x = brewer.pal.info)
+g2=g1+scale_color_brewer(palette = 'Set2')+
+  labs(color="Gear")+
+  ggtitle("palette='Set2'")
+g2
+
+# palette=数字时，在 type(共三个，默认'seq') 的调色板名字中索引
+g3=g1+scale_color_brewer(type=c('seq', 'div','qual')[3], palette = 7)+
+  labs(color="Gear")+
+  ggtitle("type='qual',palette=1");g3
+g1+g2+g3
+
+图 8
+
+
+
+
+
+
+
+
+(9) DiscretePalette(n, palette = NULL) 获取Seurat 定义的色板
+
+> DiscretePalette
+function (n, palette = NULL) 
+{
+    palettes <- list(
+		alphabet = c("#F0A0FF", "#0075DC", "#993F00", 
+			"#4C005C", "#191919", "#005C31", "#2BCE48", "#FFCC99", 
+			"#808080", "#94FFB5", "#8F7C00", "#9DCC00", "#C20088", 
+			"#003380", "#FFA405", "#FFA8BB", "#426600", "#FF0010", 
+			"#5EF1F2", "#00998F", "#E0FF66", "#740AFF", "#990000", 
+			"#FFFF80", "#FFE100", "#FF5005"), 
+		alphabet2 = c("#AA0DFE", 
+			"#3283FE", "#85660D", "#782AB6", "#565656", "#1C8356", 
+			"#16FF32", "#F7E1A0", "#E2E2E2", "#1CBE4F", "#C4451C", 
+			"#DEA0FD", "#FE00FA", "#325A9B", "#FEAF16", "#F8A19F", 
+			"#90AD1C", "#F6222E", "#1CFFCE", "#2ED9FF", "#B10DA1", 
+			"#C075A6", "#FC1CBF", "#B00068", "#FBE426", "#FA0087"), 
+		glasbey = c("#0000FF", "#FF0000", "#00FF00", "#000033", 
+			"#FF00B6", "#005300", "#FFD300", "#009FFF", "#9A4D42", 
+			"#00FFBE", "#783FC1", "#1F9698", "#FFACFD", "#B1CC71", 
+			"#F1085C", "#FE8F42", "#DD00FF", "#201A01", "#720055", 
+			"#766C95", "#02AD24", "#C8FF00", "#886C00", "#FFB79F", 
+			"#858567", "#A10300", "#14F9FF", "#00479E", "#DC5E93", 
+			"#93D4FF", "#004CFF", "#F2F318"), 
+		polychrome = c("#5A5156", 
+			"#E4E1E3", "#F6222E", "#FE00FA", "#16FF32", "#3283FE", 
+			"#FEAF16", "#B00068", "#1CFFCE", "#90AD1C", "#2ED9FF", 
+			"#DEA0FD", "#AA0DFE", "#F8A19F", "#325A9B", "#C4451C", 
+			"#1C8356", "#85660D", "#B10DA1", "#FBE426", "#1CBE4F", 
+			"#FA0087", "#FC1CBF", "#F7E1A0", "#C075A6", "#782AB6", 
+			"#AAF400", "#BDCDFF", "#822E1C", "#B5EFB5", "#7ED7D1", 
+			"#1C7F93", "#D85FF7", "#683B79", "#66B0FF", "#3B00FB"), 
+		stepped = c("#990F26", "#B33E52", "#CC7A88", "#E6B8BF", 
+			"#99600F", "#B3823E", "#CCAA7A", "#E6D2B8", "#54990F", 
+			"#78B33E", "#A3CC7A", "#CFE6B8", "#0F8299", "#3E9FB3", 
+			"#7ABECC", "#B8DEE6", "#3D0F99", "#653EB3", "#967ACC", 
+			"#C7B8E6", "#333333", "#666666", "#999999", "#CCCCCC")
+	)
+	# 如果没有指定色板名，则根据n确定
+    if (is.null(x = palette)) {
+        if (n <= 26) {
+            palette <- "alphabet"
+        }
+        else if (n <= 32) {
+            palette <- "glasbey"
+        }
+        else {
+            palette <- "polychrome"
+        }
+    }
+    palette.vec <- palettes[[palette]] #根据色板名字获取颜色
+	# 如果长度不够，给警告
+    if (n > length(x = palette.vec)) {
+        warning("Not enough colours in specified palette")
+    }
+	# 取出该长度的颜色字符
+	# 如果n长度超了，则返回NA: c("A", "b")[1:4] #[1] "A" "b" NA  NA
+    palette.vec[seq_len(length.out = n)]
+}
+<bytecode: 0x55b5b2ecdcc0>
+<environment: namespace:Seurat>
+这个函数也太简陋了。。。
+
+
+每个色板的长度:
+alphabet  alphabet2    glasbey polychrome    stepped 
+      26         26         32         36         24 
+
+测试效果:
+# ggplot2 使用色板
+library(ggplot2)
+g1=ggplot(mtcars, aes(mpg, disp, color= factor(gear) ))+
+  geom_point()+theme_classic(); g1
+
+# palette=字符串
+brewer.pal.info #查看全部调色板
+rownames(x = brewer.pal.info)
+g2=g1+scale_color_brewer(palette = 'Set2')+
+  labs(color="Gear")+
+  ggtitle("palette='Set2'")
+g2
+
+# palette=数字时，在 type(共三个，默认'seq') 的调色板名字中索引
+g3=g1+scale_color_brewer(type=c('seq', 'div','qual')[3], palette = 7)+
+  labs(color="Gear")+
+  ggtitle("type='qual',palette=1");g3
+g1+g2+g3
+
+
+# Color list in Seurat
+pname=c('alphabet', 'alphabet2', 'glasbey', 'polychrome', 'stepped')
+nArr=c(26, 26, 32, 36, 24)
+par(mfrow=c(5,1), mar=c(0,0,1.5,0))
+for(i in 1:5 ){
+  title=sprintf( "%s(n=%s)", pname[i], nArr[i] )
+  message(i, " | ", title)
+  colors=Seurat::DiscretePalette(n=nArr[i], pname[i])
+  barplot( rep(1, length(colors)), col=colors, main=title,
+           yaxt='n', space=0, border = NA )
+}
+
+图9
+
+
+
+
+
+(10) 大佬钟爱的 ggplot2 主题: cowplot::theme_cowplot
+
+> cowplot::theme_cowplot
+function (font_size = 14, font_family = "", line_size = 0.5, 
+          rel_small = 12/14, rel_tiny = 11/14, rel_large = 16/14) 
+{
+  half_line <- font_size/2
+  small_size <- rel_small * font_size
+  theme_grey(base_size = font_size, base_family = font_family) %+replace% 
+    theme(
+      line = element_line(color = "black", size = line_size, linetype = 1, lineend = "butt"), 
+      rect = element_rect(fill = NA, color = NA, size = line_size, linetype = 1), 
+      text = element_text(family = font_family, face = "plain", color = "black", size = font_size, 
+                          hjust = 0.5, vjust = 0.5, angle = 0, lineheight = 0.9, 
+                          margin = margin(), debug = FALSE), 
+      axis.line = element_line(color = "black", size = line_size, lineend = "square"), 
+      axis.line.x = NULL, axis.line.y = NULL, 
+      axis.text = element_text(color = "black", size = small_size), 
+      axis.text.x = element_text(margin = margin(t = small_size/4), vjust = 1), 
+      axis.text.x.top = element_text(margin = margin(b = small_size/4), vjust = 0), 
+      axis.text.y = element_text(margin = margin(r = small_size/4), hjust = 1), 
+      axis.text.y.right = element_text(margin = margin(l = small_size/4), hjust = 0), 
+      axis.ticks = element_line(color = "black", size = line_size), 
+      axis.ticks.length = unit(half_line/2, "pt"), 
+      axis.title.x = element_text(margin = margin(t = half_line/2), vjust = 1), 
+      axis.title.x.top = element_text(margin = margin(b = half_line/2), vjust = 0), 
+      axis.title.y = element_text(angle = 90, margin = margin(r = half_line/2), vjust = 1), 
+      axis.title.y.right = element_text(angle = -90, margin = margin(l = half_line/2), vjust = 0), 
+      legend.background = element_blank(), 
+      legend.spacing = unit(font_size, "pt"), 
+      legend.spacing.x = NULL, legend.spacing.y = NULL, 
+      legend.margin = margin(0, 0, 0, 0), 
+      legend.key = element_blank(), 
+      legend.key.size = unit(1.1 * font_size, "pt"), 
+      legend.key.height = NULL, legend.key.width = NULL, 
+      legend.text = element_text(size = rel(rel_small)), 
+      legend.text.align = NULL, 
+      legend.title = element_text(hjust = 0), 
+      legend.title.align = NULL, legend.position = "right", 
+      legend.direction = NULL, 
+      legend.justification = c("left", "center"), 
+      legend.box = NULL, 
+      legend.box.margin = margin(0, 0, 0, 0), 
+      legend.box.background = element_blank(), 
+      legend.box.spacing = unit(font_size, "pt"), 
+      panel.background = element_blank(), 
+      panel.border = element_blank(), panel.grid = element_blank(), 
+      panel.grid.major = NULL, panel.grid.minor = NULL, 
+      panel.grid.major.x = NULL, panel.grid.major.y = NULL, 
+      panel.grid.minor.x = NULL, panel.grid.minor.y = NULL, 
+      panel.spacing = unit(half_line, "pt"), panel.spacing.x = NULL, 
+      panel.spacing.y = NULL, panel.ontop = FALSE, 
+      strip.background = element_rect(fill = "grey80"), 
+      strip.text = element_text(size = rel(rel_small), 
+                                margin = margin(half_line/2, half_line/2, half_line/2, half_line/2)), 
+      strip.text.x = NULL, strip.text.y = element_text(angle = -90), 
+      strip.placement = "inside", 
+      strip.placement.x = NULL, strip.placement.y = NULL, 
+      strip.switch.pad.grid = unit(half_line/2, "pt"), 
+      strip.switch.pad.wrap = unit(half_line/2, "pt"), 
+      plot.background = element_blank(), 
+      plot.title = element_text(face = "bold", size = rel(rel_large), hjust = 0, vjust = 1, margin = margin(b = half_line)), 
+      plot.subtitle = element_text(size = rel(rel_small), 
+                                   hjust = 0, vjust = 1, margin = margin(b = half_line)), 
+      plot.caption = element_text(size = rel(rel_tiny), 
+                                  hjust = 1, vjust = 1, margin = margin(t = half_line)), 
+      plot.tag = element_text(face = "bold", hjust = 0, vjust = 0.7), 
+      plot.tag.position = c(0, 1), 
+      plot.margin = margin(half_line, half_line, half_line, half_line), 
+      complete = TRUE
+    )
+}
+<bytecode: 0x55cf5c04f048>
+<environment: namespace:cowplot>
+
+
+重点1: 使用后面的主题条目替换前面的 theme(1) %+replace% theme(2)
+	我的测试表明，没啥区别，是不是哪里不对？ //todo 
+
+重点2: 文章的图片要求使用大号字体，该函数规定了基本字体、相对大号和小号(14, 16, 11/12)
+
+# 使用后面的主题条目替换前面的。
+library(ggplot2)
+g1=ggplot(mtcars, aes(mpg, disp, color= factor(gear) ))+
+  geom_point()+ggtitle("g1"); g1
+
+g2=g1+cowplot::theme_cowplot()+ggtitle("g4")+labs(color="gear");g2
+
+# + 与 %+replace% 貌似没有区别??
+g3=g1+ theme_grey() %+replace% theme(
+  panel.background = element_blank()
+)+ggtitle("g2");g3
+g4=g1+ theme(
+  panel.background = element_blank()
+)+ggtitle("g3");g4
+
+library(patchwork)
+(g1+g2)/(g3+g4)
+
+图 10
+
+
+
+(11) lapply循环执行正则匹配，并忽略大小写 grep(, ignore.case = T)
+# 2个向量的匹配
+> index=lapply(
+  X = c('umap', 'tsne', 'pca'), #遍历，并作为FUN的参数1
+  FUN = grep,
+  x = c("umap", "tsne"), #FUN 的参数2，可选
+  ignore.case = TRUE     #FUN 的参数3，可选
+)
+> index
+[[1]]
+[1] 1
+
+[[2]]
+[1] 2
+
+[[3]]
+integer(0)
+
+# 每一个循环实际执行的语句：
+> grep('umap', c("umap", "tsne"), ignore.case = T)
+[1] 1
+
+
+# R循环提倡使用apply家族函数，而不是for
+lapply(
+  X=c(-1,0,5), #遍历其中的每个元素
+  FUN=function(param1, p2, p3=""){
+    return( paste(param1, p2, p3, sep = "_"))
+  },
+  p2="gene1",
+  p3="sample1"
+)
+输出:
+[[1]]
+[1] "-1_gene1_sample1"
+
+[[2]]
+[1] "0_gene1_sample1"
+
+[[3]]
+[1] "5_gene1_sample1"
+
+
+
+
+
+
+
+
+(12) 由 ggplot2 对象，获取其x和y轴的变量名
+> library(ggplot2)
+> g1=ggplot(mtcars, aes(mpg, disp, color= factor(gear) ))+
+  geom_point()+ggtitle("g1"); g1
+> g1$mapping$x
+<quosure>
+expr: ^mpg
+env:  global
+
+
+x轴的变量名
+> as_label(g1$mapping$x)
+[1] "mpg"
+
+
+数据集也在ggplot2对象中:
+> head(g1$data)
+                   mpg cyl disp  hp drat    wt  qsec vs am gear carb
+Mazda RX4         21.0   6  160 110 3.90 2.620 16.46  0  1    4    4
+Mazda RX4 Wag     21.0   6  160 110 3.90 2.875 17.02  0  1    4    4
+Datsun 710        22.8   4  108  93 3.85 2.320 18.61  1  1    4    1
+
+
+
+
+
+
+
+
+
+
+
+(13) df 本质上是按列的list
+
+> tmp = iris[1:3, ]
+> tmp
+
+> lapply(tmp, function(x){
+  x
+})
+
+$Sepal.Length
+[1] 5.1 4.9 4.7
+
+$Sepal.Width
+[1] 3.5 3.0 3.2
+
+$Petal.Length
+[1] 1.4 1.4 1.3
+
+$Petal.Width
+[1] 0.2 0.2 0.2
+
+$Species
+[1] setosa setosa setosa
+Levels: setosa versicolor virginica
+
+
+
+
+
+(14) 求类别标注的坐标: RANN::nn2() Nearest Neighbour Search
+
+源码: nearest.point <- nn2(data = group.data[, 1:2], query = as.matrix(x = x[c(1,2)]), k = 1)$nn.idx
+
+使用 kd-tree 找距离某个点最近的p个点。优点是快，时间复杂度是 O(n log n)。
+Uses a kd-tree to find the p number of near neighbours for each point in an input/output dataset. The advantage of the kd-tree is that it runs in O(M log M) time.
+
+Usage
+nn2(data, query = data, k = min(10, nrow(data)), treetype = c("kd", "bd"), searchtype = c("standard", "priority", "radius"), radius = 0, eps = 0)
+第一个参数是数据库，M行d列；
+第二个参数是要查询的点，N行d列；
+第三个参数是k，最近的几个点？默认是 min(10, M)
+然后返回值是一个list，包含2个元素：
+nn.idx, N行k列，每个查询点一行，k个最近的点的下标。
+nn.dists, N行k列，每个查询点一行，k个最近的点的距离。
+
+
+例子: 尝试为 iris 标记群体名
+df1=data.frame(
+  x=iris$Petal.Length,
+  y=iris$Petal.Width,
+  type=iris$Species
+)
+head(df1)
+index=match(df1$type, c("setosa", "versicolor", "virginica"))
+colors=c("#4A9D47", "#5F9BBE", "#F5B375")
+
+
+###################
+# 画图：主图
+plot(df1$x, df1$y, col=colors[index],
+     main="Fig1",
+     pch=19)
+
+# 求A点最近的5个点
+indexA=99
+set.seed(2022)
+p1.ann=RANN::nn2(data=df1[, 1:2], query=df1[indexA, 1:2], k=10); p1.ann
+df1[p1.ann$nn.idx,] #目测，有重叠的点
+# 画图: 标记点A
+points(df1$x[indexA], df1$y[indexA], col="#ff000055",  pch=18, cex=3)
+# 画图: 标记点A周围最近的5个点
+pos=as.numeric( p1.ann$nn.idx )
+points(df1$x[pos], df1$y[pos], col="red", pch=21, cex=2)
+
+
+
+###################
+## fig2:
+#1.获取每类的median
+data.medians=lapply(
+    X=as.character( unique(df1$type) ),
+    FUN=function(x){
+      data.use=df1[which(df1$type==x), ,drop=F]
+      medians=apply(data.use[, 1:2],2, median)
+      medians=as.data.frame(t(medians))
+      medians$type=x
+      return(medians)
+    }
+  )
+data.medians #list 格式的数据
+labels.loc=do.call(rbind, data.medians);
+labels.loc #df格式
+
+# 画图: 主体
+plot(df1$x, df1$y, col=colors[index],
+     main="Fig2",
+     pch=19)
+# 画图：标记这些点的位置
+points(labels.loc$x, labels.loc$y, col="#FF000099", pch=17, cex=1.5)
+# 画图：标记文字
+text(labels.loc$x, labels.loc$y, labels=labels.loc$type, col="#FF0000")
+
+#2.获取每个类median的最近的点坐标 nearest
+# 输入list，函数获取的每个x都是一个list
+set.seed(2022)
+data.medians2=lapply( data.medians, function(x){
+  group.data=df1[which(as.character(df1$type)==as.character(x[3])),]
+  nearest.point=RANN::nn2(data=group.data[,1:2], query=as.matrix(x = x[c(1,2)]), k=1 )$nn.idx
+  #坐标更新
+  x[1:2] <- group.data[nearest.point, 1:2]
+  return(x)
+});data.medians2
+labels.loc2=do.call(rbind, data.medians2); #list to df
+labels.loc2
+
+# 画图：标记这些点的位置
+points(labels.loc2$x, labels.loc2$y, col="#0000FFaa", pch=21, cex=2, lwd=3)
+# 画图：标记文字, 有重叠，不画了
+#text(labels.loc2$x, labels.loc2$y, labels=labels.loc2$type, col="#0000FF")
+图14_0
+
+
+
+
+# ggplot2 演示
+library(ggplot2)
+g1=ggplot(mtcars, aes(mpg, disp, color= factor(gear) ))+
+  geom_point()+ggtitle("g1"); g1
+g1=DimPlot(pbmc)+ggtitle("g1"); g1
+head(g1$data)
+g2=LabelClusters(g1, id='ident')+ggtitle("g2");g2 #加文字标注
+g3=LabelClusters(g1, id='ident', box=T)+ggtitle("g3");g3 #文字标注加方框
+g4=LabelClusters(g1, id='ident', box=T, position="nearest")+ggtitle("g4");g4
+(g1+g2)/(g3+g4)
+
+
+图14
+
+
+
+
+
+
+(15) 类别标注文字是否加背景框? geom_label vs geom_text
+geom_text 标注的是文字，没有背景框。
+geom_label 标注的标签，有背景框。
+
+
+
+# 加标签背景盒子
+df1=data.frame(
+  x=iris$Petal.Length,
+  y=iris$Petal.Width,
+  type=iris$Species
+)
+library(ggplot2)
+g1=ggplot(df1)+ #为了防止 aes() 对其他图层的影响，把aes放到每层自身的语句中
+  geom_point(aes(x, y, color= type ))+
+  theme_classic()+
+  ggtitle("g1"); g1
+# 从图形获取颜色值
+pb <- ggplot_build(plot = g1)
+df1$color=pb$data[[1]][[1]]
+
+#1.获取每类的median
+data.medians=lapply(
+  X=as.character( unique(df1$type) ),
+  FUN=function(x){
+    data.use=df1[which(df1$type==x), ,drop=F]
+    medians=apply(data.use[, 1:2],2, median)
+    medians=as.data.frame(t(medians))
+    medians$type=x
+    medians$color=data.use$color[1]
+    return(medians)
+  }
+)
+data.medians #list
+labels.loc=do.call(rbind, data.medians);
+labels.loc
+# 排序，按照type列，给color列排序
+labels.loc$color[order(labels.loc[, 'type'])]
+
+# 加外框
+g2=g1 +  geom_label(
+  data = labels.loc,
+  aes(x,y, label=type, fill=type),
+  show.legend = F
+)+
+  scale_fill_manual(values=labels.loc$color[order(labels.loc[, 'type'])] )+
+  ggtitle("g2 geom_label");g2
+
+# 不要外框 -- 失败！ geom_label 一直有框
+g3=g1 +  geom_label(
+  data = labels.loc,
+  aes(x,y, label=type),
+  show.legend = F
+)+ggtitle("g3 geom_label");g3
+
+# 不要外框 -- 成功！ geom_text 没有框
+g4=g1 +  geom_text(
+  data = labels.loc,
+  aes(x,y, label=type),
+  show.legend = F
+)+ggtitle("g4 geom_text");g4
+(g1+g2)/(g3+g4)
+
+图 15
+
+
+
+
+
+
+
+(16) ggplot2 主题的创建：返回一个 theme() 函数。
+
+1) 分面主题
+# Make a theme for facet plots
+#
+# @inheritParams SeuratTheme
+# @export
+#
+# @rdname SeuratTheme
+# @aliases FacetTheme
+#
+FacetTheme <- function(...) {
+  return(theme(
+    strip.background = element_blank(), #分面的标题空白，文字粗体
+    strip.text = element_text(face = 'bold'),
+    # Validate the theme
+    validate = TRUE,
+    ...
+  ))
+}
+
+
+
+2) 标题居中
+
+#' @importFrom ggplot2 theme element_text
+#'
+#' @rdname SeuratTheme
+#' @export
+#' @concept visualization
+#'
+#' @aliases CenterTitle
+#'
+CenterTitle <- function(...) {
+  return(theme(plot.title = element_text(hjust = 0.5), validate = TRUE, ...))
+}
+
+
+
+
+
+
+
+4. bugs
+
+(1) bug: 多群细胞高亮时颜色经常对不上 //todo
+低频
+DimPlot(pbmc,
+        cells.highlight=list(
+          c5=WhichCells(pbmc, idents=5),
+          c8=WhichCells(pbmc, idents=8),
+          c2=WhichCells(pbmc, idents=2)
+        ),
+        sizes.highlight = c(4.5, 1.5, 0.5), #这就很奇怪了，尺寸和出现的对应
+        #cols.highlight=list(c5="red", c8="orange")
+        cols.highlight=c("orange", "blue", "purple") #颜色对应关系总是不对
+        # 貌似它总是按照order(listNames)的顺序染色
+)
+# 此处有bug，而且不容忽视的bug: 多个高亮细胞list时刻，和指定颜色对应不上。 //todo
+
+
+
+highlight.info=Seurat:::SetHighlight(
+  cells.highlight=list(
+    c5=WhichCells(pbmc, idents=5),
+    c8=WhichCells(pbmc, idents=8),
+    c2=WhichCells(pbmc, idents=2)
+  ),
+  cells.all=Cells(pbmc),
+  sizes.highlight = c(4.5, 1.5, 0.5),
+  cols.highlight = c("orange", "blue", "purple"),
+  col.base="#C3C3C3"
+)
+str(highlight.info)
+#List of 4
+#$ plot.order: chr [1:4] "c2" "c5" "c8" "Unselected"
+#$ highlight : Factor w/ 4 levels "c2","c5","c8",..: 1 4 1 4 4 1 4 4 4 2 ...
+#$ size      : num [1:2638] 0.5 1 0.5 1 1 0.5 1 1 1 4.5 ...
+#$ color     : chr [1:4] "#C3C3C3" "orange" "blue" "purple"
+order <- highlight.info$plot.order
+data=FetchData(pbmc, vars=c("UMAP_1", 'UMAP_2', "seurat_clusters"))
+data$highlight <- highlight.info$highlight
+col.by <- 'highlight'
+pt.size <- highlight.info$size
+cols <- highlight.info$color
+
+unique(data$highlight)
+
+
+
+
+
+
+
+
+========================================
+|-- Seurat 4 R包源码解析 25: step12 找差异基因 FindMarkers() 和 FindAllMarkers() //todo
+----------------------------------------
+1. 调包侠
+# step 12 Finding differentially expressed features (cluster biomarkers)
+# find all markers of cluster 2
+#cluster2.markers <- FindMarkers(pbmc, ident.1 = 2, min.pct = 0.25)
+#head(cluster2.markers, n = 5)
+
+# find all markers distinguishing cluster 5 from clusters 0 and 3
+#cluster5.markers <- FindMarkers(pbmc, ident.1 = 5, ident.2 = c(0, 3), min.pct = 0.25)
+#head(cluster5.markers, n = 5)
+
+
+# find markers for every cluster compared to all remaining cells, report only the positive ones
+pbmc.markers <- FindAllMarkers(pbmc, only.pos = TRUE, min.pct = 0.25, logfc.threshold = 0.25)
+pbmc.markers %>% group_by(cluster) %>% top_n(n = 2, wt = avg_log2FC)  #可能有版本差异 avg_log2FC
+# cluster0.markers <- FindMarkers(pbmc, ident.1 = 0, logfc.threshold = 0.25, test.use = "roc", only.pos = TRUE)
+
+
+
+VlnPlot(pbmc, features = c("MS4A1", "CD79A"))
+# you can plot raw counts as well
+VlnPlot(pbmc, features = c("NKG7", "PF4"), slot = "counts", log = TRUE)
+
+FeaturePlot(pbmc, features = c("MS4A1", "GNLY", "CD3E", "CD14", "FCER1A", "FCGR3A", "LYZ", "PPBP",
+                               "CD8A"))
+
+# heatmap
+top10 <- pbmc.markers %>% group_by(cluster) %>% top_n(n = 10, wt = avg_log2FC)
+DoHeatmap(pbmc, features = top10$gene, label = T)  #+ NoLegend()
+
+
+
+函数list
+* FindMarkers()
+* FindAllMarkers()
+
+* VlnPlot 见解析 8
+* FeaturePlot //todo
+* DoHeatmap //todo
+
+
+
+
+
+
+2. 源码解析
+
+
+
+3. R tips 
+
+
+
+
+4. bugs
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -7627,6 +12518,17 @@ function (parent.find = "Seurat", ...)
 
 
 
+> cmd <- LogSeuratCommand(object = pbmc, return.command = TRUE)
+Error: 'LogSeuratCommand' cannot be called at the top level
+
+
+fn1=function(pbmc, a=100, b=-50){
+	cmd <- LogSeuratCommand(object = pbmc, return.command = TRUE)
+	return(cmd)
+}
+fn1() #报错
+
+
 
 
 2. 表达式处理
@@ -7640,11 +12542,19 @@ tSNE: https://distill.pub/2016/misread-tsne/
 
 
 
+3. 测试用例
+/tests/testthat/
+
+
+
+
+
+
 
 
 
 ========================================
-准备工作
+准备工作: 开启 docker Rstudio
 ----------------------------------------
 1. 启动一个 docker 学习R
 $ docker run -d -p 8787:8787 -e PASSWORD=123456 rocker/rstudio:4.1.1
@@ -7764,6 +12674,39 @@ T. Stuart, A. Butler, P. Hoffman, C. Hafemeister, E. Papalexi, W.M. Mauck, et al
 Comprehensive integration of single-cell data
 Cell, 177 (2019), pp. 1888-1902.e21
 
+
+
+
+========================================
+harmony 包
+----------------------------------------
+
+https://github.com/immunogenomics/harmony
+
+
+
+
+
+
+========================================
+----------------------------------------
+
+
+
+========================================
+----------------------------------------
+
+
+
+
+========================================
+----------------------------------------
+
+
+
+
+========================================
+----------------------------------------
 
 
 

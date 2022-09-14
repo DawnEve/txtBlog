@@ -2120,17 +2120,19 @@ $ sudo rsync -avz /var/lib/docker /data/docker/lib/
 耗时: 14:25-->
 
 
+还有人用 -P 参数: rsync -avzP /var/lib/docker/ /data/lib/docker
 
-4、 配置 /etc/systemd/system/docker.service.d/devicemapper.conf
+
+
+
+
+4、(跳过，可能是老方案，不一定可用了) 配置 /etc/systemd/system/docker.service.d/devicemapper.conf
 查看 devicemapper.conf 是否存在。如果不存在，就新建。
 $ sudo mkdir -p /etc/systemd/system/docker.service.d/
 $ sudo vim /etc/systemd/system/docker.service.d/devicemapper.conf
 
 
-
-
-5. 然后在 devicemapper.conf 写入：（同步的时候把父文件夹一并同步过来，实际上的目录应在 /home/docker/lib/docker ）
-
+然后在 devicemapper.conf 写入：（同步的时候把父文件夹一并同步过来，实际上的目录应在 /home/docker/lib/docker ）
 [Service]
 ExecStart=
 ExecStart=/usr/bin/dockerd  --graph=/data/docker/lib/docker
@@ -2138,11 +2140,31 @@ ExecStart=/usr/bin/dockerd  --graph=/data/docker/lib/docker
 
 
 
+5. 修改
+$ cat /etc/docker/daemon.json 
+{
+  "data-root": "/data/docker/lib/docker"
+}
+
+
+
+添加国内的源:
+$ cat /etc/docker/daemon.json 
+{
+  "data-root": "/data/docker/lib/docker",
+  "registry-mirrors": ["http://hub-mirror.c.163.com"]
+}
+
+或者 华中科技大学的源:
+"registry-mirrors": ["https://docker.mirrors.ustc.edu.cn"]
+
+
+
 6.  重新加载 docker
 
-systemctl daemon-reload
-systemctl restart docker
-systemctl enable docker
+# sudo systemctl daemon-reload  #加载配置文件
+# sudo systemctl restart docker.service #重启服务
+# sudo systemctl enable docker  #允许开机启动
 
 
 $ sudo service docker start
@@ -3217,6 +3239,58 @@ Error response from daemon: No such image: myu/myimg:latest
 root@ubt16:/home/wangjl# docker rmi myu/myimg:testTag
 Untagged: myu/myimg:testTag
 Deleted: sha256:edb24adf0dd2c4d9c056c62cd38ab89951c0c12a0b5c0cc53ee4f4324d8997e1
+
+
+
+
+
+
+========================================
+*** trouble shooting 排错: Docker 不能联网，报错 IPv4 forwarding is disabled. Networking will not work.
+----------------------------------------
+
+1. docker 内部无法上网
+(1) Rstudio 在docker 内，但是无法访问
+容器开了，容器内服务开了，host端口开了，就是访问不了。
+docker run -it -d -p ${port}:8787 --name R4 \
+--mount type=bind,source=/data/jinwf/,target=/docker/jinwf/ \
+dawneve/seurat:4.1.0a
+
+
+(2) 开一个普通的 ubuntu 测试
+$ docker run -it -d ubuntu:20.04 bash
+WARNING: IPv4 forwarding is disabled. Networking will not work. #这个报错怎么办？
+00f037242e7f25b4eddd1e408874279bd149674a6a184cef8398ecef5b17e714
+
+(3) 检查 docker 本身
+$ docker info | grep -i ipv4
+WARNING: IPv4 forwarding is disabled
+WARNING: bridge-nf-call-iptables is disabled
+WARNING: bridge-nf-call-ip6tables is disabled
+
+
+
+2. 解决办法
+配置 /etc/sysctl.conf ,添加 net.ipv4.ip_forward=1 即可
+
+#重启服务，让配置生效
+$ sudo systemctl restart network
+
+#查看是否成功,如果返回为“net.ipv4.ip_forward = 1”则表示成功
+$ sudo sysctl net.ipv4.ip_forward
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -5679,11 +5753,23 @@ ref: https://www.freecodecamp.org/news/where-are-docker-images-stored-docker-con
 ========================================
 把用户添加到docker组
 ----------------------------------------
+
+根据需要，又把 tom 加入了 docker 组：
+$ usr=tom
+$ sudo usermod -G docker ${usr}
+
+查看某个用户是否在 docker 组
+$ id tom
+
+
+
+
+## 以下可能过时了。
+
+
 1.查看自己是否在docker分组
 $ cat /etc/group | grep docker # 查找 docker 组，确认其是否存在
 ## docker:x:978:hou,rqfu
-
-
 
 2.添加自己到docker组
 groups # 列出自己的用户组，确认自己在不在 docker 组中
@@ -7641,7 +7727,116 @@ https://tencentcloudcontainerteam.github.io/tke-handbook/tke-skill/using-nat-gat
 
 
 ========================================
+docker --privileged=true参数作用
 ----------------------------------------
+
+Docker 应用容器 获取宿主机root权限（特殊权限）
+$ docker run -d --name="centos7" --privileged=true centos:7
+
+
+1. 大约在0.6版，privileged被引入docker。
+
+使用该参数，container内的root拥有真正的root权限。
+否则，container内的root只是外部的一个普通用户权限。
+
+- privileged启动的容器，可以看到很多host上的设备，并且可以执行mount。
+- 甚至允许你在docker容器中启动docker容器。
+
+$ docker help run 
+...
+--privileged=false     Give extended privileges to this container
+...
+
+
+
+
+2. 实例
+
+Docker 应用容器 获取宿主机root权限（特殊权限）
+$ docker pull ubuntu:20.04
+
+(1)  常规启动
+$ docker run -it --name="ubt_no" ubuntu:20.04
+root@25ba9070a37e:/# df -h
+Filesystem      Size  Used Avail Use% Mounted on
+overlay         895G   15G  881G   2% /
+tmpfs            64M     0   64M   0% /dev
+tmpfs           126G     0  126G   0% /sys/fs/cgroup
+shm              64M     0   64M   0% /dev/shm
+/dev/sdc3       895G   15G  881G   2% /etc/hosts
+tmpfs           126G     0  126G   0% /proc/acpi
+tmpfs           126G     0  126G   0% /proc/scsi
+tmpfs           126G     0  126G   0% /sys/firmware
+
+root@25ba9070a37e:/# lsblk
+NAME   MAJ:MIN RM   SIZE RO TYPE MOUNTPOINT
+sda      8:0    0   7.3T  0 disk 
+`-sda1   8:1    0   7.3T  0 part 
+sdb      8:16   0   7.3T  0 disk 
+`-sdb1   8:17   0   7.3T  0 part 
+sdc      8:32   0  1024G  0 disk 
+|-sdc1   8:33   0   200M  0 part 
+|-sdc2   8:34   0   500M  0 part 
+|-sdc3   8:35   0 895.3G  0 part /etc/hosts
+`-sdc4   8:36   0   128G  0 part [SWAP]
+sdd      8:48   0  17.2T  0 disk 
+|-sdd1   8:49   0   500M  0 part 
+`-sdd2   8:50   0  17.2T  0 part 
+sdf      8:80   0   7.3T  0 disk 
+`-sdf1   8:81   0   7.3T  0 part 
+sr0     11:0    1  1024M  0 rom 
+
+root@25ba9070a37e:/# mount /dev/sdb1 /mnt
+mount: /mnt: permission denied.
+挂载失败。
+
+
+
+(2) 启动命令加 --privileged=true 参数
+$ docker run -it --name="ubt_with" --privileged=true ubuntu:20.04 
+
+root@8f6951e114aa:/# df -h
+Filesystem      Size  Used Avail Use% Mounted on
+overlay         895G   15G  881G   2% /
+tmpfs            64M     0   64M   0% /dev
+tmpfs           126G     0  126G   0% /sys/fs/cgroup
+shm              64M     0   64M   0% /dev/shm
+/dev/sdc3       895G   15G  881G   2% /etc/hosts
+
+root@8f6951e114aa:/# lsblk
+NAME   MAJ:MIN RM   SIZE RO TYPE MOUNTPOINT
+sda      8:0    0   7.3T  0 disk 
+`-sda1   8:1    0   7.3T  0 part 
+sdb      8:16   0   7.3T  0 disk 
+`-sdb1   8:17   0   7.3T  0 part 
+sdc      8:32   0  1024G  0 disk 
+|-sdc1   8:33   0   200M  0 part 
+|-sdc2   8:34   0   500M  0 part 
+|-sdc3   8:35   0 895.3G  0 part /etc/hosts
+`-sdc4   8:36   0   128G  0 part [SWAP]
+sdd      8:48   0  17.2T  0 disk 
+|-sdd1   8:49   0   500M  0 part 
+`-sdd2   8:50   0  17.2T  0 part 
+sdf      8:80   0   7.3T  0 disk 
+`-sdf1   8:81   0   7.3T  0 part 
+sr0     11:0    1  1024M  0 rom
+
+
+root@8f6951e114aa:/# mount /dev/sdb1 /mnt  #挂载成功
+root@8f6951e114aa:/# df -h
+Filesystem      Size  Used Avail Use% Mounted on
+overlay         895G   15G  881G   2% /
+tmpfs            64M     0   64M   0% /dev
+tmpfs           126G     0  126G   0% /sys/fs/cgroup
+shm              64M     0   64M   0% /dev/shm
+/dev/sdc3       895G   15G  881G   2% /etc/hosts
+/dev/sdb1       7.3T  1.9T  5.0T  28% /mnt
+
+
+
+
+ref: https://www.jb51.net/article/202094.htm
+
 
 
 
@@ -7657,5 +7852,27 @@ https://tencentcloudcontainerteam.github.io/tke-handbook/tke-skill/using-nat-gat
 
 ========================================
 ----------------------------------------
+
+
+========================================
+----------------------------------------
+
+
+
+========================================
+----------------------------------------
+
+
+
+========================================
+----------------------------------------
+
+
+
+========================================
+----------------------------------------
+
+
+
 
 

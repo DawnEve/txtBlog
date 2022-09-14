@@ -1359,6 +1359,192 @@ d:/ STARmanual.pdf
 
 
 
+
+
+
+
+========================================
+|-- STAR: too many too short!
+----------------------------------------
+1. issues on github:
+https://github.com/alexdobin/STAR/issues/577
+
+In your case, the mapping mismatch rate is very high, ~5%, This is typically caused by either
+(i) poor sequencing quality - you can check the quality scores with FASTQC tool
+(ii) sample RNA divergent from the reference genome
+
+Note that (by default) STAR does not set the limit for the mapped bases, but rather limits the minimum mapped length to ~0.66 of each read length, which on average will be 38b in your case.
+The parameters that control this are --outFilterScoreMinOverLread and --outFilterMatchNminOverLread , both 0.66 by default.
+
+最短长度是按照百分比计算的，默认 0.66 倍的序列长度。
+150*0.66=99
+奇怪，对不上。38/0.66=58 倒着算长度也对不上。
+
+
+
+(1) 根据map位置分类
+https://github.com/alexdobin/STAR/issues/577
+
+Q: What happens when 1 read maps to 2+ in the reference? Is the read discarded, is the locus with the highest score used, or are all of them used?
+A: Such reads will be reported as multi-mappers, unless they map to more than --outFilterMultimapNmax loci (=10 by default).
+map 到1个地方的叫 uniq;
+map 到 [2,10]的叫 multi;
+
+
+(2) 
+$ cat MDA/H/04_map/H_polyA_Log.out | grep "outFilterScoreMinOverLread"
+outFilterScoreMinOverLread        0.66
+outFilterScoreMinOverLread        0.66
+
+[wangjl@bio_svr1 chenxi]$ cat MDA/H/04_map/H_polyA_Log.out | grep "outFilterMatchNminOverLread"
+outFilterMatchNminOverLread       0.66
+outFilterMatchNminOverLread       0.66
+
+
+(3) STAR solo 
+https://www.cnblogs.com/3Dgenome/p/14402741.html
+
+$ STAR --readFilesIn Read_cDNA.fastq Read_barcode.fastq 
+	--soloType Droplet 
+	--soloCBwhitelist /path/to/737K-august-2016.txt 
+	--soloFeatures Gene 
+	--outSAMtype BAM SortedByCoordinate 
+	--outSAMattributes NH HI CR UR CB UB GX GN
+
+
+
+
+
+
+
+
+
+2. 测试
+
+(1) STAR 
+老版本:
+$ cd /data/jinwf/wangjl/chenxi/MDA/H/
+$ cat 04_map/H_polyA_Log.out | grep "outFilter"
+
+$ STAR --runThreadN 5 \
+	--genomeDir /home/wangjl/data/ref/hg38/gencode/index/STAR/ \
+	--readFilesIn 03_cutPolyA_reads/H_polyA_reads.fq.gz \
+	--readFilesCommand zcat \
+	--outFileNamePrefix 04_map/H_polyA_ \
+	--outSAMtype BAM SortedByCoordinate  \
+	--outFilterMultimapNmax 1
+
+
+v2: try --outFilterMatchNminOverLread 0.13 --outFilterScoreMinOverLread 0.13 保证 20/150=0.133 和qrtPCR一致，也就是 20bp 的引物就认为够特异了。
+$ mv 04_map 04_map_v1
+$ mkdir 04_map
+$ STAR --runThreadN 5 \
+	--genomeDir /home/wangjl/data/ref/hg38/gencode/index/STAR/ \
+	--readFilesIn 03_cutPolyA_reads/H_polyA_reads.fq.gz \
+	--readFilesCommand zcat \
+	--outFileNamePrefix 04_map/H_polyA_ \
+	--outSAMtype BAM SortedByCoordinate  \
+	--outFilterMultimapNmax 1 \
+	--outFilterMatchNminOverLread 0.13 \
+	--outFilterScoreMinOverLread 0.13
+# 11:15-->11:35, 20min;
+
+
+
+
+(2) STAR solo
+老版本
+$ less B01_STAR_solo/H_Log.out
+$ STAR27 --runThreadN 30 \
+	--genomeDir /home/wangjl/data/ref/hg38/gencode/index/STAR27/ \
+	--readFilesIn raw/H.R2.fastq.gz raw/H.R1.fastq.gz \
+	--soloType CB_UMI_Simple --soloCBstart 1 --soloCBlen 8 --soloUMIstart 9 --soloUMIlen 10 --soloBarcodeReadLength 0  \
+	--readFilesCommand zcat \
+	--outSAMtype BAM SortedByCoordinate \
+	--soloCBwhitelist raw/cell_barcode.txt \
+	--outSAMattributes CB UB NH HI AS nM \
+	--outFileNamePrefix B01_STAR_solo/H_
+
+
+v2: try --outFilterMatchNminOverLread 0.13 --outFilterScoreMinOverLread 0.13 保证 20/150=0.133 和qrtPCR一致，也就是 20bp 的引物就认为够特异了。
+$ mv B01_STAR_solo B01_STAR_solo_v1
+$ mkdir B01_STAR_solo
+
+$ STAR27 --runThreadN 30 \
+	--genomeDir /home/wangjl/data/ref/hg38/gencode/index/STAR27/ \
+	--readFilesIn raw/H.R2.fastq.gz raw/H.R1.fastq.gz \
+	--soloType CB_UMI_Simple --soloCBstart 1 --soloCBlen 8 --soloUMIstart 9 --soloUMIlen 10 --soloBarcodeReadLength 0  \
+	--readFilesCommand zcat \
+	--outSAMtype BAM SortedByCoordinate \
+	--soloCBwhitelist raw/cell_barcode.txt \
+	--outSAMattributes CB UB NH HI AS nM \
+	--outFileNamePrefix B01_STAR_solo/H_ \
+	--outFilterMatchNminOverLread 0.13 --outFilterScoreMinOverLread 0.13
+#11:25-->12:07, 40min;
+
+
+查看其日志记录:
+$ cat B01_STAR_solo/H_Log.final.out
+
+                                 Started job on |	Jul 15 11:25:27
+                             Started mapping on |	Jul 15 11:26:00
+                                    Finished on |	Jul 15 12:07:16
+       Mapping speed, Million of reads per hour |	256.61
+
+                          Number of input reads |	176488105
+                      Average input read length |	150
+                                    UNIQUE READS:
+                   Uniquely mapped reads number |	79360325
+                        Uniquely mapped reads % |	44.97%
+                          Average mapped length |	86.91
+                       Number of splices: Total |	8710394
+            Number of splices: Annotated (sjdb) |	8127654
+                       Number of splices: GT/AG |	8294912
+                       Number of splices: GC/AG |	38679
+                       Number of splices: AT/AC |	3332
+               Number of splices: Non-canonical |	373471
+                      Mismatch rate per base, % |	2.34%
+                         Deletion rate per base |	0.02%
+                        Deletion average length |	1.50
+                        Insertion rate per base |	0.02%
+                       Insertion average length |	1.45
+                             MULTI-MAPPING READS:
+        Number of reads mapped to multiple loci |	86887151
+             % of reads mapped to multiple loci |	49.23%
+        Number of reads mapped to too many loci |	9364864
+             % of reads mapped to too many loci |	5.31%
+                                  UNMAPPED READS:
+  Number of reads unmapped: too many mismatches |	0
+       % of reads unmapped: too many mismatches |	0.00%
+            Number of reads unmapped: too short |	407357
+                 % of reads unmapped: too short |	0.23%
+                Number of reads unmapped: other |	468408
+                     % of reads unmapped: other |	0.27%
+                                  CHIMERIC READS:
+                       Number of chimeric reads |	0
+                            % of chimeric reads |	0.00%
+
+可见， Uniquely mapped reads % 由原来的 16.48%(29M) 上升到了 44.97%(79M)。
+too short 减少为 0.23%，但是 % of reads mapped to multiple loci 高达 49.23%。
+说明不归为太短的序列，则可能比对到多个位置，还是不能要。
+只保留 uniq mapped reads: 44.97%(79M).
+
+
+
+总的UMI reads数为:
+$ cat B01_STAR_solo/H_Solo.out/Gene/UMIperCellSorted.txt | awk '{sum+=$1};END{print sum}'
+28283876=28,283,876=28M
+
+
+
+
+
+
+
+
+
+
+
 ========================================
 |-- 多线程版 STAR (snakemake 控制并发数)
 ----------------------------------------
@@ -2467,11 +2653,14 @@ htseq-count的输入文件
 
 
 
+
 2.下载和安装
+https://github.com/htseq/htseq
+
 $ pip -V
 pip 9.0.1 from /home/wangjl/software/anoconda3/lib/python3.6/site-packages (python 3.6)
 
-$ pip insatll htseq
+$ pip install htseq
 几秒钟后安装好了。
 
 版本号
@@ -3362,6 +3551,7 @@ https://mp.weixin.qq.com/s?__biz=MzI5MTcwNjA4NQ==&mid=2247485220&idx=1&sn=007188
 ========================================
 MACS(Model-based Analysis of ChIP-Seq) 的安装
 ----------------------------------------
+
 1. MACS 1.4.2
 http://liulab.dfci.harvard.edu/MACS/Download.html
 
@@ -3420,6 +3610,13 @@ bed的坐标是从0开始的，前闭后开区间。
 
 
 (3) 运行命令
+
+macs2 callpeak 是macs2最主要的一个功能，能够利用bam文件寻找chip peak；
+macs2 callpeak 使用：
+## regular peak calling: $ macs2 callpeak -t ChIP.bam -c Control.bam -f BAM -g hs -n test -B -q 0.01
+## broad peak calling: $ macs2 callpeak -t ChIP.bam -c Control.bam --broad -g hs --broad-cutoff 0.1
+
+
 $ macs2 callpeak -t ChIP.bam -c Control.bam -f BAM -g hs -n test -B -q 0.05
 
 参数解释：
@@ -3682,6 +3879,9 @@ $ head c1__summits.bed
 
 
 
+
+
+
 ========================================
 |-- MACS2 输出文件解读
 ----------------------------------------
@@ -3730,6 +3930,9 @@ chr1  75786189  75786274  86      75786225    3       11.0199         3.98448   
 
 Coordinates in XLS is 1-based which is different with BED(0-based) format
 XLS里的坐标和bed格式的坐标还不一样，起始坐标需要减1才与narrowPeak的起始坐标一样。
+
+# 注意：XLS文件里面的起始位点和GFF文件相似从1起始，bed文件从0开始
+
 
 
 

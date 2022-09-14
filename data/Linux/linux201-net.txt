@@ -1080,6 +1080,9 @@ iptables is always "running". The only way to disable it would be to change the 
 ab命令通过 192.168.2.199(win10)/120(ubuntu20.04) 机器访问 134(CentOS7)http服务.
 
 先关闭 SELinux
+$ getenforce
+Enforcing
+
 $ sudo setenforce 0
 
 
@@ -1822,6 +1825,9 @@ $ sudo iptables -D INPUT -p tcp -s 192.168.2.199 --dport 80 -j ACCEPT
 
 
 
+
+
+
 ========================================
 |-- iptables配制-场景2: ftp主动模式和被动模式下的设置 //todo
 ----------------------------------------
@@ -2005,6 +2011,10 @@ https://blog.csdn.net/qzc70919700/article/details/79784566
 
 #查看规则
 sudo iptables -L -n --line-numbers |less
+$ sudo iptables -nL | head
+
+
+
 
 
 #插入规则，插入第一条
@@ -2017,9 +2027,121 @@ sudo iptables -L -n --line-numbers |less
 # sudo iptables -D INPUT 1 
 
 
+将第三条规则改为ACCEPT：
+# iptables -R INPUT 3 -j ACCEPT
+
 
 //开放8787端口访问
 # iptables -I IN_public_allow -p tcp --dport 8787 -j ACCEPT
+
+
+// 配置默认规则
+iptables -P INPUT DROP #不允许进。不能执行，执行完22端口也无法登陆了。
+iptables -P FORWARD DROP #不允许转发
+iptables -P OUTPUT ACCEPT #允许出
+
+
+
+//规则的保存
+# iptables -F #清空规则缓存区(这个操作将会清空上面增加的操作，若想保留建议先执行下一句：保存)
+# service iptables save # 保存规则到文件 /etc/sysconfig/iptables 
+# service iptables restart #重启 iptables 服务
+
+# chkconfig iptables on #开机自动启用
+
+
+其他发行版：
+保存 iptables-save > /root/iptables.conf
+恢复 iptables-restore < /root/iptables.conf
+
+
+打印规则到控制台，而不是文件
+# iptables-save
+# iptables-save > /etc/sysconfig/iptables #保存到文件
+保存在/etc/sysconfig/iptables中效果和service iptables save命令一样。
+
+如果保存在其他路径，重启后可以使用 iptables-restore命令恢复防火墙规则。
+iptables-restore < path(path为保存的路径)
+
+
+
+
+
+
+1. 查看是否开启启动
+
+(1) 设置开机自启动
+$ sudo systemctl enable iptables.service
+
+$ systemctl is-enabled iptables.service 
+enabled
+
+$ sudo chkconfig –level 345 iptables on
+$ chkconfig --list
+
+
+(2) 
+$ tail /etc/sysctl.conf
+net.ipv4.ip_forward=1
+$ sudo cat /proc/sys/net/ipv4/ip_forward 开启内核转发
+1
+
+
+$ sudo iptables -t filter -A FORWARD -j ACCEPT
+
+(3) 需关闭firewalld防火墙
+systemctl stop firewalld.service
+systemctl disable firewalld.service
+
+
+
+
+
+2. 空白 centOS7.9 虚拟机测试
+(1) 尝试1: 不保存到文件
+开服务
+$ python3 -m http.server 8787
+
+浏览器无法访问
+http://192.168.2.105:8787/
+
+开放8787端口访问
+$ sudo iptables -I INPUT -p tcp --dport 8787 -j ACCEPT
+浏览器可以访问了。
+
+查看当前状态，有8787端口的设置.
+$ sudo iptables -nL
+Chain INPUT (policy ACCEPT)
+target     prot opt source               destination         
+ACCEPT     tcp  --  0.0.0.0/0            0.0.0.0/0            tcp dpt:8787
+
+查看文件，没有找到 8787端口的设置。
+$ sudo cat /etc/sysconfig/iptables | grep 8787
+
+$ sudo reboot 
+重启后，端口是关着的。
+
+
+
+
+(2) 尝试2: 保存到文件
+$ python3 -m http.server 8787 #开服务
+
+$ sudo iptables -I INPUT -p tcp --dport 8787 -j ACCEPT #开端口，可以访问了
+$ sudo service iptables save #保存设置到文件, 如果没有该命令，就安装 yum install iptables-services
+iptables: Saving firewall rules to /etc/sysconfig/iptables:[  OK  ]
+
+$ sudo service iptables restart #重启服务，端口还可以访问
+
+$ sudo cat /etc/sysconfig/iptables | grep 8787 #文件中可以查到该端口设置
+-A INPUT -p tcp -m tcp --dport 8787 -j ACCEPT
+
+$ sudo reboot 
+重启后，端口可以访问。
+文件中可查。
+
+
+
 
 
 
@@ -2123,6 +2245,123 @@ drop 丢弃：任何接收的网络数据包都被丢弃，没有任何回复
 refer:
 https://blog.csdn.net/qq_28426351/article/details/52249710
 https://blog.csdn.net/weixin_44224288/article/details/88136383
+
+
+
+
+
+========================================
+|-- service iptables save 保存规则到文件
+----------------------------------------
+
+打开 8787 端口，并立即执行，默认不写入文件，重启失效。
+$ sudo iptables -I INPUT -p tcp --dport 8787 -j ACCEPT
+$ sudo iptables -I INPUT -p tcp --dport 22 -j ACCEPT
+想一直有效，就需要保存到配置文件。
+
+
+例:
+$ sudo iptables -D INPUT -p tcp --dport 8001 -j ACCEPT #删除该端口
+$ sudo service iptables save
+
+
+
+1. 直接执行报错
+$ sudo service iptables save
+The service command supports only basic LSB actions (start, stop, restart, try-restart, reload, force-reload, status). For other actions, please try to use systemctl.
+
+
+
+2. 安装 iptables-services
+https://blog.csdn.net/ethnicitybeta/article/details/122633776
+
+(1) 安装与启动
+$ sudo systemctl stop firewalld  #关闭防火墙
+$ sudo yum install iptables-services  #安装或更新服务再使用
+$ sudo systemctl enable iptables #设置开机启动 iptables
+
+$ sudo systemctl start iptables #打开iptables
+$ sudo service iptables save #保存现有规则到文件
+iptables: Saving firewall rules to /etc/sysconfig/iptables:[  OK  ]
+
+$ sudo service iptables restart #重启
+
+
+(2) 防火墙开机不启动
+$ sudo systemctl disable firewalld.service
+Removed symlink /etc/systemd/system/multi-user.target.wants/firewalld.service.
+Removed symlink /etc/systemd/system/dbus-org.fedoraproject.FirewallD1.service.
+
+$ sudo service iptables restart
+Redirecting to /bin/systemctl restart iptables.service
+
+
+
+
+3. 查看
+(1) 查看状态
+$ sudo iptables -nL
+Chain INPUT (policy ACCEPT)
+target     prot opt source               destination         
+ACCEPT     tcp  --  0.0.0.0/0            0.0.0.0/0            tcp dpt:22
+ACCEPT     tcp  --  0.0.0.0/0            0.0.0.0/0            tcp dpt:8787
+ACCEPT     udp  --  0.0.0.0/0            0.0.0.0/0            udp dpt:53
+ACCEPT     tcp  --  0.0.0.0/0            0.0.0.0/0            tcp dpt:53
+ACCEPT     udp  --  0.0.0.0/0            0.0.0.0/0            udp dpt:67
+ACCEPT     tcp  --  0.0.0.0/0            0.0.0.0/0            tcp dpt:67
+ACCEPT     all  --  0.0.0.0/0            0.0.0.0/0            ctstate RELATED,ESTABLISHED
+ACCEPT     all  --  0.0.0.0/0            0.0.0.0/0           
+INPUT_direct  all  --  0.0.0.0/0            0.0.0.0/0           
+INPUT_ZONES_SOURCE  all  --  0.0.0.0/0            0.0.0.0/0           
+INPUT_ZONES  all  --  0.0.0.0/0            0.0.0.0/0           
+DROP       all  --  0.0.0.0/0            0.0.0.0/0            ctstate INVALID
+REJECT     all  --  0.0.0.0/0            0.0.0.0/0            reject-with icmp-host-prohibited
+
+Chain FORWARD (policy ACCEPT)
+
+
+
+(2) 查看配置文件
+$ sudo wc /etc/sysconfig/iptables
+ 190  880 6497 /etc/sysconfig/iptables
+
+$ sudo head /etc/sysconfig/iptables
+# Generated by iptables-save v1.4.21 on Wed Jun 29 14:42:05 2022
+*nat
+:PREROUTING ACCEPT [2971:162413]
+:INPUT ACCEPT [2730:141992]
+:OUTPUT ACCEPT [257:16489]
+:POSTROUTING ACCEPT [257:16489]
+:OUTPUT_direct - [0:0]
+:POSTROUTING_ZONES - [0:0]
+:POSTROUTING_ZONES_SOURCE - [0:0]
+:POSTROUTING_direct - [0:0]
+...
+
+
+$ sudo grep "8787" /etc/sysconfig/iptables
+-A INPUT -p tcp -m tcp --dport 8787 -j ACCEPT
+
+
+
+$ sudo grep "22" /etc/sysconfig/iptables
+...
+-A INPUT -p tcp -m tcp --dport 22 -j ACCEPT
+-A FORWARD -d 192.168.122.0/24 -o virbr0 -m conntrack --ctstate RELATED,ESTABLISHED -j ACCEPT
+-A FORWARD -s 192.168.122.0/24 -i virbr0 -j ACCEPT
+-A IN_public_allow -p tcp -m tcp --dport 22 -m conntrack --ctstate NEW,UNTRACKED -j ACCEPT
+# Completed on Wed Jun 29 14:42:05 2022
+
+
+
+
+
+
+
+
+
+
+
 
 
 

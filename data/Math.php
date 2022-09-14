@@ -22,6 +22,7 @@ return array (
       array('线性代数','Math_linear_algebra','txt'),
       array('线代2: MIT课程; 线性空间','Math_linear_algebra2','txt'),
       array('微积分','Math_calculus','txt'),
+      array('离散数学','Math_discrete','txt'),
     ),
   ),
 

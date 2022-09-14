@@ -9,6 +9,7 @@ return array (
       array('常用代码片段','html002','txt'),
       array('markdown语法简介','markdown001','txt'),
       array('rst语法简介','rst001','txt'),
+      array('程序员自保策略','self_protect','txt'),
     ),
   ),
  
