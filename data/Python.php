@@ -19,19 +19,28 @@ return array (
     2 => array (
       array('Python快速入门','Py101-basic','txt',),
       array('Python基础详解','Py102-more','txt',),
-      array('Python OOP','Py103-OOP','txt',),
-      array('py设计模式','py_design_pattern','md',),
       array('Python数据处理包','Py104_data_analysis','txt',),
       array('Python DA可视化','Py104B_data_visualization','txt', 'matplotlib, seaborn'), #第四个参数不起作用
       array('Python Web','Py105-web','txt',),
-      array('python异步IO','Py107_async','txt',),
-      array('Python标准库','Py-Standard_lib','txt',),
     ),
   ),
-  
-   
+
+
   array (
     0 => 3,
+    1 => 'Python高级语法',
+    2 => array (
+      array('Python OOP','Py103-OOP','txt',),
+      array('py设计模式','py_design_pattern','md',),
+      array('python异步IO','Py107_async','txt',),
+      array('Python标准库','Py-Standard_lib','txt',),
+      array('写Python包','Py-pkgs','txt',),
+    ),
+  ),
+
+  
+  array (
+    0 => 4,
     1 => '机器学习ML',
     2 => array (
       array('Py与算法 algorithm','Py201_algorithm','txt',),

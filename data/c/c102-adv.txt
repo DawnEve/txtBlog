@@ -903,12 +903,6 @@ Dynamicaaly loaded libraries 才是像 windows 所用的 DLL ，在使用到时�
 
 
 
-
-
-
-
-
-
 ref:
 https://zhuanlan.zhihu.com/p/103167579
 
@@ -923,7 +917,102 @@ https://zhuanlan.zhihu.com/p/103167579
 
 
 ========================================
-Linux 下的 C语言
+|-- 动态链接库的位置 (运行时 so 文件)
+----------------------------------------
+
+动态库的查找，只记录库名，不记录地址和版本号。
+
+运行由动态链接库生成的可执行文件时，必须确保程序在运行时可以找到这个动态链接库。常用的解决方案有以下几种:
+
+
+方法1：将动态链接库文件移动到Linux标准库目录下，如 /usr/lib、/usr/lib64、/lib、/lib64；
+
+方法2：在终端输入export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:xxx，其中 xxx 为动态链接库文件的绝对路径（此方式仅在当前终端有效，关闭终端后无效）；
+
+方法3：修改~/.bashrc 或~/.bash_profile 文件，即在文件最后一行添加export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:xxx（xxx 为动态库文件的绝对路径）。保存之后，执行source ~/.bashrc指令（此方式仅对当前、及之后的登陆用户有效）。
+
+
+
+
+
+
+
+
+http://t.zoukankan.com/likewithyou-p-5836560.html
+
+
+
+
+
+========================================
+|-- 编译含 math 库的文件时，要加入 -lm 库 (动态共享库)
+----------------------------------------
+
+1. 测试代码
+
+$ vim test3.c 
+#include<stdio.h>
+#include<math.h>
+
+void t1(){
+  double y=hypot(4.0, 3.0);
+  printf("1value of x=%f\n", y);
+}
+
+void t2(){
+  double x=4.0;
+  double y=hypot(x, 3.0);
+  printf("2value of x=%f\n", y);
+}
+
+int main(){
+  t1();
+  t2();
+}
+
+直接编译报错:
+$ gcc -std=c11 test3.c -o out
+/usr/bin/ld: /tmp/ccjkySqe.o: in function `t2':
+test3.c:(.text+0x72): undefined reference to `hypot'
+collect2: error: ld returned 1 exit status
+
+
+
+
+
+2. 查到说 math 库编译时要加 -lm 
+
+Due to math library are not integrated in the standard gcc library because of integration issues with the kernel. you have to use -lm while compiling the code
+
+https://stackoverflow.com/questions/20664683/error-undefined-reference-to-math-functions
+
+
+$ gcc -std=c11 test3.c -o out -lm
+$ ./out 
+1value 5.000000
+2value 5.000000
+
+
+
+在 man gcc 中查找，发现这两个是并列的，-lpthread or -lm 
+也就是说这2个库是需要在编译时指定的。
+
+Do not use the C library or system libraries tightly coupled with it when linking.  Still link with the startup files, libgcc or toolchain provided language support libraries such as libgnat, libgfortran or libstdc++ unless options preventing their inclusion are used as well.  This typically removes -lc from the link command line, as well as system libraries that normally go with it and become meaningless when absence of a C library is assumed, for example -lpthread or -lm in some configurations.  This is intended for bare-board targets when there is indeed no C library available.
+
+
+
+
+
+
+
+
+
+
+
+
+
+========================================
+Linux 下的 C语言 编译
 ----------------------------------------
 
 
@@ -1532,6 +1621,76 @@ https://stackoverflow.com/questions/4250624/ld-library-path-vs-library-path
 https://www.shuzhiduo.com/A/ke5j6BDo5r/
 https://tldp.org/HOWTO/Program-Library-HOWTO/
 https://www.it610.com/article/1291589798045229056.htm
+
+
+
+
+
+========================================
+|-- gcc -O0 -O1 -O2 -O3 四级优化选项及每级分别做什么优化
+----------------------------------------
+GCC has well over a hundred individual optimization flags and it would be insane to try and describe them all
+
+几百项优化，其中几个常见的。
+
+幸而gcc提供了从O0-O3以及Os这几种不同的优化级别供大家选择，在这些选项中，包含了大部分有效的编译优化选项，并且可以在这个基础上，对某些选项进行屏蔽或添加，从而大大降低了使用的难度
+
+
+$ gcc -o basic_function_linux.so -shared -fPIC -O2 basic_function.c # Linux
+
+
+
+1. -O0： 不做任何优化，这是默认的编译选项。 
+
+-O和-O1： 对程序做部分编译优化，对于大函数,优化编译占用稍微多的时间和相当大的内存。使用本项优化，编译器会尝试减小生成代码的尺寸，以及缩短执行时间，但并不执行需要占用大量编译时间的优化。 
+
+
+
+
+
+2. -O2： 是比O1更高级的选项，进行更多的优化。Gcc将执行几乎所有的不包含时间和空间折中的优化。当设置O2选项时，编译器并不进行循环打开（）loop unrolling以及函数内联。与O1比较而言，O2优化增加了编译时间的基础上，提高了生成代码的执行效率。 
+
+O2打开所有的O1选项，并打开以下选项： 
+
+
+
+
+3. -O3： 比O2更进一步的进行优化。
+
+在包含了O2所有的优化的基础上，又打开了以下优化选项： 
+
+
+4. -Os： 主要是对程序的尺寸进行优化。
+
+打开了大部分O2优化中不会增加程序大小的优化选项，并对程序代码的大小做更深层的优化。（通常我们不需要这种优化）Os会关闭如下选项： -falign-functions -falign-jumps -falign-loops  -falign-labels   -freorder-blocks   -fprefetch-loop-arrays  
+
+
+
+优化代码有可能带来的问题 
+
+1．调试问题：正如上面所提到的，任何级别的优化都将带来代码结构的改变。例如：对分支的合并和消除，对公用子表达式的消除，对循环内load/store操作的替换和更改等，都将会使目标代码的执行顺序变得面目全非，导致调试信息严重不足。 
+
+2．内存操作顺序改变所带来的问题：在O2优化后，编译器会对影响内存操作的执行顺序。例如：-fschedule-insns允许数据处理时先完成其他的指令；-fforce-mem有可能导致内存与寄存器之间的数据产生类似脏数据的不一致等。对于某些依赖内存操作顺序而进行的逻辑，需要做严格的处理后才能进行优化。例如，采用volatile关键字限制变量的操作方式，或者利用barrier迫使cpu严格按照指令序执行的。
+
+
+
+
+
+
+ref: 
+https://blog.csdn.net/qq_31108501/article/details/51842166
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
