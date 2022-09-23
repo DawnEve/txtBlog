@@ -25,6 +25,7 @@ return array (
 	  array('用户、权限与日志和安全','linux104-user', 'txt'),
 	  array('多媒体','linux301_mutimedia', 'txt'),
 	  array('编辑器VIM/emacs','editor', 'txt'),
+	  array('过时信息 old_outdated','old_outdated', 'txt'),
     ),
   ),
   
