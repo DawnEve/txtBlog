@@ -542,7 +542,7 @@ https://blog.csdn.net/zlt995768025/article/details/79765738
 
 
 ========================================
-|-- CentOS7 的国内源
+|-- CentOS7 的国内安装源
 ----------------------------------------
 1. 主机位置
 $ ls -lth /etc/yum.repos.d/
@@ -552,6 +552,17 @@ $ cd /etc/yum.repos.d/
 $ less CentOS-Base.repo
 
 备份: $ cp CentOS-Base.repo /data/jinwf/wangjl/software/
+
+
+(2)
+https://developer.aliyun.com/mirror/centos?spm=a2c6h.13651102.0.0.3e221b11Kib2EJ
+
+
+$ wget -O /etc/yum.repos.d/CentOS-Base.repo https://mirrors.aliyun.com/repo/Centos-7.repo
+Or:
+$ curl -o /etc/yum.repos.d/CentOS-Base.repo https://mirrors.aliyun.com/repo/Centos-7.repo
+
+$ yum makecache #生成缓存
 
 
 
@@ -2950,6 +2961,8 @@ $ sudo pvs
 缩小的实质，就是把LV的PE还给 VG。
 
 
+resize2fs 针对文件系统ext2 ext3 ext4
+xfs_growfs 针对文件系统xfs: 不能缩小，只能增加。
 
 
 1. 主要步骤
@@ -2975,7 +2988,166 @@ mount /dev/cent2/dataA /mnt
 
 
 
-2. 实战操作 
+
+
+
+2. 实战操作 A: xfs 文件系统
+# for CentOS 7.9 xfs 文件系统 
+
+https://centosfaq.org/centos/centos-7-xfs-shrink-expand/
+XFS filesystems cannot be shrunk. If you need to shrink an XFS file system, then you have to backup the data, delete the entire filesystem, resize the volume in LVM, then create a new filesystem and restore the data from backup.
+只能先备份数据，然后调整大小，最后数据再拷贝回来。
+
+
+https://yallalabs.com/linux/how-to-reduce-shrink-the-size-of-a-lvm-partition-formatted-with-xfs-filesystem/
+It is actually possible to reduce the size of a logical volume formatted with xfs filesystem using the following procedure :
+1) Backup the data using xfsdump
+2) Unmount the filesystem
+3) Shrink logical volume to desired size using lvreduce
+4) Format the partition with xfs filesystem
+5) Remount the filesystem
+6) Restore the data using xfsrestore
+
+
+(1) 先备份数据
+# xfsdump   ##如果没有则安装一个 yum install xfsdump -y
+# xfsdump -f /tmp/test.dump /test
+
+$ sudo xfsdump -f /data2/oldHome.dump /mnt/data1
+01 / old_home
+
+
+(2)卸载已经挂载的逻辑卷
+$ sudo umount /dev/centos/home
+
+$ lsblk
+NAME            MAJ:MIN RM   SIZE RO TYPE  MOUNTPOINT
+sda               8:0    0  90.8T  0 disk  
+├─sda1            8:1    0   200M  0 part  /boot/efi
+├─sda2            8:2    0     1G  0 part  /boot
+└─sda3            8:3    0  90.8T  0 part  
+  ├─centos-root 253:0    0    50G  0 lvm   /
+  ├─centos-swap 253:1    0     4G  0 lvm   [SWAP]
+  └─centos-home 253:10   0  90.8T  0 lvm           #已经卸载
+
+
+(3) 缩小 lv
+$ sudo lvreduce -L 100G /dev/centos/home 
+  WARNING: Reducing active logical volume to 100.00 GiB.
+  THIS MAY DESTROY YOUR DATA (filesystem etc.)
+Do you really want to reduce centos/home? [y/n]: y
+  Size of logical volume centos/home changed from 90.76 TiB (23792301 extents) to 100.00 GiB (25600 extents).
+  Logical volume centos/home successfully resized.
+
+
+查看缩小后的 lv 
+$ lvdisplay 
+
+$ sudo vgs
+  VG     #PV #LV #SN Attr   VSize  VFree
+  centos   1   3   0 wz--n- 90.81t 90.66t
+
+$ sudo lvs
+  LV   VG     Attr       LSize   Pool Origin Data%  Meta%  Move Log Cpy%Sync Convert
+  home centos -wi-a----- 100.00g
+  root centos -wi-ao----  50.00g
+  swap centos -wi-ao----   4.00g
+
+
+(4) Format The Partition With XFS Filesystem
+$ sudo mkfs.xfs -f /dev/centos/home
+meta-data=/dev/centos/home       isize=512    agcount=16, agsize=1638336 blks
+         =                       sectsz=512   attr=2, projid32bit=1
+         =                       crc=1        finobt=0, sparse=0
+data     =                       bsize=4096   blocks=26213376, imaxpct=25
+         =                       sunit=64     swidth=256 blks
+naming   =version 2              bsize=4096   ascii-ci=0 ftype=1
+log      =internal log           bsize=4096   blocks=12800, version=2
+         =                       sectsz=512   sunit=64 blks, lazy-count=1
+realtime =none                   extsz=4096   blocks=0, rtextents=0
+
+
+(5) 挂载 
+$ sudo mount /dev/centos/home /mnt/data1
+
+(6) Restore The Data
+# xfsrestore -f /tmp/test.dump /test
+
+$ sudo xfsrestore -f /data2/oldHome.dump /mnt/data1
+删除备份:
+$ sudo rm -rf /data2/oldHome.dump
+
+检查: 
+$ df -lhT
+
+或者另一个教程，删掉该 逻辑分区，重新建立一个。
+
+
+
+
+
+=====> 进一步的任务
+(1) 为 / 扩容到 350G
+$ sudo lvextend -L +300G /dev/mapper/centos-root
+
+查看扩充后lv大小
+$ sudo lvdisplay 
+
+更新文件系统 
+$ sudo xfs_growfs /dev/mapper/centos-root
+
+查看更新后的文件系统
+$ df -hT
+
+
+(2) 为 swap 增大到 128G
+$ sudo lvextend -L +124G /dev/mapper/centos-swap
+  Size of logical volume centos/swap changed from 4.00 GiB (1024 extents) to 128.00 GiB (32768 extents).
+  Logical volume centos/swap successfully resized.
+
+$ sudo lvs
+  LV   VG     Attr       LSize   Pool Origin Data%  Meta%  Move Log Cpy%Sync Convert
+  root centos -wi-ao---- 350.00g                                                    
+  swap centos -wi-ao---- 128.00g 
+
+$ lsblk #查看，已经是128G了。
+
+关闭交换文件
+$ sudo swapoff /dev/mapper/centos-swap
+
+格式化
+$ sudo mkswap /dev/mapper/centos-swap
+mkswap: /dev/mapper/centos-swap: warning: wiping old swap signature.
+Setting up swapspace version 1, size = 134217724 KiB
+no label, UUID=113c0630-6642-4e8a-a049-b28a57ede259
+
+启用交换文件
+$ sudo swapon /dev/mapper/centos-swap
+
+$ htop #查看 swap 已经是 128G 了。
+
+$ lsblk
+NAME            MAJ:MIN RM   SIZE RO TYPE  MOUNTPOINT
+sda               8:0    0  90.8T  0 disk  
+├─sda1            8:1    0   200M  0 part  /boot/efi
+├─sda2            8:2    0     1G  0 part  /boot
+└─sda3            8:3    0  90.8T  0 part  
+  ├─centos-root 253:0    0   350G  0 lvm   /
+  └─centos-swap 253:1    0   128G  0 lvm   [SWAP]
+
+
+
+
+
+
+
+
+
+
+
+
+
+2. 实战操作 B: ext4 文件系统
 (1) 接上文，已经有一个 逻辑分区 /dev/cent2/dataA 
 
 检查，已经卸载该分区
@@ -3107,6 +3279,8 @@ dataA cent2  -wi-ao----  12.00g
 $ df -h
 Filesystem               Size  Used Avail Use% Mounted on
 /dev/mapper/cent2-dataA   12G   25M   12G   1% /data3
+
+
 
 
 
@@ -4267,6 +4441,299 @@ lnvgy_fw_sraidmr_730-24.21.0-0076-2_linux_x86-64.bin
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+========================================
+|-- 193 server 重装系统: 使用基于加密文件的登录，禁用单密码登录
+----------------------------------------
+见 http://j.biomooc.com/?file=server/ssh_key_login.md
+
+1. 备份文件
+
+(1)用户名和uid
+
+$ cp /etc/passwd ~/backup/
+$ cp /etc/group ~/backup/
+
+
+(2) 硬盘挂载情况
+$ lsblk
+NAME              MAJ:MIN RM   SIZE RO TYPE  MOUNTPOINT
+sda                 8:0    0 446.1G  0 disk  
+├─sda1              8:1    0    50M  0 part  /boot/efi
+├─sda2              8:2    0   471M  0 part  /boot
+└─sda3              8:3    0 445.6G  0 part  
+  ├─centos00-root 253:0    0 326.4G  0 lvm   /
+  └─centos00-swap 253:1    0 119.2G  0 lvm   [SWAP]
+sdb                 8:16   0   8.2T  0 disk  
+└─sdb1              8:17   0   8.2T  0 part  
+  └─centos-home   253:4    0   8.2T  0 lvm   /home
+sdc                 8:32   0 145.9T  0 disk  
+├─sdc1              8:33   0 145.9T  0 part  
+└─mpatha          253:2    0 145.9T  0 mpath 
+  └─mpatha1       253:3    0 145.9T  0 part  /data
+sdd                 8:48   0 145.9T  0 disk  
+├─sdd1              8:49   0 145.9T  0 part  
+└─mpatha          253:2    0 145.9T  0 mpath 
+  └─mpatha1       253:3    0 145.9T  0 part  /data
+sde                 8:64   0    89T  0 disk  
+└─sde1              8:65   0    89T  0 part  /data_slow
+sdf                 8:80   0    89T  0 disk  
+└─sdf1              8:81   0    89T  0 part  /data2
+sr0                11:0    1   928K  0 rom
+
+
+
+(3) 重装系统
+
+1. 193 server 重装如果失败，可能是需要 初始化 Raid;
+启动 点F1，进入 bios，选择 UEFI
+左侧系统设置，右侧底部 存储
+slot10, Main menu, 然后 Vitual drive management
+Operation: fast initialization
+很快清理掉数据。
+
+然后 UEFI 启动项，选择 U盘启动。或者启动 按F12 选择U盘启动。
+进入启动项3行时，选第一行按字母e，删除 :labels及 quiet 之前的内容，换成 :/dev/sdc4
+ctrl+x 重启即可进入centOS7.9安装界面。
+
+
+
+
+
+
+
+
+2. 恢复用户名系统
+
+(1) 用户名根据id重建的脚本
+
+
+查看原来uid
+$ ls -lth /home
+total 148K
+drwxr-x---. 48 wangjl jinwf 4.0K Sep 23 19:38 wangjl
+drwx------. 23 zhouwg jinwf 4.0K Sep 23 19:18 zhouwg
+drwx--x--x. 39 zhoub  jinwf 4.0K Sep 23 18:09 zhoub
+drwxr-x---. 31   1010 jinwf 4.0K Sep 23 14:40 jhsun
+drwx------. 27   1005 jinwf 4.0K Sep 23 14:02 chengww
+或者
+$ tail -n 2 /home/wangjl/backup/passwd
+Tangjk:x:1030:1001::/home/Tangjk:/bin/bash
+liyh:x:1031:1001::/home/liyh:/bin/bash
+
+
+
+
+
+新建组
+$ sudo groupadd -g 1001 jinwf
+
+新建用户 with uid
+$ usr="wangjl" && uid=1017
+$ sudo useradd -s /bin/bash -d /home/${usr} -m ${usr} -g 1001 -u ${uid}
+
+
+新用户密码 sudo passwd ${usr}
+
+# 1) 固定密码
+$ echo "redhat" | sudo passwd --stdin $usr
+Changing password for user wangjl2.
+passwd: all authentication tokens updated successfully.
+
+
+# Or 2) 随机密码
+$ pass=`date|md5sum |head -c 10` && echo $pass | sudo passwd --stdin $usr
+Changing password for user wangjl2.
+passwd: all authentication tokens updated successfully.
+
+$ echo $pass
+a22e604a69
+
+
+
+
+
+
+3. 怎么免密码登录？
+
+(1) 服务器设置不允许仅用密码登录
+
+Centos7禁用密码登录方法：
+
+$ sudo vim /etc/ssh/sshd_config
+PasswordAuthentication yes ===> PasswordAuthentication no
+
+Restart the server:
+$ sudo systemctl restart sshd.service
+
+
+
+
+
+(2) 用户设置步骤
+
+- Xshell配置 ssh免密登录 密钥公钥 https://blog.csdn.net/m0_68517939/article/details/126779021
+- CentOs7 设置密钥登录、禁用密码、免密登录 https://copyfuture.com/blogs-details/202207090626216182
+
+
+
+使用密钥登录分为3步：
+1) 生成密钥（公钥与私钥对）；
+
+最好加上6位以上的密码，相当于 加密文件 + 密码 双重登录验证。
+
+windowns 使用 git bash: https://git-scm.com/
+下载并默认安装windows git后，右击桌面空白部分，选择 git bash ，然后输入如下命令:
+
+
+$ cd 
+$ cd .ssh/
+$ ssh-keygen -t rsa -C "wangjl2@gmail.com" -f ./id_rsa10  #如果使用
+Generating public/private rsa key pair.
+Enter passphrase (empty for no passphrase):  这里推荐输入一个强密码，不能留空
+Enter same passphrase again:
+Your identification has been saved in ./id_rsa10.
+Your public key has been saved in ./id_rsa10.pub.
+The key fingerprint is:
+SHA256:0qOWvW/BaNO9ttdzN1YcJmJBRjihEWzix1/RKc4XLms wangjl2@gmail.com
+The key's randomart image is:
++---[RSA 2048]----+
+|      .o..=+. .  |
+|     . ooo.+ +   |
+|    . +.  + = .  |
+|     . +   B + o |
+|      o S+o.= o..|
+|       =+o+E.   o|
+|      +..... . ..|
+|     .   .. o .++|
+|        .o...o. =|
++----[SHA256]-----+
+
+
+检查生成的文件:
+$ ls -lth
+total 19K
+-rw-r--r-- 1 admin 197121  399 9月  23 14:20 id_rsa10.pub
+-rw-r--r-- 1 admin 197121 1.8K 9月  23 14:20 id_rsa10
+
+其中带 .pub 后缀的，邮件发给管理员。
+私钥文件没有 .pub 后缀，要像保护自己的密码一样保护它，不要发给任何人。私钥就是你以后登录服务器的凭证。
+
+可以定期生成新的密钥对，并自己把新的公钥加入服务器的 ~/.ssh/authorized_key 文件中，替换掉旧的。
+
+
+
+
+2) 放置公钥(Public Key)到服务器 ~/.ssh/authorized_key 文件中
+
+首次请管理员执行这一步，后来可以不定期自己执行更新替换。
+
+自己执行
+$ cat id_rsa10.pub >> ~/.ssh/authorized_keys
+
+注意检查一下服务器上 ~/.ssh/ 文件夹是否为700，authorized_keys文件是否为600。
+$ chmod 700 ~/.ssh
+$ chmod 600 ~/.ssh/authorized_keys
+
+
+
+新用户由管理员代执行，把自己的公钥邮件发给管理员
+$ cat id_rsa10.pub >> /home/${usr}/.ssh/authorized_keys
+
+$ chmod 700 /home/${usr}/.ssh
+$ chmod 600 /home/${usr}/.ssh/authorized_keys
+
+
+
+
+3) 配置ssh客户端使用密钥登录
+
+ssh 除了使用密码登录外，还可以选择 public key 登录方式: 通过服务器上的公钥配对的私钥文件进行登录。
+
+i) 使用 git bash 登录服务器时，秘钥文件名只能是 id_rsa，且放在 C:\Users\admin\.ssh\id_rsa 位置。
+
+
+ii) 使用 xshell 时
+文件-新建，输入主机名，点击用户身份验证，
+方法：Public Key
+用户名: 自己的用户名
+用户秘钥: 点击左侧的浏览、选择导入，找到 不带 .pub 后缀的私钥，选择，点确定，确定。
+
+打开-选择刚才那个设置，点连接即可。
+
+
+
+
+
+
+
+
+
+4. 如何在本地配置多个 ssh key?
+https://gitee.com/help/articles/4229#article-header1
+
+(1) 生成多个 ssh key 
+
+生成一个公司电脑用的SSH-Key
+$ ssh-keygen -t rsa -C 'xxxxx@company.com' -f ~/.ssh/gitee_id_rsa
+设置密码，至少5位。
+
+生成一个github用的SSH-Key
+$ ssh-keygen -t rsa -C 'xxxxx@qq.com' -f ~/.ssh/github_id_rsa
+
+
+-t : 密钥类型, 可以选择 dsa | ecdsa | ed25519 | rsa ;
+-f : 密钥目录位置, 默认为当前用户home路径下的 .ssh 隐藏目录, 也就是 ~/.ssh/ , 同时默认密钥文件名以 id_rsa 开头. 如果是 root 用户, 则在 /root/.ssh/id_rsa , 若为其他用户, 则在/home/username/.ssh/id_rsa;
+-C : 指定此密钥的备注信息, 需要配置多个免密登录时, 建议携带;
+
+
+(2) 配置文件 ~/.ssh/config 
+在 ~/.ssh 目录下新建一个config文件，添加如下内容（其中Host和HostName填写git服务器的域名，IdentityFile指定私钥的路径）
+
+# gitee
+Host gitee.com
+HostName gitee.com
+PreferredAuthentications publickey
+IdentityFile ~/.ssh/gitee_id_rsa
+# github
+Host github.com
+HostName github.com
+PreferredAuthentications publickey
+IdentityFile ~/.ssh/github_id_rsa
+
+
+
+$ cat ~/.ssh/config # 这是 windows 上的文件
+Host 192.168.2.105
+  HostName 192.168.2.105
+  User wangjl
+  PreferredAuthentications publickey
+  IdentityFile ~/.ssh/gitee_id_rsa
+
+
+
+(3) 公钥放到服务器上
+$ vim ~/.ssh/authorized_keys
+写入 ~/.ssh/gitee_id_rsa.pub 的一行内容。
+
+
+(4) 连接
+
+$ ssh wangjl@192.168.2.105
+Enter passphrase for key '/c/Users/admin/.ssh/gitee_id_rsa':
+Last login: Fri Sep 23 02:28:13 2022 from desktop-6tss3vl.lan
+(base) [wangjl@ct79 ~]$
 
 
 

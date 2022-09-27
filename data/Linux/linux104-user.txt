@@ -379,6 +379,124 @@ date +%s%N | md5sum | head -c 10
 
 
 ========================================
+|-- CentOS7.9 重装系统后，怎么快速恢复用户？
+----------------------------------------
+提前备份用户注册数据，就是 /etc/passwd 文件。 
+
+重装后根据 uname 和 uid 恢复用户，则用户的文件权限不变。
+
+useradd -s /bin/bash -d /home/${usr} -m ${usr} -g 1001 -u ${uid}
+
+
+
+
+1. 尝试写成脚本
+
+(1) 测试: 家目录下查看还没有的用户
+
+难点: 一行空格隔开的文字变数组
+
+$ ls -lth /home | awk '{print $3"\t"$9}' | grep -P "^10\d{2}" | while read id; do 
+arr=($id);
+echo ${arr[0]} "|" ${arr[1]};
+done;
+
+
+# 读取一行信息: 获取uid和uname
+uid=1005 &&	usr=chengww
+
+测试脚本
+$ ls -lth /home | awk '{print $3"\t"$9}' | grep -P "^10\d{2}" #数据来源
+
+$ sudo bash ~/backup/recoverUser_add_sshDir193.sh 1005 chengww
+$ sudo bash ~/backup/recoverUser_add_sshDir193.sh 1025 yushiya
+$ sudo bash ~/backup/recoverUser_add_sshDir193.sh 1004 chengm
+$ sudo bash ~/backup/recoverUser_add_sshDir193.sh 1007 huangcy
+
+
+循环: 调用脚本(2)
+$ ls -lth /home | awk '{print $3"\t"$9}' | grep -P "^10\d{2}" | while read id; do 
+arr=($id);
+echo -e "\n\n"${arr[0]} "|" ${arr[1]};
+sudo bash ~/backup/recoverUser_add_sshDir193.sh ${arr[0]} ${arr[1]};
+done;
+
+
+
+(2) 根据 uid 和 uname 恢复的脚本
+
+$ cat ~/backup/recoverUser_add_sshDir193.sh
+# 1) input 
+uid=$1
+if [ "$1" == "" ]
+then
+  echo "You must input a uid as 1st parameter"
+  exit
+fi
+
+usr=$2
+if [ "$2" == "" ]
+then
+  echo "You must input a username as 2nd parameter"
+  exit
+fi
+
+# usr exist?
+getent passwd $usr  > /dev/null
+
+if [ $? -eq 0 ]; then
+    echo "yes the user exists, do nothing, exit."
+	exit
+else
+    echo "No, the user does not exist, we'll add one:"
+fi
+
+# 2) add user
+echo ">>>> usr: $usr, uid: $uid"
+useradd -s /bin/bash -d /home/${usr} -m ${usr} -g 1001 -u ${uid}
+pass=`date|md5sum |head -c 10`
+echo $pass | passwd --stdin $usr
+echo ">>>> pass: $pass"
+
+
+# 3) add dir and file for ssh key
+myPath="/home/${usr}/.ssh"
+
+if [ ! -d "$myPath"]; then
+	mkdir "$myPath";
+	chown $usr /home/${usr}/.ssh;
+fi
+chmod 700 /home/${usr}/.ssh;
+
+
+myFile="/home/${usr}/.ssh/authorized_keys"
+if [ ! -f "$myFile" ]; then
+	touch "$myFile";
+	chown $usr /home/${usr}/.ssh/authorized_keys
+fi
+chmod 600 /home/${usr}/.ssh/authorized_keys
+echo ">>>> ssh file: /home/${usr}/.ssh/authorized_keys"
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+========================================
 sudo指令
 ----------------------------------------
 功能： 以root的身分执行命令
