@@ -41,6 +41,7 @@ return array (
 	  array('人员管理','mg_202_man','txt' ),
 	  array('科研经验','mg_203_research','txt' ),
 	  array('密码管理 pass','mg_204_passwd','txt' ),
+	  array('广告管理','mg_205_advertisement','txt' ),
 
     ),
   ),
