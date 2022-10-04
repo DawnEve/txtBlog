@@ -1,11 +1,15 @@
-c102-adv: c语言的高级话题
+c语言编译与调试
 
 
 多文件编译
 	命令行参数
 	变量作用范围: 块作用域{}、文件作用域(static)、全局作用域
 	变量生存期: 静态、非静态
+	gcc 
+	cmake
 
+
+调试：编译时错误和运行时错误。后者主要是内存管理问题。
 内存:
 	内存分配-> 详见: 指针
 	gdb 调试
@@ -1711,6 +1715,328 @@ https://blog.csdn.net/qq_31108501/article/details/51842166
 
 
 
+
+
+
+
+
+
+
+
+
+========================================
+CMake //ing
+----------------------------------------
+官方教程(12个步骤): https://cmake.org/cmake/help/latest/guide/tutorial/index.html
+
+
+如果有很多文件、组件，甚至第三方库，则手动make会十分繁琐。
+自动构建工具有很多，vs自己的，也有 android的 gradle等。
+
+本文讲 c/c++ 的一个构建工具 CMake，它本身不带编译工具，需要提前安装 gcc。
+
+基本流程: 
+CMake -> 
+	CMakeLists.txt -> 
+		vs code 工程配置文件 *.sin
+		Makefile 
+		.xcodeProj
+		...
+
+
+1. 官网资料 
+https://cmake.org/
+口号: Build with CMake. Build with Confidence.
+
+说明: CMake is an open-source, cross-platform family of tools designed to build, test and package software. CMake is used to control the software compilation process using simple platform and compiler independent configuration files, and generate native makefiles and workspaces that can be used in the compiler environment of your choice. The suite of CMake tools were created by Kitware in response to the need for a powerful, cross-platform build environment for open-source projects such as ITK and VTK.
+
+CMake 是开源、跨平台的工具家族，用于构建、测试和打包软件。
+
+https://github.com/Kitware/CMake
+
+
+
+(2) 安装 
+$ sudo apt install cmake
+
+$ cmake --version
+cmake version 3.16.3
+
+CMake suite maintained and supported by Kitware (kitware.com/cmake).
+
+(3) 版本差异
+
+# 古代 cmake 2.x 版本
+mkdir -p build 
+cd build 
+cmake .. -DCMAKE_BUILD_TYPE=Release
+make -j4
+make install 
+cd ..
+
+
+# 现在 cmake 3.x 版本(简化、灵活)
+cmake -B build -DCMAKE_BUILD_TYPE=Release 
+cmake --build build --parallel 4
+cmake --build build --target install
+
+
+
+
+
+
+
+
+
+
+2. 最简例子
+(1) 单文件 源码
+$ cat main.cpp
+#include<iostream>
+int main(){
+	std::cout << "hello, world!" << std::endl;
+	return 0;
+}
+
+$ g++ main.cpp 
+$ ./a.out 
+hello, world!
+$ rm a.out
+
+(2) 同目录下新建配置文件
+$ cat CMakeLists.txt #必不可少的3行
+cmake_minimum_required(VERSION 3.10) #最低的cmake版本
+project(Test1)                 #项目名字，也就是编译后的名字
+add_executable(Test1 main.cpp)  #添加源码文件
+
+
+说明: 
+add_executable(main, main.cpp)
+也可以分2条写
+add_executable(main)
+target_sources(main PUBLIC main.cpp)
+
+
+
+(3) 使用 CMake 两步构建
+
+=> step1: 配置项目
+$ cmake -S . -B build
+$ tree build/  #查看生成的目录树
+
+
+=> step2: 构建项目
+$ cmake --build build
+Scanning dependencies of target Test1
+[ 50%] Building CXX object CMakeFiles/Test1.dir/main.cpp.o
+[100%] Linking CXX executable Test1
+[100%] Built target Test1
+
+
+运行生成的文件
+$ ./build/Test1 
+hello, world!
+
+
+
+
+
+
+
+
+========================================
+|-- cmake 命令的更多参数 和 CMakeLists.txt 文件的写法
+----------------------------------------
+
+3. cmake 命令的参数(这个和 4.配置文件紧密结合)
+$ cmake --help
+-S <path-to-source>          = Explicitly specify a source directory. 源码目录
+-B <path-to-build>           = Explicitly specify a build directory.  build目录
+--build <dir>                = Build a CMake-generated project binary tree. 构建文件放在这个目录
+
+(1) -D 指定配置变量（又称缓存变量）
+-D <var>[:<type>]=<value>    = Create or update a cmake cache entry. 
+	配置阶段才能用。
+	指定构建类型: $ cmake -B build -D CMAKE_BUILD_TYPE=Release
+	还可以指定 Debug 类型。一般指定 Release，编译器会自动开启各种优化。
+
+CMAKE_BUILD_TYPE 是 CMake 中一个特殊的变量，用于控制构建类型，值可以是：
+	Debug 调试模式，完全不优化，生成调试信息，方便调试程序
+	Release 发布模式，优化程度最高，性能最佳，但是编译比 Debug 慢
+	MinSizeRel 最小体积发布，生成的文件比 Release 更小，不完全优化，减少二进制体积
+	RelWithDebInfo 带调试信息发布，生成文件比 Release 更大，因为带有调试的符号信息
+	默认空字符窗，相当于 Debug 模式。
+	对应的编译器选项上的区别:
+		Debug: `-O0 -g`
+		Release: `-O3 -DNDEBUG`
+		MinSizeRel: `-Os -DNDEBUG`
+		RelWithDebInfo: `O2 -g -DNDEBUG`
+		注意: 定义了 -DNDEBUG 宏会使 assert 被去除掉。
+
+
+为了改变 Debug 这个默认值，可以在配置文件前3行加上：
+if (NOT CMAKE_BUILD_TYPE)
+	set(CMAKE_BUILD_TYPE Release)
+endif()
+
+
+
+
+
+(2) -G 指定要用的生成器
+-G <generator-name>          = Specify a build system generator.
+	$ cmake -G Ninja -B build #这是更快的编译器。Ninja是转为性能优化的构建系统，它和CMake结合都是行业标准了。
+		可能需要安装 $ pip install ninja -i https://pypi.douban.com/simple/
+		有趣的是，cmake也可以通过pip安装 $ pip install cmake -i https://pypi.douban.com/simple/
+			$ cmake --version  #cmake version 3.24.1
+		$ rm -rf build/  #如果用Ninja构建报错，需要删掉中间文件，重新构建
+		$ cmake -G Ninja -B build
+		$ cmake --build build
+		[2/2] Linking CXX executable Test1
+		$ ls build/
+		build.ninja  CMakeCache.txt  CMakeFiles  cmake_install.cmake  rules.ninja  Test1
+
+耗时对比
+$ time cmake --build build #使用 Ninja
+[2/2] Linking CXX executable Test1
+
+real	0m0.324s  #快了点
+user	0m0.255s
+sys	0m0.070s
+
+
+$ time cmake --build build  #使用 Makefile
+Scanning dependencies of target Test1
+[ 50%] Building CXX object CMakeFiles/Test1.dir/main.cpp.o
+[100%] Linking CXX executable Test1
+[100%] Built target Test1
+
+real	0m0.420s
+user	0m0.315s
+sys	0m0.090s
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+4. cmake的配置文件更多规则
+(1)
+$ cat CMakeLists.txt #必不可少的3行之外，又增加了很多其他句子
+cmake_minimum_required(VERSION 3.10) #最低的cmake版本
+project(Blackhole)                 #项目名字，也就是编译后的名字
+
+find_package(imgui REQUIRED)   #找包 imgui，必须找到，找不到就报错
+find_package(glm REQUIRED)
+
+file(GLOB SRC_FILES
+	"${PROJECT_SOURCE_DIR}/src/*.h"
+	"${PROJECT_SOURCE_DIR}/src/*.cpp"
+	"${PROJECT_SOURCE_DIR}/src/*.c"
+	"${PROJECT_SOURCE_DIR}/src/*.cc"
+)
+
+add_executable(${CMAKE_PROJECT_NAME} ${SRC_FILES})  #添加源码文件
+
+
+# 链接第三方库
+target_link_library(${CMAKE_PROJECT_NAME} PRIVATE imgui::imgui)
+
+
+# 然后是文件复制
+
+
+
+
+
+(2) 多个c++源文件怎么办？
+
+$ cat CMakeLists.txt #必不可少的3行
+cmake_minimum_required(VERSION 3.10) #最低的cmake版本
+project(Test1)                 #项目名字，也就是编译后的名字
+
+
+add_executable(main, main.cpp)
+
+#1) 逐个添加源码
+add_executable(main)
+target_sources(main PUBLIC main.cpp other.cpp) 
+ 
+
+
+#2) 使用set设置变量来添加源文件
+add_executable(main)
+set(sources main.cpp other.cpp other.h)
+target_sources(main PUBLIC ${sources}) 
+
+
+#3) 使用GLOB自动查找某目录下的指定扩展名文件
+add_executable(main)
+file(GLOB sources *.cpp *.h)
+target_sources(main PUBLIC ${sources}) 
+
+
+为了防止文件删除、改名后不及时更新，建议加上 CONFIGURE_DEPENDS 选项：添加新文件时，自动更新变量
+add_executable(main)
+file(GLOB sources CONFIGURE_DEPENDS *.cpp *.h)
+target_sources(main PUBLIC ${sources}) 
+
+
+#4) 带有子文件夹怎么办？列举可能的文件夹和后缀组合
+add_executable(main)
+file(GLOB sources CONFIGURE_DEPENDS *.cpp *.h mylib/*.cpp mylib/*.h)
+target_sources(main PUBLIC ${sources}) 
+
+
+或者 用 aux_source_directory 自动搜集需要的文件后缀名
+add_executable(main)
+aux_source_directory(. sources) #获取 ./ 目录下的源码文件，保存在 sources 中
+aux_source_directory(mylib sources)  #获取 ./ 目录下的源码文件，保存在 sources 中
+target_sources(main PUBLIC ${sources}) 
+
+
+
+#5) GLOB 换成 GLOB_RECURSE 自动包含所有子文件夹下的文件
+add_executable(main)
+file(GLOB_RECURSE sources CONFIGURE_DEPENDS *.cpp *.h)
+target_sources(main PUBLIC ${sources})
+
+这样有个问题，由于 build/ 也在当前目录，里面有一些中间文件，也会被包含进来，导致冲突。
+解决办法：把源码文件和 build 文件放在不同的目录中。比如把build放在其他目录 /tmp/build，或者把源码放在 /src 下。
+
+
+
+
+3) 
+
+
+
+
+
+
+(100) 怎么下载第三方库？
+- 直接下载
+- 有一个类似于pyhton 的pip的工具：微软的 vcpkg
+	$ vcpkg install imgui
+	CentOS7.9 yum找不到 vcpkg。Ubuntu 20.04 apt也找不到。看演示，是win下的cmd。
+
+
+
+
+
+
+ref:
+https://www.bilibili.com/video/BV16P4y1g7MH/?spm_id_from=333.337.search-card.all.click
+	看到 21'
 
 
 
