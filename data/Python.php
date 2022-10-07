@@ -33,7 +33,7 @@ return array (
       array('Python OOP','Py103-OOP','txt',),
       array('py设计模式','py_design_pattern','md',),
       array('python异步IO','Py107_async','txt',),
-      array('Python标准库','Py-Standard_lib','txt',),
+      array('Python标准库 STL','Py-Standard_lib','txt',),
       array('写Python包','Py-pkgs','txt',),
     ),
   ),

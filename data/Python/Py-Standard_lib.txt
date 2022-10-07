@@ -135,7 +135,7 @@ https://pymotw.com/3/index.html
   14.6　cmd—面向行的命令处理器679
   14.7　shlex—解析shell语法690
   14.8　ConfigParser—处理配置文件698
-  14.9　日志—报告状态、错误和信息消息712
+  14.9　logging—报告状态、错误和信息消息712
   14.10　fileinput—命令行过滤器框架716
   14.11　atexit—程序关闭回调721
   14.12　sched—定时事件调度器725
@@ -766,9 +766,455 @@ pumpkin 1
 
 
 
+========================================
+第14章　应用构建模块
+----------------------------------------
+
+
+========================================
+|-- logging—报告状态、错误和信息消息: 记录日志，可以代替 print 调试程序 //todo 没理顺，颜色怎么加？
+----------------------------------------
+
+如果需要在多个地方大量查看中间变量，使用print就不方便了，python引入了 logging 模块来记录日志信息。
+
+print也可以输入日志，logging相对print来说更好控制输出在哪个地方，怎么输出及控制消息级别来过滤掉那些不需要的信息。
+
+可以基于命令、基于配置文件进行设置。
+
+https://docs.python.org/zh-cn/3/library/logging.html
 
 
 
+
+0. 日常使用 (注：193 ok, Y station not 交互 but ok in script;)
+
+# coding:utf-8
+import logging
+
+# 配置
+logging.basicConfig(format='%(asctime)s - %(filename)s[line:%(lineno)d] - [%(levelname)s]: %(message)s', 
+    level=logging.DEBUG)
+
+# 记录示例
+cores=20
+logging.debug('Start multiprocess using %s cores' % cores)
+
+try:
+    command_line="2/0"
+    2/0
+except Exception as e:
+    logging.error('{}: {}'.format(command_line, e))
+
+
+标准输出:
+2021-10-08 11:19:34,860 - test.py[line:9] - [DEBUG]: Start multiprocess using 20 cores
+2021-10-08 11:19:34,860 - test.py[line:15] - [ERROR]: 2/0: division by zero
+
+
+(2) 如果不输出，尝试获取实例再输出
+import logging
+# 配置
+logging.basicConfig(format='%(asctime)s - %(filename)s[line:%(lineno)d] - [%(levelname)s]: %(message)s',     level=logging.DEBUG)
+
+#使用
+logger = logging.getLogger()
+logger.info(u"log - info")
+
+
+
+彩色日志:
+$ pip3 install coloredlogs -i https://pypi.douban.com/simple/
+$ coloredlogs --demo
+2022-10-07 15:33:00 YStation coloredlogs.demo[1438132] DEBUG message with level debug (10)
+2022-10-07 15:33:01 YStation coloredlogs.demo[1438132] INFO message with level info (20)
+2022-10-07 15:33:02 YStation coloredlogs.demo[1438132] WARNING message with level warning (30)
+2022-10-07 15:33:03 YStation coloredlogs.demo[1438132] ERROR message with level error (40)
+2022-10-07 15:33:04 YStation coloredlogs.demo[1438132] CRITICAL message with level critical (50)
+
+
+
+
+
+
+
+
+
+
+
+
+
+1. 日志级别
+import logging  # 引入logging模块
+# 将信息打印到控制台上
+logging.debug(u"log - debug")
+logging.info(u"log - info")
+logging.warning(u"log - warning")
+logging.error(u"log - error")
+logging.critical(u"log - critical")
+
+输出 
+WARNING:root:log - warning
+ERROR:root:log - error
+CRITICAL:root:log - critical
+
+(1) 上面可以看到只有后面三个能打印出来。默认生成的root logger的level是logging.WARNING，低于该级别的就不输出了。
+
+(2)级别排序:CRITICAL > ERROR > WARNING > INFO > DEBUG
+
+debug : 打印全部的日志,详细的信息,通常只出现在诊断问题上
+
+info : 打印info,warning,error,critical级别的日志,确认一切按预期运行
+
+warning : 打印warning,error,critical级别的日志,一个迹象表明,一些意想不到的事情发生了,或表明一些问题在不久的将来(例如。磁盘空间低”),这个软件还能按预期工作
+
+error : 打印error,critical级别的日志,更严重的问题,软件没能执行一些功能
+
+critical : 打印critical级别,一个严重的错误,这表明程序本身可能无法继续运行
+
+
+(3) 设置显示级别
+如果需要显示低于WARNING级别的内容，可以设置日志级别来显示：
+
+import logging
+
+logging.basicConfig(level=logging.NOTSET)  # 设置日志级别
+# 等价于 logging.basicConfig(level=logging.DEBUG)
+logging.debug(u"如果设置了日志级别为NOTSET,那么这里可以采取debug、info的级别的内容也可以显示在控制台上了")
+
+
+
+
+
+
+
+
+2. logging模块四大组件
+日志器（Logger）:产生日志的一个接口。
+处理器（Handler）：把产生的日志发送到相应的目的地。
+过滤器（Filter）：更精细的控制那些日志输出。
+格式器（Formatter）：对输出的信息进行格式化。
+
+常用函数有：
+setFormatter() 设置Formatter
+
+
+Logging.Handler：Handler基于日志级别对日志进行分发，如设置为WARNING级别的Handler只会处理WARNING及以上级别的日志。
+Logging.Formatter：这个类配置了日志的格式，在里面自定义设置日期和时间，输出日志的时候将会按照设置的格式显示内容。
+Logging.Logger：Logger是Logging模块的主体，进行以下三项工作：
+	- 为程序提供记录日志的接口
+	- 判断日志所处级别，并判断是否要过滤
+	- 根据其日志级别将该条日志分发给不同handler
+
+(1) Logger: 产生一个日志
+Logger1 = logging.Logger(__name__)  #<Logger __main__ (NOTSET)>
+
+实例化: Logger2 = logging.getLogger()  #<RootLogger root (WARNING)>  这个貌似权限更大
+
+常用函数有：
+Logger.setLevel() 设置日志级别
+Logger.addHandler() 和 Logger.removeHandler() 添加和删除一个Handler
+Logger.addFilter() 添加一个Filter,过滤作用
+
+常用方法
+Logger.setLevel() #设置日志器将会处理的日志消息的最低严重级别
+Logger.addHandler()
+Logger.moveHander() #上面两个函数，为该logger对象添加和移除一个handler对象
+Logger.addFilter()
+Logger.removeFilter() #上面两个函数，为该logger对象添加和移除一个filter对象
+Logger.debug: #产生一条debug级别的日志，同理，info,error的日志消息
+Logger.exception #创建一个类似于Logger.error的日志消息
+Logger.log() #获取一个明确的日志level参数类型创建一个日志记录
+
+(2) Handler: 把log发送到指定位置
+方法: setLevel\setFormat\addFilter\removeFilter
+
+不需要直接使用，Handler是基类
+logging.StreamHandler #将日志消息发送到输出到Stream。如std.out,std.err或任何file-like对
+logging.FileHandler #将日志消息发送到磁盘文件。默认情况下文件大小会无限增长
+logging.handlers.RotatongFileHandler #将日志消息发送到磁盘文件，并支持日志文件按大小切割
+logging.handlers.TimeRotatingFileHandler #将日志消息发送到磁盘文件，并支持日志文件按时间切割
+logging.handlers.HTTPHandler #将日志消息以GET或POST的方式发送到一个指定email地址
+logging.NullHandler  #该Handler实例会忽略error message 通常想被想使用logging的library
+
+例1:
+fh=logging.FileHandler('test.log') # 将日志写入到test.log文件 
+fh.setLevel(logging.DEBUG) # 并且需要指定写入的内容严重级别
+
+例2:
+ch=logging.StreamHandler() # 将日志写入控制台
+ch.setLevel(loggong.DEBUG) # 并且需要指定写入的内容严重级别
+
+
+(3) 
+
+
+
+
+
+
+
+
+
+3、日志输出-控制台，输出时间戳、文件名、行号
+
+import logging
+logging.basicConfig(level=logging.DEBUG,
+                    format='%(asctime)s - %(filename)s[line:%(lineno)d] - %(levelname)s: %(message)s')  # logging.basicConfig函数对日志的输出格式及方式做相关配置
+
+# 由于日志基本配置中级别设置为DEBUG，所以一下打印信息将会全部显示在控制台上
+logging.debug('debug message')
+logging.warning('warning message')
+logging.error('error message')
+
+
+上面代码通过logging.basicConfig函数进行配置了日志级别和日志内容输出格式；因为级别为DEBUG，所以会将DEBUG级别以上的信息都输出显示再控制台上。
+
+2021-10-08 10:13:10,821 - test.py[line:6] - DEBUG: debug message
+2021-10-08 10:13:10,821 - test.py[line:7] - WARNING: warning message
+2021-10-08 10:13:10,821 - test.py[line:8] - ERROR: error message
+
+
+
+
+
+
+
+4、日志输出-文件
+在工作目录同级新建目录 Logs/。
+
+import logging
+import os.path
+import time
+
+# 第一步，创建一个logger
+logger = logging.getLogger()
+logger.setLevel(logging.INFO)  # Log等级总开关
+
+# 第二步，创建一个handler，用于写入日志文件
+rq = time.strftime('%Y%m%d%H%M', time.localtime(time.time()))
+log_path = os.path.dirname(os.getcwd()) + '/Logs/'
+log_name = log_path + rq + '.log'
+logfile = log_name
+
+fh = logging.FileHandler(logfile, mode='w')
+fh.setLevel(logging.DEBUG)  # 输出到file的log等级的开关
+
+
+# 第三步，定义handler的输出格式
+formatter = logging.Formatter("%(asctime)s - %(filename)s[line:%(lineno)d] - %(levelname)s: %(message)s")
+fh.setFormatter(formatter)
+
+# 第四步，将logger添加到handler里面
+logger.addHandler(fh)
+# 日志
+logger.debug('logger debug message')
+logger.info('logger info message')
+logger.warning('logger warning message')
+logger.error('logger error message')
+logger.critical('logger critical message')
+
+
+$ cat ../Logs/202110081023.log
+2021-10-08 10:23:35,719 - test.py[line:27] - INFO: logger info message
+2021-10-08 10:23:35,736 - test.py[line:28] - WARNING: logger warning message
+2021-10-08 10:23:35,736 - test.py[line:29] - ERROR: logger error message
+2021-10-08 10:23:35,736 - test.py[line:30] - CRITICAL: logger critical message
+
+
+
+
+5、日志输出-控制台和文件
+
+只要在输入到日志中的第二步和第三步插入一个handler输出到控制台：
+# 创建一个handler，用于输出到控制台
+ch = logging.StreamHandler()
+ch.setLevel(logging.WARNING)  # 输出到console的log等级的开关
+
+第3步和第4步分别加入以下代码即可
+ch.setFormatter(formatter)
+logger.addHandler(ch)
+
+
+
+
+6、format常用格式说明
+
+%(levelno)s: 打印日志级别的数值
+%(levelname)s: 打印日志级别名称
+%(pathname)s: 打印当前执行程序的路径，其实就是sys.argv[0]
+%(filename)s: 打印当前执行程序名
+%(funcName)s: 打印日志的当前函数
+%(lineno)d: 打印日志的当前行号
+%(asctime)s: 打印日志的时间
+%(thread)d: 打印线程ID
+%(threadName)s: 打印线程名称
+%(process)d: 打印进程ID
+%(message)s: 打印日志信息
+
+
+
+
+7、捕捉异常,用traceback记录
+
+import os
+import time
+import logging
+
+# 创建一个logger
+logger = logging.getLogger()
+logger.setLevel(logging.INFO)  # Log等级总开关
+
+# 创建一个handler，用于写入日志文件
+rq = time.strftime('%Y%m%d%H%M', time.localtime(time.time()))
+log_path = os.path.dirname(os.getcwd()) + '/Logs/'
+log_name = log_path + rq + '.log'
+logfile = log_name
+fh = logging.FileHandler(logfile, mode='w')
+fh.setLevel(logging.DEBUG)  # 输出到file的log等级的开关
+
+# 定义handler的输出格式
+formatter = logging.Formatter("%(asctime)s - %(filename)s[line:%(lineno)d] - %(levelname)s: %(message)s")
+fh.setFormatter(formatter)
+logger.addHandler(fh)
+
+# 使用logger.XX来记录错误,这里的"error"可以根据所需要的级别进行修改
+try:
+    open('/path/to/does/not/exist', 'rb')
+except (SystemExit, KeyboardInterrupt):
+    raise
+except Exception as e:
+    logger.error('Failed to open file', exc_info=True)
+
+日志文件
+$ cat ../Logs/202110081036.log
+2021-10-08 10:36:53,044 - test.py[line:28] - ERROR: Failed to open file
+Traceback (most recent call last):
+  File "G:\pyTest\logging\test.py", line 24, in <module>
+    open('/path/to/does/not/exist', 'rb')
+FileNotFoundError: [Errno 2] No such file or directory: '/path/to/does/not/exist'
+
+
+如果需要将日志不上报错误，仅记录，可以将exc_info=False，回显如下：
+$ cat ../Logs/202110081038.log
+2021-10-08 10:38:52,717 - test.py[line:28] - ERROR: Failed to open file
+
+
+
+
+8、多模块调用logging,日志输出顺序
+
+$ cat warning_output.py
+import logging
+
+def write_warning():
+    logging.warning(u"记录文件warning_output.py的日志")
+
+
+$ cat error_output.py
+import logging
+
+def write_error():
+    logging.error(u"记录文件error_output.py的日志")
+
+
+
+$ cat main.py
+import logging
+import warning_output
+import error_output
+
+def write_critical():
+    logging.critical(u"记录文件main.py的日志")
+
+warning_output.write_warning()  # 调用warning_output文件中write_warning方法
+write_critical()
+error_output.write_error()  # 调用error_output文件中write_error方法
+
+
+输出信息
+$ python main.py
+WARNING:root:记录文件warning_output.py的日志
+CRITICAL:root:记录文件main.py的日志
+ERROR:root:记录文件error_output.py的日志
+
+从上面来看，日志的输出顺序和模块执行顺序是一致的。
+
+
+
+
+9、日志滚动和过期删除(按时间)
+
+# coding:utf-8
+import logging
+import time
+import re
+from logging.handlers import TimedRotatingFileHandler
+from logging.handlers import RotatingFileHandler
+
+def backroll():
+    #日志打印格式
+    log_fmt = '%(asctime)s\tFile \"%(filename)s\",line %(lineno)s\t%(levelname)s: %(message)s'
+    formatter = logging.Formatter(log_fmt)
+
+    #创建TimedRotatingFileHandler对象
+    log_file_handler = TimedRotatingFileHandler(filename="ds_update", 
+        when="S", interval=3, backupCount=3)
+    # M 2 表示2min检查一次
+
+    #log_file_handler.suffix = "%Y-%m-%d_%H-%M.log"
+    #log_file_handler.extMatch = re.compile(r"^\d{4}-\d{2}-\d{2}_\d{2}-\d{2}.log$")
+    log_file_handler.setFormatter(formatter)
+    logging.basicConfig(level=logging.INFO)
+    log = logging.getLogger()
+    log.addHandler(log_file_handler)
+
+    #循环打印日志
+    log_content = "test log"
+    count = 0
+    while count < 20:
+        log.error(log_content + " "+ str(count))
+        time.sleep(1)
+        count = count + 1
+    log.removeHandler(log_file_handler)
+
+if __name__ == "__main__":
+    backroll()
+    print("==end--")
+
+
+(2) 参数解释: 
+filename：日志文件名的prefix；
+
+when：是一个字符串，用于描述滚动周期的基本单位，字符串的值及意义如下： 
+	“S”: Seconds 
+	“M”: Minutes 
+	“H”: Hours 
+	“D”: Days 
+	“W”: Week day (0=Monday) 
+	“midnight”: Roll over at midnight
+
+interval: 滚动周期，单位有when指定，比如：when=’D’,interval=1，表示每天产生一个日志文件
+backupCount: 表示日志文件的保留个数
+
+
+
+(3) 查看输出文件
+$ ls -lth ds_update*
+-rw-r--r-- 1 admin 197121 134 10月  8 11:12 ds_update
+-rw-r--r-- 1 admin 197121 201 10月  8 11:12 ds_update.2021-10-08_11-11-59
+-rw-r--r-- 1 admin 197121 201 10月  8 11:11 ds_update.2021-10-08_11-11-56
+-rw-r--r-- 1 admin 197121 200 10月  8 11:11 ds_update.2021-10-08_11-11-53
+
+$ cat ds_update
+2021-10-08 11:12:02,630 File "test.py",line 29  ERROR: test log 18
+2021-10-08 11:12:03,637 File "test.py",line 29  ERROR: test log 19
+
+
+
+
+ref:
+https://www.cnblogs.com/xianyulouie/p/11041777.html
+https://zhuanlan.zhihu.com/p/476549020
 
 
 
