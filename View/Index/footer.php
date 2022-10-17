@@ -18,6 +18,7 @@
 		$links_IT_tools=array(
 			//api手册
 			array('http://www.runoob.com/','菜鸟教程网'),
+			array('https://www.coonote.com/','菜鸟笔记'),
 			array('http://www.codebaoku.com/','编程宝库','编程宝库！'),
 			array('http://jsbin.com/','jsbin','练习前端的好工具！'),
 			array('https://tool.lu/','在线工具'),

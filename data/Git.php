@@ -42,6 +42,7 @@ return array (
 	  array('科研经验','mg_203_research','txt' ),
 	  array('密码管理 pass','mg_204_passwd','txt' ),
 	  array('广告管理','mg_205_advertisement','txt' ),
+	  array('经典定律/心理学','mg_206_rule','txt' ),
 
     ),
   ),

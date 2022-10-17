@@ -34,8 +34,8 @@ return array (
       array('数据结构','c201-data_structures','txt',),
       array('算法','c202-algorithm','txt',),
       array('计算机组成原理','c203-prComputer','txt',), //Principles of Computer Organization
-      array('操作系统','c204-OS','txt',), 
       array('计算机网络','c204-network','txt',), 
+      array('操作系统','c205-OS','txt',), 
 	  
       array('leetcode.com','leetcode','txt',),
     ),

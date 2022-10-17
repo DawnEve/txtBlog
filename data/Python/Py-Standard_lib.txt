@@ -743,8 +743,15 @@ pumpkin 1
 
 
 ========================================
-|-- sqlite3—嵌入式关系数据库 //todo
+|-- sqlite3—嵌入式关系数据库
 ----------------------------------------
+https://docs.python.org/3.7/library/sqlite3.html
+
+“SQLite是一种用C写的小巧的嵌入式数据库，它的数据库就是一个文件。SQLite 不需要一个单独的服务器进程或操作的系统，不需要配置，这意味着不需要安装或管理，所有的维护都来自于SQLite 软件本身。”
+
+
+
+
 1　创建数据库
 2　获取数据
 3　查询元数据
@@ -762,6 +769,294 @@ pumpkin 1
 15　定制排序
 16　线程和连接共享
 17　限制对数据的访问
+
+
+
+1. 创建数据库
+$ python
+Python 3.7.0 (default, Jun 28 2018, 13:15:42) #on Ubuntu 20.04
+[GCC 7.2.0] :: Anaconda, Inc. on linux
+
+
+sqlite3是内置模块，所以不需要安装的，直接import导入即可：
+>>> import sqlite3
+
+
+(1) 建立数据库连接，返回connection对象
+# con=sqlite3.connect("D:\\我的文件\\sample_1.db") #on windows
+con=sqlite3.connect("db/sample1.db")
+
+还可以在内存中创建数据库，只要输入特殊参数值:memory:即可，该数据库只存在于内存中，不会生成本地数据库文件。
+conn = sqlite3.connect(':memory:')
+
+
+(2) 创建表book:包含3列，id(主键，书编号),name,price
+con.execute("create table if not exists book(id primary key, name, price)")
+
+看来，在连接上也能执行sql语句，在游标上也可以。有什么区别呢？ //todo 
+
+
+
+(3) 执行sql语句
+
+建立与数据库的连接后，需要创建一个游标cursor对象，该对象的.execute()方法可以执行sql命令，让我们能够进行数据操作。
+
+1) 创建游标对象(调用con.consor()创建游标对象)
+cur=con.cursor()
+
+
+创建表的语句：
+# 建表的sql语句
+sql_text_1 = '''CREATE TABLE scores
+           (姓名 TEXT,
+            班级 TEXT,
+            性别 TEXT,
+            语文 NUMBER,
+            数学 NUMBER,
+            英语 NUMBER);'''
+# 执行sql语句
+cur.execute(sql_text_1)
+
+
+2) 使用游标对象的execute执行SQL命令返回结果集
+cur.execute("insert into book(id,price,name) values('003',28,'大学计算机多媒体')")
+cur.execute("insert into book(id,price,name) values (?,?,?)",("002",28,"数据库基础"))
+
+# 在表mytable中插入一条记录，若存在即忽略
+cur.execute("INSERT OR IGNORE INTO mytable (id,name) VALUES ('0','狗蛋')")
+
+
+3) 插入多行语句
+books=[("a1", 50, "C lang"), ("a2", 100, "rust lang")]
+cur.executemany("insert into book(id,price,name) values(?,?,?)",books)
+
+4) 修改一行的数据
+cur.execute("Update book set price=? where name = ?",(25,"C lang"))
+
+5) 删除一行的数据
+n=cur.execute("delete from book where price = ?",(100,))
+
+# 修改已有表名称，abc>>mytable
+cur.execute("ALTER TABLE abc RENAME TO mytable") 
+
+
+
+
+(4) 获取游标对象的查询结果集
+1) 查询语句
+cur.execute("select * from book")
+for row in cur:
+    print(row)
+
+
+(5) 数据库的提交和回滚
+只有数据库的连接对象才具有提交commit和回滚rollback的两个attribute
+注意不要与游标对象的close混淆
+
+连接完数据库并不会自动提交，所以需要手动 commit 你的改动 con.commit()，否则无法将数据保存到数据库。
+con.commit()
+
+
+# 事务回滚，数据库回到上次提交保存的状态。
+# con.rollback()
+
+
+(6) 关闭游标对象和connection对象
+#关闭游标对象
+cur.close()
+
+#关闭connection对象
+con.close()
+
+
+(7) 另开一个终端，查询数据
+import sqlite3
+#创建数据库连接，返回connection对象
+con=sqlite3.connect("db/sample1.db")
+#创建游标对象
+cur=con.cursor()
+#查询数据库列表
+cur.execute("select id,price,name from book")
+for row in cur:
+    print(row)
+
+输出: 
+('003', 28, '大学计算机多媒体')
+('002', 28, '数据库基础')
+('a1', 25, 'C lang')
+('a2', 100, 'rust lang')
+
+经过测试发现：没有执行 cur.commit() 的数据不会写入文件，只在当前session中有效。
+
+该接口不会自动调用 commit()，如果关闭数据库连接前未调用 commit() 方法，所有的更改将丢失，切记！
+
+
+
+
+(8) 查询语句 
+# 查询数学成绩大于25元的书
+sql_text_3 = "SELECT * FROM book WHERE price>25"
+cur.execute(sql_text_3)
+# 获取查询结果
+cur.fetchall()
+# [('003', '大学计算机多媒体', 28), ('002', '数据库基础', 28), ('a2', 'rust lang', 100)]
+
+获取查询结果一般可用.fetchone()方法（获取第一条），或者用.fetchall()方法（获取所有条）。
+
+
+
+
+
+2. 基于 sqlite 的数据库通讯簿
+
+(1) 源码
+import time
+import sqlite3
+
+#打开数据库
+def open_db():
+    #创建SQLite数据库
+    con=sqlite3.connect("db/sample2.db")
+    #创建表book:包含3列，id(主键，学号),name,tel
+    con.execute("create table if not exists book(id primary key,name,tel)")
+    #创建游标对象
+    cur=con.cursor()
+    return con,cur
+
+#查询全部信息
+def show_all_db():
+    print("******通讯录现有数据******")
+    cur_1=open_db()[1]
+    cur_1.execute("select id,name,tel from book")
+    for row in cur_1:
+        print(row)
+
+#输入信息
+def into():
+    name=input("请输入姓名：")
+    id=input("请输入学号：")
+    tel=input("请输入电话号码：")
+    return name,id,tel
+
+#向数据库中添加内容
+def add_db():
+    print("******数据添加功能******")
+    one=into()
+    cur_1=open_db()
+    cur_1[1].execute("insert into book(id,name,tel) values(?,?,?)",(one[1],one[0],one[2]))
+    cur_1[0].commit()
+    print("******数据添加成功******")
+
+#删除数据库中的内容
+def delete_db():
+    print("******数据删除功能******")
+    del_id=input("请输入删除的学号：")
+    del_id = "'" + del_id + "'"
+    cur_1=open_db()
+    cur_1[1].execute("delete from book where id="+del_id)
+    cur_1[0].commit()
+    print("******数据删除成功******")
+    show_all_db()
+    #关闭游标对象
+    cur_1[1].close()
+
+#修改数据库中的内容
+def alter_db():
+    print("******数据修改功能******")
+    change_id=input("请输入修改数据对应的学号：")
+    change_id="'"+change_id+"'"
+    cur_1=open_db()
+    person=into()
+    #更新数据使用 SQL 语句中的 update
+    cur_1[1].execute("update book set name = ? ,tel = ? where id ="+change_id,(person[0],person[2]))
+    #游标事务提交
+    cur_1[0].commit()
+    show_all_db()
+    cur_1[1].close()
+
+#查询数据
+def query_data():
+    print("******数据查询功能******")
+    choice_id=input("请输入查询数据对应的学号：")
+    choice_id = "'" + choice_id + "'"
+    cur_1=open_db()
+    cur_1[1].execute("select id,name,tel from book where id ="+choice_id)
+    print("******查询结果如下******")
+    for row in cur_1[1]:
+        print(row)
+    cur_1[1].close()
+
+# 是否继续
+def conti(a):
+    choice=input("是否继续：(1 表示继续，0 表示退出)")
+    if choice=='1':
+        a=1
+    else :
+        a=0
+    return a
+
+'''
+主函数菜单内容：
+1.向数据库中添加内容
+2.删除数据库中的内容
+3.修改数据库中的内容
+4.查询数据库中的内容
+选择你想要的进行的操作：
+
+'''
+if __name__=="__main__":
+    start_clock=time.time()
+    a=1
+    print("******数据库通讯录******")
+    while a:
+        content="""
+1.向数据库中添加内容
+2.删除数据库中的内容
+3.修改数据库中的内容
+4.查询数据库中的内容
+5.显示数据库中的内容
+6.关闭   数据库系统
+选择你想要的进行的操作：     
+        """
+        choice=input(content)
+        if choice=="1":
+            add_db()
+            conti(a)
+        elif choice=="2":
+            delete_db()
+            conti(a)
+        elif choice=="3":
+            alter_db()
+            conti(a)
+        elif choice=="4":
+            query_data()
+            conti(a)
+        elif choice=="5":
+            show_all_db()
+            conti(a)
+        elif choice=="6":
+            a=0
+        else:
+            print("输入错误，请重新输入")
+
+    end_clock=time.time()
+    print("RUNNING TIME:%s s"%(end_clock-start_clock))
+
+(2) 测试
+把内容复制到交互界面中，按菜单操作：先输入1添加内容，然后5显示全部内容。
+
+
+
+
+
+Ref:
+https://zhuanlan.zhihu.com/p/407131061
+https://zhuanlan.zhihu.com/p/80756486
+每个操作 https://zhuanlan.zhihu.com/p/145914429
+https://zhuanlan.zhihu.com/p/73353849
+https://www.runoob.com/sqlite/sqlite-python.html
+
+
 
 
 
