@@ -9,6 +9,9 @@ c205-OS
 	中断管理
 
 
+进程: http://www.freecplus.net/6b31f2b95bd54eec99480a07eeefabd4.html
+
+
 
 
 ========================================
@@ -41,12 +44,461 @@ https://www.bilibili.com/video/av18156598/
 
 
 ========================================
+进程的概念: getpid(), fork()
 ----------------------------------------
+1.进程的概念
+
+什么是进程？进程这个概念是针对系统而不是针对程序员的，对程序员来说，我们面对的概念是程序，当输入指令执行一个程序的时候，对系统而言，它将启动一个进程。
+
+进程就是正在内存中运行中的程序，Linux下一个进程在内存里有三部分的数据，就是“代码段”、”堆栈段”和”数据段”。
+
+”代码段”，顾名思义，就是存放了程序代码。
+“堆栈段”存放的就是程序的返回地址、程序的参数以及程序的局部变量。
+而“数据段”则存放程序的全局变量，常数以及动态数据分配的数据空间（比如用new函数分配的空间）。
+
+系统如果同时运行多个相同的程序，它们的“代码段”是相同的，“堆栈段”和“数据段”是不同的（相同的程序，处理的数据不同）。 
+
+
+2. 进程的编号
+(1) 查看进程
+$ ps 查看当前终端的进程
+
+$ ps -ef 查看系统全部的进程。
+
+$ ps -ef |more 查看系统全部的进程，结果分页显示。
+
+$ ps -ef | head
+UID          PID    PPID  C STIME TTY          TIME CMD
+root           1       0  0 Sep29 ?        00:00:59 /sbin/init splash
+root           2       0  0 Sep29 ?        00:00:01 [kthreadd]
+root           3       2  0 Sep29 ?        00:00:00 [rcu_gp]
+root           4       2  0 Sep29 ?        00:00:00 [rcu_par_gp]
+root           6       2  0 Sep29 ?        00:00:00 [kworker/0:0H-events_highpri]
+root           8       2  0 Sep29 ?        00:00:02 [kworker/0:1H-kblockd]
+root           9       2  0 Sep29 ?        00:00:00 [mm_percpu_wq]
+root          10       2  0 Sep29 ?        00:00:23 [ksoftirqd/0]
+root          11       2  0 Sep29 ?        00:36:11 [rcu_sched]
+
+参数解释:
+UID    ：启动进程的操作系统用户 user id。
+PID    ：进程编号。
+PPID   ：进程的父进程的编号。
+C      ：CPU使用的资源百分比。
+STIME ：进程启动时间。
+TTY     ：进程所属的终端。
+TIME   ：使用掉的CPU时间。
+CMD   ：执行的是什么指令。
+
+$ ps -ef |grep book查看系统全部的进程，然后从结果集中过滤出包含“book”单词的记录。程序员用得最多的指令就是这个了。
+
+
+(2) getpid() 库函数
+getpid库函数的功能是获取本程序运行时进程的编号。
+
+函数声明：pid_t getpid();
+函数没有参数，返回值是进程的编号，pid_t就是typedef int pid_t。
+
+
+$ cat a1_getpid.c
+#include <stdio.h>
+#include <sys/types.h>
+#include <unistd.h>
+ 
+int main()
+{
+  printf("本程序的进程编号是：%d\n",getpid());
+  sleep(30);    // 是为了方便查看进程在shell下用 ps -ef|grep a.out 查看本进程的编号。
+}
+
+/*
+$ gcc a1_getpid.c
+$ ./a.out
+本程序的进程编号是：804315
+
+$ ps -ef|grep a.out
+wangjl    804315 3914767  0 14:40 pts/4    00:00:00 ./a.out
+$ ps -ef| head -n 1
+UID          PID    PPID  C STIME TTY          TIME CMD
+*/
+
+
+注意两个细节：
+1）进程的编号是系统动态分配的，相同的程序在不同的时间执行，进程的编号是不同的。
+2）进程的编号会循环使用，但是，在同一时间，进程的编号是唯一的，也就是说，不管任何时间，系统不可能存在两个编号相同的进程。
+
+
+
+
+
+(3) 多进程与fork()
+fork在英文中是“分叉”的意思。为什么取这个名字呢？因为一个进程在运行中，如果使用了fork函数，就产生了另一个进程，于是进程就“分叉”了，所以这个名字取得很形象。下面就看看如何具体使用fork函数，这段程序演示了使用fork的基本框架。
+
+函数声明：pid_t fork();
+fork函数用于产生一个新的进程，函数返回值pid_t是一个整数，在父进程中，返回值是子进程编号，在子进程中，返回值是0。
+
+
+$ cat a2_fork.c
+#include <stdio.h>
+#include <sys/types.h>
+#include <unistd.h>
+ 
+int main() {
+    printf("本程序的进程编号是：%d\n",getpid());
+
+    int ipid=fork(); //获取新的进程，注意返回值：在父进程中，返回值是子进程编号；在子进程中，返回值是0。
+    sleep(1);       // sleep等待进程的生成。
+    printf("新进程 pid=%d\n", ipid);
+
+    if (ipid!=0) {
+        printf(">> 父进程编号是：%d\n", getpid());
+    } else {
+        printf(">> 子进程编号是：%d\n", getpid());
+    }
+
+    sleep(30); // 是为了方便查看进程在shell下用 ps -ef | grep -P "a\.out" 查看本进程的编号。
+}
+
+/*
+$ gcc a2_fork.c 
+$ ./a.out 
+本程序的进程编号是：806255
+新进程 pid=806256
+>> 父进程编号是：806255
+新进程 pid=0
+>> 子进程编号是：806256
+
+==> 怎么可能 if 和 else 都执行了？
+
+
+$ ps -ef | grep -P "a\.out"
+wangjl    806255 3914767  0 14:53 pts/4    00:00:00 ./a.out
+wangjl    806256  806255  0 14:53 pts/4    00:00:00 ./a.out
+*/
+
+
+
+初学者可能用点接受不了现实。
+1）一个函数（fork）返回了两个值？
+2）if和else中的代码能同时被执行？
+
+
+
+
+(4) 根据 fork() 返回值区分在哪个进程中(子程序中返回值是0)
+
+那么调用这个fork函数时发生了什么呢？fork函数创建了一个新的进程，新进程（子进程）与原有的进程（父进程）一模一样。子进程和父进程使用相同的代码段；子进程拷贝了父进程的堆栈段和数据段。子进程一旦开始运行，它复制了父进程的一切数据，然后各自运行，相互之间没有影响。
+
+fork函数对返回值做了特别的处理，调用fork函数之后，在子程序中fork的返回值是0，在父进程中fork的返回是子进程的编号，程序员可以通过fork的返回值来区分父进程和子进程，然后再执行不同的代码。
+
+
+$ cat a2_fork2.c 
+#include <stdio.h>
+#include <sys/types.h>
+#include <unistd.h>
+
+void fatherFunc(){  // 父进程流程的主函数
+    printf("\tThis is Father\n");
+}
+
+void childFunc() { // 子进程流程的主函数
+    printf("\tThis is Son\n");
+}
+
+int main() {
+    if (fork()>0) { 
+        printf("这是父进程 %d，接着调用父进程特有函数=>\n", getpid() ); 
+        fatherFunc();
+    }
+    else {
+        printf("这是子进程 %d，接着调用子进程特有函数==>\n", getpid());
+        childFunc();
+    }
+
+    sleep(1); 
+    printf("父子进程执行完自己的函数后都来这里。\n"); 
+    sleep(15);
+}
+/*
+$ gcc a2_fork2.c 
+$ ./a.out 
+这是父进程 808309，接着调用父进程特有函数=>
+        This is Father
+这是子进程 808310，接着调用子进程特有函数==>
+        This is Son
+父子进程执行完自己的函数后都来这里。
+父子进程执行完自己的函数后都来这里。
+
+
+$ ps -ef | grep -P "a\.out"
+wangjl    808309 3914767  0 15:08 pts/4    00:00:00 ./a.out
+wangjl    808310  808309  0 15:08 pts/4    00:00:00 ./a.out
+*/
+
+
+
+
+(5) 父子进程的变量不受彼此影响
+
+在上文上已提到过，子进程拷贝了父进程的堆栈段和数据段，也就是说，在父进程中定义的变量子进程中会复制一个副本，fork之后，子进程对变量的操作不会影响父进程，父进程对变量的操作也不会影响子进程。
+
+#include <stdio.h>
+#include <sys/types.h>
+#include <unistd.h>
+
+int ii=10;
+
+int main() {
+    int jj=20;
+
+    if (fork()>0) {
+        ii=110;
+        jj=210; 
+        sleep(1);  
+        printf("Father: %d \n\tii=%d(%p), jj=%d(%p)\n", getpid(), ii, &ii, jj, &jj);
+    } else {
+        ii=-12;
+        jj=-22; 
+        sleep(1);  
+        printf("Son: %d \n\tii=%d(%p), jj=%d(%p)\n", getpid(), ii, &ii, jj, &jj);
+    }
+}
+
+/*
+竟然地址一样！这还叫拷贝吗？
+$ ./a.out
+Father: 809373 
+        ii=110(0x55f81266d010), jj=210(0x7ffdafdf5644)
+Son: 809374 
+        ii=-12(0x55f81266d010), jj=-22(0x7ffdafdf5644)
+*/
+
+
+
+
+
+
+
+
+2. 作业题
+
+(1) 编写一个多进程程序，验证子进程是复制父进程的内存变量，还是父子进程共享内存变量？
+
+#include <stdio.h>
+#include <sys/types.h>
+#include <unistd.h>
+
+int ii=10;
+
+int main() {
+    int jj=20;
+
+    if (fork()>0) {
+        sleep(1);
+        for(; ii<jj; ii+=2){
+            printf("Father: %d \tii=%d(%p), jj=%d(%p)\n", getpid(), ii, &ii, jj, &jj);
+        }
+    } else {
+        for(; ii<jj; ii+=3){
+            printf("Son: %d \tii=%d(%p), jj=%d(%p)\n", getpid(), ii, &ii, jj, &jj);
+        }
+    }
+}
+
+输出:
+$ ./a.out 
+Son: 810997     ii=10(0x562f0bf4f010), jj=20(0x7ffc4c89e3b4)
+Son: 810997     ii=13(0x562f0bf4f010), jj=20(0x7ffc4c89e3b4)
+Son: 810997     ii=16(0x562f0bf4f010), jj=20(0x7ffc4c89e3b4)
+Son: 810997     ii=19(0x562f0bf4f010), jj=20(0x7ffc4c89e3b4)
+Father: 810996  ii=10(0x562f0bf4f010), jj=20(0x7ffc4c89e3b4)
+Father: 810996  ii=12(0x562f0bf4f010), jj=20(0x7ffc4c89e3b4)
+Father: 810996  ii=14(0x562f0bf4f010), jj=20(0x7ffc4c89e3b4)
+Father: 810996  ii=16(0x562f0bf4f010), jj=20(0x7ffc4c89e3b4)
+Father: 810996  ii=18(0x562f0bf4f010), jj=20(0x7ffc4c89e3b4)
+
+应该是复制父进程的数据，因为ii不受影响。
+
+
+
+2）编写一个示例程序，由父进程生成10个子进程，在子进程中显示它是第几个子进程和子进程本身的进程编号。
+
+#include <stdio.h>
+//#include <sys/types.h>
+#include <unistd.h> //对 unix 的std 访问方法
+
+int main(){
+    int pid, i;
+    for(i=0; i<5; i++){
+        sleep(1);
+        pid = fork();
+        if(pid==0 || pid==-1){
+            break; //子进程不创建子进程
+        }
+    }
+    // 在子进程内显示
+    if(pid==0) {
+        // 显示 pid 和 父pid
+        printf("son: number:%d, pid:%d, ppid=%d\n", i, getpid(), getppid());
+    }else if(pid == -1){
+        printf("error\n");
+    }
+
+    return 0;
+}
+
+输出:
+$ ./a.out 
+son: number:0, pid:815461, ppid=815457
+son: number:1, pid:815474, ppid=815457
+son: number:2, pid:815480, ppid=815457
+son: number:3, pid:815489, ppid=815457
+son: number:4, pid:815492, ppid=815457
+
+$ ps -ef | grep -P "a\.out" #top 显示有临时僵尸进程
+wangjl    815457 3914767  0 15:45 pts/4    00:00:00 ./a.out
+wangjl    815461  815457  0 15:45 pts/4    00:00:00 [a.out] <defunct>
+wangjl    815474  815457  0 15:45 pts/4    00:00:00 [a.out] <defunct>
+wangjl    815480  815457  0 15:45 pts/4    00:00:00 [a.out] <defunct>
+wangjl    815489  815457  0 15:45 pts/4    00:00:00 [a.out] <defunct>
+
+
+
+
+
+3）编写示例程序，由父进程生成子进程，子进程再生成孙进程，共生成第10代进程，在各级子进程中显示它是第几代子进程和子进程本身的进程编号。
+
+//由父进程生成子进程，子进程再生成孙进程，共生成第10代进程，在各级子进程中显示它是第几代子进程和子进程本身的进程编号。
+#include<stdio.h>
+#include<unistd.h>
+
+// https://blog.csdn.net/qq_18127085/article/details/117351845
+
+int main(){
+    int pid, i;
+    for(i=0; i<10; i++){
+        pid = fork();
+        if(pid>0){
+            //printf("[%d] 第[%d]代进程: pid=%d, ppid=%d\n", pid, i, getpid(), getppid());
+            break; //父进程不再生成进程分支; 只有子进程生成
+        }else if(pid==0){
+            printf(">> [%d] 第[%d]代子进程: pid=%d, ppid=%d\n", pid, i, getpid(), getppid());
+            //return 0; //从子进程返回
+            //sleep(5); //子进程多等待一会，并不能阻止子进程很快结束: ps 查看
+        }else{
+            printf("Error\n");
+        }
+    }
+
+    //让父进程等待10s，方便ps查看
+    if(pid>0) 
+        sleep(15);
+    return 0;
+}
+
+/*
+确实，下一个进程的父进程 ppid，是上一个进程的进程号 pid
+$ ./a.out 
+>> [0] 第[0]代子进程: pid=823106, ppid=823105
+$ >> [0] 第[1]代子进程: pid=823120, ppid=823106
+>> [0] 第[2]代子进程: pid=823127, ppid=823120
+>> [0] 第[3]代子进程: pid=823131, ppid=823127
+>> [0] 第[4]代子进程: pid=823140, ppid=823131
+>> [0] 第[5]代子进程: pid=823154, ppid=823140
+>> [0] 第[6]代子进程: pid=823166, ppid=823154
+>> [0] 第[7]代子进程: pid=823171, ppid=823166
+>> [0] 第[8]代子进程: pid=823180, ppid=823171
+>> [0] 第[9]代子进程: pid=823185, ppid=823180
+^C
+
+问题：不能同时看到这几代进程，总是很快消失，只留下2个。
+$ ps -ef | grep -P "a\.out"
+wangjl    823154       1  0 16:24 pts/4    00:00:00 ./a.out 
+wangjl    823166  823154  0 16:24 pts/4    00:00:00 ./a.out
+# 父进程结束，如果子进程还没有结束，则其父进程变为 pid=1，原来是父进程结束的太快
+
+$ ps -ef | grep -P "a\.out"
+wangjl    823180       1  0 16:24 pts/4    00:00:00 ./a.out
+wangjl    823185  823180  0 16:24 pts/4    00:00:00 ./a.out
+*/
+
+
+末尾添加     if(pid>0)  sleep(15); 后:
+$ ps -ef | grep -P "a\.out"
+wangjl    824325 3914767  0 16:30 pts/4    00:00:00 ./a.out
+wangjl    824326  824325  0 16:30 pts/4    00:00:00 ./a.out
+wangjl    824327  824326  0 16:30 pts/4    00:00:00 ./a.out
+wangjl    824328  824327  0 16:30 pts/4    00:00:00 ./a.out
+wangjl    824329  824328  0 16:30 pts/4    00:00:00 ./a.out
+wangjl    824330  824329  0 16:30 pts/4    00:00:00 ./a.out
+wangjl    824331  824330  0 16:30 pts/4    00:00:00 ./a.out
+wangjl    824332  824331  0 16:30 pts/4    00:00:00 ./a.out
+wangjl    824333  824332  0 16:30 pts/4    00:00:00 ./a.out
+wangjl    824334  824333  0 16:30 pts/4    00:00:00 ./a.out
+wangjl    824335  824334  0 16:30 pts/4    00:00:00 [a.out] <defunct>
+
+
+
+4）利用尽可能少的代码快速fork出更多的进程，试试看能不能把linux系统搞死。
+
+#include<stdio.h>
+#include<unistd.h>
+//#include <stdlib.h> //exit()
+
+//利用尽可能少的代码快速fork出更多的进程，试试看能不能把linux系统搞死
+
+int main() {
+    int pid, i;
+    for(i=0; i< 10; i++){ //生成 2^n 个进程
+        pid=fork(); //主进程和子进程都可以开分支
+    }
+
+    if(pid==0) {
+        printf(" >> [%d] 子线程: pid=%d, ppid=%d\n", i, getpid(), getppid());
+        //sleep(3); //exit(0);
+    } else{
+        printf("[%d] 主线程: pid=%d, ppid=%d\n", i, getpid(), getppid());
+        sleep(10);//主进程等待 其子进程都结束
+    }
+
+    /*
+    2 4 2^2
+    3 8 2^3
+    4 16 2^4
+    ...
+    10 1024 2^10
+    n       2^n
+    */
+    return 0;
+}
+
+
+$ ps -ef | grep -P "a\.out" | wc -l
+   1024
+
+
+
+
+
+5) ps -ef |grep book251 命令是 ps 和 grep 两个系统命令的组合，各位查一下资料，了解一下 grep 命令的功能，对程序员来，grep 是经常用到的命令。
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 ========================================
+// todo 多进程版本 socket
 ----------------------------------------
 
+http://www.freecplus.net/8bd691add361411d84745282afa7e4fe.html
 
 
 ========================================
