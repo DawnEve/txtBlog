@@ -10,12 +10,505 @@ c204-network.txt
 
 
 
+搭建C/S：用C++搭建一个最简单的，基于socket网络编程的客户端和服务器
+socket库函数浅析：基于上一节搭建的客户端和服务器的代码介绍相关的库函数
+搭建HTTP服务器：基于上一节的介绍和HTTP工作过程将最开始搭建的服务器改为HTTP服务器
+压力测试入门：优化一下服务器，并使用ab工具对优化前后的服务器进行压力测试并对比结果
+
+
+从零开始的C++网络编程 https://zhuanlan.zhihu.com/p/119085959
+socket常见接口	https://zhuanlan.zhihu.com/p/78445517
+C++网络项目 https://www.zhihu.com/question/20124494
+
+
+
+========================================
+计算机网络的学习内容 与 经典书籍
+----------------------------------------
+1）计算机网络的基本概念。
+
+2）局域网、广域网和互联网。
+
+3）ISO参考模型。
+
+4）TCP协议（粗略的了解一下UDP）。
+
+5）IP地址、网关、子网掩码、DHCP协议。
+
+6）万维网和HTTP和HTTPS协议。
+
+7）电子邮件和SMTP 协议。
+
+8）文件传输协议FTP。
+
+9）远程登录协议（以ssh为主，了解telnet）。
+
+10）学习的时间不必超过30小时。
+
+11）推荐视频  
+	王道计算机考研 计算机网络 https://www.bilibili.com/video/av70228743
+
+
+
+
+2. 网络编程经典书籍：
+《协议：TCP/IP卷一》
+《UNIX网络编程》
+
+网络编程底层代码基本上C语言来实现的，建议在linux下用c语言，把底层原汁原味的linux socket编程走一遍，下图是一个socket原理图
+
 
 
 
 ========================================
 什么是 socket? 描述 socket实现三次握手过程?
 ----------------------------------------
+1. socket就是插座（中文翻译成套接字有点莫名其妙），运行在计算机中的两个程序通过socket建立起一个通道，数据在通道中传输。
+
+客户端 socket <-- TCP/IP --> socket 服务端
+
+socket把复杂的TCP/IP协议族隐藏了起来，对程序员来说，只要用好socket相关的函数，就可以完成网络通信。
+
+
+
+
+2.socket的分类
+socket提供了流（stream）和数据报（datagram）两种通信机制，即流socket和数据报socket。
+
+流socket基于TCP协议，是一个有序、可靠、双向字节流的通道，传输数据不会丢失、不会重复、顺序也不会错乱。就像两个人在打电话，接通后就在线了，您一句我一句的聊天。
+
+数据报socket基于UDP协议，不需要建立和维持连接，可能会丢失或错乱。UDP不是一个可靠的协议，对数据的长度有限制，但是它的速度比较高。就像短信功能，一个人向另一个人发短信，对方不一定能收到。
+
+在实际开发中，数据报socket的应用场景极少，本教程只介绍流socket。
+
+
+
+
+
+
+3.客户/服务端模式
+在TCP/IP网络应用中，两个程序之间通信模式是客户/服务端模式（client/server），客户/服务端也叫作客户/服务器，各人习惯。
+
+
+(1) 服务端的工作流程
+1）创建服务端的socket。socket()
+2）把服务端用于通信的地址和端口绑定到socket上。bind()
+3）把socket设置为监听模式。listen()
+4）接受客户端的连接。accept()
+5）与客户端通信，接收客户端发过来的报文后，回复处理结果。 recv()/send()
+6）不断的重复第5）步，直到客户端断开连接。
+7）关闭socket，释放资源。close()
+
+
+服务端示例（server.cpp）
+
+#include <stdio.h>
+#include <string.h>
+#include <unistd.h>
+#include <stdlib.h>
+#include <netdb.h>
+#include <sys/types.h>
+#include <sys/socket.h>
+#include <arpa/inet.h>
+ 
+int main(int argc,char *argv[])
+{
+  if (argc!=2)
+  {
+    printf("Using:./server port\nExample:./server 5005\n\n"); return -1;
+  }
+ 
+  // 第1步：创建服务端的socket。
+  int listenfd;
+  if ( (listenfd = socket(AF_INET,SOCK_STREAM,0))==-1) { perror("socket"); return -1; }
+ 
+  // 第2步：把服务端用于通信的地址和端口绑定到socket上。
+  struct sockaddr_in servaddr;    // 服务端地址信息的数据结构。
+  memset(&servaddr,0,sizeof(servaddr));
+  servaddr.sin_family = AF_INET;  // 协议族，在socket编程中只能是AF_INET。
+  servaddr.sin_addr.s_addr = htonl(INADDR_ANY);          // 任意ip地址。
+  //servaddr.sin_addr.s_addr = inet_addr("192.168.190.134"); // 指定ip地址。
+  servaddr.sin_port = htons(atoi(argv[1]));  // 指定通信端口。
+  if (bind(listenfd,(struct sockaddr *)&servaddr,sizeof(servaddr)) != 0 )
+  { perror("bind"); close(listenfd); return -1; }
+ 
+  // 第3步：把socket设置为监听模式。
+  if (listen(listenfd,5) != 0 ) { perror("listen"); close(listenfd); return -1; }
+ 
+  // 第4步：接受客户端的连接。
+  int  clientfd;                  // 客户端的socket。
+  int  socklen=sizeof(struct sockaddr_in); // struct sockaddr_in的大小
+  struct sockaddr_in clientaddr;  // 客户端的地址信息。
+  clientfd=accept(listenfd,(struct sockaddr *)&clientaddr,(socklen_t*)&socklen);
+  printf("客户端（%s）已连接。\n",inet_ntoa(clientaddr.sin_addr));
+ 
+  // 第5步：与客户端通信，接收客户端发过来的报文后，回复ok。
+  char buffer[1024];
+  while (1)
+  {
+    int iret;
+    memset(buffer,0,sizeof(buffer));
+    if ( (iret=recv(clientfd,buffer,sizeof(buffer),0))<=0) // 接收客户端的请求报文。
+    {
+       printf("iret=%d\n",iret); break;  
+    }
+    printf("接收：%s\n",buffer);
+ 
+    strcpy(buffer,"ok");
+    if ( (iret=send(clientfd,buffer,strlen(buffer),0))<=0) // 向客户端发送响应结果。
+    { perror("send"); break; }
+    printf("发送：%s\n",buffer);
+  }
+ 
+  // 第6步：关闭socket，释放资源。
+  close(listenfd); close(clientfd);
+
+  return 0;
+}
+
+/*
+$ g++ -std=c++11 a1_server.cpp -o server
+$ ./server 5000
+*/
+
+
+
+
+(2) 客户端的工作流程
+1）创建客户端的socket。socket()
+2）向服务器发起连接请求。connect()
+3）与服务端通信，发送一个报文后等待回复，然后再发下一个报文。send()/recv()
+4）不断的重复第3）步，直到全部的数据被发送完。
+5）第4步：关闭socket，释放资源。close()
+
+客户端示例（client.cpp）
+
+#include <stdio.h>
+#include <string.h>
+#include <unistd.h>
+#include <stdlib.h>
+#include <netdb.h>
+#include <sys/types.h>
+#include <sys/socket.h>
+#include <arpa/inet.h>
+ 
+int main(int argc,char *argv[])
+{
+  if (argc!=3)
+  {
+    printf("Using:./client ip port\nExample:./client 127.0.0.1 5005\n\n"); return -1;
+  }
+ 
+  // 第1步：创建客户端的socket。
+  int sockfd;
+  if ( (sockfd = socket(AF_INET,SOCK_STREAM,0))==-1) { perror("socket"); return -1; }
+ 
+  // 第2步：向服务器发起连接请求。
+  struct hostent* h;
+  if ( (h = gethostbyname(argv[1])) == 0 )   // 指定服务端的ip地址。
+  { printf("gethostbyname failed.\n"); close(sockfd); return -1; }
+  struct sockaddr_in servaddr;
+  memset(&servaddr,0,sizeof(servaddr));
+  servaddr.sin_family = AF_INET;
+  servaddr.sin_port = htons(atoi(argv[2])); // 指定服务端的通信端口。
+  memcpy(&servaddr.sin_addr,h->h_addr,h->h_length);
+  if (connect(sockfd, (struct sockaddr *)&servaddr,sizeof(servaddr)) != 0)  // 向服务端发起连接清求。
+  { perror("connect"); close(sockfd); return -1; }
+ 
+  char buffer[1024];
+ 
+  // 第3步：与服务端通信，发送一个报文后等待回复，然后再发下一个报文。
+  for (int ii=0;ii<3;ii++)
+  {
+    int iret;
+    memset(buffer,0,sizeof(buffer));
+    sprintf(buffer,"这是第%d个文本信息，编号%03d。",ii+1,ii+1);
+    if ( (iret=send(sockfd,buffer,strlen(buffer),0))<=0) // 向服务端发送请求报文。
+    { perror("send"); break; }
+    printf("发送：%s\n",buffer);
+ 
+    memset(buffer,0,sizeof(buffer));
+    if ( (iret=recv(sockfd,buffer,sizeof(buffer),0))<=0) // 接收服务端的回应报文。
+    {
+       printf("iret=%d\n",iret); break;
+    }
+    printf("接收：%s\n",buffer);
+  }
+ 
+  // 第4步：关闭socket，释放资源。
+  close(sockfd);
+
+  return 0;
+}
+
+/*
+$ g++ -std=c++11 a1_client.cpp -o client
+$ ./client 127.0.0.1 5000
+*/
+
+
+
+
+(3)运行
+在运行程序之前，必须保证服务器的防火墙已经开通了网络访问策略（云服务器还需要登录云控制平台开通访问策略）。
+先启动服务端程序server，服务端启动后，进入等待客户端连接状态，然后启动客户端。
+
+
+
+
+
+========================================
+|-- socket 要点与相关函数
+----------------------------------------
+
+
+4. 相关要点
+
+在socket通信的客户端和服务器的程序里，出现了多种数据结构，调用了多个函数，涉及到很多方面的知识，对初学者来说，更重要的是了解socket通信的过程、每段代码的用途和函数调用的功能，不要去纠缠这些结构体和函数的参数，这些函数和参数虽然比较多，但可以修改的非常少，别抄错就可以了
+
+(1) socket文件描述符
+在UNIX系统中，一切输入输出设备皆文件，socket()函数的返回值其本质是一个文件描述符，是一个整数。
+
+
+
+
+(2) 服务端程序绑定地址
+如果服务器有多个网卡，多个IP地址，socket通信可以指定用其中一个地址来进行通信，也可以任意ip地址。
+
+1）指定ip地址的代码
+  m_servaddr.sin_addr.s_addr = inet_addr("192.168.149.129");  // 指定ip地址
+
+2）任意ip地址的代码
+  m_servaddr.sin_addr.s_addr = htonl(INADDR_ANY);  // 本主机的任意ip地址
+
+在实际开发中，采用任意ip地址的方式比较多。
+
+
+
+(3) 服务端程序绑定的通信端口
+  m_servaddr.sin_port = htons(5000);  // 通信端口
+
+
+(4) 客户端程序指定服务端的ip地址
+  struct hostent* h;
+  if ( (h = gethostbyname("118.89.50.198")) == 0 )   // 指定服务端的ip地址。
+  { printf("gethostbyname failed.\n"); close(sockfd); return -1; }
+
+
+(5) 客户端程序指定服务端的通信端口
+  servaddr.sin_port = htons(5000);
+
+
+(6) send函数
+send函数用于把数据通过socket发送给对端。不论是客户端还是服务端，应用程序都用send函数来向TCP连接的另一端发送数据。
+
+函数声明：ssize_t send(int sockfd, const void *buf, size_t len, int flags);
+sockfd 为已建立好连接的socket。
+
+buf 为需要发送的数据的内存地址，可以是C语言基本数据类型变量的地址，也可以数组、结构体、字符串，内存中有什么就发送什么。
+
+len 需要发送的数据的长度，为buf中有效数据的长度。
+
+flags 填0, 其他数值意义不大。
+
+函数返回已发送的字符数。出错时返回-1，错误信息errno被标记。
+
+注意，就算是网络断开，或socket已被对端关闭，send函数不会立即报错，要过几秒才会报错。
+
+如果send函数返回的错误（<=0），表示通信链路已不可用。
+
+
+
+(7) recv函数
+recv 函数用于接收对端socket发送过来的数据。
+
+recv函数用于接收对端通过socket发送过来的数据。不论是客户端还是服务端，应用程序都用recv函数接收来自TCP连接的另一端发送过来数据。
+
+函数声明：ssize_t recv(int sockfd, void *buf, size_t len, int flags);
+sockfd 为已建立好连接的socket。
+
+buf 为用于接收数据的内存地址，可以是C语言基本数据类型变量的地址，也可以数组、结构体、字符串，只要是一块内存就行了。
+
+len需要接收数据的长度，不能超过buf的大小，否则内存溢出。
+
+flags 填0, 其他数值意义不大。
+
+函数返回已接收的字符数。出错时返回-1，失败时不会设置errno的值。
+
+如果socket的对端没有发送数据，recv 函数就会等待，如果对端发送了数据，函数返回接收到的字符数。出错时返回-1。如果socket被对端关闭，返回值为0。
+
+如果recv函数返回的错误（<=0），表示通信通道已不可用。
+
+
+
+(8) 服务端有两个socket
+对服务端来说，有两个socket，一个是用于监听的socket，还有一个就是客户端连接成功后，由accept函数创建的用于与客户端收发报文的socket。
+
+
+
+(9) 程序退出时先关闭socket
+socket是系统资源，操作系统打开的socket数量是有限的，在程序退出之前必须关闭已打开的socket，就像关闭文件指针一样，就像delete已分配的内存一样，极其重要。
+
+值得注意的是，关闭socket的代码不能只在main函数的最后，那是程序运行的理想状态，还应该在main函数的每个return之前关闭。
+
+
+
+
+
+
+
+5. 相关的库函数
+
+(1) socket函数
+socket函数用于创建一个新的socket，也就是向系统申请一个socket资源。socket函数用户客户端和服务端。
+
+函数声明：int socket(int domain, int type, int protocol);
+参数说明：
+domain：协议域，又称协议族（family）。常用的协议族有AF_INET、AF_INET6、AF_LOCAL（或称AF_UNIX，Unix域Socket）、AF_ROUTE等。协议族决定了socket的地址类型，在通信中必须采用对应的地址，如AF_INET决定了要用ipv4地址（32位的）与端口号（16位的）的组合、AF_UNIX决定了要用一个绝对路径名作为地址。
+
+type：指定socket类型。常用的socket类型有SOCK_STREAM、SOCK_DGRAM、SOCK_RAW、SOCK_PACKET、SOCK_SEQPACKET等。流式socket（SOCK_STREAM）是一种面向连接的socket，针对于面向连接的TCP服务应用。数据报式socket（SOCK_DGRAM）是一种无连接的socket，对应于无连接的UDP服务应用。
+
+protocol：指定协议。常用协议有IPPROTO_TCP、IPPROTO_UDP、IPPROTO_STCP、IPPROTO_TIPC等，分别对应TCP传输协议、UDP传输协议、STCP传输协议、TIPC传输协议。
+
+说了一大堆废话，第一个参数只能填AF_INET，第二个参数只能填SOCK_STREAM，第三个参数只能填0。
+
+除非系统资料耗尽，socket函数一般不会返回失败。
+
+返回值：成功则返回一个socket，失败返回-1，错误原因存于errno 中。
+
+
+
+(2) gethostbyname函数
+把ip地址或域名转换为hostent 结构体表达的地址。
+
+函数声明：struct hostent *gethostbyname(const char *name);
+参数name，域名或者主机名，例如"192.168.1.3"、"www.freecplus.net"等。
+
+返回值：如果成功，返回一个hostent结构指针，失败返回NULL。
+
+gethostbyname只用于客户端。
+
+gethostbyname只是把字符串的ip地址转换为结构体的ip地址，只要地址格式没错，一般不会返回错误。失败时不会设置errno的值。
+
+
+
+(3) connect函数
+向服务器发起连接请求。
+
+函数声明：int connect(int sockfd, struct sockaddr * serv_addr, int addrlen);
+函数说明：connect函数用于将参数sockfd 的socket 连至参数serv_addr 指定的服务端，参数addrlen为sockaddr的结构长度。
+
+返回值：成功则返回0，失败返回-1，错误原因存于errno 中。
+
+connect函数只用于客户端。
+
+如果服务端的地址错了，或端口错了，或服务端没有启动，connect一定会失败。
+
+
+
+(4) bind函数
+服务端把用于通信的地址和端口绑定到socket上。
+
+函数声明：int bind(int sockfd, const struct sockaddr *addr,socklen_t addrlen);
+参数 sockfd ，需要绑定的socket。
+
+参数 addr ，存放了服务端用于通信的地址和端口。
+
+参数 addrlen 表示addr结构体的大小。
+
+返回值：成功则返回0，失败返回-1，错误原因存于errno 中。
+
+如果绑定的地址错误，或端口已被占用，bind函数一定会报错，否则一般不会返回错误。
+
+
+
+
+(5) listen函数
+listen函数把主动连接socket变为被动连接的socket，使得这个socket可以接受其它socket的连接请求，从而成为一个服务端的socket。
+
+函数声明：int listen(int sockfd, int backlog);
+返回：0-成功， -1-失败
+
+参数sockfd是已经被bind过的socket。socket函数返回的socket是一个主动连接的socket，在服务端的编程中，程序员希望这个socket可以接受外来的连接请求，也就是被动等待客户端来连接。由于系统默认时认为一个socket是主动连接的，所以需要通过某种方式来告诉系统，程序员通过调用listen函数来完成这件事。
+
+参数backlog，这个参数涉及到一些网络的细节，比较麻烦，填5、10都行，一般不超过30。
+
+当调用listen之后，服务端的socket就可以调用accept来接受客户端的连接请求。
+
+返回值：成功则返回0，失败返回-1，错误原因存于errno 中。
+
+listen函数一般不会返回错误。
+
+
+
+
+(6) accept函数
+服务端接受客户端的连接。
+
+函数声明：int accept(int sockfd,struct sockaddr *addr,socklen_t *addrlen);
+参数 sockfd 是已经被listen过的socket。
+
+参数addr用于存放客户端的地址信息，用sockaddr结构体表达，如果不需要客户端的地址，可以填0。
+
+参数addrlen用于存放addr参数的长度，如果addr为0，addrlen也填0。
+
+
+
+accept函数等待客户端的连接，如果没有客户端连上来，它就一直等待，这种方式称之为阻塞。
+
+accept等待到客户端的连接后，创建一个新的socket，函数返回值就是这个新的socket，服务端使用这个新的socket和客户端进行报文的收发。
+
+返回值：成功则返回0，失败返回-1，错误原因存于errno 中。
+
+accept在等待的过程中，如果被中断或其它的原因，函数返回-1，表示失败，如果失败，可以重新accept。
+
+
+
+(7) 函数小结
+服务端函数调用的流程是：socket->bind->listen->accept->recv/send->close
+
+客户端函数调用的流程是：socket->connect->send/recv->close
+
+其中 send/recv 可以进行多次交互。
+
+
+
+
+
+
+6. 课后作业
+1）把client.cpp和server.cpp抄下来，编译运行，试试修改参数再运行。
+
+2）client.cpp和server.cpp程序中，有些代码不能动，有些代码可以动，把能动的都动一下，就算是抄代码，也要抄个明白。
+
+3）服务端的accept函数会阻塞，阻塞是专业名词，即等待，可以用代码测试一下。
+
+4）不管是服务端还是客户端recv函数也会阻塞，可以用代码测试一下。
+
+5）修改client.cpp和server.cpp，实现点对点的聊天功能，用户在客户端输入一个字符串，然后发送给服务端，服务端收到客户端的报文后，也提示用户输入一个字符串，返回给客户端，如果服务端收到客户端的报文是“bye”通信结束。
+
+6）如果以上作业都能完成，建议再把本文章的内容再看一次，对文章开始部分的理论知识将有新的理解。
+
+
+
+后续改写的代码： https://github.com/miostudio/linux_C/tree/master/adv/01_socket/01_socket_anno
+a3 可以互相发信息了。
+a4 封装成函数
+a5 封装成类
+
+
+(2) C++封装的意义
+采用C++封装的意义主要有以下几方面。
+1）把数据初始化的代码放在构造函数中；
+2）把关闭socket等释放资源的代码放在析构函数中；
+3）把socket定义为类的成员变量，类外部的代码根本看不到socket。
+4）代码更简洁，更安全（析构函数自动调用关闭socket，释放资源）。
+
+(3) 应用经验
+本章节演示了如何封装socket，这种封装是最简单的，socket通讯的知识点不算多，但是要用好它并不容易，这么说吧，如果把这两个章节介绍的知识完全掌握，差不多就摸到门槛了，还算不上入门，千万别说自己精通socket通信，后面的路还长。
+
+(4) 课后作业
+充分理解本章节的内容，丰富您的函数库，编写您自己的 SocketClient类 和 SocketServer类 放入 my_public.h 和 my_public.cpp 中，可以作为您的通用工具。
 
 
 
@@ -24,6 +517,8 @@ c204-network.txt
 ref:
 https://blog.csdn.net/panker2008/article/details/46502783
 https://www.zhihu.com/question/29637351
+http://www.freecplus.net/0047ac4059b14d52bcc1d4df6ae8bb83.html
+http://www.freecplus.net/44e059cca66042f0a1286eb188c51480.html
 
 
 
@@ -31,9 +526,6 @@ https://www.zhihu.com/question/29637351
 
 
 
-
-========================================
-----------------------------------------
 
 
 

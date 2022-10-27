@@ -33,6 +33,7 @@
 			//
 			array('https://iconarchive.com/tag/google-chrome','icon'),
 			array('https://icon-icons.com/search/icons/?filtro=cplusplus&sort=popular','icon2'),
+			array('https://excalidraw.com/','手绘流程图'),
 		);
 		echo '<br />友情链接[IT Tools]: ';
 		print_links($links_IT_tools);
