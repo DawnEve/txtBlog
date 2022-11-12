@@ -38,6 +38,7 @@ return array (
       array('操作系统','c205-OS','txt',), 
 	  
       array('leetcode.com','leetcode','txt',),
+      array('Books 计科经典书','computer_Books','txt',),
     ),
   ),
 

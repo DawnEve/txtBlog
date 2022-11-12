@@ -3,6 +3,8 @@
 .ewm img{ width: 100px;}
 .ewm p{ text-align:center;}
 
+
+.footer .fade b{color:#ddd;}
 </style>
 
 
@@ -20,6 +22,7 @@
 			array('http://www.runoob.com/','菜鸟教程网'),
 			array('https://www.coonote.com/','菜鸟笔记'),
 			array('http://www.codebaoku.com/','编程宝库','编程宝库！'),
+			array('https://www.twle.cn/','简单教程网','提供md编辑器'),
 			array('http://jsbin.com/','jsbin','练习前端的好工具！'),
 			array('https://tool.lu/','在线工具'),
 
@@ -27,44 +30,56 @@
 			array('http://css.cuishifeng.cn/','css手册'),
 
 			array('http://www.w3school.com.cn/','w3school'),
-			array('http://mioweb.biomooc.com/','miostudio'),
 			array('http://www.shouce.ren/api/index','在线手册下载'),
 			array('http://tool.chinaz.com/tools/jsformat.aspx','html/js格式化','代码美化'),
 			//
 			array('https://iconarchive.com/tag/google-chrome','icon'),
 			array('https://icon-icons.com/search/icons/?filtro=cplusplus&sort=popular','icon2'),
 			array('https://excalidraw.com/','手绘流程图'),
+			
+			array('http://mioweb.biomooc.com/','miostudio'),
 		);
-		echo '<br />友情链接[IT Tools]: ';
+		echo '<br /><b>友情链接[IT Tools]</b>: ';
 		print_links($links_IT_tools);
 		
 		
 		//计算机技术类============================后端资料类
 		$links_Back=array(
-			array('https://www.junmajinlong.com/','Linux/Mysql/Perl'),
-			array('https://normaluhr.github.io/2020/12/31/Effective-C++/','Effective C++读书笔记'),
+			// Linux/shell 
 			array('http://mingxinglai.com/','Linux命令博客','赖明星，网易/腾讯db工程师(厦门大学数据库实验室林子雨老师的学生http://dblab.xmu.edu.cn/)'),
+			array('https://www.junmajinlong.com/','Linux/Mysql/Perl'),
 			array("http://www.zsythink.net/archives/tag/awk/",'linux/awk等','运维 朱双印个人日志'),
-			//array('http://www.imeixue.cn/','每学网'),// 韩顺平的作品？ 打不开了
 
 			array('http://nginx.org/en/docs/','Nginx'),
+			
+			//PHP
+			array('https://www.laruence.com/jscss','laruence 风雪之隅', 'PHP8核心开发者'),
+			//array('http://www.imeixue.cn/','每学网'),// 韩顺平的作品？ 打不开了
 			array('http://php.net/','PHP'),
 			array('http://www.blogdaren.com/','php博客花园'),
+			//array('http://gaodc.com/','8年php高东臣博客'), //域名过期
+			
+			
+			//sql
 			array('http://www.sqlite.org/','sqlite'),
 
-			//array('http://gaodc.com/','8年php高东臣博客'), //域名过期
-			array('http://cmsblogs.com/?page_id=488','cmsblogs(Java)'),
-			array("https://www.shiyanlou.com/",'实验楼','第一家以实验为核心的IT在线教育平台'),
+			//C++
+			array('https://normaluhr.github.io/2020/12/31/Effective-C++/','Effective C++读书笔记'),
 			
-			array('http://fex.baidu.com/ueditor/#start-config','uEditor','百度富文本编辑器'),
+			//Java
+			array('https://github.com/itwanger/toBeBetterJavaer','toBeBetterJavaer'),
+			array('http://cmsblogs.com/?page_id=488','cmsblogs(Java)'),
 
 			//高阶技能
 			array('https://colobu.com/about/','鸟窝(blog)','在微博 做架构和开发工作'),
 			array('https://github.com/leohxj/a-programmer-prepares','程序员的自我修养'),
-			array('https://github.com/itwanger/toBeBetterJavaer','toBeBetterJavaer'),
 			array('https://www.qtmuniao.com/about/','青藤木鸟(分布式)'),
+			
+			
+			array('http://fex.baidu.com/ueditor/#start-config','uEditor','百度富文本编辑器'),
+			array("https://www.shiyanlou.com/",'实验楼','第一家以实验为核心的IT在线教育平台'),
 		);
-		echo '<br />后端资料: ';
+		echo '<br /><b>后端资料</b>: ';
 		print_links($links_Back);
 
 		
@@ -121,24 +136,25 @@
 			array('http://f2er.club/','醉牛前端导航'),
 			array('http://caibaojian.com/links','前端网址导航'),
 		);
-		echo '<br />前端技术: ';
+		echo '<br /><b>前端技术</b>: ';
 		print_links($links_Front);
 		
 		
 		// 视频资源类
 		$links_video=array(
-			array("http://www.imooc.com/",'慕课网'),
-			array('http://study.163.com/','网易云课堂'),
+			array("https://www.bilibili.com/",'bilibili'),
+			array("https://www.imooc.com/",'慕课网'),
+			array('https://study.163.com/','网易云课堂'),
 			array("http://ninghao.net/",'宁皓网','React，Bootstrap，Laravel 视频教程'),
 			
 			array('http://edu.ibeifeng.com/list-index-is_key-is_new.html','北风网'),
 			
 			array('https://www.ted.com/','TED视频'),
 		);
-		echo '<br />视频: ';
+		echo '<br /><b>视频</b>: ';
 		print_links($links_video);
 		
-		echo '<br />数学: ';
+		echo '<br /><b>数学</b>: ';
 		print_links(array(
 			array('http://3d-genome.life/','李程3D基因组(多元回归/贝叶斯/)'),
 			array('https://blog.csdn.net/hpdlzu80100/category_7468916.html','数学笔记(高数/线代/统计/)'), //https://blog.csdn.net/hpdlzu80100
@@ -149,7 +165,7 @@
 
 
 
-		echo '<br />ML/AI: ';
+		echo '<br /><b>ML/AI</b>: ';
 		print_links(array(	
 			array('http://freemind.pluskid.org/','张驰原pluskid(ML/AI)'),
 			array('https://blog.csdn.net/v_july_v/article/details/7624837','july(ML/AI)'),
@@ -159,7 +175,7 @@
 
 
 
-		echo '<br />生信: ';
+		echo '<br /><b>生信</b>: ';
 		print_links(array(
 			array('https://www.math.pku.edu.cn/teachers/lidf/docs/Rbook/html/_Rbook/markdown.html','北大R语言教程'),
 			array('http://www.bioinfo-scrounger.com/','生信笔记'),
