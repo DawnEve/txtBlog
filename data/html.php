@@ -12,7 +12,7 @@ return array (
       array('程序员自保策略','self_protect','txt'),
     ),
   ),
- 
+
   array (
     0 => 1,
     1 => 'bootstrap',
@@ -22,8 +22,8 @@ return array (
 
     ),
   ),
-  
-  
+
+
   array (
     0 => 1,
     1 => 'angularJS',
@@ -32,8 +32,8 @@ return array (
       array('入门简介','angular002','txt',),
     ),
   ),
-  
-    
+
+
   array (
     0 => 1,
     1 => '网络协议',
@@ -42,8 +42,18 @@ return array (
       array('技术需求信息','techInfo','txt',),
     ),
   ),
-  
-  
-  
-  
+
+
+  array (
+    0 => 1,
+    1 => '产品与推广',
+    2 => array (
+      array('产品思维','product','txt',),
+    ),
+  ),
+
+
+
+
+
 );
