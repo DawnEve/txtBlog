@@ -606,6 +606,9 @@ SAM分为两部分，注释信息（header section）和比对结果部分（ali
 
 
 
+
+
+
 2.sam格式是头部，加上正文，正文部分强制规定的有11列，外加可选的额外列。
 
 在SAM输出的结果中每一行都包括十二项通过Tab分隔，从左到右分别是：
@@ -629,6 +632,7 @@ $ samtools view hg19_mm10/c01_ROW02_Aligned.sortedByCoord.out.bam|head -n 200|aw
 
 主体部分有11个主列和1个可选列
 (1)QNAME	比对的序列名称	例如：M04650:84:000000000-B837R:1:1101:22699:1759（一条测序reads的名称）
+
 (2)FLAG	Bwise FLAG（表明比对类型：paring，strand，mate strand等）	例如：99
 数值结果如下：
 1（1）该read是成对的paired reads中的一个
@@ -646,6 +650,9 @@ $ samtools view hg19_mm10/c01_ROW02_Aligned.sortedByCoord.out.bam|head -n 200|aw
 具体的flag值的解释，可以参考samtools软件提供的结果
 
 通过这个和可以直接推断出匹配的情况。假如说标记不是以上列举出的数字，比如说83=（64+16+2+1），就是这几种情况值和。
+
+查询这些组合的意义：https://broadinstitute.github.io/picard/explain-flags.html
+
 
 //todo 那么0是什么意思？
 
@@ -856,7 +863,95 @@ MD:Z  代表序列和参考序列错配的字符串
 
 
 
+
 ref: https://www.jianshu.com/p/8d01019f33f2
+
+
+
+
+========================================
+|-- bam 第10列的reads是fastq中的原始序列吗？
+----------------------------------------
+
+==> bam到底保存的是不是原始fastq中的序列？做个测试
+$ cd /home/wangjl/data/chenxi/MDA/test2/mapTest/
+
+参考序列框架：只要234行
+$ zcat ../raw/L.R2.fastq.gz  | head -n 8
+@A00265:942:HJ7TNDSX3:2:1101:1145:1000 2:N:0:TAAGGCGA
+CATGGGACTGAATATCGACATTGAAAAATTAAATTTATTAATATTTCAAGTTTAGATCAACCTATAGAATATATCATACAATAGACAAACAATAGGTCTTATACTACTATTAAACAAGATAAGAGTTTTTGGTGGATGCCTTGGGTCTGG
++
+FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF:FFFFFFF,FFFFFFFFFFFFFFF:FFFFFFFF,F:FFFF:F:FF:FFFFFFFFFFFFFFF,FF::FFFFFFFFFFFFFF:FFF,FFF:FFFF,FFFFF
+@A00265:942:HJ7TNDSX3:2:1101:1235:1000 2:N:0:TAAGGCGA
+GGATCGGAAGAGCGTCGTGTAGCCAAAAAAAAAAAAAAAAAAAAAAAAAGTAAGCGCTGTTTAAATTAGATAGGAAGAGCGTGGTGTAGGGAAAGAGTGTATAAATAGGTGGGGGCCGTAAAATTAAAAAATGTTGGGGGGGGGGGGGGG
++
+FFFFFFFFFFFFFFFFFFFFFFFFFFFFFF:FFFFFFFF:FFFFFFFF:,FF,,,:,,:F,,,,,F,:,,,,F,FF,,F,F:,F:F:,:F:FFF,,,F,F,,,,,,,FF,:F,,:,,,,,,,F:F:FF::,,,,,,,,,F,FFFFFFF:F
+
+生成序列：填充第1行
+$ vim test.fq 
+@seq001_plus
+CAGTTGAAGAACTGGAACCAACATTAAGTGACGAAGAACAACTTCCATCTAAATCATCATAAAAATGTTTAAGTAAAAAAAAAAAAAGAAAGAGAAAG
++
+FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF:FFFFFFF,FFFFFFFFFFFFFFF:FFFFFFFF,F:FFFF:F:FF:F
+@seq001_minus
+CTTTCTCTTTCTTTTTTTTTTTTTACTTAAACATTTTTATGATGATTTAGATGGAAGTTGTTCTTCGTCACTTAATGTTGGTTCCAGTTCTTCAACTG
++
+FFFFFFFFFFFFFFFFFFFFFFFFFFFFFF:FFFFFFFF:FFFFFFFF:,FF,,,:,,:F,,,,,F,:,,,,F,FF,,F,F:,F:F:,:F:FFF,,,F
+
+压缩 $ gzip test.fq
+
+
+比对，从 snakemake 复制的:
+$ mkdir map
+$ STAR --runThreadN 1 \
+	--genomeDir /home/wangjl/data/ref/hg38/gencode/index/STAR/ \
+	--readFilesIn test.fq.gz \
+	--readFilesCommand zcat \
+	--outFilterMultimapNmax 1 \
+	--outSAMtype BAM SortedByCoordinate \
+	--outFilterMatchNminOverLread 0.13 --outFilterScoreMinOverLread 0.13 \
+	--outFileNamePrefix map/A_
+耗时 2min，载入基因组占了1分多。
+
+
+查看结果：
+$ samtools view map/A_Aligned.sortedByCoord.out.bam 
+seq001_plus     0       chr14   69380255        255     98M     *       0       0       CAGTTGAAGAACTGGAACCAACATTAAGTGACGAAGAACAACTTCCATCTAAATCATCATAAAAATGTTTAAGTAAAAAAAAAAAAAGAAAGAGAAAG      FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF:FFFFFFF,FFFFFFFFFFFFFFF:FFFFFFFF,F:FFFF:F:FF:F   NH:i:1  HI:i:1  AS:i:94 nM:i:1
+seq001_minus    16      chr14   69380255        255     98M     *       0       0       CAGTTGAAGAACTGGAACCAACATTAAGTGACGAAGAACAACTTCCATCTAAATCATCATAAAAATGTTTAAGTAAAAAAAAAAAAAGAAAGAGAAAG      F,,,FFF:F:,:F:F,:F,F,,FF,F,,,,:,F,,,,,F:,,:,,,FF,:FFFFFFFF:FFFFFFFF:FFFFFFFFFFFFFFFFFFFFFFFFFFFFFF   NH:i:1  HI:i:1  AS:i:94 nM:i:1
+
+$ samtools index /home/wangjl/data/chenxi/MDA/test2/mapTest/map/A_Aligned.sortedByCoord.out.bam
+
+
+
+==> 看pysam 两种获取序列的方式的区别？
+inputFile="/home/wangjl/data/chenxi/MDA/test2/mapTest/map/A_Aligned.sortedByCoord.out.bam"
+import pysam
+samfile = pysam.AlignmentFile(inputFile, "rb")
+for line in samfile:
+	print(line)
+	print(line.get_forward_sequence())  #和fq一致
+	print(line.seq)  #仅仅是bam中的序列
+	print()
+samfile.close()
+
+输出: 
+seq001_plus	0	#13	69380255	255	98M	*	0	0	CAGTTGAAGAACTGGAACCAACATTAAGTGACGAAGAACAACTTCCATCTAAATCATCATAAAAATGTTTAAGTAAAAAAAAAAAAAGAAAGAGAAAG	array('B', [37, 37, 37, 37, 37, 37, 37, 37, 37, 37, 37, 37, 37, 37, 37, 37, 37, 37, 37, 37, 37, 37, 37, 37, 37, 37, 37, 37, 37, 37, 37, 37, 37, 37, 37, 37, 37, 37, 37, 37, 37, 37, 37, 37, 37, 37, 37, 37, 37, 37, 37, 25, 37, 37, 37, 37, 37, 37, 37, 11, 37, 37, 37, 37, 37, 37, 37, 37, 37, 37, 37, 37, 37, 37, 37, 25, 37, 37, 37, 37, 37, 37, 37, 37, 11, 37, 25, 37, 37, 37, 37, 25, 37, 25, 37, 37, 25, 37])	[('NH', 1), ('HI', 1), ('AS', 94), ('nM', 1)]
+CAGTTGAAGAACTGGAACCAACATTAAGTGACGAAGAACAACTTCCATCTAAATCATCATAAAAATGTTTAAGTAAAAAAAAAAAAAGAAAGAGAAAG
+CAGTTGAAGAACTGGAACCAACATTAAGTGACGAAGAACAACTTCCATCTAAATCATCATAAAAATGTTTAAGTAAAAAAAAAAAAAGAAAGAGAAAG
+
+seq001_minus	16	#13	69380255	255	98M	*	0	0	CAGTTGAAGAACTGGAACCAACATTAAGTGACGAAGAACAACTTCCATCTAAATCATCATAAAAATGTTTAAGTAAAAAAAAAAAAAGAAAGAGAAAG	array('B', [37, 11, 11, 11, 37, 37, 37, 25, 37, 25, 11, 25, 37, 25, 37, 11, 25, 37, 11, 37, 11, 11, 37, 37, 11, 37, 11, 11, 11, 11, 25, 11, 37, 11, 11, 11, 11, 11, 37, 25, 11, 11, 25, 11, 11, 11, 37, 37, 11, 25, 37, 37, 37, 37, 37, 37, 37, 37, 25, 37, 37, 37, 37, 37, 37, 37, 37, 25, 37, 37, 37, 37, 37, 37, 37, 37, 37, 37, 37, 37, 37, 37, 37, 37, 37, 37, 37, 37, 37, 37, 37, 37, 37, 37, 37, 37, 37, 37])	[('NH', 1), ('HI', 1), ('AS', 94), ('nM', 1)]
+CTTTCTCTTTCTTTTTTTTTTTTTACTTAAACATTTTTATGATGATTTAGATGGAAGTTGTTCTTCGTCACTTAATGTTGGTTCCAGTTCTTCAACTG
+CAGTTGAAGAACTGGAACCAACATTAAGTGACGAAGAACAACTTCCATCTAAATCATCATAAAAATGTTTAAGTAAAAAAAAAAAAAGAAAGAGAAAG
+
+
+结论: 也就是说，我们要使用 line.get_forward_sequence() 获取序列，才是 fastq 中的序列。
+
+
+
+
+
+
+
 
 
 
@@ -865,7 +960,7 @@ ref: https://www.jianshu.com/p/8d01019f33f2
 
 
 ========================================
-|-- 10x bam 格式的 tag 信息
+|-- 10x bam 格式的 tag 信息: CB, UB
 ----------------------------------------
 1. 例子 
 

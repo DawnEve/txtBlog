@@ -3650,6 +3650,103 @@ detach(mtcars)
 
 
 ========================================
+|-- 函数参数的校验与 通知 message()、警告warning()、报错 stop()
+----------------------------------------
+
+1. 来自Seurat 4 的示例
+
+(1) 如果检验方法不需要 latent 变量，且提供了，则警告:
+  if (!(test.use %in% DEmethods_latent()) && !is.null(x = latent.vars)) {
+    warning(
+      "'latent.vars' is only used for the following tests: ",
+      paste(DEmethods_latent(), collapse=", "),
+      call. = FALSE,
+      immediate. = TRUE
+    )
+  }
+
+
+
+(2) 检查一个R包是否安装
+
+#' Check the existence of a package
+#'
+#' @param ... Package names
+#' @param error If true, throw an error if the package doesn't exist
+#'
+#' @return Invisibly returns boolean denoting if the package is installed
+#'
+#' @export
+#'
+#' @examples
+#' PackageCheck("SeuratObject", error = FALSE)
+#'
+PackageCheck <- function(..., error = TRUE) {
+  # 获取每个参数，不要名字，只要值: 包名
+  pkgs <- unlist(x = c(...), use.names = FALSE)
+  # 对每个R包名，加载其命名空间，要求返回值是 logical 类型，长度为1
+  package.installed <- vapply(
+    X = pkgs,
+    FUN = requireNamespace,
+    FUN.VALUE = logical(length = 1L),
+    quietly = TRUE
+  )
+  
+  # 如果允许报错，且至少有一个没安装，则报错
+  if (error && any(!package.installed)) {
+    stop(
+      "Cannot find the following packages: ",
+      paste(pkgs[!package.installed], collapse = ', '),
+      ". Please install"
+    )
+  }
+  # 返回R包安装情况，是一个 named vector
+  invisible(x = package.installed)
+}
+
+
+
+
+(3) 如果没有安装某R包，则提醒安装，并且一个R session 只提醒一次。
+
+  #(A3) 检查是否溢出?? 
+  overflow.check <- ifelse(
+  	# 第一行 *  第一行，是na吗？ 是na则表示溢出内存了；不是na表示可以继续运算
+    test = is.na(x = suppressWarnings(length(x = data.use[1, ]) * length(x = data.use[1, ]))),
+    yes = FALSE,
+    no = TRUE
+  )
+
+    if (getOption('Seurat.limma.wilcox.msg', TRUE) && overflow.check) {
+      message(
+        "For a more efficient implementation of the Wilcoxon Rank Sum Test,",
+        "\n(default method for FindMarkers) please install the limma package",
+        "\n--------------------------------------------",
+        "\ninstall.packages('BiocManager')",
+        "\nBiocManager::install('limma')",
+        "\n--------------------------------------------",
+        "\nAfter installation of limma, Seurat will automatically use the more ",
+        "\nefficient implementation (no further action necessary).",
+        "\nThis message will be shown once per session"
+      )
+      options(Seurat.limma.wilcox.msg = FALSE)
+    }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+========================================
 文件I/O: 小文件、单列文件、大文件、R对象、源代码的读写
 ----------------------------------------
 1.  小文件读到内存(几行)
@@ -4358,6 +4455,127 @@ FALSE  TRUE
 ref:
 http://www.360doc.com/content/18/0425/07/21698478_748532218.shtml
 https://www.r-bloggers.com/2021/05/working-with-files-and-folders-in-r-ultimate-guide/
+
+
+
+
+========================================
+|-- R的底层读写函数: 连接(Connection)
+----------------------------------------
+1. 连接(Connection)
+连接(connect)是R语言中用于多种I/O操作的基本机制。R提供了9种函数用于为不同输入建立连接，file/url/gzfile/bzfile/xzfile/unz/pipe/fifo/socketConnection，基本上从名字上就能看出这些函数的使用场景。
+
+举个例子，如果想要爬取一个网页，我们可以用url构建目标站点的连接
+
+url_con <- url(description="http://www.baidu.com", open="r", encoding = "UTF-8")
+class(url_con)
+[1] "url"        "connection"
+该url_con就可以作为read.table/readLines的文件参数。
+
+上述的description就是指用于将要被建立的连接，可以是一个文件名或URL地址，例子中用的就是一个URL。也可以是其他类型输入。
+
+
+(2) 如果需要在命令行中使用R脚本，让R读取管道的输入，就是"stdin"
+std_in <- file("stdin", "r")
+
+
+例:
+$ cat test.R 
+std_in <- file("stdin", "r")
+arr=readLines(std_in)
+print(arr)
+close(std_in)
+
+$ echo "who are you" | Rscript test.R 
+[1] "who are you"
+
+
+(3) 如果要读取剪切板的内容，则是"clipboard"
+clip_text <- file("clipboard", "r")  #对Rstudio server，不靠谱
+
+其最终返回一个"connection"对象。
+
+
+
+
+
+
+
+2. "特殊"连接
+这里的"特殊"连接指的是不怎么用的到建立连接的方式，可能在某些特殊的情况下使用。
+
+(1) 场景一: 从控制台(console)里获取输入
+我们可以用stdin()来从console中获取输入
+
+> a <- readLines(stdin(), n=2)
+hello
+Tom
+> a
+[1] "hello" "Tom"
+这里的n=2表示读取两行的输入。该方法不能用于shell命令行读取管道的输入
+
+与stdin()对应的还有stdout()，stderr()和nulffile()，这几个命令很少使用。
+
+
+
+(2) 场景二: 从复制的文本中获取输入
+使用clipboard有些时候不清楚自己到底会从剪切板里读取什么样的输入，而且Linux命令行未必有X11支持，所以更好的方法是能够将文本粘贴到脚本中，然后进行读取。
+
+为了解决这一问题，我们需要借助于textConnection将字符串中转成连接。
+
+tmp <- "a   b   c   d
+1   1   1   B
+2   1   2   C
+3   1   3   C
+4   1   4   C
+5   1   5   B
+6   1   6   B
+7   1   7   C
+8   1   8   A
+9   1   9   B
+10  1   10  C
+"
+df <- read.table(textConnection(object = tmp),sep="\t", header = T) #如果只有一列，尝试换成 sep=""
+和textConnection类似的，还有一个rawConnection用于构建raw对象的连接
+
+
+
+
+
+
+3. 读取/输出函数
+构建的连接取决于模式可以进行读取和输出操作。R自带函数中和读取/输出相关的可以分成两类
+
+文本模式: readLines, writeLines, cat, sink, scan, parse, read.dcf, dput, dump
+
+二进制模式: readBin, readChar, writeBin, writeChar, load, save
+
+连接管理
+对于连接对象，除了读写以外，还有一些列的函数用于查看和管理连接。
+
+open: 打开连接
+close(): 关闭连接
+seek(): 在连接中进行跳转
+isOpen判断连接是否打开
+isIncomplete判断连接的读取最后一次是否完整， 写出时是否有未输出的内容
+flush刷新连接的输出流，保证内容都完全写出。用close()安全的关闭连接
+showConnections: 显示目前的所有连接
+getConnection: 获取指定连接
+closeAllConnections: 关闭所有连接
+
+大部分函数都不好找到使用场景，除非你要编写某些数据类型的读取函数。
+
+
+
+
+
+
+ref:
+https://xuzhougeng.top/archives/R-basic-Input-Output-function
+
+
+
+
 
 
 

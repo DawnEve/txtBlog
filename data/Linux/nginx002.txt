@@ -1176,7 +1176,7 @@ http://192.168.2.203:85/index.py?k=R&id=0_1
 
 
 ========================================
-|-- localtion后面其实是一个正则表达式， 对应着URL路由 //todo
+|-- [CentOS7.9] localtion后面其实是一个正则表达式， 对应着URL路由
 ----------------------------------------
 http://www.nginx.cn/115.html
 conf是一个嵌套格式。server中的location相当于路由，一旦匹配就停止并返回，所以要把具体的放上面，模糊的放下面。
@@ -1190,6 +1190,7 @@ conf是一个嵌套格式。server中的location相当于路由，一旦匹配�
 @     #"@" 定义一个命名的 location，使用在内部定向时，例如 error_page, try_files
 
 
+
 2. location 优先级官方文档
 
 (1)Directives with the = prefix that match the query exactly. If found, searching stops.
@@ -1198,13 +1199,53 @@ conf是一个嵌套格式。server中的location相当于路由，一旦匹配�
 (4)If #3 yielded a match, that result is used. Else the match from #2 is used.
 
 (1)=前缀的指令严格匹配这个查询。如果找到，停止搜索。
-(2)所有剩下的常规字符串，最长的匹配。如果这个匹配使用^〜前缀，搜索停止。
+(2)所有剩下的常规字符串，最长的匹配。如果这个匹配使用 ^~ 前缀，搜索停止。
 (3)正则表达式，在配置文件中定义的顺序。
 (4)如果第3条规则产生匹配的话，结果被使用。否则，使用第2条规则的结果。
 
 
 
 3. 实例
+
+实例: 
+server {
+    listen       80;
+    listen  [::]:80;
+    server_name  location.test.com;
+
+    access_log  /var/log/nginx/location.host.access.log  main;
+
+    #***注意多个location通常按精确的放前面，模糊大范围的放后面，nginx先找= ****
+    location = /login.html {#精确匹配 /login
+		root /usr/share/nginx/html/test-equal;#请求/login.html相当于寻找资源/usr/share/nginx/html/test-equal/login.html
+    }
+    location ^~ /prefix/ {#区分大小写且以/prefix/开头
+		root /usr/share/nginx/html/test-prefix;
+		#root代表根目录，请求/prefix/prefix.html相当于寻找资源/usr/share/nginx/html/test-prefix/prefix/prefix.html 
+    }
+    location ~ .(png|jpg)$ {#不区分大小写且以.png或.jpg结尾
+		root /usr/share/nginx/html/test-suffix;
+		#请求/suffix/a.png相当于寻找资源/usr/share/nginx/html/test-suffix/suffix/a.png
+    }
+    location ^~ /jd/ {# 区分大小写且以/jd/开头
+		proxy_pass https://www.jd.com/;
+		#proxy_pass  此处的url以/结尾，则nginx会取掉location部分再转发，
+		# 例如，请求/jd/电器?name=1 则会转发到https://www.jd.com/电器?name=1
+    }
+    location ^~ /s {# /会匹配到所有的
+		proxy_pass https://www.baidu.com;
+		#proxy_pass  此处的url没有以/结尾，则匹配到的地址全部拼接到代理后的地址，
+		# 例如，请求/s?name=1 则会转发到https://www.baidu.com/s?name=1
+    }
+    location  / {# 会返回index.html
+		root /usr/share/nginx/html;
+		index index.html;	
+    }
+}
+
+
+
+
 location  = / {
   # 只匹配"/".
   [ configuration A ] 
@@ -1246,7 +1287,260 @@ location @fetch(
 
 
 
-2. 
+
+
+
+
+
+
+
+4. 测试 on CentOS7.9 新虚拟机
+$ sudo yum install nginx
+$ sudo yum install tree
+$ nginx -version
+nginx version: nginx/1.20.1
+
+
+$ cat index.html
+<h1>hi!</h1>
+
+
+(1) 新开一个端口 8002 
+$ sudo vim /etc/nginx/conf.d/test.conf
+server {
+    listen 8002;
+    listen [::]:8002;
+
+    location / {
+		root /home/wangjl;
+		index index.html index.htm; 
+		autoindex on;
+   }
+}
+
+重启 nginx 服务
+$ sudo service nginx restart
+
+报错: $ sudo journalctl -xe
+Oct 12 08:48:26 ct79 nginx[2340]: nginx: [emerg] bind() to 0.0.0.0:8002 failed (13: Permission denied)
+日志：/var/log/nginx/error.log
+
+
+
+1) 有人说是没有文件夹访问权限
+$ sudo chmod o+r /home/wangjl
+$ sudo chmod o+x /home/wangjl
+
+$ sudo service nginx restart
+还是报错
+
+
+2) 排错重点1 临时关闭selinux
+setenforce 0    ##设置SELinux 成为permissive模式
+setenforce 1    ##设置SELinux 成为enforcing模式
+
+关闭 SELinux
+$ getenforce 
+Enforcing
+$ sudo setenforce 0  #我执行这行后就可以启动 nginx 了
+$ getenforce 
+Permissive
+
+[我没做] 永久关闭selinux,
+修改 /etc/selinux/config 文件，将SELINUX=enforcing改为SELINUX=disabled，重启机器。
+
+
+[我没做] 用下面的方法打开某个端口:
+$ sudo semanage port -l | grep http_port_t
+http_port_t                    tcp      8001, 80, 81, 443, 488, 8008, 8009, 8443, 9000
+pegasus_http_port_t            tcp      5988
+
+[我没做] 或者加入到 SELinux 许可中: https://codeleading.com/article/95801363634/
+$ sudo semanage port -a -t http_port_t  -p tcp 8002
+
+
+
+3) 查端口，已经在监听
+$ sudo service nginx restart
+Redirecting to /bin/systemctl restart nginx.service
+
+$ netstat -anp | grep 8002
+tcp        0      0 0.0.0.0:8002            0.0.0.0:*               LISTEN      - 
+
+4) 开放端口
+$ sudo iptables -I INPUT -p tcp --dport 8002 -j ACCEPT
+$ sudo iptables -I INPUT -p tcp --dport 80 -j ACCEPT
+
+5) 打开浏览器访问，可以访问了
+http://192.168.2.105:8002/
+hi!
+
+http://192.168.2.105/
+默认的 80 端口也可以访问了。
+
+
+
+
+
+
+
+(2) 修改配置文件: 设置图片匹配 ~* 
+~*    #表示执行一个正则匹配，不区分大小写
+
+1) 准备几个图文
+/home/wangjl/ 
+|-index.html
+|-1.png
+|-image/index.html
+|-image/2.png
+
+
+$ cd 
+$ Rscript -e "png('1.png', width=300, height=400); plot(1:5); dev.off()"
+$ mkdir image
+$ Rscript -e "png('image/2.png', width=300, height=400); plot(1:5, col='red'); dev.off()"
+
+$ cat index.html
+<h1>hi!</h1>
+
+<img src="1.png"> <br>
+<img src="image/1.png"> <br>
+<img src="2.png"> <br>
+<img src="image/2.png">
+
+$ cp index.html image/
+
+浏览器查看：
+http://192.168.2.105:8002/	只有第1个和第4个图可见：资源是相对于 /index.html 的地址。
+http://192.168.2.105:8002/image/ 只有第三个图可见：资源是相对于 /image/index.html 的地址。
+
+
+2) 改为 图片到固定文件夹查找
+$ sudo vim /etc/nginx/conf.d/test.conf
+server {
+    listen 8002;
+    listen [::]:8002;
+	
+	location ~* .(gif|jpg|jpeg|png)$ {
+		# 匹配以 gif, jpg/jpeg or png结尾的请求. 
+		root /home/wangjl/image;
+	}
+	
+    location / {
+		root /home/wangjl;
+		index index.html index.htm; 
+		autoindex on;
+   }
+}
+
+$ sudo service nginx restart
+
+浏览器查看 
+http://192.168.2.105:8002/ 只有第三个图可见：图的根目录是 ~/image/ 内。
+http://192.168.2.105:8002/image/  图都不可见
+
+
+
+
+
+
+
+(3) 修改配置文件: 文件夹匹配 ^~ 
+^~    #^~表示普通字符匹配，如果该选项匹配，只匹配该选项，不匹配别的选项，一般用来匹配目录
+
+$ sudo vim /etc/nginx/conf.d/test.conf
+server {
+    listen 8002;
+    listen [::]:8002;
+	
+	location ^~ /images/ {#区分大小写且以/images/开头
+		root /home/wangjl/book/;
+    }
+	
+	location ~* .(gif|jpg|jpeg|png)$ {
+		# 匹配以 gif, jpg/jpeg or png结尾的请求. 
+		root /home/wangjl/image;
+	}
+	
+    location / {
+		root /home/wangjl;
+		index index.html index.htm; 
+		autoindex on;
+   }
+}
+
+$ cd ~
+$ mkdir -p book/images
+$ Rscript -e "png('book/images/3.png', width=300, height=200); barplot(1:5, col='blue'); dev.off()"
+
+$ cat index2.html
+<img src="/images/3.png">
+<img src="2.png">
+
+$ sudo service nginx restart
+
+http://192.168.2.105:8002/index2.html 这2个图都可见。
+	第一个图匹配到规则 ^~ /images/ 后，在文件夹 /home/wangjl/book/ 中查找 /images/3.png，完整路径是 /home/wangjl/book/images/3.png
+	第二个图则匹配到 ~* .(gif|jpg|jpeg|png)$，在 /home/wangjl/image 中找 2.png，完整路径是 /home/wangjl/image/2.png
+
+
+
+
+
+
+
+(4) 设置端口转发，访问80转发到8002上
+
+方法1
+$ sudo vim /etc/nginx/conf.d/test2.conf
+upstream test_pool{
+    server 0.0.0.0:8002;
+}
+server {
+	listen 80;
+	listen [::]:80;
+	location / {
+		proxy_pass http://test_pool;
+		proxy_set_header Host $host:$server_port;
+	}
+}
+
+
+
+修改掉默认配置文件的端口号
+$ sudo vim /etc/nginx/nginx.conf
+
+
+$ sudo service nginx restart
+
+http://192.168.2.105/  能看到第3张图
+http://192.168.2.105/index2.html 两张图都能看到
+
+
+
+
+方法2:
+$ sudo vim /etc/nginx/conf.d/test2.conf
+server {
+    listen 80;
+    listen [::]:80;
+
+    location / {
+        proxy_pass http://localhost:8002;
+        #proxy_redirect http://localhost:8002/ $scheme://$host/;
+        #proxy_http_version 1.1;
+        #proxy_set_header Upgrade $http_upgrade;
+        #proxy_set_header Connection $connection_upgrade;
+        #proxy_read_timeout 20d;
+        #proxy_buffering off;
+   }
+}
+
+$ sudo service nginx restart
+
+http://192.168.2.105/index2.html 两张图都能看到
+
+
 
 
 

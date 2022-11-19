@@ -1043,6 +1043,982 @@ http://192.168.19.1:81/  You IP address is: 192.168.19.1
 
 
 ========================================
+jinja 模板技术简介
+----------------------------------------
+1. 简介
+jinja: https://jinja.palletsprojects.com/en/3.1.x/
+	https://palletsprojects.com/p/jinja/ 
+https://blog.csdn.net/pick_ears/article/details/122084013
+
+Template Designer Documentation: https://jinja.palletsprojects.com/en/3.1.x/templates/
+
+
+Jinja is a fast, expressive, extensible templating engine. Special placeholders in the template allow writing code similar to Python syntax. Then the template is passed data to render the final document.
+
+
+{% ... %} for Statements
+{{ ... }} for Expressions to print to the template output
+{# ... #} for Comments not included in the template output
+
+
+https://palletsprojects.com/ 的所有项目: Click, Flask, Jinja
+
+
+
+(1) 简单示例
+$ cat t1.py
+from flask import Flask,render_template
+app = Flask(__name__)
+@app.route('/')
+def login():
+    # 注意模板的路径，如果是在templates的demo文件夹下，这需要写成demo/index.html
+    return render_template('t1_index.html')
+
+if __name__ == '__main__':
+    #app.run(debug=True)
+    app.run(host="0.0.0.0", port=5000, debug=True)
+
+
+模板文件:
+$ cat templates/t1_index.html
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Title</title>
+</head>
+<body>
+    <input id="kw" name="wd" class="s_ipt" value maxlength="255" autocomplete="off">
+</body>
+</html>
+
+
+如果想改变模板文件的名称或位置: 
+app = Flask(__name__, template_folder='templates2')
+
+
+
+
+(2) 模板传参
+$ cat t1.py 
+from flask import Flask,render_template
+app = Flask(__name__)
+
+@app.route('/')
+def login():
+    uname="tom"
+    userDict = {
+        'uid': 20,
+        'sex': "M"
+    }
+    return render_template('t2_index.html', username=uname, info=userDict)
+
+
+if __name__ == '__main__':
+    app.run(host="0.0.0.0", port=5000, debug=True)
+
+模板:
+$ cat templates/t2_index.html
+<h1>{{username}}</h1>
+
+<p>{{info.uid}}</p>
+<p>{{info['sex']}}</p>
+
+
+显示
+<h1>tom</h1>
+
+<p>20</p>
+<p>M</p>
+
+
+
+
+
+
+
+========================================
+|-- 模板 filter 过滤器
+----------------------------------------
+
+(3) 过滤器
+- 展开字典到模板: **dict
+- Jinja2模板过滤器 相当于一个函数，将变量传入到过滤器中，然后过滤器根据自己的功能，再返回到响应的值，之后再讲结果渲染到页面中。
+- 内置过滤器 https://jinja.palletsprojects.com/en/3.1.x/templates/#builtin-filters
+- 自定义过滤器
+
+$ cat t3.py 
+from flask import Flask,render_template
+from datetime import datetime
+app = Flask(__name__)
+
+
+
+@app.route('/')
+def login():
+    userDict = {
+        'age': 20,
+        'username':"Tom Bush",
+        'city': 'Shenzhen',
+        'sex': "M",
+        'desc': "I love <b>C++</b>",
+        'login_time': datetime(2022,11,7, 16,0,0),
+        'book': {'C++':4, 'Java':1},
+        'code': ['JS', 'C++', "Python"]
+    }
+    return render_template('t3_index.html', **userDict)
+
+
+#Jinja2自定义过滤器
+@app.template_filter("my_len")
+def my_len2(arr):
+    return len(arr)
+
+
+# 自定义时间过滤器
+@app.template_filter('handle_time')
+# now_time 传递过来后就是time
+def handle_time(time):
+    # 小于1分钟，传入刚刚，大于一分小于1小时，xxx分钟之前，大于1小时小于24，xxx小时之前
+    now = datetime.now()
+    # 获取总秒数
+    time_stamp = (now - time).total_seconds()
+    if isinstance(time, datetime):
+        if time_stamp<60:
+            return '刚刚'
+        elif 60<=time_stamp<=60*60:
+            return '%d分钟之前'%int(time_stamp/60)
+        elif 60*60<time_stamp<=60*60*24:
+            return '%d小时之前'%int(time_stamp/(60*60))
+    else:
+        return time
+
+
+if __name__ == '__main__':
+    app.run(host="0.0.0.0", port=5000, debug=True)
+
+
+模板 
+$ cat templates/t3_index.html
+<h1>{{username}}</h1>
+
+<!--  过滤器 | 左边是待处理的参数，右侧是函数  -->
+<p>age: {{age|abs}}</p>
+<p>name: {{name | default("this man is lazy, nothing left.") }}</p>
+
+<!-- 关闭转义功能 -->
+<p>desc : {{desc | safe}}</p>
+
+
+<!-- 关闭转义功能, method 2 -->
+{% autoescape off %}
+<p>desc2: {{desc}}</p>
+{% endautoescape %}
+
+
+
+<hr>
+<!-- 数值换算 转为int类型 转为float类型 -->
+{{age|int}}
+{{age|float}}
+<!--  变量转为字符串  -->
+ {{age|string}}
+
+
+<hr>
+<!--  字符串  全部大写 全部小写-->
+ {{city}}
+ {{city|upper}}
+ {{city|lower}}
+
+<!--替换-->
+{{city|replace(city,'坡县')}}
+
+
+<hr>
+<!--截取指定长度的字符串 例如微博显示一些数据后，再以...显示代表其余内容-->
+<p>{{ desc|truncate(10) }}</p>
+
+{{ "foo bar baz qux"|truncate(9) }} <br>
+{{ "foo bar baz qux"|truncate(9, True) }} <br>
+{{ "foo bar baz qux"|truncate(11) }} <br>
+{{ "foo bar baz qux"|truncate(11, False, '...', 0) }} <br>
+
+
+
+<hr>
+自定义过滤器
+<p>code: {{code|my_len}}</p>
+<p>login: {{login_time|handle_time}}</p>
+
+
+
+
+浏览器的显示: view-source:http://192.168.2.120:5000/
+<h1>Tom Bush</h1>
+
+<!--  过滤器 | 左边是待处理的参数，右侧是函数  -->
+<p>age: 20</p>
+<p>name: this man is lazy, nothing left.</p>
+
+<!-- 关闭转义功能 -->
+<p>desc : I love <b>C++</b></p>
+
+
+<!-- 关闭转义功能, method 2 -->
+
+<p>desc2: I love <b>C++</b></p>
+
+
+
+
+<hr>
+<!-- 数值换算 转为int类型 转为float类型 -->
+20
+20.0
+<!--  变量转为字符串  -->
+ 20
+
+
+<hr>
+<!--  字符串  全部大写 全部小写-->
+ Shenzhen
+ SHENZHEN
+ shenzhen
+
+<!--替换-->
+坡县
+
+
+<hr>
+<!--截取指定长度的字符串 例如微博显示一些数据后，再以...显示代表其余内容-->
+<p>I love...</p>
+
+foo... <br>
+foo ba... <br>
+foo bar baz qux <br>
+foo bar... <br>
+
+
+
+<hr>
+自定义过滤器
+<p>code: 3</p>
+<p>login: 14分钟之前</p>
+
+
+
+
+
+
+========================================
+|-- 模板 控制语句
+----------------------------------------
+
+(4) 控制语句
+所有的控制语句都是放在{%...%}中，并且有一个语句{% endxxx %}来进行结束，Jinja中常用的控制语句有if/for..in..
+
+- if语句和python中的类似，可以使用>，<，<=，>=，==，!=来进行判断，也可以通过and，or，not，()来进行逻辑合并操作
+- for循环可以遍历任何一个序列包括列表、字典、元组。并且可以进行反向遍历 如果序列没有值，也可以进入到else中。
+
+$ cat t4.py 
+from flask import Flask,render_template
+from datetime import datetime
+app = Flask(__name__)
+
+
+@app.route('/')
+def login():
+    userDict = {
+        'age': 20,
+        'username':"Tom Bush",
+        'city': 'Shenzhen',
+        'sex': "M",
+        'desc': "I love <b>C++</b>",
+        'login_time': datetime(2022,11,7, 16,0,0),
+        'book': {'C++':4, 'Java':1},
+        'code': ['JS', 'C++', "Python"]
+    }
+    return render_template('t4_index.html', **userDict)
+
+
+if __name__ == '__main__':
+    app.run(host="0.0.0.0", port=5000, debug=True)
+
+
+
+模板:
+$ cat templates/t4_index.html 
+<h1>{{username}}</h1>
+
+<hr>
+{% if sex=='M' %}
+    <p>Boy</p>
+    {% else %}
+    <p>Girl</p>
+{% endif %}
+
+
+
+<hr>
+<!--  进行for循环 -->
+<ul>
+{% for item in code %}
+    <li>{{item}}</li>
+{% endfor %}
+</ul>
+<br>
+<ul>
+{% for item in code2 %}
+    <li>{{item}}</li>
+{% else %}
+<li>no values</li>
+{% endfor %}
+</ul>
+
+
+<hr>
+<!--遍历字典-->
+{% for key,value in book.items() %}
+	<p>{{loop.index}} |  <b>{{key}}</b>: {{value}}</p>
+{% endfor %}
+
+
+
+
+显示:
+
+<h1>Tom Bush</h1>
+<hr>
+    <p>Boy</p>
+
+
+<hr>
+<!--  进行for循环 -->
+<ul>
+    <li>JS</li>
+    <li>C++</li>
+    <li>Python</li>
+</ul>
+
+<br>
+<ul>
+	<li>no values</li>
+</ul>
+
+
+<hr>
+ <!--遍历字典-->
+ <p>1 |  <b>C++</b>: 4</p>
+ <p>2 |  <b>Java</b>: 1</p>
+
+
+
+1)其他获取for循环额外参数的方法: https://jinja.palletsprojects.com/en/3.1.x/templates/#for
+
+使用 loop.cycle() 设置html class属性 
+<hr>
+<ol>
+{% for row in code %}
+    <li class="{{ loop.cycle('odd', 'even') }}">{{ row }}</li>
+{% endfor %}
+</ol>
+
+
+输出:
+<ol>
+    <li class="odd">JS</li>
+    <li class="even">C++</li>
+    <li class="odd">Python</li>
+</ol>
+
+
+2) 模板中不能使用 break or continue，但是有迂回方式
+{% for item in code if item !="JS"  %}
+    <li>{{ item|e }}</li>
+{% endfor %}
+
+
+输出:
+    <li>C++</li>
+    <li>Python</li>
+
+
+
+
+
+
+
+
+
+
+========================================
+|-- 模板 macro 宏
+----------------------------------------
+https://jinja.palletsprojects.com/en/3.1.x/templates/#macros
+
+(5) 宏
+模板种的宏，相当于常规编程语言的函数。
+把常用的部分包装起来，防止重复自己(DRY: don't repeat yourself)
+
+作用：相当于类里面创建一个方法，可以在本html页面进行多次调用使用，也可以导入到其它HTML，实例化进行使用
+优点：高效、便利
+
+- 如果不是当前模板定义的宏，则使用前要先 import: {% import 'forms.html' as forms %}
+- 下划线开头的宏不爆露出去，所以不能import。|If a macro name starts with an underscore, it’s not exported and can’t be imported.
+- 支持宏调用时，使用控制器传入的变量，不加引号即可。
+
+
+注意：()里面的参数都需要加 '' ,记得添加
+定义宏
+    {% macro 宏的名字('参数1','参数2',...)%}
+    html代码 中可有对应的参数1 参数2 ....
+    {% endmacro %}
+
+使用宏 
+在本页面 {{ 宏的名字('参数1','参数2',....) }}
+
+在其它页面，需要导入宏
+{% import 'macro.html' as macro %}
+然后调用     {{ macro.宏的名字('参数1','参数2',...)}}
+
+导入宏的方式2 {% from 'macro.html' import 宏的名字 %}
+{{ 宏的名字('参数1','参数2')}}
+
+
+$ cat t5.py 
+from flask import Flask,render_template
+from datetime import datetime
+app = Flask(__name__)
+
+
+@app.route('/')
+def login():
+    userDict = {
+        'age': 20,
+        'username':"Tom Bush"
+    }
+    return render_template('t5_index.html', **userDict)
+
+@app.route("/home")
+def home():
+    return render_template("t5_home.html", uid=5)
+
+
+if __name__ == '__main__':
+    app.run(host="0.0.0.0", port=5000, debug=True)
+
+
+
+模板1 
+$ cat templates/t5_index.html
+<h1>Macro</h1>
+
+{% macro input(name, value='', type='text', size=20) -%}
+    <input type="{{ type }}" name="{{ name }}" value="{{
+        value|e }}" size="{{ size }}">
+{%- endmacro %}
+
+
+传入宏对应的值
+<p>{{ input('username', value=username ) }}</p>
+<p>{{ input('password', type='password') }}</p>
+
+
+
+对应的输出: view-source:http://192.168.2.120:5000/
+<h1>Macro</h1>
+
+<p><input type="text" name="username" value="Tom_Bush" size="20"></p>
+<p><input type="password" name="password" value="" size="20"></p>
+
+
+
+
+
+
+
+模板2: 从 模板1 引入宏
+$ cat templates/t5_home.html 
+{% from 't5_index.html' import input %}
+{{ input('address', type="input", value=uid)}}
+
+对应的输出: view-source:http://192.168.2.120:5000/home
+<input type="input" name="address" value="5" size="20">
+
+
+
+
+2) 在一个 macro 内部，有3个特殊函数可以使用
+varargs
+If more positional arguments are passed to the macro than accepted by the macro, they end up in the special varargs variable as a list of values.
+
+kwargs
+Like varargs but for keyword arguments. All unconsumed keyword arguments are stored in this special variable.
+
+caller
+If the macro was called from a call tag, the caller is stored in this variable as a callable macro.
+
+
+
+
+怎么使用 call 标签呢？
+3) 如何把一个 macro 传入给另一个 macro？使用 call 标签。
+
+模板：注意其中的 caller() 是调用者宏
+{% macro render_dialog(title, class='dialog') -%}
+    <div class="{{ class }}">
+        <h2>{{ title }}</h2>
+        <div class="contents">
+            {{ caller() }}
+        </div>
+    </div>
+{%- endmacro %}
+
+{% call render_dialog('Hello World') %}
+    This is a simple dialog rendered by using a macro and
+    a call block.
+{% endcall %}
+
+输出: 传入了 参数 title, 以及call包围部分到 caller() 位置。
+<div class="dialog">
+	<h2>Hello World</h2>
+	<div class="contents">
+		This is a simple dialog rendered by using a macro and
+		a call block.
+	</div>
+</div>
+
+
+
+4) call 还支持回传参数到 call 标签。 
+
+py 中传入的数据
+@app.route("/home")
+def home():
+    user_list = [
+        {
+            'uid': 100,
+            'age': 20,
+            'username':"Tom Bush",
+            "desc": "I am from xx city, ..."
+        },
+        {
+            'uid': 101,
+            'age': 22,
+            'username':"Lucy Green",
+            "desc": "I am from yy city, ..."
+        },
+    ]
+    return render_template("t5_home.html", user_list=user_list)
+
+
+
+模板: call 还支持回传参数到 call 标签。 
+{% macro dump_users(users) -%}
+    <ul>
+    {%- for user in users %}
+        <li>
+            <p>{{ user.username|e }}</p>
+            {{ caller(user) }}
+        </li>
+    {%- endfor %}
+    </ul>
+{%- endmacro %}
+
+{% call(user) dump_users(user_list) %}
+    <dl>
+        <dt>Uid</dt>
+        <dd>{{ user.uid|e }}</dd>
+        <dt>Description</dt>
+        <dd>{{ user.desc }}</dd>
+    </dl>
+{% endcall %}
+
+
+翻译后的页面:
+<ul>
+	<li>
+		<p>Tom Bush</p>
+
+		<dl>
+			<dt>Uid</dt>
+			<dd>100</dd>
+			<dt>Description</dt>
+			<dd>I am from xx city, ...</dd>
+		</dl>
+	</li>
+
+	<li>
+		<p>Lucy Green</p>
+
+		<dl>
+			<dt>Uid</dt>
+			<dd>101</dd>
+			<dt>Description</dt>
+			<dd>I am from yy city, ...</dd>
+		</dl>
+	</li>
+</ul>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+========================================
+|-- 模板包含: set传参, include, with 定义局部作用域, 模板继承 extends
+----------------------------------------
+1. set 可以在模板中设置变量
+
+位置：在HTML页面中
+作用：直接创建语句，方便在模板html中添加变量
+注意：set 中 的变量会作为全局变量，将函数中传递的独有参数给覆盖掉！
+
+$ cat t6.py
+@app.route('/')
+def login():
+    userDict = {
+        'age': 20,
+        'username':"Tom Bush",
+    }
+    return render_template('t6_index.html', **userDict)
+
+
+模板:
+$ cat t6_index.html
+{% set navigation %}
+    <li><a href="/">Index</a>
+    <li><a href="/downloads">Downloads</a>
+{% endset %}
+
+hi
+<hr>
+{{navigation}}
+<hr>
+
+翻译为:
+hi
+<hr>
+    <li><a href="/">Index</a>
+    <li><a href="/downloads">Downloads</a>
+<hr>
+
+
+
+
+
+
+
+
+
+2. include的复用
+可以写整块内容，相比较宏来讲，可复用的模板内容更多
+
+概念：include语句可以把一个模板引入到另外一个模板中，类似于把一个模板的代码copy到另外一个模板的指定位置
+作用：复用代码，提高效率
+
+关键点：针对的是模板，如一些网站固定的开头和结尾模板
+使用：{% include '相对路径' %} 放在需要的位置即可！
+{% include 'common/header.html' %}
+
+
+
+模板:
+$ cat t6_index.html
+{% include 't6_footer.html' %}
+
+<hr>
+{% include 't6_footer.html' without context %}
+
+
+$ cat t6_footer.html
+<hr>
+<div class="footer">这是尾部 {{age}}</div>
+
+
+翻译后: 
+<hr>
+<div class="footer">这是尾部 20</div>
+<hr>
+<hr>
+<div class="footer">这是尾部 </div>
+
+解释: 
+- 默认 include 是 with context 的，就是使用当前页面的上下文环境。
+- 而 without context 则表示不使用当前上下文环境。
+
+
+
+
+3. with 可以设定局部作用域: 两个等价写法
+
+{% with foo = 42 %}
+    {{ foo+8 }}
+{% endwith %}
+
+<br>
+{% with %}
+    {% set foo = 10 %}
+    {{ foo }}
+{% endwith %}
+
+
+翻译后:
+  50
+<br>  
+    10
+
+
+
+
+
+4. 模板继承是最强大的部分 {% block %}
+
+(1) 基本例子
+@app.route("/ex1")
+def show_extends():
+    return render_template("t6_child.html")
+
+
+模板父类: base是一个两列的骨架结构，有待子类填充其 block 部分。
+$ templates/t6_base.html
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    {% block head %}
+    <link rel="stylesheet" href="style.css" />
+    <title>{% block title %}{% endblock %} - My Webpage</title>
+    {% endblock %}
+</head>
+<body>
+    <div id="content">{% block content %}{% endblock %}</div>
+    <div id="footer">
+        {% block footer %}
+        &copy; Copyright 2022 by <a href="http://domain.invalid/">you</a>.
+        {% endblock %}
+    </div>
+</body>
+</html>
+
+本例子中有四个 block 区域，子类可以选择几个填充。
+
+模板 子类: 填充了3个。其中第二个还继承了原有部分。
+$ cat templates/t6_child.html 
+{% extends "t6_base.html" %}
+
+{% block title %}page01{% endblock %}
+
+{% block head %}
+    02 {{ super() }} 03
+    <style type="text/css">
+        .important { color: #0078f0; }
+    </style>
+{% endblock %}
+
+{% block content %}
+    <h1>Index</h1>
+    <p class="important">
+      Welcome to my awesome homepage.
+    </p>
+{% endblock %}
+
+
+翻译后:
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    02 
+    <link rel="stylesheet" href="style.css" />
+    <title>page01 - My Webpage</title>
+     03
+    <style type="text/css">
+        .important { color: #0078f0; }
+    </style>
+</head>
+<body>
+    <div id="content">
+    <h1>Index</h1>
+    <p class="important">
+      Welcome to my awesome homepage.
+    </p>
+</div>
+    <div id="footer">
+        &copy; Copyright 2022 by <a href="http://domain.invalid/">you</a>.
+    </div>
+</body>
+</html>
+
+
+
+(2) 一般可以在布局子文件夹中放布局文件，其他文件引用它
+{% extends "layout/default.html" %}
+
+
+(4) 如果一个 block 想多次使用，可以使用 self 参数:
+<title>{% block title %}{% endblock %}</title>
+<h1>{{ self.title() }}</h1>
+{% block body %}{% endblock %}
+
+
+
+(5) 使用父类  super()
+{% block sidebar %}
+    <h3>Table Of Contents</h3>
+    ...
+    {{ super() }}
+{% endblock %}
+
+
+
+
+(6) 嵌套继承 Nesting extends
+多层 {% extends %} 嵌套，也可以链式访问父类， super.super()
+
+# parent.tmpl
+body: {% block body %}Hi from parent.{% endblock %}
+
+# child.tmpl
+{% extends "parent.tmpl" %}
+{% block body %}Hi from child. {{ super() }}{% endblock %}
+
+# grandchild1.tmpl
+{% extends "child.tmpl" %}
+{% block body %}Hi from grandchild1.{% endblock %}
+
+# grandchild2.tmpl
+{% extends "child.tmpl" %}
+{% block body %}Hi from grandchild2. {{ super.super() }} {% endblock %}
+
+渲染结果:
+Rendering child.tmpl will give body: Hi from child. Hi from parent.
+Rendering grandchild1.tmpl will give body: Hi from grandchild1.
+Rendering grandchild2.tmpl will give body: Hi from grandchild2. Hi from parent.
+
+
+
+(7) 加 结束标签 endblock 更清晰
+
+{% block sidebar %}
+    {% block inner_sidebar %}
+        ...
+    {% endblock inner_sidebar %}
+{% endblock sidebar %}
+
+
+
+(8) 嵌套block的作用域
+
+默认，不能从外面进入 block 的作用域。
+所以，本例将得到空的 li 标签。
+{% for item in seq %}
+    <li>{% block loop_item %}{{ item }}{% endblock %}</li>
+{% endfor %}
+原因是：子类可能覆盖模板。
+
+从 Jinja2.2，可以添加 scoped 修饰符，明确表示作用域能穿透到block内部。
+{% for item in seq %}
+    <li>{% block loop_item scoped %}{{ item }}{% endblock %}</li>
+{% endfor %}
+
+被覆写时，不用再提供 scoped 修饰符。
+
+
+
+(9) 必须的 block 
+
+如果父类的block 加了 required 修饰符，则该block必须覆写，不一定是直接子类。
+必须的 block 只能包含空格，并且不能直接渲染。
+
+page.txt
+{% block body required %}{% endblock %}
+
+issue.txt
+{% extends "page.txt" %}
+
+bug_report.txt
+{% extends "issue.txt" %}
+{% block body %}Provide steps to demonstrate the bug.{% endblock %}
+
+渲染 issue.txt 则报错: TemplateRuntimeError 
+渲染 bug_report.txt 则正常。
+
+
+注意: 如果 和  scoped 结合使用，则 required 要放到 scoped 后面。
+
+{% block body scoped %}{% endblock %}
+{% block body required %}{% endblock %}
+{% block body scoped required %}{% endblock %}
+
+
+
+
+(10) 模板对象
+extends, include, 和 import 可以使用模板对象，代替一个模板文件名。
+这在高级场景下有用，因为你可以使用Python代码载入一个模板，然后传入去渲染。
+
+if debug_mode:
+    layout = env.get_template("debug_layout.html")
+else:
+    layout = env.get_template("layout.html")
+
+user_detail = env.get_template("user/detail.html")
+return user_detail.render(layout=layout)
+
+
+模板中传入参数作为父类模板。
+{% extends layout %}
+
+
+
+实例:
+$ cat t6_child2.html
+@app.route("/ex2")
+def show_tpl_obj():
+    # https://stackoverflow.com/questions/51794326/google-cloud-functions-python-flask-templates-folder
+    from jinja2 import Environment, FileSystemLoader
+    env = Environment(loader=FileSystemLoader('./templates'))
+    layout2 = env.get_template("t6_base.html")
+    user_detail = env.get_template("t6_child2.html")
+
+    return user_detail.render(my_layout = layout2 )
+解释: 使用 layout2 作为模板，填充模板变量。
+
+模板:
+$ cat templates/t6_child2.html
+{% extends my_layout %}
+
+{% block head %}
+    {{ super() }} 05
+{% endblock %}
+{% block footer %}{% endblock %}
+
+
+翻译后:
+    <title> - My Webpage</title>
+     05
+
+
+
+
+
+
+
+
+
+
+
+========================================
 flask-SQLAlchemy 及 flask 常见模型类: 模型这个术语表示程序使用的持久化实体
 ----------------------------------------
 
@@ -1441,17 +2417,334 @@ if __name__ == '__main__':
 |-- flask RBAC (Role-Based Access Control): 基于角色的权限控制
 ----------------------------------------
 
-1. RBAC几乎无关语言、框架，主要是数据库结构上面设计；通常来讲需要5张表：
+1. RBAC几乎无关语言、框架，主要是数据库结构上面设计
+
+(1)通常来讲需要5张表
+
+a. 用户表 user
+b. 角色表 role
+c. 权限表（页面节点） node
+
+d. 用户角色表 user_role，一个用户可有多个角色
+e. 角色权限表 role_node，一个角色可以访问若干页面节点
+
+
 1)、 auth_user // 用户表
 2)、 auth_node // 可授权节点表
 3)、 auth_role // 角色表
 
-4)、 auth_user_role // 用户《=》角色关系对应表，因为用户和角色是many-to-many的关系（or ones-to-one，看实际情况）
+4)、 auth_user_role // 用户<==>角色关系对应表，因为用户和角色是many-to-many的关系（or ones-to-one，看实际情况）
 5)、 authenticated // 角色授权表 同样是many-to-many的关系
 
 用户可对应N个角色（不一定非一成不变），每个角色可授权N个节点，节点权限验证的时候，使用用户的所有角色去取得已授权的节点列表，然后判断，就这么简单。开发中可能会根据实际情况有一些变动，灵活处理即可。
 
-另外说一句，Flask有RBAC的实现方案，不过没用过，github上面关注度也不高，给传送门吧 https://github.com/shonenada/flask-rbac
+
+
+(2) 基于RBAC的实现流程
+a. 首先针对权限的校验的业务逻辑在一个父类中实现，其余子类均需要实现该父类，从而实现针对用户的权限的控制。
+b. 用户访问时，首先查询用户表判断用户的状态是否是可用。
+c. 然后根据用户 id查询 用户角色表，得到用户的角色id
+d. 根据角色 id 查询 权限角色表，得到该用户在这个角色或这些角色下的权限id
+e. 根据权限 id 查询 权限表，得到该用户在该角色下的权限，就是可以看的页面/数据范围。
+
+
+
+
+
+
+(3A) 表结构 for MySql
+不太懂主键约束，所以，涉及到的句子可能是错的。
+https://mysql.tutorials24x7.com/blog/guide-to-design-database-for-rbac-in-mysql
+
+CREATE DATABASE  IF NOT EXISTS `rbac` /*!40100 DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci */;
+USE `rbac`;
+SET NAMES utf8;
+
+
+1) 用户
+DROP TABLE IF EXISTS `user`;
+SET character_set_client = utf8mb4 ;
+CREATE TABLE `user` (
+  `id` bigint(20) NOT NULL AUTO_INCREMENT,
+  `username` varchar(50) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
+  `mobile` varchar(15) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
+  `email` varchar(50) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
+  `passwordHash` varchar(32) COLLATE utf8mb4_unicode_ci NOT NULL,
+  
+  `registeredAt` datetime NOT NULL,
+  `lastLogin` datetime DEFAULT NULL,
+  `desc` text COLLATE utf8mb4_unicode_ci,
+
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uq_mobile` (`mobile`),
+  UNIQUE KEY `uq_email` (`email`),
+  KEY `auth_user_role` (`id`),
+  CONSTRAINT `auth_user_role` FOREIGN KEY (`uid`) REFERENCES `role` (`id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+
+--
+-- Dumping data for table `user`
+--
+LOCK TABLES `user` WRITE;
+/*!40000 ALTER TABLE `user` DISABLE KEYS */;
+/*!40000 ALTER TABLE `user` ENABLE KEYS */;
+UNLOCK TABLES;
+/*!40103 SET TIME_ZONE=@OLD_TIME_ZONE */;
+
+
+2) 角色
+DROP TABLE IF EXISTS `role`;
+SET character_set_client = utf8mb4 ;
+CREATE TABLE `role` (
+  `id` bigint(20) NOT NULL AUTO_INCREMENT,
+  `title`  varchar(75) COLLATE utf8mb4_unicode_ci NOT NULL,
+  `desc` tinytext COLLATE utf8mb4_unicode_ci,
+  `active` tinyint(1) NOT NULL DEFAULT '0',
+  `createdAt` datetime NOT NULL,
+  `updatedAt` datetime DEFAULT NULL,
+  
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uq_slug` (`title`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+
+--
+-- Dumping data for table `role`
+--
+LOCK TABLES `role` WRITE;
+/*!40000 ALTER TABLE `role` DISABLE KEYS */;
+/*!40000 ALTER TABLE `role` ENABLE KEYS */;
+UNLOCK TABLES;
+/*!40103 SET TIME_ZONE=@OLD_TIME_ZONE */;
+
+
+3) 权限，用路由节点表示 permission
+DROP TABLE IF EXISTS `node`;
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+ SET character_set_client = utf8mb4 ;
+CREATE TABLE `node` (
+  `id` bigint(20) NOT NULL AUTO_INCREMENT,
+  `title` varchar(75) COLLATE utf8mb4_unicode_ci NOT NULL,
+ 
+  `desc` tinytext COLLATE utf8mb4_unicode_ci,
+  `active` tinyint(1) NOT NULL DEFAULT '0',
+  `createdAt` datetime NOT NULL,
+  `updatedAt` datetime DEFAULT NULL,
+
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uq_slug` (`title`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+/*!40101 SET character_set_client = @saved_cs_client */;
+
+--
+-- Dumping data for table `node`
+--
+
+LOCK TABLES `node` WRITE;
+/*!40000 ALTER TABLE `node` DISABLE KEYS */;
+/*!40000 ALTER TABLE `node` ENABLE KEYS */;
+UNLOCK TABLES;
+
+
+4) auth_user_role 
+DROP TABLE IF EXISTS `auth_user_role`;
+SET character_set_client = utf8mb4 ;
+CREATE TABLE `auth_user_role` (
+  `uid` bigint(20) NOT NULL,
+  `rid` bigint(20) NOT NULL,
+  `createdAt` datetime NOT NULL,
+  `updatedAt` datetime DEFAULT NULL,
+  PRIMARY KEY (`uid`,`rid`),
+  KEY `role` (`id`),
+  KEY `idx_permission` (`rid`),
+  CONSTRAINT `fk_rp_user` FOREIGN KEY (`uid`) REFERENCES `user` (`id`),
+  CONSTRAINT `fk_rp_role` FOREIGN KEY (`rid`) REFERENCES `role` (`id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+/*!40101 SET character_set_client = @saved_cs_client */;
+
+--
+-- Dumping data for table `auth_user_role`
+--
+
+LOCK TABLES `auth_user_role` WRITE;
+/*!40000 ALTER TABLE `auth_user_role` DISABLE KEYS */;
+/*!40000 ALTER TABLE `auth_user_role` ENABLE KEYS */;
+UNLOCK TABLES;
+
+
+
+
+5) auth_role_node
+DROP TABLE IF EXISTS `auth_role_node`;
+SET character_set_client = utf8mb4 ;
+CREATE TABLE `auth_role_node` (
+  `rid` bigint(20) NOT NULL,
+  `nid` bigint(20) NOT NULL,
+  `createdAt` datetime NOT NULL,
+  `updatedAt` datetime DEFAULT NULL,
+  PRIMARY KEY (`rid`,`nid`),
+  KEY `idx_rp_role` (`rid`),
+  KEY `idx_rp_permission` (`nid`),
+  CONSTRAINT `fk_rp_permission` FOREIGN KEY (`nid`) REFERENCES `node` (`id`),
+  CONSTRAINT `fk_rp_role` FOREIGN KEY (`rid`) REFERENCES `role` (`id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+/*!40101 SET character_set_client = @saved_cs_client */;
+
+--
+-- Dumping data for table `auth_role_node`
+--
+
+LOCK TABLES `auth_role_node` WRITE;
+/*!40000 ALTER TABLE `auth_role_node` DISABLE KEYS */;
+/*!40000 ALTER TABLE `auth_role_node` ENABLE KEYS */;
+UNLOCK TABLES;
+
+
+
+
+
+
+
+
+
+
+(3B) 表结构 for Sqlite
+不太懂主键约束，所以，涉及到的句子可能是错的。
+https://mysql.tutorials24x7.com/blog/guide-to-design-database-for-rbac-in-mysql
+https://www.runoob.com/sqlite/sqlite-constraints.html
+
+测试:
+create table if not exists `a3` (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  username varchar(50) unique NOT NULL
+);
+
+
+1) 用户
+create table if not exists `user` (
+  `id` INTEGER PRIMARY KEY AUTOINCREMENT,
+  `username` varchar(50) unique,
+  `passwordHash` TEXT NOT NULL,
+  active int DEFAULT 1,
+  `desc` text
+);
+
+2) 角色
+create table if not exists `role` (
+  `id` INTEGER PRIMARY KEY AUTOINCREMENT,
+  `title`  varchar(75) unique NOT NULL,
+  active int DEFAULT 1,
+  `desc` text
+);
+
+3) 权限，用路由节点表示 permission
+create table if not exists `node` (
+  `id` INTEGER PRIMARY KEY AUTOINCREMENT,
+  `title` varchar(75) unique NOT NULL,
+  active int DEFAULT 1,
+  `desc` text
+);
+
+4) auth_user_role 
+create table if not exists `auth_user_role` (
+  `uid` INTEGER NOT NULL,
+  `rid` INTEGER NOT NULL,
+  PRIMARY KEY (`uid`,`rid`)
+);
+
+5) auth_role_node
+create table if not exists `auth_role_node` (
+  `rid` INTEGER NOT NULL,
+  `nid` INTEGER NOT NULL,
+  PRIMARY KEY (`rid`,`nid`)
+);
+
+
+查询表:
+sqlite> .tables
+auth_role_node  auth_user_role  node            role            user
+
+6) 填充数据
+假设是一个论坛，主要涉及
+	帖子(增、删、改)、
+	用户(增、删、改、暂停)、
+	角色(增、删、改、暂停)、
+	权限(增、删、改、暂停)
+	的管理。
+
+每个权限都是名词加动词构成的url前缀
+	/post/
+	/user/
+	/role/add, /role/del, /role/edit, /role/disable, /role/enable
+	/node/
+角色有3个
+	root, 根用户，操作权限表，角色表，用户表，不能亲自管理帖子
+	admin, 管理普通用户表和帖子
+	common, 管理自己的帖子
+用户可以由管理员
+
+sqlite> .headers on
+sqlite> .mode column
+sqlite> .schema node;
+sqlite> .schema node
+CREATE TABLE `node` (
+  `id` INTEGER PRIMARY KEY AUTOINCREMENT,
+  `title` varchar(75) unique NOT NULL,
+  active int DEFAULT 1,
+  `desc` text
+);
+sqlite>
+sqlite> select * from node;
+
+权限(node)表
+insert into node(title) values('/role/add'), ('/role/del'), ('/role/edit'), ('/role/disable'), ('/role/enable');
+insert into node(title) values('/node/add'), ('/node/del'), ('/node/edit'), ('/node/disable'), ('/node/enable');
+insert into node(title) values('/user/add'), ('/user/del'), ('/user/edit'), ('/user/disable'), ('/user/enable');
+insert into node(title) values('/post/add'), ('/post/del'), ('/post/edit'), ('/post/disable'), ('/post/enable');
+
+
+角色表 
+insert into role(title) values('root'), ('admin'), ('common');
+
+用户表
+insert into user(username, passwordHash) values('Robin', 'e10adc3949ba59abbe56e057f20f883e'), ('Lucy', 'e10adc3949ba59abbe56e057f20f883e'), ('Tom1', 'e10adc3949ba59abbe56e057f20f883e');
+
+用户-角色表 
+sqlite> select * from user;
+sqlite> select * from role;
+sqlite> .schema auth_user_role
+insert into auth_user_role values(1,1), (1,2), (2,2), (3,3);
+
+角色-权限表 
+sqlite> select * from node;
+sqlite> .schema auth_role_node
+insert into auth_role_node values (1,1), (1,2), (1,3), (1,4), (1,5), 
+(1,6), (1,7), (1,8), (1,9), (1,10),
+(1,11), (1,12), (1,13), (1,14), (1,15);
+insert into auth_role_node values (2,11), (2,12), (2,13), (2,14), (2,15), (2,19), (2,20);
+insert into auth_role_node values (3,16), (3,17), (3,18), (3,19), (3,20);
+
+
+sqlite> .quit
+
+> select username, a.id as uid, b.title, d.title as nodename 
+	from user a,role b, auth_user_role c, node d, auth_role_node e 
+	where a.id==c.uid and b.id==c.rid and 
+	e.rid==b.id and e.nid==d.id and a.id=='1' and 
+	a.active==1 and b.active==1 and d.active==1;
+
+
+
+
+
+
+https://github.com/tutorials24x7/rbac-database-mysql/blob/master/rbac.sql
+
+
+
+
+
 
 
 
@@ -1461,6 +2754,9 @@ if __name__ == '__main__':
 
 2.Flask实现基于角色的访问控制(RBAC)
 https://blog.51cto.com/kevinhao/1900391
+另外说一句，Flask有RBAC的实现方案，不过没用过，github上面关注度也不高，给传送门吧 https://github.com/shonenada/flask-rbac
+
+基于 MVC 结构自己实现一遍。
 
 Flask的核心在于”Micro”，因此它不像Django拥有很多功能，尤其是认证系统。因此使用Flask要自己写一个认证系统。下面就给大家分享一下简单的Flask实现RBAC。下面都是在models.py文件的代码
 
@@ -1559,6 +2855,10 @@ https://casbin.org/
 
 
 
+
+
+
+
 ========================================
 flask 踩坑
 ----------------------------------------
@@ -1627,14 +2927,6 @@ def add_new_routes(app):
 
 https://www.cnblogs.com/lyg-blog/p/9499227.html
 
-
-
-
-========================================
-jinja2 模板技术简介
-----------------------------------------
-jinja2: http://jinja.pocoo.org/
-jinja2: https://palletsprojects.com/p/jinja/ 
 
 
 

@@ -12336,42 +12336,637 @@ unique(data$highlight)
 
 
 ========================================
-|-- Seurat 4 R包源码解析 25: step12 找差异基因 FindMarkers() 和 FindAllMarkers() //todo
+|-- Seurat 4 R包源码解析 25: step12 找差异(标记)基因 FindMarkers()
 ----------------------------------------
 1. 调包侠
+(1) 找到1个cluster的marker基因
+
 # step 12 Finding differentially expressed features (cluster biomarkers)
-# find all markers of cluster 2
-#cluster2.markers <- FindMarkers(pbmc, ident.1 = 2, min.pct = 0.25)
-#head(cluster2.markers, n = 5)
+# find all markers of cluster 3
+> cluster3.markers <- FindMarkers(pbmc, ident.1 = 3, min.pct = 0.25)
+  |++++++++++++++++++++++++++++++++++++++++++++++++++| 100% elapsed=02s  
+> head(cluster3.markers, n = 5)
+                  p_val avg_log2FC pct.1 pct.2     p_val_adj
+MS4A1      0.000000e+00   3.378150 0.855 0.053  0.000000e+00
+CD79A      0.000000e+00   4.310172 0.936 0.041  0.000000e+00
+CD79B     2.655974e-274   3.481908 0.916 0.142 3.642403e-270
+LINC00926 2.397625e-272   2.842677 0.564 0.009 3.288103e-268
+TCL1A     9.481783e-271   3.591579 0.622 0.022 1.300332e-266
 
-# find all markers distinguishing cluster 5 from clusters 0 and 3
-#cluster5.markers <- FindMarkers(pbmc, ident.1 = 5, ident.2 = c(0, 3), min.pct = 0.25)
-#head(cluster5.markers, n = 5)
-
-
-# find markers for every cluster compared to all remaining cells, report only the positive ones
-pbmc.markers <- FindAllMarkers(pbmc, only.pos = TRUE, min.pct = 0.25, logfc.threshold = 0.25)
-pbmc.markers %>% group_by(cluster) %>% top_n(n = 2, wt = avg_log2FC)  #可能有版本差异 avg_log2FC
-# cluster0.markers <- FindMarkers(pbmc, ident.1 = 0, logfc.threshold = 0.25, test.use = "roc", only.pos = TRUE)
-
+可见明显是B细胞的marker基因。
 
 
-VlnPlot(pbmc, features = c("MS4A1", "CD79A"))
-# you can plot raw counts as well
-VlnPlot(pbmc, features = c("NKG7", "PF4"), slot = "counts", log = TRUE)
 
-FeaturePlot(pbmc, features = c("MS4A1", "GNLY", "CD3E", "CD14", "FCER1A", "FCGR3A", "LYZ", "PPBP",
-                               "CD8A"))
 
-# heatmap
-top10 <- pbmc.markers %>% group_by(cluster) %>% top_n(n = 10, wt = avg_log2FC)
-DoHeatmap(pbmc, features = top10$gene, label = T)  #+ NoLegend()
+默认检验方法是 wilcox， 还可以使用其他检验方法:
+> cluster3.markers_b <- FindMarkers(pbmc, ident.1 = 3, logfc.threshold = 0.25, test.use = "roc", only.pos = TRUE)
+> cluster3.markers_b |> head()
+         myAUC avg_diff power avg_log2FC pct.1 pct.2
+CD74     0.983 2.024653 0.966   2.920957 1.000 0.821
+CD79A    0.965 2.987583 0.930   4.310172 0.936 0.041
+HLA-DRA  0.961 1.915271 0.922   2.763152 1.000 0.494
+CD79B    0.944 2.413475 0.888   3.481908 0.916 0.142
+HLA-DPB1 0.931 1.626958 0.862   2.347204 0.985 0.449
+HLA-DQA1 0.921 2.119572 0.842   3.057896 0.890 0.118
+
+
+
+
+
+(2) 比较2组获取其marker基因
+
+# find all markers distinguishing cluster 5 from clusters 0 and 2
+> cluster4_02.markers <- FindMarkers(pbmc, ident.1 = 4, ident.2 = c(0, 2), min.pct = 0.25)
+  |++++++++++++++++++++++++++++++++++++++++++++++++++| 100% elapsed=01s  
+> head(cluster4_02.markers, n = 10)
+              p_val avg_log2FC pct.1 pct.2     p_val_adj
+NKG7  8.832883e-207  4.7855418 0.966 0.142 1.211342e-202
+CCL5  4.682476e-168  3.2778855 0.983 0.228 6.421547e-164
+CST7  2.192927e-167  3.1370484 0.797 0.082 3.007380e-163
+GZMA  5.859426e-166  2.9389163 0.818 0.088 8.035616e-162
+GZMK   2.708088e-97  2.7933755 0.577 0.074  3.713872e-93
+GZMH   1.958415e-96  3.3831076 0.419 0.018  2.685771e-92
+CTSW   6.289194e-96  2.2004576 0.818 0.278  8.625001e-92
+PRF1   2.101949e-77  2.0932993 0.488 0.068  2.882613e-73
+B2M    3.277785e-73  0.6040478 1.000 1.000  4.495155e-69
+HLA-C  3.944756e-68  0.9230342 0.997 0.991  5.409839e-64
+
+
+
+
+
+(3) 还可以使用其他分组方式
+Take all cells in cluster 2, and find markers that separate cells in the 'g1' group (metadata variable 'group')
+使用 cluster2的所有细胞，找能区分查 g1 组的marker
+
+1)取子集 subset.ident = "2"
+2)分组 group.by = 'groups',
+3)按分组找 ident.1 = "g1" 的marker 基因
+
+> markers <- FindMarkers(pbmc_small, ident.1 = "g1", group.by = 'groups', subset.ident = "2")
+> head(x = markers)
+               p_val avg_log2FC pct.1 pct.2 p_val_adj
+GSTP1     0.01601528   2.539192   0.7 0.111         1
+LINC00936 0.02048683   4.090856   0.5 0.000         1
+TPM4      0.02048683   4.381751   0.5 0.000         1
+LGALS2    0.04515259   4.300590   0.4 0.000         1
+IFI30     0.04515259   4.676111   0.4 0.000         1
+RHOC      0.04515259   3.933927   0.4 0.000         1
+
+
+
+
+
+(4) 还可以传入 cell id list 
+
+先熟悉函数 WhichCells() 的用法，见 解析 10-2.4
+> table(pbmc$seurat_clusters)
+  0   1   2   3   4   5   6   7   8 
+684 481 476 344 291 162 155  32  13 
+> WhichCells(pbmc, idents = c(3)) |> length()
+[1] 344
+> WhichCells(pbmc, idents = c(8, 7)) |> length()
+[1] 45
+> WhichCells(pbmc, idents = c(3)) |> head(n=5)
+[1] "AAACATTGAGCTAC-1" "AAACTTGAAAAACG-1" "AAAGGCCTGTCTAG-1" "AAAGTTTGATCACG-1" "AAAGTTTGGGGTGA-1"
+
+
+
+> rs1 <- FindMarkers(pbmc, ident.1 = WhichCells(pbmc, idents = c(3)), min.pct = 0.25)
+  |++++++++++++++++++++++++++++++++++++++++++++++++++| 100% elapsed=02s  
+> head(rs1)
+                  p_val avg_log2FC pct.1 pct.2     p_val_adj
+MS4A1      0.000000e+00   3.378150 0.855 0.053  0.000000e+00
+CD79A      0.000000e+00   4.310172 0.936 0.041  0.000000e+00
+CD79B     2.655974e-274   3.481908 0.916 0.142 3.642403e-270
+
+
+
+
+
+
+
+(5) 传入一个树 //不理解 //todo
+Pass 'clustertree' or an object of class phylo to ident.1 and a node to ident.2 as a replacement for FindMarkersNode
+传入 'clustertree' 作为个
+
+if (requireNamespace("ape", quietly = TRUE)) {
+  pbmc_small2 <- BuildClusterTree(object = pbmc_small)
+  markers2 <- FindMarkers(object = pbmc_small2, ident.1 = 'clustertree', ident.2 = 5)
+  head(x = markers2)
+}
+
+
+
+
+> pbmc2=BuildClusterTree(pbmc)
+
+# 通过手动分析 str(pbmc) 和 str(pbmc2)，发现后者多了一个 tools slot:
+> str(pbmc@tools)
+ list()
+> str(pbmc2@tools)
+List of 1
+ $ BuildClusterTree:List of 4
+  ..$ edge       : int [1:16, 1:2] 10 10 11 12 12 11 13 14 14 16 ...
+  ..$ edge.length: num [1:16] 485 180 174 131 131 ...
+  ..$ tip.label  : chr [1:9] "0" "1" "2" "3" ...
+  ..$ Nnode      : int 8
+  ..- attr(*, "class")= chr "phylo"
+  ..- attr(*, "order")= chr "cladewise"
+
+> ape::plot.phylo(pbmc2@tools$BuildClusterTree)
+> DimPlot(pbmc2,label=T)
+# 图略
+
+
+
+
+
+
+
+(6) 某个基因在某个类中的表达百分比 pct.1？
+
+# FoldChange.default():
+pct.1 <- round(
+    x = rowSums(x = object[features, cells.1, drop = FALSE] > thresh.min) /
+      length(x = cells.1),
+    digits = 3
+  )
+
+
+测试: 
+
+dat=pbmc@assays$RNA@data
+features=rownames(pbmc)
+cells.1=WhichCells(pbmc, idents = 3)
+
+> rs1=rowSums( dat[features, cells.1, drop=F] >0 ) / length(cells.1)
+> rs2=FindMarkers(pbmc, ident.1 = 3) 
+
+> head(rs2)
+                  p_val avg_log2FC pct.1 pct.2     p_val_adj
+MS4A1      0.000000e+00   3.378150 0.855 0.053  0.000000e+00
+CD79A      0.000000e+00   4.310172 0.936 0.041  0.000000e+00
+CD79B     2.655974e-274   3.481908 0.916 0.142 3.642403e-270
+LINC00926 2.397625e-272   2.842677 0.564 0.009 3.288103e-268
+TCL1A     9.481783e-271   3.591579 0.622 0.022 1.300332e-266
+HLA-DQA1  2.942395e-266   3.057896 0.890 0.118 4.035201e-262
+
+> rs1[rownames(rs2)] |> head()
+    MS4A1     CD79A     CD79B LINC00926     TCL1A  HLA-DQA1 
+0.8546512 0.9360465 0.9156977 0.5639535 0.6220930 0.8895349 
+
+这就是rs2$pct.1 列的值。
+
+
+
+
+
+
+(7) 某基因在2类中的倍数变化 log2FC
+# FoldChange.default():
+data.1 <- mean.fxn(object[features, cells.1, drop = FALSE])
+
+# FoldChange.Assay()
+mean.fxn <- mean.fxn %||% switch(
+	EXPR = slot,
+	'data' = function(x) {
+		return(log(x = rowMeans(x = expm1(x = x)) + pseudocount.use, base = base))
+	},
+	'scale.data' = rowMeans,
+	function(x) {
+	  return(log(x = rowMeans(x = x) + pseudocount.use, base = base))
+	}
+)
+
+默认我们是使用 data，所以函数就是
+mean.fxn = function(x) {
+	return(log(x = rowMeans(x = expm1(x = x)) + pseudocount.use, base = base))
+}
+
+
+1) expm1(x) computes exp(x) - 1 accurately also for |x| << 1.
+这个倍数变化，是使用 log后的 data 再取 exp(x)-1 变回 counts 数据。
+
+2) 回顾 解析13-1.1。counts to data 的变换过程 Seurat是用C++实现的，我们用R实现结果一致，就是速度慢点:
+# data=apply(counts, 2, function(x){ log( x/sum(x)*1e4 +1 ) })
+
+
+对数公式: log(x/y)=log(x) - log(y)
+所以 log2( (m1+1)/(m2+1)) = log2(m1+1) - log2(m2+1)
+
+
+3) 回到现在，这里按行求基因的平均表达量，使用的是 x/sum(x)*1e4 +1 水平的平均值，然后对平均值 log(row_means, base)
+这也合理，直接使用counts可能有不同细胞测序深度的变异，标准化到1万个reads后，再用来求平均表达量。
+而log仅仅用于可视化时，防止最值差异过大导致渐变色不明显。
+
+
+
+4) 问题: 在标准化后log前求平均（Seurat 4的选择），和在标准化和log后求平均有啥区别？
+
+> dat=pbmc@assays$RNA@data
+> cell.1 = WhichCells(pbmc, idents = 3)
+> cell.2 = setdiff(colnames(pbmc), cell.1)
+
+> meanFnA = function(x) {
+	return(x = rowMeans(x = expm1(x = x)))
+}
+> mA1=meanFnA(dat[, cell.1]);
+> mA2=meanFnA(dat[, cell.2]);
+> log2fcA= log2( (mA1+1) / (mA2+1) )
+
+调用Seurat的函数:
+> bench3=FindMarkers(pbmc, ident.1 = 3)
+  |++++++++++++++++++++++++++++++++++++++++++++++++++| 100% elapsed=05s  
+> head(bench3)
+                  p_val avg_log2FC pct.1 pct.2     p_val_adj
+MS4A1      0.000000e+00   3.378150 0.855 0.053  0.000000e+00
+CD79A      0.000000e+00   4.310172 0.936 0.041  0.000000e+00
+CD79B     2.655974e-274   3.481908 0.916 0.142 3.642403e-270
+LINC00926 2.397625e-272   2.842677 0.564 0.009 3.288103e-268
+TCL1A     9.481783e-271   3.591579 0.622 0.022 1.300332e-266
+HLA-DQA1  2.942395e-266   3.057896 0.890 0.118 4.035201e-262
+
+
+> head(log2fcA[rownames(bench3)])
+    MS4A1     CD79A     CD79B LINC00926     TCL1A  HLA-DQA1 
+ 3.378150  4.310172  3.481908  2.842677  3.591579  3.057896
+我们计算的结果 log2fcA 和 Seurat 的输出列 avg_log2FC 一致。
+
+
+
+
+
+
+
+直接调用函数 FoldChange.default 时:
+cid1=WhichCells(pbmc, idents=3);
+cid2=setdiff(colnames(pbmc), cid1)
+pseudocount.use=1
+base=2
+fn1=function(x) {
+	return(log(x = rowMeans(x = expm1(x = x)) + pseudocount.use, base = base))
+}
+> fc.results = FoldChange(pbmc@assays$RNA@data, cells.1=cid1, cells.2= cid2, mean.fxn=fn1, fc.name="log2FC")
+> fc.results[rownames(bench3),] |> head()
+            log2FC pct.1 pct.2
+MS4A1     3.378150 0.855 0.053
+CD79A     4.310172 0.936 0.041
+CD79B     3.481908 0.916 0.142
+LINC00926 2.842677 0.564 0.009
+TCL1A     3.591579 0.622 0.022
+HLA-DQA1  3.057896 0.890 0.118
+
+
+
+
+
+
+
+测试方案B: 标准化和log后求平均表达量，Seurat 没有采用的方案。
+> meanFnB = rowMeans
+> mB1=meanFnB(dat[, cell.1]);
+> mB2=meanFnB(dat[, cell.2]);
+> log2fcB= log2( (mB1+1) / (mB2+1) )
+> head(log2fcB[rownames(bench3)])
+    MS4A1     CD79A     CD79B LINC00926     TCL1A  HLA-DQA1 
+ 1.536073  1.828888  1.544665  1.175558  1.408089  1.483866 
+
+值都有所降低，倍数变化显得小了。
+
+
+
+
+
+
+
+
+
+
+(8) 最大的探讨空间是 差异基因的 统计学检验方法: 默认 test.use="wilcox"
+test.use: Denotes which test to use. Available options are:
+
+"wilcox" : Identifies differentially expressed genes between two groups of cells using a Wilcoxon Rank Sum test (default)
+
+"bimod" : Likelihood-ratio test for single cell gene expression, (McDavid et al., Bioinformatics, 2013)
+
+"roc" : Identifies 'markers' of gene expression using ROC analysis. For each gene, evaluates (using AUC) a classifier built on that gene alone, to classify between two groups of cells. An AUC value of 1 means that expression values for this gene alone can perfectly classify the two groupings (i.e. Each of the cells in cells.1 exhibit a higher level than each of the cells in cells.2). An AUC value of 0 also means there is perfect classification, but in the other direction. A value of 0.5 implies that the gene has no predictive power to classify the two groups. Returns a 'predictive power' (abs(AUC-0.5) * 2) ranked matrix of putative differentially expressed genes.
+
+"t" : Identify differentially expressed genes between two groups of cells using the Student's t-test.
+
+"negbinom" : Identifies differentially expressed genes between two groups of cells using a negative binomial generalized linear model. Use only for UMI-based datasets
+
+"poisson" : Identifies differentially expressed genes between two groups of cells using a poisson generalized linear model. Use only for UMI-based datasets
+
+"LR" : Uses a logistic regression framework to determine differentially expressed genes. Constructs a logistic regression model predicting group membership based on each feature individually and compares this to a null model with a likelihood ratio test.
+
+"MAST" : Identifies differentially expressed genes between two groups of cells using a hurdle model tailored to scRNA-seq data. Utilizes the MAST package to run the DE testing.
+
+"DESeq2" : Identifies differentially expressed genes between two groups of cells based on a model using DESeq2 which uses a negative binomial distribution (Love et al, Genome Biology, 2014).This test does not support pre-filtering of genes based on average difference (or percent detection rate) between cell groups. However, genes may be pre-filtered based on their minimum detection rate (min.pct) across both cell groups. To use this method, please install DESeq2, using the instructions at https://bioconductor.org/packages/release/bioc/html/DESeq2.html
+
+
+
+1) 哪些做差异表达分析的方法使用counts?
+
+# 见 FindMarkers.Assay()
+  data.slot <- ifelse(
+    test = test.use %in% DEmethods_counts(),
+    yes = 'counts',
+    no = slot
+  )
+
+> Seurat:::DEmethods_counts
+function () 
+{
+    c("negbinom", "poisson", "DESeq2")
+}
+<bytecode: 0x55b94f4a0738>
+<environment: namespace:Seurat>
+
+> Seurat:::DEmethods_counts()
+[1] "negbinom" "poisson"  "DESeq2"
+
+
+
+2) 对于不需要过滤基因的DEG检测方法
+# FindMarkers.default()
+> Seurat:::DEmethods_noprefilter() 
+[1] "DESeq2"
+
+
+
+3) 有些方法需要用到 latent 变量?
+# PerformDE():
+> Seurat:::DEmethods_latent()
+[1] "negbinom" "poisson"  "MAST"     "LR"  
+
+
+
+4) 不需要p值矫正的算法
+> Seurat:::DEmethods_nocorrect
+function () 
+{
+    c("roc")
+}
+<bytecode: 0x55e8c74da468>
+<environment: namespace:Seurat>
+
+> Seurat:::DEmethods_nocorrect()
+[1] "roc"
+
+
+
+
+5) 如果不是这3个，则需要检查...参数
+> Seurat:::DEmethods_checkdots()
+[1] "wilcox" "MAST"   "DESeq2"
+
+
+
+
+
+
+
+
+
+
+
+
+(9) Seurat 4 怎么做 wilcox 秩和检验的?
+
+cid1=WhichCells(object = pbmc, idents = 3);
+cid2=setdiff(colnames(pbmc), cid1)
+dat=pbmc@assays$RNA@data
+
+
+1) 使用 PerformDE 函数
+> deg0=Seurat:::PerformDE(dat, cid1, cid2, 
+                         features=rownames(pbmc),  test.use="wilcox",
+                         verbose=T, latent.vars=NULL, densify=F)
+  |++++++++++++++++++++++++++++++++++++++++++++++++++| 100% elapsed=01m 49s
+
+
+
+2) PerformDE 是调用更底层的 WilcoxDETest 函数
+> deg= Seurat:::WilcoxDETest(dat, cells.1 = cid1, cells.2 =cid2)
+  |++++++++++++++++++++++++++++++++++++++++++++++++++| 100% elapsed=01m 49s
+#
+> head(bench3)
+                  p_val avg_log2FC pct.1 pct.2     p_val_adj
+MS4A1      0.000000e+00   3.378150 0.855 0.053  0.000000e+00
+CD79A      0.000000e+00   4.310172 0.936 0.041  0.000000e+00
+CD79B     2.655974e-274   3.481908 0.916 0.142 3.642403e-270
+LINC00926 2.397625e-272   2.842677 0.564 0.009 3.288103e-268
+TCL1A     9.481783e-271   3.591579 0.622 0.022 1.300332e-266
+HLA-DQA1  2.942395e-266   3.057896 0.890 0.118 4.035201e-262
+
+> head(deg0[rownames(bench3), , drop=F])
+                  p_val
+MS4A1      0.000000e+00
+CD79A      0.000000e+00
+CD79B     2.655974e-274
+LINC00926 2.397625e-272
+TCL1A     9.481783e-271
+HLA-DQA1  2.942395e-266
+
+> head(deg[rownames(bench3), , drop=F])
+                  p_val
+MS4A1      0.000000e+00
+CD79A      0.000000e+00
+CD79B     2.655974e-274
+LINC00926 2.397625e-272
+TCL1A     9.481783e-271
+HLA-DQA1  2.942395e-266
+
+
+
+
+
+3) 手工使用 R自带的函数其p值
+data.use <- pbmc@assays$RNA@data[, c(cid1, cid2), drop = FALSE]
+x=grep("CD79B", rownames(pbmc))
+# View data
+data.use[x, 1:5, drop=F]
+j=1:length(cid1)
+> wilcox.test(data.use[x, cid1], data.use[x, cid2])$p.value
+[1] 2.655974e-274
+
+
+
+4) Seurat的 WilcoxDETest 中引用的其实是 limma 的函数:
+作者认为 limma 那个速度更快。 //todo 看limma该函数源码，怎么实现的？
+> rs=limma::rankSumTestWithCorrelation(index = j, statistics = data.use[x, ]);rs
+         less       greater 
+ 1.000000e+00 1.327987e-274 
+> 2*min(rs, 1) #Seurat 4使用的这个p值，和R wilcox是一致的。
+[1] 2.655974e-274
+
+
+
+
+5) 耗时测试: 单核，R原生函数和 limma 函数的耗时
+# R 自带的 stat::wicox.test 函数
+system.time(
+  p_val_A1 <- sapply(
+    X = 1:nrow(x = data.use), 
+    FUN = function(x) {
+      return(
+        wilcox.test(data.use[x, cid1], data.use[x, cid2])$p.value
+      )
+    }
+  )
+)
+#  user  system elapsed 
+#147.376   0.497 147.481 
+
+
+# limma 函数
+system.time(
+  p_val_A2 <- sapply(
+    X = 1:nrow(x = data.use), 
+    FUN = function(x) {
+      return(
+        min(
+          2 * min(limma::rankSumTestWithCorrelation(index = j, statistics = data.use[x, ])), 
+          1)
+      )
+    }
+  )
+)
+#   user  system elapsed 
+#109.211   0.519 109.241 
+
+> head(p_val_A1)
+[1] 0.2447831 0.5026493 0.0731235 0.5026493 0.6455354 0.2763674
+
+> head(p_val_A2)
+[1] 0.2447831 0.5026493 0.0731235 0.5026493 0.6455354 0.2763674
+
+> table( abs( p_val_A1-p_val_A2 )< 1e-10 )
+TRUE 
+13713
+
+> nrow(data.use)
+[1] 13714
+
+结论: 
+* R自带函数和limma函数结果一致(误差在1e-10以内)。
+* 但是计算13714各p值，limma 函数比R自带函数节省了 (147-109)/147=25% 的时间。
+
+
+
+# 另一种调用 wilcox.test 的方法，使用公式: value ~ group
+group.info=c( rep("A", length(cid1)), rep("B", length(cid2)));
+# group.info <- factor(x = group.info) #这一句对结果无影响，对耗时也无影响。
+> wilcox.test(data.use[x,]~ group.info)$p.value
+[1] 2.655974e-274
+
+system.time(
+  p_val_A1_group <- sapply(
+    X = 1:nrow(x = data.use), 
+    FUN = function(x) {
+      return(
+        wilcox.test(data.use[x,]~ group.info)$p.value
+      )
+    }
+  )
+)
+#   user  system elapsed 
+#190.818   0.854 190.912  #这个貌似耗时更久
+
+> head(p_val_A1_group)
+[1] 0.2447831 0.5026493 0.0731235 0.5026493 0.6455354 0.2763674
+
+> table( abs( p_val_A1_group-p_val_A2 )< 1e-10 )
+ TRUE 
+13713
+
+
+
+
+
+
+6) 怎么做p值矫正的？
+
+做p值矫正: 使用 "bonferroni" 法，一个严格的方法。
+因为作者过滤掉的很多低表达基因没有做检验，它们p值按1算
+# FindMarkers.default()
+    de.results$p_val_adj = p.adjust(
+      p = de.results$p_val,
+      method = "bonferroni",
+      n = nrow(x = object)
+    )
+
+> head(bench3)
+                  p_val avg_log2FC pct.1 pct.2     p_val_adj
+MS4A1      0.000000e+00   3.378150 0.855 0.053  0.000000e+00
+CD79A      0.000000e+00   4.310172 0.936 0.041  0.000000e+00
+CD79B     2.655974e-274   3.481908 0.916 0.142 3.642403e-270
+LINC00926 2.397625e-272   2.842677 0.564 0.009 3.288103e-268
+TCL1A     9.481783e-271   3.591579 0.622 0.022 1.300332e-266
+HLA-DQA1  2.942395e-266   3.057896 0.890 0.118 4.035201e-262
+
+
+手工计算:
+> length(p_val_A1)
+[1] 13714
+> rs=data.frame(p_val_A1, row.names = rownames(data.use))
+> rs2=rs[rownames(bench3), ,drop=F]
+> rs2$p_val_adj = p.adjust(
+	  p = rs2$p_val,
+	  method = "bonferroni",
+	  n = nrow(x = data.use) #n为所有要检验的结果，存疑?  //todo 难道做1个检验也要乘以基因总数？
+	  # 最终结果中我们过滤了 pct 太低的，log2FC 为负的。检验数小于基因总数的。
+	)
+> head(rs2)
+               p_val_A1     p_val_adj
+MS4A1      0.000000e+00  0.000000e+00
+CD79A      0.000000e+00  0.000000e+00
+CD79B     2.655974e-274 3.642403e-270
+LINC00926 2.397625e-272 3.288103e-268
+TCL1A     9.481783e-271 1.300332e-266
+HLA-DQA1  2.942395e-266 4.035201e-262
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+2. 源码解析
+
+(1) FindMarkers()
+../seurat-4.1.0/R/generics.R:143:FindMarkers <- function(object, ...) {
+../seurat-4.1.0/R/differential_expression.R:909:FindMarkers.Seurat <- function(
+../seurat-4.1.0/R/differential_expression.R:611:FindMarkers.Assay <- function(
+
+
+../seurat-4.1.0/R/differential_expression.R:492:FindMarkers.default <- function(
+../seurat-4.1.0/R/differential_expression.R:793:FindMarkers.DimReduc <- function(
+../seurat-4.1.0/R/differential_expression.R:690:FindMarkers.SCTAssay <- function(
+
+
 
 
 
 函数list
 * FindMarkers()
+	- BuildClusterTree() //todo
+	- Idents<-
 * FindAllMarkers()
+
+
 
 * VlnPlot 见解析 8
 * FeaturePlot //todo
@@ -12382,18 +12977,463 @@ DoHeatmap(pbmc, features = top10$gene, label = T)  #+ NoLegend()
 
 
 
-2. 源码解析
+//todo
+
+
+()"Idents<-"
+$ find . | grep "R$" | grep -v "testthat" | xargs grep -in "Idents<-" 2>/dev/null --color=auto
+./seurat-object-4.0.4/R/generics.R:409:"Idents<-" <- function(object, ..., value) {
+./seurat-object-4.0.4/R/seurat.R:1305:"Idents<-.Seurat" <- function(object, cells = NULL, drop = FALSE, ..., value) {
+
+
+
+
+() Tool() //todo 以后再说。
+IdentsToCells() 中: Tool(object = object, slot = 'BuildClusterTree')
+
+$ find . | grep "R$" | grep -v "testthat" | grep -v "notes" | xargs grep -n "^\s*Tool" 2>/dev/null --color=auto
+./seurat-object-4.0.4/R/generics.R:795:Tool <- function(object, ...) {
+./seurat-object-4.0.4/R/seurat.R:1764:Tool.Seurat <- function(object, slot = NULL, ...) {
+
+./seurat-4.1.0/R/tree.R:146:  Tool(object = object) <- data.tree
+./seurat-4.1.0/R/differential_expression.R:1619:      Tool(object = object, slot = 'BuildClusterTree')
+./seurat-4.1.0/R/mixscape.R:857:  Tool(object = object) <- gv.list
+./seurat-4.1.0/R/preprocessing.R:154:  Tool(object = object) <- info
+
+
+
+() Command() // todo 以后再说 
+能记录Seurat执行过的命令和参数，相当于是对象自带的重要日志记录系统
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
 3. R tips 
 
+(1) 一个参数默认值为NULL，怎么判断是否传入值？
+
+fn1=function(ident.1=NULL){
+	if (length(x = ident.1) == 0) {
+		stop("At least 1 ident must be specified in `ident.1`")
+	}
+}
+
+> fn1()
+Error in fn1() : At least 1 ident must be specified in `ident.1`
+> fn1(2)
+>
+> length(NULL)
+[1] 0
 
 
 
-4. bugs
+
+(2) 判断传入的对象是否属于某个类 is(obj, className)
+
+setClass('Book', slots = list(name="character", price="numeric") )
+b1=new("Book", name="R intro", price=20)
+
+> is(b1, "list")
+[1] FALSE
+> is(b1, "Book")
+[1] TRUE
+
+> is(b1)
+[1] "Book"
 
 
+
+
+
+(3) 集合运算: 取差集 A-B: setdiff(A, B)
+
+> setdiff(1:5, c(1,3))
+[1] 2 4 5
+
+
+
+
+(4) 在函数体中为函数参数设置默认值
+
+# 辅助函数，如果第一个参数为 NULL，则返回第二个参数。用于设置默认值
+`%||2%` = function (x, y) {
+    if (is.null(x)) 
+        y
+    else x
+}
+
+fn0=function(x=NULL){
+	x =x %||2% 10; print(x)
+}
+
+> fn0(-5)
+[1] -5
+> fn0(1)
+[1] 1
+> fn0()  #如果没有提供该参数，则在函数内给出默认值
+[1] 10
+
+
+
+
+(5) switch() 第一个是字符串时，怎么设置默认分支？
+
+参数1是数字的，无法设置默认分支。
+参数1是字符串的，没有名字的那个就是某人分支，位置无关紧要，一般放在最后一个(还可以放一个stop()报错语句)。
+
+
+实例1: 
+> switch(EXPR="bad", "bad"=2, "good"=100, "default"=-10)
+[1] 2
+> switch(EXPR="go", "bad"=2, "good"=100, "default"=-10)
+> switch(EXPR="go", "bad"=2, "good"=100, -10)
+[1] -10
+
+
+默认分支是没有名字的，与是否放在最后无关。
+> switch(EXPR="go", "bad"=2, "good"=100, -10, "default"=0)
+[1] -10
+> switch(EXPR="default", "bad"=2, "good"=100, -10, "default"=0)
+[1] 0
+
+
+设置默认分支为报错:
+> switch(EXPR="too", "bad"=2, "good"=100, "default"=0, stop("must be in c(good, bad, default)" )  )
+Error: must be in c(good, bad, default)
+> switch(EXPR="good", "bad"=2, "good"=100, "default"=0, stop("must be in c(good, bad, default)" )  )
+[1] 100
+
+
+
+实例2: 
+fn1=function(fname) {
+	switch(EXPR=fname, 
+		"plus"=function(x,y){x+y},
+		"multi"=function(x,y){x*y},
+		function(x,y){x/y}
+	)
+}
+
+测试:
+> fn1("multi")
+function(x,y){x*y}
+<bytecode: 0x5643fc140120>
+<environment: 0x5643fbd0f208>
+
+> fn1("plus")
+function(x,y){x+y}
+<environment: 0x5643fd525550>
+
+> fn1("plus2")  #走了默认
+function(x,y){x/y}
+<bytecode: 0x5643fbd41eb8>
+<environment: 0x5643fd4c77e0>
+
+
+
+
+
+
+
+(6) pmax() 是什么函数？给出2个向量每个下标处的最大值
+
+> a1=1:5
+> a2=c(10,-2,5,-3,0)
+
+> pmax(a1, a2) #按向量求最大值，每个位置给出一个值
+[1] 10  2  5  4  5
+> pmax(a2, a1)
+[1] 10  2  5  4  5
+
+
+也支持多余2个向量
+> rs=pmax(iris[,1], iris[,2], iris[,3], iris[,4])
+> head(rs)
+[1] 5.1 4.9 4.7 4.6 5.0 5.4
+
+rs2=c()
+for(i in 1:nrow(iris)){
+  rs2=c(rs2, max(iris[i, 1:4]) );
+}
+
+> head(rs2)
+[1] 5.1 4.9 4.7 4.6 5.0 5.4
+
+> table(rs - rs2)
+  0 
+150 
+
+
+
+
+
+(7) 对于named vector，按值过滤并获取其name
+
+例: 值=基因表达百分比，name=基因名
+features <- names(x = which(x = alpha.min >= min.pct))
+
+
+> a1=1:5
+> names(a1)=paste0("gene", 1:5)
+> a1
+gene1 gene2 gene3 gene4 gene5 
+    1     2     3     4     5 
+
+> a1>=3
+gene1 gene2 gene3 gene4 gene5 
+FALSE FALSE  TRUE  TRUE  TRUE 
+
+> which(a1>=3)
+gene3 gene4 gene5 
+    3     4     5 
+
+> names(which(a1>=3))
+[1] "gene3" "gene4" "gene5"
+
+
+
+
+
+
+
+
+
+
+(8) 如何用R代码检查某R包是否安装了 PackageCheck()?
+
+> print(PackageCheck("limma", error = FALSE))
+limma 
+ TRUE 
+
+> print(PackageCheck("ggplot2", "GEB", error = FALSE))
+ggplot2     GEB 
+   TRUE   FALSE 
+
+
+$ find . | grep "R$" | grep -v "testthat" | grep -v "notes" | xargs grep -n "^\s*PackageCheck" 2>/dev/null --color=auto
+./seurat-object-4.0.4/R/utils.R:335:PackageCheck <- function(..., error = TRUE) {
+
+#' Check the existence of a package
+#'
+#' @param ... Package names
+#' @param error If true, throw an error if the package doesn't exist
+#'
+#' @return Invisibly returns boolean denoting if the package is installed
+#'
+#' @export
+#'
+#' @examples
+#' PackageCheck("SeuratObject", error = FALSE)
+#'
+PackageCheck <- function(..., error = TRUE) {
+  # 获取每个参数，不要名字，只要值: 包名
+  pkgs <- unlist(x = c(...), use.names = FALSE)
+  # 对每个R包名，加载其命名空间，要求返回值是 logical 类型，长度为1
+  package.installed <- vapply(
+    X = pkgs,
+    FUN = requireNamespace,
+    FUN.VALUE = logical(length = 1L),
+    quietly = TRUE
+  )
+  
+  # 如果允许报错，且至少有一个没安装，则报错
+  if (error && any(!package.installed)) {
+    stop(
+      "Cannot find the following packages: ",
+      paste(pkgs[!package.installed], collapse = ', '),
+      ". Please install"
+    )
+  }
+  # 返回R包安装情况，是一个 named vector
+  invisible(x = package.installed)
+}
+
+
+
+
+(9) 可以建立一个空的只有行名的数据框
+
+> head(cid1, n=2)
+[1] "AAACATTGAGCTAC-1" "AAACTTGAAAAACG-1"
+> group.info=data.frame(row.names = c(cid1, cid2))
+> group.info
+data frame with 0 columns and 2638 rows
+
+# 添加一列，根据行名填充分组
+group.info[cells.1, "group"] <- "Group1"
+group.info[cells.2, "group"] <- "Group2"
+> head(group.info)
+                  group
+AAACATTGAGCTAC-1 Group1
+AAACTTGAAAAACG-1 Group1
+AAAGGCCTGTCTAG-1 Group1
+
+
+
+(10) 指定行名、把单列数据转为数据框
+# WilcoxDETest():
+data.frame(p_val, row.names = rownames(x = data.use))
+
+
+> p_val=seq(0,1, length.out=5)
+> data.frame(p_val, row.names = paste0("gene", 1:5))
+      p_val
+gene1  0.00
+gene2  0.25
+gene3  0.50
+gene4  0.75
+gene5  1.00
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+========================================
+|-- Seurat 4 R包源码解析 26: step12 找差异基因 FindAllMarkers() //todo
+----------------------------------------
+1. 调包侠
+(1) 每一个cluster的细胞与其余组的细胞总和做比较，筛选marker基因
+
+# find markers for every cluster compared to all remaining cells, report only the positive ones
+> pbmc.markers <- FindAllMarkers(pbmc, only.pos = TRUE, min.pct = 0.25, logfc.threshold = 0.25)
+Calculating cluster 0
+  |++++++++++++++++++++++++++++++++++++++++++++++++++| 100% elapsed=01s  
+Calculating cluster 1
+  |++++++++++++++++++++++++++++++++++++++++++++++++++| 100% elapsed=02s  
+Calculating cluster 2
+  |++++++++++++++++++++++++++++++++++++++++++++++++++| 100% elapsed=01s  
+Calculating cluster 3
+  |++++++++++++++++++++++++++++++++++++++++++++++++++| 100% elapsed=01s  
+Calculating cluster 4
+  |++++++++++++++++++++++++++++++++++++++++++++++++++| 100% elapsed=01s  
+Calculating cluster 5
+  |++++++++++++++++++++++++++++++++++++++++++++++++++| 100% elapsed=02s  
+Calculating cluster 6
+  |++++++++++++++++++++++++++++++++++++++++++++++++++| 100% elapsed=02s  
+Calculating cluster 7
+  |++++++++++++++++++++++++++++++++++++++++++++++++++| 100% elapsed=03s  
+Calculating cluster 8
+  |++++++++++++++++++++++++++++++++++++++++++++++++++| 100% elapsed=01s  
+> pbmc.markers %>% group_by(cluster) %>% top_n(n = 3, wt = avg_log2FC)
+# A tibble: 27 × 7
+# Groups:   cluster [9]
+       p_val avg_log2FC pct.1 pct.2 p_val_adj cluster gene  
+       <dbl>      <dbl> <dbl> <dbl>     <dbl> <fct>   <chr> 
+ 1 3.75e-112       1.09 0.912 0.592 5.14e-108 0       LDHB  
+ 2 9.57e- 88       1.36 0.447 0.108 1.31e- 83 0       CCR7  
+ 3 1.35e- 51       1.08 0.342 0.103 1.86e- 47 0       LEF1  
+ 4 0               5.57 0.996 0.215 0         1       S100A9
+ 5 0               5.48 0.975 0.121 0         1       S100A8
+ 6 3.89e-268       4.55 1     0.516 5.34e-264 1       LYZ   
+ 7 1.06e- 86       1.27 0.981 0.643 1.45e- 82 2       LTB   
+ 8 3.44e- 59       1.22 0.651 0.245 4.71e- 55 2       CD2   
+ 9 2.97e- 58       1.23 0.42  0.111 4.07e- 54 2       AQP3  
+10 0               4.31 0.936 0.041 0         3       CD79A 
+# … with 17 more rows
+#  Use `print(n = ...)` to see more rows
+
+
+
+
+
+
+2. 源码解析
+
+FindAllMarkers
+
+
+
+
+
+
+3. R tips 
+
+(1) globalVariables() 干啥的？//todo
+
+源码(摘出来仅仅是因为它紧邻我们关心的函数)
+globalVariables(
+  names = c('myAUC', 'p_val', 'avg_logFC'),
+  package = 'Seurat',
+  add = TRUE
+)
+
+查到了一些资料，但是还是不理解该函数干啥的？
+https://rdrr.io/r/utils/globalVariables.html
+
+使用的局部变量（函数中定义的瞬时变量）和语法糖（如“:=”）也要用全局变量函数GlobalVariables加以定义。比如“globalVariables(c(":=","!!",".",".SD"))”。
+
+
+
+
+
+
+
+
+
+4. Bug 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+========================================
+|-- Seurat 4 R包源码解析 27: step12 差异基因可视化 VlnPlot/ FeaturePlot/ DoHeatmap/ DotPlot //todo
+----------------------------------------
+1. 调包侠
+
+(4) 可视化-小提琴图
+#* VlnPlot 见解析 8
+VlnPlot(pbmc, features = c("MS4A1", "CD79A"))
+
+# you can plot raw counts as well
+VlnPlot(pbmc, features = c("NKG7", "PF4"), slot = "counts", log = TRUE)
+
+
+(5) 可视化-FeaturePlot
+FeaturePlot(pbmc, features = c("MS4A1", "GNLY", "CD3E", "CD14", "FCER1A", "FCGR3A", "LYZ", "PPBP",
+                               "CD8A"))
+
+(6) 可视化-热图 heatmap
+top10 <- pbmc.markers %>% group_by(cluster) %>% top_n(n = 10, wt = avg_log2FC)
+DoHeatmap(pbmc, features = top10$gene, label = T)  #+ NoLegend()
+
+(8) 可视化-dotplot 
+DotPlot(pbmc, features = unique( top10$gene ) ) + RotatedAxis()
+DotPlot(pbmc, features = unique( top10$gene ), cluster.idents = T ) + RotatedAxis() #对cluster进行聚类
 
 
 
@@ -12413,6 +13453,9 @@ DoHeatmap(pbmc, features = top10$gene, label = T)  #+ NoLegend()
 总目录: https://zhuanlan.zhihu.com/p/465392721
 
 
+
+查函数在哪个文件哪一行的shell语句:
+$ find . | grep "R$" | grep -v "testthat" | grep -v "notes" | xargs grep -n "^\s*FoldChange" 2>/dev/null --color=auto
 
 
 

@@ -796,6 +796,17 @@ The following objects are masked from ‘package:Biobase’:
 
 
 
+==> 如果还报错，使用 yum 安装:
+proj.x86_64 : Cartographic projection software (PROJ.4)
+proj-devel.x86_64 : Development files for PROJ.4
+
+$ sudo yum install proj
+$ sudo yum install proj-devel
+
+
+
+
+
 (6) 尝试使用另一个干净的CentOS7.9系统编译的库 (本文 3.4)
 
 先在一个同样版本的CentOS上编译出so文件。
@@ -1067,7 +1078,355 @@ export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/home/wangjl/local/gdal-2.4.4/lib
 ref:
 LD_LIBRARY_PATH:
 	http://www.360doc.com/content/21/0714/12/76149697_986500121.shtml
-	
+
+
+
+
+
+
+========================================
+|-- 实例2: 在空白 CentOS7.9 的R中无 root 安装 TFBSTools 包 (gsl.so 是数值计算库)
+----------------------------------------
+总体思路: 
+.bashrc 的只对新登录的bash有效。
+先配置 .bashrc，再重新登录bash，输入R，开始安装R包。
+然后在Rstudio里把库dyn.load()进去，然后再library()
+
+
+1. 需要去确定这几个已经安装
+Cannot find xml2-config
+$ rpm -qa libxml2-devel
+$ rpm -qa openssl-devel
+
+如果没有安装，则安装它们
+$ sudo yum install libxml2-devel
+$ sudo yum install openssl-devel
+
+怎么无 root 安装呢？
+
+
+不想费劲了，直接:
+$ sudo yum install gsl-devel
+
+
+
+
+
+
+
+
+2. 开始半自动安装R包 TFBSTools
+$ R
+
+(1)可选: 设置国内镜像
+> options("repos")
+$repos
+                                CRAN 
+"https://mirrors.e-ducation.cn/CRAN"
+> options(repos=structure(c(CRAN="https://mirrors.tuna.tsinghua.edu.cn/CRAN/")))
+
+(2)尝试安装
+> install.packages("BiocManager")
+> BiocManager::install("TFBSTools")
+
+安装失败
+> library("TFBSTools")
+
+> install.packages("httr")
+> BiocManager::install("DirichletMultinomial")
+# gsl/gsl_rng.h: No such file or directory
+
+
+
+(3) 手工编译安装 gsl 动态共享库 install gsl lib without root
+$ gcc --version  #centOS7.9 默认的gcc编译器
+gcc (GCC) 4.8.5 20150623 (Red Hat 4.8.5-44)
+Copyright (C) 2015 Free Software Foundation, Inc.
+
+
+重装之前，删掉 TFMPvalue, DirichletMultinomial 包
+
+
+编译安装
+$ cd ~/soft/
+$ wget http://mirrors.ustc.edu.cn/gnu/gsl/gsl-2.7.tar.gz
+$ tar -xzvf gsl-2.7.tar.gz
+$ cd gsl-2.7/
+$ ./configure --prefix=/home/wangjl/.local/  #install in ./lib/
+$ make
+$ make install
+
+
+
+提示：有几种找到ld的方法，要采用其中之一。
+Libraries have been installed in:
+   /home/wangjl/.local/lib
+
+If you ever happen to want to link against installed libraries
+in a given directory, LIBDIR, you must either use libtool, and
+specify the full pathname of the library, or use the '-LLIBDIR'
+flag during linking and do at least one of the following:
+   - add LIBDIR to the 'LD_LIBRARY_PATH' environment variable
+     during execution
+   - add LIBDIR to the 'LD_RUN_PATH' environment variable
+     during linking
+   - use the '-Wl,-rpath -Wl,LIBDIR' linker flag
+   - have your system administrator add LIBDIR to '/etc/ld.so.conf'
+
+See any operating system documentation about shared libraries for
+more information, such as the ld(1) and ld.so(8) manual pages.
+
+
+
+检查so库文件
+$ ls -ltha ~/.local/
+total 8.0K
+drwx------. 21 wangjl wangjl 4.0K Oct 10 21:49 ..
+drwxrwxr-x.  3 wangjl wangjl  234 Oct 10 11:19 lib
+drwx------. 19 wangjl wangjl 4.0K Oct 10 11:19 share
+drwxrwxr-x.  2 wangjl wangjl   64 Oct 10 11:19 bin
+drwx------.  6 wangjl wangjl   56 Oct 10 11:19 .
+drwxrwxr-x.  3 wangjl wangjl   17 Oct 10 11:19 include
+
+$ ls -lth /home/wangjl/.local/lib
+total 38M
+drwxrwxr-x. 2 wangjl wangjl   20 Oct 10 11:19 pkgconfig
+-rw-r--r--. 1 wangjl wangjl  22M Oct 10 11:19 libgsl.a
+-rwxr-xr-x. 1 wangjl wangjl  926 Oct 10 11:19 libgsl.la
+lrwxrwxrwx. 1 wangjl wangjl   16 Oct 10 11:19 libgsl.so -> libgsl.so.25.1.0
+lrwxrwxrwx. 1 wangjl wangjl   16 Oct 10 11:19 libgsl.so.25 -> libgsl.so.25.1.0
+
+
+
+
+(4) 按照提示，设置 .bashrc 
+$ vim ~/.bashrc #末尾添加一句
+export LD_LIBRARY_PATH=/home/wangjl/.local/lib:$LD_LIBRARY_PATH
+$ source ~/.bashrc
+
+
+(5) 重新登陆一个 shell goto shell, exit and login shell session again
+$ echo $LD_LIBRARY_PATH
+确定刚才定义的库目录在这里。ensure the newly added lib is here
+
+
+(6) 在shell中新开启一个CLI 版的R。 start a R session in shell CLI
+$ R
+> Sys.getenv("LD_LIBRARY_PATH")
+[1] "/opt/R/4.2.0/lib64/R/lib:/usr/local/lib64:/usr/lib/jvm/java-1.8.0-openjdk-1.8.0.322.b06-1.el7_9.x86_64/jre/lib/amd64/server:/home/wangjl/.local/lib:"
+注意到，最后一个是我们的库目录
+
+> BiocManager::install("DirichletMultinomial")
+
+继续安装R 包，并尝试载入
+> BiocManager::install("TFBSTools")
+> library("TFBSTools") #正常载入
+> 
+
+
+
+
+
+
+(7) 回到 rstudio 中
+> Sys.getenv("LD_LIBRARY_PATH")
+> Sys.setenv("LD_LIBRARY_PATH"= paste0(Sys.getenv("LD_LIBRARY_PATH"),":", "/home/wangjl/lib") ) #在R中添加是没用的，要在Rsession 开始前添加
+> Sys.getenv("LD_LIBRARY_PATH") #这个库地址设置不生效，怎么办？https://github.com/rstudio/rstudio/issues/9003
+> library("TFBSTools") #报错
+
+
+不过，对于不能重启的 Rstudio server，还可以手动载入so文件:
+> dyn.load("/home/wangjl/.local/lib/libgsl.so")
+> dyn.load("/home/wangjl/.local/lib/libgslcblas.so")
+> library("TFBSTools")
+>
+
+
+
+R session 执行，查看这几个动态链接库是否没有找到
+> system("ldd /home/wangjl/.local/lib/libgsl.so")
+> system("ldd /home/wangjl/.local/lib/libgslcblas.so")
+
+
+
+
+2) 死抠这个线索: Rstudio 中只能识别这几个库，这几个库路径是在哪里设置的？ //todo
+> Sys.getenv("LD_LIBRARY_PATH")
+[1] "/opt/R/4.2.0/lib64/R/lib:/lib:/usr/local/lib64:/usr/lib/jvm/java-1.8.0-openjdk-1.8.0.322.b06-1.el7_9.x86_64/jre/lib/amd64/server"
+
+
+$ git clone https://github.com/rstudio/rstudio.git
+$ cd rstudio
+$ find . | xargs grep -n "lib64" --color=auto 2>/dev/null
+./docker/jenkins/Dockerfile.opensuse15:82:RUN update-alternatives --set java /usr/lib64/jvm/jre-1.8.0-openjdk/bin/java
+./package/linux/rpm-script/postinst-desktop.sh.in:12:  if test -d /usr/lib64 || test -d /lib64
+./package/linux/rpm-script/postinst-desktop.sh.in:14:    architecture_dir='lib64'
+./package/linux/rpm-script/postinst-electron.sh.in:12:  if test -d /usr/lib64 || test -d /lib64
+./package/linux/rpm-script/postinst-electron.sh.in:14:    architecture_dir='lib64'
+./package/linux/rpm-script/postinst.sh.in:80:   for dir in /usr/lib64 /lib64 /usr/lib /lib
+./src/cpp/core/libclang/LibClang.cpp:94:      "/usr/lib64/libclang.so",
+./src/cpp/core/libclang/LibClang.cpp:95:      "/usr/lib64/llvm/libclang.so",
+./src/cpp/core/libclang/LibClang.cpp:99:   for (const char* prefix : {"/usr/lib", "/usr/lib64"})
+./src/cpp/core/r_util/RVersionsPosix.cpp:123:      rHomePaths.push_back(FilePath("/usr/lib64/R"));
+./src/cpp/core/r_util/RVersionsPosix.cpp:125:      rHomePaths.push_back(FilePath("/usr/local/lib64/R"));
+./src/cpp/core/r_util/RVersionsPosix.cpp:127:      rHomePaths.push_back(FilePath("/opt/local/lib64/R"));
+./src/cpp/rstudio-tests.in:57:      /lib64/libSegFault.so
+./src/cpp/session/SessionMain.cpp:1780: * /usr/local/lib64/R/
+
+
+
+
+
+$ cd ../  #这个不知道搜到了啥
+$ find . | grep -v "R-4.2.0/config.log" | xargs grep -n "/usr/local/lib64" --color=auto 2>/dev/null
+./R-4.2.0/etc/Makeconf:70:LDFLAGS = -L/usr/local/lib64
+./R-4.2.0/etc/ldpaths:3:if test -n "/usr/local/lib64"; then
+./R-4.2.0/etc/ldpaths:4:: ${R_LD_LIBRARY_PATH=${R_HOME}/lib:/usr/local/lib64}
+./R-4.2.0/config.site:161:## On some Linux 64-bit systems its default is -L/usr/local/lib64.
+./R-4.2.0/doc/html/R-admin.html:900:<pre class="example">make install rhome=/usr/local/lib64/R-4.2.0
+./R-4.2.0/doc/html/R-admin.html:916:<samp>/usr/local/lib64</samp>) if you intend to work with multiple versions of
+./R-4.2.0/doc/html/R-admin.html:4199:&lsquo;<samp>-L/usr/local/lib64</samp>&rsquo; on most 64-bit Linux OSes) and
+./R-4.2.0/doc/html/R-admin.html:4620:<pre class="example">LDFLAGS=&quot;-L/usr/local/lib64 -L/usr/local/lib&quot;
+./R-4.2.0/doc/html/R-admin.html:4624:libraries in <samp>/usr/local/lib64</samp>.  To build a 32-bit version of R
+./R-4.2.0/doc/html/R-admin.html:4755:LDFLAGS=&quot;-L$ICC_LIBS -L$IFC_LIBS -L/usr/local/lib64&quot;
+./R-4.2.0/doc/NEWS.2:14144:	directories (and not at all in /usr/local/lib64) and so might
+./R-4.2.0/doc/NEWS.2:14524:    o	LDFLAGS now defaults to -L/usr/local/lib64 on most Linux
+./R-4.2.0/doc/NEWS.2:14529:	/usr/local/lib64/R on most 64-bit Linux OSes and /usr/local/lib/R
+./R-4.2.0/doc/manual/R-exts.texi:16014:@file{/usr/local/lib} (@file{/usr/local/lib64} on some architectures),
+./R-4.2.0/doc/manual/R-admin.texi:684:make install rhome=/usr/local/lib64/R-@value{VERSIONno}
+./R-4.2.0/doc/manual/R-admin.texi:703:@file{/usr/local/lib64}) if you intend to work with multiple versions of
+./R-4.2.0/doc/manual/R-admin.texi:4372:@samp{-L/usr/local/lib64} on most 64-bit Linux OSes) and
+./R-4.2.0/doc/manual/R-admin.texi:4803:LDFLAGS="-L/usr/local/lib64 -L/usr/local/lib"
+./R-4.2.0/doc/manual/R-admin.texi:4808:libraries in @file{/usr/local/lib64}.  To build a 32-bit version of @R{}
+./R-4.2.0/doc/manual/R-admin.texi:4941:@c LDFLAGS="-L/usr/local/flang/lib -L/usr/local/lib64"
+./R-4.2.0/doc/manual/R-admin.texi:4977:LDFLAGS="-L$ICC_LIBS -L$IFC_LIBS -L/usr/local/lib64"
+./R-4.2.0/config.status:1070:S["R_LD_LIBRARY_PATH"]="/usr/local/lib64"
+./R-4.2.0/config.status:1215:S["FCLIBS"]=" -L/usr/local/lib64 -L/usr/lib/gcc/x86_64-redhat-linux/4.8.5 -L/usr/lib/gcc/x86_64-redhat-linux/4.8.5/../../../../lib64 -L/lib/../lib64 -L/usr/lib/."\
+./R-4.2.0/config.status:1267:S["LDFLAGS"]="-L/usr/local/lib64"
+./R-4.2.0/Makeconf:50:LDFLAGS = -L/usr/local/lib64
+./rstudio/src/cpp/core/r_util/RVersionsPosix.cpp:125:      rHomePaths.push_back(FilePath("/usr/local/lib64/R"));
+./rstudio/src/cpp/session/SessionMain.cpp:1780: * /usr/local/lib64/R/
+
+看样子就是这个文件
+$ vim R-4.2.0/etc/ldpaths 
+
+$ locate ldpaths
+/home/wangjl/soft/R-4.2.0/etc/ldpaths
+/home/wangjl/soft/R-4.2.0/etc/ldpaths.in
+/opt/R/4.2.0/lib64/R/etc/ldpaths  #就是这个路径 <==== 修改后能否其作用？
+
+
+该文件什么时候执行呢？
+$ sudo reboot
+$ echo $LD_LIBRARY_PATH
+/home/wangjl/.local/lib:/home/wangjl/.local/lib:
+$ sudo service rstudio-server restart
+
+Rstudio 
+ctrl+shift+F10 重启R session 
+> Sys.getenv('LD_LIBRARY_PATH')
+[1] "/opt/R/4.2.0/lib64/R/lib:/lib:/usr/local/lib64:/usr/lib/jvm/java-1.8.0-openjdk-1.8.0.322.b06-1.el7_9.x86_64/jre/lib/amd64/server"
+
+
+
+
+
+
+
+
+(8) (需要root)有一个说法：是修改 /etc/rstudio/rserver.conf 文件
+http://luoyulong.github.io/blog/2014/12/05/rstudio-server-dot-ld-library-path/
+
+https://support.rstudio.com/hc/en-us/articles/200552316-Configuring-the-Server
+You can add elements to the default LD_LIBRARY_PATH for R sessions (as determined by the R ldpaths script) by adding an rsession-ld-library-path entry to the server config file. This might be useful for ensuring that packages can locate external library dependencies that aren’t installed in the system standard library paths. For example: rsession-ld-library-path=/opt/local/lib:/opt/local/someapp/lib
+
+
+$ sudo vim /etc/rstudio/rserver.conf
+添加一行：
+rsession-ld-library-path=/home/wangjl/.local/lib
+$ sudo service rstudio-server restart
+Rstudio 重启R session，可以了
+> Sys.getenv("LD_LIBRARY_PATH")
+[1] "/opt/R/4.2.0/lib64/R/lib:/home/wangjl/.local/lib:/lib:/usr/local/lib64:/usr/lib/jvm/java-1.8.0-openjdk-1.8.0.322.b06-1.el7_9.x86_64/jre/lib/amd64/server"
+> # /home/wangjl/.local/lib
+> library("TFBSTools")
+> 正常载入
+
+
+
+往前找之前的打印
+> Sys.getenv("LD_LIBRARY_PATH")
+[1] "/opt/R/4.2.0/lib64/R/lib:/lib:/usr/local/lib64:/usr/lib/jvm/java-1.8.0-openjdk-1.8.0.322.b06-1.el7_9.x86_64/jre/lib/amd64/server"
+
+
+
+
+
+==> 尝试另一个地方 
+$ vim ~/.Renviron
+rsession-ld-library-path=/home/wangjl/.local/lib
+$ sudo service rstudio-server restart
+不行，识别不了。
+
+
+
+
+
+
+
+
+
+
+(9) 其他各种在Rstudio的尝试：都失败
+1) 重启Rstudio
+$ sudo service rstudio-server restart
+
+in Rstudio 
+重启R，依旧不能载入，找不到 libgsl.so.25
+> library("TFBSTools")
+
+2) 把路径写入.Renvrion配置文件，再重启Rstudio
+$ vim ~/.Renviron #加一行
+LD_LIBRARY_PATH=paste0(Sys.getenv("LD_LIBRARY_PATH"),":", "/home/wangjl/lib") #这个更离谱，这里直接把左侧当作字符串了，在环境中覆盖了=左侧的变量
+
+$ sudo service rstudio-server restart
+
+> Sys.getenv('LD_LIBRARY_PATH')
+> library("TFBSTools")
+结论：还是不行 .Renviron or .Rprofile won't work.
+
+
+3)有人说写入 .bash_profile 中，也不行
+$ vim ~/.bash_profile #末尾添加一句
+export LD_LIBRARY_PATH=/home/wangjl/.local/lib:$LD_LIBRARY_PATH
+
+
+4) 这个的评论也无效，Rstudio中安装不上
+I am not an expert in this issue. This is going to sound strange but, the problem was solved for me when I re-installed the packages, through the Rstudio console.
+The original problem for me was that Rstudio r console seemed to be unable to find the LD_LIBRARY_PATH libraries, even when I defined it in the session through Sys.setenv(...). This original problem did not arise when I would run R directly from terminal.
+
+
+5) 或者在 Rstudio 中安装C库，安装失败。
+# withr::with_makevars(c(PKG_LIBS="-L/home/wangjl/lib/"), install.packages("TFBSTools"), assignment="+=")
+> withr::with_makevars(c(PKG_LIBS="-L/home/wangjl/lib/"), BiocManager::install("TFBSTools"), assignment="+=")
+> library("TFBSTools")
+
+> withr::with_makevars(c(PKG_LIBS="-L/home/wangjl/lib/"), BiocManager::install("TFBSTools", force = TRUE), assignment="+=")
+
+
+
+
+Ref:
+https://community.rstudio.com/t/specifying-ld-library-path-and-other-options-in-rserver-conf-in-rstudio-cloud/149166
+https://github.com/rstudio/rstudio/issues/9003
+
+该问题无解: https://github.com/rstudio/rstudio/issues/9832
+
+
+
+
+
+
 
 
 
@@ -1089,6 +1448,10 @@ LD_LIBRARY_PATH:
 	 RNASeq (130)
 	 TargetedResequencing (5)
 	 WholeGenome (15)
+
+
+
+
 
 
 ========================================

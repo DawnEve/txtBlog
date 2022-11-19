@@ -3395,8 +3395,231 @@ $ snakemake -s mainC4.sf -j 2
 
 
 ========================================
+|-- Input functions? 输入函数 or 匿名函数
+----------------------------------------
+https://snakemake.readthedocs.io/en/stable/tutorial/advanced.html#tutorial-input-functions
+
+1. 执行的三个阶段
+
+(1).In the initialization phase, the files defining the workflow are parsed and all rules are instantiated.
+实例化阶段：定义workflow的文件被解析，实例化所有的rules。
+
+(2).In the DAG phase, the directed acyclic dependency graph of all jobs is built by filling wildcards and matching input files to output files.
+在DAG阶段：通过填充通配符，匹配输入和输出文件，建立有向无环依赖图。
+
+(3).In the scheduling phase, the DAG of jobs is executed, with jobs started according to the available resources.
+在调度阶段，DAG规定的job被执行，根据可用的资源开始启动job。
+
+
+
+snakemake在第二步DAG阶段，才会有wildcards这个变量。
+
+
+
+2. 输入函数有啥用？
+
+
+(1) 设计简单的例子:
+
+配置文件:
+$ cat config.yaml
+samples:
+    A: data/A.fastq
+    B: data/B.fastq
+
+输入文件
+$ cat data/A.fastq
+this is A.fastq
+
+$ cat data/B.fastq
+this is B.fastq
+
+
+
+写规则
+$ cat main.snk
+configfile: "config.yaml"
+SI=config["samples"].keys()
+print(SI)
+
+rule all:
+	input: expand("mapped/{sample}.bam", sample=SI)
+
+rule bwa_map:
+	input: 
+		"data/{sample}.fastq"
+	output:
+		"mapped/{sample}.bam"
+	shell:
+		"cat {input} > {output}"
+
+运行测试
+$ snakemake -s main.snk -j 2 -pn
+
+
+
+(2) 使用 函数作为input
+
+写规则
+$ cat main2.snk
+configfile: "config.yaml"
+SI=config["samples"]
+print(SI)
+
+
+rule all:
+	input: expand("mapped/{sample}.bam", sample=SI)
+
+
+def get_bwa_map_input_fastqs(wildcards):
+	print(">>> ", config["samples"][wildcards.sample]);
+	return config["samples"][wildcards.sample]
+
+rule bwa_map:
+	input: 
+		# "data/{sample}.fastq" #原来
+		# get_bwa_map_input_fastqs #这有啥优点呢？
+		lambda wildcards: config["samples"][wildcards.sample]  #匿名函数写法
+	output:
+		"mapped/{sample}.bam"
+	shell:
+		"cat {input} > {output}"
+
+$ snakemake -s main2.snk -j 2 -p
+{'A': 'data/A.fastq', 'B': 'data/B.fastq'}
+Building DAG of jobs...
+>>>  data/A.fastq
+>>>  data/B.fastq
+Using shell: /bin/bash
+Provided cores: 2
+Rules claiming more threads will be scaled down.
+Job counts:
+        count   jobs
+		1       all
+		2       bwa_map
+		3
+
+
+输入函数接收一个wildcards对象作为single argument，这允许通过属性（此处是wildcards.sample）来获取wildcards的值。 
+必须要返回一个字符串或者字符串列表，其可以被解释为输入文件的（此处我们返回config文件中包含的sample路径）。
+一旦一个工作的wildcards值被确定，输入函数就可以被评估。
+
+
+查看运行图，snakemake脚本中不能出现print()输出
+$ snakemake -s main2.snk --dag -j 2 -p  | dot -Tsvg > main2.dag.svg
+
+
+
+(3) input 使用 函数的优点
+
+我的理解: 
+使用函数的优点，是可以更灵活的设置输入文件。比如根据关键词的某些特点，选择从不同路径获取文件。
+而 expand() 只能根据一个规则生成结果。
+
+
+比如: 
+def get_bwa_map_input_fastqs(wildcards):
+	return config["samples"][wildcards.sample]
+
+
+可以该写的更自主化: 根据 wildcards.sample 选择哪个文件
+def get_bwa_map_input_fastqs(wildcards):
+	if wildcards.sample.startswith("A"):
+		return config["samplesA"]
+	if wildcards.sample.startswith("B"):
+		return config["samplesB"]
+
+
+
+完整脚本 
+$ cat main3.snk 
+configfile: "config3.yaml"
+SI=config["samples"]
+print(SI)
+
+
+rule all:
+	input: expand("mapped/{sample}.bam", sample=SI)
+
+
+def get_bwa_map_input_fastqs(wildcards):
+	if wildcards.sample.startswith("A"):
+		return config["samplesA"]
+	if wildcards.sample.startswith("B"):
+		return config["samplesB"]
+
+rule bwa_map:
+	input: 
+		get_bwa_map_input_fastqs
+	output:
+		"mapped/{sample}.bam"
+	shell:
+		"cat {input} > {output}"
+
+
+配置文件:
+$ cat config3.yaml
+samples:
+    - A
+    - B
+samplesA:
+    - data/A/R1.fastq
+    - data/A/R2.fastq
+samplesB:
+    - data/B/R1.fastq
+    - data/B/R2.fastq
+
+
+数据文件:
+$ tree data
+data
+├── A
+│   ├── R1.fastq
+│   └── R2.fastq
+├── B
+│   ├── R1.fastq
+│   └── R2.fastq
+
+
+运行
+$ snakemake -s main3.snk -j 2 -p
+
+结果:
+$ ls -lth mapped/
+total 8.0K
+-rw-rw-r-- 1 wangjl wangjl 9 Sep 20 09:58 B.bam
+-rw-rw-r-- 1 wangjl wangjl 9 Sep 20 09:58 A.bam
+
+$ cat mapped/A.bam 
+A R1
+A 2
+
+$ cat mapped/B.bam 
+B 1
+B R2
+
+
+
+https://cloud.tencent.com/developer/ask/sof/560842
+https://blog.csdn.net/qq_36333576/article/details/118465010
+
+
+
+
+
+
+
+
+
+
+
+========================================
 |-- *** 疑难杂症 ***
 ----------------------------------------
+
+https://blog.csdn.net/weixin_44616693/article/details/125462010
+
+
 
 
 
@@ -3743,6 +3966,56 @@ localrule all:
 
 Finished job 0.
 2 of 2 steps (100%) done
+
+
+
+
+
+========================================
+|-- 如何在rule内使用常量？使用 config 中定义的常量？ "xx{para}".format(para=para2) 或者 f"xx{para2}"
+----------------------------------------
+1. 用完后删除该变量：全局变量是隐患！不用了就立刻删掉
+a="hi"
+# 使用变量 
+del a
+
+
+
+
+
+2. 常量的表示: 
+
+(1) 定义
+$ head config.yaml
+samples:
+ - L
+
+
+(2) 两种使用方法
+$ cat main.sf
+configfile: "config.yaml"
+samples=config["samples"][0]
+
+print(samples);
+
+# 方法1
+input: "B01_STAR_solo/{sample}_Aligned.sortedByCoord.out.bam".format( sample=samples)
+
+# 方法2
+input: f"B01_STAR_solo/{samples}_Aligned.sortedByCoord.out.bam"
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 

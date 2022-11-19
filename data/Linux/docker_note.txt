@@ -66,9 +66,6 @@ docker高级话题： 部署工具，网络，编排，安全性和配置。
 
 
 
-
-
-
 ========================================
 日常使用docker
 ----------------------------------------
@@ -207,6 +204,267 @@ $ docker start b06
 $ sudo docker exec -it 72d bash
 # service apache2 restart 
 # exit
+
+
+
+
+
+
+
+
+
+
+
+
+
+========================================
+|-- CentOS 7.9 安装最新版的 docker, 并把当前用户加入 docker 组
+----------------------------------------
+1. 安装 
+$ sudo yum install -y yum-utils
+$ sudo yum-config-manager \
+    --add-repo \
+    https://download.docker.com/linux/centos/docker-ce.repo
+$ sudo yum install docker-ce docker-ce-cli containerd.io
+根据提示，按两次y。
+
+$ docker --version
+Docker version 20.10.18, build b40c2f6
+这是最新版，可以用了。
+
+
+(2) 配置国内镜像加速
+$ sudo vim /etc/docker/daemon.json 
+{
+  "registry-mirrors": [
+    "http://hub-mirror.c.163.com",
+    "https://registry.cn-hangzhou.aliyuncs.com"
+  ]
+}
+
+$ sudo systemctl daemon-reload #重启守护进程
+$ sudo systemctl restart docker
+
+
+
+
+
+
+
+
+2. 把用户添加到docker组
+
+(0) 新建用户
+根据需要，把用户 tom 加入了 docker 组，就能免 sudo 使用 docker命令了。
+$ usr=tom
+$ sudo usermod -G docker ${usr}
+
+查看某个用户是否在 docker 组
+$ id tom
+
+
+
+
+(1) 通过将用户添加到docker用户组可以将sudo去掉
+https://linuxhandbook.com/docker-permission-denied/
+
+1).查看自己是否在docker分组
+$ cat /etc/group | grep docker # 查找 docker 组，确认其是否存在
+## docker:x:978:hou,rqfu
+
+# 如果 docker 组不存在，则添加之。查到了就不用添加该组
+$ sudo groupadd docker 
+
+
+
+2).添加自己到docker组
+$ groups # 列出自己的用户组，确认自己在不在 docker 组中
+
+
+将当前用户添加到 docker 组
+$ sudo gpasswd -a ${USER} docker
+Adding user wangjl to group docker
+
+$ newgrp docker #更新用户组，或者重新登录，才能看到分组的变化
+
+查看当前用户所在的组
+$ groups 
+docker jinwf
+或者 id 命令 
+$ id
+uid=1017(wangjl) gid=980(docker) groups=980(docker),1001(jinwf) context=unconfined_u:unconfined_r:unconfined_t:s0-s0:c0.c1023
+
+
+
+3) 重启 docker 服务
+$ sudo service docker restart
+Or
+$ systemctl daemon-reload
+
+
+
+4) 可以使用了
+$ docker images
+REPOSITORY                     TAG             IMAGE ID       CREATED         SIZE
+gcc                            latest          feaa519db663   12 days ago     1.27GB
+
+
+
+
+========================================
+|-- /var/lib/docker目录迁移: 容器的存储目录
+----------------------------------------
+docker用起来简单，但是要用到实际线上业务当中细节问题往往影响整个系统的稳定，比如docker容器在物理机上的数据卷问题。docker默认的根目录是/var/lib/docker，容器使用一段时间后会发现该目录所占磁盘会非常大，小到几个G，大到上百G，而/var/lib/docker所在的分区往往不大，此时就需要将该目录迁移到一个物理空间比较大的分区中，并修改docker的默认根目录。
+
+$ docker --version
+Docker version 20.10.15, build fd82621
+
+
+$ sudo docker info
+Docker Root Dir: /var/lib/docker
+Registry: https://index.docker.io/v1/
+
+
+
+
+1. 停止docker服务。
+$ sudo systemctl stop docker
+或 
+$ sudo service docker stop
+$ service docker status
+
+
+
+
+2. 创建新的docker目录
+执行命令df -h,找一个大的磁盘。 我在 /home目录下面建了 /home/docker/lib目录，执行的命令是：
+## mkdir -p /home/docker/lib
+
+$ sudo mkdir /data/docker
+$ sudo mkdir /data/docker/lib
+
+
+
+3. 迁移 /var/lib/docker 目录下面的文件到 /home/docker/lib：
+## rsync -avz /var/lib/docker /home/docker/lib/
+
+$ sudo rsync -avz /var/lib/docker /data/docker/lib/
+实际位置从 /var/lib/docker 变为 /data/docker/lib/docker
+耗时: 14:25-->
+
+
+还有人用 -P 参数: rsync -avzP /var/lib/docker/ /data/lib/docker
+
+
+
+
+
+4、(跳过，可能是老方案，不一定可用了) 配置 /etc/systemd/system/docker.service.d/devicemapper.conf
+查看 devicemapper.conf 是否存在。如果不存在，就新建。
+$ sudo mkdir -p /etc/systemd/system/docker.service.d/
+$ sudo vim /etc/systemd/system/docker.service.d/devicemapper.conf
+
+
+然后在 devicemapper.conf 写入：（同步的时候把父文件夹一并同步过来，实际上的目录应在 /home/docker/lib/docker ）
+[Service]
+ExecStart=
+ExecStart=/usr/bin/dockerd  --graph=/data/docker/lib/docker
+#ExecStart=/usr/bin/dockerd  --graph=/home/docker/lib/docker
+
+
+
+
+5. 修改
+$ cat /etc/docker/daemon.json 
+{
+  "data-root": "/data/docker/lib/docker"
+}
+
+
+
+添加国内的源:
+$ cat /etc/docker/daemon.json 
+{
+  "data-root": "/data/docker/lib/docker",
+  "registry-mirrors": ["http://hub-mirror.c.163.com"]
+}
+
+或者 华中科技大学的源:
+"registry-mirrors": ["https://docker.mirrors.ustc.edu.cn"]
+
+
+
+6.  重新加载 docker
+
+# sudo systemctl daemon-reload  #加载配置文件
+# sudo systemctl restart docker.service #重启服务
+# sudo systemctl enable docker  #允许开机启动
+
+
+$ sudo service docker start
+
+
+
+
+7. 配置核查
+
+docker info 命令检查Docker 的根目录.它将被更改为 /home/docker/lib/docker
+
+$ sudo docker info | grep Root
+ Docker Root Dir: /data/docker/lib/docker
+
+
+
+
+8. 启动成功后，再确认之前的镜像还在：
+
+$ docker images
+REPOSITORY           TAG                 IMAGE ID            CREATED             SIZE
+AAA/AAA               v2                  7331b8651bcc        27 hours ago        3.85GB
+BBB/BBB               v1                  da4a80dd8424        28 hours ago        3.47GB
+
+
+9、 确定容器没问题后删除 /var/lib/docker/ 目录中的文件。
+$ sudo mv /var/lib/docker /var/lib/docker-can-delete
+先重命名文件，放几周再删掉。
+
+$ ls -lth /var/lib/ | grep docker
+drwx--x---. 15 root           root            200 May 10 14:04 docker-can-delete
+drwxr-xr-x.  2 root           root              6 May  6 13:42 docker-engine
+
+
+
+
+
+
+
+
+
+==> 完成后可能出现的错误
+1：docker-runc not installed on system
+   解决：
+cd /usr/libexec/docker/
+ln -s docker-runc-current docker-runc
+
+
+2. Unknown runtime specified docker-runc
+    解决：
+#特别注意：/var/lib/docker/containers/为docker默认的主目录，比如我们刚才迁移到了新的目录，这里也要跟着改
+grep -rl 'docker-runc' /var/lib/docker/containers/ | xargs sed -i 's/docker-runc/runc/g'
+systemctl stop docker
+systemctl start docker
+
+3. $ docker run -it -d ubuntu:14.04 bash
+edf0a67bab483976a937c62659f1c22b86bce1e914866c5577af94f16ae20db9
+docker: Error response from daemon: failed to start shim: mkdir /var/lib/containerd/io.containerd.runtime.v2.task/moby/edf0a67bab483976a937c62659f1c22b86bce1e914866c5577af94f16ae20db9: no space left on device: unknown.
+这是磁盘满了，没办法，加硬盘吧。
+
+
+
+
+
+
+
 
 
 
@@ -2075,159 +2333,6 @@ ubuntu:20.04 bash
 
 
 
-
-
-
-========================================
-|-- /var/lib/docker目录迁移: 容器的存储目录
-----------------------------------------
-docker用起来简单，但是要用到实际线上业务当中细节问题往往影响整个系统的稳定，比如docker容器在物理机上的数据卷问题。docker默认的根目录是/var/lib/docker，容器使用一段时间后会发现该目录所占磁盘会非常大，小到几个G，大到上百G，而/var/lib/docker所在的分区往往不大，此时就需要将该目录迁移到一个物理空间比较大的分区中，并修改docker的默认根目录。
-
-$ docker --version
-Docker version 20.10.15, build fd82621
-
-
-$ sudo docker info
-Docker Root Dir: /var/lib/docker
-Registry: https://index.docker.io/v1/
-
-
-
-
-1. 停止docker服务。
-$ sudo systemctl stop docker
-或 
-$ sudo service docker stop
-$ service docker status
-
-
-
-
-2. 创建新的docker目录
-执行命令df -h,找一个大的磁盘。 我在 /home目录下面建了 /home/docker/lib目录，执行的命令是：
-## mkdir -p /home/docker/lib
-
-$ sudo mkdir /data/docker
-$ sudo mkdir /data/docker/lib
-
-
-
-3. 迁移/var/lib/docker目录下面的文件到 /home/docker/lib：
-## rsync -avz /var/lib/docker /home/docker/lib/
-
-$ sudo rsync -avz /var/lib/docker /data/docker/lib/
-实际位置从 /var/lib/docker 变为 /data/docker/lib/docker
-耗时: 14:25-->
-
-
-还有人用 -P 参数: rsync -avzP /var/lib/docker/ /data/lib/docker
-
-
-
-
-
-4、(跳过，可能是老方案，不一定可用了) 配置 /etc/systemd/system/docker.service.d/devicemapper.conf
-查看 devicemapper.conf 是否存在。如果不存在，就新建。
-$ sudo mkdir -p /etc/systemd/system/docker.service.d/
-$ sudo vim /etc/systemd/system/docker.service.d/devicemapper.conf
-
-
-然后在 devicemapper.conf 写入：（同步的时候把父文件夹一并同步过来，实际上的目录应在 /home/docker/lib/docker ）
-[Service]
-ExecStart=
-ExecStart=/usr/bin/dockerd  --graph=/data/docker/lib/docker
-#ExecStart=/usr/bin/dockerd  --graph=/home/docker/lib/docker
-
-
-
-5. 修改
-$ cat /etc/docker/daemon.json 
-{
-  "data-root": "/data/docker/lib/docker"
-}
-
-
-
-添加国内的源:
-$ cat /etc/docker/daemon.json 
-{
-  "data-root": "/data/docker/lib/docker",
-  "registry-mirrors": ["http://hub-mirror.c.163.com"]
-}
-
-或者 华中科技大学的源:
-"registry-mirrors": ["https://docker.mirrors.ustc.edu.cn"]
-
-
-
-6.  重新加载 docker
-
-# sudo systemctl daemon-reload  #加载配置文件
-# sudo systemctl restart docker.service #重启服务
-# sudo systemctl enable docker  #允许开机启动
-
-
-$ sudo service docker start
-
-
-
-
-7. 配置核查
-
-docker info 命令检查Docker 的根目录.它将被更改为 /home/docker/lib/docker
-
-# Docker Root Dir: /home/docker/lib/docker
-Docker Root Dir: /data/docker/lib/docker
-Debug Mode (client): false
-Debug Mode (server): false
-Registry: https://index.docker.io/v1/
-
-
-
-
-
-8. 启动成功后，再确认之前的镜像还在：
-
-linlf@dacent:~$ docker images
-REPOSITORY           TAG                 IMAGE ID            CREATED             SIZE
-AAA/AAA               v2                  7331b8651bcc        27 hours ago        3.85GB
-BBB/BBB               v1                  da4a80dd8424        28 hours ago        3.47GB
-
-
-9、 确定容器没问题后删除 /var/lib/docker/ 目录中的文件。
-$ sudo mv /var/lib/docker /var/lib/docker-can-delete
-先重命名文件，放几周再删掉。
-
-$ ls -lth /var/lib/ | grep docker
-drwx--x---. 15 root           root            200 May 10 14:04 docker-can-delete
-drwxr-xr-x.  2 root           root              6 May  6 13:42 docker-engine
-
-
-
-
-
-
-
-
-
-==> 完成后可能出现的错误
-1：docker-runc not installed on system
-   解决：
-cd /usr/libexec/docker/
-ln -s docker-runc-current docker-runc
-
-
-2. Unknown runtime specified docker-runc
-    解决：
-#特别注意：/var/lib/docker/containers/为docker默认的主目录，比如我们刚才迁移到了新的目录，这里也要跟着改
-grep -rl 'docker-runc' /var/lib/docker/containers/ | xargs sed -i 's/docker-runc/runc/g'
-systemctl stop docker
-systemctl start docker
-
-3. $ docker run -it -d ubuntu:14.04 bash
-edf0a67bab483976a937c62659f1c22b86bce1e914866c5577af94f16ae20db9
-docker: Error response from daemon: failed to start shim: mkdir /var/lib/containerd/io.containerd.runtime.v2.task/moby/edf0a67bab483976a937c62659f1c22b86bce1e914866c5577af94f16ae20db9: no space left on device: unknown.
-这是磁盘满了，没办法，加硬盘吧。
 
 
 
@@ -5749,58 +5854,6 @@ ref: https://www.freecodecamp.org/news/where-are-docker-images-stored-docker-con
 
 
 
-
-========================================
-把用户添加到docker组
-----------------------------------------
-
-根据需要，又把 tom 加入了 docker 组：
-$ usr=tom
-$ sudo usermod -G docker ${usr}
-
-查看某个用户是否在 docker 组
-$ id tom
-
-
-
-
-## 以下可能过时了。
-
-
-1.查看自己是否在docker分组
-$ cat /etc/group | grep docker # 查找 docker 组，确认其是否存在
-## docker:x:978:hou,rqfu
-
-2.添加自己到docker组
-groups # 列出自己的用户组，确认自己在不在 docker 组中
-
-# 如果 docker 组不存在，则添加之：
-sudo groupadd docker
-
-# 将当前用户添加到 docker 组
-sudo gpasswd -a ${USER} docker
-
-# 重启服务
-sudo service docker restart
-systemctl daemon-reload
-
-
-重新登录才能看到组的变动
-$ su wangjl
-
-
-
-# 切换一下用户组（刷新缓存）
-newgrp - docker;
-newgrp - `groups ${USER} | cut -d' ' -f1`; # TODO：必须逐行执行，不知道为什么，批量执行时第二条不会生效
-# 或者，注销并重新登录
-pkill X
-
-
-
-
-http://www.markjour.com/article/docker-no-root.html
-不一定好使。
 
 
 
