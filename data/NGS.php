@@ -11,7 +11,8 @@ return array (
       array('最佳实践 best_practice','best_practice','txt'),
     ),
   ),
-  
+
+
   array (
     0 => 2,
     1 => '测序流程与建库',
@@ -30,15 +31,14 @@ return array (
       array('测序分析shell语句','shell-in-seq','txt'),
       array('构建分析流程 pipeline','pipeline','txt'),
 
-
       array('circos-Cytoscape','circos-Cytoscape','txt'),
       array('富集分析(GO/KEGG)','GO_analysis01','txt'),
       array('常用生信工具(本地)','bioinfo_tools','txt'),
 
       array('GEO and TCGA','GEO_TCGA','txt'),
     ),
-  ),  
-  
+  ),
+
   array (
     0 => 4,
     1 => 'RNA分析',
@@ -52,7 +52,7 @@ return array (
     ),
   ),
 
-  
+
   array (
     0 => 5,
     1 => 'Genome分析',
@@ -64,5 +64,5 @@ return array (
 
     ),
   ),
-  
+
 );

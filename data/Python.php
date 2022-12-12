@@ -46,7 +46,7 @@ return array (
       array('Py与算法 algorithm','Py201_algorithm','txt',),
       array('机器学习概述 ML AI','MachineLearning-01','txt',),
       array('sklearn基础教程','sklearn','txt',), //https://scikit-learn.org/stable/
-      array('TensorFlow.txt','TensorFlow','txt',),
+      array('深度学习与TensorFlow','TensorFlow','txt',),
       array('python爬虫','webSpider','txt',),
       array('python财经','stocks','txt',),
     ),
@@ -54,7 +54,7 @@ return array (
   
    
   array (
-    0 => 4,
+    0 => 5,
     1 => 'GO语言',
     2 => array (
       array('GO语言简介','GO_lang001','html',),
