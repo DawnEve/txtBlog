@@ -30,7 +30,7 @@ return array (
       array('cell_marker','cell_marker','txt'),
       array('Seurat包','Seurat_note','txt'),
       array('Seurat源码阅读','Seurat_source','txt'),
-      array('Monocle包','Monocle_note','txt'),
+      array('Monocle包','monocle3_note','txt'),
       array('RNA_Velocity','RNA_Velocity_note','txt'),
     ),
   ),
