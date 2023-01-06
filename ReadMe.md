@@ -98,5 +98,6 @@ $ git checkout master
 /index.php?c=summary&k=2015 年度总结
 /index.php?c=summary&k=2020 年度总结
 /index.php?c=summary&k=2021 年度总结
+/index.php?c=summary&k=2022 年度总结
 
 ``````
