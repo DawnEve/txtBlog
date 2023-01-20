@@ -86,9 +86,9 @@
 		//计算机技术类============================前端资料类
 		$links_Front=array(
 			//前端名人
+			array('http://www.zhangxinxu.com/','张鑫旭', '腾讯ISUX。欢迎与我一同交流web前端方面的东西！'),
 			array('http://www.ruanyifeng.com/','阮一峰','Alipay.com as an Node/JavaScript engineer.'),
 			array('http://www.liaoxuefeng.com/','廖雪峰'),
-			array('http://www.zhangxinxu.com/','张鑫旭', '腾讯ISUX。欢迎与我一同交流web前端方面的东西！'),
 			array('http://rapheal.sinaapp.com/about/','拉风博客', '腾讯广州研发部，微信产品部门'),
 			array('http://www.cnblogs.com/jikey/p/4426105.html','豪情的博客', '高级qq群'),
 			array('http://www.nowamagic.net/','简明现代魔法','其实每个程序员都是魔法师'),
