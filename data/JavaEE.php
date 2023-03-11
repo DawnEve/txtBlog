@@ -22,8 +22,8 @@ return array (
     1 => 'JavaSE',
     2 => 
     array (
-      array('javaSE描述','javaSE001','html',),
-      array('javaSE入门到精通','javaSE002','txt',),
+      array('Java准备','java00-prep','txt',),
+      array('java基础','java02-base','txt',),
     ),
   ),
     

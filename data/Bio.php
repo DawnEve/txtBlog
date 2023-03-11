@@ -8,6 +8,7 @@ return array (
       array('项目描述','index','html',),
       array('参考资料','bio02','html'),
       array('FAQ','bio03','html'),
+      array('进度条','progressBar','html'),
     ),
   ),
 
@@ -30,8 +31,10 @@ return array (
     1 => '经验教训',
     2 => array (
       array('投稿经验与教训（基金）','paper_prep','html'),
-      array('进度条','progressBar','html'),
 
+      array('科研故事','story','txt'),
+      array('Endnote的使用','endnote','txt'),
+      array('影响因子IF','IF','html'),
     ),
   ),
 

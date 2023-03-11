@@ -40,9 +40,7 @@ return array (
     1 => '相关分析',
     2 => array (
       array('wgcna包','wgcna_note','txt'),
-      array('科研故事','story','txt'),
-      array('Endnote的使用','endnote','txt'),
-      array('影响因子IF','IF','html'),
+
     ),
   ),
   
