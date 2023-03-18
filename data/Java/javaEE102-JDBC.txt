@@ -1,0 +1,430 @@
+JDBC 等数据库
+
+JDBC是Java DataBase Connectivity的缩写，它是Java程序访问数据库的标准接口。
+
+
+
+========================================
+JDBC 标准
+----------------------------------------
+1.
+Java代码并不是直接通过TCP连接去访问数据库，而是通过JDBC接口来访问，而JDBC接口则通过JDBC驱动来实现真正对数据库的访问。
+
+MySQL的JDBC驱动由Oracle提供。
+一个MySQL的JDBC的驱动就是一个jar包，它本身也是纯Java编写的。
+
+
+
+
+(2) MySql 添加新用户
+首先启动 MySql。
+win+R，输入cmd回车打开命令行。
+输入G:，然后使用cd进入到mysql/bin目录。
+G:\xampp\mysql\bin>mysql -u root -h localhost
+MariaDB [(none)]> 
+> use think;
+
+MariaDB [think]> select * from think_weibo limit 1 \G
+*************************** 1. row ***************************
+      id: 1
+     uid: 0
+ content: mandatory 英 ['m?nd?t(?)r?]  美 ['m?nd?t?ri]
+adj. 强制的；托管的；命令的
+n. 受托者（等于mandatary）
+
+Not all these interfaces are mandatory.
+并非所有这些接口都是强制的。
+add_time: 1521619716
+     cid: 4
+ archive: NULL
+1 row in set (0.00 sec)
+
+MariaDB [think]> desc think_weibo;
++----------+-------------+------+-----+---------+----------------+
+| Field    | Type        | Null | Key | Default | Extra          |
++----------+-------------+------+-----+---------+----------------+
+| id       | int(10)     | NO   | PRI | NULL    | auto_increment |
+| uid      | int(20)     | NO   |     | NULL    |                |
+| content  | text        | YES  |     | NULL    |                |
+| add_time | varchar(30) | YES  |     | NULL    |                |
+| cid      | int(10)     | YES  |     | NULL    |                |
+| archive  | int(10)     | YES  |     | NULL    |                |
++----------+-------------+------+-----+---------+----------------+
+
+
+
+修改用户名:
+MariaDB [mysql]> select Host, User, Password from user;
++-----------+------+------------------ -------------------------+
+| Host      | User | Password                                  |
++-----------+------+------------------- ------------------------+
+| localhost | root |                                           |
+| 127.0.0.1 | root |                                           |
+| ::1       | root |                                           |
+| localhost |      |                                           |
+| localhost | pma  |                                           |
+| %         | root | *81F5E21E35407D884A6CD4A731AEBFB6AF209E1B | 这个密码是空！
++-----------+------+----------------- --------------------------+
+
+
+简单化：设置新用户 root2，密码是 123456，所有机器可以访问：
+use mysql;
+insert into mysql.user(Host,User,Password) values("%","root2",password("123456"));
+
+给root权限
+grant all on *.* to root2@'%' identified by '123456' with grant option;
+flush privileges;
+
+检查用户
+select host, user,password,plugin from user;
+
+注意: % 符号不能本地登录，所以登录需要使用对外IP地址。
+> mysql -h 192.168.2.199 -u root2 -p #ok
+G:\xampp\mysql\bin>mysql -h localhost -u root2 -p  #Not OK
+G:\xampp\mysql\bin>mysql -h 127.0.0.1 -u root2 -p  #Not OK
+Enter password: ******
+ERROR 1045 (28000): Access denied for user 'root2'@'localhost' (using password: YES)
+
+
+
+
+## 
+授权格式:  grant 权限 on 库.表 to 用户名@'主机范围';
+GRANT ALL ON *.* TO 'root2'@'%';
+flush privileges;
+或 GRANT ALL ON *.* TO 'tomcat'@'localhost';
+
+修改用户密码的语句
+UPDATE user SET password=password('123456') WHERE user='root2';
+flush privileges;
+或者 SET PASSWORD FOR 'tomcat'@'%' = PASSWORD('123456');
+
+update user set plugin="mysql_native_password";
+
+查看权限
+show grants for root2@'%';
+show privileges;
+SHOW GRANTS FOR 'root2'@'localhost';
+
+
+
+
+
+
+
+
+========================================
+JDBC 连接 并查询
+----------------------------------------
+
+https://www.liaoxuefeng.com/wiki/1252599548343744/1321748435828770
+
+2. 连接格式
+
+URL是由数据库厂商指定的格式，例如，MySQL的URL是：
+	jdbc:mysql://<hostname>:<port>/<db>?key1=value1&key2=value2
+
+假设数据库运行在本机localhost，端口使用标准的3306，数据库名称是learnjdbc，那么URL如下：
+	jdbc:mysql://localhost:3306/learnjdbc?useSSL=false&characterEncoding=utf8
+	后面的两个参数表示不使用SSL加密，使用UTF-8作为字符编码（注意MySQL的UTF-8是utf8）。
+
+
+(1) 要获取数据库连接，使用如下代码：
+// JDBC连接的URL, 不同数据库有不同的格式:
+String JDBC_URL = "jdbc:mysql://localhost:3306/test";
+String JDBC_USER = "root";
+String JDBC_PASSWORD = "password";
+
+// 获取连接:
+Connection conn = DriverManager.getConnection(JDBC_URL, JDBC_USER, JDBC_PASSWORD);
+
+// TODO: 访问数据库...
+
+// 关闭连接:
+conn.close();
+
+
+(2) 示例：连接数据库并查询
+	private static void demo1() throws SQLException {
+		// JDBC连接的URL, 不同数据库有不同的格式:
+		String JDBC_URL = "jdbc:mysql://localhost:3306/test";
+		String JDBC_USER = "root";
+		String JDBC_PASSWORD = "";
+		
+		// 获取连接: 并打印结果
+		try(Connection conn = (Connection) DriverManager.getConnection(JDBC_URL, JDBC_USER, JDBC_PASSWORD);){
+			try(Statement stmt = conn.createStatement()){
+				try(ResultSet rs = stmt.executeQuery("SELECT host,user,password FROM mysql.user")){
+					System.out.println("host, usr, pass");
+					while(rs.next()) {
+						String host=rs.getString(1); //索引从1开始
+						String usr=rs.getString(2);
+						String pass=rs.getString(3);
+						System.out.printf("[%s]\t [%s]\t [%s]\n", host, usr, pass);
+					}
+				}
+			}
+		} catch (Exception e) {
+			e.printStackTrace();
+		}
+		// 关闭连接:
+		//conn.close();
+	}
+结果:
+host, usr, pass
+[localhost]	 [root]	 []
+[127.0.0.1]	 [root]	 []
+[::1]	 [root]	 []
+[localhost]	 []	 []
+[localhost]	 [pma]	 []
+[%]	 [root]	 [*81F5E21E35407D884A6CD4A731AEBFB6AF209E1B]
+[%]	 [root2]	 [*6BB4837EB74329105EE4568DDA7DC67ED2CA2AD9]
+
+
+(3) 防止注入
+使用Java对数据库进行操作时，必须使用PreparedStatement，严禁任何通过参数拼字符串的代码！
+User login(String name, String pass) {
+    ...
+    String sql = "SELECT * FROM user WHERE login=? AND pass=?";
+    PreparedStatement ps = conn.prepareStatement(sql);
+    ps.setObject(1, name);
+    ps.setObject(2, pass);
+    ...
+}
+
+
+
+示例:
+	// 防止注入，要使用 PreparedStatement 拼凑字符串
+	private static void demo2() {
+		// JDBC连接的URL, 不同数据库有不同的格式:
+		String JDBC_URL = "jdbc:mysql://localhost:3306/test";
+		String JDBC_USER = "root";
+		String JDBC_PASSWORD = "";
+		// 获取连接: 并打印结果
+		try(Connection conn = (Connection) DriverManager.getConnection(JDBC_URL, JDBC_USER, JDBC_PASSWORD);){
+			try(PreparedStatement ps = conn.prepareStatement("SELECT host,user,password FROM mysql.user where user=? and host=?")){
+				ps.setObject(1, "root");
+				ps.setObject(2, "127.0.0.1");
+				try(ResultSet rs = ps.executeQuery()){
+					System.out.println("host, usr, pass");
+					while(rs.next()) {
+						String host=rs.getString(1); //索引从1开始
+						String usr=rs.getString(2);
+						String pass=rs.getString(3);
+						System.out.printf("[%s]\t [%s]\t [%s]\n", host, usr, pass);
+					}
+				}
+			}
+		} catch (Exception e) {
+			e.printStackTrace();
+		}		
+	}
+输出:
+host, usr, pass
+[127.0.0.1]	 [root]	 []
+
+
+
+
+
+
+
+
+3. 一个常规操作: 三个资源要分别关闭
+如果没有用户输入，就安全很多。
+
+package chapter17;
+
+import java.sql.DriverManager;
+import java.sql.ResultSet;
+import java.sql.SQLException;
+import java.sql.Statement;
+
+import com.mysql.jdbc.Connection;
+
+/**
+ * http://www.cnblogs.com/hongten/archive/2011/03/29/1998311.html
+ * @author admin
+ */
+
+public class JDBCDemo {
+	 //0.连接MySql数据库，用户名和密码都是root   
+    String url = "jdbc:mysql://localhost:3306/test" ;    
+    String username = "root" ;   
+    String password = "" ;
+    
+	Statement stmt=null;
+	ResultSet rs=null;
+	Connection conn=null;
+    
+	public static void main(String[] args) {
+		JDBCDemo j=new JDBCDemo();
+//		j.query("show tables;");
+		j.query("select * from t1;");
+	}
+	
+	private void query(String sql){
+		JDBCDemo d=new JDBCDemo();
+		Connection conn=d.getConnection();
+		sql="show tables;";
+		
+		//3.创建statement，并查询
+
+		try {
+			stmt = conn.createStatement();
+			//PreparedStatement pstmt = conn.prepareStatement(sql) ;   
+			//CallableStatement cstmt = conn.prepareCall("{CALL demoSp(? , ?)}") ;
+			stmt.executeQuery("use phpcms;");
+			rs = stmt.executeQuery(sql);
+			//4.输出结果
+			while(rs.next()){   
+		         //String name = rs.getString("Tables_in_test") ;   
+				 //System.out.print(name +":");
+		         String tb_name = rs.getString(1) ; //此方法比较高效，第一列编号是1，不是0。
+		         System.out.println(tb_name);
+		     }
+		} catch (SQLException e) {
+			e.printStackTrace();
+		}
+		
+		
+		
+		/**
+		//5.关闭连接
+ 			1)关闭记录集   
+			2)关闭声明   
+			3)关闭连接对象   
+		 */
+		try {
+			if(rs!=null){ rs.close(); }
+			if(stmt!=null){ stmt.close(); }
+			if(conn!=null){ conn.close(); }
+		} catch (Exception e) {
+			e.printStackTrace();
+		}
+	}
+
+
+	private Connection getConnection() {
+		//1.加载驱动类
+		try{
+			Class.forName("com.mysql.jdbc.Driver");
+		}catch(ClassNotFoundException e){   
+		   System.out.println("找不到驱动程序类 ，加载驱动失败！");   
+		   e.printStackTrace() ;   
+		}
+		
+		//2.数据库连接
+		Connection conn =  null;
+		try{   
+		   conn = (Connection) DriverManager.getConnection(this.url , this.username , this.password) ;   
+		}catch(SQLException se){   
+		   System.out.println("数据库连接失败！");   
+		   se.printStackTrace() ;   
+		}
+		
+		return conn;
+	}
+
+}
+
+
+
+========================================
+基于Java的、无服务器的数据库引擎 H2 (嵌入式数据库引擎) //todo
+----------------------------------------
+
+
+
+
+
+
+
+========================================
+----------------------------------------
+
+
+
+
+========================================
+----------------------------------------
+
+
+
+========================================
+----------------------------------------
+
+
+
+
+========================================
+----------------------------------------
+
+
+
+========================================
+----------------------------------------
+
+
+========================================
+----------------------------------------
+
+
+
+========================================
+----------------------------------------
+
+
+
+
+========================================
+----------------------------------------
+
+
+
+========================================
+----------------------------------------
+
+
+
+
+========================================
+----------------------------------------
+
+
+
+========================================
+----------------------------------------
+
+
+========================================
+----------------------------------------
+
+
+
+========================================
+----------------------------------------
+
+
+
+
+========================================
+----------------------------------------
+
+
+
+========================================
+----------------------------------------
+
+
+
+
+========================================
+----------------------------------------
+
+
+
+========================================
+----------------------------------------
+
