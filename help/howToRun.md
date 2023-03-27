@@ -1,14 +1,16 @@
 # 部署到本地(基于 php 5.6)
-在 docker 中测试过，参考镜像： https://hub.docker.com/r/dawneve/php
-在 win10/win11 测试过。
+在 docker 中测试过，参考镜像： https://hub.docker.com/r/dawneve/php  
+在 win10/win11 测试过。  
 下文是 win 上的部署，其他环境请自行摸索。
 
 
 ## 1.下载并安装xampp
 使用bing搜索 xampp，下载 php 5.6 最新子版本，比如：
+```
 https://sourceforge.net/projects/xampp/files/XAMPP%20Windows/5.6.33/
 强烈建议安装到某磁盘根目录，比如 G:/xampp/
 否则目录层次过多，以后使用极其不便！
+```
 
 
 ## 2.在本机 host 文件设置虚拟域名
@@ -45,18 +47,18 @@ IP是固定格式，后面的域名随便取名，看着像个域名即可。
 
 ## 4.下载本博客代码
 下载博客代码，解压后放到 G:/xampp/htdocs/txtBlog/。 
-直接从github下载解压
 
-或者在上一级文件中git clone克隆代码:
-需要提前安装 git：https://git-scm.com/downloads
-然后在 G:/xampp/htdocs/ 目录空白处右击，选择 git bash，执行命令:
-`$ git clone https://github.com/dawneve/txtBlog.git`
+- 直接从github下载解压
+- 或者在上一级文件中git clone克隆代码:
+	* 需要提前安装 git：https://git-scm.com/downloads
+	* 然后在 G:/xampp/htdocs/ 目录空白处右击，选择 git bash，执行命令:
+	* `$ git clone https://github.com/dawneve/txtBlog.git`
 
 
-
-5.重启apache服务
+## 5.重启apache服务
 
 双击 G:\xampp\xampp-control.exe，控制面板就会出现在windows的右下角托盘中。
+
 双击托盘图标，呼出xampp控制面板，单击第一行 apache 对应的 Start，稍等，如没有报错信息，就是web服务器启动正常。
 
 在浏览器输入 blog.dawneve.cc 即可访问本博客系统。
@@ -73,8 +75,8 @@ IP是固定格式，后面的域名随便取名，看着像个域名即可。
 
 # 部署到阿里云虚拟主机(2018.11.7)
 
-1.先把blog二级域名解析到空间，再绑定到阿里云空间
-2.子域名指向子目录：在根目录htdocs下创建文件.htaccess，内容如下。
+1.先把blog二级域名解析到空间，再绑定到阿里云空间  
+2.子域名指向子目录：在根目录htdocs下创建文件.htaccess，内容如下。  
 
 ```
 RewriteEngine On
@@ -86,5 +88,5 @@ RewriteRule ^(.*)$ /txtBlog/$1 [L,QSA]
 #可以绑定多个，只需要重复以上三行代码，并更改一下域名、目录名 就好了
 ```
 
-3.折腾了半天无法显示，最后发现是缓存实现不了。先注释掉index.php中的两行缓存后，一切正常显示了。
+3.折腾了半天无法显示，最后发现是缓存实现不了。先注释掉index.php中的两行缓存后，一切正常显示了。  
 4.网址： http://blog.applymed.cn/ [域名已过期]

@@ -59,7 +59,7 @@ txtBlog v0.6
 
 
 ## How to run? 如何运行？
-	[如何部署?](docs/howToRun.md)
+[如何部署?](help/howToRun.md)
 
 
 
