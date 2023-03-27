@@ -27,6 +27,7 @@ return array (
       array('java高级','java02-adv','txt',),
       array('java Web','java03-JavaWeb','txt',),
       array('Spring','java04-Spring','txt',),
+      array('SpringBoot','java06-SpringBoot','txt',),
     ),
   ),
     

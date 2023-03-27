@@ -9,7 +9,16 @@ return array (
       array('常用代码片段','html002','txt'),
       array('markdown语法简介','markdown001','txt'),
       array('rst语法简介','rst001','txt'),
-      array('程序员自保策略','self_protect','txt'),
+    ),
+  ),
+
+
+  array (
+    0 => 1,
+    1 => '网络协议',
+    2 => array (
+      array('http协议','http','txt',),
+      array('技术需求信息','techInfo','txt',),
     ),
   ),
 
@@ -34,21 +43,13 @@ return array (
   ),
 
 
-  array (
-    0 => 1,
-    1 => '网络协议',
-    2 => array (
-      array('http协议','http','txt',),
-      array('技术需求信息','techInfo','txt',),
-    ),
-  ),
-
 
   array (
     0 => 1,
-    1 => '产品与推广',
+    1 => '产品/推广/思维',
     2 => array (
       array('产品思维','product','txt',),
+      array('程序员自保策略','self_protect','txt'),
     ),
   ),
 

@@ -683,14 +683,14 @@ class Student2 extends Person2{}
 
 
 
-5. jdk8新特性：
+5. jdk8新特性
 (1)可重复注解
 支持在类名上写多个同名注解 MyAnno，本质是引导到其复数版本了。
 
 1) 声明一个单数 MyAnno 注解，其中使用单数成员变量
 2) 则还要在定义一个复数的 MyAnnos，其中使用数组成员变量
 3) 在单数 MyAnno 上声明 @Repeatable(MyAnnos.class)，关联复数形式
-4) 单复数两个的 Target 和 Retention 一致
+4) 单复数两个的 Target 和 Retention 等要一致，否则报错。
 5) 可以使用了
 
 @MyAnno()
@@ -699,6 +699,7 @@ class XX{}
 
 
 (2) 类型注解 
+1) 类的对泛型进行注解，Target 需要加上 TYPE_PARAMETER
 SuppressWarnings 点开，顶部 @Target 的 TYPE 点开，最底部有
 public enum ElementType {
 	...
@@ -719,28 +720,33 @@ public enum ElementType {
 }
 
 
+@Target({TYPE, FIELD, METHOD, PARAMETER, CONSTRUCTOR, LOCAL_VARIABLE, TYPE_PARAMETER})
+public @interface MyAnno {
+	String[] value() default "";
+}
+
+// 注解加到 类的泛型，需要 Target 加上 TYPE_PARAMETER
+class Generic<@MyAnno T>{ }
+
+
+2) 对集合框架的泛型进行注解，Target 需要加上 TYPE_USE
+定义同上。
+使用示例:
+
+	// 数据类型前修饰，甚至异常前，需要 Target 加上 TYPE_USE
+	public void show() throws @MyAnno RuntimeException{
+		ArrayList<@MyAnno String> list = new ArrayList<>();
+		int num = (@MyAnno int)10L;
+	}
+
+
+以上这些注解，都可以通过反射拿到，然后进一步操作。
 
 
 
 
-
-
-
-========================================
-====> //todo Current: 当前进度 https://www.bilibili.com/video/BV1Kb411W75N?p=511
-----------------------------------------
-
-
-
-
-
-
-
-
-
-
-
-
+ref:
+https://www.bilibili.com/video/BV1Kb411W75N?p=512
 
 
 
@@ -797,8 +803,217 @@ Java 反射机制
 
 
 ========================================
-动态代理
+|-- 动态代理
 ----------------------------------------
+https://www.bilibili.com/video/BV1Kb411W75N/?p=662 to 665 
+
+1. 代理对象和被代理对象都实现同一个接口
+
+接口
+	实现类1
+	实现类2(代理1)
+
+- 静态代理
+	一个代理负责一个类
+	在编译期间确定代理关系
+- 动态代理 
+	一个类完成所有的代理
+	不能在编译期间确定，运行期间确定代理关系
+	需要代理哪个类，就实现其接口
+	更灵活
+
+
+
+2. 实例
+
+(1) 静态代理类
+package chapter3.reflect.proxy;
+
+public class StaticProxy {
+	public static void main(String[] args) {
+		//1.被代理对象
+		NikeClothFactory nike=new NikeClothFactory();
+		//2.代理对象
+		ProxyClothFactory proxy_nike = new ProxyClothFactory(nike);
+		//3.使用代理调用 被代理类的方法
+		proxy_nike.produceCloth();
+	}
+}
+
+
+
+// 静态代理例子：代理类和被代理类在编译期间就已经确定了，写死了
+//定义接口
+interface ClothFactory{
+	void produceCloth();
+}
+
+//代理类
+class ProxyClothFactory implements ClothFactory{
+	private ClothFactory factory; //用被代理的对象进行初始化
+
+	public ProxyClothFactory(ClothFactory factory) {
+		super();
+		this.factory = factory;
+	}
+
+	@Override
+	public void produceCloth() {
+		System.out.println("代理工厂 开始的准备工作");
+		factory.produceCloth();
+		System.out.println("代理工厂 首尾工作");
+	}
+}
+
+
+// 被代理类
+class NikeClothFactory implements ClothFactory{
+
+	@Override
+	public void produceCloth() {
+		System.out.println("Nike工厂生产一批衣服");
+	}
+	
+}
+
+
+
+(2) 动态代理
+十分复杂，记住就行了。
+用到的挺多，但是不用自己实现。
+
+package chapter3.reflect.proxy;
+
+import java.lang.reflect.InvocationHandler;
+import java.lang.reflect.Method;
+import java.lang.reflect.Proxy;
+
+public class DynamicProxy {
+	public static void main(String[] args) {
+//		demo1();
+//		demo2();
+		demo3();
+	}
+
+	private static void demo3() {
+		//使用上一节静态代理的例子，测试
+		NikeClothFactory obj = new NikeClothFactory();
+		ClothFactory proxy2=(ClothFactory) ProxyFactory.getProxyInstance(obj);
+		proxy2.produceCloth();
+	}
+
+	private static void demo2() {
+		//获取动态代理对象
+		Flyable proxyInstance = (Flyable) ProxyFactory.getProxyInstance(new FlyMouse());
+		//调用方法:通过代理类调用方法时，自动调用被代理类的同名方法
+		System.out.println( proxyInstance.getName() );
+		proxyInstance.fly(10);
+	}
+
+	private static void demo1() {
+		Bird bird=new Bird();
+		//获取动态代理对象
+		Flyable proxyInstance = (Flyable) ProxyFactory.getProxyInstance(bird);
+		//调用方法:通过代理类调用方法时，自动调用被代理类的同名方法
+		System.out.println( proxyInstance.getName() );
+		proxyInstance.fly(1000); //带参数的调用
+	}
+
+}
+
+//定义接口
+interface Flyable{
+	String getName();
+	void fly(int speed);
+}
+
+//被代理类
+class Bird implements Flyable{
+
+	@Override
+	public String getName() {
+		return "I am a bird";
+	}
+
+	@Override
+	public void fly(int speed) {
+		System.out.println("Bird can fly at speed: "+speed);
+	}
+}
+
+//被代理类2
+class FlyMouse implements Flyable{
+
+	@Override
+	public String getName() {
+		return "I am a FlyMouse";
+	}
+
+	@Override
+	public void fly(int speed) {
+		System.out.println("FlyMouse can fly at speed: "+speed);
+	}
+}
+
+/*实现动态代理类，需要解决的问题？
+*问题1.如何根据加载到内存中的被代理类，动态的创建一个代理类及其对象？
+*问题2.通过代理类的对象调用方法时，怎么动态的调用被代理类的同名方法？
+*/
+class ProxyFactory{
+	//1.返回一个代理类的对象
+	public static Object getProxyInstance(Object obj) { //obj就是被代理对象
+		//触发器负责调用方法
+		MyInvocationHandler handler = new MyInvocationHandler(); //该类的实现见下文
+		handler.bind(obj); //传入 被代理类的对象
+		
+		//3个参数：类加载器、接口、触发器，返回一个代理类的对象，解决问题1
+		return Proxy.newProxyInstance(obj.getClass().getClassLoader(), 
+				obj.getClass().getInterfaces(), 
+				handler);
+	}
+}
+
+class MyInvocationHandler implements InvocationHandler{
+	private Object obj; //赋值时，需要使用被代理类的对象进行赋值
+	public void bind(Object obj) { //这里赋值
+		this.obj=obj;
+	}
+	
+	//通过代理类的对象，调用方法时，会自动调用如下方法 invoke()
+	//被代理类要执行的方法的功能，声明在 invoke() 中
+	@Override
+	public Object invoke(Object proxy, Method method, Object[] args) throws Throwable {
+		//极为重要！代理类对象调用的方法，也在这里调用 被代理类对象的同名方法
+		//注意3个参数的来源 A.invoke(B, C); A是要调用的方法，B是被代理类的对象(bind(传入))，C是参数
+		Object returnValue = method.invoke(obj, args);
+		//被代理对象调用的返回值，作为 invoke 方法的返回值
+		return returnValue;
+	}
+}
+
+
+
+========================================
+|-- Aspect-Oriented Programming(AOP) 面向切面编程
+----------------------------------------
+aop（面向切面编程）是一种对oop的完善，比如在进行数据库操作的时候执行方法前或者后加入一条日志记录，使用一个额外的类去做日志操作，让dao类更专注。
+
+1. 场景
+每个方法都需要相同的记录日志的代码。
+	方法1：代码1+日志1
+	方法2：代码2+日志1
+	方法3：代码3+日志1
+
+可以把日志部分抽离到方法A中，但是它们又会依赖方法A
+	要把方法A写到一个工具类的静态方法？又增加耦合。
+最理想的效果是：方法1-3既可以执行方法A，又无需在程序中以硬编码的方式直接调用方法A。
+	使用动态代理可以实现：
+	动态代理中
+		调用通用方法1
+		回调 被代理类的方法
+		调用通用方法2
+
+
 
 
 
@@ -808,7 +1023,49 @@ Java 反射机制
 
 
 ========================================
+====> //todo Current: 当前进度 https://www.bilibili.com/video/BV1Kb411W75N?p=665
+----------------------------------------
+
+
+
+
+
+
+
+========================================
 监听器、拦截器
+----------------------------------------
+
+
+
+
+
+
+
+
+
+
+
+
+========================================
+websocket 协议 goto 本博客 html/http协议
+----------------------------------------
+
+
+
+
+
+========================================
+MVC 思想
+----------------------------------------
+
+
+
+
+
+
+
+========================================
 ----------------------------------------
 
 

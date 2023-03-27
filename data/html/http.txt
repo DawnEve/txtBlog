@@ -278,13 +278,228 @@ todo
 
 
 
-========================================
-----------------------------------------
 
 
 ========================================
+WebSocket 是 HTML5 下一种新的协议 (rfc6455, rfc7936)
+----------------------------------------
+1. web + socket
+
+(1) websocket的原理（尝试阅读RFC文档）
+- websocket约定了一个通信的规范，通过一个握手的机制，客户端和服务器之间能建立一个类似tcp的连接，从而方便它们之间的通信
+- 在websocket出现之前，web交互一般是基于http协议的短连接或者长连接
+- websocket是一种全新的协议，不属于http无状态协议，协议名为"ws"
+
+- Socket 是传输控制层协议，WebSocket 是应用层协议。
+	ws -> wss
+	http -> https
+
+一个典型的Websocket握手请求如下：
+
+客户端请求
+	GET / HTTP/1.1
+	Upgrade: websocket
+	Connection: Upgrade
+	Host: example.com
+	Origin: http://example.com
+	Sec-WebSocket-Key: sN9cRrP/n9NdMgdcy2VJFQ==
+	Sec-WebSocket-Version: 13
+
+服务器回应
+	HTTP/1.1 101 Switching Protocols
+	Upgrade: websocket
+	Connection: Upgrade
+	Sec-WebSocket-Accept: fFBooB7FAkLlXgRSz0BT3v4hq5s=
+	Sec-WebSocket-Location: ws://example.com/
+
+解释:
+	Connection 必须设置 Upgrade，表示客户端希望连接升级。
+	Upgrade 字段必须设置 Websocket，表示希望升级到 Websocket 协议。
+	这些键值对没有前后顺序的要求。
+
+握手的意思：
+	websocket 是为了确定该 session 是否可用。
+	因为基于 tcp，所以是可靠的
+	Sec-WebSocket-Key 的内容是 key(base64编码的值)，发送给server，server发送 Sec-WebSocket-Accept 给浏览器，完成握手。
+	Sec-WebSocket-Key 怎么转为 Sec-WebSocket-Accept 的？
+		GUID + Sec-WebSocket-Key 取 hash值，base64编码后给  Sec-WebSocket-Accept
+		key=base64(客户端随机数);
+		value=key+GUID 全局一致;
+		newvalue=SHA-1(value);
+		base64(newvalue);
+	没有加密，依赖wss
+
+
+数据发送的过程：
+	基于tcp如何发送数据
+		tcp分包和粘包的问题：加上包的长度，或者末尾添加"\r\n\r\n";
+		加协议头
+	data frame 数据帧：websocket 有四个部分
+		头、长度、掩码、数据
+		
+
+从 websocket 学习如何创建自定义协议。
+	c++程序员喜欢造轮子：握手 + 数据发送的过程
+
+
+
+
+(2) ws 和 http 的比较
+相同点：
+	都是基于tcp的，都是可靠性传输协议
+	都是应用层协议
+
+不同点：
+	WebSocket是双向通信协议，模拟Socket协议，可以双向发送或接受信息
+	HTTP是单向的
+	WebSocket是需要浏览器和服务器握手进行建立连接的
+	而http是浏览器发起向服务器的连接，服务器预先并不知道这个连接
+
+联系：
+	WebSocket在建立握手时，数据是通过HTTP传输的。但是建立之后，在真正传输时候是不需要HTTP协议的
+
+
+
+
+(3) 应用: 主要用于服务端推送给客户端
+- 网页上主动更新的内容
+- 网页QQ：有消息时服务端主动推送
+- 扫二维码登录：服务器给网页一个二维码，手机扫码登录，服务器知道登录了，再主动通知网页跳转登录
+
+
+
+
+2. 更详细的教程
+https://www.runoob.com/html/html5-websocket.html
+WebSocket协议：5分钟从入门到精通 https://www.cnblogs.com/chyingp/p/websocket-deep-in.html
+https://zh.javascript.info/websocket
+
+
+
+
+========================================
+| websocket 示例：基于node.js后端
 ----------------------------------------
 
+1. 前端
+$ cat 163/webSocket.html
+<meta charset=utf8 />
+   <!-- 输入内容 -->
+    <input type="text" name="" id="" placeholder="请输入内容">
+    <!-- 发送请求 -->
+    <button>发送</button>   
+    <!-- 接收websocket服务得数据 -->
+    <div></div>
+
+<style>
+        div{
+            width: 300px;
+            height: 200px;
+            border: 1px solid #000;
+            margin-top: 20px;
+        }
+    </style>
+
+<script>
+	var input=document.querySelector('input')
+	var button=document.querySelector('button')
+	var div=document.querySelector('div')
+	
+	// 创建websocket服务地址
+   // const socket=new WebSocket('ws://echo.websocket.org/') 
+	// 'ws://echo.websocket.org/'这个服务地址是websocket官方文档中的地址。不用纠结，后面下一个案例会把他换成自己的
+    const socket=new WebSocket('ws://127.0.0.1:8181') 
+
+    // 当与服务器连接成功出发open事件（websocket四大基本事件 https://www.runoob.com/html/html5-websocket.html）
+    socket.addEventListener('open',function(){
+        div.innerHTML='连接服务器成功'
+    })
+    socket.addEventListener('close',function(){
+        div.innerHTML='服务器连接关闭'
+    })
+	
+    button.addEventListener('click',function(){
+        var value=input.value
+        console.log(value);
+        socket.send(value)
+    })
+
+    socket.addEventListener('message',function(e){
+		wjl=e
+		console.log("get message>>"+e);
+		if(e.data.startsWith("another")){
+			div.innerHTML +="<br>"+e.data
+		}else{
+			div.innerHTML=e.data
+		}
+    })
+</script>
+
+
+2.后端
+$ cat 163/webSocket_server.js
+/*
+>npm install -g ws
++ ws@8.13.0
+added 1 package from 1 contributor in 2.177s
+
+> npm install ws --registry=http://registry.npm.taobao.org
+
+> node webSocket_server.js
+*/
+
+const WebSocket = require('ws');
+console.log("websocket server start at port "+8181)
+console.log(WebSocket)
+ 
+const socket = new WebSocket.Server({ port: 8181 });
+ 
+socket.on('connection', function connection(conn) {
+	console.log("> client conneted");
+	
+	conn.on('message', function(message){
+		socket.clients.forEach(function(conn2){ // 看这里看这里  wss.clients 拿到所有的连接
+			//消息1
+			conn.send(message+" [from server~~~~]") // 发送消息
+			console.log("msg>> "+message)
+
+			//产生随机数
+			var seed=Math.round(Math.random()*100);
+			console.log("seed>> "+seed)
+			if(seed>50){
+				//消息2
+				conn.send("another msg2 from server: seed="+seed);
+			}
+			
+			// 服务端不断的推数据
+			setTimeout(function () {
+				//消息3
+				conn.send('another msg3 from setTimeout: '+seed)
+				console.log("another>> "+seed)
+			}, 500 + seed*10);
+		})
+	});
+
+	conn.on("close", function(message){
+		conn.send(message+" is closing....");
+		console.log("> 连接关闭");
+	})
+});
+
+
+
+3.启动
+
+先启动后端 > node webSocket_server.js
+再用浏览器打开前端 http://localhost/163/webSocket.html
+可以看到页面，状态栏提示: 连接服务器成功
+输入文字，可以看到前后在通信，后台可以主动发送消息。
+
+
+
+ref: 
+https://github.com/Ortonzhang/WebSocket-ws/blob/master/src/demo1/server.js
+https://blog.csdn.net/sinat_36422236/article/details/85051547
 
 
 ========================================
