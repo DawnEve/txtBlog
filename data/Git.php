@@ -43,6 +43,8 @@ return array (
 	  array('密码管理 pass','mg_204_passwd','txt' ),
 	  array('广告管理','mg_205_advertisement','txt' ),
 	  array('经典定律/心理学','mg_206_rule','txt' ),
+	  array('组织行为学','mg_207_org','txt' ),
+	  array('怎么写技术博客','mg_208_tech_blog','txt' ),
 
     ),
   ),

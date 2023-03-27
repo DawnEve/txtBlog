@@ -5,7 +5,10 @@ txtBlog v0.6
 # 目的：建立一个能组织和阅读txt文件的博客系统，用于管理知识。  
 
 
-每周至少提交一个 commit。
+每周至少提交一个 commit: 
+	扫盲：不会的知识点
+	总结：整理会的知识点，条理化
+	交叉融合：新示例、新应用场景
 用输出倒逼输入，让成长有迹可循。
 
 
@@ -55,23 +58,9 @@ txtBlog v0.6
 		- 花生壳？ 
 
 
+## How to run? 如何运行？
+	[如何部署?](docs/howToRun.md)
 
-
-
-# 部署到阿里云虚拟主机(2018.11.7)
-	1.先把blog二级域名解析到空间，再绑定到阿里云空间
-	2.子域名指向子目录：在根目录htdocs下创建文件.htaccess，内容如下。
-```
-RewriteEngine On
-RewriteBase /
-# 绑定 blog.applymed.cn 到子目录 txtBlog
-RewriteCond %{HTTP_HOST} ^blog.applymed.cn$ [NC]
-RewriteCond %{REQUEST_URI} !^/txtBlog/
-RewriteRule ^(.*)$ /txtBlog/$1 [L,QSA]
-#可以绑定多个，只需要重复以上三行代码，并更改一下域名、目录名 就好了
-```		
-	3.折腾了半天无法显示，最后发现是缓存实现不了。先注释掉index.php中的两行缓存后，一切正常显示了。
-	4.网址： http://blog.applymed.cn/
 
 
 
@@ -98,5 +87,6 @@ $ git checkout master
 /index.php?c=summary&k=2015 年度总结
 /index.php?c=summary&k=2020 年度总结
 /index.php?c=summary&k=2021 年度总结
+/index.php?c=summary&k=2022 年度总结
 
 ``````

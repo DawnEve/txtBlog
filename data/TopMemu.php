@@ -11,7 +11,7 @@ return array (
 
   'Art' => '矢量图/多媒体等',
 
-  'JavaEE' => '从javaSE到javaEE和Android',
+  'Java' => '从javaSE到javaEE和Android',
   'Linux' => 'Linux操作系统、服务器软件等',
   'c' => 'C语言在学习-linux环境下',
   'Python' => 'Python3与爬虫',

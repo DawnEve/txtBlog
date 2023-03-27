@@ -8,6 +8,7 @@ return array (
       array('项目描述','scSeq001','html',),
       array('参考资料','scSeq002','html'),
       array('FAQ 及思路','scSeq003','md'),
+      array('空间转录组 Spatio','spatio','html',),
     ),
   ),
 
@@ -29,7 +30,7 @@ return array (
       array('cell_marker','cell_marker','txt'),
       array('Seurat包','Seurat_note','txt'),
       array('Seurat源码阅读','Seurat_source','txt'),
-      array('Monocle包','Monocle_note','txt'),
+      array('Monocle包','monocle3_note','txt'),
       array('RNA_Velocity','RNA_Velocity_note','txt'),
     ),
   ),
@@ -39,9 +40,6 @@ return array (
     1 => '相关分析',
     2 => array (
       array('wgcna包','wgcna_note','txt'),
-      array('科研故事','story','txt'),
-      array('Endnote的使用','endnote','txt'),
-      array('影响因子IF','IF','html'),
 
     ),
   ),
@@ -56,6 +54,5 @@ return array (
       array('统计与统计参数','NGS_statistics','txt'),
     ),
   ),
- 
-  
+
 );

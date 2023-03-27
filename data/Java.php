@@ -10,6 +10,7 @@ return array (
       array('参考资料','javaEE002','html'),
       array('FAQ','javaEE003','html'),
       //array('OOP理论','oop001','md',),
+      array('Java准备','java00-prep','txt',),
       array('设计模式design_pattern','design_pattern','md',),
 
     ),
@@ -22,8 +23,11 @@ return array (
     1 => 'JavaSE',
     2 => 
     array (
-      array('javaSE描述','javaSE001','html',),
-      array('javaSE入门到精通','javaSE002','txt',),
+      array('java基础','java01-base','txt',),
+      array('java高级','java02-adv','txt',),
+      array('java Web','java03-JavaWeb','txt',),
+      array('Spring','java04-Spring','txt',),
+      array('SpringBoot','java06-SpringBoot','txt',),
     ),
   ),
     
