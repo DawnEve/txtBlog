@@ -1027,7 +1027,179 @@ java version "17.0.6" 2023-01-17 LTS
 
 
 ========================================
+Spring JDBC: relational-data-access/
 ----------------------------------------
+目的: 使用 JdbcTemplate 访问关系数据库。
+
+0. 准备数据库
+打算使用mysql默认的数据库，后来发现还要修改该表，只能新建一个测试表。
+首先启动数据库服务。
+
+G:\xampp\mysql\bin>mysql  -h localhost -u root -p
+> 
+> use test;
+MariaDB [test]> show tables;
++----------------+
+| Tables_in_test |
++----------------+
+| students1      |
+| user           |
++----------------+
+
+MariaDB [test]> desc user;
++-------+-------------+------+-----+---------+----------------+
+| Field | Type        | Null | Key | Default | Extra          |
++-------+-------------+------+-----+---------+----------------+
+| id    | int(10)     | NO   | PRI | NULL    | auto_increment |
+| name  | varchar(30) | YES  |     | NULL    |                |
++-------+-------------+------+-----+---------+----------------+
+
+MariaDB [test]> select * from user;
++----+----------+
+| id | name     |
++----+----------+
+|  1 | Lilei    |
+|  2 | jim      |
+|  3 | Michael  |
+
+算了，还是用其他表吧。
+最后发现，不用MySQL。用的是Java实现的H2数据库。
+
+
+
+
+1. 创建 Customer 类
+$ cat Customer.java
+package com.example1.demo3.relationaldataaccess;
+
+public class Customer {
+	private long id;
+	private String first_name, last_name;
+	
+	public Customer(long id, String first_name, String last_name) {
+		super();
+		this.id = id;
+		this.first_name = first_name;
+		this.last_name = last_name;
+	}
+
+	@Override
+	public String toString() {
+		return String.format("Costomer[id=%d, first_name=%s, last_name=%s]", 
+				id, first_name, last_name);
+	}
+	// getters & setters omitted for brevity(简洁)
+}
+
+
+
+
+
+
+
+2. 保存和检索数据
+Spring 提供一个模板类 JdbcTemplate 
+方便处理关系数据库SQL和JDBC
+	JDBC操作深陷细节：资源获取、链接管理、异常处理、常规错误检查等，和项目主体无关。
+	JdbcTemplate 来做以上工作
+
+(1) pom.xml 中添加依赖
+bing 搜: spring jdbc maven
+
+	<!-- https://mvnrepository.com/artifact/org.springframework/spring-jdbc -->
+	<dependency>
+	    <groupId>org.springframework</groupId>
+	    <artifactId>spring-jdbc</artifactId>
+	</dependency>
+
+
+后来又改成了： bing搜索: spring boot jdbc maven
+		<dependency>
+		    <groupId>org.springframework.boot</groupId>
+		    <artifactId>spring-boot-starter-jdbc</artifactId>
+		</dependency>
+		<dependency>
+			<groupId>com.h2database</groupId>
+			<artifactId>h2</artifactId>
+			<scope>runtime</scope>
+		</dependency>
+
+
+(2) 写方法
+$ cat RelationalDataAccessApplication.java
+package com.example1.demo3.relationaldataaccess;
+
+import java.util.Arrays;
+import java.util.List;
+import java.util.stream.Collectors;
+
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.CommandLineRunner;
+import org.springframework.boot.SpringApplication;
+import org.springframework.boot.autoconfigure.SpringBootApplication;
+import org.springframework.jdbc.core.JdbcTemplate;
+
+@SpringBootApplication
+public class RelationalDataAccessApplication implements CommandLineRunner {
+	private static final Logger log=LoggerFactory.getLogger(RelationalDataAccessApplication.class);
+	
+	public static void main(String[] args) {
+		SpringApplication.run(RelationalDataAccessApplication.class, args);
+	}
+	
+	@Autowired
+	JdbcTemplate jdbcTemplate;
+
+	@SuppressWarnings("deprecation")
+	@Override
+	public void run(String... args) throws Exception {
+		log.info("Creating tables");
+		jdbcTemplate.execute("DROP TABLE customers IF EXISTS");
+		jdbcTemplate.execute("CREATE TABLE customers(" +
+		        "id SERIAL, first_name VARCHAR(255), last_name VARCHAR(255))");
+		
+		// Split up the array of whole names into an array of first/last names
+	    List<Object[]> splitUpNames = Arrays.asList("John Woo", "Jeff Dean", "Josh Bloch", "Josh Long").stream()
+	        .map(name -> name.split(" "))
+	        .collect(Collectors.toList());
+	    
+	    // Use a Java 8 stream to print out each tuple of the list
+	    splitUpNames.forEach(name -> log.info(String.format("Inserting customer record for %s %s", name[0], name[1])));
+	    
+	    // Uses JdbcTemplate's batchUpdate operation to bulk load data
+	    jdbcTemplate.batchUpdate("INSERT INTO customers(first_name, last_name) VALUES (?,?)", splitUpNames);
+	    
+	    log.info("Querying for customer records where first_name = 'Josh':");
+	    jdbcTemplate.query(
+	            "SELECT id, first_name, last_name FROM customers WHERE first_name = ?", new Object[] { "Josh" },
+	            (rs, rowNum) -> new Customer(rs.getLong("id"), rs.getString("first_name"), rs.getString("last_name"))
+	        ).forEach(customer -> log.info(customer.toString()));
+	}
+}
+
+
+解释:
+@Autowired //todo
+	默认使用 H2 内存数据库。
+
+
+(3) 直接启动main方法所在的类：
+报错:
+Consider defining a bean of type 'org.springframework.jdbc.core.JdbcTemplate' in your configuration.
+有人说主要是配置文件不对，可能没有注入。
+
+参考官方示例: https://github.com/spring-guides/gs-relational-data-access/blob/main/complete/pom.xml
+回到(1)修改pom.xml，正常启动了。
+
+
+输出:
+2023-04-01T21:32:44.598+08:00  INFO 9428 --- [           main] c.e.d.r.RelationalDataAccessApplication  : Costomer[id=3, first_name=Josh, last_name=Bloch]
+2023-04-01T21:32:44.602+08:00  INFO 9428 --- [           main] c.e.d.r.RelationalDataAccessApplication  : Costomer[id=4, first_name=Josh, last_name=Long]
+
+
+
 
 
 
