@@ -16,7 +16,7 @@ AOT.
 
 
 ========================================
-|-- Spring 6 大纲与进度记录(最低 jdk17)
+Spring 6 大纲与进度记录(最低 jdk17)
 ----------------------------------------
 1. 视频进度
 https://www.bilibili.com/video/BV1kR4y1b7Qc/?p=2
@@ -527,18 +527,386 @@ public class UserTest {
 
 
 ========================================
+IoC: 控制反转 (inversion of control)
 ----------------------------------------
+1. 什么是IoC？
+
+创建对象的过程被反转了。是一种思想。
+
+(1)使用IoC容器来管理
+	所有Java对象的实例和初始化，
+	控制对象与对象之间的依赖关系
+
+	IoC容器管理的Java对象叫 bean，它与new创建的对象没有任何区别。
+
+(2)bean定义信息
+xml -> BeanDefinition
+抽象 -> BeanDefinitionReader;
+IoC容器: bean 定义信息 获取 
+	实例化 实例: BeanFactory工厂 + 反射
+	初始化 -> 最终对象
+
+(3) 依赖注入：是控制反转的实现方式
+
+两种实现：
+	set 注入
+	构造注入
+
+Bean 管理:
+	bean 对象的创建
+	bean 对象中属性的赋值
+
+(4) BeanFactory 是spring框架内部使用的接口，不提供给开发人员
+
+我们使用的是 ApplicationContext 接口，是 BeanFactory 的子接口。
+其重要实现类包括:
+BeanFactory 接口
+	|- ApplicationContext 接口
+	  |- ConfigurableApplication 接口
+	  	|- FilSystemXmlApplicationContext 类
+	  	|- ClassPathXmlApplicationContext 类
+
+
+//todo eclipse 查看接口继承和实现图?
+https://www.likecs.com/show-203369151.html
+A: F4：Open Type Hierarchy --（在新弹出窗口）-> show the Supertype Hierarchy（则会有接口显示）
+
+Q: 如何显示一个类的所有的继承和实现的接口?
+显示一个类的所有父类和所有子类: Ctrl+T
+类文件的outline：默认会显示。
+
+
+
 
 
 
 
 ========================================
+|-- 基于 xml 的IoC (JUnit 不报错也不输出，怎么办？)
 ----------------------------------------
+准备工作：
+- 把之前 子模块 pom.xml 中的依赖，移动到父工程 pom.xml 中。
+- 观察发现，子模块的 Maven Dependencies 是正常的。
+- 执行之前的 test，一切正常。
+
+目的：
+	获取bean 的三种方式
+	依赖注入的2种方式：set和构造器
+	其他特殊类型的注入
+	bean 的作用域：默认单例，怎么多例？
+	生命周期？
+	xml自动配置
+
+
+1. 新建子模块 spring6-ioc-xml
+(1)方法参考 spring-first
+(2)引入 spring-first 模块配置文件：bean.xml, log4j2.xml
+$ cat bean.xml
+	<bean id="user" class="com.mio.spring6.iocxml.User"></bean>
+
+(3) 新建 User 类
+$ cat User.java
+package com.mio.spring6.iocxml;
+
+public class User {
+	private String name;
+	private Integer age;
+	
+	public void run() {
+		System.out.println("run ...");
+	}
+}
+
+
+(4) 新建测试类，获取bean的三种方式
+//todo 结果 JUnit 不运行，也不报错，怎么办？
+原来是自己用了log4j，但是没有配置文件，所以没有输出任何信息。 //不是我的问题，删了也不行。
+迂回措施：给测试类加main方法。
+
+$ cat UserTest.java
+package com.mio.spring6.iocxml;
+
+import org.junit.Test;
+import org.springframework.context.ApplicationContext;
+import org.springframework.context.support.ClassPathXmlApplicationContext;
+
+public class UserTest {
+	public static void main(String[] args) {
+		ApplicationContext context=new
+				ClassPathXmlApplicationContext("bean.xml");
+		System.out.println(context);
+		//1.根据id获取bean
+		User user1=(User) context.getBean("user");
+		System.out.println("1.根据id获取bean: "+user1);
+		
+		//2.根据类型获取bean
+		User user2=(User)context.getBean(User.class);
+		System.out.println("2.根据类型获取bean: "+user2);
+		
+		//3.根据id和类型
+		User user3=(User)context.getBean("user", User.class);
+		System.out.println("3.根据id和类型获取bean: "+user3);
+	}
+	
+	@Test
+	public void test001() {
+		System.out.println("test001(3)");
+	}
+}
+
+输出:
+2023-04-02 21:43:55 345 [main] DEBUG org.springframework.context.support.ClassPathXmlApplicationContext - Refreshing org.springframework.context.support.ClassPathXmlApplicationContext@28b46423
+2023-04-02 21:43:55 538 [main] DEBUG org.springframework.beans.factory.xml.XmlBeanDefinitionReader - Loaded 1 bean definitions from class path resource [bean.xml]
+2023-04-02 21:43:55 585 [main] DEBUG org.springframework.beans.factory.support.DefaultListableBeanFactory - Creating shared instance of singleton bean 'user'
+org.springframework.context.support.ClassPathXmlApplicationContext@28b46423, started on Sun Apr 02 21:43:55 CST 2023
+1.根据id获取bean: com.mio.spring6.iocxml.User@3f07b12c
+2.根据类型获取bean: com.mio.spring6.iocxml.User@3f07b12c
+3.根据id和类型获取bean: com.mio.spring6.iocxml.User@3f07b12c
+
+
+
+
+(5) 细节问题：如果bean再加一条，仅仅是id不同，这时能使用类型获取到吗？
+$ cat bean.xml
+<bean id="user2" class="com.mio.spring6.iocxml.User"></bean>
+
+测试: //2.根据类型获取bean
+	User user2=(User)context.getBean(User.class);
+
+报错: expected single matching bean but found 2: user,user2
+	期望是单实例，但是找到2个匹配的。
+解决：这时，只能依靠id或者，id+类型获取。
+
+
+
+(6) 扩展问题: 一个接口的多个实现类，能否获取bean？
+UserDao dao=new UserDaoImpl();
+
+1) 新建包 bean，内部建接口 UserDao，及实现 UserDaoImpl
+$ cat UserDao.java
+package com.mio.spring6.iocxml.bean;
+public interface UserDao {
+	public void run();
+}
+
+$ cat UserDaoImpl.java
+package com.mio.spring6.iocxml.bean;
+public class UserDaoImpl implements UserDao {
+	@Override
+	public void run() {
+		System.out.println("UserDaoImpl.run()");
+	}
+}
+
+
+
+2) 配置文件 bean.xml
+<bean id="userDaoImpl" class="com.mio.spring6.iocxml.bean.UserDaoImpl"></bean>
+
+
+3) bean/下写测试类
+$ cat TestUserDao.java
+package com.mio.spring6.iocxml.bean;
+
+import org.springframework.context.ApplicationContext;
+import org.springframework.context.support.ClassPathXmlApplicationContext;
+
+public class TestUserDao {
+	public static void main(String[] args) {
+		ApplicationContext context=
+				new ClassPathXmlApplicationContext("bean.xml");
+		//根据 接口类型 获取 接口实现类对应的bean
+		UserDao userDao=context.getBean(UserDao.class);
+		System.out.println(userDao);
+		userDao.run();
+	}
+}
+
+输出:
+	com.mio.spring6.iocxml.bean.UserDaoImpl@784b990c
+	UserDaoImpl.run()
+结论: 如果接口只有一个实现，则可以 根据接口类型，获取实现类的bean。
+
+
+4) 如果多个实现类，则不能根据 接口类型 获取bean。 因为不唯一。
+报错： expected single matching bean but found 2: userDaoImpl,personDaoImpl
+解决：使用id。
+
+
+
+
+
+
+
 
 
 
 ========================================
+|-- 依赖注入: 两种实现方式； 特殊值的注入、特殊类型的注入
 ----------------------------------------
+1. 类的属性，创建对象过程中，向属性设置值
+
+- 基于set
+- 基于构造器
+
+(1) 新建包 di，其中新建 Book 类
+原生写法:
+$ cat Book.java
+package com.mio.spring6.iocxml.di;
+
+public class Book {
+	private String bname;
+	private String author;
+	//生成set方法
+	public String getBname() {
+		return bname;
+	}
+	public void setBname(String bname) {
+		this.bname = bname;
+	}
+	public String getAuthor() {
+		return author;
+	}
+	public void setAuthor(String author) {
+		this.author = author;
+	}
+	//构造器
+	public Book() {}
+	public Book(String bname, String author) {
+		this.bname = bname;
+		this.author = author;
+	}
+	
+	@Override
+	public String toString() {
+		return String.format("Book[bname=%s, auther=%s]", bname, author);
+	}
+
+	public static void main(String[] args) {
+		//原生做法:set注入
+		Book book=new Book();
+		book.setBname("Spring6");
+		book.setAuthor("张三");
+		System.out.println(book);
+		
+		//原生做法：构造器注入
+		Book book2=new Book("java", "李四");
+		System.out.println(book2);
+	}
+}
+
+
+
+
+
+(2) 使用Spring的 set 方法注入
+步骤：
+	创建类，定义属性，生成其set方法，
+	spring的xml配置文件：属性、值
+	测试
+
+使用上述Book类。
+
+xml文件和重新创建: 类根目录下 
+$ cat resources/bean-book-di.xml
+<?xml version="1.0" encoding="UTF-8"?>
+<beans xmlns="http://www.springframework.org/schema/beans"
+    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xsi:schemaLocation="
+        http://www.springframework.org/schema/beans
+        http://www.springframework.org/schema/beans/spring-beans.xsd">
+
+	<!-- 依赖注入1：set注入，name就是属性的小写 -->
+	<bean id="book1" class="com.mio.spring6.iocxml.di.Book">
+		<property name="bname" value="js"></property>
+		<property name="author" value="王二"></property>
+	</bean>
+</beans>
+
+测试类，为了方便，放同名类的文件夹内。
+$ cat TestBook.java 
+package com.mio.spring6.iocxml.di;
+
+import org.springframework.context.ApplicationContext;
+import org.springframework.context.support.ClassPathXmlApplicationContext;
+
+public class TestBook {
+	public static void main(String[] args) {
+		ApplicationContext context=
+				new ClassPathXmlApplicationContext("bean-book-di.xml");
+		Book book1=context.getBean("book1", Book.class);
+		System.out.println(book1);
+	}
+}
+
+输出: Book[bname=js, auther=王二]
+
+
+
+
+
+
+(3) 构造器注入
+步骤：
+	- 创建类，定义属性，生成有参数构造方法
+	- 配置xml
+	- 测试
+
+使用上述 Book 类。
+
+xml的配置:
+	<!-- 依赖注入2：构造器注入 -->
+	<bean id="book2" class="com.mio.spring6.iocxml.di.Book">
+		<constructor-arg name="bname" value="c++"></constructor-arg>
+		<constructor-arg name="author" value="麻子"></constructor-arg>
+	</bean>
+
+测试：
+	ApplicationContext context=
+			new ClassPathXmlApplicationContext("bean-book-di.xml");
+	//2.构造器注入
+	Book book2= context.getBean("book2", Book.class);
+	System.out.println(book2);
+
+输出: Book[bname=c++, auther=麻子]
+
+
+
+
+
+
+
+2. 特殊值的注入
+字面量 int a=10; 这里字母a是变量，而"a"就表示其字符本身，就是字面量。
+	Spring会把 value 属性的值看做字面量。
+	<property name="name" value="times">
+null值
+	<property name="name">
+		<null />
+	</property>
+xml 实体：比如值是<>，会报错
+	和html实体类似，
+	使用 &gt; 表示 >
+	使用 &lt; 表示 <
+CDATA节: 什么意思？就是告诉xml不要解析，这里面的都是纯文本。<![CDATA[ 这里写啥都可以 ]]
+	<property name="bname">
+		<value><![CDATA[a < b]]></value>
+	</property>
+
+
+
+
+3. 特殊类型的注入
+集合怎么注入？
+
+
+
+
+
+
+
+
+
 
 
 
