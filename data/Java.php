@@ -51,6 +51,7 @@ return array (
     array (
       array('struts1.3.10','javaEE105-struts1','txt'),
       array('struts2.5.8','javaEE105-struts2','txt'),
+      array('Spring6','Spring6','txt'),
     ),
   ),
     
