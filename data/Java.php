@@ -26,8 +26,6 @@ return array (
       array('java基础','java01-base','txt',),
       array('java高级','java02-adv','txt',),
       array('java Web','java03-JavaWeb','txt',),
-      array('Spring','java04-Spring','txt',),
-      array('SpringBoot','java06-SpringBoot','txt',),
     ),
   ),
     
@@ -43,15 +41,21 @@ return array (
       array('JSP','javaEE104-JSP','txt'),
     ),
   ),
-      
+
+
   array (
     0 => 1,
     1 => 'Java框架',
     2 => 
     array (
-      array('struts1.3.10','javaEE105-struts1','txt'),
-      array('struts2.5.8','javaEE105-struts2','txt'),
-      array('Spring6','Spring6','txt'),
+      array('MyBatis','javaEE105-MyBatis','txt'),
+
+      array('Spring6 探索','Spring6-explore','txt',),
+      array('Spring6','Spring6-more','txt'),
+      
+      array('Spring MVC','Spring-MVC','txt'),
+
+      array('SpringBoot','java06-SpringBoot','txt',),
     ),
   ),
     
