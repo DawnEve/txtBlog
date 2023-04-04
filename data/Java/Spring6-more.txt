@@ -953,8 +953,233 @@ CDATA节: 什么意思？就是告诉xml不要解析，这里面的都是纯文�
 
 
 
-3. 特殊类型的注入
-集合怎么注入？
+========================================
+|-- 特殊类型的注入: 对象类型、 数组类型、集合类型、
+----------------------------------------
+1. 对象类型的注入: 3种方式
+	外部 bean 方式
+	内部 bean方式
+	级联赋值方式
+
+部门1 --- m 员工
+(1)新建包，里面建立2个类 Department, Employer; 
+$ cat Department.java
+package com.mio.spring6.iocxml.injectobj;
+public class Department {
+	private String dname;
+	
+	public void info() {
+		System.out.println("Department: "+dname);
+	}
+}
+
+$ cat Employer.java
+package com.mio.spring6.iocxml.injectobj;
+public class Employer {
+	//该员工属于哪个部门
+	private Department dept;
+	
+	private String ename;
+	private int age;
+	
+	public void work() {
+		System.out.println(ename + " Employer work... "+ "age: "+age);
+		dept.info();
+	}
+}
+注意：2个类都必须有setter/getter，本文为了简洁，省略。
+
+(2) 配置文件
+类根目录下/resources/bean-inject-obj.xml
+<?xml version="1.0" encoding="UTF-8"?>
+<beans xmlns="http://www.springframework.org/schema/beans"
+    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xsi:schemaLocation="
+        http://www.springframework.org/schema/beans
+        http://www.springframework.org/schema/beans/spring-beans.xsd">
+
+	<!-- 注入对象的三种方式	-->
+	<!-- 方式1：外部 bean 方式 
+		1 创建2个对象
+		2 在emp的bean标签中，使用 property 引入dept的bean: 
+			name=类的属性名，ref=待注入的bean的id
+	-->
+	<bean id="dept2" class="com.mio.spring6.iocxml.injectobj.Department">
+		<property name="dname" value="财务部"></property>
+	</bean>
+	<bean id="emp1" class="com.mio.spring6.iocxml.injectobj.Employer">
+		<!-- 注入普通属性 -->
+		<property name="ename" value="张三"></property>
+		<property name="age" value="20"></property>
+		<!-- 注入对象类型属性 
+			private Department dept;
+			name 就是类的属性名字; ref指代上文出现过的bean的id
+		-->
+		<property name="dept" ref="dept2"></property>
+	</bean>
+</beans>
+
+(3) 测试
+$ cat TestInjectObj.java
+package com.mio.spring6.iocxml.injectobj;
+
+import org.springframework.context.ApplicationContext;
+import org.springframework.context.support.ClassPathXmlApplicationContext;
+
+public class TestInjectObj {
+	public static void main(String[] args) {
+		ApplicationContext context=
+				new ClassPathXmlApplicationContext("bean-inject-obj.xml");
+		//获取员工对象
+		Employer worker1=context.getBean("emp1", Employer.class);
+		//调用员工方法
+		worker1.work();
+	}
+}
+
+输出:
+	张三 Employer work... age: 20
+	Department: 财务部
+
+
+
+(4) 方式2: 
+配置文件: 
+	<!-- 方式2：内部 bean 方式 	-->
+	<bean id="emp1b" class="com.mio.spring6.iocxml.injectobj.Employer">
+		<property name="ename" value="李四"></property>
+		<property name="age" value="50"></property>
+		<!-- 注入对象类型属性 
+			private Department dept;
+			name 就是类的属性名字; 需要的bean直接嵌套写
+		-->
+		<property name="dept">
+			<bean id="dept2b" class="com.mio.spring6.iocxml.injectobj.Department">
+				<property name="dname" value="人事部"></property>
+			</bean>
+		</property>
+	</bean>
+
+测试:
+	private static void demo2() {
+		ApplicationContext context=
+				new ClassPathXmlApplicationContext("bean-inject-obj.xml");
+		//获取员工对象
+		Employer worker1=context.getBean("emp1b", Employer.class);
+		//调用员工方法
+		worker1.work();	
+	}
+输出:
+	李四 Employer work... age: 50
+	Department: 人事部
+
+
+
+(5) 第三种方式
+配置文件
+	<!-- 方式3：级联赋值 -->
+	<bean id="dept2c" class="com.mio.spring6.iocxml.injectobj.Department">
+		<property name="dname" value="研发部"></property>
+	</bean>
+	<bean id="emp1c" class="com.mio.spring6.iocxml.injectobj.Employer">
+		<!-- 注入普通属性 -->
+		<property name="ename" value="王二"></property>
+		<property name="age" value="40"></property>
+		<!-- 注入对象类型属性: 在方式1的基础上，对要注入对象的属性值 dept.dname，重新赋值 -->
+		<property name="dept" ref="dept2c"></property>
+		<property name="dept.dname" value="广告部"></property>
+	</bean>
+
+测试：
+	private static void demo3() {
+		ApplicationContext context=
+				new ClassPathXmlApplicationContext("bean-inject-obj.xml");
+		//获取员工对象
+		Employer worker1=context.getBean("emp1c", Employer.class);
+		//调用员工方法
+		worker1.work();			
+	}
+输出：
+	王二 Employer work... age: 40
+	Department: 广告部
+
+
+
+
+
+
+
+
+2. 注入数组
+(1) 上文员工添加爱好属性，添加对应的getter/setter
+	private String[] hobbies;
+	public String[] getHobbies() {
+		return hobbies;
+	}
+
+	public void setHobbies(String[] hobbies) {
+		this.hobbies = hobbies;
+	}
+
+修改其work方法，输出hobbies：
+	public void work() {
+		System.out.println(ename + " Employer work... "+ "age: "+age);
+		dept.info();
+		System.out.println(Arrays.toString(hobbies));
+	}
+
+(2)新建配置文件 bean-di-array.xml
+<?xml version="1.0" encoding="UTF-8"?>
+
+<beans xmlns="http://www.springframework.org/schema/beans"
+    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xsi:schemaLocation="
+        http://www.springframework.org/schema/beans
+        http://www.springframework.org/schema/beans/spring-beans.xsd">
+    
+    <!-- 注入数组类型 -->
+	<bean id="dept2" class="com.mio.spring6.iocxml.injectobj.Department">
+		<property name="dname" value="财务部"></property>
+	</bean>
+	<bean id="emp1" class="com.mio.spring6.iocxml.injectobj.Employer">
+		<!-- 注入普通属性 -->
+		<property name="ename" value="张三"></property>
+		<property name="age" value="22"></property>
+		<!-- 注入对象类型属性 -->
+		<property name="dept" ref="dept2"></property>
+		<!-- 注入数组 -->
+		<property name="hobbies">
+			<array>
+				<value>吃饭</value>
+				<value>睡觉</value>
+				<value>打游戏</value>
+			</array>
+		</property>
+	</bean>
+</beans>
+
+(3) 测试
+	private static void demo4() {
+		ApplicationContext context=
+				new ClassPathXmlApplicationContext("bean-di-array.xml");
+		//获取员工对象
+		Employer worker1=context.getBean("emp1", Employer.class);
+		//调用员工方法
+		worker1.work();			
+	}
+输出:
+	张三 Employer work... age: 22
+	Department: 财务部
+	[吃饭, 睡觉, 打游戏]
+
+
+
+
+
+3. 注入集合
+
+
+
 
 
 
