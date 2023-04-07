@@ -185,13 +185,16 @@ Version: 0.7.17-r1188
 
 
 
+
+
+
 3.比对
 更快的是使用 BWA mem | samtools sort 从fastq获得bam。
 https://biology.stackexchange.com/questions/59493/how-to-convert-bwa-mem-output-to-bam-format-without-saving-sam-file
 bwa mem ref.fa in.fq | samtools view -bS - > out.bam
 ## The - in samtools view tells it to read from stdin.
 
-建立索引
+(1)建立索引
 $ bwa index -a bwtsw -p index/GRCm38_ Mus_musculus.GRCm38.dna.primary_assembly.fa
 [bwa_index] Pack forward-only FASTA... 8.25 sec
 [bwa_index] Construct SA from BWT and Occ... 766.48 sec
@@ -207,7 +210,9 @@ $ ls /home/wangjl/data/ref/mouse/ensembl/index/GRCm38_* -lth
 -rw-rw-r-- 1 wangjl wangjl 2.6G Aug 25 14:48 /home/wangjl/data/ref/mouse/ensembl/index/GRCm38_.bwt
 
 
-开始比对
+
+
+(2) 开始比对
 $ cd /data/wangjl/ATAC/CRC_ATAC/
 $ id="1" 
 $ bwa mem -t 5 -R "@RG\tID:${id}\tSM:${id}" /home/wangjl/data/ref/mouse/ensembl/index/GRCm38_ raw/${id}_R1.fq.gz raw/${id}_R2.fq.gz | samtools sort -@ 5 -O bam -T /tmp/${id} -o map/${id}.sorted.bam -
@@ -221,6 +226,42 @@ $ bwa mem -t 5 -R "@RG\tID:${id}\tSM:${id}" /home/wangjl/data/ref/mouse/ensembl/
 对比其中一个的输出，一模一样。能比的就是时间差异了: 
 3e07f2eaf5b2faf2921d3907dd6b9372  map/2.sorted.bam
 3e07f2eaf5b2faf2921d3907dd6b9372  map/2_.sort1.bam
+
+
+## 示例1:
+$ id="ERR7016189"
+$ bwa mem -t 5 -R "@RG\tID:${id}\tSM:${id}" /home/wangjl2/data/ref/hg38/gencode/index/GRCh38_bwa raw/${id}.fastq | samtools sort -@ 4 -O bam -T /tmp/${id} -o map/${id}.sorted.bam -
+
+## 示例2:
+$ bwa mem -M -t 4 \
+-R '@RG\tID:C6C0TANXX_2\tSM:ZW177\tLB:ZW177lib\tPL:ILLUMINA' \
+./genome_index/genome.fa \
+sample1_R1.fastq.gz sample1_R2.fastq.gz > sample1.sam
+参数解释:
+-t 4 设置线程数，默认可能用到12个
+-R: add Read Group description (more about it in a minute)
+-M: if a read is split (different parts map to different places) mark all parts other than main as “secondary
+alignment” (technicality, but important for GATK which ignores secondary alignments)
+默认输出是 sam 格式。
+
+Read Group 描述信息: -R '@RG\tID:C6C0TANXX_2\tSM:ZW177\tLB:ZW177lib\tPL:ILLUMINA'
+  会在 bam 中加入头信息: @RG ID:C6C0TANXX_2 SM:ZW177 LB:ZW177lib PL:ILLUMINA
+  ID: Unique ID of a collection of reads sequenced together, typically: Illumina lane (+barcode or sample)
+  SM: Sample name
+  LB: DNA prep Libray ID
+  PL: Sequencing platform
+Each alignment record will be marked with Read Group ID (here: C6C0TANXX_2), so that programs in downstream analysis know where the read is from.
+Read groups, sample and library IDs are important for GATK operation!
+这个可用于区分样本信息:
+  One flowcell: HL5WNCCXX, two lanes (2 and 3), each with samples A and B (2-plex) from library my_lib
+  @RG ID:HL5WNCCXX_2_A SM:A LB:mylib PL:ILLUMINA
+  @RG ID:HL5WNCCXX_3_A SM:A LB:mylib PL:ILLUMINA
+
+  @RG ID:HL5WNCCXX_2_B SM:B LB:mylib PL:ILLUMINA
+  @RG ID:HL5WNCCXX_3_B SM:B LB:mylib PL:ILLUMINA
+
+
+
 
 
 
@@ -348,7 +389,7 @@ if (algo_type == "auto") {
 
 
 
-(2)比对：bwa mem 或者 bwa aln 哪个好呢？
+(2)比对：bwa mem 或者 bwa aln 哪个好呢？ gatk 推荐 bwa mem
 $ bwa mem ref.fa read1.fq read2.fq > aln-pe.sam
 -t 5 线程
 -M            mark shorter split hits as secondary
@@ -412,6 +453,28 @@ $ java -Xmx20g -jar $PICARD SortSam SORT_ORDER=coordinate INPUT=${WORKING_DIR}/2
 
 例子见 NGS/ATAC-seq: 去重复
 
+
+gatk3?
+$ java -jar $PICARDDIR/picard.jar \
+MarkDuplicates \
+INPUT=sample1.sorted.bam \
+OUTPUT=sample1.sorted.dedup.bam \
+METRICS_FILE=sample1.sorted.dedup.metrics.txt
+
+
+gatk4:
+$ id="SRR7629152"
+$ gatk MarkDuplicates -I map/${id}.del_MT.sort.bam -O map/${id}.rmdup.bam -M map/${id}.rmdup.matrix -ASO coordinate -REMOVE_DUPLICATES true
+
+重复的只保留一份，其他加上 0x400 标记，不会被用于下游。
+In the resulting BAM file, only one fragment from each duplicate group survives unchanged, other
+duplicate fragments are given a flag 0x400 and will not be used downstream.
+
+可选：每个文库做一个重复标记，也就是对一个文库的所有分组。
+Optimally, detection and marking of duplicate fragments should be done per library, i.e., over all read groups corresponding to a given library. 
+
+实践中，对每个lane做重复标记就足够了。
+In practice, often sufficient to do it per lane (read group).
 
 
 
@@ -503,12 +566,17 @@ https://blog.csdn.net/msw521sg/article/details/65938377
 |-- 用bcftools来call variation
 ----------------------------------------
 
-1.安装
+我们可以考虑比较对3种不同的bam文件来分别call variation的差异，探索对bam文件的不同过滤模式对snp calling的影响，分别是，
+  原始比对的bam文件，
+  去除低质量和多比对还有PCR重复的bam，
+  以及用GATK进行realign的bam文件。
+
 Variant Call Format (VCF) and its binary counterpart BCF.
-https://mp.weixin.qq.com/s?__biz=MzAxMDkxODM1Ng==&mid=2247483812&idx=1&sn=c3f7ce44a4f164f0d5549e11a22e702f&chksm=9b48411fac3fc8093925fbad417636544ea9af0c58ee9f4f31d1fa1fc2c80af610a835d09311&scene=21#wechat_redirect
+https://mp.weixin.qq.com/s?__biz=MzAxMDkxODM1Ng==&mid=2247483812&idx=1&sn=c3f7ce44a4f164f0d5549e11a22e702f
 
 
 
+1.安装
 (1) Ubuntu 安装
 http://samtools.github.io/bcftools/
 
@@ -683,9 +751,13 @@ $ samtools mpileup -ugf $ref ../align/*.bam | bcftools call -vmO z -o out2.vcf.g
 
 
 
+ref:
+http://cbsu.tc.cornell.edu/lab/doc/Variant_workshop_Part1.pdf
 
-
-
+Aligner:
+  BWA: BWA mem – aligner of choice in GATK
+  Bowtie
+  SOAP
 
 
 
@@ -696,6 +768,12 @@ $ samtools mpileup -ugf $ref ../align/*.bam | bcftools call -vmO z -o out2.vcf.g
 gatk--Variant Discovery in High-Throughput Sequencing Data
 ----------------------------------------
 参考全文 https://www.cnblogs.com/nkwy2012/p/6322775.html
+
+
+
+怎么组装 单倍体?
+Need local multi-read re-alignment or local haplotype assembly (expensive!)
+
 
 
 

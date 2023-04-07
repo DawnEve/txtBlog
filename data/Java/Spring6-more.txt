@@ -1719,16 +1719,476 @@ $ cat bean-jdbc.xml
 
 
 ========================================
+|-- bean 作用域: scope 属性，单实例、多实例（还有2个不常用的属性值）
 ----------------------------------------
+1. 取值范围
+默认是 单实例 scope="singleton"，IoC容器初始化
+还可以是 多实例 scopre="prototype"，请求时初始化
+
+(2). 如果在 WebApplicationContext 环境下还会有另外几个作用域(但不常用)
+取值 scope="request"，在一个请求返回内有效。
+取值 scope="session"，在一个会话范围内有效。
+
+
+
+
+2. 示例
+
+(1) 创建scope包，其中新建类 Orders
+$ cat Orders.java
+package com.mio.spring6.iocxml.scope;
+public class Orders {}
+
+(2) 新建配置文件 bean-scope.xml
+<?xml version="1.0" encoding="UTF-8"?>
+
+<beans xmlns="http://www.springframework.org/schema/beans"
+    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+
+    xsi:schemaLocation="        
+        http://www.springframework.org/schema/beans
+        http://www.springframework.org/schema/beans/spring-beans.xsd">
+
+	<!-- 使用 scope 设置：单实例(默认) singleton 、多实例 prototype -->
+	<bean id="orders" class="com.mio.spring6.iocxml.scope.Orders" 
+		scope="prototype">
+	</bean>
+</beans>
+
+(3) 测试
+	private static void demo1() {
+		ApplicationContext context=
+				new ClassPathXmlApplicationContext("bean-scope.xml");
+		Orders orders=context.getBean("orders", Orders.class);
+		System.out.println(orders);
+		//再次获取: 单实例 地址一致; 多实例 地址不一致;
+		Orders orders2=context.getBean("orders", Orders.class);
+		System.out.println(orders2);		
+	}
+输出:
+singleton: IoC容器初始化时创建
+	com.mio.spring6.iocxml.scope.Orders@1951b871
+	com.mio.spring6.iocxml.scope.Orders@1951b871
+prototype: 请求该bean时创建
+	com.mio.spring6.iocxml.scope.Orders@7096b474
+	com.mio.spring6.iocxml.scope.Orders@3e14c16d
+
+
 
 
 ========================================
+|-- bean 的生命周期：创建对象、设置属性值、后处理1、初始化方法、后处理2、销毁方法
 ----------------------------------------
+1. bean 的生命周期
+(1) bean 对象的创建(调用无参构造器)
+(2) 给 bean 对象设置相关属性
+(3) bean 后置处理器(初始化前)
+(4) bean 对象初始化
+(5) bean 后置处理器(初始化后)
+
+(6) bean 对象创建完成，可以使用了
+
+(7) bean 对象销毁(配置指定销毁的方法)
+(8) IoC 容器关闭
+
+
+2. 示例
+(1)创建包 lifecycle, 创建类
+$ cat User.java
+package com.mio.spring6.iocxml.lifecycle;
+
+public class User {
+	private String name;
+	
+	//无参构造
+	public User() {
+		System.out.println("1 调用无参构造，创建对象");
+	}
+
+	public String getName() {
+		return name;
+	}
+
+	public void setName(String name) {
+		System.out.println("2 给bean对象设置属性值");
+		this.name = name;
+	}
+	
+	//初始化方法
+	public void initMethod() {
+		System.out.println("4 bean对象初始化，会调用指定的初始化方法");
+	}
+	
+	//销毁方法
+	public void destroy() {
+		System.out.println("7 bean 对象销毁，会调用指定的销毁方法");
+	}
+}
+
+(2) 创建配置文件
+$ cat bean-lifecycle.xml
+<?xml version="1.0" encoding="UTF-8"?>
+
+<beans xmlns="http://www.springframework.org/schema/beans"
+    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+
+    xsi:schemaLocation="        
+        http://www.springframework.org/schema/beans
+        http://www.springframework.org/schema/beans/spring-beans.xsd">
+
+	<!-- bean 生命周期 -->
+	<bean id="user" class="com.mio.spring6.iocxml.lifecycle.User" 
+		init-method="initMethod" destroy-method="destroy">
+		<property name="name" value="Tom"></property>
+	</bean>
+</beans>
+
+(3) 测试
+	public static void main(String[] args) {
+		ClassPathXmlApplicationContext context=
+				new ClassPathXmlApplicationContext("bean-lifecycle.xml");
+		User user=context.getBean("user", User.class);
+		System.out.println("6 bean 创建完成，可以使用");
+		System.out.println(user);
+		
+		context.close();//销毁 bean 对象，注意：ClassPathXmlApplicationContext 对象才用close方法
+	}
+输出:
+	前面省略3条消息。
+	1 调用无参构造，创建对象
+	2 给bean对象设置属性值
+	4 bean对象初始化，会调用指定的初始化方法
+	6 bean 创建完成，可以使用
+	com.mio.spring6.iocxml.lifecycle.User@478ee483
+	2023-04-07 21:13:59 794 [main] DEBUG org.springframework.context.support.ClassPathXmlApplicationContext - Closing org.springframework.context.support.ClassPathXmlApplicationContext@1787bc24, started on Fri Apr 07 21:13:59 CST 2023
+	7 bean 对象销毁，会调用指定的销毁方法
+
+
+
+
+
+(4) 后置处理器，是一个类，需要继承接口
+$ cat MyBeanPost.java
+package com.mio.spring6.iocxml.lifecycle;
+
+import org.springframework.beans.BeansException;
+import org.springframework.beans.factory.config.BeanPostProcessor;
+
+public class MyBeanPost implements BeanPostProcessor {
+	@Override
+	public Object postProcessBeforeInitialization(Object bean, String beanName) throws BeansException {
+		System.out.println("3>> bean 后置处理器(Before初始化 执行)");
+		return bean;
+	}
+	
+	@Override
+	public Object postProcessAfterInitialization(Object bean, String beanName) throws BeansException {
+		System.out.println("5>> bean 后置处理器(After初始化 执行)");
+		return bean;
+	}
+}
+
+(5) 配置文件中新增
+	<!-- bean 的后置处理器要放入IoC容器才能生效 -->
+	<bean id="myBeanPost" class="com.mio.spring6.iocxml.lifecycle.MyBeanPost"></bean>
+
+这是对所有的IoC容器中所有的bean都生效的！
+
+(6)测试
+	public static void main(String[] args) {
+		ClassPathXmlApplicationContext context=
+				new ClassPathXmlApplicationContext("bean-lifecycle.xml");
+		User user=context.getBean("user", User.class);
+		System.out.println("6 bean 创建完成，可以使用");
+		System.out.println("\tUser name: " + user.getName());
+		
+		context.close();//销毁 bean 对象，注意：ClassPathXmlApplicationContext 对象才用close方法
+	}
+
+输出:
+	1 调用无参构造，创建对象
+	2 给bean对象设置属性值
+	3>> bean 后置处理器(Before初始化 执行)
+	4 bean对象初始化，会调用指定的初始化方法
+	5>> bean 后置处理器(After初始化 执行)
+	6 bean 创建完成，可以使用
+		User name: Tom
+	2023-04-07 21:23:49 195 [main] DEBUG org.springframework.context.support.ClassPathXmlApplicationContext - Closing org.springframework.context.support.ClassPathXmlApplicationContext@1787bc24, started on Fri Apr 07 21:23:48 CST 2023
+	7 bean 对象销毁，会调用指定的销毁方法
+
+
 
 
 
 ========================================
+|-- FactoryBean 是一种封装机制，由类内 getObject() 方法的返回值决定返回的对象(常用语整合第三方框架)
 ----------------------------------------
+1. 示例
+(1) 创建包 factorybean, 新建类
+$ cat User.java
+package com.mio.spring6.iocxml.factorybean;
+public class User {}
+
+$ cat MyFactoryBean.java
+package com.mio.spring6.iocxml.factorybean;
+
+import org.springframework.beans.factory.FactoryBean;
+
+//在配置文件中配置 MyFactoryBean，返回的确实其中返回的对象
+public class MyFactoryBean implements FactoryBean<User> {
+
+	@Override
+	public User getObject() throws Exception {
+		return new User();
+	}
+
+	@Override
+	public Class<?> getObjectType() {
+		return User.class;
+	}
+}
+
+
+(3) 配置文件
+$ cat bean-factorybean.xml
+<?xml version="1.0" encoding="UTF-8"?>
+
+<beans xmlns="http://www.springframework.org/schema/beans"
+    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xsi:schemaLocation="        
+        http://www.springframework.org/schema/beans
+        http://www.springframework.org/schema/beans/spring-beans.xsd">
+
+	<!-- FactoryBean 示例 -->
+	<bean id="user" class="com.mio.spring6.iocxml.factorybean.MyFactoryBean">
+	</bean>
+
+</beans>
+
+(4) 测试
+	public static void main(String[] args) {
+		ApplicationContext context=
+				new ClassPathXmlApplicationContext("bean-factorybean.xml");
+//		User user=context.getBean("user", MyFactoryBean.class);
+		User user=(User) context.getBean("user");
+		System.out.println(user);
+	}
+输出: com.mio.spring6.iocxml.factorybean.User@7c098bb3
+说明，输出的确实是 bean 配置文件中的MyFactoryBean对象的返回的类型User的实例。
+
+
+
+
+
+
+
+
+
+
+========================================
+|-- 基于 xml 自动装配： bean 属性 autowire="byType"
+----------------------------------------
+1.定义
+根据指定的策略，在IoC容器中匹配某一个bean，自动为指定的bean中所依赖的类类型或接口类型属性赋值。
+
+(2) 模拟过程
+controller -> service接口和实现列 -> dao接口和实现类。
+希望：
+	在 controller 中注入 service
+	在 service 中输入 dao
+
+(3) 实现方法
+在 controller 类中声明 service 类型属性，定义其set方法。
+在 service 类中声明 dao 类型属性，定义其set方法。
+
+
+
+
+3. 示例
+(1) 新建包 auto, 文件结构如下
+$ ls -R
+.:
+controller/  dao/  service/  TestController.java
+
+./controller:
+UserController.java
+
+./dao:
+UserDao.java  UserDaoImpl.java
+
+./service:
+UserService.java  UserServiceImpl.java
+
+
+(2) 接口和实现类
+## controller
+$ cat controller/UserController.java
+package com.mio.spring6.iocxml.auto.controller;
+
+import com.mio.spring6.iocxml.auto.service.UserService;
+//import com.mio.spring6.iocxml.auto.service.UserServiceImpl;
+
+public class UserController {
+	private UserService userService;
+
+	public void setUserService(UserService userService) {
+		this.userService = userService;
+	}
+	
+	public void addUser() {
+		System.out.println("controller 方法执行了");
+		//调动 service
+//		UserService userService=new UserServiceImpl();
+		userService.addUserService();
+	}
+}
+
+
+## service 先定义接口，再定义实现
+$ cat service/UserService.java
+package com.mio.spring6.iocxml.auto.service;
+
+public interface UserService {
+	public void addUserService();
+}
+
+
+$ cat service/UserServiceImpl.java
+package com.mio.spring6.iocxml.auto.service;
+
+import com.mio.spring6.iocxml.auto.dao.UserDao;
+//import com.mio.spring6.iocxml.auto.dao.UserDaoImpl;
+
+public class UserServiceImpl implements UserService {
+	private UserDao userDao;
+	public void setUserDao(UserDao userDao) {
+		this.userDao = userDao;
+	}
+
+	@Override
+	public void addUserService() {
+		System.out.println("UserService 方法执行了");
+		//调dao
+//		UserDao userDao=new UserDaoImpl();
+		userDao.addUserDao();
+	}
+}
+
+
+
+## dao 先定义接口，再定义实现
+$ cat dao/UserDao.java
+package com.mio.spring6.iocxml.auto.dao;
+public interface UserDao {
+	public void addUserDao();
+}
+
+$ cat dao/UserDaoImpl.java
+package com.mio.spring6.iocxml.auto.dao;
+public class UserDaoImpl implements UserDao {
+	@Override
+	public void addUserDao() {
+		System.out.println("userDao方法执行了");
+	}
+}
+
+
+
+(3) 创建配置文件
+$ cat bean-auto.xml
+<?xml version="1.0" encoding="UTF-8"?>
+<beans xmlns="http://www.springframework.org/schema/beans"
+    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xsi:schemaLocation="        
+        http://www.springframework.org/schema/beans
+        http://www.springframework.org/schema/beans/spring-beans.xsd">
+
+	<!-- bean 自动装配 
+	1 先创建三个对象，要用其实现类
+	2 添加bean属性 autowire="byType"，还有一个值 "byName"
+	-->
+	<bean id="userController" class="com.mio.spring6.iocxml.auto.controller.UserController" 
+		autowire="byType">
+		<!--  这种写法可以，但是需要一条一条写
+		<property name="userService" ref="userService"></property>
+		-->
+	</bean>
+	<bean id="userService" class="com.mio.spring6.iocxml.auto.service.UserServiceImpl"
+		autowire="byType"></bean>
+	<bean id="userDao" class="com.mio.spring6.iocxml.auto.dao.UserDaoImpl"></bean>
+</beans>
+
+注意: 
+	若在IoC容器中，没有任何一个兼容类型的bean能够为属性赋值，则该属性不装配，即值为默认值null；
+	若在ioC容器中，有多个兼容类型的bean能够为属性赋值，则抛出异常 NoUniqueBeanDefinitionexception
+
+
+
+(4) 测试
+	private static void demo1() {
+		//传统写法
+		UserController controller=new UserController();
+		controller.addUser();		
+	}
+	private static void demo2() {
+		//使用xml自动装配
+		ApplicationContext context=
+				new ClassPathXmlApplicationContext("bean-auto.xml");
+		UserController userController=context.getBean(UserController.class);
+		userController.addUser();
+	}
+demo2的输出:
+	controller 方法执行了
+	UserService 方法执行了
+	userDao方法执行了
+
+
+(5) 使用名称装配
+新建配置文件
+$ cat bean-auto2.xml
+<?xml version="1.0" encoding="UTF-8"?>
+<beans xmlns="http://www.springframework.org/schema/beans"
+    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xsi:schemaLocation="        
+        http://www.springframework.org/schema/beans
+        http://www.springframework.org/schema/beans/spring-beans.xsd">
+
+	<!-- bean 自动装配 
+	1 先创建三个对象，要用其实现类
+	2 添加bean属性 autowire="byType"，还有一个值 "byName"
+	-->
+	<bean id="userController" class="com.mio.spring6.iocxml.auto.controller.UserController" autowire="byName">
+	</bean>
+	<bean id="userService" class="com.mio.spring6.iocxml.auto.service.UserServiceImpl"
+		autowire="byName"></bean>
+	<bean id="userDao" class="com.mio.spring6.iocxml.auto.dao.UserDaoImpl"></bean>
+	
+</beans>
+
+测试后输出同上文。
+差别：使用 autowire="byName" 装配时，要求 bean的id 和 类中声明的属性 同名！
+
+
+
+
+
+
+
+
+
+
+
+
+
+========================================
+**** 基于 注解 管理 bean ****
+----------------------------------------
+https://www.bilibili.com/video/BV1kR4y1b7Qc/?p=38
+
+
+
+
+
 
 
 
