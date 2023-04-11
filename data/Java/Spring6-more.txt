@@ -18,6 +18,7 @@ AOT.
 
 
 
+
 ========================================
 Spring 主要知识点
 ----------------------------------------
@@ -71,6 +72,53 @@ Spring主要就是IOC和AOP两大特性
 		本人之前看过一部分，受益颇多。
 		如果Java基础不牢固，很可能无法坚持看完，因为难度去确实比较大。
 
+
+
+
+2. 要点
+spring 框架
+	核心：AOP, IoC, 生命周期，资源管理
+	web: SpringMVC, RestTemplate
+	Data: JdbcTemplate, DAO, 事务, ORM
+	企业级应用: JMS, Job, Cache
+
+Spring Boot:
+	启动过程: 原理，内嵌 Tomcat
+	自动装配: 原理, Stater
+	生产级特性: 配置文件，打包部署，Actuator，Spring Boot Admin
+
+Spring Cloud: 一套微服务解决方案，一系列不同功能的微服务框架的集合。
+	基本概念: 
+		分布式架构
+		微服务架构: Dubbo(RPC), gRPC, Service Mesh,  
+		云原生架构
+	服务消息总线: Spring Cloud Bus
+	服务安全: Security
+	服务网关: 
+		Zuul
+		Kong
+		Gateway
+	服务链路跟踪:
+		Sleuth
+		Zipkin
+		Skywalking
+	服务注册和发现:
+		Eureka
+		Zookeeper
+		Consul
+		Nacos
+	负载均衡
+		Feign
+		Ribbon
+	服务限流与熔断
+		Sentinel
+		Hystrix
+
+
+(2) 分布式课程
+MIT 6.824:Distributed Systems
+	记得 lab 一定要做
+MIT 6.828 ?
 
 
 
@@ -3262,7 +3310,7 @@ com.mio
 
 
 ========================================
-|-- AnnotatonApplicationContext 类的实现: 注解+反射 实例化对象
+|-- AnnotatonApplicationContext 类的实现: 注解+反射 实例化对象 (重要)
 ----------------------------------------
 
 $ cat AnnotationApplicationContext.java
@@ -3424,11 +3472,113 @@ public class TestUser {
 
 
 ========================================
+|-- 实现注入功能: @Di 注解 的功能实现
 ----------------------------------------
+0. 回顾方法
+
+$ cat UserServiceImpl.java
+package com.mio.service.impl;
+
+import com.mio.dao.UserDao;
+import com.mio.service.UserService;
+
+import mio.com.anno.Bean;
+import mio.com.anno.Di;
+
+//添加自定义注解
+@Bean
+public class UserServiceImpl implements UserService {
+	@Di
+	private UserDao userDao;
+
+	@Override
+	public void add() {
+		System.out.println("service ...");
+		userDao.add(); //调用方法
+	}
+
+}
+
+其中，私有属性 userDao 上有注解@Di。本文手写首先该属性值的注入。
+
+
+
+
+1.有参构造函数中，添加方法
+
+public class AnnotationApplicationContext implements ApplicationContext {
+	public AnnotationApplicationContext(String basePackage) throws Exception {
+	...
+		//属性注入
+		loadDi();
+	}
+	...
+}
+
+
+
+2. 在该类中实现该方法
+	
+	//实现属性注入
+	private void loadDi() {
+		//实例化的对象，都在 beanFactory 的Map结合中
+		//1 遍历 beanFactory 的 map 集合
+		Set<Entry<Class, Object>> entries = beanFactory.entrySet();
+		for(Entry<Class, Object> entry: entries) {
+			//2 获取 map 集合每个对象(value)
+			Object obj = entry.getValue();
+			
+			//获取对象 Class
+			Class<? extends Object> clazz = obj.getClass();
+			//获取属性
+			Field[] declaredFields = clazz.getDeclaredFields();
+			//3 遍历每个属性数组，得到每个属性
+			for(Field field: declaredFields) {
+				//4 检查属性上是否有@ Di 注解
+				Di annotation=field.getAnnotation(Di.class);
+				if(annotation != null) {
+					// 如果有私有属性，设置可设置
+					field.setAccessible(true);
+					//5 有注解的，设置对象（注入）
+					try {
+						//要注入的对象：2种获取方式
+						//System.out.println("\t"+ this.getBean(field.getType() ) );
+						//System.out.println("\t"+ beanFactory.get(field.getType()) );
+						// 第二个参数是注入的对象
+						field.set(obj, beanFactory.get(field.getType()));
+					} catch (IllegalArgumentException | IllegalAccessException e) {
+						e.printStackTrace();
+					}
+				}
+			}
+		}
+	}
+
+
+
+3. 测试
+	@Test
+	public void test01() throws Exception {
+		ApplicationContext context=
+				new AnnotationApplicationContext("com.mio");
+		UserService userService = (UserService) context.getBean(UserService.class);
+		userService.add();
+		System.out.println(userService);
+	}
+
+输出:
+	service ...
+	dao ...
+	com.mio.service.impl.UserServiceImpl@545997b1
+
+
+说明 属性注入成功。
+
 
 
 
 ========================================
+AOP 面向切面编程
 ----------------------------------------
 
 
