@@ -2903,17 +2903,194 @@ java反射机制是在运行状态中，
 
 
 
+========================================
+|-- 回顾 Java 的反射
+----------------------------------------
+1. 创建子模块
+(1) 右击外部项目 spring6，new- Maven Module
+	勾选 skip archetype selection
+	Module name: spring6-reflect
+	父项目: spring6
+
+Artifact:
+	group id: com.mio
+	artifact id: spring6-reflect
+	version:
+	packaging: jar
+Finish
+
+右击子模块，build path - config - Library 
+	把jre环境设置为 本地安装的 jdk17
 
 
 
+2.准备文件
+(1) 新建类
+$ cat Car.java
+package com.mio.reflect;
+
+public class Car {
+	private String name;
+	private int age;
+	private String color;
+	//构造方法
+	private Car(String name, int age, String color) {
+		super();
+		this.name = name;
+		this.age = age;
+		this.color = color;
+	}
+	public Car(String name, String color) {
+		this(name, 0, color);
+	}
+	public Car() {
+		super();
+	}
+	
+	//私有方法
+	private void run() {
+		System.out.println("私有方法-run()");
+	}
+	
+	@Override
+	public String toString() {
+		return String.format("Car[name:%s, age:%d, color:%s]", name, age, color);
+	}
+
+	//... 省略get/set方法
+}
 
 
+(2) 测试
+1)获取class对象的常见3种方式
+	@Test
+	public void test01() throws ClassNotFoundException {
+		//1 类名.class
+		Class<Car> clazz1=Car.class;
+		System.out.println(clazz1);
+		
+		//2 对象.getClass()
+		Car car=new Car();
+		Class clazz2=car.getClass();
+		System.out.println(clazz2);
+		
+		//3 Class.forName("类的全路径")
+		Class clazz3=Class.forName("com.mio.reflect.Car");
+		System.out.println(clazz3);
+		//class com.mio.reflect.Car		
+	}
 
 
+2)获取构造方法
+	@SuppressWarnings({ "unchecked", "rawtypes" })
+	@Test
+	public void test02() throws Exception {
+		Class clazz3=Class.forName("com.mio.reflect.Car");
+		//注意，有两个获取构造函数的方法，差别就是是否有s结尾
+		//1.获取构造函数，并实例化
+		Car car=(Car)clazz3.getDeclaredConstructor().newInstance();
+		System.out.println(car+"\n");
+
+		//2.获取构造函数arr
+		//getConstructors() 和 getDeclaredConstructors() 的区别: 前者只能获取public构造
+		Constructor[] constructors = clazz3.getDeclaredConstructors(); //所有构造，public+private
+//		Constructor[] constructors = clazz3.getConstructors(); //只能获取public构造
+		System.out.println("构造方法个数:"+constructors.length);
+		//遍历输出
+		for(Constructor c: constructors) {
+			System.out.println("构造方法:"+c.getName() + ", 参数个数:" + c.getParameterCount());
+		}
+		System.out.println();
+		//实例化
+		Car car2 =(Car) constructors[1].newInstance();
+		System.out.println("2 "+car2);
+		
+		//3.默认使用无参构造，怎么使用有参构造？
+		Constructor c1=clazz3.getConstructor(String.class, String.class);
+		Car car3=(Car) c1.newInstance("宝马", "黑色");
+		System.out.println("3 "+car3);
+		
+		//4.怎么调用 private 构造函数?
+		Constructor c2=clazz3.getDeclaredConstructor(String.class, int.class, String.class);
+		c2.setAccessible(true); //设置这一步才能访问私有构造，否则报错
+		Car car4=(Car) c2.newInstance("比亚迪", 5, "红色");
+		System.out.println("4 "+car4);
+	}
+	
+输出:
+	Car[name:null, age:0, color:null]
+
+	构造方法个数:3
+	构造方法:com.mio.reflect.Car, 参数个数:3
+	构造方法:com.mio.reflect.Car, 参数个数:0
+	构造方法:com.mio.reflect.Car, 参数个数:2
+
+	2 Car[name:null, age:0, color:null]
+	3 Car[name:宝马, age:0, color:黑色]
+	4 Car[name:比亚迪, age:5, color:红色]
 
 
+3)获取属性
+	@Test
+	public void test03() throws Exception {
+		//获取对象
+		Class clazz=Car.class;
+		Car car=(Car) clazz.getDeclaredConstructor().newInstance();
+		//获取所有属性
+//		Field[] fields = clazz.getFields(); //获取所有的public属性
+		Field[] fields = clazz.getDeclaredFields(); //获取所有的public+private 属性
+		for(Field field: fields) {
+			//设置属性的只
+			if(field.getName().equals("name") ) {
+				//设置允许访问
+				field.setAccessible(true);
+				field.set(car, "五菱宏光");
+			}
+			System.out.println(field.getName() +", \ttype:"+ field.getType());
+		}
+		//输出对象
+		System.out.println(car);
+	}
+
+输出:
+	name, 	type:class java.lang.String
+	age, 	type:int
+	color, 	type:class java.lang.String
+	Car[name:五菱宏光, age:0, color:null]
 
 
+4)获取方法
+	@Test
+	public void test04() throws Exception {
+		//获取对象
+		Car car=new Car("奔驰", "白色");
+		Class clazz=car.getClass();
+		
+		//1.获取 public 方法
+		Method[] methods = clazz.getMethods();
+		for(Method method: methods) {
+			System.out.println(method.getName() + ": "+method.getParameterCount());
+			//执行某个方法 toString
+			if(method.getName().equals("toString")) {
+				String invoke=(String) method.invoke(car);
+				System.out.println(" > " + invoke);
+			}
+		}
+		System.out.println();
+		
+		//2.获取 private 方法
+		Method[] methodsAll = clazz.getDeclaredMethods();
+		for(Method method: methodsAll) {
+			System.out.println(method.getName() + ": "+method.getParameterCount());
+			//执行私有方法: run
+			if(method.getName().equals("run")) {
+				//设置许可
+				method.setAccessible(true);
+				String invoke=(String) method.invoke(car);
+				System.out.println(" > " + invoke);
+			}
+		}
+	}
 
 
 
@@ -2923,7 +3100,326 @@ java反射机制是在运行状态中，
 
 
 ========================================
+|-- 手写IoC实现步骤
 ----------------------------------------
+1. 创建子模块
+(1) 右击外部项目 spring6，new- Maven Module
+	勾选 skip archetype selection
+	Module name: mio-ioc
+	父项目: spring6
+
+Artifact:
+	group id: com.mio
+	artifact id: mio-ioc
+	version:
+	packaging: jar
+Finish
+
+右击子模块，build path - config - Library 
+	把jre环境设置为 本地安装的 jdk17
+
+
+(2) 创建测试类 service dao
+com.mio
+|-service/
+	|-UserService 接口
+		|-impl/
+			|-UserServiceImpl 实现类
+|-dao/
+	|-UserDao 接口
+		|-impl/
+			|-UserDaoImpl 实现类
+
+业务逻辑 接口和实现
+$ cat UserService.java
+package com.mio.service;
+
+public interface UserService {
+	public void add();
+}
+
+$ cat UserServiceImpl.java
+package com.mio.service.impl;
+
+import com.mio.dao.UserDao;
+import com.mio.service.UserService;
+
+import mio.com.anno.Bean;
+import mio.com.anno.Di;
+
+//添加自定义注解
+@Bean
+public class UserServiceImpl implements UserService {
+	@Di
+	private UserDao userDao;
+	@Override
+	public void add() {
+		System.out.println("service ...");
+	}
+}
+
+
+数据操作接口和实现:
+$ cat UserDao.java
+package com.mio.dao;
+public interface UserDao {
+	public void add();
+}
+
+$ cat UserDaoImpl.java
+package com.mio.dao.impl;
+
+import com.mio.dao.UserDao;
+import mio.com.anno.Bean;
+@Bean
+public class UserDaoImpl implements UserDao {
+	@Override
+	public void add() {
+		System.out.println("dao ...");
+	}
+}
+
+
+
+
+
+(3) 创建2个注解
+@Bean 创建对象
+@Di 属性注入
+
+com.mio
+|-anno/
+	|-Bean
+	|-Di
+
+添加元注解：
+Bean用在类上:
+	运行时生效 @Retention(RetentionPolicy.RUNTIME) 
+	使用位置 @Target(ElementType.TYPE)
+Di用在属性上
+	运行时生效 @Retention(RetentionPolicy.RUNTIME) 
+	作用对象 @Target(ElementType.FIELD)
+
+$ cat Bean.java
+package mio.com.anno;
+
+import java.lang.annotation.ElementType;
+import java.lang.annotation.Retention;
+import java.lang.annotation.RetentionPolicy;
+import java.lang.annotation.Target;
+
+@Target(ElementType.TYPE)
+@Retention(RetentionPolicy.RUNTIME)
+public @interface Bean {}
+
+
+$ cat Di.java
+package mio.com.anno;
+
+import java.lang.annotation.ElementType;
+import java.lang.annotation.Retention;
+import java.lang.annotation.RetentionPolicy;
+import java.lang.annotation.Target;
+
+@Retention(RetentionPolicy.RUNTIME)
+@Target(ElementType.FIELD)
+public @interface Di {}
+
+
+
+
+(4) 创建bean容器接口 ApplicationContext
+定义方法、返回对象
+com.mio
+|-bean/
+	|-ApplicationContext 接口，定义方法 Object getBean(Class clazz);
+
+$ cat ApplicationContext.java
+package com.mio.bean;
+
+public interface ApplicationContext {
+	Object getBean(Class clazz);
+}
+
+
+(5) 实现bean容器
+com.mio
+|-bean/
+	|-AnnotatonApplicationContext 实现类
+- 返回对象
+- 根据包规则加载bean
+	* 比如包 com.mio
+	* 扫描该包及其子包的所有类，看类上面是否有@Bean注解，如果有就使用反射实例化
+
+
+
+
+2. eclipse导入maven项目 pom.xml 有红叉 //todo //done;
+可以删除2个空格，保存，就好了。
+再加上空格，保持git不变。
+
+
+
+
+========================================
+|-- AnnotatonApplicationContext 类的实现: 注解+反射 实例化对象
+----------------------------------------
+
+$ cat AnnotationApplicationContext.java
+package com.mio.bean;
+
+import java.io.File;
+import java.io.IOException;
+import java.net.URL;
+import java.net.URLDecoder;
+import java.util.Enumeration;
+import java.util.HashMap;
+import java.util.Map;
+
+import mio.com.anno.Bean;
+
+public class AnnotationApplicationContext implements ApplicationContext {
+	//1.创建map集合，放bean对象
+	private Map<Class, Object> beanFactory = new HashMap<>();
+	private static String rootPath; //包的根目录 
+
+	//2.返回对象
+	@Override
+	public Object getBean(Class clazz) {
+		return beanFactory.get(clazz);
+	}
+	
+	//3.创建有参数构造，传递包路径，设置包扫描规则
+	//设置包扫描规则: 当前包及其子包，如果有 @ Bean注解，把这个类通过反射实例化
+	public AnnotationApplicationContext(String basePackage) throws Exception {
+		//com.mio
+		try {
+			//1.把.替换成\
+			String pkgPath=basePackage.replaceAll("\\.", "\\\\");
+			//System.out.println(pkgPath);
+			//2.获取包绝对路径，支持多个路径
+			Enumeration<URL> urls =
+					Thread.currentThread().getContextClassLoader()
+										  .getResources(pkgPath);
+			//2.2遍历输出
+			while(urls.hasMoreElements()) {
+				URL url=urls.nextElement();
+				//System.out.println(url);//有乱码: %5c字符
+				//为了防止乱码
+				String filePath=URLDecoder.decode(url.getFile(), "utf-8");
+				//System.out.println(filePath);
+				//获取包前面的路径部分，字符串截取
+				rootPath=filePath.substring(0, filePath.length() - pkgPath.length());
+				
+				//3.扫描包，使用函数实现
+				loadBean(new File(filePath));
+			}
+			
+		} catch (IOException e) {
+			e.printStackTrace();
+		}
+		
+	}
+	
+	//扫描包的过程，实例化
+	private void loadBean(File file) throws Exception {
+		//1 判断当前内容是否是文件夹
+		if(file.isDirectory()) {
+			//2 如果是，获取文件夹内的所有内容
+			File[] childrenFiles = file.listFiles();
+			//3 如果文件夹为空，直接返回
+			if(childrenFiles==null || childrenFiles.length==0) {
+				return;
+			}
+			//4 如果文件夹不为空，遍历文件夹所有内容
+			for(File child: childrenFiles) {
+				//4.1 遍历每个File对象，继续判断，如果还是文件夹，递归
+				if(child.isDirectory()) {
+					loadBean(child);
+				}else {
+					//4.2 遍历得到File对象是文件，则继续
+					//4.3 得到包路径 + 类名称部分：字符串截取
+					String pathWithClass = child.getAbsolutePath()
+								.substring(rootPath.length()-1);
+					//4.4 判断当前文件类型是否是.class
+					if(pathWithClass.endsWith(".class")) {
+						//4.5 如果是 .class类型，把路径\替换成.，把.class去掉 
+						// com.mio.service.UserServiceImpl.class
+						String fullName=pathWithClass.substring(0, pathWithClass.length()-6);
+						fullName=fullName.replaceAll("\\\\", "\\.");
+						
+						//4.6 判断类上是否有 @ Bean注解，如果有，则实例化
+						//4.6.1 获取class
+						Class<?> clazz=Class.forName(fullName);
+						//4.6.2 不是接口，才实例化
+						//if(clazz.toString().startsWith("class")) {
+						if(!clazz.isInterface()) {
+							//4.6.3 判断是否有注解
+							Bean annotation = clazz.getAnnotation(Bean.class);
+							//System.out.println( "\t"+ clazz.toString()+"\t"+annotation );
+							if(annotation != null) {
+								//4.6.4 实例化
+								Object instance = clazz.getConstructor().newInstance();
+								
+								
+								//4.7 实例化后的对象，放到map集合 beanFactory
+								//有接口，则接口作为key；没有接口，则类名作为key
+								//4.7.1 判断当前类是否有接口
+								//System.out.println("\t" + instance+"\t"+clazz.getInterfaces()[0] );
+								//System.out.println("\t" + instance+"|\t"+clazz );
+								if( clazz.getInterfaces().length>0 ) {
+									beanFactory.put(clazz.getInterfaces()[0], instance);
+								}else {
+									beanFactory.put(clazz, instance);
+								}
+							}
+						}
+					}
+				}
+			}
+		}
+	}
+
+	//测试: 写代码时测试
+	public static void main2(String[] args) throws Exception {
+//		ApplicationContext context=
+//				new AnnotationApplicationContext("com.mio.bean.xml");
+		AnnotationApplicationContext app=
+				new AnnotationApplicationContext("com.mio");
+		System.out.println(app);
+	}
+}
+
+
+
+(6) 测试
+$ cat TestUser.java
+package com.mio;
+
+import org.junit.jupiter.api.Test;
+
+import com.mio.bean.AnnotationApplicationContext;
+import com.mio.bean.ApplicationContext;
+import com.mio.service.UserService;
+
+public class TestUser {
+	@Test
+	public void test01() throws Exception {
+		ApplicationContext context=
+				new AnnotationApplicationContext("com.mio");
+		UserService userService = (UserService) context.getBean(UserService.class);
+		userService.add();
+		System.out.println(userService);
+	}
+
+}
+
+输出:
+	service ...
+	com.mio.service.impl.UserServiceImpl@646007f4
+
+
+
 
 
 
