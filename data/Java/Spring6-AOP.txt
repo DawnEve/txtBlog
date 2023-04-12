@@ -950,8 +950,9 @@ Spring 事务
 transaction [trænˈzækʃ(ə)n] n. 交易，买卖，业务；（学术团体会议的）议事录，公报；（人与人之间的）交流，相互影响；事务（元），事项
 
 
-1. 创建子模块
-(1) 右击外部项目 spring6，new- Maven Module
+1. 准备文件结构
+(1) 创建子模块
+右击外部项目 spring6，new- Maven Module
 	勾选 skip archetype selection
 	Module name: spring6-jdbc-tx
 	父项目: spring6
@@ -1102,10 +1103,17 @@ public class JdbcTemplateTest {
 输出:
 	org.springframework.jdbc.core.JdbcTemplate@12365c88
 
+接下来实现CURD。
 
 
 
-(7) 测试类：新增数据
+========================================
+|-- JdbcTemplate 执行 增删改查CURD
+----------------------------------------
+
+2. 操作数据（增、删、改）
+
+(1)新增数据
 这地方卡了好几个小时，总是报错。//todo //done;
 
 1)最原始的方式
@@ -1130,8 +1138,9 @@ public class JdbcTemplateTest {
 		System.out.println(updateRows);		
 	} 
 
-输出: 1
+输出: 1 返回的是新增记录的行数。
 说明手工创建 数据源，然后使用该数据源传入构造器创建 JdbcTemplate 的对象是可行的。
+
 
 2)使用配置文件
 	private static void demo2() {
@@ -1151,7 +1160,6 @@ public class JdbcTemplateTest {
 
 
 3)测试类标准写法
-
 $ cat JdbcTemplateTest.java
 package com.mio.spring6.jdbc;
 
@@ -1185,8 +1193,54 @@ public class JdbcTemplateTest {
 }
 
 
+还可以把 update() 的参数写到一个数组中：
+	@Test
+	public void testUpdate2() {
+		//添加操作
+		//1 编写sql语句
+		String sql="insert into t_emp values(NULL,?,?,?)";
+		
+		//2 调用 JdbcTemplate 的方法，传入相关参数
+		Object[] params= {"小明", 21, "M"};
+		int updateRows = jdbcTemplate.update(sql, params);
+		System.out.println(updateRows);
+	}
 
-(8) 实现CURD
+
+
+(2) 修改数据
+	@Test
+	public void testUpdate3() {
+		//修改操作
+		//1 编写sql语句
+		String sql="update t_emp set name=? where id=?";
+		
+		//2 调用 JdbcTemplate 的方法，传入相关参数
+		Object[] params= {"Tom", 2};
+		int updateRows = jdbcTemplate.update(sql, params);
+		System.out.println(updateRows);
+	}
+
+查询数据，确实更新了:
+> select * from t_emp;
+
+修改多个信息: String sql="update t_emp set name=?, gender=? where id=?";
+
+
+(3) 删除数据
+	@Test
+	public void testUpdate5() {
+		//删除操作
+		//1 编写sql语句
+		String sql="delete from t_emp where id=?";
+		
+		//2 调用 JdbcTemplate 的方法，传入相关参数
+		Object[] params= {2};
+		int updateRows = jdbcTemplate.update(sql, params);
+		System.out.println(updateRows);
+	}
+
+检查: > select * from t_emp;
 
 
 
@@ -1194,18 +1248,131 @@ public class JdbcTemplateTest {
 
 
 
+2. 查询数据
+- 返回对象
+- 返回list集合
+- 返回单个的值: 记录的行数
 
+(0) 新建类 Emp，方便封装数据库的数据
+$ cat Emp.java
+package com.mio.spring6.jdbc;
+
+public class Emp {
+	private Integer id;
+	private String name;
+	private Integer age;
+	private String gender;
+	
+	@Override
+	public String toString() {
+		return String.format("Emp[id:%d, name:%s, age:%d, gender:%s]", id, name, age, gender);
+	}
+	// 省略set/get方法...
+}
+
+
+
+(1)查询：返回对象
+	@Test
+	public void testSelectObj() {
+		//1 编写sql语句
+		String sql="select * from t_emp where id=?";
+		
+		//2 调用 JdbcTemplate 的方法，传入相关参数
+		/* 有一个三个参数的查询函数
+		 * 参数1: sql语句
+		 * 参数2 RowMapper<Emp> rowMapper: 是一个封装类，根据返回结果rs，封装好返回的对象，就是查询的结果
+		 * 参数3: sql语句中的未知参数赋值
+		 * */
+		Emp empObj = jdbcTemplate.queryForObject(sql,
+				//使用java8中的lambda表达式
+				//太繁琐，写着很不方便
+				(rs, rowNum)->{
+					System.out.println("查询结果: "+rowNum);
+					Emp emp=new Emp();
+					emp.setId( rs.getInt("id"));
+					emp.setName( rs.getString("name"));
+					emp.setAge( rs.getInt("age"));
+					emp.setGender(rs.getString("gender"));
+					return emp;
+				},	1);
+		System.out.println(empObj);
+
+
+		//写法2: 使用Spring的封装类
+		Emp empObj2 = jdbcTemplate.queryForObject(sql, new BeanPropertyRowMapper<>(Emp.class), 1);
+		System.out.println(empObj2);
+	}
+
+输出:
+	查询结果: 0
+	Emp[id:1, name:小明, age:20, gender:M]
+	Emp[id:1, name:小明, age:20, gender:M]
+
+
+
+(2)查询：返回list
+	//查询：返回list
+	@Test
+	public void testSelectList() {
+		//1 编写sql语句
+		String sql="select * from t_emp;";
+		//2 查询
+		List<Emp> list = jdbcTemplate.query(sql, 
+				new BeanPropertyRowMapper<>(Emp.class));
+		//3. 输出
+		for(Emp emp: list) {
+			System.out.println(emp);
+		}
+	}
+
+输出:
+	Emp[id:1, name:小明, age:20, gender:M]
+	Emp[id:3, name:Lily, age:22, gender:F]
+
+
+
+
+(3)查询：返回单个值
+	//查询：返回单个值
+	@Test
+	public void testSelectValue() {
+		//1 编写sql语句
+		String sql="select count(*) from t_emp;";
+		//2 查询
+		Integer count = jdbcTemplate.queryForObject(sql, Integer.class);
+		System.out.println("当前表的总行数: "+count);
+	}
+
+输出:
+	当前表的总行数: 2
 
 
 
 
 ========================================
+|-- 事务
 ----------------------------------------
+1. 基本概念
+(1) 事务就是一组数据库操作，要么都成功，要么都失败。
+比如银行转账：
+	A 给 B 转账100元，则必须
+		成功：同时A减少100元，B增加100元。
+		失败：啥都没发生。
+	不能出现A减少了，但是B没有增加；或者A没变化，B增加等其他情况。
+
+(2) 事务的特点 ACID
+原子性: 都成功，或都失败
+一致性: 转账前后，总量不变。
+隔离性: 并发环境中，每个事务都各自完整的数据空间，由并发事务所做的修改必须与任何其他并发事务所做的修改隔离。
+持久性: 事务提交，表中数据生效。
+
+
+(3) spring 支持 编程时事务、声明式事务
 
 
 
-========================================
-----------------------------------------
+
 
 
 
