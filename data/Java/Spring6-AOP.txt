@@ -1,0 +1,832 @@
+Spring 6 视频笔记(下): AOP 部分
+
+狭义定义: Core	核心部分 - 本文主要关注的点
+IoC Container, 
+Events, 
+Resources, 
+i18n, 
+Validation, 
+Data Binding, 
+Type Conversion, 
+SpEL, 
+AOP, 
+AOT.
+
+
+其他人的总结:
+	https://blog.csdn.net/MS_SONG/article/details/126242159
+
+
+https://www.bilibili.com/video/BV1kR4y1b7Qc/?p=55
+
+
+========================================
+AOP 面向切面编程
+----------------------------------------
+示例代码框架。
+
+
+1. 创建子模块
+(1) 右击外部项目 spring6，new- Maven Module
+	勾选 skip archetype selection
+	Module name: spring6-aop
+	父项目: spring6
+
+Artifact:
+	group id: com.mio
+	artifact id: spring6-aop
+	version:
+	packaging: jar
+Finish
+
+右击子模块，build path - config - Library 
+	把jre环境设置为 本地安装的 jdk17
+
+
+
+2.文件结构
+(1) 新建包，新建类
+|-Calculator 接口
+|-CalculatorImpl 基本实现类
+|-CalculatorLogImpl 带日志的实现类
+
+接口
+$ cat Calculator.java
+package com.mio.spring6.aop.example;
+
+public interface Calculator {
+	int add(int i, int j);
+	int sub(int i, int j);
+	int mul(int i, int j);
+	int div(int i, int j);
+}
+
+基本实现
+$ cat CalculatorImpl.java
+package com.mio.spring6.aop.example;
+//基本实现类
+public class CalculatorImpl implements Calculator {
+
+	@Override
+	public int add(int i, int j) {
+		int result=i+j;
+		System.out.println("方法内结果 add result="+result);
+		return result;
+	}
+...
+
+带日志的实现
+$ cat CalculatorLogImpl.java
+package com.mio.spring6.aop.example;
+//带日志功能的实现类
+public class CalculatorLogImpl implements Calculator {
+
+	@Override
+	public int add(int i, int j) {
+		System.out.println("[日志] add 方法开始了，参数是: "+i+", "+j);
+		int result=i+j;
+		System.out.println("方法内结果 add result="+result);
+		System.out.println("[日志] add 方法结束了，参数是: "+i+", "+j);
+		return result;
+	}
+...
+
+分析: 以上问题的缺点是，日志和核心功能混合写了。日志代码是重复的。
+
+目标: 把业务逻辑和日志的代码分开。
+实现方法：代理模式。
+
+
+
+
+
+========================================
+|-- 代理模式：静态代理、动态代理
+----------------------------------------
+1. 代理模式的概念
+目的：解耦。
+代理：我们直接和代理交互。
+目标：代理和目标直接交互。
+
+代理相当于中介，
+	我们和明星之间有经纪人
+	租客和房东之间，有中介。
+
+
+
+2. 静态代理
+|-接口
+	|-实现类
+	|-代理类
+
+(1) 新建类
+$ cat CalculatorStaticProxy.java
+package com.mio.spring6.aop.example;
+
+public class CalculatorStaticProxy implements Calculator {
+	//被代理对象
+	private Calculator calculator;
+	//通过构造传入该参数
+	public CalculatorStaticProxy(Calculator calculator) {
+//		super();
+		this.calculator = calculator;
+	}
+
+	@Override
+	public int add(int i, int j) {
+		//输出日志1
+		System.out.println("[日志] add 方法开始了，参数是: "+i+", "+j);
+		
+		//调用目标对象的方法实现核心业务
+		int result=calculator.add(i, j);
+		
+		//输出日志2
+		System.out.println("[日志] add 方法结束了，结果是: "+result);
+		return result;
+	}
+...
+
+
+(2) 测试
+
+	@Test
+	public void test03() {
+		Calculator calc=new CalculatorImpl();
+		Calculator calcProxy=new CalculatorStaticProxy(calc);
+		calcProxy.add(200, 300);
+	}
+
+输出:
+	[日志] add 方法开始了，参数是: 200, 300
+	方法内结果 add result=500
+	[日志] add 方法结束了，结果是: 500
+
+优点：确实解耦了
+缺点：日志还是重复操作，还是写到代码中。
+	其他代理还需要新建 代理类，每个接口新建一个代理类。
+
+
+
+
+
+3. 动态代理
+Spring 就是动态代理。
+所有的类只需要一个代理类。做到了真正的解耦。
+
+警告：动态代理也要求目标对象实现一个接口，否则报错。
+	怎么做无接口的类的动态代理呢？//todo
+		不能！JDK的动态代理必须有接口。
+		https://www.cnblogs.com/WeidLang/p/9857495.html
+
+
+(1) 用到的技术
+java lang 包的 Proxy 类。
+Java8 API文档的示例代码:
+
+Proxy 提供静态方法来创建动态代理类和示例，是所有动态代理类的父类。
+Proxy provides static methods for creating dynamic proxy classes and instances, and it is also the superclass of all dynamic proxy classes created by those methods. 
+创建Foo接口的代理:
+To create a proxy for some interface Foo: 
+
+     InvocationHandler handler = new MyInvocationHandler(...);
+     Class<?> proxyClass = Proxy.getProxyClass(Foo.class.getClassLoader(), Foo.class);
+     Foo f = (Foo) proxyClass.getConstructor(InvocationHandler.class).
+                     newInstance(handler);
+
+or more simply: 
+     Foo f = (Foo) Proxy.newProxyInstance(Foo.class.getClassLoader(),
+                                          new Class<?>[] { Foo.class },
+                                          handler);
+方法部分：提供三个参数
+	class loader 类加载器
+	接口
+	召唤类
+static Object newProxyInstance(ClassLoader loader, Class<?>[] interfaces, InvocationHandler h) 
+Returns an instance of a proxy class for the specified interfaces that dispatches method invocations to the specified invocation handler. 
+
+召唤类中有一个方法 invoke，需要三个参数：
+	代理类
+	方法
+	参数
+Object invoke(Object proxy, Method method, Object[] args) 
+Processes a method invocation on a proxy instance and returns the result. 
+
+
+
+(2) 新建动态代理工厂类
+类内部新建属性，通过构造传入目标对象，
+	有个get方法返回该对象的代理。
+		该方法中，动态创建代理类
+		在执行目标方法的前后可以添加日志方法，也就是实现了日志的统一管理。
+
+动态代理 写法值得反复学习，不过记不住也没事，高频使用，但是很少手写其实现。
+$ cat ProxyFactory.java
+package com.mio.spring6.aop.example;
+
+import java.lang.reflect.InvocationHandler;
+import java.lang.reflect.Method;
+import java.lang.reflect.Proxy;
+import java.util.Arrays;
+
+//动态代理
+public class ProxyFactory {
+	//目标对象
+	private Object target;
+	//通过构造传入目标对象
+	public ProxyFactory(Object target) {
+//		super();
+		this.target = target;
+	}
+
+	//返回代理对象：同时在方法执行前后添加日志
+	public Object getProxy() {
+		/* Proxy.newProxyInstance() 的三个参数
+		 * ClassLoader loader, 加载动态生成代理类的类加载器
+		 * Class<?>[] interfaces, 目标对象实现的所有接口的class类型数组
+		 * InvocationHandler h 代理对象调用目标对象方法的过程
+		 * */
+		ClassLoader classLoader=target.getClass().getClassLoader();
+		Class<?>[] interfaces = target.getClass().getInterfaces();
+		//参数3有多种写法，这里使用匿名类
+		InvocationHandler invocationHandler = new InvocationHandler() {
+			/* invoke()方法的三个参数
+			 * Object proxy, 代理对象
+			 * Method method, 需要重写目标对象的方法
+			 * Object[] args 就是method方法的参数
+			 * */
+			@Override
+			public Object invoke(Object proxy, Method method, Object[] args) throws Throwable {
+				//方法调用前 日志
+				System.out.println("[动态代理日志] "+method.getName()+" 方法开始了，参数是: "+Arrays.toString(args));
+				
+				//调用目标类的方法，这俩只是同名，并不一样。
+				Object result = method.invoke(target, args);
+				
+				//方法调用后 日志
+				System.out.println("[动态代理日志] "+method.getName()+" 方法结束了，结果是: "+result);
+				
+				return result;
+			}
+		};
+		return Proxy.newProxyInstance(classLoader, interfaces, invocationHandler);
+	}
+}
+
+
+
+(3)测试
+使用以上计算器测试，
+使用自定义内部类测试。
+ 
+	@Test
+	public void test04() {
+		//动态代理
+		//1 创建目标对象
+		Calculator calc=new CalculatorImpl();
+		//2 通过动态代理 获取代理类
+		ProxyFactory proxyFactory = new ProxyFactory(calc);
+		Calculator proxy = (Calculator) proxyFactory.getProxy();
+		//3 调用目标方法
+		proxy.mul(5, 25);
+		System.out.println();
+		
+		
+		//注意: 动态代理 目标类要实现接口，否则无法创建动态代理
+		//4 another test: 通过动态代理获取其代理 
+//		Book book = new BookImpl("Java 宝典");
+//		ProxyFactory proxyFactory2 = new ProxyFactory(book);
+//		Book proxy2 = (Book) proxyFactory2.getProxy();
+		
+		//对方法中的 内部类 动态代理
+		interface Book {
+			public void run();
+		}
+		
+		class BookImpl implements Book {
+			private String name;
+			public BookImpl(String name) {
+				this.name=name;
+			}
+			public void run() {
+				System.out.println("Book.run()..."+name);
+			}
+		}
+		
+		//System.out.println(proxy2);
+		//简写为一行
+		Book proxy2=(Book) new ProxyFactory(new BookImpl("Java 宝典3")).getProxy();
+		proxy2.run();
+	}
+
+
+输出:
+	[动态代理日志] mul 方法开始了，参数是: [5, 25]
+	方法内结果 mul result=125
+	[动态代理日志] mul 方法结束了，结果是: 125
+
+	[动态代理日志] run 方法开始了，参数是: null
+	Book.run()...Java 宝典3
+	[动态代理日志] run 方法结束了，结果是: null
+
+
+
+
+
+
+
+
+
+
+
+========================================
+|-- AOP 定义 和 相关术语
+----------------------------------------
+1.定义
+通过预编译方式，不改变源代码的方式，新增功能：降低耦合度
+
+
+2. 术语
+(1) 横切关注点
+抽离非核心业务
+
+(2) 通知(增强)
+安全校验
+日志
+使用的方法叫: 通知方法
+
+五种通知:
+	前置通知
+	返回通知
+	异常通知
+	后置通知: 返回之后执行
+	环绕通知: 使用try...catch...finally结构围绕整个被代理的目标，包括上面四种通知对应的位置。
+
+(3) 切面
+封装通知方法的类。
+(4) 目标
+被代理的目标对象。
+(5) 代理
+向目标对象应用通知之后创建的代理对象。
+
+(6) 连接点
+逻辑概念，不是语法定义。
+所有方法放x轴，每个方法一列，从上到下的执行顺序放y轴，x和y的交叉点就是 连接点。
+通俗的说：连接点是spring 允许你使用通知的地方。
+
+        method1  method2
+方法开始
+异常捕获
+方法结束
+
+(7) 切入点
+实际增强的方法，就是切入点。
+
+
+
+
+
+
+========================================
+|-- 基于 注解 的AOP
+----------------------------------------
+1. 动态代理的分类
+
+(1)两种动态代理的实现
+	有接口: jdk Proxy (interface based)
+		生成接口实现类的代理对象
+		目标对象和代理对象都实现了同样的接口。
+			interface<-Impl
+			interface<-Proxy
+
+	没接口: cglib Proxy (class based)
+		生成子类代理对象
+		代理类继承自目标类
+			Impl<-Proxy
+
+(2) AspectJ 是一个AOP框架，本质是静态代理，将代理逻辑“织入”被代理的目标类编译得到的字节码文件，所以最终效果是动态的。
+weaver是织入器。
+Spring 借用AspectJ的注解，实现了动态代理。
+
+
+
+2. 代码准备
+(1) 继续使用上一步的 spring6-aop 子模块。
+(2) 在父项目的 pom.xml 中引入aop的依赖
+
+  <dependencies>
+	  <!-- spring aop 的依赖 -->
+	  <dependency>
+		  <groupId>org.springframework</groupId>
+		  <artifactId>spring-aop</artifactId>
+		  <version>6.0.7</version>
+	  </dependency>
+	  <!-- spring aspects 的依赖 -->
+	  <dependency>
+		  <groupId>org.springframework</groupId>
+		  <artifactId>spring-aspects</artifactId>
+		  <version>6.0.7</version>
+	  </dependency>
+  </dependencies>
+
+
+(3) 创建目标资源
+新建包，把上一步的计算器和实现复制过去。
+package com.mio.spring6.aop.annoaop;
+|- Calculator 接口
+|- CalculatorImpl 实现类
+
+
+
+(4) 创建切面类
+- 切入点
+- 通知类型
+
+$ cat LogAspect.java
+package com.mio.spring6.aop.annoaop;
+
+import org.aspectj.lang.annotation.Aspect;
+import org.springframework.stereotype.Component;
+
+//切面类
+@Component  //Spring 扫描该文件，并实例化放到容器中
+@Aspect //这是个切面类
+public class LogAspect {
+}
+
+该文件是重点，详情见后文。
+
+
+
+(5) 类根目录下的 resources/ 创建配置文件，修改顶部约束条件
+
+$ cat bean.xml
+<?xml version="1.0" encoding="UTF-8"?>
+<beans xmlns="http://www.springframework.org/schema/beans"
+    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xmlns:context="http://www.springframework.org/schema/context"
+    xmlns:aop="http://www.springframework.org/schema/aop"
+    xsi:schemaLocation="
+        http://www.springframework.org/schema/beans
+        http://www.springframework.org/schema/beans/spring-beans.xsd
+        
+        http://www.springframework.org/schema/context
+        http://www.springframework.org/schema/context/spring-context.xsd
+        
+        http://www.springframework.org/schema/aop
+        http://www.springframework.org/schema/aop/spring-aop.xsd">
+
+	<!-- 开启组件扫描 -->
+	<context:component-scan base-package="com.mio.spring6.aop.annoaop"></context:component-scan>
+	<!-- 开始Aspect自动注解，为目标对象生成代理 -->
+	<aop:aspectj-autoproxy></aop:aspectj-autoproxy>
+</beans>
+
+
+
+
+
+
+
+
+========================================
+|-- 切面类的实现：5种通知类型、切入点表达式
+----------------------------------------
+要点:
+	五种通知类型：方法执行的不同位置
+	切入点表达式: 匹配哪个方法需要增强
+
+
+(6) 完善切面类
+$ cat LogAspect.java
+package com.mio.spring6.aop.annoaop;
+
+import java.util.Arrays;
+
+import org.aspectj.lang.JoinPoint;
+import org.aspectj.lang.ProceedingJoinPoint;
+import org.aspectj.lang.annotation.After;
+import org.aspectj.lang.annotation.AfterReturning;
+import org.aspectj.lang.annotation.AfterThrowing;
+import org.aspectj.lang.annotation.Around;
+import org.aspectj.lang.annotation.Aspect;
+import org.aspectj.lang.annotation.Before;
+import org.springframework.stereotype.Component;
+
+//切面类
+@Aspect //这是个切面类
+@Component  //Spring 扫描该文件，并实例化放到容器中
+public class LogAspect {
+	
+	//设置切入点和通知类型
+	// 通知类型，为每个类型创建一个方法
+	// 前置通知 @ Before(value = "切入点表达式 配置切入点")
+	
+	/* 【切入点表达式】的语法: execution(权限修饰符public 返回值类型int 全类名.方法名(参数类型列表))
+	 * 权限修饰符+返回值类型，用*表示任意
+	 * 包名: *表示包名任意，*... 表示包名任意同时包的层次深度任意
+	 * 类名: *表示任意类；类名的一部分可以用*代替，如 *Service 表示匹配Service结尾的类或接口
+	 * 方法名: *表示任意方法名；方法名的一部分可以用*替代，如 get* 表示匹配get开头的方法
+	 * 参数列表: .. 使用两个点表示任意参数列表；注意int和Integer是不匹配的；
+	 * 注意：如果想明确指定一个函数的返回值类型，比如同时明确指定权限修饰符:
+	 * 如: execution(public int ..Service.(.., int) 正确
+	 * 如: execution(int ..Service.(.., int) 错误
+	 */
+	@Before(value = "execution(public int com.mio.spring6.aop.annoaop.CalculatorImpl.add(int,int))")
+	public void beforeMethod() {
+		System.out.println("\n[Logger][前置通知]");
+	}
+	
+	// 返回通知: 可以获取返回值。注解中可用returning=定义变量名，函数参数中使用该变量名，函数内可以使用该变量。
+	@AfterReturning(value = "execution(* com.mio.spring6.aop.annoaop.CalculatorImpl.*(..))", 
+			returning = "myResult")
+	public void afterReturningMethod(Object myResult) {
+		System.out.println("[Logger][返回通知] 返回结果:"+myResult);		
+	}
+	
+	// 异常通知：目标方法出现异常，则执行，这时不会执行返回通知。不异常不执行。
+	// 注解中可用 throwing=定义异常变量，函数参数中接收该变量，函数内可以使用该变量。
+	@AfterThrowing(value = "execution(* com.mio.spring6.aop.annoaop.CalculatorImpl.*(..))",
+			throwing = "ex")
+	public void afterThrowingMethod(Throwable ex) {
+		System.out.println("[Logger][异常通知] 异常:"+ex);
+	}
+	
+	// 后置通知：在返回之后执行
+	/* joinPoint 参数，可以获得 切入点 位置的信息
+	 * */
+	@After(value = "execution(public int com.mio.spring6.aop.annoaop.CalculatorImpl.*(..))")
+	public void afterMethod(JoinPoint joinPoint) {
+		String methodName = joinPoint.getSignature().getName(); //获取要增强的方法名
+		//获取要增强的方法的参数
+		Object[] args = joinPoint.getArgs();
+		System.out.println("[Logger][后置通知] 方法名称:"+ methodName+", 参数列表: "+Arrays.toString(args)+"\n");
+	}
+	
+	
+	// 环绕通知: 使用子接口 ProceedingJoinPoint，是继承自 JoinPoint 的。增强后能调用 .proceed() 方法
+	@Around(value = "execution(public int com.mio.spring6.aop.annoaop.CalculatorImpl.*(..))")
+	public Object aroundMethod(ProceedingJoinPoint joinPoint) {
+		String methodName = joinPoint.getSignature().getName(); //获取要增强的方法名
+		//获取要增强的方法的参数
+		Object[] args = joinPoint.getArgs();
+		String argsString =Arrays.toString(args);
+		
+		Object result=null;
+		try {
+			System.out.println("\t~"+methodName+"[Logger][环绕通知] {目标方法执行前 执行}");
+			//调用目标方法
+			result = joinPoint.proceed();
+			System.out.println("\t~"+methodName+"[Logger][环绕通知] {目标方法返回值后 执行}, result="+result);
+		} catch (Throwable e) {
+			System.out.println("\t~"+methodName+"[Logger][环绕通知] {异常时 执行}, 异常信息: "+e);
+			e.printStackTrace();
+		}finally {
+			System.out.println("\t~"+methodName+"[Logger][环绕通知] {目标方法执行后 执行}");
+		}
+		return result;
+	}
+}
+
+
+(7) 测试
+$ cat TestCalc.java
+package com.mio.spring6.aop.annoaop;
+
+import org.junit.jupiter.api.Test;
+
+import org.springframework.context.ApplicationContext;
+import org.springframework.context.support.ClassPathXmlApplicationContext;
+
+public class TestCalc {
+	@Test
+	public void testAdd() {
+		System.out.println("test begin...");
+		ApplicationContext context=
+				new ClassPathXmlApplicationContext("bean.xml");
+		Calculator calculator = context.getBean(Calculator.class);
+		calculator.add(10, 50);
+		//calculator.mul(10, 50);
+		
+		//除数不能是0异常
+		//calculator.div(10, 0);
+	}
+}
+
+输出:
+	test begin...
+		~add[Logger][环绕通知] {目标方法执行前 执行}
+
+	[Logger][前置通知]
+	方法内结果 add result=60
+	[Logger][返回通知] 返回结果:60
+	[Logger][后置通知] 方法名称:add, 参数列表: [10, 50]
+
+		~add[Logger][环绕通知] {目标方法返回值后 执行}, result=60
+		~add[Logger][环绕通知] {目标方法执行后 执行}
+
+
+
+
+
+
+========================================
+|-- 重用切入点表达式、切面的优先级
+----------------------------------------
+1. 以上 切入点表达式大量重复
+
+(1) 同一个类内部：两步
+首先定义一个方法，使用注释指定 切入点表达式：
+	//重用切入点表达式
+	@Pointcut(value="execution(public int com.mio.spring6.aop.annoaop.CalculatorImpl.*(..))")
+	public void pointCut2() {}
+
+然后再需要使用该 切入点表达式 时，使用 "方法名()":
+	@Around(value = "pointCut2()")
+	public Object aroundMethod(ProceedingJoinPoint joinPoint) {...}
+
+
+(2) 不同类之间怎么重复使用呢？
+使用 "包名.类名.方法名()":
+	@After(value = "com.mio.spring6.aop.annoaop.LogAspect.pointCut2()")
+	public void afterMethod(JoinPoint joinPoint) {...}
+
+
+
+2. 切面的优先级
+(1) 目标方法上同时存在多个切面时，切面优先级：外面嵌套的优先级高。
+目标方法，内层切面A，外层切面B。
+
+
+(2) 使用@Order 注解可以控制切面的优先级：@Order(较大的数): 优先级较低
+
+
+
+
+
+
+
+
+========================================
+|-- 基于xml 的AOP
+----------------------------------------
+1. 代码准备
+(1) 创建包，复制刚才的4个类
+package com.mio.spring6.aop.annoaop;
+|-Calculator 接口
+|-CalculatorImpl 实现
+|-LogAspect.java 切面类
+|-TestCalc 测试类
+
+去掉切面类中的 切面相关注解。
+其实就是只保留 CalculatorImpl和LogAspect 的@Component 注解。
+
+
+(2) 创建 配置文件
+$ cat bean-xmlaop.xml
+<?xml version="1.0" encoding="UTF-8"?>
+<beans xmlns="http://www.springframework.org/schema/beans"
+    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xmlns:context="http://www.springframework.org/schema/context"
+    xmlns:aop="http://www.springframework.org/schema/aop"
+    xsi:schemaLocation="
+        http://www.springframework.org/schema/beans
+        http://www.springframework.org/schema/beans/spring-beans.xsd
+        
+        http://www.springframework.org/schema/context
+        http://www.springframework.org/schema/context/spring-context.xsd
+        
+        http://www.springframework.org/schema/aop
+        http://www.springframework.org/schema/aop/spring-aop.xsd">
+
+	<!-- 开启组件扫描 -->
+	<context:component-scan base-package="com.mio.spring6.aop.xmlaop"></context:component-scan>
+	<!-- 配置aop的5种通知类型 -->
+	<aop:config>
+		<!-- 配置切面类 -->
+		<aop:aspect ref="logAspect">
+			<!-- 配置切入点 -->
+			<aop:pointcut expression="execution(public int com.mio.spring6.aop.xmlaop.CalculatorImpl.*(..))" 
+				id="pointcut"/>
+			<!-- 配置5种通知类型 -->
+			<!-- 前置通知 -->
+			<aop:before method="beforeMethod" pointcut-ref="pointcut" />
+			<!-- 后置通知 -->
+			<aop:after method="afterMethod" pointcut-ref="pointcut" />
+			<!-- 返回通知: returning=返回值的变量名，要和目标函数的参数一致 -->
+			<aop:after-returning method="afterReturningMethod" returning="myResult" pointcut-ref="pointcut" />
+			<!-- 异常通知: ex=变量名，要和函数参数一致 -->
+			<aop:after-throwing method="afterThrowingMethod" throwing="ex" pointcut-ref="pointcut" />
+			<!-- 环绕通知 -->
+			<aop:around method="aroundMethod" pointcut-ref="pointcut" />
+		</aop:aspect>
+	</aop:config>
+</beans>
+
+
+(3) 测试
+	@Test
+	public void testAdd2() {
+		System.out.println("test begin...");
+		ApplicationContext context=
+				new ClassPathXmlApplicationContext("bean-xmlaop.xml");
+		Calculator calculator = context.getBean(Calculator.class);
+		calculator.mul(10, 50);
+		
+		//除数不能是0异常
+		//calculator.div(10, 0);
+	}
+
+输出:
+	test begin...
+
+	[Logger][前置通知]
+		~mul[Logger][环绕通知] {目标方法执行前 执行}
+	方法内结果 mul result=500
+		~mul[Logger][环绕通知] {目标方法返回值后 执行}, result=500
+		~mul[Logger][环绕通知] {目标方法执行后 执行}
+	[Logger][返回通知] 返回结果:500
+	[Logger][后置通知] 方法名称:mul, 参数列表: [10, 50]
+
+
+
+
+
+
+========================================
+单元测试: JUnit
+----------------------------------------
+1. 问题
+测试类的前两行几乎都是
+	ApplicationContext context=
+			new ClassPathXmlApplicationContext("xx.xml");
+	Xxx xxx = context.getBean(Xxx.class);
+
+这两行代码的作用是创建Spring容器，最终获得对象。
+
+怎么能自动创建容器呢？
+
+JUnit 无法知道我们是否使用了 Spring 框架。
+Spring 提供了一个运行器，可以读取配置文件（或注解）来创建容器。
+	这样就能通过 Spring 整合JUnit使程序自动创建Spring 容器了。
+
+
+
+2. 创建子模块
+(1) 右击外部项目 spring6，new- Maven Module
+	勾选 skip archetype selection
+	Module name: spring6-junit
+	父项目: spring6
+
+Artifact:
+	group id: com.mio
+	artifact id: spring6-junit
+	version:
+	packaging: jar
+Finish
+
+右击子模块，build path - config - Library 
+	把jre环境设置为 本地安装的 jdk17
+
+
+
+
+========================================
+----------------------------------------
+
+
+
+========================================
+----------------------------------------
+
+
+
+
+========================================
+----------------------------------------
+
+
+
+========================================
+----------------------------------------
+
+
+
+========================================
+----------------------------------------
+
+
+
+
+========================================
+----------------------------------------
+
+
+
+========================================
+----------------------------------------
+
+
+
+========================================
+----------------------------------------
+

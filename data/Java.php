@@ -51,7 +51,8 @@ return array (
       array('MyBatis','javaEE105-MyBatis','txt'),
 
       array('Spring6 探索','Spring6-explore','txt',),
-      array('Spring6','Spring6-more','txt'),
+      array('Spring6 IoC','Spring6-IoC','txt'),
+      array('Spring6 AOP','Spring6-AOP','txt'),
       
       array('Spring MVC','Spring-MVC','txt'),
 
