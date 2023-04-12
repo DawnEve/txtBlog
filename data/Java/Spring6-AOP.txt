@@ -938,13 +938,269 @@ public class SpringUnit4Test {
 
 
 ========================================
+Spring 事务
 ----------------------------------------
+四个要点:
+	JDBCTemplate
+	声明式事务概念
+	基于注解的声明式事务
+	基于xml的声明式事务
+
+
+transaction [trænˈzækʃ(ə)n] n. 交易，买卖，业务；（学术团体会议的）议事录，公报；（人与人之间的）交流，相互影响；事务（元），事项
+
+
+1. 创建子模块
+(1) 右击外部项目 spring6，new- Maven Module
+	勾选 skip archetype selection
+	Module name: spring6-jdbc-tx
+	父项目: spring6
+
+Artifact:
+	group id: com.mio
+	artifact id: spring6-jdbc-tx
+	version:
+	packaging: jar
+Finish
+
+右击子模块，build path - config - Library 
+	把jre环境设置为 本地安装的 jdk17
+
+
+(2) 在子模块的 pom.xml 中添加3个依赖
+<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+  <modelVersion>4.0.0</modelVersion>
+  <parent>
+    <groupId>com.mio</groupId>
+    <artifactId>spring6</artifactId>
+    <version>0.0.1-SNAPSHOT</version>
+  </parent>
+  <artifactId>spring6-jdbc-tx</artifactId>
+  
+  <dependencies>
+	  <!-- spring jdbc Spring持久层支持jar包 -->
+	  <dependency>
+		  <groupId>org.springframework</groupId>
+		  <artifactId>spring-jdbc</artifactId>
+		  <version>6.0.7</version>
+	  </dependency>
+	  
+	  <!-- MySQL驱动 -->
+	  <dependency>
+		  <groupId>mysql</groupId>
+		  <artifactId>mysql-connector-java</artifactId>
+		  <version>8.0.32</version>
+	  </dependency>
+	  
+	  <!-- 连接池 (数据源) -->
+	  <dependency>
+		  <groupId>com.alibaba</groupId>
+		  <artifactId>druid</artifactId>
+		  <version>1.2.17</version>
+	  </dependency>
+	  
+  </dependencies>
+</project>
+
+
+(3) 创建数据库配置文件：类根目录下的 resources/下
+$ cat jdbc.properties
+jdbc.user=root
+jdbc.password=
+jdbc.url=jdbc:mysql://localhost:3306/spring?characterEncoding=utf8&useSSL=false&serverTimezone=UTC
+#jdbc.url=jdbc:mysql://localhost:3306/spring?serverTimezone=UTC
+jdbc.driver=com.mysql.cj.jdbc.Driver
+
+说明：
+	url的两个写法都可以。这表示使用 use spring;
+	密码为空，就把等号右边空着。
+
+
+(4) 创建配置文件
+三个任务: 引入外部mysql配置文件，创建连接池对象，实例化 jdbcTemplate 对象。
+$ cat beans.xml
+<?xml version="1.0" encoding="UTF-8"?>
+<beans xmlns="http://www.springframework.org/schema/beans"
+    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xmlns:context="http://www.springframework.org/schema/context"
+    xmlns:aop="http://www.springframework.org/schema/aop"
+    xsi:schemaLocation="
+        http://www.springframework.org/schema/beans
+        http://www.springframework.org/schema/beans/spring-beans.xsd
+        
+        http://www.springframework.org/schema/context
+        http://www.springframework.org/schema/context/spring-context.xsd
+        
+        http://www.springframework.org/schema/aop
+        http://www.springframework.org/schema/aop/spring-aop.xsd">
+
+		<!-- 引入外部属性文件，创建数据源对象 -->
+		<context:property-placeholder location="classpath:jdbc.properties" />
+		
+		<!-- 连接池对象 
+			注意: value="${jdbc.url}" ，其中引号内不能漏掉$字符。这里耽误两个小时！！
+		-->
+		<bean id="druidDataSource" class="com.alibaba.druid.pool.DruidDataSource" >
+			<property name="url" value="${jdbc.url}"></property>
+			<property name="driverClassName" value="${jdbc.driver}"></property>
+			<property name="username" value="${jdbc.user}"></property>
+			<property name="password" value="${jdbc.password}"></property>
+		</bean>
+		
+		<!-- 创建 jdbcTemplate 对象，注入数据源 -->
+		<bean id="jdbcTemplate" class="org.springframework.jdbc.core.JdbcTemplate">
+			<!-- 构造器传入 druidDataSource 对象 -->
+			<constructor-arg name="dataSource" ref="druidDataSource"></constructor-arg>
+		</bean>
+
+</beans>
+
+
+
+
+(5) 创建数据库
+create database spring;
+
+use spring;
+
+create table `t_emp`(
+	`id` int(11) NOT NULL AUTO_INCREMENT,
+	`name` varchar(20) DEFAULT NULL COMMENT '姓名',
+	`age` int(11) DEFAULT NULL COMMENT '年龄',
+	`gender` varchar(2) DEFAULT NULL COMMENT '性别',
+	PRIMARY KEY(`id`) 
+)ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+使用数据库工具: SQLyog, 
+或者命令行都可以。
+G:\xampp\mysql\bin>mysql -h localhost -u root
+Server version: 10.1.30-MariaDB mariadb.org binary distribution
+
+
+
+(6) 创建测试类
+$ cat JdbcTemplateTest.java
+package com.mio.spring6.jdbc;
+
+import org.junit.jupiter.api.Test;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.test.context.junit.jupiter.SpringJUnitConfig;
+
+@SpringJUnitConfig(locations = "classpath:beans.xml")
+public class JdbcTemplateTest {
+	
+	@Autowired
+	private JdbcTemplate jdbcTemplate;
+	
+	@Test
+	public void testUpdate() {
+		System.out.println(jdbcTemplate);
+	}
+}
+
+输出:
+	org.springframework.jdbc.core.JdbcTemplate@12365c88
+
+
+
+
+(7) 测试类：新增数据
+这地方卡了好几个小时，总是报错。//todo //done;
+
+1)最原始的方式
+	private static void demo1() {
+		//1 创建数据源 对象
+		DruidDataSource dataSource=new DruidDataSource();
+//		dataSource.setUrl("jdbc:mysql://localhost:3306/spring?serverTimezone=UTC");
+		dataSource.setUrl("jdbc:mysql://localhost:3306/spring?characterEncoding=utf8&useSSL=false&serverTimezone=UTC");
+		dataSource.setDriverClassName("com.mysql.cj.jdbc.Driver");
+		dataSource.setUsername("root");
+		dataSource.setPassword("");
+		//2 创建 JdbcTemplate 对象
+		JdbcTemplate jdbcTemplate2=new JdbcTemplate(dataSource);
+		System.out.println(jdbcTemplate2);
+		//jdbcTemplate2.execute("select * from t_emp;");
+		
+		//3 编写sql语句
+		String sql="insert into t_emp values(NULL,?,?,?)";
+		
+		//4 调用 JdbcTemplate 的方法，传入相关参数
+		int updateRows = jdbcTemplate2.update(sql, "小明", 22, "M");
+		System.out.println(updateRows);		
+	} 
+
+输出: 1
+说明手工创建 数据源，然后使用该数据源传入构造器创建 JdbcTemplate 的对象是可行的。
+
+2)使用配置文件
+	private static void demo2() {
+		ApplicationContext context=
+				new ClassPathXmlApplicationContext("beans.xml");
+		
+		JdbcTemplate jdbcTemplate2 = context.getBean(JdbcTemplate.class);
+		jdbcTemplate2.execute("select * from t_emp;");
+		System.out.println(jdbcTemplate2);
+	}
+
+最后发现是配置文件写错了！
+	引用MySQL配置文件中的数据需要加$符号！
+	<property name="username" value="${jdbc.user}"></property>
+	正确写法已经更新到上面xml文件中。
+
+
+
+3)测试类标准写法
+
+$ cat JdbcTemplateTest.java
+package com.mio.spring6.jdbc;
+
+import org.junit.jupiter.api.Test;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.context.ApplicationContext;
+import org.springframework.context.support.ClassPathXmlApplicationContext;
+import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.test.context.junit.jupiter.SpringJUnitConfig;
+
+import com.alibaba.druid.pool.DruidDataSource;
+
+@SpringJUnitConfig(locations = "classpath:beans.xml")
+public class JdbcTemplateTest {
+	
+	@Autowired
+	private JdbcTemplate jdbcTemplate;
+	
+	
+	//添加、修改、删除操作：调用同一个方法
+	@Test
+	public void testUpdate() {
+		//添加操作
+		//1 编写sql语句
+		String sql="insert into t_emp values(NULL,?,?,?)";
+		
+		//2 调用 JdbcTemplate 的方法，传入相关参数
+		int updateRows = jdbcTemplate.update(sql, "小明", 20, "M");
+		System.out.println(updateRows);
+	}
+}
+
+
+
+(8) 实现CURD
+
+
+
+
+
+
+
+
+
 
 
 
 ========================================
 ----------------------------------------
-
 
 
 
