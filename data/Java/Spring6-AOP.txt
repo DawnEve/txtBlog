@@ -1984,6 +1984,7 @@ public class BookServiceImpl implements BookService {
 	}
 }
 
+
 (3) 测试
 $ cat TestBookTx.java
 package com.mio.spring6.tx;
@@ -2042,9 +2043,738 @@ public class TestBookTx {
 
 
 ========================================
-|-- 全注解配置事务
+|-- 全注解配置事务: 使用配置类 代替 配置文件
+----------------------------------------
+1. 新建配置类，代替xml配置文件
+
+$ cat SpringConfig.java
+package com.mio.spring6.tx.config;
+
+import javax.sql.DataSource;
+
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.ComponentScan;
+import org.springframework.context.annotation.Configuration;
+import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.jdbc.datasource.DataSourceTransactionManager;
+import org.springframework.transaction.annotation.EnableTransactionManagement;
+
+import com.alibaba.druid.pool.DruidDataSource;
+
+@Configuration //配置类
+@ComponentScan("com.mio.spring6.tx") //开启包扫描
+@EnableTransactionManagement  //开启事务管理
+public class SpringConfig {
+	@Bean
+	public DataSource getDataSource() {
+		//1 创建连接池
+		DruidDataSource dataSource = new DruidDataSource();
+		//设置数据源
+//		dataSource.setUrl("jdbc:mysql://localhost:3306/spring?serverTimezone=UTC");
+		dataSource.setUrl("jdbc:mysql://localhost:3306/spring?characterEncoding=utf8&useSSL=false&serverTimezone=UTC");
+		dataSource.setDriverClassName("com.mysql.cj.jdbc.Driver");
+		dataSource.setUsername("root");
+		dataSource.setPassword("");
+		return dataSource;
+	}
+
+	@Bean(name="jdbcTemplate")
+	public JdbcTemplate getJdbcTemplate(DataSource dataSource) {
+		JdbcTemplate jdbcTemplate=new JdbcTemplate(dataSource);
+		return jdbcTemplate;		
+	}
+	
+	//事务管理器
+	@Bean
+	public DataSourceTransactionManager getDataSourceTransactionManager(DataSource dataSource) {
+		DataSourceTransactionManager manager=new DataSourceTransactionManager();
+		manager.setDataSource(dataSource);
+		return manager;
+	}
+}
+
+
+
+2. 新建测试类
+$ cat TestAnnoTx.java
+package com.mio.spring6.tx;
+
+import org.junit.jupiter.api.Test;
+import org.springframework.context.ApplicationContext;
+import org.springframework.context.annotation.AnnotationConfigApplicationContext;
+
+import com.mio.spring6.tx.config.SpringConfig;
+import com.mio.spring6.tx.controller.BookController;
+
+public class TestAnnoTx {
+
+	@Test
+	public void test02() {
+		ApplicationContext context=
+				new AnnotationConfigApplicationContext(SpringConfig.class);
+		BookController bookController = context.getBean(BookController.class);
+		bookController.buyBook(1, 2);
+		System.out.println("买书 结束");
+	}
+}
+
+输出: 
+	更新 库存 影响行数: 1
+	更新 用户余额 影响行数: 1
+	买书 结束
+检查数据表:
+	期刊1 减少1本
+	用户2 余额减少 80 元。
+
+
+
+========================================
+|-- 基于 xml 的声明式事务管理
+----------------------------------------
+1. 环境准备
+(1) 新建包
+com.mio.spring6.xmltx
+
+(2) 复制文件
+|-controller/
+	|-BookController.java
+|-service/ 
+	|-BookService.java 接口
+	|-BookServiceImpl.java 实现
+	|-删除 CheckoutService 接口和实现文件；
+|-dao/
+	|-BookDao.java 接口
+	|-BookDaoImpl.java 实现
+
+去掉 BookServiceImpl.java中的 @Transactional 注解。
+
+控制器
+$ cat BookController.java
+package com.mio.spring6.xmltx.controller;
+
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.stereotype.Controller;
+
+import com.mio.spring6.xmltx.service.BookService;
+
+@Controller
+public class BookController {
+	
+	@Autowired
+	private BookService bookService;
+		
+	//买书方法
+	public void buyBook(Integer bookId, Integer userId) {
+		bookService.buyBook(bookId, userId);
+	}
+}
+
+业务逻辑 接口和服务
+$ cat BookService.java
+package com.mio.spring6.xmltx.service;
+public interface BookService {
+	void buyBook(Integer bookId, Integer userId);
+}
+
+$ cat BookServiceImpl.java
+package com.mio.spring6.xmltx.service;
+
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.stereotype.Service;
+
+import com.mio.spring6.xmltx.dao.BookDao;
+
+@Service
+public class BookServiceImpl implements BookService {
+	
+	@Autowired
+	private BookDao bookDao;
+
+	//买书的过程
+	@Override
+	public void buyBook(Integer bookId, Integer userId) {		
+		//1 根据图书id查看图书价格
+		Integer price=bookDao.getBookPriceByBookId(bookId);
+		
+		//2 更新图书库存量 -1
+		bookDao.updateStock(bookId);
+		
+		//3 更新用户余额：-图书价格
+		bookDao.updateUserBalance(userId, price);
+	}
+}
+
+
+数据库操作
+$ cat BookDao.java
+package com.mio.spring6.xmltx.dao;
+
+public interface BookDao {
+	Integer getBookPriceByBookId(Integer bookId);
+	void updateStock(Integer bookId);
+	void updateUserBalance(Integer userId, Integer price);
+}
+
+$ cat BookDaoImpl.java
+package com.mio.spring6.xmltx.dao;
+
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.stereotype.Repository;
+
+@Repository
+public class BookDaoImpl implements BookDao {
+	
+	@Autowired
+	private JdbcTemplate jdbcTemplate;
+
+	//获取价格
+	@Override
+	public Integer getBookPriceByBookId(Integer bookId) {
+		String sql="select price from t_book where book_id=?";
+		Integer price = jdbcTemplate.queryForObject(sql, Integer.class, bookId);
+		return price;
+	}
+
+	//更新库存
+	@Override
+	public void updateStock(Integer bookId) {
+		String sql="update t_book set stock=stock-1 where book_id=?";
+		int rowNum = jdbcTemplate.update(sql, bookId);
+		System.out.println("更新 库存 影响行数: "+rowNum);
+	}
+
+	//更新用户余额
+	@Override
+	public void updateUserBalance(Integer userId, Integer price) {
+		String sql="update t_user set balance=balance-? where user_id=?";
+		int rowNum = jdbcTemplate.update(sql, price, userId);
+		System.out.println("更新 用户余额 影响行数: "+rowNum);
+	}
+}
+
+
+
+
+
+
+
+2. 配置文件
+(1) 开启组件扫描
+(2) 创建数据源
+(3) 创建 JdbcTemplate，注入数据源
+(4) 创建事务管理器，注入数据源
+
+(5) 配置事务通知，设置事务相关属性
+(6) 配置切入点表达式，把事务通知添加方法上
+
+$ cat beans-xmltx.xml
+<?xml version="1.0" encoding="UTF-8"?>
+<beans xmlns="http://www.springframework.org/schema/beans"
+    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xmlns:context="http://www.springframework.org/schema/context"
+    xmlns:aop="http://www.springframework.org/schema/aop"
+    xmlns:tx="http://www.springframework.org/schema/tx"
+    xsi:schemaLocation="
+        http://www.springframework.org/schema/beans
+        http://www.springframework.org/schema/beans/spring-beans.xsd
+        
+        http://www.springframework.org/schema/context
+        http://www.springframework.org/schema/context/spring-context.xsd
+        
+        http://www.springframework.org/schema/aop
+        http://www.springframework.org/schema/aop/spring-aop.xsd
+        
+        http://www.springframework.org/schema/tx
+        http://www.springframework.org/schema/tx/spring-tx.xsd">
+        
+        <!--1 开启组件扫描 -->
+        <context:component-scan base-package="com.mio.spring6.xmltx"></context:component-scan>
+
+		<!--2.1 引入外部属性文件，创建数据源对象 -->
+		<context:property-placeholder location="classpath:jdbc.properties" />
+		
+		<!--2.2 连接池对象 
+			注意: value="${jdbc.url}" ，其中引号内不能漏掉$字符。这里耽误两个小时！！
+		-->
+		<bean id="druidDataSource" class="com.alibaba.druid.pool.DruidDataSource" >
+			<property name="url" value="${jdbc.url}"></property>
+			<property name="driverClassName" value="${jdbc.driver}"></property>
+			<property name="username" value="${jdbc.user}"></property>
+			<property name="password" value="${jdbc.password}"></property>
+		</bean>
+		
+		<!--3 创建 jdbcTemplate 对象，注入数据源 -->
+		<bean id="jdbcTemplate" class="org.springframework.jdbc.core.JdbcTemplate">
+			<!-- 构造器传入 druidDataSource 对象: 构造器注入，或set注入。
+			<constructor-arg name="dataSource" ref="druidDataSource"></constructor-arg>
+			-->
+			<property name="dataSource" ref="druidDataSource"></property>
+		</bean>
+
+		
+		<!--4 事务管理器 bean: 对数据源 添加事务支持 -->
+		<bean id="transactionManager" class="org.springframework.jdbc.datasource.DataSourceTransactionManager">
+			<property name="dataSource" ref="druidDataSource"></property>
+		</bean>
+		
+		<!-- 5 配置事务增强(通知) -->
+		<tx:advice id="txAdvice" transaction-manager="transactionManager">
+			<tx:attributes>
+				<!-- name="get*" 是给get开头的方法制定规则： 
+				这几个不起作用，因为下文配置的是 service.下的类的方法，而get和update开头的方法是dao中的 -->
+				<tx:method name="get*" read-only="true"/>
+				<tx:method name="update*" read-only="false" propagation="REQUIRED" />
+				<!-- 定义 service.中的方法的规则 -->
+				<tx:method name="buy*" read-only="false" propagation="REQUIRED" />
+			</tx:attributes>
+		</tx:advice>
+		
+		<!-- 6 配置切入点表达式 -->
+		<aop:config>
+			<aop:pointcut expression="execution(* com.mio.spring6.xmltx.service.*.*(..))"
+				 id="pt2"/>
+				 <!-- 把通知 txAdvise，应用到 切入点表达是 pt2 匹配到的方法  -->
+			<aop:advisor advice-ref="txAdvice" pointcut-ref="pt2" />
+		</aop:config>
+</beans>
+
+
+
+3. 测试
+$ cat TestBookXml.java
+package com.mio.spring6.xmltx;
+
+import org.junit.jupiter.api.Test;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.test.context.junit.jupiter.SpringJUnitConfig;
+
+import com.mio.spring6.xmltx.controller.BookController;
+
+@SpringJUnitConfig(locations = "classpath:beans-xmltx.xml")
+public class TestBookXml {
+	
+	@Autowired
+	private BookController bookController;
+	
+	@Test
+	public void testBook1() {
+//		bookController.buyBook(1, 1);
+		bookController.buyBook(2, 2);
+		System.out.println("买书 结束");
+	}
+}
+
+输出:
+	更新 库存 影响行数: 1
+	报错异常停止。
+检查表格: 没有变化。也就是一起失败，发生了回滚。
+
+
+
+
+
+
+========================================
+Resource 资源：对低级别资源的访问(网络资源、文件系统资源等)
+----------------------------------------
+https://docs.spring.io/spring-framework/docs/current/reference/html/core.html#resources
+
+1. 主要内容
+	Resource 接口及其实现类
+	Resource 类图
+
+	ResourceLoader 接口
+	使用 Resource 作为属性
+	应用程序上下文和资源路径
+
+
+2. Resource 接口 
+(1) Spring 的 Resource 接口位于 org.springframework.core.io 中
+旨在成为一个更强大的接口，用于抽象对低级资源的访问。
+
+继承自 InputStreamSource
+
+是否存在
+得到文件
+是否打开
+
+
+
+3. Resource 接口的实现类
+
+UrlResource 访问网络资源，能访问http, ftp, file等资源。
+	访问基于http协议的网络资源
+
+ClassPathResource 类路径资源
+
+FileSystemResource 文件系统的资源
+
+PathResource
+
+ServletContextResource 在web中使用
+
+InputStreamResource 输入流
+
+ByteArrayResource 字节数组
+
+重点演示前3个的使用。
+
+
+
+
+4. 演示文件准备
+(1) 新建子模块
+右击外部项目 spring6，new- Maven Module
+	勾选 skip archetype selection
+	Module name: spring6-resources
+	父项目: spring6
+
+Artifact:
+	group id: com.mio
+	artifact id: spring6-resources
+	version:
+	packaging: jar
+Finish
+
+右击子模块，build path - config - Library 
+	把jre环境设置为 本地安装的 jdk17
+
+
+(2) 父工程中 pom.xml 依赖已经满足了。
+
+
+
+
+
+5. 开始演示
+
+(1) UrlResource示例
+$ cat UrlResourceDemo.java
+package com.mio.spring6.resource;
+
+import org.springframework.core.io.UrlResource;
+
+//演示 UrlResource 访问网络资源
+public class UrlResourceDemo {
+	public static void main(String[] args) {
+		
+		//http前缀开头的
+//		loadUrlResource("http://www.baidu.com/index.php");
+		
+		//file 前缀的: 相对于 子模块 的相对路径，或绝对路径
+//		loadUrlResource("file:pom.xml");
+		loadUrlResource("file:src/main/resources/file1.txt");
+		//loadUrlResource("file:///G:/learngit/spring6/spring6-resources/src/main/resources/file1.txt");
+	}
+	
+	//访问http资源
+	public static void loadUrlResource(String path) {
+		try {
+			//1 创建 Resource 接口的实现类
+			UrlResource url=new UrlResource(path);
+			
+			//2 获取资源信息
+			System.out.println("1> " + url.getFilename());
+			System.out.println("2> " + url.getURI());
+			System.out.println("3> " + url.getDescription());
+			System.out.println("4> " + url.getInputStream().read()); //输出内容
+			
+		} catch (Exception e) {
+			// TODO Auto-generated catch block
+			e.printStackTrace();
+		}
+	}
+}
+
+$ cat file1.txt #在类根目录下 resources/下
+hi, this is a file.
+
+输出:
+	1> file1.txt
+	2> file:src/main/resources/file1.txt
+	3> URL [file:src/main/resources/file1.txt]
+	4> 104
+
+
+
+
+
+(2) ClassPathResource 访问类路径下资源
+
+$ cat ClassPathResourceDemo.java
+package com.mio.spring6.resource;
+
+import java.io.InputStream;
+
+import org.springframework.core.io.ClassPathResource;
+
+public class ClassPathResourceDemo {
+	public static void main(String[] args) {
+		loadClassPathResource("file1.txt");
+	}
+
+	private static void loadClassPathResource(String path) {
+		ClassPathResource resource=new ClassPathResource(path);
+		System.out.println("1>"+resource.getFilename());
+		System.out.println("2>"+resource.getDescription());
+		//获取文件内容
+		try {
+			InputStream in = resource.getInputStream();
+			byte[] buffer=new byte[1024];
+			while(in.read(buffer) != -1) {
+				System.out.println(new String(buffer));
+			}
+		} catch (Exception e) {
+			e.printStackTrace();
+		}
+	}
+}
+
+输出:
+	1>file1.txt
+	2>class path resource [file1.txt]
+	hi, this is a file.
+
+
+
+
+(3) FileSystemResource 访问系统资源
+$ cat FileSystemResourceDemo.java
+package com.mio.spring6.resource;
+
+import java.io.IOException;
+import java.io.InputStream;
+
+import org.springframework.core.io.FileSystemResource;
+
+//访问系统资源
+public class FileSystemResourceDemo {
+	public static void main(String[] args) {
+		//相对路径
+		//loadFileSystemResource("src/main/resources/file1.txt");
+		
+		//绝对路径
+		loadFileSystemResource("G:/learngit/spring6/spring6-resources/src/main/resources/file1.txt");
+	}
+
+	private static void loadFileSystemResource(String path) {
+		FileSystemResource resource=new FileSystemResource(path);
+		System.out.println("1>"+resource.getFilename());
+		System.out.println("2>"+resource.getDescription());
+		
+		try {
+			InputStream in=resource.getInputStream();
+			byte[] buffer=new byte[1024];
+			while(in.read(buffer) != -1) {
+				System.out.println(new String(buffer));
+			}
+		} catch (IOException e) {
+			e.printStackTrace();
+		}
+		
+	}
+}
+
+输出：
+	1>file1.txt
+	2>file [G:\learngit\spring6\spring6-resources\src\main\resources\file1.txt]
+	hi, this is a file.
+
+
+
+
+
+
+========================================
+|-- ResourceLoader 接口 及其实现类
+----------------------------------------
+1. spring 提供了2个标志性接口
+
+- ResourceLoader 接口
+- ResourceLoaderAware 接口
+
+
+2. ResourceLoader 接口
+(1) ResourceLoader 接口: 该接口实现类的实例可以获得一个 Resource 实例
+	Resource getResource(String location); 该接口仅这一个方法，用于返回一个Resource实例。
+
+采用和 ApplicationContext 相同的策略访问资源。
+	如果 ApplicationContext 是 FileSystemXmlApplicationContext，res就是 FileSystemResource实例；
+	如果 ApplicationContext 是 ClassPathXmlApplicationContext，res就是 ClassPathResource实例；
+
+Spring 需要资源访问时，实际上并不需要直接使用 Resource 实现类，
+	而是调用 ResourceLoader 实例的 getResource()方法来获取资源。
+	后者负责选择 Resource 实现类，也就是确定具体资源访问策略，从而将应用程序与具体的资源访问策略分离开来。
+
+使用 ApplicationContext 访问资源时，可以通过不同前缀强制指定 ClassPathResource、FileSystemResource等实现类。
+
+	Resource res=ctx.getResource("classpath:xx.xml");
+	Resource res=ctx.getResource("file:xx.xml");
+	Resource res=ctx.getResource("http://localhost:8080/xx.xml");
+
+
+(2) 实例
+$ cat ResourceLoaderDemo.java
+package com.mio.spring6.resourceloader;
+
+import org.junit.jupiter.api.Test;
+import org.springframework.context.ApplicationContext;
+import org.springframework.context.support.ClassPathXmlApplicationContext;
+import org.springframework.context.support.FileSystemXmlApplicationContext;
+import org.springframework.core.io.Resource;
+
+public class ResourceLoaderDemo {
+	
+	@Test
+	public void demo1() {
+		ApplicationContext context = new ClassPathXmlApplicationContext();
+		Resource resource = context.getResource("file1.txt");
+		//System.out.println(resource.getFilename());
+		System.out.println(resource.getDescription());
+		// class path resource [file1.txt]
+	}
+	
+	@Test
+	public void demo2() {
+		ApplicationContext context = new FileSystemXmlApplicationContext();
+		Resource resource = context.getResource("file1.txt");
+		System.out.println(resource.getDescription());
+		// file [G:\learngit\spring6\spring6-resources\file1.txt]
+	}
+}
+输出见代码注释。
+
+
+
+
+
+
+
+3. ResourceLoaderAware 接口: 该接口实现类的实例将获得一个 ResoureLoader 的引用。
+(1) ResourceLoaderAware 接口提供了一个 setResourceLoader() 方法。
+该方法将由Spring负责调用，Spring容器会将一个 ResourceLoader 对象作为该方法的参数传入。
+
+
+如果把实现 ResourceLoaderAware 接口的Bean 类部署到 Spring 容器中，Spring容器会将自身当成 ResourceLoader 作为 setResourceLoader() 方法的参数传入。
+
+由于 ApplicationContext 的实现类都实现了 ResourceLoader 接口，Spring容器自身完全可以作为 ResourceLoader 使用。
+
+
+
+(2) 新建类
+$ cat TestBean.java
+package com.mio.spring6.resourceloader;
+
+import org.springframework.context.ResourceLoaderAware;
+import org.springframework.core.io.ResourceLoader;
+
+public class TestBean implements ResourceLoaderAware {
+	
+	private ResourceLoader resourceLoader;
+
+	@Override
+	public void setResourceLoader(ResourceLoader resourceLoader) {
+		this.resourceLoader=resourceLoader;
+	}
+	
+	public ResourceLoader getResourceLoader() {
+		return this.resourceLoader;
+	}
+}
+
+
+(3) 新建配置文件
+$ cat test-bean.xml
+<?xml version="1.0" encoding="UTF-8"?>
+<beans xmlns="http://www.springframework.org/schema/beans"
+    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xsi:schemaLocation="
+        http://www.springframework.org/schema/beans
+        http://www.springframework.org/schema/beans/spring-beans.xsd">
+        
+	<bean id="testBean" class="com.mio.spring6.resourceloaderaware.TestBean"></bean>
+</beans>
+
+
+(4) 测试
+$ cat TestDemo.java
+package com.mio.spring6.resourceloaderaware;
+
+import org.springframework.context.ApplicationContext;
+import org.springframework.context.support.ClassPathXmlApplicationContext;
+import org.springframework.core.io.ResourceLoader;
+
+public class TestDemo {
+
+	public static void main(String[] args) {
+		
+		ApplicationContext context = new ClassPathXmlApplicationContext("test-bean.xml");
+		TestBean testBean = context.getBean("testBean", TestBean.class);
+		ResourceLoader resourceLoader = testBean.getResourceLoader();
+		
+		//System.out.println(resourceLoader);
+		System.out.println(context == resourceLoader);
+	}
+}
+
+输出: true
+
+
+
+
+
+========================================
 ----------------------------------------
 
+
+
+========================================
+----------------------------------------
+
+
+
+
+========================================
+----------------------------------------
+
+
+
+
+========================================
+----------------------------------------
+
+
+
+========================================
+----------------------------------------
+
+
+
+========================================
+----------------------------------------
+
+
+
+
+========================================
+----------------------------------------
+
+
+
+
+========================================
+----------------------------------------
+
+
+
+========================================
+----------------------------------------
+
+
+
+========================================
+----------------------------------------
 
 
 
