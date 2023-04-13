@@ -1361,6 +1361,7 @@ public class Emp {
 		失败：啥都没发生。
 	不能出现A减少了，但是B没有增加；或者A没变化，B增加等其他情况。
 
+
 (2) 事务的特点 ACID
 原子性: 都成功，或都失败
 一致性: 转账前后，总量不变。
@@ -1368,16 +1369,683 @@ public class Emp {
 持久性: 事务提交，表中数据生效。
 
 
-(3) spring 支持 编程时事务、声明式事务
+
+(3) spring 支持 编程式事务、声明式事务
+
+编程式事务
+	自己编程实现，原始写法，比较繁琐
+
+声明式事务
+	简化了写法，基于Spring框架(本文重点): 基于注解 或 xml 实现。
 
 
+
+
+
+2. 事务场景模拟: 用户买书的过程。
+
+(1) 表格设计
+
+用户表
+	id
+	name 姓名
+	money 余额
+
+图书表
+	id
+	name 书名
+	price 价格
+	stock 库存
+
+(2) 点确定后的交易过程
+查询图书价格
+图书库存: 减少本数
+用户余额: 减少金额
+
+
+(3) 符合需求，实施建表
+G:\xampp\mysql\bin>mysql -h localhost -u root -p
+无密码本地root登录。
+# create database spring;
+
+use spring;
+
+create table `t_book`(
+	`book_id` int(11) NOT NULL AUTO_INCREMENT COMMENT '主键',
+	`book_name` varchar(20) DEFAULT NULL COMMENT '图书名字',
+	`price` int(11) DEFAULT NULL COMMENT '价格',
+	`stock` int(10) unsigned DEFAULT NULL COMMENT '库存(无符号)',
+	PRIMARY KEY(`book_id`) 
+)ENGINE=InnoDB AUTO_INCREMENT=3 DEFAULT CHARSET=utf8;
+
+insert into t_book (book_id, book_name, price, stock) values(1, '期刊1', 80, 5), (2, '期刊2', 500, 40);
+
+create table `t_user`(
+	`user_id` int(11) NOT NULL AUTO_INCREMENT COMMENT '主键',
+	`user_name` varchar(20) DEFAULT NULL COMMENT '用户名',
+	`balance` int(10) unsigned DEFAULT NULL COMMENT '余额(无符号)',
+	PRIMARY KEY(`user_id`) 
+)ENGINE=InnoDB AUTO_INCREMENT=2 DEFAULT CHARSET=utf8;
+
+insert into t_user (user_id, user_name, balance) values(1, 'admin', 1000), (2, 'wangcai', 100);
+
+
+
+
+
+3. 基于注解的声明式事务
+(1) 新建配置文件
+- 开启组件扫描
+- 配置数据库
+
+$ cat beans-annotx.xml
+<?xml version="1.0" encoding="UTF-8"?>
+<beans xmlns="http://www.springframework.org/schema/beans"
+    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xmlns:context="http://www.springframework.org/schema/context"
+    xmlns:aop="http://www.springframework.org/schema/aop"
+    xsi:schemaLocation="
+        http://www.springframework.org/schema/beans
+        http://www.springframework.org/schema/beans/spring-beans.xsd
+        
+        http://www.springframework.org/schema/context
+        http://www.springframework.org/schema/context/spring-context.xsd
+        
+        http://www.springframework.org/schema/aop
+        http://www.springframework.org/schema/aop/spring-aop.xsd">
+        
+        <!-- 开启组件扫描 -->
+        <context:component-scan base-package="com.mio.spring6.tx"></context:component-scan>
+
+		<!-- 引入外部属性文件，创建数据源对象 -->
+		<context:property-placeholder location="classpath:jdbc.properties" />
+		
+		<!-- 连接池对象 
+			注意: value="${jdbc.url}" ，其中引号内不能漏掉$字符。这里耽误两个小时！！
+		-->
+		<bean id="druidDataSource" class="com.alibaba.druid.pool.DruidDataSource" >
+			<property name="url" value="${jdbc.url}"></property>
+			<property name="driverClassName" value="${jdbc.driver}"></property>
+			<property name="username" value="${jdbc.user}"></property>
+			<property name="password" value="${jdbc.password}"></property>
+		</bean>
+		
+		<!-- 创建 jdbcTemplate 对象，注入数据源 -->
+		<bean id="jdbcTemplate" class="org.springframework.jdbc.core.JdbcTemplate">
+			<!-- 构造器传入 druidDataSource 对象 -->
+			<constructor-arg name="dataSource" ref="druidDataSource"></constructor-arg>
+		</bean>
+
+</beans>
+
+
+(2) 新建包，新建类
+|-controller/
+	|-BookController.java
+|-service/
+	|-BookService 接口
+	|-BookServiceImpl 实现类
+|-dao/
+	|-BookDao 接口
+	|-BookDaoImpl 实现类
+
+分别在3个实现类上加上注解: @Controller, @Service, @Repository
+Controller 中声明 service 并注入；
+Service 中声明 dao 并注入;
+
+Controller 加入买书方法 buyBook(bid, uid)
+	在 service 新增buyBook()的接口和实现。
+		调用 bookDao 中的方法更新数据库: 3个方法
+			在 bookDao 中 声明 JdbcTemplate 并注入； 新增3个方法的接口和实现
+
+
+控制器
+$ cat BookController.java
+package com.mio.spring6.tx.controller;
+
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.stereotype.Controller;
+
+import com.mio.spring6.tx.service.BookService;
+
+@Controller
+public class BookController {
+	@Autowired
+	private BookService bookService;
+	
+	//买书方法
+	public void buyBook(Integer bookId, Integer userId) {
+		bookService.buyBook(bookId, userId);
+	}
+}
+
+
+业务逻辑 接口+实现:
+$ cat BookService.java
+package com.mio.spring6.tx.service;
+public interface BookService {
+	void buyBook(Integer bookId, Integer userId);
+}
+
+$ cat BookServiceImpl.java
+package com.mio.spring6.tx.service;
+
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.stereotype.Service;
+
+import com.mio.spring6.tx.dao.BookDao;
+
+@Service
+public class BookServiceImpl implements BookService {
+	
+	@Autowired
+	private BookDao bookDao;
+
+	//买书的过程
+	@Override
+	public void buyBook(Integer bookId, Integer userId) {
+		//1 根据图书id查看图书价格
+		Integer price=bookDao.getBookPriceByBookId(bookId);
+		
+		//2 更新图书库存量 -1
+		bookDao.updateStock(bookId);
+		
+		//3 更新用户余额：-图书价格
+		bookDao.updateUserBalance(userId, price);
+	}
+}
+
+
+数据库操作 接口和实现：
+$ cat BookDao.java
+package com.mio.spring6.tx.dao;
+
+public interface BookDao {
+
+	Integer getBookPriceByBookId(Integer bookId);
+
+	void updateStock(Integer bookId);
+
+	void updateUserBalance(Integer userId, Integer price);
+}
+
+
+$ cat BookDaoImpl.java
+package com.mio.spring6.tx.dao;
+
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.stereotype.Repository;
+
+@Repository
+public class BookDaoImpl implements BookDao {
+	
+	@Autowired
+	private JdbcTemplate jdbcTemplate;
+
+	//获取价格
+	@Override
+	public Integer getBookPriceByBookId(Integer bookId) {
+		String sql="select price from t_book where book_id=?";
+		Integer price = jdbcTemplate.queryForObject(sql, Integer.class, bookId);
+		return price;
+	}
+
+	//更新库存
+	@Override
+	public void updateStock(Integer bookId) {
+		String sql="update t_book set stock=stock-1 where book_id=?";
+		int rowNum = jdbcTemplate.update(sql, bookId);
+		System.out.println("更新 库存 影响行数: "+rowNum);
+	}
+
+	//更新用户余额
+	@Override
+	public void updateUserBalance(Integer userId, Integer price) {
+		String sql="update t_user set balance=balance-? where user_id=?";
+		int rowNum = jdbcTemplate.update(sql, price, userId);
+		System.out.println("更新 用户余额 影响行数: "+rowNum);
+	}
+}
+
+
+
+
+(3) 测试
+$ cat TestBookTx.java
+package com.mio.spring6.tx;
+
+import org.junit.jupiter.api.Test;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.test.context.junit.jupiter.SpringJUnitConfig;
+
+import com.mio.spring6.tx.controller.BookController;
+
+@SpringJUnitConfig(locations = "classpath:beans-annotx.xml")
+public class TestBookTx {
+	
+	@Autowired
+	private BookController bookController;
+	
+	@Test
+	public void testBook1() {
+		bookController.buyBook(1, 1);
+		System.out.println("买书 结束");
+	}
+}
+
+输出:
+	更新 库存 影响行数: 1
+	更新 用户余额 影响行数: 1
+	买书 结束
+
+
+查看数据表，买书前:
+MariaDB [spring]> select * from t_user;
++---------+-----------+---------+
+| user_id | user_name | balance |
++---------+-----------+---------+
+|       1 | admin     |    1000 |
+|       2 | wangcai   |     100 |
++---------+-----------+---------+
+2 rows in set (0.00 sec)
+
+MariaDB [spring]> select * from t_book;
++---------+-----------+-------+-------+
+| book_id | book_name | price | stock |
++---------+-----------+-------+-------+
+|       1 | 期刊1     |    80 |     5 |
+|       2 | 期刊2     |   500 |    40 |
++---------+-----------+-------+-------+
+2 rows in set (0.00 sec)
+
+
+买书后:
+MariaDB [spring]> select * from t_user;
++---------+-----------+---------+
+| user_id | user_name | balance |
++---------+-----------+---------+
+|       1 | admin     |     920 |
+|       2 | wangcai   |     100 |
++---------+-----------+---------+
+2 rows in set (0.00 sec)
+
+MariaDB [spring]> select * from t_book;
++---------+-----------+-------+-------+
+| book_id | book_name | price | stock |
++---------+-----------+-------+-------+
+|       1 | 期刊1     |    80 |     4 |
+|       2 | 期刊2     |   500 |    40 |
++---------+-----------+-------+-------+
+2 rows in set (0.00 sec)
+
+
+
+
+
+(4) 问题：如果买了买不起的书，会导致什么结果?
+
+比如，旺财(uid=2)余额100元，想买价格是500的bid=2的书。
+	@Test
+	public void testBook1() {
+		//bookController.buyBook(1, 1);
+		bookController.buyBook(2, 2);
+		System.out.println("买书 结束");
+	}
+输出:
+	更新 库存 影响行数: 1
+同时有报错: 无符号数 超出 范围。
+org.springframework.dao.DataIntegrityViolationException: PreparedStatementCallback; SQL [update t_user set balance=balance-? where user_id=?]; Data truncation: BIGINT UNSIGNED value is out of range in '(`spring`.`t_user`.`balance` - 500)'
+
+查看数据表，库存-1，但是用户余额不变。
+是不是很诡异！
+
+我们期望的是：同步更新。
+	要么成功，库存-1，余额减少。
+	要么事变，库存不变，余额不变。
+	其他按情况都不是我们需要的。
 
 
 
 
 
 ========================================
+|-- 基于注解 添加Spring 事务 支持： @Transactional
 ----------------------------------------
+(5) 添加事务
+
+1) 在spring配置文件中添加 事务支持
+- 哪个数据源添加事务？
+- 需要修改顶部的约束条件:
+	xmlns:tx="http://www.springframework.org/schema/tx"
+	xsi:schemaLocation=" #新增两行
+		http://www.springframework.org/schema/tx
+        http://www.springframework.org/schema/tx/spring-tx.xsd"
+
+
+$ cat beans-annotx.xml
+<?xml version="1.0" encoding="UTF-8"?>
+<beans xmlns="http://www.springframework.org/schema/beans"
+    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xmlns:context="http://www.springframework.org/schema/context"
+    xmlns:aop="http://www.springframework.org/schema/aop"
+    xmlns:tx="http://www.springframework.org/schema/tx"
+    xsi:schemaLocation="
+        http://www.springframework.org/schema/beans
+        http://www.springframework.org/schema/beans/spring-beans.xsd
+        
+        http://www.springframework.org/schema/context
+        http://www.springframework.org/schema/context/spring-context.xsd
+        
+        http://www.springframework.org/schema/aop
+        http://www.springframework.org/schema/aop/spring-aop.xsd
+        
+        http://www.springframework.org/schema/tx
+        http://www.springframework.org/schema/tx/spring-tx.xsd">
+        
+        <!-- 开启组件扫描 -->
+        <context:component-scan base-package="com.mio.spring6.tx"></context:component-scan>
+
+		<!-- 引入外部属性文件，创建数据源对象 -->
+		<context:property-placeholder location="classpath:jdbc.properties" />
+		
+		<!-- 连接池对象 
+			注意: value="${jdbc.url}" ，其中引号内不能漏掉$字符。这里耽误两个小时！！
+		-->
+		<bean id="druidDataSource" class="com.alibaba.druid.pool.DruidDataSource" >
+			<property name="url" value="${jdbc.url}"></property>
+			<property name="driverClassName" value="${jdbc.driver}"></property>
+			<property name="username" value="${jdbc.user}"></property>
+			<property name="password" value="${jdbc.password}"></property>
+		</bean>
+		
+		<!-- 创建 jdbcTemplate 对象，注入数据源 -->
+		<bean id="jdbcTemplate" class="org.springframework.jdbc.core.JdbcTemplate">
+			<!-- 构造器传入 druidDataSource 对象 -->
+			<constructor-arg name="dataSource" ref="druidDataSource"></constructor-arg>
+		</bean>
+
+		
+		<!-- 事务管理器 bean: 对数据源 添加事务支持 -->
+		<bean id="transactionManager" class="org.springframework.jdbc.datasource.DataSourceTransactionManager">
+			<property name="dataSource" ref="druidDataSource"></property>
+		</bean>
+		
+		<!-- 开启事务的注解驱动
+			通过注解@Transactional所标记的方法或标识的类中所有的方法，都会被事务管理器管理事务
+			transaction-manager属性的默认值是transactionManager，
+				如果事务管理器bean的id正好就是这个默认值，则可省略该属性
+		-->
+		<tx:annotation-driven transaction-manager="transactionManager"/>
+</beans>
+
+
+
+
+2) 在业务逻辑层添加注解 @Transactional
+- 加到方法上，只对该方法有效。
+- 加到类上，对这个类的每个方法都有效。
+
+@Transactional  //事务支持
+@Service
+public class BookServiceImpl implements BookService {...}
+
+再次测试，
+输出: 更新 库存 影响行数: 1
+	报错还是依旧。
+检查表: 两个表格都没有变化，也就是买不起时库存没有-1。
+
+
+
+
+
+
+
+
+(6) @Transactional 的更多参数
+	readOnly = true 只读
+	timeout = 3 查过3s就算超时，直接回滚；默认-1表示不超时；
+	isolation 表示隔离级别
+	propagation 传播行为
+
+还可以设置回滚策略：哪些类回滚，哪些不回滚？
+
+1) 只读
+只能查询，不能做 增删改操作。
+	@Transactional(readOnly = true)
+	执行有增删改的sql，直接抛异常: Connection is read-only.
+
+2) 超时
+超时后，直接抛出异常，回滚。
+	@Transactional(timeout = 3)
+	@Service
+	public class BookServiceImpl implements BookService {
+
+		@Override
+		public void buyBook(Integer bookId, Integer userId) {
+			//TODO 模拟超时效果
+			try {
+				TimeUnit.SECONDS.sleep(5); //睡眠5秒
+			} catch (InterruptedException e) {
+				e.printStackTrace();
+			}
+			//...
+		}
+	}
+	执行报异常: Transaction timed out: deadline was ... 
+
+
+3) 回滚策略：哪些异常不回滚
+共4个属性:
+	rollbackFor属性: 需要设置一个Class类型的对象
+	rollbackForClassName 属性: 需要设置一个字符串类型的全类名
+	noRollbackFor 属性: 需要设置一个Class类型的对象
+	noRollbackForClassName 属性: 需要设置一个字符串类型的全类名
+
+	比如 方法的末尾添加一个异常
+		//添加一个不回滚的异常
+		System.out.println(1/0);
+	类上添加注释: @Transactional(noRollbackFor = ArithmeticException.class)
+		//或使用全类名 noRollbackForClassName="java.lang.ArithmeticException"
+	检查表，发表2个表都更新了。
+
+
+
+4) 隔离级别：读问题
+就是多线程中，由于其他事务的写操作，导致一个事务中多次查询结构不一致。
+
+脏读: A事务中查询一次，再查询时遇到另一个事务修改的值，而后者后来回滚了。
+不可重复读: A事务查询一次，再次查询时读到了另一个事务修改后并提交的值。
+幻读: A事务查询总行数一次，再次查询总行数时，另一个事务插入并提交了。
+
+
+在事务的四个特性里面，其中隔离性总共分为四种级别：由低到高依次为 Read uncommitted 、Read committed 、Repeatable read 、Serializable ，这四个级别可以逐个解决脏读 、不可重复读 、幻读等这几类问题。
+
+read uncommitted：俗称读未提交，指的是一个事务还没提交时，它做的变更就能被别的事务看到。
+
+Read committed：俗称读提交，指的是一个事务提交之后，它做的变更才会被其他事务看到。
+
+Repeatable read：俗称可重复读，指的是一个事务执行过程中看到的数据，总是跟这个事务在启动时看到的数据是一致的，同时当其他事务在未提交时，变更是不可见的。
+
+Serializable：俗称串行化，顾名思义就是对于同一行记录，“写”会加“写锁”，“读”会加“读锁”。当出现读写锁冲突的时候，后访问的事务必须等前一个事务执行完成，才能继续执行。
+
+
+	@Transactional(isolation = Isolation.DEFAULT) //使用数据库默认的隔离级别
+	@Transactional(isolation = Isolation.READ_COMMITTED) //读已提交
+	@Transactional(isolation = Isolation.READ_UNCOMMITTED) //读未提交
+	@Transactional(isolation = Isolation.REPEATABLE_READ) //可重复读 (mysql 默认)
+	@Transactional(isolation = Isolation.SERIALIZABLE) //串行化
+
+mysql数据库默认开启重复读隔离级别。
+大多数数据库默认开启读提交隔离级别：Oracle
+
+不好测试，跳过。
+
+
+
+5) 传播行为： 事务方法之间调用，事务如何使用？
+两个事务互相调用、且设置不一样时，使用谁的设置？
+Spring 支持7种传播行为，最常见的是2种：
+
+@Transactional(propagation = Propagation.REQUIRED)
+	支持当前事务，如果不存在就新建一个（默认）。
+	没有就新建，有就加入。
+
+@Transactional(propagation = Propagation.REQUIRES_NEW)
+	不管有没有事务，都开启一个新事务。
+	与之前的事务不存在嵌套关系，之前的事务挂起。
+
+
+
+========================================
+|-- 事务的 传播行为 示例：一次可以买多本书
+----------------------------------------
+1.演示
+(1) 原理
+原来 BookController -> BookService -> BookDao
+现在可以一次买多本书，在 controller和service前新增一个service
+BookController -> CheckoutBookService -> BookService -> BookDao
+	CheckoutBookService.checkout() 事务方法
+	调用
+	BookService.buyBook() 事务方法。
+
+
+(2) 新建接口和实现
+service/
+|-CheckoutBookService 接口
+|-CheckoutBookServiceImpl 实现
+|-BookServiceImpl 清理掉该实现类的无关代码（主动1/0的异常、主动休眠）
+
+$ cat CheckoutBookService.java
+package com.mio.spring6.tx.service;
+
+public interface CheckoutBookService {
+	public void checkout(Integer[] bookIds, Integer userId);
+}
+
+
+$ cat CheckoutBookServiceImpl.java
+package com.mio.spring6.tx.service;
+
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
+@Service
+public class CheckoutBookServiceImpl implements CheckoutBookService {
+	
+	@Autowired
+	private BookService bookService;
+	
+	//买多本书的方法
+	@Transactional
+	@Override
+	public void checkout(Integer[] bookIds, Integer userId) {
+		for(Integer bookId : bookIds) {
+			//调用 service 方法
+			bookService.buyBook(bookId, userId);
+		}
+	}
+}
+
+$ cat BookServiceImpl.java
+package com.mio.spring6.tx.service;
+
+import java.util.concurrent.TimeUnit;
+
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Isolation;
+import org.springframework.transaction.annotation.Propagation;
+import org.springframework.transaction.annotation.Transactional;
+
+import com.mio.spring6.tx.dao.BookDao;
+
+//事务支持
+@Transactional(propagation = Propagation.REQUIRED) 
+@Service
+public class BookServiceImpl implements BookService {
+	
+	@Autowired
+	private BookDao bookDao;
+
+	//买书的过程
+	@Override
+	public void buyBook(Integer bookId, Integer userId) {
+		
+		//1 根据图书id查看图书价格
+		Integer price=bookDao.getBookPriceByBookId(bookId);
+		
+		//2 更新图书库存量 -1
+		bookDao.updateStock(bookId);
+		
+		//3 更新用户余额：-图书价格
+		bookDao.updateUserBalance(userId, price);
+	}
+}
+
+(3) 测试
+$ cat TestBookTx.java
+package com.mio.spring6.tx;
+
+import org.junit.jupiter.api.Test;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.test.context.junit.jupiter.SpringJUnitConfig;
+
+import com.mio.spring6.tx.controller.BookController;
+
+@SpringJUnitConfig(locations = "classpath:beans-annotx.xml")
+public class TestBookTx {
+	
+	@Autowired
+	private BookController bookController;
+	
+	@Test
+	public void testCheckout() {
+		Integer[] bookIds= {1,2};
+		bookController.buyBooks(bookIds, 1);
+		//uid=1的用户余额 550 元，要买书 book1 80元(库存5)，book2 500元(库存40，买不起)。
+		System.out.println("买多本书 结束");
+	}
+}
+
+输出:
+	更新 库存 影响行数: 1
+	更新 用户余额 影响行数: 1
+	更新 库存 影响行数: 1
+报异常: BIGINT UNSIGNED value is out of range in ... balance-500...
+
+检查数据表，发现都没有变化。
+
+解释: 
+	@Transactional(propagation = Propagation.REQUIRED)
+	事务调用1 -> 事务调用2 都使用默认传播，
+	事务1在事务中，调用事务2，后者就加入前者的事务中。
+	事务1买的几本书，要么一起买成功，要么一本失败则全部书都购买失败。
+
+
+(4) 尝试其他传播方式
+仅改变 事务方法B上的注释:
+	@Transactional(propagation = Propagation.REQUIRES_NEW)
+	@Service
+	public class BookServiceImpl implements BookService {...}
+
+测试输出不变。
+检查数据表: book1 的库存减1。 用于余额从550变为 470。
+
+分析: 
+	@Transactional(propagation = Propagation.REQUIRES_NEW)
+	表示每次都自己新建一个事务，与前面的事务没有嵌套关系，前面的事务挂起。
+	第一本书买得起，是一个事务。
+	第二本数买不起，是另一个事务，发生回滚。
+
+
+
+========================================
+|-- 全注解配置事务
+----------------------------------------
+
+
 
 
 
