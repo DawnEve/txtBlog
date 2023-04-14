@@ -2872,7 +2872,187 @@ public class TestDemo {
 1. 概念
 一个软件，在不同国家显示不同的语言，就叫做国际化。
 
+使用不同的配置文件实现国际化。
 
+(1) Java 国际化
+java.util.Locale 可以查询当前所在地。
+
+配置文件命名规则:	basename_language_country.properties
+	basename是必须的，语言和国家是可选的。
+	优先级：
+		同时存在 messages.properties 和 messages_zh_CN.properties 两个配置文件，
+		如果提供的 locale 符合 en_CN，那么优先查找 messages_en_CN.properties 配置文件，
+		找不到，再查找 messages.properties 配置文件。
+	所有配置文件必须放在 classpath中，一般放到 resources/目录下。
+
+
+(2) 新建子模块 spring6-i18n
+细节见本网页开头。
+
+
+(3) 新建配置文件
+类根目录下 resources/
+$ cat messages_zh_CN.properties
+test=China test
+
+$ cat messages_en_GB.properties
+test=GB test
+
+$ cat messages.properties
+test=Default test
+
+
+(4) 新建测试类
+$ cat ResourceI18N.java
+package com.mio.spring6.javai18n;
+
+import java.util.Locale;
+import java.util.ResourceBundle;
+
+public class ResourceI18N {
+	public static void main(String[] args) {
+//		demo1();
+		demo2();
+	}
+
+	private static void demo2() {
+		//1 从第一个配置文件读取
+		ResourceBundle bundle1 = ResourceBundle.getBundle("messages", 
+				new Locale("zh", "CN"));
+		System.out.println(bundle1);
+		String value1 = bundle1.getString("test");
+		System.out.println(value1);
+		
+		//2 从第二个配置文件读取
+		ResourceBundle bundle2 = ResourceBundle.getBundle("messages", 
+				new Locale("en", "GB"));
+		String value2 = bundle2.getString("test");
+		System.out.println(value2);
+
+		//不存在呢
+		System.out.println("\t"+ new Locale("zh2", "CN"));
+		ResourceBundle bundle3 = ResourceBundle.getBundle("messages", 
+				new Locale("fr", "GV"));
+		System.out.println("\t"+bundle3.getLocale());
+		String value3 = bundle3.getString("test");
+		System.out.println(value3);
+	}
+
+	//messages
+	private static void demo1() {
+		Locale locale = new Locale("zh", "CN");
+		System.out.println(locale); //zh_CN
+		
+		System.out.println(Locale.getDefault()); //zh_CN
+	}
+}
+
+输出:
+	java.util.PropertyResourceBundle@6fb554cc
+	China test
+	GB test
+		zh2_CN
+		zh_CN
+	China test
+
+
+(5) 注意
+https://blog.csdn.net/qq_39273039/article/details/107465845
+当在中文操作系统下，如果 xx_zh_CN.properties、xx.properties两个文件都存在，则优先会使用 xx_zh_CN.properties，
+当 xx_zh_CN.properties不存在时候，会使用默认的 xx.properties。
+
+没有提供语言和地区的资源文件是系统默认的资源文件。
+
+资源文件都必须是ISO-8859-1编码，因此，对于所有非西方语系的处理，都必须先将之转换为Java Unicode Escape格式。转换方法是通过JDK自带的工具native2ascii.
+
+
+
+
+
+
+========================================
+|-- Spring 中的国际化: 通过 MessageSource 接口支持。
+----------------------------------------
+1. 实现类 ResourceBundleMessageSource
+
+(1) 新建资源文件
+$ cat MyHome_zh_CN.properties
+www.mio.com=欢迎 {0}, 时间:{1}
+
+$ cat MyHome_en_GB.properties
+www.mio.com=welcome {0}, time:{1}
+
+这里容易乱码，要保持一致
+	方案1 eclipse 现在都是对中文默认编码为...
+	方案2 对properties 文件改用 UTF-8 编码
+
+
+(2) 创建Spring 配置文件，配置 MessageSource
+$ cat bean-i18n.xml
+<?xml version="1.0" encoding="UTF-8"?>
+<beans xmlns="http://www.springframework.org/schema/beans"
+    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xsi:schemaLocation="
+        http://www.springframework.org/schema/beans
+        http://www.springframework.org/schema/beans/spring-beans.xsd">
+
+	<bean id="messageSource" class="org.springframework.context.support.ResourceBundleMessageSource">
+		<property name="basenames">
+			<list>
+				<value>MyHome</value>
+			</list>
+		</property>
+		<property name="defaultEncoding">
+			<value>utf-8</value>
+		</property>
+	</bean>
+</beans>
+
+
+
+(3) 测试
+
+$ cat ResourceBundleMessageSourceDemo.java
+package com.mio.spring6.springi18n;
+
+import java.util.Date;
+import java.util.Locale;
+
+import org.springframework.context.ApplicationContext;
+import org.springframework.context.MessageSource;
+import org.springframework.context.support.ClassPathXmlApplicationContext;
+
+public class ResourceBundleMessageSourceDemo {
+	
+	public static void main(String[] args) {
+		//1.读入配置文件，获取 Spring 容器
+		ApplicationContext context = new ClassPathXmlApplicationContext("bean-i18n.xml");
+		
+		//2.创建数组，2个值，分别是给配置文件 {0} {1} 动态传递参数
+		Object[] objs=new Object[]{"CMD_user", new Date().toString()};
+		
+		//2.2获取容器对象：（可省略）用context对象代替
+		MessageSource messageSource = context.getBean(MessageSource.class);
+		System.out.println(messageSource);
+		System.out.println(messageSource.getMessage("www.mio.com", objs, Locale.FRANCE) + " ~~"); //找不到则使用系统默认
+		
+		//3.按照key(参数1)从配置文件获取value；然后把数组objs(参数2)中的值组装进去。参数3为 制定配置文件
+		String message = context.getMessage("www.mio.com", objs, Locale.CHINA); //中文配置文件
+		System.out.println(message);
+		
+		//System.out.println(Locale.ENGLISH); //en
+		String message2 = context.getMessage("www.mio.com", objs, new Locale("en", "GB")); //英语配置文件
+		System.out.println(message2);
+	}
+//	ResourceBundleMessageSource source=new ResourceBundleMessageSource();
+}
+
+
+输出:
+	org.springframework.context.support.ResourceBundleMessageSource: basenames=[MyHome]
+	欢迎 CMD_user, 时间:Fri Apr 14 11:25:56 CST 2023 ~~
+	欢迎 CMD_user, 时间:Fri Apr 14 11:25:56 CST 2023
+	welcome CMD_user, time:Fri Apr 14 11:25:56 CST 2023
 
 
 
