@@ -3008,6 +3008,20 @@ $ cat bean-i18n.xml
 	</bean>
 </beans>
 
+list 中可以定义多个 value，就是配置文件的basenames，如:
+    <bean id="messageSource"
+            class="org.springframework.context.support.ResourceBundleMessageSource">
+        <property name="basenames">
+            <list>
+                <value>format</value>
+                <value>exceptions</value>
+                <value>windows</value>
+            </list>
+        </property>
+    </bean>
+
+
+
 
 
 (3) 测试
@@ -3054,7 +3068,8 @@ public class ResourceBundleMessageSourceDemo {
 	欢迎 CMD_user, 时间:Fri Apr 14 11:25:56 CST 2023
 	welcome CMD_user, time:Fri Apr 14 11:25:56 CST 2023
 
-
+解释: 所有的 ApplicationContext 都实现了 MessageSource 接口。
+all ApplicationContext implementations are also MessageSource implementations 
 
 
 
@@ -3064,14 +3079,384 @@ public class ResourceBundleMessageSourceDemo {
 
 
 ========================================
+数据校验 Validation
 ----------------------------------------
+0. 概述
+(1) 使用
+	手机号格式
+	用户名密码强度检查
+
+如果使用代码实现，则容易业务和校验耦合。
+怎么解耦？Spring 提供了一套方案。
+
+(2) 要点
+	通过 Validator 接口实现
+	Bean Validation 注解实现
+	基于方法实现校验
+	实现自定义校验
+
+
+
+========================================
+|-- 1. 代码准备：通过 Validator 接口实现
+----------------------------------------
+(1) 创建子模块 spring6-validator
+过程略。
+
+(2) 在 子模块 pom.xml 中引入依赖
+  <dependencies>
+	  <!-- 引入 Spirng validator 的依赖 -->
+	  <dependency>
+		  <groupId>org.hibernate.validator</groupId>
+		  <artifactId>hibernate-validator</artifactId>
+		  <version>8.0.0.Final</version>
+	  </dependency>
+	  <dependency>
+		  <groupId>org.glassfish</groupId>
+		  <artifactId>jakarta.el</artifactId>
+		  <version>5.0.0-M1</version>
+	  </dependency>
+  </dependencies>
+
+
+(3) 创建实体类，定义属性、set/get方法
+$ cat Person.java
+package com.mio.spring6.validator.one;
+
+public class Person {
+	private String name;
+	private int age;
+	...
+}
+
+
+(4) 创建类，实现 Validator 接口，实现接口方法，编写校验逻辑
+
+$ cat PersonValidator.java
+package com.mio.spring6.validator.one;
+
+import org.springframework.validation.Errors;
+import org.springframework.validation.ValidationUtils;
+import org.springframework.validation.Validator;
+
+public class PersonValidator implements Validator{
+
+	//用来表示该校验用在哪个类型上
+	@Override
+	public boolean supports(Class<?> clazz) {
+		return Person.class.equals(clazz);
+	}
+
+	//校验规则
+	@Override
+	public void validate(Object target, Errors errors) {
+		//name不能为空: 1 错误； 2 校验的属性； 3 错误码； 4 默认错误提示信息
+		ValidationUtils.rejectIfEmpty(errors, "name", "name.empty", "name is null");
+		
+		//age 不能小于0，不能大于200
+		Person p=(Person) target;
+		if(p.getAge()<0) {
+			errors.rejectValue("age", "age.value.error", "age<0"); //1 校验的属性； 2 错误码； 3 默认错误提示信息
+		}else if(p.getAge()>200) {
+			errors.rejectValue("age", "age.value.error.toolarge", "age>200");
+		}
+	}
+}
+
+
+
+(5) 测试
+package com.mio.spring6.validator.one;
+
+import org.springframework.validation.BindingResult;
+import org.springframework.validation.DataBinder;
+
+public class TestPerson {
+	public static void main(String[] args) {
+		//1 创建 person 对象
+		Person person = new Person();
+		/*尝试设置，消除错误提示
+		 */
+		person.setName("Tom");
+		person.setAge(250);
+		
+		//2 创建 person对应 databinder
+		DataBinder binder = new DataBinder(person);
+		
+		//3 设置校验器
+		binder.setValidator(new PersonValidator());
+		
+		//4 调用方法执行校验
+		binder.validate();
+		
+		//5 输出校验结果
+		BindingResult bindingResult = binder.getBindingResult();
+		System.out.println(bindingResult.getAllErrors());
+	}
+}
+
+要点: 注意修改 测试步骤1，设置不同的值，观察错误提示。
+
+
+
 
 
 
 
 ========================================
+|-- 2. Bean Validation 注解实现 数据校验
 ----------------------------------------
 
+(1) 创建配置类，配置 LocalValidatorFactoryBean
+$ cat ValidationConfig.java
+package com.mio.spring6.validator.two;
+
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.ComponentScan;
+import org.springframework.context.annotation.Configuration;
+import org.springframework.validation.beanvalidation.LocalValidatorFactoryBean;
+
+@Configuration  //设置一个配置类
+@ComponentScan("com.mio.spring6.validator.two") //包扫描路径
+public class ValidationConfig {
+	
+	@Bean
+	public LocalValidatorFactoryBean validator() {
+		return new LocalValidatorFactoryBean();
+	}
+}
+
+
+
+(2) 创建实体类，定义属性，生成get、set方法，在属性上添加注解，设置校验规则
+
+$ cat User.java
+package com.mio.spring6.validator.two;
+
+import jakarta.validation.constraints.Max;
+import jakarta.validation.constraints.Min;
+import jakarta.validation.constraints.NotNull;
+
+public class User {
+	
+	@NotNull
+	private String name;
+	
+	@Min(0)
+	@Max(200)
+	private int age;
+	//... 省略set/get方法
+}
+
+注意：这是几个常见的校验注释。 其他还有 //todo
+
+
+
+
+(3) 创建校验器
+两种写法，原生和Spring。
+
+$ cat MyValidation1.java #原生
+package com.mio.spring6.validator.two;
+import java.util.Set;
+
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.stereotype.Service;
+
+import jakarta.validation.ConstraintViolation;
+import jakarta.validation.Validator;
+
+@Service
+public class MyValidation1 {
+	@Autowired
+	private Validator validator;
+	
+	public boolean validatorByUser1(User user) {
+		Set<ConstraintViolation<User>> validate = validator.validate(user);
+		//System.out.println(validate);
+		return validate.isEmpty();
+	}
+}
+
+
+
+$ cat MyValidation2.java #Spring6写法
+package com.mio.spring6.validator.two;
+
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.stereotype.Service;
+import org.springframework.validation.BindException;
+import org.springframework.validation.Validator;
+
+@Service
+public class MyValidation2 {
+
+	@Autowired
+	private Validator validator;
+	
+	public boolean validatorByUser2(User user) {
+		BindException bindException = new BindException(user, user.getName());
+		validator.validate(user, bindException);
+		System.out.println("错误信息:" + bindException.getAllErrors());
+		return !bindException.hasErrors();
+	}
+}
+
+
+
+(4) 测试
+$ cat TestUser.java
+package com.mio.spring6.validator.two;
+
+import org.junit.jupiter.api.Test;
+import org.springframework.context.ApplicationContext;
+import org.springframework.context.annotation.AnnotationConfigApplicationContext;
+
+public class TestUser {
+	
+	@Test
+	public void testValidation1() {
+		ApplicationContext context = new AnnotationConfigApplicationContext(ValidationConfig.class);
+		MyValidation1 validation1 = context.getBean(MyValidation1.class);
+		
+		User user = new User();
+		//不同的设置，查看报错
+		user.setName("Tom");
+		user.setAge(10);
+		
+		boolean message = validation1.validatorByUser1(user);
+		System.out.println(message); //true or false
+	}
+}
+输出: 原生方法输出 布尔值，表示是否通过校验。
+
+
+
+
+测试：Spring实现的校验
+	@Test
+	public void testValidation2() {
+		System.out.println("[in spring 6]");
+		ApplicationContext context = new AnnotationConfigApplicationContext(ValidationConfig.class);
+		MyValidation2 validation2 = context.getBean(MyValidation2.class);
+		
+		User user = new User();
+		//不同的设置，查看报错
+		user.setName("Tom"); //没名字直接抛异常：Object name must not be null
+		user.setAge(10);
+		
+		boolean message = validation2.validatorByUser2(user);
+		System.out.println(message); //true or false
+	}
+输出: true / false
+
+
+
+
+
+
+
+========================================
+|-- 3. 基于方法实现校验
+----------------------------------------
+(1) 创建配置类，设置包扫描路径
+$ cat ValidationConfig.java
+package com.mio.spring6.validator.three;
+
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.ComponentScan;
+import org.springframework.context.annotation.Configuration;
+import org.springframework.validation.beanvalidation.MethodValidationPostProcessor;
+
+@Configuration
+@ComponentScan("com.mio.spring6.validator.three")
+public class ValidationConfig {
+	
+	@Bean
+	public MethodValidationPostProcessor validationPostProcessor() {
+		return new MethodValidationPostProcessor();
+	}
+}
+
+
+(2) 创建实体类，定义三个属性，添加校验方法
+$ cat User.java
+package com.mio.spring6.validator.three;
+
+import jakarta.validation.constraints.Max;
+import jakarta.validation.constraints.Min;
+import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.Pattern;
+
+public class User {
+	@NotNull
+	private String name;
+	
+	@Min(0)
+	@Max(200)
+	private int age;
+	
+	@NotBlank(message = "手机号码不能为空")
+	@Pattern(regexp="^1(3|4|5|7|8)\\d{9}$", message = "手机号码错误")
+	private String phone;
+	//...set/get方法略
+}
+
+
+(3) 创建校验方法
+$ cat MyService.java
+package com.mio.spring6.validator.three;
+
+import org.springframework.stereotype.Service;
+import org.springframework.validation.annotation.Validated;
+
+import jakarta.validation.Valid;
+import jakarta.validation.constraints.NotNull;
+
+@Service
+@Validated //表示校验方法
+public class MyService {
+	//参数加2个注解
+	public String testMethod(@NotNull @Valid User user) {
+		return user.toString();
+	}
+}
+
+
+(4) 测试
+$ cat TestUser.java
+package com.mio.spring6.validator.three;
+
+import org.springframework.context.ApplicationContext;
+import org.springframework.context.annotation.AnnotationConfigApplicationContext;
+
+public class TestUser {
+	public static void main(String[] args) {
+		ApplicationContext context=new AnnotationConfigApplicationContext(ValidationConfig.class);
+		
+		MyService service = context.getBean(MyService.class);
+		
+		User user=new User();
+		//arg0.name: 不能为null
+		user.setName("Tom");
+		//手机号不能为空
+		//user.setPhone("123"); //手机号码错误
+		user.setPhone("13512345678");
+		user.setAge(10-2);
+		
+		System.out.println( service.testMethod(user) );
+	}
+}
+
+疑问：不是很懂，这里有啥方法了吗？
+
+
+
+========================================
+|-- 4. 自定义校验注解：实现自定义校验规则
+----------------------------------------
+()
 
 
 
