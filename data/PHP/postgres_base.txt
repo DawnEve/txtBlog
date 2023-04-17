@@ -1,0 +1,823 @@
+PostgreSQL 数据库
+
+  对比 mysql，重点学习差别。
+
+
+
+
+
+========================================
+PostgreSQL 数据库简介
+----------------------------------------
+https://www.bilibili.com/video/BV1tL41177av/?p=2
+
+
+1. 官网 
+https://www.postgresql.org/
+读音: post-gress-Q-L
+
+(1) 许可证
+国产开源界正在去 Oracle。
+pg的许可证是 BSD, 更灵活。自由定制，没有法律后顾之忧。
+而 MySQL 则是 GPL 协议，使用者也必须开源。有一定的限制。
+
+(2) 历史
+2005 v8.0开始支持windows
+9.1 版本开始同步复制。
+
+基于 pg14 最新版本。
+
+2023， v10 已经不支持了。
+
+(3) pg 社区
+为什么没有被商业公司控制？
+云厂家 + 服务商 + 自由作者。
+用户越多，越强大：遇到问题，解决方案越容易找到。
+
+(4) pg vs MySQL
+除了协议优势之外，pg 功能更加严谨
+	支持json 和 其他NoSQL 功能。
+	支持复杂查询。
+	适用于更严格的企业应用：金融、电信、ERP、CRP等。
+
+
+
+
+2. 安装(Ubuntu 20.04)
+https://www.postgresql.org/download/linux/ubuntu/
+
+(1) 一共四句命令
+1)# Create the file repository configuration:
+$ sudo sh -c 'echo "deb http://apt.postgresql.org/pub/repos/apt $(lsb_release -cs)-pgdg main" > /etc/apt/sources.list.d/pgdg.list'
+
+2)# Import the repository signing key:
+$ wget --quiet -O - https://www.postgresql.org/media/keys/ACCC4CF8.asc | sudo apt-key add -
+
+3)# Update the package lists:
+$ sudo apt-get update
+
+4)# Install the latest version of PostgreSQL.
+# If you want a specific version, use 'postgresql-12' or similar instead of 'postgresql':
+$ sudo apt-get -y install postgresql
+
+
+我跳过前2步:
+$ sudo apt-get -y install postgresql-14 失败；默认是 12
+
+
+
+(2) 查看版本号
+$ psql --version
+psql (PostgreSQL) 12.14 (Ubuntu 12.14-0ubuntu0.20.04.1)
+
+
+
+(3) 查看目录结构
+$ which psql
+/usr/bin/psql
+$ ls -lth /usr/bin/psql
+lrwxrwxrwx 1 root root 37 Aug 24  2020 /usr/bin/psql -> ../share/postgresql-common/pg_wrapper
+$ ls -lth /usr/share/postgresql-common/pg_wrapper
+-rwxr-xr-x 1 root root 9.2K Aug 24  2020 /usr/share/postgresql-common/pg_wrapper
+
+
+$ tree -L 1 /usr/share/postgresql*
+/usr/share/postgresql
+└── 12
+/usr/share/postgresql-common
+├── createcluster.conf
+├── init.d-functions
+├── maintscripts-functions
+├── pg_checksystem
+├── pgcommon.sh
+├── pgdg
+├── pg_wrapper
+├── run-upgrade-scripts
+├── supported-versions
+├── t
+├── testsuite
+└── upgrade-scripts
+
+
+(4) 服务的名字是 postgresql
+$ service postgresql status
+● postgresql.service - PostgreSQL RDBMS
+     Loaded: loaded (/lib/systemd/system/postgresql.service; enabled; vendor preset: enabled)
+     Active: active (exited) since Mon 2023-04-17 18:48:09 CST; 3h 13min ago
+
+
+
+
+
+3. 登录
+(1) 安装会自动新增一个新用户
+$ tail -n 1 /etc/passwd
+postgres:x:128:135:PostgreSQL administrator,,,:/var/lib/postgresql:/bin/bash
+
+
+
+(2) 设置自动用户的密码
+切换到该用户
+$ sudo su postgres
+$ cd
+$ pwd
+/var/lib/postgresql
+
+$ psql 
+psql (12.14 (Ubuntu 12.14-0ubuntu0.20.04.1))
+Type "help" for help.
+
+postgres=#
+这就登录了。
+
+
+修改密码: 
+postgres=# alter user postgres with password 'postgres';
+ALTER ROLE
+postgres-# \q
+
+postgres@wangVM:~$ exit
+exit
+wang@wangVM:~$ 
+
+
+(3) 命令行登录
+然后使用命令行登录:
+$ psql -h localhost -U postgres -W
+Password: 输入刚才设置的密码，回车
+psql (12.14 (Ubuntu 12.14-0ubuntu0.20.04.1))
+SSL connection (protocol: TLSv1.3, cipher: TLS_AES_256_GCM_SHA384, bits: 256, compression: off)
+Type "help" for help.
+
+postgres=#  #登录成功
+
+postgres=# \c
+Password: 
+SSL connection (protocol: TLSv1.3, cipher: TLS_AES_256_GCM_SHA384, bits: 256, compression: off)
+You are now connected to database "postgres" as user "postgres".
+
+难道每次都要 密码？
+
+
+
+
+
+
+========================================
+常用查询命令
+----------------------------------------
+1. 远程登录
+见上文。 
+
+(1)获取地址，能够ping通。
+$ ifconfig
+... 192.168.2.156
+
+(2) 允许连接的IP: 主要是 iptables
+$ find /usr/share/postgresql* | grep hba
+/usr/share/postgresql/12/pg_hba.conf.sample
+
+$ cp /usr/share/postgresql/12/pg_hba.conf.sample /usr/share/postgresql/12/pg_hba.conf
+
+$ vim /usr/share/postgresql/12/pg_hba.conf
+# IPv4 local connections:
+host    all             all             127.0.0.1/32            @authmethodhost@
+host    all             all             0.0.0.1/0            @authmethodhost@
+新增一行。
+
+重启服务，使设置生效。
+
+
+(3) 监听ip: ?
+$ find /var/lib/postgresql/ | grep conf
+/var/lib/postgresql/12/main/postgresql.auto.conf
+
+
+
+
+
+
+2. 查询数据库
+select * from pg_database;
+
+sliverworker=# select * from pg_database;
+   datname    | datdba | encoding | datcollate |  datctype  | datistemplate | datallowconn | datconnlimit | datlastsysoid | datfrozenxid | datminmxid | dattablespace |            datacl
+--------------+--------+----------+------------+------------+---------------+--------------+--------------+---------------+--------------+------------+---------------+-------------------------------
+ postgres     |     10 |        6 | en_US.utf8 | en_US.utf8 | f             | t            |           -1 |         12993 |          549 |          1 |          1663 |
+ sliverworker |     10 |        6 | en_US.utf8 | en_US.utf8 | f             | t            |           -1 |         12993 |          549 |          1 |          1663 |
+ template1    |     10 |        6 | en_US.utf8 | en_US.utf8 | t             | t            |           -1 |         12993 |          549 |          1 |          1663 | {=c/sliver,sliver=CTc/sliver}
+ template0    |     10 |        6 | en_US.utf8 | en_US.utf8 | t             | f            |           -1 |         12993 |          549 |          1 |          1663 | {=c/sliver,sliver=CTc/sliver}
+(4 rows)
+
+
+
+
+3. 创建数据库
+(1) 创建
+postgres=# create database mydb;
+CREATE DATABASE
+
+(2) 查看数据库列表:
+postgres=# \l
+                                  List of databases
+   Name    |  Owner   | Encoding |   Collate   |    Ctype    |   Access privileges   
+-----------+----------+----------+-------------+-------------+-----------------------
+ mydb      | postgres | UTF8     | en_US.UTF-8 | en_US.UTF-8 | 
+ postgres  | postgres | UTF8     | en_US.UTF-8 | en_US.UTF-8 | 
+ template0 | postgres | UTF8     | en_US.UTF-8 | en_US.UTF-8 | =c/postgres          +
+           |          |          |             |             | postgres=CTc/postgres
+ template1 | postgres | UTF8     | en_US.UTF-8 | en_US.UTF-8 | =c/postgres          +
+           |          |          |             |             | postgres=CTc/postgres
+(4 rows)
+
+(3) 查看数据库
+postgres=# \c mydb;
+Password: 
+SSL connection (protocol: TLSv1.3, cipher: TLS_AES_256_GCM_SHA384, bits: 256, compression: off)
+You are now connected to database "mydb" as user "postgres".
+mydb=# 
+
+
+(4) 删除数据库
+postgres=# drop database mydb;
+DROP DATABASE
+
+退出
+postgres=# \q
+wang@wangVM:~$ 
+
+(5) 也可以在 postgres 用户的shell下执行
+$ which createdb
+/usr/bin/createdb
+
+postgres@wangVM:~$ createdb mydb2;
+
+
+(6) 指定登录后的数据库 -d 参数
+$ psql -d mydb2
+psql (12.14 (Ubuntu 12.14-0ubuntu0.20.04.1))
+Type "help" for help.
+
+mydb2=# 
+
+可以使用 \c 切换到其他库:
+mydb2=# \c postgres;
+You are now connected to database "postgres" as user "postgres".
+postgres=# 
+
+
+
+
+
+
+
+
+
+
+
+
+
+========================================
+常用的数据类型
+----------------------------------------
+数值型:
+	smallint /2
+	integer 
+	bigint
+	decimal
+	numeric
+	real
+	double
+
+字符串
+	char(size) 固定长度；长度不够时，右边用空格补齐
+	varchar(size)
+
+日期/时间
+	timestamp 日期和时间
+	date 日期，无时间
+	time 时间
+
+其他:
+	json
+	布尔 boolean
+
+
+
+
+
+========================================
+表格操作: 新建、插入、删除、查找
+----------------------------------------
+1. 建表
+$ psql -d mydb2
+psql (12.14 (Ubuntu 12.14-0ubuntu0.20.04.1))
+Type "help" for help.
+
+(1) 新建表
+mydb2=# create table t_person(id serial primary key, name varchar(255));
+CREATE TABLE
+
+(2) 查看表结构
+mydb2=# select * from t_person;
+ id | name 
+----+------
+(0 rows)
+
+
+
+mydb2=# \d t_person;
+                                    Table "public.t_person"
+ Column |          Type          | Collation | Nullable |               Default                
+--------+------------------------+-----------+----------+--------------------------------------
+ id     | integer                |           | not null | nextval('t_person_id_seq'::regclass)
+ name   | character varying(255) |           |          | 
+Indexes:
+    "t_person_pkey" PRIMARY KEY, btree (id)
+
+
+如果不指定表名，则给出表名列表
+mydb2=# \d
+               List of relations
+ Schema |      Name       |   Type   |  Owner   
+--------+-----------------+----------+----------
+ public | t_person        | table    | postgres
+ public | t_person_id_seq | sequence | postgres
+(2 rows)
+
+
+
+
+(3) 插入数据
+mydb2=# insert into t_person (name) values('Tom');
+INSERT 0 1
+注意: 使用双引号竟然不行?
+
+
+mydb2=# select * from t_person;
+ id | name 
+----+------
+  1 | Tom
+(1 row)
+
+
+
+(4) 更新数据
+mydb2=# update t_person set name='张三' where id=1;
+UPDATE 1
+
+mydb2=# select * from t_person;
+ id | name 
+----+------
+  1 | 张三
+(1 row)
+
+
+
+(5) 新增多行
+mydb2=# insert into t_person (name) values('Jim'), ('旺财');
+INSERT 0 2
+
+mydb2=# select * from t_person;
+ id | name 
+----+------
+  1 | 张三
+  2 | Jim
+  3 | 旺财
+(3 rows)
+
+
+(6) 删除记录
+mydb2=# delete from t_person where id=2;
+DELETE 1
+
+mydb2=# select * from t_person;
+ id | name 
+----+------
+  1 | 张三
+  3 | 旺财
+(2 rows)
+
+
+
+(7) 删除表
+postgres=# drop table t_person;
+DROP TABLE
+
+
+
+
+
+2. 与 mysql 的区别
+
+(1) pg 只能使用单引号，使用双引号会报错。
+
+
+(2) insert into 中 into 不能省略。
+
+
+
+
+========================================
+schema(模式): 表的集合，一个模式可包含 视图、索引、数据类型、函数和操作符
+----------------------------------------
+1.优点
+同一个数据库下可以有不同的schema(模式)。
+不同模式可以包含同名的表。
+
+
+
+2. 示例
+
+(1) 创建 schema
+
+mydb2=# create schema myschema;
+CREATE SCHEMA
+
+
+(2) 在该 schema 下新建表
+mydb2=# create table myschema.t_person(id int, name varchar(12));
+CREATE TABLE
+
+
+(3)查询:
+mydb2=# select * from myschema.t_person;
+ id | name 
+----+------
+(0 rows)
+
+
+(3) 删除
+mydb2=# drop schema myschema;
+ERROR:  cannot drop schema myschema because other objects depend on it
+DETAIL:  table myschema.t_person depends on schema myschema
+HINT:  Use DROP ... CASCADE to drop the dependent objects too.
+删除失败，因为里面有表。
+
+可以递归删除:
+mydb2=# drop schema myschema CASCADE;
+NOTICE:  drop cascades to table myschema.t_person
+DROP SCHEMA
+
+
+
+
+
+
+
+
+
+
+
+========================================
+备份和恢复 gp 数据库
+----------------------------------------
+准备数据:
+$ psql -h localhost -U postgres
+postgres=# \c mydb2
+mydb2=# 
+	create table t_person(id serial primary key, name varchar(255));
+	insert into t_person (name) values('Tom');
+	insert into t_person (name) values('Jim'), ('旺财');
+mydb2=# \q
+wang@wangVM:~$
+
+
+
+1. 备份单个数据库 gp_dump
+需要在 shell 下输入:
+mydb2=# \q
+postgres@wangVM:~$ 
+postgres@wangVM:~$ pg_dump mydb2 > mydb2.bak #压缩二进制格式
+postgres@wangVM:~$ pg_dump mydb2 > mydb2.sql #明文转储，适合转移数据库
+postgres@wangVM:~$ pg_dump mydb2 > mydb2.tar #tarball
+
+$ ls -lht
+total 16K
+-rw-rw-r-- 1 postgres postgres  555 Apr 17 21:15 mydb2.tar
+-rw-rw-r-- 1 postgres postgres  555 Apr 17 21:15 mydb2.sql
+-rw-rw-r-- 1 postgres postgres  555 Apr 17 21:15 mydb2.bak
+
+大小竟然都一样。
+
+更多参数:
+1) -f 指定文件路径
+$ pg_dump mydb2 -f /tmp/mydb2.bak
+
+2) -U 指定用户名，也要同时指定 -h 服务器ip
+$ pg_dump -h localhost -U postgres -f /tmp/my.txt mydb2
+Password:
+
+文件要存在 /tmp/my.txt，否则可能无法创建。
+
+$ pg_dump mydb2 -h localhost -U postgres > /tmp/mydb2.sql
+Password: 
+
+
+3) -F 制定文件类型
+-F, --format=c|d|t|p         output file format (custom, directory, tar, plain text (default))
+
+$ pg_dump mydb2 -h localhost -U postgres -f /tmp/mydb2.tar -F t
+
+大小比较: 
+$ ls -lth /tmp/mydb2.*
+-rw-rw-r-- 1 wang wang 9.0K Apr 17 21:48 /tmp/mydb2.tar #感觉更大了
+-rw-rw-r-- 1 wang wang 1.9K Apr 17 21:38 /tmp/mydb2.sql
+
+
+
+
+(2) 恢复数据
+登录
+$ psql -h localhost -U postgres
+
+1) 新创建空白数据库 # create database mydb3;
+# \l  #查看数据库
+# \q #退出
+
+2) 恢复
+$ psql -f /tmp/mydb2.sql mydb3
+sql: error: FATAL:  role "wang" does not exist
+
+-d 数据库名
+
+如果系统用户和db用户不同，需要指定主机ip和用户名:
+$ psql -f /tmp/mydb2.sql mydb3 -h localhost -U postgres
+
+
+
+
+==> 特殊格式，如tar，不能使用 psql -f恢复，要用 pg_restore
+$ createdb mydb4 -h localhost -U postgres #新建数据库
+$ pg_restore -h localhost -U postgres -d mydb4 /tmp/mydb2.tar
+## 使用 -d 制定要恢复的数据库
+
+
+
+
+3) 查看
+$ psql -h localhost -U postgres
+
+postgres=# \c mydb3
+mydb3=# 
+
+mydb3=# select * from t_person;
+ id | name 
+----+------
+  1 | Tom
+  2 | Jim
+  3 | 旺财
+(3 rows)
+
+
+
+
+
+
+
+
+2. 备份所有数据库 pg_dumpall
+
+$ pg_dumpall > pg_backup.bak
+
+(2) 恢复
+$ psql -f pg_backup.bak postgres
+
+
+
+
+
+
+
+
+
+========================================
+用户操作
+----------------------------------------
+1. 创建、删除用户
+
+(1) 创建用户
+postgres=# create user wang with password '123456';
+CREATE ROLE
+
+(2) 查询用户
+postgres=# \du
+                                   List of roles
+ Role name |                         Attributes                         | Member of 
+-----------+---------- ----------------- ------------------ ------------+-----------
+ postgres  | Superuser, Create role, Create DB, Replication, Bypass RLS | {}
+ wang      |                                                            | {}
+
+
+(3) 尝试登录？
+
+默认 $ psql 是使用linux的用户名登录到 linux用户名 同名数据库。
+这两个都可能不存在！可以用 -U 指定用户名，-d 指定数据库。
+
+wang@wangVM:~$ psql -d postgres
+psql (12.14 (Ubuntu 12.14-0ubuntu0.20.04.1))
+Type "help" for help.
+
+postgres=>  这个提示符表示当前用户是一个一般用户。
+postgres=> \c
+You are now connected to database "postgres" as user "wang".
+
+
+(4) 删除用户
+mydb2=> drop user wang;
+ERROR:  permission denied to drop role
+
+一般用户没有删除用户的权限。
+登录管理员账号:
+mydb2=> \q
+$ psql -h localhost -U postgres
+postgres=#
+postgres=# drop user wang;
+DROP ROLE
+
+
+
+
+
+
+2. 权限管理
+(1) 授权
+postgres=# create user wang with password '123456';
+CREATE ROLE
+
+授权操作该数据库:
+postgres=# grant all privileges on database mydb2 to wang;
+GRANT
+
+
+进入该数据库:
+postgres=# \c mydb2
+SSL connection (protocol: TLSv1.3, cipher: TLS_AES_256_GCM_SHA384, bits: 256, compression: off)
+You are now connected to database "mydb2" as user "postgres".
+mydb2=# 
+
+
+授权操作表:
+mydb2=# grant all privileges on all tables in schema public to wang;
+GRANT
+
+
+(2) 测试权限
+$ psql -h localhost -U wang -d postgres
+
+postgres=> \c
+SSL connection (protocol: TLSv1.3, cipher: TLS_AES_256_GCM_SHA384, bits: 256, compression: off)
+You are now connected to database "postgres" as user "wang".
+
+无权查看 postgres 的表名:
+postgres=> \d
+Did not find any relations.
+
+
+
+2) 进入 mydb2 就可以查看表名:
+postgres=> \c mydb2
+SSL connection (protocol: TLSv1.3, cipher: TLS_AES_256_GCM_SHA384, bits: 256, compression: off)
+You are now connected to database "mydb2" as user "wang".
+mydb2=> \d
+               List of relations
+ Schema |      Name       |   Type   |  Owner   
+--------+-----------------+----------+----------
+ public | t_person        | table    | postgres
+ public | t_person_id_seq | sequence | postgres
+(2 rows)
+
+
+
+3) 进入 mydb3 无权查看表名:
+mydb2=> \c mydb3
+SSL connection (protocol: TLSv1.3, cipher: TLS_AES_256_GCM_SHA384, bits: 256, compression: off)
+You are now connected to database "mydb3" as user "wang".
+mydb3=> \d
+               List of relations
+ Schema |      Name       |   Type   |  Owner   
+--------+-----------------+----------+----------
+ public | t_person        | table    | postgres
+ public | t_person_id_seq | sequence | postgres
+(2 rows)
+
+mydb3=> select * from t_person;
+ERROR:  permission denied for table t_person
+
+
+
+(3) 有权限的用户，怎么移除？
+mydb3=> \q
+wang@wangVM:~$ psql -h localhost -U postgres -d postgres
+Password for user postgres: 
+psql (12.14 (Ubuntu 12.14-0ubuntu0.20.04.1))
+SSL connection (protocol: TLSv1.3, cipher: TLS_AES_256_GCM_SHA384, bits: 256, compression: off)
+Type "help" for help.
+
+postgres=# drop user wang;
+ERROR:  role "wang" cannot be dropped because some objects depend on it
+DETAIL:  privileges for database mydb2
+1 object in database mydb2
+报错，细节是它有操作mydb2的权限。
+
+
+查看权限没变化:
+postgres=# \du
+                                   List of roles
+ Role name |                         Attributes                         | Member of 
+-----------+--------- ----------------- ---------------- ---------------+-----------
+ postgres  | Superuser, Create role, Create DB, Replication, Bypass RLS | {}
+ wang      |                                                            | {}
+
+
+==> 先收回权限，变成普通用户:
+postgres=# revoke all privileges on database mydb2 from wang;
+REVOKE
+
+postgres=# drop user wang;
+报错，同上。
+仔细阅读，还需要对数据库mydb2回收权限:
+
+postgres=# \c mydb2
+mydb2=# revoke all privileges on all tables in schema public from wang;
+	和授权同样的语句，就是 grant vs revoke, to vs from.
+
+mydb2=# drop user wang;
+DROP ROLE
+删除成功。
+
+
+
+
+========================================
+|-- 用户角色
+----------------------------------------
+1. 在 pg 中没有区分用户和角色的概念。
+
+
+
+
+
+
+
+
+
+
+
+
+========================================
+|-- current: https://www.bilibili.com/video/BV1tL41177av/?p=12
+----------------------------------------
+
+
+
+
+
+========================================
+----------------------------------------
+
+
+
+========================================
+----------------------------------------
+
+
+
+========================================
+----------------------------------------
+
+
+
+
+
+========================================
+----------------------------------------
+
+
+
+========================================
+----------------------------------------
+
+
+
+========================================
+----------------------------------------
+
+
+
+
+
+========================================
+----------------------------------------
+
+
+
+========================================
+----------------------------------------
+
+
+
+========================================
+----------------------------------------
+
+

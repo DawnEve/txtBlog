@@ -32,13 +32,14 @@ return array (
 
   array (
     0 => 2,
-    1 => 'mysql数据库',
+    1 => '数据库',
     2 => 
     array (
-		array('mysql简介','mysql001','html',),
-		array('mysql常用操作','mysql101-basic', 'txt'),
-		array('Mysql高级话题','mysql102-adv','txt' ),
-		array('Mysql优化指南','mysql103-opt', 'txt'),
+      array('mysql简介','mysql001','html',),
+      array('mysql常用操作','mysql101-basic', 'txt'),
+      array('Mysql高级话题','mysql102-adv','txt' ),
+      array('Mysql优化指南','mysql103-opt', 'txt'),
+      array('PostgreSQL 数据库','postgres_base', 'txt'),
     ),
   ),
   
