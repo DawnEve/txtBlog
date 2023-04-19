@@ -3633,8 +3633,208 @@ public class TestValidator {
 
 
 ========================================
+提前编译 AOT: GraalVM
 ----------------------------------------
+1. 概念
 
+(1)JIT: just in time，动态编译（实时），边运行边编译
+	在程序运行时，动态生成代码。默认。
+	启动比较慢，编译时需要占用运行时资源。
+
+实现：运行时，把字节码转换成硬盘上直接运行的机器码，部署到环境。
+
+(2)AOT: ahead of time,运行时编译，提前编译。
+	可以把源代码直接转换机器码，启动快，内存占用低。
+	运行时不能优化，程序安装时间过长。
+
+实现：在程序运行之前，就把字节码转换成机器码。
+	提前编译(AOT)由新颖的 GraalVM 编译器支持，允许在构建字节码时直接静态编译成机器码。
+		jdk17 支持云原生。
+	机器码打包体积小。
+	机器码不能跨平台。
+
+.java -> .class  --使用 jaotc 编译工具-> .so (程序函数库，即编译好的可以供其他程序使用的代码和数据)。
+	.so 再加载到 JVM 中执行。
+
+
+(3) Graalvm 是一个高性能jdk
+spring6支持AOT技术，底层就是 Graalvm 编译器。
+
+
+(4) Native Image
+另一种实现AOT的方案，直接摒弃JVM，和C/C++一样通过编译器直接将代码编译成机器码，然后运行。
+这种颠覆 Java 语言设计的思路，就叫做 GraalVM Native Image。
+
+这是 oracle 官方首推的AOT实现方案。
+
+
+
+
+
+
+
+2. 环境搭建
+(1) 安装 GraalVM 编译器
+https://www.graalvm.org/ 下载社区版
+
+点击下载，跳到github: https://github.com/graalvm/graalvm-ce-builds/releases/tag/vm-22.3.1
+下载 win 版本 jdk17: https://github.com/graalvm/graalvm-ce-builds/releases/download/vm-22.3.1/graalvm-ce-java17-windows-amd64-22.3.1.zip
+
+或
+linux命令行安装: $ bash <(curl -sL https://get.graalvm.org/jdk)
+
+
+2) 配置环境
+解压到没有空格和中文的路径下，比如 D:\ProgramFiles\graalvm-ce-java17-22.3.1
+
+和jdk的环境变量类似。
+这里只配置临时环境变量:
+	win+R，输入 cmd 回车，弹出命令行黑窗口。
+	help set 查看set命令的用法。
+	需要配置三个变量:
+		set GRAALVM_HOME=D:\ProgramFiles\graalvm-ce-java17-22.3.1
+		set JAVA_HOME=D:\ProgramFiles\graalvm-ce-java17-22.3.1
+		set PATH=%GRAALVM_HOME%\bin; %PATH%
+
+测试:
+C:\Users\admin>java -version
+openjdk version "17.0.6" 2023-01-17
+OpenJDK Runtime Environment GraalVM CE 22.3.1 (build 17.0.6+10-jvmci-22.3-b13)
+OpenJDK 64-Bit Server VM GraalVM CE 22.3.1 (build 17.0.6+10-jvmci-22.3-b13, mixed mode, sharing)
+
+
+3) 安装 native-image 插件
+类似 yum
+
+C:\Users\admin>where gu
+D:\ProgramFiles\graalvm-ce-java17-22.3.1\bin\gu.cmd
+
+C:\Users\admin>gu install native-image
+Downloading: Component catalog from www.graalvm.org
+Processing Component: Native Image
+Downloading: Component native-image: Native Image from github.com
+Installing new component: Native Image (org.graalvm.native-image, version 22.3.1)
+
+
+C:\Users\admin>gu list
+ComponentId              Version             Component name                Stability                     Origin
+-------------  -------------  -------------  -------------  -------------  -------------  -------------  -------------  
+graalvm                  22.3.1              GraalVM Core                  Supported
+native-image             22.3.1              Native Image                  Early adopter                 github.com
+
+
+
+
+
+
+
+
+(2) 安装 C++ 编译环境
+通过安装 visual studio 来安装 C++环境。
+https://visualstudio.microsoft.com/zh-hans/thank-you-downloading-visual-studio/?sku=Community&channel=Release&version=VS2022&source=VSLandingPage&cid=2030&passive=false
+社区版下载后只有3M，这只是一个下载器，点击安装后，会下载很久。
+安装好搜索 x64 Native Tools Command Prompt for VS 2022 命令行工具。
+	// 下载器卡: 下载失败。
+	把步骤1中 GraaIVM 再配置一遍。
+
+2) 我之前通过安装 strawberryperl 安装的gcc:不能用，必须使用 visual studio的那个命令行工具。
+C:\Users\admin>gcc --version
+gcc (x86_64-posix-seh, Built by strawberryperl.com project) 7.1.0
+Copyright (C) 2017 Free Software Foundation, Inc.
+This is free software; see the source for copying conditions.  There is NO
+warranty; not even for MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
+
+
+
+
+
+
+(3) 编写 java 代码，编译，构建
+
+1) 编写java代码
+找一个工作目录: G:\Tmp\java1
+编写代码
+$ cat User.java
+public class User{
+	public static void main(String[] args){
+		System.out.println("hello, java to C++");
+	}
+}
+
+编译:
+>G:
+>cd G:\Tmp\java1
+G:\Tmp\java1>javac User.java
+
+G:\Tmp\java1>java User
+hello, java to C++
+
+
+
+
+2) 使用C++环境工具代码编译
+
+G:\Tmp\java1>native-image User
+=========
+GraalVM Native Image: Generating 'user' (executable)...
+=========
+
+[1/7] Initializing...                                                                                    (0.0s @ 0.16GB)
+Fatal error: java.nio.file.InvalidPathException: Illegal char <:> at index 2:  C:\Program Files\Java\jdk1.8.0_161\bin\cl.exe
+
+
+有关该报错的解释: https://www.likecs.com/ask-1305238.html
+安装后，我必须打开 x64 Native Tools 命令提示符（开始 > Visual Studio 2022 > x64 Native Tools 命令提示符）。该命令在常规 Powershell 或 CMD 中不起作用。重新启动计算机后编译才成功 - 在此之前我以错误 c1083 结束。
+
+
+可以直接运行
+> User
+
+
+
+
+3) 使用C++环境工具进行构建
+
+so 文件呢？ //todo
+
+
+
+
+
+
+
+
+
+========================================
+Spring6 框架总结
+----------------------------------------
+1. 概述
+2. 入门
+3. 容器IoC
+	控制反转
+	依赖注入
+	IoC容器在Spring的实现
+
+	基于xml和注解实现
+	注入各种数据类型: 常见、类、数组、集合
+	销毁
+4. 原理：手写IoC
+	反射 + 注解
+5. AOP
+	动态代理: 有接口、无接口
+	基于xml和配置文件实现
+	五种切面位置
+6. 整合JUnit5
+7. 事务
+	JDBCTemplate
+	基于xml和注解实现
+	只读、超时、回滚策略、隔离级别、传播行为
+	全注解配置事务
+8. 资源操作 Resource
+	文件
+9. 国际化
+10. 数据校验
+11. 提前编译
 
 
 ========================================
@@ -3642,47 +3842,10 @@ public class TestValidator {
 
 
 
-========================================
-----------------------------------------
-
-
-
 
 ========================================
 ----------------------------------------
 
-
-
-
-========================================
-----------------------------------------
-
-
-
-========================================
-----------------------------------------
-
-
-
-========================================
-----------------------------------------
-
-
-
-
-========================================
-----------------------------------------
-
-
-
-
-========================================
-----------------------------------------
-
-
-
-========================================
-----------------------------------------
 
 
 

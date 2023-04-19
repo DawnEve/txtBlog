@@ -54,7 +54,7 @@ return array (
       array('Spring6 IoC','Spring6-IoC','txt'),
       array('Spring6 AOP','Spring6-AOP','txt'),
       
-      array('Spring MVC','Spring-MVC','txt'),
+      array('Spring6 MVC','Spring6-MVC','txt'),
 
       array('SpringBoot','java06-SpringBoot','txt',),
     ),
