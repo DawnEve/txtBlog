@@ -3454,9 +3454,181 @@ public class TestUser {
 
 
 ========================================
-|-- 4. 自定义校验注解：实现自定义校验规则
+|-- 4. 自定义校验注解：实现自定义校验 注解/规则
 ----------------------------------------
-()
+前两步是自定义注解。使用实例中，采用 方法校验。
+
+1. 新建注解类，并添加元注解
+$ cat CannotBlank.java
+package com.mio.spring6.validator.four;
+
+import static java.lang.annotation.ElementType.FIELD;
+import static java.lang.annotation.RetentionPolicy.RUNTIME;
+
+import java.lang.annotation.Documented;
+import java.lang.annotation.Retention;
+import java.lang.annotation.Target;
+
+import jakarta.validation.Constraint;
+import jakarta.validation.Payload;
+import jakarta.validation.constraints.NotBlank;
+
+//模仿 @NotNull 注解实现
+@Target({ FIELD }) //加到属性上
+@Retention(RUNTIME) //运行时有效
+@Documented //javadoc将提取该注解信息
+@Constraint(validatedBy = { CannotBlankValidation.class })
+public @interface CannotBlank {
+
+	String message() default "不能包含空格"; //默认的错误提示信息
+
+	Class<?>[] groups() default { };
+
+	Class<? extends Payload>[] payload() default { };
+
+	/**
+	 * Defines several {@code @NotBlank} constraints on the same element.
+	 * 复数个同名注解时
+	 *
+	 * @see NotBlank
+	 */
+	@Target({ FIELD})
+	@Retention(RUNTIME)
+	@Documented
+	public @interface List {
+		CannotBlank[] value(); //注意修改这个名字，和类名一致
+	}
+}
+
+
+2. 新建校验类
+类的名字由 上文注解 @Constraint(validatedBy = { CannotBlankValidation.class }) 指定。
+
+$ cat CannotBlankValidation.java
+package com.mio.spring6.validator.four;
+
+import jakarta.validation.ConstraintValidator;
+import jakarta.validation.ConstraintValidatorContext;
+
+public class CannotBlankValidation implements ConstraintValidator<CannotBlank, String>{
+
+	@Override
+	public boolean isValid(String value, ConstraintValidatorContext context) {
+		System.out.println("this is validator...");
+		// 校验器规则：如果不为空，且包含空格，则不通过校验
+		if(value != null && value.contains(" ")) {
+			//获取默认提示信息
+			String defaultConstraintMessageTemplate = context.getDefaultConstraintMessageTemplate();
+			System.out.println(defaultConstraintMessageTemplate);
+			//禁用默认提示信息
+			context.disableDefaultConstraintViolation();
+			//设置新的提示语
+			context.buildConstraintViolationWithTemplate("can not contain blanks").addConstraintViolation();
+			return false;
+		}
+		return true;
+	}
+}
+
+
+
+
+3. 新建配置类，定义扫描包路径
+$ cat ValidationConfig.java
+package com.mio.spring6.validator.four;
+
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.ComponentScan;
+import org.springframework.context.annotation.Configuration;
+import org.springframework.validation.beanvalidation.MethodValidationPostProcessor;
+
+@Configuration
+@ComponentScan("com.mio.spring6.validator.four")
+public class ValidationConfig {
+	
+	@Bean
+	public MethodValidationPostProcessor validationPostProcessor() {
+		return new MethodValidationPostProcessor();
+	}
+}
+
+
+
+4. 创建实体类User及校验方法MyService.testMethod()
+
+$ cat User.java
+package com.mio.spring6.validator.four;
+
+import jakarta.validation.constraints.Min;
+
+public class User {
+	
+	@CannotBlank
+	private String name;
+	
+	@Min(0)
+	private int age;
+	
+	@Override
+	public String toString() {
+		return String.format("User[name:%s, age:%d]", name, age);
+	}
+	//...set/get方法略
+
+
+$ cat MyService.java
+package com.mio.spring6.validator.four;
+
+import org.springframework.stereotype.Service;
+import org.springframework.validation.annotation.Validated;
+
+import jakarta.validation.Valid;
+import jakarta.validation.constraints.NotNull;
+
+@Service
+@Validated //表示校验方法
+public class MyService {
+	//参数加2个注解
+	public String testMethod(@NotNull @Valid User user) {
+		return user.toString();
+	}
+}
+
+
+
+5. 测试
+$ cat TestValidator.java
+package com.mio.spring6.validator.four;
+
+import org.junit.jupiter.api.Test;
+import org.springframework.context.ApplicationContext;
+import org.springframework.context.annotation.AnnotationConfigApplicationContext;
+
+public class TestValidator {
+	@Test
+	public void test01(){
+		//新建实体类
+		User user=new User();
+		user.setName("hi");
+		//user.setAge(-20);
+		System.out.println("1 >" + user);
+
+		//从spring获取校验方法
+		ApplicationContext context=new AnnotationConfigApplicationContext(ValidationConfig.class);
+		MyService validator = context.getBean(MyService.class);
+		//进行校验
+		System.out.println("2 >" + validator.testMethod(user));
+	}
+}
+
+输出:
+	1 >User[name:hi, age:0]
+	this is validator...
+	2 >User[name:hi, age:0]
+
+
+
+
 
 
 
