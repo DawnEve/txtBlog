@@ -763,6 +763,7 @@ http://localhost:8080/test3/book/save?name=javaAdv&price=120
         book name: javaAdv
         book price: 120
 
+
 (3) 使用postman发送get请求
 选择 post，输入 http://localhost:8080/test3/book/save
 接着是消息体，选择body；
@@ -775,6 +776,7 @@ http://localhost:8080/test3/book/save?name=javaAdv&price=120
     控制台显示: 
         book name: springMVC adv
         book price: 220
+
 
 
 
@@ -821,8 +823,9 @@ public class ServeletInitConfig extends AbstractAnnotationConfigDispatcherServle
 
 
 
+
 4. 如果请求参数名字和方法参数不一致怎么办？
-比如url参数名是 bookname，方法中接收的是 name，怎么办？
+(1)比如url参数名是 bookname，方法中接收的是 name，怎么办？
 使用注解 @RequestParam("bookname") 转换：
 
     @RequestMapping("/save")
@@ -838,6 +841,9 @@ public class ServeletInitConfig extends AbstractAnnotationConfigDispatcherServle
     book name: java adv
     book price: 120
 
+(2) @RequestParam 有两个参数
+required 是否必须参数
+defaultValue 参数的默认值
 
 
 
@@ -883,7 +889,7 @@ public class Book {
 
 
 
-6. 含有复杂属性的对象
+6. 含有复杂属性的对象: pojo 对象嵌套
 
 比如，每个书的作者，可能有更多信息。
 
@@ -943,6 +949,305 @@ Book.java 中添加新属性，及set方法，修改toString()
 
 
 
+
+7.接收数组
+使用复选框表单，每个复选框同名，传递的就是数组。
+
+控制器:
+    @RequestMapping("/array")
+    @ResponseBody
+    public String getArray(String[] likes){
+        System.out.println(Arrays.toString(likes));
+        return String.format("{'likes': '%s'}", Arrays.toString(likes));
+    }
+
+测试: http://localhost:8080/test3/book/array?likes=java&likes=Cpp&likes=R
+显示:
+    控制台 [java, Cpp, R]
+    网页 {'likes': '[java, Cpp, R]'}
+
+
+
+
+
+8. 接收集合框架
+
+控制器:
+    //接收集合
+    @RequestMapping("/list")
+    @ResponseBody
+    public String getList(List<String> likes){
+        System.out.println(likes);
+        return String.format("{'likes': '%s'}", likes);
+    }
+
+测试: http://localhost:8080/test3/book/list?likes=java&likes=Cpp&likes=R
+报错: java.lang.IllegalStateException: No primary or single unique constructor found for interface java.util.List
+
+分析: 把参数(List<String> likes)当做了pojo对象，类比 User user，需要构造器创建空对象，然后设置属性。这不是我们需要的。
+    我们需要把接收的参数直接放到集合中。
+    可以在参数前加注解 @RequestParam
+
+
+控制器v2:
+    //接收集合
+    @RequestMapping("/list")
+    @ResponseBody
+    public String getList(@RequestParam List<String> likes){
+        System.out.println(likes);
+        return String.format("{'likes': '%s'}", likes);
+    }
+
+再次测试，结果正常，和array一样。
+
+
+
+
+
+========================================
+|-- 传递 json 数据
+----------------------------------------
+
+基本步骤:
+    1 pom.xml 中加 jackson 坐标
+    2 postman 中发送json数据的方法：get和post都可以，选raw-最后的text下拉框选json，输入json数据
+        注意：转到headers下，发现 Content-Type 已经修改为 application/json 了。
+    3 在配置类上 开启自动转换json数据的支持: @EnableWebMvc，该注解十分强大，以后还会遇到
+    4 控制器参数中，添加注解 @RequestBody，把请求体中的数据放到形参中。在一个处理器方法中只能使用一次。
+
+
+
+控制器不变
+
+    //接收集合
+    @RequestMapping("/list")
+    @ResponseBody
+    public String getList(@RequestParam List<String> likes){
+        System.out.println(likes);
+        return String.format("{'likes': '%s'}", likes);
+    }
+
+
+1. 在 pom.xml 中加入 jackson 坐标
+
+        <!-- jackson -->
+        <dependency>
+            <groupId>com.fasterxml.jackson.core</groupId>
+            <artifactId>jackson-databind</artifactId>
+            <version>2.14.2</version>
+        </dependency>
+右侧，刷新pom。
+
+
+
+2. postman 发送json数据
+新建，底下数据体body中的raw，勾选最后的Text下拉框中的json。
+get或post提交都可以。
+输入: ["game", "music", "travel"]
+
+
+
+3. 在配置文件中告诉 spring 这是 mvc模式: 开启json转对象的功能
+$ cat SpringMvcConfig.java
+package com.mio.first.config;
+
+import org.springframework.context.annotation.ComponentScan;
+import org.springframework.context.annotation.Configuration;
+import org.springframework.web.servlet.config.annotation.EnableWebMvc;
+
+@Configuration //配置类，代替配置文件
+@ComponentScan("com.mio.first") //扫描路径
+@EnableWebMvc //开启mvc模式，可以处理json  <===== 加上这一行
+public class SpringMvcConfig {
+}
+
+
+
+4. 尝试请求
+请求 http://localhost:8080/test3/book/list
+报错: Required request parameter 'likes' for method parameter type List is not present
+
+修改参数的注解为 @RequestBody，因为信息在消息体中：
+    //接收json
+    @RequestMapping("/list")
+    @ResponseBody
+    public String getList(@RequestBody List<String> likes){
+        System.out.println(likes);
+        return String.format("{'likes': '%s'}", likes);
+    }
+
+测试: 内容见步骤2
+接收: [game, music, travel]
+
+
+(2) 使用命令行提交
+$ curl --location 'http://localhost:8080/test3/book/list' --header 'Content-Type: application/json' --data '["Bill", "Gates"]'
+控制台输出: [Bill, Gates]
+
+
+
+(3) 怎么从网页提交json数据呢？ //todo
+表单或者ajax。
+
+(3A) 使用form不成功，原因可能是：表单无法生成无名的数组json。
+
+<meta charset="utf-8" />
+<html><head><title>test</title></head><body>
+    <form action="http://localhost:8080/test3/book/list" method="POST" name="myForm" enctype='application/json'>         
+        <p>
+            <label for="first_name">First Name:</label>
+            <input type="text" name="first_name" id="fname">
+        </p>
+        <p>
+            <label for="last_name">Last Name:</label>
+            <input type="text" name="last_name" id="lname">
+        </p>
+        <input value="Submit" type="submit">
+    </form>
+</body></html>
+
+
+(3B) 使用ajax由于同源策略，一直失败
+
+$ cat ajax.html #放到class根目录下resources/下
+<meta charset="utf-8" />
+<button onclick="submitform()">ajax提交</button>
+<script type="text/javascript">
+    function submitform(){
+        var xhr = new XMLHttpRequest();
+        xhr.open("POST", "http://localhost:8080/test3/book/list", true);
+
+        xhr.onreadystatechange = function () {
+            if (xhr.readyState == 4 && xhr.status == 200) {
+                console.log("success: ", xhr.responseText)
+            }else{
+                console.log("error: ", xhr.responseText)
+            }
+        }
+
+        xhr.setRequestHeader('Content-Type', 'application/json');
+        var postData = ["games", "films"];
+        xhr.send(JSON.stringify(postData));
+        return false;
+    }
+</script>
+
+
+
+在另一个控制器中加载该文件：
+//    private String msg="<h2>hello, ajax from file</h2>";
+    private String msg;
+
+    @RequestMapping("/ajax")
+    @ResponseBody
+    public String ajax() {
+        System.out.println("show ajax ...");
+        String path=this.getClass().getResource("/").getPath();
+        System.out.println("路径一为："+ path);
+
+        // read from file;
+        try {
+            FileReader reader = new FileReader(path+"ajax.html");
+            BufferedReader bufferedReader=new BufferedReader(reader);
+            StringBuffer sb=new StringBuffer();
+            String s="";
+            while( (s=bufferedReader.readLine() )!=null ){
+                sb.append(s+"\n");
+            }
+            bufferedReader.close();
+            reader.close();
+            msg=sb.toString();
+        } catch (Exception e) {
+            throw new RuntimeException(e);
+        }
+
+        return this.msg;
+    }
+
+浏览器访问: http://localhost:8080/test3/user/ajax
+点击按钮，控制台显示: [games, films]
+说明传递成功。
+
+
+
+
+5. 传递 json，接收pojo对象
+
+控制器，注意数据在body中，参数要加注解 @RequestBody
+    //参数是json，接收为对象
+    @RequestMapping("/save")
+    @ResponseBody
+    public String save(@RequestBody Book book){ //参数前加注解
+        System.out.println(book);
+        return String.format("{'book': '%s'}", book);
+    }
+
+访问：http://localhost:8080/test3/book/save
+    body, raw 最后的text下拉框选json:
+    {
+        "name": "js book",
+        "price": 25
+    }
+    控制台输出: Book[name:js book, price:25, author: null]
+
+    再加上作者信息:
+    {
+        "name": "js book",
+        "price": 25,
+        "author":{
+            "name": "wangcai",
+            "age": 30
+        }
+    }
+    控制台输出: Book[name:js book, price:25, author: Author[name: wangcai, age: 30]]
+
+
+
+
+6. 集合中一次获取多个对象
+
+控制器
+    //参数是json，包含多个对象，接收到集合框架中
+    @RequestMapping("/save7")
+    @ResponseBody
+    public String save7(@RequestBody List<Book> list){ //参数前加注解
+        System.out.println(list);
+        return String.format("{'books': '%s'}", list);
+    }
+
+请求参数： get http://localhost:8080/test3/book/save7
+    body, raw 最后的text下拉框选json:
+    [
+        {"name":"java", "price":80},
+        {"name":"js", "price":20},
+        {"name":"vue", "price":50}
+    ]
+    控制台输出: [Book[name:java, price:80, author: null], Book[name:js, price:20, author: null], Book[name:vue, price:50, author: null]]
+
+
+
+
+7.问题： @RequestBody 和 @RequestParam 的区别？
+区别： 
+    @RequestParam 用于接收url地址传参，表单传参(application/x-www-form-urlencoded)
+    @RequestBody 用于接收json数据(application/json)
+应用:
+    后期开发中，发送json格式数据为主， @Requestbody应用较广
+    如果发送非json格式数据，选用 @RequestParam 接收请求数据。
+
+
+
+
+========================================
+|-- 日期类型参数传递
+----------------------------------------
+1. 日期类型基于不同的系统有不同的格式
+2088-08-28
+2088/08/28
+08/28/2088 月日年
+
+
+2.
 
 
 
