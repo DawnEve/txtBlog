@@ -28,6 +28,7 @@ https://itbaima.net/#/curriculum
 
 
 
+
 ========================================
 Spring MVC 该怎么学？
 ----------------------------------------
@@ -55,20 +56,23 @@ https://docs.spring.io/spring-framework/docs/current/reference/html/web.html#mvc
 
 3）Handler Mapping 
 
-3）ModelAndView 返回的逻辑视图，注意，是逻辑视图，并不是真正的视图比如JSP页面，而是通过通过视图解析器VierResoler解气逻辑视图，返回真正的要发送给前端的视图
+3）ModelAndView 返回的逻辑视图，注意，是逻辑视图，并不是真正的视图比如JSP页面，而是通过通过视图解析器VierResoler 解析逻辑视图，返回真正的要发送给前端的视图
 
 4）ViewResolver View 视图解析类
 
 
 
+
 2. 教程
 详解SpringMVC: https://zhuanlan.zhihu.com/p/487488437
+Web MVC framework 5.3 https://docs.spring.io/spring-framework/docs/5.3.9/reference/pdf/
+目前B站讲的最好的SpringMVC源码解析课（2023最新版） https://www.bilibili.com/video/BV1wg41147yL/
+黑马SpringMVC教程全套视频教程，6小时精通spring mvc框架 https://www.bilibili.com/video/BV1ZF411G7eP/?p=11
 
 
 
 
-
-3.Spring6 MVC 的变化
+3.Spring6 MVC 的变化 vs Spring5 MVC
 (1). 依赖的servlet命名空间改变。
 原来是javax，现在是 jakarta。
     <dependency>
@@ -1336,7 +1340,7 @@ public interface Converter<S, T> {
 
 
 ========================================
-|-- *** IDEA 新建的maven项目，引入springmvc 依赖后，在哪里放jsp文件？
+|-- *** IDEA 新建的maven项目: 引入springmvc 依赖后，在哪里放jsp文件？
 ----------------------------------------
 
 问题: IDEA中新建maven项目，但没有webapp文件怎么办？
@@ -1436,6 +1440,14 @@ $ cat src\main\webapp\WEB-INF\web.xml
       <groupId>org.springframework</groupId>
       <artifactId>spring-webmvc</artifactId>
       <version>5.3.26</version>
+    </dependency>
+
+
+    <!-- jackson -->
+    <dependency>
+        <groupId>com.fasterxml.jackson.core</groupId>
+        <artifactId>jackson-databind</artifactId>
+        <version>2.14.2</version>
     </dependency>
 
   </dependencies>
@@ -1553,6 +1565,7 @@ $ cat WEB-INF/views/index.jsp
 
 
 
+参考: https://www.baeldung.com/spring-mvc-tutorial
 
 
 
@@ -1568,6 +1581,163 @@ $ cat WEB-INF/views/index.jsp
     文本数据
     json数据
 
+(2) 新建项目
+细节见上文： IDEA 新建的maven项目
+
+
+
+
+2.响应页面，就是返回类型是String，但是返回一个字符串
+    //返回页面
+    @RequestMapping("/toPage")
+    public String toPage() {
+        System.out.println("user.toPage ...");
+        return "index"; //写成index.jsp 报错: 文.件[/WEB-INF/views/index.jsp.jsp] 未找到
+    }
+访问 http://localhost:8080/test4/user/toPage
+显示: hello, from views/index.jsp
+
+说明：以后主要做异步，很少做页面。主要返回json。
+
+
+
+
+3. 返回文本: @ResponseBody
+
+控制器
+    @RequestMapping("/save2")
+    @ResponseBody
+    public String save2(String name) {
+        System.out.println("user save2 ..."+name);
+        return String.format("{name:%s}", name);
+    }
+
+postman get http://localhost:8080/test4/user/save2?name=旺财1
+控制台输出 user save2 ...旺财1
+网页显示 name:??1
+
+小结：前面返回的就是字符串，如果看响应的header的话。
+
+
+(2) 怎么解决中文输出乱码？ //todo
+
+控制器加一个utf8即可，但是太麻烦，每个接口都要写：
+    @RequestMapping(value = "/save2", produces = "application/text;charset=utf-8")
+    @ResponseBody
+    public String save2(String name) {
+        System.out.println("user save2 ..."+name);
+        return String.format("name:%s", name);
+    }
+
+怎么进行所有响应统一设置？肯定是过滤器... //todo
+
+
+
+
+4. 返回pojo对象: 浏览器获取json对象
+
+新建实体类
+$ cat User.java
+package com.mio.first.pojo;
+
+public class User {
+    private String name;
+    private int age;
+
+    @Override
+    public String toString() {
+        return String.format("User[name:%s, age:%d]", name, age);
+    }
+    //... 省略get/set方法
+}
+
+控制器
+    //返回pojo对象
+    @RequestMapping("/save3")
+    @ResponseBody //必须加这一句话才能响应json，pojo类必须有setter和getter!!!
+    public User save3() {
+        System.out.print("return pojo: ");
+
+        User user=new User();
+        user.setName("James");
+        user.setAge(20);
+        System.out.println(user);
+        return user;
+    }
+
+请求 get http://localhost:8080/test4/user/save3
+报错: 
+    HTTP状态 406 - 不可接收
+    类型 状态报告
+
+    描述 根据请求中接收到的主动协商头字段，目标资源没有用户代理可以接受的当前表示，而且服务器不愿意提供缺省表示。
+
+
+说明没有 jackson 坐标。
+在 pom.xml 中加上还是报错: Could not find acceptable representation
+最后找到原因了，pojo类只有setter没有getter，添加getter后正常！
+显示:
+    控制台: return pojo: User[name:James, age:20]
+    浏览器: {"name":"James","age":20}
+    F12-Network，查看浏览器的response headers, Content-Type: application/json
+
+小结：返回对象，前台接收到json，这个转换谁做的？jackson 坐标。
+
+
+
+
+5.响应pojo集合对象
+假设又一组数据库查询的结果，返回给前台页面。
+
+控制器：
+   @RequestMapping("/save4")
+    @ResponseBody
+    public List<User> save4() {
+        System.out.print("return pojo List: ");
+
+        User user=new User();
+        user.setName("James");
+        user.setAge(20);
+
+        User user2=new User();
+        user2.setName("Lily");
+        user2.setAge(21);
+
+        List<User> userList=new ArrayList<>();
+        userList.add(user);
+        userList.add(user2);
+        System.out.println(userList);
+
+        return userList;
+    }
+
+请求 get http://localhost:8080/test4/user/save4
+页面: [{"name":"James","age":20},{"name":"Lily","age":21}]
+
+
+
+6. 怎么转换的？
+(1)注解 @ResponseBody
+作用：设置当前控制器的返回值为响应体。
+    如果返回值是字符串，则原样返回；
+    如果返回值是对象/集合，则转为json返回。
+
+(2) 转换的接口是啥？HttpMessageConverter 接口
+
+IDEA中任意地点双击shift键，输入 HttpMessageConverter，选择file，找spring相关的点开：
+    HttpMessageConverter 是一个接口
+ctrl+H，查看该接口的实现：共3个类，一个接口。
+    展开该接口，可以看到 AbstractJackson2HttpMessageConverter 抽象类。
+
+该接口和之前的 Converter 接口的功能是一样的，不过这个专门转http消息。
+
+
+
+
+小结：
+    响应
+    @ResponseBody
+    类型转换器(HttpMessageConverter)
 
 
 
@@ -1576,6 +1746,13 @@ $ cat WEB-INF/views/index.jsp
 
 
 
+
+
+
+
+========================================
+REST 风格
+----------------------------------------
 
 
 
@@ -1604,7 +1781,7 @@ IDEA 配置与快捷键
 - 查看父类的方法列表，方便覆盖: 在子类中 ctrl+o
 - 显示一个注解类中所有属性列表-对应参数名: alt+7
 
-- 全文搜索 shift双击，选择文件，输入 converter，注意是spring包的
+- 全文搜索: shift双击，选择文件，输入 converter，注意是spring包的
 - 查接口的实现类: ctrl+H
 
 
