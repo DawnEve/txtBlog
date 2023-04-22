@@ -1949,6 +1949,423 @@ postman: GET http://localhost:8080/test4/books
 
 
 
+========================================
+|-- 进一步的优化：RESTful 标准开发
+----------------------------------------
+
+4.进一步的优化：RESTful 标准开发
+
+(1) 上述代码中，重复部分怎么简化？
+每个方法上都有：
+    @ResponseBody
+    @RequestMapping(value = "/books", ... 区别是url的后一部分，和访问方法。
+都可以提到类上。
+
+(2) 注解合并
+//@Controller
+//@ResponseBody
+@RestController  //RESTful 类上专用控制器
+
+(3) 注解简化
+    //@RequestMapping(method = RequestMethod.POST)
+    @PostMapping
+
+
+    //@RequestMapping(value = "/{id}", method = RequestMethod.DELETE)
+    @DeleteMapping("/{id}")
+
+
+    //@RequestMapping(method = RequestMethod.PUT)
+    @PutMapping
+
+
+    //@RequestMapping(value = "/{id}", method = RequestMethod.GET)
+    @GetMapping("/{id}")
+
+    //@RequestMapping(method = RequestMethod.GET)
+    @GetMapping
+
+
+
+
+(4) 最终版本: REST 风格的控制器
+
+$ cat BookController.java
+package com.mio.first.controller;
+
+import com.mio.first.pojo.Book;
+import org.springframework.stereotype.Controller;
+import org.springframework.web.bind.annotation.*;
+
+// RESTful 入门案例
+
+//第二版: 最终代码
+@RestController
+@RequestMapping(value = "/books")
+public class BookController {
+    //保存
+    @PostMapping
+    public String save(){
+        System.out.println("[POST]books save...");
+        return "[POST]books.save()";
+    }
+    //删除:路径参数
+    @DeleteMapping("/{id}")
+    public String delete(@PathVariable int id){
+        System.out.println("[DELETE]books delete..."+id);
+        return "[DELETE]books.delete()"+id;
+    }
+    //修改:传入新对象
+    @PutMapping
+    public String update(@RequestBody Book book){
+        System.out.println("[PUT]books update..."+book);
+        return "[PUT]books.update()"+book;
+    }
+    //查询信息：指定id
+    @GetMapping("/{id}")
+    public String getOne(@PathVariable int id){
+        System.out.println("[GET]books getOne..."+id);
+        return "[GET]books.getOne()"+id;
+    }
+    //查询信息：全部
+    @GetMapping
+    public String getAll(){
+        System.out.println("[GET]books getAll...");
+        return "[GET]books.getAll()";
+    }
+}
+
+
+小结:
+    RESTful 快速开发：标准开发
+    @RestController 注解：规定这是一个Controller，同时返回信息作为返回体body。是@Controller + @ResponseBody 的合并。
+    一组 请求+动作 映射：@GetMapping, @PostMapping, @PutMapping, @DeleteMapping 简化请求方法的书写。
+
+
+
+
+========================================
+|-- 小案例：图书管理系统（前后端分离）
+----------------------------------------
+1. 步骤
+- 先搭建后台，使用postman测通
+- 再使用view搭建前台
+- 两者结合
+
+
+
+2. 复制项目
+在04上单击F5，输入新名字，确定就复制了一份。
+    打开新项目，选中F4，修改项目名字。
+    右上角Tomcat 编辑设置，更新名字、Use Classpath of module、Context path等。
+
+
+3. 开发后台功能
+(1) 新增和获取全部
+
+package com.mio.first.controller;
+
+import com.mio.first.pojo.Book;
+import org.springframework.web.bind.annotation.*;
+
+import java.util.ArrayList;
+import java.util.List;
+
+@RestController
+@RequestMapping(value = "/books")
+public class BookController {
+    //创建
+    @PostMapping
+    public String save(@RequestBody Book book){ //从请求体 获取数据，要加注解
+        System.out.println("[POST]books save..."+book);
+        return "[POST]books.save()"+book;
+    }
+    //查询信息：全部
+    @GetMapping
+    public List<Book> getAll(){
+        List<Book> bookList=new ArrayList<>();
+
+        Book book1=new Book();
+        book1.setType("计算机");
+        book1.setName("Java 基础");
+        book1.setPrice(12);
+        bookList.add(book1);
+
+        Book book2=new Book();
+        book2.setType("计算机");
+        book2.setName("Spring 基础");
+        book2.setPrice(58);
+        bookList.add(book2);
+
+        System.out.println("[GET]books getAll..."+bookList);
+        return bookList;
+    }
+
+(2) 使用postman测试
+
+保存 POST http://localhost:8080/test5/books
+    body中json信息:
+    {
+        "name": "java basic",
+        "type": "计算机",
+        "price": 20
+    }
+    控制台：[POST]books save...Book{id=null, type='计算机', name='java basic', price=20}
+
+
+获取全部 GET http://localhost:8080/test5/books
+    网页:
+    [
+        {
+            "id": null,
+            "type": "计算机",
+            "name": "Java 基础",
+            "price": 12
+        },
+        {
+            "id": null,
+            "type": "计算机",
+            "name": "Spring 基础",
+            "price": 58
+        }
+    ]
+
+符合要求。
+
+
+
+
+
+4. 在 webapp/ 下放静态资源，并放行给Tomcat处理（而不是SpringMVC）
+src/main/webapp/
+    |-WEB-INF/
+    |-css/
+    |-js/
+    |-plugin/
+    |-pages/
+        |-books.html
+
+访问页面 http://localhost:8080/test5/pages/books.html
+控制台报错：警告 [http-nio-8080-exec-4] org.springframework.web.servlet.DispatcherServlet.noHandlerFound No mapping for GET /test5/pages/books.html
+    就是静态资源也被spring拦截了。怎么让这些交给tomcat处理呢？
+
+
+(2) 放行静态资源：css/js/html/图片等。
+
+有很多方法，这里介绍一个实现。
+在config/下新建类 SpringMvcSupport，继承WebMvcConfigurationSupport类。
+
+添加过滤器，Ctrl+o，输入 resource，重写addResourceHandlers()方法。
+
+$ cat SpringMvcSupport.java
+package com.mio.first.config;
+
+import org.springframework.context.annotation.Configuration;
+import org.springframework.web.servlet.config.annotation.ResourceHandlerRegistry;
+import org.springframework.web.servlet.config.annotation.WebMvcConfigurationSupport;
+
+@Configuration //1.这是配置类，2.要加入扫描路径
+public class SpringMvcSupport extends WebMvcConfigurationSupport {
+    @Override
+    protected void addResourceHandlers(ResourceHandlerRegistry registry) {
+        //当访问pages/??时，走pages/下，而不是让 SpringMVC处理。
+        registry.addResourceHandler("/pages/**").addResourceLocations("/pages/");
+        //其他静态资源访问不到时，也逐个放行
+        registry.addResourceHandler("/css/**").addResourceLocations("/css/");
+        registry.addResourceHandler("/js/**").addResourceLocations("/js/");
+        registry.addResourceHandler("/plugin/**").addResourceLocations("/plugin/");
+
+        //super.addResourceHandlers(registry);
+    }
+}
+
+
+同时要把该类所在的包加入启动扫描:
+    @Configuration //配置类，代替配置文件
+    @ComponentScan({"com.mio.first", "com.mio.first.config"}) //扫描路径：加入了放行静态资源的类
+    @EnableWebMvc
+    public class SpringMvcConfig implements WebMvcConfigurer {...}
+
+
+(3) 启动服务器
+访问 http://localhost:8080/test5/pages/books.html
+浏览器显示 Books，确实是 webapp/pages/books.html 的内容。
+
+说明静态资源可以访问了。
+
+
+
+
+(4) 页面内容描述
+
+Vue+elementUI搞定的页面。
+
+这里暂停.... 需要补习 Vue。不要界面，只要功能呢？ https://www.bilibili.com/video/BV1ZF411G7eP/?p=16
+以下是页面关键句子：推断是vue2，不是vue3.
+
+    <button @click="openSave()">新建</button>
+
+    <script src="../js/vue.js"></script>
+    <script src="../plugins/elementui/index.js"></script>
+    <script src="../js/jquery.min.js"></script> 啥操作？
+    <script src="../js/axios-0.18.0.js"></script>  使用ajax
+
+    哪个版本的Vue? 
+        var vue=new Vue({
+            el: '#app',
+            data: {
+                dataList: [], //当前页面要展示的分页列表数据
+                formDate: {}, //表单数据
+                dialogFormVisible: false, //增加表达是否可见
+                dialogFormVisible4Edit: false, //编辑表达是否可见
+                pagination: {}, //分页模型数据，暂时弃用
+            },
+
+            //钩子函数，VUE对象初始化完成后自动执行
+            created(){
+                this.getAll();
+            },
+
+            methods:{
+                //重置表单
+                resetForm(){
+                    this.formData={};
+                },
+                
+                //弹出添加窗口
+                openSave(){
+                    this.dialogFormVisible = true;
+                    this.resetForm();
+                },
+
+                //添加
+                saveBook(){
+
+                },
+
+                //主页到表查询
+                getAll(){
+
+                }
+            },
+        });
+
+
+
+(5) 静态页面实现
+- 我只使用了 webapp/js/，放了 axios.min-0.18.0.js 和 vue-v2.5.22.js
+$ cat webapp/pages/books.html
+<meta charset="utf-8">
+<script src="../js/vue-v2.5.22.js"></script>
+<script src="../js/axios.min-0.18.0.js"></script>
+
+<h1>Books 2</h1>
+<p>静态资源保存立刻可更新，不用重启Tomcat。</p>
+
+<div id="app">
+    <template v-for="book in dataList">
+        <p>{{book}}</p>
+    </template>
+    <hr>
+
+    新增图书:
+    <p> 类别 <input v-model="formData.type" /> </p>
+    <p> 名字 <input v-model="formData.name" /> </p>
+    <p> 价格 <input v-model="formData.price" /> </p>
+    <button @click="saveBook()">确定新增</button>
+</div>
+<script type="text/javascript">
+    var vm = new Vue({
+        //作用的元素
+        el: '#app',
+
+        //数据
+        data: {
+            dataList: [], //当前页面要展示的分页列表数据
+            formData: {}, //{'type':"接口", "name":"Java 基础", price:25}, //表单数据，用于新增数据信息
+            dialogFormVisible: false, //增加表达是否可见
+            dialogFormVisible4Edit: false, //编辑表达是否可见
+            pagination: {}, //分页模型数据，暂时弃用
+        },
+
+        //钩子函数，VUE对象初始化完成后自动执行
+        created(){
+            this.getAll();
+        },
+
+        //方法
+        methods: {
+          //重置表单
+            resetForm(){
+                this.formData={};
+            },
+
+            //弹出添加窗口
+            openSave(){
+                this.dialogFormVisible = true;
+                this.resetForm();
+            },
+
+            //添加
+            saveBook(){
+                /*
+                console.log("save ... book")
+                console.log(this.formData)
+                */
+                axios.post("/test5/books", this.formData).then( (res)=>{
+                    console.log(res.data)
+                });
+            },
+
+            //主页到表查询
+            getAll(){
+                axios.get("/test5/books").then( (res)=>{
+                    this.dataList=res.data;
+                    //console.log(res.data)
+                } );
+            }
+        }
+    })
+</script>
+
+
+(6) 测试
+启动Tomcat 服务，
+浏览器打开页面 http://localhost:8080/test5/pages/books.html
+输入:
+    类别:英语
+    名字:abc
+    价格:56
+    确定。
+观察控制台:
+    在载入页面时，触发 GET all: [GET]books getAll...[Book{id=null, type='计算机', name='Java 基础', price=12}, Book{id=null, type='计算机', name='Spring 基础', price=58}]
+    点击添加按钮，触发 [POST]books save...Book{id=null, type='英语', name='abc', price=56}
+    说明数据都传递过去了。
+
+
+
+
+5. 小结
+(1) 基于 RESTful 页面数据交互
+    开发springmvc 控制器，通过postman测试通过。
+    对静态数据放行，交给tomcat处理，而不是springmvc框架: 重点！ 一次性工作。
+    开发前台页面：基于vue实现，前台能接收数据，前台数据后台能收到。
+
+
+
+
+
+
+========================================
+SSM 整合 //todo 先学习 mybitis 框架
+----------------------------------------
+
+https://www.bilibili.com/video/BV1ZF411G7eP/?p=17
+
+
+
+
+
 
 
 ========================================
@@ -1959,6 +2376,7 @@ IDEA 配置与快捷键
 
 - 移动当前行: shift+alt+上下箭头
 - 复制当前行: ctrl+D
+- 删除当前行: ctrl+X
 - 生成Get/Set方法: alt+insert;
 - 查看父类的方法列表，方便覆盖: 在子类中 ctrl+o
 - 显示一个注解类中所有属性列表-对应参数名: alt+7
