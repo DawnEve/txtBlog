@@ -48,13 +48,14 @@ return array (
     1 => 'Java框架',
     2 => 
     array (
-      array('MyBatis','javaEE105-MyBatis','txt'),
 
       array('Spring6 探索','Spring6-explore','txt',),
       array('Spring6 IoC','Spring6-IoC','txt'),
       array('Spring6 AOP','Spring6-AOP','txt'),
       
       array('Spring5 MVC','Spring5-MVC','txt'),
+      
+      array('MyBatis','javaEE105-MyBatis','txt'),
 
       array('SpringBoot','java06-SpringBoot','txt',),
     ),
