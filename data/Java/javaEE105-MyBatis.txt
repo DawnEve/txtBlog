@@ -391,7 +391,7 @@ $ cat resources/UserMapper.xml
 
 (5) 编码：
 	0 定义pojo类
-	
+
 	1 加载核心配置文件，获取 SqlSessionFactory 对象
 	2 获取 SqlSession 对象
 	3 执行SQL语句
@@ -466,6 +466,650 @@ User{id='3', username='王五', password='345', gender='M', addr='上海'}]
 
 
 终于成功输出！
+
+
+
+小结：除了两句常用，其他都是一次性代码/操作。
+        //2.获取 SqlSession 对象
+        SqlSession sqlSession = sqlSessionFactory.openSession();
+
+        //3.执行SQL语句
+        List<User> users = sqlSession.selectList("com.mio.UserMapper.selectAll"); //这里是SQL语句对应的 命名空间+名字
+
+
+
+
+
+========================================
+|-- 在IDEA中配置数据库 //todo
+----------------------------------------
+
+社区版貌似没有这个功能，先跳过：https://www.bilibili.com/video/BV1MT4y1k7wZ/?p=3
+	现在就动辄崩溃，安装太多插件更容易崩溃了！
+
+有更强的SQL语句提示。
+
+
+
+
+========================================
+|-- mapper 代理开发
+----------------------------------------
+
+1. 问题
+这个找SQL语句的写法依旧存在硬编码："com.mio.UserMapper.selectAll"
+	//3.执行SQL语句
+    List<User> users = sqlSession.selectList("com.mio.UserMapper.selectAll"); //这里是SQL语句对应的 命名空间+名字
+
+更好的方法是啥呢？
+	Mapper 代理开发。
+
+
+(2)官方示例 https://mybatis.org/mybatis-3/getting-started.html
+
+	try (SqlSession session = sqlSessionFactory.openSession()) {
+	  Blog blog = session.selectOne(
+	    "org.mybatis.example.BlogMapper.selectBlog", 101);
+	}
+
+	更好的写法
+	try (SqlSession session = sqlSessionFactory.openSession()) {
+	  BlogMapper mapper = session.getMapper(BlogMapper.class);
+	  Blog blog = mapper.selectBlog(101);
+	}
+
+
+
+
+
+
+2. 使用Mapper 代理开发的几个步骤
+
+(0) 准备子模块 demo2
+win文件夹中复制子模块 demo1，粘贴改名为 demo2。
+	IDEA社区版中右击模块2，Open module settings, Name 改名为 demo2
+	修改子模块 pom.xml文件: <artifactId>demo2</artifactId>
+在父项目中配置上子模块名字
+    <modules>
+        <module>demo1</module>
+        <module>demo2</module>
+    </modules>
+接着在demo2中操作。
+
+
+
+(1) 定义与SQL映射文件同名的Mapper接口，并且将Mapper接口和SQL映射文件放到同一个目录下。
+
+$ cat UserMapper.java
+package com.mio.mapper;
+
+public interface UserMapper {
+}
+
+怎么将mapper接口和映射文件放到同一个目录呢？
+	- [x]要么将xml文件移动到 com.mio.mapper 下：不好！因为代码和配置文件混合了，不好维护。
+	- [√]要么给xml放到一个同样的目录结构中：比如 resources/com/mio/mapper/xx.xml，最后编译完还是放到一个文件夹中。
+		注意： 右击 resources/ 新建是目录，需要输入/而不是.
+		使用右上角 maven 的Lifecycle:compile，编译后显示class文件夹，点开发现确实是一起的:
+			demo2\target\classes\com\mio\mapper\UserMapper.class
+			demo2\target\classes\com\mio\mapper\UserMapper.xml
+
+
+
+(2) 设置SQL映射文件的namespace属性为Mapper接口全限定名。
+$ cat resources/com/mio/mapper/UserMapper.xml
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.mio.mapper.UserMapper">         #<=========这一行使用接口的 全路径+接口名
+    <select id="selectAll" resultType="com.mio.pojo.User">
+        select * from tb_user;
+    </select>
+</mapper>
+
+
+(3) 更新MyBatis的配置文件：
+右击配置文件 UserMapper.xml，copy path，path from source root: com/mio/mapper/UserMapper.xml
+粘贴到 resources/mybatis-config.xml 中:
+    <mappers>
+        <!-- SQL 映射文件 -->
+        <mapper resource="com/mio/mapper/UserMapper.xml"/>
+    </mappers>
+
+
+进一步的优化：
+	如果坚持满足三个条件：本文的(1)(2)(4)，则mybatis-config.xml中引入mapper的方法可简化为：
+	<mappers>
+        <!-- Mapper 代理方式 -->
+        <package name="com.mio.mapper"/>
+    </mappers>
+    好处是，不管以后有多少mapper，都不用再添加了。
+
+
+
+(4) 在Mapper接口中定义方法，方法名就是SQL映射文件中sql语句的id，并保持参数类型和返回值类型一致。
+$ cat UserMapper.java
+package com.mio.mapper;
+
+import com.mio.pojo.User;
+
+import java.util.List;
+
+public interface UserMapper {
+
+    List<User> selectAll(); //返回值类型：一个用User，很多个用List<User>
+}
+
+
+(5) 编码测试
+	通过 SqlSession 的 getMapper 方法获取 Mapper 接口的代理对象
+	调用对应方法完成sql执行。
+
+$ cat TestUser.java
+package com.mio.pojo;
+
+import com.mio.mapper.UserMapper;
+import org.apache.ibatis.io.Resources;
+import org.apache.ibatis.session.SqlSession;
+import org.apache.ibatis.session.SqlSessionFactory;
+import org.apache.ibatis.session.SqlSessionFactoryBuilder;
+
+import java.io.IOException;
+import java.io.InputStream;
+import java.util.List;
+
+// MyBatis 的代理开发
+public class TestUser {
+    public static void main(String[] args) throws IOException {
+        //https://mybatis.org/mybatis-3/getting-started.html
+        //1.加载核心配置文件，获取 SqlSessionFactory 对象
+        String resource = "mybatis-config.xml";
+        InputStream inputStream = Resources.getResourceAsStream(resource);
+        SqlSessionFactory sqlSessionFactory =
+                new SqlSessionFactoryBuilder().build(inputStream);
+
+        //2. 获取 SqlSession 对象，用它来执行sql
+        SqlSession sqlSession = sqlSessionFactory.openSession();
+
+        //3.1 获取 UserMapper 接口的代理方法
+        UserMapper mapper = sqlSession.getMapper(UserMapper.class);
+        //3.2 执行方法
+        List<User> users = mapper.selectAll();
+        System.out.println(users);
+
+        //4. 释放资源
+        sqlSession.close();
+
+    }
+}
+
+输出：
+[User{id='1', username='zhangsan', password='123', gender='M', addr='北京'}, 
+User{id='2', username='Lily', password='234', gender='F', addr='广州'}, 
+User{id='3', username='王五', password='345', gender='M', addr='上海'}]
+
+
+流程分析:
+	读取mybatis配置文件，获取 甩手掌柜 SqlSessionFactory 对象
+	打开 session 会话。
+	会话获取 mapper 代理对象，读取该接口同目录下xml文件
+	调用接口中定义的方法：实质是xml中定义的sql语句的id
+
+好处是：容易维护。
+
+
+
+========================================
+MyBatis 核心配置文件： mybatis-config.xml
+----------------------------------------
+
+看官网介绍： https://mybatis.org/mybatis-3/configuration.html
+	中文: https://mybatis.org/mybatis-3/zh/configuration.html
+
+configuration 配置（注意：配置时要按照这个先后顺序，顺序乱了会报错！）
+	properties 属性
+	settings 设置
+	typeAliases 类型别名
+	typeHandlers 类型处理器
+	objectFactory 对象工厂
+	plugins 插件
+	environments 环境配置
+		environment 环境变量
+			transactionManager 事务管理器
+			dataSource 数据源
+	databaseIdProvider 数据库厂商标识
+	mappers 映射器
+
+
+
+
+1. mappers 已经讲过，有几种写法
+
+<!-- Using classpath relative resources --> 相对class路径
+<mappers>
+  <mapper resource="org/mybatis/builder/AuthorMapper.xml"/>
+  <mapper resource="org/mybatis/builder/BlogMapper.xml"/>
+</mappers>
+
+<!-- Using url fully qualified paths --> 文件绝对路径
+<mappers>
+  <mapper url="file:///var/mappers/AuthorMapper.xml"/>
+  <mapper url="file:///var/mappers/BlogMapper.xml"/>
+</mappers>
+
+<!-- Using mapper interface classes --> 接口全名
+<mappers>
+  <mapper class="org.mybatis.builder.AuthorMapper"/>
+  <mapper class="org.mybatis.builder.BlogMapper"/>
+</mappers>
+
+
+最省劲的写法：
+<!-- Register all interfaces in a package as mappers -->
+<mappers>
+  <package name="org.mybatis.builder"/>
+</mappers>
+
+
+
+
+
+
+2. environments 环境
+注意：可以配置多个，但是每个 SqlSessionFactory 实例只能选择一种环境。
+	开发环境 dev 很小
+	测试环境 test 中等
+	生产环境 pro 巨大数据量
+
+<!-- 配置数据库的连接环境，可配置多个environment，通过default属性切换某一个的id -->
+
+	<environments default="development">  #<=== 修改这里，在环境id之间切换，就可以修改数据源
+        <environment id="development">
+            <transactionManager type="JDBC"/>
+            <dataSource type="POOLED">
+                <!-- mysql 连接信息 -->
+                <property name="driver" value="com.mysql.jdbc.Driver"/>
+                <property name="url" value="jdbc:mysql://y.biomooc.com:7070/mybatis?useSSL=false"/>
+                <property name="username" value="root"/>
+                <property name="password" value="123456"/>
+
+            </dataSource>
+        </environment>
+
+	  <environment id="test">
+	    <transactionManager type="JDBC">
+	      <property name="..." value="..."/>
+	    </transactionManager>
+	    <dataSource type="POOLED">
+                <property name="driver" value="com.mysql.jdbc.Driver"/>
+                <property name="url" value="jdbc:mysql://y.biomooc.com:3306/mybatis?useSSL=false"/>
+                <property name="username" value="tom"/>
+                <property name="password" value="123456"/>
+	    </dataSource>
+	  </environment>
+	</environments>
+
+其中 transactionManager 事务会被spring接管，
+数据库连接池 dataSource 也会被 spring 接管。
+
+
+
+
+
+
+3. typeAliases 类型别名
+
+(1) 文档
+	<typeAliases>
+	  <typeAlias alias="Author" type="domain.blog.Author"/>
+	  <typeAlias alias="Blog" type="domain.blog.Blog"/>
+	</typeAliases>
+当这样配置时，Blog 可以用在任何使用 domain.blog.Blog 的地方。
+
+
+【推荐方法】 也可以指定一个包名，MyBatis 会在包名下面搜索需要的 Java Bean，比如：
+	<typeAliases>
+	  <package name="domain.blog"/>
+	</typeAliases>
+
+
+其他内置类的别名：
+https://mybatis.org/mybatis-3/zh/configuration.html#typeAliases
+
+
+(2) 操作
+mapper/下有很多冗余写法，比如 全类名：
+	<mapper namespace="com.mio.mapper.UserMapper">
+	    <select id="selectAll" resultType="com.mio.pojo.User">
+	        select * from tb_user;
+	    </select>
+	</mapper>
+
+
+如果在 mybatis-config.xml 设置了：
+    <!-- 类型别名，方便xml中返回类型不用加这个前缀，变 com.mio.pojo.User 为 User； 该设置要放到mapper 前面，甚至最前面 -->
+    <typeAliases>
+        <package name="com.mio.pojo"/>
+    </typeAliases>
+
+
+
+则 mapper/ 就可以省略 com.mio.pojo.User 的包前缀，直接使用 User(不区分大小写，不过习惯上类名使用大写):
+	<mapper namespace="com.mio.mapper.UserMapper">
+	    <select id="selectAll" resultType="User">
+	        select * from tb_user;
+	    </select>
+	</mapper>
+
+
+
+4. 注意：这些配置是有先后顺序的！
+
+
+
+
+
+
+========================================
+完成增删改查：基于xml配置文件
+----------------------------------------
+https://www.bilibili.com/video/BV1MT4y1k7wZ/?p=6
+
+1. 案例效果：品牌数据的增删改查
+
+(1) 配置文件完成增删改查
+
+查询
+	查询所有数据
+	查看详情
+	条件查询
+添加
+修改
+	修改全部字段
+	修改动态字段
+删除
+	删除一个
+	批量删除：多个
+
+
+
+
+
+
+2. 环境准备
+	数据库表 tb_brand
+	实体类 Brand
+	测试用例
+	安装 MyBatisX插件
+
+
+(1) 数据库表 tb_brand
+注意：使用win客户端才能避免中文乱码，直接用Ubuntu的命令行会中文丢失。
+G:\xampp\mysql\bin> mysql -h 192.168.2.120 -P 7070 -u tom -p
+> use mybatis;
+
+drop table if exists tb_brand;
+
+create table tb_brand(
+	id  int primary key auto_increment,
+	brand_name varchar(20),
+	company_name varchar(20),
+	ordered int,
+	description varchar(100),
+	status int
+) charset=utf8;
+
+insert into tb_brand(brand_name, company_name, ordered, description, status)
+values('三只松鼠', '三只松鼠股份有限公司', 5, '好吃的干果', 0),
+	('化为', 'huawei技术有限公司', 100, '数字技术领域领头羊', 1),
+	('小米', '小米科技有限公司', 50, 'are you ok?', 1);
+
+select * from tb_brand;
+
+
+登录docker，使用命令行登录mysql: 确实没有中文。
+root@b919662117cc:/# mysql -u root -h localhost -p
+> use mybatis;
+> insert into tb_brand(brand_name, company_name, ordered, description, status)
+values('百目网', '百目科技有限公司', 2, '你喜欢的慕课', 1);
+
+
+
+(2) 实体类 Brand
+$ cat Brand.java
+package com.mio.pojo;
+
+public class Brand {
+    private Integer id;
+    private String brandName;
+    private String companyName;
+    private Integer ordered;
+    private String description;
+    private Integer status;
+
+    @Override
+    public String toString() {
+        return "Brand{" +
+                "id=" + id +
+                ", brandName='" + brandName + '\'' +
+                ", companyName='" + companyName + '\'' +
+                ", ordered=" + ordered +
+                ", description='" + description + '\'' +
+                ", status=" + status +
+                '}';
+    }
+    //... 省略 get/set
+}
+
+
+(3) 测试用例
+写到 src/test/java/下
+$ cat MyBatisTest.java
+package com.mio.test;
+
+public class MyBatisTest {
+}
+
+后面再写内容。
+
+
+(4) 安装 MyBatisX插件
+这是一个为 效率 而生的插件。
+问题：UserMapper.xml和UserMapper.java 映射文件 和 接口文件 要反复切换着查看，怎么避免呢？该插件能在xml中直接跳转到接口对应方法中。
+
+安装方法：
+	菜单File-settings, 左侧选择 plugins，右侧搜索 mybatisx，点击 install。
+
+使用方法:
+	1) 代码左边有跳转按钮，可以在java和xml之间跳转。
+	2) 在xml中写方法签名: User selectById(int id); 鼠标悬浮，选择 Generate statement:
+		跳转到 xml中，自动生成:  <select id="selectById" resultType="com.mio.pojo.User"></select>
+	补充完整：
+    <select id="selectById" resultType="User">
+        select *
+        from tb_user where id=#{id};
+    </select>
+
+
+
+
+
+
+3. 查询：所有数据
+
+(1) 编写接口方法：Mapper 接口
+	参数：无
+	结果：List<Brand>
+
+复制粘贴 UserMapper.java。
+$ cat BrandMapper.java
+package com.mio.mapper;
+
+import com.mio.pojo.User;
+
+import java.util.List;
+
+public interface BrandMapper {
+
+    List<Brand> selectAll();
+
+    Brand selectById(int id);
+}
+
+
+(2) 编写SQL语句：SQL映射文件
+复制粘贴 UserMapper.xml
+$ cat BrandMapper.xml
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.mio.mapper.BrandMapper">
+    <!-- statement 语句 -->
+    <select id="selectAll" resultType="brand">
+        select * from tb_brand;
+    </select>
+    <select id="selectById" resultType="brand">
+        select *
+        from tb_brand where id=#{id};
+    </select>
+</mapper>
+
+
+(3) 执行方法，测试
+
+$ cat MyBatisTest.java
+package com.mio.test;
+
+import com.mio.mapper.BrandMapper;
+import com.mio.pojo.Brand;
+import org.apache.ibatis.io.Resources;
+import org.apache.ibatis.session.SqlSession;
+import org.apache.ibatis.session.SqlSessionFactory;
+import org.apache.ibatis.session.SqlSessionFactoryBuilder;
+import org.junit.Test;
+
+import java.io.IOException;
+import java.io.InputStream;
+import java.util.List;
+
+public class MyBatisTest {
+    @Test
+    public void testSelectAll() throws IOException {
+        //1. 获取 SqlSessionFactory 对象
+        String resource = "mybatis-config.xml";
+        InputStream inputStream = Resources.getResourceAsStream(resource);
+        SqlSessionFactory sqlSessionFactory =
+                new SqlSessionFactoryBuilder().build(inputStream);
+        //2. 获取 SqlSession 对象
+        SqlSession sqlSession = sqlSessionFactory.openSession();
+
+        //3 获取Mapper接口的代理对象
+        BrandMapper mapper = sqlSession.getMapper(BrandMapper.class);
+
+        //4.执行对应的接口方法: 整合spring后，只有这一行了，其他都是流程化的，都可以框架实现。
+        // 个人重点写的就是接口方法名，和对应xml中的sql语句。
+        List<Brand> brands = mapper.selectAll();
+        System.out.println(brands);
+
+        Brand brand = mapper.selectById(2);
+        System.out.println(brand);
+
+        //5.释放资源
+        sqlSession.close();
+    }
+}
+
+输出:
+[Brand{id=1, brandName='null', companyName='null', ordered=5, description='好吃的干果', status=0}, Brand{id=2, brandName='null', companyName='null', ordered=100, description='数字技术领域领头羊', status=1}, Brand{id=3, brandName='null', companyName='null', ordered=50, description='are you ok?', status=1}, Brand{id=4, brandName='null', companyName='null', ordered=2, description='', status=1}]
+
+Brand{id=2, brandName='null', companyName='null', ordered=100, description='数字技术领域领头羊', status=1}
+
+
+(4)总结：Mybatis 完成操作需要几步？
+	三步：编写接口方法，编写sql，执行方法。
+
+
+
+
+
+========================================
+|-- 实体类 属性名 和 数据表 字段名不一致怎么办？ resultMap 标签
+----------------------------------------
+
+(5) 问题：输出结果为什么有null？
+因为数据库字段名 brand_name，而java pojo的属性名是 brandName，不能一一对应上。无法自动封装。
+
+怎么对应上？
+	三个方案:
+		sql中取别名: select name as stuName ...
+		sql片段;
+		方案3 最常用：resultMap。包括2个步骤：定义 resultMap标签, 使用 resultMap属性。具体见下文示例。
+
+
+$ cat BrandMapper.xml
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.mio.mapper.BrandMapper">
+    <!-- statement 语句 -->
+
+    <!-- 数据库字段名 和 pojo 属性名不一致，数据不能自动封装
+        * 方案1：使用别名，让别名和 pojo 属性名一致：每次查询都要写一次，重复
+        * 方案2：使用sql片段，就是把重复的部分定义到一个标签内，下次引用。这可能导致一堆sql片段，不灵活
+        * 方案3：resultMap，最常用的方案。
+    <sql id="brand_column">
+        id, brand_name as brandName, company_name as companyName, ordered, description, status
+    </sql>
+
+    <select id="selectAll" resultType="brand">
+        select
+            <include refid="brand_column"></include>
+        from tb_brand;
+    </select>
+     -->
+
+    <!-- 步骤：1.定义resultMap标签，2.在select查询标签中使用resultMap属性替换resultType
+        id: 唯一标示
+        type: 原来select标签的 resultType，支持别名
+    -->
+    <resultMap id="brandResultMap" type="brand">
+        <!-- 完成映射 column 表的字段名，property 实体类的属性名
+            id: 完成主键字段的映射
+            result: 一般字段的映射
+        -->
+        <result column="brand_name" property="brandName"></result>
+        <result column="company_name" property="companyName"></result>
+    </resultMap>
+
+    <select id="selectAll" resultMap="brandResultMap">
+        select *
+        from tb_brand;
+    </select>
+
+
+	<!-- <select id="selectById" resultType="brand"> -->
+    <select id="selectById" resultMap="brandResultMap">
+        select *
+        from tb_brand where id=#{id};
+    </select>
+</mapper>
+
+
+输出结果:
+[Brand{id=1, brandName='三只松鼠', companyName='三只松鼠股份有限公司', ordered=5, description='好吃的干果', status=0}, Brand{id=2, brandName='化为', companyName='huawei技术有限公司', ordered=100, description='数字技术领域领头羊', status=1}, Brand{id=3, brandName='小米', companyName='小米科技有限公司', ordered=50, description='are you ok?', status=1}, Brand{id=4, brandName='', companyName='', ordered=2, description='', status=1}]
+
+Brand{id=2, brandName='化为', companyName='huawei技术有限公司', ordered=100, description='数字技术领域领头羊', status=1}
+
+
+
+
+
+
+
+
 
 
 
