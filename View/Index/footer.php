@@ -54,6 +54,7 @@
 			
 			//PHP
 			array('https://www.laruence.com/jscss','laruence 风雪之隅', 'PHP8核心开发者'),
+			array('https://soulteary.com/about/','苏洋博客', '系统、互联网'),
 			//array('http://www.imeixue.cn/','每学网'),// 韩顺平的作品？ 打不开了
 			array('http://php.net/','PHP'),
 			array('http://www.blogdaren.com/','php博客花园'),

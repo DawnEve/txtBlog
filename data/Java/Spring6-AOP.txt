@@ -1,0 +1,3854 @@
+Spring 6 视频笔记(下): AOP 部分
+
+狭义定义: Core	核心部分 - 本文主要关注的点
+IoC Container, 
+Events, 
+Resources, 
+i18n, 
+Validation, 
+Data Binding, 
+Type Conversion, 
+SpEL, 
+AOP, 
+AOT.
+
+
+其他人的总结:
+	https://blog.csdn.net/MS_SONG/article/details/126242159
+
+
+https://www.bilibili.com/video/BV1kR4y1b7Qc/?p=55
+
+
+========================================
+AOP 面向切面编程
+----------------------------------------
+示例代码框架。
+
+
+1. 创建子模块
+(1) 右击外部项目 spring6，new- Maven Module
+	勾选 skip archetype selection
+	Module name: spring6-aop
+	父项目: spring6
+
+Artifact:
+	group id: com.mio
+	artifact id: spring6-aop
+	version:
+	packaging: jar
+Finish
+
+右击子模块，build path - config - Library 
+	把jre环境设置为 本地安装的 jdk17
+
+
+
+2.文件结构
+(1) 新建包，新建类
+|-Calculator 接口
+|-CalculatorImpl 基本实现类
+|-CalculatorLogImpl 带日志的实现类
+
+接口
+$ cat Calculator.java
+package com.mio.spring6.aop.example;
+
+public interface Calculator {
+	int add(int i, int j);
+	int sub(int i, int j);
+	int mul(int i, int j);
+	int div(int i, int j);
+}
+
+基本实现
+$ cat CalculatorImpl.java
+package com.mio.spring6.aop.example;
+//基本实现类
+public class CalculatorImpl implements Calculator {
+
+	@Override
+	public int add(int i, int j) {
+		int result=i+j;
+		System.out.println("方法内结果 add result="+result);
+		return result;
+	}
+...
+
+带日志的实现
+$ cat CalculatorLogImpl.java
+package com.mio.spring6.aop.example;
+//带日志功能的实现类
+public class CalculatorLogImpl implements Calculator {
+
+	@Override
+	public int add(int i, int j) {
+		System.out.println("[日志] add 方法开始了，参数是: "+i+", "+j);
+		int result=i+j;
+		System.out.println("方法内结果 add result="+result);
+		System.out.println("[日志] add 方法结束了，参数是: "+i+", "+j);
+		return result;
+	}
+...
+
+分析: 以上问题的缺点是，日志和核心功能混合写了。日志代码是重复的。
+
+目标: 把业务逻辑和日志的代码分开。
+实现方法：代理模式。
+
+
+
+
+
+========================================
+|-- 代理模式：静态代理、动态代理
+----------------------------------------
+1. 代理模式的概念
+目的：解耦。
+代理：我们直接和代理交互。
+目标：代理和目标直接交互。
+
+代理相当于中介，
+	我们和明星之间有经纪人
+	租客和房东之间，有中介。
+
+
+
+2. 静态代理
+|-接口
+	|-实现类
+	|-代理类
+
+(1) 新建类
+$ cat CalculatorStaticProxy.java
+package com.mio.spring6.aop.example;
+
+public class CalculatorStaticProxy implements Calculator {
+	//被代理对象
+	private Calculator calculator;
+	//通过构造传入该参数
+	public CalculatorStaticProxy(Calculator calculator) {
+//		super();
+		this.calculator = calculator;
+	}
+
+	@Override
+	public int add(int i, int j) {
+		//输出日志1
+		System.out.println("[日志] add 方法开始了，参数是: "+i+", "+j);
+		
+		//调用目标对象的方法实现核心业务
+		int result=calculator.add(i, j);
+		
+		//输出日志2
+		System.out.println("[日志] add 方法结束了，结果是: "+result);
+		return result;
+	}
+...
+
+
+(2) 测试
+
+	@Test
+	public void test03() {
+		Calculator calc=new CalculatorImpl();
+		Calculator calcProxy=new CalculatorStaticProxy(calc);
+		calcProxy.add(200, 300);
+	}
+
+输出:
+	[日志] add 方法开始了，参数是: 200, 300
+	方法内结果 add result=500
+	[日志] add 方法结束了，结果是: 500
+
+优点：确实解耦了
+缺点：日志还是重复操作，还是写到代码中。
+	其他代理还需要新建 代理类，每个接口新建一个代理类。
+
+
+
+
+
+3. 动态代理
+Spring 就是动态代理。
+所有的类只需要一个代理类。做到了真正的解耦。
+
+警告：动态代理也要求目标对象实现一个接口，否则报错。
+	怎么做无接口的类的动态代理呢？//todo
+		不能！JDK的动态代理必须有接口。
+		https://www.cnblogs.com/WeidLang/p/9857495.html
+
+
+(1) 用到的技术
+java lang 包的 Proxy 类。
+Java8 API文档的示例代码:
+
+Proxy 提供静态方法来创建动态代理类和示例，是所有动态代理类的父类。
+Proxy provides static methods for creating dynamic proxy classes and instances, and it is also the superclass of all dynamic proxy classes created by those methods. 
+创建Foo接口的代理:
+To create a proxy for some interface Foo: 
+
+     InvocationHandler handler = new MyInvocationHandler(...);
+     Class<?> proxyClass = Proxy.getProxyClass(Foo.class.getClassLoader(), Foo.class);
+     Foo f = (Foo) proxyClass.getConstructor(InvocationHandler.class).
+                     newInstance(handler);
+
+or more simply: 
+     Foo f = (Foo) Proxy.newProxyInstance(Foo.class.getClassLoader(),
+                                          new Class<?>[] { Foo.class },
+                                          handler);
+方法部分：提供三个参数
+	class loader 类加载器
+	接口
+	召唤类
+static Object newProxyInstance(ClassLoader loader, Class<?>[] interfaces, InvocationHandler h) 
+Returns an instance of a proxy class for the specified interfaces that dispatches method invocations to the specified invocation handler. 
+
+召唤类中有一个方法 invoke，需要三个参数：
+	代理类
+	方法
+	参数
+Object invoke(Object proxy, Method method, Object[] args) 
+Processes a method invocation on a proxy instance and returns the result. 
+
+
+
+(2) 新建动态代理工厂类
+类内部新建属性，通过构造传入目标对象，
+	有个get方法返回该对象的代理。
+		该方法中，动态创建代理类
+		在执行目标方法的前后可以添加日志方法，也就是实现了日志的统一管理。
+
+动态代理 写法值得反复学习，不过记不住也没事，高频使用，但是很少手写其实现。
+$ cat ProxyFactory.java
+package com.mio.spring6.aop.example;
+
+import java.lang.reflect.InvocationHandler;
+import java.lang.reflect.Method;
+import java.lang.reflect.Proxy;
+import java.util.Arrays;
+
+//动态代理
+public class ProxyFactory {
+	//目标对象
+	private Object target;
+	//通过构造传入目标对象
+	public ProxyFactory(Object target) {
+//		super();
+		this.target = target;
+	}
+
+	//返回代理对象：同时在方法执行前后添加日志
+	public Object getProxy() {
+		/* Proxy.newProxyInstance() 的三个参数
+		 * ClassLoader loader, 加载动态生成代理类的类加载器
+		 * Class<?>[] interfaces, 目标对象实现的所有接口的class类型数组
+		 * InvocationHandler h 代理对象调用目标对象方法的过程
+		 * */
+		ClassLoader classLoader=target.getClass().getClassLoader();
+		Class<?>[] interfaces = target.getClass().getInterfaces();
+		//参数3有多种写法，这里使用匿名类
+		InvocationHandler invocationHandler = new InvocationHandler() {
+			/* invoke()方法的三个参数
+			 * Object proxy, 代理对象
+			 * Method method, 需要重写目标对象的方法
+			 * Object[] args 就是method方法的参数
+			 * */
+			@Override
+			public Object invoke(Object proxy, Method method, Object[] args) throws Throwable {
+				//方法调用前 日志
+				System.out.println("[动态代理日志] "+method.getName()+" 方法开始了，参数是: "+Arrays.toString(args));
+				
+				//调用目标类的方法，这俩只是同名，并不一样。
+				Object result = method.invoke(target, args);
+				
+				//方法调用后 日志
+				System.out.println("[动态代理日志] "+method.getName()+" 方法结束了，结果是: "+result);
+				
+				return result;
+			}
+		};
+		return Proxy.newProxyInstance(classLoader, interfaces, invocationHandler);
+	}
+}
+
+
+
+(3)测试
+使用以上计算器测试，
+使用自定义内部类测试。
+ 
+	@Test
+	public void test04() {
+		//动态代理
+		//1 创建目标对象
+		Calculator calc=new CalculatorImpl();
+		//2 通过动态代理 获取代理类
+		ProxyFactory proxyFactory = new ProxyFactory(calc);
+		Calculator proxy = (Calculator) proxyFactory.getProxy();
+		//3 调用目标方法
+		proxy.mul(5, 25);
+		System.out.println();
+		
+		
+		//注意: 动态代理 目标类要实现接口，否则无法创建动态代理
+		//4 another test: 通过动态代理获取其代理 
+//		Book book = new BookImpl("Java 宝典");
+//		ProxyFactory proxyFactory2 = new ProxyFactory(book);
+//		Book proxy2 = (Book) proxyFactory2.getProxy();
+		
+		//对方法中的 内部类 动态代理
+		interface Book {
+			public void run();
+		}
+		
+		class BookImpl implements Book {
+			private String name;
+			public BookImpl(String name) {
+				this.name=name;
+			}
+			public void run() {
+				System.out.println("Book.run()..."+name);
+			}
+		}
+		
+		//System.out.println(proxy2);
+		//简写为一行
+		Book proxy2=(Book) new ProxyFactory(new BookImpl("Java 宝典3")).getProxy();
+		proxy2.run();
+	}
+
+
+输出:
+	[动态代理日志] mul 方法开始了，参数是: [5, 25]
+	方法内结果 mul result=125
+	[动态代理日志] mul 方法结束了，结果是: 125
+
+	[动态代理日志] run 方法开始了，参数是: null
+	Book.run()...Java 宝典3
+	[动态代理日志] run 方法结束了，结果是: null
+
+
+
+
+
+
+
+
+
+
+
+========================================
+|-- AOP 定义 和 相关术语
+----------------------------------------
+1.定义
+通过预编译方式，不改变源代码的方式，新增功能：降低耦合度
+
+
+2. 术语
+(1) 横切关注点
+抽离非核心业务
+
+(2) 通知(增强)
+安全校验
+日志
+使用的方法叫: 通知方法
+
+五种通知:
+	前置通知
+	返回通知
+	异常通知
+	后置通知: 返回之后执行
+	环绕通知: 使用try...catch...finally结构围绕整个被代理的目标，包括上面四种通知对应的位置。
+
+(3) 切面
+封装通知方法的类。
+(4) 目标
+被代理的目标对象。
+(5) 代理
+向目标对象应用通知之后创建的代理对象。
+
+(6) 连接点
+逻辑概念，不是语法定义。
+所有方法放x轴，每个方法一列，从上到下的执行顺序放y轴，x和y的交叉点就是 连接点。
+通俗的说：连接点是spring 允许你使用通知的地方。
+
+        method1  method2
+方法开始
+异常捕获
+方法结束
+
+(7) 切入点
+实际增强的方法，就是切入点。
+
+
+
+
+
+
+========================================
+|-- 基于 注解 的AOP
+----------------------------------------
+1. 动态代理的分类
+
+(1)两种动态代理的实现
+	有接口: jdk Proxy (interface based)
+		生成接口实现类的代理对象
+		目标对象和代理对象都实现了同样的接口。
+			interface<-Impl
+			interface<-Proxy
+
+	没接口: cglib Proxy (class based)
+		生成子类代理对象
+		代理类继承自目标类
+			Impl<-Proxy
+
+(2) AspectJ 是一个AOP框架，本质是静态代理，将代理逻辑“织入”被代理的目标类编译得到的字节码文件，所以最终效果是动态的。
+weaver是织入器。
+Spring 借用AspectJ的注解，实现了动态代理。
+
+
+
+2. 代码准备
+(1) 继续使用上一步的 spring6-aop 子模块。
+(2) 在父项目的 pom.xml 中引入aop的依赖
+
+  <dependencies>
+	  <!-- spring aop 的依赖 -->
+	  <dependency>
+		  <groupId>org.springframework</groupId>
+		  <artifactId>spring-aop</artifactId>
+		  <version>6.0.7</version>
+	  </dependency>
+	  <!-- spring aspects 的依赖 -->
+	  <dependency>
+		  <groupId>org.springframework</groupId>
+		  <artifactId>spring-aspects</artifactId>
+		  <version>6.0.7</version>
+	  </dependency>
+  </dependencies>
+
+
+(3) 创建目标资源
+新建包，把上一步的计算器和实现复制过去。
+package com.mio.spring6.aop.annoaop;
+|- Calculator 接口
+|- CalculatorImpl 实现类
+
+
+
+(4) 创建切面类
+- 切入点
+- 通知类型
+
+$ cat LogAspect.java
+package com.mio.spring6.aop.annoaop;
+
+import org.aspectj.lang.annotation.Aspect;
+import org.springframework.stereotype.Component;
+
+//切面类
+@Component  //Spring 扫描该文件，并实例化放到容器中
+@Aspect //这是个切面类
+public class LogAspect {
+}
+
+该文件是重点，详情见后文。
+
+
+
+(5) 类根目录下的 resources/ 创建配置文件，修改顶部约束条件
+
+$ cat bean.xml
+<?xml version="1.0" encoding="UTF-8"?>
+<beans xmlns="http://www.springframework.org/schema/beans"
+    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xmlns:context="http://www.springframework.org/schema/context"
+    xmlns:aop="http://www.springframework.org/schema/aop"
+    xsi:schemaLocation="
+        http://www.springframework.org/schema/beans
+        http://www.springframework.org/schema/beans/spring-beans.xsd
+        
+        http://www.springframework.org/schema/context
+        http://www.springframework.org/schema/context/spring-context.xsd
+        
+        http://www.springframework.org/schema/aop
+        http://www.springframework.org/schema/aop/spring-aop.xsd">
+
+	<!-- 开启组件扫描 -->
+	<context:component-scan base-package="com.mio.spring6.aop.annoaop"></context:component-scan>
+	<!-- 开始Aspect自动注解，为目标对象生成代理 -->
+	<aop:aspectj-autoproxy></aop:aspectj-autoproxy>
+</beans>
+
+
+
+
+
+
+
+
+========================================
+|-- 切面类的实现：5种通知类型、切入点表达式
+----------------------------------------
+要点:
+	五种通知类型：方法执行的不同位置
+	切入点表达式: 匹配哪个方法需要增强
+
+
+(6) 完善切面类
+$ cat LogAspect.java
+package com.mio.spring6.aop.annoaop;
+
+import java.util.Arrays;
+
+import org.aspectj.lang.JoinPoint;
+import org.aspectj.lang.ProceedingJoinPoint;
+import org.aspectj.lang.annotation.After;
+import org.aspectj.lang.annotation.AfterReturning;
+import org.aspectj.lang.annotation.AfterThrowing;
+import org.aspectj.lang.annotation.Around;
+import org.aspectj.lang.annotation.Aspect;
+import org.aspectj.lang.annotation.Before;
+import org.springframework.stereotype.Component;
+
+//切面类
+@Aspect //这是个切面类
+@Component  //Spring 扫描该文件，并实例化放到容器中
+public class LogAspect {
+	
+	//设置切入点和通知类型
+	// 通知类型，为每个类型创建一个方法
+	// 前置通知 @ Before(value = "切入点表达式 配置切入点")
+	
+	/* 【切入点表达式】的语法: execution(权限修饰符public 返回值类型int 全类名.方法名(参数类型列表))
+	 * 权限修饰符+返回值类型，用*表示任意
+	 * 包名: *表示包名任意，*... 表示包名任意同时包的层次深度任意
+	 * 类名: *表示任意类；类名的一部分可以用*代替，如 *Service 表示匹配Service结尾的类或接口
+	 * 方法名: *表示任意方法名；方法名的一部分可以用*替代，如 get* 表示匹配get开头的方法
+	 * 参数列表: .. 使用两个点表示任意参数列表；注意int和Integer是不匹配的；
+	 * 注意：如果想明确指定一个函数的返回值类型，比如同时明确指定权限修饰符:
+	 * 如: execution(public int ..Service.(.., int) 正确
+	 * 如: execution(int ..Service.(.., int) 错误
+	 */
+	@Before(value = "execution(public int com.mio.spring6.aop.annoaop.CalculatorImpl.add(int,int))")
+	public void beforeMethod() {
+		System.out.println("\n[Logger][前置通知]");
+	}
+	
+	// 返回通知: 可以获取返回值。注解中可用returning=定义变量名，函数参数中使用该变量名，函数内可以使用该变量。
+	@AfterReturning(value = "execution(* com.mio.spring6.aop.annoaop.CalculatorImpl.*(..))", 
+			returning = "myResult")
+	public void afterReturningMethod(Object myResult) {
+		System.out.println("[Logger][返回通知] 返回结果:"+myResult);		
+	}
+	
+	// 异常通知：目标方法出现异常，则执行，这时不会执行返回通知。不异常不执行。
+	// 注解中可用 throwing=定义异常变量，函数参数中接收该变量，函数内可以使用该变量。
+	@AfterThrowing(value = "execution(* com.mio.spring6.aop.annoaop.CalculatorImpl.*(..))",
+			throwing = "ex")
+	public void afterThrowingMethod(Throwable ex) {
+		System.out.println("[Logger][异常通知] 异常:"+ex);
+	}
+	
+	// 后置通知：在返回之后执行
+	/* joinPoint 参数，可以获得 切入点 位置的信息
+	 * */
+	@After(value = "execution(public int com.mio.spring6.aop.annoaop.CalculatorImpl.*(..))")
+	public void afterMethod(JoinPoint joinPoint) {
+		String methodName = joinPoint.getSignature().getName(); //获取要增强的方法名
+		//获取要增强的方法的参数
+		Object[] args = joinPoint.getArgs();
+		System.out.println("[Logger][后置通知] 方法名称:"+ methodName+", 参数列表: "+Arrays.toString(args)+"\n");
+	}
+	
+	
+	// 环绕通知: 使用子接口 ProceedingJoinPoint，是继承自 JoinPoint 的。增强后能调用 .proceed() 方法
+	@Around(value = "execution(public int com.mio.spring6.aop.annoaop.CalculatorImpl.*(..))")
+	public Object aroundMethod(ProceedingJoinPoint joinPoint) {
+		String methodName = joinPoint.getSignature().getName(); //获取要增强的方法名
+		//获取要增强的方法的参数
+		Object[] args = joinPoint.getArgs();
+		String argsString =Arrays.toString(args);
+		
+		Object result=null;
+		try {
+			System.out.println("\t~"+methodName+"[Logger][环绕通知] {目标方法执行前 执行}");
+			//调用目标方法
+			result = joinPoint.proceed();
+			System.out.println("\t~"+methodName+"[Logger][环绕通知] {目标方法返回值后 执行}, result="+result);
+		} catch (Throwable e) {
+			System.out.println("\t~"+methodName+"[Logger][环绕通知] {异常时 执行}, 异常信息: "+e);
+			e.printStackTrace();
+		}finally {
+			System.out.println("\t~"+methodName+"[Logger][环绕通知] {目标方法执行后 执行}");
+		}
+		return result;
+	}
+}
+
+
+(7) 测试
+$ cat TestCalc.java
+package com.mio.spring6.aop.annoaop;
+
+import org.junit.jupiter.api.Test;
+
+import org.springframework.context.ApplicationContext;
+import org.springframework.context.support.ClassPathXmlApplicationContext;
+
+public class TestCalc {
+	@Test
+	public void testAdd() {
+		System.out.println("test begin...");
+		ApplicationContext context=
+				new ClassPathXmlApplicationContext("bean.xml");
+		Calculator calculator = context.getBean(Calculator.class);
+		calculator.add(10, 50);
+		//calculator.mul(10, 50);
+		
+		//除数不能是0异常
+		//calculator.div(10, 0);
+	}
+}
+
+输出:
+	test begin...
+		~add[Logger][环绕通知] {目标方法执行前 执行}
+
+	[Logger][前置通知]
+	方法内结果 add result=60
+	[Logger][返回通知] 返回结果:60
+	[Logger][后置通知] 方法名称:add, 参数列表: [10, 50]
+
+		~add[Logger][环绕通知] {目标方法返回值后 执行}, result=60
+		~add[Logger][环绕通知] {目标方法执行后 执行}
+
+
+
+
+
+
+========================================
+|-- 重用切入点表达式、切面的优先级
+----------------------------------------
+1. 以上 切入点表达式大量重复
+
+(1) 同一个类内部：两步
+首先定义一个方法，使用注释指定 切入点表达式：
+	//重用切入点表达式
+	@Pointcut(value="execution(public int com.mio.spring6.aop.annoaop.CalculatorImpl.*(..))")
+	public void pointCut2() {}
+
+然后再需要使用该 切入点表达式 时，使用 "方法名()":
+	@Around(value = "pointCut2()")
+	public Object aroundMethod(ProceedingJoinPoint joinPoint) {...}
+
+
+(2) 不同类之间怎么重复使用呢？
+使用 "包名.类名.方法名()":
+	@After(value = "com.mio.spring6.aop.annoaop.LogAspect.pointCut2()")
+	public void afterMethod(JoinPoint joinPoint) {...}
+
+
+
+2. 切面的优先级
+(1) 目标方法上同时存在多个切面时，切面优先级：外面嵌套的优先级高。
+目标方法，内层切面A，外层切面B。
+
+
+(2) 使用@Order 注解可以控制切面的优先级：@Order(较大的数): 优先级较低
+
+
+
+
+
+
+
+
+========================================
+|-- 基于xml 的AOP
+----------------------------------------
+1. 代码准备
+(1) 创建包，复制刚才的4个类
+package com.mio.spring6.aop.annoaop;
+|-Calculator 接口
+|-CalculatorImpl 实现
+|-LogAspect.java 切面类
+|-TestCalc 测试类
+
+去掉切面类中的 切面相关注解。
+其实就是只保留 CalculatorImpl和LogAspect 的@Component 注解。
+
+
+(2) 创建 配置文件
+$ cat bean-xmlaop.xml
+<?xml version="1.0" encoding="UTF-8"?>
+<beans xmlns="http://www.springframework.org/schema/beans"
+    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xmlns:context="http://www.springframework.org/schema/context"
+    xmlns:aop="http://www.springframework.org/schema/aop"
+    xsi:schemaLocation="
+        http://www.springframework.org/schema/beans
+        http://www.springframework.org/schema/beans/spring-beans.xsd
+        
+        http://www.springframework.org/schema/context
+        http://www.springframework.org/schema/context/spring-context.xsd
+        
+        http://www.springframework.org/schema/aop
+        http://www.springframework.org/schema/aop/spring-aop.xsd">
+
+	<!-- 开启组件扫描 -->
+	<context:component-scan base-package="com.mio.spring6.aop.xmlaop"></context:component-scan>
+	<!-- 配置aop的5种通知类型 -->
+	<aop:config>
+		<!-- 配置切面类 -->
+		<aop:aspect ref="logAspect">
+			<!-- 配置切入点 -->
+			<aop:pointcut expression="execution(public int com.mio.spring6.aop.xmlaop.CalculatorImpl.*(..))" 
+				id="pointcut"/>
+			<!-- 配置5种通知类型 -->
+			<!-- 前置通知 -->
+			<aop:before method="beforeMethod" pointcut-ref="pointcut" />
+			<!-- 后置通知 -->
+			<aop:after method="afterMethod" pointcut-ref="pointcut" />
+			<!-- 返回通知: returning=返回值的变量名，要和目标函数的参数一致 -->
+			<aop:after-returning method="afterReturningMethod" returning="myResult" pointcut-ref="pointcut" />
+			<!-- 异常通知: ex=变量名，要和函数参数一致 -->
+			<aop:after-throwing method="afterThrowingMethod" throwing="ex" pointcut-ref="pointcut" />
+			<!-- 环绕通知 -->
+			<aop:around method="aroundMethod" pointcut-ref="pointcut" />
+		</aop:aspect>
+	</aop:config>
+</beans>
+
+
+(3) 测试
+	@Test
+	public void testAdd2() {
+		System.out.println("test begin...");
+		ApplicationContext context=
+				new ClassPathXmlApplicationContext("bean-xmlaop.xml");
+		Calculator calculator = context.getBean(Calculator.class);
+		calculator.mul(10, 50);
+		
+		//除数不能是0异常
+		//calculator.div(10, 0);
+	}
+
+输出:
+	test begin...
+
+	[Logger][前置通知]
+		~mul[Logger][环绕通知] {目标方法执行前 执行}
+	方法内结果 mul result=500
+		~mul[Logger][环绕通知] {目标方法返回值后 执行}, result=500
+		~mul[Logger][环绕通知] {目标方法执行后 执行}
+	[Logger][返回通知] 返回结果:500
+	[Logger][后置通知] 方法名称:mul, 参数列表: [10, 50]
+
+
+
+
+
+
+========================================
+单元测试: JUnit5 & JUnit4
+----------------------------------------
+1. 问题
+测试类的前两行几乎都是
+	ApplicationContext context=
+			new ClassPathXmlApplicationContext("xx.xml");
+	Xxx xxx = context.getBean(Xxx.class);
+
+这两行代码的作用是创建Spring容器，最终获得对象。
+
+怎么能自动创建容器呢？
+
+JUnit 无法知道我们是否使用了 Spring 框架。
+Spring 提供了一个运行器，可以读取配置文件（或注解）来创建容器。
+	这样就能通过 Spring 整合JUnit使程序自动创建Spring 容器了。
+
+
+
+
+
+
+2. spring 整合 JUnit5
+(1) 创建子模块
+右击外部项目 spring6，new- Maven Module
+	勾选 skip archetype selection
+	Module name: spring6-junit
+	父项目: spring6
+
+Artifact:
+	group id: com.mio
+	artifact id: spring6-junit
+	version:
+	packaging: jar
+Finish
+
+右击子模块，build path - config - Library 
+	把jre环境设置为 本地安装的 jdk17
+
+
+
+(2) 引入依赖
+直接放到 父工程 pom.xml 中。
+
+	  <!-- sping 整合 junit 相关依赖 -->
+	  <dependency>
+		  <groupId>org.springframework</groupId>
+		  <artifactId>spring-test</artifactId>
+		  <version>6.0.7</version>
+	  </dependency>
+
+之前已经有了
+	  <dependency>
+		  <groupId>org.junit.jupiter</groupId>
+		  <artifactId>junit-jupiter-engine</artifactId>
+		  <version>5.6.3</version>
+	  </dependency>
+不知道 junit-jupiter-engine 和 junit-jupiter-api 有啥区别? //todo
+
+
+
+(3) 添加配置文件
+$ cat bean-junit.xml
+<?xml version="1.0" encoding="UTF-8"?>
+<beans xmlns="http://www.springframework.org/schema/beans"
+    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xmlns:context="http://www.springframework.org/schema/context"
+    xmlns:aop="http://www.springframework.org/schema/aop"
+    xsi:schemaLocation="
+        http://www.springframework.org/schema/beans
+        http://www.springframework.org/schema/beans/spring-beans.xsd
+        
+        http://www.springframework.org/schema/context
+        http://www.springframework.org/schema/context/spring-context.xsd
+        
+        http://www.springframework.org/schema/aop
+        http://www.springframework.org/schema/aop/spring-aop.xsd">
+
+	<!-- 开启组件扫描 -->
+	<context:component-scan base-package="com.mio.spring6.junit"></context:component-scan>
+</beans>
+
+
+
+
+(3) 创建类
+$ cat User.java
+package com.mio.spring6.junit.junit5;
+
+import org.springframework.stereotype.Component;
+
+@Component
+public class User {
+	public void run() {
+		System.out.println("user.run()...");
+	}
+}
+
+
+
+(4) 测试类
+$ cat SpringTestJUnit5.java
+package com.mio.spring6.junit.junit5;
+
+import org.junit.jupiter.api.Test;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.test.context.junit.jupiter.SpringJUnitConfig;
+
+@SpringJUnitConfig(locations = "classpath:bean-junit.xml")
+public class SpringTestJUnit5 {
+	//注入对象
+	@Autowired
+	private User user;
+	
+	//测试方法
+	@Test
+	public void testUser() {
+		System.out.println(user);
+		user.run();
+	}
+}
+
+配置文件开启组件扫描，相关类加上 @Component 标签交给Spring托管。
+只需要通过注解@SpringJUnitConfig(locations =)指定配置文件的位置。
+测试文件创建属性，使用 @Autowired 实现注入。
+
+
+测试类顶部的注解还有一种写法
+//另一种写法：不常用
+@ExtendWith(SpringExtension.class)
+@ContextConfiguration("classpath:bean-junit.xml")
+public class SpringTestJUnit5v2 {...}
+
+
+
+
+
+
+3. spring 整合 JUnit4
+(1) 引入依赖
+父工程已经有了:
+      <dependency>
+		  <groupId>junit</groupId>
+		  <artifactId>junit</artifactId>
+		  <version>4.11</version>
+	  </dependency>
+
+(2) 测试类
+package com.mio.spring6.junit.junit4;
+
+import org.junit.Test;
+import org.junit.runner.RunWith;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.test.context.ContextConfiguration;
+import org.springframework.test.context.junit4.SpringJUnit4ClassRunner;
+
+import com.mio.spring6.junit.junit5.User;
+
+//JUnit4 需要2个注解
+@RunWith(SpringJUnit4ClassRunner.class)
+@ContextConfiguration("classpath:bean-junit.xml")
+public class SpringUnit4Test {
+	//注入对象
+	@Autowired
+	private User user;
+
+	@Test
+	public void testUser() {
+		System.out.println("2456");
+	}
+	
+	//测试方法
+	@Test //这个为什么不运行呢？
+	public void testUser4() {
+		System.out.println(user);
+		user.run();
+	}
+}
+
+没有输出，也没有报错。 //todo
+
+
+
+
+
+========================================
+Spring 事务
+----------------------------------------
+四个要点:
+	JDBCTemplate
+	声明式事务概念
+	基于注解的声明式事务
+	基于xml的声明式事务
+
+
+transaction [trænˈzækʃ(ə)n] n. 交易，买卖，业务；（学术团体会议的）议事录，公报；（人与人之间的）交流，相互影响；事务（元），事项
+
+
+1. 准备文件结构
+(1) 创建子模块
+右击外部项目 spring6，new- Maven Module
+	勾选 skip archetype selection
+	Module name: spring6-jdbc-tx
+	父项目: spring6
+
+Artifact:
+	group id: com.mio
+	artifact id: spring6-jdbc-tx
+	version:
+	packaging: jar
+Finish
+
+右击子模块，build path - config - Library 
+	把jre环境设置为 本地安装的 jdk17
+
+
+(2) 在子模块的 pom.xml 中添加3个依赖
+<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+  <modelVersion>4.0.0</modelVersion>
+  <parent>
+    <groupId>com.mio</groupId>
+    <artifactId>spring6</artifactId>
+    <version>0.0.1-SNAPSHOT</version>
+  </parent>
+  <artifactId>spring6-jdbc-tx</artifactId>
+  
+  <dependencies>
+	  <!-- spring jdbc Spring持久层支持jar包 -->
+	  <dependency>
+		  <groupId>org.springframework</groupId>
+		  <artifactId>spring-jdbc</artifactId>
+		  <version>6.0.7</version>
+	  </dependency>
+	  
+	  <!-- MySQL驱动 -->
+	  <dependency>
+		  <groupId>mysql</groupId>
+		  <artifactId>mysql-connector-java</artifactId>
+		  <version>8.0.32</version>
+	  </dependency>
+	  
+	  <!-- 连接池 (数据源) -->
+	  <dependency>
+		  <groupId>com.alibaba</groupId>
+		  <artifactId>druid</artifactId>
+		  <version>1.2.17</version>
+	  </dependency>
+	  
+  </dependencies>
+</project>
+
+
+(3) 创建数据库配置文件：类根目录下的 resources/下
+$ cat jdbc.properties
+jdbc.user=root
+jdbc.password=
+jdbc.url=jdbc:mysql://localhost:3306/spring?characterEncoding=utf8&useSSL=false&serverTimezone=UTC
+#jdbc.url=jdbc:mysql://localhost:3306/spring?serverTimezone=UTC
+jdbc.driver=com.mysql.cj.jdbc.Driver
+
+说明：
+	url的两个写法都可以。这表示使用 use spring;
+	密码为空，就把等号右边空着。
+
+
+(4) 创建配置文件
+三个任务: 引入外部mysql配置文件，创建连接池对象，实例化 jdbcTemplate 对象。
+$ cat beans.xml
+<?xml version="1.0" encoding="UTF-8"?>
+<beans xmlns="http://www.springframework.org/schema/beans"
+    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xmlns:context="http://www.springframework.org/schema/context"
+    xmlns:aop="http://www.springframework.org/schema/aop"
+    xsi:schemaLocation="
+        http://www.springframework.org/schema/beans
+        http://www.springframework.org/schema/beans/spring-beans.xsd
+        
+        http://www.springframework.org/schema/context
+        http://www.springframework.org/schema/context/spring-context.xsd
+        
+        http://www.springframework.org/schema/aop
+        http://www.springframework.org/schema/aop/spring-aop.xsd">
+
+		<!-- 引入外部属性文件，创建数据源对象 -->
+		<context:property-placeholder location="classpath:jdbc.properties" />
+		
+		<!-- 连接池对象 
+			注意: value="${jdbc.url}" ，其中引号内不能漏掉$字符。这里耽误两个小时！！
+		-->
+		<bean id="druidDataSource" class="com.alibaba.druid.pool.DruidDataSource" >
+			<property name="url" value="${jdbc.url}"></property>
+			<property name="driverClassName" value="${jdbc.driver}"></property>
+			<property name="username" value="${jdbc.user}"></property>
+			<property name="password" value="${jdbc.password}"></property>
+		</bean>
+		
+		<!-- 创建 jdbcTemplate 对象，注入数据源 -->
+		<bean id="jdbcTemplate" class="org.springframework.jdbc.core.JdbcTemplate">
+			<!-- 构造器传入 druidDataSource 对象 -->
+			<constructor-arg name="dataSource" ref="druidDataSource"></constructor-arg>
+		</bean>
+
+</beans>
+
+
+
+
+(5) 创建数据库
+create database spring;
+
+use spring;
+
+create table `t_emp`(
+	`id` int(11) NOT NULL AUTO_INCREMENT,
+	`name` varchar(20) DEFAULT NULL COMMENT '姓名',
+	`age` int(11) DEFAULT NULL COMMENT '年龄',
+	`gender` varchar(2) DEFAULT NULL COMMENT '性别',
+	PRIMARY KEY(`id`) 
+)ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+使用数据库工具: SQLyog, 
+或者命令行都可以。
+G:\xampp\mysql\bin>mysql -h localhost -u root
+Server version: 10.1.30-MariaDB mariadb.org binary distribution
+
+
+
+(6) 创建测试类
+$ cat JdbcTemplateTest.java
+package com.mio.spring6.jdbc;
+
+import org.junit.jupiter.api.Test;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.test.context.junit.jupiter.SpringJUnitConfig;
+
+@SpringJUnitConfig(locations = "classpath:beans.xml")
+public class JdbcTemplateTest {
+	
+	@Autowired
+	private JdbcTemplate jdbcTemplate;
+	
+	@Test
+	public void testUpdate() {
+		System.out.println(jdbcTemplate);
+	}
+}
+
+输出:
+	org.springframework.jdbc.core.JdbcTemplate@12365c88
+
+接下来实现CURD。
+
+
+
+========================================
+|-- JdbcTemplate 执行 增删改查CURD
+----------------------------------------
+
+2. 操作数据（增、删、改）
+
+(1)新增数据
+这地方卡了好几个小时，总是报错。//todo //done;
+
+1)最原始的方式
+	private static void demo1() {
+		//1 创建数据源 对象
+		DruidDataSource dataSource=new DruidDataSource();
+//		dataSource.setUrl("jdbc:mysql://localhost:3306/spring?serverTimezone=UTC");
+		dataSource.setUrl("jdbc:mysql://localhost:3306/spring?characterEncoding=utf8&useSSL=false&serverTimezone=UTC");
+		dataSource.setDriverClassName("com.mysql.cj.jdbc.Driver");
+		dataSource.setUsername("root");
+		dataSource.setPassword("");
+		//2 创建 JdbcTemplate 对象
+		JdbcTemplate jdbcTemplate2=new JdbcTemplate(dataSource);
+		System.out.println(jdbcTemplate2);
+		//jdbcTemplate2.execute("select * from t_emp;");
+		
+		//3 编写sql语句
+		String sql="insert into t_emp values(NULL,?,?,?)";
+		
+		//4 调用 JdbcTemplate 的方法，传入相关参数
+		int updateRows = jdbcTemplate2.update(sql, "小明", 22, "M");
+		System.out.println(updateRows);		
+	} 
+
+输出: 1 返回的是新增记录的行数。
+说明手工创建 数据源，然后使用该数据源传入构造器创建 JdbcTemplate 的对象是可行的。
+
+
+2)使用配置文件
+	private static void demo2() {
+		ApplicationContext context=
+				new ClassPathXmlApplicationContext("beans.xml");
+		
+		JdbcTemplate jdbcTemplate2 = context.getBean(JdbcTemplate.class);
+		jdbcTemplate2.execute("select * from t_emp;");
+		System.out.println(jdbcTemplate2);
+	}
+
+最后发现是配置文件写错了！
+	引用MySQL配置文件中的数据需要加$符号！
+	<property name="username" value="${jdbc.user}"></property>
+	正确写法已经更新到上面xml文件中。
+
+
+
+3)测试类标准写法
+$ cat JdbcTemplateTest.java
+package com.mio.spring6.jdbc;
+
+import org.junit.jupiter.api.Test;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.context.ApplicationContext;
+import org.springframework.context.support.ClassPathXmlApplicationContext;
+import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.test.context.junit.jupiter.SpringJUnitConfig;
+
+import com.alibaba.druid.pool.DruidDataSource;
+
+@SpringJUnitConfig(locations = "classpath:beans.xml")
+public class JdbcTemplateTest {
+	
+	@Autowired
+	private JdbcTemplate jdbcTemplate;
+	
+	
+	//添加、修改、删除操作：调用同一个方法
+	@Test
+	public void testUpdate() {
+		//添加操作
+		//1 编写sql语句
+		String sql="insert into t_emp values(NULL,?,?,?)";
+		
+		//2 调用 JdbcTemplate 的方法，传入相关参数
+		int updateRows = jdbcTemplate.update(sql, "小明", 20, "M");
+		System.out.println(updateRows);
+	}
+}
+
+
+还可以把 update() 的参数写到一个数组中：
+	@Test
+	public void testUpdate2() {
+		//添加操作
+		//1 编写sql语句
+		String sql="insert into t_emp values(NULL,?,?,?)";
+		
+		//2 调用 JdbcTemplate 的方法，传入相关参数
+		Object[] params= {"小明", 21, "M"};
+		int updateRows = jdbcTemplate.update(sql, params);
+		System.out.println(updateRows);
+	}
+
+
+
+(2) 修改数据
+	@Test
+	public void testUpdate3() {
+		//修改操作
+		//1 编写sql语句
+		String sql="update t_emp set name=? where id=?";
+		
+		//2 调用 JdbcTemplate 的方法，传入相关参数
+		Object[] params= {"Tom", 2};
+		int updateRows = jdbcTemplate.update(sql, params);
+		System.out.println(updateRows);
+	}
+
+查询数据，确实更新了:
+> select * from t_emp;
+
+修改多个信息: String sql="update t_emp set name=?, gender=? where id=?";
+
+
+(3) 删除数据
+	@Test
+	public void testUpdate5() {
+		//删除操作
+		//1 编写sql语句
+		String sql="delete from t_emp where id=?";
+		
+		//2 调用 JdbcTemplate 的方法，传入相关参数
+		Object[] params= {2};
+		int updateRows = jdbcTemplate.update(sql, params);
+		System.out.println(updateRows);
+	}
+
+检查: > select * from t_emp;
+
+
+
+
+
+
+
+2. 查询数据
+- 返回对象
+- 返回list集合
+- 返回单个的值: 记录的行数
+
+(0) 新建类 Emp，方便封装数据库的数据
+$ cat Emp.java
+package com.mio.spring6.jdbc;
+
+public class Emp {
+	private Integer id;
+	private String name;
+	private Integer age;
+	private String gender;
+	
+	@Override
+	public String toString() {
+		return String.format("Emp[id:%d, name:%s, age:%d, gender:%s]", id, name, age, gender);
+	}
+	// 省略set/get方法...
+}
+
+
+
+(1)查询：返回对象
+	@Test
+	public void testSelectObj() {
+		//1 编写sql语句
+		String sql="select * from t_emp where id=?";
+		
+		//2 调用 JdbcTemplate 的方法，传入相关参数
+		/* 有一个三个参数的查询函数
+		 * 参数1: sql语句
+		 * 参数2 RowMapper<Emp> rowMapper: 是一个封装类，根据返回结果rs，封装好返回的对象，就是查询的结果
+		 * 参数3: sql语句中的未知参数赋值
+		 * */
+		Emp empObj = jdbcTemplate.queryForObject(sql,
+				//使用java8中的lambda表达式
+				//太繁琐，写着很不方便
+				(rs, rowNum)->{
+					System.out.println("查询结果: "+rowNum);
+					Emp emp=new Emp();
+					emp.setId( rs.getInt("id"));
+					emp.setName( rs.getString("name"));
+					emp.setAge( rs.getInt("age"));
+					emp.setGender(rs.getString("gender"));
+					return emp;
+				},	1);
+		System.out.println(empObj);
+
+
+		//写法2: 使用Spring的封装类
+		Emp empObj2 = jdbcTemplate.queryForObject(sql, new BeanPropertyRowMapper<>(Emp.class), 1);
+		System.out.println(empObj2);
+	}
+
+输出:
+	查询结果: 0
+	Emp[id:1, name:小明, age:20, gender:M]
+	Emp[id:1, name:小明, age:20, gender:M]
+
+
+
+(2)查询：返回list
+	//查询：返回list
+	@Test
+	public void testSelectList() {
+		//1 编写sql语句
+		String sql="select * from t_emp;";
+		//2 查询
+		List<Emp> list = jdbcTemplate.query(sql, 
+				new BeanPropertyRowMapper<>(Emp.class));
+		//3. 输出
+		for(Emp emp: list) {
+			System.out.println(emp);
+		}
+	}
+
+输出:
+	Emp[id:1, name:小明, age:20, gender:M]
+	Emp[id:3, name:Lily, age:22, gender:F]
+
+
+
+
+(3)查询：返回单个值
+	//查询：返回单个值
+	@Test
+	public void testSelectValue() {
+		//1 编写sql语句
+		String sql="select count(*) from t_emp;";
+		//2 查询
+		Integer count = jdbcTemplate.queryForObject(sql, Integer.class);
+		System.out.println("当前表的总行数: "+count);
+	}
+
+输出:
+	当前表的总行数: 2
+
+
+
+
+========================================
+|-- 事务
+----------------------------------------
+1. 基本概念
+(1) 事务就是一组数据库操作，要么都成功，要么都失败。
+比如银行转账：
+	A 给 B 转账100元，则必须
+		成功：同时A减少100元，B增加100元。
+		失败：啥都没发生。
+	不能出现A减少了，但是B没有增加；或者A没变化，B增加等其他情况。
+
+
+(2) 事务的特点 ACID
+原子性: 都成功，或都失败
+一致性: 转账前后，总量不变。
+隔离性: 并发环境中，每个事务都各自完整的数据空间，由并发事务所做的修改必须与任何其他并发事务所做的修改隔离。
+持久性: 事务提交，表中数据生效。
+
+
+
+(3) spring 支持 编程式事务、声明式事务
+
+编程式事务
+	自己编程实现，原始写法，比较繁琐
+
+声明式事务
+	简化了写法，基于Spring框架(本文重点): 基于注解 或 xml 实现。
+
+
+
+
+
+2. 事务场景模拟: 用户买书的过程。
+
+(1) 表格设计
+
+用户表
+	id
+	name 姓名
+	money 余额
+
+图书表
+	id
+	name 书名
+	price 价格
+	stock 库存
+
+(2) 点确定后的交易过程
+查询图书价格
+图书库存: 减少本数
+用户余额: 减少金额
+
+
+(3) 符合需求，实施建表
+G:\xampp\mysql\bin>mysql -h localhost -u root -p
+无密码本地root登录。
+# create database spring;
+
+use spring;
+
+create table `t_book`(
+	`book_id` int(11) NOT NULL AUTO_INCREMENT COMMENT '主键',
+	`book_name` varchar(20) DEFAULT NULL COMMENT '图书名字',
+	`price` int(11) DEFAULT NULL COMMENT '价格',
+	`stock` int(10) unsigned DEFAULT NULL COMMENT '库存(无符号)',
+	PRIMARY KEY(`book_id`) 
+)ENGINE=InnoDB AUTO_INCREMENT=3 DEFAULT CHARSET=utf8;
+
+insert into t_book (book_id, book_name, price, stock) values(1, '期刊1', 80, 5), (2, '期刊2', 500, 40);
+
+create table `t_user`(
+	`user_id` int(11) NOT NULL AUTO_INCREMENT COMMENT '主键',
+	`user_name` varchar(20) DEFAULT NULL COMMENT '用户名',
+	`balance` int(10) unsigned DEFAULT NULL COMMENT '余额(无符号)',
+	PRIMARY KEY(`user_id`) 
+)ENGINE=InnoDB AUTO_INCREMENT=2 DEFAULT CHARSET=utf8;
+
+insert into t_user (user_id, user_name, balance) values(1, 'admin', 1000), (2, 'wangcai', 100);
+
+
+
+
+
+3. 基于注解的声明式事务
+(1) 新建配置文件
+- 开启组件扫描
+- 配置数据库
+
+$ cat beans-annotx.xml
+<?xml version="1.0" encoding="UTF-8"?>
+<beans xmlns="http://www.springframework.org/schema/beans"
+    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xmlns:context="http://www.springframework.org/schema/context"
+    xmlns:aop="http://www.springframework.org/schema/aop"
+    xsi:schemaLocation="
+        http://www.springframework.org/schema/beans
+        http://www.springframework.org/schema/beans/spring-beans.xsd
+        
+        http://www.springframework.org/schema/context
+        http://www.springframework.org/schema/context/spring-context.xsd
+        
+        http://www.springframework.org/schema/aop
+        http://www.springframework.org/schema/aop/spring-aop.xsd">
+        
+        <!-- 开启组件扫描 -->
+        <context:component-scan base-package="com.mio.spring6.tx"></context:component-scan>
+
+		<!-- 引入外部属性文件，创建数据源对象 -->
+		<context:property-placeholder location="classpath:jdbc.properties" />
+		
+		<!-- 连接池对象 
+			注意: value="${jdbc.url}" ，其中引号内不能漏掉$字符。这里耽误两个小时！！
+		-->
+		<bean id="druidDataSource" class="com.alibaba.druid.pool.DruidDataSource" >
+			<property name="url" value="${jdbc.url}"></property>
+			<property name="driverClassName" value="${jdbc.driver}"></property>
+			<property name="username" value="${jdbc.user}"></property>
+			<property name="password" value="${jdbc.password}"></property>
+		</bean>
+		
+		<!-- 创建 jdbcTemplate 对象，注入数据源 -->
+		<bean id="jdbcTemplate" class="org.springframework.jdbc.core.JdbcTemplate">
+			<!-- 构造器传入 druidDataSource 对象 -->
+			<constructor-arg name="dataSource" ref="druidDataSource"></constructor-arg>
+		</bean>
+
+</beans>
+
+
+(2) 新建包，新建类
+|-controller/
+	|-BookController.java
+|-service/
+	|-BookService 接口
+	|-BookServiceImpl 实现类
+|-dao/
+	|-BookDao 接口
+	|-BookDaoImpl 实现类
+
+分别在3个实现类上加上注解: @Controller, @Service, @Repository
+Controller 中声明 service 并注入；
+Service 中声明 dao 并注入;
+
+Controller 加入买书方法 buyBook(bid, uid)
+	在 service 新增buyBook()的接口和实现。
+		调用 bookDao 中的方法更新数据库: 3个方法
+			在 bookDao 中 声明 JdbcTemplate 并注入； 新增3个方法的接口和实现
+
+
+控制器
+$ cat BookController.java
+package com.mio.spring6.tx.controller;
+
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.stereotype.Controller;
+
+import com.mio.spring6.tx.service.BookService;
+
+@Controller
+public class BookController {
+	@Autowired
+	private BookService bookService;
+	
+	//买书方法
+	public void buyBook(Integer bookId, Integer userId) {
+		bookService.buyBook(bookId, userId);
+	}
+}
+
+
+业务逻辑 接口+实现:
+$ cat BookService.java
+package com.mio.spring6.tx.service;
+public interface BookService {
+	void buyBook(Integer bookId, Integer userId);
+}
+
+$ cat BookServiceImpl.java
+package com.mio.spring6.tx.service;
+
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.stereotype.Service;
+
+import com.mio.spring6.tx.dao.BookDao;
+
+@Service
+public class BookServiceImpl implements BookService {
+	
+	@Autowired
+	private BookDao bookDao;
+
+	//买书的过程
+	@Override
+	public void buyBook(Integer bookId, Integer userId) {
+		//1 根据图书id查看图书价格
+		Integer price=bookDao.getBookPriceByBookId(bookId);
+		
+		//2 更新图书库存量 -1
+		bookDao.updateStock(bookId);
+		
+		//3 更新用户余额：-图书价格
+		bookDao.updateUserBalance(userId, price);
+	}
+}
+
+
+数据库操作 接口和实现：
+$ cat BookDao.java
+package com.mio.spring6.tx.dao;
+
+public interface BookDao {
+
+	Integer getBookPriceByBookId(Integer bookId);
+
+	void updateStock(Integer bookId);
+
+	void updateUserBalance(Integer userId, Integer price);
+}
+
+
+$ cat BookDaoImpl.java
+package com.mio.spring6.tx.dao;
+
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.stereotype.Repository;
+
+@Repository
+public class BookDaoImpl implements BookDao {
+	
+	@Autowired
+	private JdbcTemplate jdbcTemplate;
+
+	//获取价格
+	@Override
+	public Integer getBookPriceByBookId(Integer bookId) {
+		String sql="select price from t_book where book_id=?";
+		Integer price = jdbcTemplate.queryForObject(sql, Integer.class, bookId);
+		return price;
+	}
+
+	//更新库存
+	@Override
+	public void updateStock(Integer bookId) {
+		String sql="update t_book set stock=stock-1 where book_id=?";
+		int rowNum = jdbcTemplate.update(sql, bookId);
+		System.out.println("更新 库存 影响行数: "+rowNum);
+	}
+
+	//更新用户余额
+	@Override
+	public void updateUserBalance(Integer userId, Integer price) {
+		String sql="update t_user set balance=balance-? where user_id=?";
+		int rowNum = jdbcTemplate.update(sql, price, userId);
+		System.out.println("更新 用户余额 影响行数: "+rowNum);
+	}
+}
+
+
+
+
+(3) 测试
+$ cat TestBookTx.java
+package com.mio.spring6.tx;
+
+import org.junit.jupiter.api.Test;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.test.context.junit.jupiter.SpringJUnitConfig;
+
+import com.mio.spring6.tx.controller.BookController;
+
+@SpringJUnitConfig(locations = "classpath:beans-annotx.xml")
+public class TestBookTx {
+	
+	@Autowired
+	private BookController bookController;
+	
+	@Test
+	public void testBook1() {
+		bookController.buyBook(1, 1);
+		System.out.println("买书 结束");
+	}
+}
+
+输出:
+	更新 库存 影响行数: 1
+	更新 用户余额 影响行数: 1
+	买书 结束
+
+
+查看数据表，买书前:
+MariaDB [spring]> select * from t_user;
++---------+-----------+---------+
+| user_id | user_name | balance |
++---------+-----------+---------+
+|       1 | admin     |    1000 |
+|       2 | wangcai   |     100 |
++---------+-----------+---------+
+2 rows in set (0.00 sec)
+
+MariaDB [spring]> select * from t_book;
++---------+-----------+-------+-------+
+| book_id | book_name | price | stock |
++---------+-----------+-------+-------+
+|       1 | 期刊1     |    80 |     5 |
+|       2 | 期刊2     |   500 |    40 |
++---------+-----------+-------+-------+
+2 rows in set (0.00 sec)
+
+
+买书后:
+MariaDB [spring]> select * from t_user;
++---------+-----------+---------+
+| user_id | user_name | balance |
++---------+-----------+---------+
+|       1 | admin     |     920 |
+|       2 | wangcai   |     100 |
++---------+-----------+---------+
+2 rows in set (0.00 sec)
+
+MariaDB [spring]> select * from t_book;
++---------+-----------+-------+-------+
+| book_id | book_name | price | stock |
++---------+-----------+-------+-------+
+|       1 | 期刊1     |    80 |     4 |
+|       2 | 期刊2     |   500 |    40 |
++---------+-----------+-------+-------+
+2 rows in set (0.00 sec)
+
+
+
+
+
+(4) 问题：如果买了买不起的书，会导致什么结果?
+
+比如，旺财(uid=2)余额100元，想买价格是500的bid=2的书。
+	@Test
+	public void testBook1() {
+		//bookController.buyBook(1, 1);
+		bookController.buyBook(2, 2);
+		System.out.println("买书 结束");
+	}
+输出:
+	更新 库存 影响行数: 1
+同时有报错: 无符号数 超出 范围。
+org.springframework.dao.DataIntegrityViolationException: PreparedStatementCallback; SQL [update t_user set balance=balance-? where user_id=?]; Data truncation: BIGINT UNSIGNED value is out of range in '(`spring`.`t_user`.`balance` - 500)'
+
+查看数据表，库存-1，但是用户余额不变。
+是不是很诡异！
+
+我们期望的是：同步更新。
+	要么成功，库存-1，余额减少。
+	要么事变，库存不变，余额不变。
+	其他按情况都不是我们需要的。
+
+
+
+
+
+========================================
+|-- 基于注解 添加Spring 事务 支持： @Transactional
+----------------------------------------
+(5) 添加事务
+
+1) 在spring配置文件中添加 事务支持
+- 哪个数据源添加事务？
+- 需要修改顶部的约束条件:
+	xmlns:tx="http://www.springframework.org/schema/tx"
+	xsi:schemaLocation=" #新增两行
+		http://www.springframework.org/schema/tx
+        http://www.springframework.org/schema/tx/spring-tx.xsd"
+
+
+$ cat beans-annotx.xml
+<?xml version="1.0" encoding="UTF-8"?>
+<beans xmlns="http://www.springframework.org/schema/beans"
+    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xmlns:context="http://www.springframework.org/schema/context"
+    xmlns:aop="http://www.springframework.org/schema/aop"
+    xmlns:tx="http://www.springframework.org/schema/tx"
+    xsi:schemaLocation="
+        http://www.springframework.org/schema/beans
+        http://www.springframework.org/schema/beans/spring-beans.xsd
+        
+        http://www.springframework.org/schema/context
+        http://www.springframework.org/schema/context/spring-context.xsd
+        
+        http://www.springframework.org/schema/aop
+        http://www.springframework.org/schema/aop/spring-aop.xsd
+        
+        http://www.springframework.org/schema/tx
+        http://www.springframework.org/schema/tx/spring-tx.xsd">
+        
+        <!-- 开启组件扫描 -->
+        <context:component-scan base-package="com.mio.spring6.tx"></context:component-scan>
+
+		<!-- 引入外部属性文件，创建数据源对象 -->
+		<context:property-placeholder location="classpath:jdbc.properties" />
+		
+		<!-- 连接池对象 
+			注意: value="${jdbc.url}" ，其中引号内不能漏掉$字符。这里耽误两个小时！！
+		-->
+		<bean id="druidDataSource" class="com.alibaba.druid.pool.DruidDataSource" >
+			<property name="url" value="${jdbc.url}"></property>
+			<property name="driverClassName" value="${jdbc.driver}"></property>
+			<property name="username" value="${jdbc.user}"></property>
+			<property name="password" value="${jdbc.password}"></property>
+		</bean>
+		
+		<!-- 创建 jdbcTemplate 对象，注入数据源 -->
+		<bean id="jdbcTemplate" class="org.springframework.jdbc.core.JdbcTemplate">
+			<!-- 构造器传入 druidDataSource 对象 -->
+			<constructor-arg name="dataSource" ref="druidDataSource"></constructor-arg>
+		</bean>
+
+		
+		<!-- 事务管理器 bean: 对数据源 添加事务支持 -->
+		<bean id="transactionManager" class="org.springframework.jdbc.datasource.DataSourceTransactionManager">
+			<property name="dataSource" ref="druidDataSource"></property>
+		</bean>
+		
+		<!-- 开启事务的注解驱动
+			通过注解@Transactional所标记的方法或标识的类中所有的方法，都会被事务管理器管理事务
+			transaction-manager属性的默认值是transactionManager，
+				如果事务管理器bean的id正好就是这个默认值，则可省略该属性
+		-->
+		<tx:annotation-driven transaction-manager="transactionManager"/>
+</beans>
+
+
+
+
+2) 在业务逻辑层添加注解 @Transactional
+- 加到方法上，只对该方法有效。
+- 加到类上，对这个类的每个方法都有效。
+
+@Transactional  //事务支持
+@Service
+public class BookServiceImpl implements BookService {...}
+
+再次测试，
+输出: 更新 库存 影响行数: 1
+	报错还是依旧。
+检查表: 两个表格都没有变化，也就是买不起时库存没有-1。
+
+
+
+
+
+
+
+
+(6) @Transactional 的更多参数
+	readOnly = true 只读
+	timeout = 3 查过3s就算超时，直接回滚；默认-1表示不超时；
+	isolation 表示隔离级别
+	propagation 传播行为
+
+还可以设置回滚策略：哪些类回滚，哪些不回滚？
+
+1) 只读
+只能查询，不能做 增删改操作。
+	@Transactional(readOnly = true)
+	执行有增删改的sql，直接抛异常: Connection is read-only.
+
+2) 超时
+超时后，直接抛出异常，回滚。
+	@Transactional(timeout = 3)
+	@Service
+	public class BookServiceImpl implements BookService {
+
+		@Override
+		public void buyBook(Integer bookId, Integer userId) {
+			//TODO 模拟超时效果
+			try {
+				TimeUnit.SECONDS.sleep(5); //睡眠5秒
+			} catch (InterruptedException e) {
+				e.printStackTrace();
+			}
+			//...
+		}
+	}
+	执行报异常: Transaction timed out: deadline was ... 
+
+
+3) 回滚策略：哪些异常不回滚
+共4个属性:
+	rollbackFor属性: 需要设置一个Class类型的对象
+	rollbackForClassName 属性: 需要设置一个字符串类型的全类名
+	noRollbackFor 属性: 需要设置一个Class类型的对象
+	noRollbackForClassName 属性: 需要设置一个字符串类型的全类名
+
+	比如 方法的末尾添加一个异常
+		//添加一个不回滚的异常
+		System.out.println(1/0);
+	类上添加注释: @Transactional(noRollbackFor = ArithmeticException.class)
+		//或使用全类名 noRollbackForClassName="java.lang.ArithmeticException"
+	检查表，发表2个表都更新了。
+
+
+
+4) 隔离级别：读问题
+就是多线程中，由于其他事务的写操作，导致一个事务中多次查询结构不一致。
+
+脏读: A事务中查询一次，再查询时遇到另一个事务修改的值，而后者后来回滚了。
+不可重复读: A事务查询一次，再次查询时读到了另一个事务修改后并提交的值。
+幻读: A事务查询总行数一次，再次查询总行数时，另一个事务插入并提交了。
+
+
+在事务的四个特性里面，其中隔离性总共分为四种级别：由低到高依次为 Read uncommitted 、Read committed 、Repeatable read 、Serializable ，这四个级别可以逐个解决脏读 、不可重复读 、幻读等这几类问题。
+
+read uncommitted：俗称读未提交，指的是一个事务还没提交时，它做的变更就能被别的事务看到。
+
+Read committed：俗称读提交，指的是一个事务提交之后，它做的变更才会被其他事务看到。
+
+Repeatable read：俗称可重复读，指的是一个事务执行过程中看到的数据，总是跟这个事务在启动时看到的数据是一致的，同时当其他事务在未提交时，变更是不可见的。
+
+Serializable：俗称串行化，顾名思义就是对于同一行记录，“写”会加“写锁”，“读”会加“读锁”。当出现读写锁冲突的时候，后访问的事务必须等前一个事务执行完成，才能继续执行。
+
+
+	@Transactional(isolation = Isolation.DEFAULT) //使用数据库默认的隔离级别
+	@Transactional(isolation = Isolation.READ_COMMITTED) //读已提交
+	@Transactional(isolation = Isolation.READ_UNCOMMITTED) //读未提交
+	@Transactional(isolation = Isolation.REPEATABLE_READ) //可重复读 (mysql 默认)
+	@Transactional(isolation = Isolation.SERIALIZABLE) //串行化
+
+mysql数据库默认开启重复读隔离级别。
+大多数数据库默认开启读提交隔离级别：Oracle
+
+不好测试，跳过。
+
+
+
+5) 传播行为： 事务方法之间调用，事务如何使用？
+两个事务互相调用、且设置不一样时，使用谁的设置？
+Spring 支持7种传播行为，最常见的是2种：
+
+@Transactional(propagation = Propagation.REQUIRED)
+	支持当前事务，如果不存在就新建一个（默认）。
+	没有就新建，有就加入。
+
+@Transactional(propagation = Propagation.REQUIRES_NEW)
+	不管有没有事务，都开启一个新事务。
+	与之前的事务不存在嵌套关系，之前的事务挂起。
+
+
+
+========================================
+|-- 事务的 传播行为 示例：一次可以买多本书
+----------------------------------------
+1.演示
+(1) 原理
+原来 BookController -> BookService -> BookDao
+现在可以一次买多本书，在 controller和service前新增一个service
+BookController -> CheckoutBookService -> BookService -> BookDao
+	CheckoutBookService.checkout() 事务方法
+	调用
+	BookService.buyBook() 事务方法。
+
+
+(2) 新建接口和实现
+service/
+|-CheckoutBookService 接口
+|-CheckoutBookServiceImpl 实现
+|-BookServiceImpl 清理掉该实现类的无关代码（主动1/0的异常、主动休眠）
+
+$ cat CheckoutBookService.java
+package com.mio.spring6.tx.service;
+
+public interface CheckoutBookService {
+	public void checkout(Integer[] bookIds, Integer userId);
+}
+
+
+$ cat CheckoutBookServiceImpl.java
+package com.mio.spring6.tx.service;
+
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
+@Service
+public class CheckoutBookServiceImpl implements CheckoutBookService {
+	
+	@Autowired
+	private BookService bookService;
+	
+	//买多本书的方法
+	@Transactional
+	@Override
+	public void checkout(Integer[] bookIds, Integer userId) {
+		for(Integer bookId : bookIds) {
+			//调用 service 方法
+			bookService.buyBook(bookId, userId);
+		}
+	}
+}
+
+$ cat BookServiceImpl.java
+package com.mio.spring6.tx.service;
+
+import java.util.concurrent.TimeUnit;
+
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Isolation;
+import org.springframework.transaction.annotation.Propagation;
+import org.springframework.transaction.annotation.Transactional;
+
+import com.mio.spring6.tx.dao.BookDao;
+
+//事务支持
+@Transactional(propagation = Propagation.REQUIRED) 
+@Service
+public class BookServiceImpl implements BookService {
+	
+	@Autowired
+	private BookDao bookDao;
+
+	//买书的过程
+	@Override
+	public void buyBook(Integer bookId, Integer userId) {
+		
+		//1 根据图书id查看图书价格
+		Integer price=bookDao.getBookPriceByBookId(bookId);
+		
+		//2 更新图书库存量 -1
+		bookDao.updateStock(bookId);
+		
+		//3 更新用户余额：-图书价格
+		bookDao.updateUserBalance(userId, price);
+	}
+}
+
+
+(3) 测试
+$ cat TestBookTx.java
+package com.mio.spring6.tx;
+
+import org.junit.jupiter.api.Test;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.test.context.junit.jupiter.SpringJUnitConfig;
+
+import com.mio.spring6.tx.controller.BookController;
+
+@SpringJUnitConfig(locations = "classpath:beans-annotx.xml")
+public class TestBookTx {
+	
+	@Autowired
+	private BookController bookController;
+	
+	@Test
+	public void testCheckout() {
+		Integer[] bookIds= {1,2};
+		bookController.buyBooks(bookIds, 1);
+		//uid=1的用户余额 550 元，要买书 book1 80元(库存5)，book2 500元(库存40，买不起)。
+		System.out.println("买多本书 结束");
+	}
+}
+
+输出:
+	更新 库存 影响行数: 1
+	更新 用户余额 影响行数: 1
+	更新 库存 影响行数: 1
+报异常: BIGINT UNSIGNED value is out of range in ... balance-500...
+
+检查数据表，发现都没有变化。
+
+解释: 
+	@Transactional(propagation = Propagation.REQUIRED)
+	事务调用1 -> 事务调用2 都使用默认传播，
+	事务1在事务中，调用事务2，后者就加入前者的事务中。
+	事务1买的几本书，要么一起买成功，要么一本失败则全部书都购买失败。
+
+
+(4) 尝试其他传播方式
+仅改变 事务方法B上的注释:
+	@Transactional(propagation = Propagation.REQUIRES_NEW)
+	@Service
+	public class BookServiceImpl implements BookService {...}
+
+测试输出不变。
+检查数据表: book1 的库存减1。 用于余额从550变为 470。
+
+分析: 
+	@Transactional(propagation = Propagation.REQUIRES_NEW)
+	表示每次都自己新建一个事务，与前面的事务没有嵌套关系，前面的事务挂起。
+	第一本书买得起，是一个事务。
+	第二本数买不起，是另一个事务，发生回滚。
+
+
+
+========================================
+|-- 全注解配置事务: 使用配置类 代替 配置文件
+----------------------------------------
+1. 新建配置类，代替xml配置文件
+
+$ cat SpringConfig.java
+package com.mio.spring6.tx.config;
+
+import javax.sql.DataSource;
+
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.ComponentScan;
+import org.springframework.context.annotation.Configuration;
+import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.jdbc.datasource.DataSourceTransactionManager;
+import org.springframework.transaction.annotation.EnableTransactionManagement;
+
+import com.alibaba.druid.pool.DruidDataSource;
+
+@Configuration //配置类
+@ComponentScan("com.mio.spring6.tx") //开启包扫描
+@EnableTransactionManagement  //开启事务管理
+public class SpringConfig {
+	@Bean
+	public DataSource getDataSource() {
+		//1 创建连接池
+		DruidDataSource dataSource = new DruidDataSource();
+		//设置数据源
+//		dataSource.setUrl("jdbc:mysql://localhost:3306/spring?serverTimezone=UTC");
+		dataSource.setUrl("jdbc:mysql://localhost:3306/spring?characterEncoding=utf8&useSSL=false&serverTimezone=UTC");
+		dataSource.setDriverClassName("com.mysql.cj.jdbc.Driver");
+		dataSource.setUsername("root");
+		dataSource.setPassword("");
+		return dataSource;
+	}
+
+	@Bean(name="jdbcTemplate")
+	public JdbcTemplate getJdbcTemplate(DataSource dataSource) {
+		JdbcTemplate jdbcTemplate=new JdbcTemplate(dataSource);
+		return jdbcTemplate;		
+	}
+	
+	//事务管理器
+	@Bean
+	public DataSourceTransactionManager getDataSourceTransactionManager(DataSource dataSource) {
+		DataSourceTransactionManager manager=new DataSourceTransactionManager();
+		manager.setDataSource(dataSource);
+		return manager;
+	}
+}
+
+
+
+2. 新建测试类
+$ cat TestAnnoTx.java
+package com.mio.spring6.tx;
+
+import org.junit.jupiter.api.Test;
+import org.springframework.context.ApplicationContext;
+import org.springframework.context.annotation.AnnotationConfigApplicationContext;
+
+import com.mio.spring6.tx.config.SpringConfig;
+import com.mio.spring6.tx.controller.BookController;
+
+public class TestAnnoTx {
+
+	@Test
+	public void test02() {
+		ApplicationContext context=
+				new AnnotationConfigApplicationContext(SpringConfig.class);
+		BookController bookController = context.getBean(BookController.class);
+		bookController.buyBook(1, 2);
+		System.out.println("买书 结束");
+	}
+}
+
+输出: 
+	更新 库存 影响行数: 1
+	更新 用户余额 影响行数: 1
+	买书 结束
+检查数据表:
+	期刊1 减少1本
+	用户2 余额减少 80 元。
+
+
+
+========================================
+|-- 基于 xml 的声明式事务管理
+----------------------------------------
+1. 环境准备
+(1) 新建包
+com.mio.spring6.xmltx
+
+(2) 复制文件
+|-controller/
+	|-BookController.java
+|-service/ 
+	|-BookService.java 接口
+	|-BookServiceImpl.java 实现
+	|-删除 CheckoutService 接口和实现文件；
+|-dao/
+	|-BookDao.java 接口
+	|-BookDaoImpl.java 实现
+
+去掉 BookServiceImpl.java中的 @Transactional 注解。
+
+控制器
+$ cat BookController.java
+package com.mio.spring6.xmltx.controller;
+
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.stereotype.Controller;
+
+import com.mio.spring6.xmltx.service.BookService;
+
+@Controller
+public class BookController {
+	
+	@Autowired
+	private BookService bookService;
+		
+	//买书方法
+	public void buyBook(Integer bookId, Integer userId) {
+		bookService.buyBook(bookId, userId);
+	}
+}
+
+业务逻辑 接口和服务
+$ cat BookService.java
+package com.mio.spring6.xmltx.service;
+public interface BookService {
+	void buyBook(Integer bookId, Integer userId);
+}
+
+$ cat BookServiceImpl.java
+package com.mio.spring6.xmltx.service;
+
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.stereotype.Service;
+
+import com.mio.spring6.xmltx.dao.BookDao;
+
+@Service
+public class BookServiceImpl implements BookService {
+	
+	@Autowired
+	private BookDao bookDao;
+
+	//买书的过程
+	@Override
+	public void buyBook(Integer bookId, Integer userId) {		
+		//1 根据图书id查看图书价格
+		Integer price=bookDao.getBookPriceByBookId(bookId);
+		
+		//2 更新图书库存量 -1
+		bookDao.updateStock(bookId);
+		
+		//3 更新用户余额：-图书价格
+		bookDao.updateUserBalance(userId, price);
+	}
+}
+
+
+数据库操作
+$ cat BookDao.java
+package com.mio.spring6.xmltx.dao;
+
+public interface BookDao {
+	Integer getBookPriceByBookId(Integer bookId);
+	void updateStock(Integer bookId);
+	void updateUserBalance(Integer userId, Integer price);
+}
+
+$ cat BookDaoImpl.java
+package com.mio.spring6.xmltx.dao;
+
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.stereotype.Repository;
+
+@Repository
+public class BookDaoImpl implements BookDao {
+	
+	@Autowired
+	private JdbcTemplate jdbcTemplate;
+
+	//获取价格
+	@Override
+	public Integer getBookPriceByBookId(Integer bookId) {
+		String sql="select price from t_book where book_id=?";
+		Integer price = jdbcTemplate.queryForObject(sql, Integer.class, bookId);
+		return price;
+	}
+
+	//更新库存
+	@Override
+	public void updateStock(Integer bookId) {
+		String sql="update t_book set stock=stock-1 where book_id=?";
+		int rowNum = jdbcTemplate.update(sql, bookId);
+		System.out.println("更新 库存 影响行数: "+rowNum);
+	}
+
+	//更新用户余额
+	@Override
+	public void updateUserBalance(Integer userId, Integer price) {
+		String sql="update t_user set balance=balance-? where user_id=?";
+		int rowNum = jdbcTemplate.update(sql, price, userId);
+		System.out.println("更新 用户余额 影响行数: "+rowNum);
+	}
+}
+
+
+
+
+
+
+
+2. 配置文件
+(1) 开启组件扫描
+(2) 创建数据源
+(3) 创建 JdbcTemplate，注入数据源
+(4) 创建事务管理器，注入数据源
+
+(5) 配置事务通知，设置事务相关属性
+(6) 配置切入点表达式，把事务通知添加方法上
+
+$ cat beans-xmltx.xml
+<?xml version="1.0" encoding="UTF-8"?>
+<beans xmlns="http://www.springframework.org/schema/beans"
+    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xmlns:context="http://www.springframework.org/schema/context"
+    xmlns:aop="http://www.springframework.org/schema/aop"
+    xmlns:tx="http://www.springframework.org/schema/tx"
+    xsi:schemaLocation="
+        http://www.springframework.org/schema/beans
+        http://www.springframework.org/schema/beans/spring-beans.xsd
+        
+        http://www.springframework.org/schema/context
+        http://www.springframework.org/schema/context/spring-context.xsd
+        
+        http://www.springframework.org/schema/aop
+        http://www.springframework.org/schema/aop/spring-aop.xsd
+        
+        http://www.springframework.org/schema/tx
+        http://www.springframework.org/schema/tx/spring-tx.xsd">
+        
+        <!--1 开启组件扫描 -->
+        <context:component-scan base-package="com.mio.spring6.xmltx"></context:component-scan>
+
+		<!--2.1 引入外部属性文件，创建数据源对象 -->
+		<context:property-placeholder location="classpath:jdbc.properties" />
+		
+		<!--2.2 连接池对象 
+			注意: value="${jdbc.url}" ，其中引号内不能漏掉$字符。这里耽误两个小时！！
+		-->
+		<bean id="druidDataSource" class="com.alibaba.druid.pool.DruidDataSource" >
+			<property name="url" value="${jdbc.url}"></property>
+			<property name="driverClassName" value="${jdbc.driver}"></property>
+			<property name="username" value="${jdbc.user}"></property>
+			<property name="password" value="${jdbc.password}"></property>
+		</bean>
+		
+		<!--3 创建 jdbcTemplate 对象，注入数据源 -->
+		<bean id="jdbcTemplate" class="org.springframework.jdbc.core.JdbcTemplate">
+			<!-- 构造器传入 druidDataSource 对象: 构造器注入，或set注入。
+			<constructor-arg name="dataSource" ref="druidDataSource"></constructor-arg>
+			-->
+			<property name="dataSource" ref="druidDataSource"></property>
+		</bean>
+
+		
+		<!--4 事务管理器 bean: 对数据源 添加事务支持 -->
+		<bean id="transactionManager" class="org.springframework.jdbc.datasource.DataSourceTransactionManager">
+			<property name="dataSource" ref="druidDataSource"></property>
+		</bean>
+		
+		<!-- 5 配置事务增强(通知) -->
+		<tx:advice id="txAdvice" transaction-manager="transactionManager">
+			<tx:attributes>
+				<!-- name="get*" 是给get开头的方法制定规则： 
+				这几个不起作用，因为下文配置的是 service.下的类的方法，而get和update开头的方法是dao中的 -->
+				<tx:method name="get*" read-only="true"/>
+				<tx:method name="update*" read-only="false" propagation="REQUIRED" />
+				<!-- 定义 service.中的方法的规则 -->
+				<tx:method name="buy*" read-only="false" propagation="REQUIRED" />
+			</tx:attributes>
+		</tx:advice>
+		
+		<!-- 6 配置切入点表达式 -->
+		<aop:config>
+			<aop:pointcut expression="execution(* com.mio.spring6.xmltx.service.*.*(..))"
+				 id="pt2"/>
+				 <!-- 把通知 txAdvise，应用到 切入点表达是 pt2 匹配到的方法  -->
+			<aop:advisor advice-ref="txAdvice" pointcut-ref="pt2" />
+		</aop:config>
+</beans>
+
+
+
+3. 测试
+$ cat TestBookXml.java
+package com.mio.spring6.xmltx;
+
+import org.junit.jupiter.api.Test;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.test.context.junit.jupiter.SpringJUnitConfig;
+
+import com.mio.spring6.xmltx.controller.BookController;
+
+@SpringJUnitConfig(locations = "classpath:beans-xmltx.xml")
+public class TestBookXml {
+	
+	@Autowired
+	private BookController bookController;
+	
+	@Test
+	public void testBook1() {
+//		bookController.buyBook(1, 1);
+		bookController.buyBook(2, 2);
+		System.out.println("买书 结束");
+	}
+}
+
+输出:
+	更新 库存 影响行数: 1
+	报错异常停止。
+检查表格: 没有变化。也就是一起失败，发生了回滚。
+
+
+
+
+
+
+========================================
+Resource 资源：对低级别资源的访问(网络资源、文件系统资源等)
+----------------------------------------
+https://docs.spring.io/spring-framework/docs/current/reference/html/core.html#resources
+
+1. 主要内容
+	Resource 接口及其实现类
+	Resource 类图
+
+	ResourceLoader 接口
+	使用 Resource 作为属性
+	应用程序上下文和资源路径
+
+
+2. Resource 接口 
+(1) Spring 的 Resource 接口位于 org.springframework.core.io 中
+旨在成为一个更强大的接口，用于抽象对低级资源的访问。
+
+继承自 InputStreamSource
+
+是否存在
+得到文件
+是否打开
+
+
+
+3. Resource 接口的实现类
+
+UrlResource 访问网络资源，能访问http, ftp, file等资源。
+	访问基于http协议的网络资源
+
+ClassPathResource 类路径资源
+
+FileSystemResource 文件系统的资源
+
+PathResource
+
+ServletContextResource 在web中使用
+
+InputStreamResource 输入流
+
+ByteArrayResource 字节数组
+
+重点演示前3个的使用。
+
+
+
+
+4. 演示文件准备
+(1) 新建子模块
+右击外部项目 spring6，new- Maven Module
+	勾选 skip archetype selection
+	Module name: spring6-resources
+	父项目: spring6
+
+Artifact:
+	group id: com.mio
+	artifact id: spring6-resources
+	version:
+	packaging: jar
+Finish
+
+右击子模块，build path - config - Library 
+	把jre环境设置为 本地安装的 jdk17
+
+
+(2) 父工程中 pom.xml 依赖已经满足了。
+
+
+
+
+
+5. 开始演示
+
+(1) UrlResource示例
+$ cat UrlResourceDemo.java
+package com.mio.spring6.resource;
+
+import org.springframework.core.io.UrlResource;
+
+//演示 UrlResource 访问网络资源
+public class UrlResourceDemo {
+	public static void main(String[] args) {
+		
+		//http前缀开头的
+//		loadUrlResource("http://www.baidu.com/index.php");
+		
+		//file 前缀的: 相对于 子模块 的相对路径，或绝对路径
+//		loadUrlResource("file:pom.xml");
+		loadUrlResource("file:src/main/resources/file1.txt");
+		//loadUrlResource("file:///G:/learngit/spring6/spring6-resources/src/main/resources/file1.txt");
+	}
+	
+	//访问http资源
+	public static void loadUrlResource(String path) {
+		try {
+			//1 创建 Resource 接口的实现类
+			UrlResource url=new UrlResource(path);
+			
+			//2 获取资源信息
+			System.out.println("1> " + url.getFilename());
+			System.out.println("2> " + url.getURI());
+			System.out.println("3> " + url.getDescription());
+			System.out.println("4> " + url.getInputStream().read()); //输出内容
+			
+		} catch (Exception e) {
+			// TODO Auto-generated catch block
+			e.printStackTrace();
+		}
+	}
+}
+
+$ cat file1.txt #在类根目录下 resources/下
+hi, this is a file.
+
+输出:
+	1> file1.txt
+	2> file:src/main/resources/file1.txt
+	3> URL [file:src/main/resources/file1.txt]
+	4> 104
+
+
+
+
+
+(2) ClassPathResource 访问类路径下资源
+
+$ cat ClassPathResourceDemo.java
+package com.mio.spring6.resource;
+
+import java.io.InputStream;
+
+import org.springframework.core.io.ClassPathResource;
+
+public class ClassPathResourceDemo {
+	public static void main(String[] args) {
+		loadClassPathResource("file1.txt");
+	}
+
+	private static void loadClassPathResource(String path) {
+		ClassPathResource resource=new ClassPathResource(path);
+		System.out.println("1>"+resource.getFilename());
+		System.out.println("2>"+resource.getDescription());
+		//获取文件内容
+		try {
+			InputStream in = resource.getInputStream();
+			byte[] buffer=new byte[1024];
+			while(in.read(buffer) != -1) {
+				System.out.println(new String(buffer));
+			}
+		} catch (Exception e) {
+			e.printStackTrace();
+		}
+	}
+}
+
+输出:
+	1>file1.txt
+	2>class path resource [file1.txt]
+	hi, this is a file.
+
+
+
+
+(3) FileSystemResource 访问系统资源
+$ cat FileSystemResourceDemo.java
+package com.mio.spring6.resource;
+
+import java.io.IOException;
+import java.io.InputStream;
+
+import org.springframework.core.io.FileSystemResource;
+
+//访问系统资源
+public class FileSystemResourceDemo {
+	public static void main(String[] args) {
+		//相对路径
+		//loadFileSystemResource("src/main/resources/file1.txt");
+		
+		//绝对路径
+		loadFileSystemResource("G:/learngit/spring6/spring6-resources/src/main/resources/file1.txt");
+	}
+
+	private static void loadFileSystemResource(String path) {
+		FileSystemResource resource=new FileSystemResource(path);
+		System.out.println("1>"+resource.getFilename());
+		System.out.println("2>"+resource.getDescription());
+		
+		try {
+			InputStream in=resource.getInputStream();
+			byte[] buffer=new byte[1024];
+			while(in.read(buffer) != -1) {
+				System.out.println(new String(buffer));
+			}
+		} catch (IOException e) {
+			e.printStackTrace();
+		}
+		
+	}
+}
+
+输出：
+	1>file1.txt
+	2>file [G:\learngit\spring6\spring6-resources\src\main\resources\file1.txt]
+	hi, this is a file.
+
+
+
+
+
+
+========================================
+|-- ResourceLoader 接口 及其实现类
+----------------------------------------
+1. spring 提供了2个标志性接口
+
+- ResourceLoader 接口
+- ResourceLoaderAware 接口
+
+
+2. ResourceLoader 接口
+(1) ResourceLoader 接口: 该接口实现类的实例可以获得一个 Resource 实例
+	Resource getResource(String location); 该接口仅这一个方法，用于返回一个Resource实例。
+
+采用和 ApplicationContext 相同的策略访问资源。
+	如果 ApplicationContext 是 FileSystemXmlApplicationContext，res就是 FileSystemResource实例；
+	如果 ApplicationContext 是 ClassPathXmlApplicationContext，res就是 ClassPathResource实例；
+
+Spring 需要资源访问时，实际上并不需要直接使用 Resource 实现类，
+	而是调用 ResourceLoader 实例的 getResource()方法来获取资源。
+	后者负责选择 Resource 实现类，也就是确定具体资源访问策略，从而将应用程序与具体的资源访问策略分离开来。
+
+使用 ApplicationContext 访问资源时，可以通过不同前缀强制指定 ClassPathResource、FileSystemResource等实现类。
+
+	Resource res=ctx.getResource("classpath:xx.xml");
+	Resource res=ctx.getResource("file:xx.xml");
+	Resource res=ctx.getResource("http://localhost:8080/xx.xml");
+
+
+(2) 实例
+$ cat ResourceLoaderDemo.java
+package com.mio.spring6.resourceloader;
+
+import org.junit.jupiter.api.Test;
+import org.springframework.context.ApplicationContext;
+import org.springframework.context.support.ClassPathXmlApplicationContext;
+import org.springframework.context.support.FileSystemXmlApplicationContext;
+import org.springframework.core.io.Resource;
+
+public class ResourceLoaderDemo {
+	
+	@Test
+	public void demo1() {
+		ApplicationContext context = new ClassPathXmlApplicationContext();
+		Resource resource = context.getResource("file1.txt");
+		//System.out.println(resource.getFilename());
+		System.out.println(resource.getDescription());
+		// class path resource [file1.txt]
+	}
+	
+	@Test
+	public void demo2() {
+		ApplicationContext context = new FileSystemXmlApplicationContext();
+		Resource resource = context.getResource("file1.txt");
+		System.out.println(resource.getDescription());
+		// file [G:\learngit\spring6\spring6-resources\file1.txt]
+	}
+}
+输出见代码注释。
+
+
+
+
+
+
+
+3. ResourceLoaderAware 接口: 该接口实现类的实例将获得一个 ResoureLoader 的引用。
+(1) ResourceLoaderAware 接口提供了一个 setResourceLoader() 方法。
+该方法将由Spring负责调用，Spring容器会将一个 ResourceLoader 对象作为该方法的参数传入。
+
+
+如果把实现 ResourceLoaderAware 接口的Bean 类部署到 Spring 容器中，Spring容器会将自身当成 ResourceLoader 作为 setResourceLoader() 方法的参数传入。
+
+由于 ApplicationContext 的实现类都实现了 ResourceLoader 接口，Spring容器自身完全可以作为 ResourceLoader 使用。
+
+
+
+(2) 新建类
+$ cat TestBean.java
+package com.mio.spring6.resourceloader;
+
+import org.springframework.context.ResourceLoaderAware;
+import org.springframework.core.io.ResourceLoader;
+
+public class TestBean implements ResourceLoaderAware {
+	
+	private ResourceLoader resourceLoader;
+
+	@Override
+	public void setResourceLoader(ResourceLoader resourceLoader) {
+		this.resourceLoader=resourceLoader;
+	}
+	
+	public ResourceLoader getResourceLoader() {
+		return this.resourceLoader;
+	}
+}
+
+
+(3) 新建配置文件
+$ cat test-bean.xml
+<?xml version="1.0" encoding="UTF-8"?>
+<beans xmlns="http://www.springframework.org/schema/beans"
+    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xsi:schemaLocation="
+        http://www.springframework.org/schema/beans
+        http://www.springframework.org/schema/beans/spring-beans.xsd">
+        
+	<bean id="testBean" class="com.mio.spring6.resourceloaderaware.TestBean"></bean>
+</beans>
+
+
+(4) 测试
+$ cat TestDemo.java
+package com.mio.spring6.resourceloaderaware;
+
+import org.springframework.context.ApplicationContext;
+import org.springframework.context.support.ClassPathXmlApplicationContext;
+import org.springframework.core.io.ResourceLoader;
+
+public class TestDemo {
+
+	public static void main(String[] args) {
+		
+		ApplicationContext context = new ClassPathXmlApplicationContext("test-bean.xml");
+		TestBean testBean = context.getBean("testBean", TestBean.class);
+		ResourceLoader resourceLoader = testBean.getResourceLoader();
+		
+		//System.out.println(resourceLoader);
+		System.out.println(context == resourceLoader);
+	}
+}
+
+输出: true
+
+
+
+
+
+========================================
+|-- 使用 Resource 作为属性
+----------------------------------------
+1. 资源路径改变了怎么办？写死了不好。
+解耦：最好使用配置文件写，然后依赖注入到代码中
+
+(1) 新建类
+$ cat ResourceBean.java
+package com.mio.spring6.di;
+import org.springframework.core.io.Resource;
+public class ResourceBean {
+	
+	private Resource resource;
+	
+	//输出方法
+	public void parse() {
+		System.out.println(resource.getDescription());
+	}
+	public Resource getResource() {
+		return resource;
+	}
+	public void setResource(Resource resource) {
+		this.resource = resource;
+	}
+}
+
+(2) 新建配置文件
+
+$ cat bean-di.xml
+<?xml version="1.0" encoding="UTF-8"?>
+<beans xmlns="http://www.springframework.org/schema/beans"
+    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xsi:schemaLocation="
+        http://www.springframework.org/schema/beans
+        http://www.springframework.org/schema/beans/spring-beans.xsd">
+
+	<!-- 键值对，set赋值时，使用的值来自于文件资源 -->
+	<bean id="resourceBean" class="com.mio.spring6.di.ResourceBean">
+		<property name="resource" value="classpath:file1.txt"></property>
+	</bean>
+</beans>
+
+
+(3) 测试
+$ cat TestBean.java
+package com.mio.spring6.di;
+
+import org.springframework.context.ApplicationContext;
+import org.springframework.context.support.ClassPathXmlApplicationContext;
+public class TestBean {
+	public static void main(String[] args) {
+		ApplicationContext context = new ClassPathXmlApplicationContext("bean-di.xml");
+		ResourceBean resourceBean = context.getBean(ResourceBean.class);
+		resourceBean.parse();
+	}
+}
+
+输出: class path resource [file1.txt]
+
+总结：把资源文件 file1.txt 从代码中移动到xml配置文件中，感觉有拆东墙补西墙的感觉。
+
+
+
+
+========================================
+|-- 应用程序上下文和资源路径：Resource 使用前缀 指定访问策略，使用通配符加载多个配置文件
+----------------------------------------
+1. 如下语句可以加载多个配置文件
+
+ApplicationContext context = new ClassPathXmlApplicationContext("classpath:bean-*.xml");
+
+* "classpath*:bean-di.xml" 如果使用 classpath* 表示搜索类加载路径下的所有满足该规则的xml配置文件。
+* "classpath:bean-di.xml" 如果使用 classpath 表示搜索类加载路径下的第一个满足该规则的xml配置文件。
+
+(1) 新建类
+$ cat User.java
+package com.mio.spring6.prefix;
+public class User {}
+
+
+(2) 新建配置文件
+已有上文的 bean-di.xml
+$ cat bean-user.xml
+<?xml version="1.0" encoding="UTF-8"?>
+<beans xmlns="http://www.springframework.org/schema/beans"
+    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xsi:schemaLocation="
+        http://www.springframework.org/schema/beans
+        http://www.springframework.org/schema/beans/spring-beans.xsd">
+
+	<!-- 声明一个bean 对象-->
+	<bean id="user" class="com.mio.spring6.prefix.User"></bean>
+</beans>
+
+
+(3) 测试
+$ cat TestDemo.java
+package com.mio.spring6.prefix;
+
+import org.springframework.context.ApplicationContext;
+import org.springframework.context.support.ClassPathXmlApplicationContext;
+import org.springframework.core.io.Resource;
+
+public class TestDemo {
+	public static void main(String[] args) {
+//		ApplicationContext context = new ClassPathXmlApplicationContext("bean-di.xml");
+		//可以加通配符
+		/*
+		 * "classpath*:bean-di.xml" 如果使用 classpath* 表示搜索类加载路径下的所有满足该规则的xml配置文件。
+		 * "classpath:bean-di.xml" 如果使用 classpath 表示搜索类加载路径下的第一个满足该规则的xml配置文件。
+		 * */
+		ApplicationContext context = new ClassPathXmlApplicationContext("classpath:bean-*.xml");
+		
+		//获取对象
+		User user = context.getBean(User.class);
+		System.out.println(user);
+		
+		//获取资源
+//		Resource resource = context.getResource("file1.txt");
+		Resource resource = context.getResource("classpath:file1.txt");
+		System.out.println(resource.getDescription());
+		
+		// getResource() 可使用资源前缀
+		Resource resource2 = context.getResource("file:src/main/resources/file1.txt");
+		System.out.println("\n"+resource2.getDescription());
+		System.out.println(resource2.isReadable());
+	}
+}
+
+
+输出: 
+	com.mio.spring6.prefix.User@3401a114
+	class path resource [file1.txt]
+
+	URL [file:src/main/resources/file1.txt]
+	true
+
+
+
+
+
+
+========================================
+国际化 i18n
+----------------------------------------
+1. 概念
+一个软件，在不同国家显示不同的语言，就叫做国际化。
+
+使用不同的配置文件实现国际化。
+
+(1) Java 国际化
+java.util.Locale 可以查询当前所在地。
+
+配置文件命名规则:	basename_language_country.properties
+	basename是必须的，语言和国家是可选的。
+	优先级：
+		同时存在 messages.properties 和 messages_zh_CN.properties 两个配置文件，
+		如果提供的 locale 符合 en_CN，那么优先查找 messages_en_CN.properties 配置文件，
+		找不到，再查找 messages.properties 配置文件。
+	所有配置文件必须放在 classpath中，一般放到 resources/目录下。
+
+
+(2) 新建子模块 spring6-i18n
+细节见本网页开头。
+
+
+(3) 新建配置文件
+类根目录下 resources/
+$ cat messages_zh_CN.properties
+test=China test
+
+$ cat messages_en_GB.properties
+test=GB test
+
+$ cat messages.properties
+test=Default test
+
+
+(4) 新建测试类
+$ cat ResourceI18N.java
+package com.mio.spring6.javai18n;
+
+import java.util.Locale;
+import java.util.ResourceBundle;
+
+public class ResourceI18N {
+	public static void main(String[] args) {
+//		demo1();
+		demo2();
+	}
+
+	private static void demo2() {
+		//1 从第一个配置文件读取
+		ResourceBundle bundle1 = ResourceBundle.getBundle("messages", 
+				new Locale("zh", "CN"));
+		System.out.println(bundle1);
+		String value1 = bundle1.getString("test");
+		System.out.println(value1);
+		
+		//2 从第二个配置文件读取
+		ResourceBundle bundle2 = ResourceBundle.getBundle("messages", 
+				new Locale("en", "GB"));
+		String value2 = bundle2.getString("test");
+		System.out.println(value2);
+
+		//不存在呢
+		System.out.println("\t"+ new Locale("zh2", "CN"));
+		ResourceBundle bundle3 = ResourceBundle.getBundle("messages", 
+				new Locale("fr", "GV"));
+		System.out.println("\t"+bundle3.getLocale());
+		String value3 = bundle3.getString("test");
+		System.out.println(value3);
+	}
+
+	//messages
+	private static void demo1() {
+		Locale locale = new Locale("zh", "CN");
+		System.out.println(locale); //zh_CN
+		
+		System.out.println(Locale.getDefault()); //zh_CN
+	}
+}
+
+输出:
+	java.util.PropertyResourceBundle@6fb554cc
+	China test
+	GB test
+		zh2_CN
+		zh_CN
+	China test
+
+
+(5) 注意
+https://blog.csdn.net/qq_39273039/article/details/107465845
+当在中文操作系统下，如果 xx_zh_CN.properties、xx.properties两个文件都存在，则优先会使用 xx_zh_CN.properties，
+当 xx_zh_CN.properties不存在时候，会使用默认的 xx.properties。
+
+没有提供语言和地区的资源文件是系统默认的资源文件。
+
+资源文件都必须是ISO-8859-1编码，因此，对于所有非西方语系的处理，都必须先将之转换为Java Unicode Escape格式。转换方法是通过JDK自带的工具native2ascii.
+
+
+
+
+
+
+========================================
+|-- Spring 中的国际化: 通过 MessageSource 接口支持。
+----------------------------------------
+1. 实现类 ResourceBundleMessageSource
+
+(1) 新建资源文件
+$ cat MyHome_zh_CN.properties
+www.mio.com=欢迎 {0}, 时间:{1}
+
+$ cat MyHome_en_GB.properties
+www.mio.com=welcome {0}, time:{1}
+
+这里容易乱码，要保持一致
+	方案1 eclipse 现在都是对中文默认编码为...
+	方案2 对properties 文件改用 UTF-8 编码
+
+
+(2) 创建Spring 配置文件，配置 MessageSource
+$ cat bean-i18n.xml
+<?xml version="1.0" encoding="UTF-8"?>
+<beans xmlns="http://www.springframework.org/schema/beans"
+    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xsi:schemaLocation="
+        http://www.springframework.org/schema/beans
+        http://www.springframework.org/schema/beans/spring-beans.xsd">
+
+	<bean id="messageSource" class="org.springframework.context.support.ResourceBundleMessageSource">
+		<property name="basenames">
+			<list>
+				<value>MyHome</value>
+			</list>
+		</property>
+		<property name="defaultEncoding">
+			<value>utf-8</value>
+		</property>
+	</bean>
+</beans>
+
+list 中可以定义多个 value，就是配置文件的basenames，如:
+    <bean id="messageSource"
+            class="org.springframework.context.support.ResourceBundleMessageSource">
+        <property name="basenames">
+            <list>
+                <value>format</value>
+                <value>exceptions</value>
+                <value>windows</value>
+            </list>
+        </property>
+    </bean>
+
+
+
+
+
+(3) 测试
+
+$ cat ResourceBundleMessageSourceDemo.java
+package com.mio.spring6.springi18n;
+
+import java.util.Date;
+import java.util.Locale;
+
+import org.springframework.context.ApplicationContext;
+import org.springframework.context.MessageSource;
+import org.springframework.context.support.ClassPathXmlApplicationContext;
+
+public class ResourceBundleMessageSourceDemo {
+	
+	public static void main(String[] args) {
+		//1.读入配置文件，获取 Spring 容器
+		ApplicationContext context = new ClassPathXmlApplicationContext("bean-i18n.xml");
+		
+		//2.创建数组，2个值，分别是给配置文件 {0} {1} 动态传递参数
+		Object[] objs=new Object[]{"CMD_user", new Date().toString()};
+		
+		//2.2获取容器对象：（可省略）用context对象代替
+		MessageSource messageSource = context.getBean(MessageSource.class);
+		System.out.println(messageSource);
+		System.out.println(messageSource.getMessage("www.mio.com", objs, Locale.FRANCE) + " ~~"); //找不到则使用系统默认
+		
+		//3.按照key(参数1)从配置文件获取value；然后把数组objs(参数2)中的值组装进去。参数3为 制定配置文件
+		String message = context.getMessage("www.mio.com", objs, Locale.CHINA); //中文配置文件
+		System.out.println(message);
+		
+		//System.out.println(Locale.ENGLISH); //en
+		String message2 = context.getMessage("www.mio.com", objs, new Locale("en", "GB")); //英语配置文件
+		System.out.println(message2);
+	}
+//	ResourceBundleMessageSource source=new ResourceBundleMessageSource();
+}
+
+
+输出:
+	org.springframework.context.support.ResourceBundleMessageSource: basenames=[MyHome]
+	欢迎 CMD_user, 时间:Fri Apr 14 11:25:56 CST 2023 ~~
+	欢迎 CMD_user, 时间:Fri Apr 14 11:25:56 CST 2023
+	welcome CMD_user, time:Fri Apr 14 11:25:56 CST 2023
+
+解释: 所有的 ApplicationContext 都实现了 MessageSource 接口。
+all ApplicationContext implementations are also MessageSource implementations 
+
+
+
+
+
+
+
+
+========================================
+数据校验 Validation
+----------------------------------------
+0. 概述
+(1) 使用
+	手机号格式
+	用户名密码强度检查
+
+如果使用代码实现，则容易业务和校验耦合。
+怎么解耦？Spring 提供了一套方案。
+
+(2) 要点
+	通过 Validator 接口实现
+	Bean Validation 注解实现
+	基于方法实现校验
+	实现自定义校验
+
+
+
+========================================
+|-- 1. 代码准备：通过 Validator 接口实现
+----------------------------------------
+(1) 创建子模块 spring6-validator
+过程略。
+
+(2) 在 子模块 pom.xml 中引入依赖
+  <dependencies>
+	  <!-- 引入 Spirng validator 的依赖 -->
+	  <dependency>
+		  <groupId>org.hibernate.validator</groupId>
+		  <artifactId>hibernate-validator</artifactId>
+		  <version>8.0.0.Final</version>
+	  </dependency>
+	  <dependency>
+		  <groupId>org.glassfish</groupId>
+		  <artifactId>jakarta.el</artifactId>
+		  <version>5.0.0-M1</version>
+	  </dependency>
+  </dependencies>
+
+
+(3) 创建实体类，定义属性、set/get方法
+$ cat Person.java
+package com.mio.spring6.validator.one;
+
+public class Person {
+	private String name;
+	private int age;
+	...
+}
+
+
+(4) 创建类，实现 Validator 接口，实现接口方法，编写校验逻辑
+
+$ cat PersonValidator.java
+package com.mio.spring6.validator.one;
+
+import org.springframework.validation.Errors;
+import org.springframework.validation.ValidationUtils;
+import org.springframework.validation.Validator;
+
+public class PersonValidator implements Validator{
+
+	//用来表示该校验用在哪个类型上
+	@Override
+	public boolean supports(Class<?> clazz) {
+		return Person.class.equals(clazz);
+	}
+
+	//校验规则
+	@Override
+	public void validate(Object target, Errors errors) {
+		//name不能为空: 1 错误； 2 校验的属性； 3 错误码； 4 默认错误提示信息
+		ValidationUtils.rejectIfEmpty(errors, "name", "name.empty", "name is null");
+		
+		//age 不能小于0，不能大于200
+		Person p=(Person) target;
+		if(p.getAge()<0) {
+			errors.rejectValue("age", "age.value.error", "age<0"); //1 校验的属性； 2 错误码； 3 默认错误提示信息
+		}else if(p.getAge()>200) {
+			errors.rejectValue("age", "age.value.error.toolarge", "age>200");
+		}
+	}
+}
+
+
+
+(5) 测试
+package com.mio.spring6.validator.one;
+
+import org.springframework.validation.BindingResult;
+import org.springframework.validation.DataBinder;
+
+public class TestPerson {
+	public static void main(String[] args) {
+		//1 创建 person 对象
+		Person person = new Person();
+		/*尝试设置，消除错误提示
+		 */
+		person.setName("Tom");
+		person.setAge(250);
+		
+		//2 创建 person对应 databinder
+		DataBinder binder = new DataBinder(person);
+		
+		//3 设置校验器
+		binder.setValidator(new PersonValidator());
+		
+		//4 调用方法执行校验
+		binder.validate();
+		
+		//5 输出校验结果
+		BindingResult bindingResult = binder.getBindingResult();
+		System.out.println(bindingResult.getAllErrors());
+	}
+}
+
+要点: 注意修改 测试步骤1，设置不同的值，观察错误提示。
+
+
+
+
+
+
+
+========================================
+|-- 2. Bean Validation 注解实现 数据校验
+----------------------------------------
+
+(1) 创建配置类，配置 LocalValidatorFactoryBean
+$ cat ValidationConfig.java
+package com.mio.spring6.validator.two;
+
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.ComponentScan;
+import org.springframework.context.annotation.Configuration;
+import org.springframework.validation.beanvalidation.LocalValidatorFactoryBean;
+
+@Configuration  //设置一个配置类
+@ComponentScan("com.mio.spring6.validator.two") //包扫描路径
+public class ValidationConfig {
+	
+	@Bean
+	public LocalValidatorFactoryBean validator() {
+		return new LocalValidatorFactoryBean();
+	}
+}
+
+
+
+(2) 创建实体类，定义属性，生成get、set方法，在属性上添加注解，设置校验规则
+
+$ cat User.java
+package com.mio.spring6.validator.two;
+
+import jakarta.validation.constraints.Max;
+import jakarta.validation.constraints.Min;
+import jakarta.validation.constraints.NotNull;
+
+public class User {
+	
+	@NotNull
+	private String name;
+	
+	@Min(0)
+	@Max(200)
+	private int age;
+	//... 省略set/get方法
+}
+
+注意：这是几个常见的校验注释。 其他还有 //todo
+
+
+
+
+(3) 创建校验器
+两种写法，原生和Spring。
+
+$ cat MyValidation1.java #原生
+package com.mio.spring6.validator.two;
+import java.util.Set;
+
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.stereotype.Service;
+
+import jakarta.validation.ConstraintViolation;
+import jakarta.validation.Validator;
+
+@Service
+public class MyValidation1 {
+	@Autowired
+	private Validator validator;
+	
+	public boolean validatorByUser1(User user) {
+		Set<ConstraintViolation<User>> validate = validator.validate(user);
+		//System.out.println(validate);
+		return validate.isEmpty();
+	}
+}
+
+
+
+$ cat MyValidation2.java #Spring6写法
+package com.mio.spring6.validator.two;
+
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.stereotype.Service;
+import org.springframework.validation.BindException;
+import org.springframework.validation.Validator;
+
+@Service
+public class MyValidation2 {
+
+	@Autowired
+	private Validator validator;
+	
+	public boolean validatorByUser2(User user) {
+		BindException bindException = new BindException(user, user.getName());
+		validator.validate(user, bindException);
+		System.out.println("错误信息:" + bindException.getAllErrors());
+		return !bindException.hasErrors();
+	}
+}
+
+
+
+(4) 测试
+$ cat TestUser.java
+package com.mio.spring6.validator.two;
+
+import org.junit.jupiter.api.Test;
+import org.springframework.context.ApplicationContext;
+import org.springframework.context.annotation.AnnotationConfigApplicationContext;
+
+public class TestUser {
+	
+	@Test
+	public void testValidation1() {
+		ApplicationContext context = new AnnotationConfigApplicationContext(ValidationConfig.class);
+		MyValidation1 validation1 = context.getBean(MyValidation1.class);
+		
+		User user = new User();
+		//不同的设置，查看报错
+		user.setName("Tom");
+		user.setAge(10);
+		
+		boolean message = validation1.validatorByUser1(user);
+		System.out.println(message); //true or false
+	}
+}
+输出: 原生方法输出 布尔值，表示是否通过校验。
+
+
+
+
+测试：Spring实现的校验
+	@Test
+	public void testValidation2() {
+		System.out.println("[in spring 6]");
+		ApplicationContext context = new AnnotationConfigApplicationContext(ValidationConfig.class);
+		MyValidation2 validation2 = context.getBean(MyValidation2.class);
+		
+		User user = new User();
+		//不同的设置，查看报错
+		user.setName("Tom"); //没名字直接抛异常：Object name must not be null
+		user.setAge(10);
+		
+		boolean message = validation2.validatorByUser2(user);
+		System.out.println(message); //true or false
+	}
+输出: true / false
+
+
+
+
+
+
+
+========================================
+|-- 3. 基于方法实现校验
+----------------------------------------
+(1) 创建配置类，设置包扫描路径
+$ cat ValidationConfig.java
+package com.mio.spring6.validator.three;
+
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.ComponentScan;
+import org.springframework.context.annotation.Configuration;
+import org.springframework.validation.beanvalidation.MethodValidationPostProcessor;
+
+@Configuration
+@ComponentScan("com.mio.spring6.validator.three")
+public class ValidationConfig {
+	
+	@Bean
+	public MethodValidationPostProcessor validationPostProcessor() {
+		return new MethodValidationPostProcessor();
+	}
+}
+
+
+(2) 创建实体类，定义三个属性，添加校验方法
+$ cat User.java
+package com.mio.spring6.validator.three;
+
+import jakarta.validation.constraints.Max;
+import jakarta.validation.constraints.Min;
+import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.Pattern;
+
+public class User {
+	@NotNull
+	private String name;
+	
+	@Min(0)
+	@Max(200)
+	private int age;
+	
+	@NotBlank(message = "手机号码不能为空")
+	@Pattern(regexp="^1(3|4|5|7|8)\\d{9}$", message = "手机号码错误")
+	private String phone;
+	//...set/get方法略
+}
+
+
+(3) 创建校验方法
+$ cat MyService.java
+package com.mio.spring6.validator.three;
+
+import org.springframework.stereotype.Service;
+import org.springframework.validation.annotation.Validated;
+
+import jakarta.validation.Valid;
+import jakarta.validation.constraints.NotNull;
+
+@Service
+@Validated //表示校验方法
+public class MyService {
+	//参数加2个注解
+	public String testMethod(@NotNull @Valid User user) {
+		return user.toString();
+	}
+}
+
+
+(4) 测试
+$ cat TestUser.java
+package com.mio.spring6.validator.three;
+
+import org.springframework.context.ApplicationContext;
+import org.springframework.context.annotation.AnnotationConfigApplicationContext;
+
+public class TestUser {
+	public static void main(String[] args) {
+		ApplicationContext context=new AnnotationConfigApplicationContext(ValidationConfig.class);
+		
+		MyService service = context.getBean(MyService.class);
+		
+		User user=new User();
+		//arg0.name: 不能为null
+		user.setName("Tom");
+		//手机号不能为空
+		//user.setPhone("123"); //手机号码错误
+		user.setPhone("13512345678");
+		user.setAge(10-2);
+		
+		System.out.println( service.testMethod(user) );
+	}
+}
+
+疑问：不是很懂，这里有啥方法了吗？
+
+
+
+========================================
+|-- 4. 自定义校验注解：实现自定义校验 注解/规则
+----------------------------------------
+前两步是自定义注解。使用实例中，采用 方法校验。
+
+1. 新建注解类，并添加元注解
+$ cat CannotBlank.java
+package com.mio.spring6.validator.four;
+
+import static java.lang.annotation.ElementType.FIELD;
+import static java.lang.annotation.RetentionPolicy.RUNTIME;
+
+import java.lang.annotation.Documented;
+import java.lang.annotation.Retention;
+import java.lang.annotation.Target;
+
+import jakarta.validation.Constraint;
+import jakarta.validation.Payload;
+import jakarta.validation.constraints.NotBlank;
+
+//模仿 @NotNull 注解实现
+@Target({ FIELD }) //加到属性上
+@Retention(RUNTIME) //运行时有效
+@Documented //javadoc将提取该注解信息
+@Constraint(validatedBy = { CannotBlankValidation.class })
+public @interface CannotBlank {
+
+	String message() default "不能包含空格"; //默认的错误提示信息
+
+	Class<?>[] groups() default { };
+
+	Class<? extends Payload>[] payload() default { };
+
+	/**
+	 * Defines several {@code @NotBlank} constraints on the same element.
+	 * 复数个同名注解时
+	 *
+	 * @see NotBlank
+	 */
+	@Target({ FIELD})
+	@Retention(RUNTIME)
+	@Documented
+	public @interface List {
+		CannotBlank[] value(); //注意修改这个名字，和类名一致
+	}
+}
+
+
+2. 新建校验类
+类的名字由 上文注解 @Constraint(validatedBy = { CannotBlankValidation.class }) 指定。
+
+$ cat CannotBlankValidation.java
+package com.mio.spring6.validator.four;
+
+import jakarta.validation.ConstraintValidator;
+import jakarta.validation.ConstraintValidatorContext;
+
+public class CannotBlankValidation implements ConstraintValidator<CannotBlank, String>{
+
+	@Override
+	public boolean isValid(String value, ConstraintValidatorContext context) {
+		System.out.println("this is validator...");
+		// 校验器规则：如果不为空，且包含空格，则不通过校验
+		if(value != null && value.contains(" ")) {
+			//获取默认提示信息
+			String defaultConstraintMessageTemplate = context.getDefaultConstraintMessageTemplate();
+			System.out.println(defaultConstraintMessageTemplate);
+			//禁用默认提示信息
+			context.disableDefaultConstraintViolation();
+			//设置新的提示语
+			context.buildConstraintViolationWithTemplate("can not contain blanks").addConstraintViolation();
+			return false;
+		}
+		return true;
+	}
+}
+
+
+
+
+3. 新建配置类，定义扫描包路径
+$ cat ValidationConfig.java
+package com.mio.spring6.validator.four;
+
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.ComponentScan;
+import org.springframework.context.annotation.Configuration;
+import org.springframework.validation.beanvalidation.MethodValidationPostProcessor;
+
+@Configuration
+@ComponentScan("com.mio.spring6.validator.four")
+public class ValidationConfig {
+	
+	@Bean
+	public MethodValidationPostProcessor validationPostProcessor() {
+		return new MethodValidationPostProcessor();
+	}
+}
+
+
+
+4. 创建实体类User及校验方法MyService.testMethod()
+
+$ cat User.java
+package com.mio.spring6.validator.four;
+
+import jakarta.validation.constraints.Min;
+
+public class User {
+	
+	@CannotBlank
+	private String name;
+	
+	@Min(0)
+	private int age;
+	
+	@Override
+	public String toString() {
+		return String.format("User[name:%s, age:%d]", name, age);
+	}
+	//...set/get方法略
+
+
+$ cat MyService.java
+package com.mio.spring6.validator.four;
+
+import org.springframework.stereotype.Service;
+import org.springframework.validation.annotation.Validated;
+
+import jakarta.validation.Valid;
+import jakarta.validation.constraints.NotNull;
+
+@Service
+@Validated //表示校验方法
+public class MyService {
+	//参数加2个注解
+	public String testMethod(@NotNull @Valid User user) {
+		return user.toString();
+	}
+}
+
+
+
+5. 测试
+$ cat TestValidator.java
+package com.mio.spring6.validator.four;
+
+import org.junit.jupiter.api.Test;
+import org.springframework.context.ApplicationContext;
+import org.springframework.context.annotation.AnnotationConfigApplicationContext;
+
+public class TestValidator {
+	@Test
+	public void test01(){
+		//新建实体类
+		User user=new User();
+		user.setName("hi");
+		//user.setAge(-20);
+		System.out.println("1 >" + user);
+
+		//从spring获取校验方法
+		ApplicationContext context=new AnnotationConfigApplicationContext(ValidationConfig.class);
+		MyService validator = context.getBean(MyService.class);
+		//进行校验
+		System.out.println("2 >" + validator.testMethod(user));
+	}
+}
+
+输出:
+	1 >User[name:hi, age:0]
+	this is validator...
+	2 >User[name:hi, age:0]
+
+
+
+
+
+
+
+========================================
+提前编译 AOT: GraalVM
+----------------------------------------
+1. 概念
+
+(1)JIT: just in time，动态编译（实时），边运行边编译
+	在程序运行时，动态生成代码。默认。
+	启动比较慢，编译时需要占用运行时资源。
+
+实现：运行时，把字节码转换成硬盘上直接运行的机器码，部署到环境。
+
+(2)AOT: ahead of time,运行时编译，提前编译。
+	可以把源代码直接转换机器码，启动快，内存占用低。
+	运行时不能优化，程序安装时间过长。
+
+实现：在程序运行之前，就把字节码转换成机器码。
+	提前编译(AOT)由新颖的 GraalVM 编译器支持，允许在构建字节码时直接静态编译成机器码。
+		jdk17 支持云原生。
+	机器码打包体积小。
+	机器码不能跨平台。
+
+.java -> .class  --使用 jaotc 编译工具-> .so (程序函数库，即编译好的可以供其他程序使用的代码和数据)。
+	.so 再加载到 JVM 中执行。
+
+
+(3) Graalvm 是一个高性能jdk
+spring6支持AOT技术，底层就是 Graalvm 编译器。
+
+
+(4) Native Image
+另一种实现AOT的方案，直接摒弃JVM，和C/C++一样通过编译器直接将代码编译成机器码，然后运行。
+这种颠覆 Java 语言设计的思路，就叫做 GraalVM Native Image。
+
+这是 oracle 官方首推的AOT实现方案。
+
+
+
+
+
+
+
+2. 环境搭建
+(1) 安装 GraalVM 编译器
+https://www.graalvm.org/ 下载社区版
+
+点击下载，跳到github: https://github.com/graalvm/graalvm-ce-builds/releases/tag/vm-22.3.1
+下载 win 版本 jdk17: https://github.com/graalvm/graalvm-ce-builds/releases/download/vm-22.3.1/graalvm-ce-java17-windows-amd64-22.3.1.zip
+
+或
+linux命令行安装: $ bash <(curl -sL https://get.graalvm.org/jdk)
+
+
+2) 配置环境
+解压到没有空格和中文的路径下，比如 D:\ProgramFiles\graalvm-ce-java17-22.3.1
+
+和jdk的环境变量类似。
+这里只配置临时环境变量:
+	win+R，输入 cmd 回车，弹出命令行黑窗口。
+	help set 查看set命令的用法。
+	需要配置三个变量:
+		set GRAALVM_HOME=D:\ProgramFiles\graalvm-ce-java17-22.3.1
+		set JAVA_HOME=D:\ProgramFiles\graalvm-ce-java17-22.3.1
+		set PATH=%GRAALVM_HOME%\bin; %PATH%
+
+测试:
+C:\Users\admin>java -version
+openjdk version "17.0.6" 2023-01-17
+OpenJDK Runtime Environment GraalVM CE 22.3.1 (build 17.0.6+10-jvmci-22.3-b13)
+OpenJDK 64-Bit Server VM GraalVM CE 22.3.1 (build 17.0.6+10-jvmci-22.3-b13, mixed mode, sharing)
+
+
+3) 安装 native-image 插件
+类似 yum
+
+C:\Users\admin>where gu
+D:\ProgramFiles\graalvm-ce-java17-22.3.1\bin\gu.cmd
+
+C:\Users\admin>gu install native-image
+Downloading: Component catalog from www.graalvm.org
+Processing Component: Native Image
+Downloading: Component native-image: Native Image from github.com
+Installing new component: Native Image (org.graalvm.native-image, version 22.3.1)
+
+
+C:\Users\admin>gu list
+ComponentId              Version             Component name                Stability                     Origin
+-------------  -------------  -------------  -------------  -------------  -------------  -------------  -------------  
+graalvm                  22.3.1              GraalVM Core                  Supported
+native-image             22.3.1              Native Image                  Early adopter                 github.com
+
+
+
+
+
+
+
+
+(2) 安装 C++ 编译环境
+通过安装 visual studio 来安装 C++环境。
+https://visualstudio.microsoft.com/zh-hans/thank-you-downloading-visual-studio/?sku=Community&channel=Release&version=VS2022&source=VSLandingPage&cid=2030&passive=false
+社区版下载后只有3M，这只是一个下载器，点击安装后，会下载很久。
+安装好搜索 x64 Native Tools Command Prompt for VS 2022 命令行工具。
+	// 下载器卡: 下载失败。
+	把步骤1中 GraaIVM 再配置一遍。
+
+2) 我之前通过安装 strawberryperl 安装的gcc:不能用，必须使用 visual studio的那个命令行工具。
+C:\Users\admin>gcc --version
+gcc (x86_64-posix-seh, Built by strawberryperl.com project) 7.1.0
+Copyright (C) 2017 Free Software Foundation, Inc.
+This is free software; see the source for copying conditions.  There is NO
+warranty; not even for MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
+
+
+
+
+
+
+(3) 编写 java 代码，编译，构建
+
+1) 编写java代码
+找一个工作目录: G:\Tmp\java1
+编写代码
+$ cat User.java
+public class User{
+	public static void main(String[] args){
+		System.out.println("hello, java to C++");
+	}
+}
+
+编译:
+>G:
+>cd G:\Tmp\java1
+G:\Tmp\java1>javac User.java
+
+G:\Tmp\java1>java User
+hello, java to C++
+
+
+
+
+2) 使用C++环境工具代码编译
+
+G:\Tmp\java1>native-image User
+=========
+GraalVM Native Image: Generating 'user' (executable)...
+=========
+
+[1/7] Initializing...                                                                                    (0.0s @ 0.16GB)
+Fatal error: java.nio.file.InvalidPathException: Illegal char <:> at index 2:  C:\Program Files\Java\jdk1.8.0_161\bin\cl.exe
+
+
+有关该报错的解释: https://www.likecs.com/ask-1305238.html
+安装后，我必须打开 x64 Native Tools 命令提示符（开始 > Visual Studio 2022 > x64 Native Tools 命令提示符）。该命令在常规 Powershell 或 CMD 中不起作用。重新启动计算机后编译才成功 - 在此之前我以错误 c1083 结束。
+
+
+可以直接运行
+> User
+
+
+
+
+3) 使用C++环境工具进行构建
+
+so 文件呢？ //todo
+
+
+
+
+
+
+
+
+
+========================================
+Spring6 框架总结
+----------------------------------------
+1. 概述
+2. 入门
+3. 容器IoC
+	控制反转
+	依赖注入
+	IoC容器在Spring的实现
+
+	基于xml和注解实现
+	注入各种数据类型: 常见、类、数组、集合
+	销毁
+4. 原理：手写IoC
+	反射 + 注解
+5. AOP
+	动态代理: 有接口、无接口
+	基于xml和配置文件实现
+	五种切面位置
+6. 整合JUnit5
+7. 事务
+	JDBCTemplate
+	基于xml和注解实现
+	只读、超时、回滚策略、隔离级别、传播行为
+	全注解配置事务
+8. 资源操作 Resource
+	文件
+9. 国际化
+10. 数据校验
+11. 提前编译
+
+
+========================================
+----------------------------------------
+
+
+
+
+========================================
+----------------------------------------
+
+
+
+
+========================================
+----------------------------------------
+

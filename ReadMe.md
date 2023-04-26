@@ -2,14 +2,14 @@ txtBlog v0.6
 ===============================
 	-- A simple yet powerful blog system for reading and organizing txt files based on PHP. 
 
-# 目的：建立一个能组织和阅读txt文件的博客系统，用于管理知识。  
+## 目的：建立一个能组织和阅读txt文件的博客系统，用于管理知识。  
 
 
 每周至少提交一个 commit: 
-	扫盲：不会的知识点
-	总结：整理会的知识点，条理化
-	交叉融合：新示例、新应用场景
-用输出倒逼输入，让成长有迹可循。
+- 扫盲：不会的知识点
+- 总结：整理会的知识点，条理化
+- 交叉融合：新示例、新应用场景
+- 用输出倒逼输入，让成长有迹可循。
 
 
 
@@ -59,7 +59,7 @@ txtBlog v0.6
 
 
 ## How to run? 如何运行？
-	[如何部署?](docs/howToRun.md)
+[如何部署?](help/howToRun.md)
 
 
 
@@ -88,5 +88,4 @@ $ git checkout master
 /index.php?c=summary&k=2020 年度总结
 /index.php?c=summary&k=2021 年度总结
 /index.php?c=summary&k=2022 年度总结
-
 ``````

@@ -68,6 +68,216 @@ mysql> show variables like '%auto%';
 
 
 
+========================================
+|-- mysql8 的登录: 8 vs 5的变化？
+----------------------------------------
+1. 错误类型
+https://blog.csdn.net/mingzaiwang/article/details/128727470
+语法错误；
+输入密码正确，但就是进不去；
+就算跳过密码，改密码的时候，没法改。（仅针对MySQL8.0版本）
+
+(2)解决方法：很简单，改密码。
+
+密码改了还不行的原因：
+　　- MySQL8.0版本不能通过直接修改mysql.user表来更改密码；
+　　- authentication_string字段下只能是MySQL加密后的43位字符串密码；
+
+
+(3) 密码在
+$ sudo vim /etc/mysql/debian.cnf
+user     = debian-sys-maint
+password = rer3wCY50360EyBQ
+
+
+(4) 登录
+$ mysql -h localhost -u debian-sys-maint -p
+Enter password: 
+Welcome to the MySQL monitor.  Commands end with ; or \g.
+Your MySQL connection id is 51
+Server version: 8.0.32-0ubuntu0.20.04.2 (Ubuntu)
+
+Copyright (c) 2000, 2023, Oracle and/or its affiliates.
+
+
+(5) 查看密码
+mysql> use mysql;
+mysql> select * from user limit 1 \G
+
+查看安装后随机生成的密码。
+mysql> select Host, User, authentication_string from user;
++-----------+-------- ---------+------------------ ----------------- ------------------ ----------------+
+| Host      | User             | authentication_string                                                  |
++-----------+-------- ---------+------------------------------------ ------------------ ----------------+
+| %         | root             | $A$005$v5%j,.St`AB?axx<HOf8r/UVudOZ/dDV4Kn5ki6IvQq9nJoZ8iOXH2x1be9 |     这个是我加的，功能不大对
+| localhost | debian-sys-maint | *9D5F8267A62A2F2CC52F116A2750C696C44F5F39                              |
+| localhost | mysql.infoschema | $A$005$THISISACOMBINATIONOFINVALIDSALTANDPASSWORDTHATMUSTNEVERBRBEUSED |
+| localhost | mysql.session    | *THISISNOTAVALIDPASSWORDTHATCANBEUSEDHERE                              |
+| localhost | mysql.sys        | *THISISNOTAVALIDPASSWORDTHATCANBEUSEDHERE                              |
+| localhost | root             |                                                                        |
++-----------+--------- --------+----------------- ------------------- ---------------- -----------------+
+6 rows in set (0.00 sec)
+
+'%'表示所有ip都可以连接，相当于0.0.0.0
+
+
+
+(6) 添加新用户
+
+mysql> insert into user(Host, User) values('%', 'tom');
+ERROR 1364 (HY000): Field 'ssl_cipher' doesn't have a default value
+mysql> insert into user(Host, User, ssl_cipher) values('%', 'tom', '0x');
+ERROR 1364 (HY000): Field 'x509_issuer' doesn't have a default value
+mysql> insert into user(Host, User, ssl_cipher, x509_issuer) values('%', 'tom', '0x', '0x');
+ERROR 1364 (HY000): Field 'x509_subject' doesn't have a default value
+mysql> insert into user(Host, User, ssl_cipher, x509_issuer,x509_subject) values('%', 'tom', '0x', '0x', '0x'); #这个可以
+Query OK, 1 row affected (0.01 sec)
+
+设置密码
+mysql> ALTER USER 'tom'@'%' IDENTIFIED WITH mysql_native_password BY "123456";
+ERROR 1396 (HY000): Operation ALTER USER failed for 'tom'@'%'
+mysql> ALTER USER 'tom'@"%" IDENTIFIED WITH mysql_native_password BY "123456";
+Query OK, 0 rows affected (0.01 sec)
+
+mysql> select Host, User, authentication_string,plugin from user;
+| Host      | User             | authentication_string                                                  |
+| %         | root             | $A$005$v5%j,.St`AB?axx<HOf8r/UVudOZ/dDV4Kn5ki6IvQq9nJoZ8iOXH2x1be9 |
+| %         | tom              | *6BB4837EB74329105EE4568DDA7DC67ED2CA2AD9 
+
+
+> update user set host='%',plugin='mysql_native_password',authentication_string='' where user='tom';
+Query OK, 1 row affected (0.01 sec)
+Rows matched: 1  Changed: 1  Warnings: 0
+
+> flush privileges;
+
+
+
+还是无法登陆
+$ mysql -h 192.168.2.120 -u tom -p
+Enter password: 
+ERROR 2003 (HY000): Can't connect to MySQL server on '192.168.2.120:3306' (111)
+
+$ mysql -h 127.0.0.1 -u tom -p  #但是使用localhost IP可以登录！
+mysql> quit
+Bye
+wangjl@YStation:~$ ping 192.168.2.120
+PING 192.168.2.120 (192.168.2.120) 56(84) bytes of data.
+64 bytes from 192.168.2.120: icmp_seq=1 ttl=64 time=0.079 ms
+
+
+看到有说屏蔽掉：/etc/mysql/my.cnf 中的 bind-address           = 127.0.0.1 
+  https://blog.csdn.net/wang1144/article/details/39498559
+
+$ sudo vim /etc/mysql/my.cnf
+!includedir /etc/mysql/conf.d/
+!includedir /etc/mysql/mysql.conf.d/
+
+$ sudo vim /etc/mysql/mysql.conf.d/mysqld.cnf #在这个里，两行
+#bind-address           = 127.0.0.1
+#mysqlx-bind-address    = 127.0.0.1
+
+重启数据库
+$ sudo service mysql restart
+
+继续连接，可以了
+$ mysql -h 192.168.2.120 -u tom -p
+测试权限：
+  建库: 不能
+  建表: 不能
+    mysql> create database wang2;
+    ERROR 1044 (42000): Access denied for user 'tom'@'%' to database 'wang2'
+
+
+(7) 授权
+https://dev.mysql.com/blog-archive/how-to-grant-privileges-to-users-in-mysql-80/
+
+mysql> grant all privileges on *.* to 'tom'@'%';
+Query OK, 0 rows affected (0.01 sec)
+
+mysql> show grants; 查看权限
+
+退出重新登录
+mysql> quit
+Bye
+
+$ mysql -h 192.168.2.120 -u tom -p
+Enter password: 
+Welcome to the MySQL monitor.  Commands end with ; or \g.
+Your MySQL connection id is 18
+Server version: 8.0.32-0ubuntu0.20.04.2 (Ubuntu)
+
+
+新建库：
+  mysql> create database wang2;
+  Query OK, 1 row affected (0.01 sec)
+新建表：
+  create table user(id int primary key auto_increment, name varchar(20)) DEFAULT CHARSET=utf8;
+
+mysql> desc user;
++-------+-------------+------+-----+---------+----------------+
+| Field | Type        | Null | Key | Default | Extra          |
++-------+-------------+------+-----+---------+----------------+
+| id    | int         | NO   | PRI | NULL    | auto_increment |
+| name  | varchar(20) | YES  |     | NULL    |                |
++-------+-------------+------+-----+---------+----------------+
+2 rows in set (0.00 sec)
+
+
+
+
+
+
+
+
+2.版本变化
+(1) 5.*之后的版本取消了password函数，故不适用于8.*版本。
+
+MySQL 5.*的版本修改密码命令为
+  UPDATE user SET authentication_string="123456" WHERE user="root";
+
+MySQL 8.*的版本修改密码命令为
+  ALTER USER 'root'@'localhost' IDENTIFIED WITH mysql_native_password BY "123456";
+
+
+(2) 加密规则
+MySQL8.0之前的版本密码加密规则：mysql_native_password，
+MySQL8.0密码加密规则：caching_sha2_password
+所以需要修改mysql加密规则
+ALTER USER 'root'@'%' IDENTIFIED WITH mysql_native_password BY '你的密码';
+
+
+
+
+
+
+
+
+
+
+
+
+3.更多修改
+(1) 修改Host为%：
+update user set host='%' where host= 'localhost';
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 ========================================
 mysql命令用户连接数据库，日常操作命令
@@ -1793,9 +2003,9 @@ mysql>source d:\abc.sql
 
 
 ========================================
-|-- Mysql命令mysqldump：备份数据库
+|-- Mysql命令mysqldump：备份数据库、恢复数据库
 ----------------------------------------
-mysqldump命令用来备份数据库。
+1. mysqldump命令用来备份数据库。
 
 mysqldump命令在DOS的\mysql\bin目录下执行。
 
@@ -1826,6 +2036,30 @@ mysqldump命令在DOS的\mysql\bin目录下执行。
 # -p后面要紧跟密码，不能有空格，也可以省略密码，回车后再下一行输入密码;
 # wang是DB名字，word_unknown是表名字;
 G:\xampp\mysql\bin\mysqldump -h y.biomooc.com -P 7070 -u root -p123456 wang word_unknown > G:\xampp\htdocs\IELTS\dict\backup\tb_word_unknown_20191127_1040.sql
+
+
+
+2. 恢复 MySQL 数据库
+
+要恢复 MySQL 数据库，可以使用以下命令：
+	> mysql -u username -p password database_name < backup_file.sql
+其中，username 表示要恢复的 MySQL 服务器的用户名，password 表示要恢复的 MySQL 服务器的密码，database_name 表示要恢复的 MySQL 数据库的名称，backup_file.sql 表示备份数据的文件名。
+
+
+
+
+3. 小结
+
+备份 MySQL 数据库
+	> mysqldump -u root -p mydatabase > mydatabase_backup.sql
+	该命令将备份名为 mydatabase 的 MySQL 数据库，并将备份数据保存到 mydatabase_backup.sql 文件中。
+恢复 MySQL 数据库
+	> mysql -u root -p mydatabase < mydatabase_backup.sql
+	该命令将从备份文件 mydatabase_backup.sql 中恢复 mydatabase 数据库。
+
+
+
+
 
 
 
