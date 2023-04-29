@@ -1277,29 +1277,345 @@ Brand{id=2, brandName='化为', companyName='huawei技术有限公司', ordered=
 
 
 ========================================
-|-- 条件查询
+|-- 条条件查询：mybatis如何接收多个参数？ （mysql 的url要加 characterEncoding=utf8，否则模糊查询没结果）
 ----------------------------------------
 内容：
 	多条件查询
+    多条件动态查询
+    单条件动态查询
+
+
+1. 多条件查询
+(1)需求分析
+    条件表达式？
+        当前状态： status=?
+        企业名称: company_name like ?
+        品牌名称: brand_name like ?
+    怎么连接？
+        And 同时成立
+        Or 至少一个成立
+
+(2) 返回 List<>
+
+
+
+
+
+2. 代码实现
+(1) BrandMapper.java 中写接口方法
+
+    //多条件查询 三种写法，任选一个
+    /*
+    //写法1：散装参数，分别列举三个参数，使用注解@Param("xml中的占位符")指定xml中哪个占位符接收该参数
+    List<Brand> selectByCondition(@Param("status") int status,
+                                  @Param("companyName") String companyName,
+                                  @Param("brandName") String brandName);
+    //写法2：xml中的占位符要和类中的属性名对应
+    List<Brand> selectByCondition(Brand brand);
+    */
+    //写法3：xml中的占位符要和map中的key对应
+    List<Brand> selectByCondition(Map map);
+    /*
+    */
+
+(2) BrandMapper.xml 中写sql语句
+    <!-- 多条件查询 -->
+    <select id="selectByCondition" resultMap="brandResultMap">
+        select *
+        from tb_brand
+        where
+            status = #{status}
+            and company_name like #{companyName}
+            and brand_name like #{brandName}
+    </select>
+
+
+(3) 测试
+
+    @Test
+    public void testSelectByCondition() throws IOException {
+        //接收的参数
+        int status=1;
+        String companyName="技术";
+        String brandName="为";
+        //处理参数
+        companyName = "%"+companyName+"%";
+        brandName = "%"+brandName+"%";
+
+
+        //1. 获取 SqlSessionFactory 对象
+        String resource = "mybatis-config.xml";
+        InputStream inputStream = Resources.getResourceAsStream(resource);
+        SqlSessionFactory sqlSessionFactory =
+                new SqlSessionFactoryBuilder().build(inputStream);
+        //2. 获取 SqlSession 对象
+        SqlSession sqlSession = sqlSessionFactory.openSession();
+
+        //3 获取Mapper接口的代理对象
+        BrandMapper mapper = sqlSession.getMapper(BrandMapper.class);
+
+        //4.执行对应的接口方法: 整合spring后，只有这一行了，其他都是流程化的，都可以框架实现。
+        // 重点写的就是接口方法名，和对应xml中的sql语句。
+        System.out.println("写法3");
+
+        /*
+        // 写法1 散装参数
+        List<Brand> brands = mapper.selectByCondition(status, companyName, brandName);
+
+        // 写法2 封装对象
+        Brand brand=new Brand();
+        brand.setStatus(status);
+        brand.setCompanyName(companyName);
+        brand.setBrandName(brandName);
+        List<Brand> brands = mapper.selectByCondition(brand);
+        */
+
+        // 写法3 集合对象
+        Map map=new HashMap();
+        map.put("status", status);
+        map.put("companyName", companyName);
+        map.put("brandName", brandName);
+        List<Brand> brands = mapper.selectByCondition(map);
+
+
+        System.out.println(brands);
+
+        //5.释放资源
+        sqlSession.close();
+    }
+
+输出: 没结果！！
+为什么呢？搜了一下，有说mysql连接时要设置utf8，否则java和mysql交流不畅。
+
+在 resources/mybatis-config.xml 中设置编码格式为utf8：
+        <environment id="development">
+            <transactionManager type="JDBC"/>
+            <dataSource type="POOLED">
+                <!-- mysql 连接信息 -->
+                <property name="driver" value="com.mysql.jdbc.Driver"/>
+                <!-- 注意：1.不加utf8会导致模糊查询没返回结果; 2.本来该使用&，但是java中必须使用其实体 -->
+                <property name="url" value="jdbc:mysql://y.biomooc.com:7070/mybatis?useSSL=false&amp;characterEncoding=utf8"/>
+                <property name="username" value="root"/>
+                <property name="password" value="123456"/>
+            </dataSource>
+        </environment>
+
+再次测试，输出正常:
+[DEBUG] 10:22:45.788 [main] c.m.m.B.selectByCondition - ==>  Preparing: select * from tb_brand where status = ? and company_name like ? and brand_name like ? 
+[DEBUG] 10:22:45.889 [main] c.m.m.B.selectByCondition - ==> Parameters: 1(Integer), %技术%(String), %为%(String) 
+[DEBUG] 10:22:45.944 [main] c.m.m.B.selectByCondition - <==      Total: 1 
+[Brand{id=2, brandName='化为', companyName='huawei技术有限公司', ordered=100, description='数字技术领域领头羊', status=1}]
+
+
+
+3. 小结
+SQL语句设置多个参数有集中方式
+    散装参数: 需要在接口形参上加注解 @Param("xml中参数占位符名称")；
+    实体类封装参数: 保证SQL中的参数名和实体类属性名对应上；
+    map集合: 保证SQL中的参数名和map集合的键的名称对应上；
+
+
+
+
+
+========================================
+|-- （动态条件查询 if, where 标签）多参数查询的问题：如果有些参数用户没有输入，会导致查询结果为空！
+----------------------------------------
+1. 如果三个框，用户只输入一个，则会造成查询失败。
+因为sql语句是按照三个进行查询的。
+怎么根据用户的输入灵活创建sql语句呢？
+
+(1) MyBatis 对动态SQL有很强大的支持，在xml中使用如下标签：
+    if
+    choose(when, otherwise)
+    trim(where, set)
+    foreach
+
+(2) 官网资料
+https://mybatis.org/mybatis-3/dynamic-sql.html
 
 
 
 
 
 
+2. 代码演示
+接口不需要修改，只需要改动sql代码部分。
+
+(1) 写法1：有问题
+    <select id="selectByCondition" resultMap="brandResultMap">
+        select *
+        from tb_brand
+        where
+        <if test="status != null">
+            status = #{status}
+        </if>
+        <!-- 注意：这里test使用的是java传过来的值，与mysql无关。所以变量名要使用java的 -->
+        <if test="companyName !=null and companyName!='' ">
+            and company_name like #{companyName}
+        </if>
+        <if test="brandName !=null and brandName!='' ">
+            and brand_name like #{brandName}
+        </if>
+    </select>
+
+如果没有设置 status，会导致 where and 直接连接而报错！
+
+
+1) 解决方法1：加恒等式 where 1=1，在每个if开头都加上and。
+    笨方法，但是至少可以运行。
+
+
+2) 解决方案2: where标签替换where表达式，每个if开头都加and。mybatis会自动考虑这些and是否要保留。
+
+    <!-- 动态条件查询
+        * if 条件判断
+            * test 逻辑表达式
+        * 问题: 多个and时，第一个语句没有值导致sql后的where直接跟着第二个语句的and，会报错！
+            * 方法1 where后加恒等式 1=1，然后多个if语句都加上and开头。
+            * where 标签替换where关键字
+     -->
+    <select id="selectByCondition" resultMap="brandResultMap">
+        select *
+        from tb_brand
+        <where>
+            <if test="status != null">
+                and status = #{status}
+            </if>
+            <!-- 注意：这里test使用的是java传过来的值，与mysql无关。所以变量名要使用java的 -->
+            <if test="companyName !=null and companyName!='' ">
+                and company_name like #{companyName}
+            </if>
+            <if test="brandName !=null and brandName!='' ">
+                and brand_name like #{brandName}
+            </if>
+        </where>
+    </select>
 
 
 
 
 
 
+========================================
+|-- （动态条件查询 choose(when, otherwise) 标签）单参数动态查询: 下拉框选择一个，按这一列搜索
+----------------------------------------
+1. 问题: 从多个条件中选择一个
+(1) 需求: 用户按照下拉框(公司名、品牌名、描述)选择一个，输入关键词，按选择的列查询。
+用户具体选择哪个是不确定的，要根据用户选择生成sql语句。
+
+choose ~ 类似 switch 
+    when ~ 类似 case
+    otherwise ~ 类似 default
+
+
+(2) 官网示例
+https://mybatis.org/mybatis-3/dynamic-sql.html
+
+<select id="findActiveBlogLike" resultType="Blog">
+  SELECT * FROM BLOG WHERE state = ‘ACTIVE’
+  <choose>
+    <when test="title != null">
+      AND title like #{title}
+    </when>
+    <when test="author != null and author.name != null">
+      AND author_name like #{author.name}
+    </when>
+    <otherwise>
+      AND featured = 1
+    </otherwise>
+  </choose>
+</select>
 
 
 
+2. 代码实现
+(1) 写接口
+    //单条件动态查询
+    List<Brand> selectByConditionSingle(Brand brand);
+
+
+(2) 写sql
+因为只要一个条件，所以不用写and。
+
+    <!-- 单条件动态查询 -->
+    <select id="selectByConditionSingle" resultMap="brandResultMap">
+        select *
+        from tb_brand
+        where
+        <choose> <!-- 类似 switch -->
+            <when test="status!=null"> <!-- 类似 case -->
+                status=#{status}
+            </when>
+            <when test="companyName !=null and companyName !=''">
+                company_name like #{companyName}
+            </when>
+            <when test="brandName !=null and brandName !=''">
+                brand_name like #{brandName}
+            </when>
+            <otherwise> <!-- 类似 default -->
+                1=1
+            </otherwise>
+        </choose>
+    </select>
+
+
+(3) 测试
+
+    @Test
+    public void testSelectByConditionSingle() throws IOException {
+        //接收的参数
+        int status=1;
+        String companyName="技术";
+        String brandName="为";
+        //处理参数
+        companyName = "%"+companyName+"%";
+        brandName = "%"+brandName+"%";
+
+
+        //1. 获取 SqlSessionFactory 对象
+        String resource = "mybatis-config.xml";
+        InputStream inputStream = Resources.getResourceAsStream(resource);
+        SqlSessionFactory sqlSessionFactory =
+                new SqlSessionFactoryBuilder().build(inputStream);
+        //2. 获取 SqlSession 对象
+        SqlSession sqlSession = sqlSessionFactory.openSession();
+
+        //3 获取Mapper接口的代理对象
+        BrandMapper mapper = sqlSession.getMapper(BrandMapper.class);
+
+        //4.执行对应的接口方法: 整合spring后，只有这一行了，其他都是流程化的，都可以框架实现。
+        // 重点写的就是接口方法名，和对应xml中的sql语句。
+        System.out.println("单条件动态查询，只能有一个where语句，哪一个不确定");
+
+        // 封装对象
+        Brand brand=new Brand();
+        //brand.setStatus(status);
+        //brand.setCompanyName(companyName);
+        brand.setBrandName(brandName);
+        List<Brand> brands = mapper.selectByConditionSingle(brand);
+
+        System.out.println(brands);
+
+        //5.释放资源
+        sqlSession.close();
+    }
+
+输出:
+单条件动态查询，只能有一个where语句，哪一个不确定
+[DEBUG] 11:10:31.774 [main] c.m.m.B.selectByConditionSingle - ==>  Preparing: select * from tb_brand where brand_name like ? 
+[DEBUG] 11:10:31.834 [main] c.m.m.B.selectByConditionSingle - ==> Parameters: %为%(String) 
+[DEBUG] 11:10:31.863 [main] c.m.m.B.selectByConditionSingle - <==      Total: 1 
+[Brand{id=2, brandName='化为', companyName='huawei技术有限公司', ordered=100, description='数字技术领域领头羊', status=1}]
+
+如果三个条件都提供了，则使用最先提供的，忽视其余的。
 
 
 
+(4) 如果用户一个都不选怎么办？
+为了不报错，可以加一个 default: otherwise 1=1 表示查了所有结果。
 
+还可以使用 <where> 包裹 <choose>，省略最后一个 otherwise。
 
 
 
@@ -1327,6 +1643,8 @@ IDEA 快捷键
 
 (2) alt+insert 创建getter/setter 方法
 (3) 输入 toString 的前几个字母，选择提示的第二项，选择全部变量名覆盖该方法。
+
+2. 快速注释xml文件: 选择若干行 shift+ctrl+/
 
 
 
