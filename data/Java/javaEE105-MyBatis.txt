@@ -1619,6 +1619,475 @@ https://mybatis.org/mybatis-3/dynamic-sql.html
 
 
 
+========================================
+|-- 添加数据：mybatis 默认开启事务
+----------------------------------------
+1. 需求 
+让用户填写id之外的所有字段。
+
+返回 void ，通过是否有异常判断是否成功。
+
+
+2. 过程
+(1) 写接口
+package com.mio.mapper;
+public interface BrandMapper {
+    //添加数据
+    void add(Brand brand);
+}
+
+(2) 写sql 语句 
+$ cat resources/com/mio/mapper/BrandMapper.xml
+    <insert id="add">
+        insert into tb_brand(brand_name, company_name, ordered, description, status)
+        values(#{brandName}, #{companyName}, #{ordered}, #{description}, #{status});
+    </insert>
+
+(3) 写测试方法
+
+$ cat src/test/java/com/mio/test/MyBatisTest.java 
+
+    @Test
+    public void testAdd() throws IOException {
+        //接收的参数
+        int status=1;
+        String companyName="波导手机";
+        String brandName="波导";
+        String description="手机中的战斗机";
+        int ordered=100;
+
+        //1. 获取 SqlSessionFactory 对象
+        String resource = "mybatis-config.xml";
+        InputStream inputStream = Resources.getResourceAsStream(resource);
+        SqlSessionFactory sqlSessionFactory =
+                new SqlSessionFactoryBuilder().build(inputStream);
+        //2. 获取 SqlSession 对象
+        SqlSession sqlSession = sqlSessionFactory.openSession();
+
+        //3 获取Mapper接口的代理对象
+        BrandMapper mapper = sqlSession.getMapper(BrandMapper.class);
+
+        //4.执行对应的接口方法: 整合spring后，只有这一行了，其他都是流程化的，都可以框架实现。
+        // 重点写的就是接口方法名，和对应xml中的sql语句。
+        System.out.println("添加对象");
+
+        // 封装对象
+        Brand brand=new Brand();
+        brand.setStatus(status);
+        brand.setCompanyName(companyName);
+        brand.setBrandName(brandName);
+        brand.setDescription(description);
+        brand.setOrdered(ordered);
+
+        mapper.add(brand); //添加
+        System.out.println(brand);
+
+        //5.释放资源
+        sqlSession.close();
+    }
+
+执行后，控制台日志也符合预期。
+查数据库：但是，数据库中没有该条目！！
+>mysql -h y.biomooc.com -P 7070 -u root -p
+> select * from mybatis.tb_brand;
+
+
+(4) 显示更多日志
+配置 resources/logback.xml，使其显示更多日志
+<?xml version="1.0" encoding="UTF-8"?>
+<configuration>
+    <!--    console表示当前日志信息是可以输出到控制台的-->
+    <appender name="Console" class="ch.qos.logback.core.ConsoleAppender">
+        <encoder>
+            <!--
+            https://blog.csdn.net/qq_38701905/article/details/80739240
+
+            %d{yyyy-MM-dd HH:mm:ss SSS}
+            %-3level %logger{1024}
+            %boldGreen(%logger{15})
+            %class{35}
+            -->
+            <pattern>[%level] %blue(%d{HH:mm:ss.SSS}) %cyan([%thread]) %boldGreen(%logger{15}) - %msg %n</pattern>
+        </encoder>
+    </appender>
+
+    <!-- name 是要扫描的包路径; level 是消息等级, TRACE < DEBUG < INFO < WARN < FATAL -->
+    <root level="debug">
+        <appender-ref ref="Console"/>
+    </root>
+    <!--
+    <logger name="com.mio.mapper" level="DEBUG" additivity="false">
+        <appender-ref ref="Console" />
+    </logger>
+    -->
+</configuration>
+
+再次执行，能看到确实有回滚操作：
+[DEBUG] 17:34:29.967 [main] o.a.i.t.j.JdbcTransaction - Rolling back JDBC Connection [com.mysql.jdbc.JDBC4Connection@3e44f2a5] 
+
+
+(5) 需要手动提交事务
+在释放资源前，提交事务。
+
+	//提交事务
+	sqlSession.commit();
+
+	//5.释放资源
+	sqlSession.close();
+
+看日志：[DEBUG] 17:39:28.565 [main] o.a.i.t.j.JdbcTransaction - Committing JDBC Connection [com.mysql.jdbc.JDBC4Connection@3e44f2a5] 
+看数据库，确实新增一行。
+
+
+(5B) 或者创建 SqlSession 对象时，设置主动提交事务。
+	//2. 获取 SqlSession 对象
+    SqlSession sqlSession = sqlSessionFactory.openSession(true); 
+	//加参数true表示自动提交事务，相当于关闭了事务。
+	//默认是false，需要手动提交事务。
+
+
+
+
+========================================
+|-- 添加数据：主键返回(xml中写上 useGeneratedKeys="true" keyProperty="id")
+----------------------------------------
+1. 问题 
+上述代码中无法获取id。
+    System.out.println(brand.getId()); //获取id失败，这里是一个null
+而有些时候我们是需要id的，怎么办呢？
+
+(2) 修改xml中的语句，即可解决该问题。
+
+在接口中新建方法  void add2(Brand brand);
+
+在xml中写sql语句:
+    <!-- 添加数据，并返回主键id
+        useGeneratedKeys="true" 说名要获取自动获取的键
+        keyProperty="id" 绑定要获取的属性名称
+    -->
+    <insert id="add2" useGeneratedKeys="true" keyProperty="id">
+        insert into tb_brand(brand_name, company_name, ordered, description, status)
+        values(#{brandName}, #{companyName}, #{ordered}, #{description}, #{status});
+    </insert>
+
+
+测试：
+        mapper.add2(brand); //添加，并获取主键
+        System.out.println(brand);
+        System.out.println(brand.getId()); //获取主键id成功
+
+
+
+
+========================================
+|-- 修改数据: 修改全部字段、修改动态字段(if 标签)
+----------------------------------------
+1. 需求 
+如果内容有变化，就要修改。
+修改完，点确定，完成更新。
+
+(1) 接口方法
+
+参数：所有数据
+返回值：void 可以通过异常判断是否成功。
+	也可以返回int，就是影响的行数。
+
+    //修改数据
+    void update(Brand brand);
+
+(2) 在xml中写sql语句
+    <!-- 修改数据 -->
+    <update id="update">
+        update tb_brand
+        set
+            brand_name=#{brandName},
+            company_name=#{companyName},
+            ordered=#{ordered},
+            description=#{description},
+            status=#{status}
+        where id=#{id}
+    </update>
+
+(3) 测试 
+
+    @Test
+    public void testUpdate() throws IOException {
+        //接收的参数
+        int status=1;
+        String companyName="魅族手机";
+        String brandName="魅族";
+        String description="小而美";
+        int ordered=10;
+        int id=15;
+
+        //1. 获取 SqlSessionFactory 对象
+        String resource = "mybatis-config.xml";
+        InputStream inputStream = Resources.getResourceAsStream(resource);
+        SqlSessionFactory sqlSessionFactory =
+                new SqlSessionFactoryBuilder().build(inputStream);
+        //2. 获取 SqlSession 对象
+        SqlSession sqlSession = sqlSessionFactory.openSession(true); //加参数true表示自动提交事务
+
+        //3 获取Mapper接口的代理对象
+        BrandMapper mapper = sqlSession.getMapper(BrandMapper.class);
+
+        //4.执行对应的接口方法: 整合spring后，只有这一行了，其他都是流程化的，都可以框架实现。
+        // 重点写的就是接口方法名，和对应xml中的sql语句。
+        System.out.println("修改对象");
+
+        // 封装对象
+        Brand brand=new Brand();
+        brand.setStatus(status);
+        brand.setCompanyName(companyName);
+        brand.setBrandName(brandName);
+        brand.setDescription(description);
+        brand.setOrdered(ordered);
+        brand.setId(id);
+
+        int result = mapper.update(brand); //修改
+        System.out.println(brand);
+        System.out.println("result=" + result);
+
+        //手动提交事务
+        //sqlSession.commit();
+
+        //5.释放资源
+        sqlSession.close();
+    }
+
+输出：result=1 是影响的行数。
+
+
+
+
+2. 动态修改
+比如用户只修改密码一项，再按上述都写，就会导致除了密码之外的都被设置为空，这不是我们希望的效果。
+怎么办呢？一个方法就是在xml中使用动态语句生成sql：提交哪个字段，才在sql中修改哪个字段。
+
+(1) 添加接口
+int updateDyn(Brand brand); //动态sql
+
+
+(2) 添加sql语句
+
+    <!-- 修改数据: 动态修改 -->
+    <update id="updateDyn">
+        update tb_brand
+        <set> <!-- 使用set标签 代替 set 关键字，能自动处理异常：最后一个是逗号？set后是空？ -->
+            <if test="brandName != null and brandName != '' ">
+                brand_name=#{brandName},
+            </if>
+            <if test="companyName != null and companyName != '' ">
+                company_name=#{companyName},
+            </if>
+            <if test="ordered != null "> <!-- int 类型，只需要判断是否是null -->
+                ordered=#{ordered},
+            </if>
+            <if test="description != null and description != '' ">
+                description=#{description},
+            </if>
+            <if test="status != null">
+                status=#{status}
+            </if>
+        </set>
+        where
+            id=#{id}
+    </update>
+
+
+(3) 测试 
+
+    @Test
+    public void testUpdateDyn() throws IOException {
+        //接收的参数
+        int status=0;
+        String companyName="金刚商店";
+        String brandName="金刚";
+        String description="村里最好的产品";
+        int ordered=8;
+        int id=16;
+
+        //1. 获取 SqlSessionFactory 对象
+        String resource = "mybatis-config.xml";
+        InputStream inputStream = Resources.getResourceAsStream(resource);
+        SqlSessionFactory sqlSessionFactory =
+                new SqlSessionFactoryBuilder().build(inputStream);
+        //2. 获取 SqlSession 对象
+        SqlSession sqlSession = sqlSessionFactory.openSession(true); //加参数true表示自动提交事务
+
+        //3 获取Mapper接口的代理对象
+        BrandMapper mapper = sqlSession.getMapper(BrandMapper.class);
+
+        //4.执行对应的接口方法: 整合spring后，只有这一行了，其他都是流程化的，都可以框架实现。
+        // 重点写的就是接口方法名，和对应xml中的sql语句。
+        System.out.println("修改对象");
+
+        // 封装对象
+        Brand brand=new Brand();
+        brand.setStatus(status);
+//        brand.setCompanyName(companyName);
+//        brand.setBrandName(brandName);
+//        brand.setDescription(description);
+        brand.setOrdered(ordered);
+        brand.setId(id);
+
+        int result = mapper.updateDyn(brand); //修改
+        System.out.println(brand);
+        System.out.println("result=" + result);
+
+        //手动提交事务
+        //sqlSession.commit();
+
+        //5.释放资源
+        sqlSession.close();
+    }
+
+查看日志，生成的sql语句是：
+	Preparing: update tb_brand SET ordered=?, status=? where id=? 
+	Parameters: 8(Integer), 0(Integer), 16(Integer)
+查看数据表，确实仅那个修改的字段有变化。
+
+
+
+
+========================================
+|-- 删除：删除一个、批量删除(foreach 标签)
+----------------------------------------
+https://www.bilibili.com/video/BV1MT4y1k7wZ/?p=12
+
+1. 需求：有些不需要的条目，可以按照id删除
+
+(1) 写mapper接口
+参数 id 
+返回 void 
+
+    //删除
+    void deleteById(int id);
+	
+(2) 在xml中写sql语句 
+    <!-- 删除 -->
+    <delete id="deleteById">
+        delete from tb_brand
+        where id=#{id}
+    </delete>
+
+(3) 测试 
+
+    @Test
+    public void testDeleteById() throws IOException {
+        //接收的参数
+        int id=4;
+
+        //1. 获取 SqlSessionFactory 对象
+        String resource = "mybatis-config.xml";
+        InputStream inputStream = Resources.getResourceAsStream(resource);
+        SqlSessionFactory sqlSessionFactory =
+                new SqlSessionFactoryBuilder().build(inputStream);
+        //2. 获取 SqlSession 对象
+        SqlSession sqlSession = sqlSessionFactory.openSession(true); //加参数true表示自动提交事务
+
+        //3 获取Mapper接口的代理对象
+        BrandMapper mapper = sqlSession.getMapper(BrandMapper.class);
+
+        //4.执行对应的接口方法: 整合spring后，只有这一行了，其他都是流程化的，都可以框架实现。
+        // 重点写的就是接口方法名，和对应xml中的sql语句。
+        System.out.println("修改对象");
+
+
+        mapper.deleteById(id); //删除
+
+        //手动提交事务
+        //sqlSession.commit();
+
+        //5.释放资源
+        sqlSession.close();
+    }
+
+检查数据表，id=4的记录已经倍删除。
+
+
+
+
+
+
+2. 批量删除
+需求：复选框，选中的多个可以按id批量删除。
+
+(1) 写接口
+接收：id数组
+返回：void
+
+    void deleteByIds(@Param("ids") int[] ids);
+
+(2) 在xml中写sql语句
+问题：不确定要删除几个，写sql时占位符个数不确定。
+	delete from tb_brand 
+	where id in (?,?,?);
+解决方法：mybatis 提供了 foreach 标签来遍历数组
+
+    <!-- 批量删除 -->
+    <delete id="deleteByIds">
+        delete from tb_brand
+        where id in
+        <foreach collection="ids" item="id" separator="," open="(" close=")">
+            #{id}
+        </foreach>
+    </delete>
+解释：
+	separator="," 是多个#{id}之间的分隔符号
+	open和close则是指定循环外包裹符号。
+
+尝试：接口中不写注释，则xml的foreach中要写 collection="array"。否则写ids会报错 Parameter 'ids' not found
+	void deleteByIds(int[] ids);
+
+
+(3) 测试 
+
+    @Test
+    public void testDeleteByIds() throws IOException {
+        //接收的参数
+        int[] ids={2, 15, 16};
+
+        //1. 获取 SqlSessionFactory 对象
+        String resource = "mybatis-config.xml";
+        InputStream inputStream = Resources.getResourceAsStream(resource);
+        SqlSessionFactory sqlSessionFactory =
+                new SqlSessionFactoryBuilder().build(inputStream);
+        //2. 获取 SqlSession 对象
+        SqlSession sqlSession = sqlSessionFactory.openSession(true); //加参数true表示自动提交事务
+
+        //3 获取Mapper接口的代理对象
+        BrandMapper mapper = sqlSession.getMapper(BrandMapper.class);
+
+        //4.执行对应的接口方法: 整合spring后，只有这一行了，其他都是流程化的，都可以框架实现。
+        // 重点写的就是接口方法名，和对应xml中的sql语句。
+        System.out.println("修改对象");
+
+
+        mapper.deleteByIds(ids); //删除
+
+        //手动提交事务
+        //sqlSession.commit();
+
+        //5.释放资源
+        sqlSession.close();
+    }
+
+
+日志：Preparing: delete from tb_brand where id in ( ? , ? , ? )
+	Updates: 3 
+数据表确实少了3个。
+
+
+
+
+
+
+
+
+
+
+
 
 
 
