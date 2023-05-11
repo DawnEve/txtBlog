@@ -23,10 +23,14 @@ return array (
 	  array('bash和shell编程','Linux103-shell', 'txt'),
 	  array('字符grep/awk/sed','string_process', 'txt'),
 	  array('用户、权限与日志和安全','linux104-user', 'txt'),
+	  array('GPU加速和CUDA编程','linux105-GPU-CUDA', 'txt'),
+	  
 	  array('多媒体','linux301_mutimedia', 'txt'),
 	  array('编辑器VIM/emacs','editor', 'txt'),
+	  
 	  array('深入理解计算机系统/CSAPP','csapp', 'txt'),
-	  array('过时信息 old_outdated','old_outdated', 'txt'),
+	  
+	  array('过时信息 old_outdated','old_outdated', 'txt'), //过时的信息
     ),
   ),
   
