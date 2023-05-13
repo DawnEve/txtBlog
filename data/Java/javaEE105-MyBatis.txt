@@ -2080,9 +2080,315 @@ int updateDyn(Brand brand); //动态sql
 
 
 ========================================
-MyBatis 参数传递：pojo类型，Map集合，Collection，List，Array等 //todo
+MyBatis 参数传递：多个参数 (@Param() 自定义参数名), 断点调试
 ----------------------------------------
-1. 
+数据库准备
+MySQL [mybatis]> desc tb_user;
++----------+-------------+------+-----+---------+----------------+
+| Field    | Type        | Null | Key | Default | Extra          |
++----------+-------------+------+-----+---------+----------------+
+| id       | int(11)     | NO   | PRI | NULL    | auto_increment |
+| username | varchar(20) | YES  |     | NULL    |                |
+| password | varchar(20) | YES  |     | NULL    |                |
+| gender   | char(1)     | YES  |     | NULL    |                |
+| addr     | varchar(30) | YES  |     | NULL    |                |
++----------+-------------+------+-----+---------+----------------+
+5 rows in set (0.04 sec)
+
+> select * from tb_user;
++----+----------+----------+--------+------+
+| id | username | password | gender | addr |
++----+----------+----------+--------+------+
+|  1 | zhangsan | 123      | M      | 北京 |
+|  2 | Lily     | 234      | F      | 广州 |
+|  3 | 王五     | 345      | M      | 上海 |
++----+----------+----------+--------+------+
+
+
+1. 如果接收多个参数，需要@Param注释
+(1)接口写法:
+	User select(@Param("username") String username, @Param("password") String password);
+	多个参数，则需要在前面添加 @Param 注解，指定后面xml中接收参数的名字。
+
+问题：能否不写@Param注解？
+	这需要对MyBatis底层封装方法有一定的了解。
+	MyBatis 提供了 ParamNameResolver 类来进行参数封装。
+	本章就通过查看该类理解怎么接收参数。
+
+(2)xml中的sql写法
+	<select id="select" resultType="user">
+		select * 
+		from tb_user 
+		where 
+			username=#{username}
+			and password=#{password};
+	</select>
+
+(3) 测试方法
+   @Test
+    public void testSelect() throws IOException {
+        //接收的参数
+        String username="zhangsan";
+        String password="123";
+
+        //1. 获取 SqlSessionFactory 对象
+        String resource = "mybatis-config.xml";
+        InputStream inputStream = Resources.getResourceAsStream(resource);
+        SqlSessionFactory sqlSessionFactory =
+                new SqlSessionFactoryBuilder().build(inputStream);
+        //2. 获取 SqlSession 对象
+        //加参数true表示自动提交事务
+        SqlSession sqlSession = sqlSessionFactory.openSession(true);
+
+        //3 获取Mapper接口的代理对象
+        UserMapper mapper = sqlSession.getMapper(UserMapper.class);
+
+        //4.执行对应的接口方法: 整合spring后，只有这一行了，其他都是流程化的，都可以框架实现。
+        // 重点写的就是接口方法名，和对应xml中的sql语句。
+        System.out.println("查询对象");
+        User user= mapper.select(username, password);
+
+        //手动提交事务
+        //sqlSession.commit();
+        System.out.println(user);
+
+        //5.释放资源
+        sqlSession.close();
+    }
+
+输出：User{id='1', username='zhangsan', password='123', gender='M', addr='北京'}
+
+
+(4) 多个参数怎么接收的？
+多个参数时，MyBatis会创建一个Map集合封装参数。
+	值就是参数的值；
+	键则是每个值有两个键，分别是 argN(0-based), paramM(1-based) 
+	map.put("arg0", 参数值1);
+	map.put("param1", 参数值1);	
+	map.put("arg1", 参数值2);
+	map.put("param2", 参数值2);
+
+测试：去掉接口中参数前的注解 User select(String username, String password);
+	报错：Cause: org.apache.ibatis.binding.BindingException: Parameter 'username' not found. Available parameters are [arg1, arg0, param1, param2]
+
+测试2：根据报错信息，修改xml中的参数名字为：
+	<select id="select" resultType="user">
+        select *
+        from tb_user
+        where
+        username=#{param1} and password=#{param2};
+    </select>
+	或
+		username=#{arg0} and password=#{arg1};
+	都可以正常输出。
+
+如果想使用自定义xml中接收参数的名字，就需要使用 @Param() 指定了。
+	具体见上文正文。
+
+测试3：如果使用注解指定了名字，则 argN 参数失效： 
+	Cause: org.apache.ibatis.binding.BindingException: Parameter 'arg0' not found. Available parameters are [password, param1, username, param2]
+
+
+查看处理参数的类：
+	双击shift，输入 ParamNameResolver，大写类就这一个。
+	如果没有MyBatis源码，下载一套：方法见末尾的 IDEA 快捷键。
+
+打断点: 
+	找到方法 getNamedParams，在第一行前面单击，点击顶部的小虫子，进入debug模式。
+	点击下半屏的调试按钮： Step over(F8) 逐行执行。
+	很快看到一行，创建了一个 Map 集合。
+		final Map<String, Object> param = new ParamMap<>();
+	接着使用循环，放置参数键值对：放入 username:zhangsan
+		param.put(entry.getValue(), args[entry.getKey()]);
+	同一个循环中，还有另一个键值对： param1:zhangsan
+		param.put(genericParamName, args[entry.getKey()]);
+	
+建议：在接口参数前使用注解 @Param() 自定义xml中要使用的参数名，提高代码的可读性。
+	@Param 会替换默认的 argN 键名。
+
+
+
+
+
+========================================
+|-- pojo类型，Map集合，Collection，List，Array，Map等单个参数的传递
+----------------------------------------
+2. 单个参数的传递
+(1) pojo 类型：在使用中，属性名、参数占位符要保持一致。
+	不一致的，要使用 resultMap 标签 定义其对应关系。
+(2) Map 集合: 使用时，map键名要和参数占位符一致。
+(3) 其他参数，比如 int id，单个参数，一定能接收到。
+接口：     User selectById(int id);
+sql语句：
+    <select id="selectById" resultType="User">
+        select *
+        from tb_user where id=#{xx};
+    </select>
+单个参数，接受时写啥都可以，why? //todo?
+
+以上几个前面介绍过。
+
+
+(4) 单个参数类型 Collection: 也封装成map集合了
+	map.put("arg0", collection集合);
+	map.put("collection", collection集合);
+
+(5) 单个参数类型 List: 也封装成map集合了
+	map.put("arg0", list集合);
+	map.put("collection", list集合);
+	map.put("list", list集合);
+
+(6) 单个参数类型 Array: 也封装成map集合了
+	map.put("arg0", array数组);
+	map.put("array", array数组);
+
+===>结论：
+不要使用默认参数，使用 @Param 自定义Map集合中的键。
+并使用修改后的名称来获取值，这样可读性更高！
+
+
+
+
+
+
+
+(7) 测试 
+## test: 集合
+接口: List<User> select2(@Param("usernames") Collection collection);
+sql语句:
+	<select id="select2" resultType="com.mio.pojo.User">
+        select *
+        from tb_user
+        where
+        username in (
+        <foreach collection="usernames" item="username" separator=",">
+            #{username}
+        </foreach>
+        );
+    </select> 
+
+测试：
+	//接收的参数
+	Collection collection= new HashSet();
+	collection.add("Lily");
+	collection.add("zhangsan");
+	
+	List<User> users= mapper.select2(collection);
+	System.out.println(users);
+
+正常输出2条。
+如果xml中故意写错，则报错 Parameter 'usernames2' not found. Available parameters are [usernames, param1]
+arg0 键名被@Param定义的键名覆盖。
+
+
+
+
+
+## test: 列表
+接口: List<User> select2(List mylist);
+sql 语句:
+	<select id="select2" resultType="com.mio.pojo.User">
+        select *
+        from tb_user
+        where
+        username in (
+        <foreach collection="mylist" item="username" separator=",">
+            #{username}
+        </foreach>
+        );
+    </select>
+测试:
+	List list=new LinkedList();
+	list.add("Lily");
+	list.add("zhangsan");
+	
+	List<User> users= mapper.select2(list);
+	System.out.println(users);
+报错:Parameter 'mylist' not found. Available parameters are [arg0, collection, list]
+应对：接口改为 List<User> select2(@Param("mylist") List mylist);
+
+
+## test: 数组
+接口：List<User> select2(String[] myarr);
+sql语句：  
+	<select id="select2" resultType="com.mio.pojo.User">
+        select *
+        from tb_user
+        where
+        username in (
+        <foreach collection="myarr" item="username" separator=",">
+            #{username}
+        </foreach>
+        );
+    </select>
+测试：
+	String[] arr=new String[2];
+	arr[0]="zhangsan";
+	arr[1]="Lily";
+
+	List<User> users= mapper.select2(arr);
+	System.out.println(users);
+
+报错：Parameter 'myarr' not found. Available parameters are [array, arg0]
+应对：接口添加注解 List<User> select2(@Param("myarr") String[] myarr);
+
+
+
+
+
+3.思考题
+如果传递的是一个map集合，map集合中有一个pojo对象 user，xml中如何获取其中的值？
+
+(1) Map 类型可以直接传递，只要键名和参数占位符对应即可。
+接口：User selectByMap(@Param("mymap") HashMap map);
+xml中:
+    <select id="selectByMap" resultType="com.mio.pojo.User">
+        select * from tb_user
+        where username=#{mymap.username} and password=#{mymap.password};
+    </select>
+
+测试:
+	//接收的参数
+	HashMap hashMap=new HashMap();
+	hashMap.put("username", "Lily");
+	hashMap.put("password", "234");
+
+	User user= mapper.selectByMap(hashMap);
+    System.out.println(user);
+正常输出1条。
+
+
+
+(2)如果键值对中值是pojo呢？
+	HashMap hashMap=new HashMap();
+	User user0=new User();
+	user0.setUsername("Lily");
+	user0.setPassword("234");
+	hashMap.put("map", user0);
+需要修改xml:
+    <select id="selectByMap" resultType="com.mio.pojo.User">
+        select * from tb_user
+        where
+        <!-- username=#{mymap.username} and password=#{mymap.password}; -->
+        <foreach collection="mymap" item="user">
+            username=#{user.username} and password=#{user.password};
+        </foreach>
+    </select>
+这样测试能正常输出1条。
+
+
+
+
+https://www.bilibili.com/video/BV1MT4y1k7wZ/?p=14
+
+
+
+
+
+
+========================================
+MyBatis 注解开发
+----------------------------------------
 
 
 
@@ -2092,13 +2398,16 @@ MyBatis 参数传递：pojo类型，Map集合，Collection，List，Array等 //t
 
 
 
-
-
-https://www.bilibili.com/video/BV1MT4y1k7wZ/?p=12
 
 ========================================
 IDEA 快捷键
 ----------------------------------------
+测试数据库
+>mysql -h y.biomooc.com -u root -P 7070 -p
+123456
+> use mybatis
+
+
 1. 按照数据表创建pojo类
 按列选取：alt+鼠标左键
 	id int primary key auto_increment,
@@ -2119,11 +2428,33 @@ IDEA 快捷键
 
 
 
+3. 调试
+打断点: https://blog.csdn.net/weixin_44353507/article/details/124965399
+
+
+
+4. maven 下载 MyBatis jar包的源码
+(1) 自动下载
+右击maven中的依赖，下载失败。
+
+(2) 手工下载: MyBatis 为例。
+打开maven官网：https://mvnrepository.com/artifact/org.mybatis/mybatis/3.5.13
+点击 File 行的 View All，打开
+https://repo1.maven.org/maven2/org/mybatis/mybatis/3.5.13/
+找到 source.jar 结尾的文件，
+右击另存为 路径选择 本地maven仓库。
+	也就是 IDEA 中 双击shift 搜索 ParamNameResolver 反编译时
+	IDEA 顶部显示的那个 mybatis class jar文件所在的路径。
+
+
+
 
 
 
 ========================================
 ----------------------------------------
+
+
 
 
 ========================================
