@@ -51,6 +51,7 @@ return array (
 	  //array('Dojo教程','dojo001','md' ),
 	  array('VueJS.md','VueJS','md' ),
 	  array('VueJS.txt','VueJS','txt' ),
+	  array('mxGraph流程图','mxGraph','txt' ),
     ),
   ),
 
