@@ -1619,6 +1619,767 @@ https://mybatis.org/mybatis-3/dynamic-sql.html
 
 
 
+========================================
+|-- 添加数据：mybatis 默认开启事务
+----------------------------------------
+1. 需求 
+让用户填写id之外的所有字段。
+
+返回 void ，通过是否有异常判断是否成功。
+
+
+2. 过程
+(1) 写接口
+package com.mio.mapper;
+public interface BrandMapper {
+    //添加数据
+    void add(Brand brand);
+}
+
+(2) 写sql 语句 
+$ cat resources/com/mio/mapper/BrandMapper.xml
+    <insert id="add">
+        insert into tb_brand(brand_name, company_name, ordered, description, status)
+        values(#{brandName}, #{companyName}, #{ordered}, #{description}, #{status});
+    </insert>
+
+(3) 写测试方法
+
+$ cat src/test/java/com/mio/test/MyBatisTest.java 
+
+    @Test
+    public void testAdd() throws IOException {
+        //接收的参数
+        int status=1;
+        String companyName="波导手机";
+        String brandName="波导";
+        String description="手机中的战斗机";
+        int ordered=100;
+
+        //1. 获取 SqlSessionFactory 对象
+        String resource = "mybatis-config.xml";
+        InputStream inputStream = Resources.getResourceAsStream(resource);
+        SqlSessionFactory sqlSessionFactory =
+                new SqlSessionFactoryBuilder().build(inputStream);
+        //2. 获取 SqlSession 对象
+        SqlSession sqlSession = sqlSessionFactory.openSession();
+
+        //3 获取Mapper接口的代理对象
+        BrandMapper mapper = sqlSession.getMapper(BrandMapper.class);
+
+        //4.执行对应的接口方法: 整合spring后，只有这一行了，其他都是流程化的，都可以框架实现。
+        // 重点写的就是接口方法名，和对应xml中的sql语句。
+        System.out.println("添加对象");
+
+        // 封装对象
+        Brand brand=new Brand();
+        brand.setStatus(status);
+        brand.setCompanyName(companyName);
+        brand.setBrandName(brandName);
+        brand.setDescription(description);
+        brand.setOrdered(ordered);
+
+        mapper.add(brand); //添加
+        System.out.println(brand);
+
+        //5.释放资源
+        sqlSession.close();
+    }
+
+执行后，控制台日志也符合预期。
+查数据库：但是，数据库中没有该条目！！
+>mysql -h y.biomooc.com -P 7070 -u root -p
+> select * from mybatis.tb_brand;
+
+
+(4) 显示更多日志
+配置 resources/logback.xml，使其显示更多日志
+<?xml version="1.0" encoding="UTF-8"?>
+<configuration>
+    <!--    console表示当前日志信息是可以输出到控制台的-->
+    <appender name="Console" class="ch.qos.logback.core.ConsoleAppender">
+        <encoder>
+            <!--
+            https://blog.csdn.net/qq_38701905/article/details/80739240
+
+            %d{yyyy-MM-dd HH:mm:ss SSS}
+            %-3level %logger{1024}
+            %boldGreen(%logger{15})
+            %class{35}
+            -->
+            <pattern>[%level] %blue(%d{HH:mm:ss.SSS}) %cyan([%thread]) %boldGreen(%logger{15}) - %msg %n</pattern>
+        </encoder>
+    </appender>
+
+    <!-- name 是要扫描的包路径; level 是消息等级, TRACE < DEBUG < INFO < WARN < FATAL -->
+    <root level="debug">
+        <appender-ref ref="Console"/>
+    </root>
+    <!--
+    <logger name="com.mio.mapper" level="DEBUG" additivity="false">
+        <appender-ref ref="Console" />
+    </logger>
+    -->
+</configuration>
+
+再次执行，能看到确实有回滚操作：
+[DEBUG] 17:34:29.967 [main] o.a.i.t.j.JdbcTransaction - Rolling back JDBC Connection [com.mysql.jdbc.JDBC4Connection@3e44f2a5] 
+
+
+(5) 需要手动提交事务
+在释放资源前，提交事务。
+
+	//提交事务
+	sqlSession.commit();
+
+	//5.释放资源
+	sqlSession.close();
+
+看日志：[DEBUG] 17:39:28.565 [main] o.a.i.t.j.JdbcTransaction - Committing JDBC Connection [com.mysql.jdbc.JDBC4Connection@3e44f2a5] 
+看数据库，确实新增一行。
+
+
+(5B) 或者创建 SqlSession 对象时，设置主动提交事务。
+	//2. 获取 SqlSession 对象
+    SqlSession sqlSession = sqlSessionFactory.openSession(true); 
+	//加参数true表示自动提交事务，相当于关闭了事务。
+	//默认是false，需要手动提交事务。
+
+
+
+
+========================================
+|-- 添加数据：主键返回(xml中写上 useGeneratedKeys="true" keyProperty="id")
+----------------------------------------
+1. 问题 
+上述代码中无法获取id。
+    System.out.println(brand.getId()); //获取id失败，这里是一个null
+而有些时候我们是需要id的，怎么办呢？
+
+(2) 修改xml中的语句，即可解决该问题。
+
+在接口中新建方法  void add2(Brand brand);
+
+在xml中写sql语句:
+    <!-- 添加数据，并返回主键id
+        useGeneratedKeys="true" 说名要获取自动获取的键
+        keyProperty="id" 绑定要获取的属性名称
+    -->
+    <insert id="add2" useGeneratedKeys="true" keyProperty="id">
+        insert into tb_brand(brand_name, company_name, ordered, description, status)
+        values(#{brandName}, #{companyName}, #{ordered}, #{description}, #{status});
+    </insert>
+
+
+测试：
+        mapper.add2(brand); //添加，并获取主键
+        System.out.println(brand);
+        System.out.println(brand.getId()); //获取主键id成功
+
+
+
+
+========================================
+|-- 修改数据: 修改全部字段、修改动态字段(if 标签)
+----------------------------------------
+1. 需求 
+如果内容有变化，就要修改。
+修改完，点确定，完成更新。
+
+(1) 接口方法
+
+参数：所有数据
+返回值：void 可以通过异常判断是否成功。
+	也可以返回int，就是影响的行数。
+
+    //修改数据
+    void update(Brand brand);
+
+(2) 在xml中写sql语句
+    <!-- 修改数据 -->
+    <update id="update">
+        update tb_brand
+        set
+            brand_name=#{brandName},
+            company_name=#{companyName},
+            ordered=#{ordered},
+            description=#{description},
+            status=#{status}
+        where id=#{id}
+    </update>
+
+(3) 测试 
+
+    @Test
+    public void testUpdate() throws IOException {
+        //接收的参数
+        int status=1;
+        String companyName="魅族手机";
+        String brandName="魅族";
+        String description="小而美";
+        int ordered=10;
+        int id=15;
+
+        //1. 获取 SqlSessionFactory 对象
+        String resource = "mybatis-config.xml";
+        InputStream inputStream = Resources.getResourceAsStream(resource);
+        SqlSessionFactory sqlSessionFactory =
+                new SqlSessionFactoryBuilder().build(inputStream);
+        //2. 获取 SqlSession 对象
+        SqlSession sqlSession = sqlSessionFactory.openSession(true); //加参数true表示自动提交事务
+
+        //3 获取Mapper接口的代理对象
+        BrandMapper mapper = sqlSession.getMapper(BrandMapper.class);
+
+        //4.执行对应的接口方法: 整合spring后，只有这一行了，其他都是流程化的，都可以框架实现。
+        // 重点写的就是接口方法名，和对应xml中的sql语句。
+        System.out.println("修改对象");
+
+        // 封装对象
+        Brand brand=new Brand();
+        brand.setStatus(status);
+        brand.setCompanyName(companyName);
+        brand.setBrandName(brandName);
+        brand.setDescription(description);
+        brand.setOrdered(ordered);
+        brand.setId(id);
+
+        int result = mapper.update(brand); //修改
+        System.out.println(brand);
+        System.out.println("result=" + result);
+
+        //手动提交事务
+        //sqlSession.commit();
+
+        //5.释放资源
+        sqlSession.close();
+    }
+
+输出：result=1 是影响的行数。
+
+
+
+
+2. 动态修改
+比如用户只修改密码一项，再按上述都写，就会导致除了密码之外的都被设置为空，这不是我们希望的效果。
+怎么办呢？一个方法就是在xml中使用动态语句生成sql：提交哪个字段，才在sql中修改哪个字段。
+
+(1) 添加接口
+int updateDyn(Brand brand); //动态sql
+
+
+(2) 添加sql语句
+
+    <!-- 修改数据: 动态修改 -->
+    <update id="updateDyn">
+        update tb_brand
+        <set> <!-- 使用set标签 代替 set 关键字，能自动处理异常：最后一个是逗号？set后是空？ -->
+            <if test="brandName != null and brandName != '' ">
+                brand_name=#{brandName},
+            </if>
+            <if test="companyName != null and companyName != '' ">
+                company_name=#{companyName},
+            </if>
+            <if test="ordered != null "> <!-- int 类型，只需要判断是否是null -->
+                ordered=#{ordered},
+            </if>
+            <if test="description != null and description != '' ">
+                description=#{description},
+            </if>
+            <if test="status != null">
+                status=#{status}
+            </if>
+        </set>
+        where
+            id=#{id}
+    </update>
+
+
+(3) 测试 
+
+    @Test
+    public void testUpdateDyn() throws IOException {
+        //接收的参数
+        int status=0;
+        String companyName="金刚商店";
+        String brandName="金刚";
+        String description="村里最好的产品";
+        int ordered=8;
+        int id=16;
+
+        //1. 获取 SqlSessionFactory 对象
+        String resource = "mybatis-config.xml";
+        InputStream inputStream = Resources.getResourceAsStream(resource);
+        SqlSessionFactory sqlSessionFactory =
+                new SqlSessionFactoryBuilder().build(inputStream);
+        //2. 获取 SqlSession 对象
+        SqlSession sqlSession = sqlSessionFactory.openSession(true); //加参数true表示自动提交事务
+
+        //3 获取Mapper接口的代理对象
+        BrandMapper mapper = sqlSession.getMapper(BrandMapper.class);
+
+        //4.执行对应的接口方法: 整合spring后，只有这一行了，其他都是流程化的，都可以框架实现。
+        // 重点写的就是接口方法名，和对应xml中的sql语句。
+        System.out.println("修改对象");
+
+        // 封装对象
+        Brand brand=new Brand();
+        brand.setStatus(status);
+//        brand.setCompanyName(companyName);
+//        brand.setBrandName(brandName);
+//        brand.setDescription(description);
+        brand.setOrdered(ordered);
+        brand.setId(id);
+
+        int result = mapper.updateDyn(brand); //修改
+        System.out.println(brand);
+        System.out.println("result=" + result);
+
+        //手动提交事务
+        //sqlSession.commit();
+
+        //5.释放资源
+        sqlSession.close();
+    }
+
+查看日志，生成的sql语句是：
+	Preparing: update tb_brand SET ordered=?, status=? where id=? 
+	Parameters: 8(Integer), 0(Integer), 16(Integer)
+查看数据表，确实仅那个修改的字段有变化。
+
+
+
+
+========================================
+|-- 删除：删除一个、批量删除(foreach 标签)
+----------------------------------------
+1. 需求：有些不需要的条目，可以按照id删除
+
+(1) 写mapper接口
+参数 id 
+返回 void 
+
+    //删除
+    void deleteById(int id);
+	
+(2) 在xml中写sql语句 
+    <!-- 删除 -->
+    <delete id="deleteById">
+        delete from tb_brand
+        where id=#{id}
+    </delete>
+
+(3) 测试 
+
+    @Test
+    public void testDeleteById() throws IOException {
+        //接收的参数
+        int id=4;
+
+        //1. 获取 SqlSessionFactory 对象
+        String resource = "mybatis-config.xml";
+        InputStream inputStream = Resources.getResourceAsStream(resource);
+        SqlSessionFactory sqlSessionFactory =
+                new SqlSessionFactoryBuilder().build(inputStream);
+        //2. 获取 SqlSession 对象
+        SqlSession sqlSession = sqlSessionFactory.openSession(true); //加参数true表示自动提交事务
+
+        //3 获取Mapper接口的代理对象
+        BrandMapper mapper = sqlSession.getMapper(BrandMapper.class);
+
+        //4.执行对应的接口方法: 整合spring后，只有这一行了，其他都是流程化的，都可以框架实现。
+        // 重点写的就是接口方法名，和对应xml中的sql语句。
+        System.out.println("修改对象");
+
+
+        mapper.deleteById(id); //删除
+
+        //手动提交事务
+        //sqlSession.commit();
+
+        //5.释放资源
+        sqlSession.close();
+    }
+
+检查数据表，id=4的记录已经倍删除。
+
+
+
+
+
+
+2. 批量删除
+需求：复选框，选中的多个可以按id批量删除。
+
+(1) 写接口
+接收：id数组
+返回：void
+
+    void deleteByIds(@Param("ids") int[] ids);
+
+(2) 在xml中写sql语句
+问题：不确定要删除几个，写sql时占位符个数不确定。
+	delete from tb_brand 
+	where id in (?,?,?);
+解决方法：mybatis 提供了 foreach 标签来遍历数组
+
+    <!-- 批量删除 -->
+    <delete id="deleteByIds">
+        delete from tb_brand
+        where id in
+        <foreach collection="ids" item="id" separator="," open="(" close=")">
+            #{id}
+        </foreach>
+    </delete>
+解释：
+	separator="," 是多个#{id}之间的分隔符号
+	open和close则是指定循环外包裹符号。
+
+尝试：接口中不写注释，则xml的foreach中要写 collection="array"。否则写ids会报错 Parameter 'ids' not found
+	void deleteByIds(int[] ids);
+
+
+(3) 测试 
+
+    @Test
+    public void testDeleteByIds() throws IOException {
+        //接收的参数
+        int[] ids={2, 15, 16};
+
+        //1. 获取 SqlSessionFactory 对象
+        String resource = "mybatis-config.xml";
+        InputStream inputStream = Resources.getResourceAsStream(resource);
+        SqlSessionFactory sqlSessionFactory =
+                new SqlSessionFactoryBuilder().build(inputStream);
+        //2. 获取 SqlSession 对象
+        SqlSession sqlSession = sqlSessionFactory.openSession(true); //加参数true表示自动提交事务
+
+        //3 获取Mapper接口的代理对象
+        BrandMapper mapper = sqlSession.getMapper(BrandMapper.class);
+
+        //4.执行对应的接口方法: 整合spring后，只有这一行了，其他都是流程化的，都可以框架实现。
+        // 重点写的就是接口方法名，和对应xml中的sql语句。
+        System.out.println("修改对象");
+
+
+        mapper.deleteByIds(ids); //删除
+
+        //手动提交事务
+        //sqlSession.commit();
+
+        //5.释放资源
+        sqlSession.close();
+    }
+
+
+日志：Preparing: delete from tb_brand where id in ( ? , ? , ? )
+	Updates: 3 
+数据表确实少了3个。
+
+
+
+
+========================================
+MyBatis 参数传递：多个参数 (@Param() 自定义参数名), 断点调试
+----------------------------------------
+数据库准备
+MySQL [mybatis]> desc tb_user;
++----------+-------------+------+-----+---------+----------------+
+| Field    | Type        | Null | Key | Default | Extra          |
++----------+-------------+------+-----+---------+----------------+
+| id       | int(11)     | NO   | PRI | NULL    | auto_increment |
+| username | varchar(20) | YES  |     | NULL    |                |
+| password | varchar(20) | YES  |     | NULL    |                |
+| gender   | char(1)     | YES  |     | NULL    |                |
+| addr     | varchar(30) | YES  |     | NULL    |                |
++----------+-------------+------+-----+---------+----------------+
+5 rows in set (0.04 sec)
+
+> select * from tb_user;
++----+----------+----------+--------+------+
+| id | username | password | gender | addr |
++----+----------+----------+--------+------+
+|  1 | zhangsan | 123      | M      | 北京 |
+|  2 | Lily     | 234      | F      | 广州 |
+|  3 | 王五     | 345      | M      | 上海 |
++----+----------+----------+--------+------+
+
+
+1. 如果接收多个参数，需要@Param注释
+(1)接口写法:
+	User select(@Param("username") String username, @Param("password") String password);
+	多个参数，则需要在前面添加 @Param 注解，指定后面xml中接收参数的名字。
+
+问题：能否不写@Param注解？
+	这需要对MyBatis底层封装方法有一定的了解。
+	MyBatis 提供了 ParamNameResolver 类来进行参数封装。
+	本章就通过查看该类理解怎么接收参数。
+
+(2)xml中的sql写法
+	<select id="select" resultType="user">
+		select * 
+		from tb_user 
+		where 
+			username=#{username}
+			and password=#{password};
+	</select>
+
+(3) 测试方法
+   @Test
+    public void testSelect() throws IOException {
+        //接收的参数
+        String username="zhangsan";
+        String password="123";
+
+        //1. 获取 SqlSessionFactory 对象
+        String resource = "mybatis-config.xml";
+        InputStream inputStream = Resources.getResourceAsStream(resource);
+        SqlSessionFactory sqlSessionFactory =
+                new SqlSessionFactoryBuilder().build(inputStream);
+        //2. 获取 SqlSession 对象
+        //加参数true表示自动提交事务
+        SqlSession sqlSession = sqlSessionFactory.openSession(true);
+
+        //3 获取Mapper接口的代理对象
+        UserMapper mapper = sqlSession.getMapper(UserMapper.class);
+
+        //4.执行对应的接口方法: 整合spring后，只有这一行了，其他都是流程化的，都可以框架实现。
+        // 重点写的就是接口方法名，和对应xml中的sql语句。
+        System.out.println("查询对象");
+        User user= mapper.select(username, password);
+
+        //手动提交事务
+        //sqlSession.commit();
+        System.out.println(user);
+
+        //5.释放资源
+        sqlSession.close();
+    }
+
+输出：User{id='1', username='zhangsan', password='123', gender='M', addr='北京'}
+
+
+(4) 多个参数怎么接收的？
+多个参数时，MyBatis会创建一个Map集合封装参数。
+	值就是参数的值；
+	键则是每个值有两个键，分别是 argN(0-based), paramM(1-based) 
+	map.put("arg0", 参数值1);
+	map.put("param1", 参数值1);	
+	map.put("arg1", 参数值2);
+	map.put("param2", 参数值2);
+
+测试：去掉接口中参数前的注解 User select(String username, String password);
+	报错：Cause: org.apache.ibatis.binding.BindingException: Parameter 'username' not found. Available parameters are [arg1, arg0, param1, param2]
+
+测试2：根据报错信息，修改xml中的参数名字为：
+	<select id="select" resultType="user">
+        select *
+        from tb_user
+        where
+        username=#{param1} and password=#{param2};
+    </select>
+	或
+		username=#{arg0} and password=#{arg1};
+	都可以正常输出。
+
+如果想使用自定义xml中接收参数的名字，就需要使用 @Param() 指定了。
+	具体见上文正文。
+
+测试3：如果使用注解指定了名字，则 argN 参数失效： 
+	Cause: org.apache.ibatis.binding.BindingException: Parameter 'arg0' not found. Available parameters are [password, param1, username, param2]
+
+
+查看处理参数的类：
+	双击shift，输入 ParamNameResolver，大写类就这一个。
+	如果没有MyBatis源码，下载一套：方法见末尾的 IDEA 快捷键。
+
+打断点: 
+	找到方法 getNamedParams，在第一行前面单击，点击顶部的小虫子，进入debug模式。
+	点击下半屏的调试按钮： Step over(F8) 逐行执行。
+	很快看到一行，创建了一个 Map 集合。
+		final Map<String, Object> param = new ParamMap<>();
+	接着使用循环，放置参数键值对：放入 username:zhangsan
+		param.put(entry.getValue(), args[entry.getKey()]);
+	同一个循环中，还有另一个键值对： param1:zhangsan
+		param.put(genericParamName, args[entry.getKey()]);
+	
+建议：在接口参数前使用注解 @Param() 自定义xml中要使用的参数名，提高代码的可读性。
+	@Param 会替换默认的 argN 键名。
+
+
+
+
+
+========================================
+|-- pojo类型，Map集合，Collection，List，Array，Map等单个参数的传递
+----------------------------------------
+2. 单个参数的传递
+(1) pojo 类型：在使用中，属性名、参数占位符要保持一致。
+	不一致的，要使用 resultMap 标签 定义其对应关系。
+(2) Map 集合: 使用时，map键名要和参数占位符一致。
+(3) 其他参数，比如 int id，单个参数，一定能接收到。
+接口：     User selectById(int id);
+sql语句：
+    <select id="selectById" resultType="User">
+        select *
+        from tb_user where id=#{xx};
+    </select>
+单个参数，接受时写啥都可以，why? //todo?
+
+以上几个前面介绍过。
+
+
+(4) 单个参数类型 Collection: 也封装成map集合了
+	map.put("arg0", collection集合);
+	map.put("collection", collection集合);
+
+(5) 单个参数类型 List: 也封装成map集合了
+	map.put("arg0", list集合);
+	map.put("collection", list集合);
+	map.put("list", list集合);
+
+(6) 单个参数类型 Array: 也封装成map集合了
+	map.put("arg0", array数组);
+	map.put("array", array数组);
+
+===>结论：
+不要使用默认参数，使用 @Param 自定义Map集合中的键。
+并使用修改后的名称来获取值，这样可读性更高！
+
+
+
+
+
+
+
+(7) 测试 
+## test: 集合
+接口: List<User> select2(@Param("usernames") Collection collection);
+sql语句:
+	<select id="select2" resultType="com.mio.pojo.User">
+        select *
+        from tb_user
+        where
+        username in (
+        <foreach collection="usernames" item="username" separator=",">
+            #{username}
+        </foreach>
+        );
+    </select> 
+
+测试：
+	//接收的参数
+	Collection collection= new HashSet();
+	collection.add("Lily");
+	collection.add("zhangsan");
+	
+	List<User> users= mapper.select2(collection);
+	System.out.println(users);
+
+正常输出2条。
+如果xml中故意写错，则报错 Parameter 'usernames2' not found. Available parameters are [usernames, param1]
+arg0 键名被@Param定义的键名覆盖。
+
+
+
+
+
+## test: 列表
+接口: List<User> select2(List mylist);
+sql 语句:
+	<select id="select2" resultType="com.mio.pojo.User">
+        select *
+        from tb_user
+        where
+        username in (
+        <foreach collection="mylist" item="username" separator=",">
+            #{username}
+        </foreach>
+        );
+    </select>
+测试:
+	List list=new LinkedList();
+	list.add("Lily");
+	list.add("zhangsan");
+	
+	List<User> users= mapper.select2(list);
+	System.out.println(users);
+报错:Parameter 'mylist' not found. Available parameters are [arg0, collection, list]
+应对：接口改为 List<User> select2(@Param("mylist") List mylist);
+
+
+## test: 数组
+接口：List<User> select2(String[] myarr);
+sql语句：  
+	<select id="select2" resultType="com.mio.pojo.User">
+        select *
+        from tb_user
+        where
+        username in (
+        <foreach collection="myarr" item="username" separator=",">
+            #{username}
+        </foreach>
+        );
+    </select>
+测试：
+	String[] arr=new String[2];
+	arr[0]="zhangsan";
+	arr[1]="Lily";
+
+	List<User> users= mapper.select2(arr);
+	System.out.println(users);
+
+报错：Parameter 'myarr' not found. Available parameters are [array, arg0]
+应对：接口添加注解 List<User> select2(@Param("myarr") String[] myarr);
+
+
+
+
+
+3.思考题
+如果传递的是一个map集合，map集合中有一个pojo对象 user，xml中如何获取其中的值？
+
+(1) Map 类型可以直接传递，只要键名和参数占位符对应即可。
+接口：User selectByMap(@Param("mymap") HashMap map);
+xml中:
+    <select id="selectByMap" resultType="com.mio.pojo.User">
+        select * from tb_user
+        where username=#{mymap.username} and password=#{mymap.password};
+    </select>
+
+测试:
+	//接收的参数
+	HashMap hashMap=new HashMap();
+	hashMap.put("username", "Lily");
+	hashMap.put("password", "234");
+
+	User user= mapper.selectByMap(hashMap);
+    System.out.println(user);
+正常输出1条。
+
+
+
+(2)如果键值对中值是pojo呢？
+	HashMap hashMap=new HashMap();
+	User user0=new User();
+	user0.setUsername("Lily");
+	user0.setPassword("234");
+	hashMap.put("map", user0);
+需要修改xml:
+    <select id="selectByMap" resultType="com.mio.pojo.User">
+        select * from tb_user
+        where
+        <!-- username=#{mymap.username} and password=#{mymap.password}; -->
+        <foreach collection="mymap" item="user">
+            username=#{user.username} and password=#{user.password};
+        </foreach>
+    </select>
+这样测试能正常输出1条。
+
+
+
+
+https://www.bilibili.com/video/BV1MT4y1k7wZ/?p=14
 
 
 
@@ -1626,8 +2387,84 @@ https://mybatis.org/mybatis-3/dynamic-sql.html
 
 
 ========================================
-IDEA 快捷键
+MyBatis 注解开发: 比基于xml更方便
 ----------------------------------------
+1. 注解完成增删改查
+
+@Select("select * from tb_user where id=#{id}")
+public User selectById(int id);
+
+其他注解包括：
+- 查询 @Select 
+- 添加 @Insert
+- 修改 @Update
+- 删除 @Delete
+
+(2) 提示
+- 注解完成简单的功能
+- 配置文件完成复杂功能
+
+否则会提高复杂性。
+
+
+(3) 官方文档
+https://mybatis.net.cn/getting-started.html
+注意该例中，configuration 添加了一个映射器类（mapper class）。映射器类是 Java 类，它们包含 SQL 映射注解从而避免依赖 XML 文件。
+
+不过，由于 Java 注解的一些限制以及某些 MyBatis 映射的复杂性，要使用大多数高级映射（比如：嵌套联合映射），仍然需要使用 XML 配置。
+
+有鉴于此，如果存在一个同名 XML 配置文件，MyBatis 会自动查找并加载它（在这个例子中，基于类路径和 BlogMapper.class 的类名，会加载 BlogMapper.xml）。具体细节稍后讨论。
+
+
+
+package org.mybatis.example;
+public interface BlogMapper {
+  @Select("SELECT * FROM blog WHERE id = #{id}")
+  Blog selectBlog(int id);
+}
+
+使用注解来映射简单语句会使代码显得更加简洁，但对于稍微复杂一点的语句，Java 注解不仅力不从心，还会让你本就复杂的 SQL 语句更加混乱不堪。 因此，如果你需要做一些很复杂的操作，最好用 XML 来映射语句。
+
+选择何种方式来配置映射，以及认为是否应该要统一映射语句定义的形式，完全取决于你和你的团队。 换句话说，永远不要拘泥于一种方式，你可以很轻松的在基于注解和 XML 的语句映射方式间自由移植和切换。
+
+
+
+(4) SQL 语句构建器
+https://mybatis.net.cn/statement-builders.html
+
+这里有一些比较复杂的sql药监局。
+
+
+
+
+2. 实例 
+(1) 只在接口文件写
+    @Select("select * from tb_user where id=#{id}")
+    User selectById2(int id);
+
+跳过xml文件。
+直接测试用例：
+	int id=3;
+	User user= mapper.selectById2(id);
+    System.out.println(user);
+结果，打印一条记录。
+
+
+
+
+
+更多 JavaSE 到 Spring 之前的部分基础（黑马500集） https://www.bilibili.com/video/BV1Gk4y1m7rM/?p=2
+
+
+========================================
+IDEA 快捷键 >> 已备份到 工具 专题
+----------------------------------------
+测试数据库
+>mysql -h y.biomooc.com -u root -P 7070 -p
+123456
+> use mybatis
+
+
 1. 按照数据表创建pojo类
 按列选取：alt+鼠标左键
 	id int primary key auto_increment,
@@ -1648,11 +2485,33 @@ IDEA 快捷键
 
 
 
+3. 调试
+打断点: https://blog.csdn.net/weixin_44353507/article/details/124965399
+
+
+
+4. maven 下载 MyBatis jar包的源码
+(1) 自动下载
+右击maven中的依赖，下载失败。
+
+(2) 手工下载: MyBatis 为例。
+打开maven官网：https://mvnrepository.com/artifact/org.mybatis/mybatis/3.5.13
+点击 File 行的 View All，打开
+https://repo1.maven.org/maven2/org/mybatis/mybatis/3.5.13/
+找到 source.jar 结尾的文件，
+右击另存为 路径选择 本地maven仓库。
+	也就是 IDEA 中 双击shift 搜索 ParamNameResolver 反编译时
+	IDEA 顶部显示的那个 mybatis class jar文件所在的路径。
+
+
+
 
 
 
 ========================================
 ----------------------------------------
+
+
 
 
 ========================================

@@ -30,6 +30,7 @@ return array (
     2 => array (
       array('测序分析shell语句','shell-in-seq','txt'),
       array('构建分析流程 pipeline','pipeline','txt'),
+      array('构建分析流程 nextflow','pipeline-nextflow','txt'),
 
       array('circos-Cytoscape','circos-Cytoscape','txt'),
       array('富集分析(GO/KEGG)','GO_analysis01','txt'),

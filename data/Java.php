@@ -8,9 +8,8 @@ return array (
     array (
       array('项目描述','javaEE001','html',),
       array('参考资料','javaEE002','html'),
-      array('FAQ','javaEE003','html'),
       //array('OOP理论','oop001','md',),
-      array('Java准备','java00-prep','txt',),
+      array('Java准备-环境-工具','java00-prep','txt',),
       array('设计模式design_pattern','design_pattern','md',),
 
     ),

@@ -13311,10 +13311,13 @@ gene5  1.00
 
 
 ========================================
-|-- Seurat 4 R包源码解析 26: step12 找差异基因 FindAllMarkers() //todo
+|-- Seurat 4 R包源码解析 26: step12 找差异基因 FindAllMarkers(), FeaturePlot()
 ----------------------------------------
 1. 调包侠
-(1) 每一个cluster的细胞与其余组的细胞总和做比较，筛选marker基因
+
+(1) 找marker
+pbmc.markers <- FindAllMarkers(pbmc, only.pos = TRUE, min.pct = 0.25, logfc.threshold = 0.25)
+pbmc.markers %>% group_by(cluster) %>% top_n(n = 3, wt = avg_log2FC)
 
 # find markers for every cluster compared to all remaining cells, report only the positive ones
 > pbmc.markers <- FindAllMarkers(pbmc, only.pos = TRUE, min.pct = 0.25, logfc.threshold = 0.25)
@@ -13336,6 +13339,18 @@ Calculating cluster 7
   |++++++++++++++++++++++++++++++++++++++++++++++++++| 100% elapsed=03s  
 Calculating cluster 8
   |++++++++++++++++++++++++++++++++++++++++++++++++++| 100% elapsed=01s  
+
+
+> head(pbmc.markers)
+              p_val avg_log2FC pct.1 pct.2     p_val_adj cluster  gene
+RPS12 1.273332e-143  0.7298951 1.000 0.991 1.746248e-139       0 RPS12
+RPS6  6.817653e-143  0.6870694 1.000 0.995 9.349729e-139       0  RPS6
+RPS27 4.661810e-141  0.7281575 0.999 0.992 6.393206e-137       0 RPS27
+RPL32 8.158412e-138  0.6196246 0.999 0.995 1.118845e-133       0 RPL32
+RPS14 5.177478e-130  0.6252832 1.000 0.994 7.100394e-126       0 RPS14
+RPS25 3.244898e-123  0.7496479 0.997 0.975 4.450053e-119       0 RPS25
+
+
 > pbmc.markers %>% group_by(cluster) %>% top_n(n = 3, wt = avg_log2FC)
 # A tibble: 27 × 7
 # Groups:   cluster [9]
@@ -13357,11 +13372,89 @@ Calculating cluster 8
 
 
 
+(2) 该包内置的4个可视化函数： VlnPlot/FeaturePlot/DoHeatmap/DotPlot
+# fig1
+VlnPlot(pbmc, features = c("MS4A1", "CD79A"))
+
+# you can plot raw counts as well
+VlnPlot(pbmc, features = c("NKG7", "PF4"), slot = "counts", log = TRUE)
+VlnPlot(pbmc, features = c("NKG7", "PF4"), pt.size = 0)
+
+
+# fig2：默认使用 slot=data 的数据。
+FeaturePlot(pbmc, features = c("MS4A1", "GNLY", "CD3E", "CD14", "FCER1A", "FCGR3A", "LYZ", "PPBP",
+                               "CD8A"))
+#2.2 除了基因，还可以画 PC_1, UMAP_1，及 meta.data 表头: head(pbmc@meta.data)
+FeaturePlot(object = pbmc, features = c('PC_1', "UMAP_1", "nFeature_RNA", "percent.mt"), 
+            cols = c("#eeeeee", "red") )
+
+#2.3 对于2个基因，还支持blend=T模式
+FeaturePlot(pbmc, features = c("CD4", "CD8A"), blend = T)
+#2.4 order=T 防遮挡
+FeaturePlot(pbmc, features = c("CD4", "CD8A"), blend = T, order = T)
+
+#2.5 使用 split.by 参数分面
+pbmc$gene_high=ifelse(pbmc$nFeature_RNA>1500, T, F)
+FeaturePlot(object = pbmc, features = c('PC_1', "CD3G"), 
+            split.by = "gene_high",
+            cols = c("#eeeeee", "red") )
+#2.6 标记 ident ，并指定颜色、字号
+FeaturePlot(pbmc, features = c("CD4"), label = T, label.size = 5, label.color = "red")
+
+
+# fig3 heatmap
+top5 <- pbmc.markers %>% group_by(cluster) %>% top_n(n = 5, wt = avg_log2FC)
+DoHeatmap(pbmc, features = top5$gene, label = T)  #+ NoLegend()
+
+
+DotPlot(pbmc, features = unique(top5$gene)) + RotatedAxis()
+
+
+
+(3) tree 分析 //todo
+pbmc_tree <- BuildClusterTree(object = pbmc)
+Seurat::PlotClusterTree(pbmc_tree)
+all.markers <- FindAllMarkers(object = pbmc_tree, node = 14)
+
+top5 <- all.markers %>% group_by(cluster) %>% top_n(n = 5, wt = avg_log2FC)
+head(top5)
+# fig4
+DotPlot(pbmc, features = unique(top5$gene), cluster.idents = T) + RotatedAxis()
+
+
+
+(4) 其他可刷资源
+Seurat 可视化 https://www.jianshu.com/p/bbc7a7b4644f
+Seurat 可视化 自定义 https://www.jianshu.com/p/a2fe2549cea1
+
+
+
+
+
+
 
 
 2. 源码解析
 
-FindAllMarkers
+函数列表
+
+中间tree的分析跳过 FindAllMarkers: A3-B2;
+
+- VlnPlot 见 解析8
+- FeaturePlot 本文。
+	* shape.by 参数，split.by 参数，
+	* IFeaturePlot //todo
+	* SetQuantile;
+	* RandomName
+	* BlendMatrix //todo
+	* BlendExpression //todo
+	* BlendMap //跳过
+	* LabelClusters 解析24-2(4) 很神奇的函数
+	问题
+		* pallete 调色板调用失败
+
+- DoHeatmap //todo 
+- DotPlot //todo
 
 
 
@@ -13369,10 +13462,939 @@ FindAllMarkers
 
 
 3. R tips 
+(1) setNames(object=nm, nm)函数，使用参数2个参数1命名，为vector增加name属性。
 
-(1) globalVariables() 干啥的？//todo
+> setNames( 1:3, c("foo", "bar", "baz") )
+foo bar baz 
+  1   2   3 
+
+是下面这个写法的缩写
+> tmp <- 1:3
+> names(tmp) <-  c("foo", "bar", "baz")
+> tmp
+foo bar baz 
+  1   2   3 
+
+
+特殊写法：对于字符串数组，自己给自己命名：
+> setNames(nm = c("First", "2nd"))
+  First     2nd 
+"First"   "2nd"
+
+setNames()一般用于函数结尾，创造named vector并返回。
+
+
+
+相关功能的函数是 unname()，去掉vector的name属性。
+> str(tmp)
+ Named int [1:3] 1 2 3
+ - attr(*, "names")= chr [1:3] "foo" "bar" "baz"
+> tmp
+foo bar baz 
+  1   2   3 
+> unname(tmp)
+[1] 1 2 3
+
+
+
+
+
+(2) 检测某个包是否安装？
+源码
+if (!PackageCheck('ape', error = FALSE)) {
+  stop(cluster.ape, call. = FALSE)
+}
+
+
+核心函数:
+> PackageCheck("ape")
+> print(PackageCheck("ape"))
+ ape 
+TRUE
+
+请回顾 源码解析8-3-(13).
+
+
+
+
+(3) ggplot2 坐标轴处理 scale_y_continuous()：双坐标轴，并删除右侧y轴的竖线、刻度、刻度文字
+前提是把y轴显示到y轴右侧。
+
+
+#设置主题
+# Set a theme to remove right-hand Y axis lines
+# Also sets right-hand Y axis text label formatting
+library(ggplot2)
+no.right <- theme(
+  axis.line.y.right = element_blank(),
+  axis.ticks.y.right = element_blank(),
+  axis.text.y.right = element_blank(),
+  axis.title.y.right = element_text(
+    face = "bold",
+    size = 14,
+    margin = margin(r = 7)
+  )
+)
+
+# 实例1: y坐标轴显示到右侧
+ggplot(diamonds, aes(carat, price, color=color))+
+  geom_point()+ 
+  scale_y_continuous(position = "right") + #y轴显示到右侧
+  theme_bw() +
+  no.right #使用主题
+
+
+# 实例2: 右侧新增一条y坐标轴
+ggplot(diamonds, aes(carat, price, color=color))+
+  geom_point()+ 
+  scale_y_continuous(
+    sec.axis = dup_axis(name = "gene1"),#定义第二个y轴的名字（右侧y轴）
+    ) + 
+  theme_bw() +
+  no.right #使用主题
+
+
+注意: FeaturePlot() 写了很多 双坐标轴的，又隐藏，这些句子反复覆盖。
+	scale_y_continuous(
+	  sec.axis = dup_axis(name = features[[idx]]),
+	  limits = ylims
+	)
+
+
+
+
+(4) formals() 获取函数的参数列表，进而拿到参数默认值
+
+源码: 
+default.colors <- eval(expr = formals(fun = FeaturePlot)$cols)
+
+
+> formals(fun = FeaturePlot)$cols
+if (blend) {
+    c("lightgrey", "#ff0000", "#00ff00")
+} else {
+    c("lightgrey", "blue")
+}
+
+> blend=T
+> eval(expr = formals(fun = FeaturePlot)$cols)
+[1] "lightgrey" "#ff0000"   "#00ff00"
+
+
+实例2:
+> myadd=function(x, y=2){x+y}
+> myadd(10, 20)
+[1] 30
+> myadd(10)
+[1] 12
+
+获取参数
+> formals(myadd)
+$x
+
+
+$y
+[1] 2
+
+> class(formals(myadd)) #这是参数的特殊格式：配对列表
+[1] "pairlist"
+
+> str(formals(myadd))
+Dotted pair list of 2
+ $ x: symbol 
+ $ y: num 2
+
+获取参数的具体值
+> formals(myadd)$x
+
+> formals(myadd)$y
+[1] 2
+> class(formals(myadd)$x)
+[1] "name"
+> class(formals(myadd)$y)
+[1] "numeric"
+
+
+
+
+
+(5) mapply(fun, ...) 是 apply 的多参数版本
+* 第一个是函数，后面是其参数。
+
+> mapply(function(x, y){
++   ifelse(x>y, x, y)
++ }, c(1,2,3), c(-10,100,0))
+[1]   1 100   3
+
+
+拆分：
+fn1=function(x, y){
+  ifelse(x>y, x, y)
+}
+fn1(1,30) #30
+fn1(c(1,0), c(-1, 20)) # 1 20
+a1=1:3
+a2=c(-10,100,0)
+mapply(fn1, a1, a2) #  1 100   3
+
+
+* 重点：函数对df参数的每一列给出一个返回值。对list中每个参数给出一个返回值。
+
+> mapply(mean, mtcars[1:4])
+      mpg       cyl      disp        hp 
+ 20.09062   6.18750 230.72188 146.68750
+
+
+
+源码：
+mapply(FUN = function(cutoff, feature) {
+    return(ifelse(test = is.na(x = cutoff), yes = min(data[, 
+      feature]), no = cutoff))
+  }, cutoff = min.cutoff, feature = features)
+
+合理设置个初始值，运行一下:
+> cutoff=NA
+> features=c("CD4", "CD8A")
+> data=FetchData(pbmc, vars = c("UMAP_1","ident", features))
+> head(data, n=2)
+                   UMAP_1 ident CD4     CD8A
+AAACATACAACCAC-1 2.864640     2   0 1.635873
+AAACATTGAGCTAC-1 5.019568     3   0 0.000000
+> mapply(FUN = function(cutoff, feature) {
++   return(ifelse(test = is.na(x = cutoff), yes = min(data[, feature]), no = cutoff))
++ }, cutoff = min.cutoff, feature = features)
+[1] 1 1
+
+
+
+
+(6) vapply可以定义每个返回值的类型和数量
+每个列对应一个返回值列/向量。
+
+
+features=c("CD4", "CD8A")
+min.cutoff=c(0,10)
+max.cutoff=c(10, 20)
+vapply(
+  X = list(features, min.cutoff, max.cutoff),
+  FUN = length,
+  FUN.VALUE = numeric(length = 1) #vapply可以定义每个返回值的类型：这里是长度为1的数字
+)
+
+#test1: 如果返回值类型不符合预期呢？
+vapply(
+  X = list(features, min.cutoff, max.cutoff),
+  FUN = length,
+  FUN.VALUE = character(length = 1) #vapply可以定义每个返回值的类型：这里是长度为1的字符串
+)
+#报错：
+#Error in vapply(X = list(features, min.cutoff, max.cutoff), FUN = length,  : 
+#values must be type 'character',
+#but FUN(X[[1]]) result is type 'integer'
+
+
+#test2: 长度不符合预期呢？
+vapply(
+  X = list(features, min.cutoff, max.cutoff),
+  FUN = length,
+  FUN.VALUE = numeric(length = 2) #vapply可以定义每个返回值的类型：这里是长度为2的数字向量
+)
+# 报错
+#Error in vapply(X = list(features, min.cutoff, max.cutoff), FUN = length,  : 
+#values must be length 2,
+#but FUN(X[[1]]) result is length 1
+
+
+
+
+(7) 取分位数 stats::quantile(0:10)
+
+> stats::quantile(0:10)
+  0%  25%  50%  75% 100% 
+ 0.0  2.5  5.0  7.5 10.0 
+
+> stats::quantile(0:10, probs=0.25)
+25% 
+2.5 
+
+
+参考上文第二部分: Seurat::SetQuantile() 函数。
+> Seurat::SetQuantile("q25", 0:10) #为什么不一致？因为Seurat只取费0值的分位数
+[1] 3.25
+# 相当于：
+> stats::quantile(1:10, probs=0.25)
+ 25% 
+3.25 
+
+# 不符合 q开头后面1-2个数字的，直接返回第一个参数
+> Seurat::SetQuantile(25, 0:10)
+[1] 25
+
+# q后三个数字也不符合正则
+> Seurat::SetQuantile("q100", 0:10)
+[1] NA
+Warning message:
+In Seurat::SetQuantile("q100", 0:10) : NAs introduced by coercion
+> Seurat::SetQuantile("q99", 0:10)
+[1] 9.91
+
+
+
+
+
+(8) 把该列数据按照 颜色个数切分，并转为因子
+源码：
+# 否则，把该列数据按照 颜色个数切分，并转为因子
+as.numeric(x = as.factor(x = cut(
+  x = as.numeric(x = data.feature),
+  breaks = brewer.gran
+))
+
+
+尝试运行：
+data.feature=0:10
+brewer.gran=3
+# cut返回的本来就是factor，所以这个as.factor 冗余。
+as.numeric(x = as.factor(x = cut(
+  x = as.numeric(x = data.feature),
+  breaks = brewer.gran
+) ) )
+# 去掉 as.factor 后
+tmp=as.numeric(x = cut(
+  x = as.numeric(x = data.feature),
+  breaks = brewer.gran
+) ); tmp
+
+# 作用，就是根据数值大小给不同颜色，类似热图
+colors.m1=c("blue", "grey", "red")
+plot(data.feature, col=colors.m1[tmp], pch=19)
+
+
+
+
+
+(9) 获取RColorBrewer包某个调色盘的颜色个数
+
+> library(RColorBrewer)
+> cols=1
+> brewer.pal.info[cols, ]$maxcolors
+[1] 11
+
+> brewer.pal.info[cols, ]
+     maxcolors category colorblind
+BrBG        11      div       TRUE
+
+> brewer.pal(11, "BrBG") #获取颜色
+ [1] "#543005" "#8C510A" "#BF812D" "#DFC27D" "#F6E8C3" "#F5F5F5" "#C7EAE5" "#80CDC1" "#35978F" "#01665E"
+[11] "#003C30"
+
+
+
+
+
+
+(10) sapply 返回的值确实没有列名
+
+> data=mtcars[1:3, ]
+> head(data)
+               mpg cyl disp  hp drat    wt  qsec vs am gear carb
+Mazda RX4     21.0   6  160 110 3.90 2.620 16.46  0  1    4    4
+Mazda RX4 Wag 21.0   6  160 110 3.90 2.875 17.02  0  1    4    4
+Datsun 710    22.8   4  108  93 3.85 2.320 18.61  1  1    4    1
+
+> tmp=sapply(
++   X=1:4,
++   FUN=function(index){
++     data.feature=data[, index]
++     return(data.feature)
++   }
++ )
+
+> tmp
+     [,1] [,2] [,3] [,4]
+[1,] 21.0    6  160  110
+[2,] 21.0    6  160  110
+[3,] 22.8    4  108   93
+
+> class(tmp)
+[1] "matrix" "array" 
+
+
+# 添加列名
+> colnames(x = tmp)[1:ncol(x = tmp)] <- colnames(mtcars)[1:ncol(tmp)]
+> tmp
+      mpg cyl disp  hp
+[1,] 21.0   6  160 110
+[2,] 21.0   6  160 110
+[3,] 22.8   4  108  93
+
+
+
+
+
+(11) 生成随机名字
+
+> RandomName
+function (length = 5L, ...) 
+{
+    CheckDots(..., fxns = "sample")
+    return(paste(sample(x = letters, size = length, ...), collapse = ""))
+}
+<bytecode: 0x55fe520eccf8>
+<environment: namespace:SeuratObject>
+> RandomName()
+[1] "njgio"
+
+
+分解运行：
+> sample(x = letters, size = 5L)
+[1] "e" "b" "j" "l" "o"
+
+> paste(sample(x = letters, size = 5L), 
++       collapse = "")
+[1] "atcfj"
+
+
+
+
+
+(12) 创建一个内容是list的向量
+> tmp=vector( mode = "list", length=2)
+> tmp
+[[1]]
+NULL
+
+[[2]]
+NULL
+
+> class(tmp)
+[1] "list"
+> str(tmp)
+List of 2
+ $ : NULL
+ $ : NULL
+
+
+
+
+
+
+(13) 修改源码式调试 //todo 
+希望找一个java类似的调试方法，无侵入式的打断点，暂时没找到怎么做。
+
+参考: 
+https://www.coder.work/article/6812496
+
+折中方法是，编辑源码，添加 输出 语句
+> edit(FeaturePlot)
+
+第143行添加 print(data$split);
+点击确定后，复制出控制台的函数定义，重新输入
+FeaturePlot2= 刚修改后的函数定义
+
+然后执行 
+FeaturePlot2(object = pbmc, features = c('PC_1', "CD3G"), 
+            #split.by = "gene_high", pt.size = 1,
+            cols = c("#eeeeee", "red") )
+发现那一行有输出：Levels: wknrs
+
+
+
+
+
+
+(14) 因子和字符串是否相等的比较，建议先把因子转为字符串，否则容易出现莫名其妙的错误，还不报错。
+源码：
+data.plot <- data[as.character(x = data$split) == ident, , drop = FALSE]
+
+
+因子要先转为字符串，再和字符串比较，否则容易出错
+> tmp=mtcars[, 1:3];
+> tmp$brand=paste0("brand", 1:nrow(tmp))
+> rownames(tmp)=tmp$brand
+> tmp$brand=factor(tmp$brand)
+> #tmp |> head()
+> #str(tmp)
+> select = tmp[which(tmp$mpg>32),]$brand
+> select
+[1] brand18 brand20
+32 Levels: brand1 brand10 brand11 brand12 brand13 brand14 brand15 brand16 brand17 brand18 ... brand9
+> tmp[select, ]
+         mpg cyl  disp   brand
+brand10 19.2   6 167.6 brand10
+brand13 17.3   8 275.8 brand13
+> tmp[as.character(select), ]
+         mpg cyl disp   brand
+brand18 32.4   4 78.7 brand18
+brand20 33.9   4 71.1 brand20
+
+
+# 错误的原因：factor 自动转为 数字，而不是字符串，然后取子集
+> as.numeric(select)
+[1] 10 13
+> tmp[as.numeric(select), ]
+         mpg cyl  disp   brand
+brand10 19.2   6 167.6 brand10
+brand13 17.3   8 275.8 brand13
+
+预防错误的措施，避免非比较的factor变量！
+
+
+
+单个使用的反例没有构建起来 //todo
+
+> ident=levels(tmp$brand)[1]; ident
+[1] "brand1"
+> tmp[which( as.character(tmp$brand) == ident),]
+       mpg cyl disp  brand
+brand1  21   6  160 brand1
+> tmp[which( tmp$brand == ident),]
+       mpg cyl disp  brand
+brand1  21   6  160 brand1
+
+
+
+
+
+
+
+(15) 一个变量是否是数据框is.data.frame()？
+
+> is.data.frame
+function (x) 
+inherits(x, "data.frame")
+<bytecode: 0x55fe34924468>
+<environment: namespace:base>
+
+> is.data.frame(mtcars)
+[1] TRUE
+> is.data.frame(mtcars$mpg)
+[1] FALSE
+
+
+
+(16) ggplot2 设置x和y轴的范围
+源码：
+	scale_x_continuous(limits = xlims) +
+	scale_y_continuous(limits = ylims) +
+	theme_cowplot()
+
+测试：
+library(ggplot2)
+library(cowplot)
+ggplot(mtcars, aes(mpg, cyl))+
+  geom_point()+
+  #xlim(12, 40)
+  scale_x_continuous(limits = c(12, 40))+ #效果同上
+  theme_cowplot()
+
+Seurat 作者很喜欢使用这个主题，让我们记住它: cowplot::theme_cowplot() //重要
+
+
+
+
+(17) ggplot2 标题居中主题
+ggplot2主题函数，就是直接返回 theme() 的函数。根据里面的功能命名函数名，增强代码的可读性。
+
+> CenterTitle
+function (...) 
+{
+    return(theme(plot.title = element_text(hjust = 0.5), validate = TRUE, 
+        ...))
+}
+<bytecode: 0x55fe81af1b30>
+<environment: namespace:Seurat>
+
+
+使用：
+library(ggplot2)
+library(cowplot)
+ggplot(mtcars, aes(mpg, cyl))+
+  geom_point()+
+  theme_cowplot()+
+  ggtitle("This is title")+CenterTitle() #标题居中
+
+
+
+
+
+(18) ggplot2直接使用变量名绘图：aes_string() 代替 aes()
+# 常规写法 aes()
+library(ggplot2)
+ggplot(mtcars, aes(mpg, cyl))+
+  geom_point()
+
+# 另一种写法aes_string()：使用变量，而不是列名本身
+x="mpg"
+y="cyl"
+ggplot(mtcars, aes_string(x, y))+
+  geom_point()
+
+
+
+
+
+(19) ggplot2 添加第二条坐标轴
+源码: scale_y_continuous(sec.axis = dup_axis(name = ""), limits = ylims)
+
+
+library(ggplot2)
+plot=ggplot(mtcars, aes(mpg, cyl))+
+  geom_point()
+
+ident="1"
+ylims=c(2, 10)
+# 方法：在scale_y_continous()中添加一个sec_axis的函数，设定第二条y轴
+plot +
+  scale_y_continuous(
+    sec.axis = dup_axis(name = ident),
+    limits = ylims
+  )
+
+大佬不建议使用双Y轴，认为会干扰人的判断。
+More： https://blog.csdn.net/weixin_39618597/article/details/109920011
+
+
+
+
+(20) ggplot2 去掉左侧的y轴，底部的x轴
+library(ggplot2)
+plot=ggplot(mtcars, aes(mpg, cyl))+
+  geom_point()+
+  cowplot::theme_cowplot()
+plot
+
+plot + theme(
+  axis.line.y = element_blank(), #y轴
+  axis.ticks.y = element_blank(), #y轴刻度
+  axis.text.y = element_blank(),  #y轴刻度文字
+  axis.title.y.left = element_blank() #y轴标题
+)
+
+同理，去掉x轴的方法：
+plot + theme(
+  axis.line.x = element_blank(),
+  axis.ticks.x = element_blank(),
+  axis.text.x = element_blank(),
+  axis.title.x = element_blank()
+)
+
+
+
+
+(21) ggplot2 使用RColorBrewer包的调色板
+
+library(ggplot2)
+library(RColorBrewer)
+plot1=ggplot(mtcars, aes(mpg, cyl, color=factor(carb) ))+
+  geom_point()+
+  cowplot::theme_cowplot()
+plot1
+
+两种用法：
+plot1 + scale_color_brewer(palette = "Set2") #使用名字
+plot1 + scale_color_brewer(palette = 1) #使用序号
+
+
+
+
+
+(22) ggplot2 渐变色设置 scale_color_gradientn()
+
+library(ggplot2)
+library(RColorBrewer)
+plot2=ggplot(mtcars, aes(mpg, cyl, color=carb ))+
+  geom_point()+
+  cowplot::theme_cowplot()
+plot2
+
+例1: 基本使用
+plot2 + scale_color_gradientn(
+  colors = c("lightgrey", 'red'),
+  guide = "colorbar"
+)
+#guide: 两个取值， colorbar 连续型，legend 离散型	
+#Type of legend. Use "colourbar" for continuous colour bar, or "legend" for discrete colour legend.
+
+
+
+例2: 设置渐变色对应的数值的范围，低于最低的按颜色1，高于最高值的按颜色2.
+min.feature.value = min(mtcars$carb) #1
+max.feature.value = max(mtcars$carb) #8
+plot2 & scale_color_gradientn(
+  colors = c("lightgrey", 'red'),
+  #limits = c(min.feature.value, max.feature.value)
+  limits = c(3, 4)
+)
+
+
+
+
+
+
+(23) ggplot2 固定x和y轴的比例
+
+plot + coord_fixed()
+
+
+
+
+(24) 高阶函数 Filter 过滤列表
+
+源码  plots <- Filter(f = Negate(f = is.null), x = plots)
+
+分析 
+> plots=vector(mode = "list", length=4)
+> plots[[2]]=200; plots[[4]]=400
+> plots
+[[1]]
+NULL
+
+[[2]]
+[1] 200
+
+[[3]]
+NULL
+
+[[4]]
+[1] 400
+
+
+Filter过滤：保留 T的，舍弃F的
+Negate(f)是对函数取反
+> plots <- Filter(f = Negate(f = is.null), x = plots)
+> plots
+[[1]]
+[1] 200
+
+[[2]]
+[1] 400
+
+
+
+
+
+
+(25) 图形排布：获取矩阵最后一行的编号，用行列总数(n行，m列)表示
+
+features=c("CD4", "CD8A") #默认一个基因一行
+nsplits=3 #3列
+# 打印最后一行的序号：上一行结尾+1，这一行结尾
+for (i in (length(x = features) * (nsplits - 1) + 1):(length(x = features) * nsplits)) {
+  print(i)
+}
+
+输出:
+[1] 5
+[1] 6
+
+
+
+
+
+(26) 图形排布：获取最顶行图形
+
+features=c("CD4", "CD8A")
+plots=1:6
+for (i in which(x = 1:length(x = plots) %% length(x = features) == 1)) {
+  print(i);  
+}
+输出:
+[1] 1
+[1] 3
+[1] 5
+
+
+
+#分解
+length(x = plots) #6
+length(x = features) #2
+
+(1:6) %% 2 #[1] 1 0 1 0 1 0
+1:6 %% 2   #[1] 1 0 1 0 1 0
+(1:6) %% 2 == 1 #TRUE FALSE  TRUE FALSE  TRUE FALSE
+which((1:6) %% 2 == 1) #[1] 1 3 5
+
+x = 1:length(x = plots) %% length(x = features) == 1
+x #[1]  TRUE FALSE  TRUE FALSE  TRUE FALSE
+
+which(x = 1:length(x = plots) %% length(x = features) == 1)
+# 1 3 5
+
+
+
+
+
+(27) 对list中的小图排序（经典代码）
+
+源码:
+plots <- plots[c(do.call(
+	what = rbind,
+	args = split(
+			x = 1:length(x = plots), 
+			f = ceiling(x = seq_along(along.with = 1:length(x = plots)) / length(x = features))
+		)
+))]
+
+这段代码压缩度很高，使用了很多高阶函数，值得反复学习。
+主要功能：对list进行排序。
+
+
+
+分解:
+> # 假设2个基因，3个split，共6个小图
+> seq_along(along.with = 1:6) #共1-6个小图
+[1] 1 2 3 4 5 6
+> seq_along(along.with = 1:6) / 2 #每行2个基因
+[1] 0.5 1.0 1.5 2.0 2.5 3.0
+> ceiling(seq_along(along.with = 1:6) / 2) #向上取整，表示所在的行数
+[1] 1 1 2 2 3 3
+
+
+
+# 把x=1:6按照f进行分组
+> split(
++   x = 1:6, 
++   f = ceiling(x = seq_along(along.with = 1:6) / 2)
++ )
+$`1`
+[1] 1 2
+
+$`2`
+[1] 3 4
+
+$`3`
+[1] 5 6
+
+
+
+# 调用函数rbind，对列表进行合并：按行合并
+> do.call(
++   what = rbind,
++   args = split(
++     x = 1:6, 
++     f = ceiling(x = seq_along(along.with = 1:6) / 2)
++   )
++ )
+  [,1] [,2]
+1    1    2
+2    3    4
+3    5    6
+
+# 矩阵转向量，默认是按照列展开的
+> tmp=c(
++   do.call(
++     what = rbind,
++     args = split(
++       x = 1:6, 
++       f = ceiling(x = seq_along(along.with = 1:6) / 2)
++     )
++   )
++ )
+> tmp
+[1] 1 3 5 2 4 6
+
+
+
+# 模拟小图list
+> plots=list(1,"2-apple",3,4,"5-orange",6)
+> plots
+[[1]]
+[1] 1
+
+[[2]]
+[1] "2-apple"
+
+[[3]]
+[1] 3
+
+[[4]]
+[1] 4
+
+[[5]]
+[1] "5-orange"
+
+[[6]]
+[1] 6
+
+
+
+# 对小图list排序
+> plots[tmp]
+[[1]]
+[1] 1
+
+[[2]]
+[1] 3
+
+[[3]]
+[1] "5-orange"
+
+[[4]]
+[1] "2-apple"
+
+[[5]]
+[1] 4
+
+[[6]]
+[1] 6
+
+
+
+(28) ggplot2 字体设置主题: FontSize() 【good】十分好用的函数
+
+源码: baseplot + FontSize(x.title = 20, y.title = 20) + NoLegend()
+
+实现:
+#' @param x.text,y.text X and Y axis text sizes
+#' @param x.title,y.title X and Y axis title sizes
+#' @param main Plot title size
+#'
+#' @importFrom ggplot2 theme element_text
+#' @export
+#' @concept visualization
+#'
+#' @rdname SeuratTheme
+#' @aliases FontSize
+#'
+FontSize <- function(
+  x.text = NULL, #刻度文字
+  y.text = NULL,
+  x.title = NULL, #轴的标题
+  y.title = NULL,
+  main = NULL,
+  ...
+) {
+  font.size <- theme( #这个等号<-及其左侧都是多余的
+    # Set font sizes
+    axis.text.x = element_text(size = x.text),
+    axis.text.y = element_text(size = y.text),
+    axis.title.x = element_text(size = x.title),
+    axis.title.y = element_text(size = y.title),
+    plot.title = element_text(size = main),
+    # Validate the theme
+    validate = TRUE,
+    # Extra parameters
+    ...
+  )
+}
+
+
+测试: 
+library(ggplot2)
+ggplot(mtcars, aes(mpg, disp))+
+  geom_point()+
+  theme_classic()+
+  Seurat::FontSize(
+    x.title = 20, y.title = 20,
+    x.text = 15, y.text = 15
+  )
+这个字体大小简直太完美了。
+
+
+
+(29) globalVariables() 干啥的？//todo
 解析12-3.2 也提到，还是不很懂该函数的作用。
-
 
 源码(摘出来仅仅是因为它紧邻我们关心的函数)
 globalVariables(
