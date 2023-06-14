@@ -3636,7 +3636,7 @@ https://www.bilibili.com/video/BV1n3411Q7gi/?p=24 13'44'' 描述的是 java 处�
 
 
 ========================================
-|-- 字节缓冲流，字符缓冲流：自带长度为 8192 的缓冲区
+|-- 字节缓冲流，字符缓冲流：自带长度为 8192 的缓冲区，缓冲字符流特有方法(readLine(), newLine())
 ----------------------------------------
 1. 加了缓冲区，会更快
 (1)字节缓冲流
@@ -3947,7 +3947,462 @@ jdk11后使用：FileReader fr=new FileReader("src//dustbin//GBK.txt", Charset.f
 		isr.close();
 	}
 
-(4) 字节流读取，一次读取一整行的内容，而且不能出现乱码
+	//jdk11支持参数2 FileWriter fw=new FileWriter("des", Charset.forName("UTF-8"));
+
+(4) 使用字节流读取文件，一次读取一整行的内容，而且不能出现乱码
+
+	// 利用字节流读取文件，一次读取一行，不能乱码
+	private static void demo1() throws IOException {
+		/*
+		 * 字节流读取文件: FileInputStream
+		 * 一次读取一行 readLine，只有 BufferedReader 才有该方法
+		 * 两个之间的桥梁: InputSstreamReader
+		 * */
+		String src="src//dustbin//GBK.txt";
+		InputStreamReader isr=
+				new InputStreamReader(new FileInputStream(src), "GBK");
+		BufferedReader br=new BufferedReader(isr);
+		String line;
+		while((line=br.readLine()) != null) {
+			System.out.println("> " + line);
+		}
+		
+		br.close();
+		isr.close();
+	}
+
+
+
+小结：
+转换流的名字是什么？
+	字符转换输入流 InputStreamReader 
+	字符转换输出流 OutputStreamWriter
+
+转换流的作用是什么？
+	指定字符集读写数据(jdk11之后已经淘汰)
+	字节流想使用字符流的方法
+
+
+
+
+========================================
+|-- 序列化流 与 反序列化流: 属于字节流
+----------------------------------------
+1. 继承结构
+应用场景
+游戏存档，为了防止用户看懂，就使用二进制形式保存。
+
+序列化流   ObjectOutputStream 把Java对象保存为二进制文件
+反序列化流 ObjectInputStream 从二进制文件读取对象
+
+(1). 序列化流 /对象操作输出流
+把java中的对象写到本地文件中。
+
+构造方法：把基本流包装成高级流
+	public ObjectOutputStream(OutputStream out); 
+
+成员方法：把对象序列化(写到)文件中
+	public final void writeObject(Object obj);
+
+(2). 反序列化流 /对象操作输入流 
+把序列化到本地文件的对象，读取到程序中。
+构造方法：把基本流变成高级流
+	public ObjectInputStream(InputStream out);
+把序列化到本地文件中的对象，读取到内存中
+	public Object readObject();
+
+
+2. 示例
+
+(1) 定义java对象
+package chapter8;
+
+import java.io.Serializable;
+
+public class Student implements Serializable{
+	private static final long serialVersionUID = 1L;
+	
+	String name;
+	int age;
+	Student(String name, int age){
+		this.name=name;
+		this.age=age;
+	}
+	
+	@Override
+	public String toString() {
+		return String.format("class Student[name:%s, age:%d]",this.name, this.age);
+	}
+}
+
+1)序列化接口，没有抽象类。这种接口叫做 标记 接口。
+可以认为是一个合格证，贴上就可以序列化。没有贴上就不能序列化。
+2)序列化后会自动计算一个版本号，可能导致读取和写入的时候不一样而报错。
+可以通过手动定义版本号，来固定版本号。
+3)如果一个属性不想序列化，可以加上关键字 transient，比如 
+	private transient String address;
+表示该属性不会被序列化，也就不会保存到文件中。
+
+(2)写对象到文件
+	private static void demo1() throws IOException {
+		Student stu1=new Student("张三", 20);
+		//新建流
+		String root="src//dustbin//temp//";
+		ObjectOutputStream oos=
+				new ObjectOutputStream(new FileOutputStream(root + "Stu1.obj"));
+		oos.writeObject(stu1);
+		// 报错:  java.io.NotSerializableException
+		oos.close();
+	}
+
+
+(3)从文件读取对象
+	private static void demo2() throws IOException, ClassNotFoundException {
+		String root="src//dustbin//temp//";
+		ObjectInputStream ois=
+				new ObjectInputStream(new FileInputStream(root+"Stu1.obj"));
+		Student stu1 = (Student)ois.readObject();
+		System.out.println(stu1);
+	}
+输出: class Student[name:张三, age:20]
+
+
+
+(4) 序列化多个对象
+就是多次调用 oos.writeObject(s1); 写入文件。
+读取时可能忘记需要读取几次 ois.readObject()，怎么办？
+
+最好是把对象放到集合框架中。
+
+	//写多个对象
+	private static void demo3() throws IOException {
+		Student s1=new Student("张三", 20);
+		Student s2=new Student("李斯", 21);
+		Student s3=new Student("王二", 22);
+		//放到集合中
+		ArrayList<Student> arr=new ArrayList<>();
+		arr.add(s1);
+		arr.add(s2);
+		arr.add(s3);
+		//新建流
+		String root="src//dustbin//temp//";
+		ObjectOutputStream oos=
+				new ObjectOutputStream(new FileOutputStream(root + "stus.txt"));
+		oos.writeObject(arr);
+		oos.close();
+	}
+
+	//读多个对象
+	private static void demo4() throws IOException, ClassNotFoundException {
+		String root="src//dustbin//temp//";
+		ObjectInputStream ois=
+				new ObjectInputStream(new FileInputStream(root+"stus.txt"));
+		ArrayList<Student> arr = (ArrayList<Student>) ois.readObject();
+		/*for(int i=0; i<arr.size(); i++) {
+			System.out.println(arr.get(i));			
+		}*/
+		for(Student stu: arr) {
+			System.out.println(stu);
+		}
+	}
+
+总结：
+- 想序列化，该类必须实现 序列化接口 
+- 序列化流写到文件中的数据是不能修改的，一旦修改就无法读取
+- 序列化后，修改javaBean类，再反序列化会报错？
+	需要固定 javaBean 类的 serialVersionUID 版本号。
+- java类中某个成员变量不想保存在文件，可以添加 transient 关键字。
+
+
+
+
+
+
+========================================
+|-- 打印流：只有输出 PrintStream, PrintWriter 两个类
+----------------------------------------
+1. 打印流
+
+分类：打印字符和字节
+- 只有写，没有读
+- 按字面量写出
+
+特点1：打印流只操作文件目的地，不操作数据源
+
+特点2：特有的写出方法可以实现，数据原样写出
+	例如 打印 97， 文件中 97
+		打印 true，文件中 true
+
+特点3: 特有的写出方法，可以实现自动刷新，自动换行
+	打印一次数据 = 写出 + 换行 + 刷新
+
+
+
+2. 字节打印流
+(1) 构造方法
+public PrintStream(OutputStream/File/String); 关联字节输出流/文件/文件路径
+public PrintStream(String fileName, Charset charset) 指定字符集
+public PrintStream(OutputStream out, boolean autoFlush) 自动刷新
+public PrintStream(OutputStream out, boolean autoFlush, String encoding) 指定字符编码，并自动刷新
+
+字节流底层没有缓冲区，开不开自动刷新都一样。那这个 autoFlush 没啥用？ //todo
+
+(2) 成员方法
+public void write(int b)  常规方法：规则跟之前一样，将指定的字节写出
+
+public void println(Xxx xx); 特有方法: 打印任意数据，自动刷新，自动换行
+public void print(Xxx xx);   特有方法: 打印任意数据，不换行
+public void printf(String format, Object... args) 特有方法: 带有占位符的打印语句，不换行 
+
+后三个方法能实现数据的原样写出。
+
+
+(3). 实例: 字节打印流: 输出字面量
+
+	private static void demo1() throws IOException {
+		PrintStream ps= new PrintStream(new FileOutputStream("myio//a.txt"), true);
+		ps.println(97); //自动换行
+		ps.print(false); //不会换行
+		ps.printf("-%s:%d", "Tom", 20); //和C语言 printf() 用法类似
+		ps.close();
+	}
+
+文件中是: 
+97
+false-Tom:20
+
+
+
+3. 字符打印流 PrintWriter()
+(1) 构造方法和 字节打印流类似。
+字符流底层有缓冲区，想要自动刷新需要主动开启。
+
+(2) 成员方法，也类似。
+
+(3) 实例: 字符流写到文件
+	private static void demo2() throws IOException {
+		PrintWriter pw=new PrintWriter(new FileWriter("myio//a2.txt"), true);
+		pw.println("陌上花开，可迟迟归矣。"); //不关流，也能保存，因为设置了 autoFlush=true
+		pw.print(false);
+		pw.printf("-%s:%d", "Tom", 20);
+		pw.close();
+	}
+
+
+
+4. 打印流和控制台输出语句的关系?
+控制台输出语句，就是一个关联标准输出的打印流。
+
+	private static void demo3() throws IOException {
+		System.out.println(System.out); //java.io.PrintStream@6bf2d08e
+		
+		//可以把常规的控制台输出拆分成2句话:
+		PrintStream ps = System.out; //系统启动时自动创建，指向标准输出流
+		ps.println("hello, 世界"); //println 三个功能：写出数据，自动环行，自动刷新
+		//ps.close(); //该流不能关闭，否则接下来的输出语句失效
+		
+		//手动创建 指向标志输出的流
+		PrintStream ps2=new PrintStream(new FileOutputStream("/dev/stdout"), true);
+		ps2.println("the 3rd line");
+	}
+
+输出:
+java.io.PrintStream@6bf2d08e
+hello, 世界
+the 3rd line
+
+
+
+
+========================================
+|-- 解压缩流和压缩流(zip 压缩)
+----------------------------------------
+1. 使用场景
+数据量比较大时，先压缩，再传输，传输完再解压。
+
+在IO流中的位置：属于字节流
+	解压缩流 父类是 InputStream
+	压缩流   父类是 OutputStream
+
+(2) 压缩包细节
+- 必须是zip压缩，java只识别这种格式。
+- 压缩包中的每一个文件，是一个 ZipEntry 对象。(*重要概念*)
+- 解压本质: 把每一个 ZipEntry 按照层级拷贝到本地另一个文件夹中。
+- 压缩本质: 把每一个文件或文件夹，看做ZipEntry对象，放到zip压缩文件中。
+
+
+
+2. 解压缩zip文件
+
+(1)新建压缩文件
+$ zip my.zip java_code/learn/myio/*
+  adding: java_code/learn/myio/a00.txt (stored 0%)
+  adding: java_code/learn/myio/a2.txt (stored 0%)
+  adding: java_code/learn/myio/box/ (stored 0%)
+
+加上-r表示递归，会包含子文件夹的内容：
+$ zip -r my_r.zip java_code/learn/myio/*
+  adding: java_code/learn/myio/a00.txt (stored 0%)
+  adding: java_code/learn/myio/a2.txt (stored 0%)
+  adding: java_code/learn/myio/box/ (stored 0%)
+  adding: java_code/learn/myio/box/a.txt (stored 0%)
+
+$ ls -lth
+total 68K
+-rw-rw-r-- 1 tom tom  815 Jun 13 12:29 my_r.zip
+-rw-rw-r-- 1 tom tom  782 Jun 13 12:25 my.zip
+
+
+(2)解压缩流
+	private static void demo1() throws IOException {
+		//1 创建一个 File 表示要解压的压缩包
+		File src = new File("myio//my_r.zip");
+		//2. 解压到的目的地
+		File desc = new File("myio2//");
+		
+		// 解压缩
+		unzip(src, desc);
+	}
+	
+	public static void unzip(File src, File desc) throws IOException {
+		//解压的本质：把压缩包中的每一个文件或文件夹读取出来，按照层级拷贝到目的地
+		ZipInputStream zip=new ZipInputStream(new FileInputStream(src));
+		//获取压缩包里面的每一个 zipentry 对象
+//		for(int i=0; i<100; i++) {
+//			ZipEntry entry = zip.getNextEntry();
+//			System.out.println(entry); //读取结束后，输出的都是 null
+//		}
+		
+		byte[] buffer = new byte[2048];
+		
+		// 获取压缩包中每个文件或文件夹
+		ZipEntry entry=null;
+		while ((entry=zip.getNextEntry()) != null) {
+			System.out.println(entry);
+			// 目的地文件或文件夹
+			File file=new File(desc, entry.toString());
+			if(entry.isDirectory()) {
+				//如果是文件夹，则在目的地新建文件夹
+				file.mkdirs();
+			}else {
+				//如果目的地文件夹不存在，新建路径
+				File fileParent=new File(file.getParent());
+				if(! fileParent.exists() ) {
+					fileParent.mkdirs();
+				}
+				//如果是文件，需要读取压缩包中的文件，并复制到desc文件夹中
+				FileOutputStream fos = new FileOutputStream(new File(desc, entry.toString()));
+				// 写文件1
+//				int b;
+//				while((b=zip.read()) != -1) {
+//					//写到目的地
+//					fos.write(b);
+//				}
+				// 写文件2
+				int len;
+				while((len=zip.read(buffer)) != -1) {
+					fos.write(buffer, 0, len);
+				}
+				fos.close();
+				//压缩包中一个文件处理完毕
+				zip.closeEntry();
+			}
+		}
+		zip.close();
+	}
+
+
+
+
+4. 压缩文件
+
+(1) 把一个文件压缩为zip格式
+	// 压缩单个文件
+	private static void demo1() throws IOException {
+		File src=new File("myio//a2.txt");
+		File dest=new File("myio//");
+		toZip(src, dest);
+	}
+
+	/*
+	 * 压缩文件
+	 * 文件
+	 * 目的地
+	 * */
+	private static void toZip(File src, File dest) throws IOException {
+		//1. 创建压缩流关联压缩包
+		ZipOutputStream zos = 
+				new ZipOutputStream(new FileOutputStream(new File(dest, "a2.zip")));
+		//2. 创建ZipEntry对象，表示压缩包里面的每一个文件和文件夹
+		ZipEntry entry=new ZipEntry("a3.txt"); //在压缩包中的名字，可以修改
+		//3. 把ZipEntry对象写入压缩文件，只是文件结构
+		zos.putNextEntry(entry);
+		//4.把src文件中的数据写入压缩包中，这是文件内容
+		FileInputStream fis = new FileInputStream(src);
+		int b;
+		while((b=fis.read()) != -1) {
+			zos.write(b);
+		}
+		
+		//5. 关闭文件
+		zos.closeEntry();
+		zos.close();
+	}
+
+
+(2) 压缩一个文件夹
+	private static void demo2() throws IOException {
+		//1. 要压缩的文件夹
+		File src = new File("myio//box//");
+		//2. 目的地: 上一个文件夹的根目录
+		File destParent = src.getParentFile();
+		//System.out.println(destParent);
+		//3.创建压缩包的路径
+		File dest=new File(destParent, src.getName() + ".zip");
+		//System.out.println(dest); //myio/box.zip
+		
+		//4.压缩流
+		ZipOutputStream zos =new ZipOutputStream(new FileOutputStream(dest));
+		//5.获取src中的每个文件，作为 ZipEntry对象，放到压缩包中
+		System.out.println("src.getName=" + src.getName()); 
+		// src.getName() 丢弃前面的路径，只留下最后一个文件夹或文件名
+		toZip2(src, zos, src.getName()); //递归
+		//6.释放资源
+		zos.close();
+		System.out.println("End");
+	}
+
+	/*
+	 * 作用: 获取 src 里面的每一个文件，变成 ZipEntry 对象，放入压缩包当中
+	 * 参数1: 数据源
+	 * 参数2: 压缩流
+	 * 参数3: 压缩包内部的路径
+	 **/
+	private static void toZip2(File src, ZipOutputStream zos, String name) throws IOException {
+		//1.进入 src 文件夹，得到文件or目录列表
+		File[] files=src.listFiles();
+		//2.遍历数组
+		for(File file: files) {
+			if(file.isFile()) {
+				//3. 判断-文件
+//				ZipEntry entry=new ZipEntry(file.toString());
+				//最难得部分: 压缩包中的路径名怎么写？
+				ZipEntry entry=new ZipEntry(name + "/" + file.getName()); 
+				zos.putNextEntry(entry);
+				//读取文件，写入压缩包
+				FileInputStream fis = new FileInputStream(file);
+				int b;
+				while((b=fis.read()) != -1) {
+					zos.write(b);
+				}
+				fis.close();
+				zos.closeEntry(); //当前文件写入完毕，而不是这个流关闭				
+			}else {
+				//4. 文件夹?递归
+				toZip2(file, zos, name+"/"+file.getName());
+			}
+		}
+	}
 
 
 
@@ -3957,7 +4412,85 @@ jdk11后使用：FileReader fr=new FileReader("src//dustbin//GBK.txt", Charset.f
 
 
 
-https://www.bilibili.com/video/BV1n3411Q7gi/?p=32
+
+
+
+
+========================================
+|-- Commons-io 是 apache 提供的一组有关IO操作的开源工具包
+----------------------------------------
+1. 简介
+https://commons.apache.org/proper/commons-io/
+
+commons 有很多针对性的jar包，针对io的就叫做 commons-io。
+
+和src并列位置新建 lib/ 文件夹，以后所有的jar包都放到这里。
+
+
+(1) 下载
+下载地址: https://mvnrepository.com/artifact/commons-io/commons-io
+
+	<!-- https://mvnrepository.com/artifact/commons-io/commons-io -->
+	<dependency>
+		<groupId>commons-io</groupId>
+		<artifactId>commons-io</artifactId>
+		<version>2.13.0</version>
+	</dependency>
+
+或者
+wget https://repo1.maven.org/maven2/commons-io/commons-io/2.13.0/commons-io-2.13.0.jar
+源码
+wget https://dlcdn.apache.org//commons/io/source/commons-io-2.13.0-src.zip
+
+
+(2) 示例代码
+	private static void demo1() throws IOException {
+		File src=new File("myio//a2.txt");
+		File dest=new File("myio//a2-copy.txt");
+		
+		FileUtils.copyFile(src, dest); //复制文件
+	}
+
+
+	private static void demo2() throws IOException {
+		File src=new File("myio//box/");
+		File dest=new File("myio//box2/");
+		
+		//FileUtils.copyDirectory(src, dest); //复制文件夹 中的内容
+		FileUtils.copyDirectoryToDirectory(src, dest); //拷贝文件夹 到另一个文件夹中
+	}
+
+	private static void demo3() throws IOException {
+		File src=new File("myio//box2//box");
+		FileUtils.deleteDirectory(src); //把整个文件夹都删除，包括文件夹及其内容
+	}
+
+	private static void demo4() throws IOException {
+		File src=new File("myio//box2");
+		FileUtils.cleanDirectory(src); //删除文件夹内的东西，文件夹保留
+	}
+
+
+
+
+
+
+========================================
+|-- Hutool 工具包: 一个综合的工具包(日期时间、反射、计时器、泛型、字符串、分页、16进制、数字、hash算法等)
+----------------------------------------
+本文学习其 io 工具类。
+
+https://github.com/dromara/hutool
+
+
+1.
+
+
+
+
+
+
+https://www.bilibili.com/video/BV1n3411Q7gi/?p=44
 
 
 
