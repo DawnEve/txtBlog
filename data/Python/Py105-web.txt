@@ -933,19 +933,90 @@ def yourMethod(params):
 ========================================
 |-- blueprint 技术：能降低入口文件(app/__init__.py) 的长度
 ----------------------------------------
+怎么把不同模块放到不同的文件中？蓝图可以有效降低入口文件的长度。
+
+
 1.蓝图就是把一部分功能打包成一个python包。
 # * 特别适合重复使用的模块，比如用户、权限等的打包。
 # * 或者同一个系统内，使用两种不同的url策略。这样不同的url，加载同一个蓝图，节省了一个模块的开发。
 
-文件结构
-app.py 
+
+蓝图在组织flask代码时，有两种形式
+* 功能式架构 (一个功能一个蓝图，公用静态资源)
+* 分区式架构 (每个模块独立静态资源)
+
+
+(1) 功能式架构，一个功能，一个模块组织成一个蓝图
+他们共用相同的静态资源，静态资源放在static目录下，本文所举实例太简单，因此没有创建静态资源，功能式架构类似于下面的结构
+
+__init__.py
 static/
 templates/
-blueprints/ 里面放很多蓝图，相当于独立的包
+    home/
+    control_panel/
+    admin/
+views/
+    __init__.py
+    home.py
+    control_panel.py
+    admin.py
+models.py
+
+home, control_panel,admin 都是蓝图，他们共用static和 templates。
+
+
+(2) 分区式架构，适用于子模块有特殊需要的情况 (每个模块独立静态资源)
+在创建蓝图构造Blueprint对象时，可以指定static和templates， 其结构类似于下面这样
+
+yourapp/
+    __init__.py
+    admin/
+        __init__.py
+        views.py
+        static/
+        templates/
+    home/
+        __init__.py
+        views.py
+        static/
+        templates/
+    control_panel/
+        __init__.py
+        views.py
+        static/
+        templates/
+    models.py
+
+
+试想，如果admin, home， control_panel有各自不同的页面样式和风格，那么他们就需要不同的静态资源，css, javascript,每个模块拥有各自的静态资源就是一个合理的选择。
+这样组织，还有一个好处，一个模块，或者说一个蓝图拥有自身全部的资源，包括static和templates，那么它可以很容易从一个项目里拆分出来放在另一个项目中使用。
+
+具体使用哪种组织架构，并没有强制要求，完全是开发人员随心所欲的，重要的是从项目管理的角度出发，哪一种更利于你所项目的管理，就用哪一种。
+
+
+
+
+
+理解有限，目前下文实例和上文分类不能一一对应。
+
+
+
+2.【推荐架构】文件结构1：分区式架构 (每个模块独立静态资源)
+优先使用根目录的模板。如果没有找到，则使用模块内的模板。所以最好不定义根目录 templates/ 文件夹。
+|-app.py 
+|-static/
+|-templates/
+|-blueprints/ 里面放很多蓝图，相当于独立的包
   |-maintain/ 这是一个叫做maintain的蓝图
     |-static/
     |-templates/
 	|-__init__.py
+  |-news/ 新闻模块
+    |-static/ 
+	|-templates/
+	|-__init__.py 
+  |-products/ 产品模块
+    |-__init__.py 
 
 (1) 现在 blueprints/maintain/__init__.py 中添加代码
 #
@@ -959,8 +1030,9 @@ bp=Blueprint('maintain', __name__,
 def ping():
     return "pong"
 
-
-
+@bp.route("/info")
+def info():
+    return render_template("info.html") #先找根目录的 templates/，如果没有接着找 蓝图目录的 templates/
 
 
 (2) 然后在入口文件 app.py 中引入该文件
@@ -985,14 +1057,120 @@ app.logger.info('Load blueprints/maintain')
 if __name__ == '__main__':
     app.run(debug=True)
 
-#
 
-(3) 运行入口文件 app.py即可访问浏览器
+(3) 运行入口文件 app.py 即可访问浏览器
 xx:5000/ping 查看是否返回pong
 
 
 
+
+
+
+
+
+3. 实例2：公用静态资源
+
+文件结构 
+$ tree
+.
+├── admin
+│   ├── __init__.py
+│   ├── templates
+│   │   └── deluser.html #总是被忽略
+│   └── views.py
+├── app.py
+├── ReadMe.txt
+├── templates
+│   └── deluser.html #使用这个模板
+└── user
+    ├── __init__.py
+    └── views.py
+
+(1) 入口 app.py 
+from flask import Flask
+app = Flask(__name__)
+
+@app.route("/")
+def hello():
+    return "hello, world!"
+
+# 导入模块
+from admin import admin_blue
+from user import user_blue
+
+app.register_blueprint(admin_blue)
+app.register_blueprint(user_blue)
+
+# 启动服务
+if __name__ == "__main__":
+    app.run(port=9001, host="0.0.0.0", debug=True)
+
+(2) admin 模块 
+$ cat __init__.py 
+from flask import Blueprint
+
+print(">>>", __name__)
+admin_blue = Blueprint("admin", __name__, 
+    template_folder='/admin/templates2', static_folder='static', #这里2个默认参数，默认引用的是根目录下的
+    url_prefix="/admin")
+
+from . import views
+
+
+$ cat views.py 
+from admin import admin_blue
+from flask import render_template
+
+@admin_blue.route("/alluser")
+def alluser():
+    return "alluser"
+
+@admin_blue.route("/deluser") #http://192.168.1.3:9001/admin/deluser
+def deluser():
+    user = "Tom2"
+    return render_template("deluser.html", username=user)
+
+
+(3) user 模块 
+$ cat __init__.py 
+from flask import Blueprint 
+
+user_blue = Blueprint("user", __name__, url_prefix='/user')
+from . import views
+
+
+$ cat views.py 
+# uer 模块
+from user import user_blue 
+
+@user_blue.route("/register") # http://192.168.1.3:9001/user/register
+def register():
+    return "register"
+
+@user_blue.route("/login")
+def login():
+    return "login"
+
+@user_blue.route("/modify_password")
+def modify_password():
+    return "modify_password"
+
+
+
+(4) 启动 
+$ python3 app.py 
+
+访问 http://192.168.1.3:9001/admin/deluser
+显示： 
+del user: Tom2 under /
+from templates/deluser.html
+
+
+
+
 refer:
+几种风格: https://www.cnblogs.com/Chilam007/p/17004345.html
+
 https://www.bilibili.com/video/BV1j64y1M7sd
 
 https://dormousehole.readthedocs.io/en/latest/
