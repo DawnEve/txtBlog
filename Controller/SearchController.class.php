@@ -88,7 +88,7 @@ class SearchController extends Controller{
 
 		//遍历输出每个左侧目录的文件名
 		$i=0;
-		$base_url="http://blog.dawneve.cc/index.php";
+		$base_url="/index.php";
 		foreach($topMenu as $key => $value){
 			$i++;
 			//if($i>10) //调试控制
