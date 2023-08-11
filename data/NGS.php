@@ -62,6 +62,7 @@ return array (
       array('外显子WES分析','NGS_exon_pipeline','txt'),
       array('ATAC-seq分析','ATAC-seq','txt'),
       array('3D genome','3D-Genome','txt'),
+	  array('NanoPore','3rd_NanoPore','txt',),
 
     ),
   ),

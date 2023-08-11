@@ -1919,6 +1919,154 @@ arr.second
 
 
 
+========================================
+使用 pandas 对表格进行过滤：按一列或多列，保留或者去除
+----------------------------------------
+0. 文件读写
+(1) 读取文件
+import pandas as pd
+import numpy as np
+
+# 这是个文本文件，使用tab分隔符
+data_filename="/home/marigold/data/web/docs/excel/root/NGS194-23.result.SNV.xls"
+
+snp=pd.read_csv(data_filename, sep="\t")
+snp
+
+(2) 保存文件
+snp_final.to_csv("/home/wangjl/data/web/docs/excel/root/NGS194-23.result.SNV-v2.csv")
+
+
+
+
+
+
+1. 按某一列保留或删除
+
+(1) relative 列是 某些值 的行保留
+snp1=snp[ snp['relative'].isin([ "药物相关", "1762V" ])  ]
+snp1
+
+(2) ExonicFunc.refGene 列去除 不是同义突变 的行
+pandas没有 isnotin 函数，只能自己实现:
+
+# 实现方法1: not in synonymous 列表
+snp2a=snp[snp['ExonicFunc.refGene'].map( lambda x: x not in ['-', 'synonymous SNV'] )]
+
+
+(3) 按正则表达式，保留某一列含有 hae 的行
+# 带 hae 的项
+arr=tuple(snp['COSMIC_OCCURENCE'].unique())
+arr2=[]
+for i in range(len(arr)):
+	if re.search("hae", arr[i]):
+		arr2.append(arr[i])
+
+# COSMIC_OCCURENCE 列：取出包含 hae, 不区分大小写;
+snp3a = snp2a[ snp2a["COSMIC_OCCURENCE"].isin(arr2) ]
+snp3.shape #(38, 28)
+
+
+(4) 能否直接使用正则表达式筛选？
+t1 = snp3 = snp[ snp["COSMIC_OCCURENCE"].str.contains("hae") ]
+t1.shape #(38, 28)
+
+t2 = snp3 = snp[ snp["COSMIC_OCCURENCE"].str.contains("hae", case=False) ] #忽略大小写
+注意：contains 方法名前还有一个 ".str"
+
+str.contains()：包含一个特定的字符串
+	参数na：缺少值NaN处理
+	参数case：大小写的处理
+	参数regex：使用正则表达式模式
+
+可以通过str.contains() 的参数na来指定替换NaN结果的值。
+print(df_nan['name'].str.contains('li', na=False))
+
+默认情况下，区分大小写。如果参数case为False，则case被忽略。
+print(df['name'].str.contains('LI', case=False))
+
+果参数regex为False，则确定是否包含第一个参数的字符串本身。
+print(df['name'].str.contains('i.e', regex=False))
+例如，如果要判断是否包含正则表达式的特殊字符，例如?,., 则需要设置regex = False。当然，也可以指定一个正则表达式模式，以转义\? 等特殊字符。
+
+str.contain("M|r")这是包含M或r
+
+str.contains() 等同于 re.search()，并且可以在flags参数中指定正则表达式标志。
+str.endswith()：以特定字符串结尾
+str.startswith()：以特定的字符串开头
+str.match()：匹配正则表达式模式
+要提取部分匹配的行，可以使用 pandas 转字符串后使用字符串方法 str.xxx() ，根据指定条件提取的字符串方法。
+
+
+
+
+
+
+
+
+
+2. 按多列保留或去除
+
+(1) 去掉: 有rs号(也就是不是-)，且CLNSIG是-
+思路: 使用 data[] 按列取值，条件之间使用 & 表示 逻辑运算“且”，最后整体取“否”使用~
+snp2d=snp2c[ ~( (snp2c['avsnp150']!='-') & (snp2c["CLNSIG"]=='-') )]
+
+
+
+
+
+
+3. 按某一列合并表格：集合求并集
+(1) 把三个筛选结果合并，不能有重复
+开始前添加唯一编号列 index，
+取筛选后的表格的index列求集合并集（|），按该列取子集，保证不重复，
+最后去掉 index 辅助列
+
+def mergeResult(snp1, snp2, snp3):
+    print(snp1.shape[0], snp2.shape[0], snp3.shape[0])
+    # 求并集
+    index_keep = set(snp1["index"]) | set(snp2["index"]) | set(snp3["index"])
+    snp_final = snp[snp['index'].isin(index_keep)]
+    # 去掉最后的 index 列：axis=1 是按列
+    snp_final=snp_final.drop(['index'], axis=1)
+    print(len(index_keep))
+    return snp_final
+
+snp_final = mergeResult(snp1, snp2, snp3)
+snp_final.shape
+
+
+
+
+
+
+
+4. 逻辑运算 (AND, OR, NOT) 中提取行
+使用Pandas从多个条件（AND，OR，NOT）中提取行的方法。
+
+有以下2点需要注意：
+	* &, |, ~ 的使用（and、or、not的错误）
+	* 使用比较运算符时，请将每个条件括在括号中。
+
+print(df['age'] < 35)
+print((df['age'] < 35) & ~(df['state'] == 'NY'))
+df_or = df[(df['age'] < 20) | (df['point'] > 90)]
+
+运算符的优先级是NOT（~），AND（&），OR（|）。因此，结果因顺序而异。
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 ========================================
 np: 使用SVD分解压缩图像
