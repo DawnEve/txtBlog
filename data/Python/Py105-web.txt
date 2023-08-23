@@ -1019,8 +1019,103 @@ def yourMethod(params):
 
 
 
+
+
+
+
+
 ========================================
-|-- blueprint 技术：能降低入口文件(app/__init__.py) 的长度
+|-- 获得访问者IP地址
+----------------------------------------
+1.代码
+(1) demo.py
+from flask import Flask, render_template, request
+
+# Initialize the Flask application
+app = Flask(__name__)
+# Default route, print user's IP
+@app.route('/')
+def index():
+    ip = request.remote_addr
+    return render_template('getIP.html', user_ip=ip)
+if __name__ == '__main__':
+    app.run(
+        host="0.0.0.0",
+        port=int("81")
+    )
+
+
+1B) 更好的选方式
+    # 获取登录用户的 ip
+    if request.headers.getlist("X-Forwarded-For"):
+        ip = request.headers.getlist("X-Forwarded-For")[0] #如果有转发
+    else:
+        ip = request.remote_addr
+
+
+
+(2) 模板
+$ cat getIP.html 
+<p>You IP address is: {{user_ip}}</p>
+<h3 class="text-muted">Code to retrieve the IP</h3>
+
+(3) 测试
+http://10.21.9.239:81/  You IP address is: 10.21.9.239
+http://192.168.19.1:81/  You IP address is: 192.168.19.1
+
+
+
+
+
+
+
+
+========================================
+|-- 后台进程 执行耗时任务 ThreadPoolExecutor
+----------------------------------------
+# https://blog.csdn.net/caorya/article/details/118700537
+
+$ cat flask_demo.py
+import time
+from concurrent.futures import ThreadPoolExecutor
+executor = ThreadPoolExecutor()
+#executor = ThreadPoolExecutor(10)里面的数字是线程池所能同时进行的最大数量
+
+from flask import Flask
+app = Flask(__name__)
+
+def run(i):
+    time.sleep(5)
+    print("耗时任务执行结束"+i)
+
+
+@app.route('/test/<number>')
+def test(number):
+    # 交给线程去处理耗时任务
+    executor.submit(run, number)
+    return "cheer!"+number
+
+
+if __name__ == '__main__':
+    app.run()
+
+#> python flask_demo.py
+# http://127.0.0.1:5000/test/4
+
+
+
+
+
+
+
+
+
+
+
+
+
+========================================
+blueprint 技术：能降低入口文件(app/__init__.py) 的长度
 ----------------------------------------
 怎么把不同模块放到不同的文件中？蓝图可以有效降低入口文件的长度。
 
@@ -1269,77 +1364,112 @@ https://dormousehole.readthedocs.io/en/latest/tutorial/views.html
 
 
 
+========================================
+|-- 一个 blueprint 模块拆分成多个文件
+----------------------------------------
+1.  为了避免一个模块太长，把一个 蓝图 模块拆分到若干个 py 文件中 
+
+文件结构如下:
+
+admin/
+|- __init__.py 
+|- user.py
+|- role.py
+|- views.py
+
+
+(1) 文件 __init__.py 
+$ cat __init__.py 
+from flask import Blueprint
+
+admin_api = Blueprint("admin", __name__)
+
+from admin import user
+
+
+
+(2) 文件 user.py 
+$ cat user.py 
+from admin import admin_api
+
+@admin.route("/hello/")
+def get_hello():
+    return "hello";
+
+
+
+(3) app.py 文件 
+from admin import admin_api
+
+# coding: utf-8
+from manage import api
+api.register_blueprint(admin_api, url_prefix='/admin')
+
+if __name__ == '__main__':
+    api.run(host='0.0.0.0', port=8000, debug=True)
+
+
+
 
 
 
 ========================================
-|-- 获得访问者IP地址
+axios 和 flask 的数据交换: ajax 数据的发送和接收
 ----------------------------------------
-1.代码
-(1) demo.py
-from flask import Flask, render_template, request
 
-# Initialize the Flask application
-app = Flask(__name__)
-# Default route, print user's IP
-@app.route('/')
-def index():
-    ip = request.remote_addr
-    return render_template('getIP.html', user_ip=ip)
-if __name__ == '__main__':
-    app.run(
-        host="0.0.0.0",
-        port=int("81")
-    )
+1. 传递 json 数据
+前台: axios.post("/role/check", {'title': title}).then()...
 
-
-(2) 模板
-$ cat getIP.html 
-<p>You IP address is: {{user_ip}}</p>
-<h3 class="text-muted">Code to retrieve the IP</h3>
-
-(3) 测试
-http://10.21.9.239:81/  You IP address is: 10.21.9.239
-http://192.168.19.1:81/  You IP address is: 192.168.19.1
+后台:  
+    json = request.json
+    title = json.get("title")
 
 
 
+2. 传递表单数据: form 形式
+前台:
+vue 通过 axios 提交post请求
+axios.post("/api/user/add", new FormData(_this))
+	.then(response=>{
+		console.log(response)
+	})
+	.catch(error=>{
+		console.log(error)
+	})
+
+
+后台:
+    form = request.form
+    title = form.get("title")
+
+
+
+3. 传递 url 参数 
 
 
 
 
 
 ========================================
-|-- 后台进程 执行耗时任务 ThreadPoolExecutor
+|-- flask 接收 checkbox 传递过来的参数
 ----------------------------------------
-# https://blog.csdn.net/caorya/article/details/118700537
+1.
+前端：
+<input type="checkbox" name="roles" value="1">
+<input type="checkbox" name="roles" value="2">
+<input type="checkbox" name="roles" value="3">
 
-$ cat flask_demo.py
-import time
-from concurrent.futures import ThreadPoolExecutor
-executor = ThreadPoolExecutor()
-#executor = ThreadPoolExecutor(10)里面的数字是线程池所能同时进行的最大数量
+axios.post("/api/user/add", new FormData(_this))
 
-from flask import Flask
-app = Flask(__name__)
+后端：
+form = request.form
+form.getlist("roles"))
 
-def run(i):
-    time.sleep(5)
-    print("耗时任务执行结束"+i)
-
-
-@app.route('/test/<number>')
-def test(number):
-    # 交给线程去处理耗时任务
-    executor.submit(run, number)
-    return "cheer!"+number
+打印:print(">> form: ", form, form.getlist("roles"))
+>> form:  ImmutableMultiDict([('roles', '1'), ('roles', '2'), ('roles', '3')]) ['1', '2', '3']
 
 
-if __name__ == '__main__':
-    app.run()
 
-#> python flask_demo.py
-# http://127.0.0.1:5000/test/4
 
 
 
@@ -3240,6 +3370,25 @@ def add_new_routes(app):
 个人认为：方法2更好，适合很多函数的场景，代码改动很少。
 
 https://www.cnblogs.com/lyg-blog/p/9499227.html
+
+
+
+
+
+
+========================================
+|-- Flask 和 Vue3 模板解析语法 冲突怎么办？
+----------------------------------------
+1. [推荐] 使用 Jinja2 的 raw 标签标记html代码。如下代码（在x.html里修改）： 
+{% raw %}
+<div id="app">
+    {{ js_var }}
+</div>
+{% endraw %}
+
+
+
+
 
 
 
