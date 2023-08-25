@@ -117,6 +117,338 @@ XPATH返回的不一定就是唯一的节点，而是符合条件的所有节点
 
 
 
+========================================
+|-- 脚本登录后下载内容：登录获取 token 保存到 cookie 中再次请求
+----------------------------------------
+1. 学习的脚本
+(1) 定义一个类
+
+class bcl2fq(object):
+    """
+        自动化数据分拆工具
+    """
+
+    def __init__(self):
+        """
+        初始化,获取运行参数
+        """
+        #指定参数
+        # ...
+        if 'barcode-mismatches' not in self.args:
+            self.args['barcode-mismatches']='1'
+        self.query = '''
+            bcl2fastq -r %(loading-threads)s -p %(processing-threads)s -w %(writing-threads)s %(no-lane-splitting)s \
+                --barcode-mismatches %(barcode-mismatches)s \
+                --runfolder-dir %(runfolder-dir)s \
+                --sample-sheet  %(sample-sheet)s \
+                --output-dir    %(output-dir)s
+        '''
+    
+    # 执行linux命令
+    def execute(self,workingDir="."):
+        '''
+            本地运行bcl2fastq
+        '''
+        start = time.time()
+        try:
+            query = self.query % self.args
+            print(query)
+            # 得到一个临时文件对象， 调用close后，此文件从磁盘删除
+            #out_temp = tempfile.TemporaryFile(mode='w+')
+            # 获取临时文件的文件号
+            #fileno = out_temp.fileno()
+            sub = subprocess.Popen(query,shell=True,cwd=os.path.expanduser(workingDir),stdout=subprocess.PIPE,stderr=subprocess.STDOUT)
+            while sub.poll() is None:
+                line = sub.stdout.readline()
+                line = line.strip()
+                if line:
+                    print(line)
+                if sub.returncode == 0:
+                    print('Demultiplex Run Succeed')
+            #sub.wait()
+            #out_temp.seek(0)
+            #print(out_temp.read())
+        except Exception as e:
+            print((str(e)))
+        #finally:
+            #if out_temp:
+            #    out_temp.close()
+        stop  = time.time()
+        print(('Run time:'+str(round((stop-start),3))+' seconds'))
+
+
+(3) 运行主体
+    def process(self):
+        ''' 
+            1、从web登录 系统，获取Session ID之后下载SampleSheet 
+            2、本地运行bcl2fastq，拆分数据
+            3、Web发送请求，更新系统信息，标记已经拆分过数据的Sample
+            4、远程退出账户，完成操作
+        '''
+        #构造Session
+        session = requests.Session()
+        #在session中发送登录请求，此后这个session里就存储了cookie
+        #可以用print(session.cookies.get_dict())查看
+        res = session.post(
+            self.url_login,
+            self.data,
+            verify  = self.verify,
+            headers = self.headers
+        )
+        state = json.loads(res.content)
+        if state['status'] and state['status']=='SUCCESS':
+            #发送访问请求
+            print('成功登录系统')
+            res = session.get(
+                self.url_down+'?id='+self.args['id'], 
+                verify  = self.verify,
+                headers = self.headers
+            )
+            print((res.headers))
+            if (res.headers['Content-Disposition']) and res.headers['Content-Disposition']=='attachment;fileName=SampleSheet.csv':
+                if 'sample-sheet' not in self.args:
+                    self.args['sample-sheet']=self.args['runfolder-dir']+os.sep+'SampleSheet.csv'
+                with open(self.args['sample-sheet'], "wb") as code:
+                    code.write(res.content)
+
+                if os.path.exists(self.args['sample-sheet']):
+                    self.execute()
+                    result = self.args['output-dir']+os.sep+'Stats'+os.sep+'Stats.json'
+                    if(os.path.exists(result)):
+                        with open(result) as file_object:
+                            data = json.load(file_object)
+                            ps   = {
+                                'sampleRunId':self.args['id'],
+                                'state':'true',
+                                'stat':json.dumps(data)
+                            }
+                            print(ps)
+                            res = session.post(
+                                self.url_update,
+                                ps,
+                                verify  = self.verify,
+                                headers = self.headers
+                            )
+        res = session.get(
+            self.url_logout,
+            verify  = self.verify,
+            headers = self.headers
+        )
+        state = json.loads(res.content)
+        if state['status'] and state['status']=='SUCCESS':
+            print('成功退出系统')
+
+(4) 程序启动
+if __name__=="__main__":
+    bcl2fq = bcl2fq()
+    bcl2fq.process()
+
+
+
+
+
+
+
+2. 以上代码中 值得学习的点
+
+(1) 登录后请求资源，并下载
+import requests
+session = requests.Session()
+session #<requests.sessions.Session at 0x7f71ac126c90>
+
+res = session.post(
+       "https://192.168.1.3:8443/doLogin",
+        {
+            "userName": "xxx",
+            "userPass": "20191124"
+        },
+        verify  = False,
+        headers = {
+            'User-agent': "Mozilla/5.0 (Windows NT 6.1; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/60.0.3112.113 Safari/537.36"
+        }
+    )
+
+输出: /home/wangjl/soft/python3/lib/python3.7/site-packages/urllib3/connectionpool.py:1102: InsecureRequestWarning: Unverified HTTPS request is being made to host '192.168.1.3'. Adding certificate verification is strongly advised. See: https://urllib3.readthedocs.io/en/latest/advanced-usage.html#tls-warnings
+#  InsecureRequestWarning,
+
+
+import json
+state = json.loads(res.content)
+state['status'] #'SUCCESS'
+
+print((res.headers))
+# {'Set-Cookie': 'JSESSIONID=abccb0f6-1ba0-4fbc-9742-8ac82108ce65; Path=/; HttpOnly, rememberMe=deleteMe; Path=/; Max-Age=0; Expires=Thu, 24-Aug-2023 08:06:16 GMT', 'Content-Type': 'application/json;charset=UTF-8', 'Transfer-Encoding': 'chunked', 'Date': 'Fri, 25 Aug 2023 08:06:16 GMT'}
+
+# 验证信息已经保存到 session 中了
+print(session.cookies.get_dict())
+# {'JSESSIONID': 'abccb0f6-1ba0-4fbc-9742-8ac82108ce65'}
+
+
+# 再次请求资源
+res2 = session.get(
+        "https://192.168.1.3:8443/sample/genSamplesheet?id=230823", 
+        verify  = False,
+        headers = {
+            'User-agent': "Mozilla/5.0 (Windows NT 6.1; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/60.0.3112.113 Safari/537.36"
+        }
+    )
+
+print((res2.headers))
+# {'Cache-Control': 'no-cache, no-store, must-revalidate', 'Pragma': 'no-cache', 'Expires': '0', 'Content-Disposition': 'attachment;fileName=SampleSheet.csv', 'Transfer-Encoding': 'chunked', 'Date': 'Fri, 25 Aug 2023 08:06:16 GMT'}
+
+res2.headers['Content-Disposition']
+# 'attachment;fileName=SampleSheet.csv'
+
+
+res.content #二进制
+b'{"result":{"userTheme":"theme_1","userEmail":"demo@sliverworkspace.com","updateTime":"2023-08-25 16:06:16","userName":"sliverworkspace","userId":"100000001","roleNames":["super_admin"],"token":"abccb0f6-1ba0-4fbc-9742-8ac82108ce65"},"code":200,"message":"Login Success","status":"SUCCESS","timestamp":"2023-08-25 16:06:16.508"}'
+
+
+ctt = res2.content
+ctt
+print(ctt.decode()) #解码
+
+输出结果：
+"[Header]"
+"IEMFileVersion","5"
+"Experiment Name","fusion_data"
+"Date","2023/8/25"
+"Workflow","GenerateFASTQ"
+"Application","NextSeq FASTQ Only"
+"Instrument Type","NextSeq 550"
+"Assay","TruSeq HT"
+"Index Adapters","TruSight Tumor 15 genes"
+"Chemistry","Amplicon"
+"[Manifests]"
+"A","TST_15-A-Manifest.txt"
+"[Reads]"
+"151"
+"151"
+"[Settings]"
+"[Data]"
+"Sample_ID","Sample_Name","Sample_Plate","Sample_Well","I7_Index_ID","index","I5_Index_ID","index2","Manifest","Sample_Project"
+"RTR314-23","RTR314-23",,,"93","TAACCGGT","93","ATCGTCTC",,"fusion_data"
+"RTR315-23","RTR315-23",,,"94","AACCGTTC","94","CTAGCTCA",,"fusion_data"
+"RTR316-23","RTR316-23",,,"95","TGGTACAG","95","TCGAGAGT",,"fusion_data"
+"RTR317-23","RTR317-23",,,"96","ATATGCGC","96","ACGATCAG",,"fusion_data"
+"RTR318-23","RTR318-23",,,"1","CTGATCGT","1","GCGCATAT",,"fusion_data"
+"RTR319-23","RTR319-23",,,"2","ACTCTCGA","2","CTGTACCA",,"fusion_data"
+"RTR320-23","RTR320-23",,,"3","TGAGCTAG","3","GAACGGTT",,"fusion_data"
+"RHNGS19-23","RHNGS19-23",,,"4","GAGACGAT","4","ACCGGTTA",,"fusion_data"
+"NGS218-23","NGS218-23",,,"81","CGACGTTA","81","CTCTGGAT",,"SNV1_tumor_only"
+"NGS219-23","NGS219-23",,,"82","TACGCCTT","82","GCTACTCT",,"SNV1_tumor_normal"
+"NGS220-23","NGS220-23",,,"83","CCGTAAGA","83","AGAGTCCA",,"SNV1_tumor_only"
+"RTT314-23","RTT314-23",,,"84","ATCACACG","84","GTAGCGTA",,"SNV1_tumor_only"
+"RTT315-23","RTT315-23",,,"85","CACCTGTT","85","AGGATAGC",,"SNV1_tumor_only"
+"RTT316-23","RTT316-23",,,"86","CTTCGACT","86","GATCTTGC",,"SNV1_tumor_normal"
+"RTT317-23","RTT317-23",,,"87","TGCTTCCA","87","CGATCGAT",,"SNV1_tumor_only"
+"RTT318-23","RTT318-23",,,"88","AGAACGAG","88","ATTAGCCG",,"SNV1_tumor_only"
+"RTT319-23","RTT319-23",,,"89","GTTCTCGT","89","TGTTCCGT",,"SNV1_tumor_only"
+"RTT320-23","RTT320-23",,,"90","TCAGGCTT","90","ATCATGCG",,"SNV1_tumor_only"
+"NGS219-23NC","NGS219-23NC",,,"91","CCTTGTAG","91","CCTTGGAA",,"NC"
+"RTT316-23NC","RTT316-23NC",,,"92","GAACATCG","92","TCGACAAG",,"NC"
+
+
+
+
+
+
+(2) 参数拼凑，命名参数？
+
+常规1：类似C风格的 sprintf("hello, %s", "world") 替换
+    "this is %s %s" % ("apple", "tree")
+    输出：'this is apple tree'
+常规2： f word，前面加上f，中间使用花括号括着变量
+    str1="apple"
+    str2="tree"
+    f"this is {str1} {str2}"
+    输出：'this is apple tree'
+
+不常规：可以无视顺序，使用字典顺填充
+    args = {
+        'str1': "apple",
+        'str2': "tree"
+    }
+    "this is %(str2)s %(str1)s" % args
+    输出：'this is tree apple'
+
+
+
+## 实例
+query = '''
+    bcl2fastq -r %(loading-threads)s -p %(processing-threads)s -w %(writing-threads)s %(no-lane-splitting)s \
+        --barcode-mismatches %(barcode-mismatches)s \
+        --runfolder-dir %(runfolder-dir)s \
+        --sample-sheet  %(sample-sheet)s \
+        --output-dir    %(output-dir)s
+'''
+
+args = {
+    "runfolder-dir": "/home/xx",
+    "input-dir": "/home/xx/Data/Intensities/BaseCalls/",
+    "output-dir": "/home/xx/Data/Intensities/BaseCalls/",
+    "sample-sheet": "/home/xx/SampleSheet.csv",
+    "no-lane-splitting": "",
+    "loading-threads": "8",
+    "processing-threads":"8",
+    "writing-threads": '8',
+    "barcode-mismatches": "1"
+}
+
+query2 = query % args
+print(query2)
+
+输出:
+bcl2fastq -r 8 -p 8 -w 8          --barcode-mismatches 1         --runfolder-dir /home/xx         --sample-sheet  /home/xx/SampleSheet.csv         --output-dir    /home/xx/Data/Intensities/BaseCalls/
+
+
+
+
+
+(3) py 多进程运行 linux 命令，并获取 退出状态码
+import subprocess,os
+
+workingDir="."
+try:
+    query = "echo 1 && sleep 2  && echo 2 && sleep 2  && echo 3 && sleep 2"
+    print(query)
+    # 得到一个临时文件对象， 调用close后，此文件从磁盘删除
+    #out_temp = tempfile.TemporaryFile(mode='w+')
+    # 获取临时文件的文件号
+    #fileno = out_temp.fileno()
+    sub = subprocess.Popen(query, shell=True,cwd=os.path.expanduser(workingDir),stdout=subprocess.PIPE,stderr=subprocess.STDOUT)
+    while sub.poll() is None:
+        line = sub.stdout.readline()
+        line = line.strip()
+        if line:
+            print(line)
+    # returncode 不应该在 while 循环中，否则永远不会输出
+    if sub.returncode == 0:
+        print('Demultiplex Run Succeed')
+    #sub.wait()
+    #out_temp.seek(0)
+    #print(out_temp.read())
+except Exception as e:
+    print((str(e)))
+
+print("main process")
+
+
+输出: 说明阻塞主线程了！
+echo 1 && sleep 2  && echo 2 && sleep 2  && echo 3 && sleep 2
+b'1'
+b'2'
+b'3'
+Demultiplex Run Succeed
+main process 0
+
+
+
+
+
+
+
+
 
 
 ========================================
@@ -141,7 +473,7 @@ print(response.content.decode("utf-8"))
 	
 请求：
 	GET请求：URL查询字符串传递数据，通常我们会通过httpbin.org/get?key=val方式传递
-		data = {
+	data = {
 		"name":"zhaofan",
 		"age":22
 	}
