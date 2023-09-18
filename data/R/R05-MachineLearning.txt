@@ -2579,6 +2579,273 @@ legend('topright', pch=16, col=unique(iris[,5]), legend =unique(iris[,5]) )
 
 
 ========================================
+|-- NMF 非负矩阵分解 与 R 包实现
+----------------------------------------
+更多原理介绍见 Math/ 线代2
+
+1. NMF在单细胞研究中的优势
+
+单细胞研究避免不了要回答两个问题：组织中有哪些细胞类型，每个细胞类型又有哪些表达模式？NMF解决这类问题具有天然的优势，因为它分解的因子很容易与细胞类型或表达模式对应起来。Github上有很多基于NMF和其变种算法的单细胞分析工具，我比较喜欢的有单细胞整合分析工具liger和空间转录组去卷积工具SPOTlight。应用NMF分析方法发表的高分文章也有很多，我给大家介绍一篇，更多的文章请自己搜索。
+
+Chen, YP., Yin, JH., Li, WF. et al. Single-cell transcriptomics reveals regulators underlying immune cell diversity and immune subtypes associated with prognosis in nasopharyngeal carcinoma. Cell Res 30, 1024–1042 (2020). https://doi.org/10.1038/s41422-020-0374-x
+
+(1) 安装NMF基础包
+BiocManager::install('Biobase')
+install.packages('NMF')
+
+(2) nmf函数简介
+
+使用 NMF 的文献：https://pubmed.ncbi.nlm.nih.gov/32929364/
+Fig2(C) Cophenetic and dispersion metrics for NMF across 2 to 10 clusters with 50 runs suggest 4 stable subtypes.
+cophenetic 共表型性的
+dispersion [dɪˈspɜːʃn] n. 传播，散布；分布
+
+
+NMF包通过nmf()函数实现矩阵分解，它的用法及重要参数如下：
+> nmf(x, rank, method, seed, nrun, ...)
+    x：待分解非负矩阵，数据格式可以是matrix，data.frame， ExpressionSet
+    rank：分解的基数量，对于单细胞数据，可以设置为期望的细胞类型数量或表达模式数量
+    method：因式分解的常用方法，这里介绍三种常用的
+    1、基于KL 散度进行度量目标函数的多重迭代梯度下降算法——brunet(默认算法)
+    2、基于欧几里得距离度量目标函数的多重迭代梯度下降算法——lee
+    3、交替最小二乘法(Alternating Least Squares(ALS))——snmf/r
+    seed：因式分解的初始化种子
+    nrun：运行次数
+
+rank值一般是要通过测试评估后确定的，但是分析单细胞数据这是一个很难完成的工作，5000个细胞的测试时间可能超过10个小时。
+替代办法是使用经验或先验知识指定，可以尝试略多于细胞类型或细胞状态（细胞亚群再聚类时）的一个数值，例如我在本帖的PBMC数据分解中就指定为rank=10。
+
+因为NMF一般是从随机数开始，通过迭代算法收敛误差的方法求出最优W和H矩阵，所以seed不同最后的结果也不同。为了减少seed的影响求得最优解，常规的办法是通过nrun参数设置运行100-200次矩阵分解选取最优值，也可以使用特殊的算法选择一个最佳的seed（设置seed='nndsvd'或seed='ica'），这样运行一次也能得到最优解。
+
+
+重要参数翻译：
+1) method
+specification of the NMF algorithm. The most common way of specifying the algorithm is to pass the access key (i.e. a character string) of an algorithm stored in the package's dedicated registry, but methods exists that handle other types of values, such as function or list object. See their descriptions in section Methods.
+
+If method is missing the algorithm to use is obtained from the option nmf.getOption('default.algorithm'), unless it can be infer from the type of NMF model to fit, if this later is available from other arguments. Factory fresh default value is ‘brunet’, which corresponds to the standard NMF algorithm from Brunet2004 (see section Algorithms).
+
+Cases where the algorithm is inferred from the call are when an NMF model is passed in arguments rank or seed (see description for nmf,matrix,numeric,NULL in section Methods).
+
+
+> nmf.getOption('default.algorithm') #默认方法
+[1] "brunet"
+
+
+
+==> ‘nsNMF’
+Nonsmooth NMF from Pascual-Montano et al. (2006). It uses a modified version of Lee and Seung's multiplicative updates for the Kullback-Leibler divergence Lee et al. (2001), to fit a extension of the standard NMF model, that includes an intermediate smoothing matrix, meant meant to produce sparser factors.
+
+Default stopping criterion: invariance of the connectivity matrix (see nmf.stop.connectivity).
+
+
+
+2)nrun	
+默认是1，除非 rank 是一个多于1个元素的向量，这时每个rank值默认运行30个run，用于计算 consensus matrix 来选择最优rank。
+number of runs to perform. It specifies the number of runs to perform. By default only one run is performed, except if rank is a numeric vector with more than one element, in which case a default of 30 runs per value of the rank are performed, allowing the computation of a consensus matrix that is used in selecting the appropriate rank (see consensus).
+
+当使用随机种子方法时，通常必须运行多个run，达到稳定、避免局部最优解。
+When using a random seeding method, multiple runs are generally required to achieve stability and avoid bad local minima.
+
+
+
+
+
+
+(3) 下面我们测试一下不同方法的运行时间
+
+library(Biobase)
+library(NMF)
+## 参数测试
+data("esGolub")
+#esGolub <- esGolub[1:500,]
+t1 <- nmf(esGolub, 3, method = "brunet", seed = 219)
+runtime(t1)   # elapsed: 1.239 
+t2 <- nmf(esGolub, 3, method = "lee", seed = 219)
+runtime(t2)   # elapsed: 1.471 
+t3 <- nmf(esGolub, 3, method = "snmf/r", seed = 219)
+runtime(t3)   # elapsed: 0.995 
+t4 <- nmf(esGolub, 3, method = "brunet", seed = 'nndsvd')
+runtime(t4)   # elapsed: 3.156
+t5 <- nmf(esGolub, 3, method = "brunet", nrun = 100)
+runtime(t5)   # elapsed: 2.363
+
+
+
+
+
+
+
+
+2. 对 pbmc3k 数据做 NMF 
+
+(1) 基于PCA分解的降维聚类
+library(Seurat)
+library(tidyverse)
+library(NMF)
+rm(list = ls())
+ 
+## 创建seurat对象
+pbmc <- Read10X_h5("pbmc.h5")
+pbmc <- CreateSeuratObject(pbmc, project = "pbmc", min.cells = 3, min.features = 500)
+pbmc$percent.mt <- PercentageFeatureSet(pbmc, pattern = "^MT-")
+pbmc <- subset(pbmc, percent.mt<20)
+pbmc <- NormalizeData(pbmc) %>% FindVariableFeatures() %>% ScaleData(do.center = F)
+ 
+## 使用pca的分解结果降维聚类
+pbmc <- RunPCA(pbmc)
+set.seed(219)
+pbmc.pca <- RunUMAP(pbmc, dims = 1:15) %>% FindNeighbors(dims = 1:15) %>% FindClusters()
+ 
+## 结果可视化
+p <- DimPlot(pbmc.pca, label = T)   ggsci::scale_color_igv()
+ggsave("pbmc_pca.png", p, width = 9, height = 6)
+p <- FeaturePlot(pbmc.pca, features = c('CD3D', 'CD3E', 'MS4A1', 'CD79A', 'GNLY', 'NKG7', 'CD14', 
+                                        'FCGR3A', 'PPBP', 'FCER1A', 'CD4', 'CD8A'), ncol = 4)
+ggsave("pbmc_pca_markers.png", p, width = 12, height = 8)
+
+
+
+(2) 基于NMF分解的降维聚类
+## 高变基因表达矩阵的分解
+# pbmc大体可分成T，B，NK，CD14 Mono，CD16 Mono，DC，Platelet等类型，考虑冗余后设置rank=10
+vm <- pbmc@assays$RNA@scale.data
+
+## ==> 直接做 NMF 会报错，因为 起始矩阵有负数。
+# 错误: NMF::nmf - Input matrix x contains some negative entries.
+# 过滤
+vm[vm < 0] <- 0 #负数设置为 0
+dim(vm)
+vm <- vm[apply(vm, 1, var) > 0, ] #全是0的行去掉
+dim(vm)
+
+
+res <- nmf(vm, 10, method = "snmf/r", seed = 'nndsvd')  #这一步大约20-60min
+# 其他例子中用到的参数： nmf(data, rank = r, nrun = 1, seed = 'ica', method = 'nsNMF') #nsNMF更慢，需要2个小时
+# # 默认交替最小二乘法(Alternating Least Squares(ALS))——snmf/r  
+# 参数rank=，是期望的细胞亚群数量
+
+runtime(res)
+#    用户     系统     流逝 
+#1063.147   78.019 1139.831 
+
+# 查看结果：
+plot(t(coef(res) ), 
+     col= scObj$seurat_clusters)
+head(basis(res))
+
+
+
+## 分解结果返回suerat对象
+pbmc@reductions$nmf <- pbmc@reductions$pca
+pbmc@reductions$nmf@cell.embeddings <- t(coef(res))    
+pbmc@reductions$nmf@feature.loadings <- basis(res)  
+ 
+## 使用nmf的分解结果降维聚类
+set.seed(219)
+pbmc.nmf <- RunUMAP(pbmc, reduction = 'nmf', dims = 1:10) %>% 
+  FindNeighbors(reduction = 'nmf', dims = 1:10) %>% FindClusters(resolution = 0.8)
+
+## 结果可视化  
+p <- DimPlot(pbmc.nmf, label = T)   ggsci::scale_color_igv()
+ggsave("pbmc_nmf.png", p, width = 9, height = 6)
+p <- FeaturePlot(pbmc.nmf, features = c('CD3D', 'CD3E', 'MS4A1', 'CD79A', 'GNLY', 'NKG7', 'CD14', 
+                                        'FCGR3A', 'PPBP', 'FCER1A', 'CD4', 'CD8A'), ncol = 4)
+ggsave("pbmc_nmf_markers.png", p, width = 12, height = 8)
+
+
+
+(3) NMF因子可解释性探索
+对比PCA分析的结果，NMF虽然毫不逊色，但是它的运行时间更长。（1min vs 1h）
+
+我们为什么要用NMF呢？一个很重要的原因是NMF的因子可解释性更强，每个因子贡献度最大的基因基本代表了某种或某个状态细胞的表达模式，相比差异分析得到marker基因更有代表性。
+
+
+(4) NMF因子与细胞类型的关系
+## 人工定义细胞类型
+pbmc.nmf$celltype <- pbmc.nmf$seurat_clusters
+pbmc.nmf$celltype <- recode(pbmc.nmf$celltype,
+                            '1' = "B cells", 
+                            '5' = "NKs", 
+                            '10' = "CD8  T", 
+                            '6' = "CD8  T", 
+                            '4' = "CD4  T",
+                            '9' = "CD4  T", 
+                            '0' = "CD4  T", 
+                            '3' = "CD4  T", 
+                            '7' = "CD4  T", 
+                            '2' = "CD14  Mono",
+                            '8' = "CD14  Mono", 
+                            '11' = "CD16  Mono", 
+                            '12' = "DCs", 
+                            '13' = "Platelet", 
+                            '14' = "Unknown")
+p <- DimPlot(pbmc.nmf, group.by = 'celltype', label = T, label.size = 3) 
+    +  ggsci::scale_color_npg(alpha = 0.6)
+ggsave("pbmc_nmf_celltype.png", p, width = 9, height = 6)
+
+
+
+## 查看细胞因子上的荷载
+tmp <- data.frame(t(coef(res)), check.names = F)
+colnames(tmp) <- paste0("factor", 1:ncol(tmp))
+pbmc.nmf <- AddMetaData(pbmc.nmf, metadata = tmp) #给 str(pbmc.nmf@meta.data) 添加若干列
+
+p4 <- FeaturePlot(pbmc.nmf, features = paste0("factor", 1:11), ncol = 4); p4
+#ggsave("pbmc_nmf_factors.png", p4, width = 12, height = 8)
+
+## 查看细胞主成分上的荷载
+p5 <- FeaturePlot(pbmc.nmf, features = paste0("PC_", 1:12), ncol = 4); p5
+#ggsave("pbmc_nmf_PCs.png", p, width = 12, height = 8)
+
+# 对比上下两张图，很容易发现NMF的因子比PCA的PC轴解释性更强。
+
+
+
+
+## (6) 提取celltype的signatures ----
+## 提取每个因子贡献度最大的20个基因
+f <- extractFeatures(res, 20L)
+f <- lapply(f, function(x) rownames(res)[x])
+f <- do.call("rbind", f)
+View(t(f) )
+#DT::datatable(t(f))
+
+NMF的11个因子中，很容易发现我们对细胞进行分类的marker基因，是不是很神奇？
+
+
+
+
+
+
+
+
+
+
+ref:
+单细胞分析之NMF(非负矩阵分解) https://www.plob.org/article/27713.html
+
+单细胞数据分析——非负矩阵分解（NMF）识别功能模块 https://blog.csdn.net/m0_47675572/article/details/131169434
+    对于细胞分群效果不理想，如上皮细胞存在异质性等，可以考虑使用非负矩阵分解（NMF）的方式去定义元程序（meta program，即功能模块）和元标签（meta label，即功能基因集）。
+
+https://www.bilibili.com/video/BV1K3411x7J8/
+
+https://cloud.tencent.com/developer/article/1806266
+
+
+
+
+
+
+========================================
+聚类 及 最佳聚类数的确定 (轮廓系数 silhouette  )
+----------------------------------------
+
+
+
+
+
+
+========================================
 ****** 广告 ******
 ----------------------------------------
 
