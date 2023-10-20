@@ -23,6 +23,84 @@ https://mp.weixin.qq.com/mp/appmsgalbum?__biz=MzIyMzMwNDQ2MA==&action=getalbum&a
 
 
 
+
+
+========================================
+NMF 非负矩阵降维 && RunUMAP 使用NMF代替PCA聚类，使用 Leiden 算法
+----------------------------------------
+这里只是代码，解释见 R/R05-MachineLearning.txt 机器学习
+
+
+#2. cluster with NMF----
+scObj = NormalizeData(scObj) %>% FindVariableFeatures() %>% ScaleData()
+pbmc=scObj
+vm <- pbmc@assays$RNA@scale.data
+vm[vm < 0] <- 0
+dim(vm)
+
+vm <- vm[apply(vm, 1, var) > 0, ]
+dim(vm)
+
+
+library(NMF)
+if(0){
+  res <- nmf(vm, rank=15, 
+             nrun=1,
+             method = "snmf/r", seed = 'nndsvd')
+  saveRDS(res, file=paste0(outputRoot, "/data/BMMC_04_NMF_res_noPost.list.Rds"), compress = F)
+  Sys.time()
+}else{
+  res = readRDS( file=paste0(outputRoot, "/data/BMMC_04_NMF_res_noPost.list.Rds") )
+}
+res
+
+
+## add to Seurat obj ----
+pbmc <- RunPCA(pbmc)
+pbmc@reductions$nmf <- pbmc@reductions$pca
+pbmc@reductions$nmf@cell.embeddings <- t(coef(res))
+pbmc@reductions$nmf@feature.loadings <- basis(res)  
+
+## UMAP based on NMF ----
+set.seed(2023)
+pbmc.nmf <- RunUMAP(pbmc, reduction = 'nmf', dims = 1:15) %>% 
+  FindNeighbors(reduction = 'nmf', dims = 1:15)
+#
+
+
+## Leiden algorithm ----
+# system("pip3 install leidenalg -i https://pypi.douban.com/simple/")
+
+# set Python version
+library("reticulate")
+use_python("/home/wangjl/software/anaconda3/bin/python3", required = T)
+py_config()
+system("pip3 -V")
+system("which pip3")
+system("pip3 list | grep leidenalg")
+
+# Leiden
+pbmc.nmf = FindClusters(pbmc.nmf, resolution = 0.5, algorithm=4) #1 分出来， 0.45差不多
+DimPlot(pbmc.nmf, label = T, raster = T, pt.size = 1.5)+ggtitle("NMF res=0.5 Leiden")
+ggsave( paste0(outputRoot, "04_NMF_UMAP.pdf"), width=4.8, height=4, useDingbats = F)
+
+showCluster(pbmc.nmf, 19)
+
+DotPlot(pbmc.nmf, features = unique( c( "PLK1",
+  grep("^SOCS", rownames(pbmc.nmf), value=T),
+  grep("^CCN", rownames(pbmc.nmf), value=T)
+) ) )+RotatedAxis()
+
+
+
+
+
+
+
+
+
+
+
 ========================================
 双细胞检测 doublet detection: Scrublet
 ----------------------------------------
@@ -562,6 +640,110 @@ ref:
 实例：https://www.jianshu.com/p/0bf18fe92c7d
 http://blog.sciencenet.cn/home.php?mod=space&uid=118204&do=blog&id=1208136
 https://mp.weixin.qq.com/s?__biz=MzAxMDkxODM1Ng==&mid=2247497665&idx=1&sn=74ac0e87b9689d5df7c0208e1c1dc0ac
+
+
+
+
+========================================
+一张表弄懂细胞可塑性、细胞分化轨迹、细胞谱系和RNA速率
+----------------------------------------
+https://blog.sciencenet.cn/home.php?do=blog&id=1251830&mod=space&uid=3447504
+
+1. 概念	介绍
+(1) 可塑性（Plasiticity）	
+定义：细胞以可逆的方式动态切换出不同的细胞表型（Phenotype）的能力，通常指的是干细胞（Stem Cells），例如：癌症干细胞（Cancer Stem Cells）。因为这一切换过程涉及到多种细胞内在以及外在因素的调控，因此这是一个复杂的过程。
+
+过程：细胞表型的切换需要抑制前一个细胞表型有关的基因表达，同时需要激活新的细胞表型有关的基因的表达。
+
+意义：研究细胞可塑性对于探索癌细胞抗药性、肿瘤复发以及癌细胞的转移具有重要意义。
+
+(2) 分化轨迹（Trajectory）	
+定义：又名伪时间序列（Pseudo-Time），指的是根据表达模式的相似度构造出的细胞分化的方向和路径。这是一个虚拟的概念。
+
+拓扑结构：如今人们已经构造出了多种细胞分化轨迹的形状，包括：圈、直线、分叉、树、连通图和不连通图，等等。拓扑结构的不同决定了需要采用不同的算法构造分化轨迹。
+
+意义：获取细胞的分化轨迹有助于进一步对细胞进行分类和分型，可以起到降低噪音、提高准确率的作用。
+
+
+(3) 细胞谱系（Lineage）	
+定义：细胞谱系指的是原始细胞（例如：胚胎干细胞）演化为一个分化细胞的历程。它的起点是起始细胞，终点是一个不能再分裂的细胞。
+
+方法：最初人们主要依靠肉眼观察来研究细胞谱系，该方法仅仅适用于某些透明的生物细胞。后来，由于共聚焦显微镜的发明与推广，人们可以观察更加复杂的细胞谱系。另外一种主流方法就是克隆法。
+
+
+(4) RNA速率（RNA Velocity）	
+定义：RNA速率指的是基因表达状态相对于时间的导数，或者说是已剪接mRNA（Spliced mRNA）和未剪接mRNA（Unspliced mRNA）的含量相对于时间的变化速率。RNA速率为正值，表示该基因正在被上调，也就是目前有大量的未剪接的mRNA；相反，RNA速率为负值，表示该基因正在被下调。
+
+意义：RNA速率可用于预测细胞未来的表达状态研究细胞动态（Dynamics），构造细胞分化轨迹，估计转录、剪接和降解的速率以及对不同的细胞动力学机制（Kinetics Regime）进行分类。
+
+
+
+
+
+========================================
+RNA kinetics / RNA 速率，RNA velocity /?
+----------------------------------------
+你会选择拟时许分析还是RNA velocity分析呢
+
+1.
+
+RNA速度将极大地帮助分析发育谱系和细胞动力学，特别是在人类。
+
+因为我们在进行RNA速率分析的时候，需要区分表达矩阵内前提mRNA（unspliced）和成熟的mRNA（spliced），所以需要从原始数据入手，得到loom文件后，再去进行后续分析。
+
+
+
+
+
+2. 代码 
+
+(1) 安装py包
+pip install -U scvelo
+
+pip install -i https://pypi.tuna.tsinghua.edu.cn/simple velocyto
+
+
+(2) 运行velocyto
+$ velocyto run -o ./ -m /path/mouse/mus_repeat.gtf new.bam ../mouse/genes.gtf
+
+
+(3) R转化loom文件为h5ad文件
+library(Seurat)
+library(SeuratWrappers)
+library(SeuratDisk)
+# loom_data bm bm[["RNA"]] bm bm bm bm bm
+
+DefaultAssay(bm) <- "RNA"
+SaveH5Seurat(bm, filename = "test.h5Seurat")
+Convert("test.h5Seurat", dest = "h5ad")
+
+
+(4) scvelo RNA速率分析
+adata = scv.read("/path/test.h5ad")
+scv.pp.filter_and_normalize(adata, min_shared_counts=20, n_top_genes=2000)
+scv.pp.moments(adata, n_pcs=30, n_neighbors=30)
+scv.tl.velocity(adata)
+scv.tl.velocity_graph(adata)
+
+scv.set_figure_params(dpi=300)
+scv.pl.velocity_embedding_stream(adata, basis="umap", size= 10, alpha=0.6, color="seurat_clusters")
+
+
+
+
+
+
+
+ref:
+- RNA velocity of single cells, (2018), Nature
+-  V. Bergen, M. Lange, S. Peidli, F. Alexander Wolf & F. J. Theis, Generalizing RNA velocity to transient cell states through dynamical modeling, (2020), Nature Biotechnology
+- V. Bergen, R. Soldatov, P. V. Kharchenko, F. J. Theis, RNA velocity — current challenges and future perspectives, (2021), Molecular Systems Biology
+
+https://www.jianshu.com/p/1e7acde1a318
+http://www.biomarker.com.cn/archives/28929
+
+
+
 
 
 

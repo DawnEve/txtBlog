@@ -29,8 +29,6 @@ Seurat 包的安装
 # https://cran.rstudio.com//src/contrib/Archive/RcppTOML/RcppTOML_0.1.3.tar.gz
 
 
-
-
 (2) 安装reticulate 老版本
 > install.packages("reticulate")
 
@@ -41,12 +39,73 @@ ERROR: compilation failed for package ‘reticulate’
 > install_version("reticulate", version = "1.20")
 
 
-
-
-
 (3) 再次尝试安装Seurat
 install.packages("Seurat"); 
 library("Seurat")
+
+
+
+(4) 2023.10 在 Z server 安装 Seurat 
+
+# 安装R包的方法：单细胞
+# https://www.jianshu.com/p/bf01f4901ae8
+# https://www.jianshu.com/p/bf01f4901ae8
+# gcc 版本对照表 https://blog.csdn.net/qq_39974998/article/details/130396600
+
+#options(BioC_mirror="https://mirrors.ustc.edu.cn/bioc/")
+##指定镜像，这个是中国科技大学镜像
+# 
+options(BioC_mirror="https://mirrors.tuna.tsinghua.edu.cn/bioconductor/")
+
+options("repos" = c(CRAN="https://mirrors.tuna.tsinghua.edu.cn/CRAN/")) 
+##指定install.packages安装镜像，这个是清华镜像
+
+install.packages("pheatmap")
+install.packages("BiocManager")
+install.packages("ggplot2")
+install.packages("Seurat")
+
+
+#BioConductor 的包
+if (!requireNamespace("devtools"))
+  install.packages("devtools")
+#
+devtools::install_github("TomKellyGenetics/leiden")
+
+# ERROR: dependencies ‘leiden’, ‘RcppAnnoy’, ‘reticulate’, 
+# ‘sctransform’, ‘uwot’ are not available for package ‘Seurat’
+
+install.packages("leiden")
+
+
+require(devtools)
+install_version("RcppTOML", version = "0.1.3")
+# BiocManager::install("RcppTOML")
+# BiocManager::install("Seurat")
+install_version("reticulate", version = "1.20")
+install_version("RcppAnnoy", version = "0.0.19")
+install_version("sctransform", version = "0.3.3")
+install_version("spatstat.core", version = "2.4.4")
+install_version("uwot", version = "0.1.11")
+# ‘RcppAnnoy’, ‘sctransform’, ‘spatstat.core’, ‘uwot’ are not available for package ‘Seurat’
+install_version("Seurat", version = "4.1.1")
+
+library(Seurat)
+
+
+
+BiocManager::install('Biobase')
+install.packages('NMF')
+library(NMF)
+
+
+
+
+
+
+
+
+
 
 
 
@@ -933,10 +992,135 @@ https://github.com/DawnEve/scRNAseqCode
 
 
 ========================================
-|-- 多组数据的整合、批次效应: harmony  //todo
+|-- 多组数据的整合、批次效应: harmony
 ----------------------------------------
 1. 使用方法
 https://satijalab.org/seurat/v3.2/integration.html
+
+(1) harmony算法与其他整合算法相比的优势：
+- 整合数据的同时对稀有细胞的敏感性依然很好；
+- 省内存；
+- 适合于更复杂的单细胞分析实验设计，可以比较来自不同供体，组织和技术平台的细胞。
+
+
+(2) 基本原理
+
+我们用不同颜色表示不同数据集，用形状表示不同的细胞类型。首先，Harmony应用主成分分析（一文看懂PCA主成分分析）将转录组表达谱嵌入到低维空间中，然后应用迭代过程去除数据集特有的影响。
+
+（A）Harmony概率性地将细胞分配给cluster，从而使每个cluster内数据集的多样性最大化。
+（B）Harmony计算每个cluster的所有数据集的全局中心，以及特定数据集的中心。
+（C）在每个cluster中，Harmony基于中心为每个数据集计算校正因子。
+（D）最后，Harmony使用基于C的特定于细胞的因子校正每个细胞。由于Harmony使用软聚类，因此可以通过多个因子的线性组合对其A中进行的软聚类分配进行线性校正，来修正每个单细胞。
+重复步骤A到D，直到收敛为止。聚类分配和数据集之间的依赖性随着每一轮的减少而减小。
+
+
+(3) 示例
+
+library(Seurat)
+library(cowplot)
+library(harmony)
+load('data/pbmc_stim.RData') #加载矩阵数据
+#在运行Harmony之前，创建一个Seurat对象并按照标准PCA进行分析。
+pbmc <- CreateSeuratObject(counts = cbind(stim.sparse, ctrl.sparse), project = "PBMC", min.cells = 5) %>%
+    Seurat::NormalizeData(verbose = FALSE) %>%
+    FindVariableFeatures(selection.method = "vst", nfeatures = 2000) %>%
+    ScaleData(verbose = FALSE) %>%
+    RunPCA(pc.genes = pbmc@var.genes, npcs = 20, verbose = FALSE) 
+
+pbmc@meta.data$stim <- c(rep("STIM", ncol(stim.sparse)), rep("CTRL", ncol(ctrl.sparse)))#赋值条件变量
+
+# 未经校正的PC中的数据集之间存在明显差异
+options(repr.plot.height = 5, repr.plot.width = 12)
+p1 <- DimPlot(object = pbmc, reduction = "pca", pt.size = .1, group.by = "stim")
+p2 <- VlnPlot(object = pbmc, features = "PC_1", group.by = "stim", pt.size = .1)
+plot_grid(p1,p2)
+
+
+2) Run Harmony
+运行Harmony的最简单方法是传递Seurat对象并指定要集成的变量。RunHarmony返回Seurat对象，并使用更正后的Harmony坐标（使用Harmony代替PCA）。将plot_convergence设置为TRUE，这样我们就可以确保Harmony目标函数在每一轮中都变得更好。
+
+RunHarmony函数中主要参数：
+- group.by.vars参数是设置按哪个分组来整合
+- max.iter.harmony设置迭代次数，默认是10。运行RunHarmony结果会提示在迭代多少次后完成了收敛。
+- ⚠️lambda 参数，默认值是1，决定了Harmony整合的力度。lambda值调小，整合力度变大，反之。（只有这个参数影响整合力度，调整范围一般在0.5-2之间）
+- ⚠️theta 参数：Diversity clustering penalty parameter. Specify for each variable in group.by.vars. Default theta=2. theta=0 does not encourage any diversity. Larger values of theta result in more diverse clusters. 这个参数我常用默认值，但在不同文献中这个参数往往不同。
+- ⚠️dims.use 参数：Which PCA dimensions to use for Harmony. By default, use all.
+- sigma参数：Width of soft kmeans clusters. Default sigma=0.1. Sigma scales the distance from a cell to cluster centroids. Larger values of sigma result in cells assigned to more clusters. Smaller values of sigma make soft kmeans cluster approach hard clustering.
+
+
+options(repr.plot.height = 2.5, repr.plot.width = 6)
+pbmc <- pbmc %>% RunHarmony("stim", plot_convergence = TRUE) #Harmony converged after 8 iterations
+
+Harmory运行后的结果储存在：
+pbmc@reductions$harmony
+
+> scObj@reductions$harmony[1:3,1:4]
+             harmony_1   harmony_2  harmony_3   harmony_4
+RP11-34P13.7  4822.785    581.2719  -1928.599    353.9254
+FO538757.2   18815.930 -49360.2172 -21452.936  -8208.2729
+AP006222.2   18817.910 -72234.6732 -46611.394 -12277.6396
+
+
+使用Embeddings命令访问新的Harmony embeddings。
+harmony_embeddings <- Embeddings(pbmc, 'harmony')
+harmony_embeddings[1:5, 1:5]
+
+> Embeddings(scObj, 'harmony')[1:3, 1:4]
+                   harmony_1  harmony_2  harmony_3  harmony_4
+AAACGGGCATGACGGA-1  24.96812  1.6123402  0.4014826 -10.221284
+AAAGATGAGCAGACTG-1  28.14937  0.5829318  0.8305650 -16.066575
+AAAGATGAGTGTACTC-1  25.97696 -1.7031176 -1.6094473  -8.406375
+
+
+让我们查看确认数据集在Harmony运行之后的前两个维度中得到很好的整合。
+options(repr.plot.height = 5, repr.plot.width = 12)
+p1 <- DimPlot(object = pbmc, reduction = "harmony", pt.size = .1, group.by = "stim")
+p2 <- VlnPlot(object = pbmc, features = "harmony_1", group.by = "stim", pt.size = .1)
+plot_grid(p1,p2)
+
+
+
+3) Downstream analysis 下游分析: UMAP
+
+许多下游分析是在低维嵌入而不是基因表达上进行的。要使用校正后的Harmony embeddings而不是PC，设置reduction ='harmony'。
+
+pbmc <- pbmc %>%
+    RunUMAP(reduction = "harmony", dims = 1:20) %>%
+    FindNeighbors(reduction = "harmony", dims = 1:20) %>%
+    FindClusters(resolution = 0.5) %>%
+    identity()
+
+在UMAP embedding中，我们可以看到更复杂的结构。由于我们使用harmony embeddings，因此UMAP embeddings混合得很好。
+options(repr.plot.height = 4, repr.plot.width = 10)
+DimPlot(pbmc, reduction = "umap", group.by = "stim", pt.size = .1, split.by = 'stim')
+
+
+# tSNE
+pbmc=RunTSNE(pbmc,reduction = "harmony", dims = 1:20)
+TSNEPlot(object = pbmc, pt.size = 0.5, label = TRUE,split.by='stim') 
+
+两样本合并的TSNE和UMAP图
+DimPlot(pbmc, reduction = "umap",pt.size = .1,  label = TRUE)
+TSNEPlot(pbmc, pt.size = .1, label = TRUE) 
+
+
+4) 关于Harmony操作是否会对差异分析产生影响
+Harmony输入的是 scRNA@reductions$pca 的数据，得出的结果储存在 scRNA@reductions$harmony 中。
+
+而差异分析使用的是 scRNA@assays$RNA@counts 数据，互不影响。
+
+
+
+4. 多样本批次矫正方法汇总
+工具		/Batch-effect-corrected output	/方法
+Seurat2	R	/Normalized canonical components	/Canonical correlation analysis and dynamic time warping
+Seurat3	R	/Normalized gene expression matrix	/CCA and mutural nearest neighbors-anchors
+Harmony	R	/Normalized feature reduction vectors	/Iterative clustering in dimensionally reduced space
+MNN Correct	R	/Normalized gene expression matrix	/Mutual nearest neighbor in gene expression space
+...
+
+
+
 
 
 
@@ -970,6 +1154,81 @@ http://www.bio-info-trainee.com/8728.html
 immune (CD45+,PTPRC),
 epithelial/cancer (EpCAM+,EPCAM),
 stromal (CD10+,MME,fibo or CD31+,PECAM1,endo)
+
+
+
+
+
+
+
+3. 头颈癌：Single-cell transcriptome profiling of the stepwise progression of head and neck cancer
+https://pubmed.ncbi.nlm.nih.gov/36828832/
+https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc=GSE181919
+
+Choi JH, Lee BS, Jang JY, Lee YS et al. Single-cell transcriptome profiling of the stepwise progression of head and neck cancer. Nat Commun 2023 Feb 24;14(1):1055. PMID: 36828832
+
+(1) 背景
+Head and neck squamous cell carcinoma (HNSCC) undergoes stepwise progression from normal tissue to metastasized tumors. 
+To comprehensively delineate the heterogeneity of tumor cells and their interactions during the progression of HNSCC, we employed single-cell RNA-seq (scRNA-seq) profiling for the tissues of normal, leukoplakia, HNSCC, and metastasized HNSCC. 
+
+We identified novel clones of malignant cells expressing LGALS7B and fibroblasts expressing CXCL8, and the abundance of these cells in the tumor tissue was associated with poorer prognostic outcomes. 
+
+In addition, we demonstrated that fibroblasts in leukoplakia and tumor tissue express COL1A1, which interacts with CD44+ malignant cells, facilitating HNSCC progression. 
+
+CD4+FOXP3+ regulatory T cells expand in leukoplakia and express LAIR2 with collagen stimulation, which may provide a favorable microenvironment for tumor progression. 
+
+In conclusion, stromal and immune cell interactions play critical roles in the stepwise progression of HNSCC, and we have identified steps during HNSCC progression for possible therapeutic interventions
+
+
+(2) 实验设计
+Single-cell transcriptome profiling from 37 tissue specimens of 
+non-tumoral surrounding normal tissue (NL, n = 9), 
+leukoplakia (LP, n = 4), 
+primary cancer (CA, n = 20), 
+and metastatic tumors in lymph nodes (LN, n = 4)
+
+按进展顺序 NL -> LP -> CA -> LN;
+
+
+(3) 聚类 Processing and clustering of scRNA-seq data
+
+Processing and clustering of scRNA-seq data The raw data of the gene expression matrix was filtered using the "Seurat" R package with the following criteria of the cells with > 200 genes and < 8000 genes, < 10% of mitochondrial gene expression in UMI counts, and the genes expressed in > 0.1% cells. 
+
+The batch effects of the samples were corrected using 'RunHarmony' in the "Harmony" R package, 
+
+dimension reduction was performed using UMAP with the 'RunUMAP' function (dims = 1:50), and the clustering was performed using a shared-nearest neighbor graph algorithm 'FindClusters’ function (resolution = 0.2). 
+
+Subtyping of the malignant cells, cancer-associated fibroblasts (CAFs), and T cells were performed using the following parameters. 
+For malignant cells, dims = 1:20, lambda = 1, theta = 0, and resolution = 0.05; 
+for CAFs, dims = 1:10, lambda = 1, theta = 0, and resolution = 0.2; 
+for T cells, dim = 1:50, lambda = 1, theta = 2, and resolution = 0.2.
+
+
+(4) Cell typing, deconvolution, and gene set analyses
+
+Cell typing was performed by manually examining the expression levels of the canonical marker genes for 
+
+malignant cells (KRT14, KRT17, KRT6A, KRT5, KRT19, KRT8, KRT16, KRT18, KRT6B, KRT15, KRT6C, KRTCAP3, EPCAM, SFN), 
+fibroblasts (FAP, PDPN, COL1A2, DCN, COL3A1, COL6A1), 
+myocytes (ACTA1, ACTN2, MYL2, MYH2), 
+T cells (CD2, CD3D, CD3E, CD3G), 
+B/Plasma cells (SLAMF7, CD79A, BLNK, FCRL5), 
+macrophages (CD14, CD163, CD68, FCGR2A, CSF1R), 
+dendritic cells (CD40, CD80, CD83, CCR7), 
+mast cells (CMA1, MS4A2, TPSAB1, TPSB2) and 
+endothelial cells (PECAM1, VWF, ENG). 
+
+Deconvolution of the bulk RNA-Seq data s was performed using “MuSiC” R package 1 . 
+
+The proliferation index score was calculated as the sum of the S scores and G2M scores using the 'CellCycleScoring' function in the Seurat R package. 
+
+The scores for 'tumor-infiltrating lymphocyte (TIL)' and 'dysfunctional T cell' were calculated as the average expression values of the marker genes, respectively 2, 3
+
+
+(5) Harmony 就是代替 PCA 的，并且用于后续的非线性降维
+
+
+
 
 
 
@@ -1543,6 +1802,16 @@ DoHeatmap(pbmc12, features = rbind(gset1, gset2)$gene,
           group.colors= c("#FF9ECE","#F81082", '#005FFF', '#98BEFD') )
 
 
+指定热图颜色：蓝 白 红 
+library(Seurat)
+library(ggplot2)
+pbmc<-readRDS(pbmc3k.rds)
+
+DoHeatmap(pbmc)+scale_fill_gradientn(colors = c("blue", "white", "red"))
+
+
+
+
 2. 调整文字字号大小
 library(ggplot2)
 DoHeatmap(pbmc.small, features = top10$gene, label = F) + theme(text = element_text(size = 12))
@@ -1893,7 +2162,34 @@ http://www.360doc.com/content/21/0715/15/76149697_986668012.shtml
 ----------------------------------------
 
 
+========================================
+|-- 获取 Seurat 中默认颜色配方/ 配色提取
+----------------------------------------
+1. DimPlot中默认的配色方案
+library(scales)
+show_col(hue_pal()(16))
 
+
+
+2. 提取DimPlot中画聚类时用到的颜色
+
+library(scales)
+p1 <- DimPlot(pbmc.nmf, group.by = "celltype_assign")
+x<-ggplot_build(p1)
+info = data.frame(colour = x$data[[1]]$colour, group = x$data[[1]]$group)
+info <- unique((arrange(info, group)))
+cols <- as.character(info$colour)
+
+> cols
+ [1] "#F8766D" "#EC823C" "#DD8D00" "#CA9700" "#B3A000" "#97A900" "#71B000" "#2FB600" "#00BB4B" "#00BF76" "#00C098" "#00C0B7"
+[13] "#00BDD1" "#00B7E8" "#00AEFA" "#3DA1FF" "#8F91FF" "#BE80FF" "#DE71F9" "#F265E7" "#FE61CF" "#FF64B3" "#FF6C92"
+
+
+
+
+
+ref:
+https://www.jianshu.com/p/229af1b135b5
 
 
 ========================================
