@@ -4,7 +4,7 @@ CentOS6.8 with 40cores,128GMem.
 
 10XQC: http://10xqc.com/
 
-
+cellxgene
 
 ========================================
 教程
@@ -1124,7 +1124,143 @@ Mapping 后，大概5k个spot有一半能用上，也就是有2.5k个spot。
 
 
 ========================================
+cellxgene: 单细胞可视化工具
 ----------------------------------------
+1. 下载 
+(1) 简介
+https://data.humancellatlas.org/analyze/portals/cellxgene
+
+cellxgene is an interactive, performant explorer for single cell transcriptomics data - an open-source experiment in how to bring powerful tools from modern web development to visualize and explore large single-cell transcriptomics datasets. cellxgene hopes to both enable scientists to explore their data and to equip developers with scalable, reusable patterns and frameworks for visualizing large scientific datasets. Features will include scalable visualization of at least 1 million cells, interactive exploration via performant cross-filtering and comparison, and a flexible API that supports a range of existing analysis packages (e.g. scanpy) for backend computational tasks integrated with client-side visualization.
+
+展示 1百万细胞，交互式探索，灵活的API和后台交互(scanpy)
+
+https://github.com/chanzuckerberg/cellxgene
+
+https://cellxgene.cziscience.com/docs/01__CellxGene
+
+
+(2) 安装
+$ pip3 install cellxgene
+$ pip3 freeze | grep -i cellxgene
+cellxgene==1.1.2
+
+
+
+
+
+
+2. 运行
+Usage: cellxgene launch <options> <path to data file>
+--host <IP address>             Host IP address. By default cellxgene will use
+                                  localhost (e.g. 127.0.0.1).
+-p, --port <port>               Port to run server on. If not specified cellxgene
+                                  will find an available port.
+
+(1) try1:
+$ cellxgene launch https://cellxgene-example-data.czi.technology/pbmc3k.h5ad
+失败，没文件
+
+下载 
+https://support.10xgenomics.com/single-cell-gene-expression/datasets/1.1.0/pbmc3k?
+Per-molecule read information	594.25 MB	5e372c0ef44dc3581f1d642ad48502d6
+
+$ cd /home/wangjl/data/PBMC
+$ wget https://cf.10xgenomics.com/samples/cell-exp/1.1.0/pbmc3k/pbmc3k_molecule_info.h5
+
+
+(2) try2: 指定IP和端口
+$ cellxgene launch --host 0.0.0.0 -p 9001 /home/wangjl/data/PBMC/pbmc3k_molecule_info.h5
+[cellxgene] Starting the CLI...
+Error: Dataset does not have an allowed type.
+
+(3) try3: 预处理
+$ pip3 install scanpy
+$ pip3 freeze | grep -i scanpy
+scanpy==1.9.3
+
+$ pip3 install louvain
+Uninstalling igraph-0.9.11:
+Successfully uninstalled igraph-0.9.11
+now (0.10.8)
+
+>>> import louvain
+__main__:1: DeprecationWarning: This package has been superseded by the `leidenalg` package and will no longer be maintained. Please upgrade to the `leidenalg` package.
+
+
+$ pip3 install leidenalg
+leidenalg 0.8.10 requires igraph<0.10,>=0.9.0, but you have igraph 0.10.0 which is incompatible.
+
+$ pip3 install igraph==0.9.11
+louvain 0.8.1 requires igraph<0.11,>=0.10.0, but you have igraph 0.9.11 which is incompatible.
+
+$ pip3 install igraph==0.10.0
+
+
+
+https://github.com/chanzuckerberg/cellxgene-compbio-methods/blob/master/dataset-processing/pbmc3k-processing.ipynb
+
+import scanpy as sc
+import numpy as np
+import pandas as pd
+
+adata = sc.datasets.pbmc3k() ## load data
+sc.pp.calculate_qc_metrics(adata, inplace=True) ## compute quality control metrics
+
+## Just reimplement the normalization and preprocessing 
+## described in the scanpy tutorial here: 
+## https://scanpy-tutorials.readthedocs.io/en/latest/pbmc3k.html
+sc.pp.filter_cells(adata, min_genes=200)
+sc.pp.filter_genes(adata, min_cells=3)
+mito_genes = adata.var_names.str.startswith('MT-')
+
+adata.obs['percent_mito'] = np.sum(
+    adata[:, mito_genes].X, axis=1).A1 / np.sum(adata.X, axis=1).A1
+adata.obs['n_counts'] = adata.X.sum(axis=1).A1
+adata = adata[adata.obs['n_genes'] < 2500, :]
+adata = adata[adata.obs['percent_mito'] < 0.05, :]
+sc.pp.normalize_per_cell(adata, counts_per_cell_after=1e4)
+sc.pp.log1p(adata)
+
+sc.pp.highly_variable_genes(adata, min_mean=0.0125, max_mean=3, min_disp=0.5)
+sc.pl.highly_variable_genes(adata)
+adata = adata[:, adata.var['highly_variable']]
+sc.pp.regress_out(adata, ['n_counts', 'percent_mito'])
+sc.pp.scale(adata, max_value=10)
+
+sc.tl.pca(adata, svd_solver='arpack')
+sc.pp.neighbors(adata, n_neighbors=10, n_pcs=40)
+
+sc.tl.umap(adata) ## compute embeddings
+sc.tl.tsne(adata)
+sc.tl.draw_graph(adata, layout='fr')
+
+
+sc.tl.louvain(adata) ## compute clusters
+# sc.tl.leiden(adata)
+# Could not construct partition: Weight vector not the same size as the number of edges.
+
+
+adata.write('./pbmc3k_reprocessed.h5ad')
+
+
+$ cellxgene launch --host 0.0.0.0 -p 9001 /data/wangjl/web/webPan.py/dustbin/pbmc3k_reprocessed-scanpy.h5ad
+
+$ cellxgene launch --host 0.0.0.0 -p 9001 pbmc3k_raw.h5ad
+
+不好用....
+
+
+
+
+
+
+3. 示例
+https://cellxgene.cziscience.com/datasets
+
+简介 https://zhuanlan.zhihu.com/p/436325671
+
+
+
 
 
 

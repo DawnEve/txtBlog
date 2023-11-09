@@ -101,6 +101,20 @@ library(NMF)
 
 
 
+==> 使用Leiden时，需要在R中设置 py 资源。只能R第一次启动时设置，设置后不能修改；想修改就需要重启R session。
+# set Python version you use in R
+library("reticulate")
+use_python("/home/wangjl/software/anaconda3/bin/python3", required = T)
+py_config()
+system("pip3 -V")
+system("which pip3")
+
+## Leiden algorithm ----
+system("pip3 install leidenalg -i https://pypi.douban.com/simple/")
+system("which pip3")
+
+system("pip3 list | grep leidenalg")
+
 
 
 
@@ -1249,6 +1263,38 @@ We demonstrate how to mitigate the effects of cell cycle heterogeneity in scRNA-
 两种策略，一种是完全regression，另一种是只针对 S和G2M 的差异回归。 
 
 
+(2) Seurat 代码实现
+## cell cycle score ----
+scObj2b_2 <- CellCycleScoring(scObj2b_2, s.features = cc.genes$s.genes, g2m.features = cc.genes$g2m.genes, set.ident = TRUE)
+RidgePlot(scObj2b_2, features = c("PCNA", "TOP2A", "MCM6", "MKI67", "PLK1",
+                                  "CCNB1", "CCNB2", "CCNE1", "CCNE2"), ncol = 3)
+
+head(scObj2b_2@meta.data)
+
+#plot1
+scObj2b_2@meta.data %>% ggplot( aes(x=S.Score, y=G2M.Score, color=seurat_clusters))+
+  geom_point(size=0.5) + 
+  theme_classic(base_size = 12)+LargeLegend(3)+
+  facet_grid(~time)+
+  theme(
+    strip.background = element_blank()
+  )
+#
+# plot2
+DimPlot(scObj2b_2, group.by = "Phase", label=T)
+DimPlot(scObj2b_2,  label=T, split.by = "Phase")
+DimPlot(scObj2b_2, group.by = "Phase", label=F, split.by = "time", ncol = 3)
+# plot3
+pie( table(scObj2b_2$Phase), col = scales::hue_pal()(3) )
+#
+table2barplot( table(scObj2b_2$Phase, scObj2b_2$seurat_clusters) )
+#
+
+
+
+
+
+
 
 2.重点：周期相关基因list怎么找？https://www.biostars.org/p/364214/
 List of Human Cell Cycle Stage Specific Genes() 
@@ -1275,6 +1321,8 @@ Whitfield et al. (Whitfield et al., 2002) (Table S2)
 
 (1)BrdU:https://baike.baidu.com/item/BrdU/8395857?fr=aladdin
 PI:https://baike.baidu.com/item/pi/4004256
+
+
 
 
 
@@ -1609,7 +1657,7 @@ a2=sce@assays$RNA@data #counts 怎么变的 data?
 a1[10:20,1:3]
 a2[10:20,1:3]
 a3=apply(a1, 2, function(x){
-log(x/sum(x) * 1e4 +1) #先按列标准化，扩大到1e4，加1，之后取自然对数。
+    log(x/sum(x) * 1e4 +1) #先按列标准化，扩大到1e4，加1，之后取自然对数。
 })
 a3[10:20,1:3] #和a2一样
 
@@ -1621,7 +1669,7 @@ hist( apply(expm1(a2), 2, sum), n=100 )
 hist( apply(expm1(a3), 2, sum), n=100 )
 
 
-(2) 取平均表达量
+(2) 取平均表达量 - 按细胞
 
 # 求平均，按列。求的是取对数前-1，也就是 counts的平均。
 avg.exp <- apply(X = data.use, MARGIN = 2, FUN = function(x) {
@@ -1629,12 +1677,195 @@ avg.exp <- apply(X = data.use, MARGIN = 2, FUN = function(x) {
 })
 
 
+(3) 求平均表达量 - 按基因
 
 
 
 
 
 
+
+
+
+
+
+
+========================================
+|-- 什么时候使用expm1？
+----------------------------------------
+
+在上面归一化的处理中，我们应用了log1p做数值变化，以使基因的原始count去偏态，符合正态分布。那么，也引出来一个问题，我们什么时候使用expm1？
+
+1. 场景1：在 AverageExpression() 源码中，对归一化的基因表达矩阵seurat_obj[['RNA']]@data进行expm1处理
+
+这个怎么理解呢？我在网上也看到网友对此问题的疑惑，为什么“take un-log data when calculate average expression”。
+
+data.use <- expm1(x = data.use)
+
+toRet <- SetAssayData(object = toRet, assay = names(x = data.return)[i], 
+                    slot = "data", new.data = log1p(x = as.matrix(x = data.return[[i]])))
+
+
+(1) 函数计算
+> t1=AverageExpression(scObj, group.by = "seurat_clusters")[['RNA']]
+> dim(t1)
+[1] 20000    19
+
+> t1[1:4,1:5]
+                        0           1           2           3           4
+RP11-34P13.7  0.002931872 0.003326554 0.005790386 0.003155577 0.002494124
+FO538757.2    0.382159160 0.249731641 0.267545334 0.222562765 0.196198151
+AP006222.2    0.269136199 0.061290994 0.086654934 0.120747568 0.137966105
+RP4-669L17.10 0.005504739 0.003823366 0.002833042 0.003918494 0.002222287
+
+耗时
+用户  系统  流逝 
+4.270 1.878 6.142 
+
+
+
+(2)手工计算: 很慢
+
+计算过程: 
+- log的标准化到1e4的表达值 data，行为gene，列为cell id;
+- 转置为行名为cell id，列为gene;  按行 cell id 对应的 cluster 拆分；
+- 每个小矩阵 按列求 均值，就是每个基因在该 cluster 的平均表达量。求平均使用 log 前的值，也就是 expm1(data)
+
+t2 = sapply( split( as.data.frame(t(expm1(scObj@assays$RNA@data))), scObj$seurat_clusters), 
+             function(x){
+               colMeans(x) # 按列求平均
+             })
+Warning message: 警告 需要内存很大。怎么降低内存消耗呢？ 经过测试，把 expm1 放到 colMeans 中会更慢！
+In asMethod(object) :
+  sparse->dense coercion: allocating vector of size 8.1 GiB
+
+
+如果报错，尝试 expm1 前多加一个 as.data.frame
+system.time({
+  dat2 = sapply( X=split(
+      as.data.frame(t(expm1( as.data.frame (pbmc@assays$RNA@data))) ), 
+      pbmc$seurat_clusters
+    ), 
+    FUN = function(x){
+      colMeans(x) # 按列求平均
+    })
+})
+dat2[1:3, 1:5]
+
+
+> dim(t2)
+[1] 20000    19
+
+> t2[1:4,1:5]
+                        0           1           2           3           4
+RP11-34P13.7  0.002931872 0.003326554 0.005790386 0.003155577 0.002494124
+FO538757.2    0.382159160 0.249731641 0.267545334 0.222562765 0.196198151
+AP006222.2    0.269136199 0.061290994 0.086654934 0.120747568 0.137966105
+RP4-669L17.10 0.005504739 0.003823366 0.002833042 0.003918494 0.002222287
+
+耗时：比R包多用了10倍时间。
+用户  系统  流逝 
+42.975 21.957 64.887
+
+
+验证2个手工计算和包计算的一致
+> table(abs(t1-t2)<0.00001)
+  TRUE 
+380000 
+
+
+(3) => 更快的方法: 读源码精简出来的
+
+system.time({
+    data.use <- GetAssayData(object = scObj, assay = 'RNA', slot = 'data')
+    #data.use <- data.use[rownames(scObj), ]
+    data.use <- expm1(x = data.use)
+
+
+    t1=FetchData(scObj, vars=("ident"))
+    category.matrix = Matrix::sparse.model.matrix(object=as.formula("~0+t1[,1]") )
+
+    category.matrix = sweep(x = category.matrix, MARGIN = 2, STATS = colSums(x = category.matrix), FUN = "/")
+    
+    colnames(category.matrix) = gsub(pattern = "t1\\[, [1-9]*\\]", replacement = "", x = colnames(category.matrix))
+
+
+    t3 <- as.matrix(x = (data.use %*% category.matrix))
+})
+
+> dim(t3)
+[1] 20000    19
+
+> t3[1:4,1:5]
+                        0           1           2           3           4
+RP11-34P13.7  0.002931872 0.003326554 0.005790386 0.003155577 0.002494124
+FO538757.2    0.382159160 0.249731641 0.267545334 0.222562765 0.196198151
+AP006222.2    0.269136199 0.061290994 0.086654934 0.120747568 0.137966105
+RP4-669L17.10 0.005504739 0.003823366 0.002833042 0.003918494 0.002222287
+
+耗时：
+用户  系统  流逝 
+2.924 0.172 3.094 
+
+
+测试: 结果和R包函数一致
+> table(abs(t1-t3)<0.00001)
+  TRUE 
+380000 
+
+
+
+(4) 所以画热图时，这个还是要再取log的！
+
+> max(t3)
+[1] 4663.597
+> min(t3)
+[1] 0
+
+log(t3 +1) 或者用函数 t2=log1p(t3)
+
+> min(t2)
+[1] 0
+> max(t2)
+[1] 8.447757
+
+
+
+
+
+
+
+
+
+2. 场景2：在计算线粒体比例也用到了expm1
+
+mito.genes <- grep("^MT-", rownames(pbmc@data), value = T)
+percent.mito <- colSums(expm1(pbmc@data[mito.genes, ]))/colSums(expm1(pbmc@data))
+
+#AddMetaData adds columns to object@data.info, and is a great place to stash QC stats
+pbmc <- AddMetaData(pbmc, percent.mito, "percent.mito")
+VlnPlot(pbmc, c("nGene", "nUMI", "percent.mito"), nCol = 3)
+
+
+
+
+
+
+
+3. 在seurat的代码中会出现对已经log1p归一化的数值进行expm1，比如线粒体的占比和AverageExpression的处理，背后的逻辑怎么理解？
+
+在网上找到一些零星的信息：
+
+The expm1 does un-log the data, but the normalization persists (this would be lost in the counts slot)
+
+expm1() transformed in order to recover normalized values not in log scale
+
+
+
+
+
+ref:
+https://www.jianshu.com/p/2203a20cb369
 
 
 

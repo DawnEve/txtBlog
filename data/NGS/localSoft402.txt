@@ -215,6 +215,36 @@ https://blog.csdn.net/ada0915/article/details/77201871
 
 
 ========================================
+|-- fastp: 质量控制 (Quality Control) //todo
+----------------------------------------
+# 新建 clean 文件夹存放 fastp 质控之后的数据
+mkdir -p clean
+
+# 单样本处理实例，默认选项
+fastp -w 20 -i raw/sample1_R1.fq.gz -I raw/sample1_R2.fq.gz \
+-o clean/sample1_R1.fastq -O clean/sample1_R2.fastq \
+--report_title "${i} fastp report" \
+--json clean/${i}_fastp.json --html clean/${i}_fastp.html
+
+# 多样本处理
+# fastp质控
+for i in `tail -n +2 metadata.txt| cut -f1`
+do
+
+fastp -w 20 -i raw/${i}_R1.fq.gz -I raw/${i}_R2.fq.gz \
+-o clean/${i}_R1.fastq -O clean/${i}_R2.fastq \
+--report_title "${i} fastp report" \
+--json clean/${i}_fastp.json --html clean/${i}_fastp.html
+
+done
+
+
+
+
+
+
+
+========================================
 测序文件预处理:切除接头adapter/primer等
 ----------------------------------------
 1.概述
@@ -1356,6 +1386,125 @@ https://www.cnblogs.com/Dicor/p/4004819.html
 http://www.mamicode.com/info-detail-1163133.html
 http://www.bio-info-trainee.com/727.html
 d:/ STARmanual.pdf
+
+
+
+
+
+
+
+========================================
+|-- Run STAR with 4 fastq files / 使用多个PE测序结果 --readFilesIn a.R1.fq,b.R1.fq a.R2.fq,b.R2.fq
+----------------------------------------
+1. 多输入文件用逗号隔开，R1和R2用空格隔开
+You are not using correct separation of the file names. Separate group of paired-end mates by a space and multiple R1/R2 files by commas. Try
+
+--readFilesIn PCa10_S6_L001_R1_001.fastq.gz,PCa10_S7_L001_R1_001.fastq.gz PCa10_S6_L001_R2_001.fastq.gz,PCa10_S7_L001_R2_001.fastq.gz
+
+
+
+2. 如果有是 fastq.gz 
+$ STAR --runThreadN 30 --genomeDir /srv/STAR_genome/human/ --readFilesIn /../RNA4_1_R1.fastq.gz /../RNA4_1_R2.fastq.gz --readFilesCommand zcat
+
+
+
+
+ref: 
+入门课程 https://biocorecrg.github.io/RNAseq_course_2019/alnpractical.html
+该问题: https://www.biostars.org/p/229379/
+
+
+
+
+
+========================================
+|-- STAR比对软件的参数 --quantMode 的作用？
+----------------------------------------
+
+--quantMode TranscriptomeSAM #同时生成基于转录本的比对文件
+    GeneCounts #计数
+
+
+1. --quantMode GeneCounts 啥用？
+https://www.biostars.org/p/462595/
+
+for i in $(raw_data/270,raw_data/272, raw_data/274,raw_data/278C,raw_data/284C); do 
+/DataAnalysis/STAR-2.7.5a/bin/Linux_x86_64/./STAR --genomeDir /DataAnalysis/Manoj-data/test-star/SAindex \
+    --readFilesIn raw_data/${i}_R1.fastq raw_data/${i}_R2.fastq \
+    --runThreadN 8 --outFileNamePrefix aligned/$i. \
+    --outSAMtype BAM SortedByCoordinate \
+    --quantMode GeneCounts; 
+done
+
+
+2. STAR比对软件的--quantMode TranscriptomeSAM 参数
+https://blog.csdn.net/sweet_yemen/article/details/119301918
+https://www.cnblogs.com/honeyShi/p/17652655.html
+
+比对时，添加上这个参数，比对的结果文件会增加一个基于转录本比对的结果文件，直接上图
+
+基于转录本比对的结果文件。其前缀是由转录本号+对应的长度组合而成。
+
+相应的，比对结果文件中的信息也是对应转录本号以及比对到转录本上的位置。
+
+
+
+
+
+
+========================================
+|-- *** 基因表达量定量 (Quantification) -- 使用featureCounts
+----------------------------------------
+
+3. 基因表达量定量 (Quantification) -- 使用featureCounts
+https://www.cnblogs.com/honeyShi/p/17652655.html
+
+$ featureCounts -v
+featureCounts v2.0.2
+
+$ ls -lh map/SRR1124*bam #12个
+-rw-rw-r-- 1 wangjl wangjl 2.4G Oct 26 16:24 map/SRR11247521_Aligned.sortedByCoord.out.bam
+-rw-rw-r-- 1 wangjl wangjl 1.9G Oct 26 16:24 map/SRR11247522_Aligned.sortedByCoord.out.bam
+
+$ ls -lth /data/wangjl/ref/hg38/gencode/GRCh38.p13.gtf
+-rw-rw-r--. 1 wangjl wangjl 905M Dec 20  2022 /data/wangjl/ref/hg38/gencode/GRCh38.p13.gtf
+
+
+$ mkdir counts
+
+(1) try1: 默认 -t exon -g gene_id 
+$ featureCounts \
+-a /data/wangjl/ref/hg38/gencode/GRCh38.p13.gtf \
+-p \
+-T 10 \
+-o counts/featureCounts_SRR1124_matrix.txt \
+map/SRR1124*.sortedByCoord.out.bam
+
+参数：
+-a 输入GTF/GFF基因组注释文件
+-p 这个参数是针对paired-end数据
+-T 多线程数
+-o 输出文件
+
+仅比对到 54%-65%!!
+每一行都是 ENSG00000290825.1，不是基因名。
+
+
+
+(2) try2: 改为 -t exon -g gene_name
+$ featureCounts \
+-a /data/wangjl/ref/hg38/gencode/GRCh38.p13.gtf \
+-p \
+-T 10 \
+-o counts/featureCounts_SRR1124_matrix2.txt \
+-t exon -g gene_name \
+map/SRR1124*.sortedByCoord.out.bam
+
+仅比对到 54%-65%!!
+每一行是 FAM138A，基因名。
+
+
+
 
 
 
