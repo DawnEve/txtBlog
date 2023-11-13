@@ -1453,7 +1453,7 @@ https://www.cnblogs.com/honeyShi/p/17652655.html
 
 
 ========================================
-|-- *** 基因表达量定量 (Quantification) -- 使用featureCounts
+|-- *** 基因表达量定量 (Quantification) -- 使用 featureCounts 及 R语言读取矩阵
 ----------------------------------------
 
 3. 基因表达量定量 (Quantification) -- 使用featureCounts
@@ -1502,6 +1502,105 @@ map/SRR1124*.sortedByCoord.out.bam
 
 仅比对到 54%-65%!!
 每一行是 FAM138A，基因名。
+
+
+(3) 改进：保存日志
+$ mkdir counts
+
+$ featureCounts \
+-a /data/wangjl/ref/hg38/gencode/GRCh38.p13.gtf \
+-p \
+-T 10 \
+-o counts/featureCounts_MDA-MB-231_CellCycle10Points_matrix.txt \
+-t exon -g gene_name \
+map/SRR22029*.sortedByCoord.out.bam \
+2> counts/SRR22029.sortedByCoord.out.bam.log
+
+
+=> 保存日志，同时显示日志
+$ featureCounts \
+-a /data/wangjl/ref/hg38/gencode/GRCh38.p13.gtf \
+-p \
+-T 10 \
+-o counts/featureCounts_MDA-MB-231_CellCycle10Points_matrix.txt-2 \
+-t exon -g gene_name \
+map/SRR2202925*.sortedByCoord.out.bam | \
+tee counts/SRR22029.sortedByCoord.out.bam.log-2
+失败，日志的大小是0：-rw-rw-r-- 1 wangjl wangjl    0 Nov 12 10:34 SRR22029.sortedByCoord.out.bam.log-2
+原因：tee是把 stdout 转为屏幕和文件双输出的，而原文是 stderr，需要把 stderr 重定向到 stdout: 2>&1
+
+=> 成功: 但是屏幕输出由彩色变为黑白。
+$ featureCounts \
+-a /data/wangjl/ref/hg38/gencode/GRCh38.p13.gtf \
+-p \
+-T 10 \
+-o counts/featureCounts_MDA-MB-231_CellCycle10Points_matrix.txt-2 \
+-t exon -g gene_name \
+map/SRR2202925*.sortedByCoord.out.bam  2>&1 | \
+tee counts/SRR22029.sortedByCoord.out.bam.log-2
+
+
+
+
+
+
+
+
+
+4. 使用R语言读取表达矩阵，并绘制热图
+
+(1) 数据预处理：载入，去掉前后缀
+
+# RNA-seq data /home/wangjl/data/rsa/MDA-MB-231, Cell cycle time point
+# https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc=GSE216497
+counts_dir="/home/wangjl/data/rsa/MDA-MB-231/"
+
+
+
+# 1.load data----
+mb231.raw=read.table( paste0(counts_dir, "counts/featureCounts_MDA-MB-231_CellCycle10Points_matrix.txt"),
+           skip = 1, row.names = 1, header = T)
+
+gene.counts = mb231.raw[, 6:ncol(mb231.raw)] #col5 length
+colnames(gene.counts) = sub("map.", "", colnames(gene.counts))
+colnames(gene.counts) = sub("_Aligned.sortedByCoord.out.bam", "", colnames(gene.counts))
+colnames(gene.counts)|>jsonlite::toJSON()
+# ["SRR22029258","SRR22029259","SRR22029260","SRR22029261","SRR22029262","SRR22029263",
+#"SRR22029264","SRR22029265","SRR22029266","SRR22029267","SRR22029268","SRR22029269",
+#"SRR22029270","SRR22029271","SRR22029272","SRR22029273"]
+
+gene.counts[1:5, 1:2]
+
+# rm all 0 rows
+dim(gene.counts) #61209    16
+gene.counts = gene.counts[ rowSums(gene.counts)>0, ]
+dim(gene.counts) #37431    16
+
+gene.counts[1:5, 1:10]
+
+gene.length = mb231.raw[rownames(gene.counts),'Length']
+
+
+
+
+#2. normalize to TPM ----
+gene.tpm=apply(gene.counts, 2, function(x){
+  x1=x/gene.length
+  x1/sum(x1)*1e6
+})
+dim(gene.tpm)
+head(gene.tpm)
+
+if(0){
+  write.table(gene.tpm,    paste0(counts_dir, "counts/MDA-MB-231_cellcycle10points.gene.tpm.txt") )
+  write.table(gene.length, paste0(counts_dir, "counts/MDA-MB-231_cellcycle10points.gene.length.txt") )
+  write.table(gene.counts, paste0(counts_dir, "counts/MDA-MB-231_cellcycle10points.gene.counts.txt") )
+}
+
+
+
+
+
 
 
 
