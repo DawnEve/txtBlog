@@ -15,13 +15,15 @@ return array (
 
   array (
     0 => 2,
-    1 => 'R语言(从入门到精通)',
+    1 => 'R语言(基础 与 统计)',
     2 => array (
-      array('R语言基础','R01-basic','txt'),
+      array('R语言基础', 'R01-basic','txt'),
       array('R进阶-数据框data.frame','R02-data.frame','txt'),
       array('apply家族函数','R07-apply','md'),
       array('R基础-机器学习','R05-MachineLearning','txt'),
-      array('R进阶-统计抽样与分布','R03-statistics','txt'),
+      
+      array('R统计-抽样与分布','Rs1-statistics','txt'),
+      array('R统计-多元统计分析','Rs2-multivariate-analysis','txt'),
 
       array('R包与bioconductor','bioconductor01','txt'),
     ),
@@ -36,9 +38,10 @@ return array (
       array('R进阶-OOP面向对象','R04-OOP','txt'),
       array('R加速: 向量化/多核','R10-future','txt'),
       array('R加速: C/Rcpp','R11-Rcpp','txt'),
+      
       array('如何写R包?','R20-R-pkgs','txt'),
       array('R元编程 - 调用类型/表达式','R08_meta','txt'),
-      array('R 高级话题','R30-adv','txt'),
+      array('R 高级话题-其他','R30-adv-other','txt'),
     ),
   ),
 

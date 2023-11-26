@@ -1667,6 +1667,17 @@ tumor suppressors
 
 
 
+4. 自定义 gmt 基因集文件
+
+每个基因集是一行。第一列是基因集的ID（不能重复），第二列是简单描述（名字，url 或者 na），后面的列就是基因集所含有的基因，长度不等，tab 隔开。
+
+- 使用excel 编辑注意：基因名 SEP8 可能变成日期 8-Sep
+
+
+
+
+
+
 ref:
 https://blog.csdn.net/weixin_43569478/article/details/83744521
 
@@ -2424,28 +2435,465 @@ https://www.cn-healthcare.com/articlewm/20210110/content-1179315.html
 GSVA - Gene Set Variation Analysis:  做差异通路分析 (R 包) Differential expression at pathway level
 ----------------------------------------
 1. 简介
+https://zhuanlan.zhihu.com/p/506912398
 
 (1) GSVA: gene set variation analysis for microarray and RNA-seq data (BMC Bioinformatics. 2013)
 https://pubmed.ncbi.nlm.nih.gov/23323831/
 
 we introduce Gene Set Variation Analysis (GSVA), a GSE method that estimates variation of pathway activity over a sample population in an unsupervised manner. 
 
+基因集变异分析（Gene Set Variation Analysis，GSVA）: 是一种非参数的无监督分析方法，主要用来评估芯片和转录组的基因集富集结果。
+主要是通过将 基因 在不同样品间的表达量矩阵转化成 基因集 在样品间的表达量矩阵，从而来评估不同的代谢通路在不同样品间是否富集。
 
-(2) 安装
+简单的说，输入以 基因 为行的表达矩阵和基因集数据库给GSVA，它就输出以 基因集名称 为行的变异分数矩阵。
+
+
+GSVA starts by evaluating whether a gene i is highly or lowly expressed in sample j in the context of the sample population distribution.
+
+可以是芯片杂交的信号代表的表达量，也可以是转录组测序定量。
+
+For each gene expression profile xi={xi1,…,xin}, a non-parametric kernel estimation of its cumulative density function is performed.
+
+We offer two approaches for turning the KS like random walk statistic into an enrichment statistic (ES) (also called GSVA score), the classical maximum deviation method and a normalized ES.
+
+而且作者也在测试数据和真实数据把自己的GSVA算法跟GSEA，PLAGE, single sample GSEA (ssGSEA)或者其它算法进行了比较， 还在TCGA的ovarian serous cystadenocarcinoma (OV)癌症表达矩阵(n=588) ，用MSigDB数据库的 canonical gene sets (C2) 基因集做了比较和测试。
+
+还比较了转录组测序数据和芯片数据，这些数据都提供了下载链接，最后作者把算法打包成了 Bioconductor package for R under the name GSVA at http://www.bioconductor.org.
+
+
+
+
+(2) 原理
+
+GSVA分析的主要思想是，在给定一个参考基因集合的情况下，将相应的基因表达矩阵进行标准化，然后根据基因表达矩阵中每个样本的表达水平，计算其相对于基因集合的得分。通常会采用一些特定的统计方法和辅助工具，例如SVD分解、GSEA和Z-score等，来计算基因集得分并进行可视化展示。
+
+GSVA分析有许多应用场景，如生物标志物探索、疾病分类、信号通路调节的网络分析、药物筛选等。在实践中，可以结合实验设计、数据质量评估和生物学背景知识等因素，选取适当的基因集合，并根据不同的目的和需求，选择合适的算法和参数。
+
+在R语言中，可以使用GSVA这个R包来进行基因集变异分析。下面是一个使用GSVA包的简单示例代码：
+
+
+
+
+(3) 引用
+
+非常多的文章都在引用该算法，比如：https://www.nature.com/articles/srep16238#f1 使用了 17个基因集
+To study relative pathway activity on the level of individual samples, we used the GSVA package 25. Using a nonparametric approach, GSVA transforms a gene-by-sample gene expression matrix into a gene set–by-sample gene set enrichment matrix, facilitating the identification of differentially activated genesets for each sample. GSVA was performed on 17 gene sets related to hypoxia, vasculo- and angiogenesis (a detailed listing is provided in Supplementary Table 2) identified through the Molecular Signatures Database (MSigDB - www.broadinstitute.org/gsea/msigdb)39 and literature research. Next, empirical Bayes moderated t statistics40 were calculated and gene sets with FDR-q < 0.05 were considered to have significantly differential activity between samples with mutant and wild-type IDH-1/2 tumors. Of these gene sets, individual GSVA enrichment scores were plotted as a heatmap with the gplots package.
+
+
+
+
+
+
+2. 运行 gsva
+(1) 安装
 https://www.bioconductor.org/packages/release/bioc/html/GSVA.html
 if (!require("BiocManager", quietly = TRUE))
     install.packages("BiocManager")
 
 BiocManager::install("GSVA")
+# 1.46.0
 
-(3) demo 
+BiocManager::install("fgsea") #不必须
+# 读取 gmt 文件 1.24.0
+
+
+(2) 参数简介
 https://www.bioconductor.org/packages/release/bioc/vignettes/GSVA/inst/doc/GSVA.html
 
+核心函数就是 gsva()，需要两个输入：the gene expression data and a collection of gene sets.
+
+- 输入: 行对应基因，列对应样本; 
+    要能反应基因表达情况，可以是 logTPM, 
+- gset.idx.list:用于GSVA分析的基因集，如MSigDb的gmt格式注释文件;
+    MSigDB数据库目前有H和C1-C8九个定义的基因集，下面示范下载包含KEGG信息的C2、与包含GO信息的C5基因集的两种方式——手动下载读取或msigdbr包下载提取。
+    c2.all.v2023.2.Hs.symbols.gmt
+    c5.all.v2023.2.Hs.symbols.gmt
+- ssgsea: 当method为ssgesa时，默认值TRUE,在进行ssgsea分析的最后一步进行标准化;
+
+- method 默认"gsva", 也可以选择其它3个模型：c("gsva", "ssgsea", "zscore", "plage")
+    method="plage" (Tomfohr et al., 2005). Pathway level analysis of gene expression (PLAGE)
+    method="zscore" (Lee et al., 2008). The combined z-score method a
+    method="ssgsea" (Barbie et al., 2009). Single sample GSEA (ssGSEA) calculates a gene set enrichment score per sample
+
+- 另外一个比较重要的参数是 mx.diff: Offers two approaches to calculate the enrichment statistic (ES) from the KS random walk statistic. 
+    mx.diff=FALSE: ES is calculated as the maximum distance of the random walk from 0. 
+    mx.diff=TRUE (默认): ES is calculated as the magnitude difference between the largest positive and negative random walk deviations.
+
+
+# what does mx.diff mean?
+es.max <- gsva(expr, geneSets, mx.diff=FALSE, verbose=T, parallel.sz=1)
+es.dif <- gsva(expr, geneSets, mx.diff=TRUE, verbose=T, parallel.sz=1) #默认
+# plot
+par(mfrow=c(1,2), mar=c(4, 4, 4, 1))
+plot(density(as.vector(es.max)), main="Maximum deviation from zero",
+     xlab="GSVA score", lwd=2, las=1, xaxt="n", xlim=c(-0.75, 0.75), cex.axis=0.8)
+axis(1, at=seq(-0.75, 0.75, by=0.25), labels=seq(-0.75, 0.75, by=0.25), cex.axis=0.8)
+plot(density(as.vector(es.dif)), main="Difference between largest\npositive and negative deviations",
+     xlab="GSVA score", lwd=2, las=1, xaxt="n", xlim=c(-0.75, 0.75), cex.axis=0.8)
+axis(1, at=seq(-0.75, 0.75, by=0.25), labels=seq(-0.75, 0.75, by=0.25), cex.axis=0.8)
+# 前者是二项式分布(双峰)，后者是高斯分布(单峰)
 
 
 
 
 
+(3) 实例1
+library(GSVA)
+
+# 读入表达矩阵
+#expr=read.csv("expr.csv",row.names = 1)
+expr=log(gene.tpm + 1)
+
+# 将格式从数据框转换成数值矩阵
+expr=as.matrix(expr)
+#读入需要计算得分的基因集（这里以hallmark为例）
+geneSets <- GSEABase::getGmt("h.all.v7.5.1.symbols.gmt")
+
+
+# 计算样本在每个基因集上的得分，采用默认参数
+sampleScores <- gsva(expr, geneSets)
+
+# 显示前五个样本中前十条通路的得分
+sampleScores[1:10,1:5]
+
+
+得到这样一个矩阵之后，其实我们可以把它当作一个基因表达矩阵来处理。我们可以做一些类似的下游分析，例如差异表达分析，绘制热图，火山图。如果有生存数据，我们甚至可以做生存分析，构建预后模型。因为从分析的角度来说，这里的每一行的基因集，跟我们传统意义上基因表达谱里面每一个基因，没有什么区别。
+
+
+
+
+
+
+
+(4) 基因集的操作
+
+i) 可以只关注3个主流通路数据库
+
+library(GSEABase)
+library(GSVAdata) 
+data(c2BroadSets)
+c2BroadSets
+names(c2BroadSets)
+canonicalC2BroadSets <- c2BroadSets[c(grep("^KEGG", names(c2BroadSets)),
+                                      grep("^REACTOME", names(c2BroadSets)),
+                                      grep("^BIOCARTA", names(c2BroadSets)))]
+canonicalC2BroadSets # GeneSetCollection 类
+> names(canonicalC2BroadSets) |> head()
+[1] "KEGG_GLYCOLYSIS_GLUCONEOGENESIS"               "KEGG_CITRATE_CYCLE_TCA_CYCLE"                  "KEGG_PENTOSE_PHOSPHATE_PATHWAY"               
+[4] "KEGG_PENTOSE_AND_GLUCURONATE_INTERCONVERSIONS" "KEGG_FRUCTOSE_AND_MANNOSE_METABOLISM"          "KEGG_GALACTOSE_METABOLISM"                    
+
+> names(canonicalC2BroadSets) |> length()
+[1] 833
+
+# 报错 Error in .mapGeneSetsToFeatures(mapped.gset.idx.list, rownames(expr)) : 
+#  No identifiers in the gene sets could be matched to the identifiers in the expression data.
+# 经检查，区别是：
+# unique identifiers: 55902, 2645, ..., 8544 (6744 total)
+# unique identifiers: AHNAK, ALCAM, ..., IFITM5 (22091 total)
+解决：矩阵的行名 和 基因集要统一使用 gene symbol 或 gene id;
+
+
+
+ii) 还可以增加自己感兴趣的基因集
+data(genderGenesEntrez)
+
+MSY <- GeneSet(msYgenesEntrez, geneIdType=EntrezIdentifier(),
+               collectionType=BroadCollection(category="c2"), setName="MSY")
+MSY 
+XiE <- GeneSet(XiEgenesEntrez, geneIdType=EntrezIdentifier(),
+               collectionType=BroadCollection(category="c2"), setName="XiE")
+XiE
+
+canonicalC2BroadSets <- GeneSetCollection(c(canonicalC2BroadSets, MSY, XiE))
+canonicalC2BroadSets
+
+
+
+iii) 也可以去broad官网里面下载最新版gmt文件，然后读入到R语言
+
+myC7 <- getGmt("c7.all.v5.1.entrez.gmt", geneIdType=EntrezIdentifier(), collectionType=BroadCollection(category="c7"), sep="\t")
+
+
+这个时候需要详细了解 GSEABase 包的设计。
+
+library(GSEABase)
+library(GSVAdata) 
+data(c2BroadSets)
+c2BroadSets 
+head(names(c2BroadSets))
+c2BroadSets[[names(c2BroadSets)[1]]]
+geneIds(c2BroadSets[[names(c2BroadSets)[1]]])
+### 假设之前是其它ID
+library(hgu95av2.db) 
+getEG(geneIds(c2BroadSets[[names(c2BroadSets)[1]]]),"hgu95av2")
+
+
+
+
+
+
+
+
+
+
+
+
+3. 实例2：limma 做差异通路分析
+
+library(GSVA)
+
+## (1)load expr----
+expr=log(gene.tpm +1)
+dim(expr)
+head(expr)
+# rm all 0 rows
+expr=expr[rowSums(expr)>0, ]
+dim(expr)
+
+#将格式从数据框转换成数值矩阵
+expr=as.matrix(expr)
+
+## (2) load geneset----
+#读入需要计算得分的基因集（这里以hallmark为例）
+#geneSets <- GSEABase::getGmt("/home/wangjl/data/ref/MSigDB/h.all.v2023.2.Hs.symbols.gmt")
+geneSets <- GSEABase::getGmt("/home/wangjl/data/ref/MSigDB/c2.all.v2023.2.Hs.symbols.gmt") #KEGG
+#geneSets <- GSEABase::getGmt("/home/wangjl/data/ref/MSigDB/c5.all.v2023.2.Hs.symbols.gmt") #GO
+
+# 也可以只关注3个主流通路数据库：
+geneSets <- geneSets[c(grep("^KEGG", names(geneSets)),
+                                      grep("^REACTOME", names(geneSets)),
+                                      grep("^BIOCARTA", names(geneSets)))]
+geneSets
+names(geneSets)
+
+## (3) gsva() ----
+# 计算样本在每个基因集上的得分，采用默认参数
+sampleScores <- gsva(expr=expr, 
+                     gset.idx.list=geneSets,
+                     method= "ssgsea", #"gsva", #c("gsva", "ssgsea", "zscore", "plage")
+                     kcdf="Gaussian", #c("Gaussian", "Poisson", "none"),
+                     min.sz=10,
+                     max.sz=500,
+                     parallel.sz=1L,
+                     mx.diff=T, #default T
+                     verbose=TRUE)
+# 当method设置为gsva时，method 默认选项Gaussian (针对芯片表达矩阵，log CPMs, log RPKMs, log-TPM标准化后RNA-seq的表达矩阵)， 
+# 可选 Poisson (针对未标准化的RNA-seq的count表达矩阵) 
+dim(sampleScores)
+
+# 显示前五个样本中前十条通路的得分
+sampleScores[1:5, 1:3] #50 13
+
+
+## (4). limma差异分析
+得到GSVA评分的矩阵后，我们需要利用limma包进行pathway通路的差异分析，与之前介绍的基因差异分析流程类似，但不需要进行 limma-trend 或 voom的步骤
+#### 进行limma差异处理 ####
+##设定 实验组exp / 对照组ctr
+group_list=c(rep("healthy",5), rep('AML',8))
+group_list=factor(group_list, levels=c("healthy", "AML"));group_list
+
+#BiocManager::install("limma")
+library(limma)
+gsva_mat = sampleScores
+design <- model.matrix(~0+factor(group_list))
+colnames(design) <- levels(factor(group_list))
+rownames(design) <- colnames(gsva_mat)
+contrast.matrix <- makeContrasts(contrasts=paste0('AML-healthy'),  #"exp/ctrl"
+                                 levels = design)
+
+fit1 <- lmFit(gsva_mat, design)               #拟合模型
+fit2 <- contrasts.fit(fit1, contrast.matrix)  #统计检验
+efit <- eBayes(fit2)                          #修正
+
+summary(decideTests(efit, lfc=1, p.value=0.05)) #统计查看差异结果
+
+tempOutput <- topTable(efit, coef=paste0('AML-healthy'), n=Inf)
+degs <- na.omit(tempOutput) 
+# write.csv(degs,"gsva_go_degs.results.csv")
+head(degs)
+#                                                                   logFC   AveExpr         t      P.Value   adj.P.Val        B
+#REACTOME_GABA_SYNTHESIS_RELEASE_REUPTAKE_AND_DEGRADATION     -0.14255517 0.1226732 -7.567100 3.616811e-06 0.003006354 4.565810
+#REACTOME_LISTERIA_MONOCYTOGENES_ENTRY_INTO_HOST_CELLS        -0.04909601 0.4443841 -7.400594 4.608176e-06 0.003006354 4.316662
+#REACTOME_IRON_UPTAKE_AND_TRANSPORT                           -0.03553168 0.4216239 -7.295918 5.375826e-06 0.003006354 4.158139
+...
+
+
+
+
+
+
+4. 差异通路可视化：热图、火山图、发散条形图/柱形偏差图。一般还是左右柱形图
+#### 对GSVA的差异分析结果进行热图可视化
+##设置筛选阈值
+padj_cutoff=0.05
+log2FC_cutoff= log2(1) #log2(2)
+
+(1) heatmap
+library(pheatmap) #https://www.jianshu.com/p/1c55ea64ff3f
+# anno columns
+annotation_col <- data.frame(
+  type = c(rep("healthy", 5), rep("AML", 4), rep("CBF", 4)),
+  row.names = colnames(sampleScores)
+)
+# set colors
+ann_colors = list(
+  type = c('healthy'="#00b050", 'AML'="#edc201", 'CBF'="#ff8101")
+)
+
+# for heatmap, use log scale
+degs$symbol=rownames(degs)
+keep <- rownames(degs[degs$adj.P.Val < padj_cutoff & abs(degs$logFC)>log2FC_cutoff, ])
+length(keep)
+keep = degs[keep,] |> arrange( -abs(logFC) )  |> top_n(50) |> pull("symbol") #选取前50进行展示
+dat <- gsva_mat[keep,] 
+pheatmap::pheatmap(dat,
+                   border_color = "white", 
+                   #fontsize_row = 8, height = 10, width=18,
+                   scale="row",
+                   #cluster_cols = F,
+                   annotation_col = annotation_col, #set anno for column
+                   annotation_colors = ann_colors, #set colors
+                   show_colnames = F,
+                   show_rownames = T,
+                   #filename = paste0('GSVA_go_heatmap.pdf'),
+                   main="CD34+ primary cells in human",
+                   clustering_method = "ward.D2") #聚类方法
+#dev.off()
+
+
+
+
+
+
+(2) Volcano
+degs$significance  <- as.factor(ifelse(degs$adj.P.Val < padj_cutoff & abs(degs$logFC) > log2FC_cutoff,
+                                       ifelse(degs$logFC > log2FC_cutoff ,'UP','DOWN'),'NOT'))
+table(degs$significance)
+# DOWN  NOT   UP 
+# 250 1824   54 
+
+this_title <- paste0(' Up :  ',nrow(degs[degs$significance =='UP',]) ,
+                     '\n Down : ',nrow(degs[degs$significance =='DOWN',]),
+                     '\n adj.P.Val <= ',padj_cutoff,
+                     '\n FoldChange >= ',round(2^log2FC_cutoff,3))
+this_title
+
+g <- ggplot(data=degs, 
+            aes(x=logFC, y=-log10(adj.P.Val),
+                color=significance)) +
+  #点和背景
+  geom_point(alpha=0.4, size=1) +
+  theme_classic()+ #无网格线
+  #坐标轴
+  xlab("log2 ( FoldChange )") + 
+  ylab("-log10 ( adj.P.Val )") +
+  #标题文本
+  ggtitle( this_title ) +
+  #分区颜色                   
+  scale_colour_manual(values = c('blue','grey','red'))+ 
+  #辅助线
+  #geom_vline(xintercept = c(-log2FC_cutoff,log2FC_cutoff),lty=4,col="grey",lwd=0.8) +
+  geom_hline(yintercept = -log10(padj_cutoff),lty=4,col="grey",lwd=0.8) +
+  #图例标题间距等设置
+  theme(plot.title = element_text(hjust = 0.5), 
+        plot.margin=unit(c(2,2,2,2),'lines'), #上右下左
+        legend.title = element_blank(),
+        legend.position="right")
+g
+#ggsave(g,filename = 'GSVA_go_volcano_padj.pdf',width =8,height =7.5)
+
+
+
+
+
+(3) 发散条形图/柱形偏差图
+为了更好展示绘制发散条形图/柱形偏差图，此处用的是KEGG的gsva差异分析结果，展示通路的上下调及pvalue信息（也可以是t值或padj值等）
+详细绘图过程见发散条形图/柱形偏差图 https://www.jianshu.com/p/cf23a9c6bb9c
+
+#library(tidyverse)  # ggplot2 stringer dplyr tidyr readr purrr  tibble forcats
+library(ggthemes)
+library(ggprism)
+library(stringr)
+
+p_cutoff=0.001
+
+# order
+degs |> head()
+degs = degs[order( -abs(degs$logFC) ),]
+
+# get subset of KEGG
+gsva_kegg_degs = degs[ grep("^KEGG_", rownames(degs), value=T), ]
+# rm suffix
+rownames(gsva_kegg_degs)= sub("KEGG_", "", rownames(gsva_kegg_degs))
+
+degs2 <- gsva_kegg_degs  #载入gsva的差异分析结果
+Diff <- rbind(subset(degs2,logFC>0)[1:20,], subset(degs2,logFC<0)[1:20,]) #选择上下调前20通路     
+dat_plot <- data.frame(id  = row.names(Diff),
+                       p   = Diff$P.Value,
+                       lgfc= Diff$logFC)
+dat_plot$group <- ifelse(dat_plot$lgfc>0 ,1,-1)    # 将上调设为组1，下调设为组-1
+dat_plot$lg_p <- -log10(dat_plot$p)*dat_plot$group # 将上调-log10p设置为正，下调-log10p设置为负
+
+dat_plot$id <- str_replace(dat_plot$id, "KEGG_","");dat_plot$id[1:10]
+dat_plot$threshold <- factor(ifelse(abs(dat_plot$p) <= p_cutoff,
+                                    ifelse(dat_plot$lgfc >0 ,'Up','Down'),'Not'),
+                             levels=c('Up','Down','Not'))
+table(dat_plot$threshold)
+#Up Down  Not 
+#4    8   28 
+
+dat_plot <- dat_plot %>% arrange(lg_p)
+dat_plot$id <- factor(dat_plot$id,levels = dat_plot$id)
+
+## 设置不同标签数量
+low1 <- dat_plot %>% filter(lg_p < log10(p_cutoff)) %>% nrow()
+low0 <- dat_plot %>% filter(lg_p < 0) %>% nrow()
+high0 <- dat_plot %>% filter(lg_p < -log10(p_cutoff)) %>% nrow()
+high1 <- nrow(dat_plot)
+
+p <- ggplot(data = dat_plot,aes(x = id, y = lg_p, 
+                                fill = threshold)) +
+  geom_col()+
+  coord_flip() + 
+  scale_fill_manual(values = c('Up'= '#36638a','Not'='#cccccc','Down'='#7bcd7b')) +
+  geom_hline(yintercept = c(-log10(p_cutoff),log10(p_cutoff)),color = 'white',size = 0.5,lty='dashed') +
+  xlab('') + 
+  ylab('-log10(P.Value) of GSVA score') + 
+  guides(fill="none")+
+  theme_prism(border = F) + #不要边框
+  theme(
+    axis.text.y = element_blank(),
+    axis.ticks.y = element_blank(),
+    axis.line.y = element_blank() #不要y轴
+  ) +
+  geom_text(data = dat_plot[1:low1,],aes(x = id,y = 0.1,label = id),
+            hjust = 0,color = 'black') + #黑色标签
+  geom_text(data = dat_plot[(low1 +1):low0,],aes(x = id,y = 0.1,label = id),
+            hjust = 0,color = 'grey') + # 灰色标签
+  geom_text(data = dat_plot[(low0 + 1):high0,],aes(x = id,y = -0.1,label = id),
+            hjust = 1,color = 'grey') + # 灰色标签
+  geom_text(data = dat_plot[(high0 +1):high1,],aes(x = id,y = -0.1,label = id),
+            hjust = 1,color = 'black') # 黑色标签
+p
+#ggsave("GSVA_barplot_pvalue.pdf",p,width = 15,height  = 15)
+
+
+
+
+
+
+
+
+
+
+
+
+ref:
+简短版: https://zhuanlan.zhihu.com/p/641011329
+https://mp.weixin.qq.com/s/3ovfx-KEvE_yc8buq0SaKQ
+https://zhuanlan.zhihu.com/p/518145829?utm_id=0
+
+https://www.bioconductor.org/packages/release/bioc/vignettes/GSVA/inst/doc/GSVA.html
 
 
 ========================================
