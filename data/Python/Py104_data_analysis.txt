@@ -1383,7 +1383,7 @@ True      1804
 Name: velocity_genes, dtype: int64
 
 
-(2) 
+
 data.obs.groupby("sample0")["sample0"].count()
 输出:
 sample0
@@ -1392,6 +1392,26 @@ DSS2    7769
 WT1       21
 WT2      376
 Name: sample0, dtype: int64
+
+
+
+
+(2) value_counts() 方法
+snp['CLNSIG'].value_counts()
+
+结果：
+Benign                                          222
+-                                               171
+Benign/Likely_benign                             43
+Likely_benign                                     9
+Conflicting_interpretations_of_pathogenicity      8
+Pathogenic                                        6
+Uncertain_significance                            3
+not_provided                                      1
+Pathogenic|risk_factor                            1
+Name: CLNSIG, dtype: int64
+
+
 
 
 
@@ -1936,6 +1956,8 @@ snp
 (2) 保存文件
 snp_final.to_csv("/home/wangjl/data/web/docs/excel/root/NGS194-23.result.SNV-v2.csv")
 
+snp_final.to_csv(output_file, index=False) #不需要保存行编号，默认保存行号
+
 
 
 
@@ -1951,7 +1973,7 @@ snp1
 pandas没有 isnotin 函数，只能自己实现:
 
 # 实现方法1: not in synonymous 列表
-snp2a=snp[snp['ExonicFunc.refGene'].map( lambda x: x not in ['-', 'synonymous SNV'] )]
+snp2a=snp[ snp['ExonicFunc.refGene'].map( lambda x: x not in ['-', 'synonymous SNV'] ) ]
 
 
 (3) 按正则表达式，保留某一列含有 hae 的行
@@ -2000,6 +2022,21 @@ str.match()：匹配正则表达式模式
 
 
 
+(5) 查看某一列的值及其频数: 功能和R语言中的table()一样。
+snp['CLNSIG'].value_counts()
+
+结果：
+Benign                                          222
+-                                               171
+Benign/Likely_benign                             43
+Likely_benign                                     9
+Conflicting_interpretations_of_pathogenicity      8
+Pathogenic                                        6
+Uncertain_significance                            3
+not_provided                                      1
+Pathogenic|risk_factor                            1
+Name: CLNSIG, dtype: int64
+
 
 
 
@@ -2010,6 +2047,10 @@ str.match()：匹配正则表达式模式
 (1) 去掉: 有rs号(也就是不是-)，且CLNSIG是-
 思路: 使用 data[] 按列取值，条件之间使用 & 表示 逻辑运算“且”，最后整体取“否”使用~
 snp2d=snp2c[ ~( (snp2c['avsnp150']!='-') & (snp2c["CLNSIG"]=='-') )]
+
+(2) 去掉 nan 值：使用 逻辑反~符号 结合 isna() 方法
+snp1=snp[ snp['zxsys'].map( lambda x: x not in [ "", "-", "低频", "假阳" ])  ]
+snp1 = snp1[ ~ snp1["zxsys"].isna() ]
 
 
 
@@ -2022,17 +2063,27 @@ snp2d=snp2c[ ~( (snp2c['avsnp150']!='-') & (snp2c["CLNSIG"]=='-') )]
 取筛选后的表格的index列求集合并集（|），按该列取子集，保证不重复，
 最后去掉 index 辅助列
 
-def mergeResult(snp1, snp2, snp3):
-    print(snp1.shape[0], snp2.shape[0], snp3.shape[0])
-    # 求并集
-    index_keep = set(snp1["index"]) | set(snp2["index"]) | set(snp3["index"])
+# 前面
+import pandas as pd
+import numpy as np
+snp=pd.read_csv(input_filename, sep="\t")
+# 新增一列 index
+snp["index"]=snp.index
+
+# 几次过滤提取 略
+
+# 合并
+def mergeResult(snp1, snp2, snp3, snp4):
+    logger.info("row number after each filter: %d, %d, %d, %d" %( snp1.shape[0], snp2.shape[0], snp3.shape[0], snp4.shape[0] ) )
+    #1. 求并集: 依赖 index 辅助列
+    index_keep = set(snp1["index"]) | set(snp2["index"]) | set(snp3["index"]) | set(snp4["index"])
     snp_final = snp[snp['index'].isin(index_keep)]
-    # 去掉最后的 index 列：axis=1 是按列
+    #2. 去掉最后的 index 列
     snp_final=snp_final.drop(['index'], axis=1)
-    print(len(index_keep))
+    logger.info("final row number: %d" % len(index_keep))
     return snp_final
 
-snp_final = mergeResult(snp1, snp2, snp3)
+snp_final = mergeResult(snp1, snp2, snp3, snp4)
 snp_final.shape
 
 
@@ -2045,8 +2096,8 @@ snp_final.shape
 使用Pandas从多个条件（AND，OR，NOT）中提取行的方法。
 
 有以下2点需要注意：
-	* &, |, ~ 的使用（and、or、not的错误）
-	* 使用比较运算符时，请将每个条件括在括号中。
+	* &, |, ~ 的使用（对应 and、or、not）
+	* 使用比较运算符时，请将每个条件括在括号中: ()十分重要，能避免莫名其妙的 报错。
 
 print(df['age'] < 35)
 print((df['age'] < 35) & ~(df['state'] == 'NY'))
