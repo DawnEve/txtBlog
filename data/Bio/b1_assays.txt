@@ -1037,7 +1037,7 @@ https://zhuanlan.zhihu.com/p/456860660
 
 
 ========================================
-RNA稳定性检测（放线菌素D (Actinomycin D) 处理法）
+RNA稳定性检测（放线菌素D (Actinomycin D, ActD) 处理法）
 ----------------------------------------
 1. 放线菌素D（Actinomycin D）
 
@@ -1066,10 +1066,179 @@ Actinomycin D (Dactinomycin, Actinomycin IV, Act D, RASP-101, RASP101)，又称�
 
 
 
-3. 问题
+
+
+
+3. 计算方法
+
+(1) https://www.jingege.wang/2021/01/12/利用放线菌素d抑制转录检测mrna的稳定性/
+
+3) Normalize the Ct average of each time point to the Ct average value of t = 0 to obtain ∆Ct value.
+∆Ct = (Average Ct of each time point – Average Ct of t=0).
+
+4) Calculate the relative abundance for each time point.
+mRNA abundance = 2(-∆CT)
+
+5)Plot the relative abundance of mRNA at each time point relative to t = 0 using GraphPad Prism or similar software (Figures 2A and 2D). 
+
+6)Determine the mRNA decay rate by non-linear regression curve fitting (one phase decay) using GraphPad Prism (Figure 2B). We used following parameters:
+    Least squares (ordinary fit)
+    Confidence level–95%
+    Asymmetrical (likelihood) CI
+    Goodness of fit was quantified with R square
+    Convergence criteria–medium
+
+
+
+
+
+(2) 文章描述
+https://www.sciencedirect.com/science/article/pii/S1046202317302773
+Fig2C: RNA norm (time) = RNA SteadyState * exp(-Kassy * time)
+(C) A representative fitting of an exponential decay model to a transcription inhibition time course. The dashed lines illustrate the effects of the two parameters on the shape of the curve.
+
+=> 2.2.2. Transcript quantification and half-life calculations
+标准化，有内参。
+时间点内标准化，方便不同时间点的比较。
+
+The expectation is that upon transcription inhibition, transcripts will continue to decay at the same rate, usually thought to be exponential decay. Following the shut-off of transcription, the abundance of RNA at a given time is defined by two parameters—the abundance at steady state (abundanceSteadyState) and its decay rate (kdecay) (Fig. 2C). 
+
+RNA总量决定于 稳态的量 abundance SteadyState ，和降解速率 K decay。
+In other words, the amount of RNA remaining is described by the equation: abundance(time) = abundanceSteadyState * e(−kdecay * time). 
+
+非线性最小二乘法拟合，可以用R实现。
+This equation can be fit to the data using nonlinear least squares, which is available in R. Once the equation is fit, the half-life of each transcript is then obtained using the equation: half-life = ln(2)/Kdecay.
+
+半衰期 = ln(2) / K
+
+
+
+描述2：https://blog.csdn.net/E_gene/article/details/120141217
+标题：Regulation of telomere homeostasis and genomic stability in cancer by N6 -adenosine methylation (m6A)
+期刊：SCIENCE ADVANCES
+IF: 14.136
+发表时间：2021.7.28
+使用转录抑制剂放线菌素D（ActD）处理LNCaP细胞，并比较正常细胞和METTL3或ALKBH5敲除时HMBOX1 mRNA的半衰期，结果发现当METTL3表达沉默时，HMBOX1 mRNA水平稳定，而ALKBH5的敲除则加快HMBOX1 mRNA衰减速率（图3C）。
+
+
+
+
+
+(3) 我的尝试
+# 尝试参数的初始值 try to get init parameter of NLS ====
+(function(){
+  x=seq(5, 25, 1)
+  y=exp(-x)
+  #plot(x,y, char)
+})()
+
+方法2，直接绘制函数
+plot(function(x){0.2*exp(-0.2*x)}, 0.1, 25)
+
+
+
+非线性拟合
+# nls ----
+#r remaining
+x=seq(5, 25, 5); x #time
+y=c(0.6, 0.35, 0.18, 0.1, 0.08); y #RNA remaining
+
+# 真实值散点图
+plot(x, y, type="o", pch=20, col="black", 
+     xlab="Time(hr)", ylab="Normalized RNA abundance",
+     mgp=c(2,1,0), bty="l",
+     ylim=c(0, 1), xlim=c(0,25))
+abline(h=1,lty=2, col="grey")
+
+#fit
+fit1 = nls(y~r*exp(-k*x), 
+           data=data.frame(x=x, y=y),
+           start=list(r=1, k=0.1), 
+           #algorithm="plinear",
+           algorithm="port",
+           control = nls.control(tol = 1e-8),
+           trace = T)
+#2) resid
+sum(resid(fit1)^2) #0.004650288
+# get parameter
+summary(fit1)
+summary(fit1)$coefficients["r", "Estimate"]
+summary(fit1)$coefficients["k", "Estimate"]
+
+# predi curve
+x1=seq(5,25,1); head(x1)
+y1 = predict(fit1, data.frame(x=x1)); head(y1)
+#
+points(x1, y1, pch=20, col="red", type="l", lty=2, lwd=2)
+
+# add y=1-kx
+K=summary(fit1)$coefficients["k", "Estimate"]
+abline(a=1, b=-K, lty=2, col="purple")
+
+
+#3) half-life = ln(2)/K
+# 其实就是 y=0.5 时推导 x = ( ln(Remainning) - ln(0.5) ) / K，如果起始量标准化为1，则 x=ln(2)/K;
+log(2)/K  #[1] 6.085367
+
+
+
+
+#4) 求R^2
+https://www.codenong.com/14530770/
+soilphysics软件包还报告了nls模型的Efron 伪R2 和 调整后的伪R2值为 1-RSS / TSS：
+
+# how to get R^2
+getRSquare = function(model){
+  pred=predict(model);  pred
+  n=length(pred); n
+  res = resid(model)
+  w <- weights(model)
+  if (is.null(w)) w <- rep(1, n)
+  # w
+  rss <- sum(w * res ^ 2)
+  resp <- pred + res
+  center <- weighted.mean(resp, w)
+  r.df <- summary(model)$df[2]
+  int.df <- 1
+  tss <- sum(w * (resp - center)^2)
+  r.sq <- 1 - rss/tss
+  adj.r.sq <- 1 - (1 - r.sq) * (n - int.df) / r.df
+  out <- list(pseudo.R.squared = r.sq,
+              adj.R.squared = adj.r.sq)
+  out
+}
+
+getRSquare(fit1)
+#$pseudo.R.squared
+#[1] 0.996435
+#
+#$adj.R.squared
+#[1] 0.9952467
+
+
+
+
+
+
+
+
+
+
+
+
+10. 问题
 
 (1) 想问一下关于半衰期的计算是用什么软件
 graphpad spss 各种统计软件都可以 这里面教程使用的graphpad，非线性回归
+
+
+
+
+
+
+
+
+
 
 
 
