@@ -1414,6 +1414,8 @@ Pt(x,y) -- 从 x 经 t 步走到y
 https://www.jianshu.com/p/97ab7371312c
     使用基因：All the top 100 markers of each cluster were used for the cell ordering.
 
+https://github.com/jmzeng1314/mouse-xx-xy-C1
+    使用 diffusionMap 做 monocle 普系发育
 
 (0) R 包 安装
 调包 library(diffusionMap) 
@@ -1484,14 +1486,15 @@ cmake version 3.16.3
 
 
 
+
 (1) 教程： from Seurat to destiny
 if (!require("BiocManager", quietly = TRUE))
     install.packages("BiocManager")
 
 BiocManager::install("destiny")
 
+#Good: http://barcwiki.wi.mit.edu/wiki/SOP/scRNA-seq/diffusionMaps
 
-# http://barcwiki.wi.mit.edu/wiki/SOP/scRNA-seq/diffusionMaps
 # step1: Making a single cell object from a Seurat object
 library(Seurat) 
 library(SingleCellExperiment)
@@ -1533,12 +1536,109 @@ ggplot(tmp, aes(x = DC1, y = DC2, colour = Samples)) +
 #dev.off()
 
 
+# 对照UMAP图
+DimPlot(scObj, label=T)
+
+
+# step4: Plotting cell progression along the diffusion map components
+sce$pseud_dm1 <- rank(eigenvectors(dm)[,1])      # rank cells by their dpt dm1
+sce$pseud_dm2 <- rank(eigenvectors(dm)[,2])      # rank cells by their dpt dm2
+sce$pseud_dm1R <- rank(-eigenvectors(dm)[,1])    # rank cells by their dpt dm1 reverse order
+sce$pseud_dm2R <- rank(-eigenvectors(dm)[,2])    # rank cells by their dpt dm2 reverse order
+
+SortedDM1 <- data.frame(DM1Sort = as.data.frame(colData(sce))$pseud_dm1,
+                        Samples = as.data.frame(colData(sce))$ident)
+SortedDM2 <- data.frame(DM2Sort = as.data.frame(colData(sce))$pseud_dm2,
+                        Samples = as.data.frame(colData(sce))$ident)
+SortedDM1R <- data.frame(DM1SortR = as.data.frame(colData(sce))$pseud_dm1R,
+                         Samples = as.data.frame(colData(sce))$ident)
+SortedDM2R <- data.frame(DM2SortR = as.data.frame(colData(sce))$pseud_dm2R,
+                         Samples = as.data.frame(colData(sce))$ident)
+
+ggplot(SortedDM1, aes(x=SortedDM1[,1], y=Samples,color=Samples)) +
+  geom_jitter() + xlab("Diffusion component 1 (DC1)") + ylab("Samples") +
+  ggtitle("Cells ordered by DC1")
+ggplot(SortedDM2, aes(x=SortedDM2[,1], y=Samples,color=Samples)) +
+  geom_jitter() + xlab("Diffusion component 2 (DC2)") + ylab("Samples") +
+  ggtitle("Cells ordered by DC2")
+  
+ggplot(SortedDM1R, aes(x=SortedDM1R[,1], y=Samples,color=Samples)) +
+  geom_jitter() + xlab("Minus Diffusion component 1 (DC1)") + ylab("Samples") +
+  ggtitle("Cells ordered by reversed DC1")
+ggplot(SortedDM2R, aes(x=SortedDM2R[,1], y=Samples,color=Samples)) +
+  geom_jitter() + xlab("Minus Diffusion component 2 (DC2)") + ylab("Samples") +
+  ggtitle("Cells ordered by reversed DC2")
+
+
+# step5: Make and interactive 2D and 3D diffusion map figure
+library(plotly)
+
+#interactive 2D
+p2 = plot_ly(x=tmp$DC1, y=tmp$DC2, type="scatter", mode="markers", color=tmp$Samples, marker.size = 0.5)
+htmlwidgets::saveWidget(as_widget(p2), "Interactive2D_DiffM.html", title = "Diffusion map")
+
+#interactive 3D
+p = plot_ly(x=tmp$DC1, y=tmp$DC2, z=tmp$DC3, type="scatter3d", mode="markers", color=tmp$Samples, marker = list(size = 2 ))
+htmlwidgets::saveWidget(as_widget(p), "Interactive3D.html", title = "Diffusion map")
 
 
 
 
 
-(1) 导入数据
+
+(2) 定义函数法: 效果不好
+
+library(Biobase)
+run_diffMap = function(data, condition, sigma){
+    # 这个包装的函数其实做了下面几行代码的事情
+    #data=females_data
+    #condition=female_clustering
+    #sigma=15
+    destinyObj <- as.ExpressionSet(as.data.frame(t(data)))
+    destinyObj$condition <- factor(condition)
+    dm <- DiffusionMap(destinyObj, sigma, rotate = TRUE)
+}
+
+if(0){
+    female_dm = run_diffMap(
+      females_data, 
+      female_clustering,
+      sigma=15
+    )
+    # 保存结果
+    save(female_dm, females_data, female_clustering, female_stages,
+         file = 'diffusionMap_output.Rdata')
+}
+
+# 实例
+scObj_dm = run_diffMap(
+  data = scObj@assays$RNA@data, 
+  condition = scObj$seurat_clusters,
+  sigma=11
+) #14:45 ->14:50
+提示：
+    Warning message:
+    In DiffusionMap(destinyObj, sigma, rotate = TRUE) :
+      You have 15855 genes. Consider passing e.g. n_pcs = 50 to speed up computation.
+
+
+# 绘图
+scObj_dm@eigenvectors |> 
+    as.data.frame() |>
+    cbind( cluster = factor(scObj$seurat_clusters) ) |> 
+    ggplot( aes(x=DC1, y=DC2, color=cluster))+
+    geom_point(size=0.2) + 
+    theme_classic()+
+    guides(color = guide_legend(override.aes = list(size = 3)))
+
+
+
+
+
+
+(3) 另一个教程
+
+1) 导入数据
 library(destiny)
 as.matrix(rnaM.logcpm)[1:5,1:5]
 dim(as.matrix(rnaM.logcpm))
@@ -1553,7 +1653,7 @@ head(pDat)
 str(pDat)
 
 
-(2) 构建eset
+2) 构建eset
 library(Biobase)
 eset=Biobase::ExpressionSet(as.matrix(rnaM.logcpm), phenoData=Biobase::AnnotatedDataFrame(pDat))
 eset
@@ -1571,9 +1671,12 @@ eset
 
 saveRDS(eset, 'eset_rnaM.logcpm.rds')
 
-(3) 画图
-dmap=DiffusionMap(eset) #耗时
-报错：见下文 测试数据
+3) 画图
+dmap=DiffusionMap(eset) #耗时 5 min
+提示:
+    Warning message:
+    In DiffusionMap(eset) :
+      You have 15855 genes. Consider passing e.g. n_pcs = 50 to speed up computation
 
 plot.DiffusionMap(dmap)
 
@@ -1583,7 +1686,43 @@ plot.DiffusionMap(dmap, dims=c(1,3))
 # dmap@eigenvectors$DC1
 
 
-=> 测试数据
+# 4) 重绘
+dat = dmap@eigenvectors |> 
+    as.data.frame() |>
+    cbind( cluster = factor(scObj$seurat_clusters) )
+
+# 设定 cluster，并高亮大号点显示
+cluster.highlight=0; ggplot(dat, aes(x=DC1, y=DC2, color=cluster))+
+    geom_point(size=0.2) + 
+    geom_point(data=dat[which(dat$cluster==cluster.highlight),], mapping=aes(DC1, DC2), size=0.8) + #高亮显示某一类
+    theme_classic()+
+    guides(color = guide_legend(override.aes = list(size = 3)))
+
+# 对比 Seurat 结果
+DimPlot(scObj, label=T, reduction = "pca")
+
+
+
+
+
+(4) 轨迹图 destiny 2.0 brought the Diffusion Pseudo Time (DPT) class  //todo
+data -> transition probabilities -> DiffusionMap
+data -> transition probabilities -> DPT
+
+
+https://www.bioconductor.org/packages/release/bioc/vignettes/destiny/inst/doc/DPT.html
+dpt <- DPT(dm)
+
+set.seed(4)
+dpt_random <- DPT(dm, tips = sample(ncol(guo), 3L))
+
+library(gridExtra)  # Also we need grid.arrange
+grid.arrange(plot(dpt), plot(dpt_random), ncol = 2)
+
+
+
+
+=> 测试数据 （忽视）
     data(guo)
     DiffusionMap(guo)
     报错：
@@ -1626,34 +1765,9 @@ install.packages("diffusionMap")
 
 
 
-(2) 调用 (失败，这个是网上的例子)
+
+(2) 实例 内置数据
 library(diffusionMap) #1.2.0
-
-# 定义函数
-run_diffMap = function(data, condition, sigma){
-    # 这个包装的函数其实做了下面几行代码的事情
-    #data=females_data
-    #condition=female_clustering
-    #sigma=15
-    destinyObj <- as.ExpressionSet(as.data.frame(t(data)))
-    destinyObj$condition <- factor(condition)
-    dm <- DiffusionMap(destinyObj, sigma, rotate = TRUE)
-}
-
-female_dm = run_diffMap(
-  females_data, 
-  female_clustering,
-  sigma=15
-)
-# 报错 Error: object 'DiffusionMap' not found
-
-# 保存结果
-save(female_dm, females_data, female_clustering, female_stages,
-     file = 'diffusionMap_output.Rdata')
-
-
-
-(3) 实例 内置数据
 
 > data(annulus)
 > plot(annulus,main="Annulus Data",pch=20,cex=.7)
@@ -1671,7 +1785,7 @@ print(dmap)
 plot(dmap)
 
 
-(4) 单细胞实例
+(3) 单细胞实例
 # https://www.jianshu.com/p/53b8df5aa96a
 
 #    dis2 = dist(data)
