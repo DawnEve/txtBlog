@@ -33,6 +33,7 @@ return array (
     1 => '经验教训',
     2 => array (
       array('投稿经验与教训（基金）','paper_prep','html'),
+      array('基金申请 / fund','fund','txt'),
 
       array('科研故事','story','txt'),
       array('Endnote的使用','endnote','txt'),
