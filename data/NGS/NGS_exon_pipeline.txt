@@ -2577,7 +2577,207 @@ https://mp.weixin.qq.com/s/X6oiHtKBMBPFqncgL3Enxw
 
 
 ========================================
+MNP 技术细节：获取同一个位置的碱基和read名字
 ----------------------------------------
+比对后，怎么拿到同一个read覆盖的位点组合？怎么容错？
+
+1. 策略1：bam中获取某个区域的读段
+bam比对后，通过bed文件获取子集。
+怎么逐个获取read中每个碱基的位置？
+// todo
+
+(1) bam to bed
+https://bedtools.readthedocs.io/en/latest/content/tools/bamtobed.html
+
+$ bedtools bamtobed -i reads.bam | head -3
+chr7   118970079   118970129   TUPAC_0001:3:1:0:1452#0/1   37   -
+chr7   118965072   118965122   TUPAC_0001:3:1:0:1452#0/2   37   +
+chr11  46769934    46769984    TUPAC_0001:3:1:0:1472#0/1   37   -
+
+缺点：无法逐个位点转换？
+
+(2) bam to pileup format
+the way "samtools pileup" generates a pileup file out of a BAM file.
+
+
+
+
+
+2. 策略2：从bam中获取指定位置的碱基和read名字
+
+(1) 不一定使用R
+https://bioinformatics.stackexchange.com/questions/17577/extract-read-names-and-the-associated-nucleotides-on-specific-positions-from-a-b
+读段名字  20  25 30 37
+read1     T   A   -  C
+read2     C   G   A  -
+
+过滤掉有缺失的行，
+然后合并一行，
+使用table，获取每种的频率
+
+线索：pileup interface from pysam (perhaps Rsamtools provides a similar functionality).、
+
+(2) 
+https://bioinformatics.stackexchange.com/questions/7401/access-base-aligned-to-particular-reference-position
+
+
+(3) 更多 samtools 参数 https://samtools.sourceforge.net/mpileup.shtml
+
+
+
+
+
+
+
+3. 可用方案：依赖 pysam 和 pandas，从 bam 中提取
+
+(1) get raw info from bam
+import pysam
+bam_file="/data/wangjl/rsa/HeLa/map/test/2.bam"
+samfile = pysam.AlignmentFile(bam_file, "rb" )
+samfile
+
+# Aim: get MNP info from bam file
+# @samfile a pysam file obj
+# @chromosome like "chr1"
+# @position0Base position number
+# @return an dict, key as "chr:pos", values as vector of [readName, baseAtKey]
+def getDict_Pos_readName_base(samfile, chromosome, position0Bases):
+    # return this dict
+    results = {}
+    
+    if type(position0Bases) == type(1):
+        position0Bases = [ position0Bases ]
+    
+    for position0Base in position0Bases:
+        # .bam is 0-based coord; so remember -1 when using pybam and bam file.
+        pileupObj = samfile.pileup(region = ("%s:%d-%d" % (chromosome, position0Base, position0Base+1)) )
+
+        for pileupcolumn in pileupObj:
+            # if no reads, jump
+            if len(pileupcolumn.pileups)==0:
+                continue
+            # if not this region jump
+            if pileupcolumn.reference_name != chromosome or pileupcolumn.pos != position0Base:
+                continue
+            #
+            chr_pos = chromosome +":"+ str(position0Base)
+            if chr_pos not in results:
+                results[chr_pos]=[]
+            #
+            for pileupread in pileupcolumn.pileups:
+                if not pileupread.is_del and not pileupread.is_refskip:
+                    name_seq = [pileupread.alignment.query_name,
+                                pileupread.alignment.query_sequence[pileupread.query_position] ]
+                    results[chr_pos].append( name_seq )
+    #
+    return results
+
+# test
+dict1 = getDict_Pos_readName_base(samfile, "chr1", 246767261)
+dict1
+
+输出:
+{'chr1:246767261': [['SRR3535826.21091476', 'C'],
+  ['SRR3535826.45114172', 'G'],
+  ['SRR3535826.5821902', 'C'],
+  ['SRR3535826.11258797', 'C'],
+  ['SRR3535826.17575166', 'C'],
+  ['SRR3535826.48835599', 'G'],
+  ['SRR3535826.64409304', 'C']]}
+
+
+dict2 = getDict_Pos_readName_base(samfile, "chr1", 246767261+5)
+dict3 = getDict_Pos_readName_base(samfile, "chr1", 246767261+15)
+
+
+# batch mod: 也适用于多个位点，这种情况不可能跨越chr；如果跨越了，可以使用单一版本，再合并 vector
+dict4 = getDict_Pos_readName_base(samfile, "chr1", [246767261, 246767261+5, 246767261+15])
+dict4
+
+(2) transfer dict to vector
+# simple merge the dict
+def dict2vector(dict0):
+    results=[]
+    for k,v in dict0.items():
+        #print(k, v)
+        for ele in v:
+            results.append([k] + ele)
+    return results
+
+# result
+results = dict2vector(dict1) + dict2vector(dict2) + dict2vector(dict3)
+results
+
+批量模式
+results2 = dict2vector(dict4)
+results2
+
+
+(3) save to file
+output_file = open("/data/wangjl/rsa/HeLa/map/test/3b.txt", "w")
+
+for i in range( len(results2) ):
+    output_file.write( "\t".join( results2[i] )+ "\n" )
+
+output_file.close()
+
+
+(4) vector to table
+import pandas as pd
+
+table = pd.DataFrame(results, columns=['position', 'readname', 'nt'])
+table
+
+table["position"].unique()
+table["readname"].unique()
+
+# 新建空白表格，默认字符串"-"，指定行列
+table_wide = pd.DataFrame(columns=table["position"].unique(), index=table["readname"].unique(), data="-" )
+table_wide
+
+填充字符串
+for i in range(len(table)):
+    row = table.iloc[i]
+    #print(i, row.readname, row.position, row.nt)
+    table_wide.loc[row.readname, row.position] = row.nt
+table_wide
+
+输出：
+	chr1:246767261	chr1:246767266	chr1:246767276
+SRR3535826.21091476	C	T	G
+SRR3535826.45114172	G	T	G
+SRR3535826.5821902	C	T	G
+SRR3535826.11258797	C	T	G
+SRR3535826.17575166	C	T	G
+SRR3535826.48835599	G	T	G
+SRR3535826.64409304	C	T	G
+SRR3535826.1490429	-	T	G
+
+
+(5) table to string
+import re
+
+results = []
+for i in range(len(table_wide)):
+    row = table_wide.iloc[i]
+    results.append( re.sub("\n","", row.to_string(header=False, index=False)) )
+#
+results #['CTG', 'GTG', 'CTG', 'CTG', 'CTG', 'GTG', 'CTG', '-TG']
+
+
+# 统计计数
+pd.DataFrame( data = results )[0].value_counts()
+
+输出: 
+CTG    5
+GTG    2
+-TG    1
+Name: 0, dtype: int64
+
+
+test: http://z.biomooc.com:10086/notebooks/MNP_demo.ipynb
+
 
 
 

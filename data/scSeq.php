@@ -32,6 +32,7 @@ return array (
       array('Seurat源码阅读','Seurat_source','txt'),
       array('Monocle包','monocle3_note','txt'),
       array('RNA_Velocity','RNA_Velocity_note','txt'),
+      array('scanpy 包','scanpy_note','txt'),
     ),
   ),
    
