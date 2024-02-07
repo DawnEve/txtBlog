@@ -9,6 +9,8 @@ return array (
       array('参考资料','R002','html'),
       array('R杂项(安装、脚本化)','R003-grocer','txt'),
       array('R IDE(Rstudio)','R00-IDE','txt'),
+	  
+      array('R过时/老版本-outOfDate','outOfDate','txt'),
     ),
   ),
 

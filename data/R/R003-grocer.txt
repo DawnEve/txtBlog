@@ -10,10 +10,12 @@ install.packages(packageurl, repos=NULL, type="source")
 
 
 ========================================
-R 的常用设置代码：R tips 
+R 的常用设置代码： 国内包镜像， R tips
 ----------------------------------------
-0. 使用国内的镜像
+R 最核心的配置文件： $ cat /opt/R/4.2.1/lib64/R/etc/Renviron
 
+
+0. 使用国内的镜像
 
 (0) 设置国内镜像
 #使用命令行设置镜像
@@ -53,11 +55,26 @@ options("repos" = c(CRAN="https://mirrors.tuna.tsinghua.edu.cn/CRAN/"))
 options(BioC_mirror="https://mirrors.tuna.tsinghua.edu.cn/bioconductor")
 保存后重启 R。
 
-
 (3) 安装开发版本的 ggplot2 包：
 > remotes::install_github("tidyverse/ggplot2")
 
 如果 git 库还没有被支持（如中国的 gitee），可以使用 remotes::install_git() 安装。
+
+
+(4) 如果下载失败，可以试试指定下载工具：
+options(download.file.method="wget")
+
+
+(5) 如果新安装了 gcc 12，怎么在R中指定呢？
+=> 非root权限安装新版 gcc: index.php?k=c&id=1_5#6
+
+$ mkdir -p ~/.R
+$ echo 'CXX17 = g++ -std=c++17 -fPIC' > ~/.R/Makevars
+使用shell R继续安装：
+> install.packages("RcppTOML")
+
+$ cat ~/.R/Makevars
+CXX17 = g++ -std=c++17 -fPIC
 
 
 
@@ -93,7 +110,7 @@ suppressMessages(library(...))
 
 
 ========================================
-|-- 查看当前的R环境、R包及其版本号，出错提问时必备
+|-- 查看当前的R环境、R包及其版本号，出错提问时必备： sessionInfo()
 ----------------------------------------
 sessionInfo()
 
@@ -108,6 +125,9 @@ sessionInfo()
 $ vim ~/.Rprofile
 message("hello, world!")
 
+
+或在R中编辑：
+> file.edit("~/.Rprofile")
 
 
 
@@ -163,6 +183,462 @@ https://www.douban.com/note/648766046/?from=tag&_i=7531721Ks5R5I5,33900656Ir1pON
 
 
 
+========================================
+|-- 查看 rstudio 的端口号 
+----------------------------------------
+
+
+1. 进程查pid，pid查端口号
+(1) 143 server: 分两次查
+$ ps -aux | grep rstudio
+rstudio+ 27962  0.2  0.0 307024 62616 ?        Ssl  Feb05   3:27 /usr/lib/rstudio-server/bin/rserver
+
+$ sudo netstat -anp | grep 27962
+tcp        0      0 0.0.0.0:8787            0.0.0.0:*               LISTEN      27962/rserver       
+tcp        0      0 10.10.118.143:8787      10.10.119.138:58340     ESTABLISHED 27962/rserver 
+可见，第一个ip是本机，第二个ip是远程访客。
+
+$ ifconfig
+em2: flags=4163<UP,BROADCAST,RUNNING,MULTICAST>  mtu 1500
+        inet 10.10.118.143  netmask 255.255.252.0  broadcast 10.10.119.255
+
+
+(2) 193 server: 一次直接查
+$ sudo netstat -anp | grep -i rserver
+tcp        0      0 0.0.0.0:8888            0.0.0.0:*               LISTEN      3713/rserver        
+tcp        0      0 172.18.5.193:8888       10.25.225.251:64405     ESTABLISHED 3713/rserver
+
+
+
+========================================
+|-- hit <return> to see next plot 怎么回事？
+----------------------------------------
+一般是执行完示例程序后遗留问题。
+# 关掉算了
+par(ask=F)
+
+
+
+
+========================================
+** [CentOS7.9] gcc 更新后，怎么在 R / Rstudio 使用最新的gcc 12： 配置gcc路径和动态链接库
+----------------------------------------
+1. 怎么在R和Rstudio中使用最新的 gcc?
+(1) 问题与答案
+无法让 RStudio Server 使用较新的 gcc 版本。我尝试将 source scl_source enable devtoolset-4 附加到我的 .bash_profile 的末尾，并设置 CC、CXX 和 COLLECT_LTD_WRAPPER环境。我的主目录中的 Makevars 文件以及 $R_HOME/etc/Renviron.site 文件中的变量。在 RStudio Server 中运行 system("gcc -v") 仍然显示 gcc 版本为 4.8.5。但是，如果 ssh 进入服务器并从那里运行 R，然后检查 gcc 版本，它会使用正确的版本 (5.3.1)。
+
+如何让 RStudio Server 中的 R session 使用更新的 GCC 版本？
+
+
+最佳答案
+将包含新版本的 gcc bin 的 PATH var 放入 $R_HOME/etc/Renviron.site 像这样的东西..
+PATH=/opt/rh/devtoolset-8/root/usr/bin:/opt/rh/devtoolset-8/root/usr/bin
+然后全局设置
+
+您还可以在 R-studio 中针对每个 session 进行设置
+Sys.setenv("PATH"="/opt/rh/devtoolset-8/root/usr/bin:/opt/rh/devtoolset-8/root/usr/bin")
+
+关于r - 获取 RStudio Server 开源版本以使用替代 gcc 版本，我们在Stack Overflow上找到一个类似的问题： https://stackoverflow.com/questions/54463433/
+
+
+
+
+
+(2) 实操: 配置R的make flag参数
+
+可以使用sudo权限安装最新的gcc:
+$ sudo yum install centos-release-scl
+$ sudo yum install devtoolset-9
+
+
+编译参数设置: https://blog.csdn.net/qq_36608036/article/details/125554341
+$ cat ~/.R/Makevars
+CXX11=/home/wangjl/soft/gcc-12.3.0/bin/g++ -std=c++11 -fPIC
+CXX14=/home/wangjl/soft/gcc-12.3.0/bin/g++ -std=c++14 -fPIC
+CXX17=/home/wangjl/soft/gcc-12.3.0/bin/g++ -std=c++17 -fPIC
+gcc=/home/wangjl/soft/gcc-12.3.0/bin/gcc
+
+
+
+
+
+(3) 实操： 配置R的gcc位置及动态链接库
+
+a1) 设置gcc位置： 新版本的 gcc bin 的 PATH var
+
+避免全局配置： （跳过 a1，直接看 a2）
+$ find /opt/R/4.3.2/ | grep Renviron
+/opt/R/4.3.2/lib64/R/etc/Renviron
+
+> Sys.getenv("R_HOME")
+[1] "/opt/R/4.3.2/lib64/R"
+所以： $R_HOME/etc/Renviron.site: /opt/R/4.3.2/lib64/R/etc/Renviron.site
+
+这里是R的配置文件
+$ ls -lth /opt/R/4.3.2/lib64/R/etc/
+total 24K
+-rw-r--r--. 1 root root  810 Feb  4 18:15 ldpaths   动态链接库设置
+-rw-r--r--. 1 root root  209 Feb  4 18:15 javaconf  
+-rw-r--r--. 1 root root 1.9K Feb  4 18:15 Renviron
+-rw-r--r--. 1 root root 6.6K Feb  4 18:15 Makeconf
+-rw-r--r--. 1 root root 1.2K Feb  4 18:15 repositories
+
+
+
+
+
+a2) 使用本地配置：
+> file.edit("~/.Rprofile")
+# for R pkg install source ----
+# options(download.file.method="wget")
+# 设置 Bioconductor 源国内镜像
+options(BioC_mirror="https://mirrors.tuna.tsinghua.edu.cn/bioconductor") #推荐
+# 设置 R 包官方源 国内镜像
+options("repos" = c(CRAN="https://mirrors.tuna.tsinghua.edu.cn/CRAN/")) ##指定install.packages安装镜像，清华镜像
+
+# 注意： 放gcc的库，还要放py的库：
+# Sys.setenv("PATH"="/home/wangjl/soft/gcc-12.3.0/bin:$PATH") #这个版本不对，因为R有自己的配置文件
+# For gcc new version ----
+Sys.setenv("PATH"=paste0("/home/wangjl/soft/gcc-12.3.0/bin:", Sys.getenv("PATH") ) )
+#Sys.setenv("LD_LIBRARY_PATH"=paste0("/home/wangjl/soft/gcc-12.3.0/lib:/home/wangjl/soft/gcc-12.3.0/lib64:", Sys.getenv("LD_LIBRARY_PATH") ) )
+# 似乎在 /etc/rstudio/rserver.conf 中配置过 rsession-ld-library-path ，这里不需要再配置 LD_LIBRARY_PATH 了。
+
+# for py library
+Sys.setenv("LD_LIBRARY_PATH"=paste0("/home/wangjl/soft/python3/lib/:", Sys.getenv("LD_LIBRARY_PATH") ) )
+
+# 保存后重启 R: 菜单 Session - Restart R;
+
+
+
+
+b) 设置 gcc 的 library 位置： 还是用了Rstudio的全局配置
+https://github.com/rstudio/rstudio/issues/4262
+rsession-ld-library-path should be set in rserver.conf and not in rsession.conf. Let us know if that works for you!
+
+注意： 只放gcc的库，不用放py的库：
+$ cat /etc/rstudio/rserver.conf
+auth-timeout-minutes=1800
+rsession-ld-library-path=/home/wangjl/soft/gcc-12.3.0/lib64/:/home/wangjl/soft/gcc-12.3.0/lib/:/usr/lib64/:/usr/local/lib/:/usr/lib/
+
+
+
+(4) 测试
+> system("gcc -v")
+Using built-in specs.
+COLLECT_GCC=gcc
+COLLECT_LTO_WRAPPER=/home/wangjl/soft/gcc-12.3.0/libexec/gcc/x86_64-pc-linux-gnu/12.3.0/lto-wrapper
+Target: x86_64-pc-linux-gnu
+Configured with: ./configure --prefix=/home/wangjl/soft/gcc-12.3.0 --enable-shared --enable-threads=posix --enable-languages=c,c++,fortran --disable-multilib
+Thread model: posix
+Supported LTO compression algorithms: zlib
+gcc version 12.3.0 (GCC) 
+
+
+
+
+
+
+
+
+
+========================================
+|-- 安装 Seurat V5 及其配套R包 //todo
+----------------------------------------
+(5a) 安装R包： 跳过
+要从Rcpp开始重装一遍。
+
+> remove.packages("Rcpp")
+> install.packages("Rcpp")
+总是报错：Error: package or namespace load failed for ‘Rcpp’ in dyn.load(file, DLLpath = DLLpath, ...):
+ unable to load shared object '/picb/jinlab/wangjl/R/x86_64-pc-linux-gnu-library/4.3/00LOCK-Rcpp/00new/Rcpp/libs/Rcpp.so':
+  /lib64/libstdc++.so.6: version `GLIBCXX_3.4.20' not found (required by /picb/jinlab/wangjl/R/x86_64-pc-linux-gnu-library/4.3/00LOCK-Rcpp/00new/Rcpp/libs/Rcpp.so)
+
+==> 有说下载 libstdc++ https://blog.csdn.net/justlpf/article/details/130077200 
+$ sudo search libstdc
+libstdc++.x86_64 : GNU Standard C++ Library
+libstdc++-devel.x86_64 : Header files and libraries for C++ development
+已安装：
+$ rpm -qa | grep libstdc
+libstdc++-4.8.5-44.el7.x86_64
+libstdc++-devel-4.8.5-44.el7.x86_64
+
+
+==> 检查报错，确实没有这个：
+$ ls -lth /lib64/libstdc++.so.6
+lrwxrwxrwx. 1 root root 19 May 18  2021 /lib64/libstdc++.so.6 -> libstdc++.so.6.0.19
+
+$ strings /lib64/libstdc++.so.6.0.19  | grep GLIBCXX | tail -n 3
+GLIBCXX_3.4.18
+GLIBCXX_3.4.19
+GLIBCXX_DEBUG_MESSAGE_LENGTH
+配置好上文3b的动态链接库，就好了。
+
+> library(Rcpp)
+> 
+
+又遇到py报错：
+install.packages("igraph")
+install.packages("RcppTOML")
+install.packages("RcppAnnoy")
+install.packages("RcppArmadillo")
+install.packages("igraph")
+install.packages("reticulate")
+install.packages("uwot")
+install.packages("sctransform")
+install.packages("leiden")
+
+> library("reticulate")
+> use_python("/home/wangjl/soft/python3/bin/python3", required = T)
+Error: '/home/wangjl/soft/python3/bin/python3' was not built with a shared library.
+reticulate can only bind to copies of Python built with '--enable-shared'.
+
+重新编译python3.7
+
+
+
+
+
+
+
+
+
+(5b) 安装R包 Seurat： 使用gcc 12 和 '--enable-shared'参数重新编译py后
+# $ sudo yum install glpk-devel gmp-devel libxml2-devel libssh2-devel  #https://r.igraph.org/
+
+以下R包都删掉，重新安装：
+install.packages("Rcpp") #RcppEigen/RcppHNSW/RcppProgress
+RcppTOML/RcppAnnoy/RcppArmadillo/igraph/reticulate/uwot/sctransform/leiden
+
+
+
+
+测试py的调用问题，注意 py和R包(不是R)都是用gcc 12编译的，且注意 ~/.Rprofile和~/R/Makevars 配置文件。
+> library("reticulate")
+> use_python("/home/wangjl/soft/python3/bin/python3", required = T)
+> py_config()
+python:         /home/wangjl/soft/python3/bin/python3
+libpython:      /home/wangjl/soft/python3/lib/libpython3.7m.so
+pythonhome:     /home/wangjl/soft/python3:/home/wangjl/soft/python3
+version:        3.7.17 (default, Feb  7 2024, 03:28:24)  [GCC 12.3.0]
+numpy:          /home/wangjl/soft/python3/lib/python3.7/site-packages/numpy
+numpy_version:  1.21.6
+
+NOTE: Python version was forced by use_python() function
+> system("pip3 -V")
+pip 24.0 from /home/wangjl/soft/python3/lib/python3.7/site-packages/pip (python 3.7)
+> system("which pip3")
+/home/wangjl/soft/python3/bin/pip3
+> system("pip3 list | grep leidenalg")
+
+$ pip3 install leidenalg #或R> system("pip3 install leidenalg -i https://pypi.douban.com/simple/")
+
+> system("pip3 list | grep leidenalg")
+leidenalg            0.10.2
+
+
+
+
+> library(leiden)
+Unable to install python modules igraph and leidenalg
+run in terminal:
+conda install -n r-reticulate -c conda-forge leidenalg python-igraph pandas umap-learn
+python modules igraph and leidenalg installed
+安装这些py包：
+$ pip3 install igraph       #0.10.8
+$ pip3 install leidenalg     #0.10.2
+$ pip3 install umap-learn    #0.5.5
+$ pip3 install python-igraph  #0.10.8
+重启R session，从reticulate开始运行，指定py版本，再次加载 leiden 包还是同样提示红字。再次载入就不提示了。
+
+
+
+
+
+> Sys.setenv(MAKEFLAGS = "-j32") #设置线程数
+> install.packages("Seurat")
+又报错：
+	sh: line 1: 44914 Segmentation fault      R_TESTS= '/opt/R/4.3.2/lib64/R/bin/R' --no-save --no-restore --no-echo 2>&1 < '/tmp/RtmpOIH1To/fileaf2f72ffd501'
+
+	 *** caught segfault ***
+	address 0x20, cause 'memory not mapped'
+观察发现，g++和gcc调用的可能不同？前者用的是绝对地址，那就都改为绝对地址
+	$ cat ~/.R/Makevars #添加一行
+	gcc=/home/wangjl/soft/gcc-12.3.0/bin/gcc
+
+
+$ vim ~/.bashrc #添加2行
+export LANG=en_US.UTF-8
+export LC_ALL=en_US.UTF-8
+
+
+删除之前的Rcpp等包，重新安装。
+> remotes::install_github("satijalab/seurat", "seurat5", quiet = F)
+> library(Seurat)
+Loading required package: SeuratObject
+Loading required package: sp
+
+Attaching package: ‘SeuratObject’
+
+The following object is masked from ‘package:base’:
+
+    intersect
+载入成功！
+> packageVersion("Seurat")
+[1] ‘5.0.0’
+> packageVersion("SeuratObject")
+[1] ‘5.0.1’
+
+
+
+
+
+
+(6) 安装 Seurat 配套的R包
+> remotes::install_github("satijalab/seurat-data", "seurat5", quiet = F)
+查版本号：
+> packageVersion("SeuratData")
+[1] ‘0.2.2.9001’
+
+
+> remotes::install_github("satijalab/azimuth", "seurat5", quiet = F)
+报错： 
+Downloading GitHub repo satijalab/azimuth@seurat5
+Error: Failed to install 'Azimuth' from GitHub:
+  HTTP error 404.
+  No commit found for the ref seurat5
+
+  Did you spell the repo owner (`stuart-lab`) and repo name (`signac`) correctly?
+  - If spelling is correct, check that you have the required permissions to access the repo.
+原因： repo 没有该标签？网页查看，是有的。
+没想到下载成了问题
+
+
+
+> remotes::install_github("satijalab/seurat-wrappers", "seurat5", quiet = F)
+> remotes::install_github("stuart-lab/signac", "seurat5", quiet = F)
+
+
+
+
+
+
+(7) 提升速度的包，处理大数据集的R包
+# remotes::install_github("bnprks/BPCells", quiet = F)
+> setRepositories(ind = 1:3, addURLs = c('https://satijalab.r-universe.dev', 'https://bnprks.r-universe.dev/'))
+> install.packages(c("BPCells", "presto", "glmGamPoi"))
+
+
+
+
+
+
+> install.packages("hdf5r")
+报错： configure: error: The version of hdf5 installed on your system is not sufficient. Please ensure that at least version 1.8.13 is installed
+ERROR: configuration failed for package ‘hdf5r’
+$ rpm -qa | grep hdf5
+hdf5-1.8.12-13.el7.x86_64
+hdf5-devel-1.8.12-13.el7.x86_64
+正好差了一个小版本号。
+
+$ cd ~/Downloads/
+$ wget https://support.hdfgroup.org/ftp/HDF5/releases/hdf5-1.10/hdf5-1.10.11/src/hdf5-1.10.11.tar.gz
+$ tar xvf hdf5-1.10.11.tar.gz
+$ cd hdf5-1.10.11
+$ ./configure --prefix=/home/wangjl/soft/hdf5
+$ make -j 10
+$ make install
+
+检查：
+$ ls -lth /home/wangjl/soft/hdf5/
+total 32K
+drwxr-xr-x. 2 wangjl jinlab 8.0K Feb  7 15:18 bin
+drwxr-xr-x. 3 wangjl jinlab 8.0K Feb  7 15:18 share
+drwxr-xr-x. 2 wangjl jinlab 8.0K Feb  7 15:18 include
+drwxr-xr-x. 2 wangjl jinlab 8.0K Feb  7 15:18 lib
+
+配置文件
+$ vim ~/.bashrc
+# for hdf5
+export PATH=$PATH:/home/wangjl/soft/hdf5/bin/
+export LD_LIBRARY_PATH=/home/wangjl/soft/hdf5/lib/:$LD_LIBRARY_PATH
+
+$ vim ~/.Rprofile
+Sys.setenv("PATH"=paste0("/home/wangjl/soft/gcc-12.3.0/bin:/bin/:", Sys.getenv("PATH") ) )
+
+# for hdf5
+Sys.setenv("PATH"=paste0("/home/wangjl/soft/hdf5/bin/:", Sys.getenv("PATH") ) )
+Sys.setenv("LD_LIBRARY_PATH"=paste0("/home/wangjl/soft/hdf5/lib/:", Sys.getenv("LD_LIBRARY_PATH") ) )
+
+报错： /bin/sh: patch: command not found
+$ sudo yum -y install patch
+
+> install.packages("hdf5r")
+正常安装了。
+> library(hdf5r)
+Error: package or namespace load failed for ‘hdf5r’ in dyn.load(file, DLLpath = DLLpath, ...):
+ unable to load shared object '/picb/jinlab/wangjl/R/x86_64-pc-linux-gnu-library/4.3/hdf5r/libs/hdf5r.so':
+  libhdf5_hl.so.100: cannot open shared object file: No such file or directory
+载入又报错。
+重新安装：
+> install.packages("hdf5r")
+> # install.packages("hdf5r", configure.args="--with-hdf5=/home/wangjl/soft/hdf5/bin/h5cc")
+> dyn.load('/home/wangjl/soft/hdf5/lib/libhdf5_hl.so.100')
+> library(hdf5r)
+
+
+
+
+
+> BiocManager::install("rhdf5")
+报错： 一个g++ 命令行中出现了： WARNING: ignoring environment value of R_HOME
+> Sys.getenv("R_HOME")
+[1] "/opt/R/4.3.2/lib64/R"
+
+https://github.com/datasnakes/renv/issues/38
+	Set R_HOME_DIR in the .Renviron to see if that helps #没作用
+
+
+BiocManager::install("HDF5Array")
+
+
+
+
+
+$ find ~/Downloads/R-4.3.2/ | grep -in "Renviron"
+289:/home/wangjl/Downloads/R-4.3.2/etc/Renviron
+291:/home/wangjl/Downloads/R-4.3.2/etc/Renviron.in
+
+
+
+
+
+
+
+
+(100) ===> 还可以继续安装老版本：
+> remotes::install_version("SeuratObject", "4.1.4", repos = c("https://satijalab.r-universe.dev", getOption("repos")))
+> remotes::install_version("Seurat", "4.4.0", repos = c("https://satijalab.r-universe.dev", getOption("repos")))
+
+
+
+
+
+
+ref:
+直接替换 gcc 动态链接库： https://blog.csdn.net/justlpf/article/details/130077200 太激进，没采用
+Rstudio中 替代 gcc 版本： https://www.coder.work/article/8378298
+	关于gcc在Rstudio中的设置 https://stackoverflow.com/questions/54463433/get-rstudio-server-open-source-edition-to-use-alternative-gcc-version
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -174,1286 +650,7 @@ https://www.douban.com/note/648766046/?from=tag&_i=7531721Ks5R5I5,33900656Ir1pON
 
 
 ========================================
-|-- Rstudio server 如何切换R版本 / CentOS6 (编译)安装R和Rstudio
-----------------------------------------
-http://xuzhougeng.top/archives/Using-different-R-version-in-RStudion-linux-macOS
-
-1. install on CentOS 6
-
-## 之前的旧版本R
-$ which R
-/usr/local/bin/R
-
-$ whereis R
-R: /usr/bin/R /usr/lib64/R /usr/local/bin/R /usr/include/R /usr/share/R /usr/share/man/man1/R.1.gz
-
-$ /usr/bin/R --version
-R version 3.6.0 (2019-04-26) -- "Planting of a Tree"
-
-$ /usr/local/bin/R --version
-R version 3.5.3 (2019-03-11) -- "Great Truth"
-
-
-
-
-
-(1)Rstudio-server更改R版本 
-https://www.cnblogs.com/BlueBlueSea/p/13348003.html
-
-1). rsession-which-r:  https://docs.rstudio.com/ide/server-pro/r-sessions.html
-$ rsession-which-r=/usr/local/bin/R
-2) 多版本R的安装  https://docs.rstudio.com/resources/install-r/，照着这个安装不会有什么问题。
-3) 重启 https://www.jianshu.com/p/20cbecc83408，一定要有sudo
-$ sudo rstudio-server restart             #重启RStudio-server
-然后刷新8787链接，查看R的版本
-4) 更改R版本
-http://xuzhougeng.top/archives/Using-different-R-version-in-RStudion-linux-macOS
-
-在安装完成之后，之后切换R语言，只需要用不同版本的R覆盖/usr/local/bin下面的R即可。
-ln -sf /opt/sysoft/R-3.5.3/bin/R /usr/local/bin
-ln -sf /opt/sysoft/R-3.6.1/bin/R /usr/local/bin
-
-ln -sf /opt/sysoft/R-4.0.3/bin/R /usr/local/bin
-ln -sf /opt/sysoft/R-4.0.3/lib64 /usr/local/lib64
-
-
-
-
-
-(2) 新安装R 
-## 彻底删除默认位置的旧版本R
-$ ls -lth /usr/local/bin/R*
--rwxr-xr-x. 1 root root  25K Dec 29 21:26 /usr/local/bin/Rscript
--rwxr-xr-x. 1 root root 8.9K Dec 29 21:26 /usr/local/bin/R
-
-$ sudo mv /usr/local/lib64/R/library /usr/local/lib64/R/library.old
-
-$ cd /usr/local/lib64/
-$ sudo mv R R.old
-
-
-## 开始安装新版本的R
-$ sudo mkdir -p /data4/soft
-$ sudo chown wangjl /data4/soft
-
-$ wget https://mirrors.sjtug.sjtu.edu.cn/cran/src/base/R-4/R-4.0.3.tar.gz
-$ tar zxvf R-4.0.3.tar.gz
-$ cd R-4.0.3
-## ./configure 
-$ ./configure --prefix=/data4/soft/R-4.0.3 --enable-R-shlib ##必须有后面这个选项(/data4/soft/R-4.0.3/lib64/R/lib/libR.so)，否则无法使用Rstudio。
-$ make 
-$ sudo make install
-$ make clean #删除无用中间文件
-
-
-$ /data4/soft/R-4.0.3/bin/R --version
-R version 4.0.3 (2020-10-10) -- "Bunny-Wunnies Freak Out"
-
-## 加链接
-$ sudo ln -sf /data4/soft/R-4.0.3/bin/R /usr/local/bin
-$ sudo ln -sf /data4/soft/R-4.0.3/bin/Rscript /usr/local/bin
-$ sudo ln -sf /data4/soft/R-4.0.3/lib64/R /usr/local/lib64/R
-$ R --version ## 已经是最新版 R version 4.0.3
-
-/usr/local/bin/R 指向哪个版本，都可以。
-
-
-
-$ export RSTUDIO_WHICH_R=/usr/local/bin/R  //todo
-
-
-
-第一次安装包的时候报错，要给2个文件夹添加写的权限：
-> install.package('ggplot2')
-
-$ sudo chmod a+w /data4/soft/R-4.0.3/lib64/R/doc/manual/
-$ sudo chmod a+w /data4/soft/R-4.0.3/lib64/R/doc/html/
-
-
-
-
-(3) 安装 rstudio 
-## 删除旧的
-$ yum list | grep -i rstudio
-## rstudio-server.x86_64                      1.3.1093-1             installed
-$ sudo rpm -e --nodeps rstudio-server.x86_64 
-## 新安装前把旧的 配置目录 删掉
-$ sudo mv /etc/rstudio /etc/rstudio-backup
-
-
-## 安装
-$ cd ~/software/
-## https://rstudio.com/products/rstudio/download-server/redhat-centos/
-$ wget https://download2.rstudio.org/server/centos6/x86_64/rstudio-server-rhel-1.3.1093-x86_64.rpm
-$ sudo yum install rstudio-server-rhel-1.3.1093-x86_64.rpm
-
-https://support.rstudio.com/hc/en-us/articles/200552306-Getting-Started
-https://docs.rstudio.com/ide/server-pro/
-
-## 启动
-$ sudo service rstudio-server status
-
-$ sudo vim /etc/rstudio/rserver.conf
-www-port=8788
-
-$ sudo service rstudio-server restart
-
-
-$ sudo service rstudio-server stop 
-$ sudo service rstudio-server status 
-$ sudo service rstudio-server restart 
-$ ps -aux | grep -i rsession| sudo xargs kill -9 {}
-$ ps -aux | grep -i rserver| sudo xargs kill -9 {}
-
-
-
-$ sudo vim /etc/rstudio/rserver.conf
-www-port=8788
-## 添加一行。只能有一行有效，其余版本都注释掉。
-rsession-which-r=/data4/soft/R-4.0.3/bin/R
-#rsession-which-r=/data4/curR/bin/R
-#rsession-which-r=/usr/local/bin/R
-#rsession-which-r=~/biotools/anaconda2/bin/R
-#rsession-which-r=/usr/bin/R
-
-#确认配置文件书写的有效
-## sudo rstudio-server verify-installation
-
-$ sudo service rstudio-server restart
-
-
-
-## 进程查pid，pid查端口号
-$ ps -aux | grep rstudio
-$ sudo netstat -anp | grep 66302
-
-
-
-
-(4) 打开一个8787端口:
-$ sudo iptables -L
-Chain IN_public_allow (1 references)
-target     prot opt source               destination         
-ACCEPT     tcp  --  anywhere             anywhere             tcp dpt:ssh ctstate NEW
-ACCEPT     tcp  --  anywhere             anywhere             tcp dpt:distinct ctstate NEW
-ACCEPT     tcp  --  anywhere             anywhere             tcp dpt:8788 ctstate NEW
-ACCEPT     udp  --  anywhere             anywhere             udp dpt:8788 ctstate NEW
-
-//开放8787端口访问
-iptables -I IN_public_allow -p tcp --dport 8787 -j ACCEPT
-iptables -I INPUT -p tcp --dport 8787 -j ACCEPT
-
-
-
-
-
-(5) 这个报错: Error occurred during transmission
-就是 R和 R的lib不配套，旧的包和新的R冲突。
-要完全清除掉R及其lib，再重新安装一套。
-
-
-
-
-(6) 清理rstudio的缓存
-$ sudo service rstudio-server stop
-
-~/.config/rstudio/ 	            All user settings (Global Options)
-~/.local/share/rstudio/ 	    All open files and tabs
-~/.rstudio/ 	                All active and suspended sessions
-
-类似这样注释掉
-$ mv ~/.local/share/rstudio ~/.local/share/rstudio.old
-
-$ sudo service rstudio-server restart
-
-
-
-
-## 又删除了，重新来
-
-## 系统升级，看看效果
-$ sudo yum update 
-
-
-
-
-
-
-
-(7) 问题：libcurl >= 7.28.0
-$ ./configure 
-## 报错： configure: error: libcurl >= 7.28.0 library and headers are required with support for https
-## 安装该包
-$ sudo yum search libcurl
-## libcurl-devel.x86_64 : Files needed for building applications with libcurl
-$ sudo yum install libcurl-devel.x86_64
-Updated:
-  libcurl-devel.x86_64 0:7.29.0-59.el7_9.1 
-Dependency Updated:
-  curl.x86_64 0:7.29.0-59.el7_9.1   libcurl.x86_64 0:7.29.0-59.el7_9.1   libssh2.x86_64 0:1.8.0-4.el7
-##
-
-
-## 再试，还是报错
-$ ./configure 
-checking if libcurl is version 7 and >= 7.28.0... 
-configure: error: libcurl >= 7.28.0 library and headers are required with support for https
-
-## 现在使用的 curl是conda安装的:
-$ curl --version ##curl 7.55.1 (x86_64-conda_cos6-linux-gnu) libcurl/7.55.1 OpenSSL/1.0.2l zlib/1.2.11 libssh2/1.8.0 Release-Date: 2017-08-14
-$ which curl ##~/software/anoconda3/bin/curl
-
-## 修改路径
-$ whereis curl  ##curl: /usr/bin/curl /usr/local/bin/curl /usr/include/curl /data4/wangjl/software/anoconda3/bin/curl /usr/share/man/man1/curl.1.gz
-$ /usr/bin/curl --version ## 这个版本太低 curl 7.29.0 (x86_64-redhat-linux-gnu) libcurl/7.61.0 OpenSSL/1.0.2k zlib/1.2.7
-$ /usr/local/bin/curl --version ##curl 7.61.0 (x86_64-pc-linux-gnu) libcurl/7.61.0 OpenSSL/1.0.2k zlib/1.2.7  Release-Date: 2018-07-11
-$ vim ~/.bashrc ## 修改路径顺序 export PATH=/usr/local/bin/:$PATH
-$ curl --version
-curl 7.61.0 (x86_64-pc-linux-gnu) libcurl/7.61.0 OpenSSL/1.0.2k zlib/1.2.7
-Release-Date: 2018-07-11
-
-
-## 3试新警告
-$ ./configure  #不能生成pdf
-## configure: WARNING: neither inconsolata.sty nor zi4.sty found: PDF vignettes and package manuals will not be rendered optimally
-
-## 修复该报错。退出到software目录安装
-wget http://mirrors.ctan.org/fonts/inconsolata.zip
-unzip inconsolata.zip 
-cp -Rfp inconsolata/* /usr/share/texmf/
-mktexlsr
-
-
-## 4试通过
-$ ./configure
-## Installation directory:      /usr/local
-## configure: WARNING: neither inconsolata.sty nor zi4.sty found: PDF vignettes and package manuals will not be rendered optimally
-还是这个警告，怎么办?
-不管了，接着进行吧。
-
-
-
-
-
-
-
-
-(8) Xming显示问题：对ggplot2显示出错。
-> ggplot(cars, aes(speed, dist))+geom_point()
-Error in grid.Call(C_stringMetric, as.graphicsAnnot(x$label)) :
-  X11 font -adobe-helvetica-%s-%s-*-*-%d-*-*-*-*-*-*-*, face 1 at size 9 could not be loaded
-#
-> names(X11Fonts())
-[1] "serif"        "sans"         "mono"         "Times"        "Helvetica"   
-[6] "CyrTimes"     "CyrHelvetica" "Arial"        "Mincho"
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-========================================
-|-- centOS6 中Rstudio 无法直接画图 //todo 未解决
-----------------------------------------
-
-1. 测试
-
-(1) 
-x<-rnorm(6000)
-y<-rnorm(6000)
- 
-# PNG图
-png(file="plot.png",width=640,height=480)
-plot(x,y,col="#ff000018",pch=19,cex=2,main = "plot")
-
-
-
-
-(2)
-setwd('/home/wangjl/')
-
-library(ggplot2)
-p=ggplot(mtcars, aes(mpg, cyl)) + geom_point()
-p
-pdf('1.pdf', width=4, height=4)
-print(p)
-dev.off()
-
-直接画图报错:
-Error in RStudioGD() : 
-  Shadow graphics device error: r error 4 (R code execution error)
-In addition: Warning message:
-In grDevices:::png("/tmp/RtmpLyG5X5/cc09a1286efc4ae5902cd8c0ba0d4636.png",  :
-  unable to open connection to X11 display ''
-#
-
-输出到pdf正常。
-
-
-
-
-(3) 
-> capabilities()
-   jpeg         png        tiff       tcltk         X11        aqua 
-   FALSE       FALSE       FALSE        TRUE       FALSE       FALSE 
-http/ftp     sockets      libxml        fifo      cledit       iconv 
-    TRUE        TRUE        TRUE        TRUE        TRUE        TRUE 
-     NLS     profmem       cairo         ICU long.double     libcurl 
-    TRUE       FALSE       FALSE        TRUE        TRUE        TRUE
-#
-
-> Sys.getenv("DISPLAY")
-#[1] ":0"
-
-> Sys.setenv("DISPLAY"=":0.0")
-> Sys.setenv("DISPLAY"=":0")
-
-
-
-
-
-
-2. 尝试解决
-
-ref: https://zhuanlan.zhihu.com/p/60714584
-RStudioGD()是tools包的一个函数，是RStudio的一个绘图设备，服务器端出现该故障的一个原因是由于Linux系统里cairo与我们安装的R所依赖的cairo版本不一致导致的。
-
-根据本人经验，Centos里的镜像里的R（目前是R 3.5.3）目前还是根据cairo 1.14来编译绘图设备的，如果升级到cairo1.15就会出现这个RStudioGD Shadow graphics device error: r error 4，结果服务器上的Rstudio不能画图了
-
-$ sudo yum list | grep cairo | grep 1.14
-$ sudo yum list | grep cairo | grep 1.15
-
-
-(1)
-$ yum install libpng libpng-devel
-
-报错:
-Protected multilib versions: 2:libpng-1.5.13-8.el7.x86_64 != 2:libpng-1.5.13-7.el7_2.i686
-
-$ sudo yum list installed | grep libpng
-libpng.x86_64                              2:1.5.13-7.el7_2       @base         
-libpng-devel.x86_64                        2:1.5.13-7.el7_2       @base        
- 
-libpng.i686                                2:1.5.13-8.el7         base          
-libpng.x86_64                              2:1.5.13-8.el7         base          
-libpng-devel.i686                          2:1.5.13-8.el7         base          
-libpng-devel.x86_64                        2:1.5.13-8.el7         base          
-libpng-static.i686                         2:1.5.13-8.el7         base          
-libpng-static.x86_64                       2:1.5.13-8.el7         base   
-       
-libpng12.i686                              1.2.50-10.el7          base          
-libpng12.x86_64                            1.2.50-10.el7          @base         
-libpng12-devel.i686                        1.2.50-10.el7          base          
-libpng12-devel.x86_64                      1.2.50-10.el7          base 
-
-
-
-sudo apt install libpango1.0-dev
-
-
-
-
-(2) 缺少字体？
-## xvfb xauth xfonts-base  x11-utils
-$ sudo yum search xorg-x11-fonts | grep noarch
-$ sudo yum install xorg-x11-fonts-*.noarch
-
-$ sudo yum install xorg-x11-server-Xvfb.x86_64
-$ sudo yum install xorg-x11-xauth.x86_64
-$ sudo yum install xorg-x11-utils.x86_64
-
-
-# 已经有了 yum  install cairo* libXt*
-$  yum install libXt-devel.x86_64
-## yum install libXt-devel.i686
-
-
-$ xvfb-run Rscript ~/temp/01.R
-pdf 
-  2 
-#
-
-
-> png('1.png')
-Error in .External2(C_X11, paste0("png::", filename), g$width, g$height,  : 
-  unable to start device PNG
-In addition: Warning message:
-In png("1.png") : unable to open connection to X11 display ''
-
-
-
-
-(3) 又一次尝试
-https://zhuanlan.zhihu.com/p/149845136
-
-先安装包和字体
-#install relevant lib/header files
-sudo yum install libjpeg-devel libtiff-devel cairo-devel libpng-devel libicu-devel libXt-devel libX11-devel readline-devel zlib-devel bzip2-devel xz-devel pcre-devel openssl-devel curl-devel
-
-#install fonts
-sudo yum install xorg-x11-fonts-100dpi.noarch xorg-x11-fonts-75dpi.noarch xorg-x11-fonts-ISO8859-1-100dpi.noarch xorg-x11-fonts-ISO8859-1-75dpi.noarch xorg-x11-fonts-ISO8859-14-100dpi.noarch xorg-x11-fonts-ISO8859-14-75dpi.noarch xorg-x11-fonts-ISO8859-15-75dpi.noarch xorg-x11-fonts-ISO8859-2-100dpi.noarch xorg-x11-fonts-ISO8859-2-75dpi.noarch xorg-x11-fonts-ISO8859-9-100dpi.noarch xorg-x11-fonts-ISO8859-9-75dpi.noarch xorg-x11-fonts-Type1.noarch xorg-x11-fonts-cyrillic.noarch xorg-x11-fonts-ethiopic.noarch xorg-x11-fonts-misc.noarch 
-
-
-
-## 重新编译
-$ ./configure --prefix=/data4/soft/R-4.0.3 --enable-R-shlib --with-x=no --with-cairo=yes
-##必须有后面这个选项(/data4/soft/R-4.0.3/lib64/R/lib/libR.so)，否则无法使用Rstudio。
-
-## Capabilities skipped:        cairo
-
-$ make  ## 十分耗时
-$ sudo make install
-
-
-
-
-
-$ ls -ls /opt/R/3.5.0/lib/R/modules/
-total 1264
-476 -rwxr-xr-x 1 777 777 484888 Jul  8 20:35 R_X11.so
-
-$ ldd /opt/R/3.5.0/lib/R/modules/R_X11.so
-        linux-vdso.so.1 =>  (0x00007fff5d3b6000)
-        libtiff.so.5 => /usr/lib/x86_64-linux-gnu/libtiff.so.5 (0x00007f9af387e000)
-#
-
-
-删除系统的R，然后就可以重新编译了。
-The solution was to uninstall the system version of R and purge all it's dependencies (R-core, R-java, etc). We then installed source versions of R in the /opt/R folder. This solved the problem and now we have multiple R versions available.
-
-
-$ sudo yum install libpng libpng-devel libtiff libtiff-devel libjpeg-turbo libjpeg-turbo-devel
-
-
-
-
-$ whereis R
-R: /usr/bin/R /usr/lib64/R /usr/local/bin/R /usr/include/R /usr/share/R /usr/share/man/man1/R.1.gz
-
-$ /usr/bin/R 
-R version 3.6.0 (2019-04-26) -- "Planting of a Tree"
-> capabilities()
-       jpeg         png        tiff       tcltk         X11        aqua 
-       TRUE        TRUE        TRUE        TRUE       FALSE       FALSE 
-#
-
-
-
-$ /usr/local/bin/R
-R version 4.0.3 (2020-10-10) -- "Bunny-Wunnies Freak Out"
-> capabilities()
-       jpeg         png        tiff       tcltk         X11        aqua 
-      FALSE       FALSE       FALSE        TRUE       FALSE       FALSE
-#
-
-
-$ sudo yum list | grep R
-R.x86_64                                   3.6.0-1.el7            @epel         
-R-core.x86_64                              3.6.0-1.el7            @epel         
-R-core-devel.x86_64                        3.6.0-1.el7            @epel         
-R-devel.x86_64                             3.6.0-1.el7            @epel         
-R-java.x86_64                              3.6.0-1.el7            @epel         
-R-java-devel.x86_64                        3.6.0-1.el7            @epel
-
-
-R-core.x86_64                              3.6.0-1.el7            epel          
-R-core-devel.x86_64                        3.6.0-1.el7            epel          
-R-devel.x86_64                             3.6.0-1.el7            epel          
-R-highlight.x86_64                         0.5.0-1.el7            epel
-
-
-$ sudo yum remove R R-core R-core-devel R-devel R-java R-java-devel
-
-$ make clean
-
-
-## 重新编译
-$ ./configure --prefix=/data4/soft/R-4.0.3 --enable-R-shlib --with-x=/usr/lib64 --with-cairo=/usr/lib64 --with-libpng=/usr/lib64 --with-jpeglib=/usr/lib64 --with-libtiff=/usr/lib64
-##必须有后面这个选项(/data4/soft/R-4.0.3/lib64/R/lib/libR.so)，否则无法使用Rstudio。
-
-$ ls /usr/lib64 | grep cairo
-libcairo.so
-libcairo.so.2
-
-$ locate libjpeg.so
-/usr/lib64/libjpeg.so
-/usr/lib64/libjpeg.so.62
-/usr/lib64/libjpeg.so.62.1.0
-
-
-## Capabilities skipped:        cairo
-
-
-环境变量
-LIBS        libraries to pass to the linker, e.g. -l<library>
-LT_SYS_LIBRARY_PATH              User-defined run-time library search path.
-
-$ ./configure --prefix=/data4/soft/R-4.0.3 --enable-R-shlib --with-libpng --with-jpeglib --with-libtiff --with-x
-编译之后，支持了png那些
-
-
-
-$ find /home/ -name R -type f 1>wjl 2>/dev/null
-$ cat ~/wjl
-/home/guosiyuan/miniconda3/bin/R
-/home/guosiyuan/miniconda3/lib/R/bin/exec/R
-/home/guosiyuan/miniconda3/lib/R/bin/R
-/home/guosiyuan/miniconda3/envs/R3.5/bin/R
-/home/guosiyuan/miniconda3/envs/R3.5/lib/R/bin/exec/R
-/home/guosiyuan/miniconda3/envs/R3.5/lib/R/bin/R
-/home/zhoub/local/R/lib64/R/bin/R
-/home/zhoub/local/R/lib64/R/bin/exec/R
-/home/zhoub/local/R/bin/R
-
-
-
-
-
-
-
-$ make  ## 十分耗时 16:16 - 
-$ sudo make install
-还是不能用
-
-
-
-
-$ sudo yum install freetype freetype-devel
-
-In doTryCatch(return(expr), name, parentenv, handler) :
-  unable to load shared object '/usr/lib64/R/modules//R_X11.so':
-  /lib64/libharfbuzz.so.0: undefined symbol: FT_Reference_Face
-#
-
-报错信息 config.log
-
-$ sudo yum R R-core R-core-devel R-devel R-java R-java-devel
-Running transaction
-  Installing : R-core-3.6.0-1.el7.x86_64                                                                                   1/6 
-/sbin/ldconfig: libraries libstdc++.so.6 and libstdc++.so.6.0.19 in directory /lib have same soname but different type.
-  Installing : R-core-devel-3.6.0-1.el7.x86_64                                                                             2/6 
-Error unpacking rpm package R-core-devel-3.6.0-1.el7.x86_64
-error: unpacking of archive failed on file /usr/lib64/R/include: cpio: rename
-  Installing : R-java-devel-3.6.0-1.el7.x86_64                                                                             3/6 
-error: R-core-devel-3.6.0-1.el7.x86_64: install failed
-...
-Failed:
-  R-core-devel.x86_64 0:3.6.0-1.el7
-
-
-
-
-
-
-
-
-
-#############
-$ yum install https://dl.fedoraproject.org/pub/epel/epel-release-latest-7.noarch.rpm
-
-on RHEL 7 it is recommended to also enable the optional, extras, and HA repositories since EPEL packages may depend on packages from these repositories:
-$ subscription-manager repos --enable "rhel-*-optional-rpms" --enable "rhel-*-extras-rpms"  --enable "rhel-ha-for-rhel-*-server-rpms"
-
-
-ref: https://blog.csdn.net/qq_40334837/article/details/80019615
-总结：-l是告诉链接器要链接的动态库的名字，而-L是告诉链接器库的路径        
--L /opt/libdecode/lib
--L /usr/lib64
-
-
-sudo cp /usr/local/lib/libpng16.so.16 /usr/lib
-
-
-
-#############
-unable to load shared object '/data4/soft/R-4.0.3/lib64/R/modules//R_X11.so':
-  /lib64/libharfbuzz.so.0: undefined symbol: FT_Reference_Face
-#
-
-(1)
-$ ./configure --prefix=/data4/soft/R-4.0.3 --enable-R-shlib 
-## --with-libpng --with-jpeglib --with-libtiff --with-x
-
-
-## 做了也没用
-# 查找库的位置
-$ locate libcairo 
-/usr/lib64/libcairo.so
-/usr/lib64/libcairo.so.2
-
-修改 config.log 
-## Check if the location of libcairo.so is in your LD_LIBRARY_PATH.
-LD_LIBRARY_PATH="/usr/local/lib64/" 
-
-
-(2)
-$ make 
-$ sudo make install 
-
-
-
-
-
-
-#############
-https://community.rstudio.com/t/not-able-to-trigger-the-graphics-using-rstudio/33298
-
-After the configure step in the instructions, you should be able to see which capabilities are enabled so you can adjust system dependencies as might be needed.
-
-
-$ rpm -qa | grep -I png
-texlive-dvipng-bin-svn26509.0-45.20130427_r30134.el7.x86_64
-texlive-dvipng-svn26689.1.14-43.el7.noarch
-libpng-1.5.13-8.el7.x86_64
-libpng-devel-1.5.13-8.el7.x86_64
-libpng12-1.2.50-10.el7.x86_64
-
-$ rpm -qa | grep -I cairo
-cairo-1.15.12-4.el7.x86_64
-cairo-devel-1.15.12-4.el7.x86_64
-
-$ rpm -qa | grep -I X11
-libX11-devel-1.6.7-3.el7_9.x86_64
-libX11-1.6.7-3.el7_9.x86_64
-libX11-1.6.7-3.el7_9.i686
-libX11-common-1.6.7-3.el7_9.noarch
-
-$ rpm -qa | grep -I pango
-pango-1.42.4-4.el7_7.x86_64
-pango-devel-1.42.4-4.el7_7.x86_64
-
-
-
-
-#############
-#############
-#############
-
-
-
-
-
-
-
-###############
-> plot(cars)
-unable to load shared object '/data4/soft/R-4.0.3/lib64/R/modules//R_X11.so':
-  /lib64/libharfbuzz.so.0: undefined symbol: FT_Reference_FaceError in (function (filename = "Rplot%03d.png", width = 480, height = 480,  : 
-  X11 module cannot be loaded
-#
-
-> capabilities()
-
-
-> plot(cars)
-## Error in RStudioGD() : 
-##  Shadow graphics device error: r error 4 (R code execution error)
-
-> plot(cars)
-Error in RStudioGD() : 
-  Shadow graphics device error: r error 4 (R code execution error)
-In addition: Warning message:
-In grSoftVersion() :
-  unable to load shared object '/data4/soft/R-4.0.3/lib64/R/modules//R_X11.so':
-  /lib64/libharfbuzz.so.0: undefined symbol: FT_Reference_Face
-#
-
-## Package harfbuzz-1.7.5-2.el7.x86_64 already installed and latest version
-## Package harfbuzz-devel-1.7.5-2.el7.x86_64 already installed and latest version
-
-
-
-
-## 编辑配置文件
-$ vim ~/.Rprofile
-options(BioC_mirror="http://mirrors.ustc.edu.cn/bioc/")
-options(repos=structure(c(CRAN="https://mirrors.tuna.tsinghua.edu.cn/CRAN/")))
-options(bitmapType='cairo')
-# library(colorout)
-Sys.getenv(c("DISPLAY"))
-
-
-
-
-########
-同样问题，没解决
-
-> plot(cars)
-Error in RStudioGD() : 
-  Shadow graphics device error: r error 4 (R code execution error)
-In addition: Warning message:
-In grDevices:::png("/tmp/Rtmpugt1Dx/f3785ca553194f7db553869d743cb903.png",  :
-  unable to open connection to X11 display ''
-> capabilities(); #png FALSE
-
-1. https://community.rstudio.com/t/not-able-to-trigger-the-graphics-using-rstudio/33298
-2. Note that your best friend is config.log and the output of configure - that tells *exactly* what you're missing. 
-https://r.789695.n4.nabble.com/How-to-get-R-to-compile-with-PNG-support-td3457938.html
-
-3. https://stackoverflow.com/questions/24999983/r-unable-to-start-device-png-capabilities-has-true-for-png
-xvfb-run ?
-
-4. https://stackoverflow.com/questions/26853271/cant-install-r-with-png-support
-
-5. https://bbs.archlinux.org/viewtopic.php?id=135689
-Error in function (display = "", width, height, pointsize, gamma, bg,  : 
-  X11 module cannot be loaded
-
-6. https://blog.csdn.net/qq_37329349/article/details/87887121
-我就重新安装了freetype 库
-yum install freetype freetype-devel
-安装好了也没用。
-
-
-7. https://blog.csdn.net/wa2003/article/details/46310811/
-
-8. https://community.rstudio.com/t/compiling-r-from-source-in-opt-r/14666/5
-Could you attach config.log please?
-
-As Josh recommended, the full config.log would be helpful. Usually it has notes in there about the capabilities that were added, what libraries were found, etc.
-
-In particular, it would be helpful to know what your system dependencies look like, too. Not sure how effective this will be as non-root, but maybe useful?
-
-$ yum list installed | grep 'jpeg'
-libjpeg-turbo.x86_64                       1.2.90-8.el7                @base    
-libjpeg-turbo-devel.x86_64                 1.2.90-8.el7                @base    
-openjpeg-libs.x86_64                       1.5.1-18.el7                @base    
-openjpeg2.x86_64                           2.3.1-3.el7_7               @base 
-
-$ grep jpeg config.log
-$ grep cairo config.log
-
-| #error cairo version >= 1.2 required
-|     cairo_t  *CC = NULL; // silence picky c
-
-$ sudo yum list | grep cairo
-cairo.x86_64                               1.15.12-4.el7          @base         
-cairo-devel.x86_64                         1.15.12-4.el7          @base         
-baresip-cairo.x86_64                       1.0.0-1.el7            epel          
-cairo.i686                                 1.15.12-4.el7          base          
-cairo-devel.i686                           1.15.12-4.el7          base 
-
-
-
-## https://community.rstudio.com/t/compiling-r-from-source-in-opt-r/14666/15
-> Sys.getenv("LD_LIBRARY_PATH")
-[1] "/data4/soft/R-4.0.3/lib64/R/lib::/lib:/usr/local/lib64:/usr/local/jdk1.8.0_131/jre/lib/amd64/server"
-
-You could even try system("ldd /path/to/R_X11.so") from inside the R install too, to make sure startup is not causing problems.
-
-$ locate R_X11.so
-/data4/curR/lib64/R/modules/R_X11.so
-> system("ldd /data4/curR/lib64/R/modules/R_X11.so")
-
-The solution was to uninstall the system version of R and purge all it's dependencies (R-core, R-java, etc). We then installed source versions of R in the /opt/R folder. This solved the problem and now we have multiple R versions available.
-
-
-either yum install pango-devel OR edit your /etc/rprofile.site file and insert this option:
- options(bitmapType='cairo')
-
-
-9. https://community.rstudio.com/t/compiling-r-from-source-in-opt-r/14666/7
-
-
-
-
-################
-# 从微软下载  https://mran.microsoft.com/download
-$ wget https://mran.blob.core.windows.net/install/mro/4.0.2/Rhel/microsoft-r-open-4.0.2.tar.gz
-$ tar zxvf microsoft-r-open-4.0.2.tar.gz
-$ cd microsoft-r-open/
-
-
-
-
-
-
-
-
-========================================
-|-- (版本过时) ubuntu 安装/更新R (3.2.3)
-----------------------------------------
-1.ubuntu需要先安装依赖两个包，Have you installed curl and xml on linux. Run 
-$ sudo apt-get install libcurl4-openssl-dev
-and 
-$ sudo apt-get install libxml2-dev
-
- Please install:
-     libssl-dev    (package on e.g. Debian and Ubuntu)
-     openssl-devel (package on e.g. Fedora, CentOS and RHEL)
-     openssl       (Homebrew package on OS X)
-   and try again.
-$ sudo apt-get install libssl-dev
-
-还有一个依赖包：
-$ sudo apt-get install libhdf5-dev
-
-然后才能正常安装R包Seurat。
-$ sudo R
-R version 3.2.3 (2015-12-10) -- "Wooden Christmas-Tree"
-> source("http://bioconductor.org/biocLite.R")
-> biocLite("Seurat")
-...
-> biocLite("scater")
-
-
-
-
-2.Linux下载和安装R环境。[推荐往下看(2)]
-(1)
-从镜像 https://mirrors.tuna.tsinghua.edu.cn/CRAN/ 下载最新的R包：
-$ wget -b https://mirrors.tuna.tsinghua.edu.cn/CRAN/bin/linux/ubuntu/trusty/r-base-core_3.3.1-1trusty0_amd64.deb
-
-在/etc/apt/sources.list中添加：
-To obtain the latest R packages, add an entry like
-
-这个不好使：
-deb https://mirrors.tuna.tsinghua.edu.cn/CRAN/bin/linux/ubuntu trusty/
-
-R语言官方：
-deb https://cloud.r-project.org/bin/linux/ubuntu trusty/
-日本的：
-deb https://cran.ism.ac.jp/bin/linux/ubuntu trusty/
-
-
-
-然后，更新系统：
-$ sudo apt-get update
-
-如果提示public key不对，请先更新gpg
-（什么是pgp:http://www.ruanyifeng.com/blog/2013/07/gpg.html）：
-http://blog.csdn.net/lichangzai/article/details/39376117
-cd ~
-gpg --keyserver hkp://keyserver.ubuntu.com:80 --recv-keys E084DAB9
-gpg -a --export E084DAB9 | sudo apt-key add -
-apt-get upgrade
-apt-get install r-base
-
-
-安装R：
-$ sudo apt-get install r-base r-base-dev
-
-
-
-
-
-(2)更好的安装建议：
-http://bioinformatics.knowledgeblog.org/2011/06/20/analysing-microarray-data-in-bioconductor/
-Install R and BioConductor dependencies, and then start R:
-
-$ sudo apt-get install r-base-core libxml2-dev libcurl4-openssl-dev curl
-$ R
-
-Now at the R prompt:
-
-> # download the BioC installation routines
-> source("http://bioconductor.org/biocLite.R")
-> # install the core packages
-> biocLite()
-> # install the GEO libraries
-> biocLite("GEOquery")
-
-
-
-
-========================================
-|-- (版本过时) ubuntu如何更新到R的最新版？(3.6.1)
-----------------------------------------
-https://cran.r-project.org/bin/linux/ubuntu/README
-1. 查当前版本
-> sessionInfo()
-## R version 3.4.4 (2018-03-15)
-## Platform: x86_64-pc-linux-gnu (64-bit)
-## Running under: Ubuntu 18.04.1 LTS
-
-
-
-2.
-(1) 写入新源
-$ sudo vim /etc/apt/sources.list
-
-# 18.04 我的
-deb https://cloud.r-project.org/bin/linux/ubuntu bionic-cran35/
-# 16.04
-deb https://cloud.r-project.org/bin/linux/ubuntu xenial-cran35/
-# 14.04
-deb https://cloud.r-project.org/bin/linux/ubuntu trusty-cran35/
-
-我用的国内的源
-https://mirrors.tuna.tsinghua.edu.cn/CRAN/bin/linux/ubuntu bionic-cran35/
-
-(2)删除旧版本
-sudo apt-get --purge remove r-base
-sudo apt-get --purge remove r-base-core
-sudo apt-get --purge remove r-base-dev
-# sudo apt-get remove -y 'r-cran-*'
-# apt-get remove 会删除软件包而保留软件的配置文件
-# apt-get purge 会同时清除软件包和软件的配置文件
-
-
-
-(3) 更新
-$ sudo apt-get update
-$ sudo apt-get install r-base
-## sudo apt-get install r-base r-base-core  r-base-dev
-
-报错 The following signatures couldn't be verified because the public key is not available: NO_PUBKEY 51716619E084DAB9
-..  is not signed.
-那就加上这个公钥
-$ sudo apt-key adv --keyserver keyserver.ubuntu.com --recv-keys 51716619E084DAB9
-$ sudo apt-key adv --keyserver keyserver.ubuntu.com --recv-keys 2A8E3034D018A4CE
-
-
-$ sudo apt-get upgrade #不敢升级，不得不升级了再升级吧。
-
-
-当然，还需要安装一系列R包。
-if (!requireNamespace("BiocManager", quietly = TRUE))
-  install.packages("BiocManager")
-
-BiocManager::install(c('shiny','stringr','DT','ggplot2'),ask = F,update = F)
-BiocManager::install(c('knitr','markdown','rmarkdown','cowplot','dplyr'),ask = F,update = F)
-BiocManager::install('RMySQL',ask = F,update = F) 
-BiocManager::install(c('RColorBrewer'),ask = F,update = F)
-
-
-## Simple install following libs on your linux.
-curl: sudo apt-get install curl 
-libssl-dev: sudo apt-get install libssl-dev 
-libcurl: sudo apt-get install libcurl4-openssl-dev 
-xml2: sudo apt-get install libxml2-dev
-
-#'limma','Glimma','DESeq2','edgeR',
-BiocManager::install(c('DESeq',  'pasilla','Mus.musculus','RNAseq123'),ask = F,update = F)
-BiocManager::install(c('Seurat'),ask = F,update = F)
-
-
-再查版本号:
-> sessionInfo()
-## R version 3.6.1 (2019-07-05)
-## Platform: x86_64-pc-linux-gnu (64-bit)
-## Running under: Ubuntu 18.04.1 LTS
-
-
-BiocManager::install(c('biomaRt'),ask = F,update = F)
-
-
-BiocManager::install(c('openssl'),ask = F,update = F)
-installation of package ‘openssl’ had non-zero exit status
-
-报错
-Warning messages:
-1: In install.packages(pkgs = doing, lib = lib, repos = repos, ...) :
-  installation of package ‘openssl’ had non-zero exit status
-2: In install.packages(pkgs = doing, lib = lib, repos = repos, ...) :
-  installation of package ‘httr’ had non-zero exit status
-3: In install.packages(pkgs = doing, lib = lib, repos = repos, ...) :
-  installation of package ‘biomaRt’ had non-zero exit status
-4: In install.packages(pkgs = doing, lib = lib, repos = repos, ...) :
-  installation of package ‘GenomicFeatures’ had non-zero exit status
-5: In install.packages(pkgs = doing, lib = lib, repos = repos, ...) :
-  installation of package ‘OrganismDbi’ had non-zero exit status
-6: In install.packages(pkgs = doing, lib = lib, repos = repos, ...) :
-  installation of package ‘TxDb.Mmusculus.UCSC.mm10.knownGene’ had non-zero exit status
-7: In install.packages(pkgs = doing, lib = lib, repos = repos, ...) :
-  installation of package ‘Mus.musculus’ had non-zero exit status
-8: In install.packages(pkgs = doing, lib = lib, repos = repos, ...) :
-  installation of package ‘RNAseq123’ had non-zero exit status
-
-ERROR: dependency ‘biomaRt’ is not available for package ‘GenomicFeatures’
-* removing ‘/home/wangjl/R/x86_64-pc-linux-gnu-library/3.6/GenomicFeatures’
-ERROR: dependency ‘GenomicFeatures’ is not available for package ‘OrganismDbi’
-* removing ‘/home/wangjl/R/x86_64-pc-linux-gnu-library/3.6/OrganismDbi’
-ERROR: dependency ‘GenomicFeatures’ is not available for package ‘TxDb.Mmusculus.UCSC.mm10.knownGene’
-* removing ‘/home/wangjl/R/x86_64-pc-linux-gnu-library/3.6/TxDb.Mmusculus.UCSC.mm10.knownGene’
-ERROR: dependencies ‘OrganismDbi’, ‘GenomicFeatures’, ‘TxDb.Mmusculus.UCSC.mm10.knownGene’ are not available for package ‘Mus.musculus’
-* removing ‘/home/wangjl/R/x86_64-pc-linux-gnu-library/3.6/Mus.musculus’
-ERROR: dependency ‘Mus.musculus’ is not available for package ‘RNAseq123’
-* removing ‘/home/wangjl/R/x86_64-pc-linux-gnu-library/3.6/RNAseq123’
-
-
-> source("https://bioc.ism.ac.jp/biocLite.R")
-Error: With R version 3.5 or greater, install Bioconductor packages using BiocManager; see https://bioc.ism.ac.jp/install
-
-$ sudo apt update && sudo apt install libssl-dev #早就装过了
-
-$ sudo apt-get install r-cran-openssl
-## The following packages have unmet dependencies:
-##  r-cran-openssl : Depends: r-api-3.4
-## E: Unable to correct problems, you have held broken packages.
-# 装不上
-
->install.packages('askpass') #竟然好了
->install.packages('openssl')
-
-
-
-
-
-========================================
-Ubuntu 1804 安装 R 4.1.1 及 Rstudio 1.4.1717
-----------------------------------------
-1. 老版本
-$ R --version
-R version 3.6.3 (2020-02-29) -- "Holding the Windsock"
-Copyright (C) 2020 The R Foundation for Statistical Computing
-Platform: x86_64-pc-linux-gnu (64-bit)
-
-$ which R
-/usr/bin/R
-
-$ whereis R
-R: /usr/bin/R /usr/lib/R /etc/R /usr/local/lib/R /usr/share/R /usr/share/man/man1/R.1.gz
-
-
-
-2. 升级命令 (不知道怎么做，不好使)
-$ apt-cache rdepends r-base-core #查依赖 r-base-core的包
-
-You can install R 4.1.1 using
-$ sudo apt update
-$ sudo apt install -t buster-cran40 r-base
-
-(2) 更新源
-
-#备份
-$ cp /etc/apt/sources.list /etc/apt/sources.list.backup
-
-
-在/etc/apt/sources.list文件前面添加如下条目
-##清华源
-deb https://mirrors.tuna.tsinghua.edu.cn/ubuntu/ bionic main restricted universe multiverse
-deb-src https://mirrors.tuna.tsinghua.edu.cn/ubuntu/ bionic main restricted universe multiverse
-deb https://mirrors.tuna.tsinghua.edu.cn/ubuntu/ bionic-updates main restricted universe multiverse
-deb-src https://mirrors.tuna.tsinghua.edu.cn/ubuntu/ bionic-updates main restricted universe multiverse
-deb https://mirrors.tuna.tsinghua.edu.cn/ubuntu/ bionic-backports main restricted universe multiverse
-deb-src https://mirrors.tuna.tsinghua.edu.cn/ubuntu/ bionic-backports main restricted universe multiverse
-deb https://mirrors.tuna.tsinghua.edu.cn/ubuntu/ bionic-security main restricted universe multiverse
-deb-src https://mirrors.tuna.tsinghua.edu.cn/ubuntu/ bionic-security main restricted universe multiverse
-deb https://mirrors.tuna.tsinghua.edu.cn/ubuntu/ bionic-proposed main restricted universe multiverse
-deb-src https://mirrors.tuna.tsinghua.edu.cn/ubuntu/ bionic-proposed main restricted universe multiverse
-
-最后执行如下命令更新源
-##更新
-sudo apt-get update
-sudo apt-get upgrade
-
-
-
-
-
-3. 从头编译和安装
-(1) 新建要安装R的目录
-$ sudo mkdir -p /data/public
-$ sudo chown wangjl /data/public
-
-(2) 下载
-$ wget https://mirrors.tuna.tsinghua.edu.cn/CRAN/src/base/R-4/R-4.1.1.tar.gz
-$ tar zxvf R-4.1.1.tar.gz
-$ cd R-4.1.1
-
-(3) 配置
-$ ./configure --prefix=/data/public/R-4.1.1 --enable-R-shlib ##必须有后面这个选项(/data/public/R-4.1.1/lib64/R/lib/libR.so)，否则无法使用Rstudio。
-## 有一个警告：configure: WARNING: neither inconsolata.sty nor zi4.sty found: PDF vignettes and package manuals will not be rendered optimally
-
-1)消灭该警告
-https://www.ctan.org/pkg/inconsolata?lang=en
-
-$ wget http://mirrors.ctan.org/fonts/inconsolata.zip
-$ unzip inconsolata.zip 
-$ sudo cp -Rfp inconsolata/* /usr/share/texmf/
-$ sudo mktexlsr
-
-
-$ less /home/wangjl/soft/inconsolata/README
-#文档的方法，又做了一次，警告还在。
-#Method A (recommended): type
-$ sudo mkdir -p /usr/local/texlive/texmf-local/web2c
-$ sudo cp -Rfp * /usr/local/texlive/texmf-local
-$ sudo echo Map zi4.map >> /usr/local/texlive/texmf-local/web2c/updmap.cfg #权限不允许
-$ sudo mktexlsr
-$ sudo -H updmap-sys
-
-
-$ sudo apt-get install texinfo
-$ sudo apt-get install texlive
-$ sudo apt-get install texlive-fonts-extra
-
-
-再次配置
-$ cd R-4.1.1/
-$ ./configure --prefix=/data/public/R-4.1.1 --enable-R-shlib --with-cairo=yes
-这里prefix后面的路径可以自己指定，就是安装R的目录。
-
-警告还在：configure: WARNING: neither inconsolata.sty nor zi4.sty found: PDF vignettes and package manuals will not be rendered optimally
-算了，继续吧。
-
-
-
-(4)编译安装
-$ make  #耗时10min
-
-报错：
-processing 'reshape.Rnw'
-Error: compiling TeX file 'reshape.tex' failed with message:
-Running 'texi2dvi' on 'reshape.tex' failed.
-Messages:
-/usr/bin/texi2dvi: TeX neither supports -recorder nor outputs \openout lines in its log file ## --- === >>> 这一句是错误的根源
-Execution halted
-Makefile:103: recipe for target 'vignettes' failed
-make[1]: *** [vignettes] Error 1
-make[1]: Leaving directory '/data/wangjl/soft/R-4.1.1/src/library'
-Makefile:80: recipe for target 'vignettes' failed
-make: *** [vignettes] Error 2
-
-
-$ sudo make install-pdf
-
-sudo apt-key adv --keyserver hkp://keyserver.ubuntu.com:80 --recv-keys D6BC243565B2087BC3F897C9277A7293F59E4889
-echo "deb http://miktex.org/download/ubuntu bionic universe" | sudo tee /etc/apt/sources.list.d/miktex.list
-sudo apt-get update
-sudo apt-get install miktex
-## miktexsetup finish
-sudo miktexsetup --shared=yes finish
-
-
-
-$ locate Rd.sty
-/usr/share/R/share/texmf/tex/latex/Rd.sty
-把
-\DeclareOption{inconsolata}{\setboolean{Rd@use@inconsolata}{true}}
-改为
-\DeclareOption{inconsolata}{\setboolean{Rd@use@inconsolata}{false}}
-
-还是不行。
-
-
-(5)跳过安装包呢？好像那几个基础包还是要安装的。
-$ cd R-4.1.1/
-$ ./configure --prefix=/data/public/R-4.1.1 --enable-R-shlib --with-cairo=yes --without-recommended-packages
-
-$ make
-$ make check ## 跳过
-$ sudo make install
-$ make clean #删除无用中间文件
-
-
-$ /data/public/R-4.1.1/bin/R --version
-R version 4.1.1 (2021-08-10) -- "Kick Things"
-
-$ /data/public/R-4.1.1/bin/Rscript --version
-R scripting front-end version 4.1.1 (2021-08-10)
-
-
-## 加链接
-$ sudo ln -sf /data/public/R-4.1.1/bin/R /usr/local/bin
-$ sudo ln -sf /data/public/R-4.1.1/bin/Rscript /usr/local/bin
-$ sudo ln -sf /data/public/R-4.1.1/lib/R /usr/local/lib/R
-$ R --version ## 已经是最新版 R version 4.1.1
-
-/usr/local/bin/R 指向哪个版本，都可以。
-
-
-
-
-
-
-
-4. 下载 Rstudio
-
-https://www.rstudio.com/products/rstudio/download-server/
-(1) 
-$ sudo apt-get install gdebi-core
-$ wget https://download2.rstudio.org/server/bionic/amd64/rstudio-server-1.4.1717-amd64.deb
-$ sudo gdebi rstudio-server-1.4.1717-amd64.deb
-
-$ sudo service rstudio-server status
-
-http://<IP>:8787/
-
-
-
-
-
-5. 查询一下包路径，怎么安装最节省硬盘？
-
-> .libPaths()
-[1] "/home/wangjl/R/x86_64-pc-linux-gnu-library/4.1"
-[2] "/data/public/R-4.1.1/lib/R/library" 
-
-
-$ ls /data/public/R-4.1.1/lib/R/library | grep ggplot
-空。
-
-
-$ sudo R
-> install.packages("ggplot2", lib="/data/public/R-4.1.1/lib/R/library/") #3.3.5
-选择20 广东源。
-
-$ ls /data/public/R-4.1.1/lib/R/library | grep ggplot
-ggplot2
-
-
-更换源:
-> install.packages("ggplot2", "repos" = c(CRAN="https://mirrors.tuna.tsinghua.edu.cn/CRAN/"), lib='/your/path/')
-# repos  是指定安装镜像，上文提到的都是也可以使用国外的repos='http://cran.rstudio.com/'
-
-
-
-(2) BiocManager 怎么指定安装目录？
-
-> install.packages("BiocManager", lib="/data/public/R-4.1.1/lib/R/library/") #1.30.16
-> BiocManager::install("Seurat")  #4.0.4
-
-
-手动挪一下位置，看看会不会报错。
-$ ls /home/wangjl/R/x86_64-pc-linux-gnu-library/4.1 | grep -i seurat 
-Seurat
-SeuratObject
-
-$ sudo mv /home/wangjl/R/x86_64-pc-linux-gnu-library/4.1/* /data/public/R-4.1.1/lib/R/library/
-
-
-
-
-
-
-
-ref:
-https://www.linuxidc.com/Linux/2015-04/115790.htm
-https://github.com/Jiefei-Wang/Painless-R-compilation-and-installation-on-Ubuntu
-
-
-
-
-
-
-========================================
-Ubuntu 2004 安装 R 4.1.1 及 Rstudio v1.4.1717
+|-- Ubuntu 2004 安装 R 4.1.1 及 Rstudio v1.4.1717
 ----------------------------------------
 
 系统从 ubuntu1804 升级到 20.04， R不能用了。
@@ -1748,313 +945,6 @@ $ sudo gdebi rstudio-server-2022.02.3-492-amd64.deb
 
 $ sudo service rstudio-server restart
 $ sudo service rstudio-server status
-
-
-
-========================================
-CentOS7 安装 R 4.1.1 及 RStudio 2021.09.0+351
-----------------------------------------
-
-1. vm box 安装 centOS7 系统 
-宿主机是 ubuntu1804, vm 版本号是 6.1.
-
-(1) 新建虚拟机，内存2G，磁盘 15G。
-(2) 导入 iso 文件到光盘
-CentOS-7-x86_64-Everything-1804.iso
-启动
-
-授权 硬盘自动
-software selection, 选择 Server with GUI/ GNOME Desktop?前者吧。
-
-点击开始，设置root 密码 123，设置 user wangjl/123 勾选作为管理员。
-等待: 16:30--> 16:53
-reboot.
-
-如果默认安装，是shell界面！
-重启同意条款。同意联网。
-
-
-(3) 安装基础工具
-$ sudo yum install vim -y
-$ sudo yum install tmux -y
-
-
-(4) 安装完R之后，查一下升级后的系统版本号
-$ cat /etc/redhat-release
-CentOS Linux release 7.9.2009 (Core)
-
-$ rpm -q centos-release
-centos-release-7-9.2009.1.el7.centos.x86_64
-
-
-这样看，开始的CentOS系统最好直接选最新版的iso。
-任选一个速度快的下载 https://mirrorz.org/os/centos
-https://mirrors.dgut.edu.cn/centos/7.9.2009/isos/x86_64/CentOS-7-x86_64-Everything-2009.iso
-https://mirrors.tuna.tsinghua.edu.cn/centos/7.9.2009/isos/x86_64/CentOS-7-x86_64-Everything-2009.iso
-https://mirrors.sustech.edu.cn/centos/7.9.2009/isos/x86_64/CentOS-7-x86_64-Everything-2009.iso #挺快的 11M/s
-
-
-
-
-
-
-
-2. 开始安装R
-(1) 检查系统自带的版本号
-$ R
-bash: R: command not found...
-
-没有。真是个空白系统。
-
-
-(2) 通过yum安装 R
-https://www.vultr.com/docs/how-to-install-rstudio-server-on-centos-7
-
-## 升级系统
-$ sudo yum install epel-release
-$ sudo yum update #十分慢，需要几个小时。20:43--> 
-## sudo shutdown -r now
-能跳过重启吗？试试。
-
-## 安装R
-$ sudo yum install R #需要安装上百依赖包 + R-core
-
-$ which Rscript
-/usr/bin/Rscript
-$ which R
-/usr/bin/R
-$ whereis R
-R: /usr/bin/R /usr/lib64/R /usr/include/R /usr/share/R /usr/share/man/man1/R.1.gz
-
-
-## 版本号
-$ R --version 
-R version 3.6.0 (2019-04-26) -- "Planting of a Tree"
-版本太老旧！
-
-
-
-
-3. 使用源码安装最新版 R 
-https://docs.rstudio.com/resources/install-r/
-install R from source: https://docs.rstudio.com/resources/install-r-source/
-
-查询R的版本号: https://cdn.rstudio.com/r/versions.json
-https://cran.rstudio.com/src/base/R-4/
-目前最新的是 4.1.1
-
-(1) 下载源码包
-$ export R_VERSION=4.1.1
-
-$ cd ~/soft/
-$ curl -O https://cran.rstudio.com/src/base/R-4/R-${R_VERSION}.tar.gz
-$ tar -xzvf R-${R_VERSION}.tar.gz
-$ cd R-${R_VERSION}
-
-
-
-(2) Build and install R
-我之前用的命令
-## ./configure --prefix=/data/public/R-4.1.1 --enable-R-shlib ##必须有后面这个选项(/data/public/R-4.1.1/lib64/R/lib/libR.so)，
-
-
-
-配置时报错 
-configure: error: --with-readline=yes (default) and headers/libs are not available
-解决: 
-
-安装build的依赖
-$ sudo yum-builddep R #49个包，耐心等待
-
-这次按照这个来
-$ sudo mkdir -p /opt/R/
-$ ./configure \
-    --prefix=/opt/R/${R_VERSION} \
-    --enable-memory-profiling \
-    --enable-R-shlib \
-    --with-blas \
-    --with-lapack
-
-最后报警告
-configure: WARNING: neither inconsolata.sty nor zi4.sty found: PDF vignettes and package manuals will not be rendered optimally
-
-$ make #6min
-$ sudo make install
-
-清理残余
-$ make clean
-
-
-(3) 检查 
-$ ls /opt/R/4.1.1/
-bin  lib64  share
-
-$ /opt/R/4.1.1/bin/R --version
-R version 4.1.1 (2021-08-10) -- "Kick Things"
-
-
-(4) 添加软链接
-Create a symlink to R
-
-$ sudo ln -s /opt/R/${R_VERSION}/bin/R /usr/local/bin/R
-$ sudo ln -s /opt/R/${R_VERSION}/bin/Rscript /usr/local/bin/Rscript
-
-(5) 再次检查当前R
-重新登录终端
-$ su wangjl
-
-
-$ which R
-/usr/local/bin/R
-
-$ R --version
-R version 4.1.1 (2021-08-10) -- "Kick Things"
-
-已经是R最新版了
-
-
-$ whereis R
-R: /usr/bin/R /usr/lib64/R /usr/local/bin/R /usr/include/R /usr/share/R /usr/share/man/man1/R.1.gz
-理解不了，为什么默认不是使用排名靠前的 /usr/bin/R ？
-
-
-
-(6) 安装R包的位置
-$ cd 
-$ ls R/x86_64-pc-linux-gnu-library/4.1/
-空白文件夹。
-
-
-$ R
-> .libPaths()
-[1] "/home/wangjl/R/x86_64-pc-linux-gnu-library/4.1"
-[2] "/opt/R/4.1.1/lib64/R/library" 
-> install.packages("ggplot2") #地点选择 21。安装R包
-> q()
-n
-
-查看新安装的26个R包
-$ ls R/x86_64-pc-linux-gnu-library/4.1/
-cli         crayon  ellipsis  farver   glue    isoband   lifecycle  munsell  pkgconfig  RColorBrewer  scales  utf8   viridisLite
-colorspace  digest  fansi     ggplot2  gtable  labeling  magrittr   pillar   R6         rlang         tibble  vctrs  withr
-
-
-
-
-
-
-
-
-4. 安装 Rstudio server
-https://www.rstudio.com/products/rstudio/download-server/
-
-https://www.rstudio.com/products/rstudio/download-server/redhat-centos/
-Install for Red Hat / CentOS 7
-
-(1) 下载与安装
-$ cd ~/soft/
-$ wget https://download2.rstudio.org/server/centos7/x86_64/rstudio-server-rhel-2021.09.0-351-x86_64.rpm
-$ sudo yum install rstudio-server-rhel-2021.09.0-351-x86_64.rpm
-
-
-检查服务状态
-$ sudo service rstudio-server status
-看到 active (running) 表示启动了。
-
-
-$ ifconfig
-查询IP地址：192.168.2.134
-对于云服务器，使用公网IP。
-
-同时注意打开端口 8787 的防火墙。
-
-//开放8787端口访问
-$ sudo iptables -I IN_public_allow -p tcp --dport 8787 -j ACCEPT
-$ sudo iptables -I INPUT -p tcp --dport 8787 -j ACCEPT
-
-## 这样也行，我没试过。
-sudo firewall-cmd --permanent --zone=public --add-port=8787/tcp
-sudo firewall-cmd --reload
-
-
-
-如果有异常，重启能解决几乎所有问题。
-启动与停止 Rstudio 服务。
-$ sudo service rstudio-server status
-
-$ sudo service rstudio-server start
-$ sudo service rstudio-server stop
-
-修改配置文件后要重启服务才能生效。
-$ sudo service rstudio-server restart
-
-重启服务不行还可以重启系统，还解决不了，就只能重装系统，或者花钱找高手...
-
-
-
-(2) 使用与测试
-打开浏览器，输入 http://<IP>:8787/ 即可看到 Rstudio server 的登录界面。
-输入自己的 linux 用户名和密码，即可使用R了。
-
-里面默认使用的R是最新版的 R 4.1.1
-
-> library("ggplot2")
-报错  error: there is no package called ‘rlang’
-> install.packages("rlang")
-Error in install.packages : Updating loaded packages
-
-Restarting R session...
-
-> install.packages("rlang")
-> library("ggplot2")
-正常了。可能是缓存没更新。
-
-新建R脚本
-library("ggplot2")
-pdf("01.pdf", width=3, height=3, useDingbats = F)
-ggplot(mtcars, aes(mpg, disp))+geom_point()
-dev.off()
-生成的 01.pdf 正常。
-
-
-
-
-
-
-(3) 个性化设置(可选)
-https://support.rstudio.com/hc/en-us/articles/200552316-Configuring-the-Server
-
-主要是这2个文件:
-/etc/rstudio/rserver.conf
-/etc/rstudio/rsession.conf
-
-
-
-$ sudo vim /etc/rstudio/rserver.conf
-# 修改端口号
-www-port=8788
-
-# 指定使用的R文件，听说在新版本中 Rstudio Pro 才有这个选项。
-rsession-which-r=/usr/local/bin/R
-
-# 无操作自动退出时间(单位是min)，0表示不退出。我希望至少是24小时(1440min)
-# session-timeout-minutes=60 # 不是这个。
-auth-timeout-minutes=1800
-
-
-# 外部库。通过修改rsession-ld-library-path 添加系统的库路径作为外部库以供RStudio server调用。
-# 有时候R需要依赖系统的一些库的时候，就可以添加上系统库的路径让R也可以调用到
-rsession-ld-library-path=/usr/lib64/:/usr/local/lib/:/usr/lib/
-
-
-
-
-所有设置的修改都只在重启服务后才能生效。
-$ sudo service rstudio-server restart
-
-
-
-
 
 
 
@@ -2435,7 +1325,7 @@ $ sudo yum install openssl-devel
 
 
 ========================================
-centOS7 的 Rstudio 出错打不开怎么办？
+|-- centOS7 的 Rstudio 出错打不开怎么办？
 ----------------------------------------
 1. 查看错误报告
 $ sudo journalctl -u rstudio-server
@@ -2492,12 +1382,6 @@ https://zhuanlan.zhihu.com/p/432156941
 
 
 
-========================================
-hit <return> to see next plot 怎么回事？
-----------------------------------------
-一般是执行完示例程序后遗留问题。
-# 关掉算了
-par(ask=F)
 
 
 
