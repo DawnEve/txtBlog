@@ -9,6 +9,847 @@ IP Gate DNS等。
 
 
 
+
+ssh 教程：
+	https://www.ronpad.com/ssh/
+
+
+
+========================================
+基于 xshell 的内网穿透： SSH 端口转发又叫 SSH 隧道（tunnel） 原理与实战
+----------------------------------------
+1. 简单模型
+A服务器在局域网，我在外部用C电脑能连接和A同一个网的B跳板机。
+整个模型是： C -> || B -> A ||
+
+- 主机B和A在同一个局域网
+- 平常通过B（win）访问服务器A（Linux）
+- 在外网能通过 xshell 能连接B主机
+
+(1) 之前是通过2次跳转，先连接B，再连接A。
+缺点： 麻烦，且无法访问A的 Rstudio 等交互式页面。
+
+(2) 通过隧道连接 Rstudio
+a) 创建隧道
+点击顶部文件夹图标右边的下三角，找到B的连接，右击-属性；
+点击 连接-ssh-隧道，单击添加，
+	设置登录方式，也就是站到B主机上： 类型：本地（拨出），	源主机： localhost，侦听端口：8787
+	设置服务器A的信息： 目标主机： 10.10.x.143，目标端口：8787
+	自定义注释： 说明：Rstudio server
+	点确定。
+	还可以再添加一下 jupyter 的设置，只是端口号不同，比如 8890
+重新连接主机B，xshell标签图标变成圆圈，表示设置成功。
+b) 访问Rstudio
+浏览器访问 http://localhost:8787/
+即可访问服务器A了。
+
+
+
+
+
+
+2. 怎么自己构建主机B呢？
+https://blog.csdn.net/qijiajun97/article/details/104194201
+
+(1) 云主机D
+就是A和C都能访问的主机。设置允许端口转发
+$ vim /etc/ssh/sshd_config
+找到文件中被注释掉的GatewayPorts no，去注释，并将no改成yes
+如果没找到就在末尾添加上GatewayPorts yes
+
+打开防火墙端口，比如 12345
+
+
+(2) 设置B电脑为跳板机
+打开XShell，添加连接，设置： 名称：跳板机，协议：ssh，主机：云主机的公网ip，端口号：22
+	用户身份验证：云主机的用户名和密码。
+	SSH-隧道，设置转移规则： 类型：远程(传入),源主机：0.0.0.0，侦听端口： 云主机开的端口，比如 12345。
+		目标主机： 内网主机A的IP，目标端口：22
+跳板机B必须在线，否则无法实现转发。
+
+
+(3) 外部电脑C的配置
+任意一个ssh软件，
+	IP: 云主机IP
+	端口： 云主机打开的端口，比如 12345
+	用户名：服务器A的用户名
+	密码：服务器A的密码
+
+实现了在外网通过ssh隧道服务连接内网服务器。
+
+
+(4) 设置隧道后，所有的ssh相关的服务都可以在外网使用，比如 sftp 文件传输
+除了ssh登录外，ssh相关协议也是支持的。
+比如，在外网电脑C上使用支持 sftp 的软件。
+
+这套操作的原理是SSH的隧道协议，具体可以看
+	SSH Tunnel 一般场景用法： https://blog.csdn.net/wxqee/article/details/49234595
+
+
+
+
+
+
+3. 案例2: 通过ssh隧道转发本地ssh,实现内网穿透
+https://blog.csdn.net/u010494323/article/details/134277926
+实际场景，有A服务器，位于某内网环境，没有外网IP，外面无法SSH
+但我自己有比如阿里云上的一台服务器D，我想直接SSH A服务器，怎么办？
+
+D 服务器IP 101.198.*.*
+A 服务器执行 # ssh -R 2201:0.0.0.0:22 -p 22 USERNAME@101.198.*.* -f -N
+
+
+
+
+
+
+ref:
+https://blog.csdn.net/qq_61562251/article/details/134910406
+
+
+
+
+
+========================================
+|-- SSH Tunnel 一般场景用法： ssh -p port 本地转发-L / 远程转发-R / 动态转发-D
+----------------------------------------
+反向端口转发是把本机的端口转发到远程的机子上；
+与之对应，正向端口转发则是把远程的端口转发到本地。
+
+0. 背景介绍
+(1)ssh 参数：
+	-C：压缩传输
+	-f：将ssh转⼊后台，不占⽤当前shell
+	-N：静默连接，减少被发现。 表示只是建立连接，而不登录。
+	-g：允许远程主机连接本地⽤于端⼝转发
+	-L：本地端⼝转发
+	-R：远程端口转发
+	-D：动态端⼝
+	-p：指定ssh端口
+	-T:不分配伪终端 tty
+	
+	-i ssh key 私钥文件
+
+
+常用组合：
+	-Ngf -R
+	-fCNT -L
+
+
+man 手册：
+-C      Requests compression of all data (including stdin, stdout, stderr, and data for forwarded X11, TCP and UNIX-domain connections).  The compression algorithm is the same used by gzip(1).  Compression is desirable on modem lines and other slow connections, but will only slow down things on fast networks. The default value can be set on a host-by-host basis in the configuration files; see the Compression option.
+
+允许远程主机连接本地⽤于转发端⼝。
+-g      Allows remote hosts to connect to local forwarded ports.  If used on a multiplexed connection, then this option must be specified on the master process.
+
+-N      Do not execute a remote command.  This is useful for just forwarding ports.
+
+-T      Disable pseudo-terminal allocation.
+
+
+
+
+(2) 端口转发时可见范围： 本地 vs 局域网
+$ lsof -i:8881
+Or
+$ netstat -lntp | grep 8881
+(Not all processes could be identified, non-owned process info
+ will not be shown, you would have to be root to see it all.)
+tcp        0      0 127.0.0.1:8881          0.0.0.0:*               LISTEN      -                   
+tcp6       0      0 ::1:8881                :::*                    LISTEN      -
+如果看到远端主机是 127.0.0.1 表示只能本地访问，要 0.0.0.0：port 才能使所有IP都能访问。
+
+$ netstat -lntp | grep 8787 #参考 Rstudio 的地址
+tcp        0      0 0.0.0.0:8787            0.0.0.0:*               LISTEN      -
+
+
+
+
+
+(3) 端口转发 默认关闭，需要打开
+
+确保SSH服务器的/etc/ssh/sshd_config配置文件的AllowTcpForwarding和GatewayPorts均配置为yes
+然后 sudo systemctl restart sshd 重启 ssh- daemon 服务就开启成功了。
+
+$ sudo vim /etc/ssh/sshd_config
+AllowTcpForwarding yes
+GatewayPorts yes
+
+重启ssh 服务
+$ sudo systemctl restart sshd #CentOS
+Or
+$ sudo service ssh restart #Ubuntu
+$ sudo netstat -anp | grep 8888
+
+查看端口是否开放：
+$ telnet 192.168.2.120 8888
+
+
+
+
+(10) 测试用机器：
+	A: local Win
+	B: Y station
+	C: 105 VB
+	D: Z server
+
+
+
+
+
+
+
+1. ssh 基本用法 A->B
+@A$ ssh userB@IP_B #登录B主机
+
+
+
+
+
+
+2. SSH 的 -L, -R, -D 三种用法
+(1) 本地转发 -L 用法 [-L address]
+	 -L [bind_address:]port:host:hostport
+     -L [bind_address:]port:remote_socket
+     -L local_socket:host:hostport
+     -L local_socket:remote_socket
+
+指定本地连接到远程主机的端口。
+Specifies that connections to the given TCP port or Unix socket on the local (client) host are to be forwarded to the given host and port, or Unix socket, on the remote side.  This works by allocating a socket to listen to either a TCP port on the local side, optionally bound to the specified bind_address, or to a Unix socket.  Whenever a connection is made to the local port or socket, the connection is forwarded over the secure channel, and a connection is made to either host port hostport, or the Unix socket remote_socket, from the remote machine.
+
+Port forwardings can also be specified in the configuration file. Only the superuser can forward privileged ports.  IPv6 addresses can be specified by enclosing the address in square brackets.
+
+By default, the local port is bound in accordance with the GatewayPorts setting.  However, an explicit bind_address may be used to bind the connection to a specific address.  The bind_address of “localhost” indicates that the listening port be bound for local use only, while an empty address or ‘*’ indicates that the port should be available from all interfaces.
+
+
+i) ssh -L 用法1（本地起端口映射到其他机器）
+A->B-> | C
+A-> | C
+	@B$ sudo ssh -L 8888 userC@hostC
+	@A$ ssh -p 8888 userC@hostB
+
+意思是在 HostB 上，让 localhost 起 8888 端口，使之映射到 HostC 的 22 端口（默认）。
+如此，在 HostA 上可以使用 HostB:8888 就像使用 HostC:22 一样。
+
+
+测试报错：
+	@B$ sudo ssh -L 8888 wangjl@192.168.2.105
+	@B$ ssh -N -L 8888:192.168.2.105:22 wangjl@192.168.2.105
+	[sudo] password for wangjl: 
+	Bad local forwarding specification '8888'
+	@B$ sudo ssh -L 8888:192.168.2.105:22 wangjl@192.168.2.105 #可以执行，登录
+
+查端口占用：
+	@B$ sudo netstat -anp | grep 8888
+	tcp        0      0 127.0.0.1:8888          0.0.0.0:*               LISTEN      3999593/sshd: wangj 
+	tcp6       0      0 ::1:8888                :::*                    LISTEN      3999593/sshd: wangj 
+	unix  3      [ ]         STREAM     CONNECTED     58888    1/init               /run/systemd/journal/stdout
+	wangjl@YStation:~$ 
+	wangjl@YStation:~$ ps 3999593
+		PID TTY      STAT   TIME COMMAND
+	3999593 ?        S      0:00 sshd: wangjl@pts/7
+	wangjl@YStation:~$ kill -9 3999593
+测试端口是否可用
+	@B$ python3 -m http.server 8888
+	@A2$ $ curl -I http://192.168.2.120:8888
+	HTTP/1.0 200 OK
+	
+再执行：
+	不行的：
+	@B$ ssh -L 8888:192.168.2.105:22 wangjl@192.168.2.105
+	@B$ ssh -L 8888:localhost:22 wangjl@192.168.2.105
+	@B$ ssh -Ng -L 8888 wangjl@192.168.2.105
+	@B$ ssh -Ng -L 8888:locathost:22 wangjl@192.168.2.105
+	可以的
+	@B$ ssh -fNg -L 8888:192.168.2.105:22 wangjl@192.168.2.105 #必须参数 -g，没有则无法从A连接C
+	@B$ ssh -Ng -L 8888:192.168.2.105:22 wangjl@192.168.2.105 #必须指定完整转发格式 本地端口:远程IP:远程端口
+	检查：
+	@B$ sudo netstat -anp | grep 8888 #注意区别：之前第三列是 127.0.0.1，只能本地可见，必须 0.0.0.0 才能局域网可见
+	tcp        0      0 0.0.0.0:8888            0.0.0.0:*               LISTEN      4036534/ssh         
+	tcp6       0      0 :::8888                 :::*                    LISTEN      4036534/ssh
+	登录：
+	@A2$ ssh -p 8888 wangjl@192.168.2.120 #输入C的密码，登录了C
+
+
+
+
+ii) ssh -L 用法2（本地起端口映射到其他机器） OK 我的模式
+本地主机（A）、跳板机（B）、目标主机（C）
+A指定本地端口访问通过SSH连接转发给B，B将这些数据转发给C，同时将结果传回给A。（一般情况下B的端口是远程连接端口）
+A：ssh -CfNg -L 本地端口:⽬标ip:⽬标端⼝ 跳板账号@ip
+
+A-> | B-> C
+A-> | C
+	@A$ ssh -L 8888:HostC:22 UserB@HostB
+	@A$ ssh -p 8888 userC@localhost
+意思是在 HostA 上，让 localhost 起 8888 端口，使之映射到 HostC 的 22 端口。
+如此，在 HostA 上可以使用 localhost:8888 就像使用 HostC:22 一样。
+
+测试：
+	@A$ ssh -N -L 8888:192.168.2.105:22 wangjl@y.biomooc.com
+	@A$ ssh -p 8888 wangjl@localhost #输入C的密码登录C成功。 该条不退出(exit)，前一条也不会退出。
+
+几个命令：
+	A： ssh -CfNg -L 本地端口:⽬标ip:⽬标端⼝ 跳板账号@ip
+	netstat -antulp | grep 6666 # 查看端⼝占⽤
+	进行远程桌面连接：rdesktop 127.0.0.1:本地端口
+	远程终端连接：ssh -p 端口 账户@ip地址
+
+
+
+
+
+
+
+
+
+
+
+(2) 远程转发 -R 用法 [-R address]
+需要设置，见上文1.3
+	 -R [bind_address:]port:host:hostport
+     -R [bind_address:]port:local_socket
+     -R remote_socket:host:hostport
+     -R remote_socket:local_socket
+     -R [bind_address:]port
+
+指定远程转发到本地。
+Specifies that connections to the given TCP port or Unix socket on the remote (server) host are to be forwarded to the local side.
+
+This works by allocating a socket to listen to either a TCP port or to a Unix socket on the remote side.  Whenever a connection is made to this port or Unix socket, the connection is forwarded over the secure channel, and a connection is made from the local machine to either an explicit destination specified by host port hostport, or local_socket, or, if no explicit destination was specified, ssh will act as a SOCKS 4/5 proxy and forward connections to the destinations requested by the remote SOCKS client.
+
+Port forwardings can also be specified in the configuration file. Privileged ports can be forwarded only when logging in as root on the remote machine.  IPv6 addresses can be specified by enclosing the address in square brackets.
+
+By default, TCP listening sockets on the server will be bound to the loopback interface only.  This may be overridden by specifying a bind_address.  An empty bind_address, or the address ‘*’, indicates that the remote socket should listen on all interfaces. Specifying a remote bind_address will only succeed if the server's GatewayPorts option is enabled (see sshd_config(5)).
+
+If the port argument is ‘0’, the listen port will be dynamically allocated on the server and reported to the client at run time. When used together with -O forward the allocated port will be printed to the standard output.
+
+
+
+i) ssh -R 用法1（非本地起端口映射到其他机器）
+A->B-> | C
+A->| C
+	HostC$ ssh -R 8888:localhost:22 UserB@HostB
+	@A $ ssh -p 8888 UserC@hostB
+意思是在 HostC 上，让 HostB 起 8888 端口，使之映射到 localhost 的 22 端口。
+如此，在 HostA 上可以使用 HostB:8888 就像使用 HostC:22 一样。
+
+测试： 
+	@C $ ssh -Ng -R 8888:localhost:22 wangjl@y.biomooc.com #输入B的密码
+	@A $ ssh -p 8888 wangjl@y.biomooc.com  #失败
+	@A2 $ ssh -p 8888 wangjl@192.168.2.120 #输入C密码登录C
+	@B $ ssh -p 8888 wangjl@localhost #输入C密码登录C
+	
+查端口：
+	要加 sudo
+	@B$ sudo netstat -anp | grep 8888
+	tcp        0      0 0.0.0.0:8888            0.0.0.0:*               LISTEN      4040417/sshd: wangj 
+	tcp        0      0 192.168.2.120:8888      192.168.2.105:58410     ESTABLISHED 4040417/sshd: wangj
+	
+	$ ps 4040417
+		PID TTY      STAT   TIME COMMAND
+	4040417 ?        S      0:00 sshd: wangjl
+
+
+
+ii) ssh -R 用法2（非本地起端口映射到其他机器）
+A->|B->C
+A->|C
+	@A$ ssh -CfNg -R 自定义端⼝:hostC:⽬标端⼝ 跳板账号B@hostB
+	@A$ ssh -p 自定义端口 userC@hostB
+
+准备：
+	A:y station
+	B:j.server
+	C:Z server
+	@B$ sudo iptables -I INPUT -p tcp --dport 8881 -j ACCEPT #开端口
+	配置文件，见上文1.3
+	
+测试：
+	@A$ ssh -Ng -R 8881:z.biomooc.com:22 wangjl@j.biomooc.com #输入B的密码，挂起
+	@A$ ssh -p 8881 wangjl@j.biomooc.com #输入C的密码，确实登录了C
+	@B$ ssh -p 8881 wangjl@localhost #输入C的密码，确实登录了C
+
+检查：
+	@B$ sudo netstat -anp | grep 8881
+	tcp        0      0 127.0.0.1:8881          0.0.0.0:*               LISTEN      8268/sshd: wangjl   
+	tcp6       0      0 ::1:8881                :::*                    LISTEN      8268/sshd: wangjl 
+	修改配置文件前，第三列是 127.0.0.1，只能本地可见。
+	按上文1.3修改配置文件后，重启ssh服务，重新连接，可以看到 0.0.0.0 为局域网可见：
+	$ sudo netstat -anp | grep 8881
+	tcp        0      0 0.0.0.0:8881            0.0.0.0:*               LISTEN      8875/sshd: wangjl   
+	tcp        0      0 10.20.57.27:8881        10.20.89.188:58696      ESTABLISHED 8875/sshd: wangjl
+
+
+
+
+
+iii) ssh -R 用法3（非本地起端口映射到其他机器）
+
+A->B-> | C -> D
+A->| D
+	HostC$ ssh -R 8888:HostD:22 UserB@HostB
+	@A$ ssh -p 8888 userD@hostB
+
+意思是在 HostC 上，让 HostB 起 8888 端口，使之映射到 HostD 的 22 端口。
+	在C上执行，C就像一个转发器（B端口->D端口），本机无暴漏端口。
+	检查端口时，在B上。
+如此，在 HostA 上可以使用 HostB:8888 就像使用 HostD:22 一样。
+
+准备：
+	A： win
+	B: J
+	C: y
+	D: 105
+
+测试： 
+	@C$ ssh -Ng -R 8881:192.168.2.105:22 wangjl@j.biomooc.com #输入B的密码
+	@A$ ssh -p 8881 wangjl@j.biomooc.com #输入D的密码，登录D
+	@C$ ssh -p 8881 wangjl@j.biomooc.com #输入D的密码，登录D
+	
+	检查端口 
+	@B$ sudo netstat -anp | grep 8881
+	tcp  0  0 0.0.0.0:8881  0.0.0.0:*   LISTEN      4177/sshd: wangjl   
+	tcp6 0  0 :::8881       :::*        LISTEN      4177/sshd: wangjl
+
+
+
+
+
+
+
+
+
+
+
+
+
+(3) 动态转发 -D 用法 [-D [bind_address:]port] 没看懂
+ -D [bind_address:]port
+Specifies a local “dynamic” application-level port forwarding. This works by allocating a socket to listen to port on the local side, optionally bound to the specified bind_address.  Whenever a connection is made to this port, the connection is forwarded over the secure channel, and the application protocol is then used to determine where to connect to from the remote machine.  Currently the SOCKS4 and SOCKS5 protocols are supported, and ssh will act as a SOCKS server.  Only root can forward privileged ports.  Dynamic port forwardings can also be specified in the configuration file.
+
+IPv6 addresses can be specified by enclosing the address in square brackets.  Only the superuser can forward privileged ports.  By default, the local port is bound in accordance with the GatewayPorts setting.  However, an explicit bind_address may be used to bind the connection to a specific address.  The bind_address of “localhost” indicates that the listening port be bound for local use only, while an empty address or ‘*’ indicates that the port should be available from all interfaces.
+
+相对于本地转发和远程转发的单一端口转发模式而言，动态转发有点更加强劲的端口转发功能，即是无需固定指定被访问目标主机的端口号。这个端口号需要在本地通过协议指定，该协议就是简单、安全、实用的 SOCKS 协议。
+
+
+i) 本地的代理服务，通过 localhost:22 隧道入口建立 Failed
+	HostA$ ssh -D 8080 user@hostB
+此时 localhost:8080 就是本地的 Socket 代理服务器。
+效果，即浏览器配置了 本机IP:8080 Socket5 的代理后，就可以像在本机上一样访问网站资源了。
+
+测试：
+	@win$ ssh -D 50000 wangjl@j.biomooc.com
+	用firefox浏览器，在浏览器里设置使用socks5代理127.0.0.1:50000，然后浏览器就可以访问host1所在网络内的任何IP了。
+How to use socks5?
+	在Windows系统上，您可以通过以下步骤设置和使用Socks5代理：
+	step1：打开控制面板并进入“Internet选项”。
+	step2：选择“连接”选项卡，并点击“局域网设置”。
+	step3：勾选“使用代理服务器”，在地址和端口号处分别填写Socks5代理服务器的IP地址和端口号，并在认证选项卡中填写用户名和密码（如果需要）。
+	step4：点击“确定”并关闭窗口。
+	step5：重新启动您的浏览器或其他网络应用程序，您应该能够成功连接到Socks5代理服务器并浏览网页或使用网络应用程序。
+
+
+i) 本地的代理服务，通过 HostB:22 隧道入口建立
+	HostA$ ssh -D 8080 UserB:HostB
+或写全
+	HostA$ ssh -D localhost:8080 -p 22 UserB:HostB
+
+此时 localhost:8080 就是HostB上的 Socket 代理服务器。
+效果，即浏览器配置了 本机IP:8080 Socket5 的代理后，就可以像在HostB上一样访问网站资源了。
+
+
+
+
+
+
+
+
+
+
+ref： 
+https://blog.csdn.net/wxqee/article/details/49234595
+https://blog.csdn.net/qq_61562251/article/details/134910406
+https://zhuanlan.zhihu.com/p/148825449
+
+
+
+
+
+========================================
+|-- ssh 配置文件: ~/.ssh/config 配置别名
+----------------------------------------
+
+1. 设置别名： 传输文件 scp 为例
+基本用法：
+Host lab
+    HostName remote
+    User user
+    Port port
+
+scp 和 ssh 类似，区别是端口号前者使用-P。
+
+(1) 把本地的 /path/to/local/file 文件传输到远程的 /path/to/remote/file
+$ scp -P port /path/to/local/file user@remote:/path/to/remote/file
+也可以使用别名
+$ scp /path/to/local/file lab:/path/to/remote/file
+
+(2) 把远程的 /path/to/remote/file 下载到本地的 /path/to/local/file
+$ scp lab:/path/to/remote/file /path/to/local/file
+#远程的默认路径是家目录
+#下面命令把当前目录下的 file 传到远程的 ~/dir/file
+$ scp file lab:dir/file
+
+# 加上 -r 命令可以传送文件夹
+# 下面命令可以把当前目录下的 dir 文件夹传到远程的家目录下
+$ scp -r dir lab:
+
+# 别忘了 . 可以用来指代当前目录
+# 下面命令可以把远程的 ~/dir 目录下载到当前目录里面
+$ scp -r lab:dir/ .
+
+
+
+
+2. 指定私钥（~/.ssh/id_rsa），实现无密码登录
+Host ssh-host1
+	user root
+	Hostname 1.2.3.4
+	Port 2222
+	# 私钥文件
+	identityfile ~/.ssh/id_rsa_mysql
+	RemoteForward 0.0.0.0:3306 mysql-ip:3306
+
+Host VB105
+  HostName 192.168.2.105
+  User wangjl
+  PreferredAuthentications publickey
+  IdentityFile ~/.ssh/gitee_id_rsa
+
+
+
+
+
+3. 综合示例：转发多个端口
+Host vm
+	User root
+	Hostname 181.220.x.x
+	# 将vm中的127.0.0.1:1081转发到localhost的30081
+	LocalForward localhost:30081 127.0.0.1:1081
+	# 本地开放一个30082端口
+	DynamicForward 127.0.0.1:30082
+
+
+
+
+
+ref:
+https://blog.csdn.net/omaidb/article/details/128400531
+
+
+
+
+
+========================================
+|-- ssh 反向隧道实现内网穿透： 需要一台公网云主机
+----------------------------------------
+1. 场景1： 学校实验室有台服务器，我在家怎么登录它？
+再买一台云主机即可。
+
+A： win at home 家庭或者宿舍，不做设置。
+
+B: 105 Server at school 学校实验室/公司服务器 lab
+C: 公网云主机 （跳板机，jumpbox），A和B都可以访问该主机
+
+A->C;
+B->C;
+
+怎么在家让笔记本A访问服务器B: A->B？ 
+
+
+(1) 在B服务器设置
+@B lab$ ssh -R 10022:localhost:22 user@jumpboxC
+将 lab Server 上的 22 端口反向转发到了 jumpbox 的 10022 端口。
+或者说：把远程端口(跳板机C) 1022 转发到 本地(@B)22端口。
+
+只要保持这个 ssh 不断，任何一台机器都可以首先连接到 jumpboxC，然后通过 ssh user@localhost -p 10022 连回到 labB。可以看到，这里 jumpbox 起到了一个跳板的作用，所以我们把它称作跳板机。
+
+(2) 测试连接
+@C jumpbox$ ssh user@localhost -p 10022
+
+
+
+(3) 示例
+	A: win
+	B: 105 server 
+	C: J server
+
+服务器连接云主机
+	@B$ ssh -Ng -R 8888:localhost:22 wangjl@j.biomooc.com #输入C的密码，挂起
+	
+在云主机测试
+	@C$ ssh wangjl@localhost -p 8888 #输入B的密码，登录B
+	检查端口号
+	@C$ sudo netstat -anp | grep 8888
+	tcp        0      0 0.0.0.0:8888            0.0.0.0:*               LISTEN      7381/sshd: wangjl   
+	tcp6       0      0 :::8888                 :::*                    LISTEN      7381/sshd: wangjl
+
+在笔记本A上通过云主机C登录实验室服务器B:
+	@A$ ssh wangjl@j.biomooc.com -p 8888 #输入B的密码，登录B
+
+切断连接：
+	@C$ kill -9 7381
+	或者
+	@B$ ctrl+C 快捷键
+
+
+(4) 缺点： 不稳定
+
+不过上面这么做并不稳健，如果因为网络波动导致 ssh -R 那个连接断了，那么从 jumpbox 就完全失去了到 lab 的控制。万幸的是，有一个叫做 autossh 的软件，可以自动的检测断线，并在断线的时候重连。
+
+autossh 见本页专题。
+
+
+
+
+
+
+
+
+
+
+2. 场景2：我本地有个网站，怎么分享给远方朋友？
+买台云服务器即可。
+
+本地网站 $ python3 -m http.server 8000
+本地可见： http://localhost:8000/
+
+本地执行 local$ ssh -NR 0.0.0.0:18000:localhost:8000 jumpbox
+	把远程端口(jumpbox:18000)映射到本地8000
+远方朋友：  http://jumpbox:18000/ 
+
+
+测试：
+	local: y 
+	yun: jumpbox J
+	本地网站：http://y.biomooc.com:8000
+
+执行端口转发：
+	local$ ssh -NR 0.0.0.0:8888:localhost:8000 wangjl@j.biomooc.com #输入j密码
+
+尝试访问： http://j.biomooc.com:8888
+	结果同上。
+
+
+注意: 这里明确指定了 0.0.0.0，这告诉 ssh，要把 8888 端口绑定在远端的所有IP上。
+如果像之前那样省略的话，缺省值是只绑定在 localhost，也就是只有在 jumpbox 本机才可以访问，而其他人都不能访问。
+或者修改配置文件，并指定-g参数。
+
+查看端口：
+	local$ sudo netstat -anp | grep 8888
+	tcp        0      0 0.0.0.0:8888    0.0.0.0:*    LISTEN      9225/sshd: wangjl   
+	tcp6       0      0 :::8888         :::*         LISTEN      9225/sshd: wangjl	
+
+
+
+
+
+
+3. 场景3： 比方说在本地的127.0.0.1:1080运行了HTTP代理服务，现在我想让另一台机子 remote 也能够使用这个HTTP代理。
+
+local$ ssh -NR 11080:localhost:1080 remote
+local$ ssh remote
+remote$ export http_proxy=http://127.0.0.1:11080/
+remote$ export https_proxy=http://127.0.0.1:11080/
+remote$ curl http://ifconfig.co
+
+看看返回的IP，是不是 remote 也用上了代理？
+
+
+
+
+
+
+
+4. 本地端口映射
+
+(1) 注意区分这里的 localhost 的区别！
+
+之前我们把 lab 的22端口反向转发到了 jumpbox 的10022端口。
+	lab$ ssh -R 10022:localhost:22 jumpbox
+	或者说 把(-R)远程的 1x 转发到 本地 22。此处的 localhost 就是当前登录主机 lab；
+
+现在我想把它转发到本机的20022端口，只需要执行 ssh -L 就行了，例如：
+	local$ ssh -NL 20022:localhost:10022 user@jumpbox
+	把(-L)本地端口 2xx 映射到 远程本机J的 1xx 端口。此处的 localhost 是将要登录的云跳板机。
+
+登录：
+	local$ ssh localhost -p 20022
+	lab$
+
+(2)示例：
+	A-local: Y station - Ubuntu 客户端
+	B-lab: 105 server 目标主机
+	C-jumpbox: J server 云主机 跳板
+
+lab上设置反向代理，反向连接云主机： 远端J:8888-> 本地22
+	lab-B$ ssh -Ng -R 8888:localhost:22 wangjl@j.biomooc.com # 输入C的密码
+	检查端口 
+	@B$ sudo netstat -anp | grep 8888
+	tcp        0      0 0.0.0.0:8888            0.0.0.0:*               LISTEN      11142/sshd: wangjl
+
+	局域网外登录lab-B，通过云主机C：
+	@A$ ssh -p 8888 wangjl@j.biomooc.com #输入B的密码，登录B
+
+本地端口转发： 本地端口 9 转发到 云主机C端口8
+	local-A$ ssh -NL 8889:localhost:8888 wangjl@j.biomooc.com #输入C的密码
+
+	查看端口： 发现是 127.0.0.1 只能本地使用； 而使用 -g 参数或者写为 0.0.0.0:8889 后，就变成了 0.0.0.0 了，全局域网可见。
+	local-A$ sudo netstat -anp | grep 8889
+	tcp        0      0 127.0.0.1:8889          0.0.0.0:*    LISTEN      4176314/ssh         
+	tcp6       0      0 ::1:8889                :::*         LISTEN      4176314/ssh
+
+	登录： 使用本地端口9
+	local-A$ ssh -p 8889 wangjl@localhost #输入B的密码，登录lab-B
+
+
+
+
+
+ref:
+https://zhuanlan.zhihu.com/p/266522925
+https://zhuanlan.zhihu.com/p/21999778
+
+
+
+
+
+========================================
+|-- autossh 的使用：断线自动重连
+----------------------------------------
+autossh is a program to start a copy of ssh and monitor it, restarting it as necessary should it die or stop passing traffic.
+
+1. 安装
+Ubuntu
+$ sudo apt-get install autossh
+
+CentOS:
+$ sudo yum install autossh
+
+Mac: $ brew install autossh
+
+
+
+
+2. 本地转发 -L [本地主机:]本地主机端口:目标主机:目标主机端口
+
+(1) 命令与参数
+local$ autossh -M 5678:5679 -f -CNT -L localhost:3306:mysql:3306 ssh-host
+
+将本地端口映射到远程主机上
+	-M 监控端口:[echo端口],请在服务器上将 监控端口 和 监控端口+1 开放。如果只指定一个，则其+1默认被使用。判断断线的机制
+	-f 使autossh在运行ssh之前进入后台。
+
+	ssh参数
+	-C 使用数据压缩
+	-N 只连接远程主机，不打开远程shell(不需执行指令，只作端口转发)
+	-T: 不分配伪终端 tty
+
+	转发命令
+	-L 将`本地主机端口`通过`ssh-host主机端口`转发到`目标主机端口`上
+	-g: 允许代理服务器连接到本地转发端口(谨慎使用)
+
+
+(2)实战: A->|B->C
+	A-local: j
+	B-jumpbox: y
+	C-lab: 105 server - centOS7.9 on B:VB
+安装
+	@A$ sudo yum install autossh
+	@A$ autossh -V #autossh 1.4g
+
+原型：
+	@A$ ssh -L 8888:HostC:22 UserB@HostB #在A上开一个端口 8，指向C的22端口。貌似与B无关，B就是转发器。
+	@A$ ssh -p 8888 userC@localhost
+开启该隧道：
+	@A$ autossh -M 8889 -Ng -L 8888:192.168.2.105:22 wangjl@y.biomooc.com #输入B的密码
+登录测试：
+	@A$ ssh -p 8888 wangjl@localhost #输入C的密码，登录C
+
+查看M 监控的啥？ 
+	@A$ sudo netstat -anp | grep 8889
+	tcp        0      0 0.0.0.0:8889            0.0.0.0:*               LISTEN      22625/ssh           
+	tcp6       0      0 :::8889                 :::*                    LISTEN      22625/ssh
+	@A$ sudo netstat -anp | grep 8888
+	tcp        0      0 0.0.0.0:8888            0.0.0.0:*               LISTEN      22625/ssh           
+	tcp6       0      0 :::8888                 :::*                    LISTEN      22625/ssh 
+
+	浏览器查看，打不开： http://j.biomooc.com:8889
+
+
+
+
+
+
+
+
+3. 远程转发 -R ssh-host主机端口:目标主机:目标主机端口
+
+(1) 反向隧道实现内网穿透： A家->C云主机 |->B服务器
+
+在B服务器上设置 @B lab$ ssh -R 10022:localhost:22 user@jumpboxC
+Or
+@B$ autossh -M 5678:5679 -f -CNT -R 0.0.0.0:1080:host2:1081 ssh-host 
+
+注意： ssh-host机器的sshd_config里要打开AllowTcpForwarding选项，否则-R远程端口转发会失败。
+如要绑定0.0.0.0需要打开sshd_config里的GatewayPorts选项。
+
+开启一个本地socks端口：
+	-M 监控端口:[echo端口],请在服务器上将 监控端口 和 监控端口+1 开放
+	-f 后台运行autossh
+	
+	ssh参数
+	-C 使用数据压缩
+	-N 只连接远程主机，不打开远程shell(不需执行指令，只作端口转发)
+	-T: 不分配伪终端 tty
+	
+	转发命令
+	-R 将`ssh-host主机端口`通过`本地主机端口`转发到`目标主机`上
+	-g: 允许代理服务器连接到本地转发端口(谨慎使用)
+
+(2) 实战
+	A: win
+	B-lab: 105 server 
+	C-jumpbox: J server
+
+启动隧道
+	@B$ autossh -M 8889:8890 -f -CNT -Ng -R 0.0.0.0:8888:localhost:22 wangjl@j.biomooc.com
+检查端口： 三个端口都在 C 上？
+	@C$sudo netstat -anp | grep 8888
+	tcp        0      0 0.0.0.0:8888            0.0.0.0:*               LISTEN      22625/ssh
+登录，通过云主机C：
+	@A$ ssh wangjl@j.biomooc.com -p 8888 #输入B的密码，登录B
+杀进程： 没有自动重启连接
+	$ kill -9 22625
+
+
+
+
+
+ref:
+https://blog.csdn.net/omaidb/article/details/128400531
+
+
+
+
+
+
+
+
+
+
+
+
 ========================================
 网络原理
 ----------------------------------------
@@ -2727,127 +3568,6 @@ http://wiki.ubuntu.org.cn/GPG/PGP
 
 
 
-
-
-
-
-
-
-
-
-
-
-========================================
-基于 xshell 的内网穿透： SSH 端口转发又叫 SSH 隧道（tunnel） 原理与实战
-----------------------------------------
-1. 简单模型
-A服务器在局域网，我在外部用C电脑能连接和A同一个网的B跳板机。
-整个模型是： C -> || B -> A ||
-
-- 主机B和A在同一个局域网
-- 平常通过B（win）访问服务器A（Linux）
-- 在外网能通过 xshell 能连接B主机
-
-(1) 之前是通过2次跳转，先连接B，再连接A。
-缺点： 麻烦，且无法访问A的 Rstudio 等交互式页面。
-
-(2) 通过隧道连接 Rstudio
-a) 创建隧道
-点击顶部文件夹图标右边的下三角，找到B的连接，右击-属性；
-点击 连接-ssh-隧道，单击添加，
-	设置登录方式，也就是站到B主机上： 类型：本地（拨出），	源主机： localhost，侦听端口：8787
-	设置服务器A的信息： 目标主机： 10.10.x.143，目标端口：8787
-	自定义注释： 说明：Rstudio server
-	点确定。
-	还可以再添加一下 jupyter 的设置，只是端口号不同，比如 8890
-重新连接主机B，xshell标签图标变成圆圈，表示设置成功。
-b) 访问Rstudio
-浏览器访问 http://localhost:8787/
-即可访问服务器A了。
-
-
-
-
-
-
-2. 怎么自己构建主机B呢？
-https://blog.csdn.net/qijiajun97/article/details/104194201
-
-(1) 云主机D
-就是A和C都能访问的主机。设置允许端口转发
-$ vim /etc/ssh/sshd_config
-找到文件中被注释掉的GatewayPorts no，去注释，并将no改成yes
-如果没找到就在末尾添加上GatewayPorts yes
-
-打开防火墙端口，比如 12345
-
-
-(2) 设置B电脑为跳板机
-打开XShell，添加连接，设置： 名称：跳板机，协议：ssh，主机：云主机的公网ip，端口号：22
-	用户身份验证：云主机的用户名和密码。
-	SSH-隧道，设置转移规则： 类型：远程(传入),源主机：0.0.0.0，侦听端口： 云主机开的端口，比如 12345。
-		目标主机： 内网主机A的IP，目标端口：22
-跳板机B必须在线，否则无法实现转发。
-
-
-(3) 外部电脑C的配置
-任意一个ssh软件，
-	IP: 云主机IP
-	端口： 云主机打开的端口，比如 12345
-	用户名：服务器A的用户名
-	密码：服务器A的密码
-
-实现了在外网通过ssh隧道服务连接内网服务器。
-
-
-(4) 设置隧道后，所有的ssh相关的服务都可以在外网使用，比如 sftp 文件传输
-除了ssh登录外，ssh相关协议也是支持的。
-比如，在外网电脑C上使用支持 sftp 的软件。
-
-这套操作的原理是SSH的隧道协议，具体可以看
-	SSH Tunnel 一般场景用法： https://blog.csdn.net/wxqee/article/details/49234595
-
-
-
-
-
-
-3. 案例2: 通过ssh隧道转发本地ssh,实现内网穿透
-https://blog.csdn.net/u010494323/article/details/134277926
-实际场景，有A服务器，位于某内网环境，没有外网IP，外面无法SSH
-但我自己有比如阿里云上的一台服务器D，我想直接SSH A服务器，怎么办？
-
-D 服务器IP 101.198.*.*
-A 服务器执行 # ssh -R 2201:0.0.0.0:22 -p 22 USERNAME@101.198.*.* -f -N
-
-
-
-
-
-
-ref:
-https://blog.csdn.net/qq_61562251/article/details/134910406
-
-
-
-
-
-========================================
-|-- SSH Tunnel 一般场景用法 //todo
-----------------------------------------
-
-
-
-
-
-
-
-
-
-
-
-
-ref： https://blog.csdn.net/wxqee/article/details/49234595
 
 
 
