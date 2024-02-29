@@ -15,6 +15,308 @@ https://www.linuxprobe.com/basic-learning-07.html
 
 
 ========================================
+源码安装
+----------------------------------------
+1. 源码安装，依赖 gcc
+请查看本博客其他相关专题：
+
+(1) [C++](c/cpp_note.txt): 非root权限安装新版 gcc
+(2) (R/R003-grocer.txt) R / Rstudio 使用最新的gcc 12
+(3) (c/c004-make_debug.txt) 动态链接库的管理：ldd, string, ldconfig
+
+
+
+
+
+========================================
+|-- configure， pkg-config ， PKG_CONFIG_PATH
+----------------------------------------
+在安装开源软件的过程中， 经常会碰到提示配置PKG_CONFIG_PATH路径， 或者直接提示没有安装某某库， 但是我们已经安装了啊。
+其实造成这种情况的原因很简单， 就是安装的目录不能被依赖程序找到。
+
+
+1. 什么是configure
+源码安装过程中大多会用到configure这个程序，一般的configure都是一个script，执行时可以传入必要参数告知配置项目。
+
+而configure脚本在检查相应依赖环境时(例：所依赖软件的版本、相应库版本等)，通常会通过pkg-config的工具来检测相应依赖环境。
+
+
+
+2. 什么是pkg-config
+
+pkg-config用来检索系统中安装库文件的信息。典型的是用作库的编译和连接。
+
+pkg-config 就是用来解决编译连接界面不统一问题的一个工具。
+
+
+它的基本思想：pkg-config是通过库提供的一个.pc文件获得库的各种必要信息的，包括版本信息、编译和连接需要的参数等。需要的时候可以通过pkg-config提供的参数(–cflags, –libs)，将所需信息提取出来供编译和连接使用。这样，不管库文件安装在哪，通过库对应的.pc文件就可以准确定位,可以使用相同的编译和连接命令，使得编译和连接界面统一。
+
+它提供的主要功能有:
+
+　　<1> 检查库的版本号。如果所需库的版本不满足要求，打印出错误信息，避免连接错误版本的库文件。
+　　<2> 获得编译预处理参数，如宏定义，头文件的路径。
+　　<3> 获得编译参数，如库及其依赖的其他库的位置，文件名及其他一些连接参数。
+　　<4> 自动加入所依赖的其他库的设置。
+
+
+
+(1) 一般保存地点
+
+32为系统的pkgconfig目录为  /usr/lib/pkgconfig/
+64为系统的pkgconfig目录为  /usr/lib64/pkgconfig/
+
+$ ls -lth /usr/lib64/pkgconfig/ | head
+total 708K
+lrwxrwxrwx. 1 root root   13 Dec 23 17:12 python2.pc -> python-2.7.pc
+lrwxrwxrwx. 1 root root   10 Dec 23 17:12 python.pc -> python2.pc
+-rw-r--r--. 1 root root  240 Nov 15 00:14 python-2.7.pc
+-rw-r--r--. 1 root root  297 Mar 21  2023 libcrypto.pc
+-rw-r--r--. 1 root root  338 Mar 21  2023 libssl.pc
+-rw-r--r--. 1 root root  220 Mar 21  2023 openssl.pc
+lrwxrwxrwx. 1 root root   11 Sep 24  2022 libpng.pc -> libpng15.pc
+-rw-r--r--. 1 root root 1.6K Sep  1  2022 systemd.pc
+-rw-r--r--. 1 root root  236 Jun 28  2022 gssrpc.pc
+
+
+
+(2) 举例
+例0
+$ cat /usr/lib64/pkgconfig/libsodium.pc 
+prefix=/usr
+exec_prefix=/usr
+libdir=/usr/lib64
+includedir=/usr/include
+
+Name: libsodium
+Version: 1.0.18
+Description: A modern and easy-to-use crypto library
+
+Libs: -L${libdir} -lsodium
+Libs.private:  -pthread 
+Cflags: -I${includedir}
+
+
+
+例1
+$ cat /usr/lib64/pkgconfig/glib-2.0.pc 
+prefix=/usr
+exec_prefix=/usr
+libdir=/usr/lib64
+includedir=/usr/include
+
+glib_genmarshal=glib-genmarshal
+gobject_query=gobject-query
+glib_mkenums=glib-mkenums
+
+Name: GLib
+Description: C Utility Library
+Version: 2.56.1
+Requires.private: libpcre
+Libs: -L${libdir} -lglib-2.0 
+Libs.private: -pthread  -lpcre      
+Cflags: -I${includedir}/glib-2.0 -I${libdir}/glib-2.0/include
+
+
+例2：本地安装的库
+$ find software/gsl-2.7/ | grep -inP "pc$"
+2372:software/gsl-2.7/gsl.pc
+
+$ cat software/gsl-2.7/gsl.pc
+prefix=/home/wangjl/.local
+exec_prefix=/home/wangjl/.local
+libdir=/home/wangjl/.local/lib
+includedir=/home/wangjl/.local/include
+GSL_CBLAS_LIB=-lgslcblas
+
+Name: GSL
+Description: GNU Scientific Library
+Version: 2.7
+Libs: -L/home/wangjl/.local/lib -lgsl ${GSL_CBLAS_LIB} -lm -lm 
+Cflags: -I/home/wangjl/.local/include
+
+$ less ~/.bashrc
+export LD_LIBRARY_PATH=/home/zhoub/local/gdal-2.4.2/lib:$LD_LIBRARY_PATH
+
+
+
+(3) 列举全部包
+列出所有可使用的包，位置在/usr/lib/pkgconfig ，此目录下都是各种.pc文件。
+/usr/local/lib/pkgconfig下面的libname.pc文件，新软件一般都会安装.pc文件，没有可以自己创建，并且设置环境变量PKG_CONFIG_PATH寻找.pc文件路径。
+
+$ pkg-config --list-all | head
+zlib                      zlib - zlib compression library
+gio-unix-2.0              GIO unix specific APIs - unix specific headers for glib I/O library
+mit-krb5                  mit-krb5 - An implementation of Kerberos network authentication
+gdal                      GDAL - GIS file format library
+
+查找具体包
+$ pkg-config --list-all | grep -in sodi
+181:libsodium                 libsodium - A modern and easy-to-use crypto library
+
+$ pkg-config --list-all | grep -in glib-2.0
+24:glib-2.0                  GLib - C Utility Library
+
+
+(4) 协助找到库
+使用 pkg-config 的 –cflags 参数可以给出在编译时所需要的选项，而 –libs 参数可以给出连接时的选项。
+
+例如，假设一个 sample.c 的程序用到了 glib 库，就可以这样编译：
+$ gcc -c `pkg-config --cflags glib-2.0` sample.c
+然后这样连接：$ gcc sample.o -o sample `pkg-config --libs glib-2.0`
+或者上面两步也可以合并为以下一步：$ gcc sample.c -o sample `pkg-config --cflags --libs glib-2.0`
+
+测试：
+$ pkg-config --cflags glib-2.0
+-I/usr/include/glib-2.0 -I/usr/lib64/glib-2.0/include
+
+$ pkg-config --cflags libsodium #返回空白行
+
+$ pkg-config --libs glib-2.0
+-lglib-2.0 
+
+$ pkg-config --cflags --libs glib-2.0
+-I/usr/include/glib-2.0 -I/usr/lib64/glib-2.0/include  -lglib-2.0
+
+
+可以看到：由于使用了pkg-config工具来获得库的选项，所以不论库安装在什么目录下，都可以使用相同的编译和连接命令，带来了编译和连接界面的统一。
+
+使用pkg-config工具提取库的编译和连接参数有两个基本的前提：
+　　<1> 库本身在安装的时候必须提供一个相应的.pc文件。不这样做的库说明不支持pkg-config工具的使用。
+　　<2> pkg-config必须知道要到哪里去寻找此.pc 文件。
+
+
+
+
+
+3. 环境变量PKG_CONFIG_PATH
+
+环境变量PKG_CONFIG_PATH是用来设置.pc文件的搜索路径的，pkg-config按照设置路径的先后顺序进行搜索，直到找到指定的.pc 文件为止。
+这样，库的头文件的搜索路径的设置实际上就变成了对.pc文件搜索路径的设置。
+
+
+(1) 如果不在默认路径，二选一
+
+在安装完一个需要使用的库后，比如Glib，
+	一是将相应的.pc文件，如glib-2.0.pc拷贝到/usr/lib/pkgconfig目录下，
+	二是通过设置环境变量PKG_CONFIG_PATH添加glib-2.0.pc文件的搜索路径。
+
+a) 拷贝到指定路径 
+比如我们安装 A 这个库， 执行 ./configure的时候提示要先安装 B 这个库。
+我们下载了B这个库， 并安装后， 我们在B的源码路径下执行 find  ./  -name  "*.pc"  找到的文件一般为B.pc，
+然后我们把B.pc这个文件复制到操作系统的pkgconfig目录：cp   B.pc   /usr/lib64/pkgconfig/
+然后在执行 A这个库的 ./configure 脚本就可以解决该问题。
+
+
+b) 添加环境变量PKG_CONFIG_PATH，在bash中应该进行如下设置：
+	$ export PKG_CONFIG_PATH=/opt/gtk/lib/pkgconfig:$PKG_CONFIG_PATH
+可以执行下面的命令检查是否 /opt/gtk/lib/pkgconfig 路径已经设置在PKG_CONFIG_PATH环境变量中：
+	$ echo $PKG_CONFIG_PATH #不设置，默认返回空白
+
+
+这样设置之后，使用Glib库的其它程序或库在编译的时候pkg-config就知道首先要到/opt/gtk/lib/pkgconfig这个目录中去寻找glib-2.0.pc了(GTK+和其它的依赖库的.pc文件也将拷贝到这里，也会首先到这里搜索它们对应的.pc文件)。之后，通过pkg-config就可以把其中库的编译和连接参数提取出来供程序在编译和连接时使用。
+
+另外还需要注意的是：环境变量的设置只对当前的终端窗口有效。如果到了没有进行上述设置的终端窗口中，pkg-config将找不到新安装的glib-2.0.pc文件、从而可能使后面进行的安装(如Glib之后的Atk的安装)无法进行。
+
+
+(2) 安全的设置
+
+在我们采用的安装方案中，由于是使用环境变量对GTK+及其依赖库进行的设置，所以当系统重新启动、或者新开一个终端窗口之后，如果想使用新安装的GTK+库，需要如上面那样重新设置 PKG_CONFIG_PATH 和 LD_LIBRARY_PATH 环境变量。
+
+这种使用GTK+的方法，在使用之前多了一个对库进行设置的过程。虽然显得稍微繁琐了一些，但却是一种最安全的使用GTK+库的方式，不会对系统上已经存在的使用了GTK+库的程序(比如GNOME桌面)带来任何冲击。
+
+为了使库的设置变得简单一些，可以把下面的这两句设置保存到一个文件中(比如set_gtk-2.10 文件):
+
+export PKG_CONFIG_PATH=/opt/gtk/lib/pkgconfig:$PKG_CONFIG_PATH
+export LD_LIBRARY_PATH=/opt/gtk/lib:$LD_LIBRARY_PATH
+其中的环境变量LD_LIBRARY_PATH变量主要是添加新安装库的搜索路径。之后，就可以用下面的方法进行库的设置了(其中的source命令也可以用.代替)：
+$ source set_gtk-2.10
+
+只有在用新版的GTK+库开发应用程序、或者运行使用了新版GTK+库的程序的时候，才有必要进行上述设置。
+
+
+
+(3) 写入配置文件
+
+如果想避免使用GTK+库之前上述设置的麻烦，可以把上面两个环境变量的设置在系统的配置文件中(如 /etc/profile)或者自己的用户配置文件中(如 ~/.bash_profile) ；
+库的搜索路径也可以设置在 /etc/ld.so.conf 文件中，等等。这种设置在系统启动时会生效，从而会导致使用 GTK+ 的程序使用新版的 GTK+ 运行库，这有可能会带来一些问题。当然，如果你发现用新版的GTK+代替旧版没有什么问题的话，使用这种设置方式是比较方便的。
+
+加入到~/.bashrc中，例如：
+PKG_CONFIG_PATH=/opt/gtk/lib/pkgconfig
+重启之后：
+[root@localhost ~]# echo $PKG_CONFIG_PATH
+/opt/gtk/lib/pkgconfig
+
+
+
+
+
+4. 运行时库的连接
+
+库文件在连接(静态库和共享库)和运行(仅限于使用共享库的程序)时被使用，其搜索路径是在系统中进行设置的。一般Linux系统把/lib和/usr/lib两个目录作为默认的库搜索路径，所以使用这两个目录中的库是不需要进行设置搜索路径即可直接使用。
+
+对于处于默认库搜索路径之外的库，需要将库的位置添加到库的搜索路径之中。设置库文件的搜索路径有下列两种方式，可任选其一使用：
+
+　　<1> 在环境变量 LD_LIBRARY_PATH 中指明库的搜索路径。
+　　<2> 在/etc/ld.so.conf 文件中添加库的搜索路径。
+
+将自己可能存放库文件的路径都加入到/etc/ld.so.conf中是明智的选择。
+添加方法也极其简单，将库文件的绝对路径直接写进去就OK了，一行一个。例如：
+/usr/X11R6/lib
+/usr/local/lib
+/opt/lib
+
+
+默认是：
+$ cat /etc/ld.so.conf
+include ld.so.conf.d/*.conf
+
+$ ls -lth /etc/ld.so.conf.d/
+total 36K
+-rw-r--r--. 1 root root 68 Nov  8  2022 R-pkg.conf
+-r--r--r--. 1 root root 63 Aug 11  2022 kernel-3.10.0-1160.76.1.el7.x86_64.conf
+-rw-r--r--. 1 root root 26 Feb 24  2022 bind-export-x86_64.conf
+-r--r--r--. 1 root root 63 Oct 20  2020 kernel-3.10.0-1160.el7.x86_64.conf
+-rw-r--r--. 1 root root 17 Oct  2  2020 mariadb-x86_64.conf
+-rw-r--r--. 1 root root 19 Aug  9  2019 dyninst-x86_64.conf
+-rw-r--r--. 1 root root 17 Aug  3  2017 atlas-x86_64.conf
+-rw-r--r--. 1 root root 17 Nov  6  2016 libiscsi-x86_64.conf
+-rw-r--r--. 1 root root 22 Jun 10  2014 qt-x86_64.conf
+
+竟然看到了R的设置：
+$ cat /etc/ld.so.conf.d/R-pkg.conf 
+/usr/local/lib64/proj-4.9.2/lib/
+/usr/local/lib64/gdal-2.4.4/lib/
+
+
+库搜索路径的设置有两种方式：
+	在环境变量 LD_LIBRARY_PATH 中设置
+	以及在 /etc/ld.so.conf 文件中设置。
+		其中，第二种设置方式需要root权限，以改变/etc/ld.so.conf文件并执行/sbin/ldconfig命令。
+		而且，当系统重新启动后，所有的基于GTK2的程序在运行时都将使用新安装的GTK+库。
+		不幸的是，由于GTK+版本的改变，这有时会给应用程序带来兼容性的问题，造成某些程序运行不正常。
+
+为了避免出现上面的这些情况，在GTK+及其依赖库的安装过程中对于库的搜索路径的设置将采用第一种方式进行。这种设置方式不需要root权限，设置也简单。
+
+
+
+
+
+ref:
+https://blog.csdn.net/qq_36182852/article/details/109680418
+https://blog.csdn.net/u010022051/article/details/51728282
+
+
+
+
+
+
+
+
+
+
+
+
+========================================
 Ubuntu 安装程序
 ----------------------------------------
 

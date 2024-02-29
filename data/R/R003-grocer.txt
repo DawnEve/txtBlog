@@ -223,6 +223,9 @@ par(ask=F)
 ========================================
 ** [CentOS7.9] gcc 更新后，怎么在 R / Rstudio 使用最新的gcc 12： 配置gcc路径和动态链接库
 ----------------------------------------
+可以查看第2部分的具体设置。
+
+
 1. 怎么在R和Rstudio中使用最新的 gcc?
 (1) 问题与答案
 无法让 RStudio Server 使用较新的 gcc 版本。我尝试将 source scl_source enable devtoolset-4 附加到我的 .bash_profile 的末尾，并设置 CC、CXX 和 COLLECT_LTD_WRAPPER环境。我的主目录中的 Makevars 文件以及 $R_HOME/etc/Renviron.site 文件中的变量。在 RStudio Server 中运行 system("gcc -v") 仍然显示 gcc 版本为 4.8.5。但是，如果 ssh 进入服务器并从那里运行 R，然后检查 gcc 版本，它会使用正确的版本 (5.3.1)。
@@ -333,6 +336,133 @@ Thread model: posix
 Supported LTO compression algorithms: zlib
 gcc version 12.3.0 (GCC) 
 
+
+
+
+
+
+
+
+
+
+2. 小结：R中配置的gcc的路径和库
+
+关键信息： 按 r-universe 的记录，编译 Seurat 4.4.0(2024-2-9) 依赖 c++ 12.3.0。
+	https://satijalab.r-universe.dev/builds
+
+
+(0)测试：
+CentOS7系统 + R4.3.2 + Seurat 5.0.1
+> system("gcc --version")
+gcc (GCC) 12.3.0
+Copyright (C) 2022 Free Software Foundation, Inc.
+
+
+> Sys.which("g++")
+                                   g++ 
+"/home/wangjl/soft/gcc-12.3.0/bin/g++"
+
+> system("R --version")
+R version 4.3.2 (2023-10-31) -- "Eye Holes"
+Copyright (C) 2023 The R Foundation for Statistical Computing
+Platform: x86_64-pc-linux-gnu (64-bit)
+
+> packageVersion("Seurat")
+[1] ‘5.0.0’
+
+
+
+
+
+(1) make 参数文件
+> system("cat ~/.R/Makevars")
+#CXX17 = g++ -std=c++17 -fPIC
+CXX11=/home/wangjl/soft/gcc-12.3.0/bin/g++ -std=c++11 -fPIC
+CXX14=/home/wangjl/soft/gcc-12.3.0/bin/g++ -std=c++14 -fPIC
+CXX17=/home/wangjl/soft/gcc-12.3.0/bin/g++ -std=c++17 -fPIC
+gcc=/home/wangjl/soft/gcc-12.3.0/bin/gcc
+
+
+(2) R配置文件
+> system("cat ~/.Rprofile")
+# for R pkg install source ----
+# options(download.file.method="wget")
+# 设置 Bioconductor 源国内镜像
+options(BioC_mirror="https://mirrors.tuna.tsinghua.edu.cn/bioconductor") #推荐
+# 设置 R 包官方源 国内镜像
+options("repos" = c(CRAN="https://mirrors.tuna.tsinghua.edu.cn/CRAN/")) ##指定install.packages安装镜像，清华镜像
+
+
+
+# For gcc new version ----
+Sys.setenv("PATH"=paste0("/home/wangjl/soft/gcc-12.3.0/bin:/bin/:", Sys.getenv("PATH") ) )
+#Sys.setenv("LD_LIBRARY_PATH"=paste0("/home/wangjl/soft/gcc-12.3.0/lib:/home/wangjl/soft/gcc-12.3.0/lib64:", Sys.getenv("LD_LIBRARY_PATH") ) )
+
+# rsession-ld-library-path should be set in rserver.conf and not in rsession.conf. Let us know if that works for you!
+# Sys.setenv("RSESSION_LD_LIBRARY_PATH"=paste0("/home/wangjl/soft/gcc-12.3.0/lib64/:/home/wangjl/soft/gcc-12.3.0/lib/" ) )
+
+
+# for py library
+Sys.setenv("LD_LIBRARY_PATH"=paste0("/home/wangjl/soft/python3/lib/:", Sys.getenv("LD_LIBRARY_PATH") ) )
+
+
+# for hdf5
+Sys.setenv("PATH"=paste0("/home/wangjl/soft/hdf5/bin/:", Sys.getenv("PATH") ) )
+Sys.setenv("LD_LIBRARY_PATH"=paste0("/home/wangjl/soft/hdf5/lib/:", Sys.getenv("LD_LIBRARY_PATH") ) )
+
+# R_HOME_DIR
+#Sys.setenv("R_HOME_DIR"=Sys.getenv("R_HOME") )
+# Sys.setenv("R_HOME"=Sys.getenv("R_HOME") )
+
+
+# 保存后重启 R: 菜单 Session - Restart R;
+
+
+
+(3) linux 用户配置文件
+$ cat ~/.bash_profile
+export PS1='[\u@\h \W]$ '
+source ~/.bashrc
+TMOUT=3600
+
+
+$ cat ~/.bashrc
+export LANG=en_US.UTF-8
+export LC_ALL=en_US.UTF-8
+
+export PATH="$PATH:/home/wangjl/bin"
+
+# for python3
+export PATH=/home/wangjl/soft/python3/bin:$PATH
+export LD_LIBRARY_PATH=/home/wangjl/soft/python3/lib/:$LD_LIBRARY_PATH
+
+# for gcc 12.3.0
+export PATH=~/soft/gcc-12.3.0/bin:$PATH
+export LD_LIBRARY_PATH=~/soft/gcc-12.3.0/lib:$LD_LIBRARY_PATH
+export LD_LIBRARY_PATH=~/soft/gcc-12.3.0/lib64:$LD_LIBRARY_PATH
+
+# for hdf5
+export PATH=$PATH:/home/wangjl/soft/hdf5/bin/
+export LD_LIBRARY_PATH=/home/wangjl/soft/hdf5/lib/:$LD_LIBRARY_PATH
+
+
+
+
+(4) Rstudio 配置文件(sudo才能修改)
+$ cat /etc/rstudio/rserver.conf 
+# Server Configuration File
+# 修改端口号，一般 6k-60k 之间的整数
+www-port=8787
+
+# 指定使用的R文件，听说在新版本中 Rstudio Pro 才有这个选项。
+rsession-which-r=/usr/local/bin/R
+
+# (推荐设置)无操作自动退出时间(单位是min)，0表示不退出。我希望至少是24小时(1440min)
+# session-timeout-minutes=60 # 不是这个。
+auth-timeout-minutes=1800
+
+# gcc library
+rsession-ld-library-path=/home/wangjl/soft/gcc-12.3.0/lib64/:/home/wangjl/soft/gcc-12.3.0/lib/:/usr/lib64/:/usr/local/lib/:/usr/lib/
 
 
 
