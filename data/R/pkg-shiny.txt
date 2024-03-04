@@ -1195,6 +1195,8 @@ Plumber allows you to create a web API by merely decorating your existing R sour
 
 2. 安装测试
 (1) 安装R包 plumber
+> install.packages("plumber", repos = "https://mirrors.sustech.edu.cn/CRAN")
+
 > BiocManager::install("plumber")
 报错
 ERROR: dependency ‘sodium’ is not available for package ‘plumber’
@@ -1260,7 +1262,10 @@ libsodium                 libsodium - A modern and easy-to-use crypto library
 
 
 
+
+
 (2) 测试文件
+函数前的注释可以是 #* 或 #' 开头。
 
 $ cat backup/plumber2.R
 # plumber.R
@@ -1272,6 +1277,7 @@ function(msg="") {
   list(msg = paste0("The message is: '", msg, "'"))
 }
 
+
 #* Plot a histogram
 #* @serializer png
 #* @get /plot
@@ -1279,6 +1285,7 @@ function() {
   rand <- rnorm(100)
   hist(rand)
 }
+
 
 #* Return the sum of two numbers
 #* @param a The first number to add
@@ -1301,11 +1308,11 @@ pr("backup/plumber2.R") %>%
 
 
 # 启动方式2
-pr <- plumber::plumb("plumber.R")
-pr$run()
+pr2 <- plumber::plumb("plumber.R")
+pr2$run()
 
 # 我们事后查一下pr是什么数据类型，原来是R6类
-> class(pr)
+> class(pr2)
 [1] "Plumber"  "Hookable" "R6"
 
 
@@ -1332,8 +1339,11 @@ $ curl -X POST "http://127.0.0.1:8001/sum?a=10&b=120" -H "accept: */*" -d ""
 
 
 
+
 (4) 测试2：使用命令行启动后台
 $ cd /data/wangjl/rmarkdown_demo/bookdown-demo-main
+
+a) 进入shell R 执行
 $ R 
 > library(plumber)
 > pr("backup/plumber2.R") %>% pr_run(port=8001) #因为我的8000已经在用了，只能换一个其他的端口号。
@@ -1351,6 +1361,29 @@ pr("myfile.R") %>%
 > pr("backup/plumber2.R") %>% pr_run(port=8001, host="0.0.0.0")
 Running plumber API at http://0.0.0.0:8001
 Running swagger Docs at http://127.0.0.1:8001/__docs__/
+
+
+另一组函数: plumb(file = NULL, dir = ".")
+> library(plumber)
+> r <- plumb("api.R")
+> r$run(port = 8001, swagger = TRUE)
+
+
+b) 从命令行 Rscript 直接执行
+$ cat startServer.R
+#!/usr/bin/env Rscript
+library(plumber)
+pr("plumber.demo.R") %>%
+  pr_run(port=8001, host="0.0.0.0")
+
+$ Rscript startServer.R
+Running plumber API at http://0.0.0.0:8001
+Running swagger Docs at http://127.0.0.1:8001/__docs__/
+
+
+
+
+
 
 
 (5) 使用命令行 curl 访问
@@ -1457,10 +1490,10 @@ function(v1, v2, v3, v4){
 
 
 
-(2) 脚本调用或在命令行输入
+(3) 脚本调用或在命令行输入
 load("fit.RData") #载入 fit 这个变量
-pr <- plumber::plumb("backup/plumber.R")
-pr$run(host = "0.0.0.0", port = 8001)
+pr2 <- plumber::plumb("backup/plumber.R")
+pr2$run(host = "0.0.0.0", port = 8001)
 
 
 输出:
@@ -1480,6 +1513,132 @@ host为0.0.0.0表示其他机器可以通过该机器在局域网的ip地址调�
 #' @param msg The message to echo back.
 #' @get /predict
 
+这时启动服务并访问，返回的是纯数字，没有前后的方括号: 0.9616
+
+
+
+
+
+
+
+
+
+
+4. 更多用法与示例
+
+(1) 同时支持post和get访问
+ 
+library(plumber)
+#* @apiTitle Simple API
+
+#* Echo provided text
+#* @param text The text to be echoed in the response
+#* @param number A number to be echoed in the response
+#* @get /echo2
+#* @post /echo2
+function(req, text = "", number = 0) {
+  list(
+    message_echo = paste("The text is:", text),
+    number_echo = paste("The number is:", number),
+    raw_body = req$postBody
+  )
+}
+
+访问:http://localhost:3582/echo2?text=book&number=123
+返回: {"message_echo":["The text is: book"],"number_echo":["The number is: 123"],"raw_body":[""]}
+
+post访问: $ curl -X POST "http://localhost:3582/echo2" -H "accept: */*" -d "text=book&number=123"
+返回: {"message_echo":["The text is: book"],"number_echo":["The number is: 123"],"raw_body":["text=book&number=123"]}
+
+传入json呢：$ curl --data '{"text":"book", "number":125, "other_param":"something else"}' "localhost:3582/echo2"
+返回：{"message_echo":["The text is: "],"number_echo":["The number is: 0"],"raw_body":["{\"text\":\"book\", \"number\":\"125\", \"other_param\":\"something else\"}"]}
+有问题：text和number参数都识别错误！==>要指定数据类型是 json:
+传入json呢：$ curl -H "Content-Type: application/json" --data '{"text":"book", "number":125, "other_param":"something else"}' "localhost:3582/echo2"
+返回：{"message_echo":["The text is: book"],"number_echo":["The number is: 125"],"raw_body":["{\"text\":\"book\", \"number\":125, \"other_param\":\"something else\"}"]}
+
+
+
+
+
+
+
+(2) docker 中部署
+
+1) 获取镜像
+$ docker pull rstudio/plumber
+
+$ docker images
+REPOSITORY                      TAG                       IMAGE ID       CREATED         SIZE
+rstudio/plumber                 latest                    db1d9cf1264d   3 years ago     1.19GB
+
+
+2) 启动容器
+$ docker run --rm -p 8001:8000 rstudio/plumber
+which is the same as: 默认运行的文件：
+$ docker run --rm -p 8001:8000 rstudio/plumber \
+  /usr/local/lib/R/site-library/plumber/plumber/04-mean-sum/plumber.R
+参数解释：
+	-rm 停止后清除
+	-p 8001:8000 端口映射
+
+=> 运行当前目录下的 api.R文件：
+$ docker run --rm -p 8001:8000 -v `pwd`/api.R:/plumber.R rstudio/plumber /plumber.R
+实例：
+$ docker run --rm -p 8001:8001 \
+	-v `pwd`/plumber.demo.R:/plumber.demo.R \
+	-v `pwd`/startServer.R:/plumber.R \
+	rstudio/plumber \
+	/plumber.R
+第二个要引用第一个脚本：
+$ cat startServer.R
+#!/usr/bin/env Rscript
+library(plumber)
+pr("plumber.demo.R") %>%
+  pr_run(port=8001, host="0.0.0.0")
+todo: 能写到一个文件吗？
+
+3) debug模式: 通常是少了一个包或文件
+$ docker run -it --rm --entrypoint /bin/bash rstudio/plumber
+$ R
+R version 4.0.3 (2020-10-10) -- "Bunny-Wunnies Freak Out"
+> packageVersion("plumber")
+[1] ‘1.0.0’
+
+
+
+
+
+
+(3) 开机启动服务
+1) 确保安装了R依赖包
+$ R -e 'install.packages("plumber", repos = "https://cran.rstudio.com/")'
+
+2) 创建服务配置文件
+$ sudo vim /etc/systemd/system/plumber-api.service
+[Unit]
+Description=Plumber API
+# After=postgresql
+# (or mariadb, mysql, etc if you use a DB with Plumber, otherwise leave this commented)
+
+[Service]
+ExecStart=/usr/bin/Rscript -e "library(plumber); pr('/your-dir/your-api-script.R') %>% pr_run(port=8080, host='0.0.0.0')"
+Restart=on-abnormal
+WorkingDirectory=/your-dir/
+
+[Install]
+WantedBy=multi-user.target
+
+3) 激活服务并启动服务
+$ sudo systemctl enable plumber-api  # automatically start the service when the server boots
+$ sudo systemctl start plumber-api   # start the service right now
+
+检查服务是否启动：
+$ systemctl | grep running 
+能看到: plumber-api.service \ loaded active \running \Plumber API.
+
+
+
+
 
 
 
@@ -1498,10 +1657,95 @@ host为0.0.0.0表示其他机器可以通过该机器在局域网的ip地址调�
 
 
 
-docker 中使用: https://www.rplumber.io/articles/hosting.html#rstudio-connect-1
+
+
+
+
+ref:
+官网：https://www.rplumber.io/
 Cheat Sheet: https://github.com/rstudio/cheatsheets/blob/main/plumber.pdf
+https://rviews.rstudio.com/2018/07/23/rest-apis-and-plumber/
+https://posit.co/blog/rstudio-1-2-preview-plumber-integration/
+
+docker 中部署: https://www.rplumber.io/articles/hosting.html#rstudio-connect-1
+
+支持4种http协议(GET/POST/PUT/DELETE): https://geek-docs.com/r-language/r-tutorials/g_building-rest-api-using-r-programming.html#google_vignette
+https://zhuanlan.zhihu.com/p/50987545
 
 
+
+
+
+
+
+
+
+
+
+
+========================================
+|-- 使用 PM2 管理 plumber 进程
+----------------------------------------
+https://www.rplumber.io/articles/hosting.html
+
+1. 新建文件
+$ cat startServer.R
+#!/usr/bin/env Rscript
+library(plumber)
+
+pr("plumber.demo.R") %>%
+  pr_run(port=8001, host="0.0.0.0")
+
+
+2. 赋予执行权限：
+$ chmod 755 startServer.R
+$ ls -lth startServer.R 
+-rwxr-xr-x 1 wangjl wangjl 102 Mar  2 19:39 startServer.R
+
+
+3. 执行
+(1) 单进程测试
+$ ./startServer.R
+浏览器可见图形: http://127.0.0.1:8001/plot
+
+(2) 多进程测试
+要指定解析程序 --interpreter="Rscript"
+$ pm2 start --interpreter="Rscript" startServer.R -i 4  #这个 -i 参数不起作用
+[PM2] Starting /data/wangjl/rmarkdown_demo/bookdown-demo-main/backup/startServer.R in fork_mode (4 instances)
+[PM2] Done.
+┌────┬────────────────┬─────────────┬─────────┬─────────┬──────────┬────────┬──────┬───────────┬──────────┬──────────┬──────────┬──────────┐
+│ id │ name           │ namespace   │ version │ mode    │ pid      │ uptime │ ↺    │ status    │ cpu      │ mem      │ user     │ watching │
+├────┼────────────────┼─────────────┼─────────┼─────────┼──────────┼────────┼──────┼───────────┼──────────┼──────────┼──────────┼──────────┤
+│ 0  │ startServer    │ default     │ N/A     │ fork    │ 591872   │ 0s     │ 0    │ online    │ 0%       │ 20.7mb   │ wangjl   │ disabled │
+│ 1  │ startServer    │ default     │ N/A     │ fork    │ 591874   │ 0s     │ 0    │ online    │ 0%       │ 14.9mb   │ wangjl   │ disabled │
+│ 2  │ startServer    │ default     │ N/A     │ fork    │ 591881   │ 0s     │ 0    │ online    │ 0%       │ 13.1mb   │ wangjl   │ disabled │
+│ 3  │ startServer    │ default     │ N/A     │ fork    │ 591886   │ 0s     │ 0    │ online    │ 0%       │ 4.2mb    │ wangjl   │ disabled │
+└────┴────────────────┴─────────────┴─────────┴─────────┴──────────┴────────┴──────┴───────────┴──────────┴──────────┴──────────┴──────────┘
+
+浏览器访问可见图形 http://127.0.0.1:8001/plot
+	$ pm2 list 可见到1-3都是报错的
+	$ pm2 logs 可见报错原因：端口已用
+		3|startSer | createTcpServer: address already in use
+		3|startSer | Error in initialize(...) : Failed to create server
+	所以，实际上带端口的还是只能单线程跑，不过可能会中断自动重启？
+
+文档：http://127.0.0.1:8001/__docs__/
+
+	$ pm2 monit 查看系统资源监控
+
+
+注意：
+- 防止服务文件偶然被删，最好单独新建文件夹，比如/usr/local/plumber/
+- 尝试 Ctrl-c 是否服务停止。//?不懂
+
+
+
+4. 删除
+$ pm2 delete all #删除全部 pm2 管理的项目，文件还在。
+
+
+
+更多 pm2 请参考专题 js/node003.txt
 
 
 
