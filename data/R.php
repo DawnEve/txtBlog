@@ -69,6 +69,9 @@ return array (
     2 => array (
       array('Rmd-notebook 生成报告','pkg-Rmarkdown','txt'),
       array('R web: shinny交互框架','pkg-shiny','txt'),
+      array('R web: REST API/Plumber包','pkg-Plumber','txt'),
+
+
       array('分析差异表达基因 DEG','pkg-DEG','txt'),
       array('数据框清理dplyr','pkg-dplyr','txt'),
 

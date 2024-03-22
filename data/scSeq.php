@@ -33,6 +33,7 @@ return array (
       array('Monocle包','monocle3_note','txt'),
       array('RNA_Velocity','RNA_Velocity_note','txt'),
       array('scanpy 包','scanpy_note','txt'),
+      array('多模态/多组学整合','multi_modal_omics_integration','txt'),
     ),
   ),
    

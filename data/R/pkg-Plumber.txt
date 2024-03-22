@@ -1,0 +1,1179 @@
+R REST API:
+	Plumber: 重点
+	OpenCPU 
+	httpuv
+
+RPC: Rstudio 
+
+
+
+
+========================================
+** 无状态的 web API 接口：R工程化 Rest API 之 plumber 包 (Turn your R code into a web API)
+----------------------------------------
+1. 描述
+https://docs.rstudio.com/resources/plumber/
+https://www.rplumber.io/
+https://github.com/rstudio/plumber
+
+
+Plumber allows you to create a web API by merely decorating your existing R source code with roxygen2-like comments. Take a look at an example.
+
+文档 REST APIs with plumber::Cheatsheet： https://rstudio.github.io/cheatsheets/html/plumber.html
+	https://www.appsilon.com/post/r-rest-api
+
+
+
+
+2. 安装测试
+(1) 安装R包 plumber
+> install.packages("plumber", repos = "https://mirrors.sustech.edu.cn/CRAN")
+
+> BiocManager::install("plumber")
+报错
+ERROR: dependency ‘sodium’ is not available for package ‘plumber’
+* removing ‘/home/wangjl/R/x86_64-pc-linux-gnu-library/4.1/plumber’
+
+
+(a) For Ubuntu
+> install.packages("sodium")
+又报错
+Configuration failed because libsodium was not found. Try installing:
+ * deb: libsodium-dev (Debian, Ubuntu, etc)
+ * rpm: libsodium-devel (Fedora, EPEL)
+ * csw: libsodium_dev (Solaris)
+ * brew: libsodium (OSX)
+If libsodium is already installed, check that 'pkg-config' is in your
+PATH and PKG_CONFIG_PATH contains a libsodium.pc file. If pkg-config
+is unavailable you can set INCLUDE_DIR and LIB_DIR manually via:
+R CMD INSTALL --configure-vars='INCLUDE_DIR=... LIB_DIR=...'
+
+
+$ sudo apt install libsodium-dev
+
+> system("which pkg-config")
+/usr/bin/pkg-config
+> system("pkg-config --list-all | grep sodium")
+libsodium                      libsodium - A modern and easy-to-use crypto library
+
+> BiocManager::install("plumber")
+
+
+
+
+
+
+(b) For: CentOS7.9
+## sudo amazon-linux-extras install epel
+$ sudo yum install libsodium-devel
+
+$ rpm -qa | grep libsodium
+libsodium-devel-1.0.18-1.el7.x86_64
+libsodium-1.0.18-1.el7.x86_64
+
+$ which pkg-config
+/usr/bin/pkg-config
+
+$ pkg-config --list-all | grep sodium
+libsodium                 libsodium - A modern and easy-to-use crypto library
+
+
+还是同样报错：sodium
+	> install.packages('plumber', repos='https://mirror.lzu.edu.cn/CRAN/')
+	> install.packages("sodium")
+原因似乎是找不到 pkg-config 这个程序：
+	> system("which pkg-config")
+	> 
+	> system("pkg-config --list-all | grep sodium")
+	sh: 1: pkg-config: not found
+
+最后发现：R是ubuntu docker镜像，回到(a)方法安装：apt后，重启Rstudio服务，就可以正常安装 plumber 了。
+	$ apt install pkgconf # ubuntu 没执行这一句，竟然也载入R包了
+
+
+
+
+
+
+
+
+========================================
+|-- R Rest API 示例
+----------------------------------------
+(2) 测试文件
+函数前的注释可以是 #* 或 #' 开头。
+
+$ cat backup/plumber2.R
+# plumber.R
+
+#* Echo back the input
+#* @param msg The message to echo
+#* @get /echo
+function(msg="") {
+  list(msg = paste0("The message is: '", msg, "'"))
+}
+
+
+#* Plot a histogram
+#* @serializer png
+#* @get /plot
+function() {
+  rand <- rnorm(100)
+  hist(rand)
+}
+
+
+#* Return the sum of two numbers
+#* @param a The first number to add
+#* @param b The second number to add
+#* @post /sum
+function(a, b) {
+  as.numeric(a) + as.numeric(b)
+}
+
+
+
+
+
+(3) 浏览器测试，Rstudio内打开后台
+library(plumber)
+
+# 'plumber.R' is the location of the file shown above
+pr("backup/plumber2.R") %>%
+  pr_run(port=8001)
+
+
+# 启动方式2
+pr2 <- plumber::plumb("plumber.R")
+pr2$run()
+
+# 我们事后查一下pr是什么数据类型，原来是R6类
+> class(pr2)
+[1] "Plumber"  "Hookable" "R6"
+
+
+会弹出浏览器页面，在该页面内能测试 API。
+
+
+打开新的浏览器
+http://127.0.0.1:8001/echo?msg=good
+	显示信息 {"msg":["The message is: 'good'"]}
+
+http://127.0.0.1:8001/plot
+	显示一个柱状图
+
+http://127.0.0.1:8001/sum?a=1&b=3
+	{"error":"405 - Method Not Allowed"} #只接收 post 方法，无法处理 get 请求。
+
+
+
+对于 post:
+$ curl -X POST "http://y.biomooc.com:8787/p/9c12f043/sum?a=10&b=120" -H "accept: */*" -d "" #貌似乱码
+$ curl -X POST "http://127.0.0.1:8001/sum?a=10&b=120" -H "accept: */*" -d ""
+	返回: [130]
+
+
+
+
+
+(4) 测试2：使用命令行启动后台
+$ cd /data/wangjl/rmarkdown_demo/bookdown-demo-main
+
+a) 进入shell R 执行
+$ R 
+> library(plumber)
+> pr("backup/plumber2.R") %>% pr_run(port=8001) #因为我的8000已经在用了，只能换一个其他的端口号。
+Running plumber API at http://127.0.0.1:8001
+Running swagger Docs at http://127.0.0.1:8001/__docs__/
+
+# 默认只能使用 127.0.0.1 访问，怎么指定 IP 呢?
+
+#!/usr/bin/env Rscript
+library(plumber)
+pr("myfile.R") %>%
+  pr_run(port=8001, host="0.0.0.0")
+
+
+> pr("backup/plumber2.R") %>% pr_run(port=8001, host="0.0.0.0")
+Running plumber API at http://0.0.0.0:8001
+Running swagger Docs at http://127.0.0.1:8001/__docs__/
+
+
+另一组函数: plumb(file = NULL, dir = ".")
+> library(plumber)
+> r <- plumb("api.R")
+> r$run(port = 8001, swagger = TRUE)
+
+
+b) 从命令行 Rscript 直接执行
+$ cat startServer.R
+#!/usr/bin/env Rscript
+library(plumber)
+pr("plumber.demo.R") %>%
+  pr_run(port=8001, host="0.0.0.0")
+
+$ Rscript startServer.R
+Running plumber API at http://0.0.0.0:8001
+Running swagger Docs at http://127.0.0.1:8001/__docs__/
+
+
+
+
+
+
+
+(5) 使用命令行 curl 访问
+$ curl "http://localhost:8001/echo"
+ {"msg":["The message is: ''"]}
+$ curl "http://localhost:8001/echo?msg=hello"
+ {"msg":["The message is: 'hello'"]}
+
+参数其实就是字符串参数
+$ curl --data "a=4&b=3" "http://localhost:8001/sum"
+[7]
+
+或者按JSON传递参数
+$ curl -H "Content-Type: application/json" --data '{"a":4, "b":5}' http://localhost:8001/sum
+ [9]
+
+
+
+
+
+========================================
+|-- 允许 CORS 跨域访问
+----------------------------------------
+(6) 如何允许 CORS 访问？
+https://github.com/rstudio/plumber/issues/66
+
+只要在R文件前加上这个函数即可允许个CORS: 
+
+#' @filter cors
+cors <- function(req, res) {
+  message("hi, this is R API file....")
+
+  res$setHeader("Access-Control-Allow-Origin", "*")
+
+  if (req$REQUEST_METHOD == "OPTIONS") {
+    res$setHeader("Access-Control-Allow-Methods","*")
+    res$setHeader("Access-Control-Allow-Headers", req$HTTP_ACCESS_CONTROL_REQUEST_HEADERS)
+    res$status <- 200
+    return(list())
+  } else {
+    plumber::forward()
+  }
+
+}
+
+
+如果某个API不允许 CORS，则可在其前面的注释中添加一行:
+#* @preempt cors
+
+则该API就不能 CORS 访问了。
+
+
+
+
+
+
+
+
+
+
+========================================
+|-- 3. 部署一个简单的逻辑回归模型
+----------------------------------------
+(1) 逻辑回归模型调用的例子
+#例子需要处理成二分类
+all.data <- iris[iris$Species != 'setosa', ]
+ 
+#分训练测试
+set.seed(1234)
+ind <- sample(2, nrow(all.data), replace = TRUE, prob = c(0.7, 0.3))
+traindata <- all.data[ind == 1, ]
+testdata <- all.data[ind == 2, ]
+
+#训练模型
+fit <- glm(Species ~ ., family = binomial(link = 'logit'), data = traindata)
+
+#保存模型
+save(fit, file = "fit.RData")
+
+
+################
+> fit
+Call:  glm(formula = Species ~ ., family = binomial(link = "logit"), 
+    data = traindata)
+
+Coefficients:
+ (Intercept)  Sepal.Length   Sepal.Width  Petal.Length   Petal.Width  
+     -42.875        -1.542        -5.889         8.357        16.986  
+
+Degrees of Freedom: 77 Total (i.e. Null);  73 Residual
+Null Deviance:	    108.1 
+Residual Deviance: 10.85 	AIC: 20.85
+################
+
+
+
+
+(2) backup/plumber.R 如下
+#' Echo the parameter that was sent in
+#' @param msg The message to echo back.
+#' @get /predict
+function(v1, v2, v3, v4){
+  predict(fit, type = 'response', newdata = data.frame(
+	Sepal.Length = as.numeric(v1), 
+	Sepal.Width = as.numeric(v2), 
+	Petal.Length = as.numeric(v3), 
+	Petal.Width = as.numeric(v4))
+)}
+
+
+
+(3) 脚本调用或在命令行输入
+load("fit.RData") #载入 fit 这个变量
+pr2 <- plumber::plumb("backup/plumber.R")
+pr2$run(host = "0.0.0.0", port = 8001)
+
+
+输出:
+Running plumber API at http://0.0.0.0:8001
+Running swagger Docs at http://127.0.0.1:8001/__docs__/
+
+
+host为0.0.0.0表示其他机器可以通过该机器在局域网的ip地址调用，port指定一个端口。
+接口启动后在浏览器输入 http://127.0.0.1:8001/predict?v1=6&v2=2&v3=6&v4=1
+返回结果：[0.9616]
+
+
+
+如果需要返回没有中括号包裹的json，在plumber.R对应的函数上方加第二行参数：
+#' Echo the parameter that was sent in
+#' @serializer unboxedJSON
+#' @param msg The message to echo back.
+#' @get /predict
+
+这时启动服务并访问，返回的是纯数字，没有前后的方括号: 0.9616
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+========================================
+|-- 4. 同时支持post和get访问
+----------------------------------------
+
+library(plumber)
+#* @apiTitle Simple API
+
+#* Echo provided text
+#* @param text The text to be echoed in the response
+#* @param number A number to be echoed in the response
+#* @get /echo2
+#* @post /echo2
+function(req, text = "", number = 0) {
+  list(
+    message_echo = paste("The text is:", text),
+    number_echo = paste("The number is:", number),
+    raw_body = req$postBody
+  )
+}
+
+访问:http://localhost:3582/echo2?text=book&number=123
+返回: {"message_echo":["The text is: book"],"number_echo":["The number is: 123"],"raw_body":[""]}
+
+post访问: $ curl -X POST "http://localhost:3582/echo2" -H "accept: */*" -d "text=book&number=123"
+返回: {"message_echo":["The text is: book"],"number_echo":["The number is: 123"],"raw_body":["text=book&number=123"]}
+
+传入json呢：$ curl --data '{"text":"book", "number":125, "other_param":"something else"}' "localhost:3582/echo2"
+返回：{"message_echo":["The text is: "],"number_echo":["The number is: 0"],"raw_body":["{\"text\":\"book\", \"number\":\"125\", \"other_param\":\"something else\"}"]}
+有问题：text和number参数都识别错误！==>要指定数据类型是 json:
+传入json呢：$ curl -H "Content-Type: application/json" --data '{"text":"book", "number":125, "other_param":"something else"}' "localhost:3582/echo2"
+返回：{"message_echo":["The text is: book"],"number_echo":["The number is: 125"],"raw_body":["{\"text\":\"book\", \"number\":125, \"other_param\":\"something else\"}"]}
+
+
+
+
+
+
+
+
+========================================
+|-- 5. docker 中部署
+----------------------------------------
+
+1) 获取镜像
+$ docker pull rstudio/plumber
+
+$ docker images
+REPOSITORY                      TAG                       IMAGE ID       CREATED         SIZE
+rstudio/plumber                 latest                    db1d9cf1264d   3 years ago     1.19GB
+
+
+2) 启动容器
+$ docker run --rm -p 8001:8000 rstudio/plumber
+which is the same as: 默认运行的文件：
+$ docker run --rm -p 8001:8000 rstudio/plumber \
+  /usr/local/lib/R/site-library/plumber/plumber/04-mean-sum/plumber.R
+参数解释：
+	-rm 停止后清除
+	-p 8001:8000 端口映射
+
+=> 运行当前目录下的 api.R文件：
+$ docker run --rm -p 8001:8000 -v `pwd`/api.R:/plumber.R rstudio/plumber /plumber.R
+实例：
+$ docker run --rm -p 8001:8001 \
+	-v `pwd`/plumber.demo.R:/plumber.demo.R \
+	-v `pwd`/startServer.R:/plumber.R \
+	rstudio/plumber \
+	/plumber.R
+第二个要引用第一个脚本：
+$ cat startServer.R
+#!/usr/bin/env Rscript
+library(plumber)
+pr("plumber.demo.R") %>%
+  pr_run(port=8001, host="0.0.0.0")
+todo: 能写到一个文件吗？
+
+3) debug模式: 通常是少了一个包或文件
+$ docker run -it --rm --entrypoint /bin/bash rstudio/plumber
+$ R
+R version 4.0.3 (2020-10-10) -- "Bunny-Wunnies Freak Out"
+> packageVersion("plumber")
+[1] ‘1.0.0’
+
+
+
+
+
+
+(3) 开机启动服务
+1) 确保安装了R依赖包
+$ R -e 'install.packages("plumber", repos = "https://cran.rstudio.com/")'
+
+2) 创建服务配置文件
+$ sudo vim /etc/systemd/system/plumber-api.service
+[Unit]
+Description=Plumber API
+# After=postgresql
+# (or mariadb, mysql, etc if you use a DB with Plumber, otherwise leave this commented)
+
+[Service]
+ExecStart=/usr/bin/Rscript -e "library(plumber); pr('/your-dir/your-api-script.R') %>% pr_run(port=8080, host='0.0.0.0')"
+Restart=on-abnormal
+WorkingDirectory=/your-dir/
+
+[Install]
+WantedBy=multi-user.target
+
+3) 激活服务并启动服务
+$ sudo systemctl enable plumber-api  # automatically start the service when the server boots
+$ sudo systemctl start plumber-api   # start the service right now
+
+检查服务是否启动：
+$ systemctl | grep running 
+能看到: plumber-api.service \ loaded active \running \Plumber API.
+
+
+
+
+
+
+
+
+
+
+
+
+
+========================================
+|-- 更多使用方法 与 疑难杂症
+----------------------------------------
+
+(1) plumber似乎有很严重的中文编码问题?
+在Ubuntu上好像没问题，source文件的时候加上encoding="UTF-8"
+
+(2) 用shiny吧?
+场景不一样哈，已经是模型要和后端java对接的场景了啊。shiny-server 是探索阶段。
+
+
+
+
+
+
+
+ref:
+官网：https://www.rplumber.io/
+Cheat Sheet: https://github.com/rstudio/cheatsheets/blob/main/plumber.pdf
+https://rviews.rstudio.com/2018/07/23/rest-apis-and-plumber/
+https://posit.co/blog/rstudio-1-2-preview-plumber-integration/
+
+docker 中部署: https://www.rplumber.io/articles/hosting.html#rstudio-connect-1
+
+支持4种http协议(GET/POST/PUT/DELETE): https://geek-docs.com/r-language/r-tutorials/g_building-rest-api-using-r-programming.html#google_vignette
+https://zhuanlan.zhihu.com/p/50987545
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+========================================
+使用 PM2 管理 plumber 进程
+----------------------------------------
+https://www.rplumber.io/articles/hosting.html
+
+1. 新建文件
+$ cat startServer.R
+#!/usr/bin/env Rscript
+library(plumber)
+
+pr("plumber.demo.R") %>%
+  pr_run(port=8001, host="0.0.0.0")
+
+
+2. 赋予执行权限：
+$ chmod 755 startServer.R
+$ ls -lth startServer.R 
+-rwxr-xr-x 1 wangjl wangjl 102 Mar  2 19:39 startServer.R
+
+
+3. 执行
+(1) 单进程测试
+$ ./startServer.R
+浏览器可见图形: http://127.0.0.1:8001/plot
+
+(2) 多进程测试
+要指定解析程序 --interpreter="Rscript"
+$ pm2 start --interpreter="Rscript" startServer.R -i 4  #这个 -i 参数不起作用
+[PM2] Starting /data/wangjl/rmarkdown_demo/bookdown-demo-main/backup/startServer.R in fork_mode (4 instances)
+[PM2] Done.
+┌────┬────────────────┬─────────────┬─────────┬─────────┬──────────┬────────┬──────┬───────────┬──────────┬──────────┬──────────┬──────────┐
+│ id │ name           │ namespace   │ version │ mode    │ pid      │ uptime │ ↺    │ status    │ cpu      │ mem      │ user     │ watching │
+├────┼────────────────┼─────────────┼─────────┼─────────┼──────────┼────────┼──────┼───────────┼──────────┼──────────┼──────────┼──────────┤
+│ 0  │ startServer    │ default     │ N/A     │ fork    │ 591872   │ 0s     │ 0    │ online    │ 0%       │ 20.7mb   │ wangjl   │ disabled │
+│ 1  │ startServer    │ default     │ N/A     │ fork    │ 591874   │ 0s     │ 0    │ online    │ 0%       │ 14.9mb   │ wangjl   │ disabled │
+│ 2  │ startServer    │ default     │ N/A     │ fork    │ 591881   │ 0s     │ 0    │ online    │ 0%       │ 13.1mb   │ wangjl   │ disabled │
+│ 3  │ startServer    │ default     │ N/A     │ fork    │ 591886   │ 0s     │ 0    │ online    │ 0%       │ 4.2mb    │ wangjl   │ disabled │
+└────┴────────────────┴─────────────┴─────────┴─────────┴──────────┴────────┴──────┴───────────┴──────────┴──────────┴──────────┴──────────┘
+
+浏览器访问可见图形 http://127.0.0.1:8001/plot
+	$ pm2 list 可见到1-3都是报错的
+	$ pm2 logs 可见报错原因：端口已用
+		3|startSer | createTcpServer: address already in use
+		3|startSer | Error in initialize(...) : Failed to create server
+	所以，实际上带端口的还是只能单线程跑，不过可能会中断自动重启？
+
+文档：http://127.0.0.1:8001/__docs__/
+
+	$ pm2 monit 查看系统资源监控
+
+
+注意：
+- 防止服务文件偶然被删，最好单独新建文件夹，比如/usr/local/plumber/
+- 尝试 Ctrl-c 是否服务停止。//?不懂
+
+
+
+4. 删除
+$ pm2 delete all #删除全部 pm2 管理的项目，文件还在。
+
+
+
+更多 pm2 请参考专题 js/node003.txt
+
+
+
+
+========================================
+示例：获取每个分类(cellType)中表达最高的细胞名(cid)
+----------------------------------------
+1.整体结构
+R 负责提供细胞名字，json格式，{类别1: cid1, cid2; 类别2: cid1, cid2;}
+IGV.js 中负责载入这些文件的bam文件
+
+
+(1) 核心文件 d01_select_gene_for_IGV.R
+#R API for IGV.js, provide cell id list as json string
+library("plumber")
+
+# 1.cid list ----
+scObj_3=(function(){
+  t1=readRDS("/data/jinwf/wangjl/scPolyA-seq2/chenxi/PBMC/UMAP/star_solo/scObj_final-PBMC_8plates.Star_Solo_PC25res0.8.CellCycle.Seurat.Rds")
+  #print(head(t1@meta.data))
+  #DimPlot(t1, label=T, group.by = "seurat_clusters")
+  # add cid column
+  t1$cid = paste0(sub("_\\d$", "_", rownames(t1@meta.data)),  t1@meta.data$orig.ident)
+  t1$cb = sub("_\\d$", "", rownames(t1@meta.data))
+  t1$sample = t1@meta.data$orig.ident
+  t1
+})()
+
+
+# 2.top Cid by exp ----
+getTopCids=function(gene.symbol, cellType, len=10){
+  mat = scObj_3@assays$RNA@counts[gene.symbol, ];
+  
+  # order, desc
+  bigOrder = mat[order(-mat)];
+  
+  # topN by group
+  lapply(split( rownames(scObj_3@meta.data), scObj_3@meta.data[, cellType] ), function(x){
+    # order by Counts
+    inner_id=(x[na.omit( object= match(x=names(bigOrder), table=x) )])[1:len]
+    #coutput sample & cid
+    #scObj_3@meta.data[inner_id, c("sample", "cb")]
+    scObj_3@meta.data[inner_id, c("cid")]
+  })
+}
+# get top n cid in each list item
+#top.BC=getTopCids("GAPDH", cid.list.BC, len=3)
+#jsonlite::toJSON(top.BC)
+
+
+#3. define API ----
+now=function(){
+  format(Sys.time(), '[%Y%m%d_%H%M%S]')
+}
+
+#' @filter cors
+cors <- function(req, res) {
+  message(now(), " hi, this is R API file: CORS ....")
+  
+  res$setHeader("Access-Control-Allow-Origin", "*")
+  
+  if (req$REQUEST_METHOD == "OPTIONS") {
+    res$setHeader("Access-Control-Allow-Methods","*")
+    res$setHeader("Access-Control-Allow-Headers", req$HTTP_ACCESS_CONTROL_REQUEST_HEADERS)
+    res$status <- 200 
+    return(list())
+  } else {
+    plumber::forward()
+  }
+  
+}
+
+
+#* API for IGV.js: Return a list of gene ids
+#* @param cellType the cell type: time, orig.ident, seurat_clusters, or Phase
+#* @param gene the gene symbol
+#* @param  n the top number, default 5
+#* @get /cid
+function(cellType, gene, n=5) {
+  # 1
+  #if(!gene %in% rownames(scObj_3@RNA$data) ){
+  #  #stop(gene, " not found!")
+  #}
+  gene.symbol=gene;
+  # 2
+  topN=getTopCids(gene.symbol, cellType, len=n);
+  # filter out NA
+  topN=lapply(topN, function(x){
+    x[!is.na(x)]
+  })
+  #jsonlite::toJSON(topN);
+  topN
+}
+
+
+# 4. How to start this server?
+if(0){
+  # start this server From host!!!
+  library(plumber)
+  
+  # 'plumber.R' is the location of the file shown above
+  pr("/data/jinwf/wangjl/scPolyA-seq2/chenxi/PBMC/script/d01_select_gene_for_IGV.R") |>   pr_run(port=8895, host="0.0.0.0")
+  #4. how to use?
+  #   cellType in c(time, HeLa, HeLa2);
+  #   n is cell number of each group;
+  #   gene is gene symbol
+  # http://x.biomooc.com:8895/cid?cellType=time&n=5&gene=GAPDH
+  # http://x.biomooc.com:8895/cid?cellType=Phase&n=2&gene=GRB10
+  #
+  # return 
+  #{"G1":["CGGATGCT_0hRep1","ACATAGCG_0hRep2"],"S":["TGGTGGTA_18hRep2","TTCTCGTG_18hRep1"],"G2M":["GACTGCTT_18hRep2","TAAGGCAT_48hRep3"]}
+}
+
+
+(2) 运行
+$ R
+> pr("/data/jinwf/wangjl/scPolyA-seq2/chenxi/PBMC/script/d01_select_gene_for_IGV.R") |>   pr_run(port=8895, host="0.0.0.0")
+Running plumber API at http://0.0.0.0:8895
+Running swagger Docs at http://127.0.0.1:8895/__docs__/
+
+
+浏览器测试:
+	http://x.biomooc.com:8895/cid?cellType=Phase&n=2&gene=GRB10
+	浏览器显示: {"G1":["CGGATGCT_0hRep1","ACATAGCG_0hRep2"],"S":["TGGTGGTA_18hRep2","TTCTCGTG_18hRep1"],"G2M":["GACTGCTT_18hRep2","TAAGGCAT_48hRep3"]}
+	黑窗口显示：[20240313_152845] hi, this is R API file: CORS ....
+
+如果无法访问，尝试在服务器上允许该端口通过
+	$ sudo iptables -I INPUT -p tcp --dport 8895 -j ACCEPT
+
+
+
+(3) 在 IGV.js 中调用
+addEvent(window,'load',function(){
+	//1.request url to R API
+	var url="http://x.biomooc.com:8895/cid?"; //cellType=HeLa2&n=5&gene=GRB10
+	url += "cellType="+getUrlParam("cellType")+"&";
+	url += "n="+getUrlParam("n")+"&";
+	url += "gene="+getUrlParam("gene").toUpperCase(); //human gene should be up case
+	console.log(">>>url: ", url)
+	//2. request the cell id
+	ajax(url, success=function(x){
+		var x=JSON.parse(x);
+		console.log(x)
+		init(x);
+	})
+});
+
+init 接收到的x就是R API 的返回值:
+	{"0h":["CGGATGCT_0hRep1","ACATAGCG_0hRep2"],
+	"18h":["TGGTGGTA_18hRep2","TTCTCGTG_18hRep1"],
+	"48h":["TTAATCGG_48hRep1","TGGGACCG_48hRep1"]}
+
+init函数中是 js for 循环处理 :
+	js 接收参数，ajax自定义函数，自定义js事件处理
+	var i=-1
+	for(var key in results){
+		i++;
+		for(var j in results[key]){
+			var cid=results[key][j]
+			var arr=cid.split("_");
+			var cb=arr[0], sample=arr[1];
+		...
+		}
+	}
+#
+
+
+完整脚本在: https://github.com/DawnEve/scIGV/blob/master/index6.html
+
+
+
+
+
+
+
+
+========================================
+其它 R web 包
+----------------------------------------
+
+
+========================================
+|-- OpenCPU: OpenCPU system for embedded scientific computation and reproducible research[安装失败]
+----------------------------------------
+
+1. 特点
+https://www.opencpu.org/
+https://github.com/opencpu/opencpu
+
+
+(1) An API for Embedded Scientific Computing
+https://www.opencpu.org/api.html
+
+OpenCPU is a system for embedded scientific computing and reproducible research. The OpenCPU server provides a reliable and interoperable HTTP API for data analysis based on R. You can either use the public servers or host your own.
+
+(2) Seamless R and JavaScript Integration
+https://www.opencpu.org/jslib.html
+
+The OpenCPU JavaScript client library provides the most seamless integration of R and JavaScript available today. Enjoy simple RPC and data I/O through standard Ajax techniques. Check for yourself by trying the jsfiddle examples.
+
+(3) Less is more
+
+No need to learn crazy widgets or obscure framworks. The OpenCPU API is a clean and simple interface to R, nothing more nothing less. It is compatible with any language or framework that speaks HTTP.
+
+(4) Statistical Apps
+https://www.opencpu.org/apps.html
+
+OpenCPU uses standard R packaging to develop, ship and deploy web applications. Several open source example apps are available from Github. Any app can be used on the public server or locally within an R session.
+
+Rmd 实例: https://rwebapps.ocpu.io/markdownapp/www/
+
+
+(5) Concurrency by design
+The OpenCPU API is concurrent by design. Your applications will naturally support parallel computing and asynchronous requests without introducing any additional complexity.
+
+
+(6) Easy Installation, Configuration
+https://www.opencpu.org/download.html
+
+Installing your own OpenCPU server is super easy and only takes a few minutes. The cloud server supports continuous integration and is highly configurable to fit your every need.
+
+
+(7) Reliable, Secure and Scalable
+The cloud server builds on AppArmor to enforce security, and Nginx for caching and load balancing. All profiles and configurations can easily be customized. Our public servers have been steadily online for over a year without any problems.
+
+
+(8) Business Friendly Licensing
+All parts of OpenCPU are released under the Apache2 license. The software can be used, modified and redistributed for both for open source and proprietary projects in academia, industry or elsewhere.
+
+
+
+
+2. 安装 
+https://www.opencpu.org/download.html
+
+$ sudo apt install libprotobuf-dev
+
+> install.packages("protolite")
+
+> install.packages("opencpu")
+
+各种依赖，安装失败 。。。。
+
+
+
+
+
+========================================
+|-- jug: A Simple Web Framework for R [7年不更新，年旧失修，安装失败]
+----------------------------------------
+1. 简介
+http://bart6114.github.io/jug/index.html
+
+依赖 httpuv 包。
+
+It focuses on maximizing the ease with wich you can create web APIs for your R code. 
+
+
+
+2. 安装
+
+# devtools::install_github("Bart6114/jug")
+
+> install.packages("jug")
+package ‘jug’ is not available for this version of R
+
+安装不上。
+看源码上次更新时间，7年前，确实年久失修
+https://github.com/Bart6114/jug-crud-example
+
+
+这个是和Rstudio产品最接近的一个，可惜没有继续开发。
+
+
+
+
+
+
+========================================
+|-- httpuv: HTTP and WebSocket Server Library (低层http包)
+----------------------------------------
+
+1. 简介 
+https://cran.r-project.org/web/packages/httpuv/index.html
+https://github.com/rstudio/httpuv
+
+httpuv provides low-level socket and protocol support for handling HTTP and WebSocket requests directly from within R. It uses a multithreaded architecture, where I/O is handled on one thread, and the R callbacks are handled on another.
+
+Provides low-level socket and protocol support for handling HTTP and WebSocket requests directly from within R. It is primarily intended as a building block for other packages, rather than making it particularly easy to create complete web applications using httpuv alone. httpuv is built on top of the libuv and http-parser C libraries, both of which were developed by Joyent, Inc. 
+(See LICENSE file for libuv and http-parser license information.)
+
+libuv(Cross-platform asynchronous I/O): https://github.com/libuv/libuv
+http-parser(http request/response parser for c): https://github.com/nodejs/http-parser
+
+
+
+
+2. 测试 
+
+(1) 安装
+# install from CRAN
+install.packages("httpuv")
+
+
+(2) 测试
+访问后，返回系统时间和访问路径
+
+library(httpuv)
+s <- startServer(host = "0.0.0.0", port = 8001,
+  app = list(
+    call = function(req) {
+      body <- paste0("Time: ", Sys.time(), "<br>Path requested: ", req$PATH_INFO)
+      list(
+        status = 200L,
+        headers = list('Content-Type' = 'text/html'),
+        body = body
+      )
+    }
+  )
+)
+
+
+# 测试:
+访问 http://127.0.0.1:8001/book
+返回:
+Time: 2022-04-25 20:01:37
+Path requested: /book
+
+
+
+查看该类
+> str(s)
+Classes 'WebServer', 'Server', 'R6' <WebServer>
+  Inherits from: <Server>
+  Public:
+    getHost: function () 
+    getPort: function () 
+    getStaticPathOptions: function () 
+    getStaticPaths: function () 
+    initialize: function (host, port, app, quiet = FALSE) 
+    isRunning: function () 
+    removeStaticPath: function (path) 
+    setStaticPath: function (..., .list = NULL) 
+    setStaticPathOption: function (..., .list = NULL) 
+    stop: function () 
+  Private:
+    appWrapper: AppWrapper, R6
+    handle: 139954797679144
+    host: 0.0.0.0
+    port: 8001
+    running: TRUE
+
+
+
+# 关闭服务器
+> s$stop()
+
+Or, to stop all running httpuv servers:
+> stopAllServers()
+
+
+
+
+
+(3) 设置静态路径 staticPaths 
+
+dir.create("www")
+
+s <- startServer("0.0.0.0", 8001,
+  app = list(
+    staticPaths = list("/" = "www/")
+  )
+)
+
+> writeLines(c("<pre>", "hello", "world"), "www/index.html")
+
+默认，如果/下有index.html则会自动加载。
+http://127.0.0.1:8001/
+显示:
+hello
+world
+
+
+
+
+
+(4) WebSocket server //todo
+
+# 启动服务断端
+s <- startServer("127.0.0.1", 8001,
+  list(
+    onWSOpen = function(ws) {
+      # The ws object is a WebSocket object
+      cat("Server connection opened.\n")
+
+      ws$onMessage(function(binary, message) {
+        cat("Server received message:", message, "\n")
+        ws$send(message)
+      })
+      ws$onClose(function() {
+        cat("Server connection closed.\n")
+      })
+    }
+  )
+)
+
+
+# 客户端 https://github.com/rstudio/websocket
+ws <- websocket::WebSocket$new("ws://127.0.0.1:8080/")
+ws$onMessage(function(event) {
+  cat("Client received message:", event$data, "\n")
+})
+
+# Wait for a moment before running next line
+ws$send("hello world")
+
+# Close client
+ws$close()
+
+
+
+
+
+
+
+
+========================================
+** 基于 RPC(Remote Procedure Call, 远程过程调用) 概念的实现 (分布式系统) //todo
+----------------------------------------
+1.RPC
+(1) 最早在Rstudio Server 的F12信息中看到RPC这个名词的
+	Request URL: http://172.18.5.193:8888/rpc/set_client_state
+	Request Method: POST
+	Status Code: 200 OK
+	Remote Address: 172.18.5.193:8888
+	Referrer Policy: strict-origin-when-cross-origin
+
+
+(2) RPC是远程过程调用（Remote Procedure Call）的缩写形式。
+
+rpc（Remote Procedure Call）是远程过程调用，它是一种通过网络从远程计算机程序上请求服务，而不需要了解底层网络技术的协议。
+
+RPC协议假定某些传输协议的存在，如TCP或UDP，为通信程序之间携带信息数据。在OSI网络通信模型中，RPC跨越了传输层和应用层。RPC使得开发包括网络分布式多程序在内的应用程序更加容易。
+
+RPC采用客户机/服务器模式。请求程序就是一个客户机，而服务提供程序就是一个服务器。首先，客户机调用进程发送一个有进程参数的调用信息到服务进程，然后等待应答信息。
+
+
+(3) rpc的网络交互大致流程(三步)
+
+client向server发送request后开始等待。
+server收到、处理、回复client。
+client收到response做出反应。
+
+简单代码demo如下：
+
+// 1. client侧
+write(netfd, req_buf, req_size);
+... // wait response
+read(netfd, res_buf, res_size);
+
+// 2. server侧
+read(netfd, req_buf, req_size);
+... // 执行函数逻辑、业务逻辑等
+write(netfd, res_buf, res_size);
+上述demo是操作系统级别比较原生的写法，对开发人员不太友好，比如无法对协议字段约束、没有较好的容错处理、缺乏便捷的序列化/反序列化方式、难以映射Call ID等问题。
+
+为了进一步降低rpc服务的开发门槛、提高rpc代码的质量等，大佬们对rpc的生命周期进行抽象、建模以及标准化，设计了各种各样的rpc框架。
+
+
+
+(4) 为什么使用 RPC 而不是使用 http?
+
+RPC 是一个完整的远程调用方案，它通常包括通信协议和序列化协议。
+	其中 通信协议 包括http协议(gRPC 使用 http2)、自定义报文的tcp协议(如 dubbo)
+	序列化协议包含基于文本编码的xml、json，基于二进制编码的 protobuf、hessian 等。
+
+而http只是一个通信协议，不是一个完整的远程调用方案。
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+2. RPC 框架
+
+https://www.bilibili.com/video/BV1JF411M7Wf?spm_id_from=333.337.search-card.all.click
+https://www.bilibili.com/video/BV12v411L7xL?spm_id_from=333.337.search-card.all.click
+https://www.bilibili.com/video/BV1qT4y1a7Es?spm_id_from=333.337.search-card.all.click 手写RPC通讯框架
+
+
+
+(1) 百度的RPC框架
+
+https://github.com/apache/incubator-brpc
+
+
+(2) Rstudio 使用了什么 RPC 框架?
+https://github.com/rstudio/rstudio
+顶部文件 搜索 rpc，发现使用的是 java 和 c++ 构成的。
+
+
+
+
+
+
+
+
+
+
+
+ref: https://zhuanlan.zhihu.com/p/447355716
+
+
+
+========================================
+----------------------------------------
+
+
+
+========================================
+----------------------------------------
+
+
+========================================
+----------------------------------------
+
+
+
+
+
+
+========================================
+----------------------------------------
+
+
+========================================
+----------------------------------------
+
+
+
+
+========================================
+----------------------------------------
+
+
+
+========================================
+----------------------------------------
+
+
+========================================
+----------------------------------------
+
+
+
+
+
+
+========================================
+----------------------------------------
+
+
+========================================
+----------------------------------------
+
+
+
+

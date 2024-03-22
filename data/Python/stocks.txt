@@ -1,9 +1,24 @@
 py进行量化投资
 
 
+财经周期的理解：
+	大宗
+	股市
+	债市
+	房价
+	景气行业
+
+
+投资的不可能三角：
+	高收益
+	高安全
+	高流动
+
+
+
 
 ========================================
-现有平台
+现有平台：下载数据
 ----------------------------------------
 
 1. 官方渠道
@@ -88,6 +103,11 @@ get=a-buy_fee-buy_fee
 print("Total=",n*p," sellAt=",p+x,' | ', r(a),' - ',r(buy_fee),' - ',r(sell_fee)," = ",r(get),' (',r(get/n/p*100),"%)",sep="")
 #ratio: 0.75 /1000
 #Total=7320.0 sellAt=3.68 | 40.0 - 5.49 - 12.88 = 29.02 (0.396%)
+
+
+
+
+
 
 
 ========================================
@@ -700,17 +720,126 @@ Jason：在Python中接入Wind数据​zhuanlan.zhihu.com
 
 
 
-========================================
-----------------------------------------
 
 
 ========================================
+|-- 某代码 的市盈率可视化
 ----------------------------------------
 
+1. 数据获取
+http://baostock.com
+	证券宝www.baostock.com是一个免费、开源的证券数据平台（无需注册）。
+	文档：http://baostock.com/baostock/index.php/Python_API%E6%96%87%E6%A1%A3
 
 
-========================================
-----------------------------------------
+(2) 用法
+pip install baostock -i https://pypi.tuna.tsinghua.edu.cn/simple/ --trusted-host pypi.tuna.tsinghua.edu.cn
+pip install pandas
+
+
+接口query_history_k_data()，新增"d=日k线"滚动市盈率(peTTM)、市净率(pbMRQ)、滚动市销率(psTTM)、滚动市现率(pcfNcfTTM)。
+
+目的：下载从 2005 到 2024 的数据
+
+$ cat get_stock_data.py
+import baostock as bs
+import pandas as pd
+
+#### 登陆系统 ####
+lg = bs.login()
+# 显示登陆返回信息
+print('login respond error_code:'+lg.error_code)
+print('login respond  error_msg:'+lg.error_msg)
+
+#### 获取历史K线数据 ####
+# 详细指标参数，参见“历史行情指标参数”章节
+stock_code="sh.600887"
+rs = bs.query_history_k_data_plus(stock_code,
+    "date,code,open,high,low,close,preclose,volume,amount,adjustflag,turn,tradestatus,pctChg,peTTM,pbMRQ,psTTM,pcfNcfTTM,isST",
+    start_date='2005-06-01', end_date='2024-03-18', 
+    frequency="d", adjustflag="3") #frequency="d"取日k线，adjustflag="3"默认不复权
+print('query_history_k_data_plus respond error_code:'+rs.error_code)
+print('query_history_k_data_plus respond  error_msg:'+rs.error_msg)
+
+#### 打印结果集 ####
+data_list = []
+while (rs.error_code == '0') & rs.next():
+    # 获取一条记录，将记录合并在一起
+    data_list.append(rs.get_row_data())
+result = pd.DataFrame(data_list, columns=rs.fields)
+#### 结果集输出到csv文件 ####
+result.to_csv("D:/xampp/htdocs/163/history_k_data"+stock_code+".csv", encoding="utf-8", index=False)
+print(result)
+
+#### 登出系统 ####
+bs.logout()
+
+
+
+
+
+(3) R 画图
+setwd("D://xampp/htdocs/163/")
+getwd()
+dat=read.csv("history_k_data.csv")
+# cut from year
+year=2010
+keep=sapply(dat$date, function(x){
+  t1=strsplit(x, "-")[[1]]
+  as.numeric(t1[1]) > year
+})
+dat=dat[keep,]
+
+dat[1:4,1:5]
+
+plot(x=1:nrow(dat), y=dat$open, pch=19, cex=0.1, col="red", type="l", main="Open")
+plot(x=1:nrow(dat), y=dat$volume/1e6, pch=19, cex=0.1, col="red", type="l", main="volume")
+
+# notice this
+plot(x=1:nrow(dat), y=dat$peTTM, pch=19, cex=0.1, col="red", type="l", 
+     #ylim=c(0, 50),
+     main="peTTM")
+plot(x=1:nrow(dat), y=dat$psTTM, pch=19, cex=0.1, col="red", type="l", main="psTTM")
+
+
+
+(3b)使用 ggplot2 绘图
+
+stockname="农业银行"
+
+#转为日期格式
+dat$date = dat$date |> as.Date()
+head(dat)
+
+library(ggplot2)
+p1=ggplot(dat, aes(date, open))+
+  geom_line(color="orange")+
+  theme_bw(base_size = 15)+
+  #geom_hline(yintercept = 0, color="red", linetype=2)+
+  ggtitle(stockname);p1
+p2=ggplot(dat, aes(x=date, y=volume/1e6))+
+  geom_col()+
+  geom_line()+
+  theme_bw(base_size = 15);p2
+
+p3=ggplot(dat, aes(date, peTTM))+
+  geom_line()+
+  theme_bw(base_size = 15);p3
+
+p4=ggplot(dat, aes(date, psTTM))+
+  geom_line()+
+  theme_bw(base_size = 15);p4
+
+library(patchwork)
+p1/(p2+ylim(0, 1500))/p3/p4
+
+
+
+
+
+
+
+
 
 
 ========================================
