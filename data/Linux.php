@@ -24,7 +24,7 @@ return array (
 	  array('软件安装_进程_定时任务','Linux102-soft-process-cron', 'txt'),
 	  array('bash和shell编程','Linux103-shell', 'txt'),
 	  array('字符grep/awk/sed','string_process', 'txt'),
-	  array('用户、权限与日志和安全','linux104-user', 'txt'),
+	  array('用户、权限与日志和安全','linux104-user-auth-log', 'txt'),
 	  array('GPU加速和CUDA编程','linux105-GPU-CUDA', 'txt'),
 	  
 	  array('多媒体','linux301_mutimedia', 'txt'),
