@@ -273,6 +273,386 @@ $ which pip3
 
 
 
+========================================
+|-- CentOS7.9 无root 编译安装 OpenSSL 1.1.1
+----------------------------------------
+1. 下载和安装 依赖的 openssl 1.1.1
+(1) 下载和安装
+https://www.openssl.org/source/
+https://github.com/openssl/openssl/releases?page=3 (2024.4.23)
+
+$ cd ~/Downloads/
+$ wget https://github.com/openssl/openssl/releases/download/OpenSSL_1_1_1u/openssl-1.1.1u.tar.gz #下载失败
+Or
+$ wget https://www.openssl.org/source/openssl-1.1.1u.tar.gz
+
+$ tar -zxvf openssl-1.1.1u.tar.gz
+$ cd openssl-1.1.1u/
+$ ./config --prefix=/home/wangjl/.local/
+	安装到独立文件夹不好，因为编译不好找到: $ rm -rf /home/wangjl/.local/lib/openssl-1.1.1u/
+$ make -j16
+$ make install
+
+测试：
+$ ~/.local/bin/openssl version
+OpenSSL 1.1.1u  30 May 2023
+
+配置
+$ vim ~/.bashrc
+#添加2行
+export LD_LIBRARY_PATH=~/.local/lib/:$LD_LIBRARY_PATH
+export PATH=$HOME/.local/bin:$PATH
+
+
+测试2：
+$ source ~/.bashrc
+或者推出，重新登录系统。
+
+$ which openssl
+~/.local/bin/openssl
+$ openssl version
+OpenSSL 1.1.1u  30 May 2023
+
+
+
+
+(2) 让 pkg-config 能找到.pc文件
+
+$ pkg-config --cflags openssl #返回空行，说明编译时还是找不到
+
+查看.pc文件：新增了前三个
+$ ls -lth ~/.local/lib/pkgconfig/
+total 2.5K
+-rw-r--r--. 1 wangjl jinlab 301 Apr 23 12:06 libcrypto.pc
+-rw-r--r--. 1 wangjl jinlab 280 Apr 23 12:06 libssl.pc
+-rw-r--r--. 1 wangjl jinlab 234 Apr 23 12:06 openssl.pc
+-rw-r--r--. 1 wangjl jinlab 337 Feb  3 21:45 libevent.pc
+-rw-r--r--. 1 wangjl jinlab 382 Feb  3 21:45 libevent_pthreads.pc 
+
+配置环境变量 PKG_CONFIG_PATH
+$ vim ~/.bashrc
+添加一行，指定.pc文件的位置
+export PKG_CONFIG_PATH=~/.local/lib/pkgconfig:$PKG_CONFIG_PATH
+
+退出再次登录系统，测试：
+$ pkg-config --cflags openssl
+-I/home/wangjl/.local//include
+
+$ pkg-config --libs openssl
+-L/home/wangjl/.local//lib -lssl -lcrypto
+
+
+
+
+(没做)还可以写到配置文件中：
+export CFLAGS="$CFLAGS $(pkg-config --cflags openssl11)"
+export LDFLAGS="$LDFLAGS $(pkg-config --libs openssl11)"
+
+
+
+==>尝试：
+sudo yum groupinstall "Development Tools" -y
+sudo yum install openssl11-devel libffi-devel bzip2-devel xz-devel -y
+
+$ sudo yum install openssl11-devel
+
+https://stackoverflow.com/questions/65531567/on-centos-how-do-i-build-python-3-9-from-source-while-incorporating-my-openssl
+
+
+
+ref:
+修改源码版本: https://www.cnblogs.com/miyuanbiotech/p/12307875.html
+
+
+
+
+
+========================================
+|-- CentOS7.9 无root 编译安装 Python3.10，带参数 --enable-shared，然后安装 tensorflow GPU 版本 2.16.1
+----------------------------------------
+1. 编译安装
+
+python3.12 总是报错：ModuleNotFoundError: No module named 'distutils'。解决不了。
+
+(1) 下载
+$ cd ~/Downloads
+
+https://www.python.org/downloads/source/
+$ version="3.10.14"
+$ wget https://www.python.org/ftp/python/${version}/Python-${version}.tgz
+$ tar -xzf Python-${version}.tgz
+$ cd Python-${version}/
+
+
+(2) 编译与安装
+
+a)依赖的 gcc12
+$ which gcc
+~/soft/gcc-12.3.0/bin/gcc
+$ gcc --version
+gcc (GCC) 12.3.0
+Copyright (C) 2022 Free Software Foundation, Inc.
+
+
+b) 设置编译依赖的 openssl 1.1.1
+见上文。
+
+
+c) 开始编译安装
+$ mkdir /home/$USER/soft/python3/python-${version}
+$ cd /home/wangjl/Downloads/Python-${version}
+$ ./configure --enable-optimizations --enable-shared --prefix=/home/$USER/soft/python3/python-${version}/
+$ make -j 64  #耗时步骤 ~20min
+
+$ make install
+
+测试：
+$ /home/wangjl/soft/python3/python-${version}/bin/python3 -V
+Python 3.10.14
+$ /home/wangjl/soft/python3/python-${version}/bin/pip3 -V
+pip 23.0.1 from /home/wangjl/soft/python3/python-3.10.14/lib/python3.10/site-packages/pip (python 3.10)
+
+
+
+(3) 添加路径到 PATH: 可执行文件及动态链接库的路径
+$ echo $version
+3.10.14
+
+配置局部环境变量
+	$ vim ~/.bashrc #添加3行
+	version="3.10.14"
+	export PATH=/home/wangjl/soft/python3/python-${version}/bin:$PATH
+	export LD_LIBRARY_PATH=/home/wangjl/soft/python3/python-${version}/lib/:$LD_LIBRARY_PATH
+
+	$ source ~/.bashrc
+
+$ which python3
+~/soft/python3/python-3.10.14/bin/python3
+$ pip3 -V
+pip 23.0.1 from /home/wangjl/soft/python3/python-3.10.14/lib/python3.10/site-packages/pip (python 3.10)
+
+
+
+
+(4)排错
+1) 之前安装 python3.12.3
+编译中提示:
+	Could not build the ssl module!
+	Python requires a OpenSSL 1.1.1 or newer
+
+编译最后提示：
+	The necessary bits to build these optional modules were not found:
+	_hashlib              _ssl                  _tkinter           
+	To find the necessary bits, look in configure.ac and config.log.
+
+	Could not build the ssl module!
+	Python requires a OpenSSL 1.1.1 or newer
+
+	Checked 111 modules (31 built-in, 76 shared, 1 n/a on linux-x86_64, 0 disabled, 3 missing, 0 failed on import)
+	make[1]: Leaving directory `/picb/jinlab/wangjl/Downloads/Python-3.12.3'
+	make: warning:  Clock skew detected.  Your build may be incomplete.
+
+解释1:
+_hashlib is the OpenSSL implementations behind the hashlib module. In absense of it, slower built-in implementations will be used.
+You’ll need to look in the build logs to see why compilation of _hashlib.so failed.
+
+[我没试] 如果有问题，试试这个: https://discuss.python.org/t/failed-to-build-these-modules-hashlib/235
+	$ ./configure --enable-optimizations --enable-shared \
+	--with-openssl \
+	--prefix=/home/$USER/soft/python3/python-${version}/
+
+因为不兼容 tf and/or cuda，放弃了。太新。
+	同一个机器上有用 py3.8 的，还有conda py3.7 的。
+
+
+2) 安装 python3.10.14
+编译最后提示：
+	The following modules found by detect_modules() in setup.py, have been
+	built by the Makefile instead, as configured by the Setup files:
+	_abc                  pwd                   time               
+
+
+	Failed to build these modules:
+	_hashlib              _ssl                                     
+
+
+	Could not build the ssl module!
+	Python requires a OpenSSL 1.1.1 or newer
+
+无root手工编译 openssl，并暴漏环境变量后，不再报错。
+
+
+
+
+
+
+
+
+
+2. 安装 tensorflow
+
+(1) 安装方法：最新的是合并了，加不加gpu后缀都是一样的。
+# For GPU users
+pip install tensorflow[and-cuda]
+# For CPU users
+pip install tensorflow
+
+
+我的语句：
+$ pip3 install --upgrade pip
+
+直接安装GPU版本：
+$ pip3 install tensorflow[and-cuda]
+
+$ pip3 list | grep -in tensorflow
+34:tensorflow                   2.16.1
+35:tensorflow-io-gcs-filesystem 0.36.0
+
+
+(2) 测试
+# CPU 版本
+$ python3 -c "import tensorflow as tf; print(tf.reduce_sum(tf.random.normal([1000, 1000])))"
+
+# GPU 版本
+$ python3 -c "import tensorflow as tf; print(tf.config.list_physical_devices('GPU'))"
+2024-04-23 12:56:45.122953: I tensorflow/core/util/port.cc:113] oneDNN custom operations are on. You may see slightly different numerical results due to floating-point round-off errors from different computation orders. To turn them off, set the environment variable `TF_ENABLE_ONEDNN_OPTS=0`.
+2024-04-23 12:56:45.190108: I tensorflow/core/platform/cpu_feature_guard.cc:210] This TensorFlow binary is optimized to use available CPU instructions in performance-critical operations.
+To enable the following instructions: AVX2 AVX512F AVX512_VNNI FMA, in other operations, rebuild TensorFlow with the appropriate compiler flags.
+2024-04-23 12:56:47.200066: W tensorflow/compiler/tf2tensorrt/utils/py_utils.cc:38] TF-TRT Warning: Could not find TensorRT
+2024-04-23 12:56:49.185400: W tensorflow/core/common_runtime/gpu/gpu_device.cc:2251] Cannot dlopen some GPU libraries. Please make sure the missing libraries mentioned above are installed properly if you would like to use GPU. Follow the guide at https://www.tensorflow.org/install/gpu for how to download and setup the required libraries for your platform.
+Skipping registering GPU devices...
+[]
+
+
+(3) 上文说没有安装 TensorRT，现在安装
+You need to install TensorRT separately. It's not bundled with tensorflow.
+这是一个优化包，不同显卡有不同的匹配，N厂提供。
+
+$ pip3 install TensorRT
+$ python3 -c "import tensorflow as tf; print(tf.config.list_physical_devices('GPU'))"
+
+还不行，卸载了，在(7)后重新安装
+$ pip3 uninstall TensorRT
+$ pip3 uninstall tensorrt-libs
+$ pip3 uninstall tensorrt-bindings
+
+
+
+(4) GPU 驱动
+$ nvidia-smi
+Tue Apr 23 13:42:23 2024       
+NVIDIA-SMI 535.154.05             Driver Version: 535.154.05   CUDA Version: 12.2
+
+NVIDIA A800 80GB PCIe
+
+表示显卡驱动安装过了，cuda版本是 12.2
+
+
+
+(5) cuda 设置
+$ locate cuda | grep  nvcc
+/usr/local/cuda-12.2/bin/__nvcc_device_query
+/usr/local/cuda-12.2/bin/nvcc
+
+$ vim ~/.bashrc
+export PATH=/usr/local/cuda-12.2/bin/:$PATH
+
+$ nvcc --version
+nvcc: NVIDIA (R) Cuda compiler driver
+Copyright (c) 2005-2023 NVIDIA Corporation
+Built on Tue_Jun_13_19:16:58_PDT_2023
+Cuda compilation tools, release 12.2, V12.2.91
+Build cuda_12.2.r12.2/compiler.32965470_0
+
+
+
+(6) nvidia.cudnn 位置
+
+a)【似乎不用安装，第(7)会自动安装】先安装 cuDNN: https://developer.nvidia.com/rdp/cudnn-archive
+NVIDIA cuDNN is a GPU-accelerated library of primitives for deep neural networks.
+$ cd ~/Downloads/
+需要注册：poster469 at 163/Nn16wcnm，只好先下载，再上传到服务器了。
+Download cuDNN v8.9.7 (December 5th, 2023), for CUDA 12.x
+https://developer.nvidia.com/downloads/compute/cudnn/secure/8.9.7/local_installers/12.x/cudnn-linux-x86_64-8.9.7.29_cuda12-archive.tar.xz/
+$ scp cudnn-linux-x86_64-8.9.7.29_cuda12-archive.tar.xz wangjl@j3.biomooc.com:/home/wangjl/Downloads/
+
+
+b)配置
+$ python3 -c "import nvidia.cudnn;print(nvidia.cudnn.__file__)"
+/home/wangjl/soft/python3/python-3.10.14/lib/python3.10/site-packages/nvidia/cudnn/__init__.py
+
+$ vim ~/.bashrc #添加
+CUDNN_PATH=$(dirname $(python3 -c "import nvidia.cudnn;print(nvidia.cudnn.__file__)"))
+export LD_LIBRARY_PATH=$CUDNN_PATH/lib:$LD_LIBRARY_PATH
+
+
+
+(7) 重新安装
+参照 https://www.tensorflow.org/install/pip
+
+Python 3.10 GPU support	https://storage.googleapis.com/tensorflow/versions/2.16.1/tensorflow-2.16.1-cp310-cp310-manylinux_2_17_x86_64.manylinux2014_x86_64.whl
+
+$ python3 -m pip install tensorflow[and-cuda]
+$ pip3 install TensorRT
+
+报错:
+2024-04-23 14:07:27.111998: W tensorflow/compiler/tf2tensorrt/utils/py_utils.cc:38] TF-TRT Warning: Could not find TensorRT
+
+删了重新来
+
+
+
+(100) 终极测试
+$ python3 -c "import tensorflow as tf; print(tf.config.list_physical_devices('GPU'))"
+
+To enable the following instructions: AVX2 AVX512F AVX512_VNNI FMA, in other operations, rebuild TensorFlow with the appropriate compiler flags.
+2024-04-23 16:17:04.799339: W tensorflow/compiler/tf2tensorrt/utils/py_utils.cc:38] TF-TRT Warning: Could not find TensorRT
+[PhysicalDevice(name='/physical_device:GPU:0', device_type='GPU')]
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+3. 手写数字测试实例
+
+import tensorflow as tf
+mnist = tf.keras.datasets.mnist
+
+(x_train, y_train),(x_test, y_test) = mnist.load_data()
+x_train, x_test = x_train / 255.0, x_test / 255.0
+
+model = tf.keras.models.Sequential([
+  tf.keras.layers.Flatten(input_shape=(28, 28)),
+  tf.keras.layers.Dense(128, activation='relu'),
+  tf.keras.layers.Dropout(0.2),
+  tf.keras.layers.Dense(10, activation='softmax')
+])
+
+model.compile(optimizer='adam',
+  loss='sparse_categorical_crossentropy',
+  metrics=['accuracy'])
+
+model.fit(x_train, y_train, epochs=5)
+	# $ nvidia-smi 查看GPU确实在运行
+model.evaluate(x_test, y_test)
+
+
+
+
+
+
+
+
+
 
 
 ========================================
@@ -596,7 +976,7 @@ $ pip install rpy2==2.8.1 --user ##可以了
 0. 设置方法
 (1) 临时设置
 使用国内的代理，速度会更快一些
-如豆瓣：pip install -i https://pypi.douban.com/simple/ jupyter
+如豆瓣：pip install -i https://pypi.doubanio.com/simple/ jupyter
 
 
 (2) 配置文件法
@@ -622,7 +1002,7 @@ trusted-host = mirrors.aliyun.com
 ## 以下可以跳过
 
 1. 实例
-pip install -i https://pypi.douban.com/simple/ ggplot
+pip install -i https://pypi.doubanio.com/simple/ ggplot
 
 from ggplot import *
 报错 
@@ -658,7 +1038,7 @@ Looking in indexes: https://pypi.tuna.tsinghua.edu.cn/simple
 
 
 2. 更多国内镜像
-http://pypi.douban.com/simple/ 豆瓣
+http://pypi.douban.com/simple/ 豆瓣  douban.com 改为 doubanio.com
 http://mirrors.aliyun.com/pypi/simple/ 阿里
 http://pypi.hustunique.com/simple/ 华中理工大学
 http://pypi.sdutlinux.org/simple/ 山东理工大学

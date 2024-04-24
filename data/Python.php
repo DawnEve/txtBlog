@@ -49,6 +49,8 @@ return array (
       array('机器学习概述 ML AI','MachineLearning-01','txt',),
       array('sklearn基础教程','sklearn','txt',), //https://scikit-learn.org/stable/
       array('深度学习与TensorFlow','TensorFlow','txt',),
+      array('大模型与transformer','transformer','txt',),
+	  
       array('python爬虫','webSpider','txt',),
       array('python财经','stocks','txt',),
     ),
