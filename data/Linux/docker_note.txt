@@ -5673,26 +5673,116 @@ Go to Managing Data in Containers.
 - commit 容器为一个images，重新运行一个新的容器
 
 
-1.方法1：不需要重启容器。
+
+
+0. 容器内启动 ssh 隧道连接宿主机
+
+容器内运行：
+from inside the Docker container I connect to my host machine by IP:
+$ ssh -R 8442:localhost:8080 alex@192.168.1.238
+So while the SSH shell is open, it redirects connections from my host machine port 8442 into Docker container port 8080.
+对宿主的8442的访问定位给容器8080
+
+
+我的测试：
+容器内$ ssh -R 8895:localhost:8895 wangjl@j3.biomooc.com
+浏览器访问 http://j3.biomooc.com:8895/cid?cellType=time&n=5&gene=GAPDH
+	确实可以了！
+
+
+
+
+
+
+1.方法1：修改要端口映射的容器的配置文件(不需要重启容器)：失败
 
 (1) 获得容器IP：将container_name 换成实际环境中的容器名
-$ docker inspect `container_name` | grep IPAddress
+1)查看容器的名字
+$ docker ps -a 
+
+(2)查看容器的全ID
+$ docker inspect 容器ID/Name | grep Id
+"Id": "c93d39c35e29b0b3b1d297968e77b67bde191a675aa31cc14f99bc34e1439260",
+
+(3)查看容器的端口映射情况
+$ docker port R4
+8787/tcp -> 0.0.0.0:8022
+8787/tcp -> [::]:8022
+
+(4) 修改hostconfig.json和config.v2.json文件
+默认在 /var/lib/docker/containers/目录下找与全ID相同的目录。
+查找一下：
+$ docker inspect R4 | grep -i container
+	"ResolvConfPath": "/data/docker_root/docker/containers/c93d39c35e29b0b3b1d297968e77b67bde191a675aa31cc14f99bc34e1439260/resolv.conf",
+	"HostnamePath": "/data/docker_root/docker/containers/c93d39c35e29b0b3b1d297968e77b67bde191a675aa31cc14f99bc34e1439260/hostname",
+	"HostsPath": "/data/docker_root/docker/containers/c93d39c35e29b0b3b1d297968e77b67bde191a675aa31cc14f99bc34e1439260/hosts",
+名字太长，定义临时变量来简化：
+$ tmpDir=/data/docker_root/docker/containers/c93d39c35e29b0b3b1d297968e77b67bde191a675aa31cc14f99bc34e1439260/
+
+暂停容器
+$ docker stop R4
+
+$ sudo ls -lth $tmpDir
+-rw-------. 1 root root 3.5K Apr 25 09:52 config.v2.json
+-rw-------. 1 root root 1.6K Apr 25 09:52 hostconfig.json
+
+4A)修改 hostconfig.json
+$ sudo vim $tmpDir/hostconfig.json
+#	格式如："{容器内部端口}/tcp":[{"HostIp":"","HostPort":"映射的宿主机端口"}]
+
+原文："PortBindings":{"8787/tcp":[{"HostIp":"","HostPort":"8022"}]}
+改为 "PortBindings":{"8787/tcp":[{"HostIp":"","HostPort":"8022"}],"8895/tcp":[{"HostIp":"","HostPort":"8895"}]}
+
+
+4B) 修改config.v2.json在ExposedPorts中加上要暴露的端口
+$ sudo vim $tmpDir/config.v2.json
+#	格式如："{容器内部端口}/tcp":{}
+
+原文："ExposedPorts":{"8787/tcp":{}}
+改为："ExposedPorts":{"8787/tcp":{},"8895/tcp":{}}
+
+
+(5)重启该容器
+$ docker restart R4
+
+$ docker ps
+CONTAINER ID   IMAGE                     COMMAND                  CREATED        STATUS          PORTS                                                                   NAMES
+c93d39c35e29   dawneve/seurat:4.1.0b     "/rocker_scripts/doc…"   5 hours ago    Up 12 seconds   0.0.0.0:8022->8787/tcp, :::8022->8787/tcp                               R4
+
+无效！
+
+
+(6) 查询IP
+$ docker inspect R4 | grep IPAddress
 	"IPAddress": "172.17.0.3",
 
-(2) iptable转发端口
+(7) iptable转发端口
 将容器的8000端口映射到docker主机的8001端口
-$ sudo iptables -t nat -A  DOCKER -p tcp --dport 8001 -j DNAT --to-destination 172.17.0.3:8000
+  sudo iptables -t nat -A DOCKER -p tcp --dport 8001 -j DNAT --to-destination 172.17.0.3:8000
+
+将容器的8895端口映射到docker主机的8895端口
+$ sudo iptables -t nat -A DOCKER -p tcp --dport 8895 -j DNAT --to-destination 172.17.0.3:8895
 
 
-
-(3) // 下面没看懂，先留着: 
-修改容器的json文件：
+(100) 修改容器的json文件：
 暂停容器，
-修改容器映射时只需要 修改hostconfig.json的PortBindings , 增加容器映射时还需要改config.v2.json的ExposedPorts
+修改容器映射时只需要 修改 hostconfig.json 的 PortBindings, 
+增加容器映射时还需要改 config.v2.json 的 ExposedPorts
 
 重新运行容器。
+$ docker restart R4
+失败！还是要重新启动容器，或者提交镜像再启动。
 
 
+或者这里应该重启docker服务？
+$ sudo service docker restart
+没试
+
+
+
+ref: 
+https://forums.docker.com/t/how-to-expose-port-on-running-container/3252/13
+https://stackoverflow.com/questions/19335444/how-do-i-assign-a-port-mapping-to-an-existing-docker-container/26622041#26622041
 
 
 
@@ -5714,6 +5804,8 @@ $ docker run -it --name web_demo -p 8000:80  foo/aaa:v1  bash
 
 
 
+ref:
+https://blog.csdn.net/guoqingru0311/article/details/134050245
 
 
 
