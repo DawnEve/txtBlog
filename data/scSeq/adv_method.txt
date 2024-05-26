@@ -30,11 +30,16 @@ NMF 非负矩阵降维 && RunUMAP 使用NMF代替PCA聚类，使用 Leiden 算�
 ----------------------------------------
 这里只是代码，解释见 R/R05-MachineLearning.txt 机器学习
 
+- 5000个细胞的测试时间可能超过10个小时。
+- 30k cells: 5days!!
 
 #2. cluster with NMF----
 scObj = NormalizeData(scObj) %>% FindVariableFeatures() %>% ScaleData()
-pbmc=scObj
-vm <- pbmc@assays$RNA@scale.data
+	
+	* 是否可以使用 ScaleData(center=F)
+	* 或者使用 normalize的数据，这样没有负数
+
+vm <- scObj@assays$RNA@scale.data
 vm[vm < 0] <- 0
 dim(vm)
 
@@ -56,14 +61,19 @@ res
 
 
 ## add to Seurat obj ----
-pbmc <- RunPCA(pbmc)
-pbmc@reductions$nmf <- pbmc@reductions$pca
-pbmc@reductions$nmf@cell.embeddings <- t(coef(res))
-pbmc@reductions$nmf@feature.loadings <- basis(res)  
+scObj <- RunPCA(scObj)
+scObj@reductions$nmf <- scObj@reductions$pca
+scObj@reductions$nmf@cell.embeddings <- t(coef(res))
+scObj@reductions$nmf@feature.loadings <- basis(res)  
+#
+#
+colnames(scObj@reductions$nmf@cell.embeddings) = paste0("NMF_", 1:ncol(scObj@reductions$nmf@cell.embeddings))
+scObj@reductions$nmf@key="NMF_"
+
 
 ## UMAP based on NMF ----
 set.seed(2023)
-pbmc.nmf <- RunUMAP(pbmc, reduction = 'nmf', dims = 1:15) %>% 
+scObj.nmf <- RunUMAP(scObj, reduction = 'nmf', dims = 1:15) %>% 
   FindNeighbors(reduction = 'nmf', dims = 1:15)
 #
 
@@ -80,18 +90,180 @@ system("which pip3")
 system("pip3 list | grep leidenalg")
 
 # Leiden
-pbmc.nmf = FindClusters(pbmc.nmf, resolution = 0.5, algorithm=4) #1 分出来， 0.45差不多
-DimPlot(pbmc.nmf, label = T, raster = T, pt.size = 1.5)+ggtitle("NMF res=0.5 Leiden")
+scObj.nmf = FindClusters(scObj.nmf, resolution = 0.5, algorithm=4) #1 分出来， 0.45差不多
+DimPlot(scObj.nmf, label = T, raster = T, pt.size = 1.5)+ggtitle("NMF res=0.5 Leiden")
 ggsave( paste0(outputRoot, "04_NMF_UMAP.pdf"), width=4.8, height=4, useDingbats = F)
 
-showCluster(pbmc.nmf, 19)
+showCluster(scObj.nmf, 19)
 
-DotPlot(pbmc.nmf, features = unique( c( "PLK1",
-  grep("^SOCS", rownames(pbmc.nmf), value=T),
-  grep("^CCN", rownames(pbmc.nmf), value=T)
+DotPlot(scObj.nmf, features = unique( c( "PLK1",
+  grep("^SOCS", rownames(scObj.nmf), value=T),
+  grep("^CCN", rownames(scObj.nmf), value=T)
 ) ) )+RotatedAxis()
 
 
+
+
+
+
+
+
+========================================
+|-- 实例：对 pbmc3k 数据用 NMF 做分群
+----------------------------------------
+
+(1) 基于PCA分解的降维聚类
+library(Seurat)
+library(tidyverse)
+library(NMF)
+rm(list = ls())
+ 
+## 创建seurat对象
+pbmc <- Read10X_h5("pbmc.h5")
+pbmc <- CreateSeuratObject(pbmc, project = "pbmc", min.cells = 3, min.features = 500)
+pbmc$percent.mt <- PercentageFeatureSet(pbmc, pattern = "^MT-")
+pbmc <- subset(pbmc, percent.mt<20)
+pbmc <- NormalizeData(pbmc) %>% FindVariableFeatures() %>% ScaleData(do.center = F)
+ 
+## 使用pca的分解结果降维聚类
+pbmc <- RunPCA(pbmc)
+set.seed(219)
+pbmc.pca <- RunUMAP(pbmc, dims = 1:15) %>% FindNeighbors(dims = 1:15) %>% FindClusters()
+ 
+## 结果可视化
+p <- DimPlot(pbmc.pca, label = T)   ggsci::scale_color_igv()
+ggsave("pbmc_pca.png", p, width = 9, height = 6)
+p <- FeaturePlot(pbmc.pca, features = c('CD3D', 'CD3E', 'MS4A1', 'CD79A', 'GNLY', 'NKG7', 'CD14', 
+                                        'FCGR3A', 'PPBP', 'FCER1A', 'CD4', 'CD8A'), ncol = 4)
+ggsave("pbmc_pca_markers.png", p, width = 12, height = 8)
+
+
+
+(2) 基于NMF分解的降维聚类
+## 高变基因表达矩阵的分解
+# pbmc大体可分成T，B，NK，CD14 Mono，CD16 Mono，DC，Platelet等类型，考虑冗余后设置rank=10
+vm <- pbmc@assays$RNA@scale.data
+
+## ==> 直接做 NMF 会报错，因为 起始矩阵有负数。
+# 错误: NMF::nmf - Input matrix x contains some negative entries.
+# 过滤
+vm[vm < 0] <- 0 #负数设置为 0
+dim(vm)
+vm <- vm[apply(vm, 1, var) > 0, ] #全是0的行去掉
+dim(vm)
+
+
+res <- nmf(vm, 10, method = "snmf/r", seed = 'nndsvd')  #这一步大约20-60min
+# 其他例子中用到的参数： nmf(data, rank = r, nrun = 1, seed = 'ica', method = 'nsNMF') #nsNMF更慢，需要2个小时
+# # 默认交替最小二乘法(Alternating Least Squares(ALS))——snmf/r  
+# 参数rank=，是期望的细胞亚群数量
+
+runtime(res)
+#    用户     系统     流逝 
+#1063.147   78.019 1139.831 
+
+# 查看结果：
+plot(t(coef(res) ), 
+     col= scObj$seurat_clusters)
+head(basis(res))
+
+
+
+## 分解结果返回suerat对象
+pbmc@reductions$nmf <- pbmc@reductions$pca
+pbmc@reductions$nmf@cell.embeddings <- t(coef(res))    
+pbmc@reductions$nmf@feature.loadings <- basis(res)  
+ 
+## 使用nmf的分解结果降维聚类
+set.seed(219)
+pbmc.nmf <- RunUMAP(pbmc, reduction = 'nmf', dims = 1:10) %>% 
+  FindNeighbors(reduction = 'nmf', dims = 1:10) %>% FindClusters(resolution = 0.8)
+
+## 结果可视化  
+p <- DimPlot(pbmc.nmf, label = T)   ggsci::scale_color_igv()
+ggsave("pbmc_nmf.png", p, width = 9, height = 6)
+p <- FeaturePlot(pbmc.nmf, features = c('CD3D', 'CD3E', 'MS4A1', 'CD79A', 'GNLY', 'NKG7', 'CD14', 
+                                        'FCGR3A', 'PPBP', 'FCER1A', 'CD4', 'CD8A'), ncol = 4)
+ggsave("pbmc_nmf_markers.png", p, width = 12, height = 8)
+
+
+
+(3) NMF因子可解释性探索
+对比PCA分析的结果，NMF虽然毫不逊色，但是它的运行时间更长。（1min vs 1h）
+
+我们为什么要用NMF呢？一个很重要的原因是NMF的因子可解释性更强，每个因子贡献度最大的基因基本代表了某种或某个状态细胞的表达模式，相比差异分析得到marker基因更有代表性。
+
+
+(4) NMF因子与细胞类型的关系
+## 人工定义细胞类型
+pbmc.nmf$celltype <- pbmc.nmf$seurat_clusters
+pbmc.nmf$celltype <- recode(pbmc.nmf$celltype,
+                            '1' = "B cells", 
+                            '5' = "NKs", 
+                            '10' = "CD8  T", 
+                            '6' = "CD8  T", 
+                            '4' = "CD4  T",
+                            '9' = "CD4  T", 
+                            '0' = "CD4  T", 
+                            '3' = "CD4  T", 
+                            '7' = "CD4  T", 
+                            '2' = "CD14  Mono",
+                            '8' = "CD14  Mono", 
+                            '11' = "CD16  Mono", 
+                            '12' = "DCs", 
+                            '13' = "Platelet", 
+                            '14' = "Unknown")
+p <- DimPlot(pbmc.nmf, group.by = 'celltype', label = T, label.size = 3) 
+    +  ggsci::scale_color_npg(alpha = 0.6)
+ggsave("pbmc_nmf_celltype.png", p, width = 9, height = 6)
+
+
+
+## 查看细胞因子上的荷载
+tmp <- data.frame(t(coef(res)), check.names = F)
+colnames(tmp) <- paste0("factor", 1:ncol(tmp))
+pbmc.nmf <- AddMetaData(pbmc.nmf, metadata = tmp) #给 str(pbmc.nmf@meta.data) 添加若干列
+
+p4 <- FeaturePlot(pbmc.nmf, features = paste0("factor", 1:11), ncol = 4); p4
+#ggsave("pbmc_nmf_factors.png", p4, width = 12, height = 8)
+
+## 查看细胞主成分上的荷载
+p5 <- FeaturePlot(pbmc.nmf, features = paste0("PC_", 1:12), ncol = 4); p5
+#ggsave("pbmc_nmf_PCs.png", p, width = 12, height = 8)
+
+# 对比上下两张图，很容易发现NMF的因子比PCA的PC轴解释性更强。
+
+
+
+
+## (6) 提取celltype的signatures ----
+## 提取每个因子贡献度最大的20个基因
+f <- extractFeatures(res, 20L)
+f <- lapply(f, function(x) rownames(res)[x])
+f <- do.call("rbind", f)
+View(t(f) )
+#DT::datatable(t(f))
+
+NMF的11个因子中，很容易发现我们对细胞进行分类的marker基因，是不是很神奇？
+
+
+
+
+
+
+
+
+
+
+ref:
+单细胞分析之NMF(非负矩阵分解) https://www.plob.org/article/27713.html
+
+单细胞数据分析——非负矩阵分解（NMF）识别功能模块 https://blog.csdn.net/m0_47675572/article/details/131169434
+    对于细胞分群效果不理想，如上皮细胞存在异质性等，可以考虑使用非负矩阵分解（NMF）的方式去定义元程序（meta program，即功能模块）和元标签（meta label，即功能基因集）。
+
+https://www.bilibili.com/video/BV1K3411x7J8/
+
+https://cloud.tencent.com/developer/article/1806266
 
 
 

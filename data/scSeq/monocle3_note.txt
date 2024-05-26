@@ -1,3 +1,11 @@
+轨迹推断、发育路径、起点推断
+
+
+CytoTRACE可与Monocle, Slingshot或Velocity等方法共同使用：
+使用CytoTRACE对亚群的分化潜能进行打分（可用于进一步划分子亚群），并联合Monocle, Slingshot，RNA velocity进行分化轨迹的构建，寻找细胞分化的关键基因，或辅助判定分化起始点，明确分化方向。
+
+其中：velocity和CytoTRACE 见另一个专题。
+
 
 
 
@@ -152,13 +160,11 @@ Monocle的官网在：
 版本3：https://cole-trapnell-lab.github.io/monocle3/monocle3_docs/
 
 
-1. 定义
+1. 简介
 本质就是根据每个细胞的基因表达情况找出关键的表达模式来对细胞进行排序，反推出细胞发育轨迹。
 用于细胞分化的研究(胚胎发育，细胞重编程，癌细胞分化，...)
 
-
-
-(2) 用户使用体验
+(1) 用户使用体验
 先验知识大于算法
 
 https://www.jianshu.com/p/e94cff521ebc
@@ -166,14 +172,11 @@ https://www.jianshu.com/p/e94cff521ebc
 - 我也感觉monocle2 比较好用，monocle2也是可以认可的
 - Seurat3都已经聚过类了，这个monocle再聚一次是否多余？它提供这个功能，你可以不用呀。可以用seurat的聚类结果
 
-
-
-2. 原理 
+(2) 原理 
 一次取样中有不同发育状况的细胞。
 如果根据转录组能推断出细胞的先后顺序，则可以反推出细胞发育轨迹。
 
 达尔文物种进化分析类似，是根据形态学的相似性排序的。
-
 
 
 
@@ -205,14 +208,135 @@ scRNAseq -> Pre-process data(Normalize, Remove batch effect) ->Non_linear dimens
 
 
 
+
+
+
+========================================
+|-- Moran指数(Moran's I): 度量空间相关性的一个重要指标
+----------------------------------------
 https://zhuanlan.zhihu.com/p/451727080
 除了常规广义模型进行差异分析之外，Monocle3还提供了一种空间差异分析的算法——Moran指数。Moran的I统计量是一种多向多维空间自相关的度量。统计数据通过最近邻图对数据点之间的空间关系进行编码，使其特别适合于分析大型scRNA-seq数据集。Moran指数的范围为-1到1之间，0表示在空间中不相关，而1表示高度正相关，小于0的Moran指数一般都没有统计学意义。
 
 
+那么莫兰指数到底是个啥东西呢？莫兰指数一般是用来度量空间相关性的一个重要指标。
+
+一般说来，莫兰指数分为全局莫兰指数（GlobalMoran’s I）和安瑟伦局部莫兰指数（AnselinLocal Moran’s I）后者是美国亚利桑那州立大学地理与规划学院院长Luc Anselin教授在1995年提出的，后面我们会说到。
+
+今天就简单说说全局莫兰指数，也是狭义上的莫兰指数。
 
 
 
-(4) 数据导入 
+1. 文章引用
+(1) 复发微生态模块是乳腺癌生态系统空间多样性的特征
+Zhao, S., Chen, DP., Fu, T. et al. Single-cell morphological and topological atlas reveals the ecosystem diversity of human breast cancer. Nat Commun 14, 6796 (2023).
+https://pubmed.ncbi.nlm.nih.gov/37880211/
+
+Fig.6C: Spatial patterns of MEMs based on Moran’s I statistics.
+考虑到肿瘤是一个复杂的生态系统，细胞以一定的空间模式组织来执行特定的功能，他们通过识别局部区域细胞组织的复发模式，旨在破译乳腺癌生态系统的空间多样性。通过空间相关性分析揭示了细胞群的共定位，并基于空间相关矩阵的层次聚类定义了微生态模块（MEMs），共鉴定出8个MEMs（6a，b）。为了表征8个MEMs的空间模式，使用Moran 's I指数测量了空间自相关性。Moran 's I指数中值为0.39-0.54，反映了这些模块在整个肿瘤生态系统中的空间变异性（图6c）。
+
+
+
+
+
+
+
+
+
+
+
+
+
+2. 简介
+莫兰指数是一个有理数，经过方差归一化之后，它的值会被归一化到–1.0——1.0之间。
+
+当然，这个归一化是一般的情况，根据某些特殊的情况，也会计算出一些不在这个范围内的值，最后来讨论为什么会超出这个范围。
+
+全局莫兰指数计算完成之后，全部的要素，就会给出你一个关于全部数据的相关性的数值（反之，局部莫兰指数，就每个要素都会给你一个相关性数值了，这个以后在说）。所以我们可以根据他给出的值，来看当前你需要计算的数据结果了。
+
+
+* Moran’s I >0表示空间正相关性，其值越大，空间相关性越明显
+* Moran’s I <0表示空间负相关性，其值越小，空间差异越大，
+* 否则，Moran’s I = 0，空间呈随机性。
+
+
+这里需要注意一下啊，空间差异和空间异质性是不同的概念。
+* 空间差异（spatialdisparity）是指不同地域范畴因为（社会、经济等）发展水平及其结构不同，而产生的差异。
+* 而空间异质性（spatialheterogeneity）是指因为空间位置的不同而引发的获取到不同的数据。
+
+所以二者切不可混为一谈。
+
+最后，我们们来看看，什么叫做正相关，什么叫做负相关。
+
+所谓的相关，就是指相互关系，正相关，就是随着自变量的增长，应变量也随着增长，比如审稿和体重，就是标准的正相关……。而负相关当然就是相反了，随着自变量的增长而减少，比如年龄和体力……
+
+那么空间上面的正相关，就是指随着空间分布位置（距离）的聚集，相关性就也就越发显著。空间上的负相关就正好相反了，随着空间分布位置的离散，反而相关性变得显著了。
+
+
+
+
+
+
+
+
+ref:
+https://cloud.tencent.com/developer/article/2103072
+https://www.bilibili.com/read/cv5100998/
+
+
+
+
+========================================
+|-- monocle3 安装
+----------------------------------------
+Ubuntu容器中
+	Ubuntu 9.4.0-1ubuntu1~20.04.1
+	R 4.1.0
+
+> install.packages("devtools") #2.4.5
+> devtools::install_github('cole-trapnell-lab/monocle3')
+报错：ERROR: dependencies ‘batchelor’, ‘ggrastr’, ‘sf’, ‘spdep’ are not available for package ‘monocle3’
+	installation of package ‘Cairo’ had non-zero exit status
+	spdep/ggbeeswarm/BiocSingular/ggrastr
+
+# 设置国内镜像，不好使了就重启R，跳过该设置
+##options(BioC_mirror="https://mirrors.tuna.tsinghua.edu.cn/bioconductor")
+> options("repos" = c(CRAN="https://mirrors.tuna.tsinghua.edu.cn/CRAN/"))
+
+> BiocManager::install("batchelor")
+> install.packages("ggrastr")
+报错：configure: error: Cannot find cairo.h! Please install cairo (http://www.cairographics.org/) and/or set CAIRO_CFLAGS/LIBS correspondingly.
+	ERROR: configuration failed for package ‘Cairo’
+	
+	# apt install libcairo2-dev
+> install.packages("sf")
+	报错：ERROR: dependency ‘units’ is not available for package ‘sf’
+	* deb: libudunits2-dev (Debian, Ubuntu, ...)
+	# apt install libudunits2-dev
+
+	报错：configure: error: gdal-config not found or not executable.
+	# apt install libgdal-dev
+> install.packages("spdep")
+
+再次尝试：
+> devtools::install_github('cole-trapnell-lab/monocle3')
+	报错：namespace ‘igraph’ 1.2.11 is being loaded, but >= 1.5.0 is required
+> install.packages("igraph") #2.0.3
+再次尝试，可以了。
+
+测试：
+> library(monocle3) #1.3.7
+载入正常！
+
+monocle3可以和monocle2共存吗？可以，不过要注意monocle2/3不要同时加载。
+
+
+
+
+
+========================================
+|-- monocle3 使用
+----------------------------------------
+(4) 数据导入
 library(monocle3) #v1.0.0
 
 1)可以导入 cellrange结果(v2, v3)
@@ -597,8 +721,10 @@ https://cole-trapnell-lab.github.io/monocle3/docs/differential/
 
 
 
+
+
 ========================================
-|-- monocle3 在 CentOS7.9 的安装
+|-- monocle3 在 CentOS7.9 的安装(不建议在CentOS上直接工作)
 ----------------------------------------
 1.总体在 Ubuntu 好安装。
 不行了就使用 docker 版的。
@@ -924,6 +1050,17 @@ p2 <- plot_cells(cds, color_cells_by = "partition", show_trajectory_graph = FALS
 p1 + p2
 
 
+
+
+
+
+
+
+
+
+
+
+
 ========================================
 monocle2: 经典拟时序分析包
 ----------------------------------------
@@ -995,11 +1132,31 @@ Monocle2 默认采用 DDRTRee算法进行数据降维(更适用于细胞轨迹�
 - 拟合最佳细胞发育或者分化拟时序轨迹曲线
 
 
+Monocle 2通过反向图嵌入学习单细胞轨迹的方法。每个细胞都可以表示为高维空间中的一个点，其中每个维对应于有序基因的表达水平。高维数据首先通过PCA(默认方法)、扩散图(diffusion maps)等几种降维方法中的任何一种投影到较低的维空间。然后Monocle 2在自动选择的数据中心集上构造一个生成树。然后，该算法细胞移动到树中最近的顶点，不断更新顶点的位置以“适合”细胞，学习新的生成树，并迭代地继续这个过程，直到树和细胞的位置收敛为止。
+
+
+反向图嵌入（GRE）：默认DDRTree。它是一种流形学习算法，旨在将主要图形嵌入高维单细胞RNA-seq数据中，找到高维基因表达空间与低维空间映射，同时在这个缩小的空间中学习图的结构（K个质心）来解决这个问题；
+
+
+
 3) Monocle UMAP (v3)  难点是不好安装。
 处理的细胞数量增加，支持UMAP推断发育轨迹。
 raw matrix -> Preprocess(PCA) -> 
 Non-linear dimension reduction(tSNE, UMAP, Louvain clustering)->
 Learn graph: DDRTree, SimplePPT, L1-graph ->
+
+
+
+
+
+
+(3) 输入: 重点是理解CellDataSet 的数据结构。
+
+exprs, a numeric matrix of expression values, where rows are genes, and columns are cells
+phenoData, an AnnotatedDataFrame object, where rows are cells, and columns are cell attributes** (such as cell type, culture condition, day captured, etc.)
+featureData, an AnnotatedDataFrame object, where rows are features (e.g. genes), and columns are gene attributes, such as biotype, gc content, etc.
+
+官网给出许多其他建议以及读入数据的注意事项，需要注意的是，如果是UMI数据，不应该在创建CellDataSet之前自己对其进行标准化。也不应该试图将UMI计数转换为相对丰度(通过将其转换为FPKM/TPM数据)。Monocle将在内部执行所有需要的标准化步骤。自己将其正常化可能会破坏Monocle的一些关键步骤。
 
 
 
@@ -1015,9 +1172,14 @@ Learn graph: DDRTree, SimplePPT, L1-graph ->
 数据的导入与质控、细胞分群、差异分析、拟时分析等。
 我们其实只用 monocle 做 拟时序分析，前面几个功能使用 Seurat 做。
 
-
 install.packages("devtools")
-devtools::install_github("cole-trapnell-lab/monocle-release@develop")
+devtools::install_github("cole-trapnell-lab/monocle-release@develop") 
+
+#如安装不上，尝试：
+> BiocManager::install("monocle")
+> packageVersion("monocle")
+[1] ‘2.30.1’
+
 library(monocle)
 
 
@@ -1257,6 +1419,10 @@ HSMM_myo <- reduceDimension(HSMM_myo, max_components= max_components, num_dim = 
 
 
 
+
+
+
+
 (4) 寻找差异基因 (可选 optional)
 
 1) 获得对细胞排序起到关键作用的基因集。
@@ -1274,7 +1440,7 @@ diff_test_res <- differentialGeneTest(HSMM[marker_genes,],
                                       fullModelFormulaStr = "~percent.mt")
 
 differentialGeneTest这个函数测试每个基因的差异表达，取决于伪时间或根据指定的其他协变量。
-“ differentialGeneTest”是Monocle的主要差异分析函数， 它接受一个CellDataSet和两个模型公式作为输入，指定由实现的广义谱系模型“VGAM”包。 也就是说我们可以根据指定’~cluster’或者拟时间值来获得差异基因。差异基因的结果如下表所示：
+“differentialGeneTest”是Monocle的主要差异分析函数， 它接受一个CellDataSet和两个模型公式作为输入，指定由实现的广义谱系模型“VGAM”包。 也就是说我们可以根据指定’~cluster’或者拟时间值来获得差异基因。差异基因的结果如下表所示：
 
 > head(diff_test_res)
       status           family       pval      qval gene_short_name num_cells_expressed use_for_ordering
@@ -1337,7 +1503,7 @@ ANPEP     OK negbinomial.size 0.889060052 0.88906005
 
 
 ========================================
-|-- monocle2 做轨迹分析 (指控、聚类、DEG不建议使用monocle做)
+|-- monocle2 做轨迹分析 (质控、聚类、DEG不建议使用monocle做)
 ----------------------------------------
 (5) 轨迹分析
 可以直接看这个博客做完: https://www.cnblogs.com/TOP-Bio/p/14856979.html
@@ -1421,10 +1587,10 @@ plot_cell_trajectory(HSMM_myo, color_by = "Pseudotime")
 
 
 ========================================
-|-- 绘制轨迹，可视化基因分支(State/Pseudotime/cluster/ 与分面)、热图、基因在伪时间上的分布 
+|-- 绘制轨迹，可视化基因分支(State/Pseudotime/cluster/ 与分面)、基因在伪时间上的分布 
 ----------------------------------------
 (6)
-plot_cell_trajectory(HSMM, color_by="State")
+1. plot_cell_trajectory(HSMM, color_by="State")
 # state 什么意思？是对轨迹不同位置的区分。 在 monocle2 中一个分支就是一个 state。
 # 而 cluster 可以认为是 细胞分类，是 Seurat 的结果。
 # state 的缺点是，无法判断哪是起始点，需要根据
@@ -1482,7 +1648,32 @@ p2 <- plot_complex_cell_trajectory(cds, x = 1, y = 2,
 p1|p2
 
 
-# 还可以画沿时间轴的细胞密度图
+
+
+
+(2) 每个cluster的平均 Pseudotime
+## mean Pseudotime of each cluster----
+p1 = pData(cds) %>% ggplot(aes(x=seurat_clusters, y=Pseudotime))+
+  #geom_jitter()+
+  geom_violin(scale="width", aes(fill=seurat_clusters), color="white", show.legend = F)+
+  theme_classic()+
+  geom_boxplot(width=0.1, outlier.alpha=0); p1
+
+
+## mean Pseudotime of each state----
+p2 = pData(cds) %>% ggplot(aes(x=State, y=Pseudotime))+
+  #geom_jitter()+
+  geom_violin(scale="width", aes(fill=State), color="white", show.legend = F )+
+  theme_classic()+
+  geom_boxplot(width=0.1, outlier.alpha=0); p2
+p1 + p2
+
+
+
+
+
+
+2. 还可以画沿时间轴的细胞密度图
 library(ggpubr)
 df <- pData(cds) 
 ## pData(cds)取出的是cds对象中cds@phenoData@data的内容
@@ -1516,7 +1707,10 @@ save(cds, file = "cds.rda")
 
 
 
-2) 查看核心基因轨迹 # plot_genes_in_pseudotime(cds[genes.use,], color_by="XXX")
+
+
+
+3. 查看核心基因轨迹 # plot_genes_in_pseudotime(cds[genes.use,], color_by="XXX")
 # 获取基因列表，也可以自己指定
 HSMM_expressed_genes <-  row.names(subset(fData(HSMM),
                                           num_cells_expressed >= 10))
@@ -1542,7 +1736,11 @@ plotc <- p1|p2|p3
 
 
 
-3) Finding Genes that Change as a Function of Pseudotime 根据伪时间功能寻找差异基因
+
+
+
+
+4. Finding Genes that Change as a Function of Pseudotime 根据伪时间功能寻找差异基因
 
 Monocle的主要工作是将细胞按照生物过程(如细胞分化)的顺序排列，而不事先知道要查看哪些基因。一旦这样做了，你就可以分析细胞，找到随着细胞进步而变化的基因。例如，你可以发现当细胞“成熟”时，基因显著上调。
 
@@ -1575,9 +1773,16 @@ plot_genes_in_pseudotime(cds_subset, color_by = "seurat_clusters")
 
 
 
-(7) 查看核心基因表达热图 
 
-1)Clustering Genes by Pseudotemporal Expression Pattern /根据伪时间表达pattern聚类基因
+
+
+
+========================================
+|-- 查看核心基因表达热图：按表达对基因聚类、多因素差异分析
+----------------------------------------
+(7) 
+
+1. Clustering Genes by Pseudotemporal Expression Pattern /根据伪时间表达pattern聚类基因
 
 在研究时间序列基因表达研究时，一个常见的问题是:“哪些基因遵循相似的动力学趋势?”Monocle可以通过将具有相似趋势的基因分组来帮助你回答这个问题，这样你就可以分析这些基因组，看看它们有什么共同之处。Monocle提供了一种方便的方法来可视化所有伪时间相关的基因。函数plot_pseudotime_heatmap接受一个CellDataSet对象(通常只包含重要基因的子集)，并生成与plot_genes_in_pseudotime类似的平滑表达曲线.然后，它将这些基因聚类并使用pheatmap包绘制它们。这允许您可视化基因模块，这些模块在伪时间内共同变化。
 
@@ -1605,7 +1810,9 @@ plot_pseudotime_heatmap(HSMM[sig_gene_names,], num_clusters=6, cores=1, show_row
 
 
 
-2) Multi-Factorial Differential Expression Analysis (可选)
+
+
+2. Multi-Factorial Differential Expression Analysis (可选)
 
 在下面的简单例子中，Monocle测试了三个基因在成肌细胞和成纤维细胞之间的差异表达，同时减去percent.mt的影响。为此，我们必须同时指定完整模型和简化模型。完整的模型同时捕捉细胞类型和percent.mt的影响。
 
@@ -1646,22 +1853,47 @@ Monocle为您提供了一个特殊的统计测试:分支表达式分析建模，
 在monocle中的分析中发现，细胞群能从一个轨迹分叉成不同的分支点，在科研中，我们会比较关注发生分支的原因是什么，即分析分支点之间的差异。Monocle采用分支表达式分析建模，主要是BEAM函数，可以将分叉过程重构为一个分支轨迹，从而分析不同细胞命运下的差异。
 
 
-# 查看分支点：就是黑色圆圈中的白色数字
+1. 查看分支点：就是黑色圆圈中的白色数字
 plot_cell_trajectory(HSMM, color_by = "State")
 
 # 可选
 # my_pseudotime_de <- differentialGeneTest(HSMM_myo, fullModelFormulaStr= " ~sm.ns(Pseudotime)" , cores = 4) ###这里是对拟时间值来计算差异基因。依然花的时间比较长。
 
 
-# BEAM进行统计分析：我们分析branch_point = 1这个分支处的细胞命名分叉是如何进行的。
+
+
+
+2. BEAM进行统计分析：我们分析branch_point = 1这个分支处的细胞命名分叉是如何进行的。
+问题：怎么输入确切的分支信息？https://github.com/cole-trapnell-lab/monocle-release/issues/111
+
+(1) 分支分析
 BEAM_res = BEAM(HSMM[expressed_genes, ], branch_point=1, cores=4)
+
+报错：Error in if (progenitor_method == "duplicate") { :
+		the condition has length > 1
+	Calls: BEAM -> branchTest -> buildBranchCellDataSet
+	Execution halted
+
+	# https://blog.csdn.net/qq_52813185/article/details/129339904	
+	beam_res <- BEAM(mycds_sub, branch_point = 1, progenitor_method = “duplicate”)
+	或者
+	methods <- c("duplicate", "expression", "cluster")
+	results <- lapply(methods, function(method) {
+		BEAM(mycds_sub, branch_point = 1, progenitor_method = method)
+	})
+	可能是版本问题？命令行再次运行一遍？
+	2.30.1 (@J3 shell)需要指定改参数？
+	2.26.0 (@H3:8890)无法载入2.30.1的cds数据！！需要从Seurat开始。
+
+
+
 
 # 对影响分析的基因根据qvalue进行排序
 BEAM_res=BEAM_res[order(BEAM_res$qval),]
 BEAM_res=BEAM_res[, c("gene_short_name", "pval", "qval")]
 
 
-# 绘制分支热图
+(2) 绘制分支热图
 my_branched_heatmap = plot_genes_branched_heatmap(
 	HSMM[row.names(subset(BEAM_res, qval<1e-4)),], 
 	branch_point=1,
@@ -1683,7 +1915,118 @@ monocle2 拟时间分支点分析结果解读 https://github.com/cole-trapnell-l
 
 
 
-# 能自定义颜色吗？如果基因过多，就别不显示了，看不清。
+
+(3) 获取分支热图信息
+1). 各个branch的数据提取
+kk <- plot_genes_branched_heatmap()
+kk$BranchA_exprs
+
+2). 提取行聚类信息
+kk <- plot_genes_branched_heatmap(num_clusters=3, return_heatmap=T)
+pp <- cutree(kk$ph$tree_row, k=3)
+
+
+
+
+
+
+(4) 改变分支左右方向
+https://www.bilibili.com/read/cv32168782/
+默认state偏小的那支cellfate1在左边，state偏大的cellfate2那支在右边。
+
+但是如果我想把state偏小的那支cellfate1放在右边，而state偏大的cellfate2那支放在左边，该怎么处理呢？
+想要有这种需求的一般都是因为fate1和fate2反了，再有就是两者生物学意义上需要颠倒，还有的是需要和别的数据进行对比，两者需要对比着看，所以一般需要将两者进行调换了。     
+
+我们这里先将标签的对换，就是只改变标签，而不改变下面的细胞类型，也就是说，state小的那支细胞还是在左边，但是我需要将它的标签改成cell fate 2，而state大的那支细胞在右边，标签是cell fate 1，这该如何处理呢？
+
+
+BEAM_res=BEAM(Mono_mococle_data,branch_point = 1,cores = 1) 作者：尔云间 https://www.bilibili.com/read/cv32168782/ 出处：bilibili
+
+#会返回每个基因的显著性，显著的基因就是那些随不同branch变化的基因
+#这一步很慢
+BEAM_res=BEAM_res[,c("gene_short_name","pval","qval")]
+saveRDS(BEAM_res, file = "BEAM_res.rds")
+
+BEAM_res <- readRDS("BEAM_res.rds")
+tmp1=plot_genes_branched_heatmap(Mono_mococle_data[row.names(subset(BEAM_res,qval<1e-4)),],
+                                 branch_point = 1,
+                                 num_clusters = 3, #这些基因被分成几个group
+                                 cores = 1,
+                                 branch_labels = c("Cell fate 1", "Cell fate 2"),
+                                 #hmcols = NULL, #默认值
+                                 hmcols = colorRampPalette(rev(brewer.pal(9, "PRGn")))(62),
+                                 branch_colors = c("#979797", "#F05662", "#7990C8"), #pre-branch, Cell fate 1, Cell fate 2分别用什么颜色
+                                 use_gene_short_name = T,
+                                 show_rownames = F,
+                                 return_heatmap = T #是否返回一些重要信息
+)
+
+pdf("branched_heatmap.pdf",width = 5,height = 6)
+tmp1$ph_res
+dev.off()
+ggsave(filename = "branched_heatmap.png",tmp1$ph_res,dpi = 600,width = 5,height = 6) 
+保存png是为了快速预览。
+
+
+
+=>方法1：现在先改变这个标签，但是其他的细胞都不变，其实只需要更改参数branch_labels 即可，代码如下：
+## 更改label
+tmp1=plot_genes_branched_heatmap(Mono_mococle_data[row.names(subset(BEAM_res,qval<1e-4)),],
+                                 branch_point = 1,
+                                 num_clusters = 3, #这些基因被分成几个group
+                                 cores = 1,
+                                 branch_labels = c("Cell fate 2", "Cell fate 1"),
+                                 #hmcols = NULL, #默认值
+                                 hmcols = colorRampPalette(rev(brewer.pal(9, "PRGn")))(62),
+                                 branch_colors = c("#979797", "#F05662", "#7990C8"), #pre-branch, Cell fate 1, Cell fate 2分别用什么颜色
+                                 use_gene_short_name = T,
+                                 show_rownames = F,
+                                 return_heatmap = T #是否返回一些重要信息
+)
+pdf("branched_heatmap.label.pdf",width = 5,height = 6)
+tmp1$ph_res
+dev.off()
+ggsave(filename = "branched_heatmap.label.png",tmp1$ph_res,dpi = 600,width = 5,height = 6) 
+
+
+但是大家可以看到我们现在只是改变了标签，标签虽然cell fate 1变成cell fate 2了，但是之前cell fate 1和cell fate 2的细胞并没有发生改变，还是这样的。
+
+
+
+
+
+=> 方法2：那接下来我们就不仅改变标签，还需要将下面的细胞进行调换。
+其实也就是需要改变参数branch_states即可，代码如下：
+
+## 更改细胞
+tmp1=plot_genes_branched_heatmap(Mono_mococle_data[row.names(subset(BEAM_res,qval<1e-4)),],
+                                 branch_point = 1,
+                                 num_clusters = 3, #这些基因被分成几个group
+                                 cores = 1,
+                                 branch_labels = c("Cell fate 2", "Cell fate 1"),
+                                 branch_states=c(3,2),#因为默认情况下，前面的数字就是小的state作为cell fate 1，所以我们需要将两者进行调换
+                                 #hmcols = NULL, #默认值
+                                 hmcols = colorRampPalette(rev(brewer.pal(9, "PRGn")))(62),
+                                 branch_colors = c("#979797", "#F05662", "#7990C8"), #pre-branch, Cell fate 1, Cell fate 2分别用什么颜色
+                                 use_gene_short_name = T,
+                                 show_rownames = F,
+                                 return_heatmap = T #是否返回一些重要信息
+)
+
+pdf("branched_heatmap.label.cell.pdf",width = 5,height = 6)
+tmp1$ph_res
+dev.off()
+ggsave(filename = "branched_heatmap.label.cell.png",tmp1$ph_res,dpi = 600,width = 5,height = 6)
+
+
+
+
+
+
+
+
+
+(5) 能自定义颜色吗？如果基因过多，就别不显示了，看不清。
 tmp1=plot_genes_branched_heatmap(test[row.names(subset(BEAM_res,qval<1e-4)),],
 	branch_point = 1,
 	num_clusters = 4, #这些基因被分成几个group
@@ -1697,9 +2040,11 @@ tmp1=plot_genes_branched_heatmap(test[row.names(subset(BEAM_res,qval<1e-4)),],
 	return_heatmap = T #是否返回一些重要信息
 )
 
+# 保存为pdf格式的热图
 pdf("branched_heatmap.pdf",width = 5,height = 6)
 tmp1$ph_res
 dev.off()
+
 
 返回的列表tmp1包含热图对象，热图的数值矩阵，热图主题颜色，每一行的注释（基因属于哪一个group）等信息。
 根据行注释提取出基因group，可以去做富集分析，后期加到热图的旁边。像这样:
@@ -1734,6 +2079,16 @@ head(allcluster_go[,c("ID","Description","qvalue","cluster")])
 
 
 
+
+
+
+
+
+
+
+========================================
+|-- 双发育路径的伪时间曲线 表达量：plot_genes_branched_pseudotime
+----------------------------------------
 #2) 单个基因的伪时间曲线，类似 plot_genes_in_pseudotime()，不同的是该函数显示2个发育路径。
 展示具体的基因，这些基因可以是：
 - 随拟时序、state而改变的基因（第5步）
@@ -1822,13 +2177,503 @@ dev.off()
 
 
 ========================================
+|-- Monocle2 脚本化运行: 要分叉就要设置过滤细胞，且使用Seurat DEG pos.only=F
 ----------------------------------------
+多分支的关键：
+- 要过滤细胞，不能跳过
+- 差异基因使用 Seurat only.pos=F，不能设置为T
+两条中任意一条不满足就会monocle2无分支，只有一个state。
+
+
+
+1. 目的：指定输入文件和输出路径，给出尽可能多的结果图，且方便快速重绘。
+(1) 调用
+在R4容器内，给出三个参数 seurat对象路径，输出文件夹(要存在)，关键词(不能有/符号)
+$ /usr/local/bin/Rscript /data/wangjl/scPolyA-seq2/chenxi/pipeline/script_single/do_monocle2.script.R /data/wangjl/scPolyA-seq2/chenxi/PBMC/UMAP/star_solo/scObj_final-PBMC_8plates.Star_Solo_PC25res0.8.CellCycle.withDEG.Seurat.Rds /data/wangjl/scPolyA-seq2/chenxi/PBMC/trajectory/ CD4_PBMC
+
+3k个细胞，运行大概 15min(939.61sec)
+
+
+
+(2) 脚本内容
+位置：bioToolKit/R_scripts/single_script/do_monocle2.script.R
+
+# Aim: do monocle2 as a script, output to a dir
+# how to use: $ Rscript this.script.R xx.Seurat.obj [outputRoot]
+# Env: R 4.1.0
+# version: 0.2-20240504
+# version: 0.3-20240504 set parameters
+
+if(0){
+  # how to run as a script? 
+  # in Docker shell R4:
+  # $ whereis Rscript
+  # $ /usr/local/bin/Rscript ~/data/scPolyA-seq2/chenxi/PBMC/script/monocle2_test2.R /path/to/Seurat.obj.Rds /output/dir
+  # at least 2 parameters, or stop and give help information.
+  #
+  # example
+  # $ /usr/local/bin/Rscript ~/data/scPolyA-seq2/chenxi/PBMC/script/monocle2_test2.R \
+  # /data/wangjl/scPolyA-seq2/chenxi/PBMC/UMAP/star_solo/scObj_final-PBMC_8plates.Star_Solo_PC25res0.8.CellCycle.withDEG.Seurat.Rds \
+  # /data/wangjl/scPolyA-seq2/chenxi/PBMC/trajectory/ CD4_PBMC
+}
+
+start.time=Sys.time() # time
+
+
+# settings begin ###############
+# default
+myArgs<-commandArgs(TRUE)
+if(length(myArgs)==0){
+  stop("You must give at least 1 parameter to run monocle2:\n$ Rscript /path/to/this.script.R seurat_filename [outputRoot [keyword [need_filter_cells [only.pos]]]]")
+}
+
+seurat_filename=myArgs[1]
+outputRoot = "./"
+
+#keyword="monocle2Test5"  # F, F 4.1: NO branch, 500s
+#keyword="monocle2Test6" # T, T 4.1: NO branch, 300s
+#keyword="monocle2Test7" # F, T 4.1: NO branch, 300s
+#keyword="monocle2Test8" # T, F 4.1: branch OK, 500s  <<<===---
+keyword="monocle2"
+
+# if you want branches, you have 2 essentials:
+# 1. must filter cells with 3.2
+# 2. use only.pos=F in Seurat DEG 4.1
+# About 590s totally for 3k cells
+need_filter_cells=T #T more branches
+only.pos=F #F more branches
+
+#set
+if(! file.exists(seurat_filename) ){
+  stop("input seurat file not exists: ", seurat_filename)
+}
+
+if(length(myArgs)>=2){
+  outputRoot=myArgs[2] 
+  # must end with /
+  if(substring(outputRoot, nchar(outputRoot)) != "/"){
+    outputRoot=paste0(outputRoot, "/")
+  }
+  # the dir must exist
+  if(!dir.exists(outputRoot)){
+    stop( sprintf("Error: dir not exist, outputRoot=%s", outputRoot) )
+  }
+}
+
+if(length(myArgs)>=3){
+  keyword=paste0(keyword, "_", myArgs[3])
+  if( length(grep("/", myArgs[3]) )){
+    stop( sprintf("Error: keyword must NOT contain '/', keyword=%s", myArgs[3]) )
+  }
+}
+
+if(length(myArgs)>=4){
+  need_filter_cells=myArgs[4] |> as.logical()
+}
+if(length(myArgs)>=5){
+  only.pos=myArgs[5] |> as.logical()
+}
+message( sprintf("###### \n=>parameters: need_filter_cells=%s, only.pos=%s", 
+                 need_filter_cells, only.pos) )
+# settings end ###############
+
+
+
+
+
+# functions & tools ----
+# large dot in legend
+LargeLegend = function(size=5){
+  guides(colour = guide_legend(override.aes = list(alpha = 1,size=size)))
+}
+
+now=function(style=4){
+  switch(
+    EXPR = style,
+    "1"={format(Sys.time(), '_%Y%m%d_%H%M%S')},
+    "2"={format(Sys.time(), '%Y%m%d_%H%M%S')},
+    "3"={format(Sys.time(), '[%Y%m%d_%H%M%S]')},
+    "4"={format(Sys.time(), '[%Y/%m/%d_%H:%M:%S]')},
+    stop("Invalid style. Please choose one of 1,2,3,4")
+  )
+}
+#now()
+
+# library
+#library(dplyr)
+library(ggplot2)
+library(Seurat)
+library(monocle) #2.22.0
+
+
+
+
+
+# 1. load Seurat data ----
+message(now(), "1. loading Seurat data: ", keyword) #[20220701_111547]warning:xxx
+
+sce=readRDS(seurat_filename)
+sce #15855 features across 3066 samples within 1 assay 
+
+
+
+# 2. to monocle2 obj ----
+message(now(), "2. seurat to monocle2")
+
+#' get Monocle2 obj from Seurat obj
+#'
+#' @param sce Seurat obj
+#'
+#' @return Monocle2 obj
+#' @export
+#'
+#' @examples
+Seurat2Monocle2=function(sce){
+  #1. to monocle obj
+  #expr_matrix=as.matrix(sce@assays$RNA@counts)
+  #expr_matrix=GetAssayData(sce, assay = 'RNA', slot = 'counts')
+  expr_matrix= as(as.matrix(sce@assays$RNA@counts), 'sparseMatrix')
+  
+  cell_data=sce@meta.data
+  gene_data=data.frame(
+    gene_short_name=row.names(expr_matrix), #must have this column
+    row.names = row.names(expr_matrix)
+  )
+  #
+  pd <- new("AnnotatedDataFrame", data = cell_data)
+  fd <- new("AnnotatedDataFrame", data = gene_data)
+  cds <- newCellDataSet(expr_matrix, 
+                        phenoData = pd, 
+                        featureData = fd,
+                        expressionFamily=negbinomial.size())
+  #2. pre processing
+  cds <- estimateSizeFactors(cds)
+  cds <- estimateDispersions(cds)
+  
+  return(cds)
+}
+monocle_cds = Seurat2Monocle2(sce)
+monocle_cds
+
+
+
+
+
+#3. QC (essential if you want branches) ----
+message(now(), "3. (0) detectGenes")
+monocle_cds <- detectGenes(monocle_cds, min_expr = 0.1) #rm low QC gene
+print( head(fData(monocle_cds), n=3) )
+print(dim(fData(monocle_cds))) #15855     2
+
+if(0){
+  # to determin the threshold of num_cells_expressed
+  hist( fData(monocle_cds)[,2], n=1000)
+  hist( fData(monocle_cds)[,2], n=1000, ylim=c(0, 100))
+  # log scale
+  hist( log2(fData(monocle_cds)[,2] +1), n=1000, ylim=c(0, 100))
+  abline(v=6, col="red", lty=2) 
+  message(now(), "num_cells_expressed>=", 2**6 -1)#63
+  
+  head(pData(monocle_cds))
+}
+
+## (1) filter low exp genes ----
+message(now(), "3. (1) filter low exp genes")
+#expressed_genes <- row.names(subset(fData(monocle_cds), num_cells_expressed >= 50))
+expressed_genes <- row.names(subset(fData(monocle_cds), num_cells_expressed >= 10))
+message( sprintf("[%s] expressed_genes n=%s", date(),  length(expressed_genes) )  )#11818
+
+monocle_cds <- monocle_cds[expressed_genes,]
+
+
+## (2)filter cells ----
+message(now(), "3. (2) filter cells")
+# i)done by Seurat: ignore
+#valid_cells <- row.names(subset(pData(monocle_cds),num_genes_expressed >= 200 & Mapped.Fragments > 1000000))
+#length(valid_cells)
+#HSMM <- HSMM[,valid_cells]
+
+
+# ii) if you need branches, set TRUE
+if(!need_filter_cells){
+  warning("warn: setting need_filter_cells=F may results only 1 state and no branch!")
+}else{
+  message("setting need_filter_cells=T: may results more states and more branches.")
+  # use exprs() to get counts matrix
+  expdt <- exprs(monocle_cds)
+  print( dim(expdt) ) #11818  3066
+  # calculate mRNA(UMI/cout)sum: colSum of matrix, and add Total_mRNAs column to phenoData df
+  pData(monocle_cds)$Total_mRNAs <- Matrix::colSums(expdt)
+  head(pData(monocle_cds), n=3)
+  print(dim(monocle_cds))
+  
+  # filter cell by Total_mRNAs: less than 1m mRNA
+  #valid_cells2 <- pData(monocle_cds)$Total_mRNAs < 1e6 #Too large for 10x? 需要重新确定边界
+  #HSMM <- HSMM[,valid_cells2]
+  
+  #异常值范围边界确定：mean ± 2sd；
+  HSMM=monocle_cds
+  upper_bound <- 10^(mean(log10(pData(HSMM)$Total_mRNAs)) +
+                       2*sd(log10(pData(HSMM)$Total_mRNAs)))
+  lower_bound <- 10^(mean(log10(pData(HSMM)$Total_mRNAs)) -
+                       2*sd(log10(pData(HSMM)$Total_mRNAs)))
+  
+  # plot density plot of total mRNA of each cell:绘制细胞总mRNA数的核密度分布曲线：
+  pdf(paste0(outputRoot,keyword,"_00_filterCell.cutoff.DensPlot.pdf"),width=4,height=2)
+  p1=qplot(Total_mRNAs, data = pData(HSMM), color = time, geom ="density") +
+    geom_vline(xintercept = c(lower_bound,upper_bound), color="red", linetype=2 )+
+    theme_classic(base_size = 12)+ Seurat::FontSize(12,12, 12, 12)+
+    #scale_color_manual(values=c("#FFA500", "#FF1493", "#4876FF") )+
+    ggtitle("Density plot of total mRNA per cell")
+  print(p1)
+  #保留“中间”区域；
+  valid_cells3 = pData(HSMM)$Total_mRNAs > lower_bound & pData(HSMM)$Total_mRNAs < upper_bound
+  HSMM <- HSMM[,valid_cells3]
+  
+  print(dim(HSMM))
+  #Features  Samples 
+  #11818     2957
+
+# (3)density plot(optional) ----
+  #对表达量矩阵取对数得到新矩阵；
+  L <- log(exprs(HSMM[expressed_genes,]))
+  # 使用scale()函数对基因表达量进行标准化,函数默认对列标准化，需转置；
+  M <- Matrix::t(scale(Matrix::t(L)))
+  #使用Melt函数进行表格“整形”；
+  library(reshape2)
+  melted_dens_df <- melt(M)
+  
+  p2=qplot(value, geom = "density", data = melted_dens_df) +
+    stat_function(fun = dnorm, size = 0.5, color = 'red') +
+    xlab("Standardized log(FPKM)") +
+    ylab("Density")+
+    theme_classic(base_size = 12)+ Seurat::FontSize(12,12, 12, 12)+
+    scale_color_manual(values=c("#FFA500", "#FF1493", "#4876FF") )
+  print(p2)
+  dev.off()
+  monocle_cds=HSMM;
+}
+
+
+
+
+#4. Monocle2 trajectory ----
+
+## (1) 3 steps And Save Rds ----
+message(now(), "4. (1) monocle 3 main steps")
+### step 1: DEG by Seurat
+library(future)
+plan(strategy = "multisession", workers=4)
+#deg.cluster <- FindAllMarkers(sce) #must not use only.pos=F to get branches
+deg.cluster <- FindAllMarkers(sce, only.pos = only.pos)
+#deg.cluster <- FindAllMarkers(sce, only.pos = TRUE, min.pct = 0.25, logfc.threshold = 0.25)
+plan(strategy = "sequential")
+
+#
+diff.genes <- unique( subset(deg.cluster,p_val_adj<0.05)$gene )
+message(now(), "length(diff.genes)=", length(diff.genes)) #3232
+# 4135, no only pos
+monocle_cds <- setOrderingFilter(monocle_cds, diff.genes)
+
+pdf(paste0(outputRoot, keyword, "_01.plot_ordering_genes.pdf"), width=4, height=4)
+plot_ordering_genes(monocle_cds)+
+  ggtitle(sprintf("diff.genes n=%s", length(diff.genes)))
+dev.off()
+
+
+### step 2:  reduce data dimensionality
+monocle_cds <- reduceDimension(monocle_cds, max_components = 2, method = 'DDRTree')
+### step 3: order cells along the trajectory
+monocle_cds <- orderCells(monocle_cds)
+
+# save the R obj
+saveRDS(monocle_cds, paste0(outputRoot, keyword, "-monocle2.cds.Rds"))
+
+
+## (2) visualization ----
+message(now(), "4. (2) visualization")
+pdf(paste0(outputRoot, keyword, "_02.trajectory.pdf"), width=4, height=4)
+DimPlot(sce, label=T)
+plot_cell_trajectory(monocle_cds, color_by = "Pseudotime", cell_size = 0.75)
+plot_cell_trajectory(monocle_cds, color_by = "State", cell_size = 0.75)+
+  LargeLegend(2)
+plot_cell_trajectory(monocle_cds, color_by = "seurat_clusters", cell_size = 0.75)+
+  LargeLegend(2)
+dev.off()
+#
+pdf(paste0(outputRoot, keyword, "_02B.facet-trajectory.pdf"), width=6, height=6)
+plot_cell_trajectory(monocle_cds, color_by = "seurat_clusters", cell_size = 0.25)+
+  facet_wrap(~seurat_clusters)+
+  LargeLegend(2)
+dev.off()
+
+
+
+
+
+## (3) cell dens along Pseudotime ----
+df <- pData(monocle_cds)
+
+pdf(paste0(outputRoot, keyword, "_03B.CellDens_Pseudotime.pdf"), width=3.7, height=6)
+ggplot(df, aes(Pseudotime, colour = seurat_clusters, fill=seurat_clusters)) +
+  geom_density(bw=0.5,size=1,alpha = 0.5)+
+  facet_wrap(~seurat_clusters, ncol=1)+
+  theme_void()
+dev.off()
+
+
+
+## (4) plot_genes_in_pseudotime ----
+#gene_symbols=row.names(subset(fData(monocle_cds), gene_short_name %in% c("YWHAB", "ICAM2", "ICAM2")))
+gene_symbols=row.names(subset(fData(monocle_cds), use_for_ordering==T))[c(1,2,5)]
+print(gene_symbols)
+pdf(paste0(outputRoot, keyword, "_03C.plot_genes_in_pseudotime.pdf"), width=4.3, height=3.9)
+plot_genes_in_pseudotime(monocle_cds[gene_symbols, ], color_by =  "seurat_clusters", cell_size = 0.5)+
+  LargeLegend(3)
+dev.off()
+
+#
+# plot_genes_jitter(monocle_cds[gene_symbols,], grouping = "State", color_by = "State")
+#plot_genes_jitter(monocle_cds[gene_symbols,], grouping = "State", color_by = "State", 
+#                  cell_size = 0.5, plot_trend = TRUE)
+#pdf(paste0(outputRoot, keyword, "_03d1.plot_genes_jitter.pdf"), width=4.3, height=3.9)
+#plot_genes_jitter(monocle_cds[gene_symbols,],
+#                  grouping = "seurat_clusters", color_by = "seurat_clusters", plot_trend = TRUE) +
+#  facet_wrap( ~ time, scales= "free_y")
+#dev.off()
+
+#
+pdf(paste0(outputRoot, keyword, "_03d.plot_genes_violin.pdf"), width=4.3, height=3.9)
+plot_genes_violin(monocle_cds[gene_symbols,], grouping = "seurat_clusters", color_by = "seurat_clusters")+
+  theme_classic()+
+  theme(
+    strip.background = element_blank()
+  )
+dev.off()
+
+
+
+
+# 5. Genes Change along Pseudotime ----
+##(1) DEG along Pseudotime----
+message(now(), "5. (1) differentialGeneTest")
+pseudotime_deg <- differentialGeneTest(monocle_cds, 
+                                       fullModelFormulaStr= " ~sm.ns(Pseudotime)", 
+                                       cores = 4)
+#pseudotime_deg[,c("gene_short_name", "pval", "qval")] |> head()
+gene_symbols2=subset(pseudotime_deg, qval<0.01 & use_for_ordering==T) |> rownames() |> head(3)
+print(gene_symbols2)
+pdf(paste0(outputRoot, keyword, "_04.plot_genes_in_pseudotime.pdf"), width=4.3, height=3.9)
+plot_genes_in_pseudotime(monocle_cds[gene_symbols2,], 
+                         color_by = "seurat_clusters")
+dev.off()
+
+
+##(2) DEG heatmap----
+# re-use above dataset
+#diff_test_res = differentialGeneTest(monocle_cds[marker_genes,], 
+#                                     fullModelFormulaStr="~sm.ns(Pseudotime)")
+diff_test_rtes=subset(pseudotime_deg, use_for_ordering==T)
+sig_gene_names = row.names(subset(diff_test_rtes, qval<0.01))
+length(sig_gene_names)
+p3=plot_pseudotime_heatmap(monocle_cds[sig_gene_names,], num_clusters=4, 
+                        cores=1, show_rownames=T, return_heatmap = T)
+pdf(paste0(outputRoot, keyword, "_05.plot_pseudotime_heatmap.pdf"), width=4, height=6)
+print(p3)
+dev.off()
+
+
+
+
+
+
+
+# 6. BEAM ----
+# view branch point
+#plot_cell_trajectory(monocle_cds, color_by = "State")
+message(now(), "6. BEAM")
+BEAM_res = BEAM(monocle_cds[expressed_genes, ], 
+                branch_point=1, # branch point, important
+                cores=4)
+
+# order by q value
+BEAM_res=BEAM_res[order(BEAM_res$qval),]
+#BEAM_res=BEAM_res[, c("gene_short_name", "pval", "qval")]
+
+my_branched_heatmap = plot_genes_branched_heatmap(
+  monocle_cds[row.names(subset(BEAM_res, qval<1e-4)),], 
+  branch_point=1,
+  num_clusters=4, 
+  cores=2, 
+  branch_labels = c("Cell fate A", "Cell fate B"), #label for the two branch
+  branch_colors = c("#C7C7C7", "#F05662", "#7990C8"), #pre-branch(#979797), Cell fate A, Cell fate B colors
+  #hmcols = colorRampPalette(rev(brewer.pal(9, "PRGn")))(62), #gradient color for main fig
+  use_gene_short_name=T,
+  show_rownames=T,
+  return_heatmap = T)
+pdf(paste0(outputRoot, keyword, "_06.plot_genes_branched_heatmap.pdf"), width=8, height=7)
+my_branched_heatmap$ph_res
+dev.off()
+
+#
+#test_genes=c("TFF3","GUCA2B")
+test_genes=sig_gene_names[c(1,2,5)]
+print(test_genes)
+#
+pdf(paste0(outputRoot, keyword, "_07.plot_genes_branched_pseudotime.pdf"), width=4.3, height=3.9)
+plot_genes_branched_pseudotime(monocle_cds[test_genes,],
+                               branch_point = 1,
+                               color_by = "seurat_clusters",
+                               cell_size=0.2,
+                               # branch_labels=c(),
+                               ncol = 1)+LargeLegend(3)
+dev.off()
+
+
+
+
+
+
+#100 end of this script ----
+message(now(), "End of do monocle2 script, keyword:", keyword, 
+        ", time:", round(difftime(Sys.time(), start.time, units="sec"), 2), "sec")
+print("end of this R script")
+
+
+
+
 
 
 
 
 ========================================
+|-- 能分出三支的版本 monocle
 ----------------------------------------
+能分出三支的版本： https://www.jianshu.com/p/12ce02a032f9
+
+#找到差异基因
+monocle_cds
+sample_expressed_genes <-  row.names(subset(fData(monocle_cds),
+                                          num_cells_expressed >= 10))
+#这一步耗时很长
+clustering_DEG_genes <-
+    differentialGeneTest(monocle_cds[sample_expressed_genes,],
+          fullModelFormulaStr = '~seurat_clusters',
+          cores = 1)
+#选取前1000个基因进行拟时间轨迹分析
+#和之前的步骤一样，第一步确定合适的基因
+sample_ordering_genes <-row.names(clustering_DEG_genes)[order(clustering_DEG_genes$qval)][1:1000]
+#将基因添加到sample对象中
+monocle_cds <-setOrderingFilter(monocle_cds, ordering_genes = sample_ordering_genes)
+#第二步用DDRTree进行降维
+monocle_cds <-reduceDimension(monocle_cds, method = 'DDRTree')
+#第三步构建拟时间曲线
+monocle_cds <-orderCells(monocle_cds)
+# monocle_cds <-orderCells(monocle_cds, root_state = GM_state(monocle_cds))
+
+#这一步出图
+plot_cell_trajectory(monocle_cds, color_by = "Hours")
+
 
 
 

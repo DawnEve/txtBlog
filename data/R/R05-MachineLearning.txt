@@ -2700,9 +2700,11 @@ legend('topright', pch=16, col=unique(iris[,5]), legend =unique(iris[,5]) )
 
 
 ========================================
-|-- NMF 非负矩阵分解 与 R 包实现
+NMF 非负矩阵分解 与 R 包实现
 ----------------------------------------
 更多原理介绍见 Math/ 线代2
+对单细胞的分群见 scSeq/adv_method.txt
+
 
 1. NMF在单细胞研究中的优势
 
@@ -2710,26 +2712,20 @@ legend('topright', pch=16, col=unique(iris[,5]), legend =unique(iris[,5]) )
 
 Chen, YP., Yin, JH., Li, WF. et al. Single-cell transcriptomics reveals regulators underlying immune cell diversity and immune subtypes associated with prognosis in nasopharyngeal carcinoma. Cell Res 30, 1024–1042 (2020). https://doi.org/10.1038/s41422-020-0374-x
 
+
 (1) 安装NMF基础包
 BiocManager::install('Biobase')
 install.packages('NMF')
 
 (2) nmf函数简介
-
-使用 NMF 的文献：https://pubmed.ncbi.nlm.nih.gov/32929364/
-Fig2(C) Cophenetic and dispersion metrics for NMF across 2 to 10 clusters with 50 runs suggest 4 stable subtypes.
-cophenetic 共表型性的
-dispersion [dɪˈspɜːʃn] n. 传播，散布；分布
-
-
 NMF包通过nmf()函数实现矩阵分解，它的用法及重要参数如下：
 > nmf(x, rank, method, seed, nrun, ...)
     x：待分解非负矩阵，数据格式可以是matrix，data.frame， ExpressionSet
     rank：分解的基数量，对于单细胞数据，可以设置为期望的细胞类型数量或表达模式数量
     method：因式分解的常用方法，这里介绍三种常用的
-    1、基于KL 散度进行度量目标函数的多重迭代梯度下降算法——brunet(默认算法)
-    2、基于欧几里得距离度量目标函数的多重迭代梯度下降算法——lee
-    3、交替最小二乘法(Alternating Least Squares(ALS))——snmf/r
+      1、基于KL 散度进行度量目标函数的多重迭代梯度下降算法——brunet(默认算法)
+      2、基于欧几里得距离度量目标函数的多重迭代梯度下降算法——lee
+      3、交替最小二乘法(Alternating Least Squares(ALS))——snmf/r
     seed：因式分解的初始化种子
     nrun：运行次数
 
@@ -2795,162 +2791,32 @@ runtime(t5)   # elapsed: 2.363
 
 
 
+2. 文献复现
+使用 NMF 的文献：https://pubmed.ncbi.nlm.nih.gov/32929364/
+Fig2(C) Cophenetic and dispersion metrics for NMF across 2 to 10 clusters with 50 runs suggest 4 stable subtypes.
+cophenetic 共表型性的
+dispersion [dɪˈspɜːʃn] n. 传播，散布；分布
+
+(1) 最佳分类的确定
+nmf_res <- nmf(tcga_log2fpkm, ranks=2:10, nrun=50)
+plot(nmf_res)
 
 
-2. 对 pbmc3k 数据做 NMF 
+(2) 轮廓图
+res_3 <- nmf(tcga_log2fpkm, ranks=2:10, nrun=50)
+pdf(paste0(outputRoot, keyword, "_03_rank_3.silhouette.pdf"), width=5.5, height=5.5)
+# no color
+#sil_3=silhouette(res_3)
+#plot(sil_3)
 
-(1) 基于PCA分解的降维聚类
-library(Seurat)
-library(tidyverse)
-library(NMF)
-rm(list = ls())
- 
-## 创建seurat对象
-pbmc <- Read10X_h5("pbmc.h5")
-pbmc <- CreateSeuratObject(pbmc, project = "pbmc", min.cells = 3, min.features = 500)
-pbmc$percent.mt <- PercentageFeatureSet(pbmc, pattern = "^MT-")
-pbmc <- subset(pbmc, percent.mt<20)
-pbmc <- NormalizeData(pbmc) %>% FindVariableFeatures() %>% ScaleData(do.center = F)
- 
-## 使用pca的分解结果降维聚类
-pbmc <- RunPCA(pbmc)
-set.seed(219)
-pbmc.pca <- RunUMAP(pbmc, dims = 1:15) %>% FindNeighbors(dims = 1:15) %>% FindClusters()
- 
-## 结果可视化
-p <- DimPlot(pbmc.pca, label = T)   ggsci::scale_color_igv()
-ggsave("pbmc_pca.png", p, width = 9, height = 6)
-p <- FeaturePlot(pbmc.pca, features = c('CD3D', 'CD3E', 'MS4A1', 'CD79A', 'GNLY', 'NKG7', 'CD14', 
-                                        'FCGR3A', 'PPBP', 'FCER1A', 'CD4', 'CD8A'), ncol = 4)
-ggsave("pbmc_pca_markers.png", p, width = 12, height = 8)
-
-
-
-(2) 基于NMF分解的降维聚类
-## 高变基因表达矩阵的分解
-# pbmc大体可分成T，B，NK，CD14 Mono，CD16 Mono，DC，Platelet等类型，考虑冗余后设置rank=10
-vm <- pbmc@assays$RNA@scale.data
-
-## ==> 直接做 NMF 会报错，因为 起始矩阵有负数。
-# 错误: NMF::nmf - Input matrix x contains some negative entries.
-# 过滤
-vm[vm < 0] <- 0 #负数设置为 0
-dim(vm)
-vm <- vm[apply(vm, 1, var) > 0, ] #全是0的行去掉
-dim(vm)
-
-
-res <- nmf(vm, 10, method = "snmf/r", seed = 'nndsvd')  #这一步大约20-60min
-# 其他例子中用到的参数： nmf(data, rank = r, nrun = 1, seed = 'ica', method = 'nsNMF') #nsNMF更慢，需要2个小时
-# # 默认交替最小二乘法(Alternating Least Squares(ALS))——snmf/r  
-# 参数rank=，是期望的细胞亚群数量
-
-runtime(res)
-#    用户     系统     流逝 
-#1063.147   78.019 1139.831 
-
-# 查看结果：
-plot(t(coef(res) ), 
-     col= scObj$seurat_clusters)
-head(basis(res))
-
-
-
-## 分解结果返回suerat对象
-pbmc@reductions$nmf <- pbmc@reductions$pca
-pbmc@reductions$nmf@cell.embeddings <- t(coef(res))    
-pbmc@reductions$nmf@feature.loadings <- basis(res)  
- 
-## 使用nmf的分解结果降维聚类
-set.seed(219)
-pbmc.nmf <- RunUMAP(pbmc, reduction = 'nmf', dims = 1:10) %>% 
-  FindNeighbors(reduction = 'nmf', dims = 1:10) %>% FindClusters(resolution = 0.8)
-
-## 结果可视化  
-p <- DimPlot(pbmc.nmf, label = T)   ggsci::scale_color_igv()
-ggsave("pbmc_nmf.png", p, width = 9, height = 6)
-p <- FeaturePlot(pbmc.nmf, features = c('CD3D', 'CD3E', 'MS4A1', 'CD79A', 'GNLY', 'NKG7', 'CD14', 
-                                        'FCGR3A', 'PPBP', 'FCER1A', 'CD4', 'CD8A'), ncol = 4)
-ggsave("pbmc_nmf_markers.png", p, width = 12, height = 8)
-
-
-
-(3) NMF因子可解释性探索
-对比PCA分析的结果，NMF虽然毫不逊色，但是它的运行时间更长。（1min vs 1h）
-
-我们为什么要用NMF呢？一个很重要的原因是NMF的因子可解释性更强，每个因子贡献度最大的基因基本代表了某种或某个状态细胞的表达模式，相比差异分析得到marker基因更有代表性。
-
-
-(4) NMF因子与细胞类型的关系
-## 人工定义细胞类型
-pbmc.nmf$celltype <- pbmc.nmf$seurat_clusters
-pbmc.nmf$celltype <- recode(pbmc.nmf$celltype,
-                            '1' = "B cells", 
-                            '5' = "NKs", 
-                            '10' = "CD8  T", 
-                            '6' = "CD8  T", 
-                            '4' = "CD4  T",
-                            '9' = "CD4  T", 
-                            '0' = "CD4  T", 
-                            '3' = "CD4  T", 
-                            '7' = "CD4  T", 
-                            '2' = "CD14  Mono",
-                            '8' = "CD14  Mono", 
-                            '11' = "CD16  Mono", 
-                            '12' = "DCs", 
-                            '13' = "Platelet", 
-                            '14' = "Unknown")
-p <- DimPlot(pbmc.nmf, group.by = 'celltype', label = T, label.size = 3) 
-    +  ggsci::scale_color_npg(alpha = 0.6)
-ggsave("pbmc_nmf_celltype.png", p, width = 9, height = 6)
-
-
-
-## 查看细胞因子上的荷载
-tmp <- data.frame(t(coef(res)), check.names = F)
-colnames(tmp) <- paste0("factor", 1:ncol(tmp))
-pbmc.nmf <- AddMetaData(pbmc.nmf, metadata = tmp) #给 str(pbmc.nmf@meta.data) 添加若干列
-
-p4 <- FeaturePlot(pbmc.nmf, features = paste0("factor", 1:11), ncol = 4); p4
-#ggsave("pbmc_nmf_factors.png", p4, width = 12, height = 8)
-
-## 查看细胞主成分上的荷载
-p5 <- FeaturePlot(pbmc.nmf, features = paste0("PC_", 1:12), ncol = 4); p5
-#ggsave("pbmc_nmf_PCs.png", p, width = 12, height = 8)
-
-# 对比上下两张图，很容易发现NMF的因子比PCA的PC轴解释性更强。
-
-
-
-
-## (6) 提取celltype的signatures ----
-## 提取每个因子贡献度最大的20个基因
-f <- extractFeatures(res, 20L)
-f <- lapply(f, function(x) rownames(res)[x])
-f <- do.call("rbind", f)
-View(t(f) )
-#DT::datatable(t(f))
-
-NMF的11个因子中，很容易发现我们对细胞进行分类的marker基因，是不是很神奇？
-
-
-
-
-
-
-
-
-
-
-ref:
-单细胞分析之NMF(非负矩阵分解) https://www.plob.org/article/27713.html
-
-单细胞数据分析——非负矩阵分解（NMF）识别功能模块 https://blog.csdn.net/m0_47675572/article/details/131169434
-    对于细胞分群效果不理想，如上皮细胞存在异质性等，可以考虑使用非负矩阵分解（NMF）的方式去定义元程序（meta program，即功能模块）和元标签（meta label，即功能基因集）。
-
-https://www.bilibili.com/video/BV1K3411x7J8/
-
-https://cloud.tencent.com/developer/article/1806266
+#set color
+sil_3C=sortSilhouette( silhouette(res_3) )
+df1=sil_3C
+df1=head(df1, n=nrow(df1)) |> as.data.frame()
+plot(sil_3C, 
+     col=(df1$cluster+1),
+     main=attr(sil_3C, "call") |> deparse() )
+dev.off()
 
 
 
@@ -2958,35 +2824,595 @@ https://cloud.tencent.com/developer/article/1806266
 
 
 ========================================
-聚类 及 最佳聚类数的确定 (轮廓系数 silhouette  ) //toto
+|-- NMF 非负矩阵分解 聚类，及效果评价: 一致性聚类（consensus）
+----------------------------------------
+1、NMF方法简介
+NMF（Non-negative Matrix Factorization，非负矩阵分解）是一种矩阵分解方法，最早是在1999年Nature杂志刊登的由D.D.Lee和H.S.Seung两位科学家提出的一个对非负矩阵研究的成果。
+
+NMF的目标：
+给定一个所有元素均为非负的矩阵V，维数为n*m。要寻找到两个非负矩阵W和H，使得尽可能满足V=WH。其中W维数为n*r，H维数为r*m。
+
+NMF的算法思想：
+NMF的目标不是找到使得V=WH严格成立的矩阵分解，而是使得V和WH尽可能接近。这就需要构造一个代价函数J(V,W,H)，满足V和WH越接近，J越小。然后可以根据J本身的连续性、凹凸性等特征，使用恰当的优化方法，最终得到符合条件的W和H。
+
+其中，代价函数J可以取很多种，这里介绍两种：
+
+
+(1) 2范数距离：J=||V-WH||。
+2范数距离定义如下：
+使用拉格朗日KKT方法来寻找最优解，每次迭代公式如下：
+当W和H是一个稳定点时，迭代收敛。
+
+(2) KL距离：J=D(V||WH)。
+KL距离定义如下：
+使用拉格朗日KKT方法来寻找最优解，每次迭代公式如下：
+当W和H是一个稳定点时，迭代收敛。
+
+
+
+
+
+2、NMF聚类应用
+
+有一个数据集，共m个样本，每个样本维度为n，构成了矩阵X，大小为n*m，即每一列为一个样本。
+
+使用NMF方法，寻找到了W和H，使得X=WH。其中，X的第i列，就等于W乘以H的第i列，可以这样理解，H的第i列的第j个元素，相当于W的第j列的权重，X的第i列就是W的每一列与权重的乘积的求和。或者说，W的每一列相当于一个基向量，H的每一列相当于坐标向量。这样，就将原本样本的n维，转换成了r 维，r 维的每个元素对应一个基向量的坐标。因此，将原本对X聚类的问题，通过降维，转化为了对H聚类的问题。接下来就可以使用经典的聚类方法，比如k均值等。
+
+
+
+(1) 问题1：最佳点的选取
+https://cloud.tencent.com/developer/article/1936854
+
+library(NMF)
+coad.log2fpkm.enengy <- enengyTurExp##
+ranks <- 2:10
+estim.coad <- nmf(coad.log2fpkm.enengy,ranks, nrun=50)
+duplicated(colnames(coad.log2fpkm.enengy))
+
+#Estimation of the rank: Quality measures computed from 10 runs for each value of r.
+plot(estim.coad) ## 重要的图
+
+具体怎么选择rank，官方文档是这样建议的：
+
+(Brunet2004) proposed to take the first value of r for which the cophenetic coefficient starts decreasing, (Hutchins2008) suggested to choose the first value where the RSS curve presents aninflection point, and (Frigyesi2008) considered the smallest value at which the decrease in the RSS is lower than the decrease of the RSS obtained from random data.
+
+文章用了三个指标：cophenetic, dispersion 和silhouette。判断最佳rank值的准则就是，cophenetic值随K变化的最大变动的前点，上面结果中cophenetic值在rank为4-5时是第一个变化最大的拐点，所以选择最佳rank值为4。文章中也是4。
+
+
+
+#再次NMF,rank=4
+seed = 2020820
+nmf.rank4 <- nmf(coad.log2fpkm.enengy, 
+                 rank = 4, 
+                 nrun=50,
+                 seed = seed, 
+                 method = "brunet")
+
+#设置颜色
+jco <- c("#2874C5","#EABF00","#C6524A","#868686")
+index <- extractFeatures(nmf.rank4,"max") 
+sig.order <- unlist(index)
+NMF.Exp.rank4 <- coad.log2fpkm.enengy[sig.order,]
+NMF.Exp.rank4 <- na.omit(NMF.Exp.rank4) #sig.order有时候会有缺失值
+group <- predict(nmf.rank4) # 提出亚型
+table(group)
+consensusmap(nmf.rank4,
+             labRow = NA,
+             labCol = NA,
+             annCol = data.frame("cluster"=group[colnames(NMF.Exp.rank4)]),
+             annColors = list(cluster=c("1"=jco[1],"2"=jco[2],"3"=jco[3],"4"=jco[4])))
+
+从结果来看，分4个亚群还是可以的。
+
+文章中只给出了consensus matrix这个图（如下）。
+
+
+
+
+
+(2)问题2：所以说NMF本身只是特征压缩的算法，想要聚类还要再KMEANS是吗？
+在R中，你可以使用predict函数来获取NMF模型的分类结果。但是，需要注意的是，NMF本身并不是一个分类方法，而是一个数据压缩和可视化的工具。如果你想用NMF进行分类，你可能需要先将数据转换为适合NMF处理的形式，然后再将NMF的输出作为分类算法的输入。
+
+1A) 使用predict函数获取分类结果
+group <- predict(nmf.rank4) # 提出亚型 **
+
+
+1B) R中使用NMF进行数据压缩，然后用其他分类算法（例如k-means）来获取分类结果
+library(NMF)
+nmf_model <- NMF(df, num.basis = 5, seed = 123)
+ 
+# 提取分解得到的特征矩阵
+features <- nmf.basis(nmf_model)
+ 
+# 使用k-means对特征矩阵进行分类
+library(cluster)
+km_model <- kmeans(features, centers = 3) # 假设我们分成3类
+ 
+# 获取分类结果
+predictions <- km_model$cluster
+ 
+# 输出分类结果
+print(predictions)
+
+
+
+
+
+
+
+
+
+
+
+========================================
+|-- NMF 对 TCGA AML 聚类实例
+----------------------------------------
+3. 聚类实例
+(0) 输入矩阵: 如TCGA表达数据框 log2(FPKM + 1)矩阵
+# load fpkm
+fpkm=read.table(paste0(outputRoot, "../TCGA-LAML.htseq_fpkm.tsv"), 
+                row.names = 1, header = T, check.names = F )
+fpkm[1:3,1:4]
+dim(fpkm) # 60483   151
+
+# rm last A or B, to be the same as clin
+colnames(fpkm) = sapply( colnames(fpkm), function(x){
+  substr(x, 1, nchar(x)-1)
+} ) |> as.character()
+
+
+# load gene anno
+anno=read.table(paste0(outputRoot, "../gencode.v22.annotation.gene.probeMap"), row.names = 1, header = T )
+anno[1:3,]
+dim(anno) # 60483     5
+
+## load clinic
+clin=read.table(paste0(outputRoot, "../survival_LAML_survival.txt"), 
+                row.names = 1, 
+                header = T, sep="\t", check.names = F )
+clin[1:3, ]
+dim(clin) #200 10
+
+
+## connect
+patient = intersect( colnames(fpkm), rownames(clin))
+length(patient) # 151
+
+fpkm = fpkm[,patient]
+dim(fpkm) #60483   151
+
+clin = clin[patient,]
+dim(clin) #151  10
+
+fpkm = as.matrix(fpkm)
+identical(rownames(clin), colnames(fpkm)) #T
+
+#colnames(meta)[c(1,3)] = c("event","time") #OS, OS.time
+
+
+
+
+(0B) 单因素筛选，缩小基因集合
+# tableS3.txt是这篇文章的附表三，里面是免疫相关的基因，有2006个。
+# https://www.ncbi.nlm.nih.gov/pmc/articles/PMC8377979/#MOESM3
+# 为了缩小一下基因数量，我选了免疫相关的基因，并做了批量单因素cox
+
+# 下文仅做了单因素cox筛选
+
+## 1) 基因筛选 ----
+# rm genes whose 0 acounts for >= 1/4 of all cells
+dim(fpkm) #60483   151
+fpkm = fpkm[apply(fpkm, 1, function(x){ sum(x==0) < 0.25 *ncol(fpkm)} ), ]
+dim(fpkm) # 32273   151
+
+#tmp = read.table("tables3.txt",header = T)[,1]
+#exp = exp[rownames(exp)%in%tmp,]
+
+
+## 2)批量单因素cox ----
+#cs = rownames(surv_cox(fpkm, clin, pvalue_cutoff = 0.001))
+
+library(survival)
+# res.cox<-coxph(Surv(time,status)~age+sex+ph.ecog,data=lung)
+
+symbol="SCCPDH"
+dif=clin[,c("OS", "OS.time")]
+dif$val= fpkm[ anno[which(anno$gene==symbol), ] |> rownames(), , drop=F] |> colSums()
+head(dif)
+#res.cox <- coxph(Surv(time, status) ~ age, data = )
+res.cox <- coxph(Surv(OS.time, OS) ~ val, data =dif )
+res.cox
+summary(res.cox)
+summary(res.cox)$logtest['pvalue']
+summary(res.cox)$waldtest['pvalue']
+
+
+
+## 批量单因素cox回归分析
+# 总结做单因素cox回归分析的特征
+#covariates <- c("age", "sex", "bili", "albumin", "copper", "alk.phos", "ast", "trig", "platelet", "protime", "stage")
+covariates <- unique(anno$gene)
+covariates |> head()
+
+# 分别对每一个变量，构建生存分析的公式
+#univ_formulas <- sapply(covariates, function(x) as.formula(paste('Surv(OS.time, OS)~', x)))
+formulas_cox=as.formula( paste('Surv(OS.time, OS)~val') )
+
+# 循环对每一个特征做cox回归分析
+univ_models <- sapply( covariates, function(symbol){
+  #message("symbol:", symbol)
+  dif=clin[,c("OS", "OS.time")]
+  if(!(symbol %in% anno$gene)){
+    return(-1)
+  }else{
+    enId=anno[which(anno$gene==symbol), ] |> rownames()
+    if( any(enId %in% rownames(fpkm)) ){
+      enId=enId[ enId %in% rownames(fpkm) ]
+      dif$val= fpkm[enId, , drop=F] |> colSums()
+      #print(head(dif, n=2))
+      res.cox = coxph( formulas_cox, data = dif )
+      return( summary(res.cox)$waldtest['pvalue'] |> signif(digits=2) |> as.numeric() )
+      #return(summary(res.cox)$logtest['pvalue'] |> as.numeric())
+    }
+    return(-1)
+  }
+} ) # 16:39-->16:41
+# filter -1
+length(univ_models) #58387
+univ_models=univ_models[univ_models!= -1]
+length(univ_models) #31721
+hist(univ_models, n=1000)
+#
+# rm non-sig
+table(univ_models<0.05)
+#FALSE  TRUE 
+#24807  6914
+#
+table(univ_models<0.01)
+#FALSE  TRUE 
+#28489  3232
+#
+cs=univ_models[univ_models<0.01]
+length(cs) #3232
+tail(cs, n=3)
+#SLC10A3    G6PD   CLIC2 
+#3.5e-03 6.8e-06 6.4e-03 
+
+# subset fpkm, change emsemble to gene symbol
+nmf.input <- t(sapply(names(cs), function(symbol){
+  enId=anno[which(anno$gene==symbol), ] |> rownames()
+  enId = enId[enId %in% rownames(fpkm) ]
+  fpkm[enId , , drop=F] |> colSums()
+})) |> as.data.frame()
+#
+dim(nmf.input) #3232  151
+nmf.input[1:3, 1:3] #row as gene, col as cell
+#             TCGA-AB-2949-03 TCGA-AB-2943-03 TCGA-AB-2851-03
+#U6                  23.706904       22.027168      22.7322383
+
+
+
+
+
+
+
+
+
+
+(1) data filter
+cell_info = data.frame(cname=colnames(nmf.input),
+           time=clin$OS.time,
+           status=clin$OS,
+           row.names = 1)
+dim(cell_info) #151   2
+head(cell_info)
+
+# sub time NA as -1
+cell_info$time=ifelse(is.na(cell_info$time), -1, cell_info$time)
+
+#
+#gene_info = data.frame(gene=rownames(X), gid=1:4, row.names = 1)
+#head(gene_info)
+
+#
+pdf(paste0(outputRoot, keyword, "_03_A00_fpkm.hist.pdf"), width=5, height=4)
+hist(nmf.input |> unlist(), n=1000)
+hist(log2(nmf.input+1) |> unlist(), n=1000, ylim=c(0, 2000))
+abline(v=4, col="red", lty=2)
+#
+nmf.input.log2=log2(nmf.input+1)
+nmf.input.log2[nmf.input.log2>4]=4
+hist(nmf.input.log2 |> unlist(), n=1000, ylim=c(0, 2000))
+dev.off()
+
+#
+library(NMF)
+pdf(paste0(outputRoot, keyword, "_03_A01_log2fpkmP1.heatmap.pdf"), width=12, height=7)
+opar=par(mfrow = c(1, 2))
+#aheatmap(X, annCol = cell_info, annRow = gene_info)
+aheatmap(nmf.input.log2, annCol = cell_info)
+#aheatmap(nmf.input, scale = "column")
+aheatmap(nmf.input.log2, scale = "row")
+par(opar)
+dev.off()
+
+
+
+
+(2) 假设聚成5类
+注意：1)输入变量不能有负数，2)行的和不能为0。
+# vm[is.na(vm)]=0
+vm[vm<0]=0
+vm= vm[rowSums(vm) > 0, ]
+
+library(NMF)
+library(pheatmap)
+res = nmf(nmf.input.log2, rank=5, nrun = 10) # 1min
+res
+
+
+
+(3) coefmap: 混合系数矩阵(cell)
+# NMF结果的混合系数矩阵可以使用coefmap()函数进行绘制。
+# 该函数默认添加2个注释通道用来展示从最佳拟合结果中获得的簇（聚类数）和一致性矩阵的层次聚类。
+
+pdf(paste0(outputRoot, keyword, "_03_A02_res.coefmap.pdf"), width=12, height=4.5)
+opar = par(mfrow = c(1, 2))
+# coefmap from multiple run fit: includes a consensus track
+coefmap(res)
+# coefmap of a single run fit: no consensus track
+coefmap(minfit(res))
+par(opar)
+dev.off()
+
+
+# 自动注释的通道可以使用tracks=NA进行隐藏
+pdf(paste0(outputRoot, keyword, "_03_A03_res.tracks_EQ_NA.coefmap.pdf"), width=12, height=5)
+opar = par(mfrow = c(1,2))
+# removing all automatic annotation tracks
+coefmap(res, tracks = NA)
+# customized plot
+coefmap(res, Colv = 'euclidean',
+        main = "Metagene contributions in each sample", labCol = NULL,
+        annRow = list(Metagene = ":basis"), 
+        #annCol = list(':basis', Class = a, Index = c),
+        annCol = list(':basis', #status = clin$OS, 
+                      year=clin$OS.time/365 ),
+        annColors = list(Metagene = 'Set2'), 
+        info = TRUE)
+par(opar)
+dev.off()
+
+
+
+
+
+(4) basismap: 基底矩阵(gene)
+pdf(paste0(outputRoot, keyword, "_03_A04_res.basismap.pdf"), width=8, height=6)
+opar <- par(mfrow=c(1,2))
+# default plot
+basismap(res)
+# customized plot: only use row special annotation track.
+basismap(res, main="Metagenes", 
+         #annRow=list(d, e), 
+         tracks=c(Metagene=':basis'))
+par(opar)
+dev.off()
+
+
+
+
+(5) consensusmap:一致性矩阵
+pdf(paste0(outputRoot, keyword, "_03_A05_res.consensusmap.pdf"), width=12, height=6)
+opar <- par(mfrow=c(1,2))
+# default plot
+consensusmap(res)
+# customized plot
+consensusmap(res, 
+             annCol=cell_info, 
+             annColors=list(status='orange'), 
+             labCol='sample ', 
+             main='Cluster stability', 
+             sub='Consensus matrix and all covariates')
+dev.off()
+
+
+
+=> 报错：Error: C stack usage  7969332 is too close to the limit
+https://stackoverflow.com/questions/14719349/error-c-stack-usage-is-too-close-to-the-limit
+
+$ ulimit -s # print default
+8192
+$ R --slave -e 'Cstack_info()["size"]'
+   size 
+8388608
+
+> Cstack_info()
+      size    current  direction eval_depth 
+   7969177      29216          1          2 
+
+$ ulimit -s
+8192
+
+修改:
+$ ulimit -s 16384 # enlarge stack limit to 16 megs
+$ R --slave -e 'Cstack_info()["size"]'
+    size 
+16777216 
+
+$ ulimit -s 102400 #设置为 105512M=105G?
+$ ulimit -s 5512384 #设置为 5512M=5G
+$ ulimit -s unlimited #采用
+
+$ /usr/local/bin/R --slave -e 'Cstack_info()["size"]'
+    size 
+62632755
+
+
+
+
+==> 权宜的解决方法：调整完毕后需要在终端中执行R脚本，这样才会应用到刚刚修改的配置信息
+$ ulimit -s unlimited
+$ R or Rscript xx.R #run in shell R then
+
+
+
+
+
+
+
+
+
+
+4. 同一方法，计算多个rank的结果
+res2_7 <- nmf(nmf.input.log2, 2:7, nrun=10, .options='v') #17:43->17:48
+
+pdf(paste0(outputRoot, keyword, "_04_res.rank2_7.consensusmap.pdf"), width=18, height=11)
+consensusmap(res2_7)
+plot(res2_7) #绘制7个折线图，判断最佳分类数
+dev.off()
+
+
+
+
+
+
+
+
+5. 单个rank，多种方法 ----
+res_methods <- nmf(nmf.input.log2, rank = 6, method = list('lee', 'brunet', 'nsNMF'), nrun=10) #17:52->17:55
+class(res_methods)
+# rank=6, good but 5 cluster
+# rank=5, very bad;
+
+#res.multi.method <- nmf(dat, 3, list('brunet', 'lee', 'ns'), seed=222)
+compare(res.multi.method) #输出表格
+
+
+pdf(paste0(outputRoot, keyword, "_05_res.methods3.consensusmap.pdf"), width=12, height=11)
+consensusmap(res_methods)
+dev.off()
+
+#
+#demo('aheatmap')
+
+
+
+
+
+
+
+6. 判断最佳分组：TCGA 样本作为输入
+
+dim(nmf.input.log2)
+nmf.input.log2[1:4, 1:4]
+
+
+## (1)第一步：尝试多个rank ----
+library(NMF)
+ranks <- 2:10
+estim <- lapply(ranks, function(r){
+  message("ranks=", r)
+  # nrun设置为5以免运行时间过长
+  fit <- nmf(nmf.input.log2, r, nrun = 5, seed = 4, method = "lee") 
+  
+  list(fit = fit, consensus = consensus(fit), .opt = "vp",coph = cophcor(fit))
+})
+
+names(estim) <- paste('rank', ranks)
+sapply(estim, '[[', 'coph')
+
+# 绘制随rank变化的cophenetic系数图
+#png("Cophenetic coefficient for seleting optimal nmf rank.png")
+pdf(paste0(outputRoot, keyword, "_06_A01_Cophenetic_coefficient.ranks.line.pdf"), width=5, height=4)
+par(cex.axis=1.2)
+plot(ranks, sapply(estim, '[[', 'coph'), 
+     xlab="", ylab="", type="b", 
+     col="red", lwd=3, xaxt="n")
+axis(side = 1, at=1:10)
+title(xlab="number of clusters", ylab="Cophenetic coefficient", 
+      mgp=c(2.2,1,0),
+      cex.lab=1.3)
+dev.off()
+# 理论上，根据 cophenetic 得分选择rank=N，因为它是拐点，但是常常也选择N-1作为最佳。
+
+
+
+
+## (2)第二步：筛选signature ----
+# 对样本聚类分组的基因
+rank <- 6
+seed <- 2019620
+#rownames(nmf.input) <- gsub("Signature","Sig",rownames(nmf.input)) # 行名简化
+mut.nmf <- nmf(nmf.input.log2, 
+               rank = rank, 
+               seed = seed, 
+               method = "lee")
+mut.nmf
+index <- extractFeatures(mut.nmf, "max")
+sig.order <- unlist(index) #只有第n个基因用于后续分析
+
+
+
+
+
+## (3)第三步：使用挑选出的signature再次NMF ----
+sig.order=sig.order[!is.na(sig.order)] #rm NA
+nmf.input.log2_b=nmf.input.log2[sig.order, ]
+dim(nmf.input.log2_b) #69 151
+#
+library(pheatmap)
+pdf(paste0(outputRoot, keyword, "_06_A03_select_signature.pheatmap.pdf"), width=5, height=9)
+pheatmap(nmf.input.log2_b, cluster_rows = T, cluster_cols = T,
+         #scale = "row",
+         show_colnames = F,
+         clustering_method = "ward.D2",
+         main="")
+dev.off()
+
+#
+mut.nmf2 <- nmf(nmf.input.log2_b, 
+                rank = rank, 
+                seed = seed, 
+                method = "lee") 
+group <- predict(mut.nmf2) # 提出亚型 **====>>> 对样本的分类结果，可用于后续分析
+table(group)
+length(group) #151 cells
+
+pdf(paste0(outputRoot, keyword, "_06_A04_select_signature.consensusmap.pdf"), width=4.5, height=5)
+consensusmap(mut.nmf2)
+consensusmap(mut.nmf2, 
+             annCol=cell_info, 
+             annColors=list(status='orange'), 
+             labCol='sample ', 
+             main='Cluster stability', 
+             sub='Consensus matrix and all covariates')
+dev.off()
+
+
+
+
+
+ref:
+https://blog.csdn.net/HappyRocking/article/details/42212155
+
+
+
+
+
+========================================
+聚类 及 最佳聚类数的确定 //toto
 ----------------------------------------
 无监督聚类最常见的三种方法：K-means, 层次聚类, SOM 聚类。
+
+自组织映射(SOM clustering)
+
+
 
 silhouette [ˌsɪluˈet] n. （浅色背景衬托出的）暗色轮廓；剪影，（尤指人脸的）侧影；（人的）体形，（事物的）形状 v. 把……画成黑色轮廓像，使现出影像（或轮廓）
 
 
-
-
-
-
-2. 最佳聚类数的确定
-
-(1) 轮廓系数Average silhouette method
-
-轮廓系数是类的密集与分散程度的评价指标。
-
-s(i) = [b(i) -a(i)] / max(a(i), b(i))
-
-a(i)是测量组内的相似度，b(i)是测量组间的相似度。
-s(i)范围从-1到1，值越大说明组内吻合越高，组间距离越远——也就是说，轮廓系数值越大，聚类效果越好。
-
-
-require(cluster)
-library(factoextra)
-fviz_nbclust(dataset, kmeans, method = "silhouette")
-
-
-
+一致性聚类(consensus clustering)
 
 
 
@@ -2997,9 +3423,89 @@ https://zhuanlan.zhihu.com/p/24546995
 
 
 ========================================
-|-- 无监督聚类：K-means //todo
+|-- 无监督聚类：K-means 及其可视化
 ----------------------------------------
 无监督聚类最常见的三种方法：K-means, 层次聚类, SOM 聚类。
+
+1. 示例：对鸢尾花分类
+(1) 执行就一行
+dat=t(iris[,1:4]) #一列一个样本
+colnames(dat)=paste0(iris$Species, "_", 1:ncol(dat))
+dat[, 1:4]
+#             setosa_1 setosa_2 setosa_3 setosa_4
+#Sepal.Length      5.1      4.9      4.7      4.6
+#Sepal.Width       3.5      3.0      3.2      3.1
+#Petal.Length      1.4      1.4      1.3      1.5
+#Petal.Width       0.2      0.2      0.2      0.2
+
+
+# 选作：最佳分类个数
+factoextra::fviz_nbclust( t(dat), kmeans, method = "silhouette")
+
+
+# 聚类：对传入矩阵的行进行聚类
+kclu=kmeans(t(dat),centers=3)
+
+
+(2)查看和保存结果
+str(kclu)
+kclu$cluster |> head()
+
+plot(kclu$withinss, type="o")
+
+kclu.df=data.frame(
+	type=kclu$cluster |> names(),
+	cluster=kclu$cluster |> as.numeric(),
+	row.names = 1
+)
+head(kclu.df)
+write.table(kclu.df, paste0(outputRoot, keyword, "_01_0.Kmeans_cluster.txt"))
+
+
+
+(3) 可视化
+library("factoextra")
+fviz_cluster(kclu, data = t(dat))
+
+
+
+(4) 和真实标签比较
+> table(kclu$cluster, iris$Species)
+
+    setosa versicolor virginica
+  1     50          0         0
+  2      0          2        36
+  3      0         48        14
+
+
+(5) 最佳分类数的确定：轮廓系数法
+
+# 辅助确定最佳聚类数 4.7*2.6
+factoextra::fviz_nbclust( t(DPAU_2), kmeans, method = "silhouette")
+
+library(cluster)
+set.seed(101)
+pamclu=cluster::pam(t(DPAU_2), k=7)
+
+{
+	pdf( paste0(outputRoot, keyword, "_01_2.K_means.7.silhouette.pdf"), width=6, height=5)
+	df1=silhouette(pamclu)
+	df1=head(df1, n=nrow(df1)) |> as.data.frame()
+	plot(silhouette(pamclu), 
+		 col = df1$cluster +1,
+		 #xlim=c(min(df1$sil_width)-0.2, max(df1$sil_width))+0.2,
+		 main=NULL)
+	dev.off()
+}
+
+解释：
+> ?cluster::pam
+基于划分的聚类算法主要有K均值和K中心点算法，其他的方法都是这两种算法的变种。
+Partitioning Around Medoids
+Description: Partitioning (clustering) of the data into k clusters “around medoids”, a more robust version of K-means.
+
+
+
 
 
 
@@ -3161,6 +3667,377 @@ https://blog.csdn.net/songyi10/article/details/126536239
 
 
 
+========================================
+|** 聚类算法常用内部评价指标：轮廓系数、肘部法（Elbow Method）、Gap statistic、Calinski-Harabasz Index（CH）、Davies-Bouldin Index（DB）
+----------------------------------------
+https://blog.csdn.net/xiaolong124/article/details/126345406
+
+
+Determining optimal number of clusters (k)
+* Elbow Method
+* Silhouette Method
+* Gap Static Method
+
+
+
+
+
+========================================
+|-- 无监督聚类数的评价: 肘部法（Elbow Method）
+----------------------------------------
+肘部法（Elbow Method）：该方法通过绘制聚类簇数与聚类内部平方和（Within-cluster Sum of Squares，WCSS）之间的关系图来确定最佳簇数。通过观察图形的肘部弯曲点，选择该点对应的簇数作为最佳簇数。
+
+
+x=t(iris[,1:4])
+
+library(cluster)
+wss = sapply(1:10, function(k){kmeans( t(x), k)$tot.withinss})
+plot(1:10, wss, type="b", xlab="Number of clusters", ylab="WCSS")
+
+
+
+
+
+========================================
+|-- 无监督聚类数的评价: Gap statistic
+----------------------------------------
+
+library(cluster)
+set.seed(101)
+# define the clustering function
+pam1 <- function(x,k){
+  list(cluster = pam(x,k, cluster.only=TRUE))
+}
+
+# calculate the gap statistic
+mat=t(iris[, 1:4])
+pam.gap= clusGap(t(mat), FUN = pam1, K.max = 8, B=50)
+
+# plot the gap statistic accross k values
+plot(pam.gap, main = "Gap statistic for the 'Leukemia' data")
+
+
+选择方法：达到最大值的最小k。
+
+Formally written, we would pick the smallest k satisfying the following condition:  
+Gap(k)≥Gap(k+1)−s(k+1), where  s(k+1)  is the simulation error for Gap(k+1).
+
+
+
+
+ref:
+https://compgenomr.github.io/book/clustering-grouping-samples-based-on-their-similarity.html#how-to-choose-k-the-number-of-clusters
+
+
+
+
+========================================
+|-- 无监督聚类数的评价: 轮廓系数(silhouette Coefficient)
+----------------------------------------
+==> 文章实例
+https://pubmed.ncbi.nlm.nih.gov/32929364/ Fig2
+(A) Consensus heatmaps showing the robustness of sample classification using non-negative matrix factorization (NMF) clustering. 
+(B) Silhouette plot displaying the composition (n = number of samples) and stability (average width) of clustering. 
+
+
+
+1.轮廓系数 （Silhouette Coefficient）
+对于一个样本集合，它的轮廓系数是所有样本轮廓系数的平均值。
+轮廓系数的取值范围是[-1,1]，同类别样本距离越相近，不同类别样本距离越远，分数越高。
+
+(1) 定义
+https://baike.baidu.com/item/轮廓系数/17361607
+
+针对某个样本的轮廓系数s为：
+	s=(b-a) / max(a,b)
+	其中,a表示某个样本与其所在簇内其他样本的平均距离，
+	b表示某个样本与其他簇样本的平均距离。
+
+聚类总的轮廓系数SC为：
+	SC=累加(i=1,N, si) / N;
+
+
+
+
+(2)R包cluster::silhouette 函数 计算方法
+n个样本分成 defined if 2 <= k <= n-1 才可以计算轮廓系数。
+
+For each observation i, the silhouette width s(i) is defined as follows:
+Put a(i) = average dissimilarity between i and all other points of the cluster to which i belongs (if i is the only observation in its cluster, s(i) := 0 without further calculations). For all other clusters C, put d(i,C) = average dissimilarity of i to all observations of C. The smallest of these d(i,C) is b(i) := \min_C d(i,C), and can be seen as the dissimilarity between i and its “neighbor” cluster, i.e., the nearest one to which it does not belong. Finally,
+
+s(i) := ( b(i) - a(i) ) / max( a(i), b(i) ).
+
+silhouette.default() is now based on C code donated by Romain Francois (the R version being still available as cluster:::silhouette.default.R).
+
+Observations with a large s(i) (almost 1) are very well clustered, a small s(i) (around 0) means that the observation lies between two clusters, and observations with a negative s(i) are probably placed in the wrong cluster.
+
+
+a)可见轮廓系数的值是介于 [-1,1] ，越趋近于1代表内聚度和分离度都相对较优。
+将所有点的轮廓系数求平均，就是该聚类结果总的轮廓系数：Average silhouette
+a(i) ：i向量到同一簇内其他点不相似程度的平均值
+b(i) ：i向量到其他簇的平均不相似程度的最小值
+
+注：不相似程度 == (某种)距离
+
+b)最佳聚类数的确定
+轮廓系数是类的密集与分散程度的评价指标。
+
+s(i) = [b(i) -a(i)] / max(a(i), b(i))
+
+a(i)是测量i与组内的相似度，b(i)是测量i与组间的相似度。
+s(i)范围从-1到1，值越大说明组内吻合越高，组间距离越远——也就是说，轮廓系数值越大，聚类效果越好。
+
+注意：
+* 上部分中所说的“距离”，指的是不相似度（区别于相似度）。“距离“值越大，代表不相似度程度越高。
+* 欧氏距离就满足这个条件，而Tanimoto Measure 则用做相似度度量。
+* 当簇内只有一点时，我们定义轮廓系数s(i)为0。
+
+
+
+
+
+
+
+
+2. 代码实现: python 核心代码
+    def silhouette_coefficient(self, data_num, cluster, dis_matrix):
+        sum = 0
+        for index in range(data_num):
+            cluster_in = 0
+            cluster_in_num = 0
+            cluster_out = 0
+            cluster_out_num = 0
+            for class_index in range(len(cluster)):
+                if index == class_index:
+                    continue
+                elif cluster[index] == cluster[class_index]:
+                    cluster_in_num += 1
+                    cluster_in += dis_matrix[index][class_index]
+                else:
+                    cluster_out_num += 1
+                    cluster_out += dis_matrix[index][class_index]
+            sum += (cluster_out / cluster_out_num - cluster_in / cluster_in_num) / max(cluster_out / cluster_out_num,
+                                                                                       cluster_in / cluster_in_num)
+        sc = sum / data_num
+        return sc
+
+轮廓系数为-1时表示聚类结果不好，
+为+1时表示簇内实例之间紧凑，
+为0时表示有簇重叠。
+
+轮廓系数越大，表示簇内实例之间紧凑，簇间距离大，这正是聚类的标准概念。
+- 簇内的样本应该尽可能相似。
+- 不同簇之间应该尽可能不相似。
+
+
+对于簇结构为凸的数据轮廓系数值高，而对于簇结构非凸需要使用DBSCAN进行聚类的数据，轮廓系数值低。
+因此，轮廓系数不应该用来评估不同聚类算法之间的优劣，比如Kmeans聚类结果与DBSCAN聚类结果之间的比较。
+
+
+应用
+轮廓系数广泛应用于各种聚类算法的性能评估和比较，如K均值聚类、层次聚类、DBSCAN等。它也被用于确定最佳的聚类数目和帮助解释聚类结果。
+
+
+https://blog.csdn.net/xiaolong124/article/details/126345406
+
+
+
+
+
+
+3. R代码实现
+(1) 
+a)Average silhouette values for k-medoids clustering for k values between 2 and 7
+library(cluster)
+set.seed(101)
+mat= t(iris[,1:4])
+pamclu=cluster::pam(t(mat),k=3)
+plot(silhouette(pamclu),main=NULL)
+
+
+
+b)Silhouette values for k-medoids with k=2 to 7
+
+mat= t(iris[,1:4])
+Ks=sapply(2:7, function(i){
+  summary(silhouette(pam(t(mat),k=i)))$avg.width
+})
+plot(2:7,Ks,xlab="k",ylab="av. silhouette",type="b", pch=19)
+下跌前的最后一个最高点对应的k。
+
+
+
+
+
+(2)示例: pam, k=7
+
+library(factoextra)
+fviz_nbclust(dataset, kmeans, method = "silhouette")
+
+
+library(cluster)
+set.seed(101)
+pamclu=cluster::pam(t(DPAU_2), k=7)
+
+{
+	pdf( paste0(outputRoot, keyword, "_01_2.K_means.7.silhouette.pdf"), width=6, height=5)
+	df1=head(df1, n=nrow(df1)) |> as.data.frame()
+	plot(silhouette(pamclu), 
+		 col = df1$cluster +1,
+		 #xlim=c(min(df1$sil_width)-0.2, max(df1$sil_width))+0.2,
+		 main=NULL)
+	dev.off()
+}
+
+
+
+(3) kmeans 的轮廓系数图, kmeans, k=5
+dat=DPAU_2
+kclu=kmeans(t(dat), centers=5)
+
+#kclu$clustering=kclu$cluster #add this list element: clustering
+distance=dist( t(dat) )  #10min
+kclu.sil=sortSilhouette( silhouette(kclu$cluster, dist = distance ) )
+#rownames(kclu.sil)=colnames(dat)
+head(kclu.sil)
+#     cluster neighbor sil_width
+#1226       1        2 0.1124117
+#991        1        2 0.1113240
+pdf( paste0(outputRoot, keyword, "_01_2.K_means.5.silhouette.pdf"), width=6, height=5)
+df1=kclu.sil
+df1=head(df1, n=nrow(df1)) |> as.data.frame()
+plot(kclu.sil, 
+     col = rev(df1$cluster+1),
+     do.col.sort=F,
+     main=NULL)
+
+factoextra::fviz_silhouette(kclu.sil)
+dev.off()
+
+
+
+# 方法2: 
+library(cluster)
+library(factoextra)
+sil = silhouette(kmeans(x,3))
+summary(sil)
+fviz_silhouette(sil)
+
+
+Silhouette Method of kmeans: https://medium.com/codesmart/r-series-k-means-clustering-silhouette-794774b46586
+例1 x:number of cluster, y:Average Silhouette Scores
+silhouette_score <- function(k){
+  km <- kmeans(df, centers = k, nstart=25)
+  ss <- silhouette(km$cluster, dist(df))
+  mean(ss[, 3])
+}
+k <- 2:10
+avg_sil <- sapply(k, silhouette_score)
+plot(k, type='b', avg_sil, xlab='Number of clusters', ylab='Average Silhouette Scores', frame=FALSE)
+
+# 另一种画法，图同上
+factoextra::fviz_nbclust(df, kmeans, method='silhouette')
+
+
+# Actual Clustering
+km.final <- kmeans(df, 2)
+## Total Within cluster sum of square
+
+km.final$tot.withinss
+[1] 113217528521
+## Cluster sizes
+
+km.final$size
+[1] 375  65
+
+data$cluster <- km.final$cluster
+head(data, 6)
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+(4) 层次聚类的轮廓系数图, hclust, k=5
+
+dat=DPAU_2
+distance=dist( t(dat) ) 
+out.hclust=hclust(distance, method = "ward.D2")
+
+# visual
+pdf( paste0(outputRoot, keyword, "_01_2.hclust.4.silhouette.pdf"), width=6, height=5)
+plot(out.hclust,
+     #hang = -1,
+     #hang=0.1,
+     hang=0,
+     ann=F, axes=F, 
+     labels = F, #no labels
+     cex = 0.7,
+     col = "grey20")
+rect.hclust( out.hclust, k=4, border = c("#FF6B6B", "#4ECDC4", "#556270", "deeppink") )
+# sil plot
+out.hclust.D2=cutree(out.hclust, k=4)
+sil_hclust=sortSilhouette(silhouette(out.hclust.D2, distance))
+rownames(sil_hclust) = rownames(as.matrix(distance))[attr(sil_hclust, 'iOrd')]
+#
+plot(sil_hclust, 
+     col=out.hclust.D2[rownames( head(sil_hclust, n=nrow(sil_hclust)) )]+1,
+     main=attr(sil_hclust, "call") |> deparse() )
+dev.off()
+
+
+
+不绘制样本名：
+mat=t(iris[,1:4])
+hcl=hclust(dist(t(mat)))
+plot(hcl,labels = FALSE, hang= -1)
+#rect.hclust(hcl, h = 80, border = "red")
+rect.hclust(hcl, k=3, border = c("red", "orange", "cyan") )
+
+
+
+
+
+
+
+(5) NMF 的轮廓图
+http://www.idata8.com/rpackage/NMF/silhouette.NMF.html
+plot(silhouette(res))
+
+示例: 
+pdf(paste0(outputRoot, keyword, "_03_rank_3.silhouette.pdf"), width=5.5, height=5.5)
+# no color
+#sil_3=silhouette(res_3)
+#plot(sil_3)
+
+#set color
+sil_3C=sortSilhouette( silhouette(res_3) )
+df1=sil_3C
+df1=head(df1, n=nrow(df1)) |> as.data.frame()
+plot(sil_3C, 
+     col=(df1$cluster+1),
+     main=attr(sil_3C, "call") |> deparse() )
+dev.off()
+
+
+
+
+
+ref:
+[1] Rousseeuw, P.J. (1987) Silhouettes: A graphical aid to the interpretation and validation of cluster analysis. J. Comput. Appl. Math., 20, 53-65.
+[2] chapter 2 of Kaufman and Rousseeuw (1990), see the references in plot.agnes.
+
+
+
+
 
 
 
@@ -3168,21 +4045,51 @@ https://blog.csdn.net/songyi10/article/details/126536239
 
 
 ========================================
-|-- 无监督的一致性聚类（consensus）的通俗理解： 随机抽样后，两两样品在一个分类的概率
+|-- 无监督聚类数的评价：一致性聚类（consensus），通俗理解： 随机抽样后，两两样品在一个分类的概率
 ----------------------------------------
 1. 初次遇到
 
 https://pubmed.ncbi.nlm.nih.gov/32929364/ Fig.2A
 
-文献：
+原始文献：
 Monti,S., et al. (2003) Consensus clustering: A resampling-based method for class discovery and visualization of gene microarray, Mach Learn,52, 91-118
+
+
+
+
+
 
 
 
 2. 作用
 https://blog.csdn.net/nixiang_888/article/details/122224201
 
+当我们听到一致性聚类的时候，有时候我们会认为这是一种聚类方法。如果您也这样想的话，那就完全入坑了。下面我们来说一下，什么是一致性聚类（consensus）?
+
 一致性聚类是为不同的聚类算法，选择最优的聚类数量（K）。其具体的原理是：通过改变聚类的数据集（里面的数据全部从原始数据中抽取，也可以理解为是原始数据的子集），考量任意一个数据在不同样本中聚类表现的一致性来确定聚类的参数是否合适。
+
+
+第一步：从原始数据中随机抽取子集，当然子集的规模不能太小，最好是原始数据集的半数以上（这是我自己理解的，数据太少聚类的话没有意义），子集要尽量多，以确保里面的每一个数据都多次被取到（100次以上），然后，我们选择任意一种聚类方法，可以使K-means或者层次聚类，对所有的数据子集分别聚类。
+
+第二步：这一步的关键在于建立一个新的矩阵：consensus matrix， 我们之前说聚类的输入通常是一个distance matrix。 那么consensus matrix怎么建呢？假设有D_1，D_2...D_n 这N个数据，那么consensus matrix是 N × N N \times NN×N 的方阵。
+D1 D2 D3… Dn
+D1 C11 C12 C13… C1n
+D2 C21 C22 C23… C2n
+… Cij
+Dn Cn1 Cn2 Cn3… Cnn
+
+其中，Cij 代表的是在多次的聚类过程中，数据 Di 和数据 Dj 被聚到同一类里面的概率（该值在0和1之间），
+等于1代表100次聚类这两个数据点全部在同一个类里面，
+等于0代表代表100次聚类全部不在同一个类里面。
+
+我们取不同的k值时，显然聚类效果不同，越是干净，越是效果好；不好的聚类参数则表现出越是有很多“噪音”。
+
+有些情况下，仅仅通过看不同参数下consensus matrix聚类出来的热图就基本可以判断怎么选择了。当然还有根据consensus matrix得来的数学参数用于评估聚类的稳定性的
+
+
+
+
+
 
 
 
@@ -3290,11 +4197,6 @@ R语言 建立一个简单的神经网络 https://geek-docs.com/r-language/r-tut
 
 
 
-
-
-
-
-
 ========================================
 ****** 广告 ******
 ----------------------------------------
@@ -3355,9 +4257,6 @@ https://mp.weixin.qq.com/s?__biz=MjM5MDc0NDU2NQ==&mid=2650376120&idx=1&sn=bac5fd
 ========================================
 |-- 文章实例：解决的问题，及用到的机器学习方法
 ----------------------------------------
-
-
-
 1.[4.856, 2019] 核磁图像提高宫颈癌淋巴结转移的诊断效果
 
 Radiother Oncol. 2019 Jun 25;138:141-148. doi: 10.1016/j.radonc.2019.04.035. [Epub ahead of print]

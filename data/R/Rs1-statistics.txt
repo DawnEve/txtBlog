@@ -2012,15 +2012,643 @@ https://blog.csdn.net/jiabiao1602/article/details/39338181
 
 
 
+========================================
+cox回归的全称 cox proportional hazards regression model
+----------------------------------------
+1. 概述
+COX回归模型，又称“比例风险回归模型(proportional hazards model，简称Cox模型)”，以生存结局和生存时间为因变量，可同时分析众多因素对生存期的影响。
+
+通过KM和log-rank test检验的方法，只能够处理单个二分类因素的生存数据。当想探究多个因素或者离散型变量对生存时间的影响时，我们就需要借助于cox回归方法。
+
+
+
+2.用到的R函数：
+数据类型处理和转换：
+	factor()
+	as.numeric()
+	as.formula()
+	ldply()
+Cox 回归：
+	Surv()
+	coxph()
+
+library(survival)
+data(lung)
+#分析离散型变量
+res.cox1 = coxph(Surv(time, status) ~ sex, data=lung)
+#分析连续性变量
+res.cox2 = coxph(Surv(time, status) ~ age, data=lung)
+#分析多个变量
+res.cox3 = coxph(Surv(time, status) ~ age + sex + ph.ecog, data=lung)
+
+summary(res.cox3)
+
+这里的exp(coef)就是HR（hazard ratio，风险率），lower .95和upper .95为95%的置信区间
+
+首先查看likehood ration test , wald test, logrank test三种检验方法的p值，p值小于0.05, 这个回归方程是统计学显著的。说明在这么多自变量中包含了对生存时间具有影响的因素。
+
+然后查看每个自变量的p值，可以看到sex和ph.ecog这两个变量的p值小于0.05，而age的p值大于0.05, 说明sex和ph,ecog这两个变量对生存时间的影响更加显著。
+
+最后查看自变量的coef等指标，coef就是偏回归系数，exp(coef)就是HR。
+- sex的HR值小于1，该数据集中1=male, 2= female, HR表示的是数值大的风险/数值小的风险，在这里就是female/ male， 说明female死亡的相对较低。HR的值约为0.58, 说明female的死亡风险只占了male的58%， 相比male, female的死亡风险降低了42%。
+- ph.ecog的HR值大于1， 说明随着ph.ecog数值的增加，死亡风险会增加。
+
+
+可视化结果
+sex_df = with(lung,
+	data.frame(
+		sex=c(1,2),
+		age=rep(mean(age, na.rm=T, 2)),
+		ph.ecog=c(1,1)
+	)
+)
+sex_df
+fit=surfit(res.cox, newdata=sex_df)
+ggsurvplot(fit, data=lung, pval="HR:0.58", legend.labs=c("Sex=1", "Sex=2"))
+
+
+
+
+
+3. 题目
+为研究某基因（代号ABC）的表达与患者肿瘤恶性程度的相关性，于是回顾性收集了80例患者的信息和肿瘤样品的石蜡切片，通过免疫组化检测了ABC在肿瘤组织中的表达，数据见Excel“基线资料数据-作业”，请你帮忙进行以下分析：
+
+- 单因素Cox回归分析各个因素与患者生存的关系。
+- 多因素Cox回归分析各个因素与患者生存的关系。
+
+
+
+ref:
+https://blog.csdn.net/weixin_43569478/article/details/108079548
 
 
 
 ========================================
+|-- 单因素cox回归分析: Univariate Cox
 ----------------------------------------
+univariate [ˌjuːnɪˈveərɪɪt] adj. [数] 单变量的
+
+
+1. 单个单因素cox回归分析
+
+# 安装并加载所需的R包
+# install.packages("rms") #?
+library(survival)
+
+# 加载数据 Or TCGA AML dataset
+pbc <- pbc[pbc$status %in% c(0, 1), ]
+
+res.cox <- coxph(Surv(time, status) ~ age, data = pbc)
+res.cox
+## Call:
+## coxph(formula = Surv(time, status) ~ age, data = pbc)
+## 
+##         coef exp(coef) se(coef)     z        p
+## age -0.08115   0.92205  0.02305 -3.52 0.000431
+## 
+## Likelihood ratio test=14.04  on 1 df, p=0.0001786
+## n= 257, number of events= 25
+
+★ 结果显示P值是有意义的。
+
+summary(res.cox)
+## Call:
+## coxph(formula = Surv(time, status) ~ age, data = pbc)
+## 
+##   n= 257, number of events= 25 
+## 
+##         coef exp(coef) se(coef)     z Pr(>|z|)    
+## age -0.08115   0.92205  0.02305 -3.52 0.000431 ***
+## ---
+## Signif. codes:  0 ‘***’ 0.001 ‘**’ 0.01 ‘*’ 0.05 ‘.’ 0.1 ‘ ’ 1
+## 
+##     exp(coef) exp(-coef) lower .95 upper .95
+## age    0.9221      1.085    0.8813    0.9647
+## 
+## Concordance= 0.712  (se = 0.042 )
+## Likelihood ratio test= 14.04  on 1 df,   p=2e-04
+## Wald test            = 12.39  on 1 df,   p=4e-04
+## Score (logrank) test = 13.16  on 1 df,   p=3e-04
+
+★ exp(coef)就是风险比HR的意思；Lower95和upper95是HR置信区间的上下限。
+
+HR值大于1，提示暴露因素是阳性事件发生的促进因素；
+HR值小于1，提示暴露因素是阳性事件发生的阻碍因素；
+HR值等于1，提示暴露因素对阳性事件的发生无影响。
+
+
+summary(res.cox)
+> summary(res.cox)$logtest['pvalue']
+     pvalue 
+0.001839014
+
+
+
+
+
+
+2. 批量单因素cox回归分析
+
+一般我们的关注的特征都比较多，用上面的代码一个一个来做单因素cox回归分析效率太低了，下面我们来看看如何批量做单因素cox回归分析。
+
+# 总结做单因素cox回归分析的特征
+covariates <- c("age", "sex", "bili", "albumin", "copper", "alk.phos", "ast", "trig", "platelet", "protime", "stage")
+
+# 分别对每一个变量，构建生存分析的公式
+univ_formulas <- sapply(covariates,
+                        function(x) as.formula(paste('Surv(time, status)~', x)))
+
+# 循环对每一个特征做cox回归分析
+univ_models <- lapply( univ_formulas, function(x){coxph(x, data = pbc)})
+
+# 提取HR，95%置信区间和p值
+univ_results <- lapply(univ_models,
+                       function(x){ 
+                         x <- summary(x)
+                         #获取p值
+                         p.value<-signif(x$wald["pvalue"], digits=2)
+                         #获取HR
+                         HR <-signif(x$coef[2], digits=2);
+                         #获取95%置信区间
+                         HR.confint.lower <- signif(x$conf.int[,"lower .95"], 2)
+                         HR.confint.upper <- signif(x$conf.int[,"upper .95"],2)
+                         HR <- paste0(HR, " (", 
+                                      HR.confint.lower, "-", HR.confint.upper, ")")
+                         res<-c(p.value,HR)
+                         names(res)<-c("p.value","HR (95% CI for HR)")
+                         return(res)
+                       })
+
+# 转换成数据框，并转置
+res <- t(as.data.frame(univ_results, check.names = FALSE))
+as.data.frame(res)
+##          p.value HR (95% CI for HR)
+## age      0.00043   0.92 (0.88-0.96)
+## sex         0.38    0.58 (0.17-1.9)
+## bili     8.6e-06      1.2 (1.1-1.3)
+## albumin     0.02    0.3 (0.11-0.83)
+## copper   0.00014            1 (1-1)
+## alk.phos    0.71            1 (1-1)
+## ast        0.061            1 (1-1)
+## trig       0.073            1 (1-1)
+## platelet    0.05            1 (1-1)
+## protime     0.42     0.8 (0.46-1.4)
+## stage     0.0059        2 (1.2-3.3)
+write.table(as.data.frame(res), file="univariate_cox_result.txt", quote=F, sep="\t")
+
+
+
+ref: https://www.jianshu.com/p/d431eda56d32
+https://blog.csdn.net/weixin_43569478/article/details/108079548
+
+
+
+
 
 
 ========================================
+多因素cox回归分析：Multivariate Cox
 ----------------------------------------
+multivariate [ˌmʌltɪˈveərɪɪt] adj. [数][统计] 多元的；[数] 多变量的 n. 多元；多变量
+
+前面是单独看每一个特征是否跟生存相关，而多因素cox回归是同时检测多个特征是否与生存相关。
+一般先通过单因素cox回归分析找出与生存显著相关的特征，然后基于这些特征再去做多因素cox回归分析，或者做LASSO分析。
+
+1. 示例
+res.cox <- coxph(Surv(time, status) ~ age + bili + albumin + copper + platelet + stage, data =  pbc)
+x <- summary(res.cox)
+x
+## Call:
+## coxph(formula = Surv(time, status) ~ age + bili + albumin + copper + 
+##     platelet + stage, data = pbc)
+## 
+##   n= 183, number of events= 19 
+##    (74 observations deleted due to missingness)
+## 
+##               coef exp(coef)  se(coef)      z Pr(>|z|)   
+## age      -0.077663  0.925277  0.027365 -2.838  0.00454 **
+## bili      0.258600  1.295115  0.079748  3.243  0.00118 **
+## albumin  -1.290163  0.275226  0.787549 -1.638  0.10138   
+## copper    0.004702  1.004713  0.002130  2.208  0.02725 * 
+## platelet  0.003291  1.003296  0.002755  1.195  0.23225   
+## stage     0.736305  2.088205  0.332024  2.218  0.02658 * 
+## ---
+## Signif. codes:  0 ‘***’ 0.001 ‘**’ 0.01 ‘*’ 0.05 ‘.’ 0.1 ‘ ’ 1
+## 
+##          exp(coef) exp(-coef) lower .95 upper .95
+## age         0.9253     1.0808   0.87696    0.9763
+## bili        1.2951     0.7721   1.10771    1.5142
+## albumin     0.2752     3.6334   0.05879    1.2884
+## copper      1.0047     0.9953   1.00053    1.0089
+## platelet    1.0033     0.9967   0.99789    1.0087
+## stage       2.0882     0.4789   1.08932    4.0031
+## 
+## Concordance= 0.879  (se = 0.029 )
+## Likelihood ratio test= 34.32  on 6 df,   p=6e-06
+## Wald test            = 31.38  on 6 df,   p=2e-05
+## Score (logrank) test = 42.22  on 6 df,   p=2e-07
+
+★ stage，copper ，bili及age变量有显著意义
+p值多用 wald test。
+
+
+pvalue=signif(as.matrix(x$coefficients)[,5],2)
+HR=signif(as.matrix(x$coefficients)[,2],2)
+low=signif(x$conf.int[,3],2)
+high=signif(x$conf.int[,4],2)
+
+multi_res=data.frame(p.value=pvalue,
+                     HR=paste(HR," (",low,"-",high,")",sep=""),
+                     stringsAsFactors = F
+)
+multi_res
+##          p.value               HR
+## age       0.0045 0.93 (0.88-0.98)
+## bili      0.0012    1.3 (1.1-1.5)
+## albumin   0.1000 0.28 (0.059-1.3)
+## copper    0.0270          1 (1-1)
+## platelet  0.2300          1 (1-1)
+## stage     0.0270      2.1 (1.1-4)
+
+write.table(multi_res, file="multivariate_cox_result.txt", quote=F, sep="\t")
+
+
+
+
+
+
+
+========================================
+|-- 单因素 cox 回归、多因素 cox 回归、生存分析、logistic回归的区别与联系
+----------------------------------------
+1. KM生存分析、COX回归分析都是分析与病人预后有关的因素的方法，那它们两者之间有什么区别呢？
+
+我们来回忆一下KM生存分析的一般流程是根据某种因素比如性别、肿瘤组织学分级、某个基因表达量的高低将样本分成几组，然后比较各个组别之间的生存的差别，计算p值。那就要求我们要分析的变量无论本身是分类变量也好，还是转化成分类变量也好，总之得是分类变量，这样才能对样本进行分组嘛，而且无论你是根据性别分为两组也好，还是根据组织学分级分为3-4组也好，KM生存分析一次只能分析一个变量对生存的影响，也就是说，KM生存分析本质也是一个单变量生存分析。
+
+这样，把KM简单拉一遍之后，COX回归分析的优势就很明显了：
+	首先它能同时分析多个因素与生存的关系，也就是多因素COX回归分析；
+	其次，它能分析连续型变量对生存的影响，我们示例数据中分析的就是基因在样本中的表达情况（连续型变量）对样本生存的影响。
+
+
+
+
+2. KM生存分析是单变量分析，单因素COX分析也是单变量分析，那它们的分析结果一样吗？
+
+library(survival)
+library(survminer)
+
+# dataset
+data(lung)
+head(lung)
+
+dat=lung
+str(dat)
+vars=colnames(dat)
+
+#1) 批量单因素cox分析----
+#设置p值的阈值
+pfilter <- 0.05   
+#新建空白数据框
+uniresult <- data.frame()
+# 使用for循环对输入数据中的100个基因依次进行单因素COX分析
+#单因素COX回归分析中p值＜0.05的基因，其分析结果输入到之前新建的空白数据框uniresult中
+for(i in 4:length(vars)){
+  message(i, vars[i])
+  unicox <- coxph(Surv(time = time, event = status) ~ dat[,i], data = dat)
+  unisum<- summary(unicox)
+  pvalue <- round(unisum$coefficients[,5],3)
+  if(pvalue<pfilter){
+    uniresult <- rbind(uniresult,
+                       cbind(gene=vars[i],
+                             HR=unisum$coefficients[,2],
+                             L95CI=unisum$conf.int[,3],
+                             H95CI=unisum$conf.int[,4],
+                             pvalue=unisum$coefficients[,5]
+                       ))
+  }
+}
+
+#
+cox_gene=uniresult$gene
+cox_gene
+# [1] "age"       "sex"       "ph.ecog"   "ph.karno"  "pat.karno"
+
+
+#2) 对显著的做多因素cox回归分析 ----
+multicox <- coxph(
+  #Surv(time = time,event = status) ~ cox_gene, 
+  as.formula( paste0("Surv(time = time,event = status) ~ ", paste(cox_gene, collapse = "+") ) ), 
+  data = dat)
+multisum <- summary(multicox)
+# 多因素COX回归分析是同时分析多个元素（这里是12个基因）与样本的生存的关系，
+# 所以代码相对于单因素COX回归分析会更加简单，不用for循环，一行代码就搞定了
+#gene <- colnames(unigene)[3:ncol(unigene)]
+multiresult <- data.frame(gene=cox_gene,
+                          HR=multisum$coefficients[,2],
+                          L95CI=multisum$conf.int[,3],
+                          H95CI=multisum$conf.int[,4],
+                          pvalue=multisum$coefficients[,5])
+multiresult
+multiresult2 <- subset(multiresult, pvalue<pfilter)
+multiresult2
+multiresult2$gene #"sex"     "ph.ecog"
+#保存多因素COX回归分析结果
+write.csv(multiresult, file = "result/multiresult.csv",row.names = F)
+
+# 对于单因素、多因素COX回归分析的结果，我们可以绘制森林图来进行可视化 //todo
+
+
+#3) 批量生存分析 ----
+keep=c()
+for(i in 4:length(vars)){
+  message(i, vars[i])
+  tmp=dat[, c(2,3, i)]
+  tmp$group=ifelse(tmp[,3]>median(tmp[,3], na.rm = T), "high", "low")
+  fit=survfit(Surv(time, status)~group, data=tmp)
+  p=surv_pvalue(fit=fit, data=tmp, method = "log-rank")[,2]
+  if(p<0.05){ keep=c(keep, i) }
+}
+km_gene=vars[keep]
+km_gene
+# [1] "sex"       "ph.ecog"   "ph.karno"  "pat.karno"
+
+
+比较显著的基因/因素：
+	单因素 cox 回归: cox_gene #[1] "age"       "sex"       "ph.ecog"   "ph.karno"  "pat.karno"
+	多因素 cox 回归: multiresult2$gene #"sex"     "ph.ecog"
+	生存分析: km_gene # [1] "sex"       "ph.ecog"   "ph.karno"  "pat.karno"
+
+KM生存分析、单因素COX回归分析筛选出的基因不完全相同。
+这是因为，虽然都是分析某个因素，但他们内部的算法是不同的，所以结果有出入也很正常。我们根据文献选择更适合自己研究的分析即可。
+
+基因表达量不是连续变量吗？怎么才能用KM生存分析呢？按某个值（比如中位数）分为高低两组。
+
+
+
+
+
+
+3. 为什么大多数生信文章中都是先进行单因素COX回归分析再进行多因素COX回归分析？
+
+我们进行单因素COX回归分析的时候一次只纳入一个变量，就不能排除有这么一种情况存在：变量a影响生存其实是通过影响变量b而导致的，也就是说变量a其实对生存没有直接的影响。那么，就需要将单因素COX 分析筛选出来的显著变量继续纳入多因素COX比例风险模型，从而排除掉类似变量a的这种混杂因素。
+
+单因素COX回归分析像是对变量的一个初步筛选，多因素COX回归分析筛选出来的才是独立预后因素。
+
+
+
+
+
+
+
+
+
+4. 为什么需要用 Lasso + Cox 生存分析模式
+
+https://blog.51cto.com/u_16099177/10026925
+
+单因素Cox分析筛选关联的变量，然后构建多因素Cox模型进一步确认变量与生存的关联是否独立。
+
+多因素方差分析结果和单因素有时候相反？
+但这样做没有考虑变量之间多重共线性的影响，有时候我们甚至会发现单因素和多因素Cox回归得到的风险比是矛盾的，这是变量之间多重共线性导致模型失真的结果。并且，(Least absolute shrinkage and selection operator)回归首先进行变量的筛选，然后构建Cox回归模型分析预后影响，这就是Lasso + Cox 生存分析模式。
+
+因此，当变量之间存在多重共线性，或者变量个数大于样本量时，需要用Lasso(Least absolute shrinkage and selection operator)回归首先进行变量的筛选，然后构建Cox回归模型分析预后影响，这就是Lasso + Cox 生存分析模式。
+
+
+
+具体代码参考：
+# Lasso & cox
+outputRoot="E:\\research\\AML-SCCPDH\\output\\"
+keyword="AML_Lasso_Cox"
+
+library(survival)
+library(survminer)
+
+
+#1. load data----
+# (1)fpkm ====
+fpkm=read.table(paste0(outputRoot, "../TCGA-LAML.htseq_fpkm.tsv"), 
+                row.names = 1, header = T, check.names = F )
+fpkm[1:3,1:4]
+dim(fpkm) # 60483   151
+
+# rm last A or B, to be the same as clin
+colnames(fpkm) = sapply( colnames(fpkm), function(x){
+  substr(x, 1, nchar(x)-1)
+} ) |> as.character()
+
+
+# (2) gene anno ====
+anno=read.table(paste0(outputRoot, "../gencode.v22.annotation.gene.probeMap"), row.names = 1, header = T )
+anno[1:3,]
+dim(anno) # 60483     5
+
+# (3) clinic ====
+clin=read.table(paste0(outputRoot, "../survival_LAML_survival.txt"), 
+                row.names = 1, 
+                header = T, sep="\t", check.names = F )
+clin[1:3, ]
+dim(clin) #186 10
+#rm NA in time
+clin=clin[which(!is.na(clin$OS.time)),]
+dim(clin) #186 10
+#
+table(clin$OS.time |> is.na())
+table(clin$OS.time < 0)
+table(clin$OS.time == 0)
+
+# sub 0 to 1
+hist(clin$OS.time, n=100)
+clin$OS.time = ifelse(clin$OS.time==0, 1, clin$OS.time)
+
+
+
+# (4) connect ====
+patient = intersect( colnames(fpkm), rownames(clin))
+length(patient) # 140
+
+fpkm = fpkm[,patient]
+dim(fpkm) #60483   140
+
+clin = clin[patient,]
+dim(clin) #140  10
+
+fpkm = as.matrix(fpkm)
+identical(rownames(clin), colnames(fpkm)) #T
+
+#colnames(meta)[c(1,3)] = c("event","time") #OS, OS.time
+
+# fpkm add gene as rownames
+geneslist=anno$gene |> unique()
+fpkm2=t(sapply(geneslist, function(symbol){
+  enId=anno[which(anno$gene==symbol), ] |> rownames()
+  enId=enId[ enId %in% rownames(fpkm) ]
+  fpkm[enId, , drop=F] |> colSums()
+}) ) |> as.data.frame()
+dim(fpkm2)
+fpkm2[1:3, 1:4]
+
+
+
+
+
+#2. Cox & Lasso ----
+
+## (1) 批量单因素cox 回归----
+vars=rownames(fpkm2)
+head(vars)
+length(vars) #58387
+#设置p值的阈值
+pfilter <- 0.05
+#新建空白数据框
+uniresult <- data.frame()
+# 使用for循环对输入数据中的100个基因依次进行单因素COX分析
+#单因素COX回归分析中p值＜0.05的基因，其分析结果输入到之前新建的空白数据框uniresult中
+for(i in 1:length(vars)){
+  symbol=vars[i]
+  # rm all 0, and sd=9 rows
+  if(0 == var( unlist(fpkm2[symbol,]) ) ){
+    next;
+  }
+  dif=data.frame(
+    time=clin$OS.time,
+    status=clin$OS,
+    val=fpkm2[symbol,] |> as.numeric() 
+  )
+  #print(head(dif))
+  
+  unicox <- coxph(Surv(time = time, event = status) ~ val, data = dif)
+  unisum<- summary(unicox)
+  pvalue <- round(unisum$coefficients[,5],3)
+  if(pvalue<pfilter){
+    #message(i, "\t", symbol)
+    #message("\t sig")
+    uniresult <- rbind(uniresult,
+                       cbind(gene=symbol,
+                             HR=unisum$coefficients[,2],
+                             L95CI=unisum$conf.int[,3],
+                             H95CI=unisum$conf.int[,4],
+                             pvalue=unisum$coefficients[,5]
+                       ))
+  }
+}
+head(uniresult)
+dim(uniresult) #8977    5
+#
+cox_gene=uniresult$gene
+cox_gene |> head()
+
+
+## (2) 构建模型 Surv ====
+modleY=Surv(time=clin$OS.time, event = clin$OS) |> data.matrix()
+head(modleY)
+
+
+## (3) Lass  ====
+#install.packages("glmnet")
+library(glmnet)
+fit=glmnet(x=t(fpkm2), y=modleY, family = "cox")
+# negative event times encountered; not permitted for Cox family #time不能为0，可填充为1或2
+plot(fit)
+plot(fit, xvar="lambda", label=T)
+
+
+## (4) 十折交叉验证刷选最佳 lambda ====
+set.seed(2024)
+lasso_fit=cv.glmnet(x=t(fpkm2), y=modleY, family="cox", type.measure = "deviance", nfolds = 10)
+plot(lasso_fit)
+#plot(lasso_fit, xvar="lambda", label=T)
+lasso_fit
+#    Lambda Index Measure     SE Nonzero
+#min 0.1885    17   7.581 0.4251      23
+#1se 0.3967     1   7.874 0.4220       0
+
+
+## (5) 选择最佳 lambda 值（1se对应的 lambda）====
+lambda.1se=lasso_fit$lambda.1se
+lasso_fit$lambda.min #0.1884849
+lambda.1se #0.3967426
+
+
+## (6) 使用1se的 lambda 重新建模 ====
+model_lasso_1se = glmnet(x=t(fpkm2), y=modleY, family="cox", 
+                            type.measure = "deviance", nfolds = 10,
+                            lambda = lambda.1se )
+# 拿到建模使用的基因
+gene_1se = rownames(model_lasso_1se$beta)[as.numeric(model_lasso_1se$beta)!=0]
+#没有基因！！和第(4)步类似
+
+# 使用 min 再次建模
+model_lasso_min = glmnet(x=t(fpkm2), y=modleY, family="cox", 
+                         type.measure = "deviance", nfolds = 10,
+                         lambda = lasso_fit$lambda.min )
+# 拿到建模使用的基因
+gene_min = rownames(model_lasso_min$beta)[as.numeric(model_lasso_min$beta)!=0]
+gene_min |> length() #23个
+gene_min |> jsonlite::toJSON()
+# "UBE2Q1","MYADML","RP11-745L13.2","CTD-2194D22.3","TREML2","CCND3","RP3-486I3.7","TWIST1","MIR4285","MZT1P2","PTP4A3","CREB3","LINC00702","FIBP","RP11-522N14.2","RP11-182J1.13","SOCS1","TGIF1","TCF15","CBR1","AF064858.11","RP11-402P6.3","RP1-20I3.3"
+
+
+
+
+
+
+
+
+5. cox 回归与logistic 回归的区别
+
+(1) logistic回归 vs 线性回归
+logistic回归，与线性回归并成为两大回归，应用范围一点不亚于线性回归，甚至有青出于蓝之势。
+
+因为logistic回归太好用了，而且太有实际意义了。解释起来直接就可以说，如果具有某个危险因素，发病风险增加2.3倍，听起来多么地让人通俗易懂。线性回归相比之下其实际意义就弱了。
+
+(2) logistic 回归
+logistic 回归与线性回归恰好相反，因变量一定要是分类变量，不可能是连续变量。分类变量既可以是二分类，也可以是多分类，多分类中既可以是有序，也可以是无序。二分类logistic回归有时候根据研究目的又分为条件ogistic回归和非条件logistic回归。
+	条件 logistic 回归用于配对资料的分析，
+	非条件logistic 回归用于非配对资料的分析，也就是直接随机抽样的资料。
+无序多分类logistic回归有时候也成为多项logit 模型，有序logistic回归有时也称为累积比数logit 模型。
+
+(3) cox 回归
+cox回归，cox回归的因变量就有些特殊，因为他的因变量必须同时有2个，
+	一个代表状态，必须是分类变量，
+	一个代表时问，应该是连续变量。
+只有同时具有这两个变量，才能用cox回归分析。
+cox回归主要用于生存资料的分析，生存资料至少有两个结局变量，一是死亡状态，是活着还是死亡？二是死亡时问，如果死亡，什么时问死亡？如果活着，从开始观察到结束时有多久了？所以有了这两个变量，就可以考虑用cox回归分析。
+
+
+
+(4) 总结
+- 都可以用来筛选影响因素
+- 都有OR值或者RR值
+- 应变量不一样：Cox回归的应变量是生存时间*Cencor(结局)，而logistic回归应变量是分类资料，比如二分类。
+- 条件 logistic 回归分析与 cox 回归分析有相似的地方，
+	SAS 程序相同；
+	SPSS里面条件logistic回归分析就是借用Cox比例风险模块进行分析
+	logistic回归是cox回归的一个特例
+	当全部个体都有结局时，两者的结果（beta）是一样的。
+	cox回归可以考察生存函数，而logistic不可以。
+		补充：在SPSS里，配对logistic回归的模型，是在cox回归里完成的。
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+ref:
+1.单因素和多因素cox回归分析 https://zhuanlan.zhihu.com/p/339754573?ivk_sa=1024320u
+https://www.jianshu.com/p/0fa217a09a70
+https://blog.51cto.com/u_16099177/10026925
+https://www.jianshu.com/p/f829b9badb28
+
+
 
 ========================================
 ----------------------------------------
