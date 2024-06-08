@@ -9,6 +9,7 @@ return array (
       array('参考资料','scSeq002','html'),
       array('FAQ 及思路','scSeq003','md'),
       array('空间转录组 Spatio','spatio','html',),
+      array('过时技术-outOfDate','outOfDate','txt',),
     ),
   ),
 

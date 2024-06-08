@@ -9,6 +9,7 @@ return array (
       array('参考资料','en002','html'),
       array('FAQ','en003','html'),
       array('学英语方法论','en_method','txt'),
+      array('经典纪录片','documentary','txt'),
     ),
   ),
 

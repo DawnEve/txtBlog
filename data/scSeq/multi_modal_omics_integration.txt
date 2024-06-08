@@ -17,7 +17,7 @@ Comprehensive Integration of Single-Cell Data, Cell 2019
 CCA & singleR
 	https://www.jianshu.com/p/0887b49122eb
 
-
+Seurat团队指出CCA整合方法也可能导致过度矫正，尤其是当数据集之间大部分数据不重叠的情况下。
 
 
 2. 要解决的问题
@@ -114,6 +114,8 @@ CCA的建模目标是实现多个矩阵的共同分解。这个目的使得该�
 R code for ecological data analysis, CCA part:
 	https://userweb.eng.gla.ac.uk/umer.ijaz/bioinformatics/ecological.html
 
+Seurat CCA + Mutual Nearest Neighbor (MNN)
+
 
 (1)两个对象分别做分析后：合并后细胞是两个对象的细胞数之和，cell id会加后缀_1, _2。
 
@@ -137,19 +139,87 @@ saveRDS(scObj_intigrat, file = paste0(outputRoot, keyword, "_03_1-CCA.DPAU_RNA.S
 
 
 
+(2) 样本数量大时，更快的rpca整合步骤
+Reciprocal PCA and Reference-based integration
+
+对于大型的数据来说，CCA寻找锚点细胞的方法有时会耗时较长，比如说如果我们要整合5个数据集，那么CCA需要进行5 choose 2=10次的操作寻找两两间的锚点细胞。当数据量较大并且数据集个数继续增长时，这个计算量还是非常大的。因此Seurat开发了另外两个可用于提高运行效率和实践的方法：Reciprocal PCA (RPCA)和Reference-based integration。主要的改进集中在寻找锚点细胞的函数`FindIntegrationAnchors`中。
+
+该改进方法基本的实现思路是首先通过RPCA而非CCA来识别找到锚点细胞的低维有效空间，在确认任意两个数据集间的锚点细胞时， 将每个数据集映射到其他PCA空间，并通过相同的mutual neighborhood来选择。另外，在常规的流程中都是对所有数据集寻找两两间的锚点细胞，当合并的数据集数目非常大时，可以考虑Reference-based integration作为替代方案，即选取一个或多个数据集作为“参考”数据集，只寻找其他数据集合和参考数据集之间的锚点，而不关注其他数据集之间锚点，从而减少计算量， 比如合并5个数据集时，设置其中一个为参考，那么只需要进行4次比较操作了。
+
+https://cloud.tencent.com/developer/article/1966129
+
+library(Seurat)
+
+# 分别对每个数据集进行进行标准化并找出高变基因
+bm280k.data <- Read10X_h5("../data/ica_bone_marrow_h5.h5")
+bm280k <- CreateSeuratObject(counts = bm280k.data, min.cells = 100, min.features = 500)
+bm280k.list <- SplitObject(bm280k, split.by = "orig.ident")
+bm280k.list <- lapply(X = bm280k.list, FUN = function(x) {
+    x <- NormalizeData(x, verbose = FALSE)
+    x <- FindVariableFeatures(x, verbose = FALSE)
+})
+
+# 选择在数据集中重复的高变基因用于整合
+features <- SelectIntegrationFeatures(object.list = bm280k.list)
+
+# 分别对每个数据集进行PCA降维，用于下面的rpca方法
+bm280k.list <- lapply(X = bm280k.list, FUN = function(x) {
+    x <- ScaleData(x, features = features, verbose = FALSE)
+    x <- RunPCA(x, features = features, verbose = FALSE)
+})
+
+# 利用reference 和rpca寻找锚点细胞，进行整合
+anchors <- FindIntegrationAnchors(object.list = bm280k.list, reference = c(1, 2), reduction = "rpca", dims = 1:50)
+bm280k.integrated <- IntegrateData(anchorset = anchors, dims = 1:50)
+
+# 整合后，查看数据集的分布状况
+bm280k.integrated <- ScaleData(bm280k.integrated, verbose = FALSE)
+bm280k.integrated <- RunPCA(bm280k.integrated, verbose = FALSE)
+bm280k.integrated <- RunUMAP(bm280k.integrated, dims = 1:50)
+DimPlot(bm280k.integrated, group.by = "orig.ident")
+
+
+
 
 
 
 
 
 ========================================
-Seurat 多组学整合 WNN (加权最近邻)：Using Seurat with multimodal data: scRNA-seq & 蛋白组 CITE-seq
+Seurat 多组学整合 RPCA //todo
+----------------------------------------
+Fast integration using reciprocal PCA (RPCA)
+	https://satijalab.org/seurat/articles/integration_rpca
+
+
+
+
+
+
+
+========================================
+Seurat v4 多组学整合 WNN (加权最近邻)：Using Seurat with multimodal data: scRNA-seq & 蛋白组 CITE-seq
 ----------------------------------------
 1. 教程
 https://satijalab.org/seurat/articles/multimodal_vignette
 
 Weighted Nearest Neighbors (WNN) approach
 	https://www.cell.com/cell/fulltext/S0092-8674(21)00583-3
+
+
+
+(2) 多模式单细胞数据集的 WNN 工作流
+https://satijalab.org/seurat/articles/weighted_nearest_neighbor_analysis.html
+
+包括三个步骤
+* 每个单独模式数据的独立预处理和降维
+* 学习细胞特定模式的"权重"，并构建一个整合模式的 WNN 图形
+* 基于WNN 图的下游分析（可视化、聚类等）
+
+
+
+
+
 
 
 
@@ -174,16 +244,27 @@ DPAU_pca@assay.used="DPAU"
 scObj@reductions$pca2=DPAU_pca
 
 
+
 ## (2) [WNN] in same cell ====
+
+# Identify multimodal neighbors. These will be stored in the neighbors slot, 
+# and can be accessed using bm[['weighted.nn']]
+# The WNN graph can be accessed at bm[["wknn"]], 
+# and the SNN graph used for clustering at bm[["wsnn"]]
+# Cell-specific modality weights can be accessed at bm$RNA.weight
 scObj <- FindMultiModalNeighbors(
-  scObj, reduction.list = list("pca", "pca2"), 
-  dims.list = list(1:30, 1:10), modality.weight.name = "RNA.weight"
+  scObj, 
+  reduction.list = list("pca", "pca2"), 
+  dims.list = list(1:30, 1:10), 
+  modality.weight.name = "RNA.weight"
 ) #RNA.weight DPAU.weight
 scObj #3066
+
 #Warning messages:
 #1: Cannot add objects with duplicate keys (offending key: normPC_), setting key to 'pca2.norm_' 
 #2: In FindMultiModalNeighbors(scObj, reduction.list = list("pca", "pca2"),  :
 #   The number of provided modality.weight.name is not equal to the number of modalities. RNA.weight DPAU.weight are used to store the modality weights
+
 
 scObj <- RunUMAP(scObj, 
                  nn.name="weighted.nn", 
@@ -201,6 +282,10 @@ DimPlot(scObj, reduction = "wnn.umap", label=T, #label.size = 2.5,
 dev.off()
 
 
+
+
+ref:
+https://www.jianshu.com/p/b567188b3984
 
 
 
