@@ -33,6 +33,695 @@ cloud_tech
 
 
 
+1. 生信云平台用户需求分析
+- 快速上传/下载数据
+- 容器化的分析流程
+- 用户管理私有数据和结果
+- 报告在线交付
+	* 数据统一管理
+	* 结果动态交互
+	* 自定义分析报告
+- 数据在线分析
+	* 分析工具在线使用
+	* 零基础自主分析
+	* 分析结果统一管理
+
+
+2. 首页
+114.115.141.182/#/dashboard/  这么看，像是 Vue
+http://114.115.141.182/#/auth/register 用的华为云
+
+用户角色：
+	客户
+	销售
+	管理员
+
+积分：
+	视频消费
+	工具消费
+	评论奖励
+	充值奖励
+
+我的项目：tab页
+	项目信息
+	数据文件
+	项目任务
+	项目报告
+	咨询/评价
+	项目售后
+
+	文件管理系统（GO）：https://filebrowser.org/features
+		https://github.com/filebrowser/filebrowser
+
+首页效果：https://www.ptm-biolab-css.com.cn/cloudIndex
+
+
+
+
+
+========================================
+通过网页点击设置后运行后台耗时几天的脚本，并随时可在网页登录查看运行状态和当前输出结果，技术上怎么实现？
+----------------------------------------
+GPT 的提示汇总。
+
+- 网页点击后，ajax传给后台，触发脚本，并定时获取运行状态和输出结果
+- 在后台脚本的运行过程中，将状态和输出结果保存在数据库中。网页端定时向后台发送请求，从数据库中获取最新的状态和输出，以便用户随时查看。
+
+技术栈：
+* 任务队列：Celery 或 RQ
+* 数据库：Redis（用于任务队列），PostgreSQL/MySQL（用于存储任务状态）
+* 实时更新：WebSocket（使用Flask-SocketIO或Django Channels），或者轮询
+* 部署：Docker, Nginx, Gunicorn
+
+
+实现一个网页点击启动后台长时间运行的脚本，并允许用户随时查看运行状态和输出结果，可以通过以下技术步骤来完成：
+1.Web前端界面：
+设计一个用户友好的网页界面，包括启动任务的按钮、状态显示区域和输出结果展示区域。
+
+前端逻辑：
+使用JavaScript（或框架/库，如React, Vue.js等）处理用户的点击事件，并通过AJAX或Fetch API发送请求到后端。
+
+2.后端API：
+开发一个后端API（使用如Flask, Django, Express.js等），用于处理前端的请求，启动后台任务，并返回任务ID。
+
+3.任务队列和后台执行：
+使用任务队列（如Celery）和后台工作进程来执行长时间运行的任务。
+
+4.数据库设计：
+设计数据库模型来存储任务信息、状态和输出结果。
+
+任务状态和输出记录：
+任务在执行过程中，将状态和输出结果定期写入数据库。
+
+5.轮询机制：
+前端定时发送请求到后端API，查询任务状态和输出结果。
+
+WebSockets：
+作为轮询的替代方案，可以使用WebSockets实现服务器与客户端之间的实时通信。
+
+
+6.用户认证：
+实现用户登录和认证机制，确保用户只能访问自己的任务信息。
+
+会话管理：
+管理用户的会话，确保用户在登录状态下可以持续访问任务状态和结果。
+
+安全性：
+确保所有数据传输都通过HTTPS进行，防止敏感信息泄露。
+
+7.错误处理：
+设计错误处理逻辑，确保在任务执行出错时能够记录错误信息并通知用户。
+
+日志记录：
+实现日志记录系统，记录任务的执行细节，便于问题追踪和调试。
+
+结果展示：设计结果展示逻辑，将任务的输出结果以易读的格式展示在前端。
+
+资源管理：确保任务完成后，及时释放资源，如关闭文件、数据库连接等。
+
+前端更新UI：根据从后端获取的状态和结果更新前端UI。
+
+用户反馈：提供用户反馈机制，如任务完成通知或状态更新提示。
+
+
+8.前端和后端的分离：
+保持前端和后端的分离，通过API接口进行通信。
+
+9.API文档：
+编写清晰的API文档，便于前后端开发者理解和使用。
+
+10.测试：
+对整个系统进行彻底的测试，包括单元测试、集成测试和用户接受测试。
+通过上述步骤，可以构建一个完整的系统，允许用户通过网页启动长时间运行的后台任务，并能够随时检查任务的运行状态和输出结果。
+
+
+
+
+
+
+
+
+
+========================================
+celery(芹菜) 一个异步任务队列/基于分布式消息传递的作业队列：执行耗时任务的库
+----------------------------------------
+前置知识：redis 磁盘的IO缓存 - 内存中的数据库， 更多内容见 c/redis_note.txt
+	RabbitMQ 第三方消息
+
+1. celery 作用
+
+celery [ˈseləri] n. 芹菜
+https://www.bilibili.com/video/BV1jg4y13718/
+
+(1) 流程描述
+Celery 通过消息机制进行通信，通常使用中间人（Broker）作为客户端和Worker调节。启动一个任务，客户端向消息队列发送一条消息，然后中间人（Broker）将消息传递给一个Worker，最后由Worker进程执行中间人（Broker）分配的任务。
+
+同步：一步一步执行，一个任务执行结束再执行下一步。
+异步：就是不阻塞，遇到IO等耗时任务放异步执行，主进程继续运行，等异步啥时候有结果，啥时候返回给主进程。
+* 生成报告
+* 解析文件
+* 等耗时任务
+* 发短信：依赖于短信服务器，需要等待多久不确定。
+	如果有100个人同时申请验证码，程序怎么操作？
+	celery 自动多线程+携程，方便程序员接口调用。
+
+
+(2) 而我们要做的，就是定义好三个东西：
+消息中间件（一般是RabbitMQ或者Redis）
+任务（说白了，就是要干的事儿，比如是发短信还是发邮箱）
+结果储存（Backend） （一般和消息中间件一样，但是不放在一个库中，例如一个在Redis的库1，一个在库2）
+
+(3) 优点
+接口简单
+高可用
+
+
+
+
+
+2. 基本概念
+在使用Celery之前，需要了解几个基本概念：
+
+- 任务（Task）：Celery中的任务是一个可调用对象，它封装了需要异步执行的代码。
+- 消息代理（Broker）：消息代理是Celery用来发送和接收消息的中间件，如Redis或RabbitMQ。
+- 结果后端（Result Backend）：结果后端用于存储任务的状态和结果。
+
+在Celery中，任务（Task）是执行特定操作的基本单元。任务可以异步执行，可以带有参数，可以返回结果，可以链式调用，还可以设置任务优先级、超时等属性。
+
+
+(1) 使用
+from celery import Celery
+import redis
+
+
+(2) 调用任务
+常规任务
+	delay()：直接调用任务，是 apply_async() 的封装
+	apply_async()：通过发送异步消息调用任务，可指定倒计时 countdown ，执行时间 eta ，过期时间 expires 等参数
+	signature()：创建签名，可传递任务签名给别的进程使用，或作为其他函数的参数
+	s()：创建签名的快捷方式
+
+组合任务
+	group()：组合，接受一个可并行调用的任务列表
+	chain()：串联，将签名连接在一起，一个接一个调用（前一个签名的结果作为下一个签名的第一个参数）
+	chord()：和弦，类似 group() 但包含回调，在所有任务执行完后再调用任务
+	map()：将参数列表应用于该任务
+	starmap()：将复合参数列表应用于该任务
+	chunks()：将一个很长的参数列表分块成若干部分
+
+
+
+
+
+
+
+========================================
+|-- celery 异步框架实例：把耗时任务放到后台执行 / 后台执行linux命令
+----------------------------------------
+使用Celery把耗时任务交给后台来处理，避免了不必要的耗时等待（如下载数据任务）。
+
+当我们不使用Celery时，用户在执行耗时任务时，用户可能要等耗时任务完成后，才能进行其他操作。
+
+
+1. 第一个实例
+(0) 准备
+$ pip3 install celery
+$ pip3 install redis
+$ pip3 list | grep celery
+celery                       5.4.0
+$ pip3 list | grep redis
+redis                        5.0.5
+
+启动redis服务:
+$ redis-server --version
+Redis server v=6.2.6 sha=00000000:0 malloc=jemalloc-5.1.0 bits=64 build=3ee1339f93e3f95a
+$ redis-server
+...
+76382:M 12 Jun 2024 16:54:15.813 * Ready to accept connections
+启动服务后才能连接：
+$ redis-cli -h 127.0.0.1 -p 6379 
+127.0.0.1:6379> ping
+PONG
+127.0.0.1:6379> quit
+$
+
+
+(1) 定义Celery的各种参数
+Celery默认使用RabbitMQ作为消息中间件，但是在这里使用我们最常用的缓存数据库Redis作为演示
+
+创建文件:
+$ cat tasks.py
+import time
+import celery
+​
+broker = 'redis://127.0.0.1:6379/8' # 定义消息中间件的存储库是 8
+backend = 'redis://127.0.0.1:6379/9' # 定义结果存储库是 9
+​
+# 创建一个celery实例
+app = celery.Celery(
+    'Test',
+    broker=broker,
+    backend=backend
+)
+​
+# 创建任务
+@app.task  #使用 实例.task装饰器,定义我们需要加入到消息队列的函数
+def send_sms(phone, msg):
+    """模拟用户发短信的需求"""
+    time.sleep(2)
+    print(f'给{phone}发送短信:{msg}')
+    return True
+​
+
+(2) 启动celery服务，让其不断监控消息中间件
+在 tasks.py 同目录的终端中执行以下代码: 
+celery -A 定义实例的py文件名(不带.py) worker -l (日志的等级)
+ 
+$ celery -A tasks worker -l INFO
+Or
+$ celery -A tasks worker --loglevel=info
+	创建tasks.py中定义的实例配置对应的celery服务,日志等级INFO
+注：不支持windows了
+
+
+
+==> 报错1:  ERROR/MainProcess] consumer: Cannot connect to redis://10.10.117.156:6379/8: Error while reading from 10.10.117.156:6379 : (104, 'Connection reset by peer').
+如果允许其他IP访问redis，需要在配置文件中关闭保护模式：
+$ redis-server --help | grep conf
+$ sudo vim /etc/redis/config.conf
+protected-mode no
+重新启动redis:
+$ redis-server /etc/redis/config.conf
+或者：默认启动，但是py脚本中调用IP改为 127.0.0.1
+
+
+
+==> 报错2：CRITICAL/MainProcess] Too many open files. Aborting...
+$ ulimit -a
+open files                      (-n) 1024
+
+$ sudo vim /etc/security/limits.conf #在文件末尾添加一行： 
+* soft nofile 10240
+* hard nofile 10240
+重新登录系统。
+$ ulimit -a
+open files                      (-n) 10240
+重新启动redis: $ redis-server
+启动 celery: $ celery -A tasks worker --loglevel=info
+
+
+
+(3) 调用任务：提交事件到消息中间件(让函数执行)
+delay是apply_async的封装，apply_async可以支持更多的任务调用配置:
+* task.apply_async(args=[arg1, arg2], kwargs={'kwarg1': 'x', 'kwarg2': 'y'})
+* task.delay(arg1, arg2, kwarg1='x', kwarg2='y')
+
+提交事件，直接调用已经被装饰器装饰过的方法.delay(参数...)就可以将事务提交
+delay方法用于发送任务到消息代理，并立即返回一个AsyncResult实例。通过调用get方法，可以等待任务完成并获取结果。
+
+例如创建
+$ cat main.py
+from tasks import send_sms # 导入刚刚定义的函数
+​
+result = send_sms.delay('666666', '验证码666666')  #将任务函数加入到队列中，可使用 .delay()方法
+# 调用被装饰器装饰后的函数.delay(参数)即可提交任务
+print(result.id) # 提交完成后，通过.id可以获取到事务的id
+
+result_2 = send_sms.delay('888888', '验证码888888')
+print(result_2.id)
+# print('Task result:', result_2.get()) #获取任务结果
+
+
+直接运行后，可以发现事件已经执行
+$ python3 main.py
+70fe4bfc-cf22-455e-92c2-291cb3e013cc
+0d59afb9-d064-44aa-a3d6-05d7eb0c84d6
+
+调用一个任务函数，将会返回一个 AsyncResult 对象，这个对象可以用来检查任务的状态或者获得任务的返回值。
+
+我们通过worker的控制台，可以看到我们的任务被worker处理。Celery 打印：
+[2024-06-12 17:28:43,519: INFO/MainProcess] Task tasks.send_sms[70fe4bfc-cf22-455e-92c2-291cb3e013cc] received
+[2024-06-12 17:28:43,535: INFO/MainProcess] Task tasks.send_sms[0d59afb9-d064-44aa-a3d6-05d7eb0c84d6] received
+[2024-06-12 17:28:45,536: WARNING/ForkPoolWorker-128] 给666666发送短信:验证码666666
+[2024-06-12 17:28:45,544: WARNING/ForkPoolWorker-1] 给888888发送短信:验证码888888
+[2024-06-12 17:28:45,547: INFO/ForkPoolWorker-128] Task tasks.send_sms[70fe4bfc-cf22-455e-92c2-291cb3e013cc] succeeded in 2.0155508536845446s: True
+[2024-06-12 17:28:45,555: INFO/ForkPoolWorker-1] Task tasks.send_sms[0d59afb9-d064-44aa-a3d6-05d7eb0c84d6] succeeded in 2.016223855316639s: True
+
+
+
+(4) 获取执行结果
+获取执行结果，需要用到 celery.result 下的 AsyncResult 类，进行获取
+
+注意，第三行需要传入的参数是 main.py的输出。
+$ cat getResult.py
+from tasks import app # 导入celery的实例App
+from celery.result import AsyncResult # 导入AsyncResult类
+​
+async_result = AsyncResult(id='70fe4bfc-cf22-455e-92c2-291cb3e013cc', app=app)
+# 获取一个异步结果实例，需要id就是提交事件的时候返回的id，app就是对应的实例App
+if async_result.successful():
+    """successful返回是否执行成功"""
+    print(f'1 执行成功,结果:{async_result.result}')
+elif async_result.failed():
+    """successful返回是否执行失败"""
+    print(f'2 执行失败!!')
+elif async_result.status == 'PENDING':
+    """successful返回任务是否还在等待"""
+    print(f'3 任务等待被执行中...')
+elif async_result.status == 'RETRY':
+    """successful返回任务是否在重试阶段"""
+    print(f'4 任务重试中...')
+
+执行：
+$ python3 getResult.py
+1 执行成功,结果:True
+
+共三个状态：PENDING -> STARTED -> SUCCESS
+
+
+
+
+
+
+
+
+2. 使用异步框架 celery 后台执行linux命令的实例
+(1) 定义任务
+$ cat task02.py
+from celery import Celery
+import subprocess
+ 
+#app = Celery('tasks', broker='amqp://guest@localhost//')
+app = Celery('tasks_02', broker='redis://localhost:6379/0', backend='redis://localhost:6379/1')
+
+@app.task
+def run_command(cmd):
+    return subprocess.check_output(cmd, shell=True)
+
+解释：run_command是一个Celery任务，它接受一个命令字符串cmd并使用subprocess.check_output来执行它。
+
+(2) 启动任务
+$ celery -A task02 worker --loglevel=info
+注意，task02是py文件的文件名，不含py后缀名。
+
+(3) 在代码中异步执行Linux命令
+$ python3
+from task02 import run_command
+
+# 异步执行命令
+result = run_command.apply_async(args=['ls -la'])
+
+# 如果需要，你可以获取结果
+print(result.get())
+
+
+(4) 查看任务状态
+>>> result.id
+'588b3799-c424-464f-a2ef-125c87751643'
+>>> result.status
+'SUCCESS'
+
+也可以记录id，根据id查询任务执行状态：
+from task02 import app
+from celery.result import AsyncResult # 导入AsyncResult类
+async_result = AsyncResult(id=result.id, app=app)
+
+>>> async_result
+<AsyncResult: 588b3799-c424-464f-a2ef-125c87751643>
+>>> async_result.status
+'SUCCESS'
+
+
+
+(5) 执行耗时任务，记录id到数据库，根据id查看状态，根据状态显示结果
+# 异步执行耗时命令
+result2 = run_command.apply_async(args=['sleep 10 && pwd && ls -la'])
+task_id=result2.id #记录id到数据库
+>>> task_id
+'6fba0cfa-fa9a-46dd-b661-1708c55376b8'
+
+# 根据id获取对象
+async_result = AsyncResult(id=task_id, app=app)
+# 根据状态获取结果
+if "SUCCESS" == async_result.status:
+	print(async_result.get())
+
+
+
+
+
+
+
+========================================
+|-- celery 组合任务：任务链和任务组
+----------------------------------------
+Celery支持任务链和任务组，可以创建复杂的任务流程。
+
+组合任务
+	group()：组合，接受一个可并行调用的任务列表
+	chain()：串联，将签名连接在一起，一个接一个调用（前一个签名的结果作为下一个签名的第一个参数）
+	chord()：和弦，类似 group() 但包含回调，在所有任务执行完后再调用任务
+	map()：将参数列表应用于该任务
+	starmap()：将复合参数列表应用于该任务
+	chunks()：将一个很长的参数列表分块成若干部分
+
+
+
+1.任务链：串联
+$ cat proj1.py
+from celery import Celery
+app = Celery('my_app', broker='redis://localhost:6379/0', backend='redis://localhost:6379/1')
+
+@app.task
+def add(x, y):
+    return x + y
+
+@app.task
+def multiply(x, y):
+    return x * y
+
+启动任务：
+$ celery -A proj1 worker --loglevel=info
+
+
+运行交互模式，调用任务：
+$ python3
+from proj1 import add, multiply
+from celery import chain
+
+result = chain(add.s(1,2) | multiply.s(5))()
+print('Task result:', result.get())
+# 15 = (1+2) *5
+
+这里，add.s()和multiply.s()是链式调用的简写，表示add和multiply任务的链式执行。
+
+
+
+
+
+
+2. 任务组：组合
+在 proj1.py 末尾新增2个函数
+$ python3
+from celery import group
+from proj1 import add, multiply
+
+result = group( multiply.s(2,4), add.s(10,20) )() # 组合
+print('Task result:', result.get())
+# [8, 30]
+任务组允许并行执行多个任务，并将它们的结果合并。
+
+result2 = group( add.s(i, i) for i in range(5) )()  # 组合
+result2.get() #[0, 2, 4, 6, 8]
+
+
+
+
+3. cord() 和弦，类似group，包含回调函数
+定义到proj1.py中：
+@app.task
+def show(a):
+    return a
+
+$ python3
+from celery import group, chain, chord
+#from proj.tasks import add, mul, show
+from proj1 import add, multiply
+
+result = chord((add.s(i, i) for i in range(5)), show.s())()  # 和弦
+print(result.get())  # [0, 2, 4, 6, 8]
+
+
+
+
+========================================
+|-- celery 定时任务
+----------------------------------------
+Celery不适合动态添加定时任务，但本人认为可以通过数据库+递归调用自身实现
+
+Celery 采用典型生产者和消费者模型。生产者提交任务到任务队列，众多消费者从任务队列中取任务执行。
+
+* 提交任务给 Broker 队列
+* 如果是异步任务，Worker 会立即从队列中取出任务并执行，执行结果保存在 Backend 中
+* 如果是定时任务，任务由 Celery Beat 进程周期性地将任务发往 Broker 队列，Worker 实时监视消息队列获取队列中的任务执行
+
+从 Celery 4.x 开始官方不再支持Windows。
+
+
+Celery 的开发主要有四个步骤：
+	实例化 Celery
+	定义任务
+	启动任务 Worker
+	调用任务
+
+准备:
+	启动 Redis: $ redis-server
+
+1. 已办任务
+(1). 定义任务
+$ cat tasks01.py
+import time
+from celery import Celery
+
+celery = Celery('tasks', broker='redis://localhost:6379/0', backend='redis://localhost:6379/1')  # 实例化 Celery
+
+@celery.task
+def sendmail(mail):  # 定义任务。使用@task装饰器
+    print('sending mail to %s...' % mail['to'])
+    time.sleep(2.0)
+    print('mail sent.')
+    return True
+
+(2).启动任务 Worker
+$ celery -A tasks01 worker --loglevel=info --pool=solo
+
+(3). 调用任务
+$ python3
+from tasks01 import sendmail
+
+result = sendmail.delay(dict(to='celery@python.org'))
+value = result.get()
+print(value)  # 运算结果值
+print(result.successful())  # 是否成功
+# print(result.fail())  # 是否失败
+print(result.ready())  # 是否执行完成
+print(result.state)  # 状态 PENDING -> STARTED -> SUCCESS/FAILURE
+
+
+
+
+
+
+2. 定时任务
+(1) 设置方法1
+$ cat period_task.py
+#from proj import app
+from celery.schedules import crontab
+from celery import Celery
+app = Celery('tasks02', broker='redis://localhost:6379/0', backend='redis://localhost:6379/1')  # 实例化 Celery
+
+@app.on_after_configure.connect
+def setup_periodic_tasks(sender, **kwargs):
+    """按频率执行定时任务"""
+
+    # 每5秒执行一次tostring('Hello')
+    sender.add_periodic_task(5.0, tostring.s('Hello'), name='tostring')
+
+    # 每周一07:30执行tostring('Happy Mondays!')
+    sender.add_periodic_task(
+        crontab(hour=7, minute=30, day_of_week=1),
+        tostring.s('Happy Mondays!'),
+    )
+
+    # 每分钟执行一次
+    sender.add_periodic_task(
+        crontab(minute='*/1'),
+        tostring.s('A minute'),
+        name='A minute'
+    )
+
+@app.task
+def tostring(s):
+    return s
+
+(2) 设置方法2
+$ cat period_task2.py
+from celery.schedules import crontab
+from celery import Celery
+app = Celery('tasks02', broker='redis://localhost:6379/0', backend='redis://localhost:6379/1')  # 实例化 Celery
+
+@app.task
+def tostring(s):
+    return s
+
+app.conf.beat_schedule.update(
+    hello={
+        'task': tostring.name,
+        'schedule': 5.0,  # 每5秒执行一次tostring('Hello')
+        'args': ('Hello',)
+    },
+    happy_mondays={
+        'task': tostring.name,
+        'schedule': crontab(hour=7, minute=30, day_of_week=1),  # 每周一07:30执行tostring('Happy Mondays!')
+        'args': ('Happy Mondays!',)
+    },
+    a_minute={
+        'task': tostring.name,
+        'schedule': crontab(minute='*/1'),  # 每分钟执行一次
+        'args': ('A minute',)
+    },
+)
+
+
+=> task 后是任务名（@app.task修饰的函数名），args是参数列表。中间是定时，单位默认是s。如：
+app.conf.beat_schedule = {
+    'add-every-5-seconds': {
+        'task': 'run_every_five_seconds',
+        'schedule': 5.0,  # in seconds
+        'args': ()
+    },
+
+    'add-every-30-seconds': {
+        'task': 'tasks.add',
+        'schedule': 30.0,
+        'args': (16, 16)
+    },
+}
+
+
+(3) 启动定时任务Beat
+# celery beat -A proj.period_task -l info #beat 写前面过时了
+$ celery -A period_task beat -l info   #可行
+$ celery -A period_task2 beat -l info  #可行
+启动即开始按时调用了。
+
+对比常规任务：
+$ celery -A tasks worker --loglevel=info
+
+
+
+
+
+
+
+3. 日志记录：任务状态跟踪
+
+
+todo: 
+
+(1)怎么动态添加定时任务呢？
+	用户点击提交，开始后台执行任务。
+(2) 配置文件
+(3) 异常处理
+(4) 怎么持久化？ 序列化？
+(5) 停电会怎么样？
+(6) 怎么和 flask 配合？
+(7) celery 启动参数？
+celery -A tasks worker -l info -P eventlet  -c 10
+
+
+
+ref: https://blog.csdn.net/lly1122334/article/details/115423851
 
 
 
@@ -439,13 +1128,19 @@ https://blazorexamples.nevron.com/
 
 
 ========================================
+任务队列和后台执行 //todo
 ----------------------------------------
+使用任务队列（如Celery）和后台工作进程来执行长时间运行的任务。
+
+1. Celery
 
 
 
 ========================================
+轮询机制：
 ----------------------------------------
-
+轮询机制：前端定时发送请求到后端API，查询任务状态和输出结果。
+WebSockets：作为轮询的替代方案，可以使用WebSockets实现服务器与客户端之间的实时通信。
 
 
 ========================================
