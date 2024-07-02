@@ -64,7 +64,6 @@
 
 ## 技术博客  
 
-- 网易博客停止运营(仅自己可见): [我的前端博客](http://poster469.blog.163.com/ "最早的PS到后来的JS,服务器设置") / [javascript研究所](http://miostudio.blog.163.com/ "javascript的地位空前高涨，值得独立研究")  / [php-mysql](http://firecloudphp.blog.163.com/ "php和mysql是黄金搭档")  / [java EE/java设计模式](http://zhengzhi2014.blog.163.com/ "java的思想是横强大的")  
 
 - [博客园](https://www.cnblogs.com/dawnEve/ "JS"): js
 - [CSDN](https://blog.csdn.net/wangjunliang/ "生信/js"): 生信

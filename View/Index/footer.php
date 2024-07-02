@@ -171,6 +171,7 @@
 			array('http://freemind.pluskid.org/','张驰原pluskid(ML/AI)'),
 			array('https://blog.csdn.net/v_july_v/article/details/7624837','july(ML/AI)'),
 			array('http://blog.17study.com.cn/','月色(ML/AI)'),
+			array('https://mofanpy.com/','莫烦'),
 		));
 
 
