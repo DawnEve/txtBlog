@@ -1926,11 +1926,109 @@ win作为服务器: https://www.cnblogs.com/mountain2011/p/7352708.html
 
 
 ========================================
-|-- 网络文件系统 (NFS, Network File System): 两台 linux 之间文件共享 //todo
+|-- 网络文件系统 (NFS, Network File System): 多台 linux 之间文件共享 / 存储服务器
 ----------------------------------------
 网络文件系统，英文Network File System(NFS)，是由SUN公司研制的UNIX表示层协议(presentation layer protocol)，能使使用者访问网络上别处的文件就像在使用自己的计算机一样。
 
+1. NFS v1-v4
+https://en.wikipedia.org/wiki/Network_File_System
 
+
+
+2. 存储主机的安装与设置
+(1) 安装: nsf服务依赖应用：nfs-tools      rpcbind
+
+rpm -q rpcbind nfs-utils
+yum -y install nfs-utils rpcbind
+
+$ rpm -q rpcbind nfs-utils
+rpcbind-0.2.0-49.el7.x86_64
+nfs-utils-1.3.0-0.68.el7.2.x86_64
+
+
+(2) 设置共享目录：vim /etc/exports
+
+mkdir /text888 #创建共享目录
+chmod 777 /text888 #修改共享目录权限
+
+$ vim /etc/exports
+/text888 192.168.184.0/24(rw,sync,no_root_squash)
+
+我们使用的是 /nfs/fs/data
+
+客户机地址可以是主机名、IP 地址、网段地址，允许使用“*”、 “?”通配符。
+	“rw” 表示允许读写，“ro” 表示为只读。
+	sync ：表示同步写入到内存与硬盘中。
+	no_root_squash ： 表示当客户机以root身份访问时赋予本地root权限（默认是root_squash）。
+	root_squash ：表示客户机用root用户访问该共享目录时，将root用户映射成匿名用户。
+
+其它常用选项
+	all_squash ：所有访问用户都映射为匿名用户或用户组。
+	async ：将数据先保存在内存缓冲区中，必要时才写入磁盘。
+	subtree_check（默认）：若输出目录是一个子目录，则nfs服务器将检查其父目录的权限。
+	no_subtree_check ：即使输出目录是一个子目录，nfs服务器也不检查其父目录的权限，这样可以提高效率。
+
+
+3. 启动 NFS 服务程序
+手动加载NFS共享服务时，应该先启动rpcbind，再启动nfs
+
+systemctl start rpcbind
+systemctl start nfs
+systemctl enable rpcbind
+systemctl enable nfs
+
+或 
+$ sudo service nfs start
+$ service nfs status
+
+查看本机发布的 NFS 共享目录
+exportfs -rv #发布共享
+showmount -e
+
+
+
+
+3. 客户机中访问NFS共享资源
+(1) 安装 nfs-utils、rpcbind 软件包
+rpm -q rpcbind nfs-utils
+yum -y install nfs-utils rpcbind
+systemctl start rpcbind
+systemctl enable rpcbind
+
+(2) 查看 NFS 服务器端共享了哪些目录
+$ showmount -e 10.10.117.159
+Export list for 10.10.117.159:
+/datapool/fs/data 10.10.116.131,10.10.118.143,10.10.118.139,10.10.118.135,10.10.117.158,10.10.117.157,10.10.117.156
+
+	10.10.116.131 是谁？
+
+mkdir /data4 #客户端创建挂载目录
+mount 10.10.117.159:/nfs/fs/data /data4 挂载目录
+$ df -Th  #确认挂载结果
+Filesystem                                             Type      Size  Used Avail Use% Mounted on
+/dev/nvme0n1p1                                         ext4      7.0T  1.8T  4.9T  27% /data
+10.10.117.159:/nfs/fs/data                             nfs       472T  856G  471T   1% /data4
+
+$ df -h /data4
+Filesystem                  Size  Used Avail Use% Mounted on
+10.10.117.159:/nfs/fs/data  472T  856G  471T   1% /data4
+
+
+测试是否连同：
+	客户端创建一个文件
+	服务器检查创建的文件
+
+
+设置自动挂载
+$ vim /etc/fstab
+10.10.117.159:/nfs/fs/data /data4 nfs defaults,_netdev 0 0
+注：_netdev ：表示挂载设备需要网络
+
+
+注意：强制卸载 NFS
+如果服务器端NFS服务突然间停掉了，而客户端正在挂载使用时，在客户端就会出现执行 df -h 命令卡死的现象。
+这个时候直接使用umount 命令是无法直接卸载的，需要加上 -lf 选项才能卸载。
+$ umount -lf /data4
 
 
 
