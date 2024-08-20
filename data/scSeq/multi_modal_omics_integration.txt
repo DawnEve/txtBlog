@@ -1,6 +1,9 @@
 多模态、多组学 单细胞数据整合
 
 
+CITE 数据的分析方法
+
+
 
 
 ========================================
@@ -335,7 +338,7 @@ R语言之基于多组学的肿瘤亚群聚类分析 https://cloud.tencent.com/d
 
 
 ========================================
-多组学的例子：
+多组学的例子：文献阅读 //todo
 ----------------------------------------
 1.
 https://pubmed.ncbi.nlm.nih.gov/35288753/  Fig3A
@@ -350,8 +353,191 @@ https://pubmed.ncbi.nlm.nih.gov/35288753/  Fig3A
 
 
 ========================================
+Seurat 4 整合分析 CITE 数据：表达数据 + ADT = CITE-seq技术
 ----------------------------------------
 
+Cite-seq 抗体BioLegend公司有，找达科为购买～服务国内大测序服务商都可以接
+
+
+1. 数据读取
+# 1. load data ----
+library(rhdf5)
+#
+dyn.load('/home/wangjl/.local/lib/libhdf5_hl.so.100')
+library(hdf5r)
+#data <- h5read("your_file.h5", "/path/to/dataset")
+
+library(Seurat)
+# (1). load counts of RNA and protein
+dat=Read10X_h5("/datapool/wangjl/others/hanlu/raw/GSE210079/GSM6459763_32-3mo_raw_feature_bc_matrix.h5")
+str(dat)
+names(dat) #"Gene Expression"  "Antibody Capture" #两个矩阵：RNA和 55个蛋白
+str(dat$`Gene Expression`)
+
+# make sure cell id are the same
+all.equal(colnames(dat[["Gene Expression"]]), colnames(dat[["Antibody Capture"]])) #T
+
+# (2). use RNA data to create Obj
+scRNA=CreateSeuratObject(counts = dat$`Gene Expression`, project = "A1")
+
+# (3). add protein mat
+# https://zhuanlan.zhihu.com/p/567253121
+adt_assay <- CreateAssayObject(counts = dat$`Antibody Capture`)
+scRNA[["ADT"]] <- adt_assay
+
+# (4). check
+# protein names
+rownames(scRNA[["ADT"]])
+
+# assays
+Assays(scRNA) #"RNA" "ADT"
+
+# check default assay, or change default assay
+DefaultAssay(scRNA) #"RNA"
+
+
+(1) 如果我们分别有两个文件，分别提供scRNA-seq的数据以及ADT的数据，那么我们可以分别读取然后对S4对象进行添加
+#counts <- CreateSeuratObject(counts = counts)
+#adt_assay <- CreateAssayObject(counts = adt)
+#counts[["ADT"]] <- adt_assay
+
+但是尽管读取是一起读取并创建了counts对象，但是我们后续创建Seurat对象的时候是需要分别读取的
+scRNA <- CreateSeuratObject(counts[["Gene Expression"]])
+adt <- CreateAssayObject(counts[["Antibody Capture"]])
+all.equal(colnames(counts[["Gene Expression"]]), colnames(counts[["Antibody Capture"]]))
+scRNA[["ADT"]] <- adt
+Assays(scRNA)
+#[1] "RNA" "ADT"
+
+
+
+
+2. scRNA-seq数据分析
+#然后接下来执行scRNA-seq的标准流程
+scRNA[["percent.mt"]] <- PercentageFeatureSet(scRNA, pattern = "^MT-")
+VlnPlot(scRNA, features = c("nFeature_RNA", "nCount_RNA", "percent.mt"), ncol = 3)
+scRNA <- subset(scRNA, subset = nFeature_RNA > 300 & nFeature_RNA < 5000 & percent.mt < 20)
+
+scRNA <- NormalizeData(scRNA)
+scRNA <- FindVariableFeatures(scRNA,nfeatures = 2000)
+scRNA <- ScaleData(scRNA)
+scRNA <- RunPCA(scRNA,dims = 1:20)
+
+scRNA <- FindNeighbors(scRNA, dims = 1:20)
+scRNA <- FindClusters(scRNA, resolution = 0.9, verbose = FALSE)
+scRNA <- RunUMAP(scRNA, dims = 1:20)
+DimPlot(scRNA, label = TRUE)
+
+#寻找差异基因
+scRNA.markers <- FindAllMarkers(scRNA, only.pos = TRUE, min.pct = 0.25, logfc.threshold = 0.25)
+scRNA.markers %>%
+ group_by(cluster) %>%
+ slice_max(n = 10, order_by = avg_log2FC)
+
+
+
+
+3.ADT数据
+For protein integration, you can use CLR to normalize protein data,
+NormalizeData(bm, normalization.method = 'CLR', margin = 2), and follow our integration vignette to integrate ADT data. Reciprocal PCA is suggested to integrate ADT data.
+
+
+然后scRNA-seq的处理就先暂时结束，我们接下来继续处理ADT数据的部分：
+# Normalize ADT data
+DefaultAssay(scRNA) <- "ADT"
+scRNA <- NormalizeData(scRNA, normalization.method = "CLR", margin = 2)
+
+#visualize
+rownames(scRNA[["ADT"]])
+p1 <- FeaturePlot(scRNA, "CD45-TotalSeqB", cols = c("lightgrey", "darkgreen")) + ggtitle("ADT")
+DefaultAssay(scRNA) <- "RNA"
+p2 <- DimPlot(scRNA, label = TRUE)+ggtitle("RNA")
+p1|p2
+
+这里我们需要知道，作者通过CD45蛋白的表达来区分免疫细胞和非免疫细胞，其实我们需要知道CITE-seq之所以要引入蛋白的表达量（ADT）其实就是为了帮助我们更好的对细胞亚群进行注释同时也可以更加精准的帮助我们划分细胞亚群，找到罕见的细胞亚群
+
+
+
+
+
+4. 数据整合
+然后上述流程只不过依旧是单打单的行为，我们接下来要真正尝试去把两种数据结合起来，为此我们需要使用到WNN算法，这个算法就可以把多模态的数据整合起来
+
+#设置并行加快运行速度
+library(future)
+plan("multiprocess", workers =4)#设置线程
+options(future.globals.maxSize = 2000 * 1024^2)
+
+scRNA_WNN <- CreateSeuratObject(counts[["Gene Expression"]])
+adt_WNN <- CreateAssayObject(counts[["Antibody Capture"]])
+# add this assay to the previously created Seurat object
+scRNA_WNN[["ADT"]] <- adt_WNN
+
+DefaultAssay(scRNA_WNN) <- 'RNA'
+scRNA_WNN[["percent.mt"]] <- PercentageFeatureSet(scRNA_WNN, pattern = "^MT-")
+scRNA_WNN <- subset(scRNA_WNN, subset = nFeature_RNA > 300 & nFeature_RNA < 5000 & percent.mt < 20)
+scRNA_WNN <- NormalizeData(scRNA_WNN) %>% FindVariableFeatures() %>% ScaleData() %>% RunPCA()
+
+DefaultAssay(scRNA_WNN) <- 'ADT'
+VariableFeatures(scRNA_WNN) <- rownames(scRNA_WNN[["ADT"]])
+scRNA_WNN <- NormalizeData(scRNA_WNN, normalization.method = 'CLR', margin = 2) %>%
+ ScaleData() %>% RunPCA(reduction.name = 'apca')
+
+这里需要给各位小伙伴解释一下reduction.name参数为什么需要添加，RunPCA函数执行PCA结果，然后通过reduction.name参数我们可以设置结果的名称，默认是叫做PCA，但是因为我们这里是多模态数据，而且我们是针对同一个S4对象，所以我们需要添加不同的名称加以区分
+
+上述代码其实就是在做一件事情：对于每个细胞，根据 RNA 和蛋白质相似性的加权组合计算数据集中最近的邻居（划分亚群），后续我们可以指定每种模式的维度(类似于指定 scRNA-seq 聚类中包含的 PC 数量) ，但是实际上PC数量的选择对结果的影响较小
+
+
+scRNA_WNN <- FindMultiModalNeighbors(
+ scRNA_WNN, reduction.list = list("pca", "apca"),
+ dims.list = list(1:20, 1:10), modality.weight.name = "RNA.weight"
+)
+#基于RNA和蛋白质数据的加权组合创建数据的数据进行UMAP可视化
+scRNA_WNN <- RunUMAP(scRNA_WNN, nn.name = "weighted.nn", reduction.name = "wnn.umap", reduction.key = "wnnUMAP_")
+scRNA_WNN <- FindClusters(scRNA_WNN, graph.name = "wsnn", algorithm = 1, resolution = 0.6, verbose = FALSE)
+p1 <- DimPlot(scRNA_WNN, reduction = 'wnn.umap', label = TRUE, repel = TRUE, label.size = 2.5)
+
+#然后我们比较一下，单纯通过mRNA和以及WNN方法形成的细胞聚类图
+p1 <- DimPlot(scRNA_WNN, reduction = 'wnn.umap', label = TRUE, repel = TRUE, label.size = 2.5)+ggtitle("WNN")
+p2 <- DimPlot(scRNA,label = TRUE) + ggtitle("RNA")
+p1|p2
+#为了保证因素一致，我们调节resolution参数两者是一致的
+
+CITE-seq技术确实可以帮助我们发现罕见细胞亚群，而且因为额外多了一个维度的表达信息，我们可以更加全面的对亚群进行定义，也就是细胞注释
+
+
+
+
+
+
+
+5. 多样本怎么整合？ CITE-seq how to integrate multiple samples?
+* 先整合2模态数据，再合并样本？
+* 还是先合并样本，再整合进两个模态？
+
+(1) 每个模态分别整合
+https://github.com/satijalab/seurat/issues/3890
+I would suggest you integrate ADT and RNA in two different objects first. Then, we can create new assays in the integrated RNA object, and add adt related assays there.
+
+integrated_seurat_rna[["IADT"]] <- integrated_seurat_adt[["integrated"]]
+integrated_seurat_rna[["pca.adt"]] <- integrated_seurat_adt[["pca"]]
+integrated_seurat_rna[["umap.adt"]] <- integrated_seurat_adt[["umap"]]
+
+You can follow log normalization integration workflow for the CLR normalized ADT data.
+
+
+(2) 
+
+
+
+
+
+
+
+
+ref:
+https://zhuanlan.zhihu.com/p/567253121
+https://satijalab.org/seurat/articles/multimodal_vignette.html
 
 
 ========================================

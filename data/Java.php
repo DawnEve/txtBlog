@@ -12,6 +12,7 @@ return array (
       array('Java准备-环境-工具','java00-prep','txt',),
       array('设计模式design_pattern','design_pattern','md',),
 
+      array('Java过时/老版本-outOfDate','outOfDate','txt'),
     ),
   ),
 

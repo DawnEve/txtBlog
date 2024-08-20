@@ -1,5 +1,6 @@
 Linux网络
-linux简介4|网络与iptables  
+	ssh/autossh
+	net/iptables  
 
 
 
@@ -988,6 +989,171 @@ localhost;127.*;10.*;172.16.*;172.17.*;172.18.*;172.19.*;172.20.*;172.21.*;172.2
 
 
 
+
+
+
+
+
+========================================
+|-- 实战：某云主机作为跳板机，连接实验室服务器 //todo 开机启动服务
+----------------------------------------
+1.购买
+CPU 2核，内存2G，硬盘50GB
+¥79.00/年
+
+
+
+2. 新建用户名
+(1) 新建管理员 wangjl2
+$ sudo useradd -m -s /bin/bash wangjl2
+$ sudo passwd wangjl2
+
+添加sudo权限
+$ sudo vim /etc/sudoers #添加一行
+
+(2) 新建一般用户 sam
+$ sudo useradd -m -s /bin/bash sam
+$ sudo passwd sam
+
+
+
+
+
+
+3. 作为跳板机，连接内网服务器
+(1) 设置跳板机：有两个必须都设置！
+AllowTcpForwarding 打开注释。
+被注释掉的GatewayPorts no，去注释，并将no改成yes
+
+$ sudo vim /etc/ssh/sshd_config
+AllowTcpForwarding yes
+GatewayPorts yes
+
+重启服务
+$ sudo service sshd restart
+
+查看端口是否开放：
+@Y$ telnet 118.89.82.18 8888
+	失败：需要设置上一条的 sshd_config 文件后，重启sshd服务再试。
+	telnet: Unable to connect to remote host: Connection refused
+
+	成功：
+	Trying 118.89.82.18...
+	Connected to 118.89.82.18.
+	Escape character is '^]'.
+	SSH-2.0-OpenSSH_8.2p1 Ubuntu-4ubuntu0.11
+	^C
+	Connection closed by foreign host.
+
+
+(1B) 设置云服务器
+打开端口: 云$ sudo iptables -I INPUT -p tcp --dport 8888 -j ACCEPT
+
+打开防火墙：网页上设置 8888 允许。
+	https://console.cloud.tencent.com/lighthouse/instance/detail?rid=4&id=lhins-9ox4ow18&tab=firewall
+
+添加IP到白名单： https://console.cloud.tencent.com/cwp/manage/crack/banwhitelist
+	若有非白名单来源IP尝试登录，并命中密码破解规则时，系统将自动发出异常告警或阻断。
+
+
+
+
+
+(2) 新建隧道
+所需计算机及功能定位:	A外部计算机 -> B跳板机(云) -> C(内网 large server Y)
+
+@C$ tmux 
+@C$ ssh -Ng -R 8888:localhost:22 sam@118.89.82.18 #输入B的密码。保持挂机状态，要在tmux中执行！！
+
+check B$ netstat -anp | grep 8888
+	tcp        0      0 127.0.0.1:8888          0.0.0.0:*               LISTEN      49744/sshd: sam
+	tcp6       0      0 ::1:8888                :::*                    LISTEN      49744/sshd: sam
+
+跳板机上登录：
+@B $ ssh -p 8888 wangjl@localhost #输入C密码登录C
+
+外网任意登录：
+@A $ ssh -p 8888 wangjl@118.89.82.18 #输入C密码登录C
+	报错: ssh: connect to host 118.89.82.18 port 8888: Connection refused
+
+##
+内网创建用户
+@C$ sudo useradd -m -s /bin/bash sust
+@C$ sudo passwd sust #
+
+@A $ ssh -p 8888 sust@118.89.82.18
+
+缺点：网络波动时连接容易断！
+
+我第二天尝试，连接已经断了。显示如下：
+	wangjl@YStation:~$ ssh -Ng -R 8888:localhost:22 sam@118.89.82.18
+	sam@118.89.82.18's password: 
+	Permission denied, please try again.
+	sam@118.89.82.18's password: 
+	client_loop: send disconnect: Broken pipe
+	大概是半夜断了，让重新输入密码。
+
+期望：
+	内网需要有人登录服务器，重新连接云主机。比较麻烦。
+	能否一次建立更稳定的连接呢？
+
+
+
+
+(3) autossh: 自动重新连接
+
+1) 复制Y的pub key到云主机
+内网服务器Y的key:
+wangjl@YStation:~$ cat ~/.ssh/id_rsa.pub 
+ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQC6IbVrxRgm/+sG8CIHAbpqkye+gz/oHl5LWNu9Fdpds/NKDgzjtoqHkHmXFk9HTpYjF+2GTfkKqnmBvmA9UmZMC/8bHQyPEoBj8Qzowyq6hoq8LaxqHDVBxckDCZg/HYB/nQt5B2zhEIE/z9Vl9VSSnnm1QuXs4kc4Ds7b1NmA27vWbtzNt/f9T+CjmPMK099DfrN35ISpGHBaax6H+o0+npGd3ndNdm1qerLfypBjAOre2Op3QyDU8x0+L1Dis83FYbEZzsKu30GZaH79KzDGkoMijGjLwc0Hble4waBjIttU+CXyYjOn8BGOsWCBEFkc8kPNhIsX1IKW2qUt06iX jimmyMall@163.com
+
+
+云主机
+sam@VM-16-11-ubuntu:~$ mkdir ~/.ssh
+$ vim ~/.ssh/authorized_keys
+复制 id_rsa.pub 的内容到该文件。
+
+
+
+2) 登录内网Y station，连接跳板机
+Y$ autossh -M 8889:8890 -f -CNT -Ng -R 0.0.0.0:8888:localhost:22 sam@118.89.82.18 -i ~/.ssh/id_rsa
+
+Y上检测连接的进程：
+	wangjl@YStation:~$ ps -aux | grep -in autossh
+	380:wangjl   2063096  0.0  0.0   2516    88 ?        Ss   11:03   0:00 /usr/lib/autossh/autossh -M 8889 8890    -CNT -Ng -R 0.0.0.0:8888:localhost:22 sam@118.89.82.18 -i /home/wangjl/.ssh/id_rsa
+	
+	结束该进程 kill <pid>
+
+在跳板机检测端口：
+	云$ sudo netstat -anp | grep 8888
+	sam@VM-16-11-ubuntu:~$ netstat -anp | grep 8888
+	(Not all processes could be identified, non-owned process info
+	 will not be shown, you would have to be root to see it all.)
+	tcp        0      0 0.0.0.0:8888            0.0.0.0:*               LISTEN      -
+	tcp6       0      0 :::8888                 :::*                    LISTEN      -
+
+
+3) 从外网登录: 内网服务器Y的用户名@云跳板机IP
+$ ssh wangjl@118.89.82.18 -p 8888
+或
+$ ssh sust@tx.biomooc.com -p 8888
+
+这样能稳定连接。
+	明天检查效果。
+
+
+4) 设置Y主机开机启动该连接 //todo
+https://zhuanlan.zhihu.com/p/680289253
+
+为让其开机自启，先创建一个名为 autossh.service 的 systemd 文件。
+Y$ sudo vim /etc/systemd/system/autossh.service
+
+
+
+
+
+Ref: 
+首次记录在 txtBlog2/server/105_yun_server
 
 
 

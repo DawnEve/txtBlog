@@ -21,7 +21,7 @@ return array (
       array('adv 进阶分析方法','adv_method','txt'),
       array('scSeq-10xGenomics','scSeq-10xGenomics','txt'),
       array('scSeq-c1-RNA','scSeq-c1-RNA','txt'),
-      array('多模态/多组学整合','multi_modal_omics_integration','txt'),
+      array('CITE/多模态/多组学整合','multi_modal_omics_integration','txt'),
     ),
   ),
  
@@ -32,6 +32,7 @@ return array (
       array('cell_marker','cell_marker','txt'),
       array('Seurat包-技巧与重绘','Seurat_note','txt'),
       array('Seurat源码阅读','Seurat_source','txt'),
+
       array('Monocle包','monocle3_note','txt'),
       array('RNA_Velocity','RNA_Velocity_note','txt'),
       array('scanpy 包','scanpy_note','txt'),

@@ -43,7 +43,7 @@ return array (
     0 => 3,
     1 => '网络服务',
     2 => array (
-	  array('网络与iptables','linux201-net', 'txt'),
+	  array('网络/ssh/iptables','linux201-net-ssh', 'txt'),
 	  
 	  array('Linux服务','linux_service','txt' ),
 	  
