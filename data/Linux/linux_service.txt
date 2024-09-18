@@ -1112,6 +1112,344 @@ sdc            8:32   0  25.3T  0 disk
 
 
 ========================================
+基于 mysql / Flask / Chart.js 的系统资源监控系统：CPU和内存
+----------------------------------------
+之前的老版本在 系统安装与维护_磁盘 中。
+
+
+1. 设置docker 版的 mysql [at J1]
+(1) 下载镜像
+来自Y station，可能是mysql5.7
+@Y$ rsync -avl data/web/docs/DockerImages/dawneve__mysql_latest.image.tar.gz wangjl@gate1.picb.ac.cn:/picb/jinlab/wangjl/
+@J1$ mv /picb/jinlab/wangjl/dawneve__mysql_latest.image.tar.gz /home/wangjl/data4/web/docs/images/
+
+(2)导入镜像
+$ gunzip -c /home/wangjl/data4/web/docs/images/dawneve__mysql_latest.image.tar.gz | docker load
+
+$ docker images
+REPOSITORY      TAG       IMAGE ID       CREATED       SIZE
+dawneve/mysql   latest    9e64176cd8a2   7 years ago   407MB
+
+(3) 启动镜像
+
+检测可用端口
+	$ sudo iptables -I INPUT -p tcp --dport 8070 -j ACCEPT
+	$ python3 -m http.server 8070
+	只有8***的端口号是可以暴漏的！
+
+启动镜像:
+$ docker run -e MYSQL_DATABASE=monitoring -e MYSQL_ROOT_PASSWORD=123456 \
+-p 8070:3306 -v /datapool/wangjl/dockerFile:/var/lib/mysql --name mysql \
+-d dawneve/mysql:latest
+
+参数解释:
+	--name mysql-container：指定容器的名称。
+	-e MYSQL_ROOT_PASSWORD=your_password：设置 root 用户的密码（请替换为实际密码）。
+	-d：以后台模式运行容器。
+	-p 8070:3306：将容器的 3306 端口映射到主机的 3306 端口。
+
+
+(4) 连接检测
+需要安装mysql客户端，用于登录。
+
+$ sudo yum install mariadb #其他几个服务器没有安装成功: H3, J3, 无docker 登录不上(H2, J2)
+	H 1-old 2noRoot-Try 3-wrong-OK
+	J 1-OK 2noRoot-Try 3-wrong-OK  #我正好选中唯一可以的H1，真是幸运！
+
+@J1$ mysql -h localhost -P 8070 -u root -p
+Enter password: 
+ERROR 2002 (HY000): Can't connect to local MySQL server through socket '/var/lib/mysql/mysql.sock' (2)
+
+$ mysql -h 127.0.0.1 -P 8070 -u root -p
+> 换成IP竟然可以了!?
+> use monitoring;
+
+
+win 上:
+> mysql -h 10.10.117.156 -P 8070 -u root -p
+> 也连接上了。
+
+> quit; 
+退出
+
+
+(5) 新建数据表
+USE monitoring;
+
+CREATE TABLE system_usage (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    timestamp DATETIME NOT NULL,
+    cpu_usage FLOAT NOT NULL,
+    memory_usage FLOAT NOT NULL
+);
+
+MySQL [monitoring]> show tables;
++----------- -----------+
+| Tables_in_monitoring |
++----------- -----------+
+| system_usage         |
++----------- -----------+
+1 row in set (0.00 sec)
+
+查看监控数据：
+	USE monitoring;
+	SELECT * FROM system_usage;
+
+删除过去7天的日志：
+	select * FROM system_usage WHERE timestamp < NOW() - INTERVAL 7 DAY;
+	select * FROM system_usage WHERE timestamp < NOW() - INTERVAL 1 HOUR;
+	select * FROM system_usage WHERE timestamp < NOW() - INTERVAL 10 MINUTE;
+
+	DELETE FROM system_usage WHERE timestamp < NOW() - INTERVAL 1 HOUR; #过时一小时
+
+MySQL [monitoring]> SELECT      timestamp,      NOW() - INTERVAL 1 MINUTE AS one_minute_ago  FROM      system_usage;
++---------------------+---------------------+
+| timestamp           | one_minute_ago      |
++---------------------+---------------------+
+| 2024-09-14 15:51:05 | 2024-09-14 08:13:28 |
+| 2024-09-14 15:56:56 | 2024-09-14 08:13:28 |
++---------------------+---------------------+
+
+
+(6) 新增host name 和 IP
+ALTER TABLE system_usage
+ADD COLUMN host_ip VARCHAR(45),
+ADD COLUMN hostname VARCHAR(100);
+
+
+
+
+
+
+2. 输入：记录状态
+(1) 写脚本
+@J1$ cd /datapool/wangjl/web/docs/code/system/
+$ cat monitor_CPU_RAM.sh
+#!/bin/bash
+
+# MySQL 配置
+MYSQL_HOST="10.10.117.156"
+MYSQL_PORT="8070"
+MYSQL_USER="root"
+MYSQL_PASSWORD="123456"
+MYSQL_DATABASE="monitoring"
+
+# 获取当前时间
+TIMESTAMP=$(date +"%Y-%m-%d %H:%M:%S")
+
+# 获取 CPU 使用情况，1-100
+CPU_USAGE=$(top -bn1 | grep "Cpu(s)" | sed "s/.*, *\([0-9.]*\)%* id.*/\1/" | awk '{print 100 - $1}')
+
+# 获取内存使用情况，1-100
+MEMORY_USAGE=$(free | grep Mem | awk '{print $3/$2 * 100.0}')
+
+# 获取主机名
+HOST_NAME=$(hostname)
+HOST_IP=$(hostname -I | awk '{print $1}')
+
+
+# 将结果写入 MySQL 数据库
+mysql -h"$MYSQL_HOST" -u"$MYSQL_USER" -P"$MYSQL_PORT" -p"$MYSQL_PASSWORD" "$MYSQL_DATABASE" -e "INSERT INTO system_usage (timestamp, cpu_usage, memory_usage, hostname, host_ip) VALUES ('$TIMESTAMP', $CPU_USAGE, $MEMORY_USAGE, '$HOST_NAME', '$HOST_IP');"
+
+
+(2)测试脚本
+$ bash monitor_CPU_RAM.sh
+
+登录数据库查看：
+MySQL [monitoring]> SELECT * FROM system_usage;
++----+------------ ---------+-----------+--------------+
+| id | timestamp           | cpu_usage | memory_usage |
++----+------------ ---------+-----------+--------------+
+|  1 | 2024-09-14 15:51:05 |         1 |      17.9996 |
+|  2 | 2024-09-14 15:56:56 |       1.3 |      16.6534 |
++----+------------ ---------+-----------+--------------+
+
+
+测试：
+	选择过时1分钟的数据，没有输出：
+	select * FROM system_usage WHERE timestamp < NOW() - INTERVAL 1 MINUTE;
+
+	同时输出不等号左右的时间，发现差了好几个小时，可能是市区不同？
+	MySQL [monitoring]> SELECT      timestamp,      NOW() - INTERVAL 1 MINUTE AS one_minute_ago  FROM      system_usage;
+	+---------------------+---------------------+
+	| timestamp           | one_minute_ago      |
+	+---------------------+---------------------+
+	| 2024-09-14 15:51:05 | 2024-09-14 08:13:28 |
+	| 2024-09-14 15:56:56 | 2024-09-14 08:13:28 |
+	+---------------------+---------------------+
+
+
+	> SET time_zone = 'Asia/Shanghai';  -- 替换为你需要的时区
+	再执行上述sql，输出时间接近了。
+
+MySQL [monitoring]> SELECT @@global.time_zone, @@session.time_zone;
++--------------------+---------------------+
+| @@global.time_zone | @@session.time_zone |
++--------------------+---------------------+
+| SYSTEM             | Asia/Shanghai       |
++--------------------+---------------------+
+
+	> select * FROM system_usage WHERE timestamp < NOW() - INTERVAL 1 MINUTE;
+	设置不同的时间，可以显示不同的条目了。
+
+
+
+(3) 设置定时任务
+设置每6分钟执行一次，一小时共10次采样。
+$ crontab -e
+*/6 * * * * bash /datapool/wangjl/web/docs/code/system/monitor_CPU_RAM.sh
+
+检查定时任务：$ crontab -l
+
+2) 在J3也记录上
+3) H2, J2 没权限。只要有mysql即可，让管理安装。
+
+
+
+
+
+
+3.可视化输出
+
+(1) 后台给出json数据
+$ cd /datapool/wangjl/web/docs/code/system
+$ cat flask_app.py
+from flask import Flask, jsonify, request
+import pymysql
+import datetime
+
+app = Flask(__name__)
+
+# MySQL 配置
+MYSQL_HOST = '10.10.117.156'  # MySQL 主机
+MYSQL_PORT=8070
+MYSQL_USER = 'root'  # 替换为你的 MySQL 用户名
+MYSQL_PASSWORD = '123456'  # 替换为你的 MySQL 密码
+MYSQL_DATABASE = 'monitoring'  # 替换为你的数据库名称
+
+@app.route('/')
+def hello():
+    return "For json data, pls visit: http://10.10.117.156:8071/api/usage_data"
+
+def get_host_ip():
+    """获取主机的 IP 地址"""
+    hostname = socket.gethostname() #'jinlab-svr1.icb.ac.cn'
+    host_ip=socket.gethostbyname(hostname) #'10.10.117.156'
+    return [hostname, host_ip]
+
+@app.route('/api/usage_data', methods=['GET'])
+def get_latest_data():
+    # 获取查询参数
+    start_time = request.args.get('start')
+    end_time = request.args.get('end')
+    host_ip = request.args.get('ip', "")
+
+    if start_time and end_time:
+        # 使用用户提供的时间段
+        query_start = datetime.datetime.strptime(start_time, '%Y-%m-%d %H:%M:%S')
+        query_end = datetime.datetime.strptime(end_time, '%Y-%m-%d %H:%M:%S')
+    else:
+        # 默认使用过去3小时
+        end_time = datetime.datetime.now()
+        start_time = end_time - datetime.timedelta(hours=3)
+        query_start = start_time
+        query_end = end_time
+
+    # 连接到 MySQL 数据库
+    db = pymysql.connect(host=MYSQL_HOST, port=MYSQL_PORT, user=MYSQL_USER, passwd=MYSQL_PASSWORD, db=MYSQL_DATABASE)
+    cursor = db.cursor()
+
+    # 查询指定时间段的数据
+    #query = "SELECT timestamp, cpu_usage, memory_usage FROM system_usage WHERE timestamp BETWEEN %s AND %s"
+    # 查询指定时间段的数据，并添加整数形式的时间戳
+    query = """
+    SELECT 
+        timestamp, 
+        UNIX_TIMESTAMP(timestamp) AS unix_timestamp, 
+        cpu_usage, 
+        memory_usage,
+        host_ip,
+        hostname
+    FROM 
+        system_usage 
+    WHERE 
+        (timestamp BETWEEN %s AND %s)
+    """
+
+    # 如果提供了 IP 参数，添加到查询条件中
+    if host_ip:
+        query += " AND host_ip = %s ORDER BY timestamp;"
+        cursor.execute(query, (query_start, query_end, host_ip))
+    else:
+        query += " ORDER BY timestamp;"
+        cursor.execute(query, (query_start, query_end))
+
+
+    # 获取结果
+    results = cursor.fetchall()
+    cursor.close()
+    db.close()
+
+    # 格式化为字典
+    data = []
+    for row in results:
+        data.append({
+            'timestamp': row[0].strftime('%Y-%m-%d %H:%M:%S'),
+            'unix_timestamp': row[1],  # 整数形式的时间戳
+            'cpu_usage': row[2],
+            'memory_usage': row[3],
+            'host_ip': row[4],
+            'hostname': row[5]
+        })
+
+    return jsonify(data)
+
+if __name__ == '__main__':
+    app.run(debug=True, host='0.0.0.0', port=8071)
+
+
+
+
+缺少的依赖包：
+	$ pip3 install MySQLdb #报错
+	$ pip3 install Flask-MySQLdb #还是报错
+
+	$ sudo yum install mysql-devel #python3-devel
+	$ pip3 install mysqlclient  #mysqlclient-2.2.4.tar.gz
+
+	换一个mysql包：
+	$ pip3 install pymysql
+
+运行：
+	$ python3 flask_app.py
+
+开端口：
+	$ sudo iptables -I INPUT -p tcp --dport 8071 -j ACCEPT
+
+访问: http://10.10.117.156:8071/latest_data
+
+怎么设置时间范围参数？
+	http://10.10.117.156:8071/api/usage_data?start=2024-09-14%2016:00:00&end=2024-09-14%2017:00:00
+
+支持设置IP
+	http://10.10.117.156:8071/api/usage_data?start=2024-09-14%2017:00:00&end=2024-09-14%2018:00:00&ip=10.10.117.156
+
+
+
+
+(2) 前台绘制动态折线图
+https://www.chartjs.org/
+
+可用版本见：https://gitee.com/dawnEve/system_moniter
+
+
+
+
+
+
+
+
+========================================
 远程登录、远程桌面服务
 ----------------------------------------
 

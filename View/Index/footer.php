@@ -66,6 +66,7 @@
 
 			//C++
 			array('https://normaluhr.github.io/2020/12/31/Effective-C++/','Effective C++读书笔记'),
+			array('https://cppguide.cn/','CppGuide社区(张小方)'),
 			
 			//Java
 			array('https://github.com/itwanger/toBeBetterJavaer','toBeBetterJavaer'),
@@ -196,6 +197,7 @@
 			array('http://www.biotrainee.com:8081/jmzeng/book/basic/','曾健明的笔记'),
 			array('http://blog.biochen.com/about','陈雯(lincRNA)'),
 			array('https://github.com/xuzhougeng/myscripts/blob/master/igv_web.py','徐洲更(生信脚本)'), //其中 igv那个值得学习 
+			array('http://www.yelab.site/','叶幼琼(肿瘤多组学)'), //上海交通大学医学院上海市免疫学研究所，肿瘤多组学与肿瘤免疫课题组长 https://www.shsmu.edu.cn/sii/info/1020/3171.htm
 			//array('',''),
 		));
 ?>

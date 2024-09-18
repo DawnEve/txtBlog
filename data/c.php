@@ -21,6 +21,9 @@ return array (
       array('C语言网络通信','c103-socket','txt',),
       array('生信中的C','c104-bioInfo','txt',),
       array('C语言100题','c-practise','txt',),
+
+
+      array('C++ 资源.html','cpp_index','html',),
       array('C++','cpp_note','txt',),
     ),
   ),

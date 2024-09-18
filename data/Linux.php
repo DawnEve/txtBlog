@@ -45,7 +45,7 @@ return array (
     2 => array (
 	  array('网络/ssh/iptables','linux201-net-ssh', 'txt'),
 	  
-	  array('Linux服务','linux_service','txt' ),
+	  array('服务/DNS/资源监控/共享盘','linux_service','txt' ),
 	  
 	  array('htaccess配置规则','apache001','txt' ),
 	  array('虚拟域名和二级域名配置','apache002','txt' ),

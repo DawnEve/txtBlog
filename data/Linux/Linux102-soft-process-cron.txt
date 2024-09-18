@@ -854,6 +854,111 @@ update 和 upgrade 的区别
 
 	
 ========================================
+|-- yum 仓库失效[2024.7之后]，改为 centos-vault
+----------------------------------------
+1. 原仓库已经空了
+	https://mirrors.ustc.edu.cn/centos/7.9.2009/
+
+使用yum安装，会出现404报错：
+http://mirrors.ustc.edu.cn/centos/7.9.2009/os/x86_64/Packages/mariadb-5.5.68-1.el7.x86_64.rpm: [Errno 14] HTTP Error 404 - Not Found                 ]  0.0 B/s |    0 B  --:--:-- ETA
+Trying other mirror.
+mariadb-5.5.68-1.el7.x86_64.rp FAILED
+http://mirrors.163.com/centos/7.9.2009/os/x86_64/Packages/mariadb-5.5.68-1.el7.x86_64.rpm: [Errno 14] HTTP Error 404 - Not Found                     ]  0.0 B/s |    0 B  --:--:-- ETA
+Trying other mirror.
+
+
+非要用，需要手动改为：
+	https://mirrors.ustc.edu.cn/centos-vault/7.9.2009/
+	https://mirrors.bfsu.edu.cn/centos-vault/7.9.2009/
+
+
+
+2. 手动执行
+$ ls -lth /etc/yum.repos.d/
+
+(1) try1: 失败
+复制
+$ sudo cp /etc/yum.repos.d/CentOS-Base.repo /etc/yum.repos.d/CentOS-Base.repo-backup
+
+
+手动替换
+$ sudo vim /etc/yum.repos.d/CentOS-Base.repo
+baseurl=http://mirrors.aliyun.com/centos-vault/$releasever/os/$basearch/
+
+没执行：参考这一句：
+	sed -e "s|^mirrorlist=|#mirrorlist=|g" \
+		-e "s|^#baseurl=http://mirror.centos.org/centos/\$releasever|baseurl=https://vault.centos.org/7.9.2009/|g" \
+		-e "s|^#baseurl=http://mirror.centos.org/\$contentdir/\$releasever|baseurl=https://vault.centos.org/7.9.2009/|g" \
+		-i.bak \
+		/etc/yum.repos.d/CentOS-*.repo
+
+
+运行以下命令生成缓存
+# yum clean all # 清除YUM缓存： /var/cache/yum目录。
+# yum makecache
+
+$ yum repolist #查看源
+
+
+安装包：
+$ sudo yum install mariadb
+失败
+
+
+(2) 直接安装
+下载
+$ wget http://mirrors.ustc.edu.cn/centos-vault/7.9.2009/os/x86_64/Packages/mariadb-5.5.68-1.el7.x86_64.rpm
+
+安装
+$ sudo rpm -i mariadb-5.5.68-1.el7.x86_64.rpm
+$ mysql --version
+mysql  Ver 15.1 Distrib 5.5.68-MariaDB, for Linux (x86_64) using readline 5.1
+
+$ rm mariadb-5.5.68-1.el7.x86_64.rpm
+竟然可以了！
+但是有依赖的可不能这么手动操作。
+
+
+(3) try2: 再次尝试
+$ sudo vim /etc/yum.repos.d/CentOS-Base.repo
+[base]
+name=CentOS-$releasever - Base
+baseurl=http://mirrors.ustc.edu.cn/centos-vault/7.9.2009/os/$basearch/
+gpgcheck=1
+gpgkey=file:///etc/pki/rpm-gpg/RPM-GPG-KEY-CentOS7
+enabled=1
+
+[updates]
+name=CentOS-$releasever - Updates
+baseurl=http://mirrors.ustc.edu.cn/centos-vault/7.9.2009/updates/$basearch/
+gpgcheck=1
+gpgkey=file:///etc/pki/rpm-gpg/RPM-GPG-KEY-CentOS7
+enabled=1
+
+[extras]
+name=CentOS-$releasever - Extras
+baseurl=http://mirrors.ustc.edu.cn/centos-vault/7.9.2009/extras/$basearch/
+gpgcheck=1
+gpgkey=file:///etc/pki/rpm-gpg/RPM-GPG-KEY-CentOS7
+enabled=1
+
+
+运行以下命令生成缓存
+$ yum clean all # 清除YUM缓存： /var/cache/yum目录。
+$ yum makecache
+竟然可以了，不是全部报错了！目前只有docker不行。
+	https://download.docker.com/linux/centos/7/x86_64/stable/repodata/repomd.xml: [Errno 14] curl#35 - "TCP connection reset by peer"
+	删除掉 docker 的源：$ sudo mv /etc/yum.repos.d/docker-ce.repo  /etc/yum.repos.d/docker-ce.repo-back
+	重新执行清理，生成缓存。
+
+$ yum repolist #查看源
+
+$ sudo yum install mariadb
+
+
+
+
+========================================
 |-- linux软件的安装/卸载/升级/添加环境变量(Ubuntu)
 ----------------------------------------
 安装ssh服务
