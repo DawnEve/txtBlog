@@ -1200,7 +1200,212 @@ function toggleClass(obj,cls){
 
 
 ========================================
+|-- 提取当前网页中的标题 h1-h6 作 导航框，支持拖拽、隐藏、单击定位、高亮当前导航标题
 ----------------------------------------
+1. 概要
+
+(1) 思路
+提取标题：提取页面中的所有标题元素（如 <h1>, <h2>, <h3> 等）。
+生成目录导航：生成一个目录导航框，并将提取的标题添加到目录导航中。
+实现隐藏、显示功能：实现目录导航框的隐藏和显示功能。
+实现拖拽功能：使目录导航框可以拖拽。
+实现跳转和高亮：点击导航项时跳转到对应的标题，并高亮显示当前标题。
+
+(2) 函数功能
+封装成对象：将所有功能封装到 TocNavigator 对象中，只占用一个全局变量。
+init 方法：初始化对象，提取标题、生成目录、添加事件监听器。
+generateToc 方法：生成目录，添加点击事件以实现滚动和高亮。
+addEventListeners 方法：添加显示/隐藏按钮的点击事件和拖拽事件。
+toggleToc 方法：切换目录导航框的显示状态，并调整位置使其显示在按钮左侧。
+startDrag 方法：开始拖动，记录鼠标偏移量并添加移动和释放事件监听器。
+onMouseMove 方法：拖动过程中更新按钮和目录导航框的位置。
+onMouseUp 方法：结束拖动，移除移动和释放事件监听器。
+
+
+
+2. 原生js实现
+(1) 代码演示
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Document</title>
+    <style>
+        /* 基本样式 */
+        body {
+            font-family: Arial, sans-serif;
+        }
+
+p{height:500px;}
+    </style>
+</head>
+<body>
+    <h1>标题1</h1>
+    <p>内容...</p>
+    <h2>标题1.1</h2>
+    <p>内容...</p>
+    <h3>标题1.1.1</h3>
+    <p>内容...</p>
+    <h2>标题1.2</h2>
+    <p>内容...</p>
+    <h1>标题2</h1>
+    <p>内容...</p>
+    <h2>标题2.1</h2>
+    <p>内容...</p>
+    <h3>标题2.1.1</h3>
+    <p>内容...</p>
+
+    <script>
+const TocNavigator = {
+	styles:'#toc{position:fixed;top:20px;right:50px;width:250px;background-color:#f9f9f9;border:1px solid#ccc;border-radius:8px;box-shadow:0 2px 10px rgba(0,0,0,0.1);padding:10px;z-index:1000;display:none;right: 50px;max-height: 80vh;overflow-y: auto;}#toc h2{margin-top:0}#toc ul{list-style:none;padding-left:0px}#toc li{margin:5px 0;cursor:pointer}#toc li.active{font-weight:bold;color:#007bff}#toc-toggle{position:fixed;top:20px;right:0;width:30px;height:30px;background-color:#007bff;color:#fff;border:none;border-radius:15px;cursor:pointer;z-index:1001}.toc-level-1{font-weight:bold;padding-left:0}.toc-level-2 :nth-child(2){padding-left:10px}.toc-level-3 :nth-child(2){padding-left:20px}.toc-level-1:after{content:"H1";color:#efefef}.toc-level-2:after{content:"H2";color:#efefef}.toc-level-3:after{content:"H3";color:#efefef}.toc-level-1:hover:after,.toc-level-2:hover:after,.toc-level-3:hover:after{color:#eaa}',
+	/*返回创建的dom元素；参数1必须*/
+	createElement(tag, json, innerHTML){
+		var json=json||{};
+		var dom=document.createElement(tag);
+		
+		if(json!=undefined){
+			for(var key in json){
+				dom.setAttribute(key,json[key]);
+			}
+		}
+		
+		if(innerHTML!=undefined){
+			dom.innerHTML=innerHTML;
+		}
+		return dom;
+	},
+	
+	init() {
+		/* 创建元素
+			<button id="toc-toggle">☰</button>
+			<div id="toc">
+				<h2>目录</h2>
+				<ul id="toc-list"></ul>
+			</div>
+		*/
+		var oFrag=document.createDocumentFragment();
+		var oButton=this.createElement("button", {"id":"toc-toggle"}, "☰");
+		var oDiv=this.createElement("div", {"id":"toc"});
+		var oH2=this.createElement("h2", {}, "目录"); oDiv.append(oH2);
+		var oUl=this.createElement("ul", {'id':'toc-list'}); oDiv.append(oUl);
+		oFrag.append(oButton); oFrag.append(oDiv);
+		//style
+		var oStyle=this.createElement("style", {}, this.styles);
+		oFrag.append(oStyle);
+		
+		
+		//获取标题元素
+		this.headings = document.querySelectorAll('h1, h2, h3, h4, h5, h6');
+		
+		this.tocList = oUl;
+		this.tocToggle = oButton;
+		this.toc = oDiv;
+		
+		this.isDragging = false;
+		this.offsetX = 0;
+		this.offsetY = 0;
+
+		this.generateToc();
+		this.addEventListeners();
+		
+		//window.scrollBy(1, 1); //主动触发滚动，否则没有高亮
+		document.body.append(oFrag);
+	},
+	
+	trim(str){
+		return str.replace(/(^\s*)|(\s*$)/g, "");
+	},
+
+	generateToc() {
+		var counter=0;
+		
+		this.headings.forEach((heading, index) => {
+			if(this.trim(heading.textContent)!=""){
+				// 更新计数器
+				counter++;
+				
+				const li = document.createElement('li');
+				li.append(this.createElement("span",{"style":"color:#ddd; margin:0 5px;"}, counter))
+				li.append(this.createElement("span",{}, heading.textContent))
+				//li.textContent = `${counter} ${heading.textContent}`;
+				li.dataset.targetId = `heading-${index}`;
+				heading.id = `heading-${index}`;
+
+				// 根据标题级别添加不同的类名
+				if (heading.tagName === 'H1') {
+					li.classList.add('toc-level-1');
+				} else if (heading.tagName === 'H2') {
+					li.classList.add('toc-level-2');
+				} else if (heading.tagName === 'H3') {
+					li.classList.add('toc-level-3');
+				}
+
+				li.addEventListener('click', () => {
+					document.getElementById(li.dataset.targetId).scrollIntoView({ behavior: 'smooth' });
+					document.querySelectorAll('#toc li').forEach(el => el.classList.remove('active'));
+					li.classList.add('active');
+				});
+
+				this.tocList.appendChild(li);
+			}
+			
+		});
+	},
+
+	addEventListeners() {
+		this.tocToggle.addEventListener('click', this.toggleToc.bind(this));
+		this.tocToggle.addEventListener('mousedown', this.startDrag.bind(this));
+	},
+
+	toggleToc() {
+		if (this.toc.style.display === 'block') {
+			this.toc.style.display = 'none';
+			const toggleRect = this.tocToggle.getBoundingClientRect();
+			this.toc.style.top = `${toggleRect.top}px`;
+			this.toc.style.right = `${window.innerWidth - toggleRect.left + 10}px`; // 显示在按钮左侧
+		} else {
+			this.toc.style.display = 'block';
+		}
+	},
+
+	startDrag(e) {
+		//console.log("start to drag", e);
+		this.isDragging = true;
+		this.offsetX = e.clientX - this.tocToggle.getBoundingClientRect().left;
+		this.offsetY = e.clientY - this.tocToggle.getBoundingClientRect().top;
+		document.addEventListener('mousemove', this.onMouseMove.bind(this));
+		document.addEventListener('mouseup', this.onMouseUp.bind(this));
+	},
+
+	onMouseMove(e) {
+		if (this.isDragging) {
+			this.tocToggle.style.left = `${e.clientX - this.offsetX}px`;
+			this.tocToggle.style.top = `${e.clientY - this.offsetY}px`;
+			/*调整toc位置与按钮同步*/
+			this.toc.style.left = `${e.clientX - this.offsetX - this.toc.offsetWidth - 10}px`;
+			this.toc.style.top = `${e.clientY - this.offsetY}px`;
+		}
+	},
+
+	onMouseUp() {
+		this.isDragging = false;
+		document.removeEventListener('mousemove', this.onMouseMove.bind(this));
+		document.removeEventListener('mouseup', this.onMouseUp.bind(this));
+	}
+};
+
+document.addEventListener('DOMContentLoaded', () => TocNavigator.init());
+    </script>
+</body>
+</html>
+
+
+(2) 使用方法
+对于网页，按F12，在控制台console输入对象 TocNavigator 的定义，然后执行
+> TocNavigator.init()
+
+=> 该功能放到web: http://tool.dawneve.cc/JavaScript/TocNavigator_js.html
 
 
 ========================================

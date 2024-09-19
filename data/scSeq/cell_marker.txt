@@ -5,6 +5,8 @@ Cell Marker list
     immune (CD45+, PTPRC),
     epithelial/cancer (EpCAM+, EPCAM),
     stromal (CD10+, MME, fibo or CD31+, PECAM1, endo)
+		CD10:MME     fibo
+		CD31:PECAM1  endo
 
 接着 非负矩阵
 
@@ -17,7 +19,7 @@ PBMC(peripheral blood mononuclear cell) 外周血单个核细胞:注意这里是
 
 
 ========================================
-查基因和细胞的数据库
+查基因和细胞的数据库: 我自己的merker列表
 ----------------------------------------
 
 1. 查基因的意义，基因的曾用名
@@ -66,6 +68,329 @@ pathways$'Maturation' <- rev(c("Cd40","Cd80","Cd86","Relb","Cd83"))
 pathways$'Regulatory' <- rev(c("Cd274","Pdcd1lg2","Cd200","Fas","Aldh1a2","Socs1","Socs2"))
 pathways$'TLRs & adaptors' <- strsplit("Tlr1,Tlr2,Tlr3,Tlr4,Tlr5,Tlr6,Tlr7,Tlr8,Tlr9,Tlr11,Ticam1,Myd88",",")[[1]]
 pathways$'Migration' <- rev(c("Ccr7","Myo1g","Cxcl16","Adam8","Icam1","Fscn1","Marcks","Marcksl1"))
+
+
+
+4. 细胞注释的方法
+(1) 背诵marker基因列表
+(2) 整理自己看的markerlist，和top N marker 的 Jarcard 距离判断分类
+(3) 注释网站和工具做参考
+	* SingleR
+	* Azimuth
+
+
+
+
+
+
+
+5. 我的marker列表
+详见: BioToolKit::marker_list/index.html
+
+my.immmue.gene.list=list(
+	"mast"=c('TPSAB1', 'CPA3', 'KIT', 'MS4A2'),
+
+)
+
+todo: 
+	macrophage、Monocyte以及Dendritic细胞 怎么区分？  https://zhuanlan.zhihu.com/p/608898711
+
+
+
+
+
+
+========================================
+|-- 单细胞细胞类群基因marker鉴定新方法：COSG
+----------------------------------------
+2022年3月在线发表于 Brief Bioinformatics 上，题为：Accurate and fast cell marker gene identification with COSG，该工具同时有Python和R版本，这意味着无论你是 Seurat 用户还是 Scanpy 用户都可以使用这个工具。
+
+传统的基因marker鉴定方法基于欧式距离。
+基于 余弦值 的基因marker鉴定新方法：COSG（COSine similarity-based marker Gene identification）。
+
+
+
+# install.packages('remotes')
+remotes::install_github(repo = 'genecell/COSGR')
+
+library(COSG)
+library(dplyr)
+COSG_markers <- cosg(
+  pbmc3k,
+  groups='all',
+  assay='RNA',
+  slot='data',
+  mu=1,
+  n_genes_user=900)
+
+DotPlot(pbmc3k, assay = 'RNA',
+              features = COSG_markers$names$B[1:10]) +
+  ggtitle(label = 'B cell Markers with COSG') + 
+  theme(axis.text.x = element_text(hjust = 1, angle = 45))
+
+
+
+
+========================================
+|-- 单细胞细胞类型注释工具 SingleR v2.4.1
+----------------------------------------
+SingleR利用了相关性的方法对单细胞数据的细胞类型进行了划分，显示了良好的效果
+"我感觉SingleR是最好的自动注释包."
+
+
+1. 安装
+#devtools::install_github('dviraran/SingleR') #1.0.1 太古老了
+# devtools::install_github('SingleR-inc/SingleR') #当前版本
+
+BiocManager::install("SingleR")
+packageVersion("SingleR")  #2.4.1
+
+BiocManager::install("celldex")
+
+(2) 教程
+https://github.com/dviraran/SingleR
+https://www.bioconductor.org/packages/release/bioc/vignettes/SingleR/inst/doc/SingleR.html
+https://www.bioconductor.org/packages/release/bioc/html/SingleR.html
+
+电子书: 
+	Assigning cell types with SingleR  https://bioconductor.org/books/release/SingleRBook/
+	https://github.com/LTLA/SingleRBook-base/blob/master/index.Rmd
+
+
+
+
+2. 使用
+以计算参考集A类细胞的Marker基因为例，先计算得到参考集中各个基因在A类细胞和其他细胞中表达量的中位数（因为参考集，每种细胞都有大量重复，所以可以计算中位数），然后根据中位数将参考集中细胞类型进行两两比较，计算表达差异倍数。
+
+(1) 自带参考库
+SingleR自带5个人的参考数据库和2个小鼠的参考数据库，每个数据库导入的方法如下：
+library(SingleR)
+library(Seurat)
+library(celldex)
+# human
+hpca.se <- HumanPrimaryCellAtlasData()
+bpe.se <- BlueprintEncodeData()
+DICE <- DatabaseImmuneCellExpressionData() 
+NHD <- NovershternHematopoieticData() 
+MID <- MonacoImmuneData()
+# mouse
+MRD <- MouseRNAseqData() 
+IGD <- ImmGenData()
+
+
+(2) 确定Marker的数目
+选取差异倍数最高的N个基因（upregulated）作为A类细胞的marke基因，那么A类细胞最终的Marker基因是两两比较差异基因的并集。这个指标N可以根据项目的情况优化调整。
+
+Tips:
+Marker基因的计算方法可以自己定义，比如定义为pairwise binomial tests
+可以自己提供Marker基因list给到SingleR
+
+
+
+3. 实战
+library(SingleR)
+library(Seurat)
+library(celldex)
+
+hpca.se <- HumanPrimaryCellAtlasData()
+#/home/wangjl/.cache/R/ExperimentHub
+#  does not exist, create directory? (yes/no): yes
+hpca.se
+
+sce1 <- scObj ## 赋值给其他变量，避免修改原变量。
+sce_for_SingleR <- GetAssayData(sce1, slot="data")
+sce_for_SingleR
+clusters <- sce1@meta.data$seurat_clusters
+
+(1) 按cluster预测: fast
+pred.hesc <- SingleR(test = sce_for_SingleR, 
+                     ref = hpca.se, 
+                     labels = hpca.se$label.main,
+                     #method = "cluster", 
+                     clusters = clusters, 
+                     assay.type.test = "logcounts", 
+                     assay.type.ref = "logcounts")
+#Warning message:
+#'method="cluster"' is no longer necessary when 'cluster=' is specified
+
+table(pred.hesc$labels)
+
+
+# naming cluster
+#new.cluster.ids <- c("Naive CD4 T", "CD14+ Mono", "Memory CD4 T", "B", "CD8 T", "FCGR3A+ Mono", "NK", "DC", "Platelet")
+new.cluster.ids <- pred.hesc$labels
+names(new.cluster.ids) <- levels(sce1)
+sce1 <- RenameIdents(sce1, new.cluster.ids)
+DimPlot(sce1, reduction = "umap", label = TRUE, pt.size = 0.5) + ggtitle("singleR prediction")
+
+
+
+# 注释结果诊断
+plotScoreHeatmap(pred.hesc)
+
+
+
+(2) 按cell 预测: slow
+pred.hesc2 <- SingleR(test = sce_for_SingleR,
+                     ref = hpca.se, 
+                     labels = hpca.se$label.main)
+#10:30-> 11:00
+table(pred.hesc2$labels)
+table(pred.hesc2$labels, sce1$seurat_clusters)
+
+sce1@meta.data$singleR <-pred.hesc2$labels
+DimPlot(sce1, group.by = c("seurat_clusters", "singleR"), reduction = "umap")
+DimPlot(sce1, group.by = c("singleR"), reduction = "umap", label=T)
+
+
+
+
+(4) 多个数据库一起注释
+https://blog.csdn.net/weixin_56845253/article/details/129315604
+
+使用BP和HPCA两个数据库综合注释，使用list函数读入多个数据库
+
+pbmc3 <- pbmc
+pbmc3.hesc <- SingleR(test = pbmc_for_SingleR, ref = list(BP=bpe.se, HPCA=hpca.se), labels = list(bpe.se$label.main, hpca.se$label.main)) 
+table(pbmc3.hesc$labels,meta$seurat_clusters)
+pbmc3@meta.data$labels <-pbmc3.hesc$labels
+print(DimPlot(pbmc3, group.by = c("seurat_clusters", "labels"),reduction = "umap"))
+
+
+(5)注释结果诊断
+1)基于scores within cells
+print(plotScoreHeatmap(pbmc.hesc))
+
+2)基于 per-cell “deltas”诊断
+plotDeltaDistribution(pbmc.hesc, ncol = 3)
+# Delta值低，说明注释结果不是很明确。
+
+3)与cluster结果比较
+tab <- table(label = pbmc.hesc$labels,
+             cluster = meta$seurat_clusters)
+pheatmap(log10(tab + 10))
+
+
+
+
+
+
+4. 自定义注释数据集
+myref <- sce2##这里为了检测，我们将参考数据集与目标数据集用同一个数据进行测试
+myref$celltype <- Idents(myref)
+table(Idents(myref))
+
+# 读入参考数据集
+Refassay <- log1p(AverageExpression(myref, verbose = FALSE)$RNA)#求细胞的平均表达
+#Ref <- textshape::column_to_rownames(Ref, loc = 1)#另一种得到参考矩阵的办法
+head(Refassay)#看看表达矩阵长啥样
+
+# 构建一个SingleCellExperiment对象
+ref_sce <- SingleCellExperiment::SingleCellExperiment(assays=list(counts=Refassay))
+
+#参考数据集需要构建成一个SingleCellExperiment对象
+# if(!require(scater))BiocManager::install('scater')
+library(scater)
+ref_sce <- scater::logNormCounts(ref_sce)
+
+colData(ref_sce)$Type <- colnames(Refassay)
+
+
+# 使用刚才自定义的参考数据集
+testdata <- GetAssayData(sce, slot="data")
+pred <- SingleR(test=testdata, 
+                ref=ref_sce, 
+                labels=ref_sce$Type,
+                #clusters = scRNA@active.ident
+                )
+table(pred$labels)
+cellType=data.frame(seurat= sce@meta.data$seurat_clusters,
+                    predict=pred$labels)#得到seurat中编号与预测标签之间的关系
+
+
+
+ref:
+https://www.jianshu.com/p/c11ff102baa4
+Sarah Williams (2019). celaref: Single-cell RNAseq cell cluster labelling by reference. R package version 1.0.1.
+
+
+
+
+
+========================================
+|-- 基于参考的细胞在线注释工具 Azimuth：‘reference-based mapping’ 
+----------------------------------------
+https://satijalab.org/azimuth/
+https://azimuth.hubmapconsortium.org/
+
+azimuth [ˈæzɪməθ] n. [测] 方位；[天] 方位角；偏振角
+
+https://github.com/satijalab/azimuth
+A Shiny web app for mapping datasets using Seurat v4
+
+
+1. 保存Rds文件
+sce2=CreateSeuratObject(counts = scObj@assays$RNA@counts, meta.data = scObj@meta.data )
+saveRDS(sce2, file=paste0(outputRoot, keyword, "_2.input.Azimuth.Rds"))
+
+
+2. 上传到网站
+https://azimuth.hubmapconsortium.org/
+我分别选了pbmc和bmmc两个参考数据集。
+点击 Map cells to reference 按钮。
+
+
+
+
+3. 目测效果并下载
+在Download Results页面下载Predicted cell types and scores (TSV)，将下载得到的结果(azimuth_pred)重新上传到R中。
+
+
+4. 查看
+predictions <- read.delim('azimuth_pred.tsv', row.names = 1)
+object <- AddMetaData(
+	object = object,
+	metadata = predictions)
+
+
+我的代码：
+#pbmc
+predictions <- read.delim(paste0(outputRoot, '/refer/azimuth_pred-pbmc.tsv'), row.names = 1)
+scObj_p <- AddMetaData(
+  object = scObj,
+  metadata = predictions)
+DimPlot(scObj_p, group.by = "predicted.celltype.l2", label=T)
+#
+#bmmc
+predictions <- read.delim(paste0(outputRoot, '/refer/azimuth_pred-bmmc.tsv'), row.names = 1)
+scObj_b <- AddMetaData(
+  object = scObj,
+  metadata = predictions)
+DimPlot(scObj_b, group.by = "predicted.celltype.l2", label=T)
+#
+
+
+
+
+
+
+
+========================================
+|-- 注释细胞类型的具体过程：数据库法 CellMarker
+----------------------------------------
+http://biocc.hrbmu.edu.cn/CellMarker/
+
+
+这个步骤其实看似简单，但工程量非常大。主要利用了一个叫cellMarker的数据库，就如你所说的选取每个cluster的前几位marker基因，一个个检索，另外也结合了相近的研究文献的结果对照着看。后来我实验室的同学写了个小程序帮我把那个的数据库里的数据都爬下来了，工作量减轻了不少。。
+
+这个数据库其实还是很不成熟的，数据量很小也不太准确，所以只能找个大概，更可靠的来源还是文献
+
+
+
+
+
+
+
 
 
 
@@ -657,6 +982,19 @@ stromal (CD10+, MME, fibo or CD31+, PECAM1, endo)
 
 
 
+
+1. NCI Dictionary of Cancer Terms 肿瘤词典
+https://www.cancer.gov/publications/dictionaries/cancer-terms
+
+(1). macrophage (MA-kroh-fayj)
+https://www.cancer.gov/publications/dictionaries/cancer-terms/def/macrophage
+A type of white blood cell that surrounds and kills microorganisms, removes dead cells, and stimulates the action of other immune system cells.
+
+Blood cells. Blood contains many types of cells: white blood cells (monocytes, lymphocytes, neutrophils, eosinophils, basophils, and macrophages), red blood cells (erythrocytes), and platelets. Blood circulates through the body in the arteries and veins.
+
+
+
+
 ========================================
 |-- CD 分子及其意义
 ----------------------------------------
@@ -939,6 +1277,21 @@ cluster8: CD8+T cell cycle
 
 
 
+3. 激活和抑制基因
+
+(1)
+https://www.cell.com/cell-reports/fulltext/S2211-1247(18)31925-9
+Cell reports, 2019
+Microtubule-Driven Stress Granule Dynamics Regulate Inhibitory Immune Checkpoint Expression in T Cells
+
+Hence, PD-1 expression is highly sensitive to microtubule or stress granule inhibitors targeting this pathway. Evidence from healthy donors and cancer patients reveals a common regulation for the translation of CTLA4, LAG3, TIM3, TIGIT, and BTLA but not of the stimulatory co-receptors OX40, GITR, and 4-1BB mRNAs.
+
+Inhibitory immune checkpoint: - PDCD1, CTLA4, LAG3, TIM3, TIGIT, and BTLA
+stimulatory immune checkpoint: + OX40, GITR, and 4-1BB
+
+
+
+
 
 
 
@@ -988,6 +1341,46 @@ conventional TEFF (conv TEFF),
 cytokines high TEFF (cytohi) TEFF, 
 proliferation TEFF (prolif TEFF), 
 and CTLA4hi TEFF (Figures 1D, 1F, S1E, and S1F).
+
+
+(3) T效应记忆细胞(T effective memory, TEM)和T中央记忆细胞(T central memory, TCM)的主要标记物区别
+CCR7表达:
+	TCM: CCR7+
+	TEM: CCR7-
+	CCR7是一个关键的区分标记,TCM表达CCR7,而TEM不表达
+
+CD62L表达:
+	TCM: CD62L+
+	TEM: CD62L-
+	CD62L(L-selectin)是另一个重要的区分标记,TCM表达CD62L,而TEM不表达或低表达
+
+其他标记物:
+	TCM通常表达CD27、CD28、IL-7R等
+	TEM通常表达CD44、CD11a等效应分子
+
+功能相关标记:
+	TCM表达较高水平的IL-2Rβ和BCL-2
+	TEM表达较高水平的效应分子如穿孔素(PRF1)、颗粒酶（GZMK）等
+
+趋化受体:
+	TCM表达CXCR3等淋巴结归巢相关受体
+	TEM表达如CCR5等炎症组织趋化受体
+总的来说,TCM保留更多的初始T细胞特征和淋巴结归巢能力,而TEM具有更强的效应功能和组织迁移能力。
+
+这些标记物的差异反映了它们在免疫记忆和功能上的不同特点。在进行T细胞分群时,通常会结合多个标记物来进行更准确的鉴定。
+
+
+
+
+(4) TCF7 与CAR T的免疫响应和记忆有关？
+Doan AE, Mueller KP, Chen AY, Rouin GT et al. FOXO1 is a master regulator of memory programming in CAR T cells. Nature 2024 May;629(8010):211-218. PMID: 38600391
+https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc=GSE255410
+
+The expression of memory-associated genes such as TCF7 (protein name TCF1) is linked to response and long-term persistence in patients3–7, thereby implicating memory programs in therapeutic efficacy.
+
+
+
+
 
 
 
@@ -1075,6 +1468,17 @@ Blimp-1是另一种显示有助于CD4+CTL分化的转录因子。据报道，Bli
 
 
 
+========================================
+|-- T细胞打分: 激活打分，细胞毒打分
+----------------------------------------
+1. GSE246342     样本为治疗前后骨髓     CD4+ CAR T-cell exhaustion associated with early relapse of multiple myeloma after BCMA CAR T-cell therapy
+PMID: 38574299 DOI: 10.1182/bloodadvances.2023012416
+
+Activation score was calculated by Scanpy function “scanpy.tl.score_genes” with this gene signature: PDCD1, CTLA4, HAVCR2, LAG3, ENTPD1, TOX, LAYN, CD160, CD244, and TIGIT; 
+
+whereas cytotoxicity score was calculated in the same way by this gene signature: NKG7, PRF1, GZMB, GZMK, TNF, and IFNG.
+
+
 
 
 
@@ -1088,12 +1492,19 @@ Blimp-1是另一种显示有助于CD4+CTL分化的转录因子。据报道，Bli
 
 ["Bcl2","Rgs1","Xcl1","Dusp2","Sh2d2a","S100a10","Cd2","Ugcg","Lck","Txk","Vps37b","Gimap4","Gimap5","Klrb1a","Klrb1c","Klre1","Klrd1","Klrk1","Klrc2","Klri2","Klra4","Klra8","Klra9","Klra7","Klra3","Ncr1","Nkg7","Ifngr1","Prf1","Ifng","Gzmb","Eomes","Ccl5","Ccl3","Ccl4","Cd7","Serpinb6b","Serpinb9","Ctla2a","Gzma","Id2","Il2rb","Lgals1","Sytl3","H2-K1","H2-Q7","Ctsw","Ahnak","AW112010","Ms4a4b"] 
 
+(2) strsplit("KIT, TRDC, TTLL10, LINC01229, SOX4, KLRB1, TNFRSF18, TNFRSF4, IL1R1, HPGDS", ", ")[[1]]
 
 
 
 
+2. GPT
+known markers for ILCs (e.g., 
+* NK cell markers: NKG7, CD56(NCAM1); 
+* ILC1 markers: T-bet(TBX21), EOMES; 
+* ILC2 markers: GATA3, IL-5(IL5); 
+* ILC3 markers: RORγt(RORC), IL-22(IL22)).
 
-
+strsplit("NKG7, NCAM1, TBX21, EOMES, GATA3, IL5, RORC, IL22", ", ")[[1]]
 
 
 
@@ -1229,6 +1640,7 @@ c("S100a9", "S100a8", "Retnlg", "Ngp", "Lcn2", "Lyz2", "Mmp8", "Ltf", "Wfdc21", 
 
 
 
+2. 主要颗粒基因Elane、Prtn3和Ctsg
 
 
 

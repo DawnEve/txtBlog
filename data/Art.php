@@ -14,7 +14,7 @@ return array (
   
   
   array (
-    0 => 1,
+    0 => 2,
     1 => 'AI实例入门',
     2 => array (
       array('AI基础教程','AI100','txt'),
@@ -25,7 +25,7 @@ return array (
 
 
   array (
-    0 => 1,
+    0 => 3,
     1 => 'AI小专题',
     2 => array (
       array('路径专题','Illustrator102','txt'),
@@ -34,12 +34,18 @@ return array (
     ),
   ),
 
-
+  array (
+    0 => 4,
+    1 => 'Photoshop',
+    2 => array (
+      array('Photoshop使用技巧','Photoshop','txt'),
+    ),
+  ),
 
 
 
   array (
-    0 => 1,
+    0 => 5,
     1 => '3D建模',
     2 => array (
       array('blender简介','blender_001','html'),
@@ -51,10 +57,9 @@ return array (
 
 
   array (
-    0 => 1,
+    0 => 6,
     1 => 'multi media',
     2 => array (
-      array('Photoshop使用技巧','Photoshop','txt'),
       array('audition3.0','audition','txt'),
       array('视频处理 premiere等','video_note','txt'),
       array('LaTeX 排版','LaTeX','txt'),

@@ -1,7 +1,318 @@
 多模态、多组学 单细胞数据整合
 
 
+CITE 数据的分析方法: WNN
 
+
+
+
+========================================
+我的思考：同一套细胞的多组学数据如何整合？
+----------------------------------------
+目前方法的利弊：
+	使用CCA是对共有的、最大的Feature变异方向的提取，也就是失去了该组学特有的部分特征。
+	而直接提取各自的PC的方法（WNN），无法保证这些PC是正交的。
+	我认为更合理的是直接朴素的合并2个组学的高变特征，按特征scale后，接着求PC，做UMAP和分群。
+
+
+
+推荐多模态教程：
+* Seurat4.0系列教程16：多模式参考映射注释细胞 https://www.jianshu.com/p/3045202202c4
+
+
+
+
+
+
+========================================
+Seurat 多组学整合 CCA: 典型相关分析（canonical correlation analysis): 快速分析多变量的相关关系
+----------------------------------------
+1. CCA 权威资料
+https://blog.csdn.net/weixin_60734652/article/details/133022518
+
+Comprehensive Integration of Single-Cell Data, Cell 2019
+	https://www.sciencedirect.com/science/article/pii/S0092867419305598
+
+
+CCA & singleR
+	https://www.jianshu.com/p/0887b49122eb
+
+Seurat团队指出CCA整合方法也可能导致过度矫正，尤其是当数据集之间大部分数据不重叠的情况下。
+
+
+2. 要解决的问题
+CCA 就是联系2个不相关的多变量之间的相关性。
+
+(1) 实例
+比如几百个学生的 多学科成绩矩阵A(语数外数理化史地生)，和学生其他指标矩阵B(身高体重肺活量百米握力睡眠时间等)，是否有关系？
+
+A: m1*n
+B: m2*n
+其中n是样本个数：学生个数
+m1和m2是不同类别的特征的维度：成绩的学科m1个，其他指标个数m2个。
+
+思路1：对2个矩阵中的每个特征列，两两求相关性。
+缺点：我们直接对这些变量的相关进行两两分析，很难得到关于这两组变量之间关系的一个清楚的印象
+
+我们需要把多个变量与多个变量之间的相关化为两个具有代表性的变量之间的相关
+
+代表：能较为综合、全面的衡量所在组的内在规律
+一组变量最简单的综合形式就是该组变量的线性组合
+
+典型相关分析是研究两个多变量（向量）之间之间的线性相关关系，能够揭示出两组变量之间的内在联系。
+
+
+(2) 算法的提出
+
+在一元统计分析中，用相关系数来衡量两个随机变量的线性相关关系，用复相关系数研究一个随机变量与多个随机变量的线性相关关系。然而，这些方法均无法用于研究两组变量之间的相关关系，于是提出了CCA
+
+一般有两个典型的目的：
+- 数据简化：用少量的线性组合来解释两组变量之间的相关作用。
+- 数据解释：寻找特征值，这些特征值对于解释两个变量集合之间的相互作用十分关键。
+
+
+(3) 与主成分分析（PCA）之间的关系：
+典型相关分析的基本思想和主成分分析的基本思想相似，它将一组变量与另一组变量之间单变量的多重线性相关性研究，转换为少数几对综合变量之间的简单线性相关性的研究，并且这少数几对变量所包含的线性相关性的信息几乎覆盖了原变量组所包含的全部相应信息。
+
+联系：无论是典型相关分析还是主成分分析，都是线性分析的范畴，一组变量的典型变量和其主成分都是经过线性变换，通过计算矩阵的特征值与特征向量得出的。
+
+区别：主成分分析中只涉及一组变量的相互依赖关系，而典型相关则扩展到了两组变量之间的相互依赖的关系之中，度量了这两组变量之间联系的强度。
+
+
+
+(4) 分析步骤
+1)首先在每组变量中找到变量的线性组合，使得两组的线性组合之间具有最大的相关系数。
+2)然后选取和最初挑选的这对线性组合不相关的线性组合，使其配对，并选取相关系数最大的那一组。
+3)如此继续配对，直到两组变量之间的相关性被提取完。
+
+
+(5) 典型相关系数的假设检验
+在做两组变量 X，Y 的典型相关分析之前，首先应该检验两组变量是否相关，如果不相关，则讨论两组变量的典型相关就毫无意义。
+
+最多可以选取 r = min(p,q) 组，可经由卡方检验决定要选取多少组典型变量。先检验最大的典型根，然后再一个接一个对各个根进行检验，只保留有统计显著性（就是拒绝原假设）的根。
+
+
+(6) 冗余分析
+在进行样本典型相关分析时，分析每组变量提取出的典型变量所能解释的该组样本总方差的比例，称为冗余分析。冗余分析包括组内代表比例和交叉解释比例，是典型相关分析中很重要的部分。
+
+组内代表比例是指本组所有观测变量的总标准方差中由本组形成的各个典型变量所分别代表的比例；
+
+交叉解释比例是指一组变量形成的典型变量对另一组观测变量的总标准方差所解释的比例， 是一种组间交叉共享比例。
+
+冗余分析可以定量地测度典型变量所包含的原始信息量的大小。
+
+
+实际上，只需要掌握典型相关分析的基本原理，基本思想就可以了，具体实际操作并不难，不需要通过公式进行计算，目前基本上是使用SPSS进行分析。
+
+
+
+
+(7) CCA的解释和限制
+CCA的建模目标是实现多个矩阵的共同分解。这个目的使得该工具对于处理跨多个调查层面的丰富样本描述的人群观察特别有用。然而，这种分析技术是否更接近于数据的描述性重表达（即，无监督建模）还是应该更容易理解为预测性降维回归的一种形式（即，监督建模，参见Bach和Jordan，2005；Bzdok等人，2018；Breiman和Friedman，1997；Witten等人，2009）仍然是一个持续的争论。
+
+两种观点都有合理的论据。监督算法依赖于一个指定的建模目标，该目标将从一组输入变量中预测，而无监督算法旨在在没有与模型估计期间可用的关联基准标签的情况下提取观察中的连贯模式（Hastie等人，2001）。有可能随着其中一个变量集的维数减少以接近大多数线性回归类型方法的单一输出，在这种情况下，CCA可能更类似于更多的监督建模方法。相反，随着双方变量集的不断增大，应用CCA可能更接近无监督建模方法的精神。
+
+总的来说，CCA模型是一种相对独特的方法——“介于两者之间”——它共享了监督和无监督方法的经典属性。
+
+
+限制：
+
+在这种通用建模目标的三重视图背景下，CCA可能最自然地符合估计类别，而不是主要的预测或推断工具。由于其探索性质，CCA通常对于专注于揭示复杂高维空间中简洁原则的应用非常有用，作为手头观测的替代描述。
+
+
+与许多统计方法一样，观测值的数量n与变量的数量p之间的关系是考虑CCA是否可能有用的关键方面（Giraud, 2014; Hastie et al., 2015）。普通CCA只能在数据中的观测值数量多于较大变量集的变量数量时才能产生有用的模型拟合（即，n > max(p;q)）。具体来说，如果分析中包括的个体数量接近大脑或行为或基因组变量的数量，那么CCA将很难估算出存在于人口中的任何潜在维度
+
+
+
+
+
+
+3. 具体实现
+实际上，只需要掌握典型相关分析的基本原理，基本思想就可以了，具体实际操作并不难，不需要通过公式进行计算，目前基本上是使用R语言进行分析。
+
+好的示例：
+R code for ecological data analysis, CCA part:
+	https://userweb.eng.gla.ac.uk/umer.ijaz/bioinformatics/ecological.html
+
+Seurat CCA + Mutual Nearest Neighbor (MNN)
+
+
+(1)两个对象分别做分析后：合并后细胞是两个对象的细胞数之和，cell id会加后缀_1, _2。
+
+=> 是不同细胞的转录组整合。
+
+scObj_intigrat.anchors = FindIntegrationAnchors(object.list =  list(scObj_RNA, scObj_DPAU), dims=1:30)
+#Retained 3034 anchors
+scObj_intigrat = IntegrateData(anchorset = scObj_intigrat.anchors, dims = 1:30)
+DefaultAssay(scObj_intigrat) <- "integrated"
+scObj_intigrat #6132
+
+# pipe
+scObj_intigrat <- ScaleData(scObj_intigrat, verbose = FALSE)
+scObj_intigrat <- RunPCA(scObj_intigrat, npcs = 30, verbose = FALSE)
+scObj_intigrat <- RunUMAP(scObj_intigrat, reduction = "pca", dims = 1:30)
+scObj_intigrat <- FindNeighbors(scObj_intigrat, reduction = "pca", dims = 1:30)
+scObj_intigrat <- FindClusters(scObj_intigrat, resolution = 0.5)
+
+# save Rds
+saveRDS(scObj_intigrat, file = paste0(outputRoot, keyword, "_03_1-CCA.DPAU_RNA.Seurat.Rds"))
+
+
+
+(2) 样本数量大时，更快的rpca整合步骤
+Reciprocal PCA and Reference-based integration
+
+对于大型的数据来说，CCA寻找锚点细胞的方法有时会耗时较长，比如说如果我们要整合5个数据集，那么CCA需要进行5 choose 2=10次的操作寻找两两间的锚点细胞。当数据量较大并且数据集个数继续增长时，这个计算量还是非常大的。因此Seurat开发了另外两个可用于提高运行效率和实践的方法：Reciprocal PCA (RPCA)和Reference-based integration。主要的改进集中在寻找锚点细胞的函数`FindIntegrationAnchors`中。
+
+该改进方法基本的实现思路是首先通过RPCA而非CCA来识别找到锚点细胞的低维有效空间，在确认任意两个数据集间的锚点细胞时， 将每个数据集映射到其他PCA空间，并通过相同的mutual neighborhood来选择。另外，在常规的流程中都是对所有数据集寻找两两间的锚点细胞，当合并的数据集数目非常大时，可以考虑Reference-based integration作为替代方案，即选取一个或多个数据集作为“参考”数据集，只寻找其他数据集合和参考数据集之间的锚点，而不关注其他数据集之间锚点，从而减少计算量， 比如合并5个数据集时，设置其中一个为参考，那么只需要进行4次比较操作了。
+
+https://cloud.tencent.com/developer/article/1966129
+
+library(Seurat)
+
+# 分别对每个数据集进行进行标准化并找出高变基因
+bm280k.data <- Read10X_h5("../data/ica_bone_marrow_h5.h5")
+bm280k <- CreateSeuratObject(counts = bm280k.data, min.cells = 100, min.features = 500)
+bm280k.list <- SplitObject(bm280k, split.by = "orig.ident")
+bm280k.list <- lapply(X = bm280k.list, FUN = function(x) {
+    x <- NormalizeData(x, verbose = FALSE)
+    x <- FindVariableFeatures(x, verbose = FALSE)
+})
+
+# 选择在数据集中重复的高变基因用于整合
+features <- SelectIntegrationFeatures(object.list = bm280k.list)
+
+# 分别对每个数据集进行PCA降维，用于下面的rpca方法
+bm280k.list <- lapply(X = bm280k.list, FUN = function(x) {
+    x <- ScaleData(x, features = features, verbose = FALSE)
+    x <- RunPCA(x, features = features, verbose = FALSE)
+})
+
+# 利用reference 和rpca寻找锚点细胞，进行整合
+anchors <- FindIntegrationAnchors(object.list = bm280k.list, reference = c(1, 2), reduction = "rpca", dims = 1:50)
+bm280k.integrated <- IntegrateData(anchorset = anchors, dims = 1:50)
+
+# 整合后，查看数据集的分布状况
+bm280k.integrated <- ScaleData(bm280k.integrated, verbose = FALSE)
+bm280k.integrated <- RunPCA(bm280k.integrated, verbose = FALSE)
+bm280k.integrated <- RunUMAP(bm280k.integrated, dims = 1:50)
+DimPlot(bm280k.integrated, group.by = "orig.ident")
+
+
+
+
+
+
+
+
+========================================
+Seurat 多组学整合 RPCA //todo
+----------------------------------------
+Fast integration using reciprocal PCA (RPCA)
+	https://satijalab.org/seurat/articles/integration_rpca
+
+
+
+
+
+
+
+========================================
+Seurat v4 多组学整合 WNN (加权最近邻)：Using Seurat with multimodal data: scRNA-seq & 蛋白组 CITE-seq
+----------------------------------------
+1. 教程
+https://satijalab.org/seurat/articles/multimodal_vignette
+
+Weighted Nearest Neighbors (WNN) approach
+	https://www.cell.com/cell/fulltext/S0092-8674(21)00583-3
+
+
+
+(2) 多模式单细胞数据集的 WNN 工作流
+https://satijalab.org/seurat/articles/weighted_nearest_neighbor_analysis.html
+
+包括三个步骤
+* 每个单独模式数据的独立预处理和降维
+* 学习细胞特定模式的"权重"，并构建一个整合模式的 WNN 图形
+* 基于WNN 图的下游分析（可视化、聚类等）
+
+
+(3) WNN 算法细节
+Seurat4版本的WNN的运行与原理与softmax https://www.jianshu.com/p/513ab4a19276
+
+
+
+
+
+
+
+
+
+
+
+
+2. 代码实现
+
+两个对象分别做分析后：合并后细胞数不变
+=> 是同一个细胞的不同多组学数据的整合。
+
+## (1) to one object ====
+scObj=scObj_RNA
+
+# 1) set DPAU assay
+DPAU_assay=scObj_DPAU@assays$RNA
+DPAU_assay@key="dpau_"
+scObj[["DPAU"]] <- DPAU_assay
+DefaultAssay(scObj)
+
+# 2) set DPAU pca
+DPAU_pca=scObj_DPAU@reductions$pca
+DPAU_pca@assay.used="DPAU"
+scObj@reductions$pca2=DPAU_pca
+
+
+
+## (2) [WNN] in same cell ====
+
+# Identify multimodal neighbors. These will be stored in the neighbors slot, 
+# and can be accessed using bm[['weighted.nn']]
+# The WNN graph can be accessed at bm[["wknn"]], 
+# and the SNN graph used for clustering at bm[["wsnn"]]
+# Cell-specific modality weights can be accessed at bm$RNA.weight
+scObj <- FindMultiModalNeighbors(
+  scObj, 
+  reduction.list = list("pca", "pca2"), 
+  dims.list = list(1:30, 1:10), 
+  modality.weight.name = "RNA.weight"
+) #RNA.weight DPAU.weight
+scObj #3066
+
+#Warning messages:
+#1: Cannot add objects with duplicate keys (offending key: normPC_), setting key to 'pca2.norm_' 
+#2: In FindMultiModalNeighbors(scObj, reduction.list = list("pca", "pca2"),  :
+#   The number of provided modality.weight.name is not equal to the number of modalities. RNA.weight DPAU.weight are used to store the modality weights
+
+
+scObj <- RunUMAP(scObj, 
+                 nn.name="weighted.nn", 
+                 reduction.name = "wnn.umap",
+                 reduction.key = "wnnUMAP_",
+                 verbose = T)
+scObj = FindClusters(scObj, graph.name = "wsnn", algorithm = 3, resolution = 1) #0.5
+
+
+## (3) Dim plot ====
+pdf(paste0(outputRoot, keyword, "_2_3.UMAP.DimPlot.pdf"), width = 3.8, height = 3.4)
+DimPlot(scObj, reduction = "wnn.umap", label=T, #label.size = 2.5,
+        repel = F)+  #NoLegend()+
+  ggtitle("WNN: DPAU+RNA");
+dev.off()
+
+
+
+
+ref:
+https://www.jianshu.com/p/b567188b3984
 
 
 
@@ -34,7 +345,7 @@ R语言之基于多组学的肿瘤亚群聚类分析 https://cloud.tencent.com/d
 
 
 ========================================
-多组学的例子：
+多组学的例子：文献阅读 //todo
 ----------------------------------------
 1.
 https://pubmed.ncbi.nlm.nih.gov/35288753/  Fig3A
@@ -49,15 +360,242 @@ https://pubmed.ncbi.nlm.nih.gov/35288753/  Fig3A
 
 
 ========================================
+Seurat 4 整合分析 CITE 数据：表达数据 + ADT = CITE-seq技术
 ----------------------------------------
 
+Cite-seq 抗体BioLegend公司有，找达科为购买～服务国内大测序服务商都可以接
+
+
+1. 数据读取
+# 1. load data ----
+library(rhdf5)
+#
+dyn.load('/home/wangjl/.local/lib/libhdf5_hl.so.100')
+library(hdf5r)
+#data <- h5read("your_file.h5", "/path/to/dataset")
+
+library(Seurat)
+# (1). load counts of RNA and protein
+dat=Read10X_h5("/datapool/wangjl/others/hanlu/raw/GSE210079/GSM6459763_32-3mo_raw_feature_bc_matrix.h5")
+str(dat)
+names(dat) #"Gene Expression"  "Antibody Capture" #两个矩阵：RNA和 55个蛋白
+str(dat$`Gene Expression`)
+
+# make sure cell id are the same
+all.equal(colnames(dat[["Gene Expression"]]), colnames(dat[["Antibody Capture"]])) #T
+
+# (2). use RNA data to create Obj
+scRNA=CreateSeuratObject(counts = dat$`Gene Expression`, project = "A1")
+
+# (3). add protein mat
+# https://zhuanlan.zhihu.com/p/567253121
+adt_assay <- CreateAssayObject(counts = dat$`Antibody Capture`)
+scRNA[["ADT"]] <- adt_assay
+
+# (4). check
+# protein names
+rownames(scRNA[["ADT"]])
+
+# assays
+Assays(scRNA) #"RNA" "ADT"
+
+# check default assay, or change default assay
+DefaultAssay(scRNA) #"RNA"
+
+
+(1) 如果我们分别有两个文件，分别提供scRNA-seq的数据以及ADT的数据，那么我们可以分别读取然后对S4对象进行添加
+#counts <- CreateSeuratObject(counts = counts)
+#adt_assay <- CreateAssayObject(counts = adt)
+#counts[["ADT"]] <- adt_assay
+
+但是尽管读取是一起读取并创建了counts对象，但是我们后续创建Seurat对象的时候是需要分别读取的
+scRNA <- CreateSeuratObject(counts[["Gene Expression"]])
+adt <- CreateAssayObject(counts[["Antibody Capture"]])
+all.equal(colnames(counts[["Gene Expression"]]), colnames(counts[["Antibody Capture"]]))
+scRNA[["ADT"]] <- adt
+Assays(scRNA)
+#[1] "RNA" "ADT"
+
+
+
+
+2. scRNA-seq数据分析
+#然后接下来执行scRNA-seq的标准流程
+scRNA[["percent.mt"]] <- PercentageFeatureSet(scRNA, pattern = "^MT-")
+VlnPlot(scRNA, features = c("nFeature_RNA", "nCount_RNA", "percent.mt"), ncol = 3)
+scRNA <- subset(scRNA, subset = nFeature_RNA > 300 & nFeature_RNA < 5000 & percent.mt < 20)
+
+scRNA <- NormalizeData(scRNA)
+scRNA <- FindVariableFeatures(scRNA,nfeatures = 2000)
+scRNA <- ScaleData(scRNA)
+scRNA <- RunPCA(scRNA,dims = 1:20)
+
+scRNA <- FindNeighbors(scRNA, dims = 1:20)
+scRNA <- FindClusters(scRNA, resolution = 0.9, verbose = FALSE)
+scRNA <- RunUMAP(scRNA, dims = 1:20)
+DimPlot(scRNA, label = TRUE)
+
+#寻找差异基因
+scRNA.markers <- FindAllMarkers(scRNA, only.pos = TRUE, min.pct = 0.25, logfc.threshold = 0.25)
+scRNA.markers %>%
+ group_by(cluster) %>%
+ slice_max(n = 10, order_by = avg_log2FC)
+
+
+
+
+3.ADT数据
+For protein integration, you can use CLR to normalize protein data,
+NormalizeData(bm, normalization.method = 'CLR', margin = 2), and follow our integration vignette to integrate ADT data. Reciprocal PCA is suggested to integrate ADT data.
+
+
+然后scRNA-seq的处理就先暂时结束，我们接下来继续处理ADT数据的部分：
+# Normalize ADT data
+DefaultAssay(scRNA) <- "ADT"
+scRNA <- NormalizeData(scRNA, normalization.method = "CLR", margin = 2)
+
+#visualize
+rownames(scRNA[["ADT"]])
+p1 <- FeaturePlot(scRNA, "CD45-TotalSeqB", cols = c("lightgrey", "darkgreen")) + ggtitle("ADT")
+DefaultAssay(scRNA) <- "RNA"
+p2 <- DimPlot(scRNA, label = TRUE)+ggtitle("RNA")
+p1|p2
+
+这里我们需要知道，作者通过CD45蛋白的表达来区分免疫细胞和非免疫细胞，其实我们需要知道CITE-seq之所以要引入蛋白的表达量（ADT）其实就是为了帮助我们更好的对细胞亚群进行注释同时也可以更加精准的帮助我们划分细胞亚群，找到罕见的细胞亚群
+
+
+
+
+
+4. 数据整合
+然后上述流程只不过依旧是单打单的行为，我们接下来要真正尝试去把两种数据结合起来，为此我们需要使用到WNN算法，这个算法就可以把多模态的数据整合起来
+
+#设置并行加快运行速度
+library(future)
+plan("multiprocess", workers =4)#设置线程
+options(future.globals.maxSize = 2000 * 1024^2)
+
+scRNA_WNN <- CreateSeuratObject(counts[["Gene Expression"]])
+adt_WNN <- CreateAssayObject(counts[["Antibody Capture"]])
+# add this assay to the previously created Seurat object
+scRNA_WNN[["ADT"]] <- adt_WNN
+
+DefaultAssay(scRNA_WNN) <- 'RNA'
+scRNA_WNN[["percent.mt"]] <- PercentageFeatureSet(scRNA_WNN, pattern = "^MT-")
+scRNA_WNN <- subset(scRNA_WNN, subset = nFeature_RNA > 300 & nFeature_RNA < 5000 & percent.mt < 20)
+scRNA_WNN <- NormalizeData(scRNA_WNN) %>% FindVariableFeatures() %>% ScaleData() %>% RunPCA()
+
+DefaultAssay(scRNA_WNN) <- 'ADT'
+VariableFeatures(scRNA_WNN) <- rownames(scRNA_WNN[["ADT"]])
+scRNA_WNN <- NormalizeData(scRNA_WNN, normalization.method = 'CLR', margin = 2) %>%
+ ScaleData() %>% RunPCA(reduction.name = 'apca')
+
+这里需要给各位小伙伴解释一下reduction.name参数为什么需要添加，RunPCA函数执行PCA结果，然后通过reduction.name参数我们可以设置结果的名称，默认是叫做PCA，但是因为我们这里是多模态数据，而且我们是针对同一个S4对象，所以我们需要添加不同的名称加以区分
+
+上述代码其实就是在做一件事情：对于每个细胞，根据 RNA 和蛋白质相似性的加权组合计算数据集中最近的邻居（划分亚群），后续我们可以指定每种模式的维度(类似于指定 scRNA-seq 聚类中包含的 PC 数量) ，但是实际上PC数量的选择对结果的影响较小
+
+
+scRNA_WNN <- FindMultiModalNeighbors(
+ scRNA_WNN, reduction.list = list("pca", "apca"),
+ dims.list = list(1:20, 1:10), modality.weight.name = "RNA.weight"
+)
+#基于RNA和蛋白质数据的加权组合创建数据的数据进行UMAP可视化
+scRNA_WNN <- RunUMAP(scRNA_WNN, nn.name = "weighted.nn", reduction.name = "wnn.umap", reduction.key = "wnnUMAP_")
+scRNA_WNN <- FindClusters(scRNA_WNN, graph.name = "wsnn", algorithm = 1, resolution = 0.6, verbose = FALSE)
+p1 <- DimPlot(scRNA_WNN, reduction = 'wnn.umap', label = TRUE, repel = TRUE, label.size = 2.5)
+
+#然后我们比较一下，单纯通过mRNA和以及WNN方法形成的细胞聚类图
+p1 <- DimPlot(scRNA_WNN, reduction = 'wnn.umap', label = TRUE, repel = TRUE, label.size = 2.5)+ggtitle("WNN")
+p2 <- DimPlot(scRNA,label = TRUE) + ggtitle("RNA")
+p1|p2
+#为了保证因素一致，我们调节resolution参数两者是一致的
+
+CITE-seq技术确实可以帮助我们发现罕见细胞亚群，而且因为额外多了一个维度的表达信息，我们可以更加全面的对亚群进行定义，也就是细胞注释
+
+
+
+
+
+
+
+5. 多样本怎么整合？ CITE-seq how to integrate multiple samples?
+* 先整合2模态数据，再合并样本？
+* 还是先合并样本，再整合进两个模态？
+
+(1) 每个模态分别整合
+https://github.com/satijalab/seurat/issues/3890
+I would suggest you integrate ADT and RNA in two different objects first. Then, we can create new assays in the integrated RNA object, and add adt related assays there.
+
+integrated_seurat_rna[["IADT"]] <- integrated_seurat_adt[["integrated"]]
+integrated_seurat_rna[["pca.adt"]] <- integrated_seurat_adt[["pca"]]
+integrated_seurat_rna[["umap.adt"]] <- integrated_seurat_adt[["umap"]]
+
+You can follow log normalization integration workflow for the CLR normalized ADT data.
+
+
+(2) 
+
+
+
+
+
+
+
+
+ref:
+https://zhuanlan.zhihu.com/p/567253121
+https://satijalab.org/seurat/articles/multimodal_vignette.html
 
 
 ========================================
+TotalSeq^TM, Total-Seq 同时检测单细胞mRNA和表面抗原
 ----------------------------------------
+1.TotalSeq™抗体就是可以在单细胞水平同时检测200+的蛋白表达情况。
+https://mp.weixin.qq.com/s?__biz=MzU5MDE0MjIxOA==&mid=2247486581&idx=1&sn=6ceaa4d62e87795827242687abfa411c
+
+参考文献：都是COVID
+	Sacco et al. Nature Medicine. Feb 2022
+	Su Y, et al. Cell. 185: 885-895. CC BY 4.0.
+	Liu C. et al. Cell. April 2021.
 
 
 
+2. Total-seq的前世今生——前世：CITE-seq 
+
+10x公司于2019年初更新了单细胞测序的试剂盒，将细胞表面蛋白测序所需要的引物纳入现有的试剂盒中，称之为Total-seq。今天，我们就来解锁一下Total-seq的前世今生。
+
+(1) 分子设计
+我们将抗体与寡核苷酸结合，进行了如下设计：
+	1）能够被基于寡聚dT建库的RNA文库所捕获；
+	2）含有用于区分抗体条形码序列；
+	3）能够进行后续的PCR特异扩增。
+	分子结构: 抗体-二硫键-5'PCR Handle - Antibody barcode - polyA 3'
+
+我们使用常用的链霉素-生物素亲和反应将抗体与寡核苷酸的5’端连接起来，同时还包含了一个二硫键，于是在还原条件下寡核苷酸便能够从抗体上释放出来。
+
+(2) 建库步骤
+首先，将抗体-寡核苷酸复合体于单细胞悬液孵育，孵育条件与用流式细胞仪的染色步骤类似。
+之后，洗涤这些细胞，以去除那些未能结合的抗体；样本即可用于做scRNA-seq。
+
+本研究中，我们使用用于Drop-seq及10X Genomics的微流控仪器，将细胞包裹在纳米级的水滴中（Fig 1b）。之后，细胞在水滴中裂解，mRNA和与抗体结合的寡核苷酸通过它们3’端的polyA尾巴，同时与含有polyT的微珠发生退火而结合在一起。在反转录时，与微珠结合的一段特殊的条形码序列能够区分来自于不同细胞的mRNA和与抗体结合的寡核苷酸序列。而扩增了的来源于抗体的序列（ADTs）和cDNA分子能够通过大小区分开，并将其构建为独立的Illumina测序文库（Fig1 b）。
+
+(3) 测序
+需要注意的是，两个文库类型是可以同时进行测序的，但考虑到测序深度问题，由于它们是单独构建的，因此可以将它们合并在单一泳道中并调整它们的相对比例，以确保每个文库都能获得适当的测序深度。
+
+
+
+
+(4) CITE-seq后续发展如何呢？还有哪些新的应用呢？Total-seq又是怎么运作的呢？敬请期待下回分解……
+
+另外，你知道吗？Total-seq还有一个新应用，即可以将不同的样本做上标记，作为一个样本进行scRNA-seq，既节约了费用，又做了多个样本的scRNA-seq，方便后续试验分析。这么高大上的试验，叫做Cell-hashing。有没有迫不及待要开始一段单细胞表面蛋白的新试验之旅了呢？欢迎咨询晶能生物当地销售~
+
+
+
+
+参考文献：
+1. Stoeckius M, Hafemeister C, Stephenson W, et al. Large-scale simultaneous measurement of epitopes and tranomes in single cells[J]. Nature methods, 2017, 14(9): 865.
+
+2. Shahi P, Kim SC, Haliburton JR, Gartner ZJ, Abate AR. Abseq: Ultrahigh-throughput single cell protein profiling with droplet microfluidic barcoding. Scientific Reports. 2017; 7:44447. [PubMed: 28290550]
 
 
 

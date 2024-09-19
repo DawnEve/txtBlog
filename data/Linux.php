@@ -24,7 +24,7 @@ return array (
 	  array('软件安装_进程_定时任务','Linux102-soft-process-cron', 'txt'),
 	  array('bash和shell编程','Linux103-shell', 'txt'),
 	  array('字符grep/awk/sed','string_process', 'txt'),
-	  array('用户、权限与日志和安全','linux104-user', 'txt'),
+	  array('用户、权限与日志和安全','linux104-user-auth-log', 'txt'),
 	  array('GPU加速和CUDA编程','linux105-GPU-CUDA', 'txt'),
 	  
 	  array('多媒体','linux301_mutimedia', 'txt'),
@@ -43,9 +43,9 @@ return array (
     0 => 3,
     1 => '网络服务',
     2 => array (
-	  array('网络与iptables','linux201-net', 'txt'),
+	  array('网络/ssh/iptables','linux201-net-ssh', 'txt'),
 	  
-	  array('Linux服务','linux_service','txt' ),
+	  array('服务/DNS/资源监控/共享盘','linux_service','txt' ),
 	  
 	  array('htaccess配置规则','apache001','txt' ),
 	  array('虚拟域名和二级域名配置','apache002','txt' ),

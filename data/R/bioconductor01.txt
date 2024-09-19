@@ -349,7 +349,8 @@ message("Jia you")
 重启R(Rstudio 菜单 Session - quit session)，再次查询
 > .libPaths() # 包的查找路径
 
-
+警告：不要在配置文件中使用 print() 输出，可能导致各种报错！
+	建议使用 message/stop 等输出信息。
 
 
 
@@ -393,6 +394,10 @@ session-timeout-minutes=3600 #这个怎么起作用的？
 
 
 
+========================================
+|-- 安装 指定版本/老版本 的R包：remotes::install_version("name", "version", repos=c())
+----------------------------------------
+remotes::install_version("Seurat", "4.4.0", repos = c("https://satijalab.r-universe.dev", getOption("repos")))
 
 
 
@@ -713,6 +718,170 @@ biocLite("包名")
 
 
 
+
+
+
+========================================
+|-- 命令行安装：ggpubr 包安装编译时 “WARNING: ignoring environment value of R_HOME” 报错？去掉 src/Makevars 文件中 R_HOME 外的圆括号
+----------------------------------------
+安装包报错：@H3
+最终目的: install.packages("ggpubr")
+
+1. 缺少 cmake3
+$ sudo yum install cmake3
+
+> system("/usr/bin/cmake3 --version")
+> install.packages("nloptr")
+
+
+
+2. 因 WARNING: ignoring environment value of R_HOME 报错
+system("echo $R_HOME")  #/opt/R/4.3.2/lib64/R
+install.packages("minqa") #WARNING: ignoring environment value of R_HOME
+报错: 如题
+
+(1) 解释1 https://github.com/rstudio/renv/issues/417
+This looks a little suspicious. Is it possible that you've set some environment variables to point to a separate (older?) R installation? What is the output of:
+
+Sys.getenv("R_HOME")  in your session?
+
+> Sys.getenv("R_HOME")
+[1] "/opt/R/4.3.2/lib64/R"
+
+
+
+(2) 我怀疑就是老外没写好包，导致编译不正常，那就尝试fix它
+首先下载R包到本地:
+$ cd /picb/jinlab/wangjl/others/shenwh/PTC/output/
+$ wget https://mirrors.tuna.tsinghua.edu.cn/CRAN/src/contrib/minqa_1.2.7.tar.gz
+
+解压缩
+$ tar zxvf minqa_1.2.7.tar.gz
+$ cd minqa
+
+查问题关键词：
+$ find . | xargs grep -in "R_home" --color=auto
+
+找到问题文件：echo $(R_HOME) 确实不识别
+而去掉圆括号正常：
+$ echo $R_HOME
+/opt/R/4.3.2/lib64/R
+
+修改它: 就是删除R_HOME的圆括号：
+$ vim src/Makevars
+#PKG_LIBS = `$(R_HOME)/bin/Rscript -e "Rcpp:::LdFlags()"`  修改为：
+PKG_LIBS = `$R_HOME/bin/Rscript -e "Rcpp:::LdFlags()"`
+
+
+重新构建R包：
+$ cd ..
+$ R CMD build minqa
+["/picb/jinlab/wangjl/R/x86_64-pc-linux-gnu-library/4.3","/opt/R/4.3.2/lib64/R/library"]
+
+* checking for file ‘minqa/DESCRIPTION’ ... OK
+* preparing ‘minqa’:
+* checking DESCRIPTION meta-information ... OK
+* cleaning src
+* checking for LF line-endings in source and make files and shell scripts
+* checking for empty or unneeded directories
+* building ‘minqa_1.2.7.tar.gz’
+
+
+在R中安装该包：
+> install.packages("/picb/jinlab/wangjl/others/shenwh/PTC/output/minqa_1.2.7.tar.gz")
+> packageVersion("minqa")
+[1] ‘1.2.7’
+
+
+
+
+
+
+3. lme4 包也同样编译报错(同上)，全命令行修改安装
+> install.packages("lme4")
+g++ -std=gnu++11 -shared -L/opt/R/4.3.2/lib64/R/lib -L/usr/local/lib64 -o lme4.so external.o glmFamily.o optimizer.o predModule.o respModule.o WARNING: ignoring environment value of R_HOME -L/opt/R/4.3.2/lib64/R/lib -lR
+
+/bin/ld: cannot find WARNING:: No such file or directory
+/bin/ld: cannot find ignoring: No such file or directory
+/bin/ld: cannot find environment: No such file or directory
+/bin/ld: cannot find value: No such file or directory
+/bin/ld: cannot find of: No such file or directory
+/bin/ld: cannot find R_HOME: No such file or directory
+collect2: error: ld returned 1 exit status
+make: *** [lme4.so] Error 1
+
+下载
+$ wget https://mirrors.tuna.tsinghua.edu.cn/CRAN/src/contrib/lme4_1.1-35.3.tar.gz
+$ tar zxvf lme4_1.1-35.3.tar.gz
+
+修改
+$ vim lme4/src/Makevars
+#PKG_LIBS = `$(R_HOME)/bin/Rscript --vanilla -e "Rcpp:::LdFlags()"` #去掉R_HOME外的圆括号，修改为：
+PKG_LIBS = `$R_HOME/bin/Rscript --vanilla -e "Rcpp:::LdFlags()"`
+
+重新构建
+$ R CMD build lme4
+	报错 rror: processing vignette 'lmer.Rnw' failed with diagnostics:
+	there is no package called 'gamm4'
+	
+	似乎是循环依赖：
+	> install.packages("gamm4")
+	它又开始先安装 lme4，而该包还是报错
+
+使用文件夹安装呢？可以！
+$ R CMD INSTALL lme4
+
+> packageVersion("lme4")
+[1] ‘1.1.35.3’
+
+
+
+
+
+4. 成功安装ggpubr包
+> install.packages("ggpubr")
+
+加载：
+> packageVersion("ggpubr")
+[1] ‘0.6.0’
+> library("ggpubr")
+Loading required package: ggplot2
+>
+
+
+
+
+10. Makevars 中圆括号什么意思？
+
+$(R_HOME) 是函数调用： https://blog.csdn.net/evilswords/article/details/12349187
+
+如 $(strip ) 名称：去空格函数——strip。
+
+所以，我认为R包原作者们是写错了，应该去掉R_HOME外的圆括号，还原它为一个普通变量名。
+
+
+
+
+
+ref:
+Building and installing an R package https://kbroman.org/pkg_primer/pages/build.html
+makefile 中常见变量及函数 https://blog.csdn.net/evilswords/article/details/12349187
+发博客到 https://blog.csdn.net/wangjunliang/article/details/139396322
+
+
+
+
+
+========================================
+|-- 命令行安装难安装的R包 $ Rscript -e 'BiocManager::install("rhdf5")'
+----------------------------------------
+1. 最初安装 rhdf5 (v2.46.1) 极为困难
+无意中一个提问角度，gpt 给了这个方案，亲测可用！
+详情见 R/R003-grocer.txt
+
+$ Rscript -e 'BiocManager::install("HDF5Array")' #1.30.1
+$ Rscript -e 'BiocManager::install("GSVA")' #1.50.5
+> devtools::install_github('dviraran/SingleR')
 
 
 

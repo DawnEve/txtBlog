@@ -64,7 +64,6 @@
 
 ## 技术博客  
 
-- 网易博客停止运营(仅自己可见): [我的前端博客](http://poster469.blog.163.com/ "最早的PS到后来的JS,服务器设置") / [javascript研究所](http://miostudio.blog.163.com/ "javascript的地位空前高涨，值得独立研究")  / [php-mysql](http://firecloudphp.blog.163.com/ "php和mysql是黄金搭档")  / [java EE/java设计模式](http://zhengzhi2014.blog.163.com/ "java的思想是横强大的")  
 
 - [博客园](https://www.cnblogs.com/dawnEve/ "JS"): js
 - [CSDN](https://blog.csdn.net/wangjunliang/ "生信/js"): 生信
@@ -92,7 +91,7 @@
 - 开源项目: 基于文件的目录结构的笔记软件[txtBlog](https://github.com/dawneve/txtBlog "知识管理系统。")(基于php) 和 [txtBlog.py](https://github.com/dawneve/txtBlog.py")(基于Python3)，用于管理庞杂的IT知识点、生信知识点。支持txt、html、markdown格式的笔记。txt和md自动生成目录。py版能自定义txt页面的样式。
 - 生信参考网站： [生物慕课网 bioMooc.com](http://www.biomooc.com/R/R-draw-sketch.html) 重点是包含较多图片的可视化教程，是对txtBlog的有效补充。  
 - 微信订阅号： 拂晓学术, 生物慕课; [英语读报](http://ielts.biomooc.com/en/); 米欧互联;  
-- Others: [米欧互联](http://mioweb.biomooc.com/ "mio web")、[某制冷公司网站](https://www.wllwzl.com/ "企业站")、[某生物网站](http://www.applybio.com/)
+- Others: [米欧互联](http://mioweb.biomooc.com/ "mio web")、[某制冷公司网站](https://www.wllwzl.com/ "企业站")
 
 
 
@@ -149,7 +148,7 @@
 [//]:# 这是注释: w 微信公众号; s website; b blog;
 
 [//]:# 英语的有 英语读报(w/网易云电台)
-[//]:# 生物的有 biomooc.com;  拂晓学术(w/新闻);  生物慕课(w/教程/网易公开课);   ageTouch.blog.163.com 生信博客;  tigoMall.blog.163.com 实验博客;
+[//]:# 生物的有 biomooc.com;  拂晓学术(w/新闻);  生物慕课(w/教程/网易公开课)
 [//]:# 美工的 米欧互联(w/s)
 [//]:# 非公开信息: BitBucket(密码、数据); 证件(wjlDocs at 163Mail)
 

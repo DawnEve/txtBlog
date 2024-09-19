@@ -88,6 +88,8 @@ class SearchController extends Controller{
 
 		//遍历输出每个左侧目录的文件名
 		$i=0;
+		//$base_url="http://blog.dawneve.cc/index.php";
+		$base_url=$_SERVER["REQUEST_SCHEME"] . "://" . $_SERVER["HTTP_HOST"]. "/index.php";
 		$base_url="/index.php";
 		foreach($topMenu as $key => $value){
 			$i++;

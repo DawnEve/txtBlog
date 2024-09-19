@@ -66,6 +66,7 @@
 
 			//C++
 			array('https://normaluhr.github.io/2020/12/31/Effective-C++/','Effective C++读书笔记'),
+			array('https://cppguide.cn/','CppGuide社区(张小方)'),
 			
 			//Java
 			array('https://github.com/itwanger/toBeBetterJavaer','toBeBetterJavaer'),
@@ -171,6 +172,7 @@
 			array('http://freemind.pluskid.org/','张驰原pluskid(ML/AI)'),
 			array('https://blog.csdn.net/v_july_v/article/details/7624837','july(ML/AI)'),
 			array('http://blog.17study.com.cn/','月色(ML/AI)'),
+			array('https://mofanpy.com/','莫烦'),
 		));
 
 
@@ -195,6 +197,7 @@
 			array('http://www.biotrainee.com:8081/jmzeng/book/basic/','曾健明的笔记'),
 			array('http://blog.biochen.com/about','陈雯(lincRNA)'),
 			array('https://github.com/xuzhougeng/myscripts/blob/master/igv_web.py','徐洲更(生信脚本)'), //其中 igv那个值得学习 
+			array('http://www.yelab.site/','叶幼琼(肿瘤多组学)'), //上海交通大学医学院上海市免疫学研究所，肿瘤多组学与肿瘤免疫课题组长 https://www.shsmu.edu.cn/sii/info/1020/3171.htm
 			//array('',''),
 		));
 ?>
@@ -224,7 +227,7 @@ var cnzz_protocol = (("https:" == document.location.protocol) ? " https://" : " 
 			♥ Do have faith in what you're doing. 
 			[<?php echo date('Y-m-d H:i:s',time());?>] 
 			Powered by <a target='_blank' href='https://github.com/DawnEve/txtBlog' title='txtBlog(A simple yet powerful php blog system for reading and organizing txt files.)'>txtBLog 
-			v0.6.5
+			v0.6.6
 			</a>
 			
 			

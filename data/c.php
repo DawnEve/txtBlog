@@ -18,29 +18,29 @@ return array (
     2 => array (
       array('C语言基础','c101-base','txt',),
       array('C语言指针 pointer','c102-pointer','txt',),
-      array('C语言网络通信','c103-socket','txt',),
-      array('生信中的C','c104-bioInfo','txt',),
-      array('C语言100题','c-practise','txt',),
-      array('C++','cpp_note','txt',),
+      array('C语言网络通信/socket','c103-socket','txt',),
+
+      array('练习 | C语言100题','c-practise','txt',),
+	  array('练习 | leetcode.com','leetcode','txt',),
+
+
+	  array('数据结构','c201-data_structures','txt',),
+      array('算法','c202-algorithm','txt',),
     ),
   ),
-
 
 
   array (
     0 => 2,
-    1 => '计算机基础知识',
+    1 => 'C++语法(Cpp)',
     2 => array (
-      array('数据结构','c201-data_structures','txt',),
-      array('算法','c202-algorithm','txt',),
-      array('计算机组成原理','c203-prComputer','txt',), //Principles of Computer Organization
-      array('计算机网络','c204-network','txt',), 
-      array('操作系统','c205-OS','txt',), 
-	  
-      array('leetcode.com','leetcode','txt',),
-      array('Books 计科经典书','computer_Books','txt',),
+      array('C++ 资源.html','cpp_index','html',),
+      array('C++','cpp_note','txt',),
+
+      array('Qt 图形界面库','Qt_note','txt'),
     ),
   ),
+
 
 
 
@@ -48,27 +48,12 @@ return array (
 
   array (
     0 => 3,
-    1 => 'C 扩展',
+    1 => 'C 语言版的包和库',
     2 => array (
+      array('生信中的C','c104-bioInfo','txt',),
       array('redis笔记','redis_note','txt'),
-      array('Qt 图形界面库','Qt_note','txt'),
     ),
   ),
 
 
-
-  array (
-    0 => 4,
-    1 => '其他语言和框架',
-    2 => array (
-      array('perl基础','lang-Perl','txt'),
-
-      array('微信小程序','little_Program','txt'),
-      array('flutter','flutter','txt'),
-	  
-      array('知识的边界','my_margin','txt'),
-    ),
-  ),
-  
-  
 );

@@ -2609,6 +2609,552 @@ time.strftime("%Y/%m/%d %H:%M:%S", time.localtime())
 
 
 
+========================================
+CytoTRACE 的安装与使用：推断发育潜力，分数越高（干细胞），分化程度越低，分化能力越强
+----------------------------------------
+CytoTRACE 不好安装，最好的流程是搞好输入：
+	- counts 矩阵: matrix
+	- umap 嵌入坐标: 2列 data.frame
+	- 细胞分群：named vector
+输出数据框：cid and score
+然后重新绘图
+
+
+原理：https://zhuanlan.zhihu.com/p/668638397?utm_id=0
+对于基因与细胞原始表达矩阵进行标准化处理后，针对筛选高变化基因列表，构建细胞间的相似性矩阵，进而构建细胞间的Markov转移概率矩阵，统计每个细胞有表达的基因总数，通过相关性分析筛选与有表达的基因总数前200个显著相关的基因特征集，并计算几何平均值表示GCS(Gene Counts Signature)，此方法假设GCS与细胞分化程度层现负相关，也就是低分化程度的细胞GCS越高，高分化程度的细胞GCS越低，通过GCS与细胞间相似性矩阵的非负最小二乘回归分析以及后续的扩散过程的平滑处理，最终得到细胞分化概率得分。此方法的优势在于在没有任何先验信息的情况下，用来预测细胞的分化状态和方向，比如用发育状态的功能证据验证组织的分化状态，预测病变组织（如癌症）的分化状态，识别与干细胞和分化相关的细胞。
+
+GUNSAGAR S. GULATI et al.,Single-cell transcriptional diversity is a hallmark of developmental potential. 2020 Jan.
+
+
+
+
+
+1. 安装 CytoTRACE包
+官网：https://cytotrace.stanford.edu/
+
+目前可用的环境
+	(0). J3 容器 CytoTRACE，无 Seurat
+	(1). J3 宿主机: ok
+	(2). J3 容器 R4: ok 主力 port=8022
+	(3). win11 Rstudio: ok
+
+
+(0) 使用容器
+https://hub.docker.com/r/smk5g5/cytotrace/tags
+@J3 $ docker pull smk5g5/cytotrace:0.3.3
+
+$ docker images
+smk5g5/cytotrace       0.3.3     91f37f77d3fa   7 months ago    3.3GB
+
+启动
+$ docker run -it -d -p 8023:8787 --name cytotrace \
+--mount type=bind,source=/data/,target=/data/ \
+smk5g5/cytotrace:0.3.3
+
+$ docker ps
+CONTAINER ID   IMAGE                     COMMAND                  CREATED          STATUS          PORTS                                                                   NAMES
+bcfa0e58f9c0   smk5g5/cytotrace:0.3.3    "/init"                  23 seconds ago   Up 22 seconds   0.0.0.0:8023->8787/tcp, :::8023->8787/tcp                               cytotrace
+
+$ docker exec -it cytotrace bash
+# R --version
+R version 4.1.3 (2022-03-10) -- "One Push-Up"
+
+
+0B)新建用户
+host$ id
+uid=5662(wangjl) gid=1210(jinlab) groups=1210(jinlab),980(docker) context=unconfined_u:unconfined_r:unconfined_t:s0-s0:c0.c1023
+
+新建组
+# groupadd -g 1210 jinlab2
+新建用户
+# usr="wangjl2" #设置名字
+# uid="5662" #设置uid
+
+# useradd -s /bin/bash -d /home/${usr}  -m ${usr} -u ${uid} -g 1210
+# passwd ${usr} # 16..
+# su ${usr}
+
+$ cd
+$ R
+R version 4.1.3 (2022-03-10) -- "One Push-Up"
+Copyright (C) 2022 The R Foundation for Statistical Computing
+Platform: x86_64-pc-linux-gnu (64-bit)
+
+> library(CytoTRACE)
+Welcome to the CytoTRACE R package, a tool for the unbiased prediction of differentiation states in scRNA-seq data. For more information about this method, visit https://cytotrace.stanford.edu.
+
+
+
+
+
+
+
+(1) J3宿主机安装：需下载安装包、本地安装
+@J3$ ~/Downloads/
+$ wget https://cytotrace.stanford.edu/CytoTRACE_0.3.3.tar.gz
+
+$ whereis R
+R: /home/wangjl/bin/R  #只有这一个
+$ which R
+~/bin/R
+$ R
+R version 4.3.3 (2024-02-29) -- "Angel Food Cake"
+> install.packages("devtools") #安装到 4.3/ 和R4.3.2公用
+> devtools::install_local("/home/wangjl/Downloads/CytoTRACE_0.3.3.tar.gz")
+
+#安装error
+	# ERROR: dependencies ‘sva’, ‘HiClimR’, ‘ccaPP’, ‘ggpubr’ are not available for package ‘CytoTRACE’
+	# * removing 'C:/Users/tq199/AppData/Local/R/win-library/4.2/CytoTRACE'
+	# Warning in install.packages :
+
+#安装这个几个包
+> install.packages("BiocManager")
+> BiocManager::install("sva") #
+Or
+> install.packages("HiClimR")
+	Error, nc-config not found or not executable.  This is a script that comes with the
+	netcdf library, version 4.1-beta2 or later, and must be present for configuration
+	to succeed.
+	# https://stackoverflow.com/questions/42891050/install-ncdf4-package-error-nc-config-not-found-or-not-executable
+	$ which nc-config
+	/usr/bin/which: no nc-config in (
+	$ rpm -qa | grep -in netcdf
+	$ sudo yum install netcdf netcdf-devel
+	$ rpm -qa | grep -in netcdf
+	904:netcdf-devel-4.3.3.1-5.el7.x86_64
+	1191:netcdf-4.3.3.1-5.el7.x86_64
+
+> install.packages("HiClimR")
+	ncdf.c:1910:22: error: ‘NC_FORMAT_CDF5’ undeclared (first use in this function); did you mean ‘NC_FORMAT_NC_HDF5’?
+	ERROR: compilation failed for package ‘ncdf4’
+	好复杂！！接着安装 netcdf-devel 的高级版本 https://www.jianshu.com/p/763286d99596
+
+1A) 安装 netcdf 4.9.0
+netcdf安装前需要安装libxml2、zlib、hdf5、netcdf-c与netcdf-fortran
+（其中hdf5依赖于zlib；
+netcdf-c依赖于hdf5；
+netcdf-fortran依赖于netcdf-c）
+
+老版本：
+	$ rpm -aq | grep netcdf
+	netcdf-devel-4.3.3.1-5.el7.x86_64
+	netcdf-4.3.3.1-5.el7.x86_64
+
+https://www.hdfgroup.org/downloads/
+
+先放弃，在Ubuntu 容器中安装试试：2B) 也失败。
+
+继续下载:
+	i)Build zlib like this
+	zlib-1.2.11
+	$ ./configure --prefix=/home/wangjl/.local
+	$ make check install
+
+	ii)HDF5, specifying the location of the zlib library:
+	hdf5-1.10.3.tar.bz2
+	$ ./configure --with-zlib=/home/wangjl/.local --prefix=/home/wangjl/.local
+	$ make check install
+	
+
+
+	iii) build netcdf
+	https://downloads.unidata.ucar.edu/netcdf/
+	@J3 $ cd ~/Downloads/
+	$ wget https://downloads.unidata.ucar.edu/netcdf-c/4.9.2/netcdf-c-4.9.2.tar.gz
+	$ tar -zxvf netcdf-c-4.9.2.tar.gz
+	$ cd netcdf-c-4.9.2
+	$ less INSTALL.md #帮助
+
+	$ CPPFLAGS=-I/home/wangjl/.local/include LDFLAGS=-L/home/wangjl/.local/lib ./configure --prefix=/home/wangjl/.local
+	$ make check install
+	Congratulations! You have successfully installed netCDF!
+
+继续之前的安装：
+> install.packages("HiClimR")
+> install.packages("ccaPP")
+	报错：g++ 编译中有：
+	[1] "/picb/jinlab/wangjl/R/x86_64-pc-linux-gnu-library/4.3.3" 
+	[2] "/picb/jinlab/wangjl/R/x86_64-pc-linux-gnu-library/4.3.3/00LOCK-ccaPP/00new" 
+	[3] "/picb/jinlab/wangjl/R/x86_64-pc-linux-gnu-library/4.3" 
+	[4] "/home/wangjl/soft/R/4.3.3/lib64/R/library"
+	ERROR: compilation failed for package ‘ccaPP’
+	
+	==> 问题的原因是：R 配置文件 ~/.Rprofile 中出现了 print()语句！！配置文件不能有输出！bash配置文件也不能有输出。
+		改为 message("set additional lib path for R 4.3.3") 即可。
+> install.packages("ggpubr")
+	报错：CMake Error at CMakeLists.txt:15 (cmake_minimum_required): 
+		CMake 3.2 or higher is required.  You are running version 2.8.12.2  
+	
+	> system("cmake --version")
+	cmake version 2.8.12.2
+	
+	==> 编译安装 Cmake 3，具体见 R/R003-grocer，编译失败，通过yum安装的
+	> system("cmake --version")
+	cmake3 version 3.17.5
+	
+	> install.packages("ggpubr")
+
+> devtools::install_local("/home/wangjl/Downloads/CytoTRACE_0.3.3.tar.gz")
+> library("CytoTRACE")
+安装成功！
+
+
+
+
+
+
+
+
+
+
+(2) 在容器R4 ubuntu 中安装：ok
+@J3$ cd /home/wangjl/Downloads/
+@J3$ cp CytoTRACE_0.3.3.tar.gz /picb/jinlab/wangjl/scPolyA-seq2/soft/
+@J3$ cp CytoTRACE_0.3.3.tar.gz /data/wangjl/scPolyA-seq2/Downloads/
+
+@J3::R4容器中尝试 port=8022
+$ docker exec -it R4 bash
+root@c93d39c35e29:/# su wangjl2 
+$ cd /home/wangjl2/data/scPolyA-seq2/soft/
+
+web界面 http://j3.biomooc.com:8022/
+$ /usr/local/bin/R
+R version 4.1.0 (2021-05-18) -- "Camp Pontanezen"
+Copyright (C) 2021 The R Foundation for Statistical Computing
+Platform: x86_64-pc-linux-gnu (64-bit)
+> install.packages("devtools") #安装到 4.3/ 和R4.3.2公用
+	安装位置：容器内 296M    /home/wangjl2/R/x86_64-pc-linux-gnu-library/4.1/
+	报错：ERROR: dependency ‘systemfonts’ is not available for package ‘textshaping’
+	# apt search libfontconfig1-dev
+	# apt install libfontconfig1-dev
+	报错：E: Failed to fetch http://archive.ubuntu.com/ubuntu/pool/main/u/util-linux/libuuid1_2.34-0.1ubuntu9.4_amd64.deb  404  Not Found [IP: 91.189.91.83 80]
+	关键这个需要 Seurat，不能单独装。
+	
+	# apt update
+	# apt install libfontconfig1-dev 
+	# apt install libharfbuzz-dev libfribidi-dev
+	# apt install libfreetype6-dev libpng-dev libtiff5-dev libjpeg-dev
+> devtools::install_local("/data/wangjl/soft/CytoTRACE_0.3.3.tar.gz")
+Error in loadNamespace(j <- i[[1L]], c(lib.loc, .libPaths()), versionCheck = vI[[j]]) : 
+  namespace ‘cli’ 3.2.0 is being loaded, but >= 3.3.0 is required
+	放弃，不敢升级基础包。怕容器无法使用。
+
+退出R环境，重启R，新安装的包默认高于系统。
+> devtools::install_local("/data/wangjl/scPolyA-seq2/Downloads/CytoTRACE_0.3.3.tar.gz")
+报错：ERROR: dependencies ‘sva’, ‘HiClimR’ are not available for package ‘CytoTRACE’
+	installation of package ‘ncdf4’ had non-zero exit status
+	HiClimR
+
+> BiocManager::install("sva")
+> install.packages("HiClimR")
+	报错: Error, nc-config not found or not executable.  This is a script that comes with the
+	netcdf library, version 4.1-beta2 or later, and must be present for configuration
+	to succeed.
+
+	$ docker exec -it R4 bash #进入容器
+	# apt install libnetcdf-dev
+	> install.packages("HiClimR")
+再次安装：正常
+> devtools::install_local("/data/wangjl/scPolyA-seq2/Downloads/CytoTRACE_0.3.3.tar.gz")
+测试
+> library(CytoTRACE) #0.3.3
+可以了
+
+
+
+
+
+
+
+
+
+(3) 在windows11上安装：成功
+@J3$ cp ~/Downloads/CytoTRACE_0.3.3.tar.gz /home/wangjl/data/web/docs/software/
+==> 安装细节见 R/R003-grocer
+
+载入 Seurat 对象失败。
+应该是载入 counts 矩阵
+
+
+
+
+
+
+
+
+
+
+
+2. 配置python3依赖: 失败！安装不上 scanoramaCT，不过单样本无所谓
+> library(CytoTRACE)
+# No non-system installation of Python could be found.
+# Would you like to download and install Miniconda?
+#   Miniconda is an open source environment management system for Python.
+# See https://docs.conda.io/en/latest/miniconda.html for more details.
+
+#因为CytoTRACE依赖两个python包scanoramaCT和numpy，所以R安装，library的时候，会有上面的提醒。
+#安装conda什么的。windsows下设置python环境什么的太复杂，为了一个包折腾不值得，所以选择no。
+#那么结果是这个包 多数据集分析的功能不能使用，不过没关系，一般我们也都是但数据集。
+
+
+$ which python3 
+~/soft/python3/python-3.10.14/bin/python3
+$ pip3 install numpy 
+$ pip3 list | grep -i numpy
+numpy                        1.26.4
+
+
+$ pip3 install scanoramaCT 
+报错：
+	Building wheel for annoy (setup.py) ... error
+	error: subprocess-exited-with-error
+	ERROR: Could not build wheels for annoy, which is required to install pyproject.toml-based projects
+	$ pip install llama-cpp-python
+	ERROR: Could not build wheels for llama-cpp-python, which is required to install pyproject.toml-based projects
+	
+	$ CMAKE_ARGS="-DCMAKE_C_COMPILER=gcc -DCMAKE_CXX_COMPILER=g++" 
+	$ pip install llama-cpp-python
+尝试下载源码，手动安装：
+
+https://github.com/brianhie/scanorama/releases/tag/v1.7.4
+
+
+
+//todo
+# in R
+library("reticulate")
+use_python("/home/wangjl/soft/python3/python-3.10.14/bin/python3", required = T)
+py_config()
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+3. 使用
+(1) 原始版：交互模式，繁琐、可自定义
+# 读取数据 count 矩阵
+mat: matrix of gene expression values where columns are cells and rows are genes
+$ ln -s /data/wangjl/scPolyA-seq2/chenxi/PBMC/trajectory/ /home/wangjl/data/web/docs/pdf/test/ #for web view of pdf
+
+$ R # in docker cytotrace: R version 4.1.3 (2022-03-10) -- "One Push-Up"
+$ R # on host J3, R 4.3.3
+
+> library(ggplot2)
+> outputRoot="/data/wangjl/scPolyA-seq2/chenxi/PBMC/trajectory/"
+> keyword="CytoTRACE"
+# pdf( paste0(outputRoot, keyword, "-01_xxx.DotPlot.pdf"), width=4, height=3)
+# dev.off() #
+> setwd(outputRoot)
+
+
+
+# do CytoTRACE from Seurat obj
+
+# 1. load data----
+library(Seurat)
+# scObj=readRDS("E:\\research\\scPolyA-seq2\\scObj_final-PBMC_8plates.Star_Solo_PC25res0.8.CellCycle.withDEG.Seurat.Rds")
+scObj=readRDS("/data/wangjl/scPolyA-seq2/chenxi/PBMC/UMAP/star_solo/scObj_final-PBMC_8plates.Star_Solo_PC25res0.8.CellCycle.withDEG.Seurat.Rds")
+
+DimPlot(scObj, label=T)
+ggsave( paste0(outputRoot, keyword, "-01_CD4.DimPlot.pdf"), width=4, height=3.5)
+
+
+
+
+# 2. CytoTRACE ----
+library(CytoTRACE) #选择 no
+#results <- CytoTRACE(scObj)
+#results <- CytoTRACE(scObj, ncores = 4, subsamplesize = 1000)
+results <- CytoTRACE(scObj@assays$RNA@counts |> as.matrix(), enableFast = FALSE) #1min
+
+str(results) #list of 8
+names(results) 
+#[1] "CytoTRACE"     "CytoTRACErank" "cytoGenes"     "GCS"           "gcsGenes"      "Counts"        "filteredCells"
+#[8] "exprMatrix" 
+
+## save ----
+# save CytoTRACE score
+library(ggplot2)
+
+str(results)
+score = results$CytoTRACE|> as.data.frame()
+umap=FetchData(scObj, vars = c("UMAP_1", "UMAP_2"))
+head(umap)
+
+dif=cbind(umap, data.frame(score=results$CytoTRACE[rownames(umap)]))
+head(dif)
+ggplot(dif, aes(UMAP_1, UMAP_2, color=score))+
+  geom_point(size=0.1)+
+  scale_color_gradientn(colors = c("navy", "grey", "red"))+
+  theme_classic()
+ggsave( paste0(outputRoot, keyword, "-02_CD4.CytoTRACE.score.DimPlot.pdf"), width=2.7, height=2)
+# save data
+# 3 col(cid as row names): umap1-2, CytoTRACEscore
+write.table(dif, file=paste0(outputRoot, keyword, "-02_CD4.CytoTRACE.score.df.txt"), quote = F)
+
+
+# 3. visulisation ----
+# cell type
+phe=scObj@meta.data$seurat_clusters |> as.character()
+names(phe)=scObj@meta.data |> rownames()
+
+# UMAP embedding
+emb = FetchData(scObj, vars = c("UMAP_1", "UMAP_2"))
+head(emb)
+
+
+可视化输出到文件，默认是 outputDir = "."
+#plotCytoTRACE(results, phenotype = phe) #use cell type from Seurat
+plotCytoTRACE(results, phenotype = phe, emb=emb, outputDir=outputRoot ) #use UMAP from Seurat, Good
+#plotCytoTRACE(results, phenotype = phe, emb=emb, gene = "GZMA") #show gene expression #Useless
+
+#可视化与 CytoTRACE 相关的基因
+#plotCytoGenes(results, numOfGenes = 10)
+plotCytoGenes(results, numOfGenes = 10, outputDir=outputRoot)
+
+
+
+
+
+
+
+
+(2) 脚本模式：精简、无法修改
+Run on host J3 shell: R 4.3.3
+
+$ vim /data/wangjl/scPolyA-seq2/chenxi/pipeline/script_single/do_CytoTRACE.script.R
+# Aim: do CytoTRACE from Seurat obj
+# how to use: $ Rscript /data/wangjl/scPolyA-seq2/chenxi/pipeline/script_single/do_CytoTRACE.script.R xx.Seurat.obj
+# Env: R 4.3.3
+# version: 0.2 [2024.5.2]
+
+myArgs<-commandArgs(TRUE)
+if(length(myArgs)==0){
+	stop("You must give at least 1 parameter:\n$ Rscript /path/to/this.script.R seurat_filename [cell_type [outputRoot [keyword]]]")
+}
+
+# settings
+#################
+# default settins
+seurat_filename=myArgs[1] #at least one parameter
+cell_type="seurat_clusters"
+outputRoot="./"
+keyword="CytoTRACE"
+if(length(myArgs)>=2){ cell_type=myArgs[2] }
+if(length(myArgs)>=3){ 
+	outputRoot=myArgs[3] 
+	# must end with /
+	if(substring(outputRoot, nchar(outputRoot)) != "/"){
+		outputRoot=paste0(outputRoot, "/")
+	}
+	# the dir must exist
+	if(!dir.exists(outputRoot)){
+		stop( sprintf("Error: dir not exist, outputRoot=%s", outputRoot) )
+	}
+}
+
+if(length(myArgs)>=4){ 
+	keyword=paste0(keyword, "_", myArgs[4])
+	if( length(grep("/", myArgs[4]) )){
+		stop( sprintf("Error: keyword must NOT contain '/', keyword=%s", myArgs[4]) )
+	}
+}
+setwd(outputRoot)
+message( sprintf("[%s] output to: %s", date(), outputRoot))
+#################
+
+
+# init pkg
+library(ggplot2)
+library(Seurat)
+# set python to repress Qeustions from CytoTRACE
+library("reticulate")
+use_python("/home/wangjl/soft/python3/python-3.10.14/bin/python3", required = T)
+py_config()
+library(CytoTRACE)
+
+
+# 1. load data----
+message( sprintf("[%s] step 1: loading Seurat object", date()))
+scObj=readRDS(seurat_filename)
+# cell_type must in meta data col
+if(!cell_type %in% names(scObj@meta.data)){
+	stop( sprintf("Error: cell_type=\"%s\" must be one of meta.data=%s", cell_type, names(scObj@meta.data) |> jsonlite::toJSON()|>as.character() ))
+}
+DimPlot(scObj, label=T)
+ggsave( paste0(outputRoot, keyword, "-01_1.DimPlot.pdf"), width=4, height=3.5)
+
+# 2. CytoTRACE ----
+message( sprintf("[%s] step 2: do CytoTRACE", date()))
+results <- CytoTRACE(scObj@assays$RNA@counts |> as.matrix(), enableFast = FALSE)
+saveRDS(results, file=paste0(outputRoot, keyword, "-02_1.CytoTRACE.results.Rds") )
+
+message( sprintf("[%s] save CytoTRACE score", date()))
+score = results$CytoTRACE|> as.data.frame()
+umap_cord=FetchData(scObj, vars = c("UMAP_1", "UMAP_2"))
+# re-plot
+dif=cbind(umap_cord, data.frame(score=results$CytoTRACE[rownames(umap_cord)]))
+# save data: 3 col(cid as row names): umap1-2, CytoTRACEscore
+write.table(dif, file=paste0(outputRoot, keyword, "-02_2.CytoTRACE.score.df.txt"), quote = F)
+#
+ggplot(dif, aes(UMAP_1, UMAP_2, color=score))+
+  geom_point(size=0.1)+
+  scale_color_gradientn(colors = c("navy", "grey", "red"))+
+  theme_classic()
+ggsave( paste0(outputRoot, keyword, "-02_3.CytoTRACE.score.DimPlot.pdf"), width=2.7, height=2)
+
+
+# 3. visulisation ----
+message( sprintf("[%s] step 3: CytoTRACE visulisation", date()))
+# reuse cell type
+phe=scObj@meta.data[, cell_type] |> as.character()
+names(phe)=scObj@meta.data |> rownames()
+# re-use UMAP embedding
+plotCytoTRACE(results, phenotype = phe, emb=umap_cord, outputDir=outputRoot ) #use UMAP from Seurat, Good
+
+#可视化与 CytoTRACE 相关的基因
+plotCytoGenes(results, numOfGenes = 10, outputDir=outputRoot)
+
+message( sprintf("[%s]%s: %s\n", date(), "CytoTRACE end for file:",  seurat_filename) )
+
+
+
+
+############
+==> How to run:
+#seurat_filename="/data/wangjl/scPolyA-seq2/chenxi/PBMC/UMAP/star_solo/scObj_final-PBMC_8plates.Star_Solo_PC25res0.8.CellCycle.withDEG.Seurat.Rds"
+#outputRoot="/data/wangjl/scPolyA-seq2/chenxi/PBMC/trajectory/"
+keyword="CytoTRACE_CD4T"
+
+##Rscript /path/to/this.script.R seurat_filename [cell_type [outputRoot [keyword]]]
+$ Rscript ~/tmp/test.R /data/wangjl/scPolyA-seq2/chenxi/PBMC/UMAP/star_solo/scObj_final-PBMC_8plates.Star_Solo_PC25res0.8.CellCycle.withDEG.Seurat.Rds
+
+1) try 1
+$ cd /data/wangjl/scPolyA-seq2/chenxi/PBMC/trajectory/
+$ Rscript ~/tmp/test.R /data/wangjl/scPolyA-seq2/chenxi/PBMC/UMAP/star_solo/scObj_final-PBMC_8plates.Star_Solo_PC25res0.8.CellCycle.withDEG.Seurat.Rds
+
+$ Rscript ~/tmp/test.R /data/wangjl/scPolyA-seq2/chenxi/PBMC/UMAP/star_solo/scObj_final-PBMC_8plates.Star_Solo_PC25res0.8.CellCycle.withDEG.Seurat.Rds time "./" time
+
+2) try2
+$ Rscript /data/wangjl/scPolyA-seq2/chenxi/pipeline/script_single/do_CytoTRACE.script.R \
+/data/wangjl/scPolyA-seq2/chenxi/PBMC/UMAP/star_solo/scObj_final-PBMC_8plates.Star_Solo_PC25res0.8.CellCycle.withDEG.Seurat.Rds time /data/wangjl/scPolyA-seq2/chenxi/PBMC/trajectory/ CD4T_PBMC
+
+=> 收录于: BioToolKit::R::single_script/
+
+
+
+https://www.jianshu.com/p/6b618e376512
+
+
 
 ========================================
 ----------------------------------------

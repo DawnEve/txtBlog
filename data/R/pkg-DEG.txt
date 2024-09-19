@@ -646,7 +646,6 @@ https://www.plob.org/article/11506.html
 ========================================
 |-- 是否需要(差异比较矩阵) makeContrasts函数？
 ----------------------------------------
-
 做差异分析，需要三个数据：
 - 表达矩阵
 - 分组矩阵
@@ -655,18 +654,55 @@ https://www.plob.org/article/11506.html
 前面两个肯定是必须的，有表达矩阵，样本必须进行分组，才能分析，但是我看到过好几种例子，有的有差异比较矩阵，有的没有。
 后来我仔细研究了一下limma包的说明书，发现这其实是一个很简单的问题。
 
-design=model.matrix(~factor(sCLLex$Disease))
-design=model.matrix(~0+factor(sCLLex$Disease))
+例子:
+
+不需要差异比较矩阵的
+	library(CLL)
+    data(sCLLex)
+    library(limma)
+    design=model.matrix(~factor(sCLLex$Disease))
+    fit=lmFit(sCLLex,design)
+    fit=eBayes(fit)
+    options(digits = 4)
+    #topTable(fit,coef=2,adjust='BH') 
+    > topTable(fit,coef=2,adjust='BH')
+               logFC AveExpr      t   P.Value adj.P.Val     B
+    39400_at  1.0285   5.621  5.836 8.341e-06   0.03344 3.234
+    36131_at -0.9888   9.954 -5.772 9.668e-06   0.03344 3.117
+
+需要差异比较矩阵的
+    library(CLL)
+    data(sCLLex)
+    library(limma)
+    design=model.matrix(~0+factor(sCLLex$Disease))
+    colnames(design)=c('progres','stable')
+    fit=lmFit(sCLLex,design)
+    cont.matrix=makeContrasts('progres-stable',levels = design)
+    fit2=contrasts.fit(fit,cont.matrix)
+    fit2=eBayes(fit2)
+    options(digits = 4)
+    topTable(fit2,adjust='BH')
+     
+               logFC AveExpr      t   P.Value adj.P.Val     B
+    39400_at -1.0285   5.621 -5.836 8.341e-06   0.03344 3.234
+    36131_at  0.9888   9.954  5.772 9.668e-06   0.03344 3.117
+
+
+两者结果是一模一样的。
+而差异比较矩阵的需要与否，主要看分组矩阵如何制作的！
+* design=model.matrix(~factor(sCLLex$Disease))
+* design=model.matrix(~0+factor(sCLLex$Disease))
+
 有本质的区别！！！
 
-前面那种方法已经把需要比较的组做出到了一列，需要比较多次，就有多少列，第一列是截距不需要考虑，第二列开始往后用coef这个参数可以把差异分析结果一个个提取出来。 
-
-而后面那种方法，仅仅是分组而已，组之间需要如何比较，需要自己再制作差异比较矩阵，通过makeContrasts函数来控制如何比较！
-
+* 前面那种方法已经把需要比较的组做出到了一列，需要比较多次，就有多少列，第一列是截距不需要考虑，第二列开始往后用coef这个参数可以把差异分析结果一个个提取出来。
+* 而后面那种方法，仅仅是分组而已，组之间需要如何比较，需要自己再制作差异比较矩阵，通过makeContrasts函数来控制如何比较！
 
 
-refer:
-答读者问第一弹:R里面差异分析的limma包用法细节 原创： jimmy  生信技能树  2017-06-01
+ref:
+https://github.com/bioconductor-china/basic/blob/master/makeContrasts.md
+
+
 
 
 ========================================
@@ -2196,6 +2232,329 @@ romer函数实现了基于旋转而不是置换的GSEA方法，它可以与一�
 上述就是被广泛使用的开源limma包的基因表达分析的特征啦，具体的代码使用还是需要更艰苦的摸索~
 
 
+
+
+
+========================================
+|** [脚本] limma 进行多组差异分析：one vs others
+----------------------------------------
+在进行数据分析时,limma作为一个功能十分强大的存在,而且3步（1.ImFit; 2.eBayes; 3.topTable）就能完成差异分析。但是在做差异分析的时候limma需要的有3样东西。
+- 表达矩阵
+- 分组矩阵
+- 差异比较矩阵
+
+
+
+1. 代码
+library(limma)
+setwd("../蛋白质组_31paired肿瘤vs正常/")
+rm(list=ls())
+
+createList <- function(group=NULL) {
+  tumorsam <- names(group)
+  sampleList = list()
+  treatsamList =list()
+  treatnameList <- c()
+  ctrlnameList <- c()
+  #A-1: 类1 vs 其他
+  sampleList[[1]] = tumorsam
+  treatsamList[[1]] = intersect(tumorsam, names(group[group=="SI"])) # 亚型名称需要根据情况修改
+  treatnameList[1] <- "SI" # 该亚型的命名
+  ctrlnameList[1] <- "Others" # 其他亚型的命名
+  #A-2: 类2 vs 其他
+  sampleList[[2]] = tumorsam
+  treatsamList[[2]] = intersect(tumorsam, names(group[group=="SII"]))
+  treatnameList[2] <- "SII"
+  ctrlnameList[2] <- "Others"
+  #A-3: 类3 vs 其他
+  sampleList[[3]] = tumorsam
+  treatsamList[[3]] = intersect(tumorsam, names(group[group=="SIII"]))
+  treatnameList[3] <- "SIII"
+  ctrlnameList[3] <- "Others"
+  #A-4: 类4 vs 其他
+  sampleList[[4]] = tumorsam
+  treatsamList[[4]] = intersect(tumorsam, names(group[group=="SIII"]))
+  treatnameList[4] <- "Normal"
+  ctrlnameList[4] <- "Others"
+  #如果有更多类，按以上规律继续写
+  return(list(sampleList, treatsamList, treatnameList, ctrlnameList))
+}
+
+# 配对limma差异分析函数
+twoclasslimma <- function(res.path=NULL, expr=NULL, prefix=NULL, complist=NULL, overwt=FALSE) {
+  sampleList <- complist[[1]]
+  treatsamList <- complist[[2]]
+  treatnameList <- complist[[3]]
+  ctrlnameList <- complist[[4]]
+  allsamples <- colnames(expr)
+  options(warn=1)
+  for (k in 1:length(sampleList)) { # 循环读取每一次比较的内容
+    samples <- sampleList[[k]]
+    treatsam <- treatsamList[[k]]
+    treatname <- treatnameList[k]
+    ctrlname <- ctrlnameList[k]
+    compname <- paste(treatname, "_vs_", ctrlname, sep="") # 生成最终文件名
+    tmp = rep("others", times=length(allsamples))
+    names(tmp) <- allsamples
+    tmp[samples]="control"
+    tmp[treatsam]="treatment"
+    outfile <- file.path( res.path, paste(prefix, "_limma_test_result.", compname, ".txt", sep="") )
+    if (file.exists(outfile) & (overwt==FALSE)) { # 因为差异表达分析较慢，因此如果文件存在，在不覆盖的情况下（overwt=F）不再次计算差异表达
+      cat(k, ":", compname, "exists and skipped;\n")
+      next
+    }
+    pd <- data.frame(Samples=names(tmp),Group=as.character(tmp),stringsAsFactors = F)
+    design <-model.matrix(~ -1 + factor(pd$Group, levels=c("treatment","control"))) # 设计矩阵仅包含亚型信息，若有批次效应请修改
+    colnames(design) <- c("treatment","control")
+    # 转换
+    gset <- scale(expr) 
+    # 差异表达过程
+    fit <- lmFit(gset, design=design);
+    contrastsMatrix <- makeContrasts(treatment - control, levels=c("treatment", "control"))
+    fit2 <- contrasts.fit(fit, contrasts=contrastsMatrix)
+    fit2 <- eBayes(fit2, 0.01)
+    tT <- topTable(fit2, adjust="fdr", sort.by="B", number=100000)
+    tT <- subset(tT, select=c("logFC","t","B","P.Value","adj.P.Val"))
+    colnames(tT) <- c("log2FC","t","B","PValue","FDR")
+    tT <- tT[order(tT$FDR),]
+    write.table(tT, file=outfile, row.names=T, col.names=NA, sep="\t", quote=F)
+    cat(k, ",")
+  }
+  options(warn=0)
+}
+
+# 读取表达矩阵
+expr <- read.table("impute_10NA_paired_31T_31N-name.txt",sep = "\t",header = T,check.names = F,stringsAsFactors = F,row.names = 1)
+#boxplot(log2(expr)) #查看数据整体分布
+
+# 读取分组信息
+subt <- read.table("paired31TN_list.txt", sep = "\t", check.names = F, stringsAsFactors = F, header = T, row.names = 1)
+
+#分组名称
+n.sub.label <- unique(subt$Subtype) #Subtype为列名，可修改
+
+#分组个数
+n.sub <- length(table(subt$Subtype)) 
+
+### 创建配对比较的列表信息
+#获得分组名
+group <- subt$Subtype
+#通过样本名来命名
+names(group) <- rownames(subt)
+
+#利用createList函数创建需要比较的列表信息
+complist <- createList(group=group)
+
+# 利用twoclasslimma函数进行分组差异分析，所有配对差异表达结果都会输出在res.path路径下。
+twoclasslimma(res.path = ".",
+              expr = expr[,intersect(colnames(expr),rownames(subt))],
+              prefix = "31paired TvsN", #文件名前缀
+              complist = complist,
+              overwt = F)
+#
+
+
+
+
+
+
+
+
+
+2. 代码学习1：这个代码是“S1比（S2+S3+N）”还是他们两两之间的比较再合并以后的结果 ？
+(1) 以上代码是 前者，one vs others.
+
+(2) 谁在前？
+contrast.matrix<-makeContrasts(Cancer-Normal, levels = design)
+
+为了防止反了，最好指定因子：
+	contrastsMatrix <- makeContrasts(treatment - control, levels=c("treatment", "control"))
+
+一定要注意：处理组在左边，对照组在右边。
+
+
+
+
+
+3. 代码学习2：是否是配对的数据
+
+用limma做差异分析有配对和非配对的区别吗？（我在网上看到有人说配对的limma和非配对的limma不一样，不是很懂，这个代码是配对的还是非配对的）
+
+(1) limma 配对与否的区别 https://cloud.tencent.com/developer/article/2146475
+a)配对的
+	design_paried <- model.matrix(~ individuals + treatment)
+	fit2 <- lmFit(exprSet,design_paried)
+	fit2 <- eBayes(fit2)
+	allDiff_paired <- topTable(fit2,
+							 adjust = 'BH',
+							 coef = "treatment anti-BTLA",
+							 n = Inf)
+
+b)非配对
+	design_non_paried <- model.matrix(~ 0 + treatment)
+	colnames(design_non_paried) <- c("Control","anti-BTLA")
+
+	fit1 <- lmFit(exprSet,design_non_paried)
+	fit1 <- eBayes(fit1)
+	allDiff_non_paired <- topTable(fit1,
+								 adjust = 'BH',
+								 coef =  "anti-BTLA",
+								 n = Inf,
+								 #p.value = 0.05
+								 )
+小结：以上代码模型无sample id，则不是配对的。
+
+
+
+
+(2) 配对比较的官方例子
+https://bioconductor.org/packages/release/workflows/vignettes/RNAseq123/inst/doc/designmatrices.html
+
+In a study of treatment effects, gene expression measurements were taken from mice at multiple time points. Three of the mice were administered treatment X, and another three were administered treatment Y. Measurements were taken for the mice at two timepoints, T1 (baseline) and T2. The data is as follows:
+
+##    expression     id treatment timepoint
+## 1        1.01 MOUSE1         X        T1
+## 2        1.04 MOUSE2         X        T1
+## 3        1.04 MOUSE3         X        T1
+## 4        1.99 MOUSE1         X        T2
+## 5        2.36 MOUSE2         X        T2
+## 6        2.00 MOUSE3         X        T2
+## 7        2.89 MOUSE4         Y        T1
+## 8        3.12 MOUSE5         Y        T1
+## 9        2.98 MOUSE6         Y        T1
+## 10       5.00 MOUSE4         Y        T2
+## 11       4.92 MOUSE5         Y        T2
+## 12       4.78 MOUSE6         Y        T2
+
+It is of interest to compare timepoint T1 with T2 within treatment X, while accounting for how the samples are paired. 
+
+design <- model.matrix(~0+id)
+design <- cbind(design, X= treatment=="X" & timepoint=="T2")
+design <- cbind(design, Y= treatment=="Y" & timepoint=="T2")
+design
+
+##    idMOUSE1 idMOUSE2 idMOUSE3 idMOUSE4 idMOUSE5 idMOUSE6 X Y
+## 1         1        0        0        0        0        0 0 0
+## 2         0        1        0        0        0        0 0 0
+## 3         0        0        1        0        0        0 0 0
+## 4         1        0        0        0        0        0 1 0
+## 5         0        1        0        0        0        0 1 0
+## 6         0        0        1        0        0        0 1 0
+## 7         0        0        0        1        0        0 0 0
+## 8         0        0        0        0        1        0 0 0
+## 9         0        0        0        0        0        1 0 0
+## 10        0        0        0        1        0        0 0 1
+## 11        0        0        0        0        1        0 0 1
+## 12        0        0        0        0        0        1 0 1
+
+fit <- lm(expression~0+design)
+fit
+## 
+## Call:
+## lm(formula = expression ~ 0 + design)
+## 
+## Coefficients:
+## designidMOUSE1  designidMOUSE2  designidMOUSE3  designidMOUSE4  designidMOUSE5  
+##          0.956           1.153           0.978           2.992           3.069  
+## designidMOUSE6         designX         designY  
+##          2.929           1.089           1.904
+
+The overall difference between treatments X and Y can be coded as 
+* makeContrasts(X-Y, levels=colnames(design)), 
+which calculates the difference between the seventh and eighth parameters, and has a value of -0.82.
+
+
+
+
+
+
+
+(2) 以上代码的模型中 ~-1 这个-1什么意思？
+
+a) 测试
+
+* 空和1一样: a1, a3
+* 0和-1一样: a2, a4
+
+library(limma)
+mygroup=ifelse(iris$Species[c(1:2, 51:53)]=="setosa", "treat", "ctrl")
+mygroup=factor(mygroup, levels = c("treat", "ctrl"))
+str(mygroup) # Factor w/ 2 levels "treat","ctrl": 1 1 2 2 2
+
+> model.matrix(~mygroup) #a1
+  (Intercept) mygroupctrl
+1           1           0
+2           1           0
+3           1           1
+4           1           1
+5           1           1
+attr(,"assign")
+[1] 0 1
+attr(,"contrasts")
+attr(,"contrasts")$mygroup
+[1] "contr.treatment"
+
+> model.matrix(~0+mygroup) #a2
+  mygrouptreat mygroupctrl
+1            1           0
+2            1           0
+3            0           1
+4            0           1
+5            0           1
+attr(,"assign")
+[1] 1 1
+attr(,"contrasts")
+attr(,"contrasts")$mygroup
+[1] "contr.treatment"
+
+> model.matrix(~1+mygroup) #3
+  (Intercept) mygroupctrl
+1           1           0
+2           1           0
+3           1           1
+4           1           1
+5           1           1
+attr(,"assign")
+[1] 0 1
+attr(,"contrasts")
+attr(,"contrasts")$mygroup
+[1] "contr.treatment"
+
+> model.matrix(~-1+mygroup) #4
+  mygrouptreat mygroupctrl
+1            1           0
+2            1           0
+3            0           1
+4            0           1
+5            0           1
+attr(,"assign")
+[1] 1 1
+attr(,"contrasts")
+attr(,"contrasts")$mygroup
+[1] "contr.treatment"
+
+
+
+
+b) 后面是factor，则两种模型相等。没区别
+Design matrices with and without intercept term
+https://bioconductor.org/packages/release/workflows/vignettes/RNAseq123/inst/doc/designmatrices.html
+
+For a single explanatory variable, which we simply call variable, a design matrix can be coded by
+model.matrix(~variable) to include an intercept term, or by model.matrix(~0+variable) to exclude the intercept term. One of the most fundamental concepts in the coding of design matrices is to understand when one should include an intercept term, when not to, and how it affects the underlying model. If variable is a factor, then the two models with and without the intercept term are equivalent, but if variable is a covariate the then two models are fundamentally different.
+
+
+
+
+
+c) 空和0有啥区别？
+https://cloud.tencent.com/developer/article/2246757
+
+design <- model.matrix(~Group) 会先对需要比较的组进行比较，从第二列开始以对比组填充。
+ 
+design <- model.matrix(~ 0 + Group) 只进行分组，不进行比较，如何进行比较由差异比较矩阵和 makeContrasts 函数结果控制。
+
+见上文1.6
 
 
 
