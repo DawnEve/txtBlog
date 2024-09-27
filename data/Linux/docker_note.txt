@@ -6660,6 +6660,137 @@ zh_CN.utf8
 
 
 ========================================
+|-- 强制重启docker后，之前的容器不能start
+----------------------------------------
+1. 下次重启docker前，要先stop正在运行的容器，否则容易莫名其妙的错误
+
+$ docker stop 16b
+16b
+$ docker start 16b
+Error response from daemon: failed to create task for container: task 16b4479c19daeac62f66a17efa326c12949e8a78f953017b7033757938b7be3e: already exists
+Error: failed to start containers: 16b
+
+
+系统细节
+	$ uname -a
+	Linux jinlab-svr3 3.10.0-1160.108.1.el7.x86_64 #1 SMP Thu Jan 25 16:17:31 UTC 2024 x86_64 x86_64 x86_64 GNU/Linux
+
+
+系统报错：
+$ sudo tail -f /var/log/messages -n 500 | grep -i error
+Sep 25 16:36:23 jinlab-svr3 dockerd: time="2024-09-25T16:36:23.652057341+08:00" level=info msg="stopping event stream following graceful shutdown" error="context canceled" module=libcontainerd namespace=plugins.moby
+Sep 25 16:56:59 jinlab-svr3 dockerd: time="2024-09-25T16:56:59.814283085+08:00" level=error msg="stream copy error: reading from a closed fifo"
+Sep 25 16:56:59 jinlab-svr3 dockerd: time="2024-09-25T16:56:59.988586144+08:00" level=error msg="Handler for POST /v1.45/containers/16b/start returned error: failed to create task for container: task 16b4479c19daeac62f66a17efa326c12949e8a78f953017b7033757938b7be3e: already exists" spanID=aeaa4f8436c1e5f1 traceID=a111d52db97d763b21bfa861c16beebc
+
+
+
+
+
+
+
+
+
+2. 死马当活马医：网络办法尝试
+
+https://github.com/docker/for-linux/issues/809
+https://ahmetozer.org/Error-response-from-daemon-OCI-runtime-create-failed-container-with-id-exists
+
+(1) 停止docker 容器
+$ docker stop R4
+$ docker ps
+
+
+查看情况：
+	$ docker inspect 16b
+	很多输出，但是无用。
+
+
+查看日志：
+	$ docker logs 16b
+	[root@16b4479c19da /]# [root@16b4479c19da /]# 
+	就这一行，没啥信息。
+
+
+
+
+(2) 停止docker 服务
+$ sudo service docker stop
+
+$ sudo service docker stop
+[sudo] password for wangjl:
+Redirecting to /bin/systemctl stop docker.service
+Warning: Stopping docker.service, but it can still be activated by:
+  docker.socket
+
+查看服务
+$ service docker status
+Redirecting to /bin/systemctl status docker.service
+● docker.service - Docker Application Container Engine
+   Loaded: loaded (/usr/lib/systemd/system/docker.service; disabled; vendor preset: disabled)
+   Active: inactive (dead) since Wed 2024-09-25 16:36:23 CST; 22s ago
+...
+
+
+查看错误：
+$ dockerd --debug
+INFO[2024-09-25T16:37:15.967941877+08:00] Starting up
+dockerd needs to be started with root privileges. To run dockerd in rootless mode as an unprivileged user, see https://docs.docker.com/go/rootless/
+就这一行，没有有用信息。
+
+
+
+
+查根目录位置
+$ docker info | grep -i root
+ Docker Root Dir: /data/docker_root/docker
+
+
+
+$ docker ps -a
+CONTAINER ID   IMAGE                     COMMAND                  CREATED        STATUS                        PORTS                                                                   NAMES
+16b4479c19da   dawneve/scpolya-seq2:b5   "bash"                   5 months ago   Exited (128) 41 minutes ago   10080-10081/tcp, 0.0.0.0:8085->8085/tcp, :::8085->8085/tcp, 10085/tcp   scPolyA-seq2_b5
+
+
+
+查找容器id
+$ sudo find /data/docker_root/docker/ | grep -in 16b4479c19da
+	665:/data/docker_root/docker/image/overlay2/layerdb/mounts/16b4479c19daeac62f66a17efa326c12949e8a78f953017b7033757938b7be3e
+	666:/data/docker_root/docker/image/overlay2/layerdb/mounts/16b4479c19daeac62f66a17efa326c12949e8a78f953017b7033757938b7be3e/init-id
+	667:/data/docker_root/docker/image/overlay2/layerdb/mounts/16b4479c19daeac62f66a17efa326c12949e8a78f953017b7033757938b7be3e/parent
+	668:/data/docker_root/docker/image/overlay2/layerdb/mounts/16b4479c19daeac62f66a17efa326c12949e8a78f953017b7033757938b7be3e/mount-id
+	958348:/data/docker_root/docker/containers/16b4479c19daeac62f66a17efa326c12949e8a78f953017b7033757938b7be3e
+	958349:/data/docker_root/docker/containers/16b4479c19daeac62f66a17efa326c12949e8a78f953017b7033757938b7be3e/checkpoints
+	958350:/data/docker_root/docker/containers/16b4479c19daeac62f66a17efa326c12949e8a78f953017b7033757938b7be3e/config.v2.json
+	958351:/data/docker_root/docker/containers/16b4479c19daeac62f66a17efa326c12949e8a78f953017b7033757938b7be3e/hostname
+	958352:/data/docker_root/docker/containers/16b4479c19daeac62f66a17efa326c12949e8a78f953017b7033757938b7be3e/16b4479c19daeac62f66a17efa326c12949e8a78f953017b7033757938b7be3e-json.log
+	958353:/data/docker_root/docker/containers/16b4479c19daeac62f66a17efa326c12949e8a78f953017b7033757938b7be3e/hosts
+	958354:/data/docker_root/docker/containers/16b4479c19daeac62f66a17efa326c12949e8a78f953017b7033757938b7be3e/resolv.conf.hash
+	958355:/data/docker_root/docker/containers/16b4479c19daeac62f66a17efa326c12949e8a78f953017b7033757938b7be3e/resolv.conf
+	958356:/data/docker_root/docker/containers/16b4479c19daeac62f66a17efa326c12949e8a78f953017b7033757938b7be3e/hostconfig.json
+	958357:/data/docker_root/docker/containers/16b4479c19daeac62f66a17efa326c12949e8a78f953017b7033757938b7be3e/mounts
+#
+
+
+
+删除运行状态信息：无法执行，找不到这个文件
+	#For example my container name bindnat64 and docker id is 4871484679fsd498sg4hr9t989.
+	$ rm -rf /var/run/docker/runtime-runc/moby/4871484679fsd498sg4hr9t989
+	$ docker start bindnat64
+	bindnat64
+
+
+
+(3) 最后的尝试：提交为镜像，重新开容器
+
+$ docker commit 16b new_image_name
+$ docker run new_image_name
+
+
+
+
+
+
+========================================
 singularity 简介与安装: for HPC
 ----------------------------------------
 1. 简介

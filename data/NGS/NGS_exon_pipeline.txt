@@ -2372,7 +2372,10 @@ ref: https://www.cnblogs.com/leezx/p/14464087.html
 
 表达数量性状基因座（expression Quantitative Trait Loci,eQTL）是对上述概念的进一步深化，它指的是染色体上一些能特定调控mRNA和蛋白质表达水平的区域，其mRNA/蛋白质的表达水平量与数量性状成比例关系。
 eQTL可分为顺式作用eQTL和反式作用eQTL，
+
+Cis-eQTL:
 	顺式作用eQTL就是某个基因的eQTL定位到该基因所在的基因组区域，表明可能是该基因本身的差别引起的mRNA水平变化；
+Trans-eQTL:
 	反式作用eQTL是指某个基因的eQTL定位到其他基因组区域，表明其他基因的差别控制该基因mRNA水平的差异。
 
 eQTL就是把基因表达作为一种性状,研究遗传突变与基因表达的相关性: 就好像研究遗传突变与身高的相关性一样。
@@ -2427,7 +2430,7 @@ cor.test(exp1, snp1)$estimate
 #cor
 #0.9948471
 
-# lm(Y~x) 计算线性回归，其系数的p值也相关的p值一致
+# lm(Y~x) 计算线性回归，其系数的p值与相关的p值一致
 fit=lm( exp1 ~ snp1); fit
 summary(fit) # exp1 = 18.5*snp + 0.969
 summary(fit)$coefficients[2,4] # [1] 2.387309e-19
@@ -2522,7 +2525,6 @@ library(MatrixEQTL) 是一个R包：
 		需要注意的是，所有矩阵的样本顺序要保持一致。
 
 
-
 (2) eQTL的数据库：Braineac, GTEx, Blood eQTL Browser,
 Braineac(The Brain eQTLAlmanac)由UK Brain Expression Consortium创建，他们采集134名欧洲捐献者的多个脑区的基因型与基因表达量，进行eQTL分析，建立该数据库。
 http://www.braineac.org/
@@ -2555,6 +2557,460 @@ https://www.jianshu.com/p/d23be33f5b6e
 
 eQTL: https://www.jianshu.com/p/2e1e9d3ccd63
 https://mp.weixin.qq.com/s/X6oiHtKBMBPFqncgL3Enxw
+
+
+
+
+
+
+
+========================================
+|-- MatrixEQTL R包使用示例
+----------------------------------------
+
+1. 示例数据
+https://www.bios.unc.edu/research/genomic_software/Matrix_eQTL/R.html
+Covariates.txt  geneloc.txt  GE.txt  snpsloc.txt  SNP.txt
+
+(1) 下载数据
+@H3:/datapool/wangjl/others/eQTL/demo/
+The toy dataset consists of five files:
+	genotype SNP.txt,
+	expression GE.txt,
+	a file Covariates.txt with two covariates, gender and age, and
+
+	files geneloc.txt and snpsloc.txt with gene and SNP location information.
+
+	First three files contain artificial information for 16 samples.
+	The sample genotype file contains random values 0, 1, and 2 although the input genotype file is allowed to contain any real values.
+
+
+(2) 文件格式
+$ head SNP.txt -n3 #共15个Snp
+id      Sam_01  Sam_02  Sam_03  Sam_04  Sam_05  Sam_06  Sam_07  Sam_08  Sam_09  Sam_10  Sam_11  Sam_12  Sam_13  Sam_14      Sam_15  Sam_16
+Snp_01  2       0       2       0       2       1       2       1       1       1       2       2       1       2  21
+Snp_02  0       1       1       2       2       1       0       0       0       1       1       1       1       0  11
+
+
+$ head GE.txt -n3 #共10个Gene
+id      Sam_01  Sam_02  Sam_03  Sam_04  Sam_05  Sam_06  Sam_07  Sam_08  Sam_09  Sam_10  Sam_11  Sam_12  Sam_13  Sam_14      Sam_15  Sam_16
+Gene_01 4.91    4.63    5.18    5.07    5.74    5.09    5.31    5.29    4.73    5.72    4.75    4.54    5.01    5.034.84    4.44
+Gene_02 13.78   13.14   13.18   13.04   12.85   13.07   13.09   12.83   14.94   13.86   15.26   14.73   14.08   14.33       14.72   14.97
+
+
+$ head Covariates.txt
+id      Sam_01  Sam_02  Sam_03  Sam_04  Sam_05  Sam_06  Sam_07  Sam_08  Sam_09  Sam_10  Sam_11  Sam_12  Sam_13  Sam_14      Sam_15  Sam_16
+gender  0       0       0       0       0       0       0       0       1       1       1       1       1       1  11
+age     36      40      46      65      69      43      40      54      44      70      24      34      55      62 48       40
+
+
+$ head geneloc.txt -n 3
+geneid  chr     s1      s2
+Gene_01 chr1    721289  731289
+Gene_02 chr1    752565  762565
+
+$ head snpsloc.txt -n3
+snp     chr     pos
+Snp_01  chr1    721289
+Snp_02  chr1    752565
+
+
+
+
+
+
+2. Test all gene-SNP pairs and plot a histogram of all p-values
+
+library(MatrixEQTL)
+
+# 1. settings ----
+base.dir = find.package('MatrixEQTL'); base.dir
+
+# Genotype file name
+SNP_file_name = paste(base.dir, "/data/SNP.txt", sep="");
+
+# Gene expression file name
+expression_file_name = paste(base.dir, "/data/GE.txt", sep="");
+
+# Covariates file name
+# Set to character() for no covariates
+covariates_file_name = paste(base.dir, "/data/Covariates.txt", sep="");
+
+# Output file name
+output_file_name = tempfile();
+
+
+# Linear model to use, modelANOVA, modelLINEAR, or modelLINEAR_CROSS
+useModel = modelLINEAR; # modelANOVA, modelLINEAR, or modelLINEAR_CROSS
+
+# Only associations significant at this level will be saved
+pvOutputThreshold = 1e-2;
+
+# Error covariance matrix
+# Set to numeric() for identity.
+errorCovariance = numeric();
+# errorCovariance = read.table("Sample_Data/errorCovariance.txt");
+
+
+
+# 2. load data ----
+
+## Load genotype data
+snps = SlicedData$new();
+snps$fileDelimiter = "\t";      # the TAB character
+snps$fileOmitCharacters = "NA"; # denote missing values;
+snps$fileSkipRows = 1;          # one row of column labels
+snps$fileSkipColumns = 1;       # one column of row labels
+snps$fileSliceSize = 2000;      # read file in slices of 2,000 rows
+snps$LoadFile(SNP_file_name);
+
+
+## Load gene expression data
+gene = SlicedData$new();
+gene$fileDelimiter = "\t";      # the TAB character
+gene$fileOmitCharacters = "NA"; # denote missing values;
+gene$fileSkipRows = 1;          # one row of column labels
+gene$fileSkipColumns = 1;       # one column of row labels
+gene$fileSliceSize = 2000;      # read file in slices of 2,000 rows
+gene$LoadFile(expression_file_name);
+
+
+## Load covariates
+cvrt = SlicedData$new();
+cvrt$fileDelimiter = "\t";      # the TAB character
+cvrt$fileOmitCharacters = "NA"; # denote missing values;
+cvrt$fileSkipRows = 1;          # one row of column labels
+cvrt$fileSkipColumns = 1;       # one column of row labels
+if(length(covariates_file_name)>0) {
+  cvrt$LoadFile(covariates_file_name);
+}
+
+
+
+# 3. Run ----
+## Run the analysis
+me = Matrix_eQTL_engine(
+  snps = snps,
+  gene = gene,
+  cvrt = cvrt,
+  output_file_name = output_file_name,
+  pvOutputThreshold = pvOutputThreshold,
+  useModel = useModel,
+  errorCovariance = errorCovariance,
+  verbose = TRUE,
+  pvalue.hist = TRUE,
+  min.pv.by.genesnp = FALSE,
+  noFDRsaveMemory = FALSE);
+
+unlink(output_file_name);
+
+
+## Results:
+cat('Analysis done in: ', me$time.in.sec, ' seconds', '\n');
+cat('Detected eQTLs:', '\n');
+show(me$all$eqtls)
+
+## Plot the histogram of all p-values
+plot(me)
+
+
+> show(me$all$eqtls)
+    snps    gene statistic       pvalue          FDR       beta
+1 Snp_05 Gene_03 38.812160 5.515519e-14 8.273279e-12  0.4101317
+2 Snp_13 Gene_09 -3.914403 2.055817e-03 1.541863e-01 -0.2978847
+3 Snp_11 Gene_06 -3.221962 7.327756e-03 2.853368e-01 -0.2332470
+4 Snp_04 Gene_10  3.201666 7.608981e-03 2.853368e-01  0.2321123
+5 Snp_14 Gene_01  3.070005 9.716705e-03 2.915011e-01  0.2147077
+
+
+
+
+
+
+
+
+3. Test local and distant gene-SNP pairs separately and plot Q-Q plots of local and distant p-values
+
+library(MatrixEQTL)
+
+## Location of the package with the data files.
+base.dir = find.package('MatrixEQTL');
+# base.dir = '.';
+
+
+## Settings
+
+# Linear model to use, modelANOVA, modelLINEAR, or modelLINEAR_CROSS
+useModel = modelLINEAR; # modelANOVA, modelLINEAR, or modelLINEAR_CROSS
+
+# Genotype file name
+SNP_file_name = paste(base.dir, "/data/SNP.txt", sep="");
+snps_location_file_name = paste(base.dir, "/data/snpsloc.txt", sep="");
+
+# Gene expression file name
+expression_file_name = paste(base.dir, "/data/GE.txt", sep="");
+gene_location_file_name = paste(base.dir, "/data/geneloc.txt", sep="");
+
+# Covariates file name
+# Set to character() for no covariates
+covariates_file_name = paste(base.dir, "/data/Covariates.txt", sep="");
+
+# Output file name
+output_file_name_cis = tempfile();
+output_file_name_tra = tempfile();
+
+# Only associations significant at this level will be saved
+pvOutputThreshold_cis = 2e-2;
+pvOutputThreshold_tra = 1e-2;
+
+# Error covariance matrix
+# Set to numeric() for identity.
+errorCovariance = numeric();
+# errorCovariance = read.table("Sample_Data/errorCovariance.txt");
+
+# Distance for local gene-SNP pairs
+cisDist = 1e6;
+
+## Load genotype data
+
+snps = SlicedData$new();
+snps$fileDelimiter = "\t";      # the TAB character
+snps$fileOmitCharacters = "NA"; # denote missing values;
+snps$fileSkipRows = 1;          # one row of column labels
+snps$fileSkipColumns = 1;       # one column of row labels
+snps$fileSliceSize = 2000;      # read file in slices of 2,000 rows
+snps$LoadFile(SNP_file_name);
+
+## Load gene expression data
+
+gene = SlicedData$new();
+gene$fileDelimiter = "\t";      # the TAB character
+gene$fileOmitCharacters = "NA"; # denote missing values;
+gene$fileSkipRows = 1;          # one row of column labels
+gene$fileSkipColumns = 1;       # one column of row labels
+gene$fileSliceSize = 2000;      # read file in slices of 2,000 rows
+gene$LoadFile(expression_file_name);
+
+## Load covariates
+
+cvrt = SlicedData$new();
+cvrt$fileDelimiter = "\t";      # the TAB character
+cvrt$fileOmitCharacters = "NA"; # denote missing values;
+cvrt$fileSkipRows = 1;          # one row of column labels
+cvrt$fileSkipColumns = 1;       # one column of row labels
+if(length(covariates_file_name)>0) {
+cvrt$LoadFile(covariates_file_name);
+}
+
+## Run the analysis
+snpspos = read.table(snps_location_file_name, header = TRUE, stringsAsFactors = FALSE);
+genepos = read.table(gene_location_file_name, header = TRUE, stringsAsFactors = FALSE);
+
+me = Matrix_eQTL_main(
+snps = snps,
+gene = gene,
+cvrt = cvrt,
+output_file_name     = output_file_name_tra,
+pvOutputThreshold     = pvOutputThreshold_tra,
+useModel = useModel,
+errorCovariance = errorCovariance,
+verbose = TRUE,
+output_file_name.cis = output_file_name_cis,
+pvOutputThreshold.cis = pvOutputThreshold_cis,
+snpspos = snpspos,
+genepos = genepos,
+cisDist = cisDist,
+pvalue.hist = "qqplot",
+min.pv.by.genesnp = FALSE,
+noFDRsaveMemory = FALSE);
+
+unlink(output_file_name_tra);
+unlink(output_file_name_cis);
+
+## Results:
+
+cat('Analysis done in: ', me$time.in.sec, ' seconds', '\n');
+cat('Detected local eQTLs:', '\n');
+show(me$cis$eqtls)
+cat('Detected distant eQTLs:', '\n');
+show(me$trans$eqtls)
+
+## Plot the Q-Q plot of local and distant p-values
+
+plot(me)
+
+
+
+
+结果：
+> show(me$cis$eqtls)
+    snps    gene statistic       pvalue          FDR      beta
+1 Snp_05 Gene_03 38.812160 5.515519e-14 5.515519e-12 0.4101317
+2 Snp_04 Gene_10  3.201666 7.608981e-03 3.804491e-01 0.2321123
+
+> show(me$trans$eqtls)
+    snps    gene statistic      pvalue       FDR       beta
+1 Snp_13 Gene_09 -3.914403 0.002055817 0.1027908 -0.2978847
+2 Snp_11 Gene_06 -3.221962 0.007327756 0.1619451 -0.2332470
+3 Snp_14 Gene_01  3.070005 0.009716705 0.1619451  0.2147077
+
+
+
+
+
+
+
+
+
+4. 构造人工数据: 列为sample名字，名字要一致
+Create an artificial dataset and plot the histogram and Q-Q plot of all p-values
+
+set.seed(2024)
+library('MatrixEQTL')
+
+# Number of samples
+n = 100;
+
+# Number of variables
+ngs = 2000;
+
+# Common signal in all variables (population stratification)
+pop = 0.2 * rnorm(n);
+
+# data matrices
+snps.mat = matrix(rnorm(n*ngs), ncol = ngs) + pop;
+gene.mat = matrix(rnorm(n*ngs), ncol = ngs) + pop + snps.mat*((1:ngs)/ngs)^9/2;
+
+# data objects for Matrix eQTL engine
+snps1 = SlicedData$new( t( snps.mat ) );
+gene1 = SlicedData$new( t( gene.mat ) );
+cvrt1 = SlicedData$new( );
+rm(snps.mat, gene.mat)
+
+# Slice data in blocks of 500 variables
+snps1$ResliceCombined(500);
+gene1$ResliceCombined(500);
+
+# name of temporary output file
+filename = tempfile();
+
+# Perform analysis recording information for
+# a histogram
+meh = Matrix_eQTL_engine(
+  snps = snps1,
+  gene = gene1,
+  cvrt = cvrt1,
+  output_file_name = filename,
+  pvOutputThreshold = 1e-100,
+  useModel = modelLINEAR,
+  errorCovariance = numeric(),
+  verbose = TRUE,
+  pvalue.hist = 100);
+unlink( filename );
+# png(filename = "histogram.png", width = 650, height = 650)
+plot(meh, col="grey")
+# dev.off();
+
+
+
+
+
+
+
+5.GPT: 在使用 matrixEQTL 包分析结果时，beta 值可以作为筛选条件。
+
+* 设定阈值：选择一个阈值，比如 |beta| > 0.5，筛选出具有显著效应的基因。
+* 正效应：选择 beta > 0 的基因，表示甲基化水平增加与基因表达增加相关联。
+* 负效应：选择 beta < 0 的基因，表示甲基化水平增加与基因表达减少相关联。
+* 显著性 + 效应大小：例如，选择 p 值 < 0.05 且 |beta| > 0.5 的基因对，以确保结果既显著又具有生物学意义。
+
+# 假设 results 是包含 beta 和 p 值的数据框
+filtered_results <- results[abs(results$beta) > 0.5 & results$pvalue < 0.05, ]
+
+
+
+
+
+
+
+========================================
+|-- 相关性分析后怎么过滤？怎么做网络分析？
+----------------------------------------
+
+1. 过滤相关性结果
+在相关性分析后，您需要过滤结果以聚焦于有意义的基因对。以下是一些常见的过滤步骤：
+
+* 选择显著性水平：根据 p 值或假发现率（FDR）来筛选相关性。例如，选择 p 值 < 0.05 或 FDR < 0.05 的基因对。
+* 相关性阈值：设定一个相关性系数阈值（如 |r| > 0.5），以仅保留强相关的基因对。
+	比如 |beta| > 0.5，筛选出具有较大效应的基因对。
+* 生物学意义：结合已有文献或生物学知识，进一步筛选与特定生物学过程或疾病相关的基因对。
+
+
+
+2.构建基因调控网络
+在过滤后，您可以构建基因调控网络。以下是一些常见的方法和工具：
+
+(1) 使用 R 包
+igraph：可用于构建和可视化网络。
+
+library(igraph)
+
+# 创建边列表
+edge_list <- data.frame(
+  gene1 = c("geneA", "geneB"),
+  gene2 = c("geneC", "geneD"),
+  weight = c(0.6, 0.8)  # 相关性系数
+)
+
+# 构建图
+g <- graph_from_data_frame(edge_list, directed = FALSE)
+
+# 可视化网络
+plot(g)
+
+
+(2) ggraph：另一个用于网络可视化的 R 包。
+
+library(ggraph)
+
+ggraph(g, layout = "fr") +
+  geom_edge_link(aes(edge_alpha = weight)) +
+  geom_node_point() +
+  geom_node_text(aes(label = name), repel = TRUE)
+
+(3) 使用 Cytoscape
+Cytoscape 是一个强大的网络可视化工具。您可以从 R 导出数据并在 Cytoscape 中加载：
+
+将过滤后的基因对导出为 CSV 文件。
+在 Cytoscape 中导入数据，构建和可视化网络。
+
+
+
+
+3. 网络分析
+一旦构建了网络，可以进行以下分析：
+
+* 网络拓扑分析：计算节点的度、介数中心性、接近中心性等。
+* 模块检测：使用算法（如 Louvain 或 Girvan-Newman）检测网络中的模块或社区。
+* 富集分析：对网络中的基因进行功能富集分析，例如使用 GO 或 KEGG 分析。
+
+
+
+
+4. 结果解释
+
+生物学解释：结合文献和实验结果，解释网络中的关键基因及其生物学意义。
+可视化报告：创建可视化图表和报告，以便与其他研究人员或利益相关者分享结果。
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -2776,7 +3232,7 @@ GTG    2
 Name: 0, dtype: int64
 
 
-test: http://z.biomooc.com:10086/notebooks/MNP_demo.ipynb
+
 
 
 

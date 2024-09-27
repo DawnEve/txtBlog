@@ -9,6 +9,7 @@ return array (
       array('RNA分子参考资料','NGS002','html'),
       array('FAQ','NGS003','html'),
       array('最佳实践 best_practice','best_practice','txt'),
+      array('过时/老版本 outOfDate','outOfDate','txt'),
     ),
   ),
 
@@ -33,7 +34,7 @@ return array (
       array('构建分析流程 nextflow','pipeline-nextflow','txt'),
 
       array('circos-Cytoscape','circos-Cytoscape','txt'),
-      array('富集分析(GO/KEGG)','GO_analysis01','txt'),
+      array('富集分析(GO/KEGG/GSVA)','GO_analysis01','txt'),
       array('常用生信工具(本地)','bioinfo_tools','txt'),
 
       array('GEO and TCGA','GEO_TCGA','txt'),
