@@ -23,7 +23,8 @@ return array (
       array('Python基础详解','Py102-more','txt',),
       array('Python数据处理包','Py103_data_analysis','txt',),
       array('Python DA可视化','Py104_data_visualization','txt', 'matplotlib, seaborn'), #第四个参数不起作用
-      array('Python Web','Py105-web','txt',),
+      array('Python Web | flask','Py105-web-flask','txt',),
+      array('Python Web | Django','Py106-web-Django','txt',),
     ),
   ),
 

@@ -995,7 +995,7 @@ localhost;127.*;10.*;172.16.*;172.17.*;172.18.*;172.19.*;172.20.*;172.21.*;172.2
 
 
 ========================================
-|-- 实战：某云主机作为跳板机，连接实验室服务器 //todo 开机启动服务
+|-- 实战：某云主机作为跳板机，连接实验室服务器，设置开机启动服务
 ----------------------------------------
 1.购买
 CPU 2核，内存2G，硬盘50GB
@@ -1142,19 +1142,235 @@ $ ssh sust@tx.biomooc.com -p 8888
 	明天检查效果。
 
 
-4) 设置Y主机开机启动该连接 //todo
+
+
+
+
+
+
+4. 设置Y主机开机启动该连接 //todo
 https://zhuanlan.zhihu.com/p/680289253
 
-为让其开机自启，先创建一个名为 autossh.service 的 systemd 文件。
+(1)查看docker的自启动设置：
+	$ cat /etc/systemd/system/snap.docker.dockerd.service
+	[Unit]
+	# Auto-generated, DO NOT EDIT
+	Description=Service for snap application docker.dockerd
+	Requires=snap-docker-796.mount
+	Wants=network.target
+	After=snap-docker-796.mount network.target snapd.apparmor.service
+	X-Snappy=yes
+
+	[Service]
+	EnvironmentFile=-/etc/environment
+	ExecStart=/usr/bin/snap run docker.dockerd
+	SyslogIdentifier=docker.dockerd
+	Restart=on-failure
+	WorkingDirectory=/var/snap/docker/796
+	TimeoutStopSec=30
+	Type=simple
+	Delegate=true
+
+	[Install]
+	WantedBy=multi-user.target
+
+
+查看 sshd 的自启动设置：
+	$ cat /etc/systemd/system/teamviewerd.service
+	[Unit]
+	Description = TeamViewer remote control daemon
+	After = network.target network-online.target dbus.service
+	Wants = network-online.target
+	Requires = dbus.service
+
+	[Service]
+	Type = forking
+	PIDFile = /var/run/teamviewerd.pid
+	ExecStart = /opt/teamviewer/tv_bin/teamviewerd -d
+	Restart = on-abort
+	StartLimitInterval = 60
+	StartLimitBurst = 10
+
+	[Install]
+	WantedBy = multi-user.target
+
+
+(2)为让其开机自启，先创建一个名为 autossh.service 的 systemd 文件。
 Y$ sudo vim /etc/systemd/system/autossh.service
+[Unit]
+Description=Keep the ssh tunnel open
+After=network.target
+
+[Service]
+User=wangjl
+Environment="AUTOSSH_GATETIME=0"
+# ExecStart=/home/ubuntu/mount1/Resources/shell/autossh.sh
+ExecStart=/home/wangjl/soft/shell/autossh.sh
+
+[Install]
+WantedBy=multi-user.target
+
+
+
+(3)其中autossh.sh 是 autossh 的脚本，内容为:
+	/usr/bin/autossh -M 0 -N \
+	  -o "ServerAliveInterval 60" \
+	  -o "ServerAliveCountMax 3" \
+	  -D 0.0.0.0:2222 \
+	  -L 0.0.0.0:10809:127.0.0.1:10809 \
+	  -L 0.0.0.0:8888:127.0.0.1:8081 \
+	  -L 0.0.0.0:8080:127.0.0.1:8080 \
+	  -L 0.0.0.0:8096:127.0.0.1:8096 \
+	  wang@***.***.***.*** -p 2222 -i /root/wang.pem
+
+
+我的版本：Y$ autossh -M 8889:8890 -f -CNT -Ng -R 0.0.0.0:8888:localhost:22 sam@118.89.82.18 -i ~/.ssh/id_rsa
+
+保持以上8888不变的情况下，重新开一个8887，防止连不上：
+	$ autossh -M 0 -f -CNT -Ng -R 0.0.0.0:8887:localhost:22 sam@118.89.82.18 -i ~/.ssh/id_rsa #ok
+	$ autossh -M 0 -f -CNTg -R 0.0.0.0:8887:localhost:22 sam@118.89.82.18 -i ~/.ssh/id_rsa #ok
+	$ autossh -M 0 -f -CNTg -o "ServerAliveInterval 60" -o "ServerAliveCountMax 3" -R 0.0.0.0:8887:localhost:22 sam@118.89.82.18 -i ~/.ssh/id_rsa
+
+
+
+$ vim /home/wangjl/soft/shell/autossh.sh
+#!/bin/bash
+## kill $(ps -ef | grep '[a]utossh' | awk '{print $2}');
+## sudo systemctl daemon-reload && systemctl restart saltlake.service
+/usr/bin/autossh -M 0 -CNTg \
+-o "ServerAliveInterval 60" \
+-o "ServerAliveCountMax 3" \
+-R 0.0.0.0:8887:localhost:22 \
+sam@118.89.82.18 -p 22 -i /home/wangjl/.ssh/id_rsa
+#-o "LogLevel DEBUG" >> /home/wangjl/autossh.log 2>&1  #调试用
+
+问题：以上命令脚本直接执行"bash xx.bash"可以连接，使用服务方式启动就无法连接了！？
+	1. id_rsa 文件不能用~前缀，要用绝对路径
+	2. 服务文件 autossh.service 添加 User=设置。
+
+参数解释：
+	-N 参数告诉 ssh 不要执行任何远程命令。
+	-o 参数设置 ssh 的选项。
+		ServerAliveInterval 设置为 60，即每 60 秒 autossh 就会通过加密通道向云服务器发送一条消息，以请求其响应。
+		ServerAliveCountMax 设置为 3，则当客户端连续 3 次发送消息后仍未收到服务器的响应时，autossh 将断开并重新连接。
+	-M 参数用于设置监控端口。
+		autossh 会通过这个端口发送测试数据，并期望能从服务器那里收到回应。
+		如果 autosssh 无法通过监控端口收到回应，它会认为 tunnel 已经断开，并尝试重新建立连接。
+		由于已经设置了 -o 选项，因此 -M 为 0 亦可。
+	-C 压缩传输
+	-T:不分配伪终端 tty。 -T 不显示终端，只显示连接成功信息
+		这意味着使用 -T 时，SSH连接不会为远程命令提供终端，适用于只需要数据传输而不涉及交互式操作的场景。
+		ssh -T user@remotehost some-command  #执行 some-command，但不提供终端
+
+	-g：允许远程主机连接本地用于端口转发
+
+注意：在守护进程中请不要设置 -f 参数。
+	-f 参数会让 autossh 在后台运行，这意味着 autossh 会立即返回，而不是一直运行。
+	然而，对于 systemd 服务来说，通常希望服务在前台运行。
+	在守护进程中，也可以顺便加入 -D 0.0.0.0:7777 实现 socks5 代理。
+
+
+
+(4)重新加载 systemd 以应用新的配置:
+$ sudo systemctl daemon-reload
+
+
+(5) 设置开机自启。
+$ sudo systemctl enable autossh.service
+Created symlink /etc/systemd/system/multi-user.target.wants/autossh.service → /etc/systemd/system/autossh.service.
+
+查看是否设置成功：
+	$ systemctl list-unit-files | grep autossh
+	UNIT FILE                                  STATE           VENDOR PRESET
+	autossh.service                            enabled         enabled
+
+	docker.service                             enabled         enabled
+	nginx.service                              enabled         enabled
+	time-sync.target                           static          disabled
+	mysql.service                              enabled         enabled
+	teamviewerd.service                        enabled         enabled
+
+关闭开机启动:
+	$ sudo systemctl disable teamviewerd
+	Removed /etc/systemd/system/multi-user.target.wants/teamviewerd.service.
+	$ systemctl list-unit-files | grep team
+	teamviewerd.service                        disabled        enabled #对比发现，第二列是设置是否开机启动
+
+
+
+(6) (可选)立即启用服务。
+$ sudo systemctl start autossh.service
+
+
+(7) 检查服务的状态:
+$ systemctl status autossh.service
+或：
+$ service autossh status
+
+$ systemctl status autossh.service
+● autossh.service - Keep the ssh tunnel open
+     Loaded: loaded (/etc/systemd/system/autossh.service; enabled; vendor preset: enabled)
+     Active: failed (Result: exit-code) since Mon 2024-09-23 20:14:13 CST; 33s ago
+   Main PID: 691922 (code=exited, status=203/EXEC)
+
+难道是没有执行权限？
+或者端口8889占用？改为 8887
+$ chmod o+x /home/wangjl/soft/shell/autossh.sh
+
+$ ls -lht /home/wangjl/soft/shell/autossh.sh
+-rw-rw-r-x 1 wangjl wangjl 317 Sep 23 20:12 /home/wangjl/soft/shell/autossh.sh
+
+启动服务：sudo systemctl start autossh.service
+
+检查效果：
+$ systemctl status autossh.service
+● autossh.service - Keep the ssh tunnel open
+     Loaded: loaded (/etc/systemd/system/autossh.service; enabled; vendor preset: enabled)
+     Active: active (running) since Mon 2024-09-23 20:17:19 CST; 6s ago
+   Main PID: 692335 (autossh.sh)
+      Tasks: 2 (limit: 38026)
+     Memory: 2.3M
+     CGroup: /system.slice/autossh.service
+             ├─692335 /bin/bash /home/wangjl/soft/shell/autossh.sh
+             └─692344 /usr/lib/autossh/autossh -M 0 -N -CT -g -o ServerAliveInterval 60 -o ServerAliveCountMax 3 -R 0.0.0.0:8887:localhost:22 sam@11>
+
+至少user自己可执行权限
+	-rw-rw-r-- 1 wangjl wangjl 317 Sep 23 20:16 /home/wangjl/soft/shell/autossh.sh #启动失败
+	-rwxrw-r-- 1 wangjl wangjl 317 Sep 23 20:16 /home/wangjl/soft/shell/autossh.sh #可以启动
+
+
+
+(8) 打开新端口 8887
+@tx$ sudo iptables -I INPUT -p tcp --dport 8887 -j ACCEPT
+打开防火墙：网页上设置 8887 允许。
+	https://console.cloud.tencent.com/lighthouse/instance/detail?rid=4&id=lhins-9ox4ow18&tab=firewall
+
+
+是否可以看到进程：
+	@Y$ ps -aux | grep -in autossh
+	392:root      693282  0.0  0.0   2504  1844 ?        S    20:22   0:00 /usr/lib/autossh/autossh -M 0 -N -CT -g -o ServerAliveInterval 60 -o ServerAliveCountMax 3 -R 0.0.0.0:8887:localhost:22 sam@118.89.82.18 -p 22 -i /root/.ssh/id_rsa
+
+	@tx$ sudo netstat -anp | grep 8887
+
+是否可以登录
+	@tx$ ssh wangjl@localhost -p 8887
+	@J3$ ssh wangjl@tx.biomooc.com -p 8887
+
+问题：
+	作为服务启动正常，本机可见进程。云主机看不到该端口？！
+	增加日志参数 -o "LogLevel DEBUG" >> /var/log/autossh.log 2>&1
+	错误提示：登录失败
+		debug1: identity file /root/.ssh/id_rsa type -1
+		* 命令行中ssh key使用了相对地址~，要使用绝对地址 /home/wangjl/xx
+		* 同时要设置服务文件 autossh.service 中 Service 的 User=。
+	终于可以连接了。
 
 
 
 
 
 
-
-4. 通过 autossh 能链接到内网主机，但是经常中断
+5. 通过 autossh 能链接到内网主机，但是经常中断
 
 (1) 问题：正在操作，就直接断开了
 Connection to localhost closed by remote host.
@@ -1186,9 +1402,23 @@ wangjl2@VM-16-11-ubuntu:~$
 
 
 
+(2) 以上配置的 8887 端口可以持续连接
+远程连接，几个小时不断。
+
+//todo why 另一个不行? 是 命令行 哪个-o参数的影响吗？
+
+@Y$ ps -aux | grep autossh
+wangjl    128519  0.0  0.0   2516  1692 ?        Ss   Sep20   0:00 /usr/lib/autossh/autossh -M 8889 8890    -CNT -Ng -R 0.0.0.0:8888:localhost:22 sam@118.89.82.18 -i /home/wangjl/.ssh/id_rsa
+wangjl    702538  0.0  0.0   2504   644 ?        S    Sep23   0:00 /usr/lib/autossh/autossh -M 0 -CNTg -o ServerAliveInterval 60 -o ServerAliveCountMax 3 -R 0.0.0.0:8887:localhost:22 sam@118.89.82.18 -p 22 -i /home/wangjl/.ssh/id_rsa
 
 
-5.在外部怎么通过跳板机连接内网Rstudio？
+
+
+
+
+
+
+10.在外部怎么通过跳板机连接内网Rstudio？
 假设已经建立内网服务器到跳板机的连接。
 外部通过跳板机访问内网硬件：指定内网ip和隧道端口号（-p 端口号）。
 

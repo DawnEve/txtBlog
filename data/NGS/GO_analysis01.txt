@@ -7,6 +7,8 @@ GO/KEGG 基因富集分析
 
 基因列表
 
+GSVA
+
 
 
 ========================================
@@ -506,11 +508,137 @@ This list of over-represented terms gives us a lot of information about the gene
 
 
 ========================================
-|-- Metascape 做富集分析 //todo
+|-- Metascape 做富集分析
 ----------------------------------------
-2.Metascape
+1.Metascape
 http://www.metascape.org/
 
+
+
+
+
+2. 本地版
+https://metascape.org/gp/index.html#/menu/msbio
+
+wangxf: 2024.9.20
+	我经常打不开metascape，或者是上传失败，太痛苦了
+	想把它下载到服务器上直接运行命令跑结果
+
+(1)下载docker镜像
+	-r--r--r--.  1 wangjl jinwf  81K Sep 20 14:29 msbio_v3.5.20240901.zip
+	@X$ cd /home/wangjl/software/
+	$ mkdir metascape && cd metascape
+	$ unzip /home/wangjl/Downloads/msbio_v3.5.20240901.zip
+	$ ls
+	bin  data  license  winbin
+
+下载 Docker 镜像: 失败
+	$ bin/install.sh #主要语句是 docker pull metadocker8/msbio2:latest
+	国内镜像不能用，只能通过国外朋友下载了。
+
+	@tx$ docker save metadocker8/msbio2:latest | gzip > metadocker8__msbio2_latest.image.tar.gz  #2024.9.20
+	-rw-rw-r-- 1 wangjl2 docker  3.0G Sep 20 18:14 metadocker8__msbio2_latest.image.tar.gz
+
+	@X$ scp wangjl2@tx.biomooc.com:/home/wangjl2/metadocker8__msbio2_latest.image.tar.gz .
+	$ gunzip -c metadocker8__msbio2_latest.image.tar.gz | docker load
+
+	$ docker images
+	REPOSITORY                 TAG              IMAGE ID       CREATED         SIZE
+	metadocker8/msbio2         latest           6c7727a43a31   7 days ago      6.79GB
+
+
+
+
+(2) 执行shell脚本
+$ cat bin/install.sh
+#!/usr/bin/env bash
+docker pull metadocker8/msbio2:latest
+if [ ! -d "data" ]
+then
+    mkdir data
+fi
+chmod a+rwx data
+if [ ! -d "data/logs" ]
+then
+    mkdir data/logs
+fi
+chmod a+rwx data/logs
+
+解释：新建 /data/logs/，两层文件夹都设置为777权限。
+
+
+
+(3) 使用：Gene-List Analysis
+
+1) shell 脚本内容：
+
+$ cat bin/ms.sh
+#!/usr/bin/env sh
+HOSTUID=`id -u`
+HOSTGID=`id -g $UID`
+docker run --rm -e HOSTUID=$HOSTUID -e HOSTGID=$HOSTGID -v $PWD/data:/data -v $PWD/license:/license metadocker8/msbio2:latest /msbio/mylib/ms/msbio2.sh $@
+docker run --rm -v $PWD/data:/data metadocker8/msbio2:latest chown -R $HOSTUID.$HOSTGID /data
+
+
+2) 用户只需要执行：
+$ bin/ms.sh -o output_folder input_list_file
+
+解释：
+	输入2个参数
+	shell内，记录我的uid和gid
+	第一个 docker 挂载上 license，输入的有 $@ 是shell 所有参数列表
+	第二个 docker 仅挂载 /data 文件夹，修改其所有权限？
+
+注意：
+	output_folder input_list_file 必须以 /data/ 开始。
+	如果输入符合 single-gene-list standard，必须指定 -u 参数
+
+
+查看示例数据
+@X$ pwd
+/home/wangjl/software/metascape/
+
+$ wc data/example/single_list_id.txt
+ 122  244 1149 data/example/single_list_id.txt
+$ head data/example/single_list_id.txt
+Gene    OptionalDataColumns
+215     2.6
+1780    3.5
+6729    4.9
+154810  2.9
+2521    4.2
+7691    3.7
+...
+
+
+执行示例 Example for single-gene-list analysis:
+$ bin/ms.sh -u -o /data/output_single_id_txt /data/example/single_list_id.txt
+
+经过几分钟执行，产生很多日志，最终结果输出如下：
+
+$ ls -lth data/output_single_id_txt/
+total 3.3M
+-rw-r--r--. 1 wangjl jinwf 2.4M Sep 21 22:14 all.zip
+drwxr-xr-x. 2 wangjl jinwf 4.0K Sep 21 22:14 icon
+-rw-r--r--. 1 wangjl jinwf  43K Sep 21 22:14 AnalysisReport.html
+-rw-r--r--. 1 wangjl jinwf  55K Sep 21 22:14 metascape_result.xlsx
+-rw-r--r--. 1 wangjl jinwf 822K Sep 21 22:14 AnalysisReport.pptx
+drwxr-xr-x. 3 wangjl jinwf 4.0K Sep 21 22:14 Enrichment_PPI
+drwxr-xr-x. 2 wangjl jinwf 4.0K Sep 21 22:14 Enrichment_GO
+drwxr-xr-x. 2 wangjl jinwf 4.0K Sep 21 22:14 Enrichment_QC
+drwxr-xr-x. 2 wangjl jinwf 4.0K Sep 21 22:14 Enrichment_heatmap
+drwxr-xr-x. 2 wangjl jinwf 4.0K Sep 21 22:14 Evidence
+drwxr-xr-x. 2 wangjl jinwf 4.0K Sep 21 22:13 CAM
+drwxr-xr-x. 2 wangjl jinwf 4.0K Sep 21 22:13 Overlap_circos
+drwxrwxrwx. 7 wangjl jinwf 4.0K Sep  9 14:34 CyJS
+
+
+这个数据的输入和输出都必须在它指定的位置，因为
+	* 必须要有 license 文件
+	* 输入输出必须 /data/ 开头，这个路径是相对于当前路径的。
+
+
+更多参数见：https://metascape.org/gp/index.html#/menu/msbio
 
 
 
@@ -2184,15 +2312,6 @@ signif函数: signif rounds the values in its first argument to the specified nu
 
 
 
-========================================
-聚类分析 //todo
-----------------------------------------
-聚类又称非监督分类，是一种探索性数据分析（Exploratory Data Analysis, EDA）方法，其目的是把有限数量的事物划分到若干“自然”的类别中。芯片结果的聚类分析很复杂，因为聚类本身就是个复杂的问题，聚类后的结果解析则更复杂。
-
-
-https://blog.csdn.net/u014801157/article/details/24372399
-
-
 
 ========================================
 查找GO、KEGG、Reactome Gene Sets 具体的基因列表
@@ -2580,20 +2699,34 @@ https://www.cn-healthcare.com/articlewm/20210110/content-1179315.html
 ========================================
 GSVA - Gene Set Variation Analysis:  做差异通路分析 (R 包) Differential expression at pathway level
 ----------------------------------------
-1. 简介
-https://zhuanlan.zhihu.com/p/506912398
+1. 原理与使用场景
 
-(1) GSVA: gene set variation analysis for microarray and RNA-seq data (BMC Bioinformatics. 2013)
+(1) GSVA 文献
+GSVA: gene set variation analysis for microarray and RNA-seq data (BMC Bioinformatics. 2013)
 https://pubmed.ncbi.nlm.nih.gov/23323831/
 
 we introduce Gene Set Variation Analysis (GSVA), a GSE method that estimates variation of pathway activity over a sample population in an unsupervised manner. 
 
+
+下面几种说法，选几个能听懂的阅读：推荐看4)
+
+
+1)
 基因集变异分析（Gene Set Variation Analysis，GSVA）: 是一种非参数的无监督分析方法，主要用来评估芯片和转录组的基因集富集结果。
 主要是通过将 基因 在不同样品间的表达量矩阵转化成 基因集 在样品间的表达量矩阵，从而来评估不同的代谢通路在不同样品间是否富集。
 
 简单的说，输入以 基因 为行的表达矩阵和基因集数据库给GSVA，它就输出以 基因集名称 为行的变异分数矩阵。
 
 
+
+2)
+GSVA的主要功能：输入的是一个表达矩阵（行名是基因名，列名是样品名）和一个基因集文件（可以是GO/KEGG），可以得到一个新矩阵（GSVA打分的矩阵）。转换新矩阵的时候不需要提供实验组或对照组的分组信息（非监督方式），只需要提供基因集文件即可。
+
+GSVA打分的矩阵列名还是样品名，但是行名变成了通路名称。有了这个矩阵，我们就可以进行后面的一系列分析，如样品分为了对照组和实验组，我们就可以做一下差异，这里做出来的就不是基因的差异，而是通路水平/基因集水平的差异。
+
+
+
+3)
 GSVA starts by evaluating whether a gene i is highly or lowly expressed in sample j in the context of the sample population distribution.
 
 可以是芯片杂交的信号代表的表达量，也可以是转录组测序定量。
@@ -2608,29 +2741,145 @@ We offer two approaches for turning the KS like random walk statistic into an en
 
 
 
-
-(2) 原理
-
+4)
 GSVA分析的主要思想是，在给定一个参考基因集合的情况下，将相应的基因表达矩阵进行标准化，然后根据基因表达矩阵中每个样本的表达水平，计算其相对于基因集合的得分。通常会采用一些特定的统计方法和辅助工具，例如SVD分解、GSEA和Z-score等，来计算基因集得分并进行可视化展示。
 
 GSVA分析有许多应用场景，如生物标志物探索、疾病分类、信号通路调节的网络分析、药物筛选等。在实践中，可以结合实验设计、数据质量评估和生物学背景知识等因素，选取适当的基因集合，并根据不同的目的和需求，选择合适的算法和参数。
 
-在R语言中，可以使用GSVA这个R包来进行基因集变异分析。下面是一个使用GSVA包的简单示例代码：
+
+https://www.bioconductor.org/packages/devel/bioc/vignettes/GSVA/inst/doc/GSVA.pdf
+其实核心函数就是 gsva()，需要两个输入：the gene expression data and a collection of gene sets.
+
+输入矩阵 行名为gene，列名为样品，
+另加一套通路基因集，
+
+输出矩阵 行名为KEGG通路，列名为样品。
+
+相当于可以做差异通路分析了。
 
 
 
 
-(3) 引用
 
-非常多的文章都在引用该算法，比如：https://www.nature.com/articles/srep16238#f1 使用了 17个基因集
+
+(2) 被引用：GSVA 在文献中
+
+非常多的文章都在引用该算法比如
+
+1) https://www.nature.com/articles/srep16238#f1 使用了 17个基因集
 To study relative pathway activity on the level of individual samples, we used the GSVA package 25. Using a nonparametric approach, GSVA transforms a gene-by-sample gene expression matrix into a gene set–by-sample gene set enrichment matrix, facilitating the identification of differentially activated genesets for each sample. GSVA was performed on 17 gene sets related to hypoxia, vasculo- and angiogenesis (a detailed listing is provided in Supplementary Table 2) identified through the Molecular Signatures Database (MSigDB - www.broadinstitute.org/gsea/msigdb)39 and literature research. Next, empirical Bayes moderated t statistics40 were calculated and gene sets with FDR-q < 0.05 were considered to have significantly differential activity between samples with mutant and wild-type IDH-1/2 tumors. Of these gene sets, individual GSVA enrichment scores were plotted as a heatmap with the gplots package.
 
+
+2) https://www.nature.com/articles/srep16238#f1 (scientific reports) 自定义基因集，主要来自于文献、KEGG等
+
+
+3) Metabolic remodeling contributes towards an immune-suppressive phenotype in glioblastoma.
+Cancer Immunol Immunother. 2019 Jul;68(7):1107-1120. doi: 10.1007/s00262-019-02347-3. Epub 2019 May 22.
+https://www.ncbi.nlm.nih.gov/pubmed/31119318
+
+M2-macrophage polarization and cell-suppression assay
+
+fig1a 像，但好像不是。
+
+
+
+
+
+
+(4) GSVA包的主函数：gsva() 
+计算GSVA富集分数，通过输入表达矩阵和geneset数据集计算Fold change 和P value。
+
+用法：
+gsva(expr, gset.idx.list, annotation,
+    method=c("gsva", "ssgsea", "zscore", "plage"),
+    kcdf=c("Gaussian", "Poisson", "none"),
+    abs.ranking=FALSE,
+    min.sz=1,
+    max.sz=Inf,
+    parallel.sz=0,
+    parallel.type="SOCK",
+    mx.diff=TRUE,
+    tau=switch(method, gsva=1, ssgsea=0.25, NA),
+    ssgsea.norm=TRUE,
+    verbose=TRUE)
+#
+
+参数：
+	expr
+	基因表达数据，可以是 ExpressionSet 对象，也可以是表达矩阵，其中行是基因，列是样本。
+
+	gset.idx.list
+	可以是基因集列表，或 GeneSetCollection 对象。
+
+	annotation
+	注释参数，默认情况下gsva函数会将表达矩阵和基因集的基因标识符匹配起来。
+
+	method
+	用于估计每个样本的基因集富集分数的方法。默认情况下，该值设置为gsva。此外，还有ssgsea、zscore、plage。
+
+	kcdf
+	当输入的表达数据是连续变量时，kcdf="Gaussian"，当输入的表达数据是计数资料时。kcdf="Poisson"。如果是RNA-seq的原始整数的read count 在使用gsva时需要设置kcdf="Possion",如果是取过log的RPKM,TPM等结果可以使用默认的值，所以如果我们在使用fpkm进行分析的时候使用默认参数即可。
+
+		RNA-seq的原始整数的read count 在使用gsva时需要设置 kcdf="Possion" ，
+		如果是取过log的RPKM,TPM等结果可以使用默认的高斯分布，所以如果我们在使用 fpkm 进行分析时使用默认参数（kcdf="Gaussian"）即可。
+
+	abs.ranking
+	仅当mx.diff=TRUE时使用。默认abs.rank =FALSE，此时使用 modified Kuiper statistic 计算富集分数，当abs.rank =TRUE时，使用 original Kuiper statistic。
+
+	min.sz
+	设置得到的基因集的最小数目
+
+	max.sz
+	设置得到的基因集的最大数目
+
+	parallel.sz
+	设置并行计算时要使用的处理器数量。
+
+	mx.diff
+	提供了2种计算ES值（也称为GSVA score）的方法：the classical maximum deviation method 和 normalized ES。mx.diff=TRUE时，ES值近似正态分布，mx.diff=FALSE时，ES值是一个双峰的分布。
+
+	tau
+	当 method="gsva" 时，tau=1；当 method="ssgsea" 时，tau=0.25
+
+	ssgsea.norm
+	当 method="ssgsea" 时，设置为 ssgsea.norm=TRUE，会对分数进行标准化，若ssgsea.norm=FALSE，则标准化这一步会跳过。
+
+	verbose
+	给出有关每个计算步骤的信息。默认是FALSE。
+
+
+# 加载数据集，commonPickrellHuang 是 GSVAdata包中包含来自人类淋巴母细胞细胞系的微阵列和RNA-seq count数据
+data(commonPickrellHuang)
+
+
+
+
+
+
+========================================
+|-- 运行实例：GSVA(基因集变异分析) 可以理解为pathway级别的差异分析
+----------------------------------------
+
+要点：
+	1. GSVA本身提供了三个算法，一般使用默认的算法即可。其实这个函数也可以选择其它3个模型：
+    method="plage" (Tomfohr et al., 2005). Pathway level analysis of gene expression (PLAGE)
+    method="zscore" (Lee et al., 2008). The combined z-score method a
+    method="ssgsea" (Barbie et al., 2009). Single sample GSEA (ssGSEA) calculates a gene set enrichment score per sample
+
+	2. 可以只关注3个主流通路数据库
+	canonicalC2BroadSets <- c2BroadSets[c(grep("^KEGG", names(c2BroadSets)),
+										  grep("^REACTOME", names(c2BroadSets)),
+										  grep("^BIOCARTA", names(c2BroadSets)))]
+	canonicalC2BroadSets # GeneSetCollection 类
 
 
 
 
 
 2. 运行 gsva
+
+在R语言中，可以使用GSVA这个R包来进行基因集变异分析。下面是一个使用GSVA包的简单示例代码：
+
 (1) 安装
 https://www.bioconductor.org/packages/release/bioc/html/GSVA.html
 if (!require("BiocManager", quietly = TRUE))
@@ -2641,6 +2890,15 @@ BiocManager::install("GSVA")
 
 BiocManager::install("fgsea") #不必须
 # 读取 gmt 文件 1.24.0
+
+
+安装GSVA及相关包：
+	#install.packages("BiocManager")
+	BiocManager::install("GSVAdata")
+	BiocManager::install("GSVA")
+	BiocManager::install("limma")
+	BiocManager::install("genefilter")
+
 
 
 (2) 参数简介
@@ -2656,7 +2914,9 @@ https://www.bioconductor.org/packages/release/bioc/vignettes/GSVA/inst/doc/GSVA.
     c5.all.v2023.2.Hs.symbols.gmt
 - ssgsea: 当method为ssgesa时，默认值TRUE,在进行ssgsea分析的最后一步进行标准化;
 
+
 - method 默认"gsva", 也可以选择其它3个模型：c("gsva", "ssgsea", "zscore", "plage")
+	GSVA本身提供了三个算法，一般使用默认的算法即可。其实这个函数也可以选择其它3个模型：
     method="plage" (Tomfohr et al., 2005). Pathway level analysis of gene expression (PLAGE)
     method="zscore" (Lee et al., 2008). The combined z-score method a
     method="ssgsea" (Barbie et al., 2009). Single sample GSEA (ssGSEA) calculates a gene set enrichment score per sample
@@ -2720,10 +2980,19 @@ library(GSVAdata)
 data(c2BroadSets)
 c2BroadSets
 names(c2BroadSets)
+
+
+
+
 canonicalC2BroadSets <- c2BroadSets[c(grep("^KEGG", names(c2BroadSets)),
                                       grep("^REACTOME", names(c2BroadSets)),
                                       grep("^BIOCARTA", names(c2BroadSets)))]
 canonicalC2BroadSets # GeneSetCollection 类
+
+
+
+
+
 > names(canonicalC2BroadSets) |> head()
 [1] "KEGG_GLYCOLYSIS_GLUCONEOGENESIS"               "KEGG_CITRATE_CYCLE_TCA_CYCLE"                  "KEGG_PENTOSE_PHOSPHATE_PATHWAY"               
 [4] "KEGG_PENTOSE_AND_GLUCURONATE_INTERCONVERSIONS" "KEGG_FRUCTOSE_AND_MANNOSE_METABOLISM"          "KEGG_GALACTOSE_METABOLISM"                    
@@ -3035,11 +3304,18 @@ p
 
 
 ref:
+https://zhuanlan.zhihu.com/p/506912398
 简短版: https://zhuanlan.zhihu.com/p/641011329
 https://mp.weixin.qq.com/s/3ovfx-KEvE_yc8buq0SaKQ
 https://zhuanlan.zhihu.com/p/518145829?utm_id=0
 
 https://www.bioconductor.org/packages/release/bioc/vignettes/GSVA/inst/doc/GSVA.html
+
+https://www.cnblogs.com/raisok/p/11039239.html
+https://mp.weixin.qq.com/s?__biz=MzAxMDkxODM1Ng==&mid=2247486641&idx=1&sn=7409d919d179a6fa8bd62b42ec052ca4
+
+
+
 
 
 ========================================
@@ -3146,6 +3422,15 @@ ggplot(dat, aes(x=seurat_clusters, y=score, fill=seurat_clusters))+
 
 
 
+
+
+========================================
+聚类分析 //todo
+----------------------------------------
+聚类又称非监督分类，是一种探索性数据分析（Exploratory Data Analysis, EDA）方法，其目的是把有限数量的事物划分到若干“自然”的类别中。芯片结果的聚类分析很复杂，因为聚类本身就是个复杂的问题，聚类后的结果解析则更复杂。
+
+
+https://blog.csdn.net/u014801157/article/details/24372399
 
 
 ========================================
