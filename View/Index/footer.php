@@ -93,7 +93,7 @@
 			array('http://www.liaoxuefeng.com/','廖雪峰'),
 			array('http://rapheal.sinaapp.com/about/','拉风博客', '腾讯广州研发部，微信产品部门'),
 			array('http://www.cnblogs.com/jikey/p/4426105.html','豪情的博客', '高级qq群'),
-			array('http://www.nowamagic.net/','简明现代魔法','其实每个程序员都是魔法师'),
+			//array('http://www.nowamagic.net/','简明现代魔法','其实每个程序员都是魔法师'),
 			array('http://www.ycku.com/course/','李炎恢','瓢城Web俱乐部'),
 			array('http://bonsaiden.github.io/JavaScript-Garden/zh/#function.closures','js秘密花园'),
 			array('http://www.bootcss.com/','bootstrap'),
