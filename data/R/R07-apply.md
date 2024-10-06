@@ -1300,7 +1300,6 @@ Datsun 710     1.2 -1.3333333 -34.66667 -11.333333 -0.03333333
 # 掌握R语言中的apply函数族 http://blog.fens.me/r-apply/
 # R语言apply函数族笔记 https://www.tuicool.com/articles/Rn6ri2b
 # R语言中的循环函数（Grouping Function） http://www.cnblogs.com/studyzy/p/4355082.html
-# apply函数族 http://blog.sina.com.cn/s/blog_71f3890901017yax.html
 ```
 
 

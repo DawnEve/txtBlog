@@ -1249,18 +1249,207 @@ https://docs.djangoproject.com/en/5.1/intro/tutorial04/
 ----------------------------------------
 1. 自动化测试简介
 
+(1) 什么是自动化测试？
+
+手动测试：使用shell，或者运行系统，手动输入和查看结果。
+
+自动测试：系统自动进行，一次设置，以后修改代码后自动测试。
+
+
+(2) 创建测试的前提
+
+测试会节省时间：复杂系统中，组件之间交互也很复杂。
+
+任意一个组件的变动都可能导致整个应用的异常行为。
+	完整测试需要花费很多时间。
+	自动化测试直需要几秒。如果有些错误，测试将会辅助定位出错的代码。
+
+
+测试不仅能定位问题，还能预防问题。
+
+测试让代码更有吸引力。
+	没有测试的代码不敢用。
+
+测试有利于团队合作。
+
 
 
 
 
 2. 基本的测试策略
 
+TDD: https://en.wikipedia.org/wiki/Test-driven_development
+	先写测试，再写实现。
+
+先写代码，再写测试。常规做法。
+
+修改时，立刻写一个测试。
+
+
+
 
 3. 写第一个测试
+
+(1) 识别bug
+poll 应用中，如果 Question 发表日期是昨天，则 Question.was_published_recently() 返回True，这没问题。
+如果 pub_date 是未来的日期，依旧返回 True，这肯定不对。
+
+使用 shell 确定这个bug:
+
+$ python3 manage.py shell
+
+>>> import datetime
+>>> from django.utils import timezone
+>>> from polls.models import Question
+>>> # create a Question instance with pub_date 30 days in the future
+>>> future_question = Question(pub_date=timezone.now() + datetime.timedelta(days=30))
+>>> # was it published recently?
+>>> future_question.was_published_recently()
+True
+
+这是未来的日期，不能认为是“最近”，显然是错的。
+
+
+(2) 创建测试暴漏该问题
+刚才 shell 中的检测，可以在自动化测试中完成。
+
+放测试文件的常规地点是 tests.py 文件，系统默认在 test 开头的文件中找测试语句。
+
+$ cat polls/tests.py
+import datetime
+
+from django.test import TestCase
+from django.utils import timezone
+
+from .models import Question
+
+
+class QuestionModelTests(TestCase):
+    def test_was_published_recently_with_future_question(self):
+        """
+        was_published_recently() returns False for questions whose pub_date
+        is in the future.
+        """
+        time = timezone.now() + datetime.timedelta(days=30)
+        future_question = Question(pub_date=time)
+        self.assertIs(future_question.was_published_recently(), False)
+
+这里新建了子类 QuestionModelTests，包含一个方法：
+	创建一个 Question 对象，日期是未来某天。
+	检查方法 was_published_recently() 的输出，应该是False。
+
+
+(3) 运行测试
+$ python3 manage.py test polls
+输出：
+	Found 1 test(s).
+	Creating test database for alias 'default'...
+	System check identified no issues (0 silenced).
+	F
+	===============
+	FAIL: test_was_published_recently_with_future_question (polls.tests.QuestionModelTests)
+	was_published_recently() returns False for questions whose pub_date is in the future
+	---------------
+	Traceback (most recent call last):
+	  File "/datapool/wangjl/web/docs/dustbin/django/mysite/polls/tests.py", line 16, in test_was_published_recently_with_future_question
+		self.assertIs(future_questioin.was_published_recently(), False)
+	AssertionError: True is not False
+
+	---------------
+	Ran 1 test in 0.002s
+
+	FAILED (failures=1)
+	Destroying test database for alias 'default'...
+
+解释：
+* manage.py test polls 是在 polls 应用中寻找测试。
+* 它找到 django.test.TestCase 的一个子类
+* 它为测试新建一个特别的数据库
+* 它寻找测试方法 - test 开头的方法。
+* 在 test_was_published_recently_with_future_question 方法中，它用未来30天作为 pub_date 参数新建 Question 实例。
+* 使用 assertIs() 方法，发现 was_published_recently() 返回 True，但是我们期望返回False。
+
+测试告诉我们测试失败，及行号。
+
+
+
+(4) 修复bug
+
+我们已经指导问题了：如果日期是未来，Question.was_published_recently()应该返回False。
+
+$ cat polls/models.py
+def was_published_recently(self):
+    now = timezone.now()
+    return now - datetime.timedelta(days=1) <= self.pub_date <= now
+
+再次运行测试:
+$ python3 manage.py test polls
+	Found 1 test(s).
+	Creating test database for alias 'default'...
+	System check identified no issues (0 silenced).
+	.
+	---------------
+	Ran 1 test in 0.001s
+
+	OK
+	Destroying test database for alias 'default'...
+
+
+发现问题，写测试，修改问题，测试通过。
+
+
+
+
+(5) 更复杂的测试
+
+为了防止修复一个bug同时引入更多bug，需要更完备的测试。
+再增加两个测试：
+$ cd polls/tests.py
+def test_was_published_recently_with_old_question(self):
+    """
+    was_published_recently() returns False for questions whose pub_date
+    is older than 1 day.
+    """
+    time = timezone.now() - datetime.timedelta(days=1, seconds=1)
+    old_question = Question(pub_date=time)
+    self.assertIs(old_question.was_published_recently(), False)
+
+
+def test_was_published_recently_with_recent_question(self):
+    """
+    was_published_recently() returns True for questions whose pub_date
+    is within the last day.
+    """
+    time = timezone.now() - datetime.timedelta(hours=23, minutes=59, seconds=59)
+    recent_question = Question(pub_date=time)
+    self.assertIs(recent_question.was_published_recently(), True)
+
+运行测试，全部通过。
+
+
+
+
+
+
+
 
 
 
 4. 测试一个视图
+
+(1) 
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
