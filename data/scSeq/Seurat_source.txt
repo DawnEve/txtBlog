@@ -5145,7 +5145,7 @@ $vectors
 #2) svd() 奇异值分解 A=U.D.V^T
 > rs=svd(A);rs
 $d
-[1] 4 1 1 #给的是特征值 = 奇异值的平方
+[1] 4 1 1 #奇异值 = 特征值的绝对值
 # 文档说降序排列的奇异值: d: a vector containing the singular values of x, of length min(n, p), sorted decreasingly.
 
 $u
@@ -5166,6 +5166,12 @@ $v
 [1,]    2    1    1
 [2,]    1    2    1
 [3,]    1    1    2
+
+
+
+推论: A为正规矩阵时，A的奇异值是A的特征值的模。也就是特征值的绝对值。
+证明: 正规矩阵A和A^H可以同时对角化，特征值就是A的相似对角阵的平方，就是特征值的平方，也是奇异值的平方，开方以后得证。？
+A^H 什么意思？
 
 
 
@@ -5210,6 +5216,7 @@ $mprod
 
 
 
+4)
 
 
 
@@ -5222,17 +5229,25 @@ $mprod
 pca.results <- prcomp(x = t(object), rank. = npcs, ...)
 
 接上文。
+> A=matrix(c(2,1,1, 1,2,1, 1,1,2), nrow=3, byrow = T)
 > A
      [,1] [,2] [,3]
 [1,]    2    1    1
 [2,]    1    2    1
 [3,]    1    1    2
 
-> pca.results <- prcomp(x = A); pca.results 
+> pca.results <- prcomp(x = A); pca.results
 Standard deviations (1, .., p=3):
 [1] 7.071068e-01 7.071068e-01 1.586363e-16
 
 Rotation (n x k) = (3 x 3):
+            PC1        PC2       PC3
+[1,]  0.8164966  0.0000000 0.5773503
+[2,] -0.4082483 -0.7071068 0.5773503
+[3,] -0.4082483  0.7071068 0.5773503
+
+
+> pca.results$rotation #特征向量(列)构成的矩阵，就是变量的loading矩阵，就是旋转矩阵(rotation)。
             PC1        PC2       PC3
 [1,]  0.8164966  0.0000000 0.5773503
 [2,] -0.4082483 -0.7071068 0.5773503
@@ -5243,13 +5258,46 @@ Rotation (n x k) = (3 x 3):
 [1,]  0.8164966  5.551115e-17 1.665335e-16
 [2,] -0.4082483 -7.071068e-01 8.326673e-17
 [3,] -0.4082483  7.071068e-01 1.110223e-16
-> pca.results$rotation
+
+我计算的 样品的新坐标x：原center后的数据 矩阵乘 旋转矩阵。
+如果比10e-15小，可记作0，所以和上文的x没差异。
+> scale(A, scale = F) %*% pca.results$rotation
+            PC1           PC2          PC3
+[1,]  0.8164966  4.308456e-17 1.722585e-16
+[2,] -0.4082483 -7.071068e-01 8.899180e-17
+[3,] -0.4082483  7.071068e-01 1.167474e-16
+
+
+
+
+
 
 
 
 
 2) 返回值 Value 
 prcomp returns a list with class "prcomp" containing the following components:
+
+> str( pca.results  )
+List of 5
+ $ sdev    : num [1:3] 7.07e-01 7.07e-01 1.59e-16
+ $ rotation: num [1:3, 1:3] 0.816 -0.408 -0.408 0 -0.707 ...
+  ..- attr(*, "dimnames")=List of 2
+  .. ..$ : NULL
+  .. ..$ : chr [1:3] "PC1" "PC2" "PC3"
+ $ center  : num [1:3] 1.33 1.33 1.33
+ $ scale   : logi FALSE
+ $ x       : num [1:3, 1:3] 8.16e-01 -4.08e-01 -4.08e-01 4.31e-17 -7.07e-01 ...
+  ..- attr(*, "dimnames")=List of 2
+  .. ..$ : NULL
+  .. ..$ : chr [1:3] "PC1" "PC2" "PC3"
+ - attr(*, "class")= chr "prcomp"
+# 输出解释：
+* sdev: 标准偏差（Standard deviations）。这些是主成分轴的标准偏差，反映了每个主成分解释的数据变异量。
+* rotation: 旋转（Rotation）。这是一个包含载荷矩阵的组件，其列是标准化后的特征向量，也就是主成分。
+* x: 如果retx为TRUE（默认值T），则包含旋转后的数据，即原始数据在主成分空间中的坐标。
+* center: 如果center为TRUE，则包含用于中心化的均值。
+* scale: 如果scale.为TRUE，则包含用于缩放的标准差。
 
 # sdev 主成分的标准误差(协方差矩阵的特征根的开方，虽然这个实际上是用矩阵的奇异值计算的)
 the standard deviations of the principal components (i.e., the square roots of the eigenvalues of the covariance/correlation matrix, though the calculation is actually done with the singular values of the data matrix).
@@ -5335,6 +5383,12 @@ cell.embeddings <- pca.results$x
 
 
 
+# 用特征值分解，旋转矩阵是特征矩阵。
+# 用奇异值分解时，旋转矩阵和载荷矩阵是什么？
+
+
+
+
 
 
 
@@ -5345,7 +5399,7 @@ cell.embeddings <- pca.results$x
 (3) 用R全手工实现 PCA(对比 prcomp() )
 不借助包，按照 《机器学习实战》P246的伪代码进行操作.
 
-1减去平均数
+1减去列平均数
 2计算协方差矩阵
 3计算协方差矩阵的特征值和特征向量
 4将特征值从大到小排列

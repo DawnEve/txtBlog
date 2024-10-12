@@ -1582,6 +1582,439 @@ legend(x=usrP[1],y=usrP[4]+2, #"top",
 # ref: https://zhuanlan.zhihu.com/p/375110294
 
 
+========================================
+|-- prcomp() 做PCA：旋转矩阵，新空间的投影；使用前若干PC用SVM做分类
+----------------------------------------
+1. iris 数据集做PCA
+
+(1) 使用函数 prcomp()
+data <- iris[, 1:4]
+
+# 进行PCA分析
+pca_result <- prcomp(data, scale. = TRUE)
+
+# 查看PCA结果
+summary(pca_result)
+
+# 提取主成分：就是在新空间的投影
+principal_components <- pca_result$x
+
+# 提取特征向量：就是旋转矩阵
+loadings <- pca_result$rotation
+
+# 提取特征值
+explained_variance <- pca_result$sdev^2
+explained_variance_ratio <- explained_variance / sum(explained_variance)
+
+# 打印结果
+print(principal_components)
+
+
+
+(2) 可视化PCA结果
+# 可视化前两个主成分（常用）
+library(factoextra)
+fviz_pca_ind(pca_result,
+             geom.ind = "point", # Show points only (but not "text")
+             col.ind = iris$Species, # Color by groups
+             palette = c("#00AFBB", "#E7B800", "#FC4E07"),
+             addEllipses = TRUE, # Concentration ellipses
+             legend.title = "Species"
+             ) +
+  labs(title = "PCA of Iris Dataset",
+       x = "Principal Component 1",
+       y = "Principal Component 2") +
+  theme_minimal()
+
+# 可视化变量(不常用)
+fviz_pca_var(pca_result,
+             col.var = "contrib", # Color by contributions to the PC
+             gradient.cols = c("#00AFBB", "#E7B800", "#FC4E07"),
+             legend.title = "Contrib"
+             ) +
+  labs(title = "Variables Contribution to Principal Components") +
+  theme_minimal()
+
+# 可视化变量和个体
+fviz_pca_biplot(pca_result,
+                geom.ind = "point", # Show points only (but not "text")
+                col.ind = iris$Species, # Color by groups
+                palette = c("#00AFBB", "#E7B800", "#FC4E07"),
+                addEllipses = TRUE, # Concentration ellipses
+                legend.title = "Species"
+                ) +
+  labs(title = "PCA Biplot of Iris Dataset") +
+  theme_minimal()
+
+
+
+(3) 基于前面若干PC用SVM做分类
+library(ggplot2)
+library(caret)
+library(e1071)
+
+# 创建数据框，包括PCA主成分和物种标签
+pca_data <- data.frame(principal_components, Species = iris$Species)
+
+# 分割数据集为训练集和测试集
+set.seed(123)  # 设置随机种子以确保结果可重复
+trainIndex <- createDataPartition(pca_data$Species, p = 0.8, 
+                                  list = FALSE, 
+                                  times = 1)
+trainData <- pca_data[trainIndex,]
+testData <- pca_data[-trainIndex,]
+
+# 训练SVM模型
+svm_model <- svm(Species ~ ., data = trainData, kernel = "linear")
+
+# 对测试集进行预测
+predictions <- predict(svm_model, testData)
+
+# 计算模型准确率
+confusionMatrix(predictions, testData$Species)
+
+
+
+
+
+
+
+
+
+
+
+
+========================================
+|-- 含有NA值的矩阵怎么做 PCA ?
+----------------------------------------
+
+几个问题：
+* pca可以用相关系数矩阵做吗？效果比协方差矩阵比怎么样？
+	可以。比如 SYNCSA::pca()
+* pca做完后变量和样本的新坐标怎么旋转获得？
+	矩阵分解前的矩阵(一般做过center) %*% 旋转矩阵(特征向量或者svd$v矩阵)
+* pca做不做scale和center对结果有影响吗？
+	必须做 center，就是减去列的平均值
+	scale可选，是否忽略每列的量纲的影响。基因认为是微小等效的，可以做scale。
+* pca用因子分解和奇异值分解有啥区别？后者怎么获得变量和样本的新坐标？
+	旋转矩阵：特征向量，或奇异值分解的右矩阵v。
+	映射坐标：centered * 旋转矩阵
+
+> 详情见：https://blog.csdn.net/wangjunliang/article/details/142871996
+
+
+
+
+1. 对含有NA的矩阵做PCA的几个方法。根据情况选择：Aided by GPT
+
+(1) 删除缺失值
+如果缺失值不多，可以直接删除含有缺失值的行或列。
+data_clean <- na.omit(data)  # 删除含有 NA 的行
+pca_result <- prcomp(data_clean, scale. = TRUE)
+
+(2) 用均值/中位数填充
+用每列的均值或中位数填充缺失值。
+data_filled <- data
+for (i in 1:ncol(data_filled)) {
+  data_filled[is.na(data_filled[, i]), i] <- mean(data_filled[, i], na.rm = TRUE)  # 或使用 median()
+}
+pca_result <- prcomp(data_filled, scale. = TRUE)
+
+
+(3) 使用协方差矩阵，填充缺失值
+有些 PCA 实现支持处理缺失值，通过使用协方差矩阵补充完整性。
+
+library(missMDA)  # 需要安装 missMDA 包
+data_imputed <- imputePCA(data)$completeObs  #极其耗时！ 15k行*3k列 矩阵可能十几个小时
+pca_result <- prcomp(data_imputed, scale. = TRUE)
+
+
+(4) 使用特定的 PCA 方法
+1) 使用可以处理缺失值的 PCA 方法，如 PCA 函数（例如在 FactoMineR 包中）。
+library(FactoMineR)
+pca_result <- PCA(data, ncp = 5, graph = FALSE)  # ncp 为主成分数量
+# Missing values are replaced by the column mean. 同(2)
+
+
+2) 只使用完整的obs
+包 SYNCSA::pca()
+描述: The function use the option "pairwise.complete.obs" (in function cor) for calculate the correlation. The correlation between each pair of variables is computed using all complete pairs of observations on those variables.
+原理: 它会在计算相关性时，仅考虑每对变量的完整观测值，而不是填充缺失值。
+
+install.packages("SYNCSA")
+library(SYNCSA)
+data <- data.frame(
+    Var1 = c(1, 2, NA, 4),
+    Var2 = c(NA, 2, 3, 4),
+    Var3 = c(1, NA, NA, 4)
+)
+pca_result <- SYNCSA::pca(data)
+print(pca_result)
+
+
+总结：
+处理含有缺失值的数据时，选择合适的方法取决于数据的具体情况和缺失值的数量。对于小规模的缺失值，填充或删除通常是可行的；对于大规模缺失值，使用特定的 PCA 方法可能更为合适。
+
+Ref：
+https://stats.stackexchange.com/questions/414126/pca-in-r-without-deleting-or-imputing-missing-values
+https://stats.stackexchange.com/questions/35561/imputation-of-missing-values-for-pca
+
+
+
+
+
+
+2. 示例数据
+(1)尝试1 missMDA::imputePCA [巨慢，且无法判断是否正确]
+缺失值处理：使用迭代方法和主成分分析来估计缺失值，考虑了数据的整体结构。
+适用场景：适合需要更精确估计缺失值的分析，能够更好地保留数据的特征。
+
+警告：很耗费CPU，且时常很长。只建议在服务器上使用，尽可能在tmux的shell中执行。
+
+library(missMDA)
+
+# 用 imputePCA 填充缺失值。特别慢，2k*3k的矩阵，需要7个小时。(19pm -> 1.5am)
+imputed_data <- imputePCA(tmp)$completeObs
+
+# 然后进行 PCA 分析
+pca_result <- FactoMineR::PCA(imputed_data, graph = FALSE)
+
+
+
+
+
+(2)尝试2 只用完整的obs
+install.packages("SYNCSA")
+library(SYNCSA)
+data <- data.frame(
+    Var1 = c(1, 2, NA, 4),
+    Var2 = c(NA, 2, 3, 4),
+    Var3 = c(1, NA, NA, 4)
+)
+pca_result <- SYNCSA::pca(data)
+print(pca_result)
+
+
+
+
+阅读函数实现及我的注释：不改变意思的情况下，语句顺序做了调整。
+疑问：这里使用 相关系数cor() 而不是 协方差矩阵cov() 做矩阵分解，合适吗？
+
+> SYNCSA::pca
+function (data) 
+{
+	#(1) 保存行名/列名
+    colnames(data) <- colnames(data, do.NULL = FALSE, prefix = "Var.")
+    rownames(data) <- rownames(data, do.NULL = FALSE, prefix = "Ind.")
+	
+	#(2) 标准化：对原始值 scale和center，去掉NA，转为矩阵
+    data.norm <- as.matrix(cent.norm(data, na.rm = TRUE))
+	#按列，看是否是NA
+    data.NA <- apply(data.norm, 2, is.na)
+	#对NA填充为0
+    data.norm[data.NA] <- 0
+	
+	#(3) 相关系数：对原始值使用完整值计算 列之间的相关系数
+    COR <- cor(data, use = "pairwise.complete.obs")
+
+	#(4) 对相关系数 做矩阵分解
+    RES_eig <- eigen(COR)
+	
+	#(5) 返回值的项: 分解
+    res <- list(call = match.call()) #定义返回值
+    res$decomposition <- RES_eig
+
+
+	#(6) 返回值的项：特征值
+	# 取特征值的非负值
+    eig <- RES_eig$values[RES_eig$values >= 0]
+	#计算特征值占总和的百分比、累计百分比
+    res.eig <- data.frame(Eigenvalues = eig, Perc.Inertia = eig/sum(eig), 
+        Cum.Inertia = cumsum(eig/sum(eig)))
+	#给行名：Axis.1-4
+    rownames(res.eig) <- paste("Axis.", 1:length(eig), sep = "")
+    res$eigenvalues <- res.eig
+	
+	#(7) 返回值的项：行(obs)的新坐标
+	#新行坐标：标准化后的值 * 特征向量(特征值非负的特征向量)
+    ind.coord <- data.norm %*% RES_eig$vectors[, RES_eig$values >= 
+        0, drop = FALSE]
+	#给列名：Axis.1-4
+    colnames(ind.coord) <- paste("Axis.", 1:ncol(ind.coord), 
+        sep = "")
+    res$individuals <- ind.coord
+	
+	#(8) 返回值的项：列(var)的新坐标
+	#新列坐标：特征向量(特征值非负的) * 特征值的开方 对应的对角矩阵
+    var.coord <- RES_eig$vectors[, RES_eig$values >= 0, drop = FALSE] %*% 
+        diag(sqrt(eig))
+	#给列名：Axis.1-4
+    colnames(var.coord) <- paste("Axis.", 1:ncol(var.coord), 
+        sep = "")
+	#给行名：原始列名
+    rownames(var.coord) <- colnames(data)
+    res$variables <- var.coord
+	
+	#(9) 给类名，返回
+    class(res) <- "pcasyncsa"
+    return(res)
+}
+
+
+
+
+
+(3) 尝试自己实现NA值的PCA
+1) 主要运算
+	A=matrix(c(2,1,1, 1,2,1, 1,1,2), nrow=3, byrow = T); A
+	eigen(A) #特征值分解 A.x=l.x
+	svd(A) #奇异值分解 A=U.D.V^T
+	prcomp(A) #主成分分析
+	# 输入参数 x: 进行PCA分析的数据集。通常是一个数值矩阵或者数据框，其中行代表观测值，列代表变量。
+
+2) 计算每个主成分解释比例 / How to calc variation pct?
+> prcomp(A)$sdev
+[1] 7.071068e-01 7.071068e-01 1.586363e-16
+> sqrt(eigen( cov(A) )$values) #same as prcomp | 同上
+[1] 7.071068e-01 7.071068e-01 1.490116e-08
+> sqrt(eigen( cor(A) )$values) #not same as prcomp, but ratio almost the same | 不同上
+[1] 1.224745e+00 1.224745e+00 3.332001e-08
+
+# 解释百分比：就是协方差矩阵的 特征根 / 特征根的和
+# 为啥不是原始矩阵的特征值？
+variances <- prcomp(A)$sdev^2
+total_variance <- sum(variances)
+explained_variance_ratio <- variances / total_variance
+cumulative_explained_variance <- cumsum(explained_variance_ratio)
+#
+> explained_variance_ratio 
+[1] 5.000000e-01 5.000000e-01 2.516548e-32
+
+
+
+
+3) 自定义计算含NA值的矩阵做PCA
+#' 对含有NA值的矩阵做PCA：使用完整配对样品算协方差矩阵，再做奇异值分解
+#' 
+#' * 参考 SYNCSA::pca()，但使用cov而不是cor()
+#' * 使用Seurat用的SVD方法求特征根：irlba包
+#'
+#' v0.2 可用了，至少对于gDPAU来说
+#' v0.3 对 协方差矩阵 做(v0.2矩阵分解)svd分解
+#' v0.4 
+#'
+#' @param data pA usage matrix
+#' @param npcs PC number you want
+#' @param min.cell.per.gene at least how many cell per pA. For gDPAU, below 250 will error
+#' @param isDraw draw plot or not
+#' 
+CompleteObs_pca3=function(data, npcs=50, min.cell.per.gene=300, isDraw=F){
+  # refer SYNCSA::pca()
+  
+  #0. 根据每列非NA个数筛选变量
+  dat=t(data)
+  tmp=apply(dat, 2, function(x){
+    sum( !(is.na(x)) )
+  })
+  cell.min=ncol(dat)*0.05;
+  if(cell.min>min.cell.per.gene){ cell.min = min.cell.per.gene}
+  message("step0: obs per cell, at least cell.min=", cell.min)
+  
+  # 绘图
+  if(isDraw){
+    hist(tmp, n=100, main=paste0("Obs number per column\nmin.cell.per.gene=", min.cell.per.gene) )
+    abline(v=cell.min, lty=2, lwd=2, col="red")
+  }
+  #
+  keep=tmp > cell.min
+  message("step0: keep variable number:")
+  print(table(keep))
+  dat=dat[, keep]
+  dim(dat) #5913
+  
+  npcs <- min(npcs, ncol(x = dat) - 1); npcs #计算几个PC
+  
+  #定义返回值
+  res <- list(call = match.call())
+  
+  #(1) 保存行名/列名
+  colnames(dat) <- colnames(dat, do.NULL = FALSE, prefix = "Var.")
+  rownames(dat) <- rownames(dat, do.NULL = FALSE, prefix = "Ind.")
+  
+  #(2) 标准化：对原始值 scale和center，去掉NA，转为矩阵
+  cent.norm=function (x, na.rm = FALSE){
+    x.cent <- sweep(x, 2, colMeans(x, na.rm = na.rm), "-")
+    x.norm <- apply(x.cent^2, 2, sum, na.rm = na.rm)
+    x.cent.norm <- sweep(x.cent, 2, sqrt(x.norm), "/")
+    return(x.cent.norm)
+  }
+  dat.norm <- as.matrix(cent.norm(dat, na.rm = TRUE))
+  #按列，看是否是NA
+  dat.NA <- apply(dat.norm, 2, is.na)
+  #对NA填充为0
+  dat.norm[dat.NA] <- 0
+  
+  #(3) 协方差矩阵：对原始值使用完整值计算 列之间的相关系数
+  message("step3: cov begin | ", Sys.time())
+  COV2 <- cov( dat, use = "pairwise.complete.obs")
+  message("step3: cov end . | ", Sys.time())
+  
+  #如果有NA，就没法继续了: 请提高min.cell.per.gene再试
+  NA_number=sum(is.na(COV2))
+  message("NA number in COV2: ",  NA_number)
+  if(NA_number>0){
+    stop("NA still exist in COV matrix! try to increase parameter min.cell.per.gene\n", 
+         "now min.cell.per.gene=", min.cell.per.gene)
+  }
+  
+  #(4) 协方差矩阵 做svd分解
+  library(irlba)
+  pca.results <- irlba (A=COV2, nv = npcs)
+  #如果有NA，则报错：BLAS/LAPACK routine 'DLASCL' gave error code -4
+  
+  #返回值的项: 分解
+  res$decomposition <- pca.results
+  
+  #(5) 返回值的项：标准差
+  sdev <- pca.results$d/sqrt(max(1, ncol(COV2) - 1)) #特征根 / 根号(列数 - 1)
+  res$sdev=sdev
+  
+  #(6) 返回值的项：特征值及其解释百分数
+  # 取特征值的非负值: 奇异值都是特征值的绝对值
+  eig <- pca.results$d
+  #计算特征值占总和的百分比、累计百分比
+  res.eig <- data.frame(Eigenvalues = eig, Perc.Inertia = eig/sum(eig), 
+                        Cum.Inertia = cumsum(eig/sum(eig)))
+  #给行名：PC_1-4
+  rownames(res.eig) <- paste("PC_", 1:length(eig), sep = "")
+  res$eigenvalues <- res.eig
+  
+  #(7) 返回值的项：行(obs)的新坐标
+  #新行坐标：标准化后的值 * 特征向量(特征值非负的特征向量)
+  ind.coord <- dat.norm %*% pca.results$v
+  #给列名：PC_1-4
+  colnames(ind.coord) <- paste("PC_", 1:ncol(ind.coord), sep = "")
+  res$cell.embeddings <- ind.coord
+  
+  #(8) 返回值的项：列(var)的新坐标
+  var.coord <- pca.results$v
+  #给列名：PC_1-4
+  colnames(var.coord) <- paste("PC_", 1:ncol(var.coord),  sep = "")
+  #给行名：原始列名
+  rownames(var.coord) <- colnames(dat)
+  res$feature.loadings <- var.coord
+  
+  #(9) 给类名，返回
+  class(res) <- "pcaWithNA"
+  return(res)
+}
+if(0){
+	result = CompleteObs_pca3(gDPAU)
+}
+
+
+
+
 
 
 ========================================
@@ -2502,6 +2935,13 @@ https://vimsky.com/article/4400.html
 出版社的专题 https://www.oreilly.com/content/an-illustrated-introduction-to-the-t-sne-algorithm/
 
 t-SNE visualization of CNN codes: http://cs.stanford.edu/people/karpathy/cnnembed/
+
+
+
+
+
+
+
 
 
 

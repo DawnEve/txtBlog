@@ -48,6 +48,7 @@ return array (
     1 => '健康',
     2 => array (
       array('预防中风与猝死','Stroke','html'),
+      array('防身与保健','Defense_health_care','txt'),
 
     ),
   ),
