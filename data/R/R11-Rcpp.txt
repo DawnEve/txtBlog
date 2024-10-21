@@ -2,7 +2,10 @@ Rcpp 的难点是 C++
 
 C++ 很繁杂，可以说是最艰巨的计算机方向了。
 
+
 https://cran.r-project.org/doc/manuals/r-devel/R-exts.html
+https://dirk.eddelbuettel.com/papers/useR2019_rcpp_tutorial.pdf
+https://teuder.github.io/rcpp4everyone_en/100_matrix.html  在线电子书资源
 
 
 
@@ -22,7 +25,9 @@ Rcpp4everyone: https://teuder.github.io/rcpp4everyone_en/070_data_types.html
 https://blog.csdn.net/qq_37395039/article/details/104706452
 
 
-
+(3)Sparse Model Matrix Optimizations in C++
+Using Rcpp to decrease memory usage and increase throughput.
+https://jeffreycwong.com/posts/2021-04-10-sparse-model-matrix-optimizations-in-c/
 
 
 
@@ -494,6 +499,97 @@ $d
 - 在.C()中，R对象在传递给C前先复制一份，在编译后的C代码返回时再拷贝一份给R。
 - 而.Call() 和 .External() 接口都不复制他们的参数。
 - 你应该把通过接口传入的参数当作只读的。
+
+
+
+
+========================================
+|-- dll 文件及dyn.load()载入：测试C函数是否可用
+----------------------------------------
+1. 查看文档 
+> help("dyn.load")
+	Foreign Function Interface
+	Description
+	Load or unload DLLs (also known as shared objects), and test whether a C function or Fortran subroutine is available.
+
+	Usage
+	dyn.load(x, local = TRUE, now = TRUE, ...)
+	dyn.unload(x)
+
+	is.loaded(symbol, PACKAGE = "", type = "")
+
+
+
+
+
+2. 已经载入的 dll 文件
+(1) 整体列表和数量
+> ?getLoadedDLLs
+Get DLLs Loaded in Current Session
+Description
+This function provides a way to get a list of all the DLLs (see dyn.load) that are currently loaded in the R session.
+
+> getLoadedDLLs() #输出太多
+> getLoadedDLLs() |> head(n=5) #输出前5行
+                                                      Filename Dynamic.Lookup
+base                                                      base          FALSE
+methods       /usr/local/lib/R/library/methods/libs/methods.so          FALSE
+utils             /usr/local/lib/R/library/utils/libs/utils.so          FALSE
+grDevices /usr/local/lib/R/library/grDevices/libs/grDevices.so          FALSE
+graphics    /usr/local/lib/R/library/graphics/libs/graphics.so          FALSE
+
+> getLoadedDLLs() |> length()
+[1] 93
+
+
+
+(2) 具体的dll条目
+> getLoadedDLLs()[5] |> str()
+List of 1
+ $ graphics:List of 5
+  ..$ name         : chr "graphics"
+  ..$ path         : chr "/usr/local/lib/R/library/graphics/libs/graphics.so"
+  ..$ dynamicLookup: logi FALSE
+  ..$ handle       :Class 'DLLHandle' <externalptr> 
+  ..$ info         :Class 'DLLInfoReference' <externalptr> 
+  ..- attr(*, "class")= chr "DLLInfo"
+ - attr(*, "class")= chr "DLLInfoList"
+
+> getLoadedDLLs()[2] |> str()
+List of 1
+ $ methods:List of 5
+  ..$ name         : chr "methods"
+  ..$ path         : chr "/usr/local/lib/R/library/methods/libs/methods.so"
+  ..$ dynamicLookup: logi FALSE
+  ..$ handle       :Class 'DLLHandle' <externalptr> 
+  ..$ info         :Class 'DLLInfoReference' <externalptr> 
+  ..- attr(*, "class")= chr "DLLInfo"
+ - attr(*, "class")= chr "DLLInfoList"
+
+> getLoadedDLLs()[16]
+                                            Filename Dynamic.Lookup
+Rcpp /usr/local/lib/R/site-library/Rcpp/libs/Rcpp.so           TRUE
+> getLoadedDLLs()[16] |> str()
+List of 1
+ $ Rcpp:List of 5
+  ..$ name         : chr "Rcpp"
+  ..$ path         : chr "/usr/local/lib/R/site-library/Rcpp/libs/Rcpp.so"
+  ..$ dynamicLookup: logi TRUE
+  ..$ handle       :Class 'DLLHandle' <externalptr> 
+  ..$ info         :Class 'DLLInfoReference' <externalptr> 
+  ..- attr(*, "class")= chr "DLLInfo"
+ - attr(*, "class")= chr "DLLInfoList"
+
+
+
+
+
+3. 如果载入的dll文件达到最大值报错怎么办？
+修改 ~/.Renviron file 增加dll上限：
+R_MAX_NUM_DLLS=150
+
+
+ref: https://r.acidgenomics.com/packages/pointillism/
 
 
 
@@ -1597,21 +1693,460 @@ PKG_CPPFLAGS+= -I ../inst/include
 https://stackoverflow.com/questions/53622354/how-to-debug-line-by-line-rcpp-generated-code-in-windows
 https://gist.github.com/alexg9010/1ab89ecb28c43f8bc217d2facca77f0a
 
+https://dirk.eddelbuettel.com/papers/useR2019_rcpp_tutorial.pdf
+
+
+
 
 
 ========================================
-|-- 使用 rcpp 和 RcppEigen 进行矩阵计算
+|-- 使用 Rcpp 和 RcppEigen 进行矩阵计算
 ----------------------------------------
 https://stephenberg.github.io/presentations/materials/bergSeminarPres.pdf
 
+J3:/home/wangjl/data4/others/wangjl2/PCAwithNA/script/
+
+
+1. 相关背景
+(1) 教训 
+- 不要用Rstudio，用shell R。
+- 参数中不要有注释行
+
+(2) 编译环境变量
+矩阵运算属于高性能运算，默认使用服务器了。我的环境是
+- CentOS7.9
+- g++ (GCC) 12.3.0
+- R version 4.3.3 (2024-02-29)
+- Rcpp v1.0.12
+- RcppEigen v0.3.3.9.4
+
+$ cat ~/.R/Makevars
+#CXX17 = g++ -std=c++17 -fPIC
+CXX11=/home/wangjl/soft/gcc-12.3.0/bin/g++ -std=c++11 -fPIC
+CXX14=/home/wangjl/soft/gcc-12.3.0/bin/g++ -std=c++14 -fPIC
+CXX17=/home/wangjl/soft/gcc-12.3.0/bin/g++ -std=c++17 -fPIC
+gcc=/home/wangjl/soft/gcc-12.3.0/bin/gcc
 
 
 
 
 
+
+2. 先跑起来Rcpp代码
+
+(1) 写文件
+$ cat test_mat1.cpp
+#include <Rcpp.h>
+
+using namespace Rcpp;
+
+// [[Rcpp::export]]
+NumericVector timesTwo(NumericVector x) {
+  return x * 2;
+}
+
+文件解释：
+* 第1行：头文件
+* 第2行：命名空间，下文的 NumericVector 类型全名是 Rcpp::NumericVector
+* 第3行：// [[Rcpp::export]] 表示该函数暴漏到R中，可以在R中直接调用。
+* 接着是函数体，就是标准的C++代码了：
+	返回类型 函数名(参数类型 虚参数){
+		函数体
+		return 返回值;
+	}
+
+
+(2) 编译
+shell 进入c++文件所在文件夹：
+$ cd /path/to/cpp_file/
+
+$ mkdir tmp #新建文件夹，作为编译目录
+
+直接在当前文件夹内的shell中打开 shell R
+$ R
+
+编译和加载函数
+> library(Rcpp)
+> sourceCpp("test_mat1.cpp", cacheDir="./tmp/", verbose=T, rebuild=T)
+参数解释： 
+* 第一个参数是 c++文件名
+* cacheDir 是指定编译文件夹
+* verbose=T 输出详细日志
+* rebuild=T 前置重新编译。这个很重要，默认是F，修改代码不会重新编译，看不到修改的效果。
+
+最后几行如果没有报错，则表示正常编译。
+
+
+(3) 测试
+> timesTwo(c(-10,3, 20))
+[1] -20   6  40
+确实乘以2了
+
+修改cpp文件，把函数体改为 *3，再次编译，运行：
+> timesTwo(c(-10,3, 20))
+[1] -30   9  60
+确实乘以3了。
+
+
+
+
+(4) 查看编译产物
+$ ls -lth tmp/sourceCpp-x86_64-pc-linux-gnu-1.0.12/sourcecpp_108c6c552e9/
+total 1.5M
+-rwxrwxrwx+ 1 wangjl jinlab 550K Oct 20 19:33 sourceCpp_3.so
+-rw-rw-rw-+ 1 wangjl jinlab 945K Oct 20 19:33 test_mat1.o
+-rw-r--r--+ 1 wangjl jinlab  643 Oct 20 19:33 test_mat1.cpp
+-rw-rw-rw-+ 1 wangjl jinlab  302 Oct 20 19:33 test_mat1.cpp.R
+
+
+
+(5) 复用该 so 函数库：失败 //todo
+$ R 
+> dyn.load("tmp/sourceCpp-x86_64-pc-linux-gnu-1.0.12/sourcecpp_108c6c552e9/sourceCpp_3.so")
+> timesTwo(c(-10,3, 20))
+Error in timesTwo(c(-10, 3, 20)) : could not find function "timesTwo"
+貌似不能调用了？！
+
+> .C("timesTwo", c(-10, 3, 20))
+Error in .C("timesTwo", c(-10, 3, 20)) : 
+  C symbol name "timesTwo" not in load table
+> .Call("timesTwo", c(-10, 3, 20))
+Error in .Call("timesTwo", c(-10, 3, 20)) : 
+  C symbol name "timesTwo" not in load table
+
+
+使用命令行工具检查 .so 文件是否包含正确的符号。
+$ nm -D tmp/sourceCpp-x86_64-pc-linux-gnu-1.0.12/sourcecpp_108c6c552e9/sourceCpp_4.so  | grep -in two
+62:0000000000005b10 T sourceCpp_1_timesTwo
+71:0000000000005860 T _Z8timesTwoN4Rcpp6VectorILi14ENS_15PreserveStorageEEE
+
+原来是函数名不对，重新调用：
+> library(Rcpp)
+> .Call("sourceCpp_1_timesTwo", c(-10, 3, 20))
+直接死机了，ctrl+C无法退出！只好断开shell，重新连接！！
+
+> .Call("sourceCpp_1_timesTwo", PACKAGE="", c(-10, 3, 20))
+> .Call("_Z8timesTwoN4Rcpp6VectorILi14ENS_15PreserveStorageEEE", c(-10, 3, 20))
+//todo 放弃复用
+
+
+
+
+
+
+
+
+
+3. 矩阵运算：outerSize() 是行还是列？
+
+矩阵包括：常规矩阵和稀疏矩阵。
+R中和c++中有对应类型，调用时要保持类型配对。
+
+
+We may need to supply:
+• header location via -I,
+• library location via -L,
+• library via -llibraryname
+
+
+(1) 写函数：如何输入正确的参数？
+$ cat test_mat2.cpp
+#include <Rcpp.h>
+#include <RcppEigen.h>
+
+using namespace Rcpp;
+
+// [[Rcpp::depends(RcppEigen)]]
+// [[Rcpp::export]]
+void SNN_SmallestNonzero_Dist2(
+    Eigen::SparseMatrix<double> snn,
+    Eigen::MatrixXd mat,
+    int n,
+    std::vector<double> nearest_dist
+) {
+  
+  for (int i=0; i < snn.outerSize(); ++i){
+    Rcpp::Rcout << i <<  std::endl;
+  }
+}
+
+
+
+(2) 编译
+> Rcpp::sourceCpp("test_mat2.cpp", cacheDir="./tmp/", verbose=T, rebuild=T)
+
+该函数已经加载到R环境中：
+> SNN_SmallestNonzero_Dist2
+function (snn, mat, n, nearest_dist) 
+invisible(.Call(<pointer: 0x7f9ca25137f0>, snn, mat, n, nearest_dist))
+
+
+
+
+
+(3) 测试
+这个调用不容易，参数的几个类型都不能出错。
+> library(Matrix);
+> sparse_matrix <- Matrix(c(0, 0, 3, 0,   4, 0, 0, 0), nrow = 2, ncol = 4, byrow=T, sparse = TRUE);sparse_matrix
+[1,] . . 3 .
+[2,] 4 . . .
+> class(sparse_matrix)
+[1] "dgCMatrix"
+attr(,"package")
+[1] "Matrix"
+
+转变格式为 "dgCMatrix"
+> sparse_matrix_dgC <- as(sparse_matrix, "dgCMatrix");print(class(sparse_matrix_dgC))
+[1] "dgCMatrix"
+attr(,"package")
+[1] "Matrix"
+
+一般矩阵形式
+> mat = as.matrix(sparse_matrix); mat
+     [,1] [,2] [,3] [,4]
+[1,]    0    0    3    0
+[2,]    4    0    0    0
+
+调用1：第二个参数不是一般矩阵，是稀疏矩阵（"dgCMatrix"），就报错！
+> SNN_SmallestNonzero_Dist2(sparse_matrix_dgC, sparse_matrix, 8, c(1,2,3))
+Error: Not a matrix.
+
+调用: 正确
+> SNN_SmallestNonzero_Dist2(sparse_matrix_dgC, mat, 8, c(1,2,3))
+0
+1
+2
+3
+结论：可见，outerSize() 是列数。
+教科书的数学上，矩阵是列向量组成的。向量默认值的是列向量。
+
+
+
+
+
+
+
+
+4. 对矩阵的非零元素进行遍历
+
+(1) 写函数：如何对稀疏矩阵遍历
+$ cat test_mat3.cpp
+#include <Rcpp.h>
+#include <RcppEigen.h>
+
+using namespace Rcpp;
+
+// [[Rcpp::depends(RcppEigen)]]
+// [[Rcpp::export]]
+void SNN_SmallestNonzero_Dist3(
+    Eigen::SparseMatrix<double> snn
+) {
+  
+  for (int j=0; j < snn.outerSize(); ++j){ //遍历列
+    for (Eigen::SparseMatrix<double>::InnerIterator it(snn, j); it; ++it) { //对非0行遍历
+      int row = it.row();
+      double value = it.value();
+      Rcpp::Rcout << "Row: " << row << ", Column: " << j << ", Value: " << value << std::endl;
+    }
+  }
+}
+
+
+(2) 编译
+> Rcpp::sourceCpp("test_mat3.cpp", cacheDir="./tmp/", verbose=T, rebuild=T)
+
+> SNN_SmallestNonzero_Dist3
+function (snn) 
+invisible(.Call(<pointer: 0x7f9ca18c9f70>, snn))
+
+
+(3) 调用
+> mat = Matrix(c(0, 0, 3, 0,   4, 0, 0, 0), nrow = 2, ncol = 4, byrow=T); mat
+2 x 4 sparse Matrix of class "dgCMatrix"
+            
+[1,] . . 3 .
+[2,] 4 . . .
+
+> SNN_SmallestNonzero_Dist3(mat)
+Row: 1, Column: 0, Value: 4
+Row: 0, Column: 2, Value: 3
+注意：在C++中下标从0开始计数。R中则从1开始计数。
+
+
+
+
+
+
+
+
+
+5. 求向量的欧氏距离(L2范数)：.norm() 方法
+
+(1) cpp函数
+$ cat test_mat4.cpp
+#include <Rcpp.h>
+#include <RcppEigen.h>
+
+using namespace Rcpp;
+
+// [[Rcpp::depends(RcppEigen)]]
+// [[Rcpp::export]]
+void SNN_SmallestNonzero_Dist2(
+    Eigen::SparseMatrix<double> snn,
+    Eigen::MatrixXd mat,
+    int n,
+    std::vector<double> nearest_dist
+) {
+  
+  for (int i=0; i < snn.outerSize(); ++i){
+    Rcpp::Rcout << i <<  std::endl;
+  }
+  
+  //第一行
+  size_t cell = 0;
+  int i=1;
+  double res = (mat.row(cell) - mat.row(i)).norm();
+  Rcpp::Rcout << "mat.row(0): " << mat.row(cell) <<  std::endl;
+  Rcpp::Rcout << "mat.row(1): " << mat.row(i) <<  std::endl;
+  Rcpp::Rcout << "(mat.row(0) - mat.row(1)).norm() = " << res <<  std::endl;
+}
+
+
+(2) 编译
+> Rcpp::sourceCpp("test_mat4.cpp", cacheDir="./tmp/", verbose=T, rebuild=T)
+
+
+(3) 运行
+> sparse_matrix <- Matrix(c(0, 0, 3, 0,   4, 0, 0, 0), nrow = 2, ncol = 4, byrow=T, sparse = TRUE);sparse_matrix
+> mat = as.matrix(sparse_matrix); mat
+     [,1] [,2] [,3] [,4]
+[1,]    0    0    3    0
+[2,]    4    0    0    0
+
+> SNN_SmallestNonzero_Dist2(sparse_matrix, mat, 3, c(1,2))
+0
+1
+2
+3
+mat.row(0): 0 0 3 0
+mat.row(1): 4 0 0 0
+(mat.row(0) - mat.row(1)).norm() = 5
+
+结论：
+* mat.row(i) 就是取第i行的元素
+* .norm() 就是取欧氏距离：求平方和，再开方。
+	默认是到原点的欧氏距离。
+	上述例子是自己主动求向量的差，再调用.norm()方法，相当于两点之间的欧氏距离。
+
+
+
+
+
+
+
+
+6. std::accumulate() 方法：累加
+
+$ cat test_mat5.cpp
+#include <Rcpp.h>
+using namespace Rcpp;
+
+// [[Rcpp::export]]
+void fn5() {
+  // accumulate?
+  std::vector<double> dists;
+  dists.push_back(1);
+  dists.push_back(2);
+  dists.push_back(3);
+  dists.push_back(4);
+  dists.push_back(5);
+  Rcpp::Rcout << "dists.size():" << dists.size() <<  std::endl;
+  
+  double avg_dist;
+  avg_dist = std::accumulate(dists.begin(), dists.end(), 0.0) / dists.size();
+  Rcpp::Rcout << "avg_dist:" << avg_dist <<  std::endl;
+}
+
+
+编译：
+> Rcpp::sourceCpp("test_mat5.cpp", cacheDir="./tmp/", verbose=T, rebuild=T)
+
+运行：
+> fn5()
+dists.size():5
+avg_dist:3
+
+结论：std::accumulate() 就是从头到位累加。
+
+
+
+
+
+
+
+
+7. 自定义函数 sort_indexes() 稳定排序: 相等的值，保持之前出现的顺序
+
+$ cat test_mat6.cpp
+#include <Rcpp.h>
+using namespace Rcpp;
+
+template <typename S>
+std::vector<size_t> sort_indexes(const std::vector<S> &v) {
+  // initialize original index locations
+  std::vector<size_t> idx(v.size()); //声明空数组，等长度
+  std::iota(idx.begin(), idx.end(), 0); //从0开始递增填充：0,1,2,...
+  std::stable_sort(idx.begin(), idx.end(), //
+                   [&v](size_t i1, size_t i2) {return v[i1] < v[i2];});
+  return idx;
+}
+
+// [[Rcpp::export]]
+void fn6() {
+  // accumulate?
+  std::vector<double> nonzero={2.2, 1.1, 3.3, 1.1, 4.4};
+  Rcpp::Rcout << "nonzero.size():" << nonzero.size() <<  std::endl;
+  
+  
+  std::vector<size_t> nonzero_order = sort_indexes(nonzero);
+  for(int i=0; i<nonzero_order.size(); i++){
+    size_t idx = nonzero_order[i];
+    Rcpp::Rcout << i << " " << idx <<" " << nonzero[idx] << std::endl;
+  }
+}
+
+> Rcpp::sourceCpp("test_mat6.cpp", cacheDir="./tmp/", verbose=T, rebuild=T)
+
+> fn6()
+nonzero.size():5
+0 1 1.1
+1 3 1.1
+2 0 2.2
+3 2 3.3
+4 4 4.4
+
+结论：sort_indexes 返回值 是输出第二列，可见是原数组的下标。
+	其中两个1.1出现2次，按出现顺序排列。
+
+> a1=c(2.2, 1.1, 3.3, 1.1, 4.4)
+> order(a1)
+[1] 2 4 1 3 5
+> order(a1)-1 #和R的order()函数的效果一致，只是R是1-based下标。
+[1] 1 3 0 2 4
+
+
+
+
+
+
+
+
+Ref:
+Seurat v4.4.0 R包源码
 http://www2.uaem.mx/r-mirror/web/packages/RcppEigen/index.html
 Integrating with C++ using Rcpp and RcppEigen: https://kohei-kawaguchi.github.io/EmpiricalIO/rcpp.html
 
+https://blog.csdn.net/wangjunliang/article/details/143096799
 
 
 
@@ -1719,7 +2254,7 @@ microbenchmark(R = log(x),
 并行块 ~3-4倍节省时间，取决于核心个数。
 
 
-(4) 为什么块？
+(4) 为什么快？
 
 TBB 做了调度优化
 - Grain size 粒度 ?? 不懂

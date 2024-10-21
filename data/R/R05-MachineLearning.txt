@@ -1894,6 +1894,7 @@ cumulative_explained_variance <- cumsum(explained_variance_ratio)
 
 
 3) 自定义计算含NA值的矩阵做PCA
+
 #' 对含有NA值的矩阵做PCA：使用完整配对样品算协方差矩阵，再做奇异值分解
 #' 
 #' * 参考 SYNCSA::pca()，但使用cov而不是cor()
@@ -1901,14 +1902,15 @@ cumulative_explained_variance <- cumsum(explained_variance_ratio)
 #'
 #' v0.2 可用了，至少对于gDPAU来说
 #' v0.3 对 协方差矩阵 做(v0.2矩阵分解)svd分解
-#' v0.4 
+#' v0.4 add para HVG list; modify cell.min as user set in parameter
 #'
 #' @param data pA usage matrix
 #' @param npcs PC number you want
 #' @param min.cell.per.gene at least how many cell per pA. For gDPAU, below 250 will error
 #' @param isDraw draw plot or not
+#' @param HVG.list HVG list, an array
 #' 
-CompleteObs_pca3=function(data, npcs=50, min.cell.per.gene=300, isDraw=F){
+CompleteObs_pca3=function(data, npcs=50, HVG.list=c(), min.cell.per.gene=300, isDraw=F){
   # refer SYNCSA::pca()
   
   #0. 根据每列非NA个数筛选变量
@@ -1917,8 +1919,9 @@ CompleteObs_pca3=function(data, npcs=50, min.cell.per.gene=300, isDraw=F){
     sum( !(is.na(x)) )
   })
   cell.min=ncol(dat)*0.05;
-  if(cell.min>min.cell.per.gene){ cell.min = min.cell.per.gene}
-  message("step0: obs per cell, at least cell.min=", cell.min)
+  message("step0: obs per cell, 5% is ", cell.min)
+  if(min.cell.per.gene > 0){ cell.min = min.cell.per.gene}
+  message("step0: obs per cell, you set cell.min = min.cell.per.gene = ", cell.min)
   
   # 绘图
   if(isDraw){
@@ -1932,6 +1935,15 @@ CompleteObs_pca3=function(data, npcs=50, min.cell.per.gene=300, isDraw=F){
   dat=dat[, keep]
   dim(dat) #5913
   
+  # consider HVG
+  if(length(HVG.list)>0){
+    message("step0: intersect with HVG list, HVG number=", length(HVG.list))
+    message("step0: intersect with HVG list, before, gene=", ncol(dat))
+    dat=dat[, intersect(colnames(dat), HVG.list), drop=F]
+    message("step0: intersect with HVG list, after, remain gene=", ncol(dat))
+  }
+
+
   npcs <- min(npcs, ncol(x = dat) - 1); npcs #计算几个PC
   
   #定义返回值
@@ -1990,15 +2002,15 @@ CompleteObs_pca3=function(data, npcs=50, min.cell.per.gene=300, isDraw=F){
   res$eigenvalues <- res.eig
   
   #(7) 返回值的项：行(obs)的新坐标
-  #新行坐标：标准化后的值 * 特征向量(特征值非负的特征向量)
+  #新行坐标：列中心化后的矩阵 * 特征向量(非负特征值对应的特征向量)
   ind.coord <- dat.norm %*% pca.results$v
-  #给列名：PC_1-4
+  #给列名：PC_1,
   colnames(ind.coord) <- paste("PC_", 1:ncol(ind.coord), sep = "")
   res$cell.embeddings <- ind.coord
   
   #(8) 返回值的项：列(var)的新坐标
   var.coord <- pca.results$v
-  #给列名：PC_1-4
+  #给列名：PC_1,
   colnames(var.coord) <- paste("PC_", 1:ncol(var.coord),  sep = "")
   #给行名：原始列名
   rownames(var.coord) <- colnames(dat)
@@ -2009,7 +2021,7 @@ CompleteObs_pca3=function(data, npcs=50, min.cell.per.gene=300, isDraw=F){
   return(res)
 }
 if(0){
-	result = CompleteObs_pca3(gDPAU)
+  result = CompleteObs_pca3(gDPAU)
 }
 
 
@@ -2499,7 +2511,7 @@ Lasso回归则是在一般线性回归基础上加入了正则项，在保证最
 重点来了：采用L1范数则是lasso 回归，L2范数则是岭回归了。那么函数有啥区别呢？如下：
 	公式略。本博客暂时不支持公式。
 - L1范数是所有参数绝对值之和，对应的回归方法叫做Lasso回归。
-- L2范数是所有参数的平方和，对应的回归方法叫做Ridge回归，岭回归需要注意的是，正则项中的回归系数为每个自变量对应的回归系数，不包含回归常数项。
+- L2范数是所有参数的平方和的平方根，对应的回归方法叫做Ridge回归，岭回归需要注意的是，正则项中的回归系数为每个自变量对应的回归系数，不包含回归常数项。
 
 
 L1和L2各有优劣，

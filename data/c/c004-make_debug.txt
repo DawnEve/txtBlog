@@ -1302,7 +1302,7 @@ gcc -shared -L/data/public/R-4.1.1/lib/R/lib -L/usr/local/lib -o network.so Rini
 
 
 ========================================
-|-- main 函数中的 return 与 错误码
+|-- main 函数中的 return 与 错误码：正常执行默认返回0，查看程序返回值 echo $?
 ----------------------------------------
 1. main 函数的完整形式
 
@@ -2031,7 +2031,61 @@ Linux动态链接库隔离,LINUX动态链接库高级应用 https://blog.csdn.ne
 
 
 ========================================
-|-- ldd( list dynamic dependencies )
+|-- nm - list symbols from object files
+----------------------------------------
+1. 查看一个编译好的Rcpp 的 so 中的文件名
+$ nm -D tmp/sourceCpp-x86_64-pc-linux-gnu-1.0.12/sourcecpp_108c62fb45d32/sourceCpp_13.so | grep SNN_Small
+0000000000007ee0 T sourceCpp_11_SNN_SmallestNonzero_Dist2
+0000000000007bc0 T _Z25SNN_SmallestNonzero_Dist2N5Eigen12SparseMatrixIdLi0EiEENS_6MatrixIdLin1ELin1ELi0ELin1ELin1EEEiSt6vectorIdSaIdEE
+
+参数解释：
+[-D|--dynamic]
+"D" "d" The symbol is in the initialized data section.
+-D --dynamic
+	Display the dynamic symbols rather than the normal symbols.  This is only meaningful for dynamic objects, such as certain types of shared libraries.
+
+怎么复用该函数呢？
+
+
+
+
+2. 编写一个c函数
+$ cat a1.c
+#include<stdio.h>
+int bigger(int x, int y){
+	if(x>y) return x;
+	return y;
+}
+
+int main(int argc, char* argv[]){
+	int a=10, b=20;
+	printf("a=%d, b=%d, bigger is %d\n", a, b, bigger(a,b));
+	return 0;
+}
+
+$ gcc a1.c
+$ ./a.out 
+a=10, b=20, bigger is 20
+
+$ nm -D a.out 
+	w __gmon_start__
+	U __libc_start_main
+	U printf
+
+怎么没找到函数名？因为-D参数是仅显示动态链接对象，比如so文件中的。
+
+$ nm  a.out | grep bigger
+0000000000400502 T bigger
+
+
+
+
+
+
+
+
+========================================
+|-- ldd( list dynamic dependencies )，查看 glibc 版本号
 ----------------------------------------
 $ ldd /home/wangjl/.local/lib/libgsl.so
 	linux-vdso.so.1 =>  (0x00007ffdef3f0000)
@@ -2039,6 +2093,35 @@ $ ldd /home/wangjl/.local/lib/libgsl.so
 	libc.so.6 => /lib64/libc.so.6 (0x00007f0b6bf6a000)
 	/lib64/ld-linux-x86-64.so.2 (0x00007f0b6cb19000)
 
+
+
+2. 查版本号
+$ ldd --version
+
+Ubuntu 比较新：
+# ldd --version
+ldd (Ubuntu GLIBC 2.31-0ubuntu9.2) 2.31
+Copyright (C) 2020 Free Software Foundation, Inc.
+This is free software; see the source for copying conditions.  There is NO
+warranty; not even for MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
+Written by Roland McGrath and Ulrich Drepper.
+
+
+CentOS7.9很古老：
+$ ldd --version
+ldd (GNU libc) 2.17
+Copyright (C) 2012 Free Software Foundation, Inc.
+
+
+
+3. glibc 能安装新版本吗？
+有不良影响吗？
+
+
+
+
+https://ftp.gnu.org/gnu/glibc/
+https://mirror.ossplanet.net/gnu/libc/
 
 
 
@@ -2476,6 +2559,328 @@ https://www.bilibili.com/video/BV16P4y1g7MH/?spm_id_from=333.337.search-card.all
 
 
 
+
+========================================
+CentOS7.9 如何无root升级 glibc?
+----------------------------------------
+1. 无root升级gcc 到 12.3：c++/
+
+2. 升级 make
+
+3. 安装 glibc
+
+
+
+
+
+========================================
+|-- Make 3.82 怎么本地无root升级为 Make 4.3？
+----------------------------------------
+$ make --version
+GNU Make 3.82
+Built for x86_64-redhat-linux-gnu
+Copyright (C) 2010  Free Software Foundation, Inc.
+
+1. 下载 GNU Make 4.3
+https://ftp.gnu.org/gnu/make/
+
+$ wget https://ftp.gnu.org/gnu/make/make-4.3.tar.gz
+$ tar zxvf make-4.3.tar.gz
+$ cd make-4.3/
+
+$ mkdir build
+$ cd build
+
+
+
+
+2.编译安装
+##../configure --prefix=/usr/local/make 
+
+(1) 尝试1：不好，推荐看(2)
+$ ../configure --prefix=/home/wangjl/soft/make/make-4.3
+
+$ make -j50
+$ make install
+
+$ ls -lth /home/wangjl/soft/make/make-4.3
+total 12K
+drwxr-xr-x. 2 wangjl jinlab 4.0K Oct 21  2024 bin
+drwxr-xr-x. 2 wangjl jinlab 4.0K Oct 21  2024 include
+drwxr-xr-x. 5 wangjl jinlab 4.0K Oct 21  2024 share
+
+检查：
+	$ /home/wangjl/soft/make/make-4.3/bin/make --version
+	GNU Make 4.3
+	Built for x86_64-pc-linux-gnu
+	Copyright (C) 1988-2020 Free Software Foundation, Inc.
+
+接着还需要配置环境：不如换安装位置。
+	$ vim ~/.bashrc
+	export PATH=/usr/local/make/bin:$PATH
+
+	$ ln -s /usr/local/make/bin/make /usr/local/make/bin/gmake
+	$ make -v
+
+删除不用的文件：
+	$ rm -rf /home/wangjl/soft/make/make-4.3
+	$ rm -rf /home/wangjl/soft/make
+
+
+
+(2) 尝试2：改变安装路径为 ~/.local/
+$ ls -lth ~/.local/
+total 44K
+drwxr-xr-x.  7 wangjl jinlab 8.0K Sep 20 16:21 lib
+drwxr-xr-x.  2 wangjl jinlab 8.0K Sep 20 15:45 bin
+drwxr-xr-x. 12 wangjl jinlab 8.0K Sep 14 19:12 share
+drwxr-xr-x.  6 wangjl jinlab 8.0K Jun 13 19:08 include
+drwxr-xr-x.  2 wangjl jinlab 4.0K May 31 20:42 libexec
+drwxr-xr-x.  5 wangjl jinlab 8.0K Apr 23 12:06 ssl
+
+$ make clean
+$ ../configure --prefix=/home/wangjl/.local/
+
+$ make -j50
+$ make install
+
+
+直接访问：
+$ whereis make
+make: /usr/bin/make /home/wangjl/.local/bin/make /usr/share/man/man1p/make.1p.gz /usr/share/man/man1/make.1.gz
+
+$ which make
+~/.local/bin/make
+
+$ make --version
+GNU Make 3.82
+
+
+
+
+
+(3) 查看配置文件
+$ less ~/.bashrc
+
+# for gcc 12.3.0
+export PATH=/home/wangjl/soft/gcc-12.3.0/bin:$PATH
+export LD_LIBRARY_PATH=/home/wangjl/soft/gcc-12.3.0/lib:$LD_LIBRARY_PATH
+export LD_LIBRARY_PATH=/home/wangjl/soft/gcc-12.3.0/lib64:$LD_LIBRARY_PATH
+
+
+# for ~/.local/ libs 
+export PATH=/home/wangjl/.local/bin:$PATH
+export LD_LIBRARY_PATH=/home/wangjl/.local/lib/:$LD_LIBRARY_PATH
+export PKG_CONFIG_PATH=/home/wangjl/.local/lib/pkgconfig:$PKG_CONFIG_PATH
+
+
+
+
+
+
+
+
+
+
+
+========================================
+|-- 怎么本地无root安装 glibc-2.27？
+----------------------------------------
+依赖新版 make。见上文。
+
+
+0.CentOS7.9 
+
+自带的
+$ strings /lib64/libc.so.6 | grep GLIBC
+...
+GLIBC_2.17
+GLIBC_PRIVATE
+
+我本地安装的：
+$ which gcc
+~/soft/gcc-12.3.0/bin/gcc
+
+$ find /home/wangjl/soft/gcc-12.3.0/ | grep -i libc
+...
+/home/wangjl/soft/gcc-12.3.0/lib64/libcc1.so.0.0.0
+/home/wangjl/soft/gcc-12.3.0/lib64/libcc1.so.0
+/home/wangjl/soft/gcc-12.3.0/lib64/libcc1.so
+
+$ strings /home/wangjl/soft/gcc-12.3.0/lib64/libcc1.so.0.0.0 | grep GLIBC
+
+
+
+
+
+1. 下载
+https://ftp.gnu.org/gnu/glibc/
+
+$ wget https://ftp.gnu.org/gnu/glibc/glibc-2.35.tar.xz
+
+解压
+$ tar -xvJf glibc-2.35.tar.xz
+$ cd glibc-2.35
+$ mkdir build
+
+
+
+2. 编译安装 Glibc
+
+$ cd build
+# ../configure --prefix=/usr --disable-profile --enable-add-ons --with-headers=/usr/include --with-binutils=/usr/bin
+
+指定安装目录
+$ mkdir -p /home/wangjl/soft/glibc/glibc-2.35
+
+必须：设置gmake快捷方式
+$ ln -s /home/wangjl/.local/bin/make /home/wangjl/.local/bin/gmake
+其他几个可能的设置，见末尾的 [10. 排错记录]
+
+配置：
+$ ../configure --prefix=/home/wangjl/soft/glibc/glibc-2.35 --disable-profile --enable-add-ons
+
+编译安装：
+$ make -j50    #19:09-19:17
+$ make install
+
+
+(2) 查看效果
+$ ls -lth /home/wangjl/soft/glibc/glibc-2.35
+total 56K
+drwxr-xr-x.  2 wangjl jinlab 8.0K Oct 21  2024 bin
+drwxr-xr-x.  4 wangjl jinlab 8.0K Oct 21  2024 lib
+drwxr-xr-x.  2 wangjl jinlab 8.0K Oct 21  2024 sbin
+drwxr-xr-x. 22 wangjl jinlab 8.0K Oct 21  2024 include
+drwxr-xr-x.  3 wangjl jinlab 4.0K Oct 21  2024 var
+drwxr-xr-x.  2 wangjl jinlab 8.0K Oct 21  2024 etc
+drwxr-xr-x.  5 wangjl jinlab 4.0K Oct 21  2024 share
+drwxr-xr-x.  3 wangjl jinlab 8.0K Oct 21  2024 libexec
+
+
+$ ls -lth /home/wangjl/soft/glibc/glibc-2.35/bin/
+total 1.9M
+-rwxr-xr-x. 1 wangjl jinlab 5.5K Oct 21  2024 ldd
+lrwxrwxrwx. 1 wangjl jinlab   27 Oct 21  2024 ld.so -> ../lib/ld-linux-x86-64.so.2
+-rwxr-xr-x. 1 wangjl jinlab  52K Oct 21  2024 pldd
+-rwxr-xr-x. 1 wangjl jinlab 4.3K Oct 21  2024 sotruss
+-rwxr-xr-x. 1 wangjl jinlab  77K Oct 21  2024 sprof
+-rwxr-xr-x. 1 wangjl jinlab  80K Oct 21  2024 getent
+-rwxr-xr-x. 1 wangjl jinlab  60K Oct 21  2024 makedb
+-rwxr-xr-x. 1 wangjl jinlab  29K Oct 21  2024 pcprofiledump
+-rwxr-xr-x. 1 wangjl jinlab 5.2K Oct 21  2024 xtrace
+-rwxr-xr-x. 4 wangjl jinlab  56K Oct 21  2024 getconf
+-rwxr-xr-x. 1 wangjl jinlab  16K Oct 21  2024 tzselect
+-rwxr-xr-x. 1 wangjl jinlab  54K Oct 21  2024 zdump
+-rwxr-xr-x. 1 wangjl jinlab 6.4K Oct 21  2024 mtrace
+-rwxr-xr-x. 1 wangjl jinlab  79K Oct 21  2024 gencat
+-rwxr-xr-x. 1 wangjl jinlab 144K Oct 21  2024 locale
+-rwxr-xr-x. 1 wangjl jinlab 1.1M Oct 21  2024 localedef
+-rwxr-xr-x. 1 wangjl jinlab 223K Oct 21  2024 iconv
+
+$ /home/wangjl/soft/glibc/glibc-2.35/bin/ldd --version
+ldd (GNU libc) 2.35
+Copyright (C) 2022 Free Software Foundation, Inc.
+
+
+环境变量：
+$ vim ~/.bashrc
+# for glib 2.35
+export PATH=/home/wangjl/soft/glibc/glibc-2.35/bin:$PATH
+export LD_LIBRARY_PATH=/home/wangjl/soft/glibc/glibc-2.35/lib:$LD_LIBRARY_PATH
+
+
+报错:
+$ source ~/.bashrc
+python3: relocation error: /home/wangjl/soft/python3/python-3.10.14/lib/libpython3.10.so.1.0: symbol fsync, version GLIBC_2.2.5 not defined in file libpthread.so.0 with link time reference
+dirname: relocation error: /home/wangjl/soft/glibc/glibc-2.35/lib/libc.so.6: symbol _dl_audit_preinit, version GLIBC_PRIVATE not defined in file ld-linux-x86-64.so.2 with link time reference
+sed: relocation error: /home/wangjl/soft/glibc/glibc-2.35/lib/libc.so.6: symbol __tunable_get_val, version GLIBC_PRIVATE not defined in file ld-linux-x86-64.so.2 with link time reference
+
+
+删除~/.bashrc 第二行，重新登录系统：
+$ source ~/.bashrc
+
+问题：不设置 LD_LIBRARY_PATH 算更新了 glibc 库吗？ //todo
+
+
+
+
+(3) 查看 glibc 支持
+$ strings /home/wangjl/soft/glibc/glibc-2.35/lib/libc.so.6 | grep GLIBC
+...
+GLIBC_2.35
+GLIBC_PRIVATE
+
+
+
+
+
+
+
+
+
+10. 排错记录
+(1) cmake 太古老
+$ ../configure --prefix=/home/wangjl/soft/glibc/glibc-2.35 --disable-profile --enable-add-ons
+	报错：*** These critical programs are missing or too old: make
+	升级为 make 4.3
+
+try2: 临时指定路径，不行
+$ export PATH=/home/wangjl/.local/bin/:$PATH
+
+try3: 临时指定别名，不行
+$ alias make='/home/wangjl/.local/bin/make'
+
+try4: 必须：设置gmake快捷方式
+$ ln -s /home/wangjl/.local/bin/make /home/wangjl/.local/bin/gmake
+
+
+(2) 包含当前目录
+checking LD_LIBRARY_PATH variable... contains current directory
+configure: error: 
+*** LD_LIBRARY_PATH shouldn't contain the current directory when
+*** building glibc. Please change the environment variable
+*** and run configure again.
+
+$ echo $LD_LIBRARY_PATH
+/home/wangjl/soft/python3/python-3.10.14/lib/python3.10/site-packages/nvidia/cudnn/lib:/home/wangjl/.local/lib/:/home/wangjl/soft/gcc-12.3.0/lib64:/home/wangjl/soft/gcc-12.3.0/lib:/home/wangjl/soft/python3/python-3.10.14/lib/:
+
+try1: 删掉该变量，不行，报错 python 太古老
+$ unset LD_LIBRARY_PATH
+
+
+try2: 删掉LD_LIBRARY_PATH最后的空白
+$ unset LD_LIBRARY_PATH
+$ LD_LIBRARY_PATH=/home/wangjl/soft/python3/python-3.10.14/lib/python3.10/site-packages/nvidia/cudnn/lib:/home/wangjl/.local/lib/:/home/wangjl/soft/gcc-12.3.0/lib64:/home/wangjl/soft/gcc-12.3.0/lib:/home/wangjl/soft/python3/python-3.10.14/lib/
+有人说末尾的空白会被解析为当前目录！https://blog.joshumax.me/general/2017/06/08/how-torch-broke-ls.html
+
+添加这一句：去掉末尾的冒号
+export LD_LIBRARY_PATH=$(echo "$LD_LIBRARY_PATH" | sed 's/:$//')
+
+
+(3) python 太古老
+*** These critical programs are missing or too old: python
+
+try1: 设置别名
+$ which python3
+/home/wangjl/soft/python3/python-3.10.14/bin/python3
+$ vim ~/.bashrc
+alias python=/home/wangjl/soft/python3/python-3.10.14/bin/python3
+
+$ source ~/.bashrc
+
+$ python -V
+Python 3.10.14
+
+
+
+
+
+
+
+Ref:
+https://zhuanlan.zhihu.com/p/693456607
+https://roy.wang/centos7-upgrade-glibc/
 
 
 

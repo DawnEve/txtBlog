@@ -8,9 +8,11 @@ return array (
       array('项目描述','Linux001','html',),
       array('FAQ','Linux002','html'),
       array('windows','windows','txt'),
-      array('shell_最佳实践','shell_best_practice','txt'),
+      array('shell_最佳实践【描述】','shell_best_practice','txt'),
 	  
       array('shell cheatsheet 速查','shell_cheatsheet','txt'),
+
+	  array('过时信息 outOfDate','outOfDate', 'txt'), //过时的信息
     ),
   ),
   
@@ -32,7 +34,6 @@ return array (
 	  
 	  array('深入理解计算机系统/CSAPP','csapp', 'txt'),
 	  
-	  array('过时信息 outOfDate','outOfDate', 'txt'), //过时的信息
     ),
   ),
   

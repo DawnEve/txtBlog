@@ -14645,6 +14645,661 @@ DotPlot(pbmc, features = unique( top10$gene ), cluster.idents = T ) + RotatedAxi
 
 
 
+========================================
+|-- Seurat 4 R包源码解析 B1: WNN多组学整合分析 FindMultiModalNeighbors() //todo
+----------------------------------------
+WNN是一个比较复杂的算法，我打算从宏观和微观两个角度逐步理解其处理过程。
+* 宏观：各种描述，GPT整理的描述，该算法paper中的描述。
+* 微观：函数调用，函数输出，函数实现，自己复现。
+
+
+
+1. 调包侠
+https://satijalab.org/seurat/articles/weighted_nearest_neighbor_analysis.html
+官方给出了2个多组学整合示例:
+* RNA + Protein(ADT)
+* RNA + ATAC
+
+(1) WNN的原理(GPT辅助)
+“Weighted nearest neighbor” analysis integrates multimodal single-cell data
+在文献 (Cell, 2021) Integrated analysis of multimodal single-cell data 中
+https://www.cell.com/cell/fulltext/S0092-8674(21)00583-3
+
+
+==> WNN原理：
+1) 多模态数据处理：
+WNN 旨在整合来自不同模态（如 RNA 测序和蛋白质数据）的信息，解决单一模态分析可能带来的信息缺失和偏差。
+2) 细胞特异性模态权重：
+WNN 为每个细胞计算特定的模态权重。这些权重反映了在该细胞中各模态的相对重要性，允许算法根据细胞的特征动态调整模态的影响力。
+3) 构建加权邻接图：
+根据模态权重和细胞间的相似性，WNN 构建一个加权的邻接图。在这个图中，细胞之间的连接强度不仅依赖于它们的距离，还受到模态权重的影响。这种方式使得不同模态的数据能够协同作用，增强细胞分类的准确性。
+4) 下游分析：
+构建好的加权邻接图可用于各种下游分析，包括聚类和可视化（如 UMAP）。通过 WNN，细胞的状态和类型可以被更准确地识别，尤其是在复杂的生物样本中。
+
+总结：
+WNN 方法通过动态学习细胞特异性模态权重并构建加权邻接图，实现了不同数据模态的有效整合。这一方法显著提高了多模态单细胞数据分析的灵活性和准确性，特别适用于细胞异质性分析。
+我：只有前三步
+	* 模态内分析出PCA；
+	* 每个细胞获得模态权重
+	* WNN 加权邻接图：模态权重 + 细胞之间的相似性(距离)
+
+
+
+
+==> 底层实现：
+1) 独立预处理和降维：
+在开始整合之前，首先对每种模态的数据进行独立的预处理和降维。这包括标准化、寻找变异特征和主成分分析（PCA）等步骤。
+2) 学习细胞特异性模态权重：
+WNN 方法会为每个细胞计算其模态权重，反映不同模态在该细胞中的相对重要性。这些权重是通过分析细胞间的相似性来生成的，使得某些模态在某些细胞中能够更强地影响邻近细胞的选择。
+3) 构建 WNN 图：
+使用学习到的模态权重，构建一个加权的邻接图，表示细胞之间的关系。这一图不仅考虑了细胞间的距离，还考虑了模态权重，从而实现更为准确的细胞邻近性定义。
+4) 下游分析：
+构建好的 WNN 图可以用于进一步的分析，如可视化（例如 UMAP）和聚类。通过这种方式，研究人员可以更好地识别细胞类型和状态。
+
+FindMultiModalNeighbors 函数通过加权最近邻的框架，利用多组学数据的互补信息来提高分析的准确性和生物学解读能力。这种方法特别适合于处理细胞异质性和多样性，从而推动单细胞基因组学的研究。
+我：只有前三步：
+	* 同上，模态内做到PCA
+	* 计算模态权重/每细胞：权重来自cell间的相似性
+	* 距离 + 模态权重 => 细胞临近定义
+
+
+
+
+
+==> 更具体，就是各种KNN
+WNN的核心思想是通过无监督学习来确定每种数据类型（例如RNA表达数据和蛋白质表达数据）在每个细胞中的相对信息含量，并据此为每种数据类型分配权重，从而实现对不同数据类型的集成分析。以下是WNN原理的详细描述：
+
+1)数据预处理：
+对于每种数据类型（例如RNA和蛋白质数据），分别进行标准化处理，以确保数据的可比性。
+2)构建KNN图：
+对于每种数据类型，基于细胞间的距离（如欧氏距离或余弦相似度）构建K最近邻（KNN）图。
+3)模态权重计算：
+对于每个细胞，计算其在不同数据类型中的KNN图的预测准确性。这涉及到将每个细胞的分子特征（例如RNA或蛋白质表达水平）基于其KNN图的邻居细胞进行预测。
+计算每个细胞在不同数据类型中的预测准确性，以确定每种数据类型对该细胞状态的描述能力。
+根据预测准确性，为每种数据类型分配权重，这些权重反映了每种数据类型在描述细胞状态时的重要性。
+4)集成分析：
+利用计算出的模态权重，构建一个新的加权KNN图，该图综合了不同数据类型的信息。
+在这个加权KNN图中，细胞间的相似性是基于加权组合的相似性度量。
+5)下游分析：
+使用加权KNN图进行下游分析，如聚类、差异表达分析、细胞轨迹推断等。
+由于WNN图综合了不同数据类型的信息，因此可以更准确地定义细胞状态，并揭示细胞异质性。
+
+WNN方法的优势在于它能够灵活地处理不同数据类型的信息，并且能够适应数据质量的差异。此外，WNN方法不需要事先知道每种数据类型的重要性，而是通过数据驱动的方式来确定每种数据类型的权重。这使得WNN方法特别适用于多模态单细胞数据的集成分析，有助于揭示细胞状态的复杂性和动态变化。
+
+我：
+	* 基于PCA构建KNN图，使用前几十个PC计算距离：欧氏距离、余弦距离等
+	* 每个细胞，在不同模态中KNN图的预测准确度，据此分配权重，每个细胞的两个模态的权重和为1
+	* 模态权重加权的 KNN图，就是WNN。是两种模态KNN加权组合的相似性。
+#
+
+
+
+
+
+
+
+(2) 示例数据 8k RNA+Adt()
+-rw-rw-r--+ 1 wangjl jinlab  46M Aug 11  2022 GSM6459763_32-3mo_raw_feature_bc_matrix.h5
+
+# WNN
+
+library(ggplot2)
+library(dplyr)
+library(patchwork)
+
+
+# 1. 导入数据 ----
+# (1). load counts of RNA and protein
+dyn.load('/home/wangjl/.local/lib/libhdf5_hl.so.100')
+library(hdf5r)
+
+library(Seurat)
+dat=Read10X_h5("/datapool/wangjl/others/hanlu/raw/GSE210079/GSM6459763_32-3mo_raw_feature_bc_matrix.h5")
+str(dat)
+names(dat) #"Gene Expression"  "Antibody Capture" #两个矩阵：RNA和 55个蛋白
+
+str(dat$`Gene Expression`)
+dat$`Gene Expression`[1:4, 1:5]
+
+# make sure cell id are the same
+all.equal(colnames(dat[["Gene Expression"]]), colnames(dat[["Antibody Capture"]])) #T
+
+
+# (2). use RNA data to create Obj
+scRNA=CreateSeuratObject(counts = dat$`Gene Expression`, project = "A1")
+
+
+# (3). add protein mat
+# https://zhuanlan.zhihu.com/p/567253121
+adt_assay <- CreateAssayObject(counts = dat$`Antibody Capture`)
+scRNA[["ADT"]] <- adt_assay
+
+# (4). check
+# protein names
+rownames(scRNA[["ADT"]])
+
+# assays
+Assays(scRNA) #"RNA" "ADT"
+
+# check default assay, or change default assay
+DefaultAssay(scRNA) #"RNA"
+
+
+
+
+
+# 2. 分别分析 ----
+bm=scRNA
+
+## QC ====
+bm #655671 
+bm[["percent.mt"]] <- PercentageFeatureSet(bm, pattern = "^MT-")
+
+VlnPlot(bm, features = c("nFeature_RNA", "nCount_RNA", "percent.mt"), ncol = 1)
+
+plot1 <- FeatureScatter(bm, feature1 = "nCount_RNA", feature2 = "percent.mt")
+plot2 <- FeatureScatter(bm, feature1 = "nCount_RNA", feature2 = "nFeature_RNA")
+(plot1 + geom_hline(yintercept = 20, linetype=2, color="red") ) + 
+  (plot2 + geom_hline(yintercept = c(300, 5000), linetype=2, color="red"))
+
+bm <- subset(bm, subset = nFeature_RNA > 300 & nFeature_RNA < 5000 & percent.mt < 20)
+bm #8036
+
+
+## for RNA ====
+DefaultAssay(bm) <- 'RNA'
+bm <- NormalizeData(bm) %>% FindVariableFeatures() %>% ScaleData() %>% RunPCA()
+DimPlot(bm, reduction = 'pca')
+ElbowPlot(bm, ndims = 50)
+
+
+## for protein ====
+DefaultAssay(bm) <- 'ADT'
+# we will use all ADT features for dimensional reduction
+# we set a dimensional reduction name to avoid overwriting the 
+VariableFeatures(bm) <- rownames(bm[["ADT"]])
+bm <- NormalizeData(bm, normalization.method = 'CLR', margin = 2) %>% 
+  ScaleData() %>% RunPCA(reduction.name = 'apca')
+ElbowPlot(bm, ndims = 50)
+
+
+
+
+# 3. 整合模态 ----
+# Identify multimodal neighbors. These will be stored in the neighbors slot, 
+# and can be accessed using bm[['weighted.nn']]
+# The WNN graph can be accessed at bm[["wknn"]], 
+# and the SNN graph used for clustering at bm[["wsnn"]]
+# Cell-specific modality weights can be accessed at bm$RNA.weight
+bm2=bm
+bm2 <- FindMultiModalNeighbors(
+  bm,
+  reduction.list = list("pca", "apca"),
+  dims.list = list(1:30, 1:20), 
+  modality.weight.name = "RNA.weight"
+)
+
+
+
+# 4. 基于wnn下游分析 ----
+bm2 <- RunUMAP(bm2, nn.name = "weighted.nn", reduction.name = "wnn.umap", reduction.key = "wnnUMAP_")
+bm2 <- FindClusters(bm2, graph.name = "wsnn", algorithm = 3, resolution = 0.3, verbose = T)
+
+#p1 <- DimPlot(bm2, reduction = 'wnn.umap', label = TRUE, repel = TRUE, label.size = 2.5)
+p1=DimPlot(bm2, reduction = 'wnn.umap', label=T) + ggtitle("RNA+ADT"); p1
+
+
+
+
+
+# 5. 和单一模态的比较 ----
+bm3=bm2
+bm3 <- RunUMAP(bm3, reduction = 'pca', dims = 1:30, assay = 'RNA', 
+              reduction.name = 'rna.umap', reduction.key = 'rnaUMAP_')
+bm3 <- RunUMAP(bm3, reduction = 'apca', dims = 1:20, assay = 'ADT', 
+              reduction.name = 'adt.umap', reduction.key = 'adtUMAP_')
+
+# bm3 = FindNeighbors(bm3, )
+# bm3 <- FindClusters(bm3, graph.name = "wsnn", algorithm = 3, resolution = 0.8, verbose = T)
+
+p3 <- DimPlot(bm3, reduction = 'rna.umap', #group.by = 'celltype.l2', 
+              label = TRUE, 
+              #label.size = 2.5,
+              repel = TRUE) + ggtitle("RNA") + NoLegend() 
+p4 <- DimPlot(bm3, reduction = 'adt.umap', #group.by = 'celltype.l2', 
+              label = TRUE, 
+              #label.size = 2.5,
+              repel = TRUE) + ggtitle("ADT")#+ NoLegend() 
+p3 + p4
+p3 + p4 + p1
+
+
+
+p5 <- FeaturePlot(bm3, features = c("adt_CD45RA","adt_CD16","adt_CD161"),
+                  reduction = 'wnn.umap', max.cutoff = 2, 
+                  cols = c("lightgrey","darkgreen"), ncol = 3)
+p6 <- FeaturePlot(bm3, features = c("rna_TRDC","rna_MPO","rna_AVP"), 
+                  reduction = 'wnn.umap', max.cutoff = 3, ncol = 3)
+p5 / p6
+
+
+#
+grep("CD19", bm3@assays$ADT@var.features, value=T)
+p5_=FeaturePlot(bm3, features = c("adt_CD45RA","adt_CD45RO","adt_CD4.1", "adt_CD8a", "adt_CD19.1"),
+            reduction = 'wnn.umap', max.cutoff = 2, 
+            cols = c("lightgrey","darkgreen"), ncol = 5)
+#
+grep("CD79", bm3@assays$RNA@counts|>rownames(), value=T)
+p6_=FeaturePlot(bm3, features = c("rna_CD3E", "rna_CCR7", "rna_CD4", "rna_CD8A", "CD79A"),
+            reduction = 'wnn.umap', max.cutoff = 2, 
+            cols = c("lightgrey","navy"), ncol = 5)
+p5_ / p6_
+
+
+
+head(bm3@meta.data)
+VlnPlot(bm3, features = c("RNA.weight", "ADT.weight", "nFeature_RNA", "nFeature_ADT"), 
+        #group.by = 'celltype.l2', sort = TRUE, 
+        pt.size = 0, ncol = 2) +
+  NoLegend()
+
+# 每个细胞的2个模态中的权重和为1
+# all( abs((bm3@meta.data$RNA.weight + bm3@meta.data$ADT.weight) -1) < 1e-10) #T 
+
+
+
+
+
+==> 重点关注整合模态的函数的输出
+bm2 <- FindMultiModalNeighbors(
+  bm,
+  reduction.list = list("pca", "apca"),
+  dims.list = list(1:30, 1:20), 
+  modality.weight.name = "RNA.weight"
+)
+
+Calculating cell-specific modality weights
+Finding 20 nearest neighbors for each modality.
+  |++++++++++++++++++++++++++++++++++++++++++++++++++| 100% elapsed=53s  
+Calculating kernel bandwidths
+  |++++++++++++++++++++++++++++++++++++++++++++++++++| 100% elapsed=14s  
+Finding multimodal neighbors
+  |++++++++++++++++++++++++++++++++++++++++++++++++++| 100% elapsed=04m 10s
+  |++++++++++++++++++++++++++++++++++++++++++++++++++| 100% elapsed=32s  
+Constructing multimodal KNN graph
+Constructing multimodal SNN graph
+Warning message:
+In FindMultiModalNeighbors(bm, reduction.list = list("pca", "apca"),  :
+  The number of provided modality.weight.name is not equal to the number of modalities. RNA.weight ADT.weight are used to store the modality weights
+总结：
+	* 计算细胞特异的模态权重：每个cell 每个模态给一个权重。对于两个模态整合，可获得 2个权重/每个细胞。
+	* 每个模态内，找20个最近邻
+	* 计算核函数宽度
+	* 找多模态邻居
+	* 构建多模态 KNN 图
+	* 构建多模态 SNN 图
+
+检查发现：每个细胞对应的两个模态的权重，都在meta data中，且权重的和为1。
+> head(bm3@meta.data)
+                   orig.ident nCount_RNA nFeature_RNA nCount_ADT nFeature_ADT percent.mt RNA.weight ADT.weight wsnn_res.2
+AAACCTGAGACTCGGA-1         A1       1067          624        682           42   6.185567  0.5325040  0.4674960          4
+AAACCTGAGAGTACAT-1         A1       1529          824        474           38   8.894702  0.4924699  0.5075301          6
+...
+
+
+
+
+
+
+
+2. 源码
+问题：调用之后是不是只用了PCA数据，及基于PCA的KNN和SNN？
+和原始数据还有关系吗？
+
+
+(1) 主函数的主要流程/关键步骤
+1) 获取每个模态的前若干个PC：行为cell id, 列为PC_1
+2) 对每个模态的PC做行L2Norm(L2范式标准化)：每个cell 都在单位1球面上
+3) KNN: 模态内，用欧式距离，分别求20个最近邻，给出cell 下标和距离
+4) PredictAssay() 根据(自己或其他模态)最近邻的20个细胞，在自己L2Norm PC空间取其均值，作为自己的预测值
+* 模态内预测：最近邻的19个细胞（去掉自己）的均值，是其在 normPC_x 空间的预测值
+* 模态内预测 描述2： 最近邻的19个细胞（去掉自己）的下标，在自己L2标准化PC空间中求均值，是其在 normPC_x 空间的预测值
+* 模态之间预测： 根据其他模态 获取 最近邻的19个细胞（去掉自己），在自己原L2标准化PC空间求均值，是其在原 normPC_x 空间的预测值
+
+
+
+
+问题:
+==> WNN 是否支持>=3个模态的整合？
+	看这一行，似乎是支持多个模态的：cross_impute[[r]] <- lapply(X = cross.modality, FUN = function(r2) {
+
+
+
+
+
+
+(2) FindModalityWeights
+(3) L2Norm
+(4) Distances
+nearest_dist <- lapply(X = reduction.list, FUN = function(r) Distances(object = nn.list[[r]])[, 2])
+
+(5) PredictAssay()
+
+(6) Indices
+(7) impute_dist
+(8) ReLu 激活函数
+(9) ComputeSNNwidth()
+(10) SNN_SmallestNonzero_Dist():C++函数
+(11) sort_indexes(): C++函数
+
+
+
+
+
+3. R tips
+(1) pbapply::pblapply() 带进度条的 apply 家族函数
+
+https://github.com/psolymos/pbapply
+Adding progress bar to '*apply' functions in R
+
+https://peter.solymos.org/pbapply/
+
+用法：pbapply::pb 加到你的 *apply 函数前面，即可添加进度条功能。
+
+按Seurat FindModalityWeights 函数的写法：
+
+	my.lapply <- ifelse(
+		test = verbose,
+		yes = pblapply,
+		no = lapply
+	)
+
+
+(2) 连等号给list设置names
+
+reduction.list = list("pca", "apca")
+cross.contant.list = as.list(x = rep(x = 1e-4, times = length(reduction.list)))
+dims.list = list(1:30, 1:20)
+
+# 获取名字
+reduction.set <- unlist(x = reduction.list)
+
+# 设置名字：连等号
+names(x = reduction.list) <- names(x = dims.list) <-
+    names(x = cross.contant.list) <- reduction.set
+
+# 查看结果
+> reduction.list
+$pca
+[1] "pca"
+
+$apca
+[1] "apca"
+
+> dims.list
+$pca
+ [1]  1  2  3  4  5  6  7  8  9 10 11 12 13 14 15 16 17 18 19 20 21 22 23 24 25 26 27 28 29 30
+
+$apca
+ [1]  1  2  3  4  5  6  7  8  9 10 11 12 13 14 15 16 17 18 19 20
+
+> cross.contant.list
+$pca
+[1] 1e-04
+
+$apca
+[1] 1e-04
+
+
+测试发现，用等号效果一样：
+> names(x = reduction.list) = names(x = dims.list) =
++     names(x = cross.contant.list) = c("a", "b")
+> reduction.list
+$a
+[1] "pca"
+
+$b
+[1] "apca"
+
+> dims.list
+$a
+ [1]  1  2  3  4  5  6  7  8  9 10 11 12 13 14 15 16 17 18 19 20 21 22 23 24 25 26 27 28 29 30
+
+$b
+ [1]  1  2  3  4  5  6  7  8  9 10 11 12 13 14 15 16 17 18 19 20
+
+> cross.contant.list
+$a
+[1] 1e-04
+
+$b
+[1] 1e-04
+
+赶紧恢复回去，防止后面不一致。
+
+
+
+
+
+(3) L2范数标准化
+
+L2 norm就是欧几里德距离，几个数字的平方和的开方。
+
+问题：输入是行为cell id，列为 PC_1 的cell embedding 矩阵，为什么对行做标准化？
+我的解释：保证每一行的平方和都是1，也就是每个cell都在距原点单位1半径的球面上。
+
+# L2 normalize the columns (or rows) of a given matrix | 对矩阵的列（或行）做L2标准化
+# @param mat Matrix to cosine normalize | 将要做cosine标准化的矩阵
+# @param MARGIN Perform normalization over rows (1) or columns (2) | 默认对行做标准化
+#
+# @return returns l2-normalized matrix
+#
+L2Norm <- function(mat, MARGIN = 1){
+  normalized <- Sweep(
+    x = mat,
+    MARGIN = MARGIN, #默认，按行。除以每一行的
+    STATS = apply( # 行：平方和的开方
+      X = mat,
+      MARGIN = MARGIN,
+      FUN = function(x){
+        sqrt(x = sum(x ^ 2))
+      }
+    ),
+    FUN = "/"
+  )
+  # 无穷大都改写为0： 除数是0导致无穷大，这一行全是0导致的
+  normalized[!is.finite(x = normalized)] <- 0
+  return(normalized)
+}
+
+
+
+(4) NNHelper() 获取每行(obs)的20个最近邻居，给出下标和距离
+该函数的解析见本系列解析21-2(4)。
+
+> 这个函数很有用：使用KNN求最近邻的函数。
+
+测试：在PCA模态内，行为obs，列为变量，查找20个最近邻。
+query.embeddings.list.norm = embeddings.list.norm
+r="pca"
+
+nn.r <- Seurat:::NNHelper(
+	data = embeddings.list.norm[[r]],
+	query = query.embeddings.list.norm[[r]],
+	k = 20, #max(k.nn, sigma.idx, s.nn),
+	method = "annoy",
+	metric = "euclidean"
+)
+
+> str(nn.r)
+Formal class 'Neighbor' [package "SeuratObject"] with 5 slots
+  ..@ nn.idx    : num [1:8036, 1:20] 1 2 3 4 5 6 7 8 9 10 ...
+  ..@ nn.dist   : num [1:8036, 1:20] 0 0 0 0 0 0 0 0 0 0 ...
+  ..@ alg.idx   : NULL
+  ..@ alg.info  :List of 2
+  .. ..$ metric: chr "euclidean"
+  .. ..$ ndim  : int 30
+  ..@ cell.names: chr [1:8036] "AAACCTGAGACTCGGA-1" "AAACCTGAGAGTACAT-1" "AAACCTGAGATATACG-1" "AAACCTGAGCGAAGGG-1" ...
+# 最近邻的索引，第一行是cell1的20个最近邻，包括它自己。
+> nn.r@nn.idx[1:4, 1:5]
+     [,1] [,2] [,3] [,4] [,5]
+[1,]    1 4183 6473 5855 4815
+[2,]    2 3214  141 4925 6424
+[3,]    3 7483 2112 6507 6761
+[4,]    4 5852 1136 4099 3692
+# 这是最近20个的距离
+> nn.r@nn.dist[1:4, 1:5]
+     [,1]      [,2]      [,3]      [,4]      [,5]
+[1,]    0 0.4836937 0.4968935 0.4984034 0.5035769
+[2,]    0 0.3665269 0.3854056 0.3913714 0.3951993
+[3,]    0 0.4051788 0.4284064 0.4461618 0.4473171
+[4,]    0 0.2759555 0.2820950 0.2826159 0.3091598
+
+
+
+
+(5) 判断：如果不是函数，则报错
+
+mean.function=rowSums
+
+if (!inherits(x = mean.function, what = 'function')) {
+	stop("'mean.function' must be a function")
+}
+
+> inherits(x = rowSums, what = 'function')
+[1] TRUE
+> inherits(x = iris, what = 'function')
+[1] FALSE
+
+我想到另一种判断方法：不知道是否可靠
+> mode(rowSums)
+[1] "function"
+
+使用class不行：
+> class(rowSums)
+[1] "standardGeneric"
+attr(,"package")
+[1] "methods"
+
+
+
+
+
+(6) 如果是双层 apply 家族，返回结果是什么结构的？
+
+原函数：
+  cross_impute_dist <- lapply(
+    X = reduction.list,
+    FUN = function(r) {
+      #
+      r_dist <- sapply(setdiff(x = reduction.set, y = r), #其他模态都算进去，这里只有一个 'apca'
+        FUN = function(r2) { #'apca'
+          r2_dist <- impute_dist(
+            x = query.embeddings.list.norm[[r]], #原细胞嵌入
+            y = t(x = cross_impute[[r]][[r2]]), #使用其他模态的最近邻20个细胞，用它们的原空间位置给出均值作为估计值
+            nearest.dist = nearest_dist[[r]] #原空间内最近的一个细胞的距离
+          )
+          return( r2_dist) #返回一个 named vector
+        })
+      return(r_dist) #两层结果：输出结果怎么嵌套的？ //todo
+    }
+  )
+
+测试1：lapply 中嵌套 sapply
+types=unique(as.character(iris$Species)); types
+listX=lapply( types, function(x){
+  sapply(x, function(x2){
+    colMeans(iris[which(iris$Species==x2),1:4])
+  })
+})
+listX
+[[1]]
+             setosa
+Sepal.Length  5.006
+Sepal.Width   3.428
+Petal.Length  1.462
+Petal.Width   0.246
+
+[[2]]
+             versicolor
+Sepal.Length      5.936
+Sepal.Width       2.770
+Petal.Length      4.260
+Petal.Width       1.326
+
+[[3]]
+             virginica
+Sepal.Length     6.588
+Sepal.Width      2.974
+Petal.Length     5.552
+Petal.Width      2.026
+
+可以设置list键名： names(listX)=types
+> names(listX)
+[1] "setosa"     "versicolor" "virginica" 
+
+
+对list中的每个元素，使用函数cbind按列合并：
+> do.call(cbind, listX)
+             setosa versicolor virginica
+Sepal.Length  5.006      5.936     6.588
+Sepal.Width   3.428      2.770     2.974
+Petal.Length  1.462      4.260     5.552
+Petal.Width   0.246      1.326     2.026
+
+
+
+测试2：lapply 中嵌套 sapply，内函数计算其他两个的平均值
+types=unique(as.character(iris$Species)); types
+lapply( types, function(x){
+  sapply( setdiff(types, x), function(x2){ #内apply中有2个循环，每个循环对应一列
+    colMeans(iris[which(iris$Species==x2),1:4])
+  })
+})
+[[1]]
+             versicolor virginica
+Sepal.Length      5.936     6.588
+Sepal.Width       2.770     2.974
+Petal.Length      4.260     5.552
+Petal.Width       1.326     2.026
+
+[[2]]
+             setosa virginica
+Sepal.Length  5.006     6.588
+Sepal.Width   3.428     2.974
+Petal.Length  1.462     5.552
+Petal.Width   0.246     2.026
+
+[[3]]
+             setosa versicolor
+Sepal.Length  5.006      5.936
+Sepal.Width   3.428      2.770
+Petal.Length  1.462      4.260
+Petal.Width   0.246      1.326
+
+
+测试3：sapply + sapply，会失去行名
+types=unique(as.character(iris$Species)); types
+sapply( types, function(x){
+    sapply(x, function(x2){
+        colMeans(iris[which(iris$Species==x2),1:4])
+    })
+})
+     setosa versicolor virginica
+[1,]  5.006      5.936     6.588
+[2,]  3.428      2.770     2.974
+[3,]  1.462      4.260     5.552
+[4,]  0.246      1.326     2.026
+
+
+
+
+
+
+
+
+
+
 
 
 
