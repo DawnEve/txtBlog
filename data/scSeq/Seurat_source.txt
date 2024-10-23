@@ -687,7 +687,7 @@ fixed: logical. If TRUE, pattern is a string to be matched as is. Overrides all 
 
 
 ========================================
-|-- step3: step3 add meta.data(percent.mt, percent.rp, cell cycle score)
+|-- step3: add meta.data(percent.mt, percent.rp, cell cycle score)
 ----------------------------------------
 1. 掉包侠
 
@@ -14646,8 +14646,11 @@ DotPlot(pbmc, features = unique( top10$gene ), cluster.idents = T ) + RotatedAxi
 
 
 ========================================
-|-- Seurat 4 R包源码解析 B1: WNN多组学整合分析 FindMultiModalNeighbors() //todo
+|-- Seurat 4 R包源码解析 B1: WNN多组学整合分析 FindMultiModalNeighbors()
 ----------------------------------------
+https://blog.csdn.net/wangjunliang/article/details/143192137
+
+
 WNN是一个比较复杂的算法，我打算从宏观和微观两个角度逐步理解其处理过程。
 * 宏观：各种描述，GPT整理的描述，该算法paper中的描述。
 * 微观：函数调用，函数输出，函数实现，自己复现。
@@ -14836,8 +14839,11 @@ bm2 <- FindMultiModalNeighbors(
   bm,
   reduction.list = list("pca", "apca"),
   dims.list = list(1:30, 1:20), 
-  modality.weight.name = "RNA.weight"
+  modality.weight.name = "RNA.weight" 
 )
+# modality.weight.name = "RNA.weight"  设置模态名字。只传入一个其实是错误的，所以执行后会给出警告。
+# 1. 要么传入个数和 reduction.list 长度一致，
+# 2. 否则，不传入或者传入个数不对，就使用默认设置：取 reduction.list 中的 assay 名字 加 .weight 后缀。
 
 
 
@@ -14914,8 +14920,7 @@ VlnPlot(bm3, features = c("RNA.weight", "ADT.weight", "nFeature_RNA", "nFeature_
 bm2 <- FindMultiModalNeighbors(
   bm,
   reduction.list = list("pca", "apca"),
-  dims.list = list(1:30, 1:20), 
-  modality.weight.name = "RNA.weight"
+  dims.list = list(1:30, 1:20)
 )
 
 Calculating cell-specific modality weights
@@ -14928,9 +14933,7 @@ Finding multimodal neighbors
   |++++++++++++++++++++++++++++++++++++++++++++++++++| 100% elapsed=32s  
 Constructing multimodal KNN graph
 Constructing multimodal SNN graph
-Warning message:
-In FindMultiModalNeighbors(bm, reduction.list = list("pca", "apca"),  :
-  The number of provided modality.weight.name is not equal to the number of modalities. RNA.weight ADT.weight are used to store the modality weights
+
 总结：
 	* 计算细胞特异的模态权重：每个cell 每个模态给一个权重。对于两个模态整合，可获得 2个权重/每个细胞。
 	* 每个模态内，找20个最近邻
@@ -14952,21 +14955,44 @@ AAACCTGAGAGTACAT-1         A1       1529          824        474           38   
 
 
 
-2. 源码
-问题：调用之后是不是只用了PCA数据，及基于PCA的KNN和SNN？
-和原始数据还有关系吗？
 
 
-(1) 主函数的主要流程/关键步骤
+
+(3) 主函数的主要流程/关键步骤：计算模态权重 FindModalityWeights()
 1) 获取每个模态的前若干个PC：行为cell id, 列为PC_1
-2) 对每个模态的PC做行L2Norm(L2范式标准化)：每个cell 都在单位1球面上
-3) KNN: 模态内，用欧式距离，分别求20个最近邻，给出cell 下标和距离
+2) 对每个模态的PC做行L2Norm(L2范式标准化)：每个cell 都在距原点单位1球面上
+
+3) KNN: 模态内，用L2Norm空间和欧式距离，分别求20个最近邻，给出cell 下标和距离
+* 取距离矩阵第二列，就是距离每个细胞最近的一个细胞的距离。
+
 4) PredictAssay() 根据(自己或其他模态)最近邻的20个细胞，在自己L2Norm PC空间取其均值，作为自己的预测值
-* 模态内预测：最近邻的19个细胞（去掉自己）的均值，是其在 normPC_x 空间的预测值
+* 模态内预测(within_impute)：最近邻的19个细胞（去掉自己）的均值，是其在 normPC_x 空间的预测值
 * 模态内预测 描述2： 最近邻的19个细胞（去掉自己）的下标，在自己L2标准化PC空间中求均值，是其在 normPC_x 空间的预测值
-* 模态之间预测： 根据其他模态 获取 最近邻的19个细胞（去掉自己），在自己原L2标准化PC空间求均值，是其在原 normPC_x 空间的预测值
+* 模态之间预测(cross_impute)： 根据其他模态 获取 最近邻的19个细胞（去掉自己），在自己原L2标准化PC空间求均值，是其在原 normPC_x 空间的预测值
+
+5) 模态内预测的差异距离(within_impute_dist)：原点 - 模态内20个最近邻 的欧氏距离，减去其与最近一个细胞的欧氏距离，ReLu后返回
+6) 模态间预测的差异距离(cross_impute_dist)：原点 - 另一个模态预测的20个最近邻的欧氏距离，减去其与最近一个细胞的欧氏距离，ReLu后返回
+	每一列是一个其他模态
+
+7) 计算 模态SNN核宽度(kernel bandwidths)：
+* SNN图：使用20个最近邻细胞，计算其Jacard相似性，得到SNN图。对称矩阵，行列都是cell id，中间的值在[0, 1]之间。
+* SNN 最远核宽度(farthest_nn_dist)：细胞到其SNN图中相似性最低的(也就是有点关系的点中，最远的)n个点，在原PC L2Norm后距离的均值
+	此处距离是 两细胞在L2Norm空间的欧氏距离 - 与最近一个细胞的距离，取ReLu后返回
+8) [跳过]距离乘以系数，默认 sd.scale=1
+
+9) 模态内预测核(within_impute_kernel)：exp(- 模态内预测的距离 / 模态SNN核宽度) #[0.5, 1] 主要是1
+10)模态间预测核(cross_impute_kernel)：exp(- 模态间预测的距离 / 模态SNN核宽度) #[0,1]之间正态分布，主峰0.5
+
+11) 模态打分(modality_score)：模态内预测核 / (模态间预测核 + 1e-4)，小于0记为0，大于200记为200； #[0, 50] 主峰在[0, 10]
+12) [默认跳过] 平滑化：使用最近邻20个细胞的平均值作为最终打分
+13) softmax 得到模态权重(modality.weight): 模态打分：exp(模态1打分) / 累加[exp(模态1打分, exp(模态2打分), ...)]
 
 
+再倒叙描述一遍：
+* 打分越高，模态的权重越高。
+* 模态的打分，是 模态内预测kenel / 模态间预测kenel 求出来的比例。反应的是在本normPC空间中，本模态相对其他模态的优势。
+* 模态内预测kernel = exp(- 模态内预测的差异距离 / 模态SNN宽度 ) #该指数函数，模态KNN预测越准确，距离差异越小，算出来的预测kernel越大。
+* 模态间预测kernel = exp(- 模态间预测的差异距离 / 模态SNN宽度 ) #反之也成立：模态KNN预测越不准确，误差越大，算出来的预测kernel越小。
 
 
 问题:
@@ -14978,7 +15004,97 @@ AAACCTGAGAGTACAT-1         A1       1529          824        474           38   
 
 
 
-(2) FindModalityWeights
+(4) 主函数的主要流程/关键步骤: 多模态整合最近邻 MultiModalNN()
+这两个函数(FindModalityWeights / MultiModalNN)应该不是一个作者写的，因为变量命名、循环实现等细节上截然不同。虽然逻辑上高度一致。
+
+1) 取每个模态各自前若干PC，做 L2Norm：在距离原点单位1的球面上。
+2) 每个模态内KNN最近邻 200个，模态间取并集: [200, 400]个最近邻cell 下标/细胞。
+3) 求细胞与这些最近邻的相对距离：在原L2Norm PC空间的欧氏距离 - 最近一个细胞的距离，取ReLu。
+4) 细胞之间的多模态相似性：exp( - 相对距离 / 模态宽度) * 该模态权重。相对距离越小，模态权重越大，该相似性越大。
+	加权最近邻相似性：normPC空间的指数核 * 模态权重。 重要的一步，体现了用每个细胞的距离和多模态权重 计算相似性。
+	# kernel.power=1
+	# 该模态内(r)，该细胞的(x): exp(- 最近邻细胞相对距离 / 模态宽度) * 模态权重
+	exp(-1*(nn_dist[[r]][[x]] / sigma.list[[r]][x] ) ** kernel.power) * modality.weight.value[[r]][x]
+	# 分析该 加权最近邻相似度：
+	# nn_dist是原始L2空间相对距离，值d越小，带入指数函数 exp( - d/width) 后整体值越大
+	# 后半部分 权重越大，最后整体值越大
+	# 两者相乘，得到 加权最近邻相似性，该值越大，表示细胞之间的联系越紧密：细胞距离近，该模态权重高 至少一个成立
+
+5) 每个细胞中，把各个模态的 加权相似性 相加。
+6) 按 加权相似性 从大到小排序，取出前20个。
+7) 获取其 cell 下标，和 加权相似性
+	# select_dist |> hist(n=100) #[0.4, 1] 之间，正态分布，主峰在0.7
+8) 加权相似性 转为 加权距离：select_dist = sqrt(x = MinMax(data = (1 - select_dist) / 2, min = 0, max = 1))
+	# 1-x 再除以2。
+	# 小于0的记作0，大于1的记作1。
+	# 开方
+	# select_dist |> hist(n=100) #[0.2, 0.55] 之间，正态分布，主峰在0.4
+9) 返回 这20个 加权最近邻的 下标 和 加权距离。
+
+
+
+
+
+(5) 主函数的主要流程/关键步骤: 多模态KNN和SNN
+1) 多模态最近邻20个下标，通过稀疏矩阵构建 cell number * cell number维度的0-1矩阵，作为KNN图。
+* 这20个 加权最近邻的 下标 和 加权距离，保存到 bm2@neighbors 中。
+* 争议：计算SNN用的是该KNN，但记录到Seurat对象@graphs$wknn的却是经过对称处理的KNN图。
+这个处理是否必要？见2(1)-A15
+2) 基于KNN计算SNN图
+3) 多模态权重记录到 @meta.data 中：RNA.weight, ADT.weight
+
+接着，使用该SNN就可以做UMAP或者细胞聚类了。
+
+
+
+
+
+
+
+
+2. 源码
+问题：调用之后是不是只用了PCA数据，及基于PCA的KNN和SNN？
+和原始数据还有关系吗？没有关系，但是Seurat代码中为了记录历史命令参数，需要知道PCA降维用的assay名字，该信息是软件需要，而不是算法需要的。
+
+调用很简单，但是涉及到很多函数调用，重要的如下。
+
+(1) FindMultiModalNeighbors() 主函数
+见1(3), 1(4)
+
+(A15)为什么对KNN图做 A + A^T - A^T.A 变换？变换后记录到 bm2@graphs$wknn，但是后面计算SNN用的又是该公式处理前的KNN图。
+
+对象更新：添加三个对象
+	# > bm2@neighbors |> names() #加权最近邻
+	# [1] "weighted.nn"
+	# > bm2@graphs |> names()
+	# [1] "wknn" "wsnn"
+
+
+(2) FindModalityWeights() 计算模态权重
+主函数：
+> modality.weight_2 <- Seurat:::FindModalityWeights(
+  object = bm,
+  reduction.list = list("pca", "apca"),
+  dims.list = list(1:30, 1:20),
+  k.nn = 20,
+  sd.scale = 1,
+  l2.norm = T,
+  cross.contant.list = NULL,
+  smooth = F,
+  verbose = T
+)
+Finding 20 nearest neighbors for each modality.
+  |++++++++++++++++++++++++++++++++++++++++++++++++++| 100% elapsed=01m 16s
+Calculating kernel bandwidths
+  |++++++++++++++++++++++++++++++++++++++++++++++++++| 100% elapsed=29s
+
+重要的中间结果：
+> modality.weight_2@score.matrix |> names()
+[1] "within_impute_dist"   "cross_impute_dist"    "within_impute_kernel" "cross_impute_kernel"  "modality_score"
+modality.weight_2@score.matrix
+
+
+
 (3) L2Norm
 (4) Distances
 nearest_dist <- lapply(X = reduction.list, FUN = function(r) Distances(object = nn.list[[r]])[, 2])
@@ -14991,6 +15107,15 @@ nearest_dist <- lapply(X = reduction.list, FUN = function(r) Distances(object = 
 (9) ComputeSNNwidth()
 (10) SNN_SmallestNonzero_Dist():C++函数
 (11) sort_indexes(): C++函数
+
+(12) MultiModalNN()：计算多模态最近邻下标和距离
+注意：(A13)的分析。
+加权最近邻距离，该值越大，表示细胞之间的联系越紧密：细胞距离近，该模态权重高 至少一个成立
+
+(13) NNdist
+(14) fast_dist C++函数
+(15) euclidean_distance() C++函数
+
 
 
 
@@ -15185,7 +15310,7 @@ attr(,"package")
 
 
 
-(6) 如果是双层 apply 家族，返回结果是什么结构的？
+(6) 如果是双层 apply 家族，返回结果是什么结构的？//todo 有什么方法可以不用实验直接知道？
 
 原函数：
   cross_impute_dist <- lapply(
@@ -15293,9 +15418,108 @@ sapply( types, function(x){
 
 
 
+(7) unlist() 把list解开为 named vector
+> list("a"=1, "b"=2)
+$a
+[1] 1
+
+$b
+[1] 2
+
+> list("a"=1, "b"=2) |> unlist()
+a b
+1 2
+
+> list("a"=1, "b"=2) |> unlist() |> class()
+[1] "numeric"
 
 
 
+
+
+
+
+(8) 无穷大都改写为0
+normalized[!is.finite(x = normalized)] <- 0
+
+注：L2标准化后是0，可能除以0得到无穷大，除数是 平方和的开方，表明这一行全是0.
+
+
+
+
+
+
+
+
+(9) 由细胞20个最近邻下标构建稀疏矩阵
+
+一行是一个细胞，及其3个最近邻细胞的下标。
+> select_nn=matrix(c(1,3,5,  2,4,8,  3,4,7,  4,5,6), nrow=4, ncol=3, byrow=T)
+> select_nnB
+     [,1] [,2] [,3]
+[1,]    1    3    5
+[2,]    2    4    8
+[3,]    3    4    7
+[4,]    4    5    6
+
+# 细胞下标，转置，变为一行
+j <- as.numeric(x = t(x = select_nn ))
+# 转置后：列为细胞，及该细胞最近的细胞下标。 再转为一行
+# [1] 1 3 5 2 4 8 3 4 7 4 5 6
+
+
+# 细胞的下标编号：序号-1，整除 20，然后加1
+##i <- ((1:length(x = j)) - 1) %/% k.nn + 1
+> i <- ((1:length(x = j)) - 1) %/% 3 + 1
+> i
+#[1] 1 1 1 2 2 2 3 3 3 4 4 4
+
+
+# 构建大型稀疏矩阵：i行为细胞，j列表示每个细胞下标，值为1
+nn.matrixB <- Matrix::sparseMatrix(
+  i = i,
+  j = j,
+  x = 1,
+  dims = c(8, 8)
+)
+> nn.matrixB
+8 x 8 sparse Matrix of class "dgCMatrix"
+
+[1,] 1 . 1 . 1 . . .
+[2,] . 1 . 1 . . . 1
+[3,] . . 1 1 . . 1 .
+[4,] . . . 1 1 1 . .
+[5,] . . . . . . . .
+[6,] . . . . . . . .
+[7,] . . . . . . . .
+[8,] . . . . . . . .
+
+# 对角线填充1
+> diag(x = nn.matrixB) <- 1
+> nn.matrixB
+8 x 8 sparse Matrix of class "dgCMatrix"
+
+[1,] 1 . 1 . 1 . . .
+[2,] . 1 . 1 . . . 1
+[3,] . . 1 1 . . 1 .
+[4,] . . . 1 1 1 . .
+[5,] . . . . 1 . . .
+[6,] . . . . . 1 . .
+[7,] . . . . . . 1 .
+[8,] . . . . . . . 1
+
+
+
+
+
+
+
+
+
+4. Bugs
+
+(1) 函数(2)(A21)？
+如果是多于3个组学，这里可能有问题: 无法保持原来的维度。
 
 
 
