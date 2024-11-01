@@ -22,7 +22,7 @@ return array (
       array('英语资源代码','en101-code','txt'),
       array('听 - 精听/泛听/重复听','en200_listening','txt'),
       array('说-跟读/影读/回音/转述','en201_spoken','txt'),
-      array('读 - 广读法','en203_reading','txt'),
+      array('读 - 广读法|词典GoldenDict','en203_reading','txt'),
       array('写 - 持续输出 先模仿','en204_writing','txt'),
       array('疯狂记单词Word','wordStudy','md'),
     ),

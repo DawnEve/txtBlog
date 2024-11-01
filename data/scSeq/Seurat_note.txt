@@ -1919,6 +1919,67 @@ ref: https://bioinformatics.stackexchange.com/questions/9225/how-to-merge-more-t
 
 
 
+
+
+
+
+
+
+
+
+
+========================================
+|-- 修改细胞名字：RenameCells(obj, named_newID_Arr)
+----------------------------------------
+用于多个数据集合并前
+Change the cell names in all the different parts of an object. Can be useful before combining multiple objects.
+
+1. Aim: 修改细胞名字：short names, change to long names.
+head(scObj_RNA@meta.data, n=2) #use short
+scObj=scObj_RNA
+
+cell.names = scObj@meta.data$cid #long: UMI with hour and Rep
+names(cell.names) = scObj@meta.data$seurat_cid #short: UMI with only number
+head(cell.names) #value 是新名字，names()是老名字
+
+> c("old"="new", 'old2'='new2') # 格式：old cell name = new cell name
+   old   old2 
+ "new" "new2" 
+
+scObj=RenameCells(scObj, new.names = cell.names)
+head(scObj@meta.data) #use long
+
+
+
+
+
+2. 添加前缀
+
+RenameCells(
+  object,
+  add.cell.id = NULL
+)
+
+如：
+obj2=RenameCells( obj,  add.cell.id = "B1")
+
+> obj@meta.data[1:2, 1:2]
+                orig.ident nCount_RNA
+AAACACCA_0hRep1     0hRep1      45113
+AAACGAGA_0hRep1     0hRep1      56217
+> obj2@meta.data[1:2, 1:2]
+                   orig.ident nCount_RNA
+B1_AAACACCA_0hRep1     0hRep1      45113
+B1_AAACGAGA_0hRep1     0hRep1      56217
+
+自动在 cell id前都添加了前缀，下划线隔开。
+
+
+
+
+
+
+
 ========================================
 算法细节
 ----------------------------------------
@@ -2151,6 +2212,176 @@ https://www.jianshu.com/p/2203a20cb369
 ----------------------------------------
 
 https://mp.weixin.qq.com/s?__biz=MzI5MTcwNjA4NQ==&mid=2247484978&idx=1&sn=07b7f734ad0ad44562186c1ef3663057&scene=21#wechat_redirect
+
+
+
+
+
+========================================
+|-- UMAP 算法 //todo
+----------------------------------------
+* UMAP是一种基于流形学习的非线性降维技术，设计灵感来源于t-SNE，但在效率和可扩展性方面进行了显著改进。
+* UMAP的核心优势在于它能够在减少全局结构失真的同时，保留数据的局部结构，这使得UMAP非常适合于探索性数据分析和数据可视化。
+
+
+1. 算法原理
+(1)构建高维邻域图
+* 近邻搜索：UMAP在高维的迷宫中寻找每个点的朋友，为接下来的探险做准备。
+* 权重图构建：它通过一种特殊的距离来衡量这些朋友之间的关系，建立一张精密的地图。
+
+(2)降维优化
+* 捕捉本质：UMAP试图捕捉每个点的本质，将它们从高维的迷宫中解放出来，放到可以触及的二维平面上。
+
+(3)流形学习假设
+* 探索低维世界：UMAP认为，尽管数据看似复杂，但它们的真实形态是简单的，我们只是需要找到正确的视角。
+
+
+
+
+2. 主要数学公式
+(1)高维距离度量
+* 测量距离：就像用尺子测量物体的长度，UMAP用特定的方法来测量数据点之间的距离。
+
+(2)优化目标函数
+* 最小化误差：UMAP试图让高维和低维世界中的关系尽可能一致，减少迁移过程中的误差。
+C=累加(i, p*log(p) + (1-p)*log(1-p) )
+
+(3)概率分布匹配
+* 匹配规律：UMAP尝试让这两个世界中的规律匹配，确保转换后的世界依旧真实可信。
+
+
+
+
+
+3. R 实现 uwot::umap
+只看第(2)即可。
+
+# 1. 创建随机数据矩阵
+set.seed(123)
+n_cells <- 2000
+data_matrix <- matrix(rnorm(n_cells * 10), nrow = n_cells, ncol = 10)
+dim(data_matrix)
+
+# 2. umap
+# input row as cells, 
+# return: keep row number, but only 2 columns as UMAP1-2
+umap_result <- uwot::umap(data_matrix[,1:2])
+dim(umap_result)
+
+# 3. draw
+#
+color_scheme <- c("Group A" = "blue", "Group B" = "red")
+
+umap_df <- data.frame(UMAP1 = umap_result[, 1], UMAP2 = umap_result[, 2])
+umap_df$group <- sample(c("Group A", "Group B"), n_cells, replace = TRUE)
+library(ggplot2)
+umap_plot <- ggplot(umap_df, aes(x = UMAP1, y = UMAP2, color = group)) +
+  geom_point(size = 3) +
+  scale_color_manual(values = color_scheme) +
+  ggtitle("UMAP of Random Data with Color Testing") +
+  theme_minimal()
+umap_plot
+
+
+
+
+
+
+
+
+
+
+
+4. Python 实现
+(1) 安装
+pip install umap-learn
+
+(2) 初始化参数
+UMAP提供了多个参数，允许用户根据具体的数据集和需求进行调整，以下是一些重要的初始化参数：
+
+* n_neighbors: 控制UMAP算法考虑的邻近点的数量，较小的值强调保持局部数据结构，较大的值有助于更好地捕捉全局数据结构。
+* n_components: 降维后的空间维数，常用值为2或3，便于数据可视化。
+* metric:用于计算数据点间距离的度量，如'euclidean', 'manhattan', 'cosine'等，选择合适的度量标准对保持数据结构很重要。
+* min_dist: 控制嵌入空间中点之间的最小距离，较小的值使得UMAP更强调保持局部结构，较大的值有助于点在嵌入空间中更均匀地分布。
+* random_state: 确保每次运行UMAP时结果的可重复性，对于实验和产品化过程很重要。
+
+(3)参数调节技巧
+数据探索和可视化：对于数据探索和可视化，推荐使用n_neighbors较小的值（如5至50之间），min_dist较小（如0.0到0.3之间），以便强调数据的局部结构。
+聚类：进行聚类时，可能需要通过调整n_neighbors来平衡局部和全局结构的重要性，以便更好地识别聚类。
+特征提取：如果使用UMAP进行特征提取以供后续学习任务，可能需要增加n_components的值，以保留更多的信息。
+
+
+(4) 案例分析1：数据探索与聚类
+在一个电子商务平台的用户行为数据集上应用UMAP，通过降维发现潜在的用户群体，并对其进行聚类分析，从而帮助营销团队制定针对性的策略。
+
+import umap
+import numpy as np
+from sklearn.datasets import make_blobs
+from sklearn.cluster import KMeans
+import matplotlib.pyplot as plt
+
+# 生成模拟数据集
+data, labels = make_blobs(n_samples=300, centers=5, random_state=42)
+
+# 使用UMAP进行降维
+reducer = umap.UMAP(random_state=42)
+#umap_model = umap.UMAP(n_neighbors=5, n_components=2, metric='euclidean')
+
+# 拟合模型并进行降维
+data_reduced = reducer.fit_transform(data)
+#umap_result = umap_model.fit_transform(data)
+
+
+# 使用KMeans进行聚类
+kmeans = KMeans(n_clusters=5)
+clusters = kmeans.fit_predict(data_reduced)
+
+# 可视化降维结果和聚类
+plt.scatter(data_reduced[:, 0], data_reduced[:, 1], c=clusters, cmap='viridis')
+plt.title("UMAP Reduction and Clustering")
+plt.xlabel("UMAP 1")
+plt.ylabel("UMAP 2")
+plt.show()
+
+
+
+
+更多参数设置：
+1) 不同的距离度量方法（如欧氏距离、曼哈顿距离等）
+# 创建UMAP对象，使用欧氏距离度量方法
+umap_obj_euclidean = umap.UMAP(n_neighbors=15, min_dist=0.1, metric='euclidean', n_epochs=500)
+umap_model = umap.UMAP(n_neighbors=10, n_components=3, metric='cosine')
+
+
+2) 不同的优化算法选择（如叶平面法、林伯格-马奇克索斯法等）
+# 创建UMAP对象，使用叶平面法优化算法
+umap_obj_1 = umap.UMAP(n_neighbors=15, min_dist=0.1, low_memory=True, random_state=42, a=None, b=None)
+
+
+3) 将训练好的UMAP模型保存到文件中，以便将来使用。
+# 保存UMAP模型到文件
+umap_model = umap.UMAP(n_neighbors=5, n_components=2, metric='euclidean')
+umap_model.fit(X)
+umap_model.save("umap_model.pkl")
+
+# 加载UMAP模型
+loaded_model = umap.UMAP()
+loaded_model.load("umap_model.pkl")
+
+
+
+4) Seurat 中使用py时 默认设置为 min.dist = 0.3 和 n.neighbors = 30L 
+* min-dist, the desired separation between close points in the embedding space
+	一个是亚群内相邻两个点的期望距离
+* n, the number of neighbors to consider when approximating the local metric
+	另一个是局部尺度下的邻近分群的数量，
+
+修改为：sce.all <- RunUMAP(sce.all, dims = 1:30, min.dist = 0.01, n.neighbors = 4L)
+结果：分的更开了，但是小的边角小类也多起来了。
+
+
+
+
 
 
 

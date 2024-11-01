@@ -95,7 +95,7 @@
 			array('http://www.cnblogs.com/jikey/p/4426105.html','豪情的博客', '高级qq群'),
 			//array('http://www.nowamagic.net/','简明现代魔法','其实每个程序员都是魔法师'),
 			array('http://www.ycku.com/course/','李炎恢','瓢城Web俱乐部'),
-			array('http://bonsaiden.github.io/JavaScript-Garden/zh/#function.closures','js秘密花园'),
+			//array('http://bonsaiden.github.io/JavaScript-Garden/zh/#function.closures','js秘密花园'),
 			array('http://www.bootcss.com/','bootstrap'),
 
 			array('http://www.bluesdream.com/blog/','BlueDream','前端博客'),
@@ -173,6 +173,7 @@
 			array('https://blog.csdn.net/v_july_v/article/details/7624837','july(ML/AI)'),
 			array('http://blog.17study.com.cn/','月色(ML/AI)'),
 			array('https://mofanpy.com/','莫烦'),
+			array('https://kanny.blog.csdn.net/?type=lately','广小隶(图神经网络)'),
 		));
 
 
