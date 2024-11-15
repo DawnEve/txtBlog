@@ -1148,7 +1148,7 @@ $ ssh sust@tx.biomooc.com -p 8888
 
 
 
-4. 设置Y主机开机启动该连接 //todo
+4A. 设置Y主机开机启动该连接: Ubuntu::autossh @Y:8887
 https://zhuanlan.zhihu.com/p/680289253
 
 (1)查看docker的自启动设置：
@@ -1370,7 +1370,100 @@ $ systemctl status autossh.service
 
 
 
-5. 通过 autossh 能链接到内网主机，但是经常中断
+
+4B. 设置Y主机开机启动该连接: CentOS7.9::ssh @J:8888
+(1) 临时方案: 8888 端口在 J server 的启动是一次性的，不会断电自动重启。
+2024.10.28
+原因：无法安装autossh，源不行了。
+
+步骤：
+* 预先把我@J账号下的 id_rsa.pub 放到云服务器 sam用户的 .ssh/授权下。
+* 然后@J 连接云服务器：$ ssh -Ng -R 8888:localhost:22 sam@118.89.82.18 -i ~/.ssh/id_rsa
+* 可以在云服务器连接J server了。
+
+
+(2) 无autossh，怎么设置每1小时检测一次连接状态，如果断了就重新连接一次
+1) 写脚本
+@J$ cat ~/soft/ssh_reconnect.sh
+#!/bin/bash
+
+# SSH 反向隧道命令
+SSH_COMMAND="ssh -Ng -R 8888:localhost:22 sam@118.89.82.18 -i /home/wangjl/.ssh/id_rsa"
+
+# SSH 反向隧道连接
+while true; do
+    # 检查连接状态
+    if ! pgrep -f "$SSH_COMMAND" > /dev/null; then
+        echo "[$(date)] SSH tunnel is down. Restarting..."
+        # 启动 SSH 反向隧道
+        $SSH_COMMAND &
+    else
+        echo "[$(date)] SSH tunnel is active."
+    fi
+    
+    sleep 3600  # 如果挂了，每 1 小时检查一次
+done
+
+2) 设置可执行
+$ chmod +x ~/soft/ssh_reconnect.sh
+
+测试： $ ~/soft/ssh_reconnect.sh
+查进程：$ ps -aux | grep -i ssh
+杀进程: $ kill xxxx #ps的第二列是进程号
+
+3) 创建 systemd 服务文件
+接下来，创建一个 systemd 服务单元文件，以便在启动时运行该脚本。
+$ sudo vim /etc/systemd/system/ssh_reconnect.service
+[Unit]
+Description=SSH Reverse Tunnel Service On Every 3 hours
+After=network.target
+
+[Service]
+User=wangjl
+ExecStart=/home/wangjl/soft/ssh_reconnect.sh
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target
+
+
+4) 启用并启动服务
+运行以下命令以启用并启动该服务：
+
+# 重新加载 systemd 以识别新服务
+sudo systemctl daemon-reload
+
+# 启用服务以便开机启动
+sudo systemctl enable ssh_reconnect.service
+
+# 启动服务
+sudo systemctl start ssh_reconnect.service
+或者 sudo service ssh_reconnect restart
+
+5) 检查服务状态
+你可以使用以下命令检查服务的状态：
+
+sudo systemctl status ssh_reconnect.service
+
+6) 日志查看
+要查看该服务的日志，可以使用：
+journalctl -u ssh_reconnect.service -f
+
+7) 登录查看
+在远程服务器登录 $ ssh wangjl@localhost -p 8888
+在外网登录 $ ssh wangjl@tx.biomooc.com -p 8888
+
+
+
+
+
+
+
+
+
+
+5. 通过 autossh 能链接到内网主机，但是经常中断(4A 已解决)
 
 (1) 问题：正在操作，就直接断开了
 Connection to localhost closed by remote host.

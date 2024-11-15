@@ -516,13 +516,25 @@ def get_on_g_object(response):
 
 
 ========================================
-|-- 加载非static/下的图片
+|-- 加载非static/下的图片，如 favicon.ico
 ----------------------------------------
-# 添加新静态文件的路径，这样就允许data/下的图片加载了
+1. 添加新静态文件的路径，这样就允许data/下的图片加载了
 @app.route("/data/<path:filename>")
 def downloader(filename):
-    return send_from_directory("data",filename,as_attachment=False)
+    return send_from_directory("data", filename, as_attachment=False)
 #
+
+
+
+2. 添加根目录下的 /favicon.ico （默认位置）
+
+from flask import send_from_directory
+import os
+@app.route('/favicon.ico')
+def favicon():
+    return send_from_directory(os.path.join(app.root_path, ''),
+                               'favicon.ico', mimetype='image/vnd.microsoft.icon')
+
 
 
 
@@ -4074,7 +4086,7 @@ $ python tornado_demo.py
 
 
 ========================================
-如何写复杂业务代码
+如何写复杂业务代码 //todo
 ----------------------------------------
 https://www.jianshu.com/p/05f395780da1
 
@@ -4085,7 +4097,68 @@ https://www.jianshu.com/p/05f395780da1
 
 
 ========================================
+如何保护密码：两次加盐方案
 ----------------------------------------
+1. 预防什么极端情况
+(1)数据库泄露后，如何让黑客无法登录？
+如果数据库记录的是明文密码，黑客很容易登录系统，并修改内容。
+如果是md5加密后的，也可以构建键值对数据库，进行统一破解。
+
+如果每个用户一个salt呢？就需要针对每个用户构建一个键值对表，破解成本大增。
+
+如果是数据库管理员或者程序员泄密呢？至少保证他们自己一个人的信息依旧无法登录。这就需要一个系统级别的salt。
+
+
+(2) 这样的一个解决方案步骤是：
+* 数据库中获取用户的盐值
+* 明文密码+userSalt，md5加密得到 pass1
+* pass1 + 系统级salt，md5后得到 pass2
+* 把pass2记录到数据库中。
+
+用户登录时也是这个步骤。
+
+user表保存：用户名，用户盐值，密码pass2。
+系统级盐值保存在文本文件中，可以是一个1-3k的rsa证书文本文件。要保证不好记忆。
+
+
+(3) 代码实现
+import random
+import hashlib
+
+# 获取由4位随机大小写字母、数字组成的salt值
+def create_salt(length = 4):
+    salt = ''
+    chars = 'AaBbCcDdEeFfGgHhIiJjKkLlMmNnOoPpQqRrSsTtUuVvWwXxYyZz0123456789'
+    len_chars = len(chars) - 1
+    for i in range(length):
+        # 每次从chars中随机取一位
+        salt += chars[random.randint(0, len_chars)]
+    return salt
+
+userSalt = create_salt(6)
+print("1. userSalt:", userSalt)
+
+# 获取原始密码+salt的md5值  
+def create_md5(pwd, salt):  
+    md5_obj = hashlib.md5()
+    md5_obj.update( (pwd + salt).encode('utf-8') )
+    return md5_obj.hexdigest()
+
+#pass1=create_md5("123456", "") #e10adc3949ba59abbe56e057f20f883e
+pass1=create_md5("123456", userSalt)
+print("2. pass1:", pass1)
+
+
+# 读取系统级salt文件
+sysSalt=""
+with open("C:\\Users\\DELL\\.ssh\\id_rsa.pub", 'r', encoding='utf-8') as f:
+    sysSalt += f.read().strip()
+print("[secret]sysSalt:", sysSalt)
+
+pass2=create_md5(pass1, sysSalt)
+print("3. pass2:", pass2)
+
+
 
 
 
