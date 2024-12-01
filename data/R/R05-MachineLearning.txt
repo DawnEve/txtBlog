@@ -4671,6 +4671,197 @@ Description: Partitioning (clustering) of the data into k clusters “around med
 
 
 
+
+
+
+
+2. 对变量做标准化很重要！
+
+(1)1. raw (错了好多)
+
+dat=iris[, 1:4]
+rownames(dat) = paste0("obs", 1:nrow(dat))
+dat[1:3,]
+
+km_model <- kmeans( dat, centers = 3)
+
+# 获取分类结果
+predictions <- km_model$cluster
+table(predictions)
+
+dat$origin=iris$Species
+dat$pred=predictions
+
+table(dat$origin, dat$pred)
+#           1  2  3
+#setosa      0  0 50
+#versicolor 48  2  0
+#virginica  14 36  0
+
+plot(dat$Sepal.Length, dat$Sepal.Width, col=dat$origin, pch=19)
+plot(dat$Sepal.Length, dat$Sepal.Width, col=dat$pred, pch=19)
+
+
+
+
+
+(2). normalize (几乎全对)
+
+dat=iris[, 1:4]
+rownames(dat) = paste0("obs", 1:nrow(dat))
+dat[1:3,]
+
+dat=apply(dat, 1, function(x){
+  x/sum(x) * 1e4
+}) |> t()  |> as.data.frame()
+head(dat)
+
+# 行作为观测值
+km_model <- kmeans( dat, centers = 3)
+
+# 获取分类结果
+predictions <- km_model$cluster
+table(predictions)
+
+dat$origin=iris$Species
+dat$pred=predictions
+
+table(dat$origin, dat$pred)
+#             1  2  3
+#setosa     50  0  0
+#versicolor  0 45  5
+#virginica   0  0 50
+
+
+
+
+
+
+
+3. 最佳分类数
+https://blog.csdn.net/qq_19600291/article/details/118308653
+https://blog.csdn.net/wangjunliang/article/details/144060572
+
+(0) 预处理数据
+dat=iris[, 1:4]
+rownames(dat) = paste0("obs", 1:nrow(dat))
+dat[1:3,]
+
+dat=apply(dat, 1, function(x){
+  x/sum(x) * 1e4
+}) |> t()  |> as.data.frame()
+head(dat)
+
+
+(1) factoextra - silhouette: n=2
+library(factoextra)
+tmp = factoextra::fviz_nbclust( dat, kmeans, method = "silhouette")
+#str(tmp)
+tmp #图
+
+# fviz_nbclust(dat, kmeans, method = "silhouette", k.max = 20)
+
+
+(2) 碎石图: n=2
+# 在一个循环中进行15次的kmeans聚类分析
+{
+	totalwSS=vector(mode = "numeric", 15)
+	for (i in 1:15){
+	  t1= kmeans(dat, i)
+	  totalwSS[i] <- t1$tot.withinss
+	}
+	# 聚类碎石图 - 使用plot函数绘制total_wss与no-of-clusters的数值。
+	plot(x=1:15,                         # x= 类数量, 1 to 15
+		 totalwSS,                      #每个类的total_wss值
+		 col="navy", lwd=2,
+		 type="b"                       # 绘制两点，并将它们连接起来
+	)
+}
+
+(3) silhouette 画图: n=2?
+逐个画:
+# 逐个画轮廓系数
+library(cluster)
+dis = dist(dat) #行之间的距离
+#
+n=3
+kclu <- kmeans(dat, centers = 3, nstart=25)
+kclu.sil=sortSilhouette( silhouette(kclu$cluster, dist = dis) )
+plot(kclu.sil, 
+     col =1:n, #c("red", "orange", "blue"), 
+     main="")
+
+#
+n=4
+#library(cluster)
+#dis = dist(dat) #行之间的距离
+kclu <- kmeans(dat, centers = n, nstart=25)
+kclu.sil=sortSilhouette( silhouette(kclu$cluster, dist = dis) )
+plot(kclu.sil, 
+     col =1:n, # c("red", "orange", "blue"), 
+     main="")
+#
+#
+n=8
+#library(cluster)
+#dis = dist(dat) #行之间的距离
+kclu <- kmeans(dat, centers = n, nstart=25)
+kclu.sil=sortSilhouette( silhouette(kclu$cluster, dist = dis) )
+plot(kclu.sil, 
+     col =1:n, # c("red", "orange", "blue"), 
+     main="")
+#
+
+批量计算：
+silhouette_score <- function(k){
+  km <- kmeans(dat, centers = k, nstart=25)
+  ss <- silhouette(km$cluster, dist(dat))
+  mean(ss[, 3])
+}
+k <- 2:15
+avg_sil <- sapply(k, silhouette_score)
+plot(k, avg_sil, 
+     type='b',
+     xlab='Number of clusters', ylab='Average Silhouette Scores', 
+     frame=FALSE)
+
+最大是2，其次是3类。
+
+根据本文图1，忽略颜色，只看数值分布，确实最佳是2类。
+	用标准化后的数据呢？
+	plot(dat, col=iris$Species, main="Normalized data")
+	plot(dat,main="Normalized data")
+	结论不变：如果忽略颜色，依旧是很清晰的2类。
+
+
+
+
+
+(4) pam 是一种更稳定的 kmeans
+Partitioning Around Medoids:
+Partitioning (clustering) of the data into k clusters “around medoids”, a more robust version of K-means.
+
+
+Ks=sapply(2:15, function(i){
+  summary(silhouette(pam(dat, k=i)))$avg.width
+})
+plot(2:15,Ks,xlab="k",ylab="av. silhouette",type="b", pch=19)
+
+
+效果：
+t1=pam(dat, k=3)
+> table(t1$clustering, iris$Species)   
+    setosa versicolor virginica
+  1     50          0         0
+  2      0         44         0
+  3      0          6        50
+还是有几个错的。
+
+
+
+
+
+
 ========================================
 |-- 无监督聚类：层次聚类
 ----------------------------------------

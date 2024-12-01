@@ -911,10 +911,34 @@ $ zcat Homo_sapiens.GRCh38.113.chr.gtf.gz |grep -v '^#' |  head -n 2
 $ zcat Homo_sapiens.GRCh38.113.chr.gtf.gz | wc
 4102295 155536155 1738769140
 
+
 => In the case of human and mouse, the GTF files found here are equivalent to the GENCODE gene set.
+	https://ftp.ensembl.org/pub/release-113/gtf/homo_sapiens/README
+	我的检验表明， ensembl 的版本chr是数字1，但是第三列区分两种UTR。
 
 -rw-rw-rw-+ 1 wangjl jinlab  62M Aug 19 06:01 Homo_sapiens.GRCh38.113.chr.gtf.gz
 -rw-rw-rw-+ 1 wangjl jinlab 842M Aug 16 03:18 Homo_sapiens.GRCh38.dna.primary_assembly.fa.gz
+
+
+竟然区分5和3UTR，那这个 ensembl 版本更适合分析UTR。
+$ zcat Homo_sapiens.GRCh38.113.chr.gtf.gz | grep -v '^#' | awk '{print $3}' | sort | uniq -c | sort -k 1nr
+2155005 exon
+ 901768 CDS
+ 385659 transcript
+ 212414 three_prime_utr
+ 175991 five_prime_utr
+  99296 start_codon
+  93303 stop_codon
+  78724 gene
+    130 Selenocysteine
+#
+
+
+
+
+
+
+
 
 
 
@@ -1068,6 +1092,25 @@ NC_000001.11    BestRefSeq      transcript      11874   14409   .       +       
 
 
 
+
+而NCBI的 refseq 版本的gtf，甚至连 UTR 都部不注释，更不用说区分5和3了。
+$ zcat GCF_000001405.40_GRCh38.p14_genomic.gtf.gz | grep -v '^#' | awk '{print $3}' | sort | uniq -c | sort -k 1nr
+2298755 exon
+1837053 CDS
+ 200311 transcript
+ 144663 start_codon
+ 144508 stop_codon
+  50329 gene
+  22045 Genomic
+      1 Genomic%2Ccmsearch
+#
+
+
+
+总结：
+	对于研究UTR区域来说，难度从高到低分别是 NCBI-refseq(NC_000001.11) > gencode(chr1) > ensembl(1)
+		分别是 没有UTR； 有UTR不区分5和3； 区分5和3UTR。
+		括号里是第一列染色体的写法。
 
 
 
@@ -2630,12 +2673,12 @@ total 5.1G
 
 
 ========================================
-** 1.使用 genecode gtf文件注释出 gene bed 格式
+使用 python 把 genecode gtf文件注释为 bed 格式
 ----------------------------------------
 https://blog.csdn.net/wangjunliang/article/details/140558617
 
 
-目的：
+1.目的：
 	统计个数：
 		转录本 per 基因
 		exon 个数 per 跨度最长转录本，or exon 最多的转录本
@@ -2648,7 +2691,8 @@ https://blog.csdn.net/wangjunliang/article/details/140558617
 
 
 
-0. 背景资料
+
+2. 背景资料
 (1) 文件位置 @J3:/data/wangjl/scPolyA-seq2/ref/hg38/gencode/
 gtf:
 	GRCh38.p13.gtf.gz
@@ -2661,6 +2705,11 @@ fasta:
 - https://asia.ensembl.org/info/genome/genebuild/biotypes.html
 - https://www.gencodegenes.org/pages/biotypes.html
 - https://www.gencodegenes.org/human/
+
+
+其他人解析参考：
+	https://github.com/saketkc/gencode_regions
+
 
 
 (3) gtf 文件探索
@@ -2678,9 +2727,121 @@ $ grep -v '^#' GRCh38.p13.gtf | awk '{print $3}' | sort | uniq -c
  180584 UTR
 
 
+来自 ensemb 的gtf文件直接区分了两类UTR：
+$ zcat Homo_sapiens.GRCh38.113.chr.gtf.gz | grep -v '^#' | awk '{print $3}' | sort | uniq -c | sort -k 1nr
+2155005 exon
+ 901768 CDS
+ 385659 transcript
+ 212414 three_prime_utr
+ 175991 five_prime_utr
+  99296 start_codon
+  93303 stop_codon
+  78724 gene
+    130 Selenocysteine
+#
 
 
 
+
+
+3. 扫盲知识点
+
+(1) 转录本的证据支持程度：1最可信
+例: 读入 transcript bed 文件。
+> table(dat$transcript_support_level)
+    1     2     3     4     5 
+31278 13417  7553  2452 12787
+
+=>问题: TSL(transcript_support_level): https://www.gencodegenes.org/pages/data_format.html
+{1,2,3,4,5,NA} [0,1]
+transcripts are scored according to how well mRNA and EST alignments match over its full length:
+	1 (all splice junctions of the transcript are supported by at least one non-suspect mRNA), | 最可信
+	2 (the best supporting mRNA is flagged as suspect or the support is from multiple ESTs),
+	3 (the only support is from a single EST),
+	4 (the best supporting EST is flagged as suspect),
+	5 (no single transcript supports the model structure),
+	NA (the transcript was not analyzed)
+#
+	tsl1 – 转录本的所有剪接点均由至少一个非可疑 mRNA 支持
+	tsl2——最好的支持 mRNA 被标记为可疑或支持来自多个 EST
+	tsl3——唯一的支持来自单一的 EST
+	tsl4——最好的支持 EST 被标记为可疑
+	tsl5——没有单一的transcript 支持模型结构
+	tslNA – 由于以下原因之一，未对transcript 进行分析：
+		假基因注释，包括转录的假基因
+		人类白细胞抗原 (HLA) 转录本
+		免疫球蛋白基因转录本
+		T 细胞受体转录本
+		单外显子转录本（将包含在未来版本中）
+#
+
+> t1=table(dat$transcript_support_level, dat$gene_type)
+> sum(t1)
+[1] 67487
+
+> table(is.na(dat$transcript_support_level)) #有一半是NA
+FALSE  TRUE 
+67487 50194 
+
+> t2=as.data.frame.matrix(t1) #table to data.frame
+> t2=t2[, order(-colSums(t2))] #order by colSums
+> t2=t2[, colSums(t2)>0] #rm all 0 columns
+> dim(t2) #[1]  5 11
+> t2[, 1:6]
+  protein_coding lncRNA transcribed_processed_pseudogene transcribed_unitary_pseudogene artifact transcribed_unprocessed_pseudogene
+1          29259   1904                               41                             58       11                                  2
+2          10138   3187                               63                             25        1                                  2
+3           2723   4754                               49                             23        1                                  1
+4            877   1547                               19                              9        0                                  0
+5           9408   3266                               49                             50        2                                  3
+可信的 protein_coding 有3万个转录本，不确定有多少重复基因。
+
+
+
+
+
+
+
+(2) level 又是什么意思？
+例: 读入 transcript bed 文件。
+> table(dat$level)
+    1     2     3 
+14255 91293 12133 
+
+https://www.gencodegenes.org/pages/data_format.html
+level: value format
+	1 (verified loci),
+	2 (manually annotated loci),
+	3 (automatically annotated loci)
+
+level 和 transcript_support_level 有多少重叠？
+> table(dat$level, dat$transcript_support_level)  
+        1     2     3     4     5
+  1  1220  1574  1217   312  1009
+  2 28628 10903  6126  2037 10067
+  3  1430   940   210   103  1711
+
+
+用途：应该信任 level 1和2 的转录本。从中选取跨度最长转录本id。
+	因为官方教程这么做了，见(4)
+> dat2=dat[which(dat$level<=2),]
+> table(dat2$level)
+    1     2 
+14255 91293
+> dim(dat2) #[1] 105548     24
+
+
+
+
+
+
+
+
+
+
+========================================
+|-- 1.使用 genecode gtf文件注释出 gene bed 格式
+----------------------------------------
 1. 提取 gene 行为bed格式
 (1) 预览
 $ cat GRCh38.p13.gtf | head -n 8
@@ -2948,95 +3109,9 @@ print("end. ", i)
 
 
 
-
-
-
-
-(3B) 转录本的证据支持程度：1最可信
-> table(dat$transcript_support_level)
-    1     2     3     4     5 
-31278 13417  7553  2452 12787
-
-=>问题: TSL(transcript_support_level): https://www.gencodegenes.org/pages/data_format.html
-{1,2,3,4,5,NA} [0,1]
-transcripts are scored according to how well mRNA and EST alignments match over its full length:
-	1 (all splice junctions of the transcript are supported by at least one non-suspect mRNA), | 最可信
-	2 (the best supporting mRNA is flagged as suspect or the support is from multiple ESTs),
-	3 (the only support is from a single EST),
-	4 (the best supporting EST is flagged as suspect),
-	5 (no single transcript supports the model structure),
-	NA (the transcript was not analyzed)
-#
-	tsl1 – 转录本的所有剪接点均由至少一个非可疑 mRNA 支持
-	tsl2——最好的支持 mRNA 被标记为可疑或支持来自多个 EST
-	tsl3——唯一的支持来自单一的 EST
-	tsl4——最好的支持 EST 被标记为可疑
-	tsl5——没有单一的transcript 支持模型结构
-	tslNA – 由于以下原因之一，未对transcript 进行分析：
-		假基因注释，包括转录的假基因
-		人类白细胞抗原 (HLA) 转录本
-		免疫球蛋白基因转录本
-		T 细胞受体转录本
-		单外显子转录本（将包含在未来版本中）
-#
-
-> t1=table(dat$transcript_support_level, dat$gene_type)
-> sum(t1)
-[1] 67487
-
-> table(is.na(dat$transcript_support_level)) #有一半是NA
-FALSE  TRUE 
-67487 50194 
-
-> t2=as.data.frame.matrix(t1) #table to data.frame
-> t2=t2[, order(-colSums(t2))] #order by colSums
-> t2=t2[, colSums(t2)>0] #rm all 0 columns
-> dim(t2) #[1]  5 11
-> t2[, 1:6]
-  protein_coding lncRNA transcribed_processed_pseudogene transcribed_unitary_pseudogene artifact transcribed_unprocessed_pseudogene
-1          29259   1904                               41                             58       11                                  2
-2          10138   3187                               63                             25        1                                  2
-3           2723   4754                               49                             23        1                                  1
-4            877   1547                               19                              9        0                                  0
-5           9408   3266                               49                             50        2                                  3
-可信的 protein_coding 有3万个转录本，不确定有多少重复基因。
-
-
-
-
-
-
-
-
-
-
-(3C) level 又是什么意思？
-> table(dat$level)
-    1     2     3 
-14255 91293 12133 
-
-https://www.gencodegenes.org/pages/data_format.html
-level: value format
-	1 (verified loci),
-	2 (manually annotated loci),
-	3 (automatically annotated loci)
-
-level 和 transcript_support_level 有多少重叠？
-> table(dat$level, dat$transcript_support_level)  
-        1     2     3     4     5
-  1  1220  1574  1217   312  1009
-  2 28628 10903  6126  2037 10067
-  3  1430   940   210   103  1711
-
-
-用途：应该信任 level 1和2 的转录本。从中选取跨度最长转录本id。
-	因为官方教程这么做了，见(4)
-> dat2=dat[which(dat$level<=2),]
-> table(dat2$level)
-    1     2 
-14255 91293
-> dim(dat2) #[1] 105548     24
-
+详见第0篇
+	transcript_support_level
+	level
 
 
 
@@ -3952,19 +4027,293 @@ Error in `.rowNamesDF<-`(x, value = value) :
 "UTR3s", "UTR3Len", "UTR3Count", "UTR3TotalLen"
 
 
-1.
+
+
+
+5.提取 UTR 相关的行，区分 UTR，计算
+(1) 预览 略
+
+没有start_coden 或 stop_coden 行怎么办？
+$ cat GRCh38.p13.gtf | grep "ATAD3B-201" | awk '{print $3"\t"$4"\t"$5"\t"$7}'
+
+$ cat GRCh38.p13.gtf | grep "CD47-201" | awk '{print $3"\t"$4"\t"$5"\t"$7}'
+
+$ cat GRCh38.p13.gtf | grep "XKR8-206" | awk '{print $3"\t"$4"\t"$5"\t"$7}'
+transcript	27959943	27968077	+
+exon	27959943	27960362	+
+CDS	27960070	27960362	+
+start_codon	27960070	27960072	+
+exon	27963497	27963693	+
+CDS	27963497	27963692	+
+exon	27964185	27964235	+
+stop_codon	27963693	27963693	+
+stop_codon	27964185	27964186	+
+exon	27966503	27968077	+
+UTR	27959943	27960069	+
+UTR	27963693	27963693	+
+UTR	27964185	27964235	+
+UTR	27966503	27968077	+
+这个转录本竟然有两个 stop_codon ，经检查，可以只认第一个，就正常了。
 
 
 
 
 
+(2) gtf文件 UTR 数量和长度的bed格式
+
+$ cat gtf01_gtf2bed_UTR_num_length.py
+# Aim: UTR counts and length of each transcript
+#
+import re
+
+outputRoot="/data/wangjl/scPolyA-seq2/ref/hg38/gencode/"
+
+gtf_filename= outputRoot + "GRCh38.p13.gtf"
+
+fr=open(gtf_filename, 'r', encoding="utf-8")
+fw=open(outputRoot + "/gtf2bed/GRCh38.p13.UTR_num_length.bed", 'w', encoding="utf-8")
+
+
+
+headers=['seqname', 'strand', 'transcript_name', 'gene_name', 'gene_type', 'transcript_support_level', 'level', 
+    #'seqname', 'source', 'feature', 'start', 'end', 'score', 'strand', 'frame',
+    "UTR5s", "UTR5Len", "UTR5Count", "UTR5TotalLen", 
+    "UTR3s", "UTR3Len", "UTR3Count", "UTR3TotalLen"]
+#index=[0, 6, -1, -1, -1, -1, -1 ]
+
+fw.write("\t".join( headers )+"\n")
+
+
+
+
+############################
+# Part I: functions
+############################
+import datetime
+def time_now():#return time
+    curr_time = datetime.datetime.now()
+    return curr_time.strftime("%c")
+# print( "[%s] Start Analysis ..." % time_now() )
+
+
+def getTransName(str2):
+    #attributes=str2.strip(";")
+    #return attributes.split('transcript_name "')[1].split('"')[0]
+    attributes=re.split(";\s", str2.strip(";"))
+    # to key and values
+    dict1={}
+    for j in range(len(attributes)):
+        ele=re.split("\s", attributes[j])
+        k=ele[0]
+        v=re.sub("\"", "", ele[1])
+        dict1[k]=v
+    return dict1
+
+
+
+# get info from CDS arr of one transcript
+def processStore(rowArr):
+    n = len(rowArr)
+
+    #1. test if no UTR
+    haveUTR=0
+    for i in range(n):
+        if rowArr[i][2]=="UTR":
+            haveUTR=1
+            break
+    # if no UTR, return empty array
+    if haveUTR==0:
+        return []
+
+    #2. if have UTR, get strand
+    fields=rowArr[0]
+    strand=fields[6]
+
+    attrDB = getTransName(fields[8])
+
+    #'seqname', 'strand', 'transcript_name', 'gene_name', 'gene_type', 'transcript_support_level', 'level', 
+    results=[fields[0], fields[6],
+             attrDB.get("transcript_name", ""),
+             attrDB.get("gene_name", ""),
+             attrDB.get("gene_type", ""),
+             attrDB.get("transcript_support_level", ""),
+             attrDB.get("level", "") ]
+
+    #3. get start
+    CDSarr=[]
+    start_codon=-1
+    stop_codon=-1
+    for i in range(n):
+        fields=rowArr[i]
+        feature_type = fields[2]
+        # 记录 CDS 的起始和结束位置
+        if feature_type == "start_codon" and start_codon!=-1:
+            start_codon = int(fields[3]) if strand=="+" else int(fields[4])
+        elif feature_type == "stop_codon" and stop_codon!=-1:
+            stop_codon = int(fields[3]) if strand=="+" else int(fields[4])
+        if feature_type == "CDS":
+            CDSarr.append(fields)
+    # use CDS to determine
+    #if start_codon==-1 or stop_codon==-1:
+        #print("\t>>start_codon=%d, stop_codon=%d, len(CDSarr)=%d" % (start_codon, stop_codon, len(CDSarr) ))
+    if -1==start_codon:
+        if len(CDSarr)>0:
+            if strand=="+":
+                start_codon = int(CDSarr[0][3])
+            else:
+                start_codon = int(CDSarr[0][4])
+        #print("CDSarr: start_coden=", start_codon)
+    if -1==stop_codon:
+        if len(CDSarr)>0:
+            if strand=="+":
+                stop_codon = int(CDSarr[-1][4])+1
+            else:
+                stop_codon = int(CDSarr[-1][3])-1
+        #print("CDSarr: stop_codon=", stop_codon)
+    # if not found CDS
+    if -1==start_codon:
+        start_codon = -float('inf') if strand=="+" else float("inf")
+        print(">at last: start_coden=", start_codon, ", trans=", attrDB.get("transcript_name", "") )
+    if -1==stop_codon:
+        stop_codon = float('inf') if strand=="+" else -float("inf")
+        print(">at last: stop_codon=", stop_codon, ", trans=", attrDB.get("transcript_name", "") )
+
+    #4. for UTR
+    UTR5s=[] #string "start-end"
+    UTR3s=[]
+    utr5Arr=[] #int end-start
+    utr3Arr=[]
+    for i in range(n):
+        fields=rowArr[i]
+        feature_type = fields[2]
+        if feature_type != "UTR":
+            continue
+        start = int(fields[3])
+        end = int(fields[4])
+        if ( (strand == "+") &  (end <= start_codon) )  |  ( (strand == "-") &  (start >= start_codon) ):
+            utr5Arr.append( end-start+1 )
+            UTR5s.append( "%d-%d" % (start, end) )
+        elif ( (strand == "+") &  (start >= stop_codon) )  |  ( (strand == "-") &  (end <= stop_codon) ):
+            utr3Arr.append( end-start+1 )
+            UTR3s.append( "%d-%d" % (start, end) )
+        else:
+            print(">> not UTR5 or UTR3:(%d, %d)" % (start_codon, stop_codon), fields)
+
+    #5. output
+    UTR5s=",".join(UTR5s)
+    UTR3s=",".join(UTR3s)
+
+    UTR5Len=",".join([str(i) for i in utr5Arr])
+    UTR3Len=",".join([str(i) for i in utr3Arr])
+    
+    UTR5Count = str(len(utr5Arr))
+    UTR3Count = str(len(utr3Arr))
+
+    UTR5TotalLen = str(sum(utr5Arr))
+    UTR3TotalLen = str(sum(utr3Arr))
+
+    arr= results + [UTR5s, UTR5Len, UTR5Count, UTR5TotalLen, 
+                      UTR3s, UTR3Len, UTR3Count, UTR3TotalLen]
+    #print(">>arr=", arr)
+    return arr
 
 
 
 
 
+############################
+# Main part
+############################
+transcript_name=""
+rowStore=[]
+i=0
+j=0
+while True:
+    lineR=fr.readline()
+    if not lineR:
+        break
+    if lineR.startswith("#"):
+        continue
+
+    # line to array
+    line=lineR.strip()
+    fields=re.split("\t", line)
+
+    if fields[2] not in ["transcript", "UTR", "start_codon", "stop_codon", "CDS"]:
+        continue
+
+    i+=1
+    if i==1:
+        continue #header
+
+    if i%1e5==0:
+        print("[%s] row %d" % (time_now(), i) ) # total: 5e5
+    if i>3e4:
+        #break
+        pass
+
+    attrDB = getTransName(fields[8])
+
+    # first row
+    if transcript_name=="":
+        transcript_name=attrDB.get("transcript_name")
+    
+    # if trans switch
+    if attrDB.get("transcript_name") != transcript_name:
+        j+=1
+        #1. get info
+        results = processStore(rowStore)
+        #2. save to files
+        if len(results)>0:
+            fw.write("\t".join(results)+"\n")
+
+        #3. for next transcript
+        transcript_name = attrDB.get("transcript_name")
+        rowStore=[]
+    
+    # put to exon store
+    rowStore.append(fields)
+
+    #print('[%d] %s' % (i, result) )
+
+if 0!=len(rowStore):
+    #1. get info
+    print(">> process the last not empty store, len=", len(rowStore))
+    results = processStore(rowStore)
+    #2. save to files
+    if len(results)>0:
+        fw.write("\t".join(results)+"\n")
+
+fr.close()
+fw.close()
+
+print("end. i=", i, ", j=",j)
+# end. i= 1080497 , j= 117679
 
 
+检查：
+-rw-r--r--. 1 wangjl jinlab 7.2M Nov 15 16:20 GRCh38.p13.UTR_num_length.bed
+
+$ cat gtf2bed/GRCh38.p13.UTR_num_length.bed | head -n3
+seqname strand  transcript_name gene_name       gene_type       transcript_support_level        level   UTR5s   UTR5Len UTR5Count       UTR5TotalLen    UTR3s   UTR3Len UTR3Count       UTR3TotalLen
+chr1    +       OR4F5-201       OR4F5   protein_coding          2       65419-65433,65520-65564 15,45   2       60      70006-71585     1580    1       1580
+chr1    -       OR4F29-201      OR4F29  protein_coding  NA      2                       0       0       450740-450742   3       1       3
+
+
+
+(3) 使用R读取
+> options(width=200)
+> dat=read.table("gtf2bed/GRCh38.p13.UTR_num_length.bed", sep="\t", header=T)
+> dim(dat)
+[1] 64227    15
+> dat[1:2, ]
+  seqname strand transcript_name gene_name      gene_type transcript_support_level level                   UTR5s UTR5Len UTR5Count UTR5TotalLen         UTR3s UTR3Len UTR3Count UTR3TotalLen
+1    chr1      +       OR4F5-201     OR4F5 protein_coding                       NA     2 65419-65433,65520-65564   15,45         2           60   70006-71585    1580         1         1580
+2    chr1      -      OR4F29-201    OR4F29 protein_coding                       NA     2                                         0            0 450740-450742       3         1            3
+
+可能的用法：
+* 每个转录本 5UTR 和 3UTR 的长度，基因组坐标(chr, strand, start, end)
+* 不同基因类型的 UTR 长度。
 
 
 

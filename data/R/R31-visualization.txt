@@ -4023,13 +4023,88 @@ http://tool.dawneve.cc/R_scripts/index.html#t7_2
 
 
 
+========================================
+|-- R 图片输出尺寸估算：pdf大小/宽高自动化控制
+----------------------------------------
+思路：
+1.线性拟合
+* 基因数x 和 宽度y的关系
+* 聚类个数x 和 高度y的关系
+2.根据x计算宽高
+
+
+
+1. 线性模型计算width和height
+输入是基因集合
+
+scRNA.markers <- FindAllMarkers(scRNA, only.pos = TRUE, min.pct = 0.25, logfc.threshold = 0.25)
+#scRNA@misc[["markers"]]=scRNA.markers
+#scRNA.markers %>% group_by(cluster) %>% top_n(n = 2, wt = avg_log2FC)
+
+auto.markers=unique(c(
+  scRNA.markers %>% group_by(cluster) %>% top_n(n = 4, wt = avg_log2FC) %>% pull(gene)
+))
+
+
+(1).pdf width
+
+length(auto.markers)
+# x, y
+# 55,15
+# 87,22
+# 129, 30
+# lm(y~x, data=data.frame(x=c(55,87,129), y=c(15,22,30)))
+# y=0.2021*x+4.0787
+pdf_width = 0.2021*length(auto.markers) +4.0787
+
+如果基因集合是自定义的list，还需要考虑list中每个key之间的间距：
+pdf_width = 0.2021*length(markers |> unlist() ) +4.0787 + length(markers)*0.2 #add space between gene groups
+
+(2).pdf height
+
+# x,y
+# 12, 4.5
+# 10, 4
+# lm(y~x, data=data.frame(x=c(12,10), y=c(4.5, 4)))
+# y=0.25*x+1.5
+pdf_height = 0.25*nlevels(sce) +1.5
+message(sprintf("pdf size: {width:%s, height:%s}", pdf_width, pdf_height) )
+
+
+
+
+2. 使用拟合的宽高
+
+pdf( paste0(outputRoot, keyword, "_05_1.Auto.topN.DotPlot.pdf"), width=pdf_width, height=pdf_height)
+DotPlot( sce, #subset(sce, seurat_clusters %in% c(1:8) ),
+         features = auto.markers, cluster.idents = F, cols=c('lightgrey', "red")) + RotatedAxis()+
+  ggtitle( paste0("Top N markers of ", keyword ))
+#
+DotPlot( sce, #subset(sce, seurat_clusters %in% c(1:8) ),
+         features = auto.markers, cluster.idents = T, cols=c('lightgrey', "red")) + RotatedAxis()+
+  ggtitle( paste0("Top N markers of ", keyword ))
+dev.off()
+
+
+
+
+
+Ref:
+https://gitee.com/dawnEve/bioToolKit/blob/dev/R_scripts/single_script/do_Seurat.script.R
+https://blog.csdn.net/wangjunliang/article/details/141285878
+
 
 
 
 
 
 ========================================
-R 绘图的输出: 完整格式和省略格式、单位换算
+R输出图片的疑难杂症
+----------------------------------------
+
+
+========================================
+|-- R 绘图的输出: 完整格式和省略格式、单位换算
 ----------------------------------------
 
 https://github.com/rstudio/rmarkdown/issues/2261
@@ -4041,6 +4116,7 @@ grDevices::png(filename = plot_file,
                height = 1,
                units = "in",
                res = 72)
+#
 
 
 
@@ -4049,7 +4125,42 @@ grDevices::png(filename = plot_file,
 
 
 ========================================
+|-- R 绘图输出有白色条纹怎么办？尝试高质量输出库 Cairo::CairoPNG()
 ----------------------------------------
+
+1. 问题
+使用 默认的 pdf输出，没有行注释信息；
+使用默认的png输出，有很多水平白线；
+
+ph.plotAll2 = pheatmap(t(cnv_table)[rownames(newOrder), ], border_color = NA,
+         scale = "none",
+         show_rownames = F, show_colnames = F,
+         cluster_rows = F, cluster_cols = F,
+
+         annotation_row = annotation_col, annotation_colors = ann_colors,
+
+         #color = viridis(8),
+         #clustering_method = "ward.D2",
+         main="CNV score raw:\nall gene, ordered cess")
+
+
+#install.packages("Cairo")
+library(Cairo)
+
+#png(paste0(outputRoot, keyword, "_00_4_inferCNV_allGene-withSeuratCluster2.pheatmap.png"), width=800, height =470 )
+CairoPNG(paste0(outputRoot, keyword, "_00_4_inferCNV_allGene-withSeuratCluster2.pheatmap.png"), width=800, height =470 )
+grid::grid.newpage()
+grid::grid.draw(ph.plotAll2$gtable) #col is gene; row is cell;
+dev.off()
+
+
+
+
+
+
+
+
+
 
 ========================================
 ----------------------------------------

@@ -1118,6 +1118,148 @@ sdc            8:32   0  25.3T  0 disk
 
 
 
+========================================
+|-- 查看网速：上行/下行
+----------------------------------------
+1. ifstat 是一个简单的命令行工具，可以实时显示网络接口的发送和接收速率。
+$ ifstat
+#kernel
+Interface        RX Pkts/Rate    TX Pkts/Rate    RX Data/Rate    TX Data/Rate  
+                 RX Errs/Drop    TX Errs/Drop    RX Over/Rate    TX Coll/Rate  
+lo                 3492M 0         3492M 0         3833M 0         3833M 0      
+                       0 0             0 0             0 0             0 0      
+em1              738767K 0       711801K 0         1733M 0         4206M 0      
+                       0 0             0 0             0 0             0 0      
+em2                    0 0             0 0             0 0             0 0      
+                       0 0             0 0             0 0             0 0      
+em3                    0 0             0 0             0 0             0 0      
+                       0 0             0 0             0 0             0 0      
+em4                    0 0             0 0             0 0             0 0      
+                       0 0             0 0             0 0             0 0      
+docker0                0 0             5 0             0 0           446 0      
+                       0 0             0 0             0 0             0 0
+# 作用：查网卡数量
+
+
+
+
+
+2.  ifconfig 和 ip 命令可以查看网络接口的状态和流量，但不提供实时监控。
+
+$ ifconfig eth0  # 替换 eth0 为你的网络接口
+
+
+$ ip -s link show em1
+2: em1: <BROADCAST,MULTICAST,UP,LOWER_UP> mtu 1500 qdisc mq state UP mode DEFAULT group default qlen 1000
+    link/ether d4:ae:52:ea:e9:0a brd ff:ff:ff:ff:ff:ff
+    RX: bytes  packets  errors  dropped overrun mcast   
+    787713846482 738774325 0       0       0       28272654 
+    TX: bytes  packets  errors  dropped carrier collsns 
+    846020900420 711806102 0       0       0       0
+
+
+
+
+3. 直接从 /proc/net/dev 文件中提取 上下行速度
+
+$ cat /proc/net/dev
+
+
+(1) 获取一个网卡的数据
+$ cat getNetSpeed.sh
+#!/bin/bash
+
+# 指定网络接口
+INTERFACE="em1"  # 替换为您的网络接口
+
+# 获取当前时间
+TIMESTAMP=$(date '+%Y-%m-%d %H:%M:%S')
+
+# 从 /proc/net/dev 获取上下行速度
+RX_BYTES=$(grep "$INTERFACE" /proc/net/dev | awk '{print $2}')
+TX_BYTES=$(grep "$INTERFACE" /proc/net/dev | awk '{print $10}')
+
+# 输出结果
+echo "$TIMESTAMP $RX_BYTES $TX_BYTES" #>> /path/to/your/net_speed.log
+
+
+# 2024-11-16 15:01:42 787716304984 846022069966
+
+
+
+
+
+(2) 获取全部网卡的数据
+$ cat monitor_netSpeed.sh
+#!/bin/bash
+
+# 获取当前时间
+TIMESTAMP=$(date '+%Y-%m-%d %H:%M:%S')
+
+# 初始化接收和发送字节数
+TOTAL_RX=0
+TOTAL_TX=0
+
+# 读取 /proc/net/dev 并汇总所有网卡的接收和发送字节数
+while read -r line; do
+    # 过滤出有效的行，检查是否包含冒号
+    if [[ $line == *:* ]]; then
+        RX_BYTES=$(echo "$line" | awk '{print $2}')  # 接收字节数
+        TX_BYTES=$(echo "$line" | awk '{print $10}') # 发送字节数
+
+        # 累加接收和发送字节数
+        TOTAL_RX=$((TOTAL_RX + RX_BYTES))
+        TOTAL_TX=$((TOTAL_TX + TX_BYTES))
+    fi
+done < /proc/net/dev
+
+# 输出结果
+echo "$TIMESTAMP $TOTAL_RX $TOTAL_TX" #>> /path/to/your/net_speed.log
+
+
+$ bash /datapool/wangjl/web/docs/code/system/monitor_netSpeed.sh
+2024-11-16 15:24:02 93705068842360 93763372341142
+
+
+
+
+
+
+
+
+
+
+
+
+========================================
+|-- 磁盘读写：
+----------------------------------------
+
+1. $ sudo iotop 
+
+
+2. iostat
+@H3$ sudo yum install sysstat
+
+$ iostat 
+Linux 3.10.0-1160.108.1.el7.x86_64 (jinlab-svr3) 	11/16/2024 	_x86_64_	(144 CPU)
+
+avg-cpu:  %user   %nice %system %iowait  %steal   %idle
+           2.43    0.22    1.75    0.02    0.00   95.58
+
+Device:            tps    kB_read/s    kB_wrtn/s    kB_read    kB_wrtn
+nvme0n1           5.54       215.15       255.91 4631065149 5508445628
+sda               1.53         2.13        87.96   45805207 1893387192
+
+
+汇总：
+$ iostat -d -k 1 2 | awk '/^[^ ]/ {if ($1 != "Device:") { read += $3; write += $4 }} END {print "Total Read KB: " read, "Total Write KB: " write}'
+
+Total Read KB: 43.12 Total Write KB: 90.08      #H3
+Total Read KB: 3054.4 Total Write KB: 478.25    #J2
+
+
+
 
 
 
@@ -1463,6 +1605,13 @@ https://www.chartjs.org/
 4. 推送 github
 (1) J1 server
 Dev & Run: @J1:/datapool/wangjl/web/docs/code/system
+	change dir: 
+		$ mv /datapool/wangjl/web/docs/code/system ~/soft/
+		$ mv ~/soft/system ~/soft/system_moniter
+		$ cd ~/soft/system_moniter
+		$ pwd
+		/home/wangjl/soft/system_moniter
+	又灰溜溜的该回去原地址了。因为其他机器的 crontab 需要执行原目录的脚本，懒得一一去改了。
 git: https://gitee.com/dawnEve/system_moniter.git
 url: http://10.10.117.156:8071/?last=60
 
@@ -1470,11 +1619,29 @@ url: http://10.10.117.156:8071/?last=60
 $ git config user.name #"jimmy"
 $ git config user.email #"jim**ll at live dot com" #github按邮箱识别
 
+
+
+(1B) 移动位置后无法打开该文件夹
+换服务器正常访问。
+ls报错：
+ls: cannot access /home/wangjl/soft/system_moniter/: Input/output error
+该服务器还是只认mv前的原位置。
+	$ ls -lth /datapool/wangjl/web/docs/code/system
+	这个错误原因未知。
+
+
+
+
+
+
+
 (2)win11 PC:
 path: D:\xampp\htdocs\system_moniter
 $ git remote add github https://github.com/BioMooc/system_moniter.git
 $ git push -u github master
 https://github.com/BioMooc/system_moniter
+
+
 
 
 

@@ -473,6 +473,155 @@ doublet_scores, predicted_doublets = scrub.scrub_doublets(min_counts=2, min_cell
 
 
 
+========================================
+|-- 双细胞检测 doublet detection: R包: DoubletFinder
+----------------------------------------
+1. 简介
+https://github.com/chris-mcginnis-ucsf/DoubletFinder
+
+https://blog.csdn.net/weixin_41368414/article/details/133897327
+https://cloud.tencent.com/developer/article/2171121?areaSource=102001.17&traceId=CbY7J5XapuqNMW6MC-KM6
+
+
+
+
+
+
+
+2. 使用
+(1) 安装
+> remotes::install_github('chris-mcginnis-ucsf/DoubletFinder', update=F)
+> library("DoubletFinder")
+
+
+(2) 参数 DoubletFinder takes the following arguments:
+
+seu ~ This is a fully-processed Seurat object (i.e., after NormalizeData, FindVariableGenes, ScaleData, RunPCA, and RunTSNE have all been run).
+
+PCs ~ The number of statistically-significant principal components, specified as a range (e.g., PCs = 1:10)
+
+pN ~ This defines the number of generated artificial doublets, expressed as a proportion of the merged real-artificial data. Default is set to 25%, based on observation that DoubletFinder performance is largely pN-invariant (see McGinnis, Murrow and Gartner 2019, Cell Systems).
+	默认 25%，产生的人为混合细胞比例
+
+pK ~ This defines the PC neighborhood size used to compute pANN, expressed as a proportion of the merged real-artificial data. No default is set, as pK should be adjusted for each scRNA-seq dataset. Optimal pK values should be estimated using the strategy described below.
+	没有默认值，定义了用于计算pANN的PC邻居数量，表示为合并的真实人工数据的比例。
+
+nExp ~ This defines the pANN threshold used to make final doublet/singlet predictions. This value can best be estimated from cell loading densities into the 10X/Drop-Seq device, and adjusted according to the estimated proportion of homotypic doublets
+
+
+
+
+
+(3) 分析
+# step1 分群
+1)先分类好。
+
+2)推荐按样本分析。
+sce_list <- SplitObject(scObj2B, split.by = "orig.ident")
+
+
+3)确定参数：
+pc.num <- 1:50
+DoubletRate = 0.075 ## Assuming 7.5% doublet formation rate - tailor for your dataset
+
+
+
+4)对sce_list中的每一个样本都需要走一遍流程，之后再进行合并。
+
+library("DoubletFinder")
+
+## pK Identification (no ground-truth)
+## Step2: 确定参数，寻找最优pK值
+## 对Cell哈希和Demuxlet数据集进行pN- pk参数扫描的ROC分析表明，DoubletFinder的性能在很大程度上不受pN值选择的影响:
+sweep.res.list <- paramSweep(sce_list[[1]], PCs = pc.num, sct = FALSE) #sct也可以选择T
+参数解释：一般是建议按照每个cluster进行分析，SCT参数是指SCTransform，如果是其他方式比如harmony之后的，可以考虑不选择T。
+	很慢：10:10-> 10:56
+	且十分消耗CPU：192个CPU全用！占用130G内存
+	[1] "Creating artificial doublets for pN = 5%": 做一遍Seurat流程
+	[1] "Creating artificial doublets for pN = 10%": ...
+	[1] "Creating artificial doublets for pN = 15%": ... 到 30%停下来了。
+
+
+报错：rror in seu@assays$RNA$counts : $ operator not defined for this S4 class
+	查看github，可能是升级为SeuratV5格式了: https://github.com/chris-mcginnis-ucsf/DoubletFinder
+		(11/21/2023) Made compatible with Seurat v5 and removed '_v3' flag from relevant function names.
+	修改代码: 
+		library("DoubletFinder")
+		#foo <- edit(foo)
+		paramSweep_V4=edit(paramSweep) #把2个 $counts 改为 @counts ，保存
+		sweep.res.list <- paramSweep_V4(seu=sce_list[[1]], PCs = pc.num, sct = FALSE)
+
+	
+sweep.stats <- summarizeSweep(sweep.res.list, GT = FALSE)
+bcmvn <- find.pK(sweep.stats) #出图：丑，没x和y label
+# NULL
+
+
+mpK <- as.numeric(as.vector(bcmvn$pK[which.max(bcmvn$BCmetric)]))
+mpK #0.12
+
+
+Step3: 双细胞比例计算
+对模拟scRNA-seq数据进行pN-pK参数扫描的ROC分析:
+(I)细胞状态数量不同，
+(II)转录异质性程度不同，
+表明(I)最佳pK值选择取决于细胞状态的总数，(II)当应用于转录同质数据时，DoubletFinder的性能会受到影响。
+
+
+# 计算homotypic doublets的比例和预期的doublet数目
+homotypic.prop <- modelHomotypic(sce_list[[1]]$sub.cluster.T)   # 最好提供celltype
+homotypic.prop
+
+nExp_poi <- round(DoubletRate * ncol(sce_list[[1]]))
+nExp_poi.adj <- round(nExp_poi * (1 - homotypic.prop))
+
+
+
+
+Step4: 使用确定的参数鉴定doublets
+# 报错 Error in seu@assays$RNA$counts : $ operator not defined for this S4 class
+doubletFinder_V4=edit(doubletFinder) #修改 $counts 为 @counts
+sce_list[[1]] <- doubletFinder_V4(sce_list[[1]], 
+                            PCs = pc.num, 
+                            pN = 0.25,
+                            pK = mpK, 
+                            nExp = nExp_poi.adj, 
+                            reuse.pANN = F, 
+                            sct = F) # 也可以选择T
+#
+Step5: 结果可视化
+这里确定了Doublet-Low Confidience， Doublet-High Confidience，Singlet三种细胞类型。
+
+pbmc = sce_list[[1]]
+head(pbmc@meta.data)
+
+head(pbmc@meta.data$DF.classifications_0.25_0.12_282, 5)
+## "Singlet" "Singlet" "Singlet" "Singlet" "Singlet"
+
+pbmc@meta.data[, "DF_hi.lo"] <- pbmc@meta.data$DF.classifications_0.25_0.12_282
+
+table(pbmc@meta.data$DF_hi.lo)
+#Doublet Singlet 
+#    282    4563 
+
+## 结果展示，分类结果在pbmc@meta.data中
+DimPlot(pbmc, reduction = "umap", group.by = "DF_hi.lo", cols = c("black", "gold"))
+
+DimPlot(sce_list[[1]],
+        reduction = "umap", 
+        group.by = "DF.classifications_0.25_0.12_282")
+#
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -1638,6 +1787,166 @@ ii) infercnv.png
 * 设置热图颜色	https://github.com/broadinstitute/infercnv/issues/201
 	custom_color_pal=color.palette(c("darkgreen", "white", "darkred"), c(2, 2)) #1.3.2
 * infercnv.observations_dendrogram.txt 热图附带的层次聚类结果 https://cloud.tencent.com/developer/inventory/7049/article/1737241
+
+
+
+
+
+
+========================================
+|-- inferCNV 区分恶性细胞？
+----------------------------------------
+1. 文献介绍
+
+(1) 对每个细胞的 CNV 水平进行定量分析
+https://zhuanlan.zhihu.com/p/687041660
+2019年9月发表的胰腺导管腺癌（PDAC）的研究论文，文章除热图外，还使用小提琴图展示7个PDAC和1个对照样本的不同细胞类型之间的CNV分数分布（CNV分数计算方法见文章正文），结果表明2型管状细胞（Ductal cell2）的 CNV 水平明显高于其他类型的细胞，
+之后进一步分析该细胞亚群的差异基因、功能通路、marker基因，并辅助免疫组化染色实验，证实该细胞亚型为恶性细胞。
+
+图: 4*2=8个小图，每个都是小提琴图，x为细胞亚群，y为CNV level.
+	除了N2，其他7个图的 Ductal cell2 的 CNV level 都很高。
+
+(2)
+https://cloud.tencent.com/developer/article/1737216
+2020的文章《Single-Cell Transcriptome Analysis Reveals Intratumoral Heterogeneity in ccRCC, which Results in Different Clinical Outcomes》，就是选取ccRCC的3个病例的21个样本（12个肿瘤，9个对照），质控后总计24550个细胞，使用inferCNV算法可以区分成为7786个非恶性，16764个恶性细胞。
+
+按100个基因在染色体滑动平均。
+输入：300个 fibroblast, 300 endothelial(NI03)，另外500个fibro，500个endo作为ref对照。
+通过进化树最高层切割：plot cells on a dendrogram which was then cut at the highest point in which all the spiked in endo and fibro cells belonged to one cluster(K=6, one fibro control was missassigned).
+和 spike in control 聚类的叫 nontumor, 其余的叫 tumor。
+
+
+(3) Therapy-Induced Evolution of Human Lung Cancer Revealed by Single-Cell RNA Sequencing
+
+
+
+
+
+2. 代码实现：亚群级别查看
+
+看 cnv score，发现分布在1附近。说明大部分是单倍体。
+选择sd最高的基因，对cnv score做log后，取绝对值再相加。
+	如果本来都是1，则结果还是0。
+	否则，无论是 gain 还是 loss，值都会变大。
+
+
+cnv_table <- read.table(paste0(outputRoot, "/infercnv/B/infercnv.observations.txt"), header=T)
+dim(cnv_table) #8138 28783
+cnv_table[1:2, 1:2]
+#      ATAGACCAGCGATATA_LUNG_N20 CGACCTTAGATATGCA_LUNG_T19
+#NOC2L                  1.001131                  1.001131
+#HES4                   1.001131                  1.001131
+max(cnv_table) #1.266895
+min(cnv_table) #0.7331055
+
+
+# sd max genes
+gene.sd=apply(cnv_table, 1, sd)
+gene.sd=gene.sd[order(-gene.sd)]
+gene.sd[1:3]
+plot(gene.sd, col="red", type="l", lwd=2)
+# top 1000 as HVG
+cnv_table2=cnv_table[ names(gene.sd[1:1000]),]
+dim(cnv_table2) #1000 28783
+
+# use all genes? top sd genes?
+cnv.score.list = sapply( split(rownames(anno), anno$celltype), function(cids){
+  cids = intersect(cids, colnames(cnv_table2))
+  apply(cnv_table2[, cids], 1, mean) |> unlist()
+})
+dim(cnv.score.list) #1000   14
+cnv.score.list[1:2, 1:3]
+#            c0       c10      c11
+#PCM1  1.005136 0.9049356 1.006593
+#ASAH1 1.005512 0.9041140 1.006484
+
+dat = data.frame(
+  value=cnv.score.list |> as.data.frame() |> unlist(),
+  gene= rep(rownames(cnv.score.list), ncol(cnv.score.list)),
+  cluster=rep(colnames(cnv.score.list), each=nrow(cnv.score.list))
+)
+head(dat)
+#        value    gene cluster
+#c01 0.9957994 S100A16      c0
+#c02 0.9954988 S100A14      c0
+#c03 0.9953203 S100A13      c0
+#
+hist(dat$value, n=100) # normal distribution, mean=1
+
+library(ggplot2)
+cnv.median=sapply(dat$cluster|>unique(), function(x){
+  val = dat[which(dat$cluster==x), ]$value
+  val = abs(log2(val))
+  #c(mean(val), median(val))
+  median(val)
+}) # rowMeans() ## 0.02120095(mean) 0.01176219(median)
+cnv.median
+#         c0         c10         c11         c14         c16         c17         c19 
+#0.012328019 0.024370428 0.012771528 0.022374955 0.031357906 0.022250027 0.019277977 
+#        c22          c3          c4          c5          c6          c7          c9 
+#0.004500395 0.033408237 0.009663631 0.011196361          NA 0.031532327 0.030664951 
+#
+cnv.median=cnv.median[order(-cnv.median)]
+dat$cluster=factor(dat$cluster, levels = names(cnv.median))
+#
+write.table(dat, paste0(outputRoot, keyword, "_00_Cell_type.inferCNV_score-allEpi.boxplot.df.txt"))
+#
+cnv.median[c("c0", "c5")] |> mean()
+pdf(paste0(outputRoot, keyword, "_00_Cell_type.inferCNV_score-allEpi.boxplot.pdf"), width=4.1, height=4)
+ggplot(dat, aes(cluster, abs(log2(value+1e-10)), fill=cluster))+
+  #geom_violin(scale = "width", show.legend = F)+
+  #geom_boxplot(width=0.1, show.legend = F, fill="white", outliers = F)+
+  geom_boxplot(width=0.6, show.legend = F, outliers = F)+
+  theme_classic(base_size = 14)+
+  labs(x="Cell cluster", y="Absolute of log2(CNV score)", title="inferCNV")+
+  theme(
+    axis.text.x = element_text(angle = 45, hjust = 1)
+  )+
+  geom_hline(yintercept = (cnv.median[c("c0", "c5")] |> mean()), linetype=2, color="red")
+dev.off()
+#
+其中c0和c5(B, T细胞)是除了ref(fibroblast)之外的内参，用于大致看一下位置。
+
+这个图只能判断亚群级别。
+
+细胞级别还需要聚类。
+
+
+
+
+
+
+
+
+
+3. 代码实现：对每个细胞聚类
+
+前往不要轻易用层次聚类，巨慢，而且容易崩溃！
+热图仅仅查看效果。
+
+
+(1) (inferCNV) were clustered using unsupervised clustering (K-means) and presented in a heatmap.
+
+* kmeans 对行做聚类。
+* 最好做标准化：每个细胞中的基因标准化到1e4。
+	iris 对行做标准化后，kmeans分类几乎全正确，用原始数据很多错的。
+
+
+# 选作：最佳分类个数
+factoextra::fviz_nbclust( t(dat), kmeans, method = "silhouette")
+
+km_model <- kmeans(cnv_table2, centers = 3)
+
+
+ref:
+https://gitee.com/dawnEve/others/blob/master/zhaoyumiao/script/b01_inferCNV_epi_fibro.R
+
+
+
+
+
+
+
 
 
 
