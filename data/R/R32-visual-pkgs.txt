@@ -800,12 +800,102 @@ BiocManager::install("ComplexHeatmap")
 
 
 
+
+
+
+
+
+
 2. 入门级的是 和 pheatmap 包同名的热图。
 
 具体的看官方文档。
 可视化笔记在 《R 语言最佳实践》: https://dawneve.github.io/R_best_practice/
 
 
+(1) 先用heatma获取顺序，再用 pheatmap 可视化：右侧显示部分代表基因
+
+# heatmap of dyn APA genes
+library(pheatmap)
+library(viridis)
+pdf(paste0(outputRoot, "_02_3_DEAPA.gDPAU-time.heatmap.pdf"), width=2.7, height=4.3)
+# scale row: use later
+ht.gDPAU.time = pheatmap::pheatmap(gDPAU_mean.time,
+                                   clustering_method = "ward.D2",
+                                   cutree_rows = 3,
+                                   scale = "row",
+                                   show_rownames = F,
+                                   #color = viridis(20),
+                                   main=paste0("Average gDPAU among time\nRow scale; n=", nrow(gDPAU_mean.time)) )
+dev.off()
+
+
+## complext heatmap ====
+#1) 获取聚类后的基因顺序
+row_cluster = cutree(ht.gDPAU.time$tree_row, k=3)
+# 对聚类后的数据进行重新排序
+newOrder = gDPAU_mean.time[ht.gDPAU.time$tree_row$order,] |> as.data.frame()
+newOrder[,ncol(newOrder)+1]= row_cluster[match(rownames(newOrder), names(row_cluster))]
+colnames(newOrder)[ncol(newOrder)]="Cluster"
+# 查看重新排序后的数据
+head(newOrder)
+table(newOrder$Cluster)
+#  1   2   3 
+# 257 179 197 
+
+#2) redraw with complexheatmap, with some genes
+#BiocManager::install("ComplexHeatmap")
+library(ComplexHeatmap)
+
+# select some gene in each cluster
+genelist= lapply( split( rownames(newOrder), newOrder$Cluster), function(x){
+  set.seed(42)
+  sample(x, 5)
+}) |> unlist()
+#$`1`
+#[1] "TMEM127" "PACS2"   "TTC28"   "GART"    "LATS1"  
+#$`2`
+#[1] "CRTC1"  "BRCA1"  "TCF4"   "PDCD2L" "CAMK1D"
+#$`3`
+#[1] "CAPG"   "LY75"   "ZNF652" "DLGAP4" "ARL6" 
+
+gene_pos=which( rev(rownames(newOrder)) %in% genelist) #11 191 221 434 532 536 574 586 630
+#右侧要注释的基因
+row_anno=rowAnnotation(gene=anno_mark(at=gene_pos, #位置
+                                      labels=genelist, #文字
+                                      labels_gp=gpar(fontsize=8, col="black"))) #样式
+
+#cluster 颜色
+colors.cluster = c('#E64B35','#4DBBD5','#3C5488')
+# 左侧聚类bar图
+left_anno = rowAnnotation(cluster=anno_block(
+  gp=gpar(fill=colors.cluster),
+  labels=sprintf("%s genes",
+                #unique( newOrder$Cluster), 
+                table(newOrder$Cluster) |> as.numeric() ) ,
+  labels_gp = gpar(cex=1, col="white")
+))
+
+ht.gDPAU.time2 = Heatmap(
+  (function(){
+    t1=t(scale(t(newOrder[, 1:3])))
+    t1[ rev(rownames(t1)),]
+  })(),
+  #t(scale(t(gDPAU_mean.time))),
+  cluster_rows = FALSE,
+  cluster_columns = FALSE,
+  left_annotation = left_anno,
+  heatmap_legend_param = list(title=""), #修改图例标题，该语句或者 name=语句
+  show_row_names = F, #不显示右侧注释
+  #clustering_method_rows="ward.D2", clustering_method_columns = "ward.D2", split=3,
+  split=paste0("Cluster ", rev(newOrder$Cluster) ),
+  #col= viridis(20),
+  col= colorRampPalette(c("navy", "white", "firebrick3"))(50),
+  right_annotation = row_anno) #只显示感兴趣基因
+#
+pdf(paste0(outputRoot, "_02_3_DEAPA.gDPAU-time.ComplexHeatmap-withGenes.pdf"), width=3.2, height=4.3)
+print(ht.gDPAU.time2)
+dev.off()
+#
 
 
 
@@ -813,12 +903,8 @@ BiocManager::install("ComplexHeatmap")
 
 
 
-
-
-
-
-1.要求画热图：
-(1).有三个数据文件，每个都是这样的7行9列：
+(2) 画热图例2：
+1).有三个数据文件，每个都是这样的7行9列：
 2-HG	Citrate	Fumarate	lsocitrate	Lactate	maltate	Succinate	Age	Gender
 Any cancer	0.001	0.001	0.25	0.001	0.25	0.001	0.25	0.001	0.25
 Breast cancer	0.1	0.1	0.002525	0.1	0.002525	0.1	0.002525	0.1	0.002525
@@ -830,20 +916,14 @@ Lhermitte-Duclos disease	0.0263	0.0263	0.09878	0.0263	0.09878	0.0263	0.09878	0.0
 
 三个文件rbind拼接，同时在最左侧显示数据来源。
 文件之间显示分割线。
-
-(2)行列名字标注到热图的left和top;
-(3)共用一个图例，显示到右侧。
-
+2)行列名字标注到热图的left和top;
+3)共用一个图例，显示到右侧。
 
 
-
-
-
-2. 代码：
+代码
 library(ComplexHeatmap)
 library(circlize)
 setwd("/home/wangjl/web/docs/docs")
-
 
 see=function(df){
   print(dim(df))
@@ -889,7 +969,6 @@ library(Cairo)
 CairoPDF(file='test3.pdf',width=8,height=5)
 p1
 dev.off()
-
 ## end
 
 
@@ -903,7 +982,7 @@ https://www.jianshu.com/p/d8b8f7acf47c
 ========================================
 韦恩图绘制 venn图: VennDiagram 包
 ----------------------------------------
-# 经典的2类交集韦恩图，顶上标标签，圆圈标数字个数，面积成比例
+例1: 经典的2类交集韦恩图，顶上标标签，圆圈标数字个数，面积成比例
 library (VennDiagram)
 #grid.newpage()
 venn.plot <- draw.pairwise.venn(393, 269, 94, c("BC", "HeLa"), 
@@ -916,6 +995,51 @@ venn.plot <- draw.pairwise.venn(393, 269, 94, c("BC", "HeLa"),
                                 
                                 cat.col = c('#F81082', '#619CFF'), margin=0.3, scaled = T);
 #
+例2: 给出三个基因集，画韦恩图。
+- 控制字体
+- 输出到pdf中
+
+# https://stackoverflow.com/questions/12803390/venndiagram-internal-labels
+library (VennDiagram)
+
+venn.plot2=venn.diagram(x=list(
+    h18_vs_0=getDEAPA(gDPAU.18h_0h), 
+    h48_vs_0=getDEAPA(gDPAU.48h_0h), 
+    h48_vs_18=getDEAPA(gDPAU.48h_18h)
+  ),
+  filename=NULL, #"My1.png", 
+  main="DE APA: gDPAU | time",
+  col="white", 
+  #fill=c(colors()[616], colors()[38], colors()[468]),
+  fill=c("#FFA500", "#FF1493", "#4876FF"),
+  alpha=c(0.4, 0.4, 0.4), lwd=c(1, 1, 1), 
+  cex=1.5, #0.55, #number font size
+  cat.dist=c(0.05, 0.01, 0.02),  #标签距离边界
+  cat.pos=c(320, 40, 180), #标签角度，y轴正方向为0
+  cat.cex=1.2, #0.45,
+  margin=0.1,
+  
+  main.fontfamily="sans", #标题，默认都是 serif
+  fontfamily ="sans", #每个圆圈的数字
+  cat.fontfamily = "sans" #每个圆圈的标签
+)
+#
+pdf(paste0(outputRoot, "_02_2_DEAPA.gDPAU-time.Venn.pdf"), width=3, height=3)
+grid.newpage()
+grid.draw(venn.plot2);
+dev.off();
+#
+
+
+
+
+
+
+
+
+
+
+
 
 
 1.VennDiagram包
