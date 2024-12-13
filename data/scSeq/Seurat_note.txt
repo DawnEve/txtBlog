@@ -101,22 +101,6 @@ library(NMF)
 
 
 
-==> 使用Leiden时，需要在R中设置 py 资源。只能R第一次启动时设置，设置后不能修改；想修改就需要重启R session。
-# set Python version you use in R
-library("reticulate")
-use_python("/home/wangjl/software/anaconda3/bin/python3", required = T)
-py_config()
-system("pip3 -V")
-system("which pip3")
-
-## Leiden algorithm ----
-system("pip3 install leidenalg -i https://pypi.douban.com/simple/")
-system("which pip3")
-
-system("pip3 list | grep leidenalg")
-
-
-
 
 
 
@@ -190,6 +174,350 @@ Error: package or namespace load failed for ‘hdf5r’ in dyn.load(file, DLLpat
 
 
 
+
+
+
+
+
+
+========================================
+|-- 如何使用 Seurat 的 leiden 算法：R导出snn矩阵文件，py leidenalg 包分群后导出文件，读取回R
+----------------------------------------
+建议直接看1和5.
+
+
+1. R中设置 leiden 算法 依赖的py包
+
+使用Leiden时，需要在R中设置 py 资源。只能R第一次启动时设置，设置后不能修改；想修改就需要重启R session。
+# set Python version you use in R
+
+library("reticulate")
+use_python("/home/wangjl/soft/python3/python-3.10.14/bin/python3", required = T)
+py_config()
+
+检查版本号
+system("pip3 list | grep leidenalg")
+# leidenalg                     0.10.2
+
+如果没有安装，需要安装
+system("pip3 -V")
+system("which pip3")
+
+## Leiden algorithm ----
+system("pip3 install leidenalg -i https://pypi.douban.com/simple/")
+system("which pip3")
+
+
+
+
+
+
+
+2. R 代码
+
+library(Seurat)
+sce1_alt4 <- FindClusters(sce1, resolution = 0.4, algorithm =4, method = "igraph")
+
+#
+# Github issue: Leiden 实现有问题，只能用小数据集，大数据集需要是指定很慢的 method = "igraph"
+# https://github.com/satijalab/seurat/issues/7340
+#9:07->9:37 res=0.2 和 算法1 没啥变化
+# sce1_res0.2=sce1_alt4
+#9:41->
+
+
+
+
+
+
+
+
+3. 如何直接使用 py 包，做Leiden聚类后再把输出文件导入R中？[建议直接看 4.]
+
+(1) leidenalg 包需要什么输入
+https://github.com/vtraag/leidenalg
+
+
+1) 主要语句：
+leidenalg.find_partition(graph, 
+                         partition_type, 
+                         initial_membership=None, 
+                         weights=None, 
+                         n_iterations=2,
+                         max_comm_size=0, 
+                         seed=None, 
+                         **kwargs
+                         )
+#
+
+
+2) 内置例子
+import numpy  as np
+import igraph as ig
+import leidenalg as la
+
+# 创建一个简单的网络
+g = ig.Graph.Famous('Zachary')
+
+# 计算社区分配
+partition = la.find_partition(g, la.ModularityVertexPartition)
+#partition = la.find_partition(g, la.ModularityVertexPartition, resolution=0.3) #设置分辨率
+    
+# 打印社区分配结果
+print(partition)
+Clustering with 34 elements and 4 clusters
+[0] 8, 9, 14, 15, 18, 20, 22, 26, 29, 30, 32, 33
+[1] 0, 1, 2, 3, 7, 11, 12, 13, 17, 19, 21
+[2] 23, 24, 25, 27, 28, 31
+[3] 4, 5, 6, 10, 16
+
+# 简单的可视化
+ig.plot(partition)
+# AttributeError: Plotting not available; please install pycairo or cairocffi
+	$ pip3 install pycairo 
+	##Successfully installed pycairo-1.27.0
+	$ sudo yum install cairo-devel
+	测试：import cairo
+
+
+
+
+
+3) 使用自己的数据（未测试）
+#1读取前两列
+import networkx as nx
+import pandas as pd
+import numpy  as np
+import igraph as ig
+import leidenalg as la
+
+data = pd.read_csv('email.edgelist.txt',delimiter='\t',header=None)
+data = data.iloc[1:,:2]
+data.columns = ['src','dst']
+data
+
+
+#2 创建一个igraph的空图
+g = ig.Graph()
+da = data[['src','dst']].values
+
+# 边构建
+edges = []
+for num in range(len(da)):
+    edges.append((da[num,0],da[num,1]))
+
+# 节点构建
+nodes = set(data['src'].astype('str').tolist()+data['dst'].astype('str').tolist())
+
+for node in nodes:
+    g.add_vertex(node)
+    
+g.add_edges(edges)
+
+#3 计算社区分配
+partition = la.find_partition(g, la.ModularityVertexPartition)
+
+
+#4 创建一个新的DataFrame来存储节点Label及其模块化社区编号
+com = pd.DataFrame({"group_id": g.vs['name'], 
+                    "Community": partition.membership
+                   })
+
+com.head()
+
+
+#5 统计每个群组人数
+com.groupby('GroupID').count().sort_values(by='User_ID', ascending=False) .head(120)
+
+# 也可以提取子图看看
+sub_g = partition.subgraph(112)
+sub_g.vcount()
+
+
+
+
+
+
+
+
+
+
+4. GPT方案：使用 scanpy [直接导出邻接图的，请看 5 ]
+Seurat 的 FindClusters() 使用 leiden算法是依赖python包的，但是数据量太大会报错。怎么从R导出文件，在python中用leidenalg包分类并输出细胞分类文件，再导回到R中？
+
+(1) 从R导出data为csv文件
+# 提取细胞表达矩阵
+expression_data <- as.data.frame(seurat_obj@assays$RNA@counts)
+# 导出为 CSV 文件
+write.csv(expression_data, "expression_data.csv")
+
+
+(2) 在 Python 中使用 leidenalg 进行分类
+import pandas as pd
+import numpy as np
+import scanpy as sc
+import leidenalg
+import igraph as ig
+
+# 读取 CSV 文件
+data = pd.read_csv("expression_data.csv", index_col=0)
+
+# 创建 AnnData 对象
+adata = sc.AnnData(data)
+
+# 计算邻接图
+sc.pp.neighbors(adata)
+
+# 使用 Leiden 算法进行聚类
+leiden_clusters = leidenalg.find_partition(adata.obsp['connectivities'], 
+                                            partition_type=leidenalg.RBConfigurationVertexPartition)
+
+# 将聚类结果添加到 AnnData 对象中
+adata.obs['leiden'] = np.array(leiden_clusters.membership)
+
+# 导出细胞分类结果
+adata.obs.to_csv("cell_clusters.csv")
+
+
+(3) 从 Python 导入分类结果到 R
+# 读取细胞分类结果
+cell_clusters <- read.csv("cell_clusters.csv", row.names = 1)
+
+# 将分类结果合并到 Seurat 对象
+seurat_obj$leiden <- cell_clusters$leiden  # 假设列名为 'leiden'
+
+# 检查结果
+head(seurat_obj@meta.data)
+
+
+
+
+
+
+
+
+
+
+
+5. 直接从R导出邻接图，在py中做分群
+
+(0) Seurat 怎么包装的py包，重点关注参数设置
+https://zhuanlan.zhihu.com/p/521391359
+  else if (algorithm == 4) {
+	ids <- RunLeiden(
+	  object = object,
+	  method = method,
+	  partition.type = "RBConfigurationVertexPartition",
+	  initial.membership = initial.membership,
+	  node.sizes = node.sizes,
+	  resolution.parameter = r,
+	  random.seed = random.seed,
+	  n.iter = n.iter
+	)
+  }
+#
+
+
+
+(1) 从R导出邻接图到文件
+# 计算邻接图（如果尚未计算）
+seurat_obj <- FindNeighbors(seurat_obj)
+
+# 提取邻接矩阵
+adjacency_matrix <- seurat_obj@graphs$RNA_snn  # 这里 'RNA_snn' 是默认的图名称
+
+# 将邻接矩阵转换为数据框并导出：报错！
+	# write.csv(as.data.frame(as.matrix(adjacency_matrix)), paste0(outputRoot, keyword, "_adjacency_matrix.csv") )
+	# Error: cannot allocate vector of size 198.8 Gb 服务器500G内存，但是现在剩余不够200G了
+
+# 导出为稀疏矩阵格式
+library(Matrix)
+writeMM(adjacency_matrix, paste0(outputRoot, keyword, "_adjacency_matrix.mtx") )
+# /home/wangjl/data4/others/hanlu/output/BCMA3/GSE271915_adjacency_matrix.mtx
+
+# 导出细胞名称（列名）
+writeLines(colnames(adjacency_matrix), paste0(outputRoot, keyword, "_cells.csv") )
+# /home/wangjl/data4/others/hanlu/output/BCMA3/GSE271915_cells.csv
+
+
+
+(2) 在 Python 中使用 leidenalg 进行分群，并导出结果到csv
+import pandas as pd
+from scipy.io import mmread
+import numpy as np
+import leidenalg
+import igraph as ig
+
+def time_now():
+  import time
+  return "["+time.strftime("%Y/%m/%d %H:%M:%S", time.localtime())+"]"
+
+# Python 包对细胞分群
+# v0.2 add msg
+# v0.3 add time to msg
+# RNA_snnFle: 输入1 邻接矩阵: RNA_snn 的稀疏矩阵格式 adjacency_matrix.mtx
+# cellidFile: 输入2 细胞名字(无标题): cells.csv #其实没啥用，就是为了输入、输出时凑形式列
+# outputFile: 输出csv文件，单列带标题(Leiden): cell_clusters.csv
+def py_FindClusters(RNA_snnFle, cellidFile, outputFile, resolution=0.8, UNDIRECTED=True):
+	#1. 读取稀疏邻接矩阵
+	sparse_matrix = mmread(RNA_snnFle).tocsc()
+
+	# 读取细胞名称
+	cells = pd.read_csv(cellidFile, header=None).squeeze().values
+
+	# 确保细胞数量与稀疏矩阵的行数匹配
+	if len(cells) != sparse_matrix.shape[0]:
+		raise ValueError("细胞名称数量与稀疏矩阵的行数不匹配。")
+	print(time_now(), ">1.Read File: ok")
+	
+	#2. 创建图
+	# 获取边的索引和权重
+	rows, cols = sparse_matrix.nonzero()
+	weights = sparse_matrix.data
+
+	if UNDIRECTED:
+		# 创建无向图
+		g = ig.Graph()
+		g.add_vertices(sparse_matrix.shape[0])  # 添加细胞作为顶点
+		g.add_edges(zip(rows, cols))  # 添加边
+		g.es['weight'] = weights  # 添加边权重
+		print(time_now(), ">2.Graph: UNDIRECTED ok")
+	else:
+		#有向图
+		g = ig.Graph.DataFrame(pd.DataFrame({'source': rows, 'target': cols, 'weight': weights}))
+		print(time_now(), ">2.Graph: DIRECTED ok")
+
+	#3. 使用 Leiden 算法进行聚类: 大概2min
+	partition = leidenalg.find_partition(g, leidenalg.RBConfigurationVertexPartition, resolution_parameter=resolution)
+	print(time_now(), ">3.partition: ok")
+
+	#4. 将聚类结果添加到 DataFrame 中
+	cell_clusters = pd.DataFrame(index=cells)
+	cell_clusters['leiden'] = partition.membership
+
+	# 导出细胞分类结果
+	cell_clusters.to_csv(outputFile)
+	print(time_now(), ">4.saved to: ", outputFile)
+#
+pre_fix="/home/wangjl/data4/others/hanlu/output/BCMA3/GSE271915_"
+RNA_snn=pre_fix+"adjacency_matrix.mtx"
+cellid=pre_fix+"cells.csv"
+outputFile=pre_fix +"cell_clusters.csv"
+#
+py_FindClusters(RNA_snn, cellid, pre_fix+"res0.6_cell_clusters.csv", resolution=0.8)
+# 大概2min
+
+
+(3) 结果导入到R
+cell_clusters <- read.csv( paste0(outputRoot, keyword, "_cell_clusters.csv"), row.names = 1)
+sce1$leiden <- cell_clusters$leiden  # 假设列名为 'leiden'
+table(sce1$leiden)
+DimPlot(sce1, label = T, group.by = "leiden") + ggtitle("Leiden, res=0.8")
+
+
+
+
+ref: https://zhuanlan.zhihu.com/p/712714461
 
 
 
@@ -1723,6 +2051,59 @@ verbose : TRUE
 
 
 ========================================
+|-- SCTransform: 优势与流程
+----------------------------------------
+1. 优势
+SCTransform normalization的优势：
+
+- 一个SCTransform函数即可替代NormalizeData, ScaleData, FindVariableFeatures三个函数;
+- 对测序深度的校正效果要好于log标准化(10万以内的细胞都建议使用SCT);
+- SCTransform,可用于矫正线粒体、细胞周期等因素的影响，但不能用于批次矫正;
+- 改善信/噪比；
+- 发现稀有细胞。
+
+
+
+
+
+2. 流程
+
+(1) 官方流程
+# run sctransform
+sce1_trf <- SCTransform(sce1, #vars.to.regress = "percent.mt", 
+                        verbose = T)
+
+# These are now standard steps in the Seurat workflow for visualization and clustering
+sce1_trf <- RunPCA(sce1_trf, verbose = T)
+sce1_trf <- RunUMAP(sce1_trf, dims = 1:50, verbose = T)
+
+sce1_trf <- FindNeighbors(sce1_trf, dims = 1:50, verbose = T)
+sce1_trf <- FindClusters(sce1_trf, resolution = 0.8, verbose = T)
+DimPlot(sce1_trf, label = TRUE)
+
+
+# 自定义颜色可视化
+ncluster <- length(unique(sce1_trf[[]]$seurat_clusters))
+mycol <- colorRampPalette(brewer.pal(8, "Set2"))(ncluster)
+DimPlot(sce1_trf, label = T, cols = mycol)
+
+
+
+
+(2) 更多参数：leiden 细胞聚类算法
+srat <- FindNeighbors(srat, dims = 1:30, k.param = 15, verbose = F)
+
+## Leiden algorithm即algorithm = 4， 需要配置python环境
+srat <- FindClusters(srat, verbose = F, algorithm = 4, resolution = 0.95)
+
+
+
+
+
+
+
+
+========================================
 Seurat 4.1.0 的 240 个函数名： ls("package:Seurat")
 ----------------------------------------
 
@@ -2876,6 +3257,10 @@ FeaturePlot(pbmc3k.final, features = c("MS4A1", "CD79A"), split.by = "groups")
 FeaturePlot(scObj, features = c("PCF11"), cols =c("lightgrey", "red"), order = T)
 
 
+(7) 可视化技巧：自定义渐变颜色，高亮显示某一个feature的高值
+my.colors = colorRampPalette(c("lightblue", "white", "darkred"))(100)
+FeaturePlot(sce1, feature = "percent.mt", raster = F, cols = my.colors)
+
 
 
 
@@ -2984,9 +3369,15 @@ baseplot + FontSize(x.title = 20, y.title = 20) + NoLegend()
 
 
 
+
+
+
 5. 系统发育分析（Phylogenetic Analysis of Identity Classes）
 pbmc<-BuildClusterTree(pbmc)
 Tool(object = pbmc, slot = 'BuildClusterTree')
+
+
+
 
 
 

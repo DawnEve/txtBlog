@@ -3119,6 +3119,572 @@ https://www.r-graph-gallery.com/2-two-histograms-with-melt-colors.html
 
 
 ========================================
+|-- 从图片(jpg, png)中使用kmeans法获取代表颜色卡，并合并8张png图片为一个大图png
+----------------------------------------
+写两个脚本
+
+1. 执行从图片获取k=8个颜色，并保存到文件；目测优化该k到合理值
+(1)脚本内容
+$ cat pickColorCards_k.R
+
+# 函数：根据后缀名jpg, png读取图像，如果识别，换另一种试试
+read_image <- function(file_path) {
+  
+  #1. 尝试读取 JPG 格式
+  if (grepl("\\.jpg$|\\.jpeg$", file_path, ignore.case = TRUE)) {
+    img <- tryCatch({
+      jpeg::readJPEG(file_path)
+    }, error = function(e) {
+      return(NULL)  # 返回 NULL 以表示读取失败
+    })
+
+    if (!is.null(img)) {
+      cat("Successfully read as JPEG.\n")
+      return(img)
+    }
+  }
+  
+  #2. 尝试读取 PNG 格式
+  if (grepl("\\.png$", file_path, ignore.case = TRUE)) {
+    img <- tryCatch({
+      png::readPNG(file_path)
+    }, error = function(e) {
+      return(NULL)  # 返回 NULL 以表示读取失败
+    })
+    
+    if (!is.null(img)) {
+      cat("Successfully read as PNG.\n")
+      return(img)
+    }
+  }
+  
+  # 如果都失败，尝试去掉后缀重新读取
+  cat("Trying to read without extension...\n")
+  
+  #3. 尝试读取 JPG
+  img <- tryCatch({
+    jpeg::readJPEG(file_path)
+  }, error = function(e) {
+    return(NULL)
+  })
+  
+  if (!is.null(img)) {
+    cat("Successfully read as JPEG (without extension).\n")
+    return(img)
+  }
+  
+  #4. 尝试读取 PNG
+  img <- tryCatch({
+    png::readPNG(file_path)
+  }, error = function(e) {
+    return(NULL)
+  })
+  
+  if (!is.null(img)) {
+    cat("Successfully read as PNG (without extension).\n")
+    return(img)
+  }
+  
+  stop("Failed to read the image in both formats.")
+}
+if(0){
+	# 使用示例
+	image_path <- "path/to/your/image.jpg"  # 替换为您的文件路径
+	image_data <- read_image(image_path)
+}
+
+
+#' 给出图片的代表颜色卡：kmeans法
+#' 
+#' @version v1.2 给出聚类效果的3d展示
+#' @version v1.3 static 左侧不留空间，右侧多些，方便显示颜色
+#'
+#' @param filename jpg or png filename
+#' @param k k-means聚类个数，默认5
+#' @param show 是否展示颜色效果，默认"static", 可选包括: "none"(不显示图片), "3d", "3dR", "3di", "3dR”, "3diR"; 
+#' 区别是i是交互式的
+#' 不加R显示聚类后的代表颜色，加R是真实颜色（参考意义不大）
+#' @param angle.3d 当且仅当show == "3d"，设置角度有效，默认45，范围 [0, 360]。
+#'
+#' @return
+#' @export
+#'
+#' @examples
+getColorsFromPicture=function(filename, k=5, show="static", angle.3d=45){
+  # step1
+  #filename = "D:\\Program Files (x86)\\EyeDefender\\scenery-50.jpg"
+  #filename = "D:\\Program Files (x86)\\EyeDefender\\scenery-30.jpg"
+  
+  # step2
+  # 读取图片
+  #if( endsWith(filename, "jpg") || endsWith(filename, "JPG") ){
+  #  library(jpeg)
+  #  img <- readJPEG(filename) 
+  #}else if( endsWith(filename, "png") || endsWith(filename, "PNG") ){
+  #  library(png)
+  #  img <- readPNG(filename)
+  #}
+ 
+  img <- read_image(filename)
+  
+  
+  # 获取图片的维度
+  dim_img <- dim(img)
+  
+  # 将图片转换为数据框，包含每个像素的 RGB 值
+  pixels <- as.data.frame(matrix(img, nrow = dim_img[1] * dim_img[2], ncol = 3))
+  colnames(pixels) <- c("R", "G", "B")
+  
+  # step3
+  # 设置聚类数量
+  k <- k  # 你可以根据需要调整这个值
+  
+  # 进行 K-means 聚类
+  set.seed(42)  # 设置随机种子以确保结果可重复
+  kmeans_result <- kmeans(pixels, centers = k)
+  
+  # 将聚类结果添加到数据框中
+  pixels$cluster <- as.factor(kmeans_result$cluster)
+  
+  # step4
+  # 计算每个聚类的频率
+  library(dplyr)
+  color_summary <- pixels %>%
+    group_by(cluster) %>%
+    summarise(
+      R = mean(R),
+      G = mean(G),
+      B = mean(B),
+      count = n()
+    ) %>%
+    arrange(desc(count))  # 按频率降序排列
+  
+  # 提取代表颜色
+  representative_colors <- color_summary %>%
+    select(R, G, B) %>%
+    as.matrix() %>%
+    apply(1, function(x) rgb(x[1], x[2], x[3], maxColorValue = 1))
+  
+  
+  ########################################
+  # 显示代表颜色：静态图 + 色卡
+  ########################################
+  if(show=="static"){
+    oldPar=par(no.readonly = T)
+    
+    # 创建一个窗口并设置布局
+    par(mfrow = c(2, 1))  # 设置 2 行 1 列的布局
+    
+    # 显示颜色
+    par(mar = c(0, 0, 4, 1.5)) #bottom, left, top, right
+    posX=barplot(rep(1, nrow(color_summary)), col = representative_colors, border = NA, axes = F,
+                 #vp = viewport(layout.pos.row = 2, layout.pos.col = 1),
+                 main="")
+    text(posX, par("usr")[4]*1.04, labels=representative_colors, 
+         srt=45, adj=0,
+         xpd=T,
+         col="black", xpd=T)
+    
+    # 显示图片
+    par(mar = c(0, 0, 0, 1.5))
+    plot(NA, NA, xlim=c(1,dim_img[2]), ylim=c(1,dim_img[1]), type="n", xlab="", ylab="", axes=FALSE)
+    rasterImage(img, 1, 1, dim_img[2], dim_img[1])
+    par(oldPar)
+  }
+  #
+  ########################################
+  # 3d展示颜色
+  ########################################
+  else if( startsWith(show, "3d") ){
+    #head(pixels)
+    #         R         G         B cluster
+    #1 0.7686275 0.5490196 0.2549020       2
+    #2 0.8901961 0.6666667 0.3647059       2
+    table(pixels$cluster)
+    #     1      2      3      4      5      6      7      8 
+    # 295390 205034 321986 242952 239743 182654 323470 262371 
+    
+    x=pixels$R
+    y=pixels$G
+    z=pixels$B
+    
+    color_summary #k rows
+    #  cluster      R     G     B  count
+    #  <fct>    <dbl> <dbl> <dbl>  <int>
+    #1 3       0.292  0.267 0.247 485072
+    #2 5       0.382  0.527 0.615 466379
+    #
+    #rgb(0.292,  0.267, 0.247, maxColorValue = 1)
+    #[1] "#4A443F"
+    
+    # head(representative_colors )
+    # "#4B443F" "#61869D" "#A2B9C7" "#A5805D" "#165576"
+    
+    #order color by cluster
+    representative_colors2=representative_colors[color_summary$cluster]
+    
+    #color for each point
+    colors = factor( representative_colors2[match(pixels$cluster, color_summary$cluster)] ) #代表色
+    #全部颜色
+    colors.real = pixels  %>% select(R, G, B) %>%
+      as.matrix() %>%
+      apply(1, function(x) rgb(x[1], x[2], x[3], maxColorValue = 1))
+    
+    #length(colors)
+    #table(colors)
+    
+    dat <- data.frame(x, y, z, colors)#生成数据框
+    head(dat)
+    
+    # 3d 静态图像
+    if(show=="3d"){
+      # method1
+      library(scatterplot3d)
+      plot3d_A <- with(dat, scatterplot3d(x, y, z, color = colors, 
+                                          pch = 16, angle= angle.3d, 
+                                          cex.symbols=0.1,
+                                          main=paste0("Representative colors | angle=", angle.3d))
+                       )
+      #legend(plot3d_A$xyz.convert(0.5, 0.7, 0.5), pch=16, yjust=0,
+      #       border = NA, 
+      #       bg = NA,
+      #       legend=levels(dat$colors), 
+      #       col = seq_along(levels(dat$colors)))
+    }else if(show=="3dR"){
+      # use real colors
+      library(scatterplot3d)
+      plot3d_A <- with(dat, scatterplot3d(x, y, z, color = colors.real, 
+                                          pch = 16, angle= angle.3d, 
+                                          cex.symbols=0.1,
+                                          main=paste0("Real Colors | angle=", angle.3d))
+      )
+    }else if(show=="3di"){
+      # method2
+      library(rgl)
+      plot3d_B <- with(dat, plot3d(x, y, z, col = colors, pch = 16))
+    }else if(show=="3diR"){
+      library(rgl)
+      plot3d_C <- with(dat, plot3d(x, y, z, col = colors.real, pch = 16))
+    }
+  }
+  # 最后输出16进制代表颜色json
+  message('>> json hex colors: ', representative_colors |> jsonlite::toJSON() )
+  return(representative_colors)
+}
+
+
+
+## get params
+myArgs<-commandArgs(TRUE)
+
+input.file = myArgs[1]
+
+if(length(myArgs) >1 ){
+	k=as.numeric(myArgs[2])
+}else{
+	k=8
+}
+
+if(length(myArgs) >2 ){
+	output.file = myArgs[3]
+}else{
+	output.file = "a.png"
+}
+
+force=F
+if(length(myArgs) >3 ){
+	force=myArgs[4] == "force"
+}
+
+if(file.exists(output.file) & force!=T ){
+	stop("output file already exists:", output.file)
+}
+
+png(output.file, width=300, height=350)
+getColorsFromPicture(input.file, k=k)
+dev.off()
+
+message("output file to:", output.file)
+
+
+
+
+
+
+(2) 使用方法 how to pick color
+1. cmd
+2. set > path="D:\Program Files\R\R-4.4.0\bin"
+3. cd >cd Pictures\colors\trees  #图片放到这里，最好命名统一，方便命令行运行
+4. Run > Rscript D:\code_R\pickColorCards_k.R  a8.jpg 15 tmp\a8.png force
+参数1 输入图片
+参数2 需要几个颜色
+参数3 输出图片的位置和名字
+参数4 强制覆盖输出文件
+
+5.浏览器查看图片效果，保证获取最佳k值。
+
+
+=> 步骤4也可写cmd的循环：
+@echo off
+for /L %i in (1,1,14) do (
+	echo Running R script with variable %i
+	Rscript D:\code_R\pickColorCards_k.R  %i.jpg 10 tmp/%i.png force
+)
+解释：在win cmd命令行执行(PowerShell 不行！)，第一行去掉，for循环内容顶格写。
+* 表示循环1到14，中间的1是步长。
+* 命令无法结束，ctrl+C也不行。只能关掉cmd窗口，再开一个。
+* 根据目测，手动逐步增大k(10,15,20)，获取希望的颜色。
+
+
+
+
+
+
+2. 把生成的若干张图片合并为大图
+
+(1) 手工版
+* 在R中执行，因为需要根据输入图片个数进行调整。
+library(png)
+library(grid)
+files=list.files(path='C:\\Users\\DELL\\Pictures\\colors\\tmp\\', full.names = T)
+length(files) #图片个数
+files
+
+# 读取图片
+plots <- lapply(ll <- files,function(x){
+  img <- as.raster(readPNG(x))
+  rasterGrob(img, interpolate = FALSE)
+})
+
+# 合并为大图：指定几行几列
+png("C:\\Users\\DELL\\Pictures\\colors\\tree.png", width=300*4, height = 350*2)
+grid.newpage()
+print(gridExtra::marrangeGrob(grobs = plots, nrow=2, ncol=4,top=NULL));
+dev.off()
+
+
+
+
+
+(2) R 脚本：可命令行执行合并大图
+
+只需要输入行数，自动计算列数。
+默认按行填充每个小图。
+
+$ cat mergeColorCards.R
+# 按列填充，输出按行填充的顺序：方便对原始plots list 调整顺序
+ReOrder=function(total, rowNum){
+  arr=1:total
+  m=rowNum
+  n= ceiling( length(arr)/m ); n
+  # 创建 arr2，使其能按行填充
+  arr2 <- numeric(length(arr))  # 初始化 arr2
+  
+  # 按列填充的顺序调整到按行填充的顺序
+  for (i in 1:m) {
+    for (j in 1:n) {
+      arr2[(j - 1) * m + i] <- arr[(i - 1) * n + j]
+    }
+  }
+  return(arr2)
+}
+
+#' 合并小png文件为一个大png文件。
+#'
+#' v2.0 添加默认按行排图片，依赖函数 ReOrder
+#' 
+#' 原始文件在 outDir/ 中，本函数不用。
+#' 带颜色卡的小文件在 outDir/tmp/*.png 中，本函数的输入。
+#' 合并后输出为 outDir/下的 colorCards.png，可以修改文件名
+#'
+#' @param out.dir 
+#' @param n_row 
+#' @param n_col 
+#' @param out.filename 
+#' @param by.row 默认按行排序 
+#'
+#' @return
+#' @export
+#'
+#' @examples
+mergeFigs=function(out.dir="C:\\Users\\DELL\\Pictures\\colors\\001",
+                   n_row=4,
+                   n_col=-1,
+                   out.filename="colorCards.png", by.row=T){
+  library(png)
+  library(grid)
+  #out.dir="C:\\Users\\DELL\\Pictures\\colors\\001"
+  
+  # 合并为大图：指定几行几列
+  #n_row=4
+  #n_col=4
+  
+  
+  # 获取文件名
+  files=list.files(path=paste0(out.dir, '\\tmp\\'), full.names = T)
+  length(files) #图片个数
+  files
+
+  if(n_col<0){
+	n_col= ceiling( length(files) / n_row )
+  }
+  
+  # 读取图片
+  plots <- lapply(ll <- files,function(x){
+    img <- as.raster(readPNG(x))
+    rasterGrob(img, interpolate = FALSE)
+  })
+  
+  #默认按列排序，如果指定按行排序：
+  if(by.row){
+	total=length(plots)
+	order_arr = ReOrder(total, n_row)
+	plots2=list()
+	total2= n_row * n_col
+	for(i in 1:total2){
+		index=order_arr[i]
+		if(!is.na(index)){
+			plots2[[as.character(i)]]=plots[[index]]
+		}
+	}
+	plots=plots2
+	message("merge Figs by row.")
+  }else{
+	message("merge Figs by column.")
+  }
+
+  message("length:", length(plots))
+
+  # 合并图片
+  png(paste0(out.dir, "\\", out.filename), width=300*n_col, height = 350*n_row)
+  grid.newpage()
+  print(gridExtra::marrangeGrob(grobs = plots, nrow=n_row, ncol=n_col,top=NULL));
+  dev.off()
+}
+if(0){
+  mergeFigs(out.dir="C:\\Users\\DELL\\Pictures\\colors\\001", out.filename="merged.png")
+}
+
+
+## get params
+myArgs<-commandArgs(TRUE)
+
+out.dir = myArgs[1]
+
+if(length(myArgs) >1 ){
+	n_row=as.numeric(myArgs[2])
+}else{
+	n_row=4
+}
+
+if(length(myArgs) >2 ){
+	n_col=as.numeric(myArgs[3])
+}else{
+	n_col = -1
+}
+
+out.filename="colorCards.png"
+if(length(myArgs) >3 ){
+	out.filename = myArgs[4]
+}
+
+by.row=T
+if(length(myArgs) >4 ){
+	by.row = myArgs[5]=="T"
+}
+
+
+mergeFigs(out.dir, n_row, n_col, out.filename, by.row)
+
+message("output file to:", paste0(out.dir, "/", out.filename) )
+
+
+if(0){
+	#how to use?
+	# C:\Users\DELL\Pictures\colors\001>
+	# Rscript D:\code_R\mergeColorCards.R  "." 4 4
+	#
+	# C:\Users\DELL\Pictures\colors\001>Rscript D:\code_R\mergeColorCards.R  "." 4
+	#
+	# in Git Bash
+	#$ Rscript /D/code_R/mergeColorCards.R  "." 5 3 scenery_colorCards.png T
+}
+
+
+
+
+
+
+
+
+========================================
+|-- 手机QQ传照片到电脑 PC，在git bash中执行以上R脚本，制作颜色卡
+----------------------------------------
+1. 收到到PC步骤
+* 手机和电脑都登录同一个QQ号
+* qq手机 底部联系人，设备，我的电脑；
+* 右上角 图片标志，导出手机相册授权，点击 授权电脑访问。
+* 电脑端弹出窗口，可以选择照片，选择保存地点，点击下载。
+
+
+
+
+2. 用git bash重命名文件名
+(1).jpeg 修改为 .jpg
+
+for file in *.jpeg; do
+    mv "$file" "${file%.jpeg}.jpg"
+done
+
+(2) 修改为数字文件名
+
+counter=1
+for file in *.jpg; do
+    mv "$file" "$counter.jpg"
+    counter=$((counter + 1))
+done
+
+
+
+
+3. 在git bash中使用R脚本：创建单个颜色卡
+设置R位置
+PATH="/D/Program Files/R/R-4.4.0/bin"
+
+手动新建文件夹 tmp/
+
+执行脚本
+Rscript.exe /D/code_R/pickColorCards_k.R  1.jpg 10 tmp/1.png force
+
+批量执行：
+for i in {1..15}; do echo $i;
+	Rscript.exe /D/code_R/pickColorCards_k.R  $i.jpg 10 tmp/$i.png force;
+done;
+
+
+报错：2,3，
+	JPEG decompression error: Not a JPEG file: starts with 0x89 0x50
+原图备注改为png后，手动执行：
+	i=2; Rscript.exe /D/code_R/pickColorCards_k.R  $i.png 10 tmp/$i.png force;
+#
+
+
+
+
+4. 拼接图片
+# 指定5行
+$ Rscript /D/code_R/mergeColorCards.R  "." 5
+
+指定5行3列，输出文件名，按行排序：
+$ Rscript /D/code_R/mergeColorCards.R  "." 5 3 colorCards_scenery.png T
+
+
+
+
+
+
+
+========================================
 |-- 颜色深浅：是否深色 r*0.299 + g*0.587 + b*0.114 < 150
 ----------------------------------------
 1. 根据颜色的深浅，决定上面文字的颜色应该使用白或者黑。
