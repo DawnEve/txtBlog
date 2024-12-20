@@ -493,16 +493,17 @@ $ fastqc -o ./ -t 15 c12_A1_filtered.fq.gz
 ----------------------------------------
 https://cutadapt.readthedocs.io/en/stable/
 
-安装python3: https://mirrors.tuna.tsinghua.edu.cn/anaconda/archive/Anaconda3-5.3.1-Linux-x86_64.sh
-
 (1)使用pip安装：
-$ pip install --user --upgrade cutadapt
-检查版本号：
+$ pip3 install cutadapt
+
+$ which cutadapt
+~/soft/python3/python-3.10.14/bin/cutadapt
+
 $ cutadapt --version
-1.14
+5.0
 
 
-
+1)
 $ cutadapt --help
 cutadapt version 2.3 #2019.6.15
 #示例
@@ -539,6 +540,86 @@ $ cutadapt -a ADAPTER [options] [-o output.fastq] input.fastq
 -m LEN[:LEN2], --minimum-length LEN[:LEN2]
     Discard reads shorter than LEN. Default: 0
 	丢弃长度太短的序列，默认0不丢弃
+
+
+
+
+2) 2024.12.19 对于双端测序
+For paired-end reads:
+    cutadapt -a ADAPT1 -A ADAPT2 [options] -o out1.fastq -p out2.fastq in1.fastq in2.fastq
+
+$ cutadapt -e 0.1 -O 3 --quality-cutoff 20 --minimum-length 20 \
+-g "T{10}" -A "A{10}" \
+-a $ADAPTER_FWD -A $ADAPTER_REV \
+-o clean/try3_1.fq -p clean/try3_2.fq \
+$read1 $read2 | tee clean/try3.logs
+
+总结:
+	-a 是3’端接头，最常用的参数；-A for R2。
+	-g 是5‘端接头。 -G for R2
+	可以指定多个，但是一个序列只能去除一次。想去除多次需要指定参数 -n（默认1）
+	a/A是3’端，g/G是5‘端。
+	小写是R1，或者单端。
+	大写是双端的R2。
+
+
+Finding adapters:
+  Parameters -a, -g, -b specify adapters to be removed from each read (or from
+  R1 if data is paired-end. If specified multiple times, only the best
+  matching adapter is trimmed (but see the --times option). Use notation
+  'file:FILE' to read adapter sequences from a FASTA file.
+
+  -a ADAPTER, --adapter ADAPTER: 对于3‘端的接头（PE的R1），接头及之后的去除
+                        Sequence of an adapter ligated to the 3' end (paired
+                        data: of the first read). The adapter and subsequent
+                        bases are trimmed. If a '$' character is appended
+                        ('anchoring'), the adapter is only found if it is a
+                        suffix of the read.
+  -g ADAPTER, --front ADAPTER: 指定5’端的接头（PE的R1），接头和之前的去除
+                        Sequence of an adapter ligated to the 5' end (paired
+                        data: of the first read). The adapter and any preceding
+                        bases are trimmed. Partial matches at the 5' end are
+                        allowed. If a '^' character is prepended ('anchoring'),
+                        the adapter is only found if it is a prefix of the read.
+  -b ADAPTER, --anywhere ADAPTER: 指定任意一端(PE的R1): 仅用于测序失败的文库，如果你知道adaptor在哪一段，不要使用该参数。
+                        Sequence of an adapter that may be ligated to the 5' or
+                        3' end (paired data: of the first read). Both types of
+                        matches as described under -a and -g are allowed. If the
+                        first base of the read is part of the match, the
+                        behavior is as with -g, otherwise as with -a. This
+                        option is mostly for rescuing failed library
+                        preparations - do not use if you know which end your
+                        adapter was ligated to!
+  -e E, --error-rate E, --errors E # 最大错误率 [0,1]。如果>1表示最多错几个碱基。默认 0.1 表示10%
+                        Maximum allowed error rate (if 0 <= E < 1), or absolute
+                        number of errors for full-length adapter match (if E is
+                        an integer >= 1). Error rate = no. of errors divided by
+                        length of matching region. Default: 0.1 (10%)
+  -n COUNT, --times COUNT 从每个read去掉的最大接头个数，默认1
+                        Remove up to COUNT adapters from each read. Default: 1
+
+
+Paired-end options:
+  The -A/-G/-B/-U/-Q options work like their lowercase counterparts, but are
+  applied to R2 (second read in pair)
+
+  -A ADAPTER            3' adapter to be removed from R2 #从R2的3‘端去掉接头
+  -G ADAPTER            5' adapter to be removed from R2 #从R2的5‘端去掉接头
+  -B ADAPTER            5'/3 adapter to be removed from R2
+  -U LENGTH             Remove LENGTH bases from R2
+  -Q [5'CUTOFF,]3'CUTOFF
+						Quality-trimming cutoff for R2. Default: same as for R1
+  -L LENGTH             Shorten R2 to LENGTH. Default: same as for R1
+  -p FILE, --paired-output FILE
+						Write R2 to FILE.
+  -j CORES, --cores CORES
+                        Number of CPU cores to use. Use 0 to auto-detect.  多线程执行
+                        Default: 1
+#
+
+
+
+
 
 
 
@@ -580,10 +661,32 @@ $ cutadapt -g AGATCGGAAGAGCGTCGTGTAGGGAAAGAGTGTAGATCTCGGTGGTCGCCGTATCATT -q 25 -
 
 
 
+
+
+Ref:
+https://qinqianshan.com/bioinformatics/trim/cutadapt/
+
+
+
+
+
+
 ========================================
 |-- 建库接头序列 contaminant_list.txt
 ----------------------------------------
+1. 探查adapter
+首先用fastqc软件对测序数据进行简单检测，看看有什么接头：
 
+既然fastqc能探测到你的接头，说明它里面内置了所有的接头序列，在github可以查到：
+https://github.com/csf-ngs/fastqc/blob/master/Contaminants/contaminant_list.txt
+
+或者：Download common Illumina adapters from https://github.com/vsbuffalo/scythe/blob/master/illumina_adapters.fa
+
+
+
+
+
+2. contaminant_list.txt
 This file contains a list of potential contaminants which are frequently found in high throughput sequencing reactions.  
 These are mostly sequences of adapters / primers used in the various sequencing chemistries.
 该文件包含高通量测序常见的污染源，通常是各种测序试剂中的adapters 和 primers。
@@ -608,7 +711,39 @@ Illumina Paried End Sequencing Primer 1		ACACTCTTTCCCTACACGACGCTCTTCCGATCT
 Illumina Paired End Sequencing Primer 2		CGGTCTCGGCATTCCTACTGAACCGCTCTTCCGATCT
 
 
-more: https://github.com/csf-ngs/fastqc/blob/master/Contaminants/contaminant_list.txt
+More: https://github.com/csf-ngs/fastqc/blob/master/Contaminants/contaminant_list.txt
+
+
+
+
+
+
+
+
+
+3. illumina_adapters.fa
+
+>multiplexing-forward
+GATCGGAAGAGCACACGTCT
+
+>solexa-forward
+AGATCGGAAGAGCGTCGTGTAGGGAAAGAGTGT
+>solexa-reverse
+AGATCGGAAGAGCGGTTCAGCAGGAATGCCGAG
+
+>truseq-forward-contam
+AGATCGGAAGAGCACACGTCTGAACTCCAGTCAC
+>truseq-reverse-contam
+AGATCGGAAGAGCGTCGTGTAGGGAAAGAGTGTA
+
+>nextera-forward-read-contam
+CTGTCTCTTATACACATCTCCGAGCCCACGAGAC
+>nextera-reverse-read-contam
+CTGTCTCTTATACACATCTGACGCTGCCGACGA
+
+
+
+
 
 
 
