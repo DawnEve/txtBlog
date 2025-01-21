@@ -185,18 +185,72 @@ https://mp.weixin.qq.com/s/L04wd4Ud3eQ5wP6EWtke5A
 
 
 ========================================
-|-- 设计哲学：指定输出来运行
+|-- 设计哲学 / 最佳实践 及 调试技巧：指定输出来运行，运行指定rule
 ----------------------------------------
 1. 设计哲学
 (1) 软件工程的原理：抽离变化
-就是把固定的代码放到一起，把需要经常变化的配置部分抽取出来，单独放到一个配置文件。
+把相对固定的代码放到一起，把需要经常变化的配置部分抽取出来，单独放到配置文件中。
+
+
 
 (2) 甚至保持命令的不变
 运行时，只需要准备好输出目录，写好配置文件，然后在该目录下执行不变的命令即可。
-把snakemake 像 ls 等linux命令一样固定下来，虽然比后者长了很多。
+把 snakemake 像 ls 等linux命令一样固定下来，虽然比后者长了很多。
+
+> 为了省事，还可以把shell命令写到文件中，放入~/bin/等搜索路径中，赋予可执行权限，这样只需输入文本文件名，就能执行该命令了。像 ls 等linux命令。
+
+1) 简化版本
+$ cat ~/bin/total-seq.sh
+snakemake -s /home/wangjl/data4/total-seq/pipeline/main1.smk -j 80 -p
+$ chmod +x ~/bin/total-seq.sh
+
+$ which total-seq.sh
+~/bin/total-seq.sh
+
+$ total-seq.sh
+流程开始执行
 
 
-(3) 自动获取 snakemake 脚本的绝对路径: os 模块
+
+2) 更复杂的写法: 支持子命令，类似 samtools view xx.bam
+	total-seq       #like help
+	total-seq help  #print help
+	total-seq dry   #dry run
+	total-seq run   #run
+
+$ cat ~/bin/total-seq
+#!/bin/bash
+
+show_help() {
+    echo "Usage: total-seq {help|dry|run}"
+    echo "Copyright (C) 2025 BioMooc"
+    echo "  help  # show this help info"
+    echo "  dry   # dry run snakemake script"
+    echo "  run   # run snakemake script"
+}
+
+if [ $# -eq 0 ]; then
+    show_help
+elif [ "$1" = "help" ]; then
+    show_help
+elif [ "$1" = "run" ]; then
+    snakemake -s /home/wangjl/data4/total-seq/pipeline/main1.smk -j 80 -p
+elif [ "$1" = "dry" ]; then
+    snakemake -s /home/wangjl/data4/total-seq/pipeline/main1.smk -j 80 -pn
+else
+    echo "Error: Invalid command"
+    show_help
+fi
+
+$ chmod +x ~/bin/total-seq
+$ total-seq dry
+$ total-seq run
+
+
+
+
+
+(3) 自动获取 snakemake 脚本的绝对路径: os 模块 [失败]
 
 $ cat a.py 
 import os
@@ -215,6 +269,10 @@ Script path: /datapool/wangjl/total-seq/dustbin/a.py
 脚本所在的目录路径是: /datapool/wangjl/total-seq/dustbin
 
 
+
+
+
+
 (4) 参数的有无，可以通过 --params 控制
 比如，如果是双端测序，则添加-p参数
 
@@ -223,7 +281,37 @@ Script path: /datapool/wangjl/total-seq/dustbin/a.py
 
 
 
-2. 其他运行方式
+
+
+
+
+2. 最佳实践: 
+- 不要在脚本中添加目录等具体信息，添加到 params中，在shell中引用即可。
+- 使用 threads 设置CPU内核数，在运行时该数字会根据你的输入临时调整。
+- 推荐用配置文件，脚本中引用 configfile: "config.yaml"
+	- 脚本头部设定工作目录 workdir: config["workdir"]
+
+- 建议执行前，先dry run一次，就是加上 -np 参数
+	-n 只打印出即将执行的命令和任务顺序，而不实际执行
+	-p 在任务执行前打印 Shell 命令
+
+
+- 对于每个步骤的output分析结果，有两个特殊关键字
+	temp() 使得特定中间结果(例如sam/bam)在使用后会被删除，避免不必要的空间消耗
+	protected() 使得比较重要的中间结果不会由于报错等意外原因而被删除。
+
+
+
+
+
+
+
+
+3. 其他运行方式及调试技巧
+
+(0) snakemake会自动寻找当前路径的Snakefile, snakefile, workflow/Snakefile, workflow/snakefile文件；
+此外也可以重命名为其它，再使用 -s 参数指定即可。
+
 
 (1) 也可指定具体结果文件
 多用于测试阶段，比如一步一步输出结果。
@@ -232,20 +320,45 @@ Script path: /datapool/wangjl/total-seq/dustbin/a.py
 你就会发现他就会非常智能的先比对再排序。这是因为snakemake会自动解决依赖关系，并且按照依赖的前后顺序进行执行。
 
 
+(1B)--force 强制重新运行指定的目标，即使目标文件已经存在。
+snakemake --force results/output.txt
+
+
+
 (2) 运行某个rule
 snakemake -R some_rule
 # --forecerun/-R TARGET: 重新执行给定的规则或生成文件。当你修改规则的时候，使用该命令
 
 
 
-(3) 可视化
+(3) --dag 可视化工作流中的依赖关系 (DAG，Directed Acyclic Graph)
+# --dag: 生成依赖的有向图
 snakemake --dag  | dot -Tsvg > dag.svg
 snakemake --dag  | dit -Tpdf > dag.pdf
 
-# --dag: 生成依赖的有向图
 
+print must filter out when using --dag
+	https://github.com/snakemake/snakemake/issues/135
+
+
+按样品名：
+	$ snakemake -s /home/wangjl/data4/total-seq/pipeline/main1.smk --dag | grep -v "#####"  | dot -Tpdf > report/dag.pdf
+	$ snakemake -s /home/wangjl/data4/total-seq/pipeline/main1.smk --dag | grep -v "#####"  | dot -Tsvg > report/dag.svg
+
+
+或针对每个步骤 Or as a single, global, output.
+	$ snakemake -s /home/wangjl/data4/total-seq/pipeline/main1.smk --rulegraph | grep -v "#####"  | dot -Tpdf > report/workflow.pdf
+	$ snakemake -s /home/wangjl/data4/total-seq/pipeline/main1.smk --rulegraph | grep -v "#####"  | dot -Tpng > report/workflow.png
+
+
+
+
+
+
+(100) --gui: 通过网页查看运行状态
 snakemake --gui 0.0.0.0:2468
-# --gui: 通过网页查看运行状态
+
+
 
 
 
@@ -4185,20 +4298,10 @@ $ snakemake -s test.sf -j 4
 
 
 
-
-
 ========================================
 |-- 实例: 使用snakemake构建 ATAC-seq 分析流程(fastq -> call peak )
 ----------------------------------------
 先给个玩具，主要是学流程。
-
-最佳实践: 
-- 不要在脚本中添加目录等具体信息，添加到 params中，在shell中引用即可。
-- 使用 threads 设置CPU内核数，在运行时该数字会根据你的输入临时调整。
-- 推荐用配置文件，脚本中引用 configfile: "config.yaml"
-	- 脚本头部设定工作目录 workdir: config["workdir"]
-
-
 
 1. snakefile 脚本的5个步骤
 
@@ -4335,7 +4438,6 @@ $ ps | cut -d ' ' -f 2 | grep -P "^\d{1,}" | xargs kill ## 杀进程
 
 refer:
 https://www.bilibili.com/video/av45832590?p=6
-
 
 
 

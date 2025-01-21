@@ -68,7 +68,7 @@ return array (
     1 => '常用R包',
     2 => array (
       array('Rmd-notebook 生成报告','pkg-Rmarkdown','txt'),
-      array('R web: shinny交互框架','pkg-shiny','txt'),
+      array('R web: shiny交互框架','pkg-shiny','txt'),
       array('R web: REST API/Plumber包','pkg-Plumber','txt'),
 
 

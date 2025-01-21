@@ -2060,9 +2060,34 @@ map/SRR13730664_Log.final.out:                        Uniquely mapped reads % | 
 
 
 ========================================
-|-- Mapping QC: 用RSeQC、deepTools 对比对后的转录组数据进行质控(An RNA-seq Quality Control Package) 5'-3'测序覆盖度
+|-- Mapping QC: 用 RSeQC、deepTools 对比对后的转录组数据进行质控(An RNA-seq Quality Control Package) 5'-3'测序覆盖度
 ----------------------------------------
-RSeQC包是一个python软件
+RSeQC 包是一个python软件
+
+
+https://nbisweden.github.io/workshop-RNAseq/1811/labs/QC_lab.html
+https://rseqc.sourceforge.net/
+
+几个工具：
+	geneBody_coverage.py
+	inner_distance.py
+	junction_saturation.py
+	read_distribution.py
+
+回答问题：Run RSeQC for one sample and have a look at your output.
+	Do most of your reads map to genes?
+	Do you have even coverage along the genes?
+	Do the reads cover most splice junctions?
+	Based on the inner distance plots, what do you think the average fragment size of the libraries was?
+
+Also note: When running read_distribution.py, an outfile cannot be specified. Instead you need to pipe (>) the output to a file, or look at the output in the terminal.
+
+
+
+
+
+
+
 
 
 1.简介
@@ -2250,6 +2275,20 @@ legend(x=0, y=0.026, legend = paste0("rep",1:len),
        col = icolor[1:len], lwd=3,
        box.col = NA, border = NA)
 dev.off()
+
+
+
+
+
+(4) 加速方法：只用前1000个基因
+https://nbisweden.github.io/workshop-RNAseq/1811/labs/QC_lab.html
+
+Note: The geneBody_coverage.py script takes a very long time to run, so we have created a subsection of annotations to run it on. Use the file hg19_RefSeq_top1000.bed. This file was created with the command:
+
+$ head -n 1000 hg19_RefSeq.bed > hg19_RefSeq_top1000.bed
+
+
+
 
 
 
@@ -2618,6 +2657,197 @@ chr1	3252756	3253236	ENSMUST00000192857.1	0	+	3252756	3252756	0	1	480,	0,
 ref:
 https://www.jianshu.com/p/3d5a772a79af
 https://www.bioinfo-scrounger.com/archives/234/
+
+
+
+
+
+
+
+
+========================================
+|-- RSeQC 工具 read_distribution.py: 测序读端分布是什么？ CDS exons > UTR exons > Introns > Intergenic regions
+----------------------------------------
+https://nbisweden.github.io/workshop-ngsintro/2203/slide_rnaseq.html#23
+
+1. reads 落在不同区域的情况
+
+$ ls -lth aligned/*bam | grep 255
+-rw-rw-rw-+ 1 wangjl jinlab 1.2M Jan  7 10:28 aligned/test-001-a.Aligned.sortedByCoord.MAPQ255.out.bam
+-rw-rw-rw-+ 1 wangjl jinlab 1.1M Jan  7 10:28 aligned/test-002-b2.Aligned.sortedByCoord.MAPQ255.out.bam
+
+##read_distribution.py  -i Pairend_StrandSpecific_51mer_Human_hg19.bam -r hg19.refseq.bed12
+
+$ read_distribution.py  -i aligned/test-001-a.Aligned.sortedByCoord.MAPQ255.out.bam -r /datapool/wangjl/total-seq/ref/hg38/RefSeq/hg38_RefSeq_NC_000.bed > counts/stat/test-001-a.read_distribution.MAPQ255.txt
+
+$ read_distribution.py  -i aligned/test-002-b2.Aligned.sortedByCoord.MAPQ255.out.bam -r /datapool/wangjl/total-seq/ref/hg38/RefSeq/hg38_RefSeq_NC_000.bed > counts/stat/test-002-b2.read_distribution.MAPQ255.txt
+
+
+
+$ cat counts/stat/test-002-b2.read_distribution.MAPQ255.txt
+Total Reads                   17308
+Total Tags                    25008
+Total Assigned Tags           20880
+============== =================== ================ =================
+Group               Total_bases         Tag_count           Tags/Kb             
+CDS_Exons           41119377            13667               0.33              
+5'UTR_Exons         50358329            767                 0.02              
+3'UTR_Exons         75041537            4659                0.06              
+Introns             1584019805          1478                0.00              
+TSS_up_1kb          26578334            35                  0.00              
+TSS_up_5kb          119193151           103                 0.00              
+TSS_up_10kb         218264326           186                 0.00              
+TES_down_1kb        30057865            30                  0.00              
+TES_down_5kb        130486937           85                  0.00              
+TES_down_10kb       231002639           123                 0.00              
+================ ================== ================= ===============
+
+
+
+
+2. R绘图
+使用第二列
+
+loadDat=function(fname="counts/stat/test-001-a.read_distribution.MAPQ255.txt", sampleName){
+	dat=read.table(fname, comment.char = "=", skip=4, header=T)
+	dat=dat[, c("Group", "Tag_count")]
+	dat$sample=sampleName
+	dat	
+}
+
+dat1=loadDat("counts/stat/test-001-a.read_distribution.MAPQ255.txt", "test-001-a")
+dat2=loadDat("counts/stat/test-002-b2.read_distribution.MAPQ255.txt", "test-002-b2")
+
+dat= rbind(dat1, dat2)
+
+
+
+library(ggplot2)
+
+dat.plot=dat
+colnames(dat.plot)=c("location", "value", "sample")
+dat.plot$location=factor(dat.plot$location, levels=c( "CDS_Exons","5'UTR_Exons","3'UTR_Exons","Introns","TSS_up_1kb","TSS_up_5kb","TSS_up_10kb","TES_down_1kb","TES_down_5kb","TES_down_10kb" ))
+
+ggplot(dat.plot, aes(x=sample, y=value, fill=location))+
+    geom_bar(stat="identity", position="stack", width=0.8 )+
+    scale_fill_manual(values=c("#6C862C", "#6EB1DA", "#D2375F", "#BFBFBF", 
+		"#FAA837", "#FCCF45", "#FFFF00", "grey10", "grey20", "grey40" ))+
+    labs(x="", y="Reads Percentage(%)", title="MAPQ=255 Counts by location")+
+    theme_classic(base_size = 14)+
+    scale_y_continuous( expand = c(0, 0) )+
+    theme(axis.text.x=element_text(angle=60, hjust=1, size=rel(1.2)) );
+
+
+
+
+
+
+========================================
+|-- RSeQC 工具 inner_distance.py: 插入片段大小 Calculate inner distance between read pairs.
+----------------------------------------
+https://rseqc.sourceforge.net/
+
+1.适用于双端测序：插入片段大小
+$ inner_distance.py -i Pairend_nonStrandSpecific_36mer_Human_hg19.bam -o output -r hg19.refseq.bed12
+
+
+
+
+
+========================================
+|-- RSeQC 工具 read_duplication.py 测序重复程度 / 饱和度
+----------------------------------------
+1. 两个策略
+Two strategies were used to determine reads duplication rate: 
+* Sequence based: reads with identical sequence are regarded as duplicated reads. 
+* Mapping based: reads mapped to the exactly same genomic location are regarded as duplicated reads. 
+For splice reads, reads mapped to the same starting position and splice the same way are regarded as duplicated reads.
+
+- 相同碱基序列认为重复
+- 比对到相同位置认为重复
+
+对于选择性剪切，起始位置一致，剪切位置一致，就认为是重复。
+
+##read_duplication.py -i Pairend_nonStrandSpecific_36mer_Human_hg19.bam -o output
+
+$ mkdir aligned/dup/
+$ read_duplication.py -i aligned/test-001-a.Aligned.sortedByCoord.MAPQ255.out.bam -o aligned/dup/test-001-a
+$ read_duplication.py -i aligned/test-002-b2.Aligned.sortedByCoord.MAPQ255.out.bam -o aligned/dup/test-002-b2
+
+
+
+
+
+
+2. 分别绘图
+饱和度 = 1 - uniq/total = dup / total
+
+  Occurrence UniqReadNumber
+1          1          12915
+2          2           1171
+3          3            304
+4          4             91
+5          5             33
+6          6             19
+
+
+file.1="aligned/dup/test-002-b2.seq.DupRate.xls"
+file.2="aligned/dup/test-002-b2.pos.DupRate.xls"
+
+getSat=function(file_name){
+	dat=read.table(file_name, header=T)
+	#
+	sample_name = strsplit(file_name, "aligned/dup/")[[1]][2]
+	if(endsWith(file_name, "seq.DupRate.xls")){
+		sample_name = strsplit(sample_name, ".seq.DupRate.xls")[[1]][1]
+		method="Sequence-base"
+	}else{
+		sample_name = strsplit(sample_name, ".pos.DupRate.xls")[[1]][1]
+		method="Mapping-base"
+	}
+	dat$dup= dat$UniqReadNumber * (dat$Occurrence -1)
+	dat$total= dat$UniqReadNumber * dat$Occurrence
+	dat$sample=sample_name
+	dat$method=method
+	
+	dat$saturation = sum(dat$dup) / sum(dat$total) * 100
+	dat
+}
+
+dat = rbind(getSat(file.1), getSat(file.2))
+dat = rbind(dat, getSat("aligned/dup/test-001-a.seq.DupRate.xls"))
+dat = rbind(dat, getSat("aligned/dup/test-001-a.pos.DupRate.xls"))
+
+	> dim(dat)
+	[1] 88  7
+	> head(dat)
+	  Occurrence UniqReadNumber  dup total      sample method saturation
+	1          1          12915    0 12915 test-002-b2    seq   15.79616
+	2          2           1171 1171  2342 test-002-b2    seq   15.79616
+	3          3            304  608   912 test-002-b2    seq   15.79616
+
+
+dat2=dat[, c("sample", "method", "saturation")] |> unique()
+
+	> dat2
+			sample method saturation
+	1  test-002-b2    seq   15.79616
+	23 test-002-b2    pos   25.16755
+	49  test-001-a    seq   16.28964
+	89  test-001-a    pos   28.69160
+
+
+
+library(ggplot2)
+ggplot(dat2, aes(x=sample, y=saturation, fill=method))+
+	geom_bar(stat="identity", position="dodge", width=0.6 )+
+	scale_fill_manual(values=c("#476D1C", "#9CC260"))+
+    labs(x="", y="Saturation(%)", title="Saturation=1-dup/total\nread_duplication.py")+
+    theme_classic(base_size = 14)+
+    scale_y_continuous( expand = c(0, 0) )+
+    theme(axis.text.x=element_text(angle=60, hjust=1, size=rel(1.2)) ); #p1
+
+
 
 
 

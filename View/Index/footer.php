@@ -201,6 +201,7 @@
 			array('http://www.yelab.site/','叶幼琼(肿瘤多组学)'), //上海交通大学医学院上海市免疫学研究所，肿瘤多组学与肿瘤免疫课题组长 https://www.shsmu.edu.cn/sii/info/1020/3171.htm
 			array('https://shixiangwang.github.io/home/cn/','王诗翔'),
 			array('https://blog.csdn.net/weixin_53637133?type=lately','追风少年ii(空间组学)'),
+			array('https://lishensuo.github.io/archives/','单细胞大模型(笔记)'),
 			//array('',''),
 		));
 ?>
