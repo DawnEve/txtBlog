@@ -279,6 +279,1667 @@ https://cloud.tencent.com/developer/article/1806266
 
 
 
+========================================
+|-- 更快的py命令行 cNMF 对tumor细胞做模块发现: consensus non-negative matrix factorization (cNMF)
+----------------------------------------
+整体的架构: https://zhuanlan.zhihu.com/p/10482193594 可视化效果很好
+（1）选择要分析的基因，一般我们选择高变基因（或者高度变异的前多少个基因，一般5000为主）
+（2）矩阵的选择，一般要选择经过scale后的矩阵，并且将负值设置为零来调整居中的表达式矩阵。
+（3）conducted NMF runs with various K values (K = 5,6,7,8,9,10), resulting in 45 NMF programs for each sample.
+（4）识别共识转录程序：过滤掉低质量的(sd很低，接近0的；平均打分较低的部分)
+（5）Spearman correlation was performed to determine the interrelationships between different programs.
+（6）基于阈值0.8对相关矩阵进行二值化，并对二值化后的矩阵进行层次聚类分析。将不同K运行中相似的程序进行合并，计算合并后程序中细胞和基因的平均归一化系数。根据每个合并程序的系数得分，选择前150个基因作为特征基因。为了识别不同样本中反复出现的NMF程序（“meta程序”），计算Jaccard相似性矩阵，该矩阵表示不同程序的特征基因的重叠。
+
+
+
+#######
+2017年发表于Cell的头颈鳞癌单细胞文章：
+	Single-Cell Transcriptomic Analysis of Primary and Metastatic Tumor Ecosystems in Head and Neck Cancer
+研究者使用非负矩阵分解来揭示在恶性细胞亚群中得到优先共同表达的一系列基因。例如，对于MEEI25恶性细胞，研究者定义了6个不同的基因特征。对10个肿瘤样本中的每一个都应用该方法，共定义了60个基因特征。
+
+接下来，研究者使用层次聚类来将这些60个特征提取成元特征，这些元特征反映了在多个肿瘤内变化的常见表达程序。来自不同肿瘤的特征之间的高一致性表明它们反映了肿瘤内表达异质性的共同模式。
+
+- 对每个样本做nmf，获得6个特征
+- 全部10个样品都做，得到60个特征
+- 对这些特征进行层次聚类？
+
+
+
+
+
+
+1. 简介
+(1) 文献信息
+paper: Single-cell RNA sequencing elucidated the landscape of breast cancer brain metastases and identified ILF2 as a potential therapeutic target.
+
+2.7 | Identification of common expression modules
+Based on the consensus non-negative matrix factorization algorithm
+(cNMF; https://github.com/dylkot/cNMF), transcriptional modules
+were extracted as meta-signatures, and their scores were calculated.
+A meta-signature was developed, and the samples were hierarchically
+clustered.
+
+
+3.6 | Identification of common modules of malignant cells in BCBrM lesions
+Subsequently, we examined transcriptome patterns and subpopulation
+clustering to determine the diversity of malignant cells. The
+InferCNV algorithm was employed to distinguish normal epithelial
+cells from malignant cells (Figure S6A). Genes with differential expression
+patterns were annotated into six main subclusters (Figure 6A).
+We utilised heatmaps and feature plots to present the most differentially
+expressed genes within each cluster (Figure 6B,C). A metacluster
+algorithm was developed to identify common modules among
+BCBrM samples. We compared the most active cancer hallmarks from
+program cells with those from non-program cells for each program.
+Five expression modules were identified, each characterised by distinct
+biological functions and cell statuses. These modules encompass
+proliferation, immune response, metabolism, metastasis, and hypoxia
+(Figure 6D).
+
+- inferCNV 对上皮细胞区分出tumor cell 和 non-tumor cell
+- 对 tumor cell 进行NMF 分解，得到k个基因模块
+
+
+效果图:
+- https://zhuanlan.zhihu.com/p/429373915
+
+
+(2) 使用的py包 github
+https://github.com/dylkot/cNMF
+cNMF is a pipeline for inferring gene expression programs from scRNA-Seq. It takes a count matrix (N cells X G genes) as input and produces a (K x G) matrix of gene expression programs (GEPs) and a (N x K) matrix specifying the usage of each program for each cell in the data. 
+
+输入: 基因矩阵 N细胞 x G基因，但是实际上是R Seurat的counts稀疏矩阵。
+
+教程：https://htmlpreview.github.io/?https://github.com/dylkot/cNMF/blob/master/Tutorials/R_vignette.nb.html
+引用：https://elifesciences.org/articles/43803
+
+还有一个并行版本: https://github.com/codyheiser/cnmf 参数略有不同，是下载安装的。热度较低，我没尝试。
+也在引用: Kotliar, et al. 2019.
+
+
+(3) 安装
+$ pip3 install cnmf
+$ pip3 list | grep -i nmf
+cnmf                              1.6.0
+
+
+(4) 主要命令
+$ cnmf prepare --output-dir ./example_data --name example_cNMF -c ./example_data/counts_prefiltered.txt -k 5 6 7 8 9 10 11 12 13 --n-iter 100 --seed 14
+
+$ cnmf factorize --output-dir ./example_data --name example_cNMF --worker-index 0 --total-workers 1
+
+$ cnmf combine --output-dir ./example_data --name example_cNMF
+
+$ cnmf k_selection_plot --output-dir ./example_data --name example_cNMF
+
+$ cnmf consensus --output-dir ./example_data --name example_cNMF --components 10 --local-density-threshold 0.01 --show-clustering
+
+
+如何选择K? 最稳定的最大K，或者局部最优的K。
+This outputs a K selection plot to example_data/example_cNMF/example_cNMF.k_selection.png. There is no universally definitive criteria for choosing K but we will typically use the largest value that is reasonably stable and/or a local maximum in stability. See the discussion and methods section and the response to reviewer comments in the manuscript for more discussion about selecting K.
+
+
+
+
+
+
+2. 实际使用的命令行
+
+- 取子集就可以输出运行命令行了，后续在R中同时进行重新聚类
+- 等命令行结果出来，可以导入R绘图。
+
+(1) 准备输入文件:类似cell ranger的输出矩阵
+在Seurat中过滤后的Seurat对象，保存为三个文件：
+
+saveSparseMatrix(sub.Tumor, "/datapool/wangjl/others/zhaoym/output/03_UMAP_3origin/NMF/try2/input/")
+$ ls -lth input/
+total 664M
+-rw-rw-rw-+ 1 wangjl jinlab 417K Jan 29 23:31 barcodes.tsv
+-rw-rw-rw-+ 1 wangjl jinlab 1.2M Jan 29 23:31 genes.tsv
+-rw-rw-rw-+ 1 wangjl jinlab 662M Jan 29 23:31 matrix.mtx
+
+(2) 运行命令
+/home/wangjl/data4/others/zhaoym/output/03_UMAP_3origin/NMF/try2/
+$ outputDir="/datapool/wangjl/others/zhaoym/output/03_UMAP_3origin/NMF/try2/"
+$ inputDir="/datapool/wangjl/others/zhaoym/output/03_UMAP_3origin/NMF/try2/input/"
+
+默认10-20个线程：1.6万细胞。
+
+1) normalizes (4min)
+$ cnmf prepare --output-dir $outputDir --name tumor_cNMF -c ${inputDir}/matrix.mtx -k 3 4 5 6 7 8 9 10 11 12 13 --n-iter 100 --seed 14 --total-workers 20
+#23:36->23:40
+
+2) 分解步骤: 10线程15min
+mkdir $outputDir/dustbin/
+
+直接用循环: 启动10个进程
+for i in `seq 0 9`; do echo $i;
+cnmf factorize --output-dir $outputDir --name tumor_cNMF --worker-index $i --total-workers 10 | tee $outputDir/dustbin/worker_logs.index.${i}.log &
+done;
+# 23:41->23:56
+检查是否结束 $ ps -aux | grep -in factorize |wc
+
+3) 合并每个k的结果：(3min) 
+$ cnmf combine --output-dir $outputDir --name tumor_cNMF
+#23:57->0:00
+
+4) 选择最优K值 (2min)
+$ cnmf k_selection_plot --output-dir $outputDir --name tumor_cNMF
+#0:01->0:03
+挑选局部最稳定的k=4 或 6
+
+todo: 前4步可以写脚本完成，没什么参数可调。甚至--name也可以固定，只需要保证文件路径可读性强。
+
+
+
+5) 绘制一致性矩阵 (2min)
+$ cnmf consensus --output-dir $outputDir --name tumor_cNMF --components 4 --local-density-threshold 0.01 --show-clustering
+#0:11->0:13
+参数 --local-density-threshold 0.01  可以从柱状图看到，一般只要第一个柱子，其他可以过滤掉。float >0 and <=2
+
+$ cnmf consensus --output-dir $outputDir --name tumor_cNMF --components 6 --local-density-threshold 0.01 --show-clustering
+# 再试试9和10
+
+=> 这是之前最优为K=5时的输出文件：V=W.H
+	-rw-rw-rw-+    1 wangjl jinlab 128K Jan 29 20:44 epi_cNMF.clustering.k_5.dt_0_01.png
+	-rw-rw-rw-+    1 wangjl jinlab 145K Jan 29 20:44 epi_cNMF.starcat_spectra.k_5.dt_0_01.txt
+	-rw-rw-rw-+    1 wangjl jinlab 1.5M Jan 29 20:44 epi_cNMF.gene_spectra_tpm.k_5.dt_0_01.txt
+	-rw-rw-rw-+    1 wangjl jinlab 3.3M Jan 29 20:44 epi_cNMF.gene_spectra_score.k_5.dt_0_01.txt  #MP x Gene, 每个元程序(MP)中，每个基因的权重。取top20/30/50个权重最大的基因确定该MP的功能。
+	-rw-rw-rw-+    1 wangjl jinlab 2.8M Jan 29 20:44 epi_cNMF.usages.k_5.dt_0_01.consensus.txt   #cell x MP，每个cell中，几个MP的打分
+	-rw-rw-rw-+    1 wangjl jinlab 174K Jan 29 20:44 epi_cNMF.spectra.k_5.dt_0_01.consensus.txt
+
+查看文件内容：
+	usage <- read.table(usage_file, sep='\t', row.names=1, header=TRUE) #epi_cNMF.usages.k_5.dt_0_01.consensus.txt   #[1] 27783     5 row=cell
+	spectra_score <- read.table(spectra_score_file, sep='\t', row.names=1, header=TRUE) #epi_cNMF.gene_spectra_score.k_5.dt_0_01.txt #5 29634, col=gene
+	spectra_tpm <- read.table(spectra_tpm_file, sep='\t', row.names=1, header=TRUE) #epi_cNMF.gene_spectra_tpm.k_5.dt_0_01.txt  # 5 29634 col=gene
+	head(usage,2)
+	#                                X1        X2        X3          X4         X5
+	#AAACCTGAGAAACGCC_NS_13    0.8023598 0.1015964 0.1079933 0.005098293 0.00000000
+	#AAACCTGAGACGCTTT_LUNG_T18 0.2176260 0.0000000 0.3020943 0.015068932 0.01199723
+
+	# row scale, so each cell sums to 1 标准化到每一行的和为1
+	usage_norm <- as.data.frame(t(apply(usage, 1, function(x) x / sum(x))))
+	dim(usage_norm)
+	head(usage_norm, 2)
+	#                                 X1         X2        X3          X4         X5
+	#AAACCTGAGAAACGCC_NS_13    0.7889106 0.09989345 0.1061831 0.005012836 0.00000000
+	#AAACCTGAGACGCTTT_LUNG_T18 0.3980091 0.00000000 0.5524905 0.027559081 0.02194134
+
+
+后续处理:
+	# 然后画每一列一个散点+箱线图 (jitter + boxplot): 如果某个样本中的某个MP都在0附近，可以认为是随即噪音，过滤掉该样本中的这个MP。
+	# 每个样品的每个MP的均值计算出来，升序排序，然后去掉太小的，比如 <=0.03 舍弃。
+	# 相关性热图：用每个样本中每个MP的权重，相互做相关性分析。
+	# 表达热图：每个模块，按样品显示top50基因，还是按MP显示前50基因？都可以，看目的了。
+https://www.bilibili.com/video/BV1K3411x7J8?spm_id_from=333.788.player.switch&vd_source=826befc4ac0d0fa3b98deaa3efc7f800&p=2
+
+
+
+
+
+3. 使用R可视化
+
+script: /datapool/wangjl/others/zhaoym/script/b03_Epi_cNMF_plot.R
+output: /home/wangjl/data4/others/zhaoym/output/03_UMAP_3origin/NMF/
+
+#(1) 合并到 Seurat 对象
+all(rownames(sub.Tumor@meta.data) == rownames(usage_norm)) #T
+sub.Tumor@meta.data=cbind(sub.Tumor@meta.data, usage_norm)
+
+
+#(2) on tsne
+plots=list()
+for(i in 1:ncol(usage_norm)){
+  fn=colnames(usage_norm)[i]
+  message(i, " ", fn)
+  #p2 <- FeaturePlot(sub.Tumor, features = fn, cols = c("white", colorset.pattern[i]), reduction = "umap")
+  p2 <- FeaturePlot(sub.Tumor, features = fn, cols = c("white", colorset.pattern[i]), reduction = "tsne")
+  plots[[i]]=p2
+}
+patchwork::wrap_plots(plots, ncol = 4)
+
+
+#(3) get top 50 genes ====
+get_top_colnames <- function(row) {
+  # Orders the values in descending order and gets the names of the top 20
+  print(row[1:5])
+  top_indices <- order(row, decreasing = TRUE)[1:50]
+  return(colnames(spectra_score)[top_indices])
+}
+top_colnames <- apply(spectra_score, 1, get_top_colnames)
+
+top_colnames <- as.data.frame(top_colnames)
+head(top_colnames)
+
+Rlist2csv(top_colnames,
+          paste0(outputRoot, keyword, "_T03_01.Epi_NMF.top20.csv")
+)
+
+
+缺点：怎么画的相关性图？
+
+
+
+
+
+
+
+
+4. 自动化运行：自动对每个样本运行
+
+(0) Seurat V4过滤
+#保留>=100个细胞的样本，共12个。
+> table(tmp$Sample)
+LUNG_T18 LUNG_T19 LUNG_T20 LUNG_T28    NS_02    NS_03    NS_04    NS_07    NS_12    NS_13    NS_17    NS_19 
+     978      167      280      924      134     2673     1150     4953     2692      886      964      765 
+#
+
+
+(1) 按样品保存Seurat到稀疏矩阵文件
+#按样本拆分
+sampleObj.list <- Seurat::SplitObject(tmp, split.by = "Sample")
+length(sampleObj.list) #12
+
+#保存到文件，一个文件夹一个样本
+base_dir="/datapool/wangjl/others/zhaoym/output/03_UMAP_3origin/NMF/sample/"
+for(i in 1:length(sampleObj.list) ) {
+  sample.name=names(sampleObj.list)[i]
+  message(i, "\t", sample.name)
+  # 获取样本子对象
+  #DimPlot(sampleObj.list[[i]], label=T, group.by = "Sample")
+  sample.dir=paste0(base_dir, sample.name, "/")
+  if(!dir.exists(sample.dir)){
+    message(">\tcreate dir: ", sample.dir)
+    dir.create(sample.dir)
+  }
+  # save sample
+  saveSparseMatrix(sampleObj.list[[i]], sample.dir )
+  message(">> save sparse matrix to: ", sample.dir)
+}
+# 文件夹是样本名，文件名都是一样的。
+
+
+try3A: 第一次测试使用全部基因输入，指定高变基因个数3000个
+try3B: --genes-file hvg3000.list.txt 指定使用的(这3000个)高变基因，一个基因一行
+####################
+# 载入高变基因
+library(Seurat)
+scObj=readRDS("/home/wangjl/data4/others/zhaoym/output/03_UMAP_3origin/NMF/try2/Tumor_sub.Tumor_umap_tsne.Seurat.Rds")
+genes.HVG=VariableFeatures(scObj)
+writeLines(genes.HVG, "/home/wangjl/data4/others/zhaoym/output/03_UMAP_3origin/NMF/sample/hvg3000.list.txt")
+
+	> str(genes.HVG)
+	 chr [1:3000] "HP" "BPIFA1" "S100A8" "NTS" "IGF2" "SFTPC" "KRT81" "PSCA" ...
+####################
+$ cp hvg3000.list.txt ../sample/
+try3: 去掉参数 prepare --numgenes 3000
+
+
+
+
+
+
+(2) 执行脚本step1-4: 
+* 新增参数 --n-iter 300 难道之前默认是1？这么算，可能需要很多时间：15min*300/60/24=3day 一个样本？
+	原来就是iter=100，改为300实际是1小时，平衡一下，改为200
+
+$ cat /home/wangjl/data4/others/zhaoym/script/do_cNMF_step1to4.sh
+# v2 使用多进程，加快速度
+# v3 添加高变基因文件，去掉参数 prepare --numgenes 3000
+# v4 真正支持单脚本多线程：shell 多线程 -j 参数
+sample=$1 #参数1是样本名，也是文件夹名
+#Windex=$2 #--worker-index 从0开始，到 Wtotal-1
+Wtotal=$2 #--total-workers
+hvgFile=$3 #hvg gene list
+# how to run: save sparse matrix in ./sampleName/,
+# goto ./try3/, and $ bash path/to/this/script.sh sampleName 10 hvg3000.list.txt
+
+echo -e "\n[`date`] Start nmf ${sample}"
+outputDir="./"
+inputDir="../sample/${sample}"
+
+echo "[`date`] step1 prepare ${sample}"
+cnmf prepare --output-dir $outputDir --name $sample -c ${inputDir}/matrix.mtx -k 3 4 5 6 7 8 9 10 --n-iter 200 --seed 42 --total-workers $Wtotal --genes-file $hvgFile
+echo "[`date`] step2 factorize ${sample}"
+
+for ((i = 0; i < Wtotal; i++)); do echo "$i, $Wtotal";
+	cnmf factorize --output-dir $outputDir --name $sample --worker-index $i --total-workers $Wtotal &
+done;
+echo "waiting for factorize run: $Wtotal threads"
+wait
+
+echo "[`date`] step3 combine ${sample}"
+cnmf combine --output-dir $outputDir --name $sample
+echo "[`date`] step4 k_selection_plot ${sample}"
+cnmf k_selection_plot --output-dir $outputDir --name $sample
+echo -e "[`date`] End nmf for ${sample}\n"
+
+
+
+运行: 在sample/并列位置的文件夹内执行脚本
+$ cd /home/wangjl/data4/others/zhaoym/output/03_UMAP_3origin/NMF/try3
+单个测试:
+	$ id="NS_02"
+	$ bash /home/wangjl/data4/others/zhaoym/script/do_cNMF_step1to4.sh $id 10 ../sample/hvg3000.list.txt
+	# 23:26->0.15, 如果1h/sample，也来得及
+	# 0:16->0:34 降低 iter=200, k=3:10
+	# B 20:47->20:56 指定3k个基因，9min
+	# C 13:27->13:31  多线程，3k HVG，4min
+
+
+	$ id=LUNG_T19
+	$ bash /home/wangjl/data4/others/zhaoym/script/do_cNMF_step1to4.sh $id 10 ../sample/hvg3000.list.txt
+	# 0:06->0:17 ，测试 iter=1，确实快，时间主要消耗在这一步
+	# B 20:56->21:02 指定3k个基因，6min
+
+
+批量运行: 手动分成3个多进程
+* 为了更快，还可以执行多进程: xx.sh 0 2; xx.sh 1 2 hvg3000.list.txt。本例采用单线程。
+$ ls ../sample/ | grep -v "txt$" | head -n 4 | while read id; do echo $id; 
+bash /home/wangjl/data4/others/zhaoym/script/do_cNMF_step1to4.sh $id 10 ../sample/hvg3000.list.txt;
+done | tee cNMF_step1to4-1.log
+# 0:26->2:39; # B 21:02->22:01; # C 13:54->14:17
+	LUNG_T18
+	LUNG_T19
+	LUNG_T20
+	LUNG_T28
+
+NS_02 #单个运行
+
+$ ls ../sample/ | grep -v "txt$" | head -n 8 | tail -n3 | while read id; do echo $id; 
+bash /home/wangjl/data4/others/zhaoym/script/do_cNMF_step1to4.sh $id 10 ../sample/hvg3000.list.txt;
+done | tee cNMF_step1to4-2.log
+# 0:26->5:25; # B 20:59->0:14, 3h14'; # C 13:55->14:28
+	NS_03
+	NS_04
+	NS_07
+
+
+$ ls ../sample/ | grep -v "txt$" | tail -n4 | while read id; do echo $id; 
+bash /home/wangjl/data4/others/zhaoym/script/do_cNMF_step1to4.sh $id 10 ../sample/hvg3000.list.txt;
+done | tee cNMF_step1to4-3.log
+# 0:26->4:27; # B 20:59->0:22, 3h22'; # C 13:56->
+	NS_12
+	NS_13
+	NS_17
+	NS_19
+# 报错：ERROR; return code from pthread_create() is 11
+# 逐个跑，还是同样报错，NS_13；# 再跑，还是报错，似乎不能打开太多文件？
+$ ulimit -u 20150
+# 等其他结束，再跑就可以了。不确定是 ulimit 的作用，还是不能并行的原因。不能并行的可能性更大。
+
+缺点：如果参数设置错误，怎么停止? ctrl+c后台还在输出
+	只能 $ ps -aux | grep -i cnmf 找到pid杀进程。
+
+
+
+
+
+
+
+
+
+
+(3) 目测最佳K后，执行脚本step5: 
+2) 手动
+生成图片网页:
+$ ls ../sample/ | grep -v "txt$" | while read id; do echo $id;
+h2="<hr><h2>${id}</h2>";
+img="<img src=${id}/${id}.k_selection.png width=300>";
+echo ${h2} >> samples.bestK.html; 
+echo ${img} >> samples.bestK.html; 
+done;
+# 添加样式，截图:
+echo "<style>h2 {padding-bottom: 0px; margin-bottom: 0px; padding-left: 80px; font-size: 14px;}</style>" >> samples.bestK.html
+
+
+# 生成样本名
+$ ls ../sample/ | grep -v "txt$" | while read id; do echo $id >> samples.bestK.txt; done
+每列一个样本名，共一列
+
+
+目测最佳的K值，手动新增一列，逗号分隔，添加该K值:
+$ cat samples.bestK.txt
+LUNG_T18,6
+LUNG_T19,7
+LUNG_T20,5
+LUNG_T28,6
+NS_02,4
+NS_03,6
+NS_04,6
+NS_07,5
+NS_12,5
+NS_13,8
+NS_17,6
+NS_19,7
+
+#
+LUNG_T18 LUNG_T19 LUNG_T20 LUNG_T28    NS_02    NS_03    NS_04    NS_07    NS_12    NS_13    NS_17    NS_19 
+     978      167      280      924      134     2673     1150     4953     2692      886      964      765 
+#
+
+
+2) 从该配置文件拆解出K，并执行step5
+outputDir="./"
+while IFS=',' read -r sample K; do
+    echo "start sample: $sample, K: $K";
+	cnmf consensus --output-dir $outputDir --name $sample --components $K --local-density-threshold 0.01 --show-clustering | tee step5.${sample}.log &
+done < samples.bestK.txt
+# 10:33->10:42, 9min; # B 10:37->10:43, 6min; # C 15：29->
+$ ps -aux | grep -i cnmf |wc -l #检查是否结束
+
+
+3)一致性矩阵汇总到网页:
+outputDir="./"
+while IFS=',' read -r sample K; do
+    echo "sample: $sample, K: $K";
+	echo "<hr> <h2>${sample}</h2> <img src=http://localhost:8000/file/dustbin/tmp_links/NMF/try3/${sample}/${sample}.clustering.k_${K}.dt_0_01.png>" >>sample.consensus.html
+done < samples.bestK.txt
+
+# 添加样式:
+echo "<style>img {height: 300px;}</style>" >> sample.consensus.html
+# 目测哪个效果不好，可以调整K重新运行。
+
+
+
+
+
+
+(4) 做指控图 QC: 只需要去掉下四分位数即可
+直接跳到 ii) 
+
+==> 异常: 为什么都没有usage 矩阵的值了? 只有细胞行，和数字列，值是空白。//todo 没法做QC图了
+	是不是因为同时指定了 HVG 列表和基因个数？不是，去掉3k只提供gene文件，还是没有usage矩阵。
+	先跳过本步骤，全用继续做下一步:
+	$R
+	samples=read.csv("samples.bestK.txt", header=F)
+	colnames(samples)=c("sample", "K")
+	#
+	dat=NULL
+	for(i in 1:nrow(samples)){
+		sample=samples[i, "sample"]
+		K=samples[i, "K"]
+		for(j in 1:K){
+			dat=rbind(dat, data.frame(
+				sample=sample,
+				K=K,
+				index=j
+			))
+		}
+	}
+	dat$nmfName=paste0(dat$sample, "_", dat$index)
+	dat$keep=T
+	write.csv(dat, "QC/nmf_keep_info.csv")
+
+
+i)每个样本的每列MP做 jitter+boxplot 图。使用R脚本。[不需要画]
+$ head -n 3 LUNG_T18/LUNG_T18.usages.k_9.dt_0_01.consensus.txt 
+        1       2       3       4       5       6       7       8       9
+AAACGGGAGAATTGTG_LUNG_T18       0.0     0.31819502372529657     0.0     0.2465987963038762      0.5066274940376272      0.07023532930599198  0.0     0.0     0.0
+AAACGGGCAGTAACGG_LUNG_T18       0.0     0.0     0.0     0.0     0.20107966982230227     1.1167408522073285      0.0     0.0     0.0
+
+
+$ R
+> samples=read.csv("samples.bestK.txt", header=F)
+> colnames(samples)=c("sample", "K")
+
+for(i in 1:nrow(samples)){
+	print(i)
+
+	# 读取第一个文件
+	#i=1
+	sample=samples[i, "sample"]
+	K=samples[i, "K"]
+
+	usages=read.table(paste0(sample, "/",sample,".usages.k_", K,".dt_0_01.consensus.txt"), header=T, row.names=1)
+	#> dim(usages)
+	#[1] 978   9
+	#> usages[1:3, 1:3]
+	#								 X1         X2          X3
+	#AAACGGGAGAATTGTG_LUNG_T18 0.0000000 0.31819502 0.000000000
+	#AAACGGGCAGTAACGG_LUNG_T18 0.0000000 0.00000000 0.000000000
+	#AAACGGGGTAGATTAG_LUNG_T18 0.2180838 0.08387731 0.002623709
+
+
+	# 分布图
+	pdf(paste0("QC/", sample, ".hist.pdf"), width=4, height=4)
+	for(i in 1:ncol(usages))
+		hist(usages[,i], n=100, main=paste0(sample, "_", i ), xlab="NMF score")
+	dev.off()
+
+	# 箱线图
+	# 宽边长
+	usages.long=reshape2::melt(usages,
+	  id.vars=c(),#保留变量，如果为空，则使用所有非数字变量。
+	  #measure.vars=  使用到的变量列，如果为空，则使用id外的所有列。
+	  variable.name="MP", #新变量的列名
+	  value.name="score" #值的列名
+	)
+
+	library(ggplot2)
+	p1=ggplot(usages.long, aes(x=MP, y=score))+
+		geom_jitter(size=0.1, color="red")+
+		geom_violin(alpha=0.8, scale="width")+
+		geom_boxplot(alpha=0.8, outliers=F, width=0.2)+
+		theme_classic()+
+		ggtitle( paste0(sample, "_", i ) )
+	pdf(paste0("QC/", sample, ".boxPlot.pdf"), width=4, height=4)
+	print(p1)
+	dev.off()
+}
+
+结论: box plot 显示，几乎都是0的去掉。判断标准，看不到boxplot。
+$ mkdir QC/
+
+$ cp samples.bestK.txt QC/non-0-NMF.txt
+
+$ cat QC/non-0-NMF.txt
+LUNG_T18,9,1,6
+LUNG_T19,8,1,7
+LUNG_T20,6,1,6
+LUNG_T28,7,1,6
+NS_02,7,1,5
+NS_03,7,1,6
+NS_04,6,1,5
+NS_07,6,1,3
+NS_12,5,1,3
+NS_13,7,1,4
+NS_17,6,1,5
+NS_19,5,1,5
+
+
+
+ii) 绘制这些NMF的均值，按从小到大排序
+$ R
+> samples=read.csv("QC/non-0-NMF.txt", header=F)
+#colnames(samples)=c("sample", "K", "from", "to")
+colnames(samples)=c("sample", "K")
+
+dat=NULL
+for(i in 1:nrow(samples)){
+	print(i)
+
+	# 读取第一个文件 #i=1
+	sample=samples[i, "sample"]
+	K=samples[i, "K"]
+	#from=samples[i, "from"]
+	#to=samples[i, "to"]
+	from=1
+	to=K
+	usages=read.table(paste0(sample, "/",sample,".usages.k_", K,".dt_0_01.consensus.txt"), header=T, row.names=1)
+
+	# 求每一列的mean和sd
+	tmp=NULL
+	for(j in 1:ncol(usages)){
+		tmp=rbind(tmp, data.frame(
+			avg=mean(usages[,j]),
+			median=median(usages[,j]),
+			sd=sd(usages[,j]),
+			sample=sample, 
+			K=K,
+			index=j,
+			nmfName=paste0(sample, "_", j),
+			isHV=ifelse( j>=from & j<=to, "yes", "no" )
+		) )
+	}
+	print(dim(tmp))
+	dat=rbind(dat, tmp)
+}
+#
+	> dim(dat)
+	[1] 79  7
+	> head(dat, 2)
+			avg    median        sd   sample K    nmfName isHV
+	1 0.2724599 0.1989523 0.2616365 LUNG_T18 9 LUNG_T18_1  yes
+	2 0.2297874 0.1949670 0.2059128 LUNG_T18 9 LUNG_T18_2  yes
+
+	查看分位数:
+	> summary(dat$avg)
+		Min.  1st Qu.   Median     Mean  3rd Qu.     Max. 
+	0.008162 0.055991 0.109382 0.152676 0.247003 0.506085 
+	下四分位数: 
+	QL <- quantile(dat$avg, probs = 0.25) #[1] 0.0559911
+
+
+# 绘制avg曲线
+dat.plot=dat[order(dat$avg),]
+dat.plot$nmfName=factor(dat.plot$nmfName, levels=dat.plot$nmfName)
+#
+p1=ggplot(dat.plot, aes(x=nmfName, y=avg, color=isHV)) +
+  geom_point(size = 3) +  # 添加点
+  geom_line(group = 1, color = "blue") +   # 添加连线
+  labs(title = "Line Plot of weight per nmf per sample",
+       x = "Sample & NMF index",
+       y = "Avg Values") +
+  #scale_x_discrete(limits= dat.plot$nmfName)+
+  geom_hline(yintercept=quantile(dat.plot$avg, probs = 0.25), linetype=2, color="red")+
+  theme_bw()+
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+pdf("QC/All_sample.nmf_avg.line.pdf", width=12, height=4)
+print(p1)
+dev.off()
+#
+
+# 绘制sd曲线：似乎和avg类似，忽略sd指标
+# avg 去掉下四分位数以下的，这个比较客观。
+
+dat$keep=dat$avg >= quantile(dat$avg, probs = 0.25)
+> table(dat$keep)
+FALSE  TRUE 
+   20    59
+#
+
+# 保存结果
+write.csv(dat, "QC/nmf_keep_info.csv")
+
+
+
+
+
+
+(5) 识别元程序: 载入每个NMF的基因权重行，只保留高变基因，计算样本之间相关性矩阵，画标注样本名的热图
+/datapool/wangjl/others/zhaoym/output/03_UMAP_3origin/NMF/try3
+$ wc NS_17/NS_17.gene_spectra_score.k_6.dt_0_01.txt
+      7  149358 3055947 NS_17/NS_17.gene_spectra_score.k_6.dt_0_01.txt
+
+$ R
+> nmf_keep_info=read.csv("QC/nmf_keep_info.csv", header=T, row.names=1)
+# 按样品分割
+nmf_keep_info2=split(nmf_keep_info, nmf_keep_info$sample)
+
+weights = list()
+# 载入基因权重矩阵，载入耗时 10min?
+for(sample2 in names(nmf_keep_info2) ){
+	print(sample2)
+	info=nmf_keep_info2[[sample2]]
+	K=info[1, "K"]
+	# 读取权重文件
+	file.name=paste0(sample2, "/", sample2, ".gene_spectra_score.k_",K,".dt_0_01.txt")
+	message( sprintf("loading weight from: %s", file.name) )
+	gene.wt=read.table(file.name, header=T, row.names=1, sep="\t")
+	message( sprintf("dim:%s %s", nrow(gene.wt), ncol(gene.wt) ) )
+	print(gene.wt[, 1:5])
+	#
+	#weights[[sample2]]=gene.wt[info[which(info$keep), "index"],] # 保留需要keep的行
+	weights[[sample2]]=gene.wt #全部都要
+	print(sprintf("End for sample: %s\n\n", sample2))
+}
+
+	# 检测每个NMF的维度
+	sapply(weights, function(x){
+		dim(x)
+	}) |> t() |> as.data.frame() #a row is a pattern, a colunm is a gene
+	# 或者
+	do.call(rbind, lapply(weights, dim))
+
+# 共有非NA基因，按第一行算：求交集基因
+genes=lapply(weights, function(x){
+	t1=x[1,]
+	t2=colnames(t1)[!is.na(t1)]
+	message("length: ", length(t2))
+	t2
+})
+genes.common=Reduce(intersect, genes)
+
+	> str(genes.common)
+	 chr [1:13182] "A1BG" "A2M" "A4GALT" "AAAS" "AACS" "AAED1" "AAGAB" "AAK1" ...
+
+# 载入高变基因
+#library(Seurat)
+#scObj=readRDS("/home/wangjl/data4/others/zhaoym/output/03_UMAP_3origin/NMF/try2/Tumor_sub.Tumor_umap_tsne.Seurat.Rds")
+#genes.HVG=VariableFeatures(scObj)
+genes.HVG=readLines("../sample/hvg3000.list.txt")
+
+	> length(genes.HVG)
+	[1] 3000
+
+# 求交集
+genes.common2=intersect(genes.HVG, genes.common)
+> length(genes.common2)
+[1] 1516
+
+
+# 每个样本只保留共有基因，然后行名前加样本名
+dat.plot=NULL
+for(sn in names(weights)){
+	print(sn)
+	tmp=weights[[sn]]
+	rownames(tmp)=paste0(sn, "_", rownames(tmp))
+	tmp=tmp[, genes.common2]
+	dat.plot=rbind(dat.plot, tmp)
+}
+write.table(dat.plot, paste0("_05_NMF_gene_weight.HVG.df.txt"))
+
+	> dim(dat.plot)
+	[1]   59 1516
+	> dat.plot[1:3, 1:3]
+					  S100A8         FCGBP       SCGB3A1
+	LUNG_T18_1 -5.292433e-05  0.0006087513 -0.0002419917
+	LUNG_T18_2 -1.346219e-04 -0.0002533632  0.0008401202
+	LUNG_T18_3 -8.822652e-05 -0.0002458686 -0.0003585916
+
+# 计算样本之间的spearman相关性
+sample.cor=cor(t(dat.plot), method="spearman")
+	> dim(sample.cor)
+	[1] 59 59
+	> sample.cor[1:2, 1:2]
+			   LUNG_T18_1 LUNG_T18_2
+	LUNG_T18_1  1.0000000 -0.4826312
+	LUNG_T18_2 -0.4826312  1.0000000
+
+
+# 画热图的样本注释
+nmf_keep_info_T=nmf_keep_info[which(nmf_keep_info$keep==T), ]
+	> nmf_keep_info_T |> dim()
+	[1] 59  9
+	> nmf_keep_info_T[1:2, ]
+			avg    median        sd   sample K index    nmfName isHV keep
+	1 0.2724599 0.1989523 0.2616365 LUNG_T18 9     1 LUNG_T18_1  yes TRUE
+	2 0.2297874 0.1949670 0.2059128 LUNG_T18 9     2 LUNG_T18_2  yes TRUE
+
+annotation_col = data.frame(
+  id=nmf_keep_info_T$nmfName,
+  sample = nmf_keep_info_T$sample, 
+  origin=ifelse( startsWith(nmf_keep_info_T$sample, "LUNG_T"), "tLung", "mBrain"),
+  row.names=1
+)
+
+	> head(annotation_col)
+				 sample origin
+	LUNG_T18_1 LUNG_T18  tLung
+	LUNG_T18_2 LUNG_T18  tLung
+	LUNG_T18_3 LUNG_T18  tLung
+
+c1=scales::hue_pal()(12)
+names(c1)=unique(nmf_keep_info_T$sample)
+
+ann_colors = list(
+  sample = c1,
+  origin = c(tLung = "orange", mBrain = "deeppink")
+)
+
+# 画热图
+library(pheatmap)
+# 截断极端值
+cutByThresh=function(dat, thresh=0.3){
+	dat[dat>thresh]=thresh
+	dat[dat< (-thresh)]=-thresh
+	dat
+}
+sample.cor2=cutByThresh(sample.cor, 0.5)
+
+sample.ht=pheatmap(sample.cor2, border_color=NA,
+	#scale="row",
+	annotation_col = annotation_col, 
+	#annotation_row = annotation_row,
+	annotation_colors = ann_colors,
+	clustering_method = 'ward.D2',
+	cutree_row=5, cutree_cols=5,
+	main="Meta-programs by NMF")
+
+
+# 二值化
+sample.cor3=sample.cor
+thresh=0.2
+sample.cor3[which(sample.cor3>=thresh)]=thresh
+sample.cor3[which(sample.cor3<thresh)]=0
+#
+sample.ht3=pheatmap(sample.cor3, border_color=NA,
+	#scale="row",
+	annotation_col = annotation_col, 
+	#annotation_row = annotation_row,
+	annotation_colors = ann_colors,
+	clustering_method = 'ward.D2',
+	cutree_row=6, cutree_cols=6,
+	main="Meta-programs by NMF")
+
+
+# 尝试欧式距离 dist(求行之间的欧氏距离) //todo
+# 距离和相似性：https://stackoverflow.com/questions/47874486/pheatmap-default-distance-metric-r //todo
+	> dat.plot[1:3, 1:3]                                                                                                                 
+					  S100A8         FCGBP       SCGB3A1
+	LUNG_T18_1  2.146416e-04  0.0004116337 -0.0003871179
+	LUNG_T18_2 -9.542673e-05 -0.0003142863  0.0006338614
+	LUNG_T18_3 -8.046273e-05 -0.0002308644 -0.0004237258
+# 计算欧氏距离
+#sample.dist=dist(dat.plot, method="euclidean") #对行求相互之间的欧氏距离
+
+# install.packages("proxy")      # 如果尚未安装
+library("proxy")
+sample.dist=dist(dat.plot, method="cosine") #对行求相互之间的 cosine 距离
+# 将距离矩阵转换为相似性的矩阵格式
+sample.sim <- 1-as.matrix(sample.dist)
+
+cutByThresh3=function(dat, thresh.H=1, thresh.L=-1){
+	dat[dat>thresh.H]=thresh.H
+	dat[dat<(thresh.L)]=thresh.L
+	dat
+}
+
+dat_ht=cutByThresh3(sample.sim, 0.8, 0)
+
+# Specifying clustering from distance matrix
+drows = dist(dat_ht, method = "cosine")
+dcols = dist(t(dat_ht), method = "cosine")
+
+# 进行层次聚类
+	cluster_result <- hclust(drows, method = "ward.D2")
+
+	# 切割聚类以获取亚群编号
+	clusters <- cutree(cluster_result, k = 7)
+
+	# 创建注释数据框
+	annotation_col2=annotation_col
+	annotation_col2$MP = as.factor(clusters[rownames(annotation_col)])
+	
+	# 添加颜色
+	ann_colors2=ann_colors
+	color.mp=scales::hue_pal()(7)
+	names(color.mp)=1:7
+	ann_colors2$MP=color.mp
+
+
+library(grid)
+sample.ht4=ComplexHeatmap::pheatmap(dat_ht, border_color=NA, #慢
+	#scale="row",
+	name="Cosine\ncorrelation",
+	clustering_distance_rows = drows, clustering_distance_cols = dcols,
+	#clustering_distance_rows = "correlation",
+	annotation_col = annotation_col2, 
+	#annotation_row = annotation_row,
+	annotation_colors = ann_colors2,
+	clustering_method = 'ward.D2',
+	cutree_row=7, cutree_cols=7,
+	color = c(
+		colorRampPalette(colors = c("white","yellow"))(20),
+		colorRampPalette(colors = c("yellow","red"))(20),
+		colorRampPalette(colors = c("red","#661121"))(20)
+		),
+	layer_fun = function(j, i, x, y, width, height, fill, slice_r, slice_c) {
+           v = ComplexHeatmap:::pindex(dat_ht, i, j)
+           #grid.text(sprintf("%.1f", v), x, y, gp = gpar(fontsize = 10))
+           if(slice_r == slice_c) {
+             grid::grid.rect(gp = gpar(lwd = 4, fill = "transparent", col="black"))
+           }
+         },
+	main="Meta-programs by NMF, using cosine dist") # 效果最好！
+#
+pdf("MP.heatmap.pdf", width=12, height=11)
+print(sample.ht)
+
+grid::grid.newpage()
+print(sample.ht3)
+
+grid::grid.newpage()
+print(sample.ht4)
+dev.off()
+
+
+
+
+
+#####################################
+Q: 怎么知道每个cluster中的行名？
+==>方法1 [从聚类结果获取: 每类的样品名] 没采用
+p=sample.ht4
+
+#1) 获取每个cluster的rownames
+#r.dend <- ComplexHeatmap::row_dend(p) #Extract row dendogram #
+rcl.list <- ComplexHeatmap::row_order(p) #Extract clusters (output is a list) #主要是这个
+
+rownames.per.cluster=lapply(rcl.list, function(x){
+	p@row_names_param$labels[x]
+})
+#
+	> do.call(rbind, lapply(rownames.per.cluster, length))
+		 [,1]
+	[1,]    6
+	[2,]   14
+	[3,]   11
+	[4,]   13
+	[5,]    9
+	[6,]    8
+	[7,]   10
+
+=>或者 方法2：提前聚类，然后作为标签覆盖到图上：采用
+	# 进行层次聚类
+	cluster_result <- hclust(drows, method = "ward.D2")
+
+	# 切割聚类以获取亚群编号
+	clusters <- cutree(cluster_result, k = 7)
+
+	# 创建注释数据框
+	annotation_col2 <- data.frame(Cluster = as.factor(clusters))
+	rownames(annotation_col2) <- rownames(dat_ht)
+
+	rownames.per.cluster2=split(annotation_col2|>rownames(), annotation_col2$Cluster)
+
+	> do.call(rbind, lapply(rownames.per.cluster2, length))
+	  [,1]
+	1    8
+	2   13
+	3   10
+	4   14
+	5   11
+	6    6
+	7    9
+通过 set.diff() 互相之间没有差异，那就是完全一致。
+	test2=function(i, j){
+		c(
+		setdiff(rownames.per.cluster[[i]], rownames.per.cluster2[[j]]) |> length(),
+		setdiff(rownames.per.cluster2[[j]], rownames.per.cluster[[i]]) |> length()
+		)
+	}
+	test2(1,6)
+	test2(2,4)
+	test2(3,5)
+	test2(4,2)
+	test2(5,7)
+	test2(6,1)
+	test2(7,3)
+#####################################
+
+
+
+
+
+
+2) 找到每个cluster的特征基因
+i 获取每个 MP 的权重最高的top30基因，合并后，找到频率最高的前30个基因
+	> table(clusters)
+	clusters
+	 1  2  3  4  5  6  7 
+	 8 13 10 14 11  6  9 
+	> head(clusters)
+	LUNG_T18_1 LUNG_T18_2 LUNG_T18_3 LUNG_T18_4 LUNG_T18_5 LUNG_T18_6 
+			 1          2          3          4          5          6 
+
+ii 对每个cluster内，获取权重top30 基因，混合后取频率top30 作为特征基因
+getSignatureGens=function(clusters, nmf.gene.wt, topN=50){
+	lapply(unique(clusters), function(clusterName){
+		x=names(clusters[which(clusters==clusterName)])
+		genes.freq=do.call("c", lapply(x, function(i){
+			val=nmf.gene.wt[i,]
+			val=val[, order(-as.numeric(val))]
+			colnames(val)[1:topN]
+		})) |>table() |> as.data.frame()
+
+		genes.freq=genes.freq[order(-genes.freq$Freq),]
+
+		return( as.character(genes.freq[1:topN, "Var1"]) )
+	})
+}
+
+sig.genes=getSignatureGens(clusters, dat.plot, 50)
+names(sig.genes)=paste0("MP", unique(clusters))
+#保存到文件，一列一个基因集合，用于GO富集: Rlist2csv(sig.genes, "NMF.MP.sig.genes.7MP.csv")
+
+查看：
+	> str(sig.genes)
+	List of 7
+	 $ MP1: chr [1:50] "ERO1A" "NDRG1" "ZFAS1" "HILPDA" ...
+	 $ MP2: chr [1:50] "CD63" "NDUFA4" "LDHB" "MGST1" ...
+	 $ MP3: chr [1:50] "KRT7" "KRT19" "TRIB3" "MAP1B" ...
+	 $ MP4: chr [1:50] "CKS1B" "H2AFZ" "TUBA1B" "ANLN" ...
+	 $ MP5: chr [1:50] "FCER1G" "SPI1" "AIF1" "ALOX5AP" ...
+	 $ MP6: chr [1:50] "C9orf116" "CAPS" "PIFO" "PPIL6" ...
+	 $ MP7: chr [1:50] "FOSB" "EGR1" "FTL" "NFKBIZ" ...
+
+如果只保留基因频率至少是2的？ //todo
+
+
+
+=> 显示每个基因集合的表达水平，显示到UMAP上
+$ R
+library(Seurat)
+sub.Tumor=readRDS("/home/wangjl/data4/others/zhaoym/output/03_UMAP_3origin/NMF/try2/Tumor_sub.Tumor_umap_tsne.Seurat.Rds")
+
+
+# 模块打分 on UMAP
+mp.genes <- read.csv("NMF.MP.sig.genes.7MP.csv")
+tmp <- AddModuleScore(sub.Tumor, features = mp.genes, ncores=4, name = "MP")
+head(tmp@meta.data, 2)
+
+colorset.pattern=c("#A7312F", "#202583", "#4F88B8", "#F5A525", "#1B6B36", "#96238F", "#DD44C8")
+
+# on tsne
+plots=list()
+for(i in 1:length(mp.genes)){
+  fn=names(mp.genes)[i]
+  message(i, " ", fn)
+  p2 <- FeaturePlot(tmp, features = fn, cols = c("#eeeeee", colorset.pattern[i]), reduction = "umap")
+  #p2 <- FeaturePlot(tmp, features = fn, cols = c("#eeeeee", colorset.pattern[i]), reduction = "tsne")
+  plots[[i]]=p2
+}
+pdf("NMF.MP.sig.genes.7MP.score.pdf", width=12, height=5)
+patchwork::wrap_plots(plots, ncol = 4)
+dev.off()
+
+
+
+
+
+
+
+
+(6) 识别元程序2: 载入59个NMF的基因权重行，只保留高变基因，计算样本top50基因之间的Jaccard相似性矩阵，画标注样本名的热图
+似乎结果更好一些。
+
+取top50基因，求各自的Jaccard相似度:
+	> dim(dat.plot)
+	[1]   59 1516
+	> dat.plot[1:3, 1:3]
+					  S100A8         FCGBP       SCGB3A1
+	LUNG_T18_1 -5.292433e-05  0.0006087513 -0.0002419917
+	LUNG_T18_2 -1.346219e-04 -0.0002533632  0.0008401202
+	LUNG_T18_3 -8.822652e-05 -0.0002458686 -0.0003585916
+#
+
+# 判断每一行的topNN基因
+nn=50
+top50=matrix(0, nrow=nrow(dat.plot), ncol=ncol(dat.plot), byrow=T)
+for(i in 1:nrow(top50)){
+	t1=dat.plot[i,] #第i行
+	t2=t1[,order(-as.numeric(t1) )] #降序排列
+	topN=t2[,1:nn] |> names() #gene names
+	top50[i, ]=ifelse(colnames(dat.plot) %in% topN, 1, 0)
+}
+
+	> sum(top50)
+	[1] 3550
+	> sum(top50)/71
+	[1] 50
+
+# 计算Jaccard相似性
+SNN2=top50 %*% t(top50)
+
+# 计算点与点之间的 Jaccard 相似度:
+k=nn #最近邻个数50/样品
+SNN3=matrix(0, nrow=nrow(SNN2), ncol=ncol(SNN2), byrow=T)
+for(i in 1:nrow(SNN2)){
+  for(j in 1:ncol(SNN3)){
+    val=SNN2[i,j]
+    SNN3[i,j]=val/(2*k - val)
+  }
+}
+
+colnames(SNN3)=rownames(dat.plot)
+rownames(SNN3)=rownames(dat.plot)
+
+# 绘制热图
+cutByThresh2=function(dat, threshold=0.25){
+	dat[dat>threshold]=threshold
+	dat
+}
+
+dat_ht2=cutByThresh2(SNN3, 0.25)
+
+
+# 进行层次聚类
+	drows = dist(dat_ht2, method = "euclidean")
+	
+	cluster_result <- hclust(drows, method = "ward.D2")
+
+	# 切割聚类以获取亚群编号
+	clusters <- cutree(cluster_result, k = 7)
+
+	# 创建注释数据框
+	annotation_col2=annotation_col
+	annotation_col2$MP = as.factor(clusters[rownames(annotation_col)])
+	
+	# 添加颜色
+	ann_colors2=ann_colors
+	color.mp=scales::hue_pal()(7)
+	names(color.mp)=1:7
+	ann_colors2$MP=color.mp
+
+
+sample.ht4=ComplexHeatmap::pheatmap(dat_ht2, border_color=NA,
+	#scale="row",
+	name="Jaccard\nsimilarity",
+	annotation_col = annotation_col2, 
+	#annotation_row = annotation_row,
+	annotation_colors = ann_colors2,
+	clustering_method = 'ward.D2',
+	cutree_row=7, cutree_cols=7,
+	#color = c(colorRampPalette(colors = c("white","yellow"))(20), colorRampPalette(colors = c("yellow","red"))(20)),
+		color = c(
+		colorRampPalette(colors = c("white","yellow"))(20),
+		colorRampPalette(colors = c("yellow","red"))(20),
+		colorRampPalette(colors = c("red","#661121"))(20)
+		),
+	layer_fun = function(j, i, x, y, width, height, fill, slice_r, slice_c) {
+           v = ComplexHeatmap:::pindex(dat_ht, i, j)
+           #grid.text(sprintf("%.1f", v), x, y, gp = gpar(fontsize = 10))
+           if(slice_r == slice_c) {
+             grid::grid.rect(gp = gpar(lwd = 4, fill = "transparent", col="black"))
+           }
+         },	
+	main=paste0("Meta-programs by NMF using Jaccard similarity of top ", nn, " genes") )
+
+pdf("MP.Jaccard.heatmap.pdf", width=12, height=11)
+print(sample.ht4)
+dev.off()
+
+
+
+
+2) 找到每个cluster的特征基因：meta-signatures
+i 获取每个 MP 的权重最高的top30基因，合并后，找到频率最高的前30个基因
+	> table(clusters)
+	clusters
+	 1  2  3  4  5  6  7 
+	15 14 14 11  6  5  6
+	> head(clusters)
+	LUNG_T18_1 LUNG_T18_2 LUNG_T18_3 LUNG_T18_4 LUNG_T18_5 LUNG_T18_6 
+			 1          2          1          3          4          5
+
+ii 对每个cluster内，获取权重top30 基因，混合后取频率top30 作为特征基因
+sig.genes=getSignatureGens(clusters, dat.plot, 50) #函数定义见上文(5)
+names(sig.genes)=paste0("MP", unique(clusters))
+#保存到文件，一列一个基因集合，用于GO富集: Rlist2csv(sig.genes, "NMF.MP.sig.genes.Jaccard.7MP.csv")
+
+查看:
+	> str(sig.genes)
+	List of 7
+	 $ MP1: chr [1:50] "KRT19" "KRT7" "TACSTD2" "TNFRSF12A" ...
+	 $ MP2: chr [1:50] "FOSB" "SLC34A2" "FTL" "C11orf96" ...
+	 $ MP3: chr [1:50] "CKS1B" "H2AFZ" "TUBA1B" "ANLN" ...
+	 $ MP4: chr [1:50] "FCER1G" "SPI1" "AIF1" "ALOX5AP" ...
+	 $ MP5: chr [1:50] "C9orf116" "CAPS" "PIFO" "PPIL6" ...
+	 $ MP6: chr [1:50] "ERO1A" "NDRG1" "SLC2A1" "ZFAS1" ...
+	 $ MP7: chr [1:50] "CD63" "NDUFA4" "LDHB" "MGST1" ...
+#
+
+
+
+
+3) 绘制单细胞水平的表达水平图：都是按照样品绘制的表达热图
+# 使用data数据，取交集基因，作为行
+# 列为 16k cell
+	> sub.Tumor@assays$RNA@data |> dim()
+	[1] 29634 16763
+
+	> sub.Tumor@assays$RNA@data[1:3, 1:2]
+	3 x 2 sparse Matrix of class "dgCMatrix"
+			 AAACCTGAGACGCTTT_NS_04 AAACCTGAGATGTGTA_NS_17
+	A1BG                          .                      .
+	A1BG-AS1                      .                      .
+	A1CF                          .                      .
+
+# 去重复基因
+gene.uniq=sig.genes |> unlist() |> unique() #321个
+
+# 去除前面集合中已经出现过的基因
+	unique_genes <- lapply(seq_along(sig.genes), function(i) {
+	  current_set <- sig.genes[[i]]
+	  if(1==i) return(current_set)
+	  previous_genes <- unlist(sig.genes[1:(i - 1)])
+	  unique_set <- setdiff(current_set, previous_genes)
+	  return(unique_set)
+	})
+	names(unique_genes) <- names(sig.genes)
+	sapply(unique_genes, length) |> sum() #321个
+	# 输出结果
+	unique_genes
+
+
+
+# 取子集
+exp.gene=sub.Tumor@assays$RNA@data[gene.uniq,]
+	> exp.gene |> dim()
+	[1]   321 16763
+	> exp.gene[1:2, 1:2]
+	2 x 2 sparse Matrix of class "dgCMatrix"
+		  AAACCTGAGACGCTTT_NS_04 AAACCTGAGATGTGTA_NS_17
+	KRT19              2.1119930               2.092692
+	KRT7               0.9360157               1.708822
+
+# 绘制热图: 按某一个病人绘制
+	> table(sub.Tumor$Sample)
+	LUNG_T06 LUNG_T08 LUNG_T18 LUNG_T19 LUNG_T20 LUNG_T25 LUNG_T28 LUNG_T30 
+		  21       11      978      167      280        9      924        6 
+	LUNG_T31 LUNG_T34    NS_02    NS_03    NS_04    NS_06    NS_07    NS_12 
+		  97        8      134     2673     1150        9     4953     2692 
+	   NS_13    NS_16    NS_17    NS_19 
+		 886       36      964      765
+#
+drawExp_nmf_signature=function(sampleID){
+	#sampleID="NS_19"
+	cells=sub.Tumor@meta.data[which(sub.Tumor@meta.data$Sample==sampleID),] |> rownames()
+	tmp1=as.matrix(exp.gene[, cells]) |> t() |> scale() |> t()
+
+	tmp1[which(tmp1<(-2))]=-2
+	tmp1[which(tmp1>(2))]=2
+	sample_ht5=ComplexHeatmap::pheatmap(tmp1, border_color=NA,
+		#scale="row",
+		name="Gene\nExpression",
+		cluster_rows = F, cluster_cols = T,	clustering_method = 'ward.D2',
+		use_raster=F, #是否栅格化，栅格化后速度快; 默认过大就栅格化
+		show_rownames = F, show_colnames = F,
+		legend=T,
+		#legend_position="left", # 不存在该参数
+		color = colorRampPalette(c("#4575B4", "white", "firebrick3"))(50),
+		layer_fun = function(j, i, x, y, width, height, fill, slice_r, slice_c) {
+			# 绘制水平虚线：热图添加水平直线
+			for(row in i){
+				# 绘制虚线
+				if(row %in% c(sapply(unique_genes, length) |> cumsum() |> as.numeric()) ){
+					# 计算虚线的y坐标
+					y_position = unit(y[row - min(i) + 1], "native")
+					grid.lines(x = unit(c(0, 1.15), "npc"), 
+					  y = y_position, 
+					  gp = gpar(lwd = 1, lty = "dashed", col = "black"))
+					#
+					
+					# 获取当前集合的前5个基因
+					gene_set_index = which(cumsum(sapply(unique_genes, length)) >= row)[1]
+					gene_names = unique_genes[[gene_set_index]][1:min(3, length(unique_genes[[gene_set_index]]))]
+					
+					# 计算上下虚线的中间位置
+					y_offset = unit(0.05, "native")  # 固定间隔
+
+					# 打印代表性基因名字
+					#gene_set_index = which(cumsum(sapply(unique_genes, length)) >= row)[1]
+					#gene_names = representative_genes[[gene_set_index]]
+					
+					grid.text(label = paste(gene_names, collapse = "\n"), 
+							x = unit(1.1, "npc"),
+							y = y_position + y_offset,  # 在虚线之间的位置
+							# y = unit(y[row - min(i) + 1], "native"), 
+							gp = gpar(col = "black", fontsize = 6, fontface = "italic"),
+							just = "left")  # 左对齐
+				}
+			}
+		},
+		main=paste0("Gene expression level of each meta-signatures: ", sampleID))
+	sample_ht5
+} #缺点：右侧图例和文字重合了，后期依靠AI修改吧。暂时不知道怎么画这个图
+pdf("MP.signatures.Exp.perCell.heatmap.pdf", width=6, height=4)
+for(sp in c(nmf_keep_info$sample |> unique()) ){
+	print(sp)
+	print(drawExp_nmf_signature(sp))
+} #耗时 10min #19:02->19:10
+dev.off()
+
+
+
+
+
+
+
+
+
+
+
+
+
+(7) 另一种策略: Cell 2017
+- 对每个样本做nmf，获得6个特征: 改为最佳K？
+- 全部12个样品都做，得到72个特征
+- 对这些特征进行层次聚类？ 和之前比，不过滤了，全用上
+
+
+Q: 对合成的大矩阵进行NMF分解，和原来的单个小矩阵有什么关系？
+	gene*[cells1, cells2] = W . H
+	M x N              = N.L . L.N
+
+
+
+
+
+
+
+
+
+
+
+
+
+========================================
+|-- [务虚] 样本之间的相关性热图 怎么画? 怎么解读？
+----------------------------------------
+1. 相关线索
+(1) 样本之间的相关性比较：
+https://github.com/dylkot/cNMF/issues/52
+	- 使用TPM还是Z-score? 最好使用Z-score
+	- 最好使用高变基因来做：结合上文，就是高变基因的权重，来做相关性热图。
+
+
+(2) github等代码线索：
+1)
+https://github.com/mulqueenr/bc_multiome_nf_analysis/blob/main/src/Fig2_genenmf_metaprograms.R
+bc_multiome_nf_analysis/src/Fig2_genenmf_metaprograms.R
+
+2) 效果图 & 可能很多源码
+https://blog.csdn.net/m0_47675572/article/details/131169434
+
+3) 基于R的分析系统 EcoTyper (Cell paper 2021)：提到NMF包
+https://github.com/digitalcytometry/ecotyper/blob/master/pipeline/state_discovery_combine_NMF_restarts.R
+
+4) 使用NMF的R代码
+https://github.com/ZedekiahZhou/PanCan_scMetab/tree/main
+
+5) Cell paper: use NMF
+https://www.cell.com/cancer-cell/fulltext/S1535-6108(24)00234-4?_returnURL=https%3A%2F%2Flinkinghub.elsevier.com%2Fretrieve%2Fpii%2FS1535610824002344%3Fshowall%3Dtrue
+Spatiotemporal single-cell analysis decodes cellular dynamics underlying different responses to immunotherapy in colorectal cancer
+https://github.com/yqq-chen/CRC_ICB
+
+
+
+6) Cancer Cell 2022
+https://pubmed.ncbi.nlm.nih.gov/36423636/
+Mapping single-cell transcriptomes in the intra-tumoral and associated territories of kidney cancer
+
+We report six conserved meta-programs that distinguish tumor cell function, and find an epithelial-mesenchymal transition meta-program highly enriched at the tumor-normal interface that co-localizes with IL1B-expressing macrophages, offering a potential therapeutic target.
+
+In total, we dissected 45 intra-tumor expression programs from the ten ccRCC tumors and classified six meta-programs (MPs) shared by multiple tumors (Figure 6B and Table S5).
+
+MP1 was characterized by expression of genes such as FOS and JUN, thus representing a stress-response-related signature in tumor cells. 
+MP2 consisted of genes (i.e., NAT8 and ACSM2B) that were specifically expressed by proximal tubule (PT, 近曲小管) cells. The presence of PT signature among tumor cells confirmed the previous finding that PT cells are the cell type of origin of ccRCC.25 
+Interestingly, we found that MP3 was enriched for genes such as TGFBI and MT2A (Figure 6B), which are related to the epithelial-to-mesenchymal transition (EMT) and have not been reported in RCC previously (Figure 2).
+MP4 consisted of non-coding RNA genes such as NEAT1 and HCG18, probably reflecting some stress or cell death (CD)-related cell state. 
+MP5 was characterized by expression of MHC-II-related genes such as CD74 and HLA-DRA.
+Genes such as TOP2A and MKI67 were found in MP6, indicating that this MP is related to the proliferation of tumor cells.
+
+
+
+7) Cell, 2017 Fig3.A,B
+https://pubmed.ncbi.nlm.nih.gov/29198524/
+Single-Cell Transcriptomic Analysis of Primary and Metastatic Tumor Ecosystems in Head and Neck Cancer
+
+Stromal and immune cells had consistent expression programs across patients.
+Our results provide insight into the HNSCC ecosystem and define stromal interactions and a p-EMT program associated with metastasis.
+
+Malignant cells varied in their expression of cell cycle, stress, hypoxia and epithelial differentiation programs. 
+
+https://blog.csdn.net/weixin_53637133/article/details/138366584
+使用matlab做的分析: https://github.com/TrinityCTAT/Trinity_CTAT/wiki
+
+> 发现7个模块，至少在两个肿瘤中表达。
+Seven expression programs were preferentially expressed by subsets of malignant cells in at least two tumors. 
+两个元程序反映细胞周期的两个阶段。
+Two programs (clusters 1,2 in Figures 3A and 3B) reflected the G1/S and G2/M phases of the cell cycle and distinguished cycling cells in each tumor (14–40% of cells in different tumors) (Figure S3A; Table S7). 
+第三个程序是细胞活化早期基因
+A third program (cluster 6 in Figures 3A and 3B) consisted of JUN, FOS, and immediate early genes implicated in cellular activation and stress responses (Figure S3A; Table S7). 
+第四个程序在缺氧相关基因富集
+A fourth program was enriched for hypoxia-related genes and increased in HNSCC cells cultured in hypoxic conditions (Figures 3B, S3A and S5Q; Table S7).
+
+> 两个元程序主要是 上皮基因
+Two additional programs (clusters 4,5 in Figures 3A and 3B) consisted primarily of epithelial genes, such as EPCAM, cytokeratins (e.g. KRT6, 16, 17, 75), and kallikreins (KLK5-11) (Figure S3A; Table S7). 
+所有恶性细胞都表达上皮marker，
+While all malignant cells expressed epithelial markers, many of which were largely uniform across malignant cells (Figures 1C, 1D and S3E), expression of these particular epithelial genes varied coherently across malignant cells (Figure S3D), and may reflect the degree of epithelial differentiation. 
+最后一个包含ECM和EMT，存在10个肿瘤中的7个中。
+A final expression program (cluster 3 in Figures 3A and 3B) contained genes associated with ECM and had features of EMT (Figure S3A; Table S7). This program was evident in subsets of cells from seven of the ten tumors examined (Figure S3B).
+
+
+
+
+
+8). Nature 2023
+https://pubmed.ncbi.nlm.nih.gov/37258682/
+Hallmarks of transcriptional intratumour heterogeneity across a thousand tumours
+
+Here we curate, annotate and integrate the data from 77 different studies to reveal the patterns of transcriptional ITH across 1,163 tumour samples covering 24 tumour types. 
+
+Among the malignant cells, we identify 41 consensus meta-programs, each consisting of dozens of genes that are coordinately upregulated in subpopulations of cells within many tumours. The meta-programs cover diverse cellular processes including both generic (for example, cell cycle and stress) and lineage-specific patterns that we map into 11 hallmarks of transcriptional ITH. Most meta-programs of carcinoma cells are similar to those identified in non-malignant epithelial cells, suggesting that a large fraction of malignant ITH programs are variable even before oncogenesis, reflecting the biology of their cell of origin.
+
+https://blog.csdn.net/lidaoPKUHSC/article/details/136271824
+
+使用 from sklearn.decomposition import NMF 分解，然后使用R归纳提取。
+
+
+
+
+
+
+
+2. 代码实现
+见上一节
+
+
+
+
+
+
+
+
+
+========================================
+|-- GeneNMF 包做 NMF 分析：可视化函数更多
+----------------------------------------
+1. 简介
+
+GeneNMF 分析主要包括三个步骤：
+A.不同样本的非负矩阵分解
+B.‌基因模块聚类和分群
+C.确定基因模块功能
+
+https://zhuanlan.zhihu.com/p/17506956194
+根据单细胞scRNA分析得到的RDS文件，提取过滤后的data信息来进行每个分组（推荐sample）的NMF分析；
+然后根据每个基因模块之间的成对相似性对基因程序聚类和可视化；
+最后对每个基因程序的基因进行富集分析和Ucell打分，评估不同基因程序的生物学意义。
+
+
+https://mp.weixin.qq.com/s/6qP0fv5oIpBCpnZhXOYujQ
+它特别用于提取癌细胞中的复发基因程序
+（参见 Barkely 等人（2022 年）和 Gavish 等人（2023 年）），否则这些程序很难整合和联合分析。
+PCNS DLBCL患者肿瘤内恶性MPs的识别，https://doi.org/10.1038/s41421-023-00559-7
+
+GeneNMF 将各个数据集的表达矩阵分解为几个可解释的维度，然后计算“元程序”（meta-program，MPs：元程序），定义为在多个样本和方法初始化中发现表达的共识基因集。
+
+
+这个警告，可能是要用Seurat V5，而我用的是V4？不过不影响后续结果：
+	Warning: The following arguments are not used: layer
+
+
+(2) 安装
+https://github.com/carmonalab/GeneNMF
+
+install.packages("GeneNMF")
+
+(3) 教程
+https://carmonalab.github.io/GeneNMF.demo/NMF_demo_cancercells.html
+
+
+
+
+
+
+
+
+
+2. 实战
+> table(sub.Tumor$Sample)
+LUNG_T06 LUNG_T08 LUNG_T18 LUNG_T19 LUNG_T20 LUNG_T25 LUNG_T28 LUNG_T30 LUNG_T31 LUNG_T34    NS_02    NS_03    NS_04    NS_06 
+      21       11      978      167      280        9      924        6       97        8      134     2673     1150        9 
+   NS_07    NS_12    NS_13    NS_16    NS_17    NS_19 
+    4953     2692      886       36      964      765 
+#
+
+# (0). split sample====
+table(sub.Tumor$Sample)
+#sampleObj.list <- Seurat::SplitObject(sub.Tumor, split.by = "Sample")
+
+# 只保留>=100个细胞的样品: only keep samples with >=100 cells
+	sub.Tumor$Sample |> table()
+
+	t1=sub.Tumor$Sample |> table()
+	t1=t1[t1>=100] |> names(); t1
+
+	tmp=subset(sub.Tumor, Sample %in% t1)
+	tmp
+	tmp@meta.data$Sample=as.character(tmp@meta.data$Sample)
+	DimPlot(tmp)
+	DimPlot(tmp, group.by = "Sample")
+#
+sampleObj.list <- Seurat::SplitObject(tmp, split.by = "Sample")
+length(sampleObj.list) #12
+
+
+library(GeneNMF)
+
+# (1). 导入 ====
+geneNMF.programs <- multiNMF(sampleObj.list, 
+                             assay="RNA",
+                             k=4:9, 
+                             hvg=VariableFeatures(sub.Tumor), #高变基因，来自Seurat，共3k个
+                             slot="scale.data", center=F,scale=F,  #使用scale过的，所以不用再scale和center了
+                             min.exp = 0.05,
+                             min.cells.per.sample = 20) #16k cells
+# 11:45->11:48, 3min
+
+
+#2. 计算 MP 指标和最具影响力的 MP 基因。
+# geneNMF.metaprograms <- getMetaPrograms(geneNMF.programs, nMP=5)
+geneNMF.metaprograms <- getMetaPrograms(geneNMF.programs,
+                                        metric = "cosine",
+                                        weight.explained = 0.5,
+                                        min.confidence = 0.7,
+                                        hclust.method="ward.D2",
+                                        #remove.empty = TRUE,
+                                        nMP=6)
+
+> str(geneNMF.metaprograms)
+List of 6
+
+Returns a list with 
+	i) 'metaprograms.genes' top genes for each meta-program; 
+	metaprograms.genes.weights
+	ii) 'metaprograms.metrics' dataframe with meta-programs statistics: 
+		a) freq. of samples where the MP is present, 
+		b) average silhouette width, 
+		c) mean similarity (cosine or Jaccard), 
+		d) number of genes in MP, 
+		e) number of gene programs in MP; 
+	iii) 'programs.similarity': matrix of similarities (Jaccard or cosine) between meta-programs; 
+	iv) 'programs.tree': hierarchical clustering of meta-programs (hclust tree); 
+	v) 'programs.clusters': meta-program identity for each program
+
+#3. 可视化 一致性矩阵
+ph <- plotMetaPrograms(geneNMF.metaprograms, similarity.cutoff = c(0.1,1))
+#
+pdf(paste0(outputRoot, keyword, "_T04_01_geneNMF.metaprograms_heatmap.pdf"), width=6.5, height=6.1)
+print(ph)
+dev.off()
+
+
+#4. view gene per cluster
+geneNMF.metaprograms$metaprograms.metrics #gene number/mp
+
+# gene names per mp
+lapply(geneNMF.metaprograms$metaprograms.genes, head)
+
+# gene wt
+geneNMF.metaprograms$metaprograms.genes.weights$MP2 #cell cycle
+geneNMF.metaprograms$metaprograms.genes.weights$MP7 # cilium movement
+geneNMF.metaprograms$metaprograms.genes.weights$MP3 # hypoxia
+geneNMF.metaprograms$metaprograms.genes.weights$MP1 # immune response
+
+#  names() |> jsonlite::toJSON()
+
+
+#4B. 注释top基因集: use C5
+library(msigdbr)
+library(fgsea)
+top_p <- lapply(geneNMF.metaprograms$metaprograms.genes, function(program) {
+  runGSEA(program, universe=rownames(sub.Tumor), category = "C5", subcategory = "GO:BP")
+})
+# 例如，MP1 似乎与细胞循环/细胞分裂有关。
+head(top_p$MP1)
+head(top_p$MP2)
+head(top_p$MP3)
+head(top_p$MP4)
+head(top_p$MP5)
+
+#4C. 注释top基因集: use C8
+
+
+
+#5. 模块打分 on UMAP
+mp.genes <- geneNMF.metaprograms$metaprograms.genes
+library(AUCell, lib.loc = "/datapool/wangjl/R/x86_64-pc-linux-gnu-library/4.3.3/")
+tmp <- AddModuleScore(sub.Tumor, features = mp.genes, ncores=4, name = "MP")
+head(tmp@meta.data, 2)
+
+# on tsne
+plots=list()
+for(i in 1:length(mp.genes)){
+  fn=names(mp.genes)[i]
+  message(i, " ", fn)
+  #p2 <- FeaturePlot(tmp, features = fn, cols = c("white", colorset.pattern[i]), reduction = "umap")
+  p2 <- FeaturePlot(tmp, features = fn, cols = c("white", colorset.pattern[i]), reduction = "tsne")
+  plots[[i]]=p2
+}
+patchwork::wrap_plots(plots, ncol = 5)
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+========================================
+GSVA 分析：差异通路分析: GSVA+limma差异通路分析+发散条形图
+----------------------------------------
+http://www.bio-info-trainee.com/9663.html
+
+输入log表达矩阵 data，输出每个细胞中的打分标准化值。
+
+学习：https://blog.csdn.net/weixin_45822007/article/details/123013713
+Lambrechts D, Wauters E, Boeckx B, et al. Phenotype molding of stromal cells in the lung tumor microenvironment[J]. Nat Med,  2018, 24(8): p. 1277-1289.
+
+思考: https://blog.csdn.net/Aechh/article/details/126955370
+
+
+
+1. 使用方法
+
+(1) 计算GSVA分数
+数据基于单细胞转录组Seurat对象object。首先加载msigdbr和GSVA两个包，msigdbr用于获取MSigdb（Molecular Signatures Database）数据库KEGG基因集，数据库包含了以下9种不同基因的基因，可供下载以及R软件包载入。
+
+使用gsva函数计算GSVA富集分数，parallel.sz指定并行计算的进程数，这里要设置为1，默认0或者大于1的执行速度更慢，属实鸡肋，设置为1要快很多。另外输入矩阵为object对象中log转化后的表达矩阵指定kcdf参数为"Gaussian"，如果是counts矩阵则指定kcdf=“Poisson”。
+
+method参数可以设置为"gsva"或者"zscore"，单细胞数据较大，一般有上万个细胞，指定method = "zscore"会快很多。
+
+library(msigdbr)
+library(GSVA)
+## 表达矩阵
+expr=as.matrix(object@assays$RNA@data)
+##通路基因集
+msgdC2 = msigdbr(species = "Homo sapiens", category = "C2",subcategory = "KEGG")
+keggSet = msgdC2 %>% split(x = .$gene_symbol, f = .$gs_description)
+
+kegg <- gsva(expr, gset.idx.list = keggSet, kcdf="Gaussian",method = "zscore",
+                 parallel.sz=1,parallel.type="snow")
+#
+
+(2) linear model
+使用limma包获取差异基因集
+
+library(limma)
+## limma gsva通路活性评估
+de_gsva <- function(exprSet,meta,compare = NULL){
+
+	allDiff = list()
+	  design <- model.matrix(~0+factor(meta))
+	  colnames(design)=levels(factor(meta))
+	  rownames(design)=colnames(exprSet)
+	  
+	  fit 
+}
+
+
+
+
 
 
 

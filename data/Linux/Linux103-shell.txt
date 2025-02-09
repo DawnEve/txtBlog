@@ -3053,6 +3053,184 @@ File 1: hello, shell file 1, File 2: from biomooc.com
 
 
 ========================================
+shell 多线程
+----------------------------------------
+怎么后台执行？
+只需要添加空格和&后缀。
+task1 &
+
+这也是shell最朴素的多线程。
+
+
+
+1. 怎么开启多线程并等待全部任务结束？
+(1) 使用&和wait
+在命令后添加&来将命令放入后台执行，并通过wait命令来等待所有后台进程结束。
+1) 示意:
+#!/bin/bash
+ 
+# 启动后台任务
+task1 &
+task2 &
+task3 &
+ 
+# 等待所有后台任务完成
+wait
+ 
+echo "所有任务完成。"
+
+
+ii)实例:
+$ cat demo1.sh
+for i in `seq 1 5`; do 
+	sleep $i && echo $i &
+done
+
+echo "tasks are runing"
+wait
+echo "tasks are done"
+
+执行：
+$ bash demo1.sh 
+tasks are runing
+1
+2
+3
+4
+5
+tasks are done
+
+可见，实现了先打印for后语句，然后等待for结束，再执行wait后的语句的目的。
+
+如果同时有其他shell的后台命令，它会等待吗？
+测试执行脚本，同时另一个窗口执行 sleep 10，看最后是否等待：结果是不等待，只等待本shell脚本的后台命令执行完。
+
+
+
+
+(3) 更复杂的任务: 用函数包裹
+# 定义一个函数来模拟一个任务
+task() {
+    local num=$1
+    echo "任务 $num 开始"
+    sleep $((RANDOM % 5 + 1))  # 模拟随机时间的任务
+    echo "任务 $num 结束"
+}
+
+# 启动多个后台任务
+for i in {1..5}
+do
+   task $i &
+done
+
+# 等待所有后台任务结束
+wait
+
+echo "所有任务已完成"
+
+
+
+## 类C的for循环:
+$ cat demo3.sh 
+total_threads=$1
+for ((i = 0; i < total_threads; i++)); do
+        echo "$i, $total_threads"
+done; 
+$ bash demo3.sh 3
+0, 3
+1, 3
+2, 3
+
+
+
+
+
+
+(2) 使用wait与PID列表
+如果你想要更精确地控制等待哪些特定的进程结束，可以先保存每个后台进程的PID，然后逐一等待。
+
+i)示例:
+#!/bin/bash
+ 
+# 启动后台任务并保存PID
+task1 & pid1=$!
+task2 & pid2=$!
+task3 & pid3=$!
+ 
+# 等待特定PID的任务完成
+wait $pid1
+wait $pid2
+wait $pid3
+ 
+echo "所有任务完成。"
+
+
+ii) 实例: 如果只想等待某个/某几个pid结束，就可以继续运行下一行呢？
+注意写法：
+	* 前面的命令是 && 连接，最后一个pid前面是单个&符号连接。
+	* 只能在脚本中这么写，交互模式不行。
+$ cat demo2.sh
+sleep 5 && echo "task1" & pid1=$!
+sleep 1 && echo "task2" & pid2=$!
+sleep 3 && echo "task3" & pid3=$!
+
+echo "3: should run first"
+wait $pid2
+wait $pid3
+echo "4: depend on task2-3"
+
+wait
+echo "5, depend on task1-3"
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+2. 我没测试过的实现
+
+(3) 使用GNU Parallel
+如果你需要处理大量并行任务，使用GNU Parallel是一个非常强大的工具。它不仅可以并行执行任务，还可以等待所有任务完成。
+
+#!/bin/bash
+# 使用GNU Parallel运行多个任务，并等待所有任务完成
+parallel ::: task1 task2 task3 ::: --wait
+echo "所有任务完成。"
+
+
+
+(4) 使用xargs和-P选项（并行执行）
+xargs也可以用来并行执行命令，并通过-P选项指定并行度。使用-I{}可以指定替换模式。
+
+#!/bin/bash
+# 使用xargs并行执行任务，并等待所有任务完成（设置并行度）
+echo -e "task1\ntask2\ntask3" | xargs -n1 -P3 -I{} bash -c {}
+echo "所有任务完成。"
+
+
+小结：
+如果只需要简单的并行执行和等待，使用&和wait通常是足够的。
+如果需要更高级的并行处理功能，如动态分配资源或复杂的依赖管理，那么GNU Parallel可能是更好的选择。
+
+
+
+
+
+
+
+
+========================================
 shell 综合练习
 ----------------------------------------
 1. 输入一个基因序列文件，输出原始序列和其反向互补序列
