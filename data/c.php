@@ -31,7 +31,19 @@ return array (
 
 
   array (
-    0 => 2,
+    0 => 3,
+    1 => 'C 语言版的包和库',
+    2 => array (
+      array('生信中的C','c104-bioInfo','txt',),
+      array('redis笔记','redis_note','txt'),
+    ),
+  ),
+
+
+
+
+  array (
+    0 => 4,
     1 => 'C++语法(Cpp)',
     2 => array (
       array('C++ 资源.html','cpp_index','html',),
@@ -43,17 +55,16 @@ return array (
 
 
 
-
-
-
   array (
-    0 => 3,
-    1 => 'C 语言版的包和库',
+    0 => 5,
+    1 => 'GO语言',
     2 => array (
-      array('生信中的C','c104-bioInfo','txt',),
-      array('redis笔记','redis_note','txt'),
+      array('GO语言简介','GO_lang001','html',),
+      array('GO语言基础','GO_lang101-basic','txt',),
     ),
   ),
+
+
 
 
 );

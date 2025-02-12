@@ -35,7 +35,7 @@ return array (
     2 => array (
       array('Python OOP','Py200-OOP','txt',),
       array('Py与算法 algorithm','Py201_algorithm','txt',),
-      array('py设计模式','Py202_design_pattern','md',),
+      array('py设计模式.md','Py202_design_pattern','md',),
       array('python异步IO','Py203_async','txt',),
       array('Python标准库 STL','Py204-Standard_lib','txt',),
       array('写Python包','Py205-pkgs','txt',),
@@ -44,31 +44,14 @@ return array (
 
   
   array (
-    0 => 3,
-    1 => '机器学习ML/深度学习DL',
+    0 => 2,
+    1 => 'Python 应用',
     2 => array (
-      array('机器学习概述 ML','ML01-basic','txt',),
-      array('sklearn基础教程','ML02-sklearn','txt',), //https://scikit-learn.org/stable/
-	  
-      array('深度学习与TensorFlow','DL01-TensorFlow','txt',),
-      array('深度学习与PyTorch','DL02-PyTorch','txt',),
-      array('大模型与transformer','DL03-transformer','txt',),
-	  
+  
       array('python爬虫','webSpider','txt',),
       array('python财经','stocks','txt',),
     ),
   ),
-  
-   
-  array (
-    0 => 4,
-    1 => 'GO语言',
-    2 => array (
-      array('GO语言简介','GO_lang001','html',),
-      array('GO语言基础','GO_lang101-basic','txt',),
-    ),
-  ),
-  
-  
+
   
 );

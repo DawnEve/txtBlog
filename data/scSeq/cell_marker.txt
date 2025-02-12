@@ -165,6 +165,8 @@ MCA（https://bis.zju.edu.cn/MCA/atlas2.html）
 
 KIT（https://humphreyslab.com/SingleCell/）
 
+SingleCellBase: http://cloud.capitalbiotech.com/SingleCellBase/
+
 “人工注释”比较考验研究者的相关背景和精力，优点在于准确性相对较好。当然，除了数据库已收录的marker list外，也可以基于先验背景知识和文献来收集marker，用于细胞类型鉴定~
 
 
@@ -644,7 +646,7 @@ https://zhuanlan.zhihu.com/p/649082596
 
 
 ========================================
-|-- 对细胞状态进行打分
+|-- 对细胞状态进行打分: 打分方法(AddModuleScore, AUCell?) + 基因集合
 ----------------------------------------
 1. 打分基因
 (1)这些基因列表可以去做单细胞层面的打分：
@@ -983,6 +985,91 @@ ref:
 https://www.jianshu.com/p/c11ff102baa4
 Sarah Williams (2019). celaref: Single-cell RNAseq cell cluster labelling by reference. R package version 1.0.1.
 
+
+
+
+
+========================================
+|-- 在线工具: ACT (Annotation of Cell Types)，输入 DEG 列表
+----------------------------------------
+0. 简介
+ACT (Annotation of Cell Types)：这是一个在线工具，由Cellmarker团队开发，可以帮助你快速进行细胞类型注释，只需输入单细胞分群后的差异表达基因
+http://xteam.xbio.top/ACT/
+
+Genome Medicine, 2023
+Annotation of cell types (ACT): a convenient web server for cell type annotation
+https://genomemedicine.biomedcentral.com/articles/10.1186/s13073-023-01249-5
+=> Annotation of cell types (ACT), a one-stop platform for annotating cell types
+
+
+1. 使用步骤
+(1)取前n个高表达基因
+> table(m1$cluster)
+   0    1    2    3    4    5    6    7    8    9   10   11 
+1515 1223 2290 1756 1403 1525 2077 1781 2194 1703 2138 1554 
+
+> library(dplyr)
+m1.top=m1 %>% group_by(cluster) %>% top_n(n = 5, wt = avg_log2FC)
+
+	> dim(m1.top)
+	[1] 60  7
+	> m1.top[1:3,]
+	# A tibble: 3 × 7
+	# Groups:   cluster [1]
+		 p_val avg_log2FC pct.1 pct.2 p_val_adj cluster gene 
+		 <dbl>      <dbl> <dbl> <dbl>     <dbl> <fct>   <chr>
+	1 3.56e-96       1.43 0.923 0.742  5.64e-92 0       SYNE2
+	2 4.64e-95       1.64 0.795 0.501  7.36e-91 0       MAL  
+	3 6.56e-80       1.50 0.892 0.738  1.04e-75 0       GBP5 
+
+> m1.list=split(m1.top$gene, m1.top$cluster)
+
+# 输出格式
+> m1.list |> jsonlite::toJSON()
+{"0":["SYNE2","MAL","GBP5","GBP1","TRIM22"],"1":["TXNRD1","SLC3A2","IRF4","CD69","IL2"],"2":["RRM2","PCLAF","DUT","HMGB2","H4C3"],"3":["HSPD1","HSPE1","NME1","PRMT1","FABP5"],"4":["IL2RA","RGS1","CCL20","CCL3","CCL4"],"5":["AHNAK","S100A4","KLRB1","ANXA1","GZMK"],"6":["TXNIP","KLF2","FYB1","TCF7","OXNAD1"],"7":["ZNF646","MASP1","PHKB","ZNF688","HOOK3"],"8":["EMP2","FAM107A","NUDT4","GREM1","EMX2"],"9":["GNLY","GZMH","GZMA","NKG7","CCL5"],"10":["SPR","KLHL33","NEUROD2","PPM1N","MAST4"],"11":["GUCY2F","ARHGAP42","ZNF320","ARL6","RGS16"]}
+
+
+(2) 或者 更符合要求的格式
+getJsonLikeMsg=function(m1.top){
+	m1.list=split(m1.top$gene, m1.top$cluster)
+	for(nm in names(m1.list)){
+		str=m1.list[[nm]] |> jsonlite::toJSON() |> substring(2)
+		str=substring(str,1, nchar(str)-1)
+		message(sprintf("%s:%s", nm, str))
+	}
+}
+getJsonLikeMsg(m1.list)
+细胞注释结果 http://xteam.xbio.top/ACT/
+	0:"SYNE2","MAL","GBP5","GBP1","TRIM22"  ##
+	1:"TXNRD1","SLC3A2","IRF4","CD69","IL2"     #CD4-positive, alpha-beta T cell
+	2:"RRM2","PCLAF","DUT","HMGB2","H4C3"       #CD8-positive, alpha-beta cytotoxic T cell
+	3:"HSPD1","HSPE1","NME1","PRMT1","FABP5" ##
+	4:"IL2RA","RGS1","CCL20","CCL3","CCL4"      #T-helper 1 cell
+	5:"AHNAK","S100A4","KLRB1","ANXA1","GZMK"   #Effector memory CD4-positive, alpha-beta T cell
+	6:"TXNIP","KLF2","FYB1","TCF7","OXNAD1"     #Naive T cell
+	7:"ZNF646","MASP1","PHKB","ZNF688","HOOK3" ##
+	8:"EMP2","FAM107A","NUDT4","GREM1","EMX2"  ##
+	9:"GNLY","GZMH","GZMA","NKG7","CCL5"         #CD4-positive, alpha-beta cytotoxic T cell
+	10:"SPR","KLHL33","NEUROD2","PPM1N","MAST4" ##
+	11:"GUCY2F","ARHGAP42","ZNF320","ARL6","RGS16" ##
+
+(3) 尝试top10: 结果基本没有变化，除了 c4:Treg
+> m1.top=m1 %>% group_by(cluster) %>% top_n(n = 10, wt = avg_log2FC)
+> getJsonLikeMsg(m1.top)
+0:"SYNE2","MAL","GBP5","GBP1","TRIM22","EVI2B","BCL11B","EPSTI1","SESN3","MKRN1" ##
+1:"TXNRD1","PSAT1","SLC3A2","IRF4","MTHFD2","NFKB1","CD69","PRNP","HSPA1A","IL2"   #CD4-positive, alpha-beta T cell
+2:"RRM2","MKI67","UBE2C","PCLAF","DUT","STMN1","HMGB2","CKS2","PCNA","H4C3"        #Proliferating CD4-positive, alpha-beta T cell
+3:"HSPD1","HSPE1","NME1","PRMT1","PHB1","C1QBP","CCT6A","PAICS","HSP90AA1","FABP5"    ##
+4:"TXN","IL2RA","SRGN","FTH1","CTLA4","RGS1","CCL20","CCL3","CCL4","CCL4L2"        #Regulatory T cell, Naive regulatory T cell
+5:"AHNAK","S100A4","CD52","KLRB1","TXNIP","ANXA1","IL7R","VIM","CRIP1","GZMK"      #Effector memory CD4-positive, alpha-beta T cell
+6:"TXNIP","CD52","KLF2","FYB1","TCF7","ATM","OXNAD1","LEF1","C1orf162","AIF1"      #Naive T cell
+7:"GIPC2","CPA4","MIB2","ZNF646","MASP1","PHKB","ZNF688","HOOK3","CXCL14","FAM126A"  ##
+8:"EMP2","FAM107A","NUDT4","SCYL3","GREM1","EMX2","HAS2","PAX5","MAP4K4","GFOD1"     ##
+9:"GNLY","PLEK","FGFBP2","GZMH","GZMA","NKG7","CCL5","CST7","CCL4","S100A4"        #Effector memory CD45RA-positive, alpha-beta T cell, terminally differentiated
+10:"CXCL9","DNAH12","SPR","KLHL33","SRCIN1","NEUROD2","GGPS1","PPM1N","MAST4","USP28"  ##
+11:"MDGA1","GUCY2F","ARHGAP42","ZNF320","ARL6","C3orf38","RGS16","PPM1N","KLHL7","DMWD"  ##
+
+#
 
 
 

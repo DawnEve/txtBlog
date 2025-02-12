@@ -7,7 +7,8 @@ return array (
     2 => array (
       array('项目描述','Linux001','html',),
       array('FAQ','Linux002','html'),
-      array('windows','windows','txt'),
+      array('windows/win10/11','windows','txt'),
+      array('Android 安卓','Android','txt'),
       array('shell_最佳实践【描述】','shell_best_practice','txt'),
 	  
       array('shell cheatsheet 速查','shell_cheatsheet','txt'),
@@ -28,12 +29,12 @@ return array (
 	  array('字符grep/awk/sed','string_process', 'txt'),
 	  array('用户、权限与日志和安全','linux104-user-auth-log', 'txt'),
 	  array('GPU加速和CUDA编程','linux105-GPU-CUDA', 'txt'),
-	  
+
 	  array('多媒体','linux301_mutimedia', 'txt'),
 	  array('编辑器VIM/emacs','editor', 'txt'),
-	  
+
 	  array('深入理解计算机系统/CSAPP','csapp', 'txt'),
-	  
+
     ),
   ),
   

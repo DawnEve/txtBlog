@@ -16,6 +16,7 @@ return array (
   'c' => 'C语言在学习-linux环境下',
   'CS' => '计算机科学与技术',
   'Python' => 'Python3与爬虫',
+  'AI' => '人工智能',
 
   //暂时没有内容
   //  'phpCMS' => '一个流行的MVC内容管理系统', to Frame Work
