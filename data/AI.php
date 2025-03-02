@@ -7,7 +7,8 @@ return array (
     1 => '前言与资料',
     2 => array (
       array('项目描述','index','html',),
-      array('参考资料','index02','html'),
+      //array('参考资料','index02','html'),
+      array('如何使用AI模型','AI-how_to_use','txt'),
     ),
   ),
 

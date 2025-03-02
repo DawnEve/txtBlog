@@ -1924,8 +1924,9 @@ ref: https://www.cnblogs.com/sunyubo/archive/2011/10/17/2282047.html
 
 
 ========================================
-|-- $(())与expr 整数运算
+|-- 整数运算: $(())与expr
 ----------------------------------------
+1. 方式1
 $ echo $((3+2)) ##5
 $ echo $((3*2)) ##6
 $ echo $((3/2)) ##1
@@ -1938,17 +1939,29 @@ $ echo $(($i+3)) #5
 
 
 
+
+2. 方式2
+
 $ echo `expr 2+3`   //运算符前后需要空格
 2+3
 
 $ echo `expr 2 + 3`
 5
 
+$ expr 10 - 2
+8
+
 $ echo `expr 2 * 3` //会提示语法错误，需要转义
 expr: syntax error
 
 $ echo `expr 2 \* 3`
 6
+
+$ expr 100 / 2
+50
+
+
+
 
 
 
@@ -2028,6 +2041,16 @@ Shell中的 test 命令用于检查某个条件是否成立，它可以进行数
 
 ========================================
 shell脚本|流程控制
+----------------------------------------
+
+分支: if else fi
+循环: for
+
+
+
+
+========================================
+|-- shell 的分支: 
 ----------------------------------------
 1.选择
 (1)if语句
@@ -2116,6 +2139,25 @@ case $aNum in
     *)  echo '你没有输入 1 到 4 之间的数字'
     ;;
 esac
+
+
+
+
+
+
+2.如果文件夹不存在，就新建一个
+如果子文件夹不存在，就新建一个
+(1) c++原句
+string cmd;
+string outdir = ODIR + "/" + idname + "/";
+cmd = "if [ -e " + outdir + " ]; then : ; else mkdir " + outdir + " ; fi"; 
+system(cmd.c_str());
+cmd = "if [ -e " + outdir + "exon/ ]; then : ; else mkdir " + outdir + "exon/ ; fi"; 
+system(cmd.c_str());
+
+
+(2)我写的纯shell版
+if [ -e coverage ]; then :; else mkdir coverage; fi
 
 
 
@@ -2753,6 +2795,318 @@ $ bash test.sh 1 2 3
 1
 2
 3
+
+
+
+
+
+
+========================================
+|-- shell 脚本参数 | 使用getopts处理脚本参数: MyShellCmd -c -n 10 -r R1.fq,R2.fq -o outputDir
+----------------------------------------
+1. 概述
+在Linux中编写Shell脚本时，处理命令行参数是一个常见且重要的任务。
+getopts是一个用于解析命令行选项的内置命令，它能够帮助我们简化脚本参数的处理过程。
+
+getopts是一种用于解析命令行参数的工具。与getopt不同的是，getopts是Shell内建的命令，不需要额外安装。getopts可以处理短选项（如-a）和带参数的选项（如-b value），但不支持长选项（如--help）。
+
+
+
+
+2. getopts语法
+getopts的基本语法如下：
+	getopts optstring name [args...]
+
+参数解释：
+	optstring：指定选项字符，如果选项后面跟随参数，则在该字符后加上冒号:。
+	name：变量名，用于存储当前处理的选项。
+	args：要解析的参数列表，通常为脚本的参数$@
+
+
+使用步骤
+	定义选项字符串：
+		确定脚本所需的选项。
+		如果选项需要参数，则在该选项字符后加上:。
+	调用getopts：
+		在while循环中调用getopts，逐个处理选项。
+	处理选项：
+		使用case语句根据选项进行相应的处理。
+		处理非法选项。
+
+
+
+3. 实例1
+
+# 设置默认值
+PN=1
+CR=1.0
+TSIZE=100
+MTSIZE=50
+NSIZE=5
+NLEN="150"
+
+CMDNAME=$(basename $0)
+
+echo "HLA-HD version "${Version} 
+
+# 如果命令中有 -n，则 NSIZE 使用命令指定的值
+# 否则使用上文默认值 5
+# o后没有冒号表示只是选项，没有自定义的值
+# t: 有冒号表示有自定义值
+while getopts ot:c:m:n:f:N: OPT
+do
+  case $OPT in
+    "o" ) FLG_O="TRUE" ;;
+    "t" ) FLG_T="TRUE" ; VALUE_T="$OPTARG" ;;
+    "c" ) FLG_C="TRUE" ; VALUE_C="$OPTARG" ;;
+    "m" ) FLG_M="TRUE" ; VALUE_M="$OPTARG" ;;
+    "n" ) FLG_N="TRUE" ; VALUE_N="$OPTARG" ;;
+    "f" ) FLG_F="TRUE" ; VALUE_F="$OPTARG" ;;
+    "N" ) FLG_NL="TRUE" ; VALUE_NL="$OPTARG" ;;
+      * ) echo "Usage: $CMDNAME [-t thread] [-c rate_of_cutting] [-m minmum_tag_size] [-n number of mismatch] [-f freq_dir] [-N size of ambiguous charactor] fastqfile1 fastqfile2 HLA_gene.split.txt Dictionary_Path sampl_id(arbitary) output_directory" 1>&2
+          exit 1 ;;
+  esac
+done
+
+FREQ=""
+if [ "$FLG_T" = "TRUE" ]; then
+  PN=$VALUE_T  
+fi
+if [ "$FLG_C" = "TRUE" ]; then
+  CR=$VALUE_C  
+fi
+if [ "$FLG_M" = "TRUE" ]; then
+  TSIZE=$VALUE_M  
+fi
+if [ "$FLG_N" = "TRUE" ]; then
+  NSIZE=$VALUE_N  
+fi
+if [ "$FLG_NL" = "TRUE" ]; then
+    NLEN=$VALUE_NL
+fi
+
+MTSIZE=`expr ${TSIZE} / 2`
+
+shift `expr $OPTIND - 1`
+
+if [ $# -ne 6 ]; then
+    echo "Usage: $CMDNAME [-t thread] [-c rate_of_cutting] [-m minmum_tag_size] [-n number of mismatch] [-f freq_dir] [-N size of ambiguous charactor] fastqfile1 fastqfile2 HLA_gene.split.txt HLA_Div_fasta sampl_id(arbitary) output_directory " 1>&2
+ exit 1;
+fi
+
+PN=`expr ${PN}`
+
+F1=$1 #read R1
+F2=$2 #read R2
+GE=$3
+HD=$4
+ID=$5
+OD=$6
+
+
+
+
+
+
+
+
+
+Ref:
+https://cloud.tencent.com/developer/article/2431703
+
+
+
+========================================
+|-- shift `expr $OPTIND - 1`  用于处理命令行参数的常见方法：调整位置参数
+----------------------------------------
+1.$OPTIND 是什么？
+OPTIND 是一个由 getopts 内建命令使用和维护的环境变量。它代表下一个需要解析的参数的索引。在使用 getopts 解析命令行选项时，OPTIND 的值会自动更新，以指示下一个位置参数的索引。
+
+在 getopts 解析选项之前，OPTIND 的初始值为 1。每次 getopts 解析一个选项后，OPTIND 的值会递增。解析完所有选项后，OPTIND 的值会指向第一个非选项参数。
+
+(1) 例1
+$ cat bin/demo0.sh
+#!/bin/bash
+
+# Aim:
+# How to run:
+# $ bash bin/demo0.sh  -a -b valueB -c arg1 arg2
+
+# 打印 OPTIND 的值
+echo "OPTIND is now $OPTIND"
+
+# 解析选项
+while getopts "ab:c" opt; do
+  case $opt in
+    a)
+      echo "Option -a"
+      ;;
+    b)
+      echo "Option -b with argument $OPTARG"
+      ;;
+    c)
+      echo "Option -c"
+      ;;
+    \?)
+      echo "Invalid option: -$OPTARG" >&2
+      ;;
+  esac
+done
+
+# 打印 OPTIND 的值
+echo "OPTIND is now $OPTIND"
+
+# 调整位置参数
+shift $((OPTIND - 1))
+
+# 打印剩余的参数
+echo "Remaining arguments: $@"
+
+
+输出:
+	$ bash bin/demo0.sh  -a -b valueB -c arg1 arg2
+	OPTIND is now 1
+	Option -a
+	Option -b with argument valueB
+	Option -c
+	OPTIND is now 5
+	Remaining arguments: arg1 arg2
+
+最后一个-c 没有参数值，所以把 -c 及之前的参数去掉即可。shift D - 1
+
+
+
+
+
+
+
+
+2. `shift` 是一个内置命令，用于改变shell脚本中位置参数的位置
+
+shift [n]
+	  The positional parameters from n+1 ... are renamed to $1 ....  Parameters represented by the numbers $# down to $#-n+1 are unset.
+	  n must  be  a  non-negative  number less than or equal to $#. 
+	  If n is 0, no parameters are changed.
+	  If n is not given, it is assumed to be 1.
+	  If n is greater than $#, the positional parameters are not changed.
+	  The return status is greater than zero if n is greater than $# or less than zero; otherwise 0.
+
+具体来说，`shift` 命令会将所有的位置参数向左移动一个位置，即第一个参数（`$1`）会被丢弃，原来的第二个参数（`$2`）变成第一个参数，原来的第三个参数（`$3`）变成第二个参数，以此类推。
+
+shift命令的使用方式：shift [n]
+	n是一个可选的数字参数，指定要向左移动的位置数。默认情况下，n为1，表示移动一个位置。
+
+(1) 示例1: shift 默认去掉第一个参数
+$ cat bin/demo_shift.sh
+#!/bin/bash
+echo "原始参数列表：$@"
+echo "原始参数个数：$#"
+shift
+echo "移动一个位置后的参数列表：$@"
+echo "移动一个位置后的参数个数：$#"
+
+输出:
+	$ bash bin/demo_shift.sh one two three
+	原始参数列表：one two three
+	原始参数个数：3
+	移动一个位置后的参数列表：two three
+	移动一个位置后的参数个数：2
+
+解释：
+	shift命令将第一个参数one丢弃，并将two和three的位置向左移动一个位置，此时$1为two，$2为three。
+
+
+
+(2) 示例2: 循环读取全部参数
+
+$ cat bin/demo_shift_2.sh
+#!/bin/bash
+
+while [ $# -gt 0 ]; do
+    echo "第一个参数为：$1,参数个数为：$#"
+    shift
+done
+
+输出:
+	$ bash bin/demo_shift_2.sh -f a.txt -n 100 aa.txt
+	第一个参数为：-f,参数个数为：5
+	第一个参数为：a.txt,参数个数为：4
+	第一个参数为：-n,参数个数为：3
+	第一个参数为：100,参数个数为：2
+	第一个参数为：aa.txt,参数个数为：1
+
+
+
+
+
+
+
+
+3. shift 常常用在getopts后，用于接收无名参数
+(1) 例1，见1(1)
+
+(2) 例2：
+$ bash bin/demo_getopts.sh
+#!/bin/bash
+
+#Aim: shift 的作用
+
+# 初始化变量
+verbose=0
+output_file=""
+
+# How to run:
+# $ bash bin/demo_getopts.sh -v -o output.txt arg1 arg2 arg3
+
+# 解析选项
+while getopts "vo:" opt; do
+  case $opt in
+    v)
+      verbose=1
+      ;;
+    o)
+      output_file=$OPTARG
+      ;;
+    \?)
+      echo "Invalid option: -$OPTARG" >&2
+      exit 1
+      ;;
+    :)
+      echo "Option -$OPTARG requires an argument." >&2
+      exit 1
+      ;;
+  esac
+done
+
+# 使用 shift 调整位置参数
+echo "> OPTIND: $OPTIND"
+echo "[before shift]Remaining arguments: $@ | len: $#"
+shift `expr $OPTIND - 1`
+
+# 显示解析后的选项和参数
+echo "Verbose mode: $verbose"
+echo "Output file: $output_file"
+echo "Remaining arguments: $@ | len: $#"
+
+
+输出：
+	$ bash bin/demo_getopts.sh -v -o output.txt arg1 arg2 arg3
+	> OPTIND: 4
+	[before shift]Remaining arguments: -v -o output.txt arg1 arg2 arg3 | len: 6
+	Verbose mode: 1
+	Output file: output.txt
+	Remaining arguments: arg1 arg2 arg3 | len: 3
+
+解释: getopts 读取最后一个o:带参数，读取到其下一个第4位 arg1，所以 shift 3 后第一个是 arg1。
+
+
+
+
+
+
+
+
+
 
 
 

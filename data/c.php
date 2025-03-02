@@ -48,6 +48,7 @@ return array (
     2 => array (
       array('C++ 资源.html','cpp_index','html',),
       array('C++','cpp_note','txt',),
+      array('C++常用功能','cpp_quick','txt',),
 
       array('Qt 图形界面库','Qt_note','txt'),
     ),
