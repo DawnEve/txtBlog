@@ -2300,6 +2300,169 @@ $ head -n 1000 hg19_RefSeq.bed > hg19_RefSeq_top1000.bed
 
 
 ========================================
+|-- 从gtf文件取子集(如编码基因)，生成 geneBody_coverage.py 所需要的 bed 格式
+----------------------------------------
+1. geneBody_coverage.py 需要的bed格式是什么？
+
+(1) 查看格式: 新的chr写法
+$ head /datapool/wangjl/total-seq/ref/hg38/RefSeq/hg38_RefSeq_NC_000.bed
+NC_000001.11	67092164	67109072	XM_011541469.2	0	-	67093004	67103382	0	5	1440,187,70,145,44,	0,3070,4087,11073,16864,
+
+195300 /datapool/wangjl/total-seq/ref/hg38/RefSeq/hg38_RefSeq_NC_000.bed
+
+对应的编码基因：
+$ cat /home/wangjl/data4/total-seq/ref/hg38/RefSeq/GCF_000001405.40_GRCh38.p14_genomic.gtf | grep "protein_coding" | wc -l
+23312
+
+第三列是 gene 的行：
+$ cat /home/wangjl/data4/total-seq/ref/hg38/RefSeq/GCF_000001405.40_GRCh38.p14_genomic.gtf | awk '{if($3=="gene")print $0}' | wc -l
+50329
+
+第三列是 transcript 的行：
+$ cat /home/wangjl/data4/total-seq/ref/hg38/RefSeq/GCF_000001405.40_GRCh38.p14_genomic.gtf | awk '{if($3=="transcript")print $0}' | wc -l
+200311
+
+
+推测：gtf中一个转录本对应一行bed。
+
+
+
+
+(2) 老的chr写法
+195300  /home/wangjl/data4/ref/hg38/hg38_RefSeq_All_gene.bed
+
+$ cat /home/wangjl/data4/ref/hg38/hg38_RefSeq_All_gene.bed | head
+chr1	67092164	67109072	XM_011541469.2	0	-	67093004	67103382	0	5	1440,187,70,145,44,	0,3070,4087,11073,16864,
+chr1	67092164	67131227	XM_017001276.2	0	-	67093004	67127240	0	9	1440,187,70,145,68,113,158,92,86,	0,3070,4087,11073,19412,23187,33587,35001,38977,
+chr1	67092164	67131227	XM_011541467.2	0	-	67093004	67127240	0	9	1440,187,70,106,68,113,158,92,86,	0,3070,4087,11073,19412,23187,33587,35001,38977,
+chr1	67092164	67134970	NM_001276352.2	0	-	67093579	67127240	0	9	1440,70,145,68,113,158,92,86,41,	0,4087,11073,19412,23187,33587,35001,38977,42765,
+1   	2       	3       	4             	5	6	7       	8       	9	10	11(逗号隔开)	        12(逗号隔开)
+
+必选字段‌（至少包含3列）：
+	1 chrom：染色体名称（如chr1、chrX）‌
+	2 chromStart：起始位置（0-based，前闭后开区间）‌
+	3 chromEnd：结束位置（染色体上第chromEnd碱基不包含在区间内）‌
+
+扩展字段要求‌（建议包含12列完整信息）‌：
+	4 name：基因名称（如ENSG000001‌****‌）
+	5 score: 默认记作0.
+	6 strand：链方向（+/-）
+
+	7-8 thickStart/thickEnd：通常与chromStart/chromEnd一致
+	9 itemRgb: RGB值
+	10 blockCount：外显子数量
+	11 blockSizes：外显子长度（逗号分隔，如100,200）
+	12 blockStarts：外显子起始位置（相对于 chromStart 的偏移量，逗号分隔）
+
+
+
+
+
+2. 从 gtf 中匹配 第一行
+
+(1) 负链基因
+$ cat /home/wangjl/data4/total-seq/ref/hg38/RefSeq/GCF_000001405.40_GRCh38.p14_genomic.gtf | awk '{if($3=="gene")print $0}' | grep "CD47"
+NC_000003.12	BestRefSeq%2CGnomon	gene	108043091	108091031	.	-	.	gene_id "CD47"; transcript_id ""; db_xref "GeneID:961"; db_xref "HGNC:HGNC:1682"; db_xref "MIM:601028"; description "CD47 molecule"; gbkey "Gene"; gene "CD47"; gene_biotype "protein_coding"; gene_synonym "IAP"; gene_synonym "MER6"; gene_synonym "OA3";
+
+为了简便，直接使用了bed第一行：
+$ cat GCF_000001405.40_GRCh38.p14_genomic.gtf | grep "XM_011541469.2" |wc -l
+12
+
+$ cat GCF_000001405.40_GRCh38.p14_genomic.gtf | grep "XM_011541469.2" | awk '{print $3"\t"$4"\t"$5}'
+transcript	67092165	67109072 #bed第2，3列就是这个，不过 Bed_col2 = gtf_Col2 - 1;
+exon	67109029	67109072  #外显子长度(x2-x1+1): 44;   // 相对于 chromStart 偏移量: x1 - gtf_transcript_col2 = 16864
+exon	67103238	67103382  #145  / 11073
+exon	67096252	67096321  #70   / 4087
+exon	67095235	67095421  #187  / 3070
+exon	67092165	67093604  #1440 / 0
+CDS	67103238	67103382
+CDS	67096252	67096321
+CDS	67095235	67095421
+CDS	67093008	67093604
+start_codon	67103380	67103382
+stop_codon	67093005	67093007
+
+
+查看gtf的该基因exon第一行
+$ cat GCF_000001405.40_GRCh38.p14_genomic.gtf | grep "XM_011541469.2" | awk '{if($3=="exon")print $0}' | head -n 1
+NC_000001.11	Gnomon	exon	67109029	67109072	.	-	.	gene_id "C1orf141"; transcript_id "XM_011541469.2"; db_xref "GeneID:400757"; db_xref "GenBank:XM_011541469.2"; db_xref "HGNC:HGNC:32044"; gene "C1orf141"; model_evidence "Supporting evidence includes similarity to: 4 ESTs, 1 long SRA read, and 100% coverage of the annotated genomic feature by RNAseq alignments, including 5 samples with support for all annotated introns"; product "chromosome 1 open reading frame 141, transcript variant X5"; transcript_biotype "mRNA"; exon_number "1"; 
+
+
+从gtf 提取bed的规则：
+- 只保留 transcript 和 exon 行，甚至可以只要 exon 行；
+- bed 第一列 是 gtf第一列：chr，这个写法要和bam中一致！
+- bed 第2和3列就是 transcript 列的 起始-1，结束不变；只用首位exon的坐标也行。
+- 第10列是外显子个数
+- 坐标从小到大排序，即使是trand == "-"（gtf中-链基因，从下向上排序exon，相当于从RNA末端到开头）
+- 第11列是exon长度：使用gtf计算: x2-x1+1
+- 第12列是exon左侧相对于基因起始的偏移量: x1-start
+
+
+
+
+(2) 正链基因
+
+查找转录本：这里关注第一行
+$ cat /home/wangjl/data4/total-seq/ref/hg38/RefSeq/GCF_000001405.40_GRCh38.p14_genomic.gtf | awk '{if($3=="transcript")print $0}' | grep "CD274"
+NC_000009.12	BestRefSeq	transcript	5450542	5470554	.	+	.	gene_id "CD274"; transcript_id "NR_052005.2"; db_xref "GeneID:29126"; db_xref "GenBank:NR_052005.2"; db_xref "HGNC:HGNC:17635"; db_xref "MIM:605402"; gbkey "misc_RNA"; gene "CD274"; product "CD274 molecule, transcript variant 3"; transcript_biotype "transcript"; 
+
+# 其他几个转录本这里先忽略：
+NC_000009.12	BestRefSeq	transcript	5450542	5470554	.	+	.	gene_id "CD274"; transcript_id "NM_014143.4"; db_xref "Ensembl:ENST00000381577.4"; db_xref "GeneID:29126"; db_xref "GenBank:NM_014143.4"; db_xref "HGNC:HGNC:17635"; db_xref "MIM:605402"; gbkey "mRNA"; gene "CD274"; product "CD274 molecule, transcript variant 1"; tag "MANE Select"; transcript_biotype "mRNA"; 
+NC_000009.12	BestRefSeq	transcript	5450542	5470554	.	+	.	gene_id "CD274"; transcript_id "NM_001267706.2"; db_xref "GeneID:29126"; db_xref "GenBank:NM_001267706.2"; db_xref "HGNC:HGNC:17635"; db_xref "MIM:605402"; gbkey "mRNA"; gene "CD274"; product "CD274 molecule, transcript variant 2"; transcript_biotype "mRNA"; 
+NC_000009.12	Gnomon	transcript	5450542	5470554	.	+	.	gene_id "CD274"; transcript_id "XM_047423262.1"; db_xref "GeneID:29126"; db_xref "GenBank:XM_047423262.1"; db_xref "HGNC:HGNC:17635"; db_xref "MIM:605402"; experiment "COORDINATES: cap analysis [ECO:0007248]"; gbkey "mRNA"; gene "CD274"; model_evidence "Supporting evidence includes similarity to: 1 mRNA, 12 ESTs, 1 Protein, 160 long SRA reads, and 100% coverage of the annotated genomic feature by RNAseq alignments, including 4 samples with support for all annotated introns"; product "CD274 molecule, transcript variant X1"; transcript_biotype "mRNA"; 
+NC_000009.12	BestRefSeq	transcript	5450542	5463238	.	+	.	gene_id "CD274"; transcript_id "NM_001314029.2"; db_xref "GeneID:29126"; db_xref "GenBank:NM_001314029.2"; db_xref "HGNC:HGNC:17635"; db_xref "MIM:605402"; gbkey "mRNA"; gene "CD274"; product "CD274 molecule, transcript variant 4"; transcript_biotype "mRNA";
+
+
+
+查看bed中对应的行
+$ cat /home/wangjl/data4/ref/hg38/hg38_RefSeq_All_gene.bed | grep "NR_052005.2"
+chr9	5450541	5470554	NR_052005.2	0	+	5470554	5470554	0	8	55,66,342,135,47,41,60,2715,	0,5558,6537,12292,12533,14957,16228,17298,
+
+
+
+查找该转录本对应的外显子:
+$ cat GCF_000001405.40_GRCh38.p14_genomic.gtf | grep "NR_052005.2" | awk '{if($3=="exon")print $3"\t"$4"\t"$5}'
+exon	5450542	5450596  #最小的 x1-1 就是 bed_col2  #55 / x1 - min(x1) = 0
+exon	5456100	5456165  #66  / 5558
+exon	5457079	5457420  #342 / 6537
+exon	5462834	5462968  #135
+exon	5463075	5463121  #47
+exon	5465499	5465539  #41
+exon	5466770	5466829  #60
+exon	5467840	5470554  #最大的 x2 就是 bed_col3  2715 / 17298
+
+
+
+
+
+
+
+
+
+
+
+
+
+3. 一种更简单的实现方法
+
+对bed的第三列 transcript name: XM_011541469.2，注释上 基因类型: 编码基因，或 lincRNA 等
+然后对该 bed 进行拆分。
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+========================================
 |-- geneBody_coverage.py 的更快替代：效果图都不好看
 ----------------------------------------
 
