@@ -21,13 +21,13 @@
 			//api手册
 			array('http://www.runoob.com/','菜鸟教程网'),
 			array('https://www.coonote.com/','菜鸟笔记'),
-			array('http://www.codebaoku.com/','编程宝库','编程宝库！'),
+			//array('http://www.codebaoku.com/','编程宝库','编程宝库！'), //202504 内容很怪异
 			array('https://www.twle.cn/','简单教程网','提供md编辑器'),
 			array('http://jsbin.com/','jsbin','练习前端的好工具！'),
 			array('https://tool.lu/','在线工具'),
 
-			array('http://jquery.cuishifeng.cn/','jQuery手册'),
-			array('http://css.cuishifeng.cn/','css手册'),
+			//array('http://jquery.cuishifeng.cn/','jQuery手册'), //202504 打不开
+			//array('http://css.cuishifeng.cn/','css手册'),
 
 			array('http://www.w3school.com.cn/','w3school'),
 			array('http://www.shouce.ren/api/index','在线手册下载'),

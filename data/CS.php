@@ -28,6 +28,15 @@ return array (
   ),
 
 
+  array (
+    0 => 3,
+    1 => '类C新语言',
+    2 => array (
+      array('GO语言简介','GO_lang001','html',),
+      array('GO语言基础','GO_lang101-basic','txt',),
+    ),
+  ),
+
 
   array (
     0 => 4,

@@ -32,6 +32,18 @@ Seurat 4 R包源码解析 总目录: https://zhuanlan.zhihu.com/p/465392721
 
 
 
+0.dataset: 
+library(Seurat)
+library(dplyr)
+library(ggplot2)
+
+sce=readRDS("/home/wangjl/data4/web/docs/code/pbmc3k_filtered_gene_bc_matrices/pbmc3k.final.Rds")
+
+pbmc.markers <- FindAllMarkers(sce, only.pos = F, min.pct = 0.25, logfc.threshold = 0.25)
+pbmc.markers %>% group_by(cluster) %>% top_n(n = 2, wt = avg_log2FC)  #可能有版本差异 avg_log2FC
+
+
+
 
 
 
@@ -1794,6 +1806,10 @@ df2=FetchData2(pbmc_small, vars=c("PC_1", "tSNE_1", "CD4", "rna_CD8A", "nCount_R
 (2) 如果指定的 assay 中没找到，则会从其他assay中找
 //todo 例子？
 
+
+
+(3)获取数据：指定基因 features, 指定细胞名
+data.features <- FetchData(object = object, vars = features, cells = cells)
 
 
 
@@ -14615,9 +14631,31 @@ table( abs(as.data.frame(dat1)- as.data.frame(dat3) ) < 1e-5)
 
 
 ========================================
-|-- Seurat 4 R包源码解析 28: step12 差异基因可视化 VlnPlot(看过)/ FeaturePlot(看过)/ DoHeatmap/ DotPlot/ RidgePlot //todo
+|-- Seurat 4 R包源码解析 28: step12 差异基因可视化 VlnPlot(看过)/ FeaturePlot(看过)/ DotPlot
 ----------------------------------------
 1. 调包侠
+
+library(Seurat)
+library(dplyr)
+library(ggplot2)
+
+sce=readRDS("/home/wangjl/data4/web/docs/code/pbmc3k_filtered_gene_bc_matrices/pbmc3k.final.Rds")
+
+pbmc.markers <- FindAllMarkers(sce, only.pos = F, min.pct = 0.25, logfc.threshold = 0.25)
+pbmc.markers %>% group_by(cluster) %>% top_n(n = 2, wt = avg_log2FC)  #可能有版本差异 avg_log2FC
+
+	# A tibble: 18 × 7
+	# Groups:   cluster [9]
+		   p_val avg_log2FC pct.1 pct.2 p_val_adj cluster gene     
+		   <dbl>      <dbl> <dbl> <dbl>     <dbl> <fct>   <chr>    
+	 1 1.10e- 81       1.33 0.432 0.111 1.51e- 77 0       CCR7     
+	 2 2.53e- 48       1.08 0.336 0.108 3.46e- 44 0       PRKCQ-AS1
+	 3 0               5.50 0.994 0.215 0         1       S100A9   
+	 4 0               5.47 0.967 0.121 0         1       S100A8   
+	 5 1.61e- 82       1.18 0.983 0.642 2.21e- 78 2       LTB      
+	 6 4.78e- 57       1.22 0.42  0.113 6.56e- 53 2       AQP3     
+	 7 0               4.29 0.934 0.043 0         3       CD79A
+
 
 (1) 可视化-小提琴图 VlnPlot 见本系列 源码解析8-2(1)
 VlnPlot(pbmc, features = c("MS4A1", "CD79A"))
@@ -14636,9 +14674,37 @@ DoHeatmap(pbmc, features = top10$gene, label = T)  #+ NoLegend()
 
 
 
-(4) 可视化-DotPlot 
+(4) 可视化-DotPlot (见本文2.1)
 DotPlot(pbmc, features = unique( top10$gene ) ) + RotatedAxis()
 DotPlot(pbmc, features = unique( top10$gene ), cluster.idents = T ) + RotatedAxis() #对cluster进行聚类
+
+
+DotPlot(sce, features = unique(c(
+  "PTPRC", "CD3D", "CD3E", "CD3G", "CD4", "CD8A", "CD8B", "CD79A", "CD79B","MS4A1", "CD163","CD68",
+  "SELL","CCR7",
+  pbmc.markers %>% group_by(cluster) %>% top_n(n = 10, wt = avg_log2FC) %>% pull(gene)
+)), cols = c("lightgrey", "red"), cluster.idents = T)+RotatedAxis()
+
+
+
+(4B)尝试分组：似乎无效
+> sce@meta.data$group= paste0("G", as.numeric( as.character(sce@meta.data$seurat_clusters) ) %% 2 )
+> table(sce@meta.data$group)
+  G0   G1 
+1665 1035
+
+> DotPlot(sce, features = unique(c(
+  "PTPRC", "CD3D", "CD3E", "CD3G", "CD4", "CD8A", "CD8B", "CD79A", "CD79B","MS4A1", "CD163","CD68",
+  "SELL","CCR7",
+  pbmc.markers %>% group_by(cluster) %>% top_n(n = 10, wt = avg_log2FC) %>% pull(gene)
+)), split.by="group", 
+cols = c("orange","blue", "red"), cluster.idents = T)+RotatedAxis()
+
+
+(4C)DotPlot() 怎么对基因表达量求组内平均？
+见本文 3.R Tips (5).
+
+
 
 
 (5) 可视化 - 山脊图 
@@ -14653,14 +14719,695 @@ Seurat::RidgePlot(pbmc, features = unique( top10$gene ) )
 2. 源码阅读
 $ find . | grep "R$" | grep -v "testthat" | grep -v "notes" | grep -v "old/" | xargs grep -n "DoHeatmap" 2>/dev/null --color=auto
 
-(1) DoHeatmap
+(1) DotPlot()
 
+(2) PercentAbove()
+> PercentAbove
+function (x, threshold) 
+{
+    return(length(x = x[x > threshold])/length(x = x))
+}
+<bytecode: 0x8a17358>
+<environment: namespace:Seurat>
+
+就一行代码:
+	两个len相除，length(x = x[x > threshold]) / length(x = x)
+	分子是 >阈值的个数，分母是总个数。
 
 
 
 
 
 3. R tips
+
+(1)R内置的颜色组合
+https://www.biomooc.com/R/R-color.html#2_1
+
+#' @importFrom RColorBrewer brewer.pal.info
+
+library(RColorBrewer)
+display.brewer.all() #显示全部颜色集合
+
+> RColorBrewer::brewer.pal.info #显示颜色信息表
+         maxcolors category colorblind
+BrBG            11      div       TRUE
+PiYG            11      div       TRUE
+PRGn            11      div       TRUE
+PuOr            11      div       TRUE
+RdBu            11      div       TRUE
+RdGy            11      div      FALSE
+RdYlBu          11      div       TRUE
+RdYlGn          11      div      FALSE
+Spectral        11      div      FALSE
+Accent           8     qual      FALSE
+Dark2            8     qual       TRUE
+Paired          12     qual       TRUE
+Pastel1          9     qual      FALSE
+Pastel2          8     qual      FALSE
+Set1             9     qual      FALSE
+Set2             8     qual       TRUE
+Set3            12     qual      FALSE
+Blues            9      seq       TRUE
+BuGn             9      seq       TRUE
+BuPu             9      seq       TRUE
+GnBu             9      seq       TRUE
+Greens           9      seq       TRUE
+Greys            9      seq       TRUE
+Oranges          9      seq       TRUE
+OrRd             9      seq       TRUE
+PuBu             9      seq       TRUE
+PuBuGn           9      seq       TRUE
+PuRd             9      seq       TRUE
+Purples          9      seq       TRUE
+RdPu             9      seq       TRUE
+Reds             9      seq       TRUE
+YlGn             9      seq       TRUE
+YlGnBu           9      seq       TRUE
+YlOrBr           9      seq       TRUE
+YlOrRd           9      seq       TRUE
+
+
+(2)ggplot2 控制点大小的函数: scale_size/scale_radius
+
+  scale.func <- switch(
+    EXPR = scale.by,
+    'size' = scale_size,
+    'radius' = scale_radius,
+    stop("'scale.by' must be either 'size' or 'radius'")
+  )
+
+  scale.func(range = c(0, dot.scale), limits = c(scale.min, scale.max)) + #设置点的大小：scale_size/scale_radius
+
+
+例:
+dat=data.frame(
+	group=c("A", "A", "B", "B", "C","C"),
+	level=paste0("L", c(1, 2, 1, 2, 1, 2)),
+	value=c(10,100,  88,50, 30,90)
+)
+
+library(ggplot2)
+p1=ggplot(dat, aes(x=group, y=level))+
+	geom_point( aes(size=value) )+
+	theme_classic()+
+	guides(size = guide_legend(title = 'Percent Expressed')) #修改图例的标题
+p1
+
+# 按面积
+p1 + scale_size(range=c(0, 6)) #设置点的大小：像是默认值
+
+# 按半径
+p1 + scale_radius(range=c(0, 6)) #设置点的大小: 显得更极端，因为 S=pi*r^2
+
+> p1 +(p1 + scale_size(range=c(0, 6))) +(p1+scale_radius(range=c(0, 6))) #fig
+
+
+
+
+
+(3) as.vector() 的作用？因子转向量
+
+a1=c("a", "b", "c", "a", "c")
+a2=factor(a1, levels=c("a", "b", "c"))
+
+> a2 |> class() #因子
+[1] "factor"
+> a2
+[1] a b c a c
+Levels: a b c
+
+> as.vector(a2) |> class() #向量
+[1] "character"
+> as.vector(a2)
+[1] "a" "b" "c" "a" "c"
+
+
+
+
+
+
+(4) id列的水平 按聚类结果重新排序
+步骤: 按对mat的行求距离，hclust聚类后，取$order对行名排序
+id.levels <- id.levels[hclust(d = dist(x = mat))$order]
+
+解析:
+	对 mat 按列 求距离 dist(x=mat);
+	对距离矩阵做层次聚类 hclust( dist(mat) )
+	取结果的 $order，对原始输入列名排序
+
+例:
+	> head(mtcars, n=2)
+				  mpg cyl disp  hp drat    wt  qsec vs am gear carb
+	Mazda RX4      21   6  160 110  3.9 2.620 16.46  0  1    4    4
+	Mazda RX4 Wag  21   6  160 110  3.9 2.875 17.02  0  1    4    4
+
+> id.levels=rownames(mtcars)
+
+	> id.levels |> head(2)
+	[1] "Mazda RX4"     "Mazda RX4 Wag"
+
+
+dist() 对行求两两的距离:
+	> mtcars[1:4, ]
+					mpg cyl disp  hp drat    wt  qsec vs am gear carb
+	Mazda RX4      21.0   6  160 110 3.90 2.620 16.46  0  1    4    4
+	Mazda RX4 Wag  21.0   6  160 110 3.90 2.875 17.02  0  1    4    4
+	Datsun 710     22.8   4  108  93 3.85 2.320 18.61  1  1    4    1
+	Hornet 4 Drive 21.4   6  258 110 3.08 3.215 19.44  1  0    3    1
+	> dist(mtcars[1:4, ]) #正好少了一行?
+					 Mazda RX4 Mazda RX4 Wag  Datsun 710
+	Mazda RX4 Wag    0.6153251                          
+	Datsun 710      54.9086059    54.8915169            
+	Hornet 4 Drive  98.1125212    98.0958939 150.9935191
+
+根据距离聚类：
+	> hclust(dist(mtcars[1:4, ]) )
+
+	Call:
+	hclust(d = dist(mtcars[1:4, ]))
+
+	Cluster method   : complete 
+	Distance         : euclidean 
+	Number of objects: 4 
+
+查看聚类的数据结构:
+	> hclust(d=dist(mtcars[1:4, ]) ) |> str()
+	List of 7
+	 $ merge      : int [1:3, 1:2] -1 -3 -4 -2 1 2
+	 $ height     : num [1:3] 0.615 54.909 150.994
+	 $ order      : int [1:4] 4 3 1 2
+	 $ labels     : chr [1:4] "Mazda RX4" "Mazda RX4 Wag" "Datsun 710" "Hornet 4 Drive"
+	 $ method     : chr "complete"
+	 $ call       : language hclust(d = dist(mtcars[1:4, ]))
+	 $ dist.method: chr "euclidean"
+	 - attr(*, "class")= chr "hclust"
+
+	> hclust(d=dist(mtcars[1:4, ]) )$order
+	[1] 4 3 1 2
+	> id.levels[ hclust(d=dist(mtcars[1:4, ]) )$order ]
+	[1] "Hornet 4 Drive" "Datsun 710"     "Mazda RX4"      "Mazda RX4 Wag"
+
+
+全量输入行名，排序后:
+	> id.levels[ hclust(d=dist(mtcars) )$order ]
+	 [1] "Maserati Bora"       "Chrysler Imperial"   "Cadillac Fleetwood"  "Lincoln Continental" "Ford Pantera L"      "Duster 360"          "Camaro Z28"          "Hornet Sportabout"  
+	 [9] "Pontiac Firebird"    "Hornet 4 Drive"      "Valiant"             "Merc 450SLC"         "Merc 450SE"          "Merc 450SL"          "Dodge Challenger"    "AMC Javelin"        
+	[17] "Honda Civic"         "Toyota Corolla"      "Fiat 128"            "Fiat X1-9"           "Ferrari Dino"        "Lotus Europa"        "Merc 230"            "Volvo 142E"         
+	[25] "Datsun 710"          "Toyota Corona"       "Porsche 914-2"       "Merc 240D"           "Mazda RX4"           "Mazda RX4 Wag"       "Merc 280"            "Merc 280C"
+
+	# 原始行名:
+	> id.levels
+	 [1] "Mazda RX4"           "Mazda RX4 Wag"       "Datsun 710"          "Hornet 4 Drive"      "Hornet Sportabout"   "Valiant"             "Duster 360"          "Merc 240D"          
+	 [9] "Merc 230"            "Merc 280"            "Merc 280C"           "Merc 450SE"          "Merc 450SL"          "Merc 450SLC"         "Cadillac Fleetwood"  "Lincoln Continental"
+	[17] "Chrysler Imperial"   "Fiat 128"            "Honda Civic"         "Toyota Corolla"      "Toyota Corona"       "Dodge Challenger"    "AMC Javelin"         "Camaro Z28"         
+	[25] "Pontiac Firebird"    "Fiat X1-9"           "Porsche 914-2"       "Lotus Europa"        "Ford Pantera L"      "Ferrari Dino"        "Maserati Bora"       "Volvo 142E"
+
+
+
+
+(5)DotPlot() 怎么对基因表达量求组内平均？
+* log 标准化前的表达矩阵mat;
+* 先 exp(mat)-1，再求平均，然后做基因内的scale，截断到[-2.5, 2.5]
+* 接着画DotPlot图
+
+
+  #(A9) 生成绘图所需的数据
+  data.plot <- lapply(
+    # B1) 对分群的 uniq 值 遍历
+    X = unique(x = data.features$id),
+    FUN = function(ident) {
+      # B2) 取分类为ident的子行；列为1: (n-1)列，就是去掉最后的id列
+      data.use <- data.features[data.features$id == ident, 1:(ncol(x = data.features) - 1), drop = FALSE]
+      # B3) 按列(基因)求平均值，exp(x)-1 后求 mean; 就保持原始值了，似乎没有再次取 log? 
+      avg.exp <- apply(
+        X = data.use,
+        MARGIN = 2,
+        FUN = function(x) {
+          return(mean(x = expm1(x = x)))
+        }
+      )
+
+      # B4) 获取表达的细胞占比: 按列(基因)，统计 大于0的百分比
+      pct.exp <- apply(X = data.use, MARGIN = 2, FUN = PercentAbove, threshold = 0)
+
+      # B5) 返回一个 list，分别是 表达的 均值 和 细胞比例
+      return(list(avg.exp = avg.exp, pct.exp = pct.exp))
+    }
+  )
+
+  #(A16) 对基因列做scale
+  avg.exp.scaled <- sapply(
+    # 对基因名遍历
+    X = unique(x = data.plot$features.plot),
+    FUN = function(x) {
+      # B1) 获取该基因的行，avg 列
+      data.use <- data.plot[data.plot$features.plot == x, 'avg.exp']
+      # B2) scale 默认是 T
+      if (scale) {
+        # C1) 对列做scale
+        data.use <- scale(x = data.use)
+        # C2) 最值修正在[-2.5, 2.5]之间
+        data.use <- MinMax(data = data.use, min = col.min, max = col.max)
+      } else {
+      # B3) 默认不走这里：如果不做scale，则做 log(exp+1)变换 
+        data.use <- log1p(x = data.use)
+      }
+      return(data.use)
+    }
+  )
+
+
+结论：
+
+* 根据指定的基因，使用 FetchData() 获取表达量，默认是从 data slot 获取的 log 标准化后的值；
+	
+	函数原型: FetchData <- function(object, vars, cells = NULL, slot = 'data')
+
+	#(A6) 获取数据：指定基因 features(列名), 指定细胞名(行名)
+	data.features <- FetchData(object = object, vars = features, cells = cells)
+
+* (见A9-B3)：按列(基因)求平均值，exp(x)-1 后求 mean
+  avg.exp <- apply(
+	X = data.use,
+	MARGIN = 2,
+	FUN = function(x) {
+	  return(mean(x = expm1(x = x)))
+	}
+  )
+
+* (见A16-B2)默认 scale=T，直接做 scale, 然后限定在[-2.5, 2.5]之间，没有再做 log 变换。
+* 如果设置 scale=F，则做 log(avg.exp+1)变换
+
+
+
+
+(6)as.vector()
+> avg.exp.scaled <- as.vector(x = t(x = avg.exp.scaled))
+
+示例:
+	> iris[1:2, 1:4]
+	  Sepal.Length Sepal.Width Petal.Length Petal.Width
+	1          5.1         3.5          1.4         0.2
+	2          4.9         3.0          1.4         0.2
+
+	> iris[1:2, 1:4] |> class() #是数据框
+	[1] "data.frame"
+
+	> iris[1:2, 1:4] |> as.vector() #转为向量，是案列转
+	$Sepal.Length
+	[1] 5.1 4.9
+
+	$Sepal.Width
+	[1] 3.5 3.0
+
+	$Petal.Length
+	[1] 1.4 1.4
+
+	$Petal.Width
+	[1] 0.2 0.2
+
+
+先转为矩阵，再转为向量，就是一行了:
+	> iris[1:2, 1:4] |> as.matrix() |> as.vector() #还是按列转成向量，再连起来
+	[1] 5.1 4.9 3.5 3.0 1.4 1.4 0.2 0.2
+
+
+转置是直接转为矩阵，然后再按列转为向量
+	> t(iris[1:2, 1:4]) 
+				   1   2
+	Sepal.Length 5.1 4.9
+	Sepal.Width  3.5 3.0
+	Petal.Length 1.4 1.4
+	Petal.Width  0.2 0.2
+
+	> dat= as.vector( t(iris[1:2, 1:4]) )
+	> dat
+	[1] 5.1 3.5 1.4 0.2 4.9 3.0 1.4 0.2
+
+
+
+
+(7)cut()对数据分bin
+> avg.exp.scaled <- as.numeric(x = cut(x = avg.exp.scaled, breaks = 20))
+
+示例:
+	> dat= as.vector( t(iris[1:2, 1:4]) )
+	> dat
+	[1] 5.1 3.5 1.4 0.2 4.9 3.0 1.4 0.2 #输入的数据
+
+	> cut(dat, breaks=4)  #分为4个bin
+	[1] (3.88,5.1]   (2.65,3.88]  (0.195,1.42] (0.195,1.42] (3.88,5.1]   (2.65,3.88]  (0.195,1.42] (0.195,1.42]
+	Levels: (0.195,1.42] (1.42,2.65] (2.65,3.88] (3.88,5.1]
+
+	> cut(dat, breaks=4) |> as.numeric() #再转为数字，对应四个bin的下标编号
+	[1] 4 3 1 1 4 3 1 1
+
+
+
+(8)百分比太小的记作NA
+> data.plot$pct.exp[data.plot$pct.exp < dot.min] <- NA
+
+> a1=c(1,2,3,4,5)
+> a1
+[1] 1 2 3 4 5
+
+> a1[a1<3] = NA
+> a1
+[1] NA NA  3  4  5
+
+
+
+(9)gsub 函数：正则替换
+> gsub
+function (pattern, replacement, x, ignore.case = FALSE, perl = FALSE, 
+	fixed = FALSE, useBytes = FALSE)
+...
+
+示例:
+	> gsub(pattern="^CD", replacement="", x=c("CD8", "PDCD1", "GAPDH", "CD47"))
+	[1] "8"     "PDCD1" "GAPDH" "47"
+
+	> gsub(pattern="^((8|7|6|5|4|3|2|1|0)_)", replacement="", x=c("0_G0", "0_G1", "1_G0", "1_G1"))
+	[1] "G0" "G1" "G0" "G1"
+
+
+
+(10)vapply支持设置额外的参数：去掉字符串向量的cluster前缀
+格式: cluster_刺激分组
+目的: 去掉 cluster和下划线，保留最后的 刺激分组，返回数组。
+源代码:
+    splits.use <- vapply(
+      X = as.character(x = data.plot$id),
+      FUN = gsub,
+      FUN.VALUE = character(length = 1L),
+      pattern =  paste0(
+        '^((',
+        paste(sort(x = levels(x = object), decreasing = TRUE), collapse = '|'),
+        ')_)'
+      ),
+      replacement = '',
+      USE.NAMES = FALSE
+    )
+
+示例:
+	> paste(sort(x = levels(x = sce), decreasing = TRUE), collapse = '|')
+	[1] "8|7|6|5|4|3|2|1|0"
+
+
+	> paste0(
+	+         '^((',
+	+         paste(sort(x = levels(x = sce), decreasing = TRUE), collapse = '|'),
+	+         ')_)'
+	+       )
+	[1] "^((8|7|6|5|4|3|2|1|0)_)"
+
+	> vapply(
+		X=c("1_up", "1_down", "2_up", "2_down"),
+		FUN=gsub,
+		FUN.VALUE = character(length = 1L),
+		pattern="^((2|1)_)",
+		replacement = '',
+		USE.NAMES = FALSE
+	)
+	# [1] "up"   "down" "up"   "down"
+
+最终实现对每个cluster区分 刺激前、刺激后，把刺激分组带的前缀去掉，按照后缀指定颜色。已经不是渐变色了。
+效果参考: https://satijalab.org/seurat/articles/integration_introduction Fig4
+
+
+
+
+(11) ggplot2 在主题设置x和y轴标题为空
+DimPlot(sce, label=T)+theme(axis.title.x = element_blank(), axis.title.y = element_blank())
+
+
+
+
+(12) DotPlot使用的主题 @importFrom cowplot theme_cowplot
+* 默认字体大小为 14，似乎更值得推荐使用。
+* 实在 theme_grey() 主题的基础上，替换了一些设置。替换函数 %+replace%
+* "theme("后的没有细看。
+
+> cowplot::theme_cowplot
+function (font_size = 14, font_family = "", line_size = 0.5, 
+    rel_small = 12/14, rel_tiny = 11/14, rel_large = 16/14) 
+{
+    half_line <- font_size/2
+    small_size <- rel_small * font_size
+    theme_grey(base_size = font_size, base_family = font_family) %+replace% 
+        theme(line = element_line(color = "black", linewidth = line_size, 
+            linetype = 1, lineend = "butt"), rect = element_rect(fill = NA, 
+            color = NA, linewidth = line_size, linetype = 1), 
+            text = element_text(family = font_family, face = "plain", 
+                color = "black", size = font_size, hjust = 0.5, 
+                vjust = 0.5, angle = 0, lineheight = 0.9, margin = margin(), 
+                debug = FALSE), axis.line = element_line(color = "black", 
+                linewidth = line_size, lineend = "square"), axis.line.x = NULL, 
+            axis.line.y = NULL, axis.text = element_text(color = "black", 
+                size = small_size), axis.text.x = element_text(margin = margin(t = small_size/4), 
+                vjust = 1), axis.text.x.top = element_text(margin = margin(b = small_size/4), 
+                vjust = 0), axis.text.y = element_text(margin = margin(r = small_size/4), 
+                hjust = 1), axis.text.y.right = element_text(margin = margin(l = small_size/4), 
+                hjust = 0), axis.ticks = element_line(color = "black", 
+                linewidth = line_size), axis.ticks.length = unit(half_line/2, 
+                "pt"), axis.title.x = element_text(margin = margin(t = half_line/2), 
+                vjust = 1), axis.title.x.top = element_text(margin = margin(b = half_line/2), 
+                vjust = 0), axis.title.y = element_text(angle = 90, 
+                margin = margin(r = half_line/2), vjust = 1), 
+            axis.title.y.right = element_text(angle = -90, margin = margin(l = half_line/2), 
+                vjust = 0), legend.background = element_blank(), 
+            legend.spacing = unit(font_size, "pt"), legend.spacing.x = NULL, 
+            legend.spacing.y = NULL, legend.margin = margin(0, 
+                0, 0, 0), legend.key = element_blank(), legend.key.size = unit(1.1 * 
+                font_size, "pt"), legend.key.height = NULL, legend.key.width = NULL, 
+            legend.text = element_text(size = rel(rel_small)), 
+            legend.text.align = NULL, legend.title = element_text(hjust = 0), 
+            legend.title.align = NULL, legend.position = "right", 
+            legend.direction = NULL, legend.justification = c("left", 
+                "center"), legend.box = NULL, legend.box.margin = margin(0, 
+                0, 0, 0), legend.box.background = element_blank(), 
+            legend.box.spacing = unit(font_size, "pt"), panel.background = element_blank(), 
+            panel.border = element_blank(), panel.grid = element_blank(), 
+            panel.grid.major = NULL, panel.grid.minor = NULL, 
+            panel.grid.major.x = NULL, panel.grid.major.y = NULL, 
+            panel.grid.minor.x = NULL, panel.grid.minor.y = NULL, 
+            panel.spacing = unit(half_line, "pt"), panel.spacing.x = NULL, 
+            panel.spacing.y = NULL, panel.ontop = FALSE, strip.background = element_rect(fill = "grey80"), 
+            strip.text = element_text(size = rel(rel_small), 
+                margin = margin(half_line/2, half_line/2, half_line/2, 
+                  half_line/2)), strip.text.x = NULL, strip.text.y = element_text(angle = -90), 
+            strip.placement = "inside", strip.placement.x = NULL, 
+            strip.placement.y = NULL, strip.switch.pad.grid = unit(half_line/2, 
+                "pt"), strip.switch.pad.wrap = unit(half_line/2, 
+                "pt"), plot.background = element_blank(), plot.title = element_text(face = "bold", 
+                size = rel(rel_large), hjust = 0, vjust = 1, 
+                margin = margin(b = half_line)), plot.subtitle = element_text(size = rel(rel_small), 
+                hjust = 0, vjust = 1, margin = margin(b = half_line)), 
+            plot.caption = element_text(size = rel(rel_tiny), 
+                hjust = 1, vjust = 1, margin = margin(t = half_line)), 
+            plot.tag = element_text(face = "bold", hjust = 0, 
+                vjust = 0.7), plot.tag.position = c(0, 1), plot.margin = margin(half_line, 
+                half_line, half_line, half_line), complete = TRUE)
+}
+<bytecode: 0x12c15160>
+<environment: namespace:cowplot>
+
+
+
+
+(13) facet_grid() 分面参数 switch?
+源码:
+	plot <- plot + facet_grid(  #分面函数
+      facets = ~feature.groups, #对基因组 分面
+      scales = "free_x",  #对x=基因分组 自由
+      space = "free_x",   #间隔: 
+      switch = "y"        #
+    ) + theme(
+      panel.spacing = unit(x = 1, units = "lines"),
+      strip.background = element_blank()
+    )
+
+文档：
+	facet_grid(
+		rows = NULL,
+		cols = NULL,
+		scales = "fixed",
+		space = "fixed",
+		shrink = TRUE,
+		labeller = "label_value",
+		as.table = TRUE,
+		switch = NULL,
+		drop = TRUE,
+		margins = FALSE,
+		axes = "margins",
+		axis.labels = "all",
+		facets = deprecated()
+	)
+
+解释:
+    scales: Are scales shared across all facets (the default, ‘"fixed"’),
+          or do they vary across rows (‘"free_x"’), columns
+          (‘"free_y"’), or both rows and columns (‘"free"’)?
+		  是否对 scale 统一？源码是 free_x 每个row之间不同。
+
+    space: If ‘"fixed"’, the default, all panels have the same size. If
+          ‘"free_y"’ their height will be proportional to the length of
+          the y scale; if ‘"free_x"’ their width will be proportional
+          to the length of the x scale; or if ‘"free"’ both height and
+          width will vary.  This setting has no effect unless the
+          appropriate scales also vary.
+		  是否每个分面大小不同？源码是 free_x，表示x的长度和x元素个数成比例
+
+    switch: By default, the labels are displayed on the top and right of
+          the plot. If ‘"x"’, the top labels will be displayed to the
+          bottom. If ‘"y"’, the right-hand side labels will be
+          displayed to the left. Can also be set to ‘"both"’.
+		  分组的标签放到top还是右侧。
+		  * 如果是x表示top标签放到底部；
+		  * 如果是y表示右侧标签放到左侧。
+		  * 也可以设置为 both
+#
+例子:
+	p <- ggplot(mpg, aes(displ, cty)) + geom_point()
+	
+	# 按厂家分面，x
+	ggplot(mpg, aes(drv, model)) +
+	  geom_point( aes(size=displ) ) + #画点图，指定点大小
+	  scale_size( range=c(0, 6) )+ #指定按面积显示大小，最大6
+	  facet_grid(manufacturer~.,
+				 scales = "free_y",  #y坐标在不同分面可以不一致
+				 space = "free_y",   #每个分面的y宽度可以不同
+				 switch=NULL) +       #默认分面标签显示在right侧；设置为y显示到left侧
+	  theme(strip.text.y = element_text(angle = 0))
+
+
+
+
+(+-) ggplot2 颜色函数
+  if (split.colors) {
+    plot <- plot + scale_color_identity()
+  } else if (length(x = cols) == 1) {
+    plot <- plot + scale_color_distiller(palette = cols)
+  } else {
+    plot <- plot + scale_color_gradient(low = cols[1], high = cols[2])
+  }
+
+
+
+
+(14) ggplot2::scale_color_identity() 一种特殊的离散映射方式，映射变量本身就是颜色值
+
+scale_identity:
+	这组函数不经过scale过程，也不会产生图例，除非用户设置了 ‘breaks’, ‘labels’, 和‘guide’类型
+	Use this set of scales when your data has already been scaled,
+		 i.e. it already represents aesthetic values that ggplot2 can
+		 handle directly. These scales will not produce a legend unless you
+		 also supply the ‘breaks’, ‘labels’, and type of ‘guide’ you want.
+
+示例:
+	# 测试数据
+	dat <- iris
+	dat$color=c("red", "navy", "orange") [match(dat$Species, c("setosa", "versicolor", "virginica"))]
+
+	## 默认状况
+	library(ggplot2)
+	p1 <- ggplot(dat, aes(x=Sepal.Length, y=Sepal.Width, color = color)) + 
+	  geom_point() +
+	  theme_classic()
+	## 使用颜色标度函数
+	p1b <- p1 + scale_color_identity()
+	#
+	p1 + (p1b+ggtitle("scale_color_identity"))
+
+
+
+
+(15) ggplot2::scale_color_distiller() 将ColorBrewer的颜色运用在连续变量上
+
+将ColorBrewer的颜色运用在连续变量上
+
+scale_colour_brewer:
+	The ‘brewer’ scales provide sequential, diverging and qualitative
+		 colour schemes from ColorBrewer. These are particularly well
+		 suited to display discrete values on a map. See
+		 <https://colorbrewer2.org> for more information.
+
+示例:
+	p2 <- ggplot(dat, aes(x=Sepal.Length, y=Sepal.Width, color = Sepal.Length)) + 
+	  geom_point() +
+	  theme_classic()
+	p2b <- p2 + scale_color_distiller(palette = "YlOrRd", direction =1)
+	p2+(p2b+ggtitle("scale_color_distiller"))
+
+
+
+(16) ggplot2::scale_color_gradient() 提供渐变色
+
+scale_*_gradient creates a two colour gradient (low-high),
+     scale_*_gradient2 creates a diverging colour gradient
+     (low-mid-high), scale_*_gradientn creates a n-colour gradient. For
+     binned variants of these scales, see the color steps scales.
+
+	p2 + scale_color_gradient(low="#00B0F0", high="#A349A4") +
+		ggtitle("scale_color_gradient")
+
+
+#
+
+
+
+
+
+
+
+
+========================================
+|-- Seurat 4 R包源码解析 28: step12 差异基因可视化 DoHeatmap //todo
+----------------------------------------
+1.调包侠
+
+
+
+
+
+
+2. 源码阅读
+
+(?) DoHeatmap
+
+
+
+
+
+3. R tips
+
+
+
+
+
+========================================
+|-- Seurat 4 R包源码解析 28: step12 差异基因可视化 RidgePlot //todo
+----------------------------------------
+1.调包侠
+
+
+
+
+
+
+2. 源码阅读
+
+(?) RidgePlot
+
+
+
+
+
+3. R tips
+
+
+
+
 
 
 
@@ -14715,6 +15462,8 @@ DimPlot(pbmc, label=T)
 这可以算是一个终极写法，只要在 meta.data 中新建一列，按自己的想法修改该列，然后Idents(xx)=指定该列名字为分类名，就可以了。
 
 
+
+
 (4) 查看当前细胞名字
 
 > Idents(pbmc) |> str()
@@ -14725,6 +15474,8 @@ DimPlot(pbmc, label=T)
 > pbmc@active.ident |> str()
  Factor w/ 9 levels "Naive CD4 T",..: 1 2 3 4 5 3 6 6 6 4 ...
  - attr(*, "names")= chr [1:2700] "AAACATACAACCAC-1" "AAACATTGAGCTAC-1" "AAACATTGATCAGC-1" "AAACCGTGCTTCCG-1" ...
+
+
 
 
 (5) 只更新一部分细胞的名字
@@ -14742,18 +15493,42 @@ ident.pairs 是新的 named list，key name 是老的细胞名字，value 是新
   CD14+ Mono           DC     Platelet 
          491           36           15 
 # 键值对list，键为细胞类型，值为对应的cell id vector
-cells.idents <- CellsByIdentities(object = object) #
+cells.idents <- CellsByIdentities(object = object)
+
 
 Idents(object = object, cells = cells.idents[['Naive CD4 T']]) = "CD4 T"
 Idents(object = object, cells = cells.idents[['Memory CD4 T']]) = "CD4 T"
 
 > table(Idents(object) )
-
       CD4 T           B FCGR3A Mono          NK       CD8 T  CD14+ Mono 
        1163         349         159         148         339         491 
          DC    Platelet 
          36          15 
 # 我们看到 CD4 T 的细胞数是之前 naive 和 memory 的和。说明它们已经合并为一类了。
+
+
+
+
+(6)用 PBMC3k 数据看 CellsByIdentities() 的输出
+	> cells.idents <- CellsByIdentities(object = pbmc)
+	> str(cells.idents)
+	List of 9
+	 $ 0: chr [1:696] "AAACATACAACCAC-1" "AAACTTGATCCAGA-1" "AAAGAGACGGCATT-1" "AAAGTTTGTAGAGA-1" ...
+	 $ 1: chr [1:491] "AAAGAGACGCGAGA-1" "AAAGATCTGGGCAA-1" "AAAGCAGATATCGG-1" "AAAGTTTGTAGCGT-1" ...
+
+
+
+(7)利用 CellsByIdentities 返回 cell id 的 named vector: 值为cell id，且按idents排过序；
+names为 cluster+组内序号递增。
+
+cells <- unlist(x = CellsByIdentities(object = object, idents = idents))
+#                 01                 02                 03                 04 
+# "AAACATACAACCAC-1" "AAACTTGATCCAGA-1" "AAAGAGACGGCATT-1" "AAAGTTTGTAGAGA-1"
+
+这个 cells 可以用于以后的排序，如： 
+	data.features <- FetchData(object = object, vars = features, cells = cells)
+	Idents(object = object)[cells, drop = TRUE]
+	object[[group.by, drop = TRUE]][cells, drop = TRUE]
 
 
 

@@ -1322,7 +1322,164 @@ warpSize: 32512
 
 
 ========================================
+|-- CUDA 的版本上限是显卡驱动的版本，超过则执行出错
 ----------------------------------------
+目的：快速上手 nvcc 编译 CUDA 程序的基本流程。
+
+1. 显卡驱动最大支持的cuda版本
+$ nvidia-smi 
+NVIDIA-SMI 550.54.15              Driver Version: 550.54.15      CUDA Version: 12.4
+
+
+
+2.实际安装的 nvcc 版本
+
+$ whereis nvcc
+包含三个版本，其中自定义的版本太高了
+/home/wangjl/.local/cuda-12.8/bin/nvcc 
+/usr/local/cuda-12.2/bin/nvcc 
+/usr/local/cuda-12.4/bin/nvcc
+
+
+
+
+3. 尝试使用三个 nvcc 进行编译
+(1) 源文件
+
+$ cat ~/tmp/cuda_demo.cu
+#include <stdio.h>
+#include <cuda_runtime.h>
+
+// CUDA核函数：向量加法
+__global__ void vectorAdd(int *a, int *b, int *c, int n) {
+    int i = blockIdx.x * blockDim.x + threadIdx.x;
+    if (i < n) {
+        c[i] = a[i] + b[i];
+    }
+}
+
+int main() {
+    int n = 1024; // 向量长度
+    int *a, *b, *c; // 主机端指针
+    int *d_a, *d_b, *d_c; // 设备端指针
+
+    // 分配主机内存
+    a = (int*)malloc(n * sizeof(int));
+    b = (int*)malloc(n * sizeof(int));
+    c = (int*)malloc(n * sizeof(int));
+
+    // 初始化数据
+    for (int i = 0; i < n; i++) {
+        a[i] = i;
+        b[i] = i * 2;
+    }
+
+    // 分配设备内存(gpu)
+    cudaMalloc(&d_a, n * sizeof(int));
+    cudaMalloc(&d_b, n * sizeof(int));
+    cudaMalloc(&d_c, n * sizeof(int));
+
+    // 拷贝数据到设备(gpu)
+    cudaMemcpy(d_a, a, n * sizeof(int), cudaMemcpyHostToDevice);
+    cudaMemcpy(d_b, b, n * sizeof(int), cudaMemcpyHostToDevice);
+
+    // 启动核函数（每个线程块 256 个线程，共 5 个线程块）
+    int blockSize = 256;
+    int numBlocks = (n + blockSize - 1) / blockSize;
+    vectorAdd<<<numBlocks, blockSize>>>(d_a, d_b, d_c, n);
+	//vectorAdd<<<5, 256>>>(d_a, d_b, d_c, n);
+
+    // 从gpu拷贝结果回主机
+    cudaMemcpy(c, d_c, n * sizeof(int), cudaMemcpyDeviceToHost);
+
+    // 验证结果（示例：打印前10个元素）
+    printf("Result (first 10 elements):\n");
+    for (int i = 0; i < 10; i++) {
+        printf("%d + %d = %d\n", a[i], b[i], c[i]);
+    }
+
+    // 释放内存
+    free(a); free(b); free(c);
+    cudaFree(d_a); cudaFree(d_b); cudaFree(d_c);
+
+    return 0;
+}
+
+
+(2A)编译命令: cuda 12.8 高于驱动
+
+$ nvcc -o vector_add ~/tmp/cuda_demo.cu
+nvcc warning : Support for offline compilation for architectures prior to '<compute/sm/lto>_75' will be removed in a future release (Use -Wno-deprecated-gpu-targets to suppress warning).
+
+执行：结果都是错的！
+	$ ./vector_add 
+	Result (first 10 elements):
+	0 + 0 = 0
+	1 + 2 = 0
+	2 + 4 = 0
+	3 + 6 = 0
+	4 + 8 = 0
+	5 + 10 = 0
+	6 + 12 = 0
+	7 + 14 = 0
+	8 + 16 = 0
+	9 + 18 = 0
+警告：说明 cuda 不能超过 驱动支持的最大版本号，否则最基础的加法都不执行。
+
+
+
+(2B)使用驱动支持的版本编译
+$ /usr/local/cuda-12.4/bin/nvcc -o vector_add4 ~/tmp/cuda_demo.cu
+
+执行：结果都是对的。
+	$ ./vector_add4
+	Result (first 10 elements):
+	0 + 0 = 0
+	1 + 2 = 3
+	2 + 4 = 6
+	3 + 6 = 9
+	4 + 8 = 12
+	5 + 10 = 15
+	6 + 12 = 18
+	7 + 14 = 21
+	8 + 16 = 24
+	9 + 18 = 27
+
+使用 cuda-12.2 结果一样。
+
+
+
+(3)其他编译选项
+1)指定计算能力‌
+# 指定 CUDA 架构（根据你的 GPU 计算能力修改，例如 RTX 3090 是 sm_86）
+nvcc -arch=sm_80 -o vector_add vector_add.cu
+$ /usr/local/cuda-12.4/bin/nvcc -arch=sm_80 -o vector_add4a ~/tmp/cuda_demo.cu
+输出正常。
+
+如针对 Turing 架构的 GPU
+$ /usr/local/cuda-12.4/bin/nvcc -arch=sm_75 -o vector_add4a1 ~/tmp/cuda_demo.cu
+
+
+# 如果编译失败，尝试通用架构（兼容性更好，但可能性能略低）
+nvcc -arch=compute_80 -code=sm_80 -o vector_add vector_add.cu
+$ /usr/local/cuda-12.4/bin/nvcc -arch=compute_80 -o vector_add4b ~/tmp/cuda_demo.cu
+输出正常。
+
+
+
+2)启用调试信息‌：
+nvcc -g -G -o vector_add vector_add.cu
+$ /usr/local/cuda-12.4/bin/nvcc -g -G -o vector_add4c ~/tmp/cuda_demo.cu
+
+
+3)多文件编译‌：若项目包含多个 .cu 或 .cpp 文件，可直接列出所有文件
+nvcc -o program main.cu kernel.cu utils.cpp
+
+
+4)生成 PTX 代码‌（跨平台中间表示）：
+nvcc --ptx -o kernel.ptx kernel.cu
+
+
 
 
 

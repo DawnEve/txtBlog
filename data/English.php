@@ -25,6 +25,7 @@ return array (
       array('说-跟读/影读/回音/转述','en201_spoken','txt'),
       array('读 - 广读法|词典GoldenDict','en203_reading','txt'),
       array('写 - 持续输出 先模仿','en204_writing','txt'),
+      array('记忆软件 Anki','en205_memory','txt'),
       array('疯狂记单词Word','wordStudy','md'),
       array('口语复读机','web-Repeater','txt'),
     ),
