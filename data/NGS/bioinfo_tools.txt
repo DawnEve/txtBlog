@@ -760,6 +760,183 @@ ref: https://bedtools.readthedocs.io/en/latest/content/tools/bamtofastq.html
 
 
 ========================================
+|-- bedtools coverage 计算每个位置的测序深度
+----------------------------------------
+1.
+(1)文献
+In this validation study, however, there were no instances of incorrect input genotypes and thus no errors were returned. Once the genotype is confirmed, a strict read filtering is applied on both the tumor and germline alignments, where only correctly paired reads mapping exclusively to one allele with an edit distance of 0 are conserved. BEDTools37 is then used to determine the read depth at every position for each allele.
+
+最后一句: BEDTools 确定每个等位基因中，每个位置的测序深度。
+
+https://pmc.ncbi.nlm.nih.gov/articles/PMC11300791/
+
+> 37.Quinlan, A. R. & Hall, I. M. BEDTools: a flexible suite of utilities for comparing genomic features. Bioinformatics26, 841–842 (2010). 10.1093/bioinformatics/btq033 [DOI] [PMC free article] [PubMed] [Google Scholar]
+
+
+(2) 文档
+$ bedtools --version
+bedtools v2.31.1
+
+coverage      Compute the coverage over defined intervals.
+Usage:
+	bedtools coverage [OPTIONS] -a <FILE> \
+								 -b <FILE1, FILE2, ..., FILEN>
+	(or):
+	coverageBed [OPTIONS] -a <FILE> \
+						   -b <FILE1, FILE2, ..., FILEN>
+
+注意: As of version 2.24.0, the coverage tool has changed such that the coverage is computed for the A file, not the B file. This changes the command line interface to be consistent with the other tools. 
+从2.24.0版本开始，计算的是A文件的覆盖度，而不是B文件。
+
+
+3)重要参数:
+https://bedtools.readthedocs.io/en/latest/content/tools/coverage.html
+## bedtools coverage -a positions.bed -b aligned_reads.bam -d > position_depth.txt
+
+-a	BAM/BED/GFF/VCF file “A”. Each feature in A is compared to B in search of overlaps. Use “stdin” if passing A with a UNIX pipe.
+-b	One or more BAM/BED/GFF/VCF file(s) “B”. Use “stdin” if passing B with a UNIX pipe. NEW!!!: -b may be followed with multiple databases and/or wildcard (*) character(s).
+
+-d	Report the depth at each position in each A feature. Positions reported are one based. Each position and depth follow the complete A feature.
+
+
+
+
+
+
+2. 测试
+
+(1) 准备bed文件
+$ cd /home/wangjl/tmp
+
+找到一个IGV的峰图范围
+$ cat positions.bed
+chr1	246766959	246768109
+
+
+(2)运行
+$ bedtools coverage -a positions.bed -b /datapool/wangjl/scPolyA-seq2/chenxi/PBMC/cluster_bam/RNA/RNA_cluster0.pA_reads.sorted.bam -d > position_depth.txt
+# 20:09->20:11
+警告:
+	***** WARNING: File /datapool/wangjl/scPolyA-seq2/chenxi/PBMC/cluster_bam/RNA/RNA_cluster0.pA_reads.sorted.bam has inconsistent naming convention for record:
+	GL000008.2	47002	47037	A01758:191:HGG7FDSX5:3:1561:3830:23844_AGTAAACC_TCCACCGTAT	255	-
+
+	***** WARNING: File /datapool/wangjl/scPolyA-seq2/chenxi/PBMC/cluster_bam/RNA/RNA_cluster0.pA_reads.sorted.bam has inconsistent naming convention for record:
+	GL000008.2	47002	47037	A01758:191:HGG7FDSX5:3:1561:3830:23844_AGTAAACC_TCCACCGTAT	255	-
+
+
+(3)查看输出文件
+可见，前三列和输入的-a bed文件一致，第四列是逐个碱基位置编号，第五列是该位置的测序深度。
+
+246768109-246766959=1150, 可见，这是一个半开半闭区间。比如 1-2 只算1个碱基，到底哪边开呢？一般是 [)。在 (5)中我们做测试。
+
+$ wc position_depth.txt
+ 1150  5750 36843 position_depth.txt
+$ head position_depth.txt
+chr1	246766959	246768109	1	17
+chr1	246766959	246768109	2	17
+chr1	246766959	246768109	3	17
+...
+$ tail position_depth.txt
+...
+chr1	246766959	246768109	1148	19
+chr1	246766959	246768109	1149	19
+chr1	246766959	246768109	1150	19
+
+
+(4)R绘图，和IGV峰图比较
+按照x=第4列,y=5th画图
+$ R
+> dat=read.table("position_depth.txt")
+> plot(dat$V4, dat$V5, type="o", cex=0.5)
+
+缩小到长宽基本一致，看起来还是挺像IGV峰图的。
+
+图1：上图是IGV图，下图是逐位点的测序深度连线图。
+
+
+(5) 验证 bedtools 对bed是取左闭右开区间
+在IGV中找到最高峰附近的1bp
+目测: pos=8 上有reads，pos=9上没有。
+$ cat positions2.bed
+chr1	246767468	246767469
+
+$ bedtools coverage -a positions2.bed -b /datapool/wangjl/scPolyA-seq2/chenxi/PBMC/cluster_bam/RNA/RNA_cluster0.pA_reads.sorted.bam -d > position_depth2.txt
+
+$ cat position_depth2.txt
+chr1	246767468	246767469	1	15
+
+
+2)再次测试：chr1 246767468 246767470
+输出:
+$ cat position_depth2.txt
+chr1 246767468 246767470 1 15
+chr1 246767468 246767470 2 15
+失败，竟然都有reads?!
+难道，是取了滑动平均值？取平均就不是按位点取测序深度了。
+
+
+
+3)扩大范围再试，争取测试到有reads和无reads的分界线
+发现往后延申坐标不行，都是15。而往前延申坐标可以！
+
+$ cat positions2.bed
+chr1	246767458	246767470
+输出:
+$ cat position_depth2.txt
+chr1	246767458	246767470	1	80
+chr1	246767458	246767470	2	78
+chr1	246767458	246767470	3	60
+chr1	246767458	246767470	4	53
+chr1	246767458	246767470	5	53
+chr1	246767458	246767470	6	53
+chr1	246767458	246767470	7	53
+chr1	246767458	246767470	8	53
+chr1	246767458	246767470	9	46
+chr1	246767458	246767470	10	46 #这个位置应该是58+10-1=67
+chr1	246767458	246767470	11	15
+chr1	246767458	246767470	12	15
+
+结论:
+	i) bedtools取bed区间时，按照左闭右开区间。
+	ii) bed记录的坐标是0-based，就是igv(1-based)看到的坐标减去1。
+
+推理: 我想要某个点的 pos=8 的reads 深度，该怎么设置bed？
+	i)bedtools 就需要设置 [pos, pos+1)位置；
+	ii)写成bed格式要坐标-1，就是 chr pos-1 pos，也就是 chr 7 8
+
+验证1: 取pos=8的深度，igv有
+	$ cat positions2.bed
+	chr1	246767467	246767468
+	输出:
+	$ cat position_depth2.txt
+	chr1	246767467	246767468	1	46
+
+验证2: 取pos=9的深度，igv看没
+	$ cat positions2.bed
+	chr1	246767467	246767469
+	输出:
+	$ cat position_depth2.txt
+	chr1	246767467	246767469	1	46
+	chr1	246767467	246767469	2	15
+
+
+图2：使用的样本为 cluster0。IGV坐标中 pos=8有reads，pos=9没有reads。
+
+结论：IGV和位点深度量化相对大小是一致的，绝对大小不一致。
+- IGV 最高点是38，最低点是0。图1中IGV最高也才到66，还是低于(5)-3中的最高值80。
+- IGV继续放大pos=9，还是有零星2个reads的，也比bedtools给出的低。
+说明：IGV可能做了取子集？只是展示了bam的一部分？
+
+
+带图片版: https://blog.csdn.net/wangjunliang/article/details/147462933
+
+
+
+
+
+
+
+========================================
 |-- bedtools 其他小功能
 ----------------------------------------
 1. bedtools merge
