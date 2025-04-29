@@ -203,6 +203,7 @@
 			array('https://blog.csdn.net/weixin_53637133?type=lately','追风少年ii(空间组学)'),
 			array('https://lishensuo.github.io/archives/','单细胞大模型(笔记)'),
 			array('https://weiyan.cc/yuque/','维燕的知识花园'), //说的交换biomooc友情链接，它最新更新中竟然不添加我的，立刻删掉对方的。
+			array('https://davetang.org/muse/category/genomics/','davetang(基因组学/R/)'),
 			//array('',''),
 		));
 ?>
