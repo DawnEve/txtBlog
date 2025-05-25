@@ -296,7 +296,385 @@ std::unique_ptr<TreeNode> root(new TreeNode{...});
 
 
 ========================================
+如何快速占满CPU？ 目的：惩罚疯狂使用CPU的人，大家一起啥都干不了 | 当坏人
 ----------------------------------------
+0.目的：有人连续一天占满CPU，导致ls输出都需要好几秒。
+
+(1)主要进程
+
+$ top
+   PID USER      PR  NI    VIRT    RES    SHR S  %CPU %MEM     TIME+ COMMAND
+ 71191 panyuwen   5 -15   18.4g   1.1g   7372 R  5179  0.1   4307:57 R
+ 71326 panyuwen   5 -15   18.4g   1.2g   7384 R  2944  0.1   2344:33 R
+ 71192 panyuwen   5 -15   18.5g   1.3g   7356 R  1610  0.1   3899:35 R
+ 71195 panyuwen   5 -15   18.5g   1.2g   7356 R  1557  0.1   3882:56 R
+ 71193 panyuwen   5 -15   18.4g   1.1g   7412 R 323.7  0.1   3297:36 R
+ 71190 panyuwen   5 -15   18.5g   1.2g   7428 R 321.5  0.1   3679:57 R
+ 71327 panyuwen   5 -15   18.4g   1.1g   7348 R 316.0  0.1   3308:53 R
+ 71242 panyuwen   5 -15   18.4g   1.2g   7344 R 314.7  0.1   2490:54 R
+ 71194 panyuwen   5 -15   18.4g   1.1g   7384 R 193.6  0.1   3326:28 R
+ 71189 panyuwen   5 -15   18.4g   1.1g   7416 R 180.6  0.1   3266:07 R
+ 71197 panyuwen   5 -15   18.4g   1.1g   7408 R 143.3  0.1   3139:56 R
+ 71456 panyuwen   5 -15   18.4g   1.1g   4108 R 139.4  0.1   4214:57 R
+
+$ ps 71191
+   PID TTY      STAT   TIME COMMAND
+ 71191 pts/1    R<l  4272:56 /home/panyuwen/miniconda3/lib/R/bin/exec/R --no-echo --no-restore --file=24.gam_lrt.QC.R
+
+$ ps 71326
+   PID TTY      STAT   TIME COMMAND
+ 71326 pts/1    R<l  2371:55 /home/panyuwen/miniconda3/lib/R/bin/exec/R --no-echo --no-restore --file=24.gam_lrt.QC.R
+
+
+
+(2)这个文件是啥？
+24.gam_lrt.QC.R
+
+怎么查看具体路径?
+$ locate 24.gam_lrt.QC.R 
+$ 无果。
+
+sudo 也看不到别人的存储。
+
+字面意思:
+	generalized additive model (GAM): 广义加性模型
+	Likelihood Ratio Test (LRT): 似然比检验：一种用于比较两个统计模型的拟合优度的检验方法，通常用于模型选择或假设检验。
+
+
+
+
+
+
+1. 默认输入1可以使用全部CPU
+J3$ cd /datapool/wangjl/web/docs/code/system/dustbin/
+
+(1)代码
+
+#include <iostream>
+#include <thread>
+#include <atomic>
+#include <vector>
+
+#include <cstdlib> // for strtod
+
+// 使用原子变量作为循环条件，以便可以安全地停止
+std::atomic<bool> keepRunning(true);
+
+void cpuIntensiveTask() {
+    static int counter=0;
+    while (keepRunning) {
+        // 消耗CPU的工作
+        counter++;
+    }
+}
+
+int main(int argc, char** argv) {
+    if (argc < 2) {
+        std::cerr << "Usage: " << argv[0] << " <frequency>" << std::endl;
+        return 1;
+    }
+    double frequency = strtod(argv[1], nullptr);
+    std::cout << "Set frequency to: " << frequency << " X" << std::endl;
+
+
+    unsigned int numThreads = std::thread::hardware_concurrency();
+    numThreads *= frequency;
+    
+    std::cout << "Start " << numThreads << " threads to run..." << std::endl;
+    std::cout << "Press Enter to stop..." << std::endl;
+
+    std::vector<std::thread> threads;
+    
+    // run tasks on CPU
+    for (unsigned int i = 0; i < numThreads; ++i) {
+        threads.emplace_back(cpuIntensiveTask);
+    }
+
+    // wait input to stop this program
+    std::cin.get();
+    keepRunning = false;
+
+    for (auto& thread : threads) {
+        thread.join();
+    }
+
+    std::cout << "Stopped!" << std::endl;
+    return 0;
+}
+
+
+
+(2)编译
+$ g++ extractExactMapping.cpp -o extractExactMapping -pthread
+
+
+(3)运行
+$ ./extractExactMapping 1
+
+如果使用 $ ./extractExactMapping 5
+则基本上ls都没反应了。
+
+装样子：$ ./extractExactMapping 3 ../3.R1.fastq ../3.R2.fastq ../map/3.bam
+
+
+
+
+
+
+
+2.如何设置占用20%的CPU，但是会随机切换到不同的CPU上？【作废】
+
+(1)代码：缺点是不能占满某个CPU
+$ cat cpu_switch.cpp
+#include <iostream>
+#include <thread>
+#include <atomic>
+#include <vector>
+#include <random>
+#include <chrono>
+#include <sched.h> // for CPU affinity
+#include <cstdlib> // for strtod
+
+std::atomic<bool> keepRunning(true);
+std::atomic<int> activeThreads(0);
+constexpr int CHECK_INTERVAL_MS = 100;
+
+void cpuIntensiveTask(int threadId) {
+    cpu_set_t cpuset;
+    CPU_ZERO(&cpuset);
+    std::random_device rd;
+    std::mt19937 gen(rd());
+	
+	static int counter=0;
+    
+    while (keepRunning) {
+        // 随机选择核心
+        int core = gen() % std::thread::hardware_concurrency();
+        CPU_SET(core, &cpuset);
+        pthread_setaffinity_np(pthread_self(), sizeof(cpu_set_t), &cpuset);
+        
+        // 精确控制20%占用率：工作200ms，休眠800ms（比例可调）
+        auto start = std::chrono::steady_clock::now();
+        while ((std::chrono::steady_clock::now() - start) < 
+               std::chrono::milliseconds(200)) {
+            // 空循环消耗CPU
+			counter++;
+        }
+        std::this_thread::sleep_for(std::chrono::milliseconds(800));
+    }
+    activeThreads--;
+}
+
+int main(int argc, char** argv) {
+    if (argc < 2) {
+        std::cerr << "Usage: " << argv[0] << " <frequency>" << std::endl;
+        return 1;
+    }
+    double frequency = strtod(argv[1], nullptr);
+    //std::cout << "Set frequency to: " << frequency << " X" << std::endl;
+
+    const int totalCores = std::thread::hardware_concurrency();
+    //const int targetThreads = totalCores * 0.2; // 20%占用
+    const int targetThreads = totalCores * frequency; // frequency 占用: 可以是 小于1，1，或者大于1的double数字
+
+    std::vector<std::thread> threads;
+    for (int i = 0; i < targetThreads; ++i) {
+        threads.emplace_back(cpuIntensiveTask, i);
+        activeThreads++;
+    }
+
+    std::cout << "Running on "<< frequency <<" X CPU cores (" 
+              << targetThreads << "/" << totalCores << ")\n";
+	std::cout << "Press Enter to stop..." << std::endl;
+    std::cin.get();
+
+    keepRunning = false;
+    while (activeThreads > 0) {
+        std::this_thread::sleep_for(std::chrono::milliseconds(50));
+    }
+
+    for (auto& t : threads) {
+        if (t.joinable()) t.join();
+    }
+}
+
+(2)编译
+$ g++ cpu_switch.cpp -o extractExactMapping2 -pthread
+
+
+(3)运行
+$ ./extractExactMapping2 1
+
+如果使用 $ ./extractExactMapping2 5
+则基本上ls都没反应了。
+
+装样子：$ ./extractExactMapping2 0.2 ../3.R1.fastq ../3.R2.fastq ../map/3.bam
+
+
+
+
+
+
+
+
+3.在linux下，能精确控制占满n个CPU核心，并且过几秒会随机切换CPU核心
+
+$ cat cpu_controller.cpp
+
+#include <iostream>
+#include <thread>
+#include <atomic>
+#include <vector>
+#include <random>
+#include <chrono>
+#include <sched.h>
+#include <unistd.h>
+#include <algorithm>
+#include <iomanip>
+
+std::atomic<bool> keepRunning(true);
+
+void pinToCoreAndWork(int coreId, int durationSec) {
+    cpu_set_t cpuset;
+    CPU_ZERO(&cpuset);
+    CPU_SET(coreId, &cpuset);
+    pthread_setaffinity_np(pthread_self(), sizeof(cpu_set_t), &cpuset);
+
+    auto endTime = std::chrono::steady_clock::now() + 
+                  std::chrono::seconds(durationSec);
+    while (keepRunning && std::chrono::steady_clock::now() < endTime) {
+        asm volatile("" ::: "memory"); // 防止空循环被优化
+    }
+}
+
+int main(int argc, char** argv) {
+    if (argc < 3) {
+        std::cerr << "Usage: " << argv[0] 
+                  << " <cpu_usage_ratio> <switch_interval_seconds>\n";
+        return 1;
+    }
+
+    const double usageRatio = std::stod(argv[1]);
+    const int switchInterval = std::stoi(argv[2]);
+    const int totalCores = sysconf(_SC_NPROCESSORS_ONLN);
+    const int targetCores = std::max(1, static_cast<int>(totalCores * usageRatio));
+
+    std::random_device rd;
+    std::mt19937 gen(rd());
+    std::uniform_int_distribution<> dist(0, totalCores-1);
+
+    while (keepRunning) {
+        std::vector<std::thread> workers;
+        std::vector<int> selectedCores;
+
+        // 随机选择不重复的核心
+        while (selectedCores.size() < targetCores) {
+            int core = dist(gen);
+            if (std::find(selectedCores.begin(), 
+                         selectedCores.end(), core) == selectedCores.end()) {
+                selectedCores.push_back(core);
+                workers.emplace_back(pinToCoreAndWork, core, switchInterval);
+            }
+        }
+
+        // 显示当前占用的核心
+        auto now = std::chrono::system_clock::now();
+		auto now_time = std::chrono::system_clock::to_time_t(now);
+		std::tm* tm_now = std::localtime(&now_time);
+		std::cout << "[" << std::put_time(tm_now, "%Y-%m-%d %H:%M:%S") 
+				  << "] Using cores:";
+        for (int core : selectedCores) std::cout << " " << core;
+        std::cout << " for " << switchInterval << " seconds\n";
+
+        // 等待切换周期
+        std::this_thread::sleep_for(std::chrono::seconds(switchInterval));
+
+        // 清理当前批次的线程
+        for (auto& t : workers) {
+            if (t.joinable()) t.join();
+        }
+    }
+    return 0;
+}
+
+
+编译命令：g++ -std=c++11 -pthread cpu_controller.cpp -o extractExactMapping3
+运行示例：./extractExactMapping3 0.2 5 （20%CPU负载，每5秒切换核心）
+	建议用这个伪装命令 $ ./extractExactMapping3 0.2 5 ../3.R1.fastq ../3.R2.fastq ../map/3.bam
+
+
+
+
+
+========================================
+|-- 如何快速占满 90% 内存？ 目的：惩罚疯狂使用CPU的人，大家一起啥都干不了 | 当坏人
+----------------------------------------
+目的：linux下，写一个C++程序，能精准控制占用多少G内存。
+
+1.
+// 不好用
+
+#include <iostream>
+#include <vector>
+int main() {
+    std::vector<char*> memoryBlocks;
+    std::cout << "Start task: M" << std::endl;
+
+    for (unsigned int i = 0; i < 10000; ++i) {
+        char* block = new char[100000000]; // 每次分配100MB
+        memoryBlocks.push_back(block);
+    }
+
+    std::cout << "Press Enter to stop..." << std::endl;
+    std::cin.ignore();
+
+    return 0;
+}
+
+
+
+2. 可用！
+
+#include <iostream>
+#include <vector>
+#include <cstdlib>
+
+class MemoryAllocator {
+public:
+    explicit MemoryAllocator(size_t gb) : size_(gb * 1024UL * 1024 * 1024) {}
+    
+    void allocate() {
+        memory_.resize(size_ / sizeof(int));
+        for (auto& block : memory_) {
+            block = 1; // 确保内存被实际使用
+        }
+    }
+
+private:
+    std::vector<int> memory_;
+    const size_t size_;
+};
+
+int main(int argc, char* argv[]) {
+    if (argc < 2) {
+        std::cerr << "Usage: " << argv[0] << " <GB>" << std::endl;
+        return 1;
+    }
+    size_t gb = std::stoul(argv[1]);
+    MemoryAllocator allocator(gb);
+    allocator.allocate();
+    
+	std::cout << "Press Enter to stop..." << std::endl;
+    std::cin.ignore();
+    return 0;
+}
+
+编译命令：g++ -std=c++11 -o bam_to_fastq bam_to_fastq.cpp
+使用示例：./bam_to_fastq 2 (占用2GB内存)
+特点：1.使用mlockall防止内存交换 2.实际写入数据确保分配 3.支持精确GB控制
+
+装样子: $ ./bam_to_fastq 200 pre.bam  #第一个参数表示占200G内存。其余参数忽略，随便写
+
 
 
 
