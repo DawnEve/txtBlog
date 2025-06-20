@@ -141,8 +141,14 @@ In genomics, +1 generally refers to the first base transcribed.  When cloning ex
 
 
 ========================================
-|-- 从gtf文件解析基因结构 //todo
+|-- 从gtf文件解析基因结构
 ----------------------------------------
+解析gtf:
+https://blog.csdn.net/wangjunliang/article/details/140558617
+
+
+igv.js 载入自定义gtf:
+https://blog.csdn.net/wangjunliang/article/details/140672588
 
 
 
@@ -166,7 +172,7 @@ http://baike.baidu.com/view/87880.htm
 
 
 ========================================
-群体遗传学: 连锁不平衡 (linkage disequilibrium, LD)，LD度量的指数D和D'和R²的原理
+|-- 群体遗传学: 连锁不平衡 (linkage disequilibrium, LD)，LD度量的指数D和D'和R²的原理
 ----------------------------------------
 在群体遗传学研究中，LD连锁不平衡分析是最常见的分析内容，也是关联分析的基础。在很多的遗传进化GWAS的文章中都会出现LD衰减及单体型block图，如果你还不是很了解的话，是时候补补课了。
 
@@ -427,6 +433,133 @@ Plant Biotechnol J. 2017 Mar 29. doi: 10.1111/pbi.12734
 ref:
 https://www.sohu.com/a/234594093_761120
 https://www.zhihu.com/question/64346013
+
+
+
+========================================
+|-- VAF(Variant Allele Frequency，变异等位基因频率)
+----------------------------------------
+
+1.VAF（Variant Allele Frequency，变异等位基因频率）
+是一个在基因组数据分析中非常常用的指标，用来衡量某个位点的变异等位基因在所有 reads 中所占的比例。
+
+(1)对于一个变异位点（SNV 或 Indel）：
+
+VAF = 支持变异等位基因的 reads 数 / 支持参考和变异等位基因的 reads 总数
+即：VAF = ALT reads / (REF reads + ALT reads)
+
+(2)示例
+假设某个位点的 AD 字段是：
+AD = 76,24
+
+76 个 reads 支持 REF
+24 个 reads 支持 ALT（变异）
+
+则：VAF=24/(76+24)=24/100=0.24
+即 24%
+
+(3)多等位情况怎么办？
+比如：
+REF: A
+ALT: G,C,T
+AD = 1924,499,13,6
+你可以分别计算每个 ALT 的 VAF：
+	VAF(G) = 499 / (1924 + 499 + 13 + 6) ≈ 0.204
+	VAF(C) = 13 / 2442 ≈ 0.005
+	VAF(T) = 6 / 2442 ≈ 0.002
+
+
+
+2.意义
+(1)在不同场景中 VAF 的意义
+应用领域	      //VAF 意义	                            //示例解释
+肿瘤变异检测	  //某突变细胞群占比（含杂合/纯合/克隆性）	//VAF=0.5 可能表示杂合突变
+生殖系分析	      //判断纯合 or 杂合	                    //VAF≈0.5 → 杂合，VAF≈1 → 纯合
+单细胞或低频突变  //低 VAF 表示亚克隆或突变频率极低	        //VAF=0.01 → 低频突变，需高深度支持检测
+ctDNA	          //临床上低频检测指标	                    //通常设定 VAF 检测阈值如 0.005（0.5%）
+
+(2) 注意事项: VAF ≠ 基因型（GT）
+VAF 是连续值，表示 reads 比例
+GT 是 0/0、0/1、1/1 表示基因型状态
+如果存在 mapping bias 或测序错误，VAF 会有系统误差
+
+
+
+
+
+========================================
+|-- B-allele frequency (BAF): 参考之外的基因型的比例
+----------------------------------------
+1.定义
+
+(1)芯片上只有两个，所以参考序列是A，另一个就是B
+I've mostly seen BAF used in the context of SNP arrays, when there are two probes (an A probe and a B probe) covering a specific position. 
+- I think the A probe is generally the reference sequence (or was at the time the array was designed),
+- so BAF and AF end up being the same, with the exception that SNP arrays are obviously limited in what they can detect.
+
+
+(2)除参考之外的都叫做B
+the “B” allele is the non-reference allele observed in a germline heterozygous SNP,
+
+
+
+
+Ref:
+https://www.biostars.org/p/254848/
+
+
+
+
+
+
+========================================
+|-- MAF(Minor Allele Frequency), 次要等位基因的频率（通常是 ALT 中频率最小的）
+----------------------------------------
+1.示例
+(1)MAF	次要等位基因频率（通常 ALT 中最低）
+人群变异注释中常用（不同于个体 VAF）
+A→G/C，分别为 40% 和 10%，则 MAF = 10%
+
+
+(2)VBF	Variant Base Frequency（非标准术语）
+某一具体碱基的频率，尤其在多等位时用
+A→G/C/T，对每个碱基分别计算频率
+
+
+
+
+2.多等位点的情况
+(1)
+REF: A
+ALT: G,C,T
+AD: 1924,499,13,6
+
+碱基	支持数	比例 (VBF)
+A (REF)	1924	78.8%
+G	    499	    20.4% → Major ALT
+C	    13	    0.5%
+T	    6	    0.2% → Minor ALT
+
+则:
+	Major VAF = 0.204（G）
+	Minor VAF = 0.002（T）
+	MAF（Minor Allele Frequency） 可能被定义为最低 ALT 的频率，也可能是低于 50% 的最高频 ALT，依工具而定
+
+
+(2)手动计算：从 bcftools 的 AD 字段计算
+代码:
+	ad = [1924, 499, 13, 6]
+	total = sum(ad)
+	vafs = [x / total for x in ad]
+	# vafs = [0.788, 0.204, 0.0053, 0.0024]
+
+表示:
+	A: 78.8%（REF）
+	G: 20.4%（Major ALT）
+	C: 0.5%
+	T: 0.2%（Minor ALT）
+
+
 
 
 

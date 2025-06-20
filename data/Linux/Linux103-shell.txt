@@ -388,12 +388,135 @@ https://www.cnblogs.com/bamanzi/p/tmux-mouse-tips.html
 
 
 
+========================================
+|-- tmux 为什么突然被关闭了？也没报错 //todo
+----------------------------------------
+症状：突然所有的tmux进程都没了！！
+
+
+1.查日志
+$ sudo less /var/log/messages
+Jun 18 20:07:52 jinlab-svr3 kernel: tmux[46977]: segfault at 1002e7c6bc ip 0000000000426030 sp 00007ffdba3dc690 error 6 in tmux[400000+62000]
+Jun 18 20:07:52 jinlab-svr3 abrt-hook-ccpp: Process 46977 (tmux) of user 5662 killed by SIGSEGV - dumping core
+Jun 18 20:07:54 jinlab-svr3 abrt-server: Generating core_backtrace
+
+没有找到更多信息，这个报错文件也不知道在哪里
+
+(2)
+$ id
+uid=5662(wangjl) gid=1210(jinlab) groups=1210(jinlab),980(docker) context=unconfined_u:unconfined_r:unconfined_t:s0-s0:c0.c1023
+
+
+(3) SIGSEGV(Segmentation Fault)是一种常见的程序错误,指示程序尝试访问无效的内存地址。
 
 
 
 
 
 
+2. 随着tmux意外退出，其中的R进程怎么找回或者关闭？
+
+当 tmux 会话意外终止后，其中运行的 R 进程通常会变成‌孤儿进程‌（orphaned processes），由系统 init 进程接管（PID 1）。
+
+(1) ‌查找孤儿 R 进程‌
+用 ps 或 pgrep 查找脱离 tmux 的 R 进程：
+$ ps -ef | grep 'R\b' | grep -v grep
+
+
+或精确查找：
+$ pgrep -a R
+
+
+
+
+(2) 输出如下: 这些 ppid 列 都不是1，都无法关闭了？
+
+$ ps -ef | head -n 2
+UID         PID   PPID  C STIME TTY          TIME CMD
+root          1      0  0  2024 ?        01:51:32 /usr/lib/systemd/systemd --switched-root --system --deserialize 22
+
+$ ps -ef | grep 'R\b' | grep ^wangjl | grep -v -e "grep" -e "vscode-server"
+	wangjl    50572  50483  0 Jun15 ?        00:00:00 /home/wangjl/soft/R/4.3.3/lib64/R/bin/exec/R --no-readline --slave --no-save --no-restore
+	wangjl    50574  50483  0 Jun15 ?        00:00:00 /home/wangjl/soft/R/4.3.3/lib64/R/bin/exec/R --no-readline --slave --no-save --no-restore
+	wangjl    50576  50483  0 Jun15 ?        00:00:00 /home/wangjl/soft/R/4.3.3/lib64/R/bin/exec/R --no-readline --slave --no-save --no-restore
+	wangjl    50578  50483  0 Jun15 ?        00:00:00 /home/wangjl/soft/R/4.3.3/lib64/R/bin/exec/R --no-readline --slave --no-save --no-restore
+	wangjl    50580  50483  0 Jun15 ?        00:00:00 /home/wangjl/soft/R/4.3.3/lib64/R/bin/exec/R --no-readline --slave --no-save --no-restore
+	wangjl    50582  50483  0 Jun15 ?        00:00:00 /home/wangjl/soft/R/4.3.3/lib64/R/bin/exec/R --no-readline --slave --no-save --no-restore
+	wangjl    62551  20542  0 Jun10 pts/135  00:15:57 /home/wangjl/soft/R/4.3.3/lib64/R/bin/exec/R --no-save --no-restore
+	wangjl   114046 113939  0 Jun17 ?        00:00:01 /home/wangjl/soft/R/4.3.3/lib64/R/bin/exec/R --no-readline --slave --no-save --no-restore
+	wangjl   114048 113939  0 Jun17 ?        00:00:00 /home/wangjl/soft/R/4.3.3/lib64/R/bin/exec/R --no-readline --slave --no-save --no-restore
+	wangjl   114050 113939  0 Jun17 ?        00:00:00 /home/wangjl/soft/R/4.3.3/lib64/R/bin/exec/R --no-readline --slave --no-save --no-restore
+	wangjl   114052 113939  0 Jun17 ?        00:00:14 /home/wangjl/soft/R/4.3.3/lib64/R/bin/exec/R --no-readline --slave --no-save --no-restore
+	wangjl   114054 113939  0 Jun17 ?        00:00:00 /home/wangjl/soft/R/4.3.3/lib64/R/bin/exec/R --no-readline --slave --no-save --no-restore
+	wangjl   114056 113939  0 Jun17 ?        00:00:00 /home/wangjl/soft/R/4.3.3/lib64/R/bin/exec/R --no-readline --slave --no-save --no-restore
+	wangjl   146431 144117  1 21:28 pts/12   00:00:28 /home/wangjl/soft/R/4.3.3/lib64/R/bin/exec/R
+
+
+$ pgrep -a R | grep "wangjl" | grep -v "vscode-server"
+	50572 /home/wangjl/soft/R/4.3.3/lib64/R/bin/exec/R --no-readline --slave --no-save --no-restore
+	50574 /home/wangjl/soft/R/4.3.3/lib64/R/bin/exec/R --no-readline --slave --no-save --no-restore
+	50576 /home/wangjl/soft/R/4.3.3/lib64/R/bin/exec/R --no-readline --slave --no-save --no-restore
+	50578 /home/wangjl/soft/R/4.3.3/lib64/R/bin/exec/R --no-readline --slave --no-save --no-restore
+	50580 /home/wangjl/soft/R/4.3.3/lib64/R/bin/exec/R --no-readline --slave --no-save --no-restore
+	50582 /home/wangjl/soft/R/4.3.3/lib64/R/bin/exec/R --no-readline --slave --no-save --no-restore
+	62551 /home/wangjl/soft/R/4.3.3/lib64/R/bin/exec/R --no-save --no-restore
+	114046 /home/wangjl/soft/R/4.3.3/lib64/R/bin/exec/R --no-readline --slave --no-save --no-restore
+	114048 /home/wangjl/soft/R/4.3.3/lib64/R/bin/exec/R --no-readline --slave --no-save --no-restore
+	114050 /home/wangjl/soft/R/4.3.3/lib64/R/bin/exec/R --no-readline --slave --no-save --no-restore
+	114052 /home/wangjl/soft/R/4.3.3/lib64/R/bin/exec/R --no-readline --slave --no-save --no-restore
+	114054 /home/wangjl/soft/R/4.3.3/lib64/R/bin/exec/R --no-readline --slave --no-save --no-restore
+	114056 /home/wangjl/soft/R/4.3.3/lib64/R/bin/exec/R --no-readline --slave --no-save --no-restore
+	146431 /home/wangjl/soft/R/4.3.3/lib64/R/bin/exec/R
+
+
+
+继续查ppid:
+$ ps 113939
+   PID TTY      STAT   TIME COMMAND
+113939 ?        Sl     8:48 /home/wangjl/soft/R/4.3.3/lib64/R/bin/exec/R --silent --no-echo --no-save --no-restore -e base::source(base::commandArgs(TRUE)) --args /home/wangjl/.vscode-server/extensions/reditorsupport.r-2.
+	# 发现这个也是 vscode 发起的进程。
+
+$ ps 50483
+   PID TTY      STAT   TIME COMMAND
+ 50483 ?        Sl    23:04 /home/wangjl/soft/R/4.3.3/lib64/R/bin/exec/R --silent --no-echo --no-save --no-restore -e base::source(base::commandArgs(TRUE)) --args /home/wangjl/.vscode-server/extensions/reditorsupport.r-2.
+
+
+$ ps 144117
+   PID TTY      STAT   TIME COMMAND
+144117 pts/12   Ss     0:00 -bash        #终端执行的R
+
+$ ps 146431
+   PID TTY      STAT   TIME COMMAND
+146431 pts/12   Sl+    0:29 /home/wangjl/soft/R/4.3.3/lib64/R/bin/exec/R
+
+
+$ ps 20542           #也是 vscode 启动的进程
+   PID TTY      STAT   TIME COMMAND
+ 20542 ?        Sl    89:19 /home/wangjl/.vscode-server/cli/servers/Stable-fabdb6a30b49f79a7aba0f2ad9df9b399473380f/server/node /home/wangjl/.vscode-server/cli/servers/Stable-fabdb6a30b49f79a7aba0f2ad9df9b399473380f/serve
+
+$ ps 62551
+   PID TTY      STAT   TIME COMMAND
+ 62551 pts/135  Ssl+  15:57 /home/wangjl/soft/R/4.3.3/lib64/R/bin/exec/R --no-save --no-restore
+
+
+
+=> 好像也没法kill进程。
+
+(3)手工运行一个 shell R
+$ R
+>
+另一个终端查看，发现多了一条:
+wangjl    24490  17072  7 22:10 pts/25   00:00:00 /home/wangjl/soft/R/4.3.3/lib64/R/bin/exec/R
+
+
+查进程：
+	$ ps 24490
+	   PID TTY      STAT   TIME COMMAND
+	 24490 pts/25   S+     0:00 /home/wangjl/soft/R/4.3.3/lib64/R/bin/exec/R
+	
+	$ ps 17072
+	   PID TTY      STAT   TIME COMMAND
+	 17072 pts/25   Ss     0:00 -bash
 
 
 

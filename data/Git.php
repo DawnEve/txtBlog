@@ -37,7 +37,7 @@ return array (
     array (
 	  array('时间管理','mg_200_time','txt' ),
 	  array('软件研发管理','mg_201_soft','txt' ),
-	  array('人员管理','mg_202_man','txt' ),
+	  array('人员管理(避坑)','mg_202_man','txt' ),
 	  array('科研经验','mg_203_research','txt' ),
 	  array('密码管理 pass','mg_204_passwd','txt' ),
 	  array('广告管理','mg_205_advertisement','txt' ),

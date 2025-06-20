@@ -2767,6 +2767,202 @@ min_pct = args$min_pc
 crop = FALSE
 
 
+Ref:
+http://seurat.dawneve.cc/PubMed/a02-argparse/
+
+
+
+========================================
+|-- R 语言 optparse 包：支持带名字的参数传递(用的少，不如 argparse 灵活)
+----------------------------------------
+https://github.com/mskcc/lohhla/blob/master/LOHHLAscript.R
+
+
+1. 用法
+
+library(optparse)
+option_list = list(
+  make_option(c("-id", "--patientId"), type="character", default=NULL,   ## this argument is meant to be required
+              help="patient ID", metavar="character"),
+  make_option(c("-o", "--outputDir"), type="character", default=NULL, 
+              help="location of output directory", metavar="character"),
+  make_option(c("-nBAM", "--normalBAMfile"), type="character", default=NULL,    
+              help="normal BAM file\n\t\tcan be FALSE to run without normal sample", metavar="character"),
+  make_option(c("-tBAM", "--tumorBAMfile"), type="character", default=NULL,    
+              help="tumor BAM file", metavar="character"),
+  # ...
+  make_option(c("-w", "--ignoreWarnings"), type="logical", default=TRUE, 
+              help="continue running with warnings [default= %default]", metavar="character")
+)
+
+
+opt_parser <- OptionParser(option_list=option_list)
+opt <- parse_args(opt_parser)
+
+	# strip trailing / from all parameters in opt
+	for(i in 1:length(opt)){
+	  if(substr(opt[i], nchar(opt[i]), nchar(opt[i])) == '/'){
+		opt[i] <- substr(opt[i], 1, nchar(opt[i])-1)
+	  }
+	}
+
+	print(opt)
+
+
+full.patient      <- opt$patientId
+workDir           <- opt$outputDir     ### NOTE: outputDir is the workDir
+normalBAMfile     <- opt$normalBAMfile
+tumorBAMfile      <- opt$tumorBAMfile
+# ...
+ignoreWarnings    <- opt$ignoreWarnings
+
+
+
+if (is.null(opt$tumorBAMfile) | is.null(opt$outputDir) | is.null(opt$hlaPath) | is.null(opt$HLAfastaLoc)){
+  print_help(opt_parser)
+  stop("Missing arguments.\n", call.=FALSE)  
+}
+
+
+
+
+
+
+
+========================================
+|-- 绝对路径运行R脚本，怎么获取R脚本的绝对路径，并source()加载同路径的R脚本?
+----------------------------------------
+Tips: commandArgs(F)和 commandArgs(T) 可以在同一个脚本中同时定义!
+
+
+1.commandArgs(trailingOnly = FALSE) 用于获取该R脚本地址
+(1) 脚本
+myArgs=commandArgs(trailingOnly = FALSE); 
+print(myArgs)
+
+$ Rscript /home/wangjl/bin/test/test6F.R /home/wangjl/test 24B74088 p1 config.txt
+[1] "/home/wangjl/soft/R/4.3.3/lib64/R/bin/exec/R"
+[2] "--no-echo"
+[3] "--no-restore"
+[4] "--file=/home/wangjl/bin/test/test6F.R"
+[5] "--args"
+[6] "/home/wangjl/test"
+[7] "24B74088"
+[8] "p1"
+[9] "config.txt"
+
+
+
+(2)获取该R脚本的函数
+
+$ cat test6F.R
+
+# 获取当前运行的R脚本路径（跨平台兼容）
+get_current_script_path <- function() {
+  message("->try 1: ")
+  # 方法1：通过命令行参数获取（适用于直接运行脚本）
+  cmd_args <- commandArgs(trailingOnly = FALSE)
+  needle <- "--file="
+  match <- grep(needle, cmd_args)
+  if (length(match) > 0) {
+    return(normalizePath(dirname(sub(needle, "", cmd_args[match]))))
+  }
+  message("->try 2: ")
+  # 方法2：通过rstudioapi获取（适用于RStudio环境）
+  if(requireNamespace("rstudioapi", quietly = TRUE)) {
+    return(dirname(rstudioapi::getSourceEditorContext()$path))
+  }
+
+  message("->try 3: ")
+  # 方法3：默认返回工作目录
+  return(normalizePath(getwd()))
+}
+
+# 使用示例
+script_dir <- get_current_script_path() #获取脚本目录
+print(paste("=> The abs path of this R script: ", script_dir))
+
+source(file.path(script_dir, "functions.R")) #组装目录，跨平台兼容
+
+echo("hello from lib functions.R") #调用函数
+
+
+函数文件:
+$ cat functions.R #和脚本同目录
+echo=function(xx){
+    print(xx)
+}
+
+
+输出:
+$ Rscript /home/wangjl/bin/test/test6F.R /home/wangjl/test 24B74088 p1 config.txt
+->try 1: 
+[1] "=> The abs path of this R script:  /home/wangjl/bin/test"
+[1] "hello from lib functions.R"
+
+
+
+
+========================================
+|-- R语言输出 html 文件
+----------------------------------------
+1. 核心函数
+con <- file(outputFile, "w") #打开文件
+writeLines(something, con) #写文本
+close(con) #关闭文件
+
+
+(2)重要参数 open=""
+open: character string.
+	A description of how to open the connection (if it should be opened initially). See section ‘Modes’ for possible values.
+
+Modes:Possible values for the argument open are
+	"r" or "rt": Open for reading in text mode. 读文本 r
+	"w" or "wt": Open for writing in text mode. 写入文本 w
+	"a" or "at": Open for appending in text mode. 末尾追加文本 a
+
+	"rb": Open for reading in binary mode. 读二进制 rb
+	"wb": Open for writing in binary mode. 写二进制 wb
+	"ab": Open for appending in binary mode. 追加二进制 ab
+
+	"r+", "r+b": Open for reading and writing.                             读写
+	"w+", "w+b": Open for reading and writing, truncating file initially.  先覆盖，再读写
+	"a+", "a+b": Open for reading and appending.
+#
+
+
+
+
+
+
+
+2.包装函数
+
+# functions
+html=function(text, tag){
+    rs=sprintf("<%s>%s</%s>", tag, text, tag)
+    writeLines(rs, con)
+}
+htmlRaw=function(text){
+    writeLines(text, con)
+}
+h1=function(text){ html(text, "h1")}
+h2=function(text){ html(text, "h2")}
+
+R2=function(num){
+    round(num, 2)
+}
+
+now=function(){
+  as.character( format(Sys.time(), '%Y%m%d_%H%M%S') )
+}
+
+
+3.用法
+
+html("End --", "p")
+
+htmlRaw("<div class=box>")
 
 
 

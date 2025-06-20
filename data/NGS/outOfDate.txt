@@ -180,6 +180,214 @@ $ samtools --version
 samtools 1.9-69-gb217a91
 
 
+
+
+
+
+
+
+
+
+
+========================================
+|-- 最简单的找变异流程： samtools mpileup(该子命令作废了 2025.6) + bcftools call
+----------------------------------------
+#######################
+(4) 使用samtools pileup 找变异
+
+1) 软件
+
+$ samtools mpileup              
+Usage: samtools mpileup [options] in1.bam [in2.bam [...]]
+可选参数: 
+-f, --fasta-ref FILE    faidx indexed reference sequence file 
+-g, --BCF               generate genotype likelihoods in BCF format
+-u, --uncompressed      generate uncompressed VCF/BCF output
+
+
+生成hg38.fasta.fai 文件
+## samtools faidx hg38.fa
+已经下载过了:
+/data/wangjl/soft/GATK/resources/bundle/hg38/Homo_sapiens_assembly38.fasta
+/data/wangjl/soft/GATK/resources/bundle/hg38/Homo_sapiens_assembly38.fasta.fai
+/data/wangjl/soft/GATK/resources/bundle/hg38/Homo_sapiens_assembly38.fasta.dict
+
+
+
+
+
+$ bcftools 
+Program: bcftools (Tools for variant calling and manipulating VCFs and BCFs)
+Version: 1.11-35-g8a744dd (using htslib 1.11-27-g246c146)
+
+$ bcftools call
+
+About:   SNP/indel variant calling from VCF/BCF. To be used in conjunction with bcftools mpileup.
+         This command replaces the former "bcftools view" caller. Some of the original
+         functionality has been temporarily lost in the process of transition to htslib,
+         but will be added back on popular demand. The original calling model can be
+         invoked with the -c option.
+Usage:   bcftools call [options] <in.vcf.gz>
+可选参数 
+-O, --output-type b|u|z|v     Output type: 'b' compressed BCF; 'u' uncompressed BCF; 'z' compressed VCF; 'v' uncompressed VCF [v]
+       --ploidy ASSEMBLY[?]      Predefined ploidy, 'list' to print available settings, append '?' for details
+       --ploidy-file FILE        Space/tab-delimited list of CHROM,FROM,TO,SEX,PLOIDY
+	值为 z 表示是压缩过的vcf文件 
+-v, --variants-only           Output variant sites only 只输出变异部分
+-m, --multiallelic-caller     Alternative model for multiallelic and rare-variant calling (conflicts with -c)
+	多等位基因获取
+-o, --output FILE             Write output to a file [standard output] 输出文件
+
+
+
+
+
+2) 测试
+$ samtools pileup c12_ROW03.bam | head
+[main] The `pileup' command has been removed. Please use `mpileup' instead. ## 命令不存在了。
+
+$ samtools mpileup c12_ROW03.bam | head
+[mpileup] 1 samples in 1 input files
+<mpileup> Set max per-file depth to 8000
+chr1    14404   N       10      ^!t^!t^!t^!t^!t^!t^!t^!t^!t^!t  KKK7AKKKKK
+chr1    14405   N       10      tttttttttt      KKK7FKKAKK
+chr1    14406   N       10      tttttttttt      <KKAKKK<KK
+chr1    14407   N       12      ccccccccccc^!c  KKKAKKKK<KKK
+chr1    14408   N       12      tttttttttttt    KKK<KKKFFKKK
+
+第1,2是位置，第3列是fasta中应该的内容。
+第4列是覆盖次数，
+第5列是测序到的碱基内容，覆盖几次就显示几次；大小写表示正负链。
+第6列是质量分数。
+
+
+
+3) 获取变异 
+$ cd ../mutation/
+
+
+i) 位置叠加
+$ ref="/data/wangjl/soft/GATK/resources/bundle/hg38/Homo_sapiens_assembly38.fasta"
+$ samtools mpileup -ugf $ref ../align/*.bam > out.bcf 
+[mpileup] 7 samples in 7 input files 
+## 21:50 - 22:10 3.2G
+
+$ bcftools view -H out.bcf |less
+前面很多行注释。
+#CHROM  POS     ID      REF     ALT     QUAL    FILTER  INFO    FORMAT  c12_ROW03       c12_ROW10       c14_ROW06       c14_ROW36       c15_ROW25       c16_ROW36       c19_ROW06
+chr1    14403   .       G       <*>     0       .       DP=1;I16=0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0;QS=0,0;MQ0F=1  PL      0,0,0   0,0,0   0,0,0   0,0,0   0,0,0   0,0,0   0,0,0
+
+$ bcftools view out.bcf |grep -v '^#' | awk '$5!="<*>"' | less   ##wc 864770行
+chr1    629227  .       T       G,C,<*> 0       .       DP=79;I16=42,0,3,0,1412,49202,66,1452,158,4210,3,9,515,10571,43,805;QS=5.70265,0.261954,0.0353982,0;VDB=0.921489;SGB=-6.77314;RPB=0.892142;MQB=0.828064;BQB=0.0677083;MQ0F=0.582278     PL      0,48,33,39,36,33,48,33,36,33    0,0,0,0,0,0,0,0,0,0     0,8,10,12,13,11,12,13,11,11     0,12,12,12,12,12,12,12,12,12    0,3,4,3,4,4,3,4,4,4     0,27,16,27,16,16,27,16,16,16    0,18,10,24,13,10,24,13,10,10
+
+chr9    84211542        .       G       GT      0       .       INDEL;IDV=1;IMF=0.5;DP=25;I16=16,0,1,0,345,8271,38,1444,0,0,0,0,140,3148,4,16;QS=3,1;VDB=1.48e-10;SGB=-0.600633;MQ0F=1  PL      4,3,0   0,0,0   0,3,4   0,15,12 0,0,0      0,30,12 0,0,0
+
+
+
+ii) 只保留变异
+$ bcftools call -vmO z -o out2.vcf.gz out.bcf
+## 2.6M
+
+$ zcat out2.vcf.gz | grep -v '^#' |wc  ##  66597
+$ bcftools view -H out.bcf | wc ## 20510860
+保留百分比: 66597/20510860=0.0032
+
+
+$ zcat out2.vcf.gz | grep -v '^#' | head
+chr1    629906  .       C       T       45.4391 .       DP=83;VDB=4.06345e-08;SGB=4.78028;MQSB=1;MQ0F=0.987952;AC=14;AN=14;DP4=0,0,67,9;MQ=0    GT:PL   1/1:9,51,0      1/1:4,3,0       1/1:16,15,0     1/1:4,3,0       1/1:8,66,01/1:9,72,0       1/1:20,18,0
+
+chr1    944391  .       G       A       26.4826 .       DP=153;VDB=0.02;SGB=1.12739;RPB=0.852349;MQB=0.530201;BQB=0.852349;MQ0F=0;AC=1;AN=6;DP4=0,149,0,2;MQ=53 GT:PL   0/0:0,202,248   0/1:60,0,102    ./.:0,0,0       ./.:0,0,0       ./.:0,0,0       0/0:0,235,255   ./.:0,0,0
+解读: 这里需要补习vcf文件格式，有很详细的spec，需要花时间读懂。 //todo 
+第一行就是说 chr1:629906由参考基因组的C突变为测到的T。
+DP=83是这个位点的测序深度。
+1/1 是纯合突变， ./. 是没有测到，0/1 是只有一个位点突变。
+
+
+
+iii) 以上命令合并为一行
+$ ref="/data/wangjl/soft/GATK/resources/bundle/hg38/Homo_sapiens_assembly38.fasta"
+$ samtools mpileup -ugf $ref ../align/*.bam | bcftools call -vmO z -o out2.vcf.gz
+
+就是先把几个文件pileup。
+然后call出相对于ref的突变。
+
+
+
+4) IGV 查看变异 
+需要先构建索引 
+$ cd ../align/
+$ ls *.bam | xargs -i samtools index -@ 3 {}
+
+
+
+
+注意：这个流程没有去除PCR重复。
+正常需要去除PCR重复后再call SNP。
+
+
+
+
+
+
+
+
+
+(5) 去除PCR重复 （全基因组、外显子组去重复，而转录组经常不去除重复的。）
+
+做一个去除前、去除后的统计，看看每个样本去除了多少重复。
+
+$ samtools markdup
+Usage:  samtools markdup <input.bam> <output.bam>
+-r           Remove duplicate reads
+-S           Mark supplemenary alignments of duplicates as duplicates (slower).
+-s           Report stats.
+
+$ cd align/
+$ samtools markdup -rs c12_ROW03.bam c12_ROW03.rm.bam
+READ 4053972 WRITTEN 1693674 
+EXCLUDED 1141885 EXAMINED 2912087
+PAIRED 0 SINGLE 2912087
+DULPICATE PAIR 0 DUPLICATE SINGLE 2360298
+DUPLICATE TOTAL 2360298
+
+## 检查是否有区别
+$ samtools flagstat c12_ROW03.bam
+4053972 + 0 in total (QC-passed reads + QC-failed reads)
+$ samtools flagstat c12_ROW03.rm.bam
+1693674 + 0 in total (QC-passed reads + QC-failed reads)
+#
+也就是保留了 1693674/4053972=0.417，去掉了一半多。
+
+
+
+
+
+## 如果使用-S参数，看flag是否有变化
+$ samtools markdup -Ss c12_ROW03.bam c12_ROW03.mark.bam
+READ 4053972 WRITTEN 4053972 
+EXCLUDED 1141885 EXAMINED 2912087
+PAIRED 0 SINGLE 2912087
+DULPICATE PAIR 0 DUPLICATE SINGLE 2360298
+DUPLICATE TOTAL 2360298
+#
+$ samtools view c12_ROW03.bam | head
+E00300:165:H3CMMALXX:5:2219:7953:37313  16      chr1    14404   0       22S14M1D113M    *       0       0       TTTTTTTTTTTTTTTTGTGTTTTTTCTGCTCAGTTCTTATTGATTGGTGTGCCGTTTTCTCTGGAAGCCTCTTAAGAACACAGTGGCGCAGGCTGGGTGGAGCCGTCCTCCCATGGAGCACAGGCAGACAGAAGTCCCCGCCCCAGCTG      F<<7A<F<,,,F<,<7,F,KA<KKKKFFF<KKKFFAAKKKKF<,AKKFAAA<7A,<7,FFFAFFAAKAKKAKKFFAFKFKKK7,AKKFKF<KFF<KKKAKKAKKA,AA,KKKKK<KKKFKK<KKA<FKAAKKFF7AAFKKFAFKFFFAA   NM:i:2  MD:Z:14^T72C40  AS:i:115  XS:i:115 RG:Z:c12_ROW03
+
+$ samtools view c12_ROW03.bam | head
+E00300:165:H3CMMALXX:5:2219:7953:37313  1040    chr1    14404   0       22S14M1D113M    *       0       0       TTTTTTTTTTTTTTTTGTGTTTTTTCTGCTCAGTTCTTATTGATTGGTGTGCCGTTTTCTCTGGAAGCCTCTTAAGAACACAGTGGCGCAGGCTGGGTGGAGCCGTCCTCCCATGGAGCACAGGCAGACAGAAGTCCCCGCCCCAGCTG      F<<7A<F<,,,F<,<7,F,KA<KKKKFFF<KKKFFAAKKKKF<,AKKFAAA<7A,<7,FFFAFFAAKAKKAKKFFAFKFKKK7,AKKFKF<KFF<KKKAKKAKKA,AA,KKKKK<KKKFKK<KKA<FKAAKKFF7AAFKKFAFKFFFAA   NM:i:2  MD:Z:14^T72C40  AS:i:115  XS:i:115 RG:Z:c12_ROW03
+
+看第二列，从16变为1040，增加了1024，就是指的PCR重复。
+
+
+
+
+
+
+
+
+
+
+
 ========================================
 专用软件
 ----------------------------------------
