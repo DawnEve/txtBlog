@@ -47,7 +47,7 @@ txtBlog v0.6
 
 ## 优化：  
 	9.全站缓存60s。 已取消缓存，没有并发压力，没必要缓存; 
-	
+	10.[v6.6.4-5]首页用户不指定，则随机生成$k,$id;
 ## 
 #
 
@@ -79,6 +79,7 @@ $ git branch
 $ git checkout master
 合并$ git merge --no-ff -m'some comments' otherBranch
 推送$ git push origin master
+$ git checkout dev
 
 
 
