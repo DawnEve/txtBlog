@@ -8,8 +8,6 @@ return array (
       array('项目描述','scSeq001','html',),
       array('参考资料','scSeq002','html'),
       array('FAQ 及思路','scSeq003','md'),
-      array('空间转录组 Spatio','spatio','html',),
-      array('空间转录组 Spatio|txt','spatio','txt',),
       array('过时技术-outOfDate','outOfDate','txt',),
     ),
   ),
@@ -42,9 +40,10 @@ return array (
    
   array (
     0 => 3,
-    1 => '相关分析',
+    1 => '空间转录组(spatio, ST)',
     2 => array (
-      array('wgcna包','wgcna_note','txt'),
+      array('空间转录组 spatio.html','spatio','html',),
+      array('空间转录组 spatio.txt','spatio','txt',),
 
     ),
   ),
@@ -56,7 +55,8 @@ return array (
     1 => '专业知识库',
     2 => array (
       array('生信编程必练200题','practise501','txt'),
-      array('统计与统计参数','NGS_statistics','txt'),
+      array('wgcna包-相关分析','wgcna_note','txt'),
+
     ),
   ),
 

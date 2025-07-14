@@ -2381,6 +2381,412 @@ http://jp.support.illumina.com/sequencing/sequencing_software/igenome.html
 **** 拷贝数变异 CNV 
 ----------------------------------------
 
+WES的CNV探究-conifer软件使用
+
+单个样本NGS数据如何做拷贝数变异分析
+* 肿瘤配对样本用varscan 做cnv分析
+* 使用cnvkit来对大批量wes样本找cnv
+
+拷贝数变异的分析通常需要专门的工具，如CNV检测工具，如CNVkit、PureCN、Control-FREEC、RSeQC等。
+
+
+
+
+
+
+========================================
+使用sequenza软件判定肿瘤纯度、倍性: Tumor purity and ploidy
+----------------------------------------
+1.Sequenza是一个使用配对的肿瘤/正常样本DNA测序数据来估计肿瘤样本纯度和倍性的软件，同时还检测肿瘤样本拷贝数变异。
+https://github.com/Yunuuuu/sequenza
+Sequenza is a tool to analyze genomic sequencing data from paired normal-tumor samples, including cellularity and ploidy estimation; mutation and copy number (allele-specific and total copy number) detection, quantification and visualization.
+
+
+(1)安装
+
+1) py 部分
+$ pip3 install sequenza-utils
+	Successfully installed sequenza-utils-3.0.0
+
+2) R包部分
+$ R
+> install.packages("sequenza")
+	# package ‘sequenza’ is not available for this version of R
+
+> BiocManager::install("sequenza")
+	# package ‘sequenza’ is not available for Bioconductor version '3.18'
+
+# https://github.com/Yunuuuu/sequenza
+> library(devtools)
+> install_github("Yunuuuu/sequenza")
+询问是否更新包，选择3不更新。
+
+> packageVersion("sequenza")
+[1] ‘3.0.0’
+
+
+
+(2)输入：3个文件（tumor vs normal bam, ref fasta）
+A BAM file (or a derived pileup file) from the tumor specimen.
+A BAM file (or a derived pileup file) from the normal specimen.
+A FASTA reference genomic sequence file
+
+1)Process a FASTA file to produce a GC Wiggle track file:
+$ sequenza−utils gc_wiggle −w 50 --fasta hg19.fa -o hg19.gc50Base.wig.gz
+
+2)Process BAM and Wiggle files to produce a seqz file:
+$ sequenza−utils bam2seqz -n normal.bam -t tumor.bam --fasta hg19.fa \
+    -gc hg19.gc50Base.wig.gz -o out.seqz.gz
+
+3)Post-process by binning the original seqz file:
+$ sequenza−utils seqz_binning --seqz out.seqz.gz -w 50 -o out small.seqz.gz
+
+
+(3)可视化 in R
+
+library(sequenza)
+
+# 载入seqz文件
+data.file <-  system.file("data", "example.seqz.txt.gz", package = "sequenza")
+data.file
+
+#1)sequenza.extract: process seqz data, normalization and segmentation
+test <- sequenza.extract(data.file, verbose = FALSE)
+
+#2)sequenza.fit: run grid-search approach to estimate cellularity and ploidy
+CP <- sequenza.fit(test) #耗时
+
+#3)sequenza.results: write files and plots using suggested or selected solution
+sequenza.results(sequenza.extract = test,
+    cp.table = CP, sample.id = "Test",
+    out.dir="TEST")
+
+
+
+
+
+2.测试
+
+骨髓检测移植前后的样品，pre记作normal, 复发post记作tumor。
+$ cd /datapool/wangjl/others/HLA_HD/data/output_hla/24B74088/test2/
+$ mkdir p8/
+
+(1)py
+1)fasta生成wig文件
+$ hg38_fa=/datapool/wangjl/ref/hg38/gencode/GRCh38.p13.genome.fa
+$ sequenza-utils gc_wiggle -w 50 --fasta $hg38_fa -o hg38.gc50Base.wig.gz
+	# 16:48->16:59, 11min
+
+
+2)Process BAM and Wiggle files to produce a seqz file: 统计等位基因深度和频率
+$ normal_bam="../test/SNP/p8/210567-2.chr6.sorted.bam"
+$ tumor_bam="../test/SNP/p8/210968-2.chr6.sorted.bam"
+$ sequenza-utils bam2seqz -n $normal_bam -t $tumor_bam --fasta $hg38_fa \
+    -gc hg38.gc50Base.wig.gz -o p8/out.seqz.gz
+	#17:01->17:03, 2min
+
+3)Post-process by binning the original seqz file: 分bin统计
+$ sequenza-utils seqz_binning --seqz p8/out.seqz.gz -w 50 -o p8/small.seqz.gz
+	#17:03->17:04, 1min
+
+查看:
+	$ ls -lth p8/
+	total 186M
+	-rw-r--r--. 1 wangjl jinlab 219K Jul  2 17:03 small.seqz.gz
+	-rw-r--r--. 1 wangjl jinlab  423 Jul  2 17:03 small.seqz.gz.tbi
+	-rw-r--r--. 1 wangjl jinlab  457 Jul  2 17:03 out.seqz.gz.tbi
+	-rw-r--r--. 1 wangjl jinlab 714K Jul  2 17:03 out.seqz.gz
+
+	-rw-r--r--. 1 wangjl jinlab 185M Jul  2 16:59 hg38.gc50Base.wig.gz # p8/ 平级
+
+查看文件内容：13k行
+	$ zcat p8/small.seqz.gz | wc -l
+	13880
+	$ zcat p8/small.seqz.gz | head
+	chromosome      position        base.ref        depth.normal    depth.tumor     depth.ratio     Af      Bf      zygosity.normal GC.percent      good.reads      AB.normal       AB.tumor        tumor.strand
+	chr6    29791377        N       13      13      1.006   1.0     0       hom     42      49      N       .       0
+	chr6    29828915        N       6       14      2.333   1.0     0       hom     56      22      N       .       0
+	chr6    29888186        N       5       17      3.273   1.0     0       hom     70      51      N       .       0
+	chr6    29888237        N       5       15      3.04    1.0     0       hom     72      5       N       .       0
+	chr6    29889019        N       84      106     1.288   1.0     0       hom     59      51      N       .       0
+	chr6    29889060        A       127     161     1.268   0.994   0       hom     59      161     A       G0.006  G1.0
+	chr6    29889070        N       236     287     1.218   1.0     0       hom     57      51      N       .       0
+	chr6    29889078        G       191     233     1.22    0.996   0       hom     57      233     G       T0.004  T0.0
+	chr6    29889095        C       240     293     1.221   0.997   0       hom     57      293     C       A0.003  A1.0
+	$ zcat p8/small.seqz.gz | tail
+	chr6    33088615        A       1069    1113    1.041   0.999   0       hom     44      1113    A       G0.001  G0.0
+	chr6    33088618        C       981     1021    1.041   0.999   0       hom     44      1021    C       A0.001  A0.0
+	chr6    61322765        N       11      12      1.147   1.0     0       hom     41      50      N       .       0
+	chr6    61322783        C       10      11      1.1     0.909   0       hom     41      11      C       G0.091  G1.0
+	chr6    61322791        A       11      12      1.091   0.917   0       hom     41      12      A       G0.083  G1.0
+	chr6    61322796        A       11      13      1.182   0.923   0       hom     41      13      A       T0.077  T0.0
+	chr6    61322804        T       11      14      1.273   0.857   0       hom     41      14      T       C0.143  C1.0
+	chr6    61322809        G       11      14      1.273   0.929   0       hom     41      14      G       C0.071  C1.0
+	chr6    61322811        G       11      14      1.273   0.929   0       hom     41      14      G       C0.071  C1.0
+	chr6    61322816        N       9       14      1.592   1.0     0       hom     44      20      N       .       0
+
+分bin前: 61k行
+	$ zcat p8/out.seqz.gz | wc
+		61088  855232 3387413
+	$ zcat p8/out.seqz.gz | head -n 3
+	chromosome      position        base.ref        depth.normal    depth.tumor     depth.ratio     Af      Bf      zygosity.normal GC.percent      good.reads      AB.normal       AB.tumor        tumor.strand
+	chr6    29791377        A       11      9       0.818   1.0     0       hom     48      9       A       .       0
+	chr6    29791378        A       11      9       0.818   1.0     0       hom     48      9       A       .       0
+	$ zcat p8/out.seqz.gz | tail -n 3
+	chr6    61322833        A       8       13      1.625   1.0     0       hom     44      13      A       .       0
+	chr6    61322834        G       8       13      1.625   1.0     0       hom     44      13      G       .       0
+	chr6    61322835        C       7       13      1.857   1.0     0       hom     44      13      C       .       0
+
+
+(2)R 统计和绘图
+$ R
+> library(sequenza)
+
+# 载入seqz文件
+data.file <-  "p8/small.seqz.gz"
+data.file
+
+#1)sequenza.extract: process seqz data, normalization and segmentation
+library(parallel)
+test <- sequenza.extract(data.file, window = 1e4, assembly = "hg38", parallel = 1, verbose = T)
+	# 报错: Collecting GC information Error in (function (x, col_types)  : unused argument (parallel = 1)
+
+	https://blog.csdn.net/WortJ/article/details/144569191
+	> packageVersion("iotools")
+	[1] ‘0.3.5’
+	
+	安装这个补丁:
+	https://github.com/WortJohn/sequenza/tree/WortJohn-patch-1
+	> devtools::install_github("WortJohn/sequenza@WortJohn-patch-1")
+	> packageVersion("sequenza") #[1] ‘3.0.0’
+	
+	#尝试下载后安装
+	$ Rscript -e "devtools::install_local('./WortJohn-patch-1.zip', force=TRUE, repos=NULL, type='source', dependencies=FALSE)"
+
+	安装老版本 copynumber
+	> packageVersion("copynumber") #[1] ‘1.40.0’
+	> devtools::install_github("WortJohn/copynumber")
+	> packageVersion("copynumber") #[1] ‘1.38.0’
+	补充了hg38：
+	>?copynumber::pcf
+	assembly: a string specifying which genome assembly version should be
+          applied to determine chromosome arms. Allowed options are
+          "hg38", "hg19", "hg18", "hg17" and "hg16" (corresponding to
+          the four latest human genome annotations in the UCSC genome
+          browser).
+	
+	退出R，重新读取，正常输出:
+	Processing chr6:
+	   24 variant calls.
+	   21 copy-number segments.
+	   382 heterozygous positions.
+	   13497 homozygous positions.
+	There were 27 warnings (use warnings() to see them)
+
+
+#2)sequenza.fit: run grid-search approach to estimate cellularity and ploidy
+CP <- sequenza.fit(test) #耗时
+	报错：Error in result$LPP - max.lik : non-numeric argument to binary operator
+		In addition: There were 50 or more warnings (use warnings() to see the first 50)
+	不太能定位错误地点。
+	str(test) 看似乎有很多NA和NaN，怎么去除呢？
+	失败：做不下去了。
+
+
+#3)sequenza.results: write files and plots using suggested or selected solution
+sequenza.results(sequenza.extract = test,
+    cp.table = CP, sample.id = "Test",
+    out.dir="TEST")
+
+
+
+# 这个图只有chr6，但是只有中间有少量点，太压缩。
+> chromosome.view(mut.tab = test$mutations[[1]], baf.windows = test$BAF[[1]],
+                ratio.windows = test$ratio[[1]],  min.N.ratio = 1,
+                #segments = seg.tab[seg.tab$chromosome == test$chromosomes[1],],
+                main = test$chromosomes[1],
+                cellularity = 0.89, ploidy = 1.9,
+                avg.depth.ratio = 1)
+
+	> summary(t1$position)
+		Min.  1st Qu.   Median     Mean  3rd Qu.     Max. 
+		   1 32522140 32558761 31043675 32582376 32665990
+
+
+
+
+
+(3)R手动画图: x=position, y=depth.normal, depth.tumor
+df1=read.table(gzfile( "p8/small.seqz.gz" ), header = T)
+
+	> dim(df1)
+	[1] 13879    14
+	> head(df1, n=2)
+	  chromosome position base.ref depth.normal depth.tumor depth.ratio Af Bf
+	1       chr6 29791377        N           13          13       1.006  1  0
+	2       chr6 29828915        N            6          14       2.333  1  0
+	  zygosity.normal GC.percent good.reads AB.normal AB.tumor tumor.strand
+	1             hom         42         49         N        .            0
+	2             hom         56         22         N        .            0
+
+	> table(df1$zygosity.normal)
+	  het   hom 
+	  382 13497
+
+	# 去掉全是0的位置
+	plot(df1$depth.normal + df1$depth.tumor, pch=19, cex=0.5, col="grey")
+
+#1 比例
+plot(df1$depth.ratio, pch=19, cex=0.5, col="red")
+plot(df1$depth.ratio, pch=19, cex=0.2, col=c("red", "black")[match(df1$zygosity.normal, c("het", "hom"))] )
+plot(log(1+df1$depth.ratio), pch=19, cex=0.2, col=c("red", "black")[match(df1$zygosity.normal, c("het", "hom"))])
+plot(df1$position, log(1+df1$depth.ratio), pch=19, cex=0.5, col="red",
+	#xlim=c(29941531, 29946870),
+	xlim=c(2.95, 3.35)*1e7,
+	main="depth.ratio")
+
+#2 绘制depth: 太聚集，怎么去除空白？
+plot(df1$position, df1$depth.normal, col="navy", pch=19, xlim=c(2.95, 3.35)*1e7, xlab="position", ylab="depth", main="chr6")
+points(df1$position, df1$depth.tumor, col="#990000", pch=19)
+legend("topleft", legend=c("pre", "post"), col=c("navy", "#990000"), pch=19)
+
+# 按照基因绘制
+pos.list=list(
+	A=c(29941531, 29946870),
+	C=c(31267748,31273092),
+	B=c(31352874,31358179),
+	DRB1=c(32577774,32590848),
+	DQB1=c(32658466,32667657),
+	DPB1=c(33074989,33090696)
+)
+plotGene=function(symbol="A"){
+	start=pos.list[[symbol]][1]
+	end=pos.list[[symbol]][2]
+	plot(df1$position, df1$depth.normal, col="navy", pch=19, cex=0.3,
+		xlim=c(start, end), xlab="position", ylab="depth", main=paste0("HLA-",symbol), mgp=c(2,1,0))
+	points(df1$position, df1$depth.tumor, col="#990000", pch=19, cex=0.3)
+	legend("topleft", legend=c("pre", "post"), col=c("navy", "#990000"),
+		bty="n", #不要图例边框
+		pch=19)
+}
+# plotGene("A")
+
+# 6个基因的覆盖度图
+pdf("p8/QC_coverage.pdf", width=10, height=6)
+par(mfrow=c(2,3))
+for(gene in names(pos.list)){
+	plotGene(gene)
+}
+dev.off()
+
+
+
+
+
+
+
+
+
+Ref:
+https://zhuanlan.zhihu.com/p/697635756
+
+
+
+
+
+========================================
+|-- VarScan(Java 编写的) 检测SNPs, Indels, CNVs: 启发式 //todo
+----------------------------------------
+1. 简介
+https://varscan.sourceforge.net/     老网站
+https://dkoboldt.github.io/varscan/  新网站
+
+https://varscan.sourceforge.net/copy-number-calling.html
+
+
+(1)paper 流程
+2013 Dec 12. doi: 10.1002/0471250953.bi1504s44，文章标题是；Using VarScan 2 for Germline Variant Calling and Somatic Mutation Detection
+https://pubmed.ncbi.nlm.nih.gov/25553206/
+
+
+* 单个样本: bam -samtools-> mpileup -mpileup2cns-> Germline;
+* 配对样本: tumor, normal bam -samtools-> mpileup -somatic-> Germline + Somatic + LOH;
+* Family Trio: parents bams, child bam -samtools-> mpileup -trio-> Germline+ de novo + MIE;
+
+=> Genome Res. 2012
+https://pubmed.ncbi.nlm.nih.gov/22300766/
+VarScan 2: somatic mutation and copy number alteration discovery in cancer by exome sequencing
+
+
+
+
+(2)下载
+https://github.com/dkoboldt/varscan
+
+$ wget https://github.com/dkoboldt/varscan/releases/download/v2.4.6/VarScan.v2.4.6.jar
+$ ls -lth VarScan.v2.4.6.jar 
+-rw-rw-rw-+ 1 wangjl jinlab 124K Mar 29  2023 VarScan.v2.4.6.jar
+
+
+
+
+(3)查看软件帮助：需要java环境
+$ java --version
+openjdk 17.0.0.1 2024-07-02
+OpenJDK Runtime Environment (build 17.0.0.1+2-3)
+OpenJDK 64-Bit Server VM (build 17.0.0.1+2-3, mixed mode, sharing)
+
+
+$ java -jar VarScan.v2.4.6.jar
+VarScan v2.4.6
+***NON-COMMERCIAL VERSION***
+USAGE: java -jar VarScan.jar [COMMAND] [OPTIONS] 
+COMMANDS:
+	pileup2snp		Identify SNPs from a pileup file
+	pileup2indel		Identify indels a pileup file
+	pileup2cns		Call consensus and variants from a pileup file
+	mpileup2snp		Identify SNPs from an mpileup file
+	mpileup2indel		Identify indels an mpileup file
+	mpileup2cns		Call consensus and variants from an mpileup file
+
+	somatic			Call germline/somatic variants from tumor-normal pileups
+	mpileup2somatic		Call germline/somatic variants in multi-tumor-normal mpileup (beta feature in v2.4.5)
+	copynumber		Determine relative tumor copy number from tumor-normal pileups
+	readcounts		Obtain read counts for a list of variants from a pileup file
+
+	filter			Filter SNPs by coverage, frequency, p-value, etc.
+	somaticFilter		Filter somatic variants for clusters/indels
+	fpfilter		Apply the false-positive filter
+
+	processSomatic		Isolate Germline/LOH/Somatic calls from output
+	copyCaller		GC-adjust and process copy number changes from VarScan copynumber output
+	compare			Compare two lists of positions/variants
+	limit			Restrict pileup/snps/indels to ROI positions
+#
+
+
+
+
+
+
+
+
+Ref:https://cloud.tencent.com/developer/article/1708602
+
+
+
+========================================
+|-- FreeBayes  检测SNV变化: 基于贝叶斯理论 //todo
+----------------------------------------
+
+
+
+
+
+
+
+
+
 
 ========================================
 |-- Control-Freec:检测拷贝数变异(CNV)的神器
