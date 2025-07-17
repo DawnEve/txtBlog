@@ -10,7 +10,7 @@ return array (
       array('windows/win10/11','windows','txt'),
       array('Android 安卓','Android','txt'),
       array('shell_最佳实践【描述】','shell_best_practice','txt'),
-	  
+
       array('shell cheatsheet 速查','shell_cheatsheet','txt'),
 
 	  array('过时信息 outOfDate','outOfDate', 'txt'), //过时的信息
@@ -45,7 +45,8 @@ return array (
     0 => 3,
     1 => '网络服务',
     2 => array (
-	  array('网络/ssh/iptables','linux201-net-ssh', 'txt'),
+	  array('计算机网络原理/iptables','linux201-net-iptables', 'txt'),
+	  array('ssh登录和隧道','linux202-ssh-tunnel', 'txt'),
 	  
 	  array('服务/DNS/资源监控/共享盘','linux_service','txt' ),
 	  

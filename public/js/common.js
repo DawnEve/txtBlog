@@ -244,7 +244,7 @@ function locateURLAnchor(){
 			setTimeout(function(){
 				//console.log("02 after setTimeout offsetTop", aA[i].offsetTop)
 				//异步的代码总是最后才执行
-				wjl=aA[i]
+				//wjl=aA[i]
 				//aA[i].scrollIntoView(true)//放这里就好使，可能会闪一下
 				window.scroll(0, aA[i].offsetTop);//换更兼容的方法
 			}, 0)

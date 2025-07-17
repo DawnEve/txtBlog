@@ -21,8 +21,9 @@ return array (
     1 => 'git专题',
     2 => 
     array (
-	  array('git常用命令','Git101','txt' ),
-	  array('git场景/GitHub','Git102-GitHub','txt' ),
+	  array('git常用命令','Git101-base','txt' ),
+	  array('git场景问答-QA','Git102-QA','txt' ),
+	  array('GitHub使用','Git103-GitHub','txt' ),
 	  array('我的代码仓库 repo','my-repo','txt' ),
 	  array('SVN版本管理','svn103','txt' ),
 
