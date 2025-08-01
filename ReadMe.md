@@ -59,8 +59,9 @@ txtBlog v0.6
 
 
 ## How to run? 如何运行？
-[如何部署?](help/howToRun.md)
 
+- [如何部署?](help/howToRun.md)
+- 底部友情链接: /View/Index/footer.php
 
 
 

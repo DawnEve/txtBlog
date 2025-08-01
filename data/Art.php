@@ -8,6 +8,7 @@ return array (
       array('项目描述','Illustrator001','html',),
       array('参考资料','Illustrator002','html'),
       array('FAQ','Illustrator003','html'),
+      array('ColorSet 科研颜色组合','color_list','html'),
       //array('行业常识','Illustrator004','html'), 
     ),
   ),

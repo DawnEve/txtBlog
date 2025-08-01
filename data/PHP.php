@@ -56,8 +56,8 @@ return array (
       array('Laravel简介','Laravel001','html',),
 	  
 	  array('Symfony','symfonyB101','txt',),
-      array('cakephp','cakePHP001','html',), //empty
-      array('zend','zendPHP001','html',), //empty
+      array('[x]cakephp','cakePHP001','html',), //empty
+      array('[x]zend','zendPHP001','html',), //empty
 
     ),
   ),

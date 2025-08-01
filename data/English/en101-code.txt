@@ -1614,6 +1614,473 @@ https://www.collinsdictionary.com/dictionary/english/aim
 
 
 
+========================================
+*** 牛津词典 mdxWebDict.py: python 读取 mdx，mdd 词典文件，输出到web界面
+----------------------------------------
+GoldenDict 是windows下的词典客户端。
+其所使用的额资源是 mdx 和 mdd 文件，前者是词典文本，后者是图/音资源。
+本文尝试在linux下提取这些资源文件，并构建在线 web 词典。
+
+
+
+1.文件格式
+https://github.com/binhetech/mdict-parser
+
+读取方法
+https://github.com/ninja33/mdx-server
+
+
+(2)AI 推荐的包
+https://github.com/liuyug/mdict-utils
+
+文档：https://bitbucket.org/xwang/mdict-analysis/src/master/
+论坛：https://forum.freemdict.com/t/topic/15945/7
+
+
+
+
+
+
+2.技术细节：尝试读取词典内容
+完整项目：https://gitee.com/dawnEve/mdxWebDict.py
+文件路径: @J3:/home/wangjl/soft/mdxWebDict.py
+
+
+$ pip install mdict-utils -i https://pypi.tuna.tsinghua.edu.cn/simple
+
+$ pip list | grep -i mdict
+mdict-utils           1.3.14
+
+
+(1)命令行使用
+$ mdict -q jog 牛津高阶8简体.mdx
+输出词条html格式。
+
+
+(2)在py中使用[失败，可能版本不对]
+	$ cat read_mdx.py
+	from mdict_utils import MDict
+	mdx_file = 'your_dict.mdx'
+	mdict = MDict(mdx_file)
+	for word, definition in mdict.items():
+		print(f"Word: {word}\nDefinition: {definition}")
+
+	=> MDD文件通常包含音频、图片等资源：
+	from mdict_utils import MDict
+	mdd_file = 'your_dict.mdd'
+	mdict_res = MDict(mdd_file)
+	# 获取特定资源
+	audio_data = mdict_res.get('sound/example.mp3')
+
+
+
+
+(3)我的版本：因文档太少，使用 help(), dir(), AI 共同探索
+>>> import mdict_utils
+>>> dir( mdict_utils)
+['__builtins__', '__cached__', '__doc__', '__file__', '__loader__', '__name__', '__package__', '__path__', '__spec__']
+>>> help( mdict_utils)
+	Help on package mdict_utils:
+
+	NAME
+		mdict_utils
+
+	PACKAGE CONTENTS
+		__main__
+		about
+		base (package)
+		chtml
+		reader
+		utils
+		writer
+#
+
+mdict_utils.reader.get_record_v3(md, key, offset, length)
+
+
+
+1) 读取词典文件
+from mdict_utils.reader import MDX
+
+# 加载词典
+mdx = MDX("牛津高阶8简体.mdx")
+>>> len(mdx)
+92667
+
+
+# 显示前10个单词
+i=0
+for key,value in mdx.items():
+	i+=1
+	if i>10:
+		break;
+	print(key, value[:10])
+
+# 迭代器
+items = mdx.items()
+
+
+
+2) 获取所有词条
+keys = mdx.keys()
+>>> str(keys) # 不知道怎么用
+'<generator object MDict.keys.<locals>.<genexpr> at 0x7f7087dfb0d0>'
+
+再试:
+# 读取所有 key（词条）
+keys = list(mdx.keys())
+
+>>> print("词典中前10个词：", keys[:10])
+词典中前10个词： [b'$100, \xc2\xa350, etc. a throw', b'$100, \xc2\xa350, etc. a throw', b"'cause", b"'em", b"'nother", b"'tis", b"'twas", b"'twere", b"'twill", b"'twixt"]
+
+
+
+
+3) 查询词条内容
+def query_mdx(mdx_obj, word):
+	"""安全查询MDX词典内容的函数"""
+	for k, value in mdx_obj.items():
+		key=k.decode("utf-8")
+		if key == word:
+			return(value.decode("utf-8"))
+	return None
+
+# 使用示例
+content = query_mdx(mdx, "jog")
+if content:
+    print(content)
+
+
+3B) 查询方法2
+entries = {k.decode("utf-8"): v for k, v in mdx.items()}
+print(entries.get("apple", b"[Not found]").decode("utf-8"))
+
+
+
+
+
+
+
+3. 读取 MDD 资源文件
+(1)尝试1
+from mdict_utils.reader import MDD
+
+mdd = MDD("牛津高阶8简体.mdd")
+
+# 所有资源的文件名（通常是路径）
+resource_keys = list(mdd.keys())
+
+# 打印前10个资源路径（bytes 类型）
+>>> print(resource_keys[:10])
+[b'\\pic\\accordion.jpg', b'\\pic\\accordion_concertina.jpg', b'\\pic\\aircraft_comp.jpg', b'\\pic\\airliner_comp.jpg', b'\\pic\\airship_comp.jpg', b'\\pic\\americanfootball_comp.jpg', b'\\pic\\ammonite.jpg', b'\\pic\\amphibians_comp.jpg', b'\\pic\\anchor.jpg', b'\\pic\\angles_comp.jpg']
+
+
+(2) 列出所有资源
+i=0
+for k in mdd.keys():
+	i+=1
+	if i>50:
+		break;
+	print(k.decode("utf-8", errors="ignore"))
+
+
+(3) 查找某个单词的资源
+def find_resource_keys(mdd, keyword):
+    return [k for k in mdd.keys() if keyword.encode() in k]
+
+# 有些图片资料
+>>> matches = find_resource_keys(mdd, "jog")
+>>> print([k.decode("utf-8", errors="ignore") for k in matches])
+['\\thumb\\jogging.jpg', '\\uk\\jog__gb_1.spx', '\\uk\\jogger__gb_1.spx', '\\uk\\jogging__gb_1.spx', '\\uk\\jogging_suit_1_gb_1.spx', '\\uk\\joggle__gb_1.spx', '\\uk\\jogtrot__gb_1.spx', '\\us\\jog__us_1.spx', '\\us\\jogger__us_1.spx', '\\us\\jogging__us_1.spx', '\\us\\jogging_suit_1_us_1.spx', '\\us\\joggle__us_1.spx', '\\us\\jogtrot__us_1.spx']
+
+
+.spx 是 Speex 格式 的音频文件，是一种专为语音压缩设计的音频格式，比 .mp3 更轻量。
+	优点：文件小，适合词典发音等。
+	缺点：不是通用播放器能直接播放（比如浏览器或Windows Media Player 不支持）。
+
+
+(4) 查找某个单词的读音：如提取 sound/apple.mp3：
+	# 注意资源名是 bytes 类型
+	resource_data = dict(mdd.items()).get(b"sound/apple.mp3")
+	# 保存为本地文件
+	with open("apple.mp3", "wb") as f:
+		f.write(resource_data)
+	报错：为空
+
+
+	2)列出mp3资源：没有mp3
+	# 查找包含 ".mp3" 的资源 key
+	mp3_keys = [k for k in mdd.keys() if b".mp3" in k]
+	>>> mp3_keys #确实没有mp3资源
+	[]
+
+	# 打印结果（转换为字符串）
+	for key in mp3_keys:
+		print(key.decode("utf-8", errors="ignore"))
+
+
+
+3)导出spx资源: 单个
+audio_keys = [k for k in mdd.keys() if b".spx" in k]
+>>> len(audio_keys)
+100210
+
+>>> audio_keys[:5]
+[b'\\uk\\10p__gb_1.spx', b'\\uk\\20p__gb_1.spx', b'\\uk\\50p__gb_1.spx', b'\\uk\\_ability_1_gb_1.spx', b'\\uk\\_acy_1_gb_1.spx']
+
+# 打印结果（转换为字符串）
+for key in audio_keys:
+    print(key.decode("utf-8", errors="ignore"))
+
+
+
+4) 从mdx获取音频 所有文件名：从mdx中解析
+
+<a type="sound" topic="b/boo/booho/boohoo__gb_1.spx" resource="uk_pron" backup-class="Media" class="fayin" href="sound://uk/boohoo__gb_1.spx"><img s
+rc="uk_pron.png" class="fayin"/></a>
+
+import re
+# 导出对应关系
+spx_mapping = {}
+
+for key, value in mdx.items():
+    html = value.decode("utf-8", errors="ignore")
+    if ".spx" in html:
+        # 找出所有 .spx 路径
+        #matches = re.findall(r'\\[a-z]+\\[^"]+?\.spx', html, flags=re.IGNORECASE)
+        matches = re.findall(r'href="sound://(.*?)"', html)
+        #print(matches)  # ['uk/boohoo__gb_1.spx']
+        key=key.decode("utf-8", errors="ignore")
+        if key not in spx_mapping:
+            spx_mapping[key]=[]
+        for path in matches:
+            path = path.strip()
+            #spx_mapping.setdefault(path, []).append(key.decode("utf-8", errors="ignore"))
+            spx_mapping[ key ].append(path)
+#
+>>> len(spx_mapping)
+41554
+
+>>> spx_mapping["apple"]
+['uk/apple__gb_1.spx', 'us/apple__us_1.spx', 'uk/apple__gb_1.spx', 'us/apple__us_1.spx']
+
+>>> spx_mapping["apple"][1].encode()
+b'us/apple__us_1.spx'
+
+
+
+5)输入音频路径，导出为文件
+sound_key = b'\\us\\apple__us_1.spx'
+或者
+	>>> list(spx_mapping.keys())[:5]
+	["'em", "'nother", "'tis", "'twas", "'twere"]
+	
+	>>> list(spx_mapping.keys())[201]
+	'able'
+	
+	>>> spx_mapping[list(spx_mapping.keys())[201]][1]
+	'us/able__us_1.spx'
+
+	path_str = spx_mapping["apple"][1]
+	# 替换为 Windows-style 分隔符并加上前缀反斜杠
+	win_path = "\\" + path_str.replace("/", "\\")  # '\\us\\apple__us_1.spx'
+	# 转为 bytes
+	sound_key = win_path.encode('utf-8')  # b'\\us\\apple__us_1.spx'
+
+# 从字符串获取声音文件
+sound_data = dict(mdd.items()).get(sound_key)
+if sound_data:
+    with open("apple__us_1.spx", "wb") as f:
+        f.write(sound_data)
+
+
+
+6)保存全部音频文件
+
+$ mkdir static/media/uk/
+$ mkdir static/media/us/
+
+
+import os
+
+output_dir = "../static/media/"
+os.makedirs(output_dir, exist_ok=True)
+
+i=0
+i=7633
+for key in list(spx_mapping.keys()): #total 41554
+	i+=1
+	if i>5:
+		#break;
+		pass
+	path_strs = spx_mapping[key]
+	for j in range(len(path_strs)):
+		if j>1:
+			break;
+		path_str = path_strs[j]
+		
+		win_path = "\\" + path_str.replace("/", "\\") 
+		sound_key = win_path.encode('utf-8')
+		#
+		print("\ni=",i, ", j=", j, key, path_str, win_path, sound_key)
+		sound_data = dict(mdd.items()).get(sound_key)
+		#
+		#filename = os.path.basename(key.decode("utf-8", errors="ignore"))
+		filepath = os.path.join(output_dir, path_str)
+		filepath = filepath.replace("\\", "/")
+		print("> filepath:", filepath)
+		with open(filepath, "wb") as f:
+			f.write(sound_data)
+# 21:01->次日 14:34
+# 14:54->
+
+
+
+7)如何网页播放声音？
+
+ffmpeg -i input.spx -acodec pcm_s16le output.wav
+ffmpeg -i input.wav -f mp3  output.mp3
+
+ffmpeg -i input.spx output.mp3
+
+
+
+
+
+
+
+(5) 从mdd获取图片资源 src="uk_pron.png"
+from mdict_utils.reader import MDD
+mdd = MDD("牛津高阶8简体.mdd")
+mdd_data = dict(mdd.items())
+
+>>> png_keys = [k for k in mdd_data.keys() if k.decode("utf-8", errors="ignore").lower().endswith(".png")]
+>>> len(png_keys)
+46
+>>> jpg_keys = [k for k in mdd_data.keys() if k.decode("utf-8", errors="ignore").lower().endswith(".jpg")]
+>>> len(jpg_keys)
+1380
+
+>>> png_keys[1:5]
+[b'\\symbols\\awlsym_core.png', b'\\symbols\\bullet.png', b'\\symbols\\bullet_core.png', b'\\symbols\\bullet_orange.png']
+>>> jpg_keys[1:5]
+[b'\\pic\\accordion_concertina.jpg', b'\\pic\\aircraft_comp.jpg', b'\\pic\\airliner_comp.jpg', b'\\pic\\airship_comp.jpg']
+
+
+$ mkdir static/images/symbols
+$ mkdir static/images/pic/
+$ mkdir static/images/thumb/
+
+
+
+
+i) 保存到文件 for png: 字典本身提示符号 symbols/ 
+import os
+
+output_dir = "../static/images/"
+os.makedirs(output_dir, exist_ok=True)
+
+for key in png_keys:
+    filename = os.path.basename(key.decode("utf-8", errors="ignore"))
+    filepath = os.path.join(output_dir, filename)
+    filepath = filepath.replace("\\", "/")
+    with open(filepath, "wb") as f:
+        f.write(mdd_data[key])
+
+
+
+
+ii) 保存到文件 for jpg: 包含图片 pic/ 和 缩略图 thumb/
+import os
+
+output_dir = "../static/images/"
+os.makedirs(output_dir, exist_ok=True)
+
+for key in jpg_keys:
+    filename = os.path.basename(key.decode("utf-8", errors="ignore"))
+    filepath = os.path.join(output_dir, filename)
+    filepath = filepath.replace("\\", "/")
+    with open(filepath, "wb") as f:
+        f.write(mdd_data[key])
+
+
+
+
+
+	import re
+	# 导出对应关系
+	fig_mapping = {}
+
+	for key, value in mdx.items():
+		html = value.decode("utf-8", errors="ignore")
+		if ".spx" in html:
+			# 找出所有 .spx 路径
+			# matches = re.findall(r'href="sound://(.*?)"', html)
+			matches = re.findall(r'src="uk_pron.png"', html)
+			key=key.decode("utf-8", errors="ignore")
+			if key not in fig_mapping:
+				fig_mapping[key]=[]
+			for path in matches:
+				path = path.strip()
+				fig_mapping[ key ].append(path)
+#
+
+
+
+
+
+
+
+
+4.字典结构html元素
+.mdx 文件的词条定义可能包含如下 HTML：
+<a href="sound/apple.mp3">🔊</a>
+<img src="images/example.jpg">
+<link rel="stylesheet" href="oxford/oxford.css">
+
+
+(1) on tx server
+$ mkdir ~/soft/mdxWebDict.py
+├── app.py    # Flask 应用首页
+├── static/
+│   ├── sound/
+│   │    ├── uk/        发音: uk
+│   │    ├── us/        发音: us
+│   └── images/         图片
+│        ├── symbos/    词典符号: 如发音标记等
+│        ├── pic/    词典图片: 大图
+│        ├── thumb/  词典图片: 预览图
+├── templates/
+│   └── index.html  #页面模板
+├── dict/           #词典资源
+│   ├── 词典.mdx  解释文字
+│   └── 词典.mdd  图片和声音
+└── mdx_utils/       #py包，我安装到其他地方了
+    └── mdict_utils/
+
+
+项目代码: https://gitee.com/dawnEve/mdxWebDict.py
+
+运行:
+$ python3 app.py
+tx直接死机了。可能内存耗尽了。=>换 J3 服务器。
+
+
+
+(2)统计该app的内存占用
+$ ps -aux | head -n 1
+USER        PID %CPU %MEM    VSZ   RSS TTY      STAT START   TIME COMMAND
+
+$ ps -aux | grep -in app.py
+1158:wangjl    21755  0.0  0.0 715696 502504 pts/38  S+   Jul29   0:06 python3 app.py
+1161:wangjl    22023  0.7  0.0 1337896 512320 pts/38 Sl+  Jul29   5:33 /home/wangjl/soft/python3/python-3.10.14/bin/python3 app.py
+1576:wangjl    78704  0.0  0.0 112824  1016 pts/41   S+   10:22   0:00 grep --color=auto -in app.py
+
+怎么进一步区分是哪个呢？
+
+
+
+
 
 
 ========================================

@@ -174,6 +174,7 @@
 			array('http://blog.17study.com.cn/','月色(ML/AI)'),
 			array('https://mofanpy.com/','莫烦'),
 			array('https://kanny.blog.csdn.net/?type=lately','广小隶(图神经网络)'),
+			array('https://blog.xinglovejiao.online/aboutme','快乐江湖(后端+AI双修)'),
 		));
 
 
