@@ -38,7 +38,7 @@ return array (
 
   array (
     0 => 1,
-    1 => 'ci框架',
+    1 => 'CodeIgniter(ci)框架',
     2 => array (
       array('ci简介','ci001','html',),
       //array('参考资料','ci002','html'),

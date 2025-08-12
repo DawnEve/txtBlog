@@ -1584,7 +1584,206 @@ demo: http://ielts.dawneve.cc/listening/VideoABplayer.html
 
 
 ========================================
+|-- js发送http请求，报告信息给监控服务器，但是不执行任何返回
 ----------------------------------------
+我十分讨厌 chrome 浏览器的 CORS，它导致很多我以前的分体网站异常，只有复制一份代码，徒增加代码重复。
+
+代码用在 repo: IELTS/dict/ 下。
+
+
+1.服务端接收并记录消息: preflight 耗时很多。
+
+# 允许的来源列表
+ALLOWED_ORIGINS = [
+    'http://163.dawneve.cc',
+    'http://ielts.dawneve.cc',
+    'http://ielts.dawneve.com',
+    'http://ielts.biomooc.com'
+]
+
+
+# 默认只需要一个参数
+# 如果特殊情况，需要post数据，则需要指定para2=非0，同时设置para3=请求
+from flask import jsonify
+#CORS (Cross-Origin Resource Sharing)
+def cors(arrOrStr, changeReq=0, request=0):
+    res=jsonify(arrOrStr)
+    res.headers['Access-Control-Allow-Origin']="*" #不能设置*，还只能设置一个值
+
+    if changeReq != 0:
+        origin = request.headers.get('Origin')
+        if origin in ALLOWED_ORIGINS:
+            # 这里可以设计的更激进：获取origin，设置为该origin可访问。完全不用上文 ALLOWED_ORIGINS 数组信息。
+            res.headers['Access-Control-Allow-Origin']=origin
+    #
+    res.headers.add('Access-Control-Allow-Methods', 'GET, POST, OPTIONS')
+    res.headers.add('Access-Control-Allow-Headers', 'Content-Type') # 必须添加
+    res.headers.add('Access-Control-Allow-Credentials', 'true')
+    res.headers.add('Backend', 'wjl_dawnDict_server/0.4')
+    res.headers.add('Email', 'jimmymall at 163 dot com')
+    return res;
+#
+
+# tracker module
+#
+from __init__ import *
+
+def  add_tracker_routes(app):
+    from datetime import datetime
+
+    def get_monthly_filename():
+        """生成按月分组的文件名"""
+        return f"dustbin_video_logs_{datetime.now().strftime('%Y%m')}.txt"
+
+    def ensure_log_directory():
+        """确保日志目录存在"""
+        if not os.path.exists('dustbin'):
+            os.makedirs('dustbin')
+
+
+    import time
+    def timeStamp2human(timeStamp=0, time_format="%Y/%m/%d %H:%M:%S"):
+        if timeStamp == None:
+            timeStamp = 0
+        timeArray = time.localtime(timeStamp)
+        return time.strftime(time_format, timeArray)
+    #test
+    #timeStamp2human(time.time())
+    # '2024.01.09 08:44:35'
+
+
+# curl -I  http://192.168.1.3:20180/api/tracker/video-tracker
+# curl -v -X post  http://192.168.1.3:20180/api/tracker/video-tracker -d '{ipAddress:"0.0.10.1"}'
+# curl -v -X POST http://192.168.1.3:20180/api/tracker/video-tracker      -H "Content-Type: application/json"      -d '{"videoName":"test01234-好的.mp4", "userAgent":"chrome1000"}'
+
+    # 记录视频的播放情况
+    # 在 preflight 上耗时较多
+    @app.route('/api/tracker/video-tracker', methods=['GET', 'POST', 'OPTIONS'])
+    def video_tracker():
+        # test for API
+        if request.method == 'GET':
+            return cors('tracker GET: invalid request')
+        
+        if request.method == 'OPTIONS':
+            # 处理预检请求
+            return cors({}), 200
+
+        try:
+            data = request.json
+            ip=data.get('ipAddress', 'unknown')
+            if ip=="unknown":
+                ip=request.remote_addr;
+            log_entry = (
+                f"server:{timeStamp2human(time.time())}|"
+                f"bowser:{data.get('timestamp', 'NA')}|"
+                f"ip:{ip}|"
+                f"videoName:{data.get('videoName', 'unnamed')}|"
+                f"actionName:{data.get('actionName', 'unnamed')}|"
+                f"userAgent:{data.get('userAgent', 'unknown')}\n"
+            )
+
+            ensure_log_directory()
+            with open(f"dustbin/{get_monthly_filename()}", 'a', encoding='utf-8') as f:
+                f.write(log_entry)
+
+            return cors({"status": "success"}), 200
+
+        except Exception as e:
+            return cors({"error": str(e)}), 500
+#
+
+
+
+
+
+2.客户端上传信息
+千方百计的不报错！！
+即使遇到错误，也忽略。或者表示错误。
+
+
+<meta charset="UTF-8">
+tracker test 02
+<script>
+// 获取用户IP地址
+function getUserIP() {
+	try {
+		//const response = await fetch('https://api.ipify.org?format=json');
+		const response = fetch('https://api64.ipify.org/?format=json');
+		const data = response.json();
+		return data.ip;
+	} catch (error) {
+		console.error('Get IP address error:', error);
+		return 'unknown';
+	}
+}
+const userIP = getUserIP();
+
+// 获取浏览器时间戳
+function formatDate(date) {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  const hours = String(date.getHours()).padStart(2, '0');
+  const minutes = String(date.getMinutes()).padStart(2, '0');
+  const seconds = String(date.getSeconds()).padStart(2, '0');
+  
+  return `${year}/${month}/${day} ${hours}:${minutes}:${seconds}`;
+}
+
+// 使用示例
+//console.log(formatDate( new Date() )); // 输出格式如：2025/08/06 16:14:25
+
+
+
+// 视频名称监控上报脚本
+function reportVideoToMonitor(videoName, actionName="") {
+    const endpoint = 'http://192.168.1.3:20180/api/tracker/video-tracker';
+
+    const payload = {
+        videoName: videoName,
+        timestamp: formatDate(new Date()),
+        userAgent: navigator.userAgent,
+		ipAddress: userIP,
+		actionName: actionName
+    };
+
+    // 使用navigator.sendBeacon确保可靠发送，即使页面关闭
+    if (navigator.sendBeacon) {
+        const blob = new Blob([JSON.stringify(payload)], {type: 'application/json'});
+        navigator.sendBeacon(endpoint, blob);
+    } else {
+        // 回退到fetch API
+        fetch(endpoint, {
+            method: 'POST',
+            body: JSON.stringify(payload),
+            headers: {
+                //'Content-Type': 'application/json'
+                'Content-Type': 'application/json;charset=UTF-8'
+            },
+            keepalive: true  // 确保请求在页面卸载时也能完成
+        }).catch(() => {});  // 忽略所有错误
+    }
+}
+
+reportVideoToMonitor("test2-HP3000-中文-功夫熊猫-动画剧.mp4", "load");
+
+// not use
+// 示例用法：当页面中有视频元素时
+document.addEventListener('DOMContentLoaded', () => {
+    const videos = document.querySelectorAll('video');
+    videos.forEach(video => {
+        const videoName = video.getAttribute('title') || 
+                         video.getAttribute('data-name') || 
+                         video.src.split('/').pop();
+        if (videoName) {
+            //reportVideoToMonitor(videoName);
+        }
+    });
+});
+</script>
+
+
+
 
 ========================================
 ----------------------------------------

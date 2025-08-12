@@ -18,6 +18,7 @@ return array (
     1 => 'PHP小专题',
     2 => array (
       array('php基础知识','PHP101','txt',),
+      array('php 高级详解','PHP102-adv','txt',),
 
       array('php引用','PHP105','html',),
 

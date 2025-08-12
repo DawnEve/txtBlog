@@ -3865,6 +3865,286 @@ CCA 整合同一个组学的多样本：https://hbctraining.github.io/scRNA-seq_
 
 
 ========================================
+LDA 线性判别分析(Linear Discriminant Analysis)[核心思想：“投影后类内方差最小，类间方差最大”]，及 R语言示例
+----------------------------------------
+1.原理
+和PCA一样，LDA也是一种线性降维方法。不同的是，PCA是无监督的，而LDA是一种有监督的降维方法。
+LDA需要构造出投影矩阵，满足最大化投影后各类的类间距离，最小化投影后各类的类内方差。
+
+
+(2) 基于类别可分性的降维
+LDA 的目标是找到一个投影方向，使得不同类别数据在投影后的空间中尽可能地分开，同时同一类别数据的内聚性尽可能高。与 PCA 主要关注数据的方差不同，LDA 更侧重于类别之间的区分。
+
+假设我们有两类数据，分别用不同颜色的点表示在二维平面上。LDA 试图找到一条直线，当把数据点投影到这条直线上时，两类数据的投影点之间的间隔尽可能大，并且每类数据投影后的分布尽可能紧凑。
+
+
+LDA 是已知标签，目的是找出能区分标签的最好方向，及分类界限。
+示意图: https://zhuanlan.zhihu.com/p/33185052?from_voters_page=true
+
+
+(3)类间散度和类内散度
+为了实现这个目标，LDA 使用了类间散度矩阵（Sb）和类内散度矩阵（Sw）的概念。类间散度矩阵衡量了不同类别中心之间的距离，它表示了类别之间的分离程度。类内散度矩阵则衡量了每个类别内部数据的分散程度。LDA 的目标是最大化类间散度与类内散度的比值（J=Sb/Sw），通过求解这个优化问题来找到最佳的投影方向。
+
+
+(4)投影实现降维
+当找到最佳投影方向（通过求解广义特征值问题得到）后，就可以将原始数据投影到这个方向上，从而将高维数据转换为低维数据。在多类别情况下，LDA 可能会找到多个投影方向来区分不同的类别，这些投影方向构成的子空间用于数据的降维。
+
+
+
+
+
+2.示例
+
+(1)使用MASS包的lda函数: 分辨鸢尾花数据的分类界限
+# install.packages("MASS")
+library(MASS)
+
+# 加载数据集
+# data(iris)
+
+# 仅使用花瓣的长度和宽度进行LDA
+lda_model <- lda(iris$Species ~ ., data = iris[, c("Sepal.Length", "Sepal.Width", "Petal.Length", "Petal.Width")], 
+                 prior = c(0.33, 0.33, 0.34))  # 设置先验概率
+
+	# 或者
+	lda_model2 <- lda(Species ~ Sepal.Length + Sepal.Width + Petal.Length + Petal.Width, data = iris, 
+					 prior = c(0.33, 0.33, 0.34))  # 设置先验概率
+	 
+
+# 查看模型结果
+print(lda_model)
+
+输出:
+	Call:
+	lda(iris$Species ~ ., data = iris[, c("Sepal.Length", "Sepal.Width", 
+		"Petal.Length", "Petal.Width")], prior = c(0.33, 0.33, 0.34))
+
+	Prior probabilities of groups:
+		setosa versicolor  virginica 
+		  0.33       0.33       0.34 
+
+	Group means:
+			   Sepal.Length Sepal.Width Petal.Length Petal.Width
+	setosa            5.006       3.428        1.462       0.246
+	versicolor        5.936       2.770        4.260       1.326
+	virginica         6.588       2.974        5.552       2.026
+
+	Coefficients of linear discriminants:
+						LD1         LD2
+	Sepal.Length  0.8293547  0.02488036
+	Sepal.Width   1.5324414  2.16596010
+	Petal.Length -2.2003362 -0.93398623
+	Petal.Width  -2.8131231  2.83654950
+
+	Proportion of trace:
+	   LD1    LD2 
+	0.9912 0.0088
+
+# 画图
+plot(lda_model)
+
+# 数据结构
+str(lda_model)
+# 为什么还有SVD?
+
+
+
+# 查看混淆矩阵，判断模型效果
+predictions <- predict(lda_model, iris)
+table(predictions$class, iris$Species)  # 查看混淆矩阵来评估模型性能
+#             setosa versicolor virginica
+#  setosa         50          0         0
+#  versicolor      0         48         1
+#  virginica       0          2        49
+
+
+
+
+
+(2)官方文档
+http://127.0.0.1:12681/library/MASS/html/lda.html
+
+Iris <- data.frame(rbind(iris3[,,1], iris3[,,2], iris3[,,3]),
+                   Sp = rep(c("s","c","v"), rep(50,3)))
+set.seed(2025)
+train <- sample(1:150, 75)
+table(Iris$Sp[train])
+## your answer may differ
+##  c  s  v
+## 23 26 26
+
+# 训练模型
+z <- lda(Sp ~ ., Iris, prior = c(1,1,1)/3, subset = train)
+
+# 预测
+predict(z, Iris[-train, ])$class
+## [1] s s s s s s s s s s s s s s s s s s s s s s s s c c c c c c c c v c c c c c
+## [39] c c v c c c c c c c c c c v v v v v v v v v v c v v v v c v v v v v v v v
+## Levels: c s v
+
+# 更新模型：增加一个变量
+(z1 <- update(z, . ~ . - Petal.W.))
+
+
+# 检查模型效果：
+	> table(predict(z, Iris)$class, iris$Species)
+		setosa versicolor virginica
+	  c      0         48         2
+	  s     50          0         0
+	  v      0          2        48
+	> table(predict(z1, Iris)$class, iris$Species)
+		setosa versicolor virginica
+	  c      0         47         3
+	  s     50          0         0
+	  v      0          3        47
+# 加一个变量效果似乎更差了
+
+
+
+
+
+
+Ref:
+- PCA和LDA简明教程 https://zhuanlan.zhihu.com/p/9969196935
+- https://www.cnblogs.com/pinard/p/6244265.html （推荐）
+- https://blog.csdn.net/m0_44975814/article/details/145049312
+- https://zhuanlan.zhihu.com/p/79696530
+
+
+
+========================================
+|-- LDA与PCA的区别/应用场景
+----------------------------------------
+1.PCA 和 LDA 的区别
+（1）目标不同
+PCA：主要目标是在数据空间中找到数据变化最大的方向，以最大程度地保留数据的方差。它是一种无监督的降维方法，不考虑数据的类别标签，只是关注数据本身的分布特性。
+LDA：以分类为导向，目的是找到能够使不同类别数据之间的区分度最大的投影方向。它是一种有监督的降维方法，需要利用数据的类别标签来进行降维操作。
+
+（2）适用的数据类型
+PCA：适用于数据没有类别标签或者不需要考虑类别信息的情况。例如，在对图像进行特征提取时，如果只是想减少图像数据的维度而不涉及图像的分类，PCA 可能是一个很好的选择。
+LDA：在有明确类别标签的分类问题中表现出色。比如在人脸识别中，不同人的脸属于不同的类别，LDA 可以通过找到区分不同人脸类别的投影方向来进行降维和分类。
+
+（3）对数据分布的假设
+PCA：假设数据是在高维空间中呈椭圆形分布（更准确地说是高斯分布），并且希望找到这个椭圆的主轴方向。它主要关注数据的全局结构，对数据中的噪声比较敏感。
+LDA：假设每个类别内部的数据服从高斯分布，并且不同类别之间的高斯分布具有不同的均值。它更侧重于类别之间的差异，对于类别内部的数据分布变化相对不太敏感，只要类别之间的区分度能够得到保持。
+
+（4）降维后的结果
+PCA：降维后的结果是数据在方差最大方向上的投影，新的维度（主成分）是按照数据方差大小排序的。这些主成分可能并不直接对应于任何实际的物理或语义特征，但它们能够有效地表示数据的主要变化趋势。
+LDA：降维后的维度具有明确的类别区分意义，即每个维度都有助于最大程度地分离不同类别。这使得 LDA 降维后的结果在分类任务中更具有可解释性。
+
+
+
+
+
+2. PCA 和 LDA 的应用场景
+（1）PCA 的应用场景
+1)数据可视化
+在高维数据（如基因数据、文本数据等）中，通过 PCA 将数据降到二维或三维空间，可以直观地观察数据的分布情况。例如，在分析文档集合时，可以将词频向量表示的文档通过 PCA 降维后，在平面上绘制出文档的分布，从而发现文档之间的相似性和聚类情况。
+
+2)数据预处理
+在机器学习算法中，高维数据可能会导致模型训练时间过长和过拟合。PCA 可以作为数据预处理步骤，减少数据的维度，同时保留数据的主要信息。例如，在支持向量机（SVM）训练之前，对高维数据进行 PCA 降维，可以加快 SVM 的训练速度，并且在一定程度上提高模型的泛化能力。
+
+3)信号处理
+在音频和图像信号处理中，PCA 可以用于提取信号的主要成分。例如，在音频信号中，可以通过 PCA 提取主要的频率成分，去除噪声和次要频率成分，从而实现音频信号的压缩和降噪。在图像压缩中，PCA 可以将图像的像素矩阵降维，用较少的系数来表示图像，达到压缩图像数据的目的。
+
+
+(2)LDA 的应用场景
+1)模式识别与分类
+在人脸识别系统中，LDA 可以用于提取能够区分不同人脸的特征。通过将人脸图像的高维像素数据投影到 LDA 找到的低维空间中，这些低维特征可以有效地用于分类不同的人脸。同样，在手写数字识别中，LDA 可以帮助找到区分不同数字的特征方向，提高数字分类的准确率。
+
+2)生物医学领域的分类问题
+在疾病诊断中，例如根据基因表达数据来区分癌症和非癌症样本。LDA 可以利用已知的疾病类别标签，找到能够区分不同疾病状态的基因表达模式，从而为疾病的早期诊断和分类提供依据。
+
+
+=> 机器视觉中的应用
+在目标检测和识别中，LDA 可以用于区分不同类型的目标。例如，在交通场景中，通过 LDA 可以找到能够区分汽车、行人、自行车等不同目标的特征方向。将图像中的目标区域提取出来并投影到 LDA 的低维空间中，然后根据这些低维特征进行目标分类。在安防监控系统中，LDA 可以帮助识别不同的行为模式，如正常行走、可疑徘徊等，从而提高监控系统的智能性。
+
+
+=> 自然语言处理中的应用
+在主题模型中，LDA（这里指潜在狄利克雷分配，与线性判别分析同名但不同概念）和线性判别分析 LDA 都有应用。线性判别分析 LDA 可以用于区分不同主题的文本。例如，在学术文献分类中，LDA 可以根据文献的内容和类别标签（如计算机科学、生物学等不同学科领域），找到能够区分不同学科主题的特征方向。这些特征可以用于自动分类学术文献，提高文献检索系统的准确性。
+
+
+=> 机器学习算法中的应用
+在分类算法中，LDA 可以作为一种特征提取和降维方法与其他分类算法结合使用。例如，
+- 在决策树分类器中，将原始数据通过 LDA 降维后再输入到决策树中，可以提高决策树的分类性能。LDA 可以帮助决策树更好地找到区分不同类别数据的特征，减少决策树的深度和复杂度，从而提高分类效率和准确性。
+- 在贝叶斯分类器中，LDA 降维后的特征可以用于估计类条件概率，提高贝叶斯分类器的性能。
+
+
+
+
+
+========================================
+|-- 线性分类判别LDA和二次分类判别QDA(Quadratic Discriminant Analysis)实例
+----------------------------------------
+1.区别：方差是否相同
+线性分类判别
+	对于二分类问题，LDA针对的是：数据服从高斯分布，且均值不同，方差相同。
+
+二次分类判别
+	对于二分类问题，QDA针对的是：数据服从高斯分布，且均值不同，方差不同。
+	数据方差相同的时候，一次判别就可以，如左图所示;但如果方差差别较大，就是一个二次问题了
+
+
+Fisher一个总原则是：投影之后的数据，最小化类内误差，同时最大化类间误差
+
+
+(2)
+QDA 是 LDA (Linear Discriminant Analysis，线性判别分析）的一种扩展形式，与LDA类似，QDA 也是一种基于贝叶斯决策理论的分类器。与LDA不同的是，QDA假设每个类别的协方差矩阵不相同，因此在分类时使用的决策边界是二次曲线。
+
+
+
+
+2.示例
+(1) MASS::qda()
+library(MASS)
+
+# Set a seed for reproducibility
+set.seed(123) 
+
+# Create a training and testing split (e.g., 70% train, 30% test)
+train_index <- sample(1:nrow(iris), 0.7 * nrow(iris))
+train_data <- iris[train_index, ]
+test_data <- iris[-train_index, ]
+
+# 拟合模型
+# Fit the QDA model using the training data
+# The formula `Species ~ .` indicates Species is the dependent variable
+# and all other columns in train_data are independent variables.
+qda_model <- qda(Species ~ ., data = train_data)
+
+# 做预测
+# Predict the species for the test data
+predictions <- predict(qda_model, newdata = test_data)
+
+# The 'class' element of the predictions object contains the predicted classes
+predicted_classes <- predictions$class
+
+
+# 评价模型
+# Create a confusion matrix to assess performance
+confusion_matrix <- table(Actual = test_data$Species, Predicted = predicted_classes)
+print(confusion_matrix)
+# 输出
+				Predicted
+	Actual       setosa versicolor virginica
+	  setosa         14          0         0
+	  versicolor      0         17         1
+	  virginica       0          0        13
+
+# Calculate the accuracy
+accuracy <- mean(predicted_classes == test_data$Species)
+print(paste("Accuracy:", round(accuracy, 4)))
+# [1] "Accuracy: 0.9778"
+
+
+
+
+Ref:
+https://cloud.tencent.com/developer/article/1727290
+
+
+
+========================================
 NMF 非负矩阵分解 与 R 包实现
 ----------------------------------------
 更多原理介绍见 Math/ 线代2
