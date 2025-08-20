@@ -28,8 +28,19 @@ return array (
   ),
 
 
+
   array (
     0 => 3,
+    1 => '网络协议',
+    2 => array (
+      array('http协议','http','txt',),
+      array('技术需求信息','techInfo','txt',),
+    ),
+  ),
+
+
+  array (
+    0 => 4,
     1 => '类C新语言',
     2 => array (
       array('GO语言简介','GO_lang001','html',),
@@ -39,7 +50,7 @@ return array (
 
 
   array (
-    0 => 4,
+    0 => 5,
     1 => '其他语言和框架',
     2 => array (
       array('perl基础','lang-Perl','txt'),

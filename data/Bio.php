@@ -6,7 +6,7 @@ return array (
     1 => '前言与资料',
     2 => array (
       array('项目描述','index','html',),
-      array('参考资料','bio02','html'),
+
       array('FAQ | 科研的哲学思考','bio03-thinking','html'),
       array('进度条','progressBar','html'),
       array('生信云平台技术','cloud_tech','txt'),

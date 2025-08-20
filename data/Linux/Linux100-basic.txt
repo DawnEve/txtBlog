@@ -2957,7 +2957,7 @@ $ ulimit -n
 
 
 ========================================
-如何能实现在web页面中执行执行shell命令？ //todo
+如何能实现在web页面中执行执行shell命令？
 ----------------------------------------
 1. 目的：生信云服务器
 用户使用ftp上传数据文件，
@@ -2970,17 +2970,131 @@ $ ulimit -n
 
 目标3: Rstudio。逐行执行
 
-
-
-2. 
+目标4：耗时任务（耗时几分钟、几小时、甚至几天） 见 Bio/cloud_tech
 
 
 
+2.目标1：后端API方式（推荐）
+project_folder:
+webShell/
+├── app.py          # Flask后端主文件
+├── templates/
+│   └── index.html  # 前端HTML文件
+└── requirements.txt
+
+
+(1)创建后端服务暴露安全接口
+$ cat requirements.txt
+flask==2.0.1
+
+
+$ cat app.py
+from flask import Flask, request, jsonify, render_template
+import subprocess
+
+app = Flask(__name__)
+
+@app.route('/')
+def index():
+    return render_template('index.html')
+
+# 命令白名单
+ALLOWED_COMMANDS = {
+    'disk': 'df -h',
+    'memory': 'free -m'
+}
+
+@app.route('/api/run', methods=['POST'])
+def run_command():
+    command_key = request.json.get('command')
+    if command_key not in ALLOWED_COMMANDS:
+        return jsonify({'error': 'Command not allowed'}), 403
+    
+    try:
+        result = subprocess.run( #使用python调用系统命令
+            ALLOWED_COMMANDS[command_key],
+            shell=True,
+            capture_output=True,
+            text=True,
+            timeout=5
+        )
+        return jsonify({
+            'output': result.stdout,
+            'error': result.stderr
+        })
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+if __name__ == '__main__':
+    app.run(debug=True, host='0.0.0.0',port=8003)
+
+说明：
+	使用Flask创建REST API端点
+	严格限制可执行命令的白名单
+	包含超时和错误处理机制
+	需要前端配合调用该API
+注意: 后端严格过滤和验证命令
+
+
+
+(2)前端通过AJAX调用特定API
+- 使用post发送json格式的命令给后台;
+- 后台接收字符串，并调用 subprocess.run 执行，获取结果;
+- 前台接收，显示到 pre tag中。
+
+$ cat templates/index.html
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Shell Command Runner</title>
+</head>
+<body>
+    <button onclick="runCommand('disk')">Check Disk</button>
+    <button onclick="runCommand('memory')">Check Memory</button>
+    <pre id="output"></pre>
+
+    <script>
+        async function runCommand(cmd) {
+            const response = await fetch('/api/run', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({command: cmd})
+            });
+            const data = await response.json();
+            document.getElementById('output').textContent = 
+                data.output || data.error;
+        }
+    </script>
+</body>
+</html>
+
+
+(3)启动后端
+$ python3 app.py
+
+浏览器查看：http://10.10.117.158:8003
+可见两个按钮: Check Disk | Check Memory
+点击能看到执行结果。
+
+
+
+
+
+
+3. 目标3：失败
 大概的实现可以这么做：
 首先，我觉得它的难点可能在前端的代码上，所以建议采用一些成型的组建来实现，前端你可以考虑开源框架：xterm.js （https://github.com/sourcelair/xterm.js）
 
 后台服务用Python框架tornado框架中的WebTerminalHandler模块。
 后台程序通过使用paramiko进行ssh登陆和交互。
+
+
+
+
+
+
+
+
 
 ref:
 https://coding.imooc.com/learn/questiondetail/63090.html

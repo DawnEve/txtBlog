@@ -14,17 +14,9 @@ return array (
   ),
 
 
-  array (
-    0 => 1,
-    1 => '网络协议',
-    2 => array (
-      array('http协议','http','txt',),
-      array('技术需求信息','techInfo','txt',),
-    ),
-  ),
 
   array (
-    0 => 1,
+    0 => 2,
     1 => 'bootstrap',
     2 => array (
       array('项目描述','bootstrap001','html',),
@@ -36,7 +28,7 @@ return array (
 
 
   array (
-    0 => 1,
+    0 => 3,
     1 => '产品/推广/思维',
     2 => array (
       array('产品思维','product','txt',),

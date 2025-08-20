@@ -378,7 +378,7 @@ https://zh.javascript.info/websocket
 
 
 ========================================
-| websocket 示例：基于node.js后端
+|-- websocket 示例：基于node.js后端
 ----------------------------------------
 
 1. 前端
@@ -500,6 +500,150 @@ socket.on('connection', function connection(conn) {
 ref: 
 https://github.com/Ortonzhang/WebSocket-ws/blob/master/src/demo1/server.js
 https://blog.csdn.net/sinat_36422236/article/details/85051547
+
+
+
+========================================
+|-- WebSocket 示例：基于 python 后台
+----------------------------------------
+1.文件结构
+
+|--app.py
+|--templates/
+|--|--monitor.html
+|--requirements.txt
+
+
+$ cat requirements.txt
+flask==2.0.1
+flask-socketio==5.3.2
+python-engineio==4.3.4
+python-socketio==5.7.2
+
+
+安装包:
+$ pip3 install flask_socketio -i https://pypi.douban.com/simple/
+
+检查版本:
+	$ pip3 list| grep socketio
+	python-socketio                   5.13.0
+	python-engineio                   4.12.2
+	python-socketio                   5.13.0
+
+
+(1) cat app.py
+from flask import Flask, render_template
+from flask_socketio import SocketIO
+import time
+import threading
+
+app = Flask(__name__)
+socketio = SocketIO(app, cors_allowed_origins="*")
+
+tasks = {}
+
+@app.route('/')
+def index():
+    return render_template('monitor.html')
+
+@socketio.on('start_task')
+def handle_start_task(task_id):
+    def background_task():
+        for i in range(1, 101):
+            time.sleep(0.5)  # 模拟耗时操作
+            tasks[task_id] = {'progress': i, 'status': 'running'}
+            socketio.emit('task_update', 
+                         {'task_id': task_id, 
+                          'progress': i,
+                          'status': 'running'})
+        tasks[task_id]['status'] = 'completed'
+        socketio.emit('task_complete', 
+                     {'task_id': task_id, 
+                      'result': 'Task finished successfully'})
+    
+    thread = threading.Thread(target=background_task)
+    thread.start()
+    return {'task_id': task_id}
+
+if __name__ == '__main__':
+    socketio.run(app, debug=True, host="0.0.0.0", port=8004)
+
+
+
+(2) cat templates/monitor.html
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Long Task Monitor</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.0.1/socket.io.js"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-gray-100">
+    <div class="container mx-auto p-8">
+        <h1 class="text-3xl font-bold mb-6">Task Progress Monitor</h1>
+        <button onclick="startTask()" class="bg-blue-500 text-white px-4 py-2 rounded">
+            Start New Task
+        </button>
+        <div id="taskContainer" class="mt-8 space-y-4"></div>
+    </div>
+
+    <script>
+        const socket = io();
+        let currentTaskId = 1;
+        
+        function startTask() {
+            const taskId = `task_${currentTaskId++}`;
+            socket.emit('start_task', taskId);
+            
+            const taskElement = `
+                <div id="${taskId}" class="bg-white p-4 rounded shadow">
+                    <h3 class="font-semibold">Task ID: ${taskId}</h3>
+                    <div class="w-full bg-gray-200 rounded-full h-2.5 mt-2">
+                        <div id="${taskId}_progress" 
+                             class="bg-blue-600 h-2.5 rounded-full" 
+                             style="width: 0%"></div>
+                    </div>
+                    <p id="${taskId}_status" class="mt-2 text-sm">Status: Initializing</p>
+                </div>
+            `;
+            
+            document.getElementById('taskContainer').insertAdjacentHTML('beforeend', taskElement);
+        }
+
+        socket.on('task_update', (data) => {
+            const progressBar = document.getElementById(`${data.task_id}_progress`);
+            const statusText = document.getElementById(`${data.task_id}_status`);
+            
+            progressBar.style.width = `${data.progress}%`;
+            statusText.textContent = `Status: ${data.status} (${data.progress}%)`;
+        });
+
+        socket.on('task_complete', (data) => {
+            const statusText = document.getElementById(`${data.task_id}_status`);
+            statusText.textContent = `Status: completed - ${data.result}`;
+            statusText.classList.add('text-green-600');
+        });
+    </script>
+</body>
+</html>
+
+
+资源文件下载：
+	@J3:/home/wangjl/data4/web/docs/dustbin/tmp/webSocket/static/
+	$ ls -lth
+	total 578K
+	-rw-------+ 1 wangjl jinlab 398K Aug  8 14:05 index.html
+	-rw-------+ 1 wangjl jinlab 181K Apr  1  2021 socket.io.js
+
+
+
+(3)启动
+$ python3 app.py
+
+浏览器查看：http://10.10.117.158:8004
+	点击按钮 Start New Task，可见进度条在逐步增加。
+	但是，不能实现在另一个浏览器标签中查看进度条的效果。
+
 
 
 ========================================

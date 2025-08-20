@@ -1,12 +1,13 @@
-cloud_tech
-
+cloud_tech / 云平台技术探讨：
+	Linux/basic: 如何能实现在web页面中执行执行shell命令？[示例]
+	NGS/pipeline: 通过web页面设置参数，调用后台命令 [只有名词]
+	CS/http: webSocket + python 后端 [示例]
 
 
 国内提供生物信息公有云的厂商还是有多个，比如说聚道科技、基云惠康、华大BGI online等。
 
 
 生信云是云计算市场中必不可少且增长速度最快的部分之一，是云计算行业最具实际应用价值的方向之一：承担人类疾病数据的存储、数据挖掘和知识转化。
-
 
 
 
@@ -726,17 +727,6 @@ ref: https://blog.csdn.net/lly1122334/article/details/115423851
 
 
 ========================================
-低代码平台：plotly.com:  基于python 的 dash
-----------------------------------------
-1. 
-https://plotly.com/
-
-
-
-
-
-
-========================================
 整体框架： 若依开源框架 (开源协议：MIT)
 ----------------------------------------
 http://www.ruoyi.vip/
@@ -783,13 +773,27 @@ https://gitee.com/hplus_admin/hplus
 
 
 
+
+
 ========================================
-低代码平台：无远
+低代码平台：plotly.com 基于python 的 dash
 ----------------------------------------
-https://wuyuan.io/?bd_vid=7774382360994023698
+https://plotly.com/
+
+1. dash: 类似 R 语言的 shiny web 小程序
+https://dash.plotly.com/
+https://plotly.com/dash/
+https://github.com/plotly/dash
+
+教程: https://dash.plotly.com/tutorial
 
 
 
+
+
+
+Ref:
+低代码平台：无远(复旦开发的，重点是企业数字化) https://wuyuan.io/?bd_vid=7774382360994023698
 
 
 
@@ -1128,11 +1132,22 @@ https://blazorexamples.nevron.com/
 
 
 ========================================
-任务队列和后台执行 //todo
+任务队列和后台执行
 ----------------------------------------
 使用任务队列（如Celery）和后台工作进程来执行长时间运行的任务。
 
 1. Celery
+见上文。
+
+生产环境建议：
+- 使用Celery替代简单线程：管理任务并发
+- 添加Redis作为消息代理：代替 WebSocket 获取消息
+- 添加任务取消功能
+
+- 实现任务持久化存储
+- 增加用户认证机制
+
+
 
 
 
@@ -1143,18 +1158,582 @@ https://blazorexamples.nevron.com/
 WebSockets：作为轮询的替代方案，可以使用WebSockets实现服务器与客户端之间的实时通信。
 
 
-========================================
-----------------------------------------
-
 
 
 ========================================
+单点登录(Single Sign On, SSO)：登陆一次，多个子站点都算登录了
 ----------------------------------------
+1.是什么
+(1)SSO 是什么？
+比如天猫、淘宝只需要登陆一个即可实现同时登录。
+
+
+(2)难点
+当用户在 app1.com 中登录后，Session ID 仅在浏览器访问 app1.com 时才会自动在请求头中携带，
+而当浏览器访问 app2.com 时，Session ID 是不会被带过去的。
+
+实现单点登录的关键在于，如何让 Session ID（或 Token）在多个域中共享。
+
+
+
+
+
+
+2.如何实现：同域名下的单点登录
+
+cookie的domin属性设置为当前域的父域，并且父域的cookie会被子域所共享。path属性默认为web应用的上下文路径。
+
+利用 Cookie 的这个特点，没错，我们只需要将Cookie的domain属性设置为父域的域名（主域名），同时将 Cookie的path属性设置为根路径，将 Session ID（或 Token）保存到父域中。这样所有的子域应用就都可以访问到这个Cookie。
+
+不过这要求应用系统的域名需建立在一个共同的主域名之下，如 tieba.baidu.com 和 map.baidu.com，它们都建立在 baidu.com这个主域名之下，那么它们就可以通过这种方式来实现单点登录。
+
+总结：此种实现方式比较简单，但不支持跨主域名。
+
+
+
+
+
+
+
+3.不同域名下的单点登录 标准做法：认证中心
+
+(1) 基本步骤
+
+如果是不同域的情况下，Cookie是不共享的，这里我们可以部署一个认证中心，用于专门处理登录请求的独立的 Web服务。
+
+用户统一在认证中心进行登录，登录成功后，认证中心记录用户的登录状态，并将 token 写入 Cookie（注意这个 Cookie是认证中心的，应用系统是访问不到的）
+
+应用系统检查当前请求有没有 Token，如果没有，说明用户在当前系统中尚未登录，那么就将页面跳转至认证中心。
+
+由于这个操作会将认证中心的 Cookie 自动带过去，因此，认证中心能够根据 Cookie 知道用户是否已经登录过了
+
+=> 如果认证中心发现用户尚未登录，则返回登录页面，等待用户登录。
+
+=> 如果发现用户已经登录过了，就不会让用户再次登录了，而是会跳转回目标 URL，并在跳转前生成一个 Token，拼接在目标URL 的后面，回传给目标应用系统
+
+应用系统拿到 Token之后，还需要向认证中心确认下 Token 的合法性，防止用户伪造。确认无误后，应用系统记录用户的登录状态，并将 Token写入Cookie，然后给本次访问放行。（注意这个 Cookie 是当前应用系统的）当用户再次访问当前应用系统时，就会自动带上这个 Token，应用系统验证 Token 发现用户已登录，于是就不会有认证中心什么事了
+
+此种实现方式相对复杂，支持跨域，扩展性好，是单点登录的标准做法
+
+
+
+这里顺便介绍两款认证中心的开源实现：
+
+* Apereo CAS 是一个企业级单点登录系统，其中 CAS 的意思是”Central Authentication Service“。它最初是耶鲁大学实验室的项目，后来转让给了 JASIG 组织，项目更名为 JASIG CAS，后来该组织并入了Apereo 基金会，项目也随之更名为 Apereo CAS。
+* XXL-SSO  是一个简易的单点登录系统，由大众点评工程师许雪里个人开发，代码比较简单，没有做安全控制，因而不推荐直接应用在项目中，这里列出来仅供参考。
+
+
+
+
+(2) 逐步分析
+角色：浏览器(用户)     系统1       系统2       认证中心(SSO)
+通信过程：
+	用户访问系统1的受保护资源，系统1发现用户未登录，跳转至sso认证中心，并将自己的地址作为参数
+	sso认证中心发现用户未登录，将用户引导至登录页面
+	用户输入用户名密码提交登录申请
+	sso认证中心校验用户信息，创建用户与sso认证中心之间的会话，称为全局会话，同时创建授权令牌
+	sso认证中心带着令牌跳转回最初的请求地址（系统1）
+	系统1拿到令牌，去sso认证中心校验令牌是否有效
+	sso认证中心校验令牌，返回有效，注册/登录系统1
+	系统1使用该令牌创建与用户的会话，称为局部会话，返回受保护资源
+	用户访问系统2的受保护资源
+	系统2发现用户未登录，跳转至sso认证中心，并将自己的地址作为参数
+	sso认证中心发现用户已登录，跳转回系统2的地址，并附上令牌
+	系统2拿到令牌，去sso认证中心校验令牌是否有效
+	sso认证中心校验令牌，返回有效，注册/登录系统2
+	系统2使用该令牌创建与用户的局部会话，返回受保护资源
+
+用户登录成功之后，会与sso认证中心及各个子系统建立会话，用户与sso认证中心建立的会话称为全局会话。
+
+用户与各个子系统建立的会话称为局部会话，局部会话建立之后，用户访问子系统受保护资源将不再通过sso认证中心。
+
+全局会话与局部会话有如下约束关系：
+	局部会话存在，全局会话一定存在
+	全局会话存在，局部会话不一定存在
+	全局会话销毁，局部会话必须销毁
+
+
+(3)单点登录的实现原理说明如下：
+1. 用户首次访问系统A时，需要进行登录。
+2. 系统A带着用户登录信息重定向给认证系统。
+3. 认证系统验证用户登录信息。
+4. 验证通过后，返回一个token
+（Tip：token类似一种内部的通行证，包含了用户身份信息、登录状态和过期时间，在各个系统间共享。）
+5. 认证系统带着token重定向给系统A，得知用户是已登录状态。
+6. 系统A向用户返回请求的资源。
+7. 用户访问系统B时，需要进行登录。
+8. 系统B通过共享的token，得知用户是已登录状态。
+9. 系统B向用户返回请求的资源。
+
+注意：
+	Token是有时效性的，如果用户长时间没有操作，token将会过期。
+	Token过期后用户再次访问系统A、系统B时，登录状态已失效，需要重新登录。
+	对于注销场景，与上述流程类似。
+	用户主动从系统A注销时，系统A调用认证系统，清除token。
+	此时用户再访问系统A、系统B时，通过共享的token得知用户是已注销状态，需要重新登录。
+
+
+(4)问题：系统B怎么知道用户在系统A已经登录过了？ 共享token通过什么关联的。
+我的理解：
+1.只有认证中心有能判定token是否合法的后台代码，且必须和cookie配套。
+2.如果A站点登录过，肯定是通过认证中心登录的，则认证中心肯定也是登录状态（有自己的cookie）。
+3.这时访问B站点，没登录的cookie，跳到认证中心，认证中心有自己的cookie是登录状态，把token拼接到原B站点URL后面，返回该url并继续访问原B站点。
+4.B站点后台接收token，在后台询问认证中心该token是否合法，合法就放行内容。不合法就报错，并显示登录链接/页。
+
+=> token是记录到认证中心的数据库的。
+认证中心的功能：
+- 用户登录：登录后自带cookie，并记录token。
+- 给url添加token：站点A/B/C没登陆，会自动跳转到认证中心
+	- 认证中心没登陆：先登录
+	- 认证中心登录：在URL后拼接上&token=xx后，继续访问原url。
+- 校验token合法性：站点A/B/C带有token，且没登陆，其后台会询问 认证中心 该token合法性，
+	- token 合法：认为登录，设置站点自己的cookie，放行内容展示。
+	- token 非法：登录失败，提示登录链接。
+* 也就是每次访问都要有token才行？否则怎么知道是否已经退出了？
+
+
+
+
+
+3.不同域名下的单点登录: LocalStorage 跨域
+
+(1) 基本步骤
+前面，我们说实现单点登录的关键在于，如何让 Session ID（或 Token）在多个域中共享。
+
+父域 Cookie 确实是一种不错的解决方案，但是不支持跨域。那么有没有什么奇淫技巧能够让 Cookie 跨域传递呢？
+
+很遗憾，浏览器对 Cookie 的跨域限制越来越严格。Chrome 浏览器还给 Cookie 新增了一个 SameSite 属性，此举几乎禁止了一切跨域请求的 Cookie 传递（超链接除外），并且只有当使用 HTTPs 协议时，才有可能被允许在 AJAX 跨域请求中接受服务器传来的 Cookie。
+
+
+不过，在前后端分离的情况下，完全可以不使用 Cookie，我们可以选择将 Session ID （或 Token ）保存到浏览器的 LocalStorage 中，让前端在每次向后端发送请求时，主动将LocalStorage的数据传递给服务端
+
+这些都是由前端来控制的，后端需要做的仅仅是在用户登录成功后，将 Session ID（或 Token）放在响应体中传递给前端。
+
+在这样的场景下，单点登录完全可以在前端实现。前端拿到 Session ID （或 Token ）后，除了将它写入自己的 LocalStorage 中之外，还可以通过特殊手段将它写入多个其他域下的 LocalStorage 中。
+
+
+(2)关键代码如下：
+
+	// 获取 token
+	var token = result.data.token;
+
+	// 动态创建一个不可见的iframe，在iframe中加载一个跨域HTML
+	var iframe = document.createElement("iframe");
+	iframe.src = "http://app1.com/localstorage.html";
+	document.body.append(iframe);
+	// 使用postMessage()方法将token传递给iframe
+	setTimeout(function () {
+		iframe.contentWindow.postMessage(token, "http://app1.com");
+	}, 4000);
+	setTimeout(function () {
+		iframe.remove();
+	}, 6000);
+
+	// 在这个iframe所加载的HTML中绑定一个事件监听器，当事件被触发时，把接收到的token数据写入localStorage
+	window.addEventListener('message', function (event) {
+		localStorage.setItem('token', event.data)
+	}, false);
+
+前端通过 iframe+postMessage() 方式，将同一份 Token 写入到了多个域下的 LocalStorage 中，前端每次在向后端发送请求之前，都会主动从 LocalStorage 中读取Token并在请求中携带，这样就实现了同一份Token 被多个域所共享。
+
+总结：此种实现方式完全由前端控制，几乎不需要后端参与，同样支持跨域。
+
+
+
+
+
+#
+单点登录通过在用户和系统之间引入认证系统。以往用户需要分别对接各个应用系统进行登录/注销，现在用户只需要单独对接认证系统进行登录/注销。
+
+登录状态在各个应用系统间共享，体现了把简单留给用户，把复杂留给后台系统的设计理念。极大节省了用户时间，提高了用户体验。
+
+
+
+
+
+Ref:
+https://cloud.tencent.com/developer/article/1842072
+https://cloud.tencent.com/developer/article/1728690?policyId=1004
+https://blog.csdn.net/qq_53895518/article/details/136869614
 
 
 
 ========================================
+|-- 单点登录(SSO)的核心原理是使用中央认证服务(CAS) 示例
 ----------------------------------------
+1.代码实现
+
+@J3:/home/wangjl/data4/web/docs/dustbin/tmp/webSSO/
+|--auth_server.py
+|--site_a.py
+|--site_b.py
+|--requirements.txt
+
+	$ cat requirements.txt
+	flask==2.0.1
+	requests==2.26.0
+
+(1) 认证中心代码: 简单代码
+至少需要2个接口：
+* login: 用户登录，并产生token
+* verify: 验证token是否合法，通过token在后台偶联并返回username等信息。
+
+$ vim auth_server.py
+from flask import Flask, redirect, request, jsonify, make_response
+import secrets
+import uuid
+
+app = Flask(__name__)
+app.secret_key = secrets.token_hex(32)
+
+USERS = {"user1": "pass123", "user2": "pass456"}
+TOKENS = {}
+
+@app.route('/login', methods=['GET', 'POST'])
+def login():
+    if request.method == 'POST':
+        username = request.form.get('username')
+        password = request.form.get('password')
+        redirect_url = request.args.get('redirect')
+
+        if USERS.get(username) == password:
+            token = str(uuid.uuid4())
+            TOKENS[token] = username
+            # return jsonify({"token": token, "username": username}) #测试用，不会跳转
+            # return redirect(f"{redirect_url}?token={token}")
+            response = make_response(redirect(redirect_url + f"?token={token}"))
+            response.set_cookie('sso_token', token, domain='.biomooc.com', httponly=True, samesite='Lax', # 或 'Strict'
+            secure=False, max_age=3600) # 添加有效期 
+            return response
+        return "Invalid credentials", 401
+
+    # 新增GET请求时的Cookie检查
+    if request.method == 'GET':
+        token = request.cookies.get('sso_token')
+        if token in TOKENS:
+            redirect_url = request.args.get('redirect')
+            if redirect_url:
+                return redirect(f"{redirect_url}?token={token}")
+
+    return '''
+        <form method="post">
+            <input name="username" placeholder="Username">
+            <input type="password" name="password" placeholder="Password">
+            <button type="submit">Login</button>
+        </form>
+    '''
+
+@app.route('/verify')
+def verify():
+    #token = request.args.get('token')
+    token = request.args.get('token') or request.cookies.get('sso_token')
+    if token in TOKENS:
+        return jsonify({"valid": True, "username": TOKENS[token]})
+    return jsonify({"valid": False}), 401
+
+if __name__ == '__main__':
+    app.run(debug=True, host="0.0.0.0", port=8001)
+
+
+测试：
+用户登录 http://10.10.117.158:8001/login?redirect=http://j3.biomooc.com:8006/callback
+	{
+	  "token": "1a26b418-12bb-48e8-9f9f-36e9f271954c",
+	  "username": "user1"
+	}
+
+token是否合法 http://10.10.117.158:8001/verify?token=1a26b418-12bb-48e8-9f9f-36e9f271954c
+	{
+	  "username": "user1",
+	  "valid": true
+	}
+
+
+代码说明：
+	使用Flask创建认证服务器，提供/login和/verify接口
+	登录成功后生成唯一令牌(UUID)并存储
+	其他系统通过验证令牌实现单点登录
+	包含简单的用户数据库模拟和表单界面
+	需要安装Flask依赖运行
+
+典型SSO流程：
+	用户访问系统A → 重定向到认证中心
+	用户登录 → 认证中心返回令牌
+	系统A用令牌验证用户身份
+	用户访问系统B时直接通过令牌认证
+
+
+
+(2)系统1 on J2
+$ cat site_a.py
+from flask import Flask, redirect, request, session
+import requests
+
+app = Flask(__name__)
+#app.secret_key = 'site_a_secret'
+app.secret_key = 'sso_shared_secret'
+AUTH_SERVER = "http://h3.biomooc.com:8001"
+
+@app.route('/')
+def home():
+    #token = session.get('token')
+    token = session.get('token') or request.cookies.get('sso_token')
+    print("site A token=", token)
+    if token:
+        # resp = requests.get(f"{AUTH_SERVER}/verify?token={token}").json()
+        resp = requests.get(f"{AUTH_SERVER}/verify?token={token}", verify=False).json()
+        if resp['valid']:
+            session['token'] = token  # 确保session中也保存
+            return f"欢迎来到站点A，{resp['username']}！<a href='/logout'>登出</a>"
+    
+    return "请<a href='/login'>登录</a>访问站点A"
+
+@app.route('/login')
+def login():
+    return redirect(f"{AUTH_SERVER}/login?redirect=http://j2.biomooc.com:8006/callback")
+
+@app.route('/callback')
+def callback():
+    token = request.args.get('token')
+    if token:
+        session['token'] = token
+    return redirect('/')
+
+@app.route('/logout')
+def logout():
+    session.pop('token', None)
+    return redirect('/')
+
+if __name__ == '__main__':
+    app.run(debug=True, host="0.0.0.0", port=8006)
+
+
+
+(3)系统2 on J3
+$ cat site_b.py
+from flask import Flask, redirect, request, session
+import requests
+
+app = Flask(__name__)
+#app.secret_key = 'site_b_secret'
+app.secret_key = 'sso_shared_secret'
+AUTH_SERVER = "http://h3.biomooc.com:8001"
+
+@app.route('/')
+def home():
+    #token = session.get('token')
+    token = request.cookies.get('sso_token') or session.get('token') # 优先从cookie获取token
+    print("site B token=", token)
+    if token:
+        resp = requests.get(f"{AUTH_SERVER}/verify?token={token}").json()
+        if resp['valid']:
+            session['token'] = token  # 确保session中也保存
+            return f"欢迎来到站点B，{resp['username']}！<a href='/logout'>登出</a>"
+    
+    return "请<a href='/login'>登录</a>访问站点B"
+
+@app.route('/login')
+def login():
+    return redirect(f"{AUTH_SERVER}/login?redirect=http://j3.biomooc.com:8007/callback")
+
+@app.route('/callback')
+def callback():
+    token = request.args.get('token')
+    if token:
+        session['token'] = token
+    return redirect('/')
+
+@app.route('/logout')
+def logout():
+    session.pop('token', None)
+    return redirect('/')
+
+if __name__ == '__main__':
+    app.run(debug=True, host="0.0.0.0", port=8007)
+
+
+(4)启动
+@h3$ python3 auth_server.py
+@J3$ python3 site_a.py
+@J2$ $ python3 site_b.py
+
+开端口：
+	$ sudo iptables -I INPUT -p tcp --dport 8006 -j ACCEPT
+	$ sudo iptables -I INPUT -p tcp --dport 8007 -j ACCEPT
+	$ sudo iptables -I INPUT -p tcp --dport 8001 -j ACCEPT
+
+
+浏览器: http://j2.biomooc.com:8006/
+	1.点击登录访问A: USERS = {"user1": "pass123", "user2": "pass456"}
+	2.http://j2.biomooc.com:8006/
+	欢迎来到站点A，user1！登出
+
+	3.登录站点B: http://j3.biomooc.com:8007
+	不会自动登录，还是让输入用户名和密码。
+
+
+不想使用https，只想使用http。
+	那么就只能是同一个主域名下了。
+	认证 h3.biomooc.com:8001
+	系统1 h2.biomooc.com:8006
+	系统2 h3.biomooc.com:8007
+
+检查 cookie的方法：F12 - Application - 左侧 Cookies。
+
+
+=> try1: 关键修改：所有3个服务使用相同的session密钥(sso_shared_secret): 必要吗？NO。
+	# 在site_a.py和site_b.py中统一配置： app.secret_key = 'sso_shared_secret'  # 必须完全相同
+	gpt 说不用相同。因为不共享session，是把 sso_token set_cookie 设置到 .biomooc.com 域下，site_a 和 site_b 不需要直接共享 Flask session，只要能从 request.cookies['sso_token'] 拿到这个 token，然后去 auth_server/verify 验证，就能识别用户。
+
+=> try2: 不能使用IP地址或localhost，要使用具体的域名。必要吗？Yes.
+	浏览器只允许你给 域名 设置 Domain 属性（例如 .biomooc.com），这样它的所有子域（h3.biomooc.com、j2.biomooc.com、j3.biomooc.com）都能访问到同一个 cookie。
+	IP 地址和 localhost 不支持这种子域共享。
+	SSO 必须使用同一个顶级域名的子域，不能用 localhost 或裸 IP。
+
+=> try3: samesite=None 必须配合 secure=True
+	Chrome、Edge、Firefox 等现代浏览器的策略是：如果 SameSite=None，必须是 Secure (https)，否则浏览器会直接丢弃 cookie。
+
+	你现在是 http + secure=False，所以浏览器根本不会保存 sso_token，也就无法在 j2.biomooc.com 和 j3.biomooc.com 之间共享。
+
+	跨子域共享 cookie 的唯一办法就是设置 domain=.biomooc.com，你已经这么做了，理论没错。问题在于 cookie 被浏览器拒绝了。
+
+	改进：
+		samesite=Lax：大部分情况下允许跨站点跳转时带 cookie（点击链接、重定向），足够用。
+		samesite=Strict：最安全，但跨站点重定向不会带 cookie，不适合 SSO。
+		千万不要 None，因为没有 https 时会直接被丢弃。
+
+登录A，则B也登陆了！
+
+
+
+
+
+2.还有个问题：无法登出！
+实现SSO登出分为两步。
+
+(1)清除认证中心的 cookie 和 token
+在 auth_server.py 里加一个 logout 路由：
+
+@app.route('/logout')
+def logout():
+    token = request.cookies.get('sso_token')
+    if token and token in TOKENS:
+        TOKENS.pop(token)  # 删除服务端 token
+
+    response = make_response("已登出 SSO，<a href='/login'>重新登录</a>")
+    response.set_cookie('sso_token', '', expires=0, domain='.biomooc.com') # 删除 cookie
+    return response
+这样就会删除认证中心保存的 token，并清空 cookie。
+
+
+(2)站点登出时跳到认证中心
+在 site_a.py / site_b.py 的 logout 改成：
+
+@app.route('/logout')
+def logout():
+    session.pop('token', None)
+    return redirect(f"{AUTH_SERVER}/logout")
+
+当用户点登出时，不仅本地 session 清理，还会跳到认证中心清理全局 cookie。
+下次再访问 Site A 或 Site B，就不会自动识别为已登录。
+
+
+补充说明
+	这种登出方式相当于「中心化登出」，所有子站只要把用户送去 auth_server/logout，就能清除全局登录状态。
+
+	如果想更彻底，可以在 auth_server/logout 里调用每个子站的「清理 session API」，但一般只要删掉 cookie + token 就够用了。
+#
+
+
+(3)优化用户体验：退出后从认证中心跳转回推出前的站点
+
+在 auth_server.py 中：
+
+# 支持 redirect 的登出
+@app.route('/logout')
+def logout():
+    token = request.cookies.get('sso_token')
+    if token and token in TOKENS:
+        TOKENS.pop(token)  # 删除服务端 token
+
+    response = make_response("已退出 SSO 登录")
+    response.set_cookie('sso_token', '', expires=0, domain='.biomooc.com')  # 删除 cookie
+
+    redirect_url = request.args.get('redirect')
+    if redirect_url:
+        return redirect(redirect_url)  # 登出后回到来源站点
+
+    return response
+
+
+在 site_a.py 中：
+
+# 登出时带 redirect，回到本站首页
+@app.route('/logout')
+def logout():
+    session.pop('token', None)
+    return redirect(f"{AUTH_SERVER}/logout?redirect=http://j2.biomooc.com:8006/")
+
+
+测试效果：
+	登录 Site A → 自动登录 Site B。
+
+	在 Site A 点击「登出」 → 调用认证中心 /logout，清除全局 token & cookie → 自动跳回 Site A 首页，已是未登录状态。
+
+	在 Site B 再访问时 → 不会再自动登录。
+
+	在 Site B 点击「登出」也同样跳回 Site B 首页。
+
+
+
+(4)优化：从任意站点点击登出，其他站点立即同步退出」（即时通知的全局登出）版本
+即时全局登出（Single Logout, SLO 广播版）
+
+前面那个版本只是“中心清理 cookie”，属于 懒加载退出（访问时才发现过期）。
+如果想要 即时所有站点都退出，需要在登出时通知所有子站，让它们主动清除自己的 session。
+
+方案设计
+	1.认证中心 /logout
+		删除全局 token 和 cookie。
+		遍历配置的子站 URL，逐一调用它们的 /remote_logout 接口。
+	2.子站 /remote_logout
+		接收来自认证中心的请求，清除自己的 session。
+	3.返回确认信息。
+		用户登出
+
+从子站点点击“登出” → 跳到认证中心 /logout?redirect=xxx → 清理全局 cookie + 通知各子站 → 最后回到来源站点首页。
+
+代码：略。
+
+# 认证中心：
+	# 配置需要同步登出的子站
+	REGISTERED_SITES = [
+		"http://j2.biomooc.com:8006/remote_logout",
+		"http://j3.biomooc.com:8007/remote_logout"
+	]
+	# 在 /logout 中:
+		# 通知所有子站清理 session
+		for site in REGISTERED_SITES:
+			try:
+				requests.get(site, timeout=2)
+			except Exception as e:
+				print(f"通知 {site} 失败: {e}")
+
+# 站点A
+	# 接收认证中心的远程登出
+	@app.route('/remote_logout')
+	def remote_logout():
+		session.pop('token', None)
+		return "site A 已清理 session"
+#
+
+
+
+========================================
+|-- 基于OAuth 2.0简化流程，实现单点登录 //todo
+----------------------------------------
+
+
 
 
 
