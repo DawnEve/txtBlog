@@ -1092,10 +1092,105 @@ http://192.168.19.1:81/  You IP address is: 192.168.19.1
 
 
 ========================================
-|-- 后台进程 执行耗时任务 ThreadPoolExecutor
+|-- 后台进程 执行耗时任务 ThreadPoolExecutor(线程池), ProcessPoolExecutor(进程池)
 ----------------------------------------
 # https://blog.csdn.net/caorya/article/details/118700537
 
+1.简介
+
+从Python3.2开始，标准库为我们提供了concurrent.futures模块，它提供了ThreadPoolExecutor和ProcessPoolExecutor两个类，实现了对threading和multiprocessing的进一步抽象（这里主要关注线程池），不仅可以帮我们自动调度线程，还可以做到：
+
+* 主线程可以获取某一个线程（或者任务的）的状态，以及返回值。
+* 当一个线程完成的时候，主线程能够立即知道。
+* 让多线程和多进程的编码接口一致。
+
+Executor是一个抽象类,子类:
+ThreadPoolExecutor和ProcessPoolExecutor ，一个线程池，一个进程池。
+
+* ThreadPoolExecutor 适合 I/O 密集型任务（如网络请求、文件读写），不适合 CPU 密集型任务（推荐用 ProcessPoolExecutor）。
+* 如果任务中有阻塞操作（如 time.sleep 或网络请求），线程池可以显著提高效率。
+* 不要忘记关闭线程池，否则程序可能不会退出。
+
+
+
+
+2.线程池：IO密集型（python的线程是假的，“伪并发”）
+通过时间片轮转的方式替代执行，不是真正的并行计算。
+
+ThreadPoolExecutor 是 Python 中 concurrent.futures 模块提供的一个非常实用的工具，用于管理线程池并简化多线程编程。它可以让你轻松地并发执行函数，而不需要手动管理线程的创建和销毁。
+
+	executor.submit()
+	executor.map()
+
+(1)基本用法
+$ cat test1.py
+from concurrent.futures import ThreadPoolExecutor
+
+def task(n):
+    print(f"Processing {n}")
+    return n * n
+
+with ThreadPoolExecutor(max_workers=5) as executor:
+    results = executor.map(task, [1, 2, 3, 4, 5])
+    for result in results:
+        print(result)
+
+解释：
+	max_workers: 指定线程池中最多同时运行的线程数。
+	executor.map: 类似于内置的 map()，但会并发执行。
+	with 语句确保线程池在任务完成后正确关闭。
+
+执行：
+$ python3 test1.py
+Processing 1
+Processing 2
+Processing 3
+1
+Processing 5
+4
+Processing 4
+9
+16
+25
+
+
+
+(2)提交单个任务
+executor=ThreadPoolExecutor(max_workers=5)
+
+future = executor.submit(task, 10)
+print(future.result())  # 获取返回值
+
+解释：
+	submit() 会返回一个 Future 对象，可以用 .result() 获取结果。
+	submit(函数名，参数列表)
+
+
+(3)批量提交任务
+tasks = [executor.submit(task, i) for i in range(10)]
+for future in tasks:
+    print(future.result())
+
+这种方式适合需要对每个任务单独处理结果或异常。
+
+
+(4)手动关闭线程池
+如果没有使用 with，就需要手动关闭线程池：
+
+executor = ThreadPoolExecutor(max_workers=3)
+
+future = executor.submit(task, 5)
+print(future.result())
+
+executor.shutdown(wait=True)  # 关闭线程池
+
+* shutdown(wait=True) 会等待所有任务完成后再关闭线程池。
+* 如果你设置 wait=False，它会立刻返回，但线程可能还在后台运行。
+
+
+
+
+(4)完整示例
 $ cat flask_demo.py
 import time
 from concurrent.futures import ThreadPoolExecutor
@@ -1122,6 +1217,133 @@ if __name__ == '__main__':
 
 #> python flask_demo.py
 # http://127.0.0.1:5000/test/4
+
+如果任务中有阻塞操作（如 time.sleep 或网络请求），线程池可以显著提高效率。
+不要忘记关闭线程池，否则程序可能不会退出。
+
+为什么必须关闭？
+	如果你不关闭线程池，程序可能会挂起，因为后台线程仍在运行，Python 的主线程不会退出。这在脚本执行完毕后尤其容易被忽略。
+
+	如果你正在写一个长期运行的服务或脚本，也可以考虑用 executor.shutdown() 放在 try...finally 结构里，确保即使出错也能关闭线程池。
+
+
+
+
+
+
+
+3.进程池：CPU计算密集型
+
+ProcessPoolExecutor 是 Python 的 concurrent.futures 模块中的一个类，用于并行执行任务，适合 CPU 密集型操作，因为它使用多个进程而不是线程。
+
+不适合 I/O 密集型任务（比如网络请求），那种情况用 ThreadPoolExecutor 更合适。
+
+
+(1)完整示例
+$ cat t4.py
+from concurrent.futures import ProcessPoolExecutor
+import time
+
+def square(n):
+    print(f"Processing {n}")
+    time.sleep(1)  # 模拟耗时操作
+    return n * n
+
+if __name__ == "__main__":
+    numbers = [1, 2, 3, 4, 5]
+
+    with ProcessPoolExecutor() as executor:
+        results = executor.map(square, numbers)
+
+    print("结果：", list(results))
+
+$ python3 t4.py
+Processing 1
+Processing 2
+Processing 3
+Processing 4
+Processing 5
+结果： [1, 4, 9, 16, 25]
+
+解释：
+	square(n) 是我们要并行执行的函数。不能是 lambda 或嵌套函数。
+	executor.map() 会将 numbers 中的每个元素传给 square()，并在多个进程中并行运行。
+	使用 with 语句可以自动关闭进程池，避免程序挂起。
+	time.sleep(1) 是为了模拟一个耗时任务，让你看到并行的效果。
+#
+
+
+(2)有一个复杂的linux命令(比如很多样本的比对任务，STAR软件)，想用python的线程池控制并发10个
+服务器有200个CPU核，如果占用一半，100核/10进程=10核/进程，再保守点：star用8线程。
+
+# 版本1
+import subprocess
+from concurrent.futures import ProcessPoolExecutor, as_completed
+
+def run_star(sample_id):
+    cmd = f"STAR --runThreadN 8 --genomeDir /path/to/genome --readFilesIn {sample_id}_R1.fastq {sample_id}_R2.fastq --outFileNamePrefix {sample_id}_"
+    try:
+        subprocess.run(cmd, shell=True, check=True)
+        print(f"{sample_id} success!")
+    except subprocess.CalledProcessError as e:
+        print(f"{sample_id} failed: {e}")
+
+sample_list = ["sample1", "sample2", ..., "sampleN"]  # 替换为你的样本列表
+
+# 控制并发任务数为 10
+with ProcessPoolExecutor(max_workers=10) as executor:
+    futures = [executor.submit(run_star, sample) for sample in sample_list]
+    for future in as_completed(futures):
+        future.result()
+
+
+
+# 版本2：需要记录每个star的日志
+import subprocess
+from concurrent.futures import ProcessPoolExecutor, as_completed
+import os
+
+def run_star(sample_id):
+    log_file = f"{sample_id}.log"
+    cmd = [
+        "STAR",
+        "--runThreadN", "8",
+        "--genomeDir", "/path/to/genome",
+        "--readFilesIn", f"{sample_id}_R1.fastq", f"{sample_id}_R2.fastq",
+        "--outFileNamePrefix", f"{sample_id}_"
+    ]
+
+    with open(log_file, "w") as log:
+        try:
+            subprocess.run(cmd, stdout=log, stderr=subprocess.STDOUT, check=True)
+            print(f"{sample_id} success!")
+        except subprocess.CalledProcessError as e:
+            print(f"{sample_id} failed: refer to {log_file}")
+
+# 样本列表（替换为你的实际样本 ID）
+sample_list = ["sample1", "sample2", "sample3", "sample4", "sample5",
+               "sample6", "sample7", "sample8", "sample9", "sample10",
+               "sample11", "sample12", "sample13", "sample14", "sample15"]
+
+# 控制最多并发 10 个任务
+with ProcessPoolExecutor(max_workers=10) as executor:
+    futures = [executor.submit(run_star, sample) for sample in sample_list]
+    for future in as_completed(futures):
+        future.result()  # 捕获异常，确保任务完成
+
+
+解释：
+	每个样本的日志会写入 sampleX.log，包含标准输出和错误信息。
+	使用 subprocess.run(..., stdout=log, stderr=subprocess.STDOUT) 将所有输出写入日志文件。
+	check=True 会在命令失败时抛出异常，方便你捕捉错误。
+	as_completed() 可以按完成顺序处理任务，避免阻塞。
+
+改进：
+	考虑更多star参数，如 --outSAMtype BAM SortedByCoordinate
+	如果样本很多，考虑分批运行或用任务队列（如 joblib 或 snakemake）。
+
+
+* Joblib 是一个用于Python程序中的轻量级并行化和内存优化的库。它特别适用于数据处理和数值计算任务，能够有效地管理内存使用，并提供简单的API来加速数据处理流程。通过使用Joblib，可以轻松地将函数调用和对象持久化到磁盘，从而优化计算效率。
 
 
 

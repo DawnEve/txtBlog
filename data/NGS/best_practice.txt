@@ -170,7 +170,7 @@ http://ju.outofmemory.cn/entry/162253
 
 
 ========================================
-生物信息分析文件夹-目录命名和组织结构：目录结构
+** 生物信息分析文件夹-目录命名和组织结构：目录结构
 ----------------------------------------
 目的：看名字就知道是什么，清晰明了！
 
@@ -186,7 +186,7 @@ project_dir/
 |--docs/ 更多的分析笔记，txt/md/Rmd/
 
 |--data/ 数据文件
-|--|--raw/  原始数据，禁止做任何修改
+|--|--raw/  原始数据，禁止做任何修改，保证可溯源。$ chmod -R ugo-w data/raw/
 |--|--clean/ 清洗后的数据，反复确认，用于后续分析
 
 |--scripts/ 放脚本
@@ -196,19 +196,25 @@ project_dir/
 |--|--analysis/
 |--|--production/
 
-|--R/ 放函数库，方便以后直接写成R包。具体使用时，可以在 scripts/ 中的R中直接引用 source("../R/data_colorsets.R")
+|--R/ 存放公共函数，方便以后直接写成R包。引用方式 source("../R/data_colorsets.R")
 |--|--data_processing.R
 |--|--data_colorsets.R
 |--|--utils/ 一般性工具箱，可以逐步积累
+
+|--src/ 一些R包需要的c++函数: .cpp, .c, .h
 
 
 |--output/ 输出文件，包括中间数据，Rds, txt, pdf, png等
 |--|--pdf/ 放pdf图片文件
 |--|--01_cellCluster/ 最好是按分析目的归类，方便查找。
+对于小项目，还可以更细分为：表格存到 results/，图存到 figures/，报告 (Rmd) 输出到 reports/
 
 |--tests/ 测试文件
 
 |--.gitignore 设置git不跟踪记录 data/, output/ 下的大文件，主要记录脚本等代码部分。
+
+
+
 
 
 2. 详细解释
@@ -220,11 +226,184 @@ $ ln -s /home/wangjl/data/apa/190610APA/ ~/cur
 
 
 (2)对于不同OS的路径，建议使用here包
+不要用 setwd()！
+
 library(here)
 data_path=here("data", "clean", "clean_data.rds")
 
 
-(3)
+(3)用 renv 锁定依赖，保证几年后也能跑通。
+
+renv::init()    # 初始化
+renv::snapshot() # 保存依赖
+renv::restore()  # 别人下载后恢复
+
+
+
+
+
+
+
+
+========================================
+|-- 写一个工具R脚本，快速初始化 R项目的 目录结构
+----------------------------------------
+1.脚本内容
+
+* 收录到 bioToolKit/R_scripts/single_script/init_project.R
+
+$ cat ~/init_project.R
+# Aim: init R project dir structure
+# Usage: > source("init_project.R") to create a clean R project structure, with custom proj name.
+# v0.1
+
+init_project <- function(project_name = "my_project") {
+  dirs <- c(
+    "data/raw",
+    "data/processed",
+    "scripts",
+    "R",
+    "output"
+  )
+  
+  # Create main folder
+  if (!dir.exists(project_name)) {
+    dir.create(project_name)
+  }
+  
+  # Create subfolders
+  for (d in dirs) {
+    dir.create(file.path(project_name, d), recursive = TRUE, showWarnings = FALSE)
+  }
+  
+  # Create README
+  readme_path <- file.path(project_name, "README.md")
+  if (!file.exists(readme_path)) {
+    cat("# ", project_name, "\n\n",
+        "## Project structure\n",
+        "- data/raw: raw input data (DO NOT MODIFY)\n",
+        "- data/processed: cleaned or derived datasets\n",
+        "- scripts/: stepwise R scripts (01_load.R, 02_analysis.R, ...)\n",
+        "- R/: helper functions/utilities\n",
+        "- output/: tables, plots, Rmd\n",
+        file = readme_path, sep = "")
+  }
+
+  # Create template script
+  script_path <- file.path(project_name, "scripts/01_load.R")
+  if (!file.exists(script_path)) {
+    cat("# Example script: Load and clean data\n\n",
+        "library(here)\n\n",
+        "# Load raw data\n",
+        "# df <- read.csv(here::here('data/raw/example.csv'))\n\n",
+        "# Clean / transform data\n",
+        "# df_clean <- df[complete.cases(df), ]\n\n",
+        "# Save processed data\n",
+        "# write.csv(df_clean, here::here('data/processed/cleaned.csv'), row.names = FALSE)\n",
+        file = script_path, sep = "")
+  }
+  
+  # Create .Rproj file (optional if you use RStudio)
+  rproj_path <- file.path(project_name, paste0(project_name, ".Rproj"))
+  if (!file.exists(rproj_path)) {
+    cat("Version: 1.0\n\nRestoreWorkspace: No\nSaveWorkspace: No\nAlwaysSaveHistory: Default\n\n",
+        "EnableCodeIndexing: Yes\nUseSpacesForTab: Yes\nNumSpacesForTab: 2\nEncoding: UTF-8\n\n",
+        "RnwWeave: Sweave\nLaTeX: pdfLaTeX\n",
+        file = rproj_path, sep = "")
+  }
+  
+  message("* Project initialized at: ", normalizePath(project_name))
+}
+
+# Run it once:
+# init_project("my_project")
+
+# 自动提示输入项目名
+project_name <- readline(prompt = "Please input project name( Default: my_project):")
+if (project_name == "") project_name <- "my_project"
+
+init_project(project_name)
+
+
+
+(2)运行
+$ cd /datapool/wangjl/web/docs/dustbin/tmp/test1/
+
+方法1: 直接使用 shell:
+$ Rscript -e 'source("~/init_project.R")' #无法重命名项目名字，只能使用默认的 my_project/
+
+
+方法2: 推荐方法
+$ R
+> source("~/init_project.R")
+Please input project name( Default: my_project):CD4_proj
+* Project initialized at: /datapool/wangjl/web/docs/dustbin/tmp/test1/CD4_proj
+
+
+
+(3)查看效果
+创建文件结构：data/raw, data/processed, scripts, R, results, output
+	考虑: figures, reports
+添加带解释的 README.md
+添加示例代码 scripts/01_load.R.
+如果使用RStudio 创建一个项目文件：my_project.Rproj
+
+
+文件结构：
+	$ ls -ltha CD4_proj/
+	total 24K
+	-rw-------+ 1 wangjl jinlab  195 Aug 22 10:17 CD4_proj.Rproj
+	-rw-------+ 1 wangjl jinlab  252 Aug 22 10:17 README.md
+	drwx------+ 8 wangjl jinlab 4.0K Aug 22 10:00 .
+	drwx------+ 3 wangjl jinlab 4.0K Aug 22 10:00 scripts
+	drwx------+ 2 wangjl jinlab 4.0K Aug 22 10:00 output
+	drwx------+ 2 wangjl jinlab 4.0K Aug 22 10:00 R
+	drwx------+ 4 wangjl jinlab 4.0K Aug 22 10:00 data
+	drwx------+ 4 wangjl jinlab 4.0K Aug 22 10:00 ..
+
+	$ tree CD4_proj/
+	CD4_proj/
+	├── CD4_proj.Rproj
+	├── data
+	│   ├── processed
+	│   └── raw
+	├── output
+	├── R
+	├── README.md
+	└── scripts
+		└── 01_load.R
+
+	6 directories, 3 files
+
+文件内容:
+$ cat CD4_proj/README.md
+# CD4_proj
+
+## Project structure
+- data/raw: raw input data (DO NOT MODIFY)
+- data/processed: cleaned or derived datasets
+- scripts/: stepwise R scripts (01_load.R, 02_analysis.R, ...)
+- R/: helper functions/utilities
+- output/: tables, plots, Rmd
+
+
+$ cat CD4_proj/CD4_proj.Rproj
+Version: 1.0
+
+RestoreWorkspace: No
+SaveWorkspace: No
+AlwaysSaveHistory: Default
+
+EnableCodeIndexing: Yes
+UseSpacesForTab: Yes
+NumSpacesForTab: 2
+Encoding: UTF-8
+
+RnwWeave: Sweave
+LaTeX: pdfLaTeX
+
+
+
 
 
 
@@ -611,7 +790,7 @@ https://zhuanlan.zhihu.com/p/385811397
 
 
 ========================================
-|-- 优秀的R代码绘图实例
+|-- 优秀的R代码绘图实例: on Github
 ----------------------------------------
 https://github.com/DawnEve/ImmunogenomicLandscape-BloodCancers/blob/master/Fig1_plots.R
 

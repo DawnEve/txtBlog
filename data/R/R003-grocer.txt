@@ -4819,6 +4819,248 @@ ref: https://www.bilibili.com/read/cv18203958/
 
 
 
+========================================
+|-- R环境的管理：renv 隔离 / 可携带 / 可重复 的R包管理工具
+----------------------------------------
+1.简介
+代码: https://github.com/rstudio/renv
+文档: https://docs.posit.co/ide/user/ide/guide/environments/r/renv.html
+
+优点：
+* 分离: 安装或者升级R包，不影响其他环境，互相不影响。因为renv提供了私有包库。
+* 可携带：方便把R包从一个电脑转移到另一个电脑，甚至不同平台。
+* 可重复：记录依赖的R包版本，确保安装的是对的。
+
+install.packages("renv")
+
+
+(1)使用方法
+step1: renv::init() 在新的项目目录中执行，初始化一个私有R库
+
+step2: renv::snapshot() 快照当前R包名、版本号到锁文件(renv.lock)。
+	像平时一样，正常安装和移除R包。
+	不定期执行快照。最好在R包升级成功后执行一次。
+
+	* 安装特定版本：通过 renv::install("package@version")指定安装（如ggplot2@3.4.4）
+	* 推荐使用 renv::install()而非 install.packages()保持环境隔离
+		renv::install("dplyr")     # 专为当前环境安装
+		install.packages("ggplot2") # 效果相同，但需手动快照
+	* renv::update()  # 检查更新并自动同步到lock文件
+
+step3: renv::restore() 如果在新环境，该命令会按照 renv.lock 重新恢复R包。
+
+
+若更新导致问题，可结合Git回退到历史版本：
+	renv::history()   # 查看版本记录
+	renv::revert(commit = "abc123")  # 回退到指定提交
+
+
+
+(2)示例
+$ cd /datapool/wangjl/web/docs/dustbin/tmp/
+$ mkdir renv_demo
+$ cd renv_demo/
+$ R
+> renv::init() #出现一屏幕文字，摘要如下：
+
+renv 会在活动文件夹的项目文件中写入文件：
+	renv/ 文件夹
+	renv.lock 文件
+
+使用 renv 的R项目将会使用私有的R库，这是隔离的，与系统上其他R库互相不影响。
+
+另外，renv 将会更新项目目录的文件，包括：
+	- .gitignore
+	- .Rbuildignore
+	- .Rprofile  #我只看到这一个，可能是我没有使用 .Rproj ?
+
+最后，renv 维持一个本地缓存，位置是 "~/.cache/R/renv"
+	可以自定义修改，请看文档：?renv::paths
+
+入门介绍：vignette("renv")
+线上文档：https://rstudio.github.io/renv/
+
+是否继续？输入 y
+	创建文件夹: ~/.cache/R/renv
+	
+	- renv   [* -> 1.1.5]
+
+	The version of R recorded in the lockfile will be updated:
+	- R      [* -> 4.3.2]
+
+	- Lockfile written to "/datapool/wangjl/web/docs/dustbin/tmp/renv_demo/renv.lock".
+	- renv activated -- please restart the R session. #重启R会话。
+
+查版本号：
+	> packageVersion("renv")
+	[1] ‘1.1.5’
+
+
+检查 缓存目录：
+	$ ls -lth ~/.cache/R/renv/
+	total 8.0K
+	drwxr-xr-x. 3 wangjl jinlab 8.0K Aug 21 14:48 cache
+
+检查当前目录：
+	$ ls -ltha
+	total 14K
+	-rw-------+  1 wangjl jinlab   26 Aug 21 15:04 .Rprofile  #只有一行，source 一个R文件
+	-rw-------+  1 wangjl jinlab 2.4K Aug 21 15:04 renv.lock  #快照文件，保存R包及版本
+	drwx------+  6 wangjl jinlab 4.0K Aug 21 14:48 renv       #文件夹
+	drwx------+  5 wangjl jinlab 4.0K Aug 21 14:48 .
+	drwx------+ 27 wangjl jinlab 4.0K Aug 21 14:34 ..
+
+	$ tree -L 5
+	.
+	├── renv
+	│   ├── activate.R
+	│   ├── library
+	│   │   └── R-4.3
+	│   │       └── x86_64-pc-linux-gnu
+	│   │           └── renv  #就是一个正常的R包了
+	│   └── settings.json
+	└── renv.lock
+
+	5 directories, 3 files
+
+	已有的R包：
+	$ ls -lth renv/library/R-4.3/x86_64-pc-linux-gnu/
+	total 4.0K
+	drwx------+ 21 wangjl jinlab 4.0K Aug 21 14:48 renv
+
+重启R
+> q();
+> n
+$ R
+启动文字最后一行：
+- Project '/datapool/wangjl/web/docs/dustbin/tmp/renv_demo' loaded. [renv 1.1.5]
+
+这句话来自哪里呢？为什么会被调用？//todo
+		renv::init()会创建.Rprofile文件，重启R时会调用该文件。
+
+		查看项目目录下的该隐藏文件：
+		$ cat .Rprofile
+		source("renv/activate.R")
+
+		$ wc -l renv/activate.R
+		1334 renv/activate.R #该文件是激活 renv 环境。没找到关键词。
+
+	载入该文件，确实产生那句提示：
+		> source("renv/activate.R")
+		- Project '/datapool/wangjl/web/docs/dustbin/tmp/renv_demo' loaded. [renv 1.1.5]
+
+
+	找关键词：
+		$ find renv/library/R-4.3/x86_64-pc-linux-gnu/ | xargs grep -n "loaded\." --color=auto 2>/dev/null
+		renv/library/R-4.3/x86_64-pc-linux-gnu/renv/config.yml:316:    `Project <path> loaded. [renv <version>]` banner on startup.
+
+		311 - name: "startup.quiet"
+		312   type: "logical[1]"
+		313   default: ~
+		314   description: >
+		315     Be quiet during startup? When set, renv will not display the typical
+		316     `Project <path> loaded. [renv <version>]` banner on startup.
+
+	可能是激活环境时读取一次。是哪一行呢？
+
+		$ cat renv/activate.R | grep -in "config.yml"
+
+		查版本号：
+		$ find renv/library/R-4.3/x86_64-pc-linux-gnu/ | xargs grep -n "packageVersion" --color=auto 2>/dev/null
+		renv/library/R-4.3/x86_64-pc-linux-gnu/renv/NAMESPACE:74:importFrom(utils,packageVersion)
+
+	还是不知道来自哪行代码。
+
+
+
+(3)查看R包路径
+> .libPaths()
+[1] "/datapool/wangjl/web/docs/dustbin/tmp/renv_demo/renv/library/R-4.3/x86_64-pc-linux-gnu"
+[2] "/home/wangjl/.cache/R/renv/sandbox/R-4.3/x86_64-pc-linux-gnu/626f4b31"
+
+查询已经安装的R包的路径：
+> installed.packages()["renv", c("Package", "Version", "LibPath")]
+	 Package
+	  "renv"
+	 Version
+	 "1.1.5"
+	 LibPath
+"/datapool/wangjl/web/docs/dustbin/tmp/renv_demo/renv/library/R-4.3/x86_64-pc-linux-gnu"
+
+
+
+(4)git 记录哪些？
+- renv.lock 必须记录，定期执行 renv::snapshot() 来更新该文件。
+-  renv/library/ 忽略R包本身。
+
+
+(5)R环境激活与失活
+激活: 这时使用项目R库
+renv::activate()
+
+停用：这时使用全局R库
+renv::deactivate()
+
+删除项目下的renv环境，如果后续再使用需要执行 renv::init() 重新创建
+renv::deactivate(clean = TRUE)
+
+
+激活renv环境后，当前项目调用的R包库目录就已经更换。
+> .libPaths() #检查当前使用的R库路径
+
+
+
+
+
+
+
+
+
+2.实例演示-切换Seurat V5/V4环境
+
+共享服务器R包是Seurat V5，如果我的项目需要seurat V4 版本，那么使用renv 可以更好的实现调用吗？
+
+(1)全局安装过V5，在项目局部安装v4
+##激活renv环境,前提是在项目目录已经执行过 `renv::init()`
+renv::activate()
+
+##卸载V5版本
+remove.packages(c("Seurat","SeuratObject"))
+
+#安装Seurat V4
+install.packages('SeuratObject',repos=c('https://satijalab.r-universe.dev'))
+install.packages('Seurat',repos = c('https://satijalab.r-universe.dev'))
+
+#更新renv.lock
+renv::snapshot()
+
+
+(2)对比renv::snapshot() 前后对比Rstudio显示的 Seurat，SeuratObject 的版本号。
+
+##检查
+library(Seurat)
+installed.packages()["Seurat", c("Package", "Version", "LibPath")]  #v4
+installed.packages()["SeuratObject", c("Package", "Version", "LibPath")]
+
+##停用 renv 局部环境R库
+renv::deactivate()
+
+.libPaths() #开始使用全局R库
+
+##检查
+library(Seurat)
+installed.packages()["Seurat", c("Package", "Version", "LibPath")] #v5
+installed.packages()["SeuratObject", c("Package", "Version", "LibPath")]
+
+
+
+如果感觉太复杂，可以直接使用 .libPaths() 切换R包路径。
+
+
+
+Ref:
+https://cloud.tencent.com.cn/developer/article/2512521
+
 
 
 

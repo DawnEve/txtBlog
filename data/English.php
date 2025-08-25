@@ -9,8 +9,17 @@ return array (
       array('参考资料','en002','html'),
       array('FAQ','en003','html'),
       array('学英语方法论','en_method','txt'),
-      array('儿童英语启蒙 Kid','kid_english','txt'),
       array('经典纪录片','documentary','txt'),
+    ),
+  ),
+
+  array (
+    0 => 1,
+    1 => '少儿英语启蒙',
+    2 => array (
+      array('儿童英语启蒙 Kid','kid_english','txt'),
+      array('分级听力 | Oxford Tree','kid01_Oxford-Reading-Tree','txt'),
+      array('分级听力 | little fox','kid02_little_fox','txt'),
     ),
   ),
 

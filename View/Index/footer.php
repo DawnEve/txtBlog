@@ -206,6 +206,7 @@
 			array('https://weiyan.cc/yuque/','维燕的知识花园'), //说的交换biomooc友情链接，它最新更新中竟然不添加我的，立刻删掉对方的。
 			array('https://davetang.org/muse/category/genomics/','davetang(基因组学/R/)'),
 			array('https://felixfan.github.io/tags/','felixfan(R)'),
+			array('https://gps.biocuckoo.cn/index.php','薛宇(华科蛋白修饰预测)'), //构建了多种预测共价修饰底物和位点的计算工具、软件和数据库
 			//array('',''),
 		));
 ?>
