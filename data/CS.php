@@ -6,8 +6,8 @@ return array (
     1 => '前言与资料',
     2 => array (
       array('项目描述','index','html',),
-      array('参考资料','cs002','html'),
-      array('FAQ','cs003','txt'),
+      array('参考资料 | 计科课程','cs002','txt'),
+      array('FAQ | 经验问答','cs003','txt'),
     ),
   ),
 

@@ -3,7 +3,7 @@
 
 
 # 设计模式分为3大类
-理论部分见 `JavaEE/设计模式`;
+理论部分见 `Java/设计模式`;
 
 设计模式: [概述](http://c.biancheng.net/view/1317.html), [博客1](https://blog.csdn.net/qq_33905217/category_10605219.html), [博客2](https://blog.csdn.net/slx3320612540/category_6903175.html), [博客3](https://blog.csdn.net/lovelion/category_738451.html), [目录和实例名](https://blog.csdn.net/LoveLion/article/details/108293317), [菜鸟教程](https://www.runoob.com/design-pattern/design-pattern-tutorial.html)
 
