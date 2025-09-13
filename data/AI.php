@@ -34,6 +34,8 @@ return array (
       array('深度学习与TensorFlow','DL01-TensorFlow','txt',),
       array('深度学习与PyTorch','DL02-PyTorch','txt',),
       array('大模型与transformer','DL03-transformer','txt',),
+
+      array('跟“李沐”学AI-Torch版','DL04-D2L_AI','txt',),
     ),
   ),
 

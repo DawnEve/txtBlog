@@ -1544,7 +1544,101 @@ https://www.htmlwidgets.org/develop_intro.html
 
 
 ========================================
+shiny 调试 debug
 ----------------------------------------
+Shiny debug 主要有三个步骤，分别是调试 (Debugging)，追踪(Tracing) 和错误处理(Error handling)。
+
+
+1.设置断点：browser() 命令
+browser() 本身可以被写到任何地方。
+
+
+2.Tracing 追踪
+
+(1)Showcase Mode
+Shiny 在启动时，runAPP() 有一个选项默认是读取配置文件中的设置，它就是 display.mode。如果我们设置为 display.mode="showcase"，在 Showcase 模式下，代码将与应用程序一起显示，并且程序的 server 端代码在执行时会出现黄色的闪烁进行提醒。这一功能对于可视化哪些部分代码正在执行非常有用。
+
+如果想要默认开启这一功能，可以在该 Shiny 目录下创建一个 DESCRIPTION 文件并写入如下内容：
+
+DisplayMode: Showcase
+Type: Shiny
+
+
+(2)Reactive Log
+在 Shiny 中经常会用到响应对象，当开启 Reactive Log 之后，程序运行时除了可以告诉你正在执行哪些响应之外，日志还可以帮助你可视化展示响应对象之间的依赖关系。在开启一个新的 R session 时首先配置 options(Shiny.reactlog=TRUE)，然后在 Shiny app 中通过 Ctrl + F3 就可以启动可视化的 Reactive Log 文件，也可以在运行 Shiny 后使用 showReactLog 查看。详细信息可以在 官方文档 了解。
+
+
+(3)打印 tracing
+在各种编程语言中，一个万变不离其宗的调试技巧就是不停的输出。在 PHP 里面是不停的 echo，在 R 里可以不停的 cat。使用 cat 可以帮助你在不终止程序的情况下查看变量值。在 Shiny 中，最好的方式是打印标准错误(stderr())。
+
+# generate bins based on input$bins from ui.R
+x    <- faithful[, 2]
+bins <- seq(min(x), max(x), length.out = input$bins + 1)
+cat(file=stderr(), "drawing histogram with", input$bins, "bins", "\n")
+
+进行上述修改后，运行 Shiny 每次调整 input 都会在 console 中打印输出。
+
+
+(4)Shiny Server 进行 tracing
+如果你的程序运行在 server 端而非本地，每次 Shiny 程序运行都会生成 log 文件，默认的路径是 /var/log/Shiny-server/*.log，而这一位置是可以在配置文件中通过 log_dir 进行修改的。如果程序运行没有出现问题，每次 Shiny 运行结束后文件会自动删除，如果报错了则会一直存在于 log 目录等你去宠幸。log 文件的命名格式为 <application directory name>-YYYMMDD-HHmmss-<port number or socket ID>.log 。
+
+
+(5)客户端和服务器端 Tracing
+一个 Shiny 程序包括 client (浏览器) 和 server (R 进程) 两部分。这两者通过 websocket连接，websocket 接收来自客户端的状态，例如输入控件新的赋值，同时发布来自服务器端的状态更改，例如新的输出。在一些比较复杂的情况下，你可以通过打开 trace 来跟踪 JSON 格式的 websocket 内容。
+
+如图所示，在输出内容中，SEND 表示从浏览器发送到 R session 的数据；RECV 表示从 R session 发送到浏览器的数据。
+	R console:
+	SEND {} 发送给后台
+	RECV {} 从后来接收
+
+
+
+
+
+3.Errors 错误
+跑程序最怕看到的就是报错，但是真要有问题了最希望看到的就是明确的报错。
+
+(1)R 报错
+在 Shiny 中大多数报错信息都是由 R 引起的，在 0.13.0 之后的 Shiny 版本中已经有了比较直观的报错形式，会直接给出哪里的程序出现了错误。这里首先人为引入一个报错，当 input 大于 40 的时候停止程序并且抛出 too many bins 的报错信息。
+
+运行程序后调整输入如果错误，可以观察 console 的输出内容：图略。
+	> options(shiny.trace=F)
+	> runApp()
+
+首先直接观察颜色不同的部分，直接告诉我们 app.R 的 43 行代码出现了问题。在报错部分，每一行内容前都有一个数字，例如 1，82，165 和 167，其表示的是在调用栈 (call stack) 中的索引，可以看到这个例子中有接近 170 个调用栈。
+
+
+
+(2)JavaScript errors
+目前 Shiny 有很多第三方 JavaScript 组件，有时如果使用上面几种方式都没有定位到错误相关问题或者没有看到报错信息，很可能是 JavaScript 中发生错误导致程序出现了 bug。毕竟 Shiny 是个网页应用，各种和用户的交互少不了 JavaScript 的使用。
+
+要进行 JavaScript 的调试在 Rstudio 就不灵了。如果你是通过 Rstudio 打开了一个单独 Shiny 页面，可以通过右键单击 Shiny 页面，选择 Inspect element 进入 JavaScript console；如果你的 Shiny 页面是open in browser，也就是在浏览器中打开的，可以直接通过 F12 进入开发者模式打开 JavaScript console 。
+
+在 Shiny 中 UI 的每个部分都会有一个 id 参数，这个 id 对应的参数在浏览器中解析之后就是对应着 HTML 标签中的 id。在 HTML 中，这个 id 是必须唯一（区别于 name）。因此，在 Shiny 的 ui 中每一个 id 参数也必须唯一。解析效果如下图所示：
+
+如果你不小心在 UI 中写入了两个一样的 id，在上图中就有两个标签的 id 都是 a，程序运行后在 Rstudio 并不会抛出什么错误，但是在 Shiny 页面端的各种操作就进行不了。如果不在开发者模式下进行调试只能通过各种方法在 Rstudio 进行测试，但是如果打开 JavaScript 的 console，就会看到其实已经给出了明确的报错信息。
+
+
+(3)shinyjs 针对调试有两个专门的函数，可用于调试js: 
+Functions to improve user experience of your apps
+
+1) showLog
+Print any JavaScript console.log() messages in the R console, to make it easier and quicker to debug apps without having to open the JavaScript console.
+
+这个函数类似于 JavaScript 中的 console.log()，它可以把 JavaScript console 的信息显示在 R console 中而不需要再打开专门的 JavaScript console。
+
+2) logjs
+Print a message to the JavaScript console (mainly used for debugging purposes).
+
+这个函数则可以把信息输出到 JavaScript console 中方便进行调试。
+
+
+
+
+Ref:
+https://kaopubear.top/blog/2019-04-06-debug-shiny-basic/
+https://deanattali.com/shinyjs/overview
+
 
 
 ========================================

@@ -61,8 +61,10 @@ return array (
     0 => 6,
     1 => 'multi media',
     2 => array (
-      array('audition3.0','audition','txt'),
+      array('音频 audition3.0','audition','txt'),
       array('视频处理 premiere等','video_note','txt'),
+      array('游戏与引擎','game_engine','txt'),
+
       array('LaTeX 排版','LaTeX','txt'),
     ),
   ),
