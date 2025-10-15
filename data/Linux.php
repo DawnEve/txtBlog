@@ -30,7 +30,7 @@ return array (
 	  array('用户、权限与日志和安全','linux104-user-auth-log', 'txt'),
 	  array('GPU加速和CUDA编程','linux105-GPU-CUDA', 'txt'),
 
-	  array('多媒体','linux301_mutimedia', 'txt'),
+	  array('多媒体 | 音视频','linux301_mutimedia', 'txt'),
 	  array('编辑器VIM/emacs','editor', 'txt'),
 
 	  array('深入理解计算机系统/CSAPP','csapp', 'txt'),

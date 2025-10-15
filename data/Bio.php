@@ -9,7 +9,7 @@ return array (
 
       array('FAQ | 科研的哲学思考','bio03-thinking','html'),
       array('进度条','progressBar','html'),
-      array('生信云平台技术','cloud_tech','txt'),
+      array('生信云平台技术 Cloud Tech','cloud_tech','txt'),
     ),
   ),
 
@@ -34,6 +34,7 @@ return array (
     2 => array (
       array('投稿经验与教训（基金）','paper_prep','html'),
       array('基金申请 / fund','fund','txt'),
+      array('科研套路 / 课题设计 proj','project_design','txt'),
 
       array('科研故事','story','txt'),
       array('Endnote的使用','endnote','txt'),
