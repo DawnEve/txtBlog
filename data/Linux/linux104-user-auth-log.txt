@@ -2604,6 +2604,14 @@ $ ps -A -o stat,ppid,pid,user,uid,cmd | grep "^[Zz]" | awk '{print $4}' | sort |
 
 
 ========================================
+CPU和或内存被某个人占满了，别人无法使用，甚至无法登录，怎么惩罚？
+----------------------------------------
+参考 c::c++/快速脚本
+
+
+
+
+========================================
 CPU被挖矿了，却找不到哪个进程！ 如何关掉 cimserver 进程？
 ----------------------------------------
 
@@ -4188,7 +4196,114 @@ $ sudo reboot
 
 
 ========================================
+系统被重启，怎么查明原因？ //todo
 ----------------------------------------
+1.描述
+登陆后，发现tmux，web服务都没了。
+查看htop，发现系统启动时间4小时，而不是我以为的几百天。
+
+推算4小时前，大概10:15被重启过。
+我是系统管理员，怎么查明是什么原因？谁做的？
+
+
+(1)系统启动时间
+$ who -b
+system boot  2025-10-31 10:09
+
+$ last reboot
+reboot   system boot  3.10.0-1160.118. Fri Oct 31 10:09 - 15:05  (04:55)
+
+wtmp begins Thu Sep 11 08:06:15 2025
+
+
+
+
+
+
+2.线索
+
+(1)重启记录
+$ sudo cat /var/log/messages | grep -in "reboot"
+41423:Oct 31 10:10:03 jinlab-svr3 kernel: iTCO_wdt: unable to reset NO_REBOOT flag, device disabled by hardware/BIOS
+
+
+$ sudo cat /var/log/messages | grep -in "shutdown"
+41468:Oct 31 10:10:09 jinlab-svr3 systemd: Starting Update UTMP about System Boot/Shutdown...
+41469:Oct 31 10:10:09 jinlab-svr3 systemd: Started Update UTMP about System Boot/Shutdown.
+41746:Oct 31 10:10:19 jinlab-svr3 systemd: Starting Logout off all iSCSI sessions on shutdown...
+41761:Oct 31 10:10:19 jinlab-svr3 systemd: Started Logout off all iSCSI sessions on shutdown.
+42176:Oct 31 10:10:35 jinlab-svr3 dracut: *** Including module: shutdown ***
+
+
+前后最相关的一个 error:
+Oct 31 10:09:54 jinlab-svr3 kernel: ACPI: Power Button [PWRF]
+Oct 31 10:09:54 jinlab-svr3 kernel: ACPI: Requesting acpi_cpufreq
+Oct 31 10:09:54 jinlab-svr3 kernel: ERST: Error Record Serialization Table (ERST) support is initialized.
+Oct 31 10:09:54 jinlab-svr3 kernel: pstore: Registered erst as persistent store backend
+Oct 31 10:09:54 jinlab-svr3 kernel: GHES: APEI firmware first mode is enabled by APEI bit and WHEA _OSC.
+Oct 31 10:09:54 jinlab-svr3 kernel: Serial: 8250/16550 driver, 4 ports, IRQ sharing enabled
+Oct 31 10:09:54 jinlab-svr3 kernel: 00:03: ttyS0 at I/O 0x3f8 (irq = 4) is a 16550A
+Oct 31 10:09:54 jinlab-svr3 kernel: Non-volatile memory driver v1.3
+Oct 31 10:09:54 jinlab-svr3 kernel: Linux agpgart interface v0.103
+Oct 31 10:09:54 jinlab-svr3 kernel: crash memory driver: version 1.1  #内存爆了？
+
+
+AI认为:
+	您提供的日志中 ‌ACPI: Power Button [PWRF]‌ 是关键线索，表明系统检测到了物理电源按钮的触发信号。
+
+$ sudo journalctl --since "2025-10-31 9:00:00" --until "2025-10-31 10:10:00"
+$ sudo journalctl --since "2025-10-30 9:00:00" --until "2025-10-31 9:50:00"
+	搜索 "reboot"、"shutdown" 或 "power" 等关键词。
+	只有这次重启后的日志，之前的没有。
+
+
+
+(2)
+$ sudo cat /var/log/boot.log | grep -in "reboot"
+无内容
+
+$ sudo cat /var/log/boot.log | grep -in "shutdown"
+67:[  OK  ] Listening on Delayed Shutdown Socket.
+158:         Starting Update UTMP about System Boot/Shutdown...
+159:[  OK  ] Started Update UTMP about System Boot/Shutdown.
+239:         Starting Logout off all iSCSI sessions on shutdown...
+249:[  OK  ] Started Logout off all iSCSI sessions on shutdown.
+
+
+
+(3)
+$ sudo cat /var/log/secure | less
+Oct 30 22:43:49 jinlab-svr3 sshd[28771]: pam_unix(sshd:session): session closed for user huyue2023
+Oct 31 00:20:25 jinlab-svr3 sshd[85796]: pam_unix(sshd:session): session closed for user tangguo
+
+Oct 31 10:10:09 jinlab-svr3 polkitd[3833]: Loading rules from directory /etc/polkit-1/rules.d
+Oct 31 10:10:09 jinlab-svr3 polkitd[3833]: Loading rules from directory /usr/share/polkit-1/rules.d
+Oct 31 10:10:09 jinlab-svr3 polkitd[3833]: Finished loading, compiling and executing 11 rules
+Oct 31 10:10:09 jinlab-svr3 polkitd[3833]: Acquired the name org.freedesktop.PolicyKit1 on the system bus
+Oct 31 10:10:19 jinlab-svr3 sshd[4774]: Server listening on 0.0.0.0 port 22.
+Oct 31 10:10:19 jinlab-svr3 sshd[4774]: Server listening on :: port 22.
+Oct 31 10:10:24 jinlab-svr3 gdm-launch-environment]: pam_unix(gdm-launch-environment:session): session opened for user gdm by (uid=0)
+Oct 31 10:10:27 jinlab-svr3 polkitd[3833]: Registered Authentication Agent for unix-session:c1 (system bus name :1.46 [/usr/bin/gnome-shell], object path /org/freedesktop/PolicyKit1/Authent
+icationAgent, locale en_US.UTF-8)
+
+Oct 31 10:10:56 jinlab-svr3 sshd[13328]: pam_unix(sshd:auth): authentication failure; logname= uid=0 euid=0 tty=ssh ruser= rhost=10.10.113.61  user=chuxu
+Oct 31 10:10:56 jinlab-svr3 sshd[13328]: Accepted password for chuxu from 10.10.113.61 port 56758 ssh2
+Oct 31 10:10:56 jinlab-svr3 sshd[13328]: pam_unix(sshd:session): session opened for user chuxu by (uid=0)
+Oct 31 10:20:34 jinlab-svr3 sshd[13775]: pam_unix(sshd:auth): authentication failure; logname= uid=0 euid=0 tty=ssh ruser= rhost=10.10.113.62  user=huyue2023
+Oct 31 10:20:34 jinlab-svr3 sshd[13775]: Accepted password for huyue2023 from 10.10.113.62 port 63884 ssh2
+Oct 31 10:20:34 jinlab-svr3 sshd[13775]: pam_unix(sshd:session): session opened for user huyue2023 by (uid=0)
+
+
+
+(4)
+$ sudo cat /var/log/audit/audit.log | less
+
+
+小结：
+	有人去机房按了重启键。
+	或者内存挤爆，自动重启了。
+
+
 
 
 

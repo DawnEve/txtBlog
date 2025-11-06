@@ -958,7 +958,80 @@ TERM2NAME = go2name)
 ========================================
 |-- clusterProfiler 实例
 ----------------------------------------
-1. 基本方法
+1.主要流程
+(1)gene list
+# 先要有基因列表，通常100-3000个最佳。再大再小效果不好。
+genes=gene.set2
+
+
+(2)转化为gene id
+library(clusterProfiler)
+library(org.Hs.eg.db)
+
+gene_ids <- bitr(genes, fromType = "SYMBOL", toType = "ENTREZID", OrgDb = org.Hs.eg.db)
+# 3.67% of input gene IDs are fail to map...
+
+str(gene_ids) #103
+head(gene_ids)
+#   SYMBOL ENTREZID
+#1   FLNA     2316
+#2  PI4KA     5297
+
+
+(3)做GO分析
+ego <- enrichGO(gene = gene_ids$ENTREZID, 
+               OrgDb = org.Hs.eg.db, 
+               ont = "all",  # 可选BP/MF/CC
+               pAdjustMethod = "BH",
+               qvalueCutoff = 0.05 #过滤显著条目
+)
+#               pvalueCutoff = 0.05,
+#               qvalueCutoff = 0.1)
+str(ego)
+head(ego)
+
+
+# KEGG 分析 - 可选
+kk <- enrichKEGG(gene = gene_ids$ENTREZID, 
+                 organism = "hsa",  # 人类用hsa
+                 pvalueCutoff = 0.05)
+head(kk)
+
+(4)可视化
+# plot1 ‌富集图
+library(enrichplot)
+dotplot(ego, showCategory = 10) #原点图
+barplot(ego, showCategory = 10) #bar图
+
+# plot2 ‌气泡图
+cnetplot(ego, showCategory = 5) #默认绘制gene id
+# 转为gene symbol
+ego2 <- setReadable(ego, OrgDb = org.Hs.eg.db)
+cnetplot(ego2, showCategory = 5)
+
+
+
+
+(5)groupGO() 按层级做GO富集分析，没有显著性概念，只是对基因分类
+# 基本语法
+ego_group=groupGO(gene=gene_ids$ENTREZID,
+        OrgDb=org.Hs.eg.db,
+        keyType = "ENTREZID", #keyType‌: 基因ID类型，支持"ENTREZID"、"SYMBOL"、"ENSEMBL"等
+        ont = "BP", #GO本体类别，包括"BP"(生物过程)、"MF"(分子功能)、"CC"(细胞组分)
+        level = 3) #GO术语的层级，数值越大越具体
+head(ego_group)
+barplot(ego_group, showCategory = 10)
+
+
+例如，在分析转录组数据时，
+groupGO() 可以帮你快速描述差异基因主要涉及哪些细胞器，
+而 enrichGO() 则可以精确地告诉你，这些基因显著富集在“线粒体内膜呼吸链”或“p53信号通路”等具体通路上。
+
+
+
+
+
+2. 基本方法
 #载入包
 #BiocManager::install("AnnotationHub")	#下载安装数据包，缺少的数据包都可以这样安装
 #BiocManager::install("org.Hs.eg.db")
@@ -1010,9 +1083,8 @@ GO富集分析及结果柱状图绘制R代码 https://blog.csdn.net/sinat_306239
 
 
 ========================================
-|-- groupGO()
+|-- 函数 groupGO() 的设计是基于在特定水平的GO分布，从而对基因进行分类，没有显著性概念
 ----------------------------------------
-函数 groupGO() 的设计是基于在特定水平的GO分布，从而对基因进行分类。
 
 library(org.Hs.eg.db)
 ## 转换ID，参数'gene'可以是OrgDb支持的任何ID形式
@@ -1547,8 +1619,11 @@ head(EG2Ensembl)
 
 
 
-2.由于clusterProfiler富集分析推荐的输入文件是Entrez ID，因此这里提取的是Entrez ID，接下来就可以进行富集分析了
-## 对于没有转换的gene ID，clusterProfiler也提供了bitr方法进行转换ID：
+2.clusterProfiler::bitr()进行ID转换
+
+由于clusterProfiler富集分析推荐的输入文件是Entrez ID，因此这里提取的是Entrez ID，接下来就可以进行富集分析了
+
+(1)对于没有转换的gene ID，clusterProfiler提供了bitr方法进行转换ID：
 Usage:
   bitr(geneID, fromType, toType, OrgDb, drop = TRUE)
 
@@ -2037,7 +2112,7 @@ A word of caution: GSEA can be very useful to gain a broad idea of MP function. 
 
 
 ========================================
-|-- 研究KEGG数据结构，制作自己的基因集
+|-- 研究.gmt数据结构，结合 KEGG 数据集: 制作自己的 gene set 文件给gsea软件
 ----------------------------------------
 http://www.bio-info-trainee.com/2144.html
 
@@ -3466,6 +3541,131 @@ https://www.bioconductor.org/packages/release/bioc/vignettes/GSVA/inst/doc/GSVA.
 https://www.cnblogs.com/raisok/p/11039239.html
 https://mp.weixin.qq.com/s?__biz=MzAxMDkxODM1Ng==&mid=2247486641&idx=1&sn=7409d919d179a6fa8bd62b42ec052ca4
 
+
+
+
+========================================
+|-- 单细胞 pseudobulks GSVA
+----------------------------------------
+
+1.实例
+outputRoot="/data/wangjl/scPolyA-seq2/chenxi/PBMC/GSVA/"
+keyword="time"
+options(width=200)
+
+
+# 0. load data ----
+# 1) load rnaM
+library(Seurat)
+scObj=readRDS("/data/wangjl/scPolyA-seq2/chenxi/PBMC/UMAP/star_solo/scObj_final-PBMC_8plates.Star_Solo_PC25res0.8.CellCycle.withDEG.Seurat.Rds")
+DimPlot(scObj, label=T)
+#
+# rnaM=scObj@assays$RNA@counts
+
+
+
+
+
+
+# 2. do GSVA on time group ----
+#(1) 查看分组信息
+table(scObj@meta.data$time)
+
+#(2) 取每组表达均值(pseudo bulk)
+# 设置细胞的Seurat聚类为标识符
+Idents(scObj) <- "time"
+
+# 提取平均值
+expr <- AverageExpression(scObj, assays = "RNA",  slot = "data")[[1]]
+
+#选取非零基因
+expr <- expr[rowSums(expr)>0,] 
+
+# 转换成矩阵格式，以便后续分析
+expr <- as.matrix(expr)
+
+
+# (3)取基因集合
+# 从Molecular Signatures Database获取小鼠生物过程(BP)基因集
+library(msigdbr)
+# genesets <- msigdbr(species = "Mus musculus",category = "C5",subcategory="BP") 
+genesets <- msigdbr(species = "Homo sapiens",category = "C5",subcategory="BP")
+
+# 选择需要的列并转换为数据框
+genesets <- subset(genesets, select = c("gs_name","gene_symbol"))%>% as.data.frame()
+
+# 按基因集名称对基因符号进行分组
+genesets <- split(genesets$gene_symbol,genesets$gs_name)
+
+
+# (4)对表达矩阵进行GSVA分析
+library(GSVA)
+gsva_res <- gsva(expr, genesets, method="gsva")
+
+# (5)提取结果
+gsva.df <- data.frame(Genesets=rownames(gsva_res), gsva_res, check.names = F)
+
+# 查看结果
+dim(gsva.df)
+head(gsva.df)
+
+
+# (6)富集条目整理
+library(stringr)
+
+#去掉首列 
+gsva.df <- gsva.df[,-1] 
+
+# 将下划线替换为空格，并去除前缀
+rownames(gsva.df) <- gsub("_"," ",substr(rownames(gsva.df), 6, nchar(rownames(gsva.df))))
+
+# # 转换为句子格式（首字母大写）
+rownames(gsva.df) <- str_to_sentence(str_to_lower(rownames(gsva.df))) 
+
+# 设置细胞亚群名称
+#colnames(gsva.df) <- c("Cluster 0", "Cluster 1", "Cluster 2",
+#                       "Cluster 3", "Cluster 4")
+# 查看结果
+head(gsva.df)
+
+
+# (7) 保留每个单细胞亚群中 GSVA值最大的n=5个条目
+# 使用apply函数获取每列中最大的三个值的行索引
+rows_to_keep <- unique(unlist(lapply(gsva.df, function(col) {
+  order(col, decreasing = TRUE)[1:10] # 保留前n位
+})))
+
+# 根据索引保留这些行
+filtered_gsva.df <- gsva.df[rows_to_keep, ]
+
+# 查看结果
+head(filtered_gsva.df)
+
+
+# (8) 使用pheatmap 包绘制热图
+# 加载绘图库
+library(pheatmap) 
+
+# 使用pheatmap函数绘制热图
+pdf(paste0(outputRoot, keyword, "_01_CD4T_on_Group_time.pheatmap.pdf"), width=7.5, height=7)
+pheatmap(filtered_gsva.df,  # 输入的数据框，其中包含要展示的GSVA分析结果
+         show_colnames = TRUE,  # 显示列名，即每个聚类的名称
+         angle_col = "315",  # 列名的显示角度，设为315度使得列名从右上斜向左下显示
+         cluster_rows = FALSE,  # 不进行行聚类，即不根据行数据对行进行聚类排序
+         cluster_cols = FALSE,  # 不进行列聚类，即不根据列数据对列进行聚类排序
+         border_color = "white",  # 设置单元格边框颜色为白色
+         fontsize_col = 12,  # 设置列名的字体大小为12
+         fontsize_row = 10)  # 设置行名的字体大小为10
+dev.off()
+#
+
+
+
+
+
+Ref:
+https://blog.csdn.net/longnian01/article/details/141332299
+https://cloud.tencent.com/developer/article/2496463
 
 
 

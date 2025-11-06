@@ -38,7 +38,8 @@ return array (
 
       array('科研故事','story','txt'),
       array('Endnote的使用','endnote','txt'),
-      array('影响因子IF','IF','html'),
+      array('影响因子IF.html','IF','html'),
+      array('如何问问题','how_to_ask_q','txt'),
     ),
   ),
 
