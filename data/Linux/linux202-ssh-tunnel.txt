@@ -1828,6 +1828,144 @@ Ref:
 
 
 ========================================
+|-- 使用跳板机两次跳转 访问内网端口 webPan.py:8000
+----------------------------------------
+1.本地端口转发
+(1)尝试1: failed
+ssh -L 本地端口:内网服务器地址:内网服务器端口 用户名@跳板机地址
+
+$ ssh -L 10086:10.10.118.143:8000 wangjl@gate1.picb.ac.cn
+
+测试：失败
+http://127.0.0.1:10086/
+
+
+(2)尝试2: ok
+ssh -J user@公网IP -L 本地端口:内网服务IP:服务端口 user@内网IP
+$ ssh -J wangjl@gate1.picb.ac.cn -L 10086:j3.biomooc.com:8000 wangjl@j3.biomooc.com
+
+@j3$ ln -s /datapool/wangjl/others /home/wangjl/data4/web/docs/dustbin/tmp/
+
+访问:
+http://127.0.0.1:10086
+
+
+
+(3)-J 参数解释
+-J [user@]host[:port]
+    Connect to the target host by first making a ssh connection to the jump host and then establishing a TCP forwarding to the ultimate destination from there.  Multiple jump hops may be specified separated by comma characters.  This is a shortcut to specify a ProxyJump configuration directive.
+    # 先通过一个跳板机建立一个TCP转发指向最终目标。
+    可以指定多跳，用逗号隔开
+    这是指定 ProxyJump 配置文件指令的简化。
+
+
+
+
+
+2.跳板登录ssh 获取 shell
+ssh -J user@公网IP user@内网IP
+
+$ ssh -J wangjl@gate1.picb.ac.cn wangjl@j3.biomooc.com
+
+
+
+
+
+
+
+
+
+
+
+========================================
+|-- 通过跳板机 双跳 访问内网IP固定的服务: IGV.js 的bam是内网其他主机或端口提供的，且内网IP写死到网页中
+----------------------------------------
+1.最佳方案
+
+(1)问题
+前端页面中有写死局域网IP的bam调用，两次跳转能访问html页面，但是里面另一个IP的调用无法访问。
+var bam_path="http://j3.biomooc.com:8892/list/chenxi/PBMC/18hRep2/"+path0+cid+ suffix;
+
+(2)方案
+SSH 本地端口转发
+X 本机 /etc/hosts 映射内网 IP
+
+不改 A 的任何代码
+不写任何 VPN
+
+
+
+
+
+2.具体执行
+(1)修改hosts文件
+C:\Windows\System32\drivers\etc\hosts
+
+127.0.0.1 10.0.0.23
+127.0.0.1 h3.biomooc.com
+# 10.10.117.158 j3 real local IP
+
+
+
+
+(2A)两跳连接: 示例
+ssh -N \
+  -J user@J.example.com \
+  -L 8090:10.0.0.23:8090 \
+  -L 8080:10.0.0.23:8080 \
+  -L 8892:10.0.0.45:8892 \
+  user@10.0.0.23
+
+或者写 ~/.ssh/config:
+Host jump
+  HostName J.example.com
+  User user
+
+Host inner-a
+  HostName 10.0.0.23
+  User user
+  ProxyJump jump
+  LocalForward 8090 10.0.0.23:8090
+  LocalForward 8080 10.0.0.23:8080
+  LocalForward 8892 10.0.0.45:8892
+
+然后: $ ssh -N inner-a
+
+
+
+(2B) 实例
+$ ssh -N \
+  -J wangjl@gate1.picb.ac.cn \
+  -L 8000:j3.biomooc.com:8000 \
+  -L 8090:j3.biomooc.com:8090 \
+  -L 8080:j3.biomooc.com:8080 \
+  -L 8891:j3.biomooc.com:8891 \
+  -L 8892:j3.biomooc.com:8892 \
+  -L 8099:j3.biomooc.com:8099 \
+  -L 8895:j3.biomooc.com:8895 \
+  wangjl@10.10.117.157
+
+可以访问igv.js了！
+	http://j3.biomooc.com:8090/list/index6B.html?cellType=time&gene=PSMD7&n=5
+
+端口对应关系: 
+	8000 sphinx wiki文档
+	8090 IGV.js
+	8895 R API for cell ids
+	bam files: 8080 8892 8099 8891
+
+
+
+
+
+
+
+
+
+
+
+
+========================================
 基于 mobaXterm 的内网穿透：ssh 终端和 隧道 //todo
 ----------------------------------------
 1. 下载与安装
