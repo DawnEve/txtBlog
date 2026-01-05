@@ -93,4 +93,5 @@ $ git checkout dev
 /index.php?c=summary&k=2023 年度总结
 /index.php?c=summary&k=2024 年度总结
 /index.php?c=search 关键词搜索
+/index.php?c=summary&k=2025 年度总结
 ``````
