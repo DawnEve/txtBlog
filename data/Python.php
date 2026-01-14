@@ -8,7 +8,7 @@ return array (
       array('项目描述','Python001','html',),
       array('参考资料','Python002','html'),
       //array('FAQ','Python003','html'),
-      array('Python准备','Python100','txt',),
+      array('Python准备','Python100_prep','txt',),
       array('Py 最佳实践','Py_best_practice','txt'),
 	  
       array('py过时/老版本-outOfDate','outOfDate','txt'),
@@ -25,6 +25,7 @@ return array (
       array('Python DA可视化','Py104_data_visualization','txt', 'matplotlib, seaborn'), #第四个参数不起作用
       array('Python Web | flask','Py105-web-flask','txt',),
       array('Python Web | Django','Py106-web-Django','txt',),
+      array('Python 与 office','Py107-office_docx','txt',),
     ),
   ),
 

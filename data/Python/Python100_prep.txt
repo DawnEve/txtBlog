@@ -3349,6 +3349,178 @@ $ Rscript -e "head(iris,2)"
 
 
 ========================================
+|-- python 调用shell子程序: os.system()
+----------------------------------------
+注：这些脚本来自于 PhasED-Seq
+
+
+1.py包装：拉取docker镜像
+$ cat phased_seq_docker_pull.py
+import sys
+import os
+
+''' 
+Pulls Phased-Seq modules from Docker Hub.
+'''
+
+def main():
+    PHASED_SEQ_MODULES = ['monitoring']
+    #PHASED_SEQ_MODULES = ['monitoring', 'test2']
+    DOCKER_PULL   = 'docker pull lyronctk/'
+
+    for mod in PHASED_SEQ_MODULES:
+        print(DOCKER_PULL + mod)
+        #os.system(DOCKER_PULL + mod)
+
+
+if __name__ == "__main__":
+    main()
+
+知识点小结:
+	执行命令: os.system("ls -lth /")
+
+
+
+
+
+2.py包装：使用docker运行命令
+
+(1)脚本
+$ cat phased_seq.py
+import sys
+import os
+
+''' Phased-Seq Wrapper
+
+- assumes docker daemon is currently running
+- calls docker containers with the appropriate bind mounts
+- assumes phased_seq_docker_pull.py has been successfully executed on the machine
+
+'''
+
+def main():
+
+    PHASED_MODULES = ['phased_background', 'genotyping', 
+                      'table_filtering', 'monitoring']
+    DOCKER_EXEC   = 'docker run --rm'
+    DOCKER_MEM_UNLIM = '--memory-swap -1'
+
+    args = sys.argv[1:]
+    if not args:
+        usage()
+        return
+
+    target_mod  = args[0]
+    if target_mod not in PHASED_MODULES:
+        print("ERROR: {} is not a valid PhaseSeq module.".format(target_mod))
+        return
+    target_mod = 'lyronctk/' + target_mod
+
+
+    bind_mounts       = ''
+    target_mod_params = ''
+    
+    for arg in args[1:]:
+        '''
+        - mounts each input file directory to a directory with the same name 
+            and path in the docker container
+        - neccessary to access from within docker env
+        - reason why absolute paths are required  
+        '''
+        if '/' in arg:
+            mount_dir = arg[:arg.rfind('/')] #从开头，到从右侧遇到的最后一个字符串
+            bind_mounts += ' -v '
+            bind_mounts += mount_dir + ':' + mount_dir
+
+        # funnel all params to final command
+        target_mod_params += ' ' + arg
+
+    final_cmd = "{} {}{} {}{}".format(DOCKER_EXEC, 
+                                       DOCKER_MEM_UNLIM,
+                                       bind_mounts,
+                                       target_mod,
+                                       target_mod_params)
+    #print(final_cmd)
+    os.system(final_cmd)
+
+
+if __name__ == "__main__":
+    main()
+
+
+知识点小结:
+	1)获取参数列表: args = sys.argv[1:]
+	第0个是 脚本名字本身
+	第1个是 参数本身
+
+	2)组装参数列表： cmd="{} {} {}".format("ls", "-lth", "/"); cmd
+
+	3)字符串是否包含: "/" in "/data"  #True
+		>>> "/da" in "/data"
+		True
+		>>> "/dat2" in "/data"
+		False
+
+	4)从右侧开始查找，返回最后一次出现的位置（从右遇到的第一个）：
+	>>> arg="/data"
+	>>> arg.rfind('/')
+	0
+	>>> arg="data/"
+	>>> arg.rfind('/')
+	4
+	>>> arg="/data/"    #从right开始，遇到的第一个匹配的下标
+	>>> arg.rfind('/')
+	5
+
+
+	rfind() 从字符串末尾向开头查找，返回最后一次出现的位置，
+	而 find() 从开头向末尾查找，返回第一次出现的位置。两者在未找到时均返回 -1
+
+逐行执行：
+>>> arg="/data/doublets_controls_set1"
+>>> arg.rfind('/')
+5
+>>> arg[:arg.rfind('/')]
+'/data'
+
+bind_mounts=""
+mount_dir = arg[:arg.rfind('/')] #从开头，到从右侧遇到的第一个字符串。 切片是一个左闭右开区间 [)
+bind_mounts += ' -v ' + mount_dir + ':' + mount_dir
+
+
+>>> bind_mounts
+' -v /data:/data'
+
+
+
+
+
+
+(2)运行命令
+i)Generate outputs (#1) & (#3):
+$ python3 phased_seq.py phased_background \
+    /data/doublets_controls_set1 0.01 0.05 0.0005 0.05 5 \
+    /data/PHASEDSEQ_2020.bed 1 8 /data/hg19.fa
+
+- note: is_gemline must be set to 1
+
+实际执行的命令是:
+$ docker run --rm --memory-swap -1 \
+	-v /data:/data \
+	-v /data:/data \
+	-v /data:/data \
+	lyronctk/phased_background \
+	/data/doublets_controls_set1 0.01 0.05 0.0005 0.05 5 \
+	/data/PHASEDSEQ_2020.bed 1 8 /data/hg19.fa
+似乎有点奇怪：有几个-v，但是绑定的是同一个路径映射！
+	说明那个映射做的不好，能用，但是不好用。
+	懒得改了。
+
+
+
+
+
+========================================
 |-- python 非阻塞的调用shell子程序: subprocess.Popen()
 ----------------------------------------
 $ cat a.sh
