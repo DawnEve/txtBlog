@@ -24,11 +24,14 @@ return array (
     2 => array (
 	  array('十大常用命令','Linux100-basic', 'txt'),
 	  array('系统安装与维护_磁盘','Linux101-sys-disk', 'txt'),
+	  array('磁盘阵列 RAID','linux106-RAID', 'txt'),
+
 	  array('软件安装_进程_定时任务','Linux102-soft-process-cron', 'txt'),
 	  array('bash和shell编程','Linux103-shell', 'txt'),
 	  array('字符grep/awk/sed','string_process', 'txt'),
 	  array('用户、权限与日志和安全','linux104-user-auth-log', 'txt'),
 	  array('GPU加速和CUDA编程','linux105-GPU-CUDA', 'txt'),
+
 
 	  array('多媒体 | 音视频','linux301_mutimedia', 'txt'),
 	  array('编辑器VIM/emacs','editor', 'txt'),

@@ -1363,6 +1363,441 @@ https://biohpc.cornell.edu/lab/doc/Variant_workshop_Part2.pdf
 
 
 ========================================
+|-- GATK HaplotypeCaller algorithm 的原理: 和 Samtools / bcftools pileup 的差异
+----------------------------------------
+
+1.GATK HaplotypeCaller (HC) 的核心思想可以概括为一句话：
+haplotype / ˈhæpləʊˌtaɪp / n.单体型
+
+不是对每个位点独立做 pileup 判别，而是对“候选变异区间”进行局部重组装（local de novo assembly），再用概率模型进行基因型判定。
+
+下面按算法流程层级系统解释其原理（这是理解 HC 与 Samtools / bcftools pileup 根本差异的关键）。
+
+
+2.关键步骤拆解
+(1)Active Region Detection（活跃区域识别）
+HC 首先扫描全基因组，但不会对每个位点做复杂计算。
+
+它通过以下信号识别 Active Region（可能存在变异的连续区段，通常几十到几百 bp）：
+	mismatch
+	indel signal
+	soft-clipping
+	base quality 加权异常
+计算一个 activity score，超过阈值即标记为 active。
+
+👉 意义
+	降低计算复杂度
+	为后续 assembly 提供连续上下文（尤其对 indel 很关键）
+
+
+
+(2)部 de novo assembly（核心创新）
+对每个 Active Region：
+
+1) 构建 De Bruijn Graph: 德布鲁因图 --> todo?
+	从 reads 中切分 k-mer
+	构建 de Bruijn graph
+	节点：k-mer
+	边：k-1 overlap
+同时包含：
+	参考序列路径（reference path）
+	来自 reads 的变异路径
+
+2) Graph 清理与简化
+	去除低支持分支（noise）
+	合并 bubble
+	限制 haplotype 数量（默认最多 ~128）
+
+3) 生成候选 Haplotype
+最终得到若干条候选 haplotype（序列）：
+	H0: 参考
+	H1: SNP
+	H2: indel
+	H3: SNP+indel
+	...
+👉 这是 HC 能准确识别 indel、复杂变异的根本原因
+
+
+
+(3)Reads → Haplotype 比对（Pair-HMM）
+接下来不是 reads vs reference，而是：
+	reads vs 每一条候选 haplotype
+使用 Pair Hidden Markov Model (Pair-HMM)：
+状态：
+	Match
+	Insertion
+	Deletion
+转移概率：
+	由测序错误率、gap open / extend 决定
+发射概率：
+	来自 base quality
+得到：
+	P(read | haplotype)
+对每个 read × haplotype 都计算一次。
+👉 这是 HC 的统计核心
+
+
+
+
+(4)基因型概率计算（Bayesian Genotyping）
+以二倍体为例，候选基因型：
+	(H0/H0), (H0/H1), (H1/H1), ...
+对某个基因型 G = (Hi, Hj)：
+	P(G|Reads) ∝ P(G) × ∏(reads,  ( P(r|Hi)+P(r|Hj) )/2 )
+
+	通常假设先验 P(G) 相等
+	计算后归一化
+	选择最大后验概率的基因型
+
+并计算：
+	GQ（Genotype Quality）
+	PL（Phred-scaled likelihoods）
+
+
+
+(5)变异输出与规范化
+从 haplotype vs reference 的差异中提取：
+	SNP
+	Indel
+	复杂变异（MNP、compound indel）
+左对齐、规范化
+输出 gVCF / VCF
+
+
+
+
+
+3.HaplotypeCaller 为什么比 pileup 好？
+
+	问题         	pileup  	HaplotypeCaller
+	Indel        	易错位  	assembly 天然支持
+	复杂变异     	几乎不行	haplotype 层面解析
+	测序错误     	位点独立	序列上下文建模
+	Mapping error	难处理  	reads → haplotype
+
+一句话总结：
+	pileup 是“按碱基投票”，HC 是“按序列解释 reads 的来源”。
+
+
+
+
+
+4.HC 的假设与局限
+假设
+	局部区域可由有限 haplotype 表达
+	Reads 错误近似独立
+	错误模型主要来自测序而非结构变异
+局限
+	对大 SV（>50bp）不友好
+	高拷贝重复区 graph 容易爆炸
+	极低覆盖下 assembly 不稳定
+	非二倍体需要特殊参数（如 --ploidy）
+
+
+(2)是否适合HLA typing和HLA loss
+不适合。因为这几个基因相似性太大，又有多倍型，不符合HC的假设。
+
+
+
+
+========================================
+|-- HaplotypeCaller 是否适合100个PCR扩增子的MRD检测？
+----------------------------------------
+1.MRD 监控本质上有三种不同信号类型：
+	MRD 信号         	例子                	算法侧重点
+	已知 SNV / indel	NPM1、DNMT3A hotspot	低频变异检测           x
+	复杂 indel / 重排	FLT3-ITD、NPM1 indel	局部结构解析           *
+	等位 / 克隆比例变化	HLA-loss、LOH       	allele fraction / CN   x
+👉 HaplotypeCaller 只对第 2 类部分友好，对第 1、3 类并不理想。
+
+
+
+2) PCR 扩增子 + HC：算法匹配度分析
+i) PCR 扩增子数据的“反 HC 特性”
+PCR 扩增子测序通常具有：
+	覆盖极深（1,000×–50,000×）
+	read 起止高度一致（边界效应）
+	PCR 错误 ≫ 测序错误
+	等位频率关注点：0.01%–1%
+而 HC 的核心设计是：
+	HC 假设      	扩增子是否满足
+	覆盖均匀    	❌
+	错误独立    	❌（PCR error 相关）
+	二倍体      	❌（MRD 是混合）   ??不也是二倍体？细胞是混合的？
+	等位频率 ≥10%	⚠️
+HC 的 genotype likelihood 框架，天然不为“低频亚克隆”服务。
+
+
+
+ii)HC 在 PCR 扩增子 MRD 中的实际表现
+✅ 它在哪些情况下“还算可以”？
+	中高频（≥5%） indel
+	结构明确、长度稳定的 indel
+	扩增子完整覆盖 indel 区域
+例如：
+	NPM1 type A/B/C indel（诊断期）
+	FLT3-ITD（较大的）
+👉 HC 的 local assembly 在 indel 解析上确实优于 pileup。
+
+
+
+iii)它在哪些情况下明显不合适？
+低频 SNV（<1%）
+	HC 会：
+		强烈偏向 reference genotype
+		直接不报
+UMI 扩增子
+	HC 完全不理解 UMI consensus
+MRD 动态监控
+	你要的是 VAF 连续变化
+	HC 给的是 GT + PL
+👉 HC 的输出目标 ≠ MRD 的临床指标。
+
+
+
+
+2.对比：MRD 场景下更合适的算法范式
+(1)如果你的 MRD 是「已知 hotspot SNV / indel」
+更合适：pileup + error model
+典型工具：
+	VarDict
+	LoFreq
+	FreeBayes（frequency mode）
+	自研 pileup + position-specific error rate
+关键特征：
+	报告 VAF
+	不强制二倍体 genotype
+	对 0.1%–1% 敏感
+
+(2)如果是「复杂 indel / ITD」
+组合策略最稳：
+	HC（候选 indel 发现）
+	+
+	专用 ITD / indel quantification
+例如：
+	FLT3-ITD：getITD / Pindel
+	NPM1：定制 indel parser
+	👉 HC 用来 发现结构，不用来 定量 MRD。
+
+(3)如果是「超低频 MRD（≤0.1%）」
+HC ❌ 完全不合适。
+你需要：
+	UMI
+	duplex consensus
+	position-specific background error
+算法方向：
+	smCounter / fgbio
+	CAPP-Seq error suppression
+	DuplexSeq pipeline
+
+
+
+3.如果你“非要用 HC”，正确姿势是什么？
+✔ 可接受的使用方式（有限）
+	把 HC 当作：indel 候选生成器
+参数上：
+	--ploidy 不要默认 2（但帮助有限）
+	关闭 gVCF joint calling 的幻想
+下游：
+	自己算 VAF
+	不信 GT
+错误期待
+	❌ 指望 HC 给你 MRD 灵敏度
+	❌ 指望 PL / GQ 能区分 0.5% vs 0.1%
+	❌ 指望 HC 处理 PCR 噪声
+
+
+
+
+========================================
+|-- MRD 检测：区分真实克隆 vs 技术噪声
+----------------------------------------
+1.目标
+MRD 的核心不是“有没有变异”，而是：
+	在已知靶点上，稳定、可重复地量化 0.01%–1% 的等位频率变化，
+	并能区分真实克隆 vs 技术噪声。
+
+因此流程遵循三条原则：
+	不强制二倍体基因型（反 HC）
+	显式建模错误率（position-specific）
+	发现 ≠ 定量（indel 结构 vs VAF 分离）
+
+
+(2)penel设计要点
+1)扩增子设计建议
+	项目      	推荐
+	扩增子长度	150–250 bp
+	覆盖目标  	hotspot ± 20 bp
+	GC        	30–70%
+	重叠      	❌ 避免
+	Indel 靶点	单独设计（如 NPM1）
+
+2)是否使用 UMI？（关键分叉）
+	场景     	推荐
+	MRD ≥0.1%	可不加
+	MRD ≤0.1%	必须 UMI
+	纵向随访	强烈建议
+
+没有 UMI 的 MRD，下限通常卡在 0.1% 左右。
+
+
+
+
+2.计算流程
+(1)主线: 总流程图（文字版）
+	FASTQ
+	 ↓
+	Adapter / primer trimming
+	 ↓
+	(UMI) consensus building
+	 ↓
+	Amplicon-aware alignment
+	 ↓
+	候选变异发现
+	 ↓
+	背景错误模型建立
+	 ↓
+	MRD 定量（VAF + CI）
+	 ↓
+	纵向动态与判读
+
+
+(2)具体步骤 + 工具选择
+Step 1：Adapter / Primer trimming（必做）
+目的：
+	去掉 PCR 引物引入的假突变
+	统一 read 边界
+工具：
+	cutadapt（推荐）
+	或 fastp（简单）
+关键参数：
+	必须明确 primer 序列
+	双端一致性过滤
+
+
+Step 2（可选）：UMI 处理（如果有）
+推荐工具
+	fgbio
+	或 smCounter2 pipeline
+流程
+	group by UMI
+	 → read consensus
+	 → duplex（如果有）
+建议阈值
+	单 UMI family ≥3 reads
+	duplex ≥1 正反链
+
+
+
+Step 3：Amplicon-aware 比对
+❌ 不推荐
+	默认 BWA-MEM（会误判 soft-clip）
+✅ 推荐
+	BWA-MEM + 参数调整
+	或 bowtie2（local mode）
+关键点：
+	保留 soft-clipping
+	不强行 indel realignment（HC 会做，pileup 不会）
+
+
+
+Step 4：候选变异发现（“发现层”）
+SNV / 小 indel（<10bp）
+
+推荐工具（任选其一）：
+	工具	原因
+	VarDict	扩增子友好，支持低频
+	LoFreq	position-specific error
+	FreeBayes	frequency mode
+
+关键参数建议：
+	最低 VAF 报告：0.1%
+	最低 supporting reads：5–10
+
+
+复杂 indel / ITD（发现用）
+推荐：
+	GATK HaplotypeCaller（仅此用途）
+	Pindel / getITD（FLT3）
+⚠️ 注意：
+HC 只用于 “结构确认”，不是定量。
+
+
+
+
+
+Step 5：背景错误模型（MRD 的灵魂）
+核心思想
+	每一个位点，都有自己的“噪声指纹”。
+
+构建方法（强烈推荐）
+使用：
+	多个健康对照
+	或患者 remission 样本
+统计：
+	position × alt base × strand  -> error rate distribution
+实践工具
+	自研脚本（最常见）
+	smCounter 内置模型（UMI）
+
+
+
+
+Step 6：MRD 定量（核心输出）
+对每个靶点计算：
+	指标        	含义
+	Alt reads   	支持变异的 reads
+	Total depth 	UMI-consensus 后
+	VAF         	Alt / Total
+	Z-score     	vs 背景错误
+	95% CI      	binomial / beta
+
+
+
+Step 7：阈值判读（你问的重点）
+	🚩 单个位点阳性阈值（推荐）
+	场景	阈值
+	无 UMI	VAF ≥ 0.1% 且 ≥10 reads
+	有 UMI	VAF ≥ 0.01% 且 ≥3 UMI
+	任意	超过背景均值 + 5 SD
+
+样本级 MRD 阳性定义（临床可用）
+推荐 双重标准：
+	至少 1 个 driver 位点 超阈值
+	或 ≥2 个独立位点 同时上升
+
+
+tep 8：纵向动态（比单点更重要）
+推荐指标
+	log10(VAF)
+	fold change vs baseline
+	clone-specific trajectory
+风险信号
+	连续 2 次上升
+	单次 ≥10 倍增长
+
+
+
+
+3.HC 在这套流程里的“正确位置”
+HC = 结构发现工具，不是 MRD 定量工具
+合理使用方式：
+	用途        	是否用 HC
+	indel 结构确认	✅
+	SNV 低频检测	❌
+	MRD 定量    	❌
+	纵向趋势    	❌
+
+
+=> 通过位点特异性背景误差建模与纵向动态分析，实现 0.01%–0.1% 灵敏度的微小残留病监测。
+
+
+
+
+
+
+
+========================================
 |-- Workflow Description Language (WDL)语言
 ----------------------------------------
 1.简介

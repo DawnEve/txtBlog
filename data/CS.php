@@ -45,6 +45,7 @@ return array (
     2 => array (
       array('GO语言简介','GO_lang001','html',),
       array('GO语言基础','GO_lang101-basic','txt',),
+      array('Rust语言基础','Rust_lang201-basic','txt',),
     ),
   ),
 
