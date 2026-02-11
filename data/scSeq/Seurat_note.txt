@@ -2507,6 +2507,81 @@ MultisessionFuture (future_sapply-1) failed to call grmall() on cluster RichSOCK
 
 
 ========================================
+|-- 后台异步执行 FindAllMarkers, 不影响前台继续可视化
+----------------------------------------
+1.启动并行计划（一次即可）
+library(future)
+library(promises)
+
+plan(multisession, workers = 4)  # 或 multicore (Linux)
+
+
+2.异步启动 FindAllMarkers
+markers_future <- future({
+  FindAllMarkers(
+    scObj,
+    only.pos = TRUE,
+    min.pct = 0.25,
+    logfc.threshold = 0.25
+  )
+})
+
+此时：
+	marker 在后台算
+你可以继续：
+	DimPlot(scObj)
+	DotPlot(scObj, features = genes)
+
+
+
+3.随时检查进度 / 状态
+是否完成？
+resolved(markers_future)
+# FALSE / TRUE
+
+
+
+已完成则取结果（不阻塞）
+if (resolved(markers_future)) {
+  scObj.markers <- value(markers_future)
+}
+
+
+4. 获取结果
+强制等待（只有你真正需要时，或者step3为T时），该命令阻塞主进程。
+scObj.markers <- value(markers_future)
+
+保存到Seurat对象中
+scObj@misc[["markers"]] = scObj.markers
+
+
+
+
+
+
+5.捕获错误（非常重要）
+markers_future %...!% {
+  message("FindAllMarkers failed:")
+  print(.)
+}
+
+
+
+优点
+	真正异步
+	不污染主 session
+	非常适合 交互式探索
+注意
+	scObj 会被 完整复制 到 worker
+	内存要够（Seurat 对象很大）
+
+
+
+
+
+
+
+========================================
 |-- 保存 FindAllMarkers 计算结果到R对象
 ----------------------------------------
 

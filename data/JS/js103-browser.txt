@@ -1910,7 +1910,7 @@ location.href="https://baidu.com"
 
 
 ========================================
-|-- 使用js从当前url获取参数
+|-- 使用js从当前url获取参数，解决中文乱码
 ----------------------------------------
 1. 函数:
 //获取url中的参数 https://www.cnblogs.com/vicky-li/p/9145026.html
@@ -1974,6 +1974,137 @@ decodeURIComponent(rs[2]) ##"蓝色"
 小结: 是不是返回值应该加上 decodeURI 函数? 否则汉字不能正常获取。
 
 
+
+========================================
+|-- 使用js从当前url获取多个bam文件：(同名参数，多个参数，参数数组)
+----------------------------------------
+需求：从URL传入多个bam文件，在页面中使用js接收bam文件列表
+	现在只能获取一个bam: http://192.168.1.3:10000/list/sys2.html?bam=http://s5.biomooc.com:8888/file/NGS/TBNGS21-26_bqsr.bam&genome=hg19
+
+AI给了3个实现，我喜欢2(3)
+
+1.URL参数设计
+(1)方法一：多个同名参数（推荐）
+http://192.168.1.3:10000/list/sys2.html?
+bam=http://s5.biomooc.com:8888/file/NGS/TBNGS21-26_bqsr.bam&
+bam=http://s5.biomooc.com:8888/file/NGS/sample2.bam&
+bam=http://s5.biomooc.com:8888/file/NGS/sample3.bam&
+genome=hg19
+
+(2)方法二：JSON数组格式，这个看着很奇怪，不用也罢
+http://192.168.1.3:10000/list/sys2.html?
+bam=["http://s5.biomooc.com:8888/file/NGS/TBNGS21-26_bqsr.bam",
+     "http://s5.biomooc.com:8888/file/NGS/sample2.bam",
+     "http://s5.biomooc.com:8888/file/NGS/sample3.bam"]&
+genome=hg19
+
+(3)方法三：分隔符分割
+http://192.168.1.3:10000/list/sys2.html?
+bam=http://s5.biomooc.com:8888/file/NGS/TBNGS21-26_bqsr.bam,
+     http://s5.biomooc.com:8888/file/NGS/sample2.bam,
+     http://s5.biomooc.com:8888/file/NGS/sample3.bam&
+genome=hg19
+
+
+
+
+
+2.JavaScript代码实现
+(1)方法一的JS实现：bam=x1.bam&bam=2.bam&bam=3.bam
+// 获取URL参数
+function getUrlParams() {
+    const params = new URLSearchParams(window.location.search);
+    const bamFiles = params.getAll('bam'); // getAll获取所有同名参数
+    const genome = params.get('genome');
+    
+    return {
+        bamFiles: bamFiles, // 数组形式
+        genome: genome
+    };
+}
+
+// 使用示例
+const params = getUrlParams();
+console.log('BAM文件列表:', params.bamFiles);
+console.log('基因组版本:', params.genome);
+
+// 遍历所有BAM文件
+params.bamFiles.forEach((bamUrl, index) => {
+    console.log(`BAM ${index + 1}: ${bamUrl}`);
+    // 在这里处理每个BAM文件
+});
+
+
+
+(2)方法二的JS实现（JSON格式）：
+function getUrlParams() {
+    const params = new URLSearchParams(window.location.search);
+    const bamParam = params.get('bam');
+    const genome = params.get('genome');
+    
+    let bamFiles = [];
+    if (bamParam) {
+        try {
+            // 解析JSON数组
+            bamFiles = JSON.parse(decodeURIComponent(bamParam));
+        } catch (e) {
+            // 如果不是JSON，回退到单个文件
+            bamFiles = [bamParam];
+        }
+    }
+    
+    return { bamFiles, genome };
+}
+
+
+(3)方法三的JS实现（分隔符分割）：我喜欢 bam=1.bam,2.bam,3.bam
+function getUrlParams() {
+    const params = new URLSearchParams(window.location.search);
+    const bamParam = params.get('bam');
+    const genome = params.get('genome');
+    
+    let bamFiles = [];
+    if (bamParam) {
+        // 按逗号分割，并清理空白字符
+        bamFiles = bamParam.split(',')
+            .map(url => url.trim())
+            .filter(url => url.length > 0);
+    }
+    
+    return { bamFiles, genome };
+}
+
+
+我的测试:
+/* 批量获取多个BAM URL的函数
+input bam=1.bam,2.bam,3.bam
+output ["1.bam", "2.bam", "3.bam"]
+*/
+function getUrlParamMuti(name="bam") {
+    const params = new URLSearchParams(window.location.search);
+    const bamParam = params.get(name);
+
+    let bamFiles = [];
+    if (bamParam) {
+        // 按逗号分割，并清理空白字符
+        bamFiles = bamParam.split(',')
+            .map(url => url.trim())
+            .filter(url => url.length > 0);
+    }
+    
+    return bamFiles;
+}
+getUrlParamMuti("bam")
+
+
+
+
+
+
+
+
+
+
 ========================================
 |-- js改变URL地址栏但是不刷新页面
 ----------------------------------------
@@ -2005,11 +2136,54 @@ window.history.pushState({},0,valiable);
 
 
 
+3.不刷新，在当前url中添加或者更新 locus= 参数
+
+/**
+ * 更新URL中的locus参数（不刷新页面）
+ * @param {string} locusValue - 新的locus值，如"chr1:1000-2000"
+ * @param {boolean} replace - 是否替换当前历史记录（默认false，新增记录）
+ */
+function updateLocusParam(locusValue, replace = false) {
+    // 获取当前URL
+    const url = new URL(window.location.href);
+    const params = url.searchParams;
+    
+    // 设置或更新locus参数
+    if (locusValue) {
+        params.set('locus', encodeURIComponent(locusValue));
+    } else {
+        params.delete('locus'); // 如果要删除参数
+    }
+    
+    // 更新URL（不刷新页面）
+    const newUrl = url.toString();
+    
+    if (replace) {
+        // 替换当前历史记录
+        history.replaceState(null, '', newUrl);
+    } else {
+        // 添加新的历史记录（用户可以点击后退按钮）
+        history.pushState(null, '', newUrl);
+    }
+    
+    return newUrl;
+}
+
+// 使用示例
+document.getElementById('update-btn').addEventListener('click', () => {
+    const locus = document.getElementById('locus-input').value;
+    updateLocusParam(locus);
+    console.log('URL已更新:', window.location.href);
+});
+
+
+
+
 
 ref:
 history https://developer.mozilla.org/en-US/docs/Web/API/History_API
 location https://www.w3schools.com/jsref/obj_location.asp
-
+gitee.com/dawnEve/scIGV::sys分支::sys2.html
 
 
 

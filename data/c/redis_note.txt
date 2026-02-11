@@ -86,6 +86,12 @@ save 60 10000 #60s(1min)内有10000个写入
 
 4. redis高可用：哨兵原理
 
+
+
+
+
+
+
 5. redis 集群原理
 
 
@@ -98,7 +104,7 @@ save 60 10000 #60s(1min)内有10000个写入
 
 
 ========================================
-安装 (默认端口 6379)
+安装 (默认端口 6379): redis-6
 ----------------------------------------
 
 1. 使用 apt 安装
@@ -150,7 +156,9 @@ PONG
 OK
 127.0.0.1:6379> get foo
 "bar"
-127.0.0.1:6379> 
+127.0.0.1:6379>
+
+
 
 
 
@@ -237,6 +245,548 @@ https://www.runoob.com/redis/redis-data-types.html
 
 
 
+
+
+========================================
+docker版的: redis-7
+----------------------------------------
+1.怎么启动的？
+(1)镜像
+$ docker images
+REPOSITORY  TAG  IMAGE ID       CREATED         SIZE
+redis       7    4075a3f8c3f8   13 months ago   117MB
+
+(2)容器
+$ docker ps
+CONTAINER ID   IMAGE      COMMAND                   CREATED        STATUS       PORTS                                        NAMES
+dde9ddaa6bf8   redis:7    "docker-entrypoint.s…"   9 months ago   Up 3 weeks   0.0.0.0:56379->6379/tcp, :::56379->6379/tcp   Redis7
+
+(3)启动命令
+$ docker top dde9d
+$ docker top Redis7
+UID                 PID                 PPID                C                   STIME               TTY                 TIME                CMD
+rstudio+            5672                5619                0                   1月14               ?                   02:44:32            redis-server *:6379
+这将会列出容器的进程ID、用户、CPU时间等。
+
+
+路径映射：
+$ docker inspect dde9d
+	"Binds": [
+		"/rawdata/opt/service/redis/data:/data:rw"
+	]
+
+参数列表：
+$ docker inspect --format='{{.Config.Cmd}}' dde9d
+[redis-server --appendonly yes --requirepass TXolIyjfqJ9gDAPw7RGa --databases 64]
+
+参数解析:
+	redis-server              # Redis服务器主程序
+	--appendonly yes          # 启用AOF持久化
+	--requirepass TXolIyjfqJ9gDAPw7RGa  # Redis访问密码
+	--databases 64            # 设置数据库数量为64个
+
+原始的 docker run 命令可能是这样的：
+* 为了防止冲突，做了2处修改：--name Redis7-> Redis7B; -p 56379->56378
+$ docker run --name Redis7B \
+  -p 56378:6379 \
+  -v /rawdata/opt/service/redis/data:/data \
+  -d redis:7 \
+  redis-server \
+    --appendonly yes \
+    --requirepass TXolIyjfqJ9gDAPw7RGa \
+    --databases 64
+
+$ docker ps
+CONTAINER ID   IMAGE      COMMAND                   CREATED         STATUS         PORTS                                          NAMES
+306bbe14ddfa   redis:7    "docker-entrypoint.s…"   6 seconds ago   Up 3 seconds   0.0.0.0:56378->6379/tcp, :::56378->6379/tcp    Redis7B
+dde9ddaa6bf8   redis:7    "docker-entrypoint.s…"   9 months ago    Up 3 weeks     0.0.0.0:56379->6379/tcp, :::56379->6379/tcp    Redis7
+
+
+(4)注意事项
+密码安全：你的密码 TXolIyjfqJ9gDAPw7RGa 已经在命令行中暴露
+建议安全措施：使用环境变量代替明文密码
+$ docker run --name redis-container \
+  -e REDIS_PASSWORD=TXolIyjfqJ9gDAPw7RGa \
+  -d redis \
+  redis-server --requirepass ${REDIS_PASSWORD}
+
+
+
+
+
+
+========================================
+|-- 连接
+----------------------------------------
+
+2.连接
+(1)连接
+进入容器内部使用redis-cli
+$ docker exec -it Redis7B redis-cli -a TXolIyjfqJ9gDAPw7RGa
+
+Warning: Using a password with '-a' or '-u' option on the command line interface may not be safe.
+127.0.0.1:6379>
+
+
+或者从外部连接（如果端口已映射）
+# redis-cli -h localhost -p 6379 -a TXolIyjfqJ9gDAPw7RGa
+
+
+# 进入容器
+docker exec -it Redis7 bash
+# 然后在容器内部连接
+redis-cli -a TXolIyjfqJ9gDAPw7RGa
+
+127.0.0.1:6379> quit #退出
+
+
+
+(2)验证连接
+连接后可以使用以下命令测试：
+
+# 测试连接
+127.0.0.1:6379> PING  # 应该返回 PONG
+PONG
+
+# 查看信息
+127.0.0.1:6379> INFO server
+	# Server
+	redis_version:7.4.2
+	redis_git_sha1:00000000
+	redis_git_dirty:0
+	redis_build_id:58bcfb204733694a
+	redis_mode:standalone
+	os:Linux 5.4.0-150-generic x86_64
+	arch_bits:64
+	monotonic_clock:POSIX clock_gettime
+	multiplexing_api:epoll
+	atomicvar_api:c11-builtin
+	gcc_version:12.2.0
+	process_id:1
+	process_supervised:no
+	run_id:dd51f1fe9ce5e458dfd0f0a92621fc5f2b2382c3
+	tcp_port:6379
+	server_time_usec:1770256381283430
+	uptime_in_seconds:240
+	uptime_in_days:0
+	hz:10
+	configured_hz:10
+	lru_clock:8648701
+	executable:/data/redis-server
+	config_file:
+	io_threads_active:0
+	listener0:name=tcp,bind=*,bind=-::*,port=6379
+
+# 查看数据库数量
+127.0.0.1:6379> CONFIG GET databases
+	1) "databases"
+	2) "64"
+
+
+
+(3)监控状态
+$ docker exec -it Redis7B redis-cli -a TXolIyjfqJ9gDAPw7RGa --stat
+Warning: Using a password with '-a' or '-u' option on the command line interface may not be safe.
+------- data ------ ---------- ---------- load --------- ---------- - child -
+keys       mem      clients blocked requests            connections          
+115        4.47M    2       0       7 (+0)              2           
+115        4.45M    2       0       8 (+1)              2           
+115        4.45M    2       0       9 (+1)              2
+...
+
+
+
+
+
+========================================
+|-- 查询数据
+----------------------------------------
+
+3.查询数据
+(1)查看所有键（数据）
+127.0.0.1:6379> INFO keyspace
+# Keyspace
+db6:keys=115,expires=0,avg_ttl=0,subexpiry=0
+
+
+查看所有键（小心，如果数据量大可能会卡）
+127.0.0.1:6379> KEYS *
+(empty array)
+
+查看匹配特定模式的键
+127.0.0.1:6379> KEYS USER:*
+(empty array)
+127.0.0.1:6379> KEYS session:*
+(empty array)
+127.0.0.1:6379> KEYS cache:*
+(empty array)
+
+
+(2)分数据库查看
+127.0.0.1:6379> SELECT 0
+OK
+127.0.0.1:6379> DBSIZE
+(integer) 0
+
+# 遍历所有数据库查看数据量
+$ for i in {0..63}; do echo "Database $i:"; redis-cli -p 56379 -a TXolIyjfqJ9gDAPw7RGa -n $i DBSIZE; done
+
+
+
+等有数据了再试查询:
+//todo ing
+
+
+
+
+
+
+
+========================================
+|-- 写入数据，然后查询
+----------------------------------------
+
+4.写入数据，再查询
+(1)字符串 String
+# 设置简单的键值对
+SET user:1001:name "张三"
+SET user:1001:age "25"
+SET user:1001:email "zhangsan@example.com"
+
+# 设置带过期时间的键（60秒后过期）
+SET session:abc123 "user_data" EX 60
+
+
+# 计数器
+SET article:views 0
+INCR article:views
+INCR article:views
+
+	127.0.0.1:6379> SET article:views 0
+	OK
+	127.0.0.1:6379> INCR article:views
+	(integer) 1
+	127.0.0.1:6379> INCR article:views
+	(integer) 2
+
+查询所有键
+	KEYS *    # 查看所有键
+
+	# 查看特定模式的键
+	KEYS user:*
+	KEYS product:*
+	KEYS *:tags
+
+
+(2)哈希类型（Hash）
+# 存储用户对象
+HSET user:1002 name "李四"
+HSET user:1002 age 28
+HSET user:1002 city "北京"
+HSET user:1002 profession "工程师"
+
+# 批量设置
+HMSET product:1003 id 1003 name "iPhone 15" price 6999 stock 100 category "手机"
+
+查询同(1)
+
+
+(3)列表类型（List）
+# 添加任务队列
+LPUSH tasks "发送邮件"
+LPUSH tasks "备份数据"
+LPUSH tasks "生成报告"
+
+# 添加消息列表
+RPUSH messages "用户登录成功"
+RPUSH messages "订单创建完成"
+RPUSH messages "支付处理中"
+
+
+(4)集合类型（Set）
+# 用户标签
+SADD user:1001:tags "VIP"
+SADD user:1001:tags "活跃用户"
+SADD user:1001:tags "新用户"
+
+# 文章标签
+SADD article:1001:tags "技术"
+SADD article:1001:tags "编程"
+SADD article:1001:tags "Redis"
+
+
+(4)有序集合（Sorted Set）
+# 排行榜
+ZADD leaderboard 1500 "玩家A"
+ZADD leaderboard 2000 "玩家B"
+ZADD leaderboard 1800 "玩家C"
+
+# 按时间排序
+ZADD recent_logs 1633046400 "日志1"
+ZADD recent_logs 1633132800 "日志2"
+ZADD recent_logs 1633219200 "日志3"
+
+
+
+
+
+
+
+
+
+5.查询添加的数据
+(1)查询所有键
+# 查看所有键
+KEYS *
+
+# 查看特定模式的键
+KEYS user:*
+KEYS product:*
+KEYS *:tags
+
+127.0.0.1:6379> KEYS user:*
+	1) "user:1002"
+	2) "user:1001:age"
+	3) "user:1001:name"
+	4) "user:1001:tags"
+	5) "user:1001:email"
+127.0.0.1:6379> KEYS product:*
+	1) "product:1003"
+
+127.0.0.1:6379> KEYS *:tags
+	1) "article:1001:tags"
+	2) "user:1001:tags"
+
+
+(2)查询字符串类型
+# 获取单个值
+GET user:1001:name
+
+# 获取多个值
+MGET user:1001:name user:1001:age user:1001:email
+
+# 查看计数器
+GET article:views
+
+127.0.0.1:6379> GET user:1001:name
+	"\xe5\xbc\xa0\xe4\xb8\x89"
+127.0.0.1:6379> MGET user:1001:name user:1001:age user:1001:email
+	1) "\xe5\xbc\xa0\xe4\xb8\x89"
+	2) "25"
+	3) "zhangsan@example.com"
+127.0.0.1:6379> GET article:views
+	"2"
+
+
+(3)查询哈希类型
+# 获取所有字段
+HGETALL user:1002
+
+# 获取特定字段
+HGET user:1002 name
+HGET user:1002 city
+
+# 获取多个字段
+HMGET user:1002 name age profession
+
+# 获取所有字段名
+HKEYS user:1002
+
+# 获取所有字段值
+HVALS user:1002
+
+127.0.0.1:6379> HGETALL user:1002
+	1) "name"
+	2) "\xe6\x9d\x8e\xe5\x9b\x9b"
+	3) "age"
+	4) "28"
+	5) "city"
+	6) "\xe5\x8c\x97\xe4\xba\xac"
+	7) "profession"
+	8) "\xe5\xb7\xa5\xe7\xa8\x8b\xe5\xb8\x88"
+
+127.0.0.1:6379> HGET user:1002 name
+	"\xe6\x9d\x8e\xe5\x9b\x9b"
+
+127.0.0.1:6379> HGET user:1002 city
+	"\xe5\x8c\x97\xe4\xba\xac"
+
+127.0.0.1:6379> HMGET user:1002 name age profession
+	1) "\xe6\x9d\x8e\xe5\x9b\x9b"
+	2) "28"
+	3) "\xe5\xb7\xa5\xe7\xa8\x8b\xe5\xb8\x88"
+
+127.0.0.1:6379> HKEYS user:1002
+	1) "name"
+	2) "age"
+	3) "city"
+	4) "profession"
+
+127.0.0.1:6379> HVALS user:1002
+	1) "\xe6\x9d\x8e\xe5\x9b\x9b"
+	2) "28"
+	3) "\xe5\x8c\x97\xe4\xba\xac"
+	4) "\xe5\xb7\xa5\xe7\xa8\x8b\xe5\xb8\x88"
+
+
+
+(4)查询列表类型
+# 查看列表长度
+LLEN tasks
+
+# 获取所有元素
+LRANGE tasks 0 -1
+
+# 获取前2个元素
+LRANGE tasks 0 1
+
+# 获取消息列表
+LRANGE messages 0 -1
+
+127.0.0.1:6379> LLEN tasks
+	(integer) 3
+
+127.0.0.1:6379> LRANGE tasks 0 -1
+	1) "\xe7\x94\x9f\xe6\x88\x90\xe6\x8a\xa5\xe5\x91\x8a"
+	2) "\xe5\xa4\x87\xe4\xbb\xbd\xe6\x95\xb0\xe6\x8d\xae"
+	3) "\xe5\x8f\x91\xe9\x80\x81\xe9\x82\xae\xe4\xbb\xb6"
+
+127.0.0.1:6379> LRANGE tasks 0 1
+	1) "\xe7\x94\x9f\xe6\x88\x90\xe6\x8a\xa5\xe5\x91\x8a"
+	2) "\xe5\xa4\x87\xe4\xbb\xbd\xe6\x95\xb0\xe6\x8d\xae"
+
+127.0.0.1:6379> LRANGE messages 0 -1
+	1) "\xe7\x94\xa8\xe6\x88\xb7\xe7\x99\xbb\xe5\xbd\x95\xe6\x88\x90\xe5\x8a\x9f"
+	2) "\xe8\xae\xa2\xe5\x8d\x95\xe5\x88\x9b\xe5\xbb\xba\xe5\xae\x8c\xe6\x88\x90"
+	3) "\xe6\x94\xaf\xe4\xbb\x98\xe5\xa4\x84\xe7\x90\x86\xe4\xb8\xad"
+
+
+
+(5)查询集合类型
+# 查看所有成员
+SMEMBERS user:1001:tags
+
+# 查看成员数量
+SCARD user:1001:tags
+
+# 检查是否包含某个成员
+SISMEMBER user:1001:tags "VIP"
+
+127.0.0.1:6379> SMEMBERS user:1001:tags
+	1) "VIP"
+	2) "\xe6\xb4\xbb\xe8\xb7\x83\xe7\x94\xa8\xe6\x88\xb7"
+	3) "\xe6\x96\xb0\xe7\x94\xa8\xe6\x88\xb7"
+127.0.0.1:6379> SCARD user:1001:tags
+	(integer) 3
+127.0.0.1:6379> SISMEMBER user:1001:tags "VIP"
+	(integer) 1
+
+
+(6)查询有序集合
+# 按分数升序查看
+ZRANGE leaderboard 0 -1 WITHSCORES
+
+# 按分数降序查看（排行榜）
+ZREVRANGE leaderboard 0 -1 WITHSCORES
+
+# 查看分数范围
+ZRANGEBYSCORE leaderboard 1700 2100 WITHSCORES
+
+127.0.0.1:6379> ZRANGE leaderboard 0 -1 WITHSCORES
+	1) "\xe7\x8e\xa9\xe5\xae\xb6A"
+	2) "1500"
+	3) "\xe7\x8e\xa9\xe5\xae\xb6C"
+	4) "1800"
+	5) "\xe7\x8e\xa9\xe5\xae\xb6B"
+	6) "2000"
+127.0.0.1:6379> ZREVRANGE leaderboard 0 -1 WITHSCORES
+	1) "\xe7\x8e\xa9\xe5\xae\xb6B"
+	2) "2000"
+	3) "\xe7\x8e\xa9\xe5\xae\xb6C"
+	4) "1800"
+	5) "\xe7\x8e\xa9\xe5\xae\xb6A"
+	6) "1500"
+127.0.0.1:6379> ZRANGEBYSCORE leaderboard 1700 2100 WITHSCORES
+	1) "\xe7\x8e\xa9\xe5\xae\xb6C"
+	2) "1800"
+	3) "\xe7\x8e\xa9\xe5\xae\xb6B"
+	4) "2000"
+
+
+(7)使用SCAN安全查询（大数据量时推荐）
+# 分批扫描键
+SCAN 0 MATCH user:* COUNT 10
+
+# 扫描特定类型的键
+SCAN 0 TYPE string COUNT 10
+
+127.0.0.1:6379> SCAN 0 MATCH user:* COUNT 10
+	1) "15"
+	2) 1) "user:1002"
+	   2) "user:1001:age"
+	   3) "user:1001:name"
+
+127.0.0.1:6379> SCAN 0 TYPE string COUNT 10
+	1) "15"
+	2) 1) "article:views"
+	   2) "user:1001:age"
+	   3) "user:1001:name"
+
+
+
+(8)查看数据统计信息
+# 查看数据库信息
+INFO keyspace
+
+# 查看当前数据库的键数量
+DBSIZE
+
+# 查看内存使用
+INFO memory
+
+
+
+127.0.0.1:6379> INFO keyspace
+	# Keyspace
+	db0:keys=12,expires=0,avg_ttl=0,subexpiry=0
+	db6:keys=115,expires=0,avg_ttl=0,subexpiry=0
+127.0.0.1:6379> DBSIZE
+	(integer) 12
+127.0.0.1:6379> INFO memory
+	# Memory
+	used_memory:5332304
+	used_memory_human:5.09M
+	used_memory_rss:16220160
+	used_memory_rss_human:15.47M
+	used_memory_peak:5332320
+	...
+
+
+
+
+
+(9)示例：一步完成添加和查询
+# 单命令添加和查询示例
+redis-cli -p 56379 -a TXolIyjfqJ9gDAPw7RGa SET test:key "Hello Redis"
+redis-cli -p 56379 -a TXolIyjfqJ9gDAPw7RGa GET test:key
+
+
+
+(10)清理测试数据（可选）
+# 删除单个键
+DEL user:1001:name
+
+# 删除多个键
+DEL user:1001:age user:1001:email
+
+# 删除匹配模式的键（小心使用）
+$ redis-cli -p 56379 -a TXolIyjfqJ9gDAPw7RGa --scan --pattern "test:*" | xargs redis-cli -p 56379 -a TXolIyjfqJ9gDAPw7RGa DEL
+
+
+
+(11)退出 redis
+127.0.0.1:6379> quit
+$
 
 
 

@@ -64,4 +64,13 @@ return array (
   ),
 
 
+  array (
+    0 => 6,
+    1 => '应用开发',
+    2 => array (
+      array('日程管理 dawnTodo.py','app01-todo','txt'),
+    ),
+  ),
+
+
 );
