@@ -3473,7 +3473,7 @@ capabilities()
 
 
 ========================================
-|-- vscode 的tmux中 逐行执行 R 代码 //todo
+|-- vscode 的tmux中 逐行执行 R 代码
 ----------------------------------------
 1. 按下 ctrl+enter，默认发送代码到新的shell，而不是已经打开的tmux中的shell
 需要设置发送到已有 shell。
@@ -3487,7 +3487,7 @@ $ R
 打开 settings.json（Ctrl+Shift+P → Preferences: Open Settings (JSON)）添加：
 
 {
-    // 关闭自动启动新 R terminal
+    // 关闭自动启动新 R terminal <- 只需要这一行即可
     "r.alwaysUseActiveTerminal": true,
 
     // 不让 vscode-R 启动 R 本身
@@ -3520,105 +3520,117 @@ $ tmux attach -t r_session
 
 
 
-2.实时可视化
-(1)方法 1：在 tmux 里的 R 用 httpgd
-httpgd 是 R 的一个 HTML 图形设备，可以让你在浏览器（甚至 VS Code webview）看图。
+========================================
+|-- vscode 使用 httpgd 设备实时查看图片: tmux 中打开R，然后加载 httpgd 包，浏览器查看图形
+----------------------------------------
 
+httpgd 是 R 的一个 HTML 图形设备，可以让你在浏览器（甚至 VS Code webview）看图。
+另见: Git::vscode专题
+
+1.最佳设置
+目标:
+  1) 使用vscode逐行运行R代码
+  2) 可拖拽设置图形大小
+  3) 断网可继续
+
+(1)设置vs code 复用已有R终端
+
+可能还需要安装 R-lang 插件：才能实现 ctrl+Enter执行当前行或者选中R代码。
+
+打开 settings.json: 快捷键(Ctrl+Shift+P)，输入 Preferences: Open User Settings (JSON) 回车
+添加：
+{
+    // 关闭自动启动新 R terminal
+    "r.alwaysUseActiveTerminal": true,
+}
+
+(2)tmux中打开R
+菜单 Terminal - New Terminal。
+$ tmux
+$ R
+>
+
+(3)加载 httpgd 包
 # install.packages("httpgd")
 library(httpgd)
 hgd()
+或
+hgd(port = 10086) #可以指定端口，不一定生效
 
-hgd_browse() #打开浏览器
+> hgd(port = 10087)
+httpgd server running at:
+  http://127.0.0.1:10087/live?token=2AGYiYuS
 
-barplot(c(1:4)) #画图
+在vscode的ports选项卡设置该端口号，回车，端口转发生效。
+粘贴到浏览器，即可查看R的绘图效果，并拖动浏览器大小改变图形宽高。
 
-R 会输出一个本地 URL，例如：httpgd is serving at http://127.0.0.1:4412
-你用浏览器访问这个地址就能实时看到绘图，或者 VS Code 里安装 httpgd 扩展也能直接嵌入。
-
-
-(2)方法 2：把图保存成本地文件 + VS Code 自动预览
-在 tmux 的 R 会话里：
-png("plot.png", width=800, height=600)
-plot(1:10)
-dev.off()
-然后 VS Code 右侧会自动用图片预览（只要你装了图像预览插件）。
+> hgd_browse() #用代码打开浏览器
+> plot(1:5) #画图
 
 
-(3)方法 3：分两套会话。两倍运算量。
-VS Code 内部的 R 会话 → 用来看图（有绘图面板）
-tmux 外部的 R 会话 → 用来长时间运行计算任务
-这样你可以用 Ctrl+Enter 发到 VS Code 的 R 会话调试绘图代码，最终的分析用 tmux 跑。
-
-
-
-==> 缺点：httpgd 提供的绘图功能会断开
+(4)下次再登陆
+$ tmux ls  #查看全部tmux session
+$ tmux a -t tmux_ID_Or_Name #进入上次的R
+> httpgd::hgd_url()  #获取上次的图形接口token
+[1] "http://127.0.0.1:10087/live?token=2AGYiYuS"
 
 
 
 
 
-3.怎么解决断开问题？没解决
+2.httpgd 提供的函数
+> library(httpgd)
+> httpgd::hgd #函数功能
+httpgd::hgd_watch           httpgd::hgd_url             httpgd::hgd                 httpgd::hgd_view            
+httpgd::hgd_details         httpgd::hgd_generate_token  httpgd::hgd_close           httpgd::hgd_browse 
+
+函数解释：
+  hgd() 异步打开http图形服务，支持host="127.0.0.1", port=8085, token="xxx123" 等参数
+  hgd_close() 关闭httpgd设备
+  hgd_generate_token(len) 产生字母token，用于测试
+
+  hgd_view() 在IDE种打开显示窗口
+  hgd_browse() 在浏览器打开显示窗口
+
+  hgd_details() 显示详情，包括token
+  hgd_url() 显示url，包含token
+
+
+
+
+
+3.怎么解决断开问题？
 两个层面的断开：
 - R 还在响应，但是画图不可见。尝试，效果不好
-- R session 也失去响应，怎么恢复？目前无解，有些版本似乎可以恢复一个R session。
+- R session 也失去响应，怎么恢复？目前无解，有些版本似乎可以恢复一次R session。
+- 画图的token忘了: http://127.0.0.1:10086/live?token=ixmjyMse
+
+httpgd 提供了 hgd() 和 hgd_browse() 两个核心函数，你可以在出错时直接重新启动：不好，可能导致整个Rsession失败退出！！
+
+(1)用 hgd() 启动 httpgd 服务
+第一次启动
+> hgd(port = 10087)
+httpgd server running at:
+  http://127.0.0.1:10087/live?token=2AGYiYuS
+> plot(1:10)
 
 
-(1)用 hgd() 重启服务器
-httpgd 提供了 hgd() 和 hgd_browse() 两个核心函数，你可以在出错时直接重新启动：
+(2)第二次使用：忘了token 怎么办？
+> httpgd::hgd_details()
+$host
+[1] "127.0.0.1"
 
-library(httpgd)
-# 检查服务器是否还活着
-if(没有运行在该端口){
-  hgd()  # 重新启动
-  hgd_browse()  # 重新在浏览器中打开（VSCode 扩展也会自动检测）
-}
+$port
+[1] 10087
 
-这种方式可以封装成一个函数，比如：
-start_hgd <- function(port=37134) {
-  options(httpgd.port = port)
+$token
+[1] "2AGYiYuS"
 
-  # 检查端口是否已经被 httpgd 占用
-  is_running <- FALSE
-  con <- try(socketConnection("127.0.0.1", port = port, open = "r+", blocking = TRUE, timeout = 1), silent = TRUE)
-  if (!inherits(con, "try-error")) {
-    is_running <- TRUE
-    close(con)
-  }
+$status
+[1] "unigd: unigd 0.1.0.9000; httpgd: 2.0.1; WebSocket connections: 1"
 
-  # 如果没运行，就启动
-  if (!is_running) {
-    cat("[httpgd] Starting server on port", port, "...\n")
-    hgd()
-    Sys.sleep(0.5) # 给 httpgd 一点启动时间
-    tryCatch(
-      hgd_browse(),
-      error = function(e) message("[httpgd] Could not open browser (VS Code should detect it).")
-    )
-  } else {
-    cat("[httpgd] Already running on port", port, "\n")
-  }
-}
-
-然后每次画图前调用：
-start_hgd()
-plot(1:10)
-
-
-
-(2)保持连接存活（推荐）
-如果你希望长时间运行 tmux 会话，httpgd 不掉线，可以设置浏览器/VSCode 扩展的 keep-alive 轮询 或者定期发一个空图保持连接：
-
-# 每隔 5 分钟画一个空图保持设备活着
-keep_alive <- function(interval = 300) {
-  while (TRUE) {
-    if (httpgd::hgd_running()) { #没该函数
-      plot.new()
-    }
-    Sys.sleep(interval)
-  }
-}
-
-在后台启动：parallel::mcparallel(keep_alive())
+> httpgd::hgd_url()
+[1] "http://127.0.0.1:10087/live?token=2AGYiYuS"
 
 
 
@@ -3626,14 +3638,23 @@ keep_alive <- function(interval = 300) {
 (3)自动端口重用
 如果你希望 hgd 每次启动都用同一个端口（方便 VS Code 自动连接）：
 
-options(httpgd.port = 4412)
-hgd()
-这样就算重启 hgd，VS Code 扩展也能无缝连接。
+> options(httpgd.port = 14412)
+> hgd()
+httpgd server running at:
+  http://127.0.0.1:14412/live?token=u82N8Tck
+  这样之前的就被覆盖了，一次只能打开一个httpgd设备。
+
+如果端口被占用，直接报错提出R:
+> hgd(port = 10087)
+httpgd server running at:
+terminate called after throwing an instance of 'std::system_error'
+  what():  bind: Address already in use
+q()Aborted (core dumped)
 
 
 
 
-(4)在 VS Code 里绑定自动重启
+(4)在 VS Code 里绑定自动重启 | 没测试
 vscode-R 扩展支持在绘图失败时重新执行 hgd()，你可以在 settings.json 里加：
 
 "r.plot.useHttpgd": true,
