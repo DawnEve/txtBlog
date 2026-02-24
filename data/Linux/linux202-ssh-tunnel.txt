@@ -1330,7 +1330,7 @@ localhost;127.*;10.*;172.16.*;172.17.*;172.18.*;172.19.*;172.20.*;172.21.*;172.2
 
 
 ========================================
-|-- 实战：某云主机作为跳板机，连接实验室服务器，设置开机启动服务
+|-- 实战：设置某云主机(tx)为跳板机，连接内网实验室服务器(Y)，并设置开机启动服务
 ----------------------------------------
 1.购买
 CPU 2核，内存2G，硬盘50GB
@@ -1403,6 +1403,11 @@ $ sudo service sshd restart
 check B$ netstat -anp | grep 8888
 	tcp        0      0 127.0.0.1:8888          0.0.0.0:*               LISTEN      49744/sshd: sam
 	tcp6       0      0 ::1:8888                :::*                    LISTEN      49744/sshd: sam
+或者：
+	$ ss -ntlp | grep 8889
+	LISTEN 129    128          0.0.0.0:8889       0.0.0.0:*
+	LISTEN 0      128             [::]:8889          [::]:*
+
 
 跳板机上登录：
 @B $ ssh -p 8888 wangjl@localhost #输入C密码登录C
@@ -1846,6 +1851,8 @@ wangjl    702538  0.0  0.0   2504   644 ?        S    Sep23   0:00 /usr/lib/auto
 
 
 
+
+
 10.在外部怎么通过跳板机连接内网Rstudio？
 假设已经建立内网服务器到跳板机的连接。
 外部通过跳板机访问内网硬件：指定内网ip和隧道端口号（-p 端口号）。
@@ -1876,7 +1883,292 @@ Ref:
 
 
 ========================================
-|-- 使用跳板机两次跳转 访问内网端口 webPan.py:8000
+|-- 实战2：设置 X server 193 as 第三个lab server登陆点[X:8889(autossh)]: autossh
+----------------------------------------
+On X server
+
+1.生成key
+@x$ cd .ssh/
+$ ssh-keygen -t rsa -C "wangjl2@biomooc.com" -f ./id_rsa_BM  #如果使用
+
+-rw-------. 1 wangjl jinwf 1.7K Feb 17 15:19 id_rsa_BM
+-rw-r--r--. 1 wangjl jinwf  401 Feb 17 15:19 id_rsa_BM.pub
+
+
+
+2.放授权
+
+(1) 预先把我@X账号下的 id_rsa_BM.pub 放到云服务器 sam用户的 ~/.ssh/authorized_keys 授权下。
+	@tx$ sudo vim /etc/ssh/sshd_config
+	# 开启密钥登录，只要这一行即可
+	PubkeyAuthentication yes
+	重启SSH服务
+	$ sudo systemctl restart ssh
+
+	尝试无密登录
+	@x$ ssh sam@118.89.82.18 -i ~/.ssh/id_rsa_BM
+
+(2) 然后@X 连接云服务器：$ ssh -Ng -R 8889:localhost:22 sam@118.89.82.18 -i ~/.ssh/id_rsa_BM
+输入key的密码，输入sam@tx的密码后。还是没有免密登录！//之前的key有密码！忘了密码。
+
+sam@tx$ ss -ntlp | grep 8889
+LISTEN 0      128          0.0.0.0:8889      0.0.0.0:*
+LISTEN 0      128             [::]:8889         [::]:*
+
+sam@tx$ nc -vz localhost 8889
+Connection to localhost (127.0.0.1) 8889 port [tcp/*] succeeded!
+
+	@X$ssh -v -Ng -R 8889:127.0.0.1:22 sam@118.89.82.18
+
+
+(3) 可以在笔记本连接X server了。
+@tx$ ssh wangjl@localhost -p 8889
+	云服务器不行，因为没有放登录私钥。
+	至始至终只有笔记本上有私钥。
+
+@笔记本$ ssh wangjl@tx.biomooc.com -p 8889 -i ~/.ssh/193_id_rsa
+连上了！！
+
+
+(4)缺点是：容易断开，动辄 broken pipe
+
+
+
+
+
+
+3.使用 autossh
+$ sudo yum install autossh
+失败，报错是 其他用户下的conda，莫名其妙
+
+(1)下载安装
+$ cd ~/software/
+$ wget http://www.harding.motd.ca/autossh/autossh-1.4e.tgz
+
+tar -xzf autossh-1.4e.tgz
+cd autossh-1.4e
+
+# Compile and install
+./configure
+make
+sudo make install
+
+(2)检查
+$ which autossh
+/usr/local/bin/autossh
+[wangjl@biosrv autossh-1.4e]$ autossh -V
+autossh 1.4e
+
+
+(3)启动
+@x $ ssh -Ng -R 8889:localhost:22 sam@118.89.82.18 -i ~/.ssh/id_rsa_BM
+	可以
+
+	启动密钥:
+		$ eval $(ssh-agent -s)
+		Agent pid 413706
+	添加密钥：
+		$ ssh-add ~/.ssh/gitee_id_rsa
+		Enter passphrase for /home/wangjl/.ssh/gitee_id_rsa:
+	检查：说明之前key有密码，重新生成key即可跳过这些步骤。
+		$ ssh-add -l
+		The agent has no identities.
+
+
+停掉之前的连接
+@X $ autossh -M 18890 -Ng -R 8889:localhost:22 sam@118.89.82.18 -i ~/.ssh/id_rsa_BM
+	不行，看日志 $ sudo grep -i autossh /var/log/messages /var/log/syslog 2>/dev/null
+	提示端口 8891 已经占用。关键是我没用这个端口，好像 -M 是一对端口，指定的和下一个都用。
+	端口号前加1再试：可以了。
+	/var/log/messages:Feb 17 14:33:04 biosrv autossh[389675]: bind on 127.0.0.1:8891: Address already in use
+
+在笔记本登录：ok
+$ ssh wangjl@tx.biomooc.com -p 8889 -i ~/.ssh/193_id_rsa
+Last login: Tue Feb 17 15:25:17 2026 from localhost
+$
+
+
+
+(4)去外网又无法连接X了（第二天）
+$ ssh wangjl@tx.biomooc.com -p 8889 -i ~/.ssh/193_id_rsa
+Connection closed by 118.89.82.18 port 8889
+
+再试一次：把ssh key放到sam@tx上：
+笔记本$ scp ~/.ssh/193_id_rsa sam@tx.biomooc.com:/home/sam/.ssh/
+sam@tx.biomooc.com's password:
+193_id_rsa                                    100% 2455    54.2KB/s   00:00
+
+在tx上:
+检查端口：
+	$ ss -ntlp | grep 8889
+	LISTEN 129    128          0.0.0.0:8889       0.0.0.0:*
+	LISTEN 0      128             [::]:8889          [::]:*
+
+尝试登录X：
+$ ssh -vvv wangjl@localhost -p 8889 -i ~/.ssh/193_id_rsa
+报错:
+	Permissions 0644 for '/home/sam/.ssh/193_id_rsa' are too open.
+	It is required that your private key files are NOT accessible by others.
+	This private key will be ignored.
+修改为 600 权限：
+	$ chmod 600 ~/.ssh/193_id_rsa
+还是报错，断开：
+	debug1: Local version string SSH-2.0-OpenSSH_8.9p1 Ubuntu-3ubuntu0.6
+	kex_exchange_identification: Connection closed by remote host
+	Connection closed by 127.0.0.1 port 8889
+删除tx上的私钥: ~$ rm ~/.ssh/193_id_rsa
+
+
+
+
+
+
+(5)第三天又可以连接了，但是不停的有报错信息
+debug3: obfuscate_keystroke_timing: starting: interval ~20ms
+debug3: obfuscate_keystroke_timing: stopping: chaff time expired (0 chaff packets sent)
+	后来想起来了，是因为有 -vvv 参数，去掉就正常了。
+	目前是 8889 端口(systemd服务) + 8890 端口(tmux中执行) 双通道。
+
+换个端口，再执行
+##pkill autossh
+@x$ autossh -M 0 -Ng \
+-o ServerAliveInterval=30 \
+-o ServerAliveCountMax=3 \
+-R 8890:127.0.0.1:22 sam@118.89.82.18 -i ~/.ssh/id_rsa_BM
+
+或者: 主动加上 0.0.0.0 IP: 未测试
+	$ autossh -M 0 -N \
+	-o ServerAliveInterval=60 \
+	-o ServerAliveCountMax=3 \
+	-R 0.0.0.0:8890:127.0.0.1:22 sam@118.89.82.18 -i ~/.ssh/id_rsa_BM
+
+再在tx上开端口后，尝试在笔记本连接x：
+$ ssh wangjl@118.89.82.18 -p 8890 -i ~/.ssh/193_id_rsa
+$
+
+
+
+
+
+
+4.凑合的方案：由于(3)3 可用，这个用不着了。
+# 每30秒检查一次连接，断开就重连
+while true; do 
+    ssh -R 8889:localhost:22 sam@118.89.82.18 -i ~/.ssh/gitee_id_rsa -N -o ServerAliveInterval=30 -o ExitOnForwardFailure=yes
+    sleep 10
+done
+
+
+
+
+
+========================================
+|-- 实战2-进阶：把 8889 端口的反向隧道连接 进一步设置为X开机启动: systemd 服务
+----------------------------------------
+
+涉及主机：
+	大服务器 X（在内网）: 有需要使用的软件和数据
+	刚购买的云主机 tx
+	笔记本电脑：有私钥，作为客户端，在内网能登录X和tx，在外网只能登录tx
+
+主要步骤：
+
+
+1.创建 systemd 服务配置文件
+
+$ sudo vim /etc/systemd/system/autossh-tunnel.service
+[Unit]
+Description=AutoSSH Tunnel to Jump Server
+# 在网络可用后再启动此服务
+After=network.target
+# 如果依赖远程主机名解析，可以添加 network-online.target
+# Wants=network-online.target
+
+[Service]
+# 指定运行服务的普通用户，替换 wangjl 为你的用户名
+User=wangjl
+# 如果是开机启动，建议将 AUTOSSH_GATETIME 设为0，让 autossh 立即尝试重启
+Environment="AUTOSSH_GATETIME=0"
+# 服务的启动命令
+# 注意：-i 参数需要使用绝对路径 /home/wangjl/.ssh/id_rsa_BM
+ExecStart=/usr/local/bin/autossh -M 0 -Ng \
+    -o ServerAliveInterval=30 \
+    -o ServerAliveCountMax=3 \
+    -R 8889:127.0.0.1:22 \
+    sam@118.89.82.18 \
+    -i /home/wangjl/.ssh/id_rsa_BM
+
+# 设置服务崩溃后总是重启
+Restart=always
+# 重启前等待10秒
+RestartSec=10
+# 如果进程安静退出，也视为失败并重启
+SuccessExitStatus=1
+
+[Install]
+# 使服务在系统进入多用户模式（正常启动）时启用
+WantedBy=multi-user.target
+
+
+(2)关键配置说明：
+
+User=wangjl: 必须修改为你的实际用户名。以指定用户身份运行，可以正确读取该用户的 ~/.ssh/ 目录下的配置文件、known_hosts 等。
+
+Environment="AUTOSSH_GATETIME=0": 这是一个重要的环境变量。如你之前遇到的，autossh 在首次启动失败后有一个“起始门限”时间（默认30秒），会直接退出而不重启。设置为 0 可以禁用这个行为，确保在开机启动时，即使网络尚未完全就绪导致首次连接失败，autossh 也能按照 Restart= 策略持续尝试重启。
+
+ExecStart: 这里使用了 autossh 的绝对路径 /usr/local/bin/autossh（你之前 which autossh 的结果），并使用了密钥的绝对路径 -i /home/wangjl/.ssh/id_rsa_BM，以避免环境变量问题。
+
+Restart=always: 告诉 systemd，无论因为什么原因，只要服务进程退出，就自动重启。RestartSec=10 则是在重启前等待10秒。
+
+SuccessExitStatus=1: 告诉 systemd，当 autossh 退出并返回代码 1 时，也视其为一种“成功”的退出，以便触发重启策略。这可以应对某些特定的退出情况。
+
+
+
+
+
+
+
+2.重新加载并启用服务
+保存文件后，在终端中依次执行以下命令：
+
+(1)重新加载 systemd 配置，让它知道我们创建了一个新服务：
+$ sudo systemctl daemon-reload
+
+(2)设置服务开机自启：
+$ sudo systemctl enable autossh-tunnel.service
+日志: Created symlink from /etc/systemd/system/multi-user.target.wants/autossh-tunnel.service to /etc/systemd/system/autossh-tunnel.service.
+
+这个命令会在 /etc/systemd/system/multi-user.target.wants/ 目录下创建一个符号链接，确保系统启动时自动运行此服务。
+
+(3)立即启动服务（无需重启）：
+$ sudo systemctl start autossh-tunnel.service
+
+
+
+
+
+3.验证服务状态
+执行以下命令，检查服务是否已成功运行，并查看其日志输出：
+
+查看服务运行状态：
+$ sudo systemctl status autossh-tunnel.service
+
+如果一切正常，你应该会看到 Active: active (running) 的绿色字样，并且没有明显的错误日志。
+
+查看详细日志：
+$ sudo journalctl -u autossh-tunnel.service -f -n 50
+这会动态显示该服务的日志，方便你观察连接是否建立或有任何错误。-n 50 显示最后50行，-f 用于持续跟踪新日志。
+
+
+反向隧道就已经配置为开机自启动了。推荐使用 systemd 服务的方式，因为它更加规范、易于管理和排错。AUTOSSH_GATETIME=0 这个环境变量的设置对开机启动场景尤其关键
+
+
+
+
+
+
+========================================
+使用跳板机两次跳转 访问内网端口 webPan.py:8000
 ----------------------------------------
 1.本地端口转发
 (1)尝试1: failed
@@ -2049,7 +2341,6 @@ Host rstudio-h3
 
 
 
-https://gitee.com/dawnEve/txtBlog.py
 
 
 
@@ -2251,4 +2542,19 @@ https://www.zhujimi.net/ssh-close-usedns.html
 
 
 
+
+========================================
+----------------------------------------
+
+
+========================================
+----------------------------------------
+
+
+========================================
+----------------------------------------
+
+
+========================================
+----------------------------------------
 
