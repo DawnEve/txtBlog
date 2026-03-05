@@ -1420,6 +1420,7 @@ todo:
 
 开发方法: test on 103, copy to s3, s5
 	shell 脚本: 固定从 103 home 复制，地址固定，添加x权限
+	V0.2 debug 调整 Firmware state 到行末
 
 @103$ cd ~
 $ cat raid_status.sh
@@ -1429,10 +1430,12 @@ $ cat raid_status.sh
 OUT=$1 #"/var/log/raid_status.txt"
 echo "output: $OUT"
 TS=$(date "+%F %T %Z")
+VERSION="V0.2"
 HOST=$(hostname)
 
 {
 echo "===== RAID STATUS SNAPSHOT ====="
+echo "Version      : $VERSION"
 echo "Host      : $HOST"
 echo "Time      : $TS"
 
@@ -1475,14 +1478,14 @@ awk '
 /Slot Number/ {
     slot = $NF
 }
-/Firmware state/ {
-    state = $0
-}
 /Media Error Count/ {
     media = $NF
 }
 /Predictive Failure Count/ {
     pf = $NF
+}
+/Firmware state/ {
+    state = $0
     if ((media + 0) > 0 || (pf + 0) > 0) {
         print "Slot " slot " | " state " | MediaErr=" media " | PredFail=" pf
     }
@@ -2150,6 +2153,315 @@ sudo MegaCli64 -PDRbld -ShowProg -aALL
 # 或者如果需要，将新磁盘加入阵列
 # sudo MegaCli64 -CfgLdAdd -rX [32:新Slot] WB Direct -a0
 
+
+
+
+
+
+
+
+
+========================================
+|-- [2026.2.24] slot1 磁盘黄灯，slot9 热备份已变为online，slot4 media error 最高
+----------------------------------------
+大概过年坏了。
+年后看到 slot1 闪黄灯
+	- 修复脚本 raid_status.sh
+	- 闪黄灯 == bad 对应
+
+
+
+1.建议修复磁盘顺序
+(1)第一优先：Slot 4
+理由：
+	MediaErr 极高
+	最可能触发第二次降级
+
+(2)第二优先：Slot 2
+
+
+
+
+
+
+2.为什么 rebuild 期间最危险？
+因为 RAID rebuild 需要：
+	全盘读取
+	老化盘最容易在此时掉线
+这就是为什么：
+	优先换高 MediaErr 盘
+
+
+
+
+
+
+3.最终是先替换黄灯盘
+(1)拔掉slot1，插入新磁盘
+2026.2.25
+	$ sudo MegaCli64 -PDRbld -ShowProg -PhysDrv [32:1] -a0
+	Device(Encl-32 Slot-1) is not in rebuild process
+	Exit Code: 0x00
+
+	$ sudo MegaCli64 -PDList -a0 | grep -E "Inquiry|Copyback"
+	Inquiry Data: HGST    HUS726040ALS210 KU27K4KXXAJL            
+	Firmware state: Copyback
+	Inquiry Data: TOSHIBA MG10SDA400NY    EP02Z5C2A00YF2QL
+	...
+
+次日早上查进度:
+	$ sudo MegaCli64 -PDCpyBk -ShowProg -PhysDrv [32:1] -a0
+	Copyback Progress on Device at Enclosure 32, Slot 1 Completed 98% in 919 Minutes.
+	Exit Code: 0x00
+
+	再次查询:
+	$ sudo MegaCli64 -PDCpyBk -ShowProg -PhysDrv [32:1] -a0
+	Physical Drive is not in Copyback state.
+
+
+
+
+
+
+
+========================================
+|-- 开启巡查(Patrol Read, 1-2周一次)和完整性校验(Consistency Check，一个月一次，可手工进行)
+----------------------------------------
+1.企业级最佳实践（重要）
+(1)要做
+1）开启 Patrol Read -> 巡逻读 /巡查读取 /巡检读取 -> 每1-2周一次
+防止 silent error。
+
+2）开启 Consistency Check   -> 每月一次，可手动进行。略微影响IO性能
+定期扫描。
+
+
+
+
+(2)为什么做？
+1)为什么Patrol Read重要？
+RAID6 崩溃最常见原因不是硬盘坏，而是：
+	rebuild 期间读另一块盘时发现 silent error
+	导致无法重建
+Patrol Read 就是预防这个。
+
+
+2)完整性校验有啥用？
+
+
+
+
+
+
+2.Patrol Read 实操命令
+(1)是否开启？
+$ sudo MegaCli64 -AdpPR -Info -aALL
+s3
+	Adapter 0: Patrol Read Information:
+
+	Patrol Read Mode: Manual                    #没开启
+	Patrol Read Execution Delay: 168 hours
+	Number of iterations completed: 200 
+	Next start time: 01/15/2022, 03:00:00
+	Current State: Stopped
+	Patrol Read on SSD Devices: Disabled
+
+s5
+	Adapter 0: Patrol Read Information:
+
+	Patrol Read Mode: Auto
+	Patrol Read Execution Delay: 168 hours
+	Number of iterations completed: 254 
+	Next start time: 02/28/2026, 03:00:00
+	Current State: Stopped
+	Patrol Read on SSD Devices: Disabled
+
+s03
+	Adapter 0: Patrol Read Information:
+
+	Patrol Read Mode: Auto
+	Patrol Read Execution Delay: 168 hours
+	Number of iterations completed: 444 
+	Next start time: 02/28/2026, 03:00:00
+	Current State: Stopped
+	Patrol Read on SSD Devices: Disabled
+
+固态硬盘ssd
+
+
+(2)开启
+$ sudo MegaCli64 -AdpPR -Start -aALL #巡逻读取
+
+
+(3)设置周期
+168h=7天
+$ sudo MegaCli64 -AdpPR -SetDelay 168 -aALL #巡逻读取
+
+
+
+
+
+
+
+
+3.Consistency Check 实操命令
+(1)是否开启
+$ sudo MegaCli64 -AdpCcSched -Info -aALL
+输出会包含：
+	是否启用
+	周期
+	上次运行时间
+
+s3
+	Adapter #0
+
+	Operation Mode: Disabled
+	Execution Delay: 168
+	Next start time: 01/17/2026, 03:00:00
+	Current State: Stopped
+	Number of iterations: 0
+	Number of VD completed: 0
+	Excluded VDs          : None
+	Exit Code: 0x00
+
+s5
+	Adapter #0
+
+	Operation Mode: Disabled
+	Execution Delay: 168
+	Next start time: 11/23/2024, 03:00:00
+	Current State: Stopped
+	Number of iterations: 0
+	Number of VD completed: 0
+	Excluded VDs          : None
+	Exit Code: 0x00
+
+s103
+	Adapter #0
+
+	Operation Mode: Disabled
+	Execution Delay: 168
+	Next start time: 09/06/2025, 03:00:00
+	Current State: Stopped
+	Number of iterations: 0
+	Number of VD completed: 0
+	Excluded VDs          : None
+	Exit Code: 0x00
+
+
+(2)Consistency Check 开启
+一般 SetPeriod 后(见下文(3))会自动启用，但建议确认：
+$ sudo MegaCli64 -AdpCcSched -Info -aALL
+
+
+(3)设置周期
+$ sudo MegaCli64 -AdpCcSched -SetPeriod 30 -aALL   #Consistency Check 
+说明：
+	单位是天
+	适合生产环境
+推荐：
+	RAID6：30–60 天
+	关键数据：30 天
+
+
+
+(4)手动启动一次（建议首次执行）
+第一次启用时，建议手动运行： -> 我认为手动执行就够用了。
+$ sudo MegaCli64 -LDCC -Start -Lall -aALL
+说明：
+	所有 logical drive
+	后台运行
+
+查看进度
+$ sudo MegaCli64 -LDCC -ShowProg -Lall -aALL
+
+
+停止 CC（必要时）
+$ sudo MegaCli64 -LDCC -Stop -Lall -aALL
+
+
+
+
+(5)设置运行时间（MegaCLI 的局限）
+重要：
+	MegaCLI 本身 无法精确设置 CC 在某个时间点运行。
+	只能设置周期。
+如果你希望：
+	每月某天夜间运行
+	必须结合 Linux 计划任务。
+
+
+关闭 RAID 自动周期
+$ sudo MegaCli64 -AdpCcSched -Disable -aALL
+
+
+crontab 设置: 建议使用root账号设置
+$ sudo crontab -e
+0 2 1 * * /usr/local/bin/MegaCli64 -LDCC -Start -Lall -aALL
+
+避免高峰期
+	更灵活
+	更可控
+这是很多数据中心做法。
+
+
+
+
+
+
+
+
+
+========================================
+|-- 购买磁盘：厂家，型号，大小
+----------------------------------------
+1.物理磁盘基本信息:
+sudo MegaCli64 -PDList -aALL 2>/dev/null > raids_status.txt
+cat raid_status.txt | grep -P "(Inquiry|PD Type|Raw Size)"
+
+(1)合二为一
+$ sudo MegaCli64 -PDList -aALL 2>/dev/null | grep -P "(Inquiry|PD Type|Raw Size)"
+
+
+(2)查看可用大小
+$ sudo MegaCli64 -PDList -aALL 2>/dev/null | grep -P "^Coerced Size"
+s3
+	Coerced Size: 3.637 TB [0x1d1b00000 Sectors]
+	Coerced Size: 3.637 TB [0x1d1b00000 Sectors]
+	Coerced Size: 3.637 TB [0x1d1b00000 Sectors]
+	Coerced Size: 3.637 TB [0x1d1b00000 Sectors]
+	Coerced Size: 3.637 TB [0x1d1b00000 Sectors]
+	Coerced Size: 3.637 TB [0x1d1b00000 Sectors]
+	Coerced Size: 3.637 TB [0x1d1b00000 Sectors]
+	Coerced Size: 3.637 TB [0x1d1b00000 Sectors]
+	Coerced Size: 3.637 TB [0x1d1b00000 Sectors]
+	Coerced Size: 3.637 TB [0x1d1b00000 Sectors]
+
+s5(主要是小硬盘 3T)
+	Coerced Size: 2.728 TB [0x15d400000 Sectors]
+	Coerced Size: 2.728 TB [0x15d400000 Sectors]
+	Coerced Size: 2.728 TB [0x15d400000 Sectors]
+	Coerced Size: 2.728 TB [0x15d400000 Sectors]
+	Coerced Size: 2.728 TB [0x15d400000 Sectors]
+	Coerced Size: 2.728 TB [0x15d400000 Sectors]
+	Coerced Size: 2.728 TB [0x15d400000 Sectors]
+	Coerced Size: 2.728 TB [0x15d400000 Sectors]
+	Coerced Size: 2.728 TB [0x15d400000 Sectors]
+	Coerced Size: 2.728 TB [0x15d400000 Sectors]
+	Coerced Size: 3.637 TB [0x1d1b00000 Sectors]  #一块大硬盘
+	Coerced Size: 2.728 TB [0x15d400000 Sectors]
+
+s103(主要是大硬盘 4T)
+	Coerced Size: 3.637 TB [0x1d1b00000 Sectors]
+	Coerced Size: 3.637 TB [0x1d1b00000 Sectors]
+	Coerced Size: 3.637 TB [0x1d1b00000 Sectors]
+	Coerced Size: 2.728 TB [0x15d400000 Sectors]  #一块小硬盘
+	Coerced Size: 3.637 TB [0x1d1b00000 Sectors]
+	Coerced Size: 3.637 TB [0x1d1b00000 Sectors]
+	Coerced Size: 3.637 TB [0x1d1b00000 Sectors]
+	Coerced Size: 3.637 TB [0x1d1b00000 Sectors]
+	Coerced Size: 3.637 TB [0x1d1b00000 Sectors]
+	Coerced Size: 3.637 TB [0x1d1b00000 Sectors]
 
 
 
