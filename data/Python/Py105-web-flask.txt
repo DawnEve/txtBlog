@@ -1775,6 +1775,275 @@ form.getlist("roles"))
 
 
 ========================================
+flask 接口转发：调用R API并返回 json: 怎么处理跨域问题？预检是什么？
+----------------------------------------
+0.跨域时触发预检
+什么是预检请求（Preflight Request）
+	预检请求是浏览器在发送某些跨域请求前，自动发送的一个 OPTIONS 请求，用来询问服务器是否允许实际的请求。
+	只有预检通过后，浏览器才会发送真正的 POST 请求。
+
+为什么以前没有，现在有？
+	历史演变：
+	早期（2000年代初）：同源策略很严格，跨域请求基本都被禁止
+	简单请求时代：
+		表单可以跨域提交（<form> 的 action）
+		<script src>、<img src> 可以跨域
+		但这些只能发送 GET 或 POST 且 Content-Type 受限
+	CORS 诞生（~2010年）：
+		W3C 制定了 CORS 规范
+		引入了预检机制
+
+
+什么需要预检？ 
+	预检是为了保护那些不支持 CORS 的老服务器：
+
+	// 假设有个2005年的老API
+	// http://oldsite.com/api/delete
+	// 这个API没有CORS概念
+
+	// 如果没有预检，恶意网站可以：
+	fetch('http://oldsite.com/api/delete', {
+		method: 'DELETE',  // 危险操作！
+		credentials: 'include'  // 带上用户的cookie
+	})
+
+	// 浏览器会先发预检：
+	OPTIONS /api/delete
+	如果旧服务器不认识OPTIONS，返回404/500
+		浏览器判定：不安全，阻止实际请求！
+
+
+(1)时间线
+	~2005年前：严格的同源策略，跨域很困难
+	2005-2010：JSONP 盛行（只支持 GET）
+	2010：CORS 规范草案出现
+	2012后：主流浏览器开始全面支持 CORS 和预检
+	2015后：成为标配，前端开发者普遍遇到预检问题
+
+(2)触发条件
+// 1. 简单请求 - 不触发预检
+fetch('/api', { method: 'GET' })
+fetch('/api', { 
+    method: 'POST',
+    headers: {'Content-Type': 'application/x-www-form-urlencoded'}
+})
+
+// 2. 非简单请求 - 触发预检
+fetch('http://other-domain.com/api', {  // 跨域
+    method: 'PUT',  // 非简单方法
+    headers: {
+        'Content-Type': 'application/json',  // 非简单Content-Type
+        'X-Custom-Header': 'value'  // 自定义头
+    }
+})
+
+
+
+
+
+
+
+
+
+
+
+实例: SRS 项目 v1.8.2: https://gitee.com/dawnEve/SeqReportSys
+
+1.已经使用R写了接口
+
+# 允许 CORS 跨域访问
+#' @filter cors
+cors <- function(req, res) {
+  message("hi, this is R API file....")
+
+  res$setHeader("Access-Control-Allow-Origin", "*")
+
+  if (req$REQUEST_METHOD == "OPTIONS") {
+    res$setHeader("Access-Control-Allow-Methods","*")
+    res$setHeader("Access-Control-Allow-Headers", req$HTTP_ACCESS_CONTROL_REQUEST_HEADERS)
+    res$status <- 200
+    return(list())
+  } else {
+    plumber::forward()
+  }
+}
+
+
+
+#* 预测变异级别 - gene和coding来自URL参数，row_data来自POST body
+#* Return a json of predict result
+#* @param gene the gene symbol
+#* @param coding the nt changes of nt
+#* @post /SNV/level_pred
+function(req, gene, coding) {
+  # 1. 记录接收到的参数
+  cat("Received request:\n")
+  cat("Gene (from URL):", gene, "\n")
+  cat("Coding (from URL):", coding, "\n")
+
+  # 2. 从POST body获取JSON数据
+  body <- req$postBody
+  if (is.null(body) || nchar(body) == 0) {
+    return(list(
+      success = FALSE,
+      error = "No JSON data provided in request body"
+    ))
+  }
+  cat("POST body length:", nchar(body), "characters\n")
+
+  # 3. 解析JSON
+  input_data <- jsonlite::fromJSON(body, simplifyVector = FALSE)
+  row_data=input_data$row_data
+  
+  # 4. 转换为data.frame
+  if (is.list(row_data) && !is.data.frame(row_data)) {
+    # 处理命名列表
+    row_df <- as.data.frame(row_data, stringsAsFactors = FALSE)
+  } else if (is.vector(row_data) && !is.list(row_data)) {
+    # 处理向量（可能是单行数据）
+    row_df <- as.data.frame(t(row_data), stringsAsFactors = FALSE)
+    names(row_df) <- names(row_data)
+  } else {
+    row_df <- as.data.frame(row_data)
+  }
+  #return( c(gene, coding, input_data$row_data) ) #debug
+
+  predict_variant_level(gene, coding, row_df)
+}
+if(0){
+  #curl -X POST http://localhost:8003/SNV/level_pred \
+  #-H "Content-Type: application/json" \
+  #-d '{
+  #  1000g2015aug_all:"0.245407",
+  #  AAChange.refGene:"MTHFR:NM_005957.4:exon5:c.C665T:p.A222V"
+  #  Alt:"A"
+  #  CLNALLELEID: "18559"
+  # ...
+  #  zxsys: "药物相关,MRD"
+  #}'
+}
+
+if(0){
+    library(plumber)
+    # method2: 推荐
+    pr2 <- plumber::plumb("script/SNP/predict_SNV_level.api.R")
+    pr2$run(port=8003, host="0.0.0.0") #IP可用
+}
+
+
+
+
+
+2.使用py做端口转发 /api2/
+
+#CORS (Cross-Origin Resource Sharing)
+# v0.2 处理 OPTIONS
+def cors(arrOrStr, isJSON=True, handle_options=False):
+    # 处理OPTIONS预检请求
+    if handle_options and request.method == 'OPTIONS':
+        res = make_response('')
+        # 添加CORS头
+        res.headers.add('Access-Control-Allow-Origin', '*')
+        res.headers.add('Access-Control-Allow-Methods', 'GET,PUT,POST,DELETE,OPTIONS')
+        res.headers.add('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With')
+        res.headers.add('Access-Control-Allow-Credentials', 'true')
+        res.headers.add('Access-Control-Max-Age', '86400')  # 预检请求缓存24小时
+        return res, 200
+    # 正常响应处理
+    if isJSON:
+        res=jsonify(arrOrStr)
+    else:
+        res=make_response(arrOrStr)
+    res.headers.add('Access-Control-Allow-Origin', '*')
+    res.headers.add('Access-Control-Allow-Methods', 'GET,PUT,POST,DELETE,OPTIONS')
+    res.headers.add('Access-Control-Allow-Credentials', 'true')
+    # 添加自定义头
+    res.headers.add('Backend', 'wjl_dawnDict_server/0.3')
+    res.headers.add('Email', 'jimmymall at 163 dot com')
+    return res
+
+
+
+# 3.给出一个基因 SNV 的level 预测
+# http://s3.biomooc.com:9002/api2/gene/TP53/allele/c.G91A/pred 外加一行数据的json格式
+@api2.route('/gene/<gene>/allele/<allele>/pred', methods=['POST', 'OPTIONS'])
+def api2_pred_SNV_level(gene, allele):
+    # 关键：处理OPTIONS预检请求，否则 CORS 报错
+    cors_response = cors(None, handle_options=True)
+    if isinstance(cors_response, tuple) and cors_response[1] == 200:
+        # 如果是OPTIONS请求，直接返回
+        return cors_response
+
+    import requests
+    # 从请求中获取数据
+    data = request.json
+    # row_data = data.get('row_data')  # 应该是一个字典
+    # 调用R服务
+    response = requests.post(
+        f"{R_API_BASE}/SNV/level_pred?gene={gene}&coding={allele}",
+        json=data,
+        timeout=5  # 设置超时防止R服务卡死
+    )
+    # 返回R服务的结果
+    return cors( response.json() )
+
+
+json 格式必须很严谨: "1000g2015aug_all":"0.245407",
+	* 分隔符":"不能有空格。
+	* 左侧要有""
+	* 末尾要有逗号,
+
+测试:
+$ curl -X POST "http://192.168.1.3:9002/api2/gene/TP53/allele/c.G91A/pred" -H "Content-Type: application/json" \
+-d '{"row_data":{
+"1000g2015aug_all":"0.245407",
+"AAChange.refGene":"MTHFR:NM_005957.4:exon5:c.C665T:p.A222V",
+"Alt":"A",
+"CLNALLELEID":"18559",
+"CLNDISDB":".|Human_Phenotype_Ontology:HP:0001297,Human_Phenotype_Ontology:HP:0002452,MeSH:D020521,MedGen:C0038454|Human_Phenotype_Ontology:HP:0006753,MONDO:MONDO:0021085,MedGen:C0038356,SNOMED_CT:126824007|Human_Phenotype_Ontology:HP:0100723,MONDO:MONDO:0011719,MeSH:D046152,MedGen:C0238198,OMIM:606764,Orphanet:ORPHA44890|MONDO:MONDO:0008559,MedGen:C3160733,OMIM:188050|MONDO:MONDO:0009353,MedGen:C1856058,OMIM:236250,Orphanet:ORPHA395|MONDO:MONDO:0011120,MedGen:C1866558,OMIM:601634|MONDO:MONDO:0034212,MedGen:C0568062,Orphanet:ORPHA565782,SNOMED_CT:290680001|MedGen:C1856059|MedGen:C4017062|MedGen:CN169374|MedGen:CN517202",
+"CLNDN":"methotrexate_response_-_Metabolism/PK|Stroke|Neoplasm_of_stomach|Gastrointestinal_stromal_tumor|Thrombophilia_due_to_thrombin_defect|Homocystinuria_due_to_methylene_tetrahydrofolate_reductase_deficiency|Neural_tube_defects,_folate-sensitive|methotrexate_response_-_Toxicity|MTHFR_THERMOLABILE_POLYMORPHISM|Homocystinuria_due_to_MTHFR_deficiency|not_specified|not_provided",
+"CLNREVSTAT":"reviewed_by_expert_panel",
+"CLNSIG":"drug_response",
+"COSMIC_ID":"COSV64876755",
+"COSMIC_OCCURENCE":"16(soft_tissue)",
+"Chr":"1",
+"DP":"1113",
+"End":"11856378",
+"ExonicFunc.refGene":"nonsynonymous SNV",
+"FILTER":"panel_of_normals",
+"Func.refGene":"exonic",
+"Gene.refGene":"MTHFR",
+"GeneDetail.refGene":"-",
+"InterVar_automated":"Benign",
+"PMID":"25589003",
+"Ref":"G",
+"Start":"11856378",
+"TLOD":"2759.22",
+"VAF":"100.00%",
+"avsnp150":"rs1801133",
+"esp6500siv2_all":"0.2706",
+"position":"chr1:11856378",
+"proteinchange":"p.Ala222Val",
+"zxsys":"药物相关,MRD"
+}}'
+
+返回结果:
+[
+  {
+    "logic_data": "{\"drug_gene_list\":\"yes\"}",
+    "logic_source": "0manual_set",
+    "logic_wt": 10,
+    "pred_level": "4"
+  }
+]
+
+
+
+
+
+
+
+========================================
 jinja 模板技术简介
 ----------------------------------------
 1. 简介
