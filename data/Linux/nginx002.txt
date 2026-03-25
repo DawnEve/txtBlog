@@ -1084,6 +1084,91 @@ http://192.168.1.3:9003/api2/igv?genome=hg19&bam=http%3A%2F%2F192.168.1.5%3A8888
 
 
 
+========================================
+|-- nginx 默认最大post文件限制1Mb，主动设置大一些: client_max_body_size 10M;
+----------------------------------------
+1.关键设置是:
+client_max_body_size
+
+(1)检查是否设置过
+$ grep client_max_body_size /etc/nginx/nginx.conf /etc/nginx/conf.d/* /etc/nginx/sites-enabled/* /etc/nginx/sites-available/*
+没任何输出，说明配置里没显式设置该项，那 Nginx 就是使用的默认值 1M，这极有可能就是问题所在
+
+(2)设置
+在 http、server 或 location 块中添加或修改 client_max_body_size 指令。推荐在 server 块中设置，这样只影响当前站点
+$ sudo vim /etc/nginx/sites-enabled/IGV8002
+
+server {
+    listen 80;
+    server_name example.com; # 你的域名
+
+    # 在这里设置，例如允许post文件大小 10M
+    client_max_body_size 10M;
+
+    location / {
+        # proxy_pass http://你的flask应用地址; # 你的Flask应用地址
+        # ... 其他代理配置
+    }
+}
+
+
+测试并重载配置：
+# 1. 测试配置文件语法是否正确
+$ sudo nginx -t
+
+# 2. 如果测试成功，平滑重载 Nginx 使配置生效
+$ sudo systemctl reload nginx
+# 或者 sudo nginx -s reload
+
+查状态:
+$ service nginx status
+
+
+
+
+
+========================================
+|-- nginx 转发的flask服务，怎么让后台拿到用户真实IP，而不是 127.0.0.1 ?
+----------------------------------------
+需要两步设置:
+- nginx 转发真实IP
+- flask 接收
+
+1.配置 Nginx 传递真实 IP
+
+$ sudo vim /etc/nginx/sites-enabled/IGV8002
+location / {
+    proxy_pass http://你的flask应用地址:端口;  # 例如 http://127.0.0.1:5000
+    proxy_set_header Host $host;
+    
+    # 添加下面这两行（非常重要）
+	# 转发真实IP
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+}
+
+解释:
+	X-Real-IP：直接传递用户的真实 IP。
+	X-Forwarded-For：如果请求经过了多层代理，这个头会记录整个代理链的 IP，Flask 应用的真实 IP 通常是第一个。
+
+重新加载服务:
+	sudo nginx -t  # 测试语法
+	sudo systemctl reload nginx  # 重载配置
+
+* 在每个 location 中都设置。
+
+
+
+
+2.Flask 加：ProxyFix(app.wsgi_app, x_for=1)
+
+# Werkzeug 用的是 remote_addr，而真实 IP 在 X-Forwarded-For，需要用 ProxyFix 映射回来。
+
+from werkzeug.middleware.proxy_fix import ProxyFix
+app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1)
+
+
+
 
 
 ========================================

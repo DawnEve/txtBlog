@@ -2996,6 +2996,256 @@ https://www.jianshu.com/p/2203a20cb369
 
 
 ========================================
+|-- 求基因集合的平均表达量，要在data直接求平均（推荐[1 dot 1 cell]）？还是expm1后求平均再取log1p（适合[1 dot 1 gene]）
+----------------------------------------
+1.“平均”是在什么尺度上做的（log vs linear），会直接影响统计解释。
+
+(1)AI认为更合理: 在 log-normalized 数据（Seurat@data）上直接取平均（或加权平均）
+
+使用 Seurat 的 data slot（默认是 log1p(normalized counts)）
+
+对 gene set 在每个 cell 上求：score=1/n * Sigma( log(1+xi) )
+
+
+
+=> 为什么不建议“先 exp 再平均再 log”？（关键点）
+（即先还原到线性空间再平均）
+
+1)单细胞数据是强烈 skewed / 零膨胀
+	少数高表达基因会 dominate 平均值
+	gene set 中 expression variance 极大（跨3–5个数量级）
+	* 线性平均 = 被高表达基因劫持
+
+2)log 空间平均 ≈ “几何平均”的稳定版本
+1/N * ∑log(1+xi) ≈ log(geometric mean)
+
+更适合表达数据（log-normal 分布）
+
+3)和 Seurat / Scanpy 方法一致
+主流方法全部基于 log 空间：
+	Seurat AddModuleScore
+	Scanpy score_genes
+	GSVA（单细胞版本）
+都不是在 raw counts 上做平均
+
+
+
+
+
+2.Seurat 官方推荐方式
+(1)方法1：AddModuleScore（推荐）
+obj <- AddModuleScore(
+  object = obj,
+  features = list(gene_set),
+  name = "GS"
+)
+
+输出：meta.data 新增一列 GS1
+
+优点：
+	自动做 背景基因校正（control genes）
+	避免：
+		library size bias
+		gene set size bias
+这是最标准做法
+
+
+(2)方法2：自己算（更可控）
+如果你坚持自己算：
+
+mat <- GetAssayData(obj, slot = "data")  # log-normalized
+score <- colMeans(mat[gene_set, ])
+obj$GS_score <- score
+
+
+
+
+
+3.什么时候才考虑“exp 再平均”？
+只有在以下情况才有意义：
+	你要模拟 bulk expression
+	（pseudo-bulk）
+
+mat <- GetAssayData(obj, slot = "counts")
+pb <- rowSums(mat[, group_cells]) / n_cells
+log1p(pb)
+
+这是 cell aggregation，不是 gene set scoring
+
+
+
+
+
+4.我的场景
+(1)方法1
+obj <- AddModuleScore(obj, features = list(gene_set), name = "GS")
+VlnPlot(obj, features = "GS1", group.by = "time")
+或者：
+VlnPlot(obj, features = "GS_score", group.by = "time")
+
+
+(2)更“论文级严谨”: z-score per gene 后再平均
+mat <- GetAssayData(obj, slot = "data")
+mat_z <- t(scale(t(mat[gene_set, ])))
+score <- colMeans(mat_z)
+
+适用于：
+	gene set expression variance 很大
+	避免某些 marker gene dominate
+
+
+
+
+
+
+==> 比较几种方法的不同？
+1 dot 1 gene: ./scripts_PBMC/c07D_2pAgenes_DPAU_gDPAU.R-2415-    title=sprintf("N=%s, tandem p=%s\nexonSwitch p=%s", dat_plot$gene |> unique() |> length(), round(p1, 3), round(p2, 3) ))
+	直接求几个细胞的平均值：平均值/gene,
+	-> 改做 1 dot 1 cell?
+
+
+
+1 dot 1 gene: ./scripts_PBMC/c07D_2pAgenes_DPAU_gDPAU.R-1920-my.labels=c("Consistent pA", "Tandem APA", "Exon switch APA")
+	avg/gene;
+	-> 尝试不同方法的结果：
+		violin plot:
+		0h, 18h:
+		不同的平均化:
+
+
+
+
+
+
+
+========================================
+|-- 小提琴图比较一个基因集的表达水平在2个条件之间的差异，对单细胞求平均时: 1 dot 1 cell[推荐, 一个观察值1个细胞], 1 dot 1 gene[不合理]
+----------------------------------------
+1.这个问题本质上是：统计单位（unit of analysis）应该是 cell 还是 gene？
+
+小提琴图中，一个点 = 一个细胞（cell）才是合理且主流的做法
+gene 不是独立样本，不应该作为 violin 的观测单位
+
+
+
+2.为什么“一个点=基因”是错误建模（关键逻辑）
+如果你这样做：
+	gene set ~1000 个基因
+	每个基因算一个表达值
+	violin 中每个点 = 一个 gene
+
+(1)问题1：伪重复（pseudo-replication）
+	这些 gene：
+		来自同一个 cell
+		共享同一个测序噪声 / library size / biological state
+
+	不独立
+		但统计模型会错误认为：n = 1000（样本量很大）
+		实际上：n = 细胞数（比如 5000）
+
+
+(2)问题2：统计意义完全错位
+你真正想问的是：
+	“这个 gene set 在 0h vs 18h 的细胞中是否整体上调？”
+而不是：
+	“这些 gene 在整体上是否表达不同？”
+	gene 是 feature，不是 observation
+
+
+
+(3)问题3：gene-level violin 没有生物学解释
+gene 间 variance >> condition effect
+会被：
+	housekeeping gene
+	高表达 gene
+严重干扰
+
+
+
+
+
+3.正确建模（标准做法）
+=> 一个点 = 一个 cell
+流程：
+
+Step1：对每个 cell 计算 gene set score
+mat <- GetAssayData(obj, slot = "data")  # log-normalized
+score <- colMeans(mat[gene_set, ])
+obj$GS_score <- score
+或：
+obj <- AddModuleScore(obj, features = list(gene_set), name = "GS")
+
+Step2：画 violin（cell-level）
+VlnPlot(obj, features = "GS_score", group.by = "time")
+	每个点 = 一个 cell
+	分布 = gene set activity distribution
+
+
+
+
+
+
+4.什么时候“gene作为点”才有意义？
+只有在以下分析中才成立：
+
+(1) gene-level统计（DEG分析）
+例如：
+	每个 gene 一个 logFC
+	比较 gene set vs background
+这是 enrichment analysis（如 GSEA）
+
+(2) heatmap / dotplot
+	gene = 行
+	cell group = 列
+用于展示 pattern，而不是统计检验
+
+
+
+
+
+
+
+5.更高级一点：避免另一个坑（cell也可能不独立）
+你现在是：
+	cell-level violin（常规 OK）
+但如果你是多样本（病人）：
+	真正独立单位其实是“样本”，不是 cell
+否则会出现：
+	一个病人 5000 cells → 权重过大
+	统计显著性被放大
+
+更严谨（论文级）：
+
+(1)方法1：pseudo-bulk（推荐）
+# 每个 sample 一个值
+aggregate(cell_score ~ sample + condition, FUN = mean)
+
+# violin 改成 boxplot（sample-level）
+
+(2)方法2：mixed model
+lmer(score ~ condition + (1|sample))
+
+
+
+
+
+
+6. 总结（一句话版本）
+方式        	合理性      	说明
+一个点 = cell	✅ 标准做法 	单细胞分析主流
+一个点 = gene	❌ 错误     	伪重复，统计失效
+一个点 = sample	⭐⭐⭐⭐⭐       	最严谨（发表级）
+
+
+
+
+
+
+
+
+
+
+========================================
 |-- t-SNE算法 //todo
 ----------------------------------------
 

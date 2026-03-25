@@ -1,18 +1,24 @@
 Python105-web
 
 (2019.3.4)目前主要是flask 1.0.2和jinja2。
-Django 框架
+
 
 
 
 ========================================
-web based tutorials
+web based tutorials | 命名规则
 ----------------------------------------
 python3的Django 写的博客系统：
 https://tendcode.com/article/python-shell/ 
 
 
 flask写用户登录功能 https://qinqianshan.com/web/flask/
+
+
+命名规则:
+- 变量名: user_detail
+- 方法名: getUserDetail()
+- 类名: User
 
 
 
@@ -1775,7 +1781,7 @@ form.getlist("roles"))
 
 
 ========================================
-flask 接口转发：调用R API并返回 json: 怎么处理跨域问题？预检是什么？
+flask 接口转发：调用R API并返回 json: 怎么处理跨域问题？预检是什么？| 统一做端口转发：自定义 proxy_to_r(r_path) 函数
 ----------------------------------------
 0.跨域时触发预检
 什么是预检请求（Preflight Request）
@@ -1936,6 +1942,8 @@ if(0){
 
 2.使用py做端口转发 /api2/
 
+(1)逐个接口转发 -> 推荐直接看2(2)
+
 #CORS (Cross-Origin Resource Sharing)
 # v0.2 处理 OPTIONS
 def cors(arrOrStr, isJSON=True, handle_options=False):
@@ -2036,6 +2044,66 @@ $ curl -X POST "http://192.168.1.3:9002/api2/gene/TP53/allele/c.G91A/pred" -H "C
     "pred_level": "4"
   }
 ]
+
+
+
+
+
+(2)批量转发：隐藏原来的R端口 9004，统一和主程序同域名和端口，在 9002:/api2/R/ 下调用，避免了跨域问题
+
+#########################
+# 提供R API 接口转发
+#########################
+
+@api2.route('/R/<path:r_path>', methods=['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'])
+def proxy_to_r(r_path):
+    # 关键：处理OPTIONS预检请求，否则 CORS 报错
+    cors_response = cors(None, handle_options=True)
+    if isinstance(cors_response, tuple) and cors_response[1] == 200:
+        # 如果是OPTIONS请求，直接返回
+        return cors_response
+    
+    """
+    将请求转发到R服务，并隐藏真实的端口号
+    """
+    # R服务的地址
+    R_SERVICE_URL = "http://localhost:"+g.rapiport # 如果R服务在另一台机器，替换为对应IP
+    query_string = request.query_string.decode()
+    if query_string:
+        url = f"{R_SERVICE_URL}/{r_path}?{query_string}"
+    else:
+        url = f"{R_SERVICE_URL}/{r_path}"
+    
+    logger.info("py call R API: " + url + ", method: "+ request.method)
+
+    resp = requests.request(
+        method=request.method,
+        url=url,
+        headers=request.headers,
+        data=request.get_data(),
+        cookies=request.cookies,
+        allow_redirects=False
+    )
+
+    excluded = ['content-encoding','content-length','transfer-encoding','connection']
+
+    headers = [(name, value) for name, value in resp.raw.headers.items()
+               if name.lower() not in excluded]
+
+    return Response(resp.content, resp.status_code, headers)
+
+# test
+# http://s3.biomooc.com:9002/api2/R/SNV?gene=TP53&n=5
+# http://s3.biomooc.com:9002/api2/R/SNV/level?gene=TP53&coding=c.G91A
+# http://s3.biomooc.com:9002/api2/R/SNV/freq_density?gene=NRAS&coding=c.G38A&bw=0.01
+# http://s3.biomooc.com:9002/api2/R/SNV/freq_hist?gene=NRAS&coding=c.G38A&n=10
+# http://s3.biomooc.com:9002/api2/R/SNV/level_pred?gene=TP53&coding=c.G91A Post
+
+
+
+
+
+
 
 
 
@@ -2686,8 +2754,9 @@ def home():
 
 
 
+
 ========================================
-|-- 模板包含: set传参, include, with 定义局部作用域, 模板继承 extends
+|-- 模板包含: set传参, include, with 定义局部作用域
 ----------------------------------------
 1. set 可以在模板中设置变量
 
@@ -2790,6 +2859,13 @@ $ cat t6_footer.html
     10
 
 
+
+
+
+========================================
+|-- （jinjia最强大的）模板继承 extends: {% extends %} 和 {% block %}
+----------------------------------------
+善用 Jinja2 的 {% extends %} 和 {% block %}，像搭积木一样构建页面。把导航栏、页脚等公共部分抽离出来，可以极大地减少重复代码。
 
 
 
@@ -4671,7 +4747,136 @@ $ python tornado_demo.py
 ========================================
 如何写复杂业务代码 //todo
 ----------------------------------------
-https://www.jianshu.com/p/05f395780da1
+写复杂业务代码的核心目标是 让复杂的业务逻辑可理解、可维护、可扩展。
+以下是我结合架构设计与工程实践，总结的一套方法论和落地建议。
+
+
+1.理解业务，抽象模型
+(1)深入业务场景
+不要急于写代码，先和业务方确认流程、规则、边界条件。
+用流程图、时序图、状态机等工具梳理业务。
+
+(2)领域建模（DDD 思想）
+将业务实体、值对象、聚合根、领域服务等抽象出来。
+避免直接用数据库表结构驱动代码设计。
+
+
+2.分层与解耦
+接口层（Controller / API）
+↓
+应用层（Application Service）
+↓
+领域层（Domain Model & Domain Service）
+↓
+基础设施层（Repository / 外部服务适配器）
+
+	接口层：只负责接收请求、返回结果，不写业务逻辑。
+	应用层：编排业务流程，调用领域服务。
+	领域层：封装核心业务规则。
+	基础设施层：与数据库、缓存、消息队列等交互。
+
+
+
+3.拆分复杂逻辑
+(1)单一职责原则（SRP）
+一个类/方法只做一件事，避免“上帝类”。
+
+(2)策略模式 / 状态模式
+处理多分支逻辑（if-else / switch）时，将不同策略封装成独立类。
+
+(3)事件驱动
+对于跨模块的业务，用事件总线（EventBus / MQ）解耦。
+
+
+4.可维护性与可测试性
+写单元测试：复杂业务必须有测试保障，尤其是边界条件。
+可配置化：将易变的业务规则放到配置中心，而不是硬编码。
+日志与监控：关键业务节点打日志，方便排查问题。
+
+
+5.示例：订单状态流转
+假设有订单状态：待支付 → 已支付 → 已发货 → 已完成，并且不同状态下有不同的处理逻辑。
+
+状态模式实现（Java 示例）
+// 状态接口
+public interface OrderState {
+    void handle(OrderContext context);
+}
+
+// 具体状态
+public class PaidState implements OrderState {
+    @Override
+    public void handle(OrderContext context) {
+        System.out.println("订单已支付，准备发货");
+        context.setState(new ShippedState());
+    }
+}
+
+public class ShippedState implements OrderState {
+    @Override
+    public void handle(OrderContext context) {
+        System.out.println("订单已发货，等待收货");
+        context.setState(new CompletedState());
+    }
+}
+
+public class CompletedState implements OrderState {
+    @Override
+    public void handle(OrderContext context) {
+        System.out.println("订单已完成");
+    }
+}
+
+// 上下文
+public class OrderContext {
+    private OrderState state;
+    public OrderContext(OrderState state) { this.state = state; }
+    public void setState(OrderState state) { this.state = state; }
+    public void process() { state.handle(this); }
+}
+
+// 测试
+public class Main {
+    public static void main(String[] args) {
+        OrderContext order = new OrderContext(new PaidState());
+        order.process(); // 已支付 → 发货
+        order.process(); // 已发货 → 完成
+        order.process(); // 已完成
+    }
+}
+
+优点：
+每个状态逻辑独立，易于扩展新状态。
+避免大量 if-else，可读性高。
+
+
+
+6.总结原则
+先业务建模，再写代码
+分层解耦，职责单一
+用设计模式管理复杂性
+测试与监控保障质量
+可配置化应对变化
+
+
+
+
+
+
+
+
+2.
+https://juejin.cn/post/6887766374082019336
+
+指导下沉有两个关键指标：代码的复用性和内聚性。
+
+沉下心来，夯实自己的基础技术能力、OO 能力、建模能力... 不断提升抽象思维、结构化思维、思辨思维... 持续学习精进，写好代码。我们可以在业务技术岗做的很”技术“！
+
+问题领域：
+	业务问题：变，杂
+	底层技术问题：稳，深
+能力要求: 结构化能力，面向对象能力，持续学习能力，工匠精神
+底层思维：抽象，分治，思辨
 
 
 
