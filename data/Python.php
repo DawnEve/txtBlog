@@ -26,7 +26,7 @@ return array (
       array('Python Web | flask','Py105-web-flask','txt',),
       array('Python Web | Django','Py106-web-Django','txt',),
       array('Python 与 office','Py107-office_docx','txt',),
-      array('Python 单元测试','Py108-unittest','txt',),
+      array('Python 单元测试 test','Py108-unittest','txt',),
     ),
   ),
 
