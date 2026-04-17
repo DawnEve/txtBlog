@@ -22,6 +22,7 @@ return array (
       array('精编免疫学','immunology_basis','txt'),
       array('基因功能','gene_Functions','txt'),
       array('细胞系','cell_line','txt'),
+      array('SNV 常识','s01_SNV_basic','txt'),
       array('实验目的与细节','b1_assays','txt'),
     ),
   ),
