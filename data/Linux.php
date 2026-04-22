@@ -53,7 +53,7 @@ return array (
 	  
 	  array('服务/DNS/资源监控/共享盘','linux_service','txt' ),
 	  
-	  array('htaccess配置规则','apache001','txt' ),
+	  array('apache htaccess配置规则','apache001','txt' ),
 	  array('虚拟域名和二级域名配置','apache002','txt' ),
 	  array('nginx服务器笔记','nginx002','txt' ),
 	  array('nginx快速入门.md','nginx001','md' ),

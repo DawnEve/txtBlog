@@ -60,10 +60,13 @@ class SearchController extends Controller{
 		$result="<pre>";
 		if( file_exists($abs_filename) ){
 			$handler=fopen($abs_filename, "r");
+			// 关键：转义正则特殊字符，第二个参数 '/' 表示同时转义正则分隔符
+			$escapedKeyword = preg_quote($keyword, '/');
+			$regExp = "/(" . $escapedKeyword . ")/i";
+			//$regExp="/(".$keyword.")/i";
 			while(!feof($handler)){
 				$i2++;
 				$buffer=fgets($handler);
-				$regExp="/(".$keyword.")/i";
 				if(preg_match($regExp, $buffer, $matches)){
 					$res='<span style="color:red">\1</span>';
 					$text=preg_replace($regExp, $res, htmlentities($buffer));
