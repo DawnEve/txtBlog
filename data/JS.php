@@ -9,7 +9,7 @@ return array (
       array('项目描述','js001','html',),
       array('参考资料','js002','html'),
       array('FAQ','js003','html'),
-      array('好用的js脚本','js004-usefull','txt'),
+      array('好用的js脚本/片段','js004-usefull','txt'),
     ),
   ),
  
