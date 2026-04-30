@@ -2881,6 +2881,54 @@ $ cat t6_footer.html
 
 
 ========================================
+|-- 自定义py函数在模板中 找不到？
+----------------------------------------
+1.原因
+Python 文件中的函数只在后端（View函数）作用域内有效
+HTML 模板是独立的模板作用域，只有 Flask 显式传入或注册的函数才能使用
+
+
+(1)方法1: 全局模板可用(推荐)
+使用 @app.context_processor 是最佳实践，它会将函数自动注入到所有模板中，无需在每个路由重复传入。
+
+# 定义函数
+def has_perm(permission):
+    # 你的权限验证逻辑
+    user_permissions = ['/user/add', '/user/edit']  # 示例
+    return permission in user_permissions
+
+# 注册为模板全局函数
+@app.context_processor
+def utility_processor():
+    return dict(has_perm=has_perm)
+
+# 现在在任何模板中都可以使用
+@app.route('/')
+def index():
+    return render_template('index.html')
+
+
+2)在模板 index.html 中使用：
+{% if has_perm("/user/add") %}
+    <a href="/user/add">添加用户</a>
+{% endif %}
+
+
+
+(2)方法1: 直接在模板中传入
+@app.route('/')
+def index():
+    return render_template('index.html', has_perm=has_perm)
+
+
+
+
+
+
+
+
+
+========================================
 |-- （jinjia最强大的）模板继承 extends: {% extends %} 和 {% block %}
 ----------------------------------------
 善用 Jinja2 的 {% extends %} 和 {% block %}，像搭积木一样构建页面。把导航栏、页脚等公共部分抽离出来，可以极大地减少重复代码。
@@ -3126,12 +3174,79 @@ $ cat templates/t6_child2.html
 ========================================
 flask-SQLAlchemy 及 flask 常见模型类: 模型这个术语表示程序使用的持久化实体
 ----------------------------------------
-
+1.简介
 flask-sqlalchemy 致力于简化在 Flask 中 SQLAlchemy 的使用，提供了有用的默认值和额外的助手来更简单地完成常见任务。
 
+Flask-SQLAlchemy 是 Flask 生态中最流行的数据库扩展，它将强大的 SQLAlchemy ORM（对象关系映射）与 Flask 应用上下文无缝集成。
+
+(1).什么时候用？
+‌- 中小型 Web 应用‌：当你需要快速构建博客、待办事项列表、用户管理系统等涉及数据持久化的应用时。
+‌- 复杂查询需求‌：当你的业务逻辑涉及多表关联、复杂过滤或聚合查询，手写 SQL容易出错且难以维护时。
+‌- 数据库无关性开发‌：如果你希望代码能在 SQLite（开发环境）、MySQL 或 PostgreSQL（生产环境）之间轻松切换，而不修改核心业务逻辑代码。
+‌- 面向对象编程偏好‌：如果你更习惯操作 Python 对象（如 user.name）而不是处理字典或元组结果集。
 
 
-1. flask中的模型
+(2)使用优劣分析
+‌1)优势：‌
+‌- 开发效率高‌：通过 Python 类定义模型，自动生成数据库表结构，无需编写 CREATE TABLE 语句。
+‌- 安全性高‌：ORM 自动处理参数化查询，有效防止 SQL 注入攻击。
+‌- 代码可维护性强‌：数据库逻辑与业务逻辑解耦，模型定义清晰，便于重构。
+‌- 灵活性‌：既支持高层的 ORM 操作，也允许在必要时执行原生 SQL 语句。
+‌- 生态丰富‌：拥有成熟的迁移工具（Flask-Migrate）和调试插件。
+‌
+2)劣势：‌
+‌- 性能开销‌：相比原生 SQL，ORM 将对象转换为 SQL 以及将结果映射回对象的过程存在轻微的性能损耗（通常在可接受范围内）。
+‌- 学习曲线‌：需要理解 Session 管理、懒加载、关系映射等概念，初学者可能遇到“N+1 查询”等性能陷阱。
+‌- 复杂查询局限‌：对于极其复杂的统计报表或存储过程调用，ORM 可能不如原生 SQL 直观高效。
+
+
+
+
+
+(3)核心概念速览（必懂）
+
+1)SQLAlchemy
+概念	作用    	示例
+Engine	连接数据库	create_engine("sqlite:///app.db")
+Base	模型基类  	declarative_base()
+Model	一张表  	class User(Base)
+Column	一个字段	name = Column(String)
+Session	事务/工作单元	session.add() / commit()
+Query	查询接口	session.query(User).filter_by(name="张三")
+
+上面用的是原生 SQLAlchemy。
+
+
+2)实际 Flask 项目更推荐 Flask-SQLAlchemy（省去手动管理 Session）。
+from flask import Flask
+from flask_sqlalchemy import SQLAlchemy
+
+app = Flask(__name__)
+app.config["SQLALCHEMY_DATABASE_URI"] = "sqlite:///demo.db"
+app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
+
+db = SQLAlchemy(app)
+
+class User(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    name = db.Column(db.String(50))
+    age = db.Column(db.Integer)
+
+# 路由中直接用 db.session
+# 示例：db.session.add(user); db.session.commit()
+# 查询：User.query.all()
+
+优势：
+	不用手动创建 session / close
+	每个请求自动管理
+	提供 User.query 语法
+
+
+
+
+
+
+2. flask中的模型
 
 ## example1
 from flask import Flask
@@ -3189,7 +3304,12 @@ https://blog.csdn.net/Co_zy/article/details/77905568
 
 
 
-2.
+3.关系映射 (Relationships)
+真实应用通常涉及多张表。
+‌- 一对多 (One-to-Many)‌：例如一个用户有多篇文章。使用 db.relationship('Post', backref='author') 和 db.ForeignKey('user.id')。
+‌- 多对多 (Many-to-Many)‌：例如学生选课。需要定义一个中间关联表。
+‌- 懒加载 (Lazy Loading)‌：注意 lazy 参数（select, joined, subquery），不当使用会导致严重的性能问题（N+1 问题）。
+
 (1)一对多
 class Role(db.Model):
     """角色表"""
@@ -3282,6 +3402,66 @@ class User(db.Model):
 ##
 
 
+
+
+
+4.进一步了解
+
+(1)事务与控制
+	session.commit() 才真正写入
+	异常记得 session.rollback()
+
+(2)常用查询
+	# 条件查询
+	session.query(User).filter(User.age > 18).all()
+	session.query(User).filter_by(name="李四").first()
+
+	# 排序、限制
+	session.query(User).order_by(User.age.desc()).limit(5).all()
+
+	# 计数
+	session.query(User).filter(User.age > 18).count()
+
+
+(3)查询优化
+1)filter vs filter_by‌：filter 支持更复杂的 Python 表达式（如 User.age > 18），filter_by 仅支持关键字参数相等判断。
+2)‌分页‌：使用 paginate(page=1, per_page=10) 避免一次性加载大量数据。
+‌3)只加载需要的列‌：使用 with_entities(User.id, User.name) 减少内存占用。
+
+
+(4)会话管理 (Session Management)
+1)db.session 是工作单元。所有的添加、修改、删除操作都在会话中进行，直到调用 db.session.commit() 才真正写入数据库。
+2)如果发生错误，应调用 db.session.rollback() 回滚事务，保持数据一致性。
+
+
+(5)配置最佳实践
+‌1)URI 格式‌：
+	MySQL: mysql+pymysql://user:password@host:port/dbname
+	PostgreSQL: postgresql://user:password@host:port/dbname
+‌
+2)连接池‌：在高并发下，配置 SQLALCHEMY_POOL_SIZE 和 SQLALCHEMY_MAX_OVERFLOW 以优化数据库连接性能。
+
+
+
+(6)数据库迁移
+必学：Alembic
+学 Alembic（数据库版本管理），把数据库变动像git一样记录起来。
+alembic init migrations
+alembic revision --autogenerate -m "add age column"
+alembic upgrade head
+
+
+(7)性能注意点
+N+1 查询问题 → 用 joinedload
+批量操作用 bulk_insert_mappings
+
+
+(8)何时回归原生 SQL
+session.execute(text("SELECT * FROM users WHERE age > :age"), {"age": 18})
+
+
+(9)搞懂 relationship 和 join 查询
+todo
 
 
 
@@ -4050,6 +4230,32 @@ https://www.cnblogs.com/lyg-blog/p/9499227.html
 
 
 
+2.如果用flask传入的变量控制html元素是否显示呢？
+
+(1)py直接显示，传给 js，再在html使用v-if指令。
+
+放到js中赋值:  canBackup: {{ can_backup|tojson }},  // Flask 变量注入
+在html 中使用: v-if="canBackup"
+
+<div class="content" id="app">
+{% raw %}
+<div class="buttonBox" v-if="canBackup">
+    <a id="backupDB" href="/system/DB/backup" class="button pink" @click="backupDB">备份数据库</a>
+</div>
+{% endraw %}
+...
+
+
+const App = {
+    data() {
+        return {
+            msg: 'Hello Vue!!',
+            info: [],
+            canBackup: {{ can_backup|tojson }},  // Flask 变量注入
+        }
+    },
+	...
+}
 
 
 
