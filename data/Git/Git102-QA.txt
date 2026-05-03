@@ -629,7 +629,7 @@ https://blog.csdn.net/m0_65696193/article/details/147018530
 
 
 ========================================
-更新远程代码到本地仓库：有分歧时【推荐】
+更新远程代码到本地仓库：有分歧时【单远程可以，多远程有风险】
 ----------------------------------------
 
 方式一
@@ -655,7 +655,7 @@ su@SUCHANGLI /e/eoe_client/android-app (master)
 因为我的本地仓库和远程仓库代码相同所以没有其他任何信息
 
 4. 把远程下载下来的代码合并到本地仓库，远程的和本地的合并
-$ git merge origin/master
+$ git merge origin/master  #很危险，不建议执行
 Already up-to-date.
 su@SUCHANGLI /e/eoe_client/android-app (master)
 我的本地参考代码和远程代码相同，所以是Already up-to-date
@@ -696,6 +696,199 @@ su@SUCHANGLI /e/eoe_client/android-app (master)
 
 总结：方式二更好理解，更安全。 
 对于pull也可以更新代码到本地，相当于fetch+merge，多人协作的话不够安全。
+
+
+
+========================================
+|-- 多远程、多分支、多设备怎么合并？（我的场景: 季度合并）
+----------------------------------------
+多个远程: github, gitee(中转)
+多分枝：master, south
+多设备: 台式机（主要对south操作，不能连接github），笔记本(可以连接github)
+
+问题: 经常合并失败，但是比较文件，没有任何差异。
+
+
+
+1.规定笔记本是唯一 merge 点，台式机只生产south分支
+
+(1)合并顺序
+# 1. 同步 master（关键）
+git checkout master
+git fetch origin
+git merge --ff-only origin/master
+
+# 2. 更新 south
+git checkout south
+git pull gitee south
+
+# 3. 关键：把 south 基于 master 重放
+git rebase master
+
+* 把 south 上这一个季度的提交，搬到最新 master 后面
+* 消除“分叉历史”，让后面能 fast-forward 合并
+
+如果有冲突，按提示解决：
+	git add .
+	git rebase --continue
+
+
+# 4. 合并（应当是 fast-forward）
+git checkout master
+git merge --ff-only south
+如果这里失败，说明 Step 3 没做好（或还有分叉），不要硬合并。
+
+
+# 5. 推送
+git push origin master
+git push gitee master
+
+
+当push报错时:
+	git fetch origin
+	git log --oneline --left-right master...origin/master
+
+	看到< 说明远程领先: git rebase origin/master
+	看到> 说明本地领先: git push
+	如果两边都有，说明有分叉: git rebase origin/master   # 推荐
+
+
+
+直接把 south 指到 master
+	git checkout south
+	git reset --hard master
+	git push gitee south --force
+	git push origin south --force
+	等价于你之前说的“删除 south 再建”，但更快。
+
+或者: 让 south 合并 master [采用]
+	git checkout south
+	git merge master
+	git push gitee south
+
+绝对不要再执行 git merge origin/master
+
+
+
+
+(2)名词解释: --ff-only 和 --no-ff 有什么区别？
+前者只对线性合并，非线性有可能合并失败。
+后者一定合并，可能是空变化的合并。
+
+
+(3) git merge master origin/master 有风险
+
+以后在执行前先跑：
+	git log --oneline master..origin/master
+	git log --oneline origin/master..master
+如果两边都有输出：说明已经分叉，不能直接 merge
+
+
+永远不要在 master 上执行：
+	git merge origin/master
+只允许：
+	git fetch origin
+	git merge --ff-only origin/master
+
+
+(4)如果已经 push 被拒（正确处理方式）
+不要 merge，改用：
+	git fetch origin
+	git rebase origin/master
+
+这一步可以：
+	消除“空 merge”
+	保持历史干净
+
+
+(5)以后只要看到：
+Merge remote-tracking branch 'origin/master'
+默认当成：“这一步很可能不该做”
+
+
+
+
+
+2.诊断哪里出问题了
+(1)
+$ git log --graph --oneline --all
+*   cf90d6b (origin/master, origin/HEAD, gitee/master, master) Merge remote-tracking branch 'origin/master'
+|\
+| *   8342d06 add file .gitattributes
+| |\
+| * \   8c3ec70 Merge branch 'south'---> merge to master [2024.9.19] 新的学期
+| |\ \
+* | \ \   5721214 20260503
+|\ \ \ \
+| * | | | 118f11e (HEAD -> south, origin/south, gitee/south) v6.6.7-8@hz update version [2026.5.3]
+| * | | | 1d24e34 v6.6.7-7@hz update flask; 51 [2026.4.30]
+| * | | | 874aa29 v6.6.7-6@hz 改进搜索 [2026.4.22]
+| * | | | ad780f6 v6.6.7-5@hz Bio/ EndNote 联网失败 [2026.4.22]
+| * | | | ac48e4a v6.6.7-4@hz PHP/ mysql 支持json 数据类型 [2026.4.17]
+| * | | | e0bc69c v6.6.7-3@hz 框架新增 按钮组: base.css [2026.3.30]
+
+
+8342d06 → 8c3ec70
+	也就是说：本地 master ≠ origin/master（已经分叉）
+
+
+在这种情况下你执行了：
+	git merge origin/master
+	Git 被迫生成：cf90d6b（新的 merge commit）
+
+
+这类 merge 的本质
+	这是：“人为把两个已经分叉的 master 又合并了一次”
+	而不是：“同步远程”
+
+
+因为你真正想做的是：
+	让 master = origin/master + south
+	但你实际做成了：
+		master = (旧 master + south) + origin/master
+		顺序错了
+
+
+(2)历史这种情况: 不严重
+$ git log --oneline --grep="Merge remote-tracking branch 'origin/master'"
+db235cb Merge remote-tracking branch 'origin/master'[zzu]
+
+在 master 分支上又多了一行:
+$ git log --oneline --grep="Merge remote-tracking branch 'origin/master'"
+cf90d6b (HEAD -> master, origin/master, origin/HEAD, gitee/master) Merge remote-tracking branch 'origin/master'
+db235cb Merge remote-tracking branch 'origin/master'[zzu]
+
+(3)查看最近的这个问题
+wangj@wangHP MINGW64 /d/xampp/htdocs/txtBlog (south)
+$ git show --pretty=raw cf90d6b
+commit cf90d6b8b278b5bc4f9d9f9360dc0fc5a1a87e5c
+tree 5291a6e0ca3d0d678ec5a405d6280e924254076a
+parent 57212141614ce7df1db5f47811df6b58934b1cb5  #本地master，已合并south
+parent 8342d069147277c2dc306d372b23076f8fed2a49  #origin/master
+author Jimmy <jimmymall@live.com> 1777795683 +0800
+committer Jimmy <jimmymall@live.com> 1777795683 +0800
+
+    Merge remote-tracking branch 'origin/master'
+
+如果你看到：
+	parent A（旧 master）
+	parent B（origin/master）
+
+且：
+	A 不是 B 的祖先
+	B 也不是 A 的祖先
+	那就是真正的分叉合并（问题源）
+
+
+很可能都是空
+	git diff cf90d6b^1 cf90d6b #为空。相对于本地(p1)
+	git diff cf90d6b^2 cf90d6b #不空。相对于远程(p2)有变化。
+
+
+
+
+
+
 
 
 
