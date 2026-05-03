@@ -1,5 +1,6 @@
 /*
 * v0.2.1 滚动到顶部，则url的hash清空
+* v0.2.2 fix: 点击到顶部，还差20px时，自动变为0 //0
 */
 
 
@@ -117,7 +118,7 @@ function rtrim(str){ //删除右边的空格
 
 /**
 * js回到页面顶部，缓动效果
-* version 1.0
+* version 1.1
 * @param acceleration 速度
 * @param stime 时间间隔 (毫秒)
 **/
@@ -127,7 +128,10 @@ function gotoTop(acceleration,stime) {
 		pos=getXY(),
 		x=pos[0],
 		y=pos[1];
-	
+
+	// 如果到达顶部附近，y小于某个值，直接变成0
+	if(y<=6){ y=0; }
+
 	// 滚动距离 = 目前距离 / 速度, 因为距离原来越小, 速度是大于 1 的数, 所以滚动距离会越来越小
 	var speeding = 1 + acceleration;
 	window.scrollTo(Math.floor(x / speeding), Math.floor(y / speeding));
@@ -244,7 +248,7 @@ function locateURLAnchor(){
 			setTimeout(function(){
 				//console.log("02 after setTimeout offsetTop", aA[i].offsetTop)
 				//异步的代码总是最后才执行
-				wjl=aA[i]
+				//wjl=aA[i]
 				//aA[i].scrollIntoView(true)//放这里就好使，可能会闪一下
 				window.scroll(0, aA[i].offsetTop);//换更兼容的方法
 			}, 0)

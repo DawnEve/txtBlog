@@ -60,10 +60,13 @@ class SearchController extends Controller{
 		$result="<pre>";
 		if( file_exists($abs_filename) ){
 			$handler=fopen($abs_filename, "r");
+			// 关键：转义正则特殊字符，第二个参数 '/' 表示同时转义正则分隔符
+			$escapedKeyword = preg_quote($keyword, '/');
+			$regExp = "/(" . $escapedKeyword . ")/i";
+			//$regExp="/(".$keyword.")/i";
 			while(!feof($handler)){
 				$i2++;
 				$buffer=fgets($handler);
-				$regExp="/(".$keyword.")/i";
 				if(preg_match($regExp, $buffer, $matches)){
 					$res='<span style="color:red">\1</span>';
 					$text=preg_replace($regExp, $res, htmlentities($buffer));
@@ -88,7 +91,9 @@ class SearchController extends Controller{
 
 		//遍历输出每个左侧目录的文件名
 		$i=0;
-		$base_url="http://blog.dawneve.cc/index.php";
+		//$base_url="http://blog.dawneve.cc/index.php";
+		$base_url=$_SERVER["REQUEST_SCHEME"] . "://" . $_SERVER["HTTP_HOST"]. "/index.php";
+		$base_url="/index.php";
 		foreach($topMenu as $key => $value){
 			$i++;
 			//if($i>10) //调试控制

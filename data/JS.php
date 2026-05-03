@@ -9,7 +9,7 @@ return array (
       array('项目描述','js001','html',),
       array('参考资料','js002','html'),
       array('FAQ','js003','html'),
-      array('好用的js脚本','js004-usefull','txt'),
+      array('好用的js脚本/片段','js004-usefull','txt'),
     ),
   ),
  
@@ -27,7 +27,7 @@ return array (
 	  array('js 可视化-canvas','js105-canvas','txt' ),
 	  array('js 可视化-SVG','js106-SVG','txt' ),
 	  array('js 可视化-WebGL','js107-WebGL','txt' ),
-	  array('ES5 ES6','js201-ES5ES6','txt' ),
+	  array('ES5 ES6(新语法)','js201-ES5ES6','txt' ),
 
 	  array('写类库 dawnJS','dawnJS001','txt' ),
 	  //array('dawnJS源码与注释','dawnJS002','txt' ),

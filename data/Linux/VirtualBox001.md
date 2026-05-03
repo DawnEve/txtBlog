@@ -10,7 +10,6 @@ VirtualBox v5.0.14
 点击工具栏 新建(N)，设置硬盘、内存等。参照 [百度经验](http://jingyan.baidu.com/article/67508eb4de2ae59cca1ce422.html) 
 
 > 错误提示：运行Virtualbox去安装系统时出错：Failed to open a session for the virtual machine，Unable to load R3 module xxxx/VBoxDD.DLL(VBoxDD)，GetLastError=126，(VERR_MODULE_NOT_FOUND)
-> 解决方案参考：http://blog.sina.com.cn/s/blog_4dc988240102vj8a.html
 
 
 ## 报错 VirtualBox安装问题--错误码0x80004002

@@ -122,7 +122,6 @@ xx/aaa
 
 
 
-http://blog.sina.com.cn/s/blog_61e65d1701017mcu.html
 
 
 
@@ -990,6 +989,187 @@ upload_max_filesize = 100M
 
 
 ========================================
+php 实现全站静态化 //todo
+----------------------------------------
+在 PHP 项目中实现静态化（生成静态 HTML 文件）是提高网站性能和减轻服务器负载的有效方法。
+
+1.核心实现方法
+
+(1).输出缓存捕获法（OB 函数）
+
+<?php
+// 动态页面 dynamic.php
+$id = $_GET['id'] ?? 1;
+$cacheFile = "static/page_{$id}.html";
+$expire = 3600; // 缓存有效期1小时
+
+// 检查缓存是否存在且未过期
+if (file_exists($cacheFile) && (time() - filemtime($cacheFile) < $expire)) {
+    readfile($cacheFile); // 直接输出静态文件
+    exit;
+}
+
+// 开启输出缓冲
+ob_start();
+
+// ---------- 动态内容生成（如数据库查询） ----------
+echo "<html><body>";
+echo "<h1>Article: " . htmlspecialchars($id) . "</h1>";
+echo "<p>Dynamic content generated at: " . date('Y-m-d H:i:s') . "</p>";
+// ---------- 动态内容结束 ----------
+
+// 获取缓冲区内容并保存为静态文件
+$content = ob_get_contents();
+file_put_contents($cacheFile, $content);
+
+// 输出内容并关闭缓冲
+ob_end_flush();
+?>
+
+
+(2). ‌模板替换法
+// 生成静态页面的函数
+function generateStaticPage($template, $data, $outputPath) {
+    $html = file_get_contents($template);
+    foreach ($data as $key => $value) {
+        $html = str_replace("{{{$key}}}", $value, $html);
+    }
+    file_put_contents($outputPath, $html);
+}
+
+// 示例：从数据库获取数据后生成静态页
+$articleData = [
+    'title' => 'Hello World',
+    'content' => 'This is a static page example.'
+];
+generateStaticPage('templates/detail.html', $articleData, 'static/article_123.html');
+
+
+
+
+2.静态化触发时机‌
+(1)‌用户首次访问时生成‌
+如 OB 缓存法所示，在用户请求时检查并生成静态文件。
+
+(2)‌内容更新时触发‌
+在后台管理系统中发布/更新内容时生成：
+
+// 后台保存文章时
+function saveArticle($id, $title, $content) {
+    // 1. 更新数据库
+    db_query("UPDATE articles SET ...");
+    
+    // 2. 立即生成静态页
+    generateStaticPage('templates/article.html', [
+        'title' => $title,
+        'content' => $content
+    ], "static/article_{$id}.html");
+}
+
+(3)定时任务批量生成‌
+使用 Crontab 定时执行 PHP 脚本：
+	# 每天凌晨3点生成所有文章静态页
+	0 3 * * * /usr/bin/php /path/to/generate_all.php
+
+generate_all.php 示例：
+	$articles = db_query("SELECT * FROM articles");
+	foreach ($articles as $article) {
+		generateStaticPage('templates/article.html', $article, "static/article_{$article['id']}.html");
+	}
+
+
+
+3.URL 重写（隐藏 .php 扩展）‌
+(1)Apache 配置 (.htaccess)
+
+RewriteEngine On
+# 将 /article/123 重定向到 static/article_123.html
+RewriteRule ^article/(\d+)/?$ static/article_$1.html [L]
+
+# 若静态文件不存在，则交给动态脚本处理
+RewriteCond %{REQUEST_FILENAME} !-f
+RewriteRule ^article/(\d+)/?$ dynamic.php?id=$1 [L]
+
+(2)Nginx 配置
+
+location /article/ {
+    # 尝试访问静态文件，不存在则转发到PHP
+    try_files /static/article_$arg_id.html @dynamic;
+}
+
+location @dynamic {
+    fastcgi_pass php:9000;
+    include fastcgi_params;
+    fastcgi_param SCRIPT_FILENAME /path/to/dynamic.php;
+}
+
+
+
+4.缓存更新机制
+(1)局部静态化（ESI）‌
+使用 Edge Side Includes 技术：
+<!-- 静态页面中嵌入动态区块 -->
+<div class="user-panel">
+    <esi:include src="http://example.com/dynamic/user_header.php" />
+</div>
+
+(2)CDN 加速‌
+将静态文件推送到 CDN：
+// 生成静态文件后同步到CDN
+file_put_contents("static/article_{$id}.html", $content);
+upload_to_cdn("static/article_{$id}.html");
+
+(3)缓存更新机制‌
+- 版本号控制：article_123_v2.html
+- 删除过期缓存：
+// 删除超过30天的缓存
+foreach (glob('static/*.html') as $file) {
+    if (time() - filemtime($file) > 2592000) {
+        unlink($file);
+    }
+}
+
+
+
+5.注意事项‌
+‌(1)目录权限‌
+确保 PHP 有权限读写静态文件目录：chmod -R 755 static/
+
+(2)‌内存管理‌
+大批量生成时注意内存溢出：
+
+// 每生成100页清理一次
+if ($count % 100 === 0) {
+    gc_collect_cycles();
+}
+‌
+(3)SEO 友好性‌
+保留原始动态 URL 结构，通过 301 重定向到静态 URL：
+
+Redirect 301 /dynamic.php?id=123 /article/123/
+
+
+
+6.适用场景‌
+场景	                  //推荐方法
+内容不频繁更新（如博客）  //发布时生成 + OB 缓存
+高并发页面（如商品详情）  //预生成 + CDN 分发
+需登录的页面	         //局部静态化（ESI）
+临时活动页	             //OB 缓存 + 短过期时间
+
+静态化可提升页面加载速度 3-5 倍，降低服务器负载 70% 以上。建议结合业务需求选择合适的策略，并配合 OpCache、Redis 等进一步提升性能。
+
+
+
+
+
+
+
+
+
+
+
+========================================
 使用curl请求url数据
 ----------------------------------------
 get和post?
@@ -1407,7 +1587,7 @@ if(isset($_GET['list'])){
 header('Server: suctom-server',true);
 //header('HTTP/1.1 200 OK');
 header('Server: WJL_audio_server/0.4');
-header('Email: jimmymall@163.com');
+header('Email: **@**.com');
 //header('Content-Type:text/html;charset=UTF-8');//html文件类型,UTF-8类型
 header("Access-Control-Allow-Origin: *");
 
@@ -1446,7 +1626,7 @@ if (! file_exists ( $file_dir . $file_name )) {
 
 
 ========================================
-PHP实现http与https转化 //未验证
+|-- PHP实现http与https转化 //未验证
 ----------------------------------------
 最近在写PHP程序时，需要使浏览器在https和http之间转化，上网搜索相关信息，无奈只有最近在写PHP程序时，需要使浏览器在https和http之间转化，上网搜索相关信息，无奈只有一篇介绍用ASP实现“在http和https之间转化”的文章，于是只好行写了用PHP实现http与https转化的代码。
 
@@ -1472,6 +1652,186 @@ $_SERVER["REQUEST_URI"];
 header("Location: ".$xredir);  
 }   
 ?>
+
+
+
+
+
+========================================
+路由: 使用 $_SERVER['REQUEST_URI'] 实现简单路由
+----------------------------------------
+1.基本原理
+(1)核心函数
+后端php:
+<?php
+// 设置响应头允许跨域请求（开发环境用）
+header("Access-Control-Allow-Origin: *");
+header("Content-Type: application/json; charset=UTF-8");
+
+echo json_encode( $_SERVER['REQUEST_URI'] );
+
+访问: http://163.dawneve.cc/backend/get.php?name=Tom
+返回: /backend/get.php?name=Tom
+	返回的是 主域名 后的部分。
+
+(2)核心实现原理
+‌获取请求URI‌：使用$_SERVER['REQUEST_URI']获取当前请求的URI
+‌解析URI路径‌：去除查询字符串和前后斜杠
+‌路由匹配‌：将清理后的路径与预定义路由进行匹配
+‌执行对应逻辑‌：调用匹配路由对应的处理函数或包含相应文件
+
+
+
+2. 路由的基本实现
+
+<?php
+// 获取当前请求的URI并清理
+$request_uri = $_SERVER['REQUEST_URI'];
+$uri = parse_url($request_uri, PHP_URL_PATH);
+$uri = trim($uri, '/');
+
+// 定义路由映射
+$routes = [
+    '' => 'home.php',          // 首页
+    'about' => 'about.php',    // 关于页面
+    'contact' => 'contact.php', // 联系页面
+    'products' => 'products.php' // 产品页面
+];
+
+// 路由匹配
+if (array_key_exists($uri, $routes)) {
+    include $routes[$uri];
+} else {
+    // 404处理
+    header("HTTP/1.0 404 Not Found");
+    include '404.php';
+    exit();
+}
+?>
+
+
+
+
+3. 进阶实现：支持动态参数
+
+<?php
+// 获取清理后的URI
+$request_uri = $_SERVER['REQUEST_URI'];
+$uri = trim(parse_url($request_uri, PHP_URL_PATH), '/');
+$uri_parts = explode('/', $uri);
+
+// 定义路由映射
+$routes = [
+    '' => 'home.php',
+    'about' => 'about.php',
+    'user/{id}' => 'user_profile.php',
+    'product/{category}/{id}' => 'product_detail.php'
+];
+
+$matched = false;
+
+foreach ($routes as $route => $handler) {
+    // 将路由模式转换为正则表达式
+    $pattern = preg_replace('/\{[a-z]+\}/', '([^/]+)', $route);
+    $pattern = str_replace('/', '\/', $pattern);
+    $pattern = '/^' . $pattern . '$/';
+    
+    if (preg_match($pattern, $uri, $matches)) {
+        // 提取动态参数
+        $params = array_slice($matches, 1);
+        
+        // 包含处理文件并传递参数
+        include $handler;
+        $matched = true;
+        break;
+    }
+}
+
+if (!$matched) {
+    header("HTTP/1.0 404 Not Found");
+    include '404.php';
+    exit();
+}
+?>
+
+
+
+
+4.面向对象实现方式
+
+<?php
+class SimpleRouter {
+    private $routes = [];
+    
+    public function addRoute($path, $handler) {
+        $this->routes[$path] = $handler;
+    }
+    
+    public function dispatch() {
+        $request_uri = $_SERVER['REQUEST_URI'];
+        $uri = trim(parse_url($request_uri, PHP_URL_PATH), '/');
+        
+        foreach ($this->routes as $path => $handler) {
+            // 简单匹配
+            if ($path === $uri) {
+                if (is_callable($handler)) {
+                    call_user_func($handler);
+                } else {
+                    include $handler;
+                }
+                return;
+            }
+            
+            // 带参数的匹配
+            $pattern = preg_replace('/\{[a-z]+\}/', '([^/]+)', $path);
+            $pattern = str_replace('/', '\/', $pattern);
+            $pattern = '/^' . $pattern . '$/';
+            
+            if (preg_match($pattern, $uri, $matches)) {
+                $params = array_slice($matches, 1);
+                
+                if (is_callable($handler)) {
+                    call_user_func_array($handler, $params);
+                } else {
+                    include $handler;
+                }
+                return;
+            }
+        }
+        
+        // 没有匹配的路由
+        header("HTTP/1.0 404 Not Found");
+        include '404.php';
+        exit();
+    }
+}
+
+// 使用示例
+$router = new SimpleRouter();
+$router->addRoute('', 'home.php');
+$router->addRoute('about', 'about.php');
+$router->addRoute('user/{id}', function($id) {
+    echo "用户ID: " . htmlspecialchars($id);
+});
+$router->dispatch();
+?>
+
+实现说明
+	‌URI处理‌：使用parse_url()和trim()确保URI格式统一
+	‌路由定义‌：支持静态路径和带参数的动态路径
+	‌匹配逻辑‌：使用正则表达式实现灵活的路由匹配
+	‌错误处理‌：包含404页面处理未匹配的路由
+	‌扩展性‌：面向对象实现更易于维护和扩展
+
+最佳实践建议
+	‌安全性‌：始终对动态参数进行过滤和验证
+	‌性能‌：对于大型路由表，考虑使用更高效的匹配算法
+	‌可维护性‌：将路由定义与业务逻辑分离
+	‌扩展性‌：考虑支持HTTP方法(GET, POST等)的路由区分
+
+这种基于$_SERVER['REQUEST_URI']的简单路由实现适合小型项目或学习用途。
+对于更复杂的应用，建议考虑使用成熟的PHP框架如Laravel或Symfony的路由组件。
+
 
 
 

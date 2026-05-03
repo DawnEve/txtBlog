@@ -1280,6 +1280,25 @@ Datsun 710     1.2 -1.3333333 -34.66667 -11.333333 -0.03333333
 
 
 
+例3: 数据框每列乘以一个不同的数字。
+```
+> t1=iris[1:3, 1:4]
+> t1
+  Sepal.Length Sepal.Width Petal.Length Petal.Width
+1          5.1         3.5          1.4         0.2
+2          4.9         3.0          1.4         0.2
+3          4.7         3.2          1.3         0.2
+
+这四列分别乘以10, -1, 2, -10：
+> sweep(t1, MARGIN = 2, STATS = c(10, -1, 2, -10), FUN = "*")
+  Sepal.Length Sepal.Width Petal.Length Petal.Width
+1           51        -3.5          2.8          -2
+2           49        -3.0          2.8          -2
+3           47        -3.2          2.6          -2
+```
+
+
+
 
 
 
@@ -1300,7 +1319,6 @@ Datsun 710     1.2 -1.3333333 -34.66667 -11.333333 -0.03333333
 # 掌握R语言中的apply函数族 http://blog.fens.me/r-apply/
 # R语言apply函数族笔记 https://www.tuicool.com/articles/Rn6ri2b
 # R语言中的循环函数（Grouping Function） http://www.cnblogs.com/studyzy/p/4355082.html
-# apply函数族 http://blog.sina.com.cn/s/blog_71f3890901017yax.html
 ```
 
 

@@ -18,6 +18,7 @@ return array (
     1 => 'PHP小专题',
     2 => array (
       array('php基础知识','PHP101','txt',),
+      array('php 高级详解','PHP102-adv','txt',),
 
       array('php引用','PHP105','html',),
 
@@ -56,8 +57,8 @@ return array (
       array('Laravel简介','Laravel001','html',),
 	  
 	  array('Symfony','symfonyB101','txt',),
-      array('cakephp','cakePHP001','html',), //empty
-      array('zend','zendPHP001','html',), //empty
+      array('[x]cakephp','cakePHP001','html',), //empty
+      array('[x]zend','zendPHP001','html',), //empty
 
     ),
   ),

@@ -32,6 +32,18 @@ Seurat 4 R包源码解析 总目录: https://zhuanlan.zhihu.com/p/465392721
 
 
 
+0.dataset: 
+library(Seurat)
+library(dplyr)
+library(ggplot2)
+
+sce=readRDS("/home/wangjl/data4/web/docs/code/pbmc3k_filtered_gene_bc_matrices/pbmc3k.final.Rds")
+
+pbmc.markers <- FindAllMarkers(sce, only.pos = F, min.pct = 0.25, logfc.threshold = 0.25)
+pbmc.markers %>% group_by(cluster) %>% top_n(n = 2, wt = avg_log2FC)  #可能有版本差异 avg_log2FC
+
+
+
 
 
 
@@ -687,7 +699,7 @@ fixed: logical. If TRUE, pattern is a string to be matched as is. Overrides all 
 
 
 ========================================
-|-- step3: step3 add meta.data(percent.mt, percent.rp, cell cycle score)
+|-- step3: add meta.data(percent.mt, percent.rp, cell cycle score)
 ----------------------------------------
 1. 掉包侠
 
@@ -1794,6 +1806,10 @@ df2=FetchData2(pbmc_small, vars=c("PC_1", "tSNE_1", "CD4", "rna_CD8A", "nCount_R
 (2) 如果指定的 assay 中没找到，则会从其他assay中找
 //todo 例子？
 
+
+
+(3)获取数据：指定基因 features, 指定细胞名
+data.features <- FetchData(object = object, vars = features, cells = cells)
 
 
 
@@ -3986,6 +4002,34 @@ linear 模型 输入的是 assay@data，
 
 
 
+
+要对基因（行）做scale，而scale()函数是按列做的，所以需要先转置。
+如果不做regress，那么用R自带的scale()函数即可把 data 转为 scale.data:
+> d1=t( scale( t(scObj@assays$RNA@data) ) ); d1[1:3, 1:4]
+              AAACATACAACCAC-1 AAACATTGAGCTAC-1 AAACATTGATCAGC-1 AAACCGTGCTTCCG-1
+AL627309.1         -0.05744997      -0.05744997      -0.05744997      -0.05744997
+AP006222.2         -0.03318769      -0.03318769      -0.03318769      -0.03318769
+RP11-206L10.2      -0.04118635      -0.04118635      -0.04118635      -0.04118635
+> s1=scObj@assays$RNA@scale.data; s1[1:3, 1:4]
+              AAACATACAACCAC-1 AAACATTGAGCTAC-1 AAACATTGATCAGC-1 AAACCGTGCTTCCG-1
+AL627309.1         -0.05744997      -0.05744997      -0.05744997      -0.05744997
+AP006222.2         -0.03318769      -0.03318769      -0.03318769      -0.03318769
+RP11-206L10.2      -0.04118635      -0.04118635      -0.04118635      -0.04118635
+> table(abs(d1-s1)<1e-6)  #竟然不等！查看发现 ScaleData() 还有一个参数 scale.max = 10,
+   FALSE     TRUE
+   54719 36973081
+
+> d1[d1>10]=10
+> table(abs(d1-s1)<1e-6)
+> table(abs(d1-s1)<1e-6)
+    TRUE 
+37027800
+
+
+
+
+
+
 (2) 重要参数 
 1) vars.to.regress=c("mt.pct") 回归掉批次效应等无关变异成分
 
@@ -5117,7 +5161,7 @@ $vectors
 #2) svd() 奇异值分解 A=U.D.V^T
 > rs=svd(A);rs
 $d
-[1] 4 1 1 #给的是特征值 = 奇异值的平方
+[1] 4 1 1 #奇异值 = 特征值的绝对值
 # 文档说降序排列的奇异值: d: a vector containing the singular values of x, of length min(n, p), sorted decreasingly.
 
 $u
@@ -5138,6 +5182,12 @@ $v
 [1,]    2    1    1
 [2,]    1    2    1
 [3,]    1    1    2
+
+
+
+推论: A为正规矩阵时，A的奇异值是A的特征值的模。也就是特征值的绝对值。
+证明: 正规矩阵A和A^H可以同时对角化，特征值就是A的相似对角阵的平方，就是特征值的平方，也是奇异值的平方，开方以后得证。？
+A^H 什么意思？
 
 
 
@@ -5182,6 +5232,7 @@ $mprod
 
 
 
+4)
 
 
 
@@ -5194,17 +5245,25 @@ $mprod
 pca.results <- prcomp(x = t(object), rank. = npcs, ...)
 
 接上文。
+> A=matrix(c(2,1,1, 1,2,1, 1,1,2), nrow=3, byrow = T)
 > A
      [,1] [,2] [,3]
 [1,]    2    1    1
 [2,]    1    2    1
 [3,]    1    1    2
 
-> pca.results <- prcomp(x = A); pca.results 
+> pca.results <- prcomp(x = A); pca.results
 Standard deviations (1, .., p=3):
 [1] 7.071068e-01 7.071068e-01 1.586363e-16
 
 Rotation (n x k) = (3 x 3):
+            PC1        PC2       PC3
+[1,]  0.8164966  0.0000000 0.5773503
+[2,] -0.4082483 -0.7071068 0.5773503
+[3,] -0.4082483  0.7071068 0.5773503
+
+
+> pca.results$rotation #特征向量(列)构成的矩阵，就是变量的loading矩阵，就是旋转矩阵(rotation)。
             PC1        PC2       PC3
 [1,]  0.8164966  0.0000000 0.5773503
 [2,] -0.4082483 -0.7071068 0.5773503
@@ -5215,13 +5274,46 @@ Rotation (n x k) = (3 x 3):
 [1,]  0.8164966  5.551115e-17 1.665335e-16
 [2,] -0.4082483 -7.071068e-01 8.326673e-17
 [3,] -0.4082483  7.071068e-01 1.110223e-16
-> pca.results$rotation
+
+我计算的 样品的新坐标x：原center后的数据 矩阵乘 旋转矩阵。
+如果比10e-15小，可记作0，所以和上文的x没差异。
+> scale(A, scale = F) %*% pca.results$rotation
+            PC1           PC2          PC3
+[1,]  0.8164966  4.308456e-17 1.722585e-16
+[2,] -0.4082483 -7.071068e-01 8.899180e-17
+[3,] -0.4082483  7.071068e-01 1.167474e-16
+
+
+
+
+
 
 
 
 
 2) 返回值 Value 
 prcomp returns a list with class "prcomp" containing the following components:
+
+> str( pca.results  )
+List of 5
+ $ sdev    : num [1:3] 7.07e-01 7.07e-01 1.59e-16
+ $ rotation: num [1:3, 1:3] 0.816 -0.408 -0.408 0 -0.707 ...
+  ..- attr(*, "dimnames")=List of 2
+  .. ..$ : NULL
+  .. ..$ : chr [1:3] "PC1" "PC2" "PC3"
+ $ center  : num [1:3] 1.33 1.33 1.33
+ $ scale   : logi FALSE
+ $ x       : num [1:3, 1:3] 8.16e-01 -4.08e-01 -4.08e-01 4.31e-17 -7.07e-01 ...
+  ..- attr(*, "dimnames")=List of 2
+  .. ..$ : NULL
+  .. ..$ : chr [1:3] "PC1" "PC2" "PC3"
+ - attr(*, "class")= chr "prcomp"
+# 输出解释：
+* sdev: 标准偏差（Standard deviations）。这些是主成分轴的标准偏差，反映了每个主成分解释的数据变异量。
+* rotation: 旋转（Rotation）。这是一个包含载荷矩阵的组件，其列是标准化后的特征向量，也就是主成分。
+* x: 如果retx为TRUE（默认值T），则包含旋转后的数据，即原始数据在主成分空间中的坐标。
+* center: 如果center为TRUE，则包含用于中心化的均值。
+* scale: 如果scale.为TRUE，则包含用于缩放的标准差。
 
 # sdev 主成分的标准误差(协方差矩阵的特征根的开方，虽然这个实际上是用矩阵的奇异值计算的)
 the standard deviations of the principal components (i.e., the square roots of the eigenvalues of the covariance/correlation matrix, though the calculation is actually done with the singular values of the data matrix).
@@ -5307,6 +5399,12 @@ cell.embeddings <- pca.results$x
 
 
 
+# 用特征值分解，旋转矩阵是特征矩阵。
+# 用奇异值分解时，旋转矩阵和载荷矩阵是什么？
+
+
+
+
 
 
 
@@ -5317,7 +5415,7 @@ cell.embeddings <- pca.results$x
 (3) 用R全手工实现 PCA(对比 prcomp() )
 不借助包，按照 《机器学习实战》P246的伪代码进行操作.
 
-1减去平均数
+1减去列平均数
 2计算协方差矩阵
 3计算协方差矩阵的特征值和特征向量
 4将特征值从大到小排列
@@ -14429,6 +14527,834 @@ https://rdrr.io/r/utils/globalVariables.html
 
 
 
+========================================
+|-- Seurat 4 R包源码解析 27: 计算每组的平均表达量 AverageExpression()
+----------------------------------------
+https://zhuanlan.zhihu.com/p/665586787
+
+
+1. 调包侠
+library(ggplot2)
+library(Seurat)
+library(dplyr)
+library(patchwork)
+pbmc=readRDS("D:\\xampp\\htdocs\\Seurat_source\\sources\\pbmc3k_final.rds")
+
+DimPlot(pbmc, label = T)
+
+dat=AverageExpression(pbmc, group.by = "seurat_clusters")$RNA
+head(dat[,1:5])
+
+library(pheatmap)
+pheatmap(dat[VariableFeatures(pbmc),], border_color = NA,
+         scale = 'row',
+         clustering_method = "ward.D2",
+         show_rownames = F,
+         main="PBMC 3k")
+
+gene.set=unique(c("PTPRC", "CD3D","CD3E", "CD3G","CD4", "CD8A", 
+                  'CCR7','IL7R', 'S100A4', 'KLRG1',
+                  'GZMK',
+                  "GNLY", "NKG7", 
+                  "CD14", "LYZ", 'CST3',
+                  "CD79A", "CD79B", "MS4A1", 
+                  "FCER1A", "FCGR3A", 
+                  "PPBP", "PF4"))
+pheatmap(dat[gene.set,], border_color = "white",
+         scale = 'row',
+         clustering_method = "ward.D2",
+         show_rownames = T,
+         main="PBMC 3k")
+
+
+(2) 计算逻辑
+
+
+# test2
+exp(1)
+exp(1)-1
+expm1(1)
+
+
+1) 原函数
+system.time({
+  dat1=AverageExpression(pbmc, group.by = "seurat_clusters")$RNA
+})
+dat1[1:3, 1:5]
+
+
+2) 手工计算
+system.time({
+  dat2 = sapply( X=split(
+      as.data.frame(t(expm1( as.data.frame (pbmc@assays$RNA@data))) ), 
+      pbmc$seurat_clusters
+    ), 
+    FUN = function(x){
+      colMeans(x) # 按列求平均
+    })
+})
+dat2[1:3, 1:5]
+
+table( abs(as.data.frame(dat1)- as.data.frame(dat2) ) < 1e-5)
+
+
+3) 原始函数关键语句
+system.time({
+  data.use <- GetAssayData(object = pbmc, assay = 'RNA', slot = 'data')
+  #data.use <- data.use[rownames(pbmc), ]
+  data.use <- expm1(x = data.use)
+  
+  t1=FetchData(pbmc, vars=("ident"))
+  
+  category.matrix = Matrix::sparse.model.matrix(object=as.formula("~0+t1[,1]") )
+  category.matrix = sweep(x = category.matrix, MARGIN = 2, STATS = colSums(x = category.matrix), FUN = "/")
+  colnames(category.matrix) = gsub(pattern = "t1\\[, [1-9]*\\]", replacement = "", x = colnames(category.matrix))
+  
+  dat3 <- as.matrix(x = (data.use %*% category.matrix))
+})
+dat3[1:3, 1:5]
+table( abs(as.data.frame(dat1)- as.data.frame(dat3) ) < 1e-5)
+
+
+
+
+2. 源码
+
+
+
+3. R tips
+
+稀疏矩阵的初始化、计算方法。
+
+
+
+
+
+========================================
+|-- Seurat 4 R包源码解析 28: step12 差异基因可视化 VlnPlot(看过)/ FeaturePlot(看过)/ DotPlot
+----------------------------------------
+1. 调包侠
+
+library(Seurat)
+library(dplyr)
+library(ggplot2)
+
+sce=readRDS("/home/wangjl/data4/web/docs/code/pbmc3k_filtered_gene_bc_matrices/pbmc3k.final.Rds")
+
+pbmc.markers <- FindAllMarkers(sce, only.pos = F, min.pct = 0.25, logfc.threshold = 0.25)
+pbmc.markers %>% group_by(cluster) %>% top_n(n = 2, wt = avg_log2FC)  #可能有版本差异 avg_log2FC
+
+	# A tibble: 18 × 7
+	# Groups:   cluster [9]
+		   p_val avg_log2FC pct.1 pct.2 p_val_adj cluster gene     
+		   <dbl>      <dbl> <dbl> <dbl>     <dbl> <fct>   <chr>    
+	 1 1.10e- 81       1.33 0.432 0.111 1.51e- 77 0       CCR7     
+	 2 2.53e- 48       1.08 0.336 0.108 3.46e- 44 0       PRKCQ-AS1
+	 3 0               5.50 0.994 0.215 0         1       S100A9   
+	 4 0               5.47 0.967 0.121 0         1       S100A8   
+	 5 1.61e- 82       1.18 0.983 0.642 2.21e- 78 2       LTB      
+	 6 4.78e- 57       1.22 0.42  0.113 6.56e- 53 2       AQP3     
+	 7 0               4.29 0.934 0.043 0         3       CD79A
+
+
+(1) 可视化-小提琴图 VlnPlot 见本系列 源码解析8-2(1)
+VlnPlot(pbmc, features = c("MS4A1", "CD79A"))
+
+# you can plot raw counts as well
+VlnPlot(pbmc, features = c("NKG7", "PF4"), slot = "counts", log = TRUE)
+
+
+(2) 可视化-FeaturePlot 见本系列 源码解析26-2(2)
+FeaturePlot(pbmc, features = c("MS4A1", "GNLY", "CD3E", "CD14", "FCER1A", "FCGR3A", "LYZ", "PPBP",
+                               "CD8A"))
+
+(3) 可视化-热图 heatmap
+top10 <- pbmc.markers %>% group_by(cluster) %>% top_n(n = 10, wt = avg_log2FC)
+DoHeatmap(pbmc, features = top10$gene, label = T)  #+ NoLegend()
+
+
+
+(4) 可视化-DotPlot (见本文2.1)
+DotPlot(pbmc, features = unique( top10$gene ) ) + RotatedAxis()
+DotPlot(pbmc, features = unique( top10$gene ), cluster.idents = T ) + RotatedAxis() #对cluster进行聚类
+
+
+DotPlot(sce, features = unique(c(
+  "PTPRC", "CD3D", "CD3E", "CD3G", "CD4", "CD8A", "CD8B", "CD79A", "CD79B","MS4A1", "CD163","CD68",
+  "SELL","CCR7",
+  pbmc.markers %>% group_by(cluster) %>% top_n(n = 10, wt = avg_log2FC) %>% pull(gene)
+)), cols = c("lightgrey", "red"), cluster.idents = T)+RotatedAxis()
+
+
+
+(4B)尝试分组：似乎无效
+> sce@meta.data$group= paste0("G", as.numeric( as.character(sce@meta.data$seurat_clusters) ) %% 2 )
+> table(sce@meta.data$group)
+  G0   G1 
+1665 1035
+
+> DotPlot(sce, features = unique(c(
+  "PTPRC", "CD3D", "CD3E", "CD3G", "CD4", "CD8A", "CD8B", "CD79A", "CD79B","MS4A1", "CD163","CD68",
+  "SELL","CCR7",
+  pbmc.markers %>% group_by(cluster) %>% top_n(n = 10, wt = avg_log2FC) %>% pull(gene)
+)), split.by="group", 
+cols = c("orange","blue", "red"), cluster.idents = T)+RotatedAxis()
+
+
+(4C)DotPlot() 怎么对基因表达量求组内平均？
+见本文 3.R Tips (5).
+
+
+
+
+(5) 可视化 - 山脊图 
+Seurat::RidgePlot(pbmc, features = unique( top10$gene ) )
+
+
+
+
+
+
+
+2. 源码阅读
+$ find . | grep "R$" | grep -v "testthat" | grep -v "notes" | grep -v "old/" | xargs grep -n "DoHeatmap" 2>/dev/null --color=auto
+
+(1) DotPlot()
+
+(2) PercentAbove()
+> PercentAbove
+function (x, threshold) 
+{
+    return(length(x = x[x > threshold])/length(x = x))
+}
+<bytecode: 0x8a17358>
+<environment: namespace:Seurat>
+
+就一行代码:
+	两个len相除，length(x = x[x > threshold]) / length(x = x)
+	分子是 >阈值的个数，分母是总个数。
+
+
+
+
+
+3. R tips
+
+(1)R内置的颜色组合
+https://www.biomooc.com/R/R-color.html#2_1
+
+#' @importFrom RColorBrewer brewer.pal.info
+
+library(RColorBrewer)
+display.brewer.all() #显示全部颜色集合
+
+> RColorBrewer::brewer.pal.info #显示颜色信息表
+         maxcolors category colorblind
+BrBG            11      div       TRUE
+PiYG            11      div       TRUE
+PRGn            11      div       TRUE
+PuOr            11      div       TRUE
+RdBu            11      div       TRUE
+RdGy            11      div      FALSE
+RdYlBu          11      div       TRUE
+RdYlGn          11      div      FALSE
+Spectral        11      div      FALSE
+Accent           8     qual      FALSE
+Dark2            8     qual       TRUE
+Paired          12     qual       TRUE
+Pastel1          9     qual      FALSE
+Pastel2          8     qual      FALSE
+Set1             9     qual      FALSE
+Set2             8     qual       TRUE
+Set3            12     qual      FALSE
+Blues            9      seq       TRUE
+BuGn             9      seq       TRUE
+BuPu             9      seq       TRUE
+GnBu             9      seq       TRUE
+Greens           9      seq       TRUE
+Greys            9      seq       TRUE
+Oranges          9      seq       TRUE
+OrRd             9      seq       TRUE
+PuBu             9      seq       TRUE
+PuBuGn           9      seq       TRUE
+PuRd             9      seq       TRUE
+Purples          9      seq       TRUE
+RdPu             9      seq       TRUE
+Reds             9      seq       TRUE
+YlGn             9      seq       TRUE
+YlGnBu           9      seq       TRUE
+YlOrBr           9      seq       TRUE
+YlOrRd           9      seq       TRUE
+
+
+(2)ggplot2 控制点大小的函数: scale_size/scale_radius
+
+  scale.func <- switch(
+    EXPR = scale.by,
+    'size' = scale_size,
+    'radius' = scale_radius,
+    stop("'scale.by' must be either 'size' or 'radius'")
+  )
+
+  scale.func(range = c(0, dot.scale), limits = c(scale.min, scale.max)) + #设置点的大小：scale_size/scale_radius
+
+
+例:
+dat=data.frame(
+	group=c("A", "A", "B", "B", "C","C"),
+	level=paste0("L", c(1, 2, 1, 2, 1, 2)),
+	value=c(10,100,  88,50, 30,90)
+)
+
+library(ggplot2)
+p1=ggplot(dat, aes(x=group, y=level))+
+	geom_point( aes(size=value) )+
+	theme_classic()+
+	guides(size = guide_legend(title = 'Percent Expressed')) #修改图例的标题
+p1
+
+# 按面积
+p1 + scale_size(range=c(0, 6)) #设置点的大小：像是默认值
+
+# 按半径
+p1 + scale_radius(range=c(0, 6)) #设置点的大小: 显得更极端，因为 S=pi*r^2
+
+> p1 +(p1 + scale_size(range=c(0, 6))) +(p1+scale_radius(range=c(0, 6))) #fig
+
+
+
+
+
+(3) as.vector() 的作用？因子转向量
+
+a1=c("a", "b", "c", "a", "c")
+a2=factor(a1, levels=c("a", "b", "c"))
+
+> a2 |> class() #因子
+[1] "factor"
+> a2
+[1] a b c a c
+Levels: a b c
+
+> as.vector(a2) |> class() #向量
+[1] "character"
+> as.vector(a2)
+[1] "a" "b" "c" "a" "c"
+
+
+
+
+
+
+(4) id列的水平 按聚类结果重新排序
+步骤: 按对mat的行求距离，hclust聚类后，取$order对行名排序
+id.levels <- id.levels[hclust(d = dist(x = mat))$order]
+
+解析:
+	对 mat 按列 求距离 dist(x=mat);
+	对距离矩阵做层次聚类 hclust( dist(mat) )
+	取结果的 $order，对原始输入列名排序
+
+例:
+	> head(mtcars, n=2)
+				  mpg cyl disp  hp drat    wt  qsec vs am gear carb
+	Mazda RX4      21   6  160 110  3.9 2.620 16.46  0  1    4    4
+	Mazda RX4 Wag  21   6  160 110  3.9 2.875 17.02  0  1    4    4
+
+> id.levels=rownames(mtcars)
+
+	> id.levels |> head(2)
+	[1] "Mazda RX4"     "Mazda RX4 Wag"
+
+
+dist() 对行求两两的距离:
+	> mtcars[1:4, ]
+					mpg cyl disp  hp drat    wt  qsec vs am gear carb
+	Mazda RX4      21.0   6  160 110 3.90 2.620 16.46  0  1    4    4
+	Mazda RX4 Wag  21.0   6  160 110 3.90 2.875 17.02  0  1    4    4
+	Datsun 710     22.8   4  108  93 3.85 2.320 18.61  1  1    4    1
+	Hornet 4 Drive 21.4   6  258 110 3.08 3.215 19.44  1  0    3    1
+	> dist(mtcars[1:4, ]) #正好少了一行?
+					 Mazda RX4 Mazda RX4 Wag  Datsun 710
+	Mazda RX4 Wag    0.6153251                          
+	Datsun 710      54.9086059    54.8915169            
+	Hornet 4 Drive  98.1125212    98.0958939 150.9935191
+
+根据距离聚类：
+	> hclust(dist(mtcars[1:4, ]) )
+
+	Call:
+	hclust(d = dist(mtcars[1:4, ]))
+
+	Cluster method   : complete 
+	Distance         : euclidean 
+	Number of objects: 4 
+
+查看聚类的数据结构:
+	> hclust(d=dist(mtcars[1:4, ]) ) |> str()
+	List of 7
+	 $ merge      : int [1:3, 1:2] -1 -3 -4 -2 1 2
+	 $ height     : num [1:3] 0.615 54.909 150.994
+	 $ order      : int [1:4] 4 3 1 2
+	 $ labels     : chr [1:4] "Mazda RX4" "Mazda RX4 Wag" "Datsun 710" "Hornet 4 Drive"
+	 $ method     : chr "complete"
+	 $ call       : language hclust(d = dist(mtcars[1:4, ]))
+	 $ dist.method: chr "euclidean"
+	 - attr(*, "class")= chr "hclust"
+
+	> hclust(d=dist(mtcars[1:4, ]) )$order
+	[1] 4 3 1 2
+	> id.levels[ hclust(d=dist(mtcars[1:4, ]) )$order ]
+	[1] "Hornet 4 Drive" "Datsun 710"     "Mazda RX4"      "Mazda RX4 Wag"
+
+
+全量输入行名，排序后:
+	> id.levels[ hclust(d=dist(mtcars) )$order ]
+	 [1] "Maserati Bora"       "Chrysler Imperial"   "Cadillac Fleetwood"  "Lincoln Continental" "Ford Pantera L"      "Duster 360"          "Camaro Z28"          "Hornet Sportabout"  
+	 [9] "Pontiac Firebird"    "Hornet 4 Drive"      "Valiant"             "Merc 450SLC"         "Merc 450SE"          "Merc 450SL"          "Dodge Challenger"    "AMC Javelin"        
+	[17] "Honda Civic"         "Toyota Corolla"      "Fiat 128"            "Fiat X1-9"           "Ferrari Dino"        "Lotus Europa"        "Merc 230"            "Volvo 142E"         
+	[25] "Datsun 710"          "Toyota Corona"       "Porsche 914-2"       "Merc 240D"           "Mazda RX4"           "Mazda RX4 Wag"       "Merc 280"            "Merc 280C"
+
+	# 原始行名:
+	> id.levels
+	 [1] "Mazda RX4"           "Mazda RX4 Wag"       "Datsun 710"          "Hornet 4 Drive"      "Hornet Sportabout"   "Valiant"             "Duster 360"          "Merc 240D"          
+	 [9] "Merc 230"            "Merc 280"            "Merc 280C"           "Merc 450SE"          "Merc 450SL"          "Merc 450SLC"         "Cadillac Fleetwood"  "Lincoln Continental"
+	[17] "Chrysler Imperial"   "Fiat 128"            "Honda Civic"         "Toyota Corolla"      "Toyota Corona"       "Dodge Challenger"    "AMC Javelin"         "Camaro Z28"         
+	[25] "Pontiac Firebird"    "Fiat X1-9"           "Porsche 914-2"       "Lotus Europa"        "Ford Pantera L"      "Ferrari Dino"        "Maserati Bora"       "Volvo 142E"
+
+
+
+
+(5)DotPlot() 怎么对基因表达量求组内平均？
+* log 标准化前的表达矩阵mat;
+* 先 exp(mat)-1，再求平均，然后做基因内的scale，截断到[-2.5, 2.5]
+* 接着画DotPlot图
+
+
+  #(A9) 生成绘图所需的数据
+  data.plot <- lapply(
+    # B1) 对分群的 uniq 值 遍历
+    X = unique(x = data.features$id),
+    FUN = function(ident) {
+      # B2) 取分类为ident的子行；列为1: (n-1)列，就是去掉最后的id列
+      data.use <- data.features[data.features$id == ident, 1:(ncol(x = data.features) - 1), drop = FALSE]
+      # B3) 按列(基因)求平均值，exp(x)-1 后求 mean; 就保持原始值了，似乎没有再次取 log? 
+      avg.exp <- apply(
+        X = data.use,
+        MARGIN = 2,
+        FUN = function(x) {
+          return(mean(x = expm1(x = x)))
+        }
+      )
+
+      # B4) 获取表达的细胞占比: 按列(基因)，统计 大于0的百分比
+      pct.exp <- apply(X = data.use, MARGIN = 2, FUN = PercentAbove, threshold = 0)
+
+      # B5) 返回一个 list，分别是 表达的 均值 和 细胞比例
+      return(list(avg.exp = avg.exp, pct.exp = pct.exp))
+    }
+  )
+
+  #(A16) 对基因列做scale
+  avg.exp.scaled <- sapply(
+    # 对基因名遍历
+    X = unique(x = data.plot$features.plot),
+    FUN = function(x) {
+      # B1) 获取该基因的行，avg 列
+      data.use <- data.plot[data.plot$features.plot == x, 'avg.exp']
+      # B2) scale 默认是 T
+      if (scale) {
+        # C1) 对列做scale
+        data.use <- scale(x = data.use)
+        # C2) 最值修正在[-2.5, 2.5]之间
+        data.use <- MinMax(data = data.use, min = col.min, max = col.max)
+      } else {
+      # B3) 默认不走这里：如果不做scale，则做 log(exp+1)变换 
+        data.use <- log1p(x = data.use)
+      }
+      return(data.use)
+    }
+  )
+
+
+结论：
+
+* 根据指定的基因，使用 FetchData() 获取表达量，默认是从 data slot 获取的 log 标准化后的值；
+	
+	函数原型: FetchData <- function(object, vars, cells = NULL, slot = 'data')
+
+	#(A6) 获取数据：指定基因 features(列名), 指定细胞名(行名)
+	data.features <- FetchData(object = object, vars = features, cells = cells)
+
+* (见A9-B3)：按列(基因)求平均值，exp(x)-1 后求 mean
+  avg.exp <- apply(
+	X = data.use,
+	MARGIN = 2,
+	FUN = function(x) {
+	  return(mean(x = expm1(x = x)))
+	}
+  )
+
+* (见A16-B2)默认 scale=T，直接做 scale, 然后限定在[-2.5, 2.5]之间，没有再做 log 变换。
+* 如果设置 scale=F，则做 log(avg.exp+1)变换
+
+
+
+
+(6)as.vector()
+> avg.exp.scaled <- as.vector(x = t(x = avg.exp.scaled))
+
+示例:
+	> iris[1:2, 1:4]
+	  Sepal.Length Sepal.Width Petal.Length Petal.Width
+	1          5.1         3.5          1.4         0.2
+	2          4.9         3.0          1.4         0.2
+
+	> iris[1:2, 1:4] |> class() #是数据框
+	[1] "data.frame"
+
+	> iris[1:2, 1:4] |> as.vector() #转为向量，是案列转
+	$Sepal.Length
+	[1] 5.1 4.9
+
+	$Sepal.Width
+	[1] 3.5 3.0
+
+	$Petal.Length
+	[1] 1.4 1.4
+
+	$Petal.Width
+	[1] 0.2 0.2
+
+
+先转为矩阵，再转为向量，就是一行了:
+	> iris[1:2, 1:4] |> as.matrix() |> as.vector() #还是按列转成向量，再连起来
+	[1] 5.1 4.9 3.5 3.0 1.4 1.4 0.2 0.2
+
+
+转置是直接转为矩阵，然后再按列转为向量
+	> t(iris[1:2, 1:4]) 
+				   1   2
+	Sepal.Length 5.1 4.9
+	Sepal.Width  3.5 3.0
+	Petal.Length 1.4 1.4
+	Petal.Width  0.2 0.2
+
+	> dat= as.vector( t(iris[1:2, 1:4]) )
+	> dat
+	[1] 5.1 3.5 1.4 0.2 4.9 3.0 1.4 0.2
+
+
+
+
+(7)cut()对数据分bin
+> avg.exp.scaled <- as.numeric(x = cut(x = avg.exp.scaled, breaks = 20))
+
+示例:
+	> dat= as.vector( t(iris[1:2, 1:4]) )
+	> dat
+	[1] 5.1 3.5 1.4 0.2 4.9 3.0 1.4 0.2 #输入的数据
+
+	> cut(dat, breaks=4)  #分为4个bin
+	[1] (3.88,5.1]   (2.65,3.88]  (0.195,1.42] (0.195,1.42] (3.88,5.1]   (2.65,3.88]  (0.195,1.42] (0.195,1.42]
+	Levels: (0.195,1.42] (1.42,2.65] (2.65,3.88] (3.88,5.1]
+
+	> cut(dat, breaks=4) |> as.numeric() #再转为数字，对应四个bin的下标编号
+	[1] 4 3 1 1 4 3 1 1
+
+
+
+(8)百分比太小的记作NA
+> data.plot$pct.exp[data.plot$pct.exp < dot.min] <- NA
+
+> a1=c(1,2,3,4,5)
+> a1
+[1] 1 2 3 4 5
+
+> a1[a1<3] = NA
+> a1
+[1] NA NA  3  4  5
+
+
+
+(9)gsub 函数：正则替换
+> gsub
+function (pattern, replacement, x, ignore.case = FALSE, perl = FALSE, 
+	fixed = FALSE, useBytes = FALSE)
+...
+
+示例:
+	> gsub(pattern="^CD", replacement="", x=c("CD8", "PDCD1", "GAPDH", "CD47"))
+	[1] "8"     "PDCD1" "GAPDH" "47"
+
+	> gsub(pattern="^((8|7|6|5|4|3|2|1|0)_)", replacement="", x=c("0_G0", "0_G1", "1_G0", "1_G1"))
+	[1] "G0" "G1" "G0" "G1"
+
+
+
+(10)vapply支持设置额外的参数：去掉字符串向量的cluster前缀
+格式: cluster_刺激分组
+目的: 去掉 cluster和下划线，保留最后的 刺激分组，返回数组。
+源代码:
+    splits.use <- vapply(
+      X = as.character(x = data.plot$id),
+      FUN = gsub,
+      FUN.VALUE = character(length = 1L),
+      pattern =  paste0(
+        '^((',
+        paste(sort(x = levels(x = object), decreasing = TRUE), collapse = '|'),
+        ')_)'
+      ),
+      replacement = '',
+      USE.NAMES = FALSE
+    )
+
+示例:
+	> paste(sort(x = levels(x = sce), decreasing = TRUE), collapse = '|')
+	[1] "8|7|6|5|4|3|2|1|0"
+
+
+	> paste0(
+	+         '^((',
+	+         paste(sort(x = levels(x = sce), decreasing = TRUE), collapse = '|'),
+	+         ')_)'
+	+       )
+	[1] "^((8|7|6|5|4|3|2|1|0)_)"
+
+	> vapply(
+		X=c("1_up", "1_down", "2_up", "2_down"),
+		FUN=gsub,
+		FUN.VALUE = character(length = 1L),
+		pattern="^((2|1)_)",
+		replacement = '',
+		USE.NAMES = FALSE
+	)
+	# [1] "up"   "down" "up"   "down"
+
+最终实现对每个cluster区分 刺激前、刺激后，把刺激分组带的前缀去掉，按照后缀指定颜色。已经不是渐变色了。
+效果参考: https://satijalab.org/seurat/articles/integration_introduction Fig4
+
+
+
+
+(11) ggplot2 在主题设置x和y轴标题为空
+DimPlot(sce, label=T)+theme(axis.title.x = element_blank(), axis.title.y = element_blank())
+
+
+
+
+(12) DotPlot使用的主题 @importFrom cowplot theme_cowplot
+* 默认字体大小为 14，似乎更值得推荐使用。
+* 实在 theme_grey() 主题的基础上，替换了一些设置。替换函数 %+replace%
+* "theme("后的没有细看。
+
+> cowplot::theme_cowplot
+function (font_size = 14, font_family = "", line_size = 0.5, 
+    rel_small = 12/14, rel_tiny = 11/14, rel_large = 16/14) 
+{
+    half_line <- font_size/2
+    small_size <- rel_small * font_size
+    theme_grey(base_size = font_size, base_family = font_family) %+replace% 
+        theme(line = element_line(color = "black", linewidth = line_size, 
+            linetype = 1, lineend = "butt"), rect = element_rect(fill = NA, 
+            color = NA, linewidth = line_size, linetype = 1), 
+            text = element_text(family = font_family, face = "plain", 
+                color = "black", size = font_size, hjust = 0.5, 
+                vjust = 0.5, angle = 0, lineheight = 0.9, margin = margin(), 
+                debug = FALSE), axis.line = element_line(color = "black", 
+                linewidth = line_size, lineend = "square"), axis.line.x = NULL, 
+            axis.line.y = NULL, axis.text = element_text(color = "black", 
+                size = small_size), axis.text.x = element_text(margin = margin(t = small_size/4), 
+                vjust = 1), axis.text.x.top = element_text(margin = margin(b = small_size/4), 
+                vjust = 0), axis.text.y = element_text(margin = margin(r = small_size/4), 
+                hjust = 1), axis.text.y.right = element_text(margin = margin(l = small_size/4), 
+                hjust = 0), axis.ticks = element_line(color = "black", 
+                linewidth = line_size), axis.ticks.length = unit(half_line/2, 
+                "pt"), axis.title.x = element_text(margin = margin(t = half_line/2), 
+                vjust = 1), axis.title.x.top = element_text(margin = margin(b = half_line/2), 
+                vjust = 0), axis.title.y = element_text(angle = 90, 
+                margin = margin(r = half_line/2), vjust = 1), 
+            axis.title.y.right = element_text(angle = -90, margin = margin(l = half_line/2), 
+                vjust = 0), legend.background = element_blank(), 
+            legend.spacing = unit(font_size, "pt"), legend.spacing.x = NULL, 
+            legend.spacing.y = NULL, legend.margin = margin(0, 
+                0, 0, 0), legend.key = element_blank(), legend.key.size = unit(1.1 * 
+                font_size, "pt"), legend.key.height = NULL, legend.key.width = NULL, 
+            legend.text = element_text(size = rel(rel_small)), 
+            legend.text.align = NULL, legend.title = element_text(hjust = 0), 
+            legend.title.align = NULL, legend.position = "right", 
+            legend.direction = NULL, legend.justification = c("left", 
+                "center"), legend.box = NULL, legend.box.margin = margin(0, 
+                0, 0, 0), legend.box.background = element_blank(), 
+            legend.box.spacing = unit(font_size, "pt"), panel.background = element_blank(), 
+            panel.border = element_blank(), panel.grid = element_blank(), 
+            panel.grid.major = NULL, panel.grid.minor = NULL, 
+            panel.grid.major.x = NULL, panel.grid.major.y = NULL, 
+            panel.grid.minor.x = NULL, panel.grid.minor.y = NULL, 
+            panel.spacing = unit(half_line, "pt"), panel.spacing.x = NULL, 
+            panel.spacing.y = NULL, panel.ontop = FALSE, strip.background = element_rect(fill = "grey80"), 
+            strip.text = element_text(size = rel(rel_small), 
+                margin = margin(half_line/2, half_line/2, half_line/2, 
+                  half_line/2)), strip.text.x = NULL, strip.text.y = element_text(angle = -90), 
+            strip.placement = "inside", strip.placement.x = NULL, 
+            strip.placement.y = NULL, strip.switch.pad.grid = unit(half_line/2, 
+                "pt"), strip.switch.pad.wrap = unit(half_line/2, 
+                "pt"), plot.background = element_blank(), plot.title = element_text(face = "bold", 
+                size = rel(rel_large), hjust = 0, vjust = 1, 
+                margin = margin(b = half_line)), plot.subtitle = element_text(size = rel(rel_small), 
+                hjust = 0, vjust = 1, margin = margin(b = half_line)), 
+            plot.caption = element_text(size = rel(rel_tiny), 
+                hjust = 1, vjust = 1, margin = margin(t = half_line)), 
+            plot.tag = element_text(face = "bold", hjust = 0, 
+                vjust = 0.7), plot.tag.position = c(0, 1), plot.margin = margin(half_line, 
+                half_line, half_line, half_line), complete = TRUE)
+}
+<bytecode: 0x12c15160>
+<environment: namespace:cowplot>
+
+
+
+
+(13) facet_grid() 分面参数 switch?
+源码:
+	plot <- plot + facet_grid(  #分面函数
+      facets = ~feature.groups, #对基因组 分面
+      scales = "free_x",  #对x=基因分组 自由
+      space = "free_x",   #间隔: 
+      switch = "y"        #
+    ) + theme(
+      panel.spacing = unit(x = 1, units = "lines"),
+      strip.background = element_blank()
+    )
+
+文档：
+	facet_grid(
+		rows = NULL,
+		cols = NULL,
+		scales = "fixed",
+		space = "fixed",
+		shrink = TRUE,
+		labeller = "label_value",
+		as.table = TRUE,
+		switch = NULL,
+		drop = TRUE,
+		margins = FALSE,
+		axes = "margins",
+		axis.labels = "all",
+		facets = deprecated()
+	)
+
+解释:
+    scales: Are scales shared across all facets (the default, ‘"fixed"’),
+          or do they vary across rows (‘"free_x"’), columns
+          (‘"free_y"’), or both rows and columns (‘"free"’)?
+		  是否对 scale 统一？源码是 free_x 每个row之间不同。
+
+    space: If ‘"fixed"’, the default, all panels have the same size. If
+          ‘"free_y"’ their height will be proportional to the length of
+          the y scale; if ‘"free_x"’ their width will be proportional
+          to the length of the x scale; or if ‘"free"’ both height and
+          width will vary.  This setting has no effect unless the
+          appropriate scales also vary.
+		  是否每个分面大小不同？源码是 free_x，表示x的长度和x元素个数成比例
+
+    switch: By default, the labels are displayed on the top and right of
+          the plot. If ‘"x"’, the top labels will be displayed to the
+          bottom. If ‘"y"’, the right-hand side labels will be
+          displayed to the left. Can also be set to ‘"both"’.
+		  分组的标签放到top还是右侧。
+		  * 如果是x表示top标签放到底部；
+		  * 如果是y表示右侧标签放到左侧。
+		  * 也可以设置为 both
+#
+例子:
+	p <- ggplot(mpg, aes(displ, cty)) + geom_point()
+	
+	# 按厂家分面，x
+	ggplot(mpg, aes(drv, model)) +
+	  geom_point( aes(size=displ) ) + #画点图，指定点大小
+	  scale_size( range=c(0, 6) )+ #指定按面积显示大小，最大6
+	  facet_grid(manufacturer~.,
+				 scales = "free_y",  #y坐标在不同分面可以不一致
+				 space = "free_y",   #每个分面的y宽度可以不同
+				 switch=NULL) +       #默认分面标签显示在right侧；设置为y显示到left侧
+	  theme(strip.text.y = element_text(angle = 0))
+
+
+
+
+(+-) ggplot2 颜色函数
+  if (split.colors) {
+    plot <- plot + scale_color_identity()
+  } else if (length(x = cols) == 1) {
+    plot <- plot + scale_color_distiller(palette = cols)
+  } else {
+    plot <- plot + scale_color_gradient(low = cols[1], high = cols[2])
+  }
+
+
+
+
+(14) ggplot2::scale_color_identity() 一种特殊的离散映射方式，映射变量本身就是颜色值
+
+scale_identity:
+	这组函数不经过scale过程，也不会产生图例，除非用户设置了 ‘breaks’, ‘labels’, 和‘guide’类型
+	Use this set of scales when your data has already been scaled,
+		 i.e. it already represents aesthetic values that ggplot2 can
+		 handle directly. These scales will not produce a legend unless you
+		 also supply the ‘breaks’, ‘labels’, and type of ‘guide’ you want.
+
+示例:
+	# 测试数据
+	dat <- iris
+	dat$color=c("red", "navy", "orange") [match(dat$Species, c("setosa", "versicolor", "virginica"))]
+
+	## 默认状况
+	library(ggplot2)
+	p1 <- ggplot(dat, aes(x=Sepal.Length, y=Sepal.Width, color = color)) + 
+	  geom_point() +
+	  theme_classic()
+	## 使用颜色标度函数
+	p1b <- p1 + scale_color_identity()
+	#
+	p1 + (p1b+ggtitle("scale_color_identity"))
+
+
+
+
+(15) ggplot2::scale_color_distiller() 将ColorBrewer的颜色运用在连续变量上
+
+将ColorBrewer的颜色运用在连续变量上
+
+scale_colour_brewer:
+	The ‘brewer’ scales provide sequential, diverging and qualitative
+		 colour schemes from ColorBrewer. These are particularly well
+		 suited to display discrete values on a map. See
+		 <https://colorbrewer2.org> for more information.
+
+示例:
+	p2 <- ggplot(dat, aes(x=Sepal.Length, y=Sepal.Width, color = Sepal.Length)) + 
+	  geom_point() +
+	  theme_classic()
+	p2b <- p2 + scale_color_distiller(palette = "YlOrRd", direction =1)
+	p2+(p2b+ggtitle("scale_color_distiller"))
+
+
+
+(16) ggplot2::scale_color_gradient() 提供渐变色
+
+scale_*_gradient creates a two colour gradient (low-high),
+     scale_*_gradient2 creates a diverging colour gradient
+     (low-mid-high), scale_*_gradientn creates a n-colour gradient. For
+     binned variants of these scales, see the color steps scales.
+
+	p2 + scale_color_gradient(low="#00B0F0", high="#A349A4") +
+		ggtitle("scale_color_gradient")
+
+
+#
+
+
 
 
 
@@ -14436,32 +15362,1376 @@ https://rdrr.io/r/utils/globalVariables.html
 
 
 ========================================
-|-- Seurat 4 R包源码解析 27: step12 差异基因可视化 VlnPlot/ FeaturePlot/ DoHeatmap/ DotPlot //todo
+|-- Seurat 4 R包源码解析 28: step12 差异基因可视化 DoHeatmap //todo
+----------------------------------------
+1.调包侠
+
+
+
+
+
+
+2. 源码阅读
+
+(?) DoHeatmap
+
+
+
+
+
+3. R tips
+
+
+
+
+
+========================================
+|-- Seurat 4 R包源码解析 28: step12 差异基因可视化 RidgePlot //todo
+----------------------------------------
+1.调包侠
+
+
+
+
+
+
+2. 源码阅读
+
+(?) RidgePlot
+
+
+
+
+
+3. R tips
+
+
+
+
+
+
+
+
+========================================
+|-- Seurat 4 R包源码解析 29: step13 细胞亚群命名 RenameIdents()
 ----------------------------------------
 1. 调包侠
 
-(4) 可视化-小提琴图
-#* VlnPlot 见解析 8
-VlnPlot(pbmc, features = c("MS4A1", "CD79A"))
+DotPlot(pbmc, features = unique(c("PTPRC","CD3E", "CD3D", "CD3G", "CD8A", "CD8B", "CD4",
+                           "CCR7", "IL7R", 'S100A4', 
+                           "GNLY", "NKG7", 'GZMA',
+                           "HLA-DQA1", "CD74",
+                           "MS4A1", "CD79A", "CD79B", "CD19",
+                           "CD14", 'LYZ',  "FCGR3A", 'MS4A7',
+                           "CD1C", 'CLEC10A', "FCER1A", 'CST3',
+                           "PPBP") ), cluster.idents = T)+RotatedAxis()
 
-# you can plot raw counts as well
-VlnPlot(pbmc, features = c("NKG7", "PF4"), slot = "counts", log = TRUE)
-
-
-(5) 可视化-FeaturePlot
-FeaturePlot(pbmc, features = c("MS4A1", "GNLY", "CD3E", "CD14", "FCER1A", "FCGR3A", "LYZ", "PPBP",
-                               "CD8A"))
-
-(6) 可视化-热图 heatmap
-top10 <- pbmc.markers %>% group_by(cluster) %>% top_n(n = 10, wt = avg_log2FC)
-DoHeatmap(pbmc, features = top10$gene, label = T)  #+ NoLegend()
-
-(8) 可视化-dotplot 
-DotPlot(pbmc, features = unique( top10$gene ) ) + RotatedAxis()
-DotPlot(pbmc, features = unique( top10$gene ), cluster.idents = T ) + RotatedAxis() #对cluster进行聚类
+(1) 给细胞命名 方法1
+new.cluster.ids <- c("Naive CD4 T", "CD14+ Mono", "Memory CD4 T", "B", "CD8 T", "FCGR3A+ Mono",
+                     "NK", "DC", "Platelet")
+names(new.cluster.ids) <- levels(pbmc)
+pbmc <- RenameIdents(pbmc, new.cluster.ids)
 
 
+(2) 方法2 也可手工构建 named vector
+自己构建 cluster number 和 cluster name 的对应关系。
 
+cluster2type <- c(
+  "0"="Naive CD4 T",
+  "1"="CD14+ Mono",
+  "2"="Memory CD4 T",
+  "3"="B",
+  "4"="CD8 T",
+  "5"="FCGR3A Mono",
+  "6"="NK",
+  "7"="DC",
+  "8"="Platelet"
+)
+cluster2type
+#             0              1              2              3              4              5              6              7              8 
+# "Naive CD4 T"   "CD14+ Mono" "Memory CD4 T"            "B"        "CD8 T"  "FCGR3A Mono"           "NK"           "DC"     "Platelet" 
+pbmc <- RenameIdents(pbmc, cluster2type)
+
+
+(3) 写法3: 指定 meta.data 中的某一列作为名字
+cluster2type #同(2)
+pbmc[['cell_type']] = unname(cluster2type[pbmc@meta.data$seurat_clusters])
+Idents(pbmc)="cell_type"
+DimPlot(pbmc, label=T)
+
+这可以算是一个终极写法，只要在 meta.data 中新建一列，按自己的想法修改该列，然后Idents(xx)=指定该列名字为分类名，就可以了。
+
+
+
+
+(4) 查看当前细胞名字
+
+> Idents(pbmc) |> str()
+ Factor w/ 9 levels "Naive CD4 T",..: 1 2 3 4 5 3 6 6 6 4 ...
+ - attr(*, "names")= chr [1:2700] "AAACATACAACCAC-1" "AAACATTGAGCTAC-1" "AAACATTGATCAGC-1" "AAACCGTGCTTCCG-1" ...
+
+信息记录在 @active.ident 中：
+> pbmc@active.ident |> str()
+ Factor w/ 9 levels "Naive CD4 T",..: 1 2 3 4 5 3 6 6 6 4 ...
+ - attr(*, "names")= chr [1:2700] "AAACATACAACCAC-1" "AAACATTGAGCTAC-1" "AAACATTGATCAGC-1" "AAACCGTGCTTCCG-1" ...
+
+
+
+
+(5) 只更新一部分细胞的名字
+
+Idents(object = object, cells = cells.idents[[i]]) <- ident.pairs[[i]]
+其中 i 是原有的idents，比如seurat_clusters中的 "1"。
+cells.idents 是老的 named list，key name是 老的细胞名字，value 是对应的 cell id。
+ident.pairs 是新的 named list，key name 是老的细胞名字，value 是新的 细胞名字。
+
+比如，把 naive 和 memory CD4+T细胞合并为 CD4+T
+> table(Idents(object) )
+
+ Naive CD4 T            B Memory CD4 T  FCGR3A Mono           NK        CD8 T 
+         696          349          467          159          148          339 
+  CD14+ Mono           DC     Platelet 
+         491           36           15 
+# 键值对list，键为细胞类型，值为对应的cell id vector
+cells.idents <- CellsByIdentities(object = object)
+
+
+Idents(object = object, cells = cells.idents[['Naive CD4 T']]) = "CD4 T"
+Idents(object = object, cells = cells.idents[['Memory CD4 T']]) = "CD4 T"
+
+> table(Idents(object) )
+      CD4 T           B FCGR3A Mono          NK       CD8 T  CD14+ Mono 
+       1163         349         159         148         339         491 
+         DC    Platelet 
+         36          15 
+# 我们看到 CD4 T 的细胞数是之前 naive 和 memory 的和。说明它们已经合并为一类了。
+
+
+
+
+(6)用 PBMC3k 数据看 CellsByIdentities() 的输出
+	> cells.idents <- CellsByIdentities(object = pbmc)
+	> str(cells.idents)
+	List of 9
+	 $ 0: chr [1:696] "AAACATACAACCAC-1" "AAACTTGATCCAGA-1" "AAAGAGACGGCATT-1" "AAAGTTTGTAGAGA-1" ...
+	 $ 1: chr [1:491] "AAAGAGACGCGAGA-1" "AAAGATCTGGGCAA-1" "AAAGCAGATATCGG-1" "AAAGTTTGTAGCGT-1" ...
+
+
+
+(7)利用 CellsByIdentities 返回 cell id 的 named vector: 值为cell id，且按idents排过序；
+names为 cluster+组内序号递增。
+
+cells <- unlist(x = CellsByIdentities(object = object, idents = idents))
+#                 01                 02                 03                 04 
+# "AAACATACAACCAC-1" "AAACTTGATCCAGA-1" "AAAGAGACGGCATT-1" "AAAGTTTGTAGAGA-1"
+
+这个 cells 可以用于以后的排序，如： 
+	data.features <- FetchData(object = object, vars = features, cells = cells)
+	Idents(object = object)[cells, drop = TRUE]
+	object[[group.by, drop = TRUE]][cells, drop = TRUE]
+
+
+
+
+
+
+2. 源码阅读
+$ find . | grep "R$" | grep -v "testthat" | grep -v "notes" | grep -v "old/" | xargs grep -n "RenameIdents" 2>/dev/null --color=auto
+
+* Idents() 见解析9和11
+
+(1) RenameIdents()
+
+(2) CellsByIdentities()
+
+
+
+
+3. R tips
+
+(1) 转换为list 用 as.list() 和 list() 有啥区别？主要是对输入格式的要求不同。
+
+1) 键值对转为 list，应该使用 list()包裹，否则报错：
+> as.list("1"="apple", "2"="pear")
+Error in as.list.default(`1` = "apple", `2` = "pear") : 
+  argument "x" is missing, with no default
+
+> list("1"="apple", "2"="pear")
+$`1`
+[1] "apple"
+
+$`2`
+[1] "pear"
+
+
+2) named vector 转为 list，应该使用 as.list() 转换， 否则不报错，但也不是我们期望的结果：
+> a1=c("1"="apple", "2"="pear"); a1
+      1       2 
+"apple"  "pear"
+
+> as.list(a1) #正确结果
+$`1`
+[1] "apple"
+
+$`2`
+[1] "pear"
+
+> list(a1) #不是我们期望的结果
+[[1]]
+      1       2 
+"apple"  "pear" 
+
+
+
+
+
+
+(2) 函数形参中最后一个参数是三个点什么意思？表示其余不确定个数的所有输入参数
+
+例：打印输入参数的个数，及它们的总和
+> addAll=function(...){ 
+	message("number:", length( list(...) ), ", total:", sum(...)) 
+}
+> addAll(1,2) #number:2, total:3
+> addAll(1,2, 4, 5, 6) #number:5, total:18
+
+
+
+
+
+
+
+(3) 如何把用户输入的 list 或者 named vector 都转为list呢？使用 tryCatch~error 语句
+
+1) 我想到的方法：判断输入的类是否是list: class(xx) == 'list'：
+> as.list(a1) |> class()
+[1] "list"
+
+但是放到函数中就报错：
+> addAll2=function(...){ 
+   class(...) == "list"
+ }
+> addAll2( list(1,2) )
+[1] TRUE
+> addAll2( 1, 2 ) #报错：如果用户输入这种逗号隔开的R语句
+Error in class(...) : 2 arguments passed to 'class' which requires 1
+
+
+
+2) Seurat 中使用的方案是 tryCatch~error 语句：正确则直接返回，错误则通过error=function(e){}执行函数并返回值。
+
+先介绍 tryCatch~error 语句 语句：
+> a1=tryCatch({aaa/0}, error=function(e){
+   print("In error:")
+   print(e)
+   e
+ }, finally = print("The finally..."))
+[1] "In error:"
+<simpleError: object 'aaa' not found>
+[1] "The finally..."
+
+> a1
+<simpleError: object 'aaa' not found>
+正确则返回，程序报错则走 error=function(e){} 并返回，其中 e 参数就是错误对象本身。
+
+
+Seurat的方案:
+myFun = function(object, ...){
+  ident.pairs <- tryCatch(
+    expr = as.list(x = ...),
+    error = function(e) {
+      return(list(...))
+    }
+  )
+  ident.pairs
+}
+
+测试1：输入 named vector
+> myFun(iris, "1"="CD4T", "2"="Mono")
+$`1`
+[1] "CD4T"
+
+$`2`
+[1] "Mono"
+
+测试2：输入 list
+> myFun(iris, list("1"="CD4T", "2"="Mono") )
+$`1`
+[1] "CD4T"
+
+$`2`
+[1] "Mono"
+
+
+使用以上 tryCatch 语句，用户只要输入键值对，不管是不是list，都能转换为list。
+这体现了成熟软件包的特性：预判了用户的错误，并给出应对策略。
+
+用户还可能输入不带引号的数字，如 1="CD4T"，R会直接报错：
+> myFun(iris, 1="CD4T", 2="Mono")
+Error: unexpected '=' in "myFun(iris, 1="
+
+
+IT界经常说：不要相信用户的任何输入。意思就是用户可能犯各种错，写程序的都要及时挽救，挽救不了的也要给出恰当的报错信息和/或位置。
+只要准确给出明确的报错信息或报错位置，剩下的就是用户的事情了。
+这里的用户也包括半年后的程序员本人。
+
+
+
+
+
+(4) stop() 的 call.=T 参数什么意思？
+帮助中比较抽象：
+> ?stop
+call. : logical, indicating if the call should become part of the error message.
+
+通过实例：
+fn3=function(a, call=T){
+  if(a<0){
+    stop("a must be positive!", call.= call)
+  }
+}
+> fn3(1)
+> fn3(-1)
+Error in fn3(-1) : a must be positive!
+> fn3(-1, F)
+Error: a must be positive!
+
+总结：call.=T默认，表示把调用作为报错的一部分，比如 Error in 函数调用。
+而主动设置为 call.=F 后，仅仅打印stop中的报错信息，而忽视调用过程。
+
+
+
+
+(5) as.vector() 把named vector 转为只有 value 没有name
+优点：无论是字符串还是数字，都可以转换。
+
+> a1=c(1,2,5); names(a1)=c("PC", "phone", "book"); a1
+   PC phone  book 
+    1     2     5 
+> as.vector(a1)
+[1] 1 2 5
+
+
+> a2=c("1", "2" ,"5"); names(a2)=c("PC", "phone", "book"); a2
+   PC phone  book 
+  "1"   "2"   "5" 
+> as.vector(a2)
+[1] "1" "2" "5"
+
+
+
+
+(6) sapply() 的参数 simplify = T, USE.NAMES = TRUE
+> dat=iris[c(1:2, 51:52, 101:102),]
+> dat
+    Sepal.Length Sepal.Width Petal.Length Petal.Width    Species
+1            5.1         3.5          1.4         0.2     setosa
+2            4.9         3.0          1.4         0.2     setosa
+51           7.0         3.2          4.7         1.4 versicolor
+52           6.4         3.2          4.5         1.5 versicolor
+101          6.3         3.3          6.0         2.5  virginica
+102          5.8         2.7          5.1         1.9  virginica
+
+1) 默认 simplify = T, USE.NAMES = TRUE
+则输出结果简化为 "matrix" "array"。
+注；这是因为本例子特殊性，确实能转为matrix。如果数据是 dat=iris[c(1:2, 51, 101),]，无法转为matrix，只能返回list。
+
+> idents=iris$Species |> levels()
+> sapply(idents, function(x){
++   rownames(dat[dat$Species==x,])
++ } #, simplify = T, USE.NAMES = T
++ )
+     setosa versicolor virginica
+[1,] "1"    "51"       "101"    
+[2,] "2"    "52"       "102"    
+> sapply(idents, function(x){
++   rownames(dat[dat$Species==x,])
++ }, simplify = T, USE.NAMES = T)
+     setosa versicolor virginica
+[1,] "1"    "51"       "101"    
+[2,] "2"    "52"       "102"   
+
+
+2) 如果 simplify=F，则不简化，返回list
+> sapply(idents, function(x){
++   rownames(dat[dat$Species==x,])
++ }, simplify = F, USE.NAMES = T)
+$setosa
+[1] "1" "2"
+
+$versicolor
+[1] "51" "52"
+
+$virginica
+[1] "101" "102"
+
+
+3) 如果设置 USE.NAMES = F，则返回的list没有name：
+> sapply(idents, function(x){
++     rownames(dat[dat$Species==x,])
++ }, simplify = F, USE.NAMES = F)
+[[1]]
+[1] "1" "2"
+
+[[2]]
+[1] "51" "52"
+
+[[3]]
+[1] "101" "102"
+
+
+
+
+
+
+========================================
+ 单细胞整合分析：多样本、多组学/多模态
+----------------------------------------
+
+
+
+========================================
+|-- Seurat 4 R包源码解析 B1: WNN多组学整合分析 FindMultiModalNeighbors()
+----------------------------------------
+WNN 多模态整合完整流程示例：https://blog.csdn.net/wangjunliang/article/details/143192137
+
+
+WNN是一个比较复杂的算法，我打算从宏观和微观两个角度逐步理解其处理过程。
+* 宏观：各种描述，GPT整理的描述，该算法paper中的描述。
+* 微观：函数调用，函数输出，函数实现，自己复现。
+
+
+
+1. 调包侠
+https://satijalab.org/seurat/articles/weighted_nearest_neighbor_analysis.html
+官方给出了2个多组学整合示例:
+* RNA + Protein(ADT)
+* RNA + ATAC
+
+(1) WNN的原理(GPT辅助)
+“Weighted nearest neighbor” analysis integrates multimodal single-cell data
+在文献 (Cell, 2021) Integrated analysis of multimodal single-cell data 中
+https://www.cell.com/cell/fulltext/S0092-8674(21)00583-3
+
+
+==> WNN原理：
+1) 多模态数据处理：
+WNN 旨在整合来自不同模态（如 RNA 测序和蛋白质数据）的信息，解决单一模态分析可能带来的信息缺失和偏差。
+2) 细胞特异性模态权重：
+WNN 为每个细胞计算特定的模态权重。这些权重反映了在该细胞中各模态的相对重要性，允许算法根据细胞的特征动态调整模态的影响力。
+3) 构建加权邻接图：
+根据模态权重和细胞间的相似性，WNN 构建一个加权的邻接图。在这个图中，细胞之间的连接强度不仅依赖于它们的距离，还受到模态权重的影响。这种方式使得不同模态的数据能够协同作用，增强细胞分类的准确性。
+4) 下游分析：
+构建好的加权邻接图可用于各种下游分析，包括聚类和可视化（如 UMAP）。通过 WNN，细胞的状态和类型可以被更准确地识别，尤其是在复杂的生物样本中。
+
+总结：
+WNN 方法通过动态学习细胞特异性模态权重并构建加权邻接图，实现了不同数据模态的有效整合。这一方法显著提高了多模态单细胞数据分析的灵活性和准确性，特别适用于细胞异质性分析。
+我：只有前三步
+	* 模态内分析出PCA；
+	* 每个细胞获得模态权重
+	* WNN 加权邻接图：模态权重 + 细胞之间的相似性(距离)
+
+
+
+
+==> 底层实现：
+1) 独立预处理和降维：
+在开始整合之前，首先对每种模态的数据进行独立的预处理和降维。这包括标准化、寻找变异特征和主成分分析（PCA）等步骤。
+2) 学习细胞特异性模态权重：
+WNN 方法会为每个细胞计算其模态权重，反映不同模态在该细胞中的相对重要性。这些权重是通过分析细胞间的相似性来生成的，使得某些模态在某些细胞中能够更强地影响邻近细胞的选择。
+3) 构建 WNN 图：
+使用学习到的模态权重，构建一个加权的邻接图，表示细胞之间的关系。这一图不仅考虑了细胞间的距离，还考虑了模态权重，从而实现更为准确的细胞邻近性定义。
+4) 下游分析：
+构建好的 WNN 图可以用于进一步的分析，如可视化（例如 UMAP）和聚类。通过这种方式，研究人员可以更好地识别细胞类型和状态。
+
+FindMultiModalNeighbors 函数通过加权最近邻的框架，利用多组学数据的互补信息来提高分析的准确性和生物学解读能力。这种方法特别适合于处理细胞异质性和多样性，从而推动单细胞基因组学的研究。
+我：只有前三步：
+	* 同上，模态内做到PCA
+	* 计算模态权重/每细胞：权重来自cell间的相似性
+	* 距离 + 模态权重 => 细胞临近定义
+
+
+
+
+
+==> 更具体，就是各种KNN
+WNN的核心思想是通过无监督学习来确定每种数据类型（例如RNA表达数据和蛋白质表达数据）在每个细胞中的相对信息含量，并据此为每种数据类型分配权重，从而实现对不同数据类型的集成分析。以下是WNN原理的详细描述：
+
+1)数据预处理：
+对于每种数据类型（例如RNA和蛋白质数据），分别进行标准化处理，以确保数据的可比性。
+2)构建KNN图：
+对于每种数据类型，基于细胞间的距离（如欧氏距离或余弦相似度）构建K最近邻（KNN）图。
+3)模态权重计算：
+对于每个细胞，计算其在不同数据类型中的KNN图的预测准确性。这涉及到将每个细胞的分子特征（例如RNA或蛋白质表达水平）基于其KNN图的邻居细胞进行预测。
+计算每个细胞在不同数据类型中的预测准确性，以确定每种数据类型对该细胞状态的描述能力。
+根据预测准确性，为每种数据类型分配权重，这些权重反映了每种数据类型在描述细胞状态时的重要性。
+4)集成分析：
+利用计算出的模态权重，构建一个新的加权KNN图，该图综合了不同数据类型的信息。
+在这个加权KNN图中，细胞间的相似性是基于加权组合的相似性度量。
+5)下游分析：
+使用加权KNN图进行下游分析，如聚类、差异表达分析、细胞轨迹推断等。
+由于WNN图综合了不同数据类型的信息，因此可以更准确地定义细胞状态，并揭示细胞异质性。
+
+WNN方法的优势在于它能够灵活地处理不同数据类型的信息，并且能够适应数据质量的差异。此外，WNN方法不需要事先知道每种数据类型的重要性，而是通过数据驱动的方式来确定每种数据类型的权重。这使得WNN方法特别适用于多模态单细胞数据的集成分析，有助于揭示细胞状态的复杂性和动态变化。
+
+我：
+	* 基于PCA构建KNN图，使用前几十个PC计算距离：欧氏距离、余弦距离等
+	* 每个细胞，在不同模态中KNN图的预测准确度，据此分配权重，每个细胞的两个模态的权重和为1
+	* 模态权重加权的 KNN图，就是WNN。是两种模态KNN加权组合的相似性。
+#
+
+
+
+
+
+
+
+(2) 示例数据 8k RNA+Adt()
+-rw-rw-r--+ 1 wangjl jinlab  46M Aug 11  2022 GSM6459763_32-3mo_raw_feature_bc_matrix.h5
+
+
+library(ggplot2)
+library(dplyr)
+library(patchwork)
+
+
+# 1. 导入数据 ----
+# (1). load counts of RNA and protein
+dyn.load('/home/wangjl/.local/lib/libhdf5_hl.so.100')
+library(hdf5r)
+
+library(Seurat)
+dat=Read10X_h5("/datapool/wangjl/others/hanlu/raw/GSE210079/GSM6459763_32-3mo_raw_feature_bc_matrix.h5")
+str(dat)
+names(dat) #"Gene Expression"  "Antibody Capture" #两个矩阵：RNA和 55个蛋白
+
+str(dat$`Gene Expression`)
+dat$`Gene Expression`[1:4, 1:5]
+
+# make sure cell id are the same
+all.equal(colnames(dat[["Gene Expression"]]), colnames(dat[["Antibody Capture"]])) #T
+
+
+# (2). use RNA data to create Obj
+scRNA=CreateSeuratObject(counts = dat$`Gene Expression`, project = "A1")
+
+
+# (3). add protein mat
+# https://zhuanlan.zhihu.com/p/567253121
+adt_assay <- CreateAssayObject(counts = dat$`Antibody Capture`)
+scRNA[["ADT"]] <- adt_assay
+
+# (4). check
+# protein names
+rownames(scRNA[["ADT"]])
+
+# assays
+Assays(scRNA) #"RNA" "ADT"
+
+# check default assay, or change default assay
+DefaultAssay(scRNA) #"RNA"
+
+
+
+
+
+# 2. 分别分析 ----
+bm=scRNA
+
+## QC ====
+bm #655671
+bm[["percent.mt"]] <- PercentageFeatureSet(bm, pattern = "^MT-")
+
+# VlnPlot(bm, features = c("nFeature_RNA", "nCount_RNA", "percent.mt"), ncol = 3)
+
+plot1 <- FeatureScatter(bm, feature1 = "nCount_RNA", feature2 = "percent.mt")
+plot2 <- FeatureScatter(bm, feature1 = "nCount_RNA", feature2 = "nFeature_RNA")
+(plot1 + geom_hline(yintercept = 10, linetype=2, color="red") ) + 
+  (plot2 + geom_hline(yintercept = c(300, 5000), linetype=2, color="red")) #fig1
+
+# Filter
+bm <- subset(bm, subset = nFeature_RNA > 300 & nFeature_RNA < 5000 & percent.mt < 10)
+bm #7837
+
+
+## for RNA ====
+DefaultAssay(bm) <- 'RNA'
+bm <- NormalizeData(bm) %>% FindVariableFeatures(nfeatures = 3000) %>% 
+  ScaleData() %>% RunPCA(dims = 1:50)
+DimPlot(bm, reduction = 'pca')
+ElbowPlot(bm, ndims = 50) #fig2
+
+
+## for protein ====
+DefaultAssay(bm) <- 'ADT'
+# we will use all ADT features for dimensional reduction
+# we set a dimensional reduction name to avoid overwriting the 
+VariableFeatures(bm) <- rownames(bm[["ADT"]])
+bm <- NormalizeData(bm, normalization.method = 'CLR', margin = 2) %>% 
+  ScaleData() %>% RunPCA(reduction.name = 'apca')
+ElbowPlot(bm, ndims = 50, reduction = "apca") #fig2
+
+
+
+
+# 3. 整合模态 ----
+# Identify multimodal neighbors. These will be stored in the neighbors slot, 
+# and can be accessed using bm[['weighted.nn']]  加权最近邻
+# The WNN graph can be accessed at bm[["wknn"]],  加权knn图
+# and the SNN graph used for clustering at bm[["wsnn"]] 加权snn图
+# Cell-specific modality weights can be accessed at bm$RNA.weight #模态的权重
+bm2=bm
+bm2 <- FindMultiModalNeighbors(
+  bm,
+  reduction.list = list("pca", "apca"),
+  dims.list = list(1:30, 1:20)
+  #modality.weight.name = c("RNA.weight", "ADT.weight")
+  # 模态权重名字 要和 reduction.list 长度一致，否则会使用默认：assay + ".weight"
+)
+bm2@graphs |> names() #[1] "wknn" "wsnn"
+
+
+
+
+# 4. 基于wnn下游分析 ----
+bm2 <- RunUMAP(bm2, nn.name = "weighted.nn", reduction.name = "wnn.umap", reduction.key = "wnnUMAP_")
+bm2 <- FindClusters(bm2, graph.name = "wsnn", algorithm = 1, resolution = 0.7, verbose = T)
+#0.3,0.4,0.6 too small;  0.8 too large;
+
+p1=DimPlot(bm2, reduction = 'wnn.umap', label=T, group.by = 'wsnn_res.0.7') + ggtitle("WNN"); p1 #fig3
+#
+
+
+
+
+
+# 5. 和单一模态的比较 ----
+bm3=bm2
+DefaultAssay(bm3)="RNA" #RNA
+DefaultAssay(bm3) #RNA
+
+
+## (1) UMAP ====
+bm3 <- RunUMAP(bm3, reduction = 'pca', dims = 1:30, assay = 'RNA', 
+              reduction.name = 'rna.umap', reduction.key = 'rnaUMAP_')
+bm3 <- RunUMAP(bm3, reduction = 'apca', dims = 1:20, assay = 'ADT', 
+              reduction.name = 'adt.umap', reduction.key = 'adtUMAP_')
+bm3@reductions |> names() #[1] "pca"      "apca"     "wnn.umap" "rna.umap" "adt.umap"
+
+
+p2 <- DimPlot(bm3, reduction = 'rna.umap', #group.by = 'celltype.l2', 
+              label = TRUE, #label.size = 2.5,
+              repel = TRUE) + ggtitle("RNA") + NoLegend() 
+p3 <- DimPlot(bm3, reduction = 'adt.umap', #group.by = 'celltype.l2', 
+              label = TRUE, #label.size = 2.5,
+              repel = TRUE) + ggtitle("ADT")+ NoLegend()
+p2 + p3 + p1 #Fig3
+
+
+
+if(0){
+p4 <- FeaturePlot(bm3, features = c("adt_CD45RA","adt_CD14.1","adt_CD161"),
+                  reduction = 'wnn.umap', max.cutoff = 2, 
+                  cols = c("lightgrey","darkgreen"), ncol = 3)
+p5 <- FeaturePlot(bm3, features = c("rna_PTPRC", "rna_CD14", "rna_KLRB1"), 
+                  reduction = 'wnn.umap', max.cutoff = 3, ncol = 3)
+p4 / p5
+}
+
+
+grep("CD45", bm3@assays$ADT@var.features, value=T) #"CD45RA" "CD45"   "CD4.1"  "CD45RO"
+grep("FCGR3A", rownames(bm3@assays$RNA@counts), value=T)
+FeatureScatter(bm3, feature1 = "adt_CD4.1", feature2 = "adt_CD8a")
+FeatureScatter(bm3, feature1 = "adt_CD45", feature2 = "adt_CD8a") #Fig4
+
+#RNA UMAP
+pC1=FeaturePlot(bm3, features = c("adt_CD45RA","adt_CD45RO", "adt_CD3","adt_CD4.1", "adt_CD8a", "adt_CD19.1"),
+                reduction = 'rna.umap', max.cutoff = 2, 
+                cols = c("lightgrey","darkgreen"), ncol = 6) & NoLegend(); pC1
+pC2=FeaturePlot(bm3, features = c("rna_PTPRC", "rna_CCR7", "rna_CD3D", "rna_CD4", "rna_CD8A", "rna_CD19"),
+                reduction = 'rna.umap', max.cutoff = 2, 
+                cols = c("lightgrey","navy"), ncol = 6)& NoLegend(); pC2
+pC1 / pC2 #Fig5
+
+
+
+#ADT UMAP
+pC1=FeaturePlot(bm3, features = c("adt_CD45RA","adt_CD45RO", "adt_CD3","adt_CD4.1", "adt_CD8a", "adt_CD19.1"),
+                reduction = 'adt.umap', max.cutoff = 2, 
+                cols = c("lightgrey","darkgreen"), ncol = 6) & NoLegend(); pC1
+pC2=FeaturePlot(bm3, features = c("rna_PTPRC", "rna_CCR7", "rna_CD3D", "rna_CD4", "rna_CD8A", "rna_CD19"),
+                reduction = 'adt.umap', max.cutoff = 2, 
+                cols = c("lightgrey","navy"), ncol = 6)& NoLegend(); pC2
+pC1 / pC2 #Fig6
+
+
+
+# WNN
+pC1=FeaturePlot(bm3, features = c("adt_CD45RA","adt_CD45RO", "adt_CD3","adt_CD4.1", "adt_CD8a", "adt_CD19.1"),
+                reduction = 'wnn.umap', max.cutoff = 2, 
+                cols = c("lightgrey","darkgreen"), ncol = 6) & NoLegend(); pC1
+pC2=FeaturePlot(bm3, features = c("rna_PTPRC", "rna_CCR7", "rna_CD3D", "rna_CD4", "rna_CD8A", "rna_CD19"),
+                reduction = 'wnn.umap', max.cutoff = 2, 
+                cols = c("lightgrey","navy"), ncol = 6)& NoLegend(); pC2
+pC1 / pC2 #Fig7
+
+
+
+
+
+# 模态权重：按cluster统计
+head(bm3@meta.data)
+VlnPlot(bm3, features = c("RNA.weight", "nFeature_RNA", 
+                          "ADT.weight", "nFeature_ADT"), 
+        group.by = 'wsnn_res.0.7', 
+        sort = F, #是否排序
+        pt.size = 0, ncol = 2) +
+  NoLegend()
+
+# 每个细胞的2个模态中的权重和为1
+all( abs((bm3@meta.data$RNA.weight + bm3@meta.data$ADT.weight) -1) < 1e-10) #T 
+
+
+
+
+
+## (2) cell cluster ====
+DefaultAssay(bm3)="RNA"
+bm3@graphs |> names() #[1] "wknn" "wsnn"
+bm3 <- FindNeighbors(bm3, dims = 1:30, reduction = "pca")
+bm3@graphs |> names() ##[1] "wknn"    "wsnn"    "RNA_nn"  "RNA_snn"
+bm3 <- FindClusters(bm3, graph.name = "RNA_snn", algorithm = 1, resolution = 0.5)
+table(bm3@meta.data$RNA_snn_res.0.5)
+
+
+DefaultAssay(bm3)="ADT"
+DefaultAssay(bm3) #ADT
+bm3 <- FindNeighbors(bm3, dims = 1:20, reduction = "apca")
+bm3@graphs |> names() #[1] "wknn"    "wsnn"    "RNA_nn"  "RNA_snn" "ADT_nn"  "ADT_snn"
+bm3 <- FindClusters(bm3, graph.name = "ADT_snn", algorithm = 1, resolution = 0.5)
+table(bm3@meta.data$ADT_snn_res.0.5)
+
+
+pB1 <- DimPlot(bm3, reduction = 'rna.umap', group.by = 'RNA_snn_res.0.5', 
+              label = TRUE, #label.size = 2.5,
+              repel = F) + ggtitle("RNA umap & its cluster")
+pB2 <- DimPlot(bm3, reduction = 'adt.umap', group.by = 'ADT_snn_res.0.5', 
+              label = TRUE, #label.size = 2.5,
+              repel = F) + ggtitle("ADT umap & its cluster")
+pB3=DimPlot(bm3, reduction = 'wnn.umap', group.by = 'wsnn_res.0.7', label=T) + ggtitle("WNN");
+pB1 + pB2 + pB3 #Fig9
+
+
+
+
+
+
+
+
+==> 重点关注整合模态的函数的输出
+bm2 <- FindMultiModalNeighbors(
+  bm,
+  reduction.list = list("pca", "apca"),
+  dims.list = list(1:30, 1:20)
+)
+
+Calculating cell-specific modality weights
+Finding 20 nearest neighbors for each modality.
+  |++++++++++++++++++++++++++++++++++++++++++++++++++| 100% elapsed=53s  
+Calculating kernel bandwidths
+  |++++++++++++++++++++++++++++++++++++++++++++++++++| 100% elapsed=14s  
+Finding multimodal neighbors
+  |++++++++++++++++++++++++++++++++++++++++++++++++++| 100% elapsed=04m 10s
+  |++++++++++++++++++++++++++++++++++++++++++++++++++| 100% elapsed=32s  
+Constructing multimodal KNN graph
+Constructing multimodal SNN graph
+
+总结：
+	* 计算细胞特异的模态权重：每个cell 每个模态给一个权重。对于两个模态整合，可获得 2个权重/每个细胞。
+	* 每个模态内，找20个最近邻
+	* 计算核函数宽度
+	* 找多模态邻居
+	* 构建多模态 KNN 图
+	* 构建多模态 SNN 图
+
+检查发现：每个细胞对应的两个模态的权重，都在meta data中，且权重的和为1。
+> head(bm3@meta.data)
+                   orig.ident nCount_RNA nFeature_RNA nCount_ADT nFeature_ADT percent.mt RNA.weight ADT.weight wsnn_res.2
+AAACCTGAGACTCGGA-1         A1       1067          624        682           42   6.185567  0.5325040  0.4674960          4
+AAACCTGAGAGTACAT-1         A1       1529          824        474           38   8.894702  0.4924699  0.5075301          6
+...
+
+
+
+
+
+
+
+
+
+
+(3) 主函数的主要流程/关键步骤：计算模态权重 FindModalityWeights()
+1) 获取每个模态的前若干个PC：行为cell id, 列为PC_1
+2) 对每个模态的PC做行L2Norm(L2范式标准化)：每个cell 都在距原点单位1球面上
+
+3) KNN: 模态内，用L2Norm空间和欧式距离，分别求20个最近邻，给出cell 下标和距离
+* 取距离矩阵第二列，就是距离每个细胞最近的一个细胞的距离。
+
+4) PredictAssay() 根据(自己或其他模态)最近邻的20个细胞，在自己L2Norm PC空间取其均值，作为自己的预测值
+* 模态内预测(within_impute)：最近邻的19个细胞（去掉自己）的均值，是其在 normPC_x 空间的预测值
+* 模态内预测 描述2： 最近邻的19个细胞（去掉自己）的下标，在自己L2标准化PC空间中求均值，是其在 normPC_x 空间的预测值
+* 模态之间预测(cross_impute)： 根据其他模态 获取 最近邻的19个细胞（去掉自己），在自己原L2标准化PC空间求均值，是其在原 normPC_x 空间的预测值
+
+5) 模态内预测的差异距离(within_impute_dist)：原点 - 模态内20个最近邻 的欧氏距离，减去其与最近一个细胞的欧氏距离，ReLu后返回
+6) 模态间预测的差异距离(cross_impute_dist)：原点 - 另一个模态预测的20个最近邻的欧氏距离，减去其与最近一个细胞的欧氏距离，ReLu后返回
+	每一列是一个其他模态
+
+7) 计算 模态SNN核宽度(kernel bandwidths)：
+* SNN图：使用20个最近邻细胞，计算其Jacard相似性，得到SNN图。对称矩阵，行列都是cell id，中间的值在[0, 1]之间。
+* SNN 最远核宽度(farthest_nn_dist)：细胞到其SNN图中相似性最低的(也就是有点关系的点中，最远的)n个点，在原PC L2Norm后距离的均值
+	此处距离是 两细胞在L2Norm空间的欧氏距离 - 与最近一个细胞的距离，取ReLu后返回
+8) [跳过]距离乘以系数，默认 sd.scale=1
+
+9) 模态内预测核(within_impute_kernel)：exp(- 模态内预测的距离 / 模态SNN核宽度) #[0.5, 1] 主要是1
+10)模态间预测核(cross_impute_kernel)：exp(- 模态间预测的距离 / 模态SNN核宽度) #[0,1]之间正态分布，主峰0.5
+
+11) 模态打分(modality_score)：模态内预测核 / (模态间预测核 + 1e-4)，小于0记为0，大于200记为200； #[0, 50] 主峰在[0, 10]
+12) [默认跳过] 平滑化：使用最近邻20个细胞的平均值作为最终打分
+13) softmax 得到模态权重(modality.weight): 模态打分：exp(模态1打分) / 累加[exp(模态1打分, exp(模态2打分), ...)]
+
+
+再倒叙描述一遍：
+* 打分越高，模态的权重越高。
+* 模态的打分，是 模态内预测kenel / 模态间预测kenel 求出来的比例。反应的是在本normPC空间中，本模态相对其他模态的优势。
+* 模态内预测kernel = exp(- 模态内预测的差异距离 / 模态SNN宽度 ) #该指数函数，模态KNN预测越准确，距离差异越小，算出来的预测kernel越大。
+* 模态间预测kernel = exp(- 模态间预测的差异距离 / 模态SNN宽度 ) #反之也成立：模态KNN预测越不准确，误差越大，算出来的预测kernel越小。
+
+
+问题:
+==> WNN 是否支持>=3个模态的整合？
+	看这一行，似乎是支持多个模态的：cross_impute[[r]] <- lapply(X = cross.modality, FUN = function(r2) {
+
+
+
+
+
+
+(4) 主函数的主要流程/关键步骤: 多模态整合最近邻 MultiModalNN()
+这两个函数(FindModalityWeights / MultiModalNN)应该不是一个作者写的，因为变量命名、循环实现等细节上截然不同。虽然逻辑上高度一致。
+
+1) 取每个模态各自前若干PC，做 L2Norm：在距离原点单位1的球面上。
+2) 每个模态内KNN最近邻 200个，模态间取并集: [200, 400]个最近邻cell 下标/细胞。
+3) 求细胞与这些最近邻的相对距离：在原L2Norm PC空间的欧氏距离 - 最近一个细胞的距离，取ReLu。
+4) 细胞之间的多模态相似性：exp( - 相对距离 / 模态宽度) * 该模态权重。相对距离越小，模态权重越大，该相似性越大。
+	加权最近邻相似性：normPC空间的指数核 * 模态权重。 重要的一步，体现了用每个细胞的距离和多模态权重 计算相似性。
+	# kernel.power=1
+	# 该模态内(r)，该细胞的(x): exp(- 最近邻细胞相对距离 / 模态宽度) * 模态权重
+	exp(-1*(nn_dist[[r]][[x]] / sigma.list[[r]][x] ) ** kernel.power) * modality.weight.value[[r]][x]
+	# 分析该 加权最近邻相似度：
+	# nn_dist是原始L2空间相对距离，值d越小，带入指数函数 exp( - d/width) 后整体值越大
+	# 后半部分 权重越大，最后整体值越大
+	# 两者相乘，得到 加权最近邻相似性，该值越大，表示细胞之间的联系越紧密：细胞距离近，该模态权重高 至少一个成立
+
+5) 每个细胞中，把各个模态的 加权相似性 相加。
+6) 按 加权相似性 从大到小排序，取出前20个。
+7) 获取其 cell 下标，和 加权相似性
+	# select_dist |> hist(n=100) #[0.4, 1] 之间，正态分布，主峰在0.7
+8) 加权相似性 转为 加权距离：select_dist = sqrt(x = MinMax(data = (1 - select_dist) / 2, min = 0, max = 1))
+	# 1-x 再除以2。
+	# 小于0的记作0，大于1的记作1。
+	# 开方
+	# select_dist |> hist(n=100) #[0.2, 0.55] 之间，正态分布，主峰在0.4
+9) 返回 这20个 加权最近邻的 下标 和 加权距离。
+
+
+
+
+
+(5) 主函数的主要流程/关键步骤: 多模态KNN和SNN
+1) 多模态最近邻20个下标，通过稀疏矩阵构建 cell number * cell number维度的0-1矩阵，作为KNN图。
+* 这20个 加权最近邻的 下标 和 加权距离，保存到 bm2@neighbors 中。
+* 争议：计算SNN用的是该KNN，但记录到Seurat对象@graphs$wknn的却是经过对称处理的KNN图。
+这个处理是否必要？见2(1)-A15
+2) 基于KNN计算SNN图
+3) 多模态权重记录到 @meta.data 中：RNA.weight, ADT.weight
+
+接着，使用该SNN就可以做UMAP或者细胞聚类了。
+
+
+
+
+
+
+
+
+2. 源码
+问题：调用之后是不是只用了PCA数据，及基于PCA的KNN和SNN？
+和原始数据还有关系吗？没有关系，但是Seurat代码中为了记录历史命令参数，需要知道PCA降维用的assay名字，该信息是软件需要，而不是算法需要的。
+
+调用很简单，但是涉及到很多函数调用，重要的如下。
+
+(1) FindMultiModalNeighbors() 主函数
+见1(3), 1(4)
+
+(A15)为什么对KNN图做 A + A^T - A^T.A 变换？变换后记录到 bm2@graphs$wknn，但是后面计算SNN用的又是该公式处理前的KNN图。
+
+对象更新：添加三个对象
+	# > bm2@neighbors |> names() #加权最近邻
+	# [1] "weighted.nn"
+	# > bm2@graphs |> names()
+	# [1] "wknn" "wsnn"
+
+
+(2) FindModalityWeights() 计算模态权重
+主函数：
+> modality.weight_2 <- Seurat:::FindModalityWeights(
+  object = bm,
+  reduction.list = list("pca", "apca"),
+  dims.list = list(1:30, 1:20),
+  k.nn = 20,
+  sd.scale = 1,
+  l2.norm = T,
+  cross.contant.list = NULL,
+  smooth = F,
+  verbose = T
+)
+Finding 20 nearest neighbors for each modality.
+  |++++++++++++++++++++++++++++++++++++++++++++++++++| 100% elapsed=01m 16s
+Calculating kernel bandwidths
+  |++++++++++++++++++++++++++++++++++++++++++++++++++| 100% elapsed=29s
+
+重要的中间结果：
+> modality.weight_2@score.matrix |> names()
+[1] "within_impute_dist"   "cross_impute_dist"    "within_impute_kernel" "cross_impute_kernel"  "modality_score"
+modality.weight_2@score.matrix
+
+
+
+(3) L2Norm
+(4) Distances
+nearest_dist <- lapply(X = reduction.list, FUN = function(r) Distances(object = nn.list[[r]])[, 2])
+
+(5) PredictAssay()
+
+(6) Indices
+(7) impute_dist
+(8) ReLu 激活函数
+(9) ComputeSNNwidth()
+(10) SNN_SmallestNonzero_Dist():C++函数
+(11) sort_indexes(): C++函数
+
+(12) MultiModalNN()：计算多模态最近邻下标和距离
+注意：(A13)的分析。
+加权最近邻距离，该值越大，表示细胞之间的联系越紧密：细胞距离近，该模态权重高 至少一个成立
+
+(13) NNdist
+(14) fast_dist C++函数
+(15) euclidean_distance() C++函数
+
+
+
+
+
+
+3. R tips
+(1) pbapply::pblapply() 带进度条的 apply 家族函数
+
+https://github.com/psolymos/pbapply
+Adding progress bar to '*apply' functions in R
+
+https://peter.solymos.org/pbapply/
+
+用法：pbapply::pb 加到你的 *apply 函数前面，即可添加进度条功能。
+
+按Seurat FindModalityWeights 函数的写法：
+
+	my.lapply <- ifelse(
+		test = verbose,
+		yes = pblapply,
+		no = lapply
+	)
+
+
+(2) 连等号给list设置names
+
+reduction.list = list("pca", "apca")
+cross.contant.list = as.list(x = rep(x = 1e-4, times = length(reduction.list)))
+dims.list = list(1:30, 1:20)
+
+# 获取名字
+reduction.set <- unlist(x = reduction.list)
+
+# 设置名字：连等号
+names(x = reduction.list) <- names(x = dims.list) <-
+    names(x = cross.contant.list) <- reduction.set
+
+# 查看结果
+> reduction.list
+$pca
+[1] "pca"
+
+$apca
+[1] "apca"
+
+> dims.list
+$pca
+ [1]  1  2  3  4  5  6  7  8  9 10 11 12 13 14 15 16 17 18 19 20 21 22 23 24 25 26 27 28 29 30
+
+$apca
+ [1]  1  2  3  4  5  6  7  8  9 10 11 12 13 14 15 16 17 18 19 20
+
+> cross.contant.list
+$pca
+[1] 1e-04
+
+$apca
+[1] 1e-04
+
+
+测试发现，用等号效果一样：
+> names(x = reduction.list) = names(x = dims.list) =
++     names(x = cross.contant.list) = c("a", "b")
+> reduction.list
+$a
+[1] "pca"
+
+$b
+[1] "apca"
+
+> dims.list
+$a
+ [1]  1  2  3  4  5  6  7  8  9 10 11 12 13 14 15 16 17 18 19 20 21 22 23 24 25 26 27 28 29 30
+
+$b
+ [1]  1  2  3  4  5  6  7  8  9 10 11 12 13 14 15 16 17 18 19 20
+
+> cross.contant.list
+$a
+[1] 1e-04
+
+$b
+[1] 1e-04
+
+赶紧恢复回去，防止后面不一致。
+
+
+
+
+
+(3) L2范数标准化
+
+L2 norm就是欧几里德距离，几个数字的平方和的开方。
+
+问题：输入是行为cell id，列为 PC_1 的cell embedding 矩阵，为什么对行做标准化？
+我的解释：保证每一行的平方和都是1，也就是每个cell都在距原点单位1半径的球面上。
+
+# L2 normalize the columns (or rows) of a given matrix | 对矩阵的列（或行）做L2标准化
+# @param mat Matrix to cosine normalize | 将要做cosine标准化的矩阵
+# @param MARGIN Perform normalization over rows (1) or columns (2) | 默认对行做标准化
+#
+# @return returns l2-normalized matrix
+#
+L2Norm <- function(mat, MARGIN = 1){
+  normalized <- Sweep(
+    x = mat,
+    MARGIN = MARGIN, #默认，按行。除以每一行的
+    STATS = apply( # 行：平方和的开方
+      X = mat,
+      MARGIN = MARGIN,
+      FUN = function(x){
+        sqrt(x = sum(x ^ 2))
+      }
+    ),
+    FUN = "/"
+  )
+  # 无穷大都改写为0： 除数是0导致无穷大，这一行全是0导致的
+  normalized[!is.finite(x = normalized)] <- 0
+  return(normalized)
+}
+
+
+
+(4) NNHelper() 获取每行(obs)的20个最近邻居，给出下标和距离
+该函数的解析见本系列解析21-2(4)。
+
+> 这个函数很有用：使用KNN求最近邻的函数。
+
+测试：在PCA模态内，行为obs，列为变量，查找20个最近邻。
+query.embeddings.list.norm = embeddings.list.norm
+r="pca"
+
+nn.r <- Seurat:::NNHelper(
+	data = embeddings.list.norm[[r]],
+	query = query.embeddings.list.norm[[r]],
+	k = 20, #max(k.nn, sigma.idx, s.nn),
+	method = "annoy",
+	metric = "euclidean"
+)
+
+> str(nn.r)
+Formal class 'Neighbor' [package "SeuratObject"] with 5 slots
+  ..@ nn.idx    : num [1:8036, 1:20] 1 2 3 4 5 6 7 8 9 10 ...
+  ..@ nn.dist   : num [1:8036, 1:20] 0 0 0 0 0 0 0 0 0 0 ...
+  ..@ alg.idx   : NULL
+  ..@ alg.info  :List of 2
+  .. ..$ metric: chr "euclidean"
+  .. ..$ ndim  : int 30
+  ..@ cell.names: chr [1:8036] "AAACCTGAGACTCGGA-1" "AAACCTGAGAGTACAT-1" "AAACCTGAGATATACG-1" "AAACCTGAGCGAAGGG-1" ...
+# 最近邻的索引，第一行是cell1的20个最近邻，包括它自己。
+> nn.r@nn.idx[1:4, 1:5]
+     [,1] [,2] [,3] [,4] [,5]
+[1,]    1 4183 6473 5855 4815
+[2,]    2 3214  141 4925 6424
+[3,]    3 7483 2112 6507 6761
+[4,]    4 5852 1136 4099 3692
+# 这是最近20个的距离
+> nn.r@nn.dist[1:4, 1:5]
+     [,1]      [,2]      [,3]      [,4]      [,5]
+[1,]    0 0.4836937 0.4968935 0.4984034 0.5035769
+[2,]    0 0.3665269 0.3854056 0.3913714 0.3951993
+[3,]    0 0.4051788 0.4284064 0.4461618 0.4473171
+[4,]    0 0.2759555 0.2820950 0.2826159 0.3091598
+
+
+
+
+(5) 判断：如果不是函数，则报错
+
+mean.function=rowSums
+
+if (!inherits(x = mean.function, what = 'function')) {
+	stop("'mean.function' must be a function")
+}
+
+> inherits(x = rowSums, what = 'function')
+[1] TRUE
+> inherits(x = iris, what = 'function')
+[1] FALSE
+
+我想到另一种判断方法：不知道是否可靠
+> mode(rowSums)
+[1] "function"
+
+使用class不行：
+> class(rowSums)
+[1] "standardGeneric"
+attr(,"package")
+[1] "methods"
+
+
+
+
+
+(6) 如果是双层 apply 家族，返回结果是什么结构的？//todo 有什么方法可以不用实验直接知道？
+
+原函数：
+  cross_impute_dist <- lapply(
+    X = reduction.list,
+    FUN = function(r) {
+      #
+      r_dist <- sapply(setdiff(x = reduction.set, y = r), #其他模态都算进去，这里只有一个 'apca'
+        FUN = function(r2) { #'apca'
+          r2_dist <- impute_dist(
+            x = query.embeddings.list.norm[[r]], #原细胞嵌入
+            y = t(x = cross_impute[[r]][[r2]]), #使用其他模态的最近邻20个细胞，用它们的原空间位置给出均值作为估计值
+            nearest.dist = nearest_dist[[r]] #原空间内最近的一个细胞的距离
+          )
+          return( r2_dist) #返回一个 named vector
+        })
+      return(r_dist) #两层结果：输出结果怎么嵌套的？ //todo
+    }
+  )
+
+测试1：lapply 中嵌套 sapply
+types=unique(as.character(iris$Species)); types
+listX=lapply( types, function(x){
+  sapply(x, function(x2){
+    colMeans(iris[which(iris$Species==x2),1:4])
+  })
+})
+listX
+[[1]]
+             setosa
+Sepal.Length  5.006
+Sepal.Width   3.428
+Petal.Length  1.462
+Petal.Width   0.246
+
+[[2]]
+             versicolor
+Sepal.Length      5.936
+Sepal.Width       2.770
+Petal.Length      4.260
+Petal.Width       1.326
+
+[[3]]
+             virginica
+Sepal.Length     6.588
+Sepal.Width      2.974
+Petal.Length     5.552
+Petal.Width      2.026
+
+可以设置list键名： names(listX)=types
+> names(listX)
+[1] "setosa"     "versicolor" "virginica" 
+
+
+对list中的每个元素，使用函数cbind按列合并：
+> do.call(cbind, listX)
+             setosa versicolor virginica
+Sepal.Length  5.006      5.936     6.588
+Sepal.Width   3.428      2.770     2.974
+Petal.Length  1.462      4.260     5.552
+Petal.Width   0.246      1.326     2.026
+
+
+
+测试2：lapply 中嵌套 sapply，内函数计算其他两个的平均值
+types=unique(as.character(iris$Species)); types
+lapply( types, function(x){
+  sapply( setdiff(types, x), function(x2){ #内apply中有2个循环，每个循环对应一列
+    colMeans(iris[which(iris$Species==x2),1:4])
+  })
+})
+[[1]]
+             versicolor virginica
+Sepal.Length      5.936     6.588
+Sepal.Width       2.770     2.974
+Petal.Length      4.260     5.552
+Petal.Width       1.326     2.026
+
+[[2]]
+             setosa virginica
+Sepal.Length  5.006     6.588
+Sepal.Width   3.428     2.974
+Petal.Length  1.462     5.552
+Petal.Width   0.246     2.026
+
+[[3]]
+             setosa versicolor
+Sepal.Length  5.006      5.936
+Sepal.Width   3.428      2.770
+Petal.Length  1.462      4.260
+Petal.Width   0.246      1.326
+
+
+测试3：sapply + sapply，会失去行名
+types=unique(as.character(iris$Species)); types
+sapply( types, function(x){
+    sapply(x, function(x2){
+        colMeans(iris[which(iris$Species==x2),1:4])
+    })
+})
+     setosa versicolor virginica
+[1,]  5.006      5.936     6.588
+[2,]  3.428      2.770     2.974
+[3,]  1.462      4.260     5.552
+[4,]  0.246      1.326     2.026
+
+
+
+(7) unlist() 把list解开为 named vector
+> list("a"=1, "b"=2)
+$a
+[1] 1
+
+$b
+[1] 2
+
+> list("a"=1, "b"=2) |> unlist()
+a b
+1 2
+
+> list("a"=1, "b"=2) |> unlist() |> class()
+[1] "numeric"
+
+
+
+
+
+
+
+(8) 无穷大都改写为0
+normalized[!is.finite(x = normalized)] <- 0
+
+注：L2标准化后是0，可能除以0得到无穷大，除数是 平方和的开方，表明这一行全是0.
+
+
+
+
+
+
+
+
+(9) 由细胞20个最近邻下标构建稀疏矩阵
+
+一行是一个细胞，及其3个最近邻细胞的下标。
+> select_nn=matrix(c(1,3,5,  2,4,8,  3,4,7,  4,5,6), nrow=4, ncol=3, byrow=T)
+> select_nnB
+     [,1] [,2] [,3]
+[1,]    1    3    5
+[2,]    2    4    8
+[3,]    3    4    7
+[4,]    4    5    6
+
+# 细胞下标，转置，变为一行
+j <- as.numeric(x = t(x = select_nn ))
+# 转置后：列为细胞，及该细胞最近的细胞下标。 再转为一行
+# [1] 1 3 5 2 4 8 3 4 7 4 5 6
+
+
+# 细胞的下标编号：序号-1，整除 20，然后加1
+##i <- ((1:length(x = j)) - 1) %/% k.nn + 1
+> i <- ((1:length(x = j)) - 1) %/% 3 + 1
+> i
+#[1] 1 1 1 2 2 2 3 3 3 4 4 4
+
+
+# 构建大型稀疏矩阵：i行为细胞，j列表示每个细胞下标，值为1
+nn.matrixB <- Matrix::sparseMatrix(
+  i = i,
+  j = j,
+  x = 1,
+  dims = c(8, 8)
+)
+> nn.matrixB
+8 x 8 sparse Matrix of class "dgCMatrix"
+
+[1,] 1 . 1 . 1 . . .
+[2,] . 1 . 1 . . . 1
+[3,] . . 1 1 . . 1 .
+[4,] . . . 1 1 1 . .
+[5,] . . . . . . . .
+[6,] . . . . . . . .
+[7,] . . . . . . . .
+[8,] . . . . . . . .
+
+# 对角线填充1
+> diag(x = nn.matrixB) <- 1
+> nn.matrixB
+8 x 8 sparse Matrix of class "dgCMatrix"
+
+[1,] 1 . 1 . 1 . . .
+[2,] . 1 . 1 . . . 1
+[3,] . . 1 1 . . 1 .
+[4,] . . . 1 1 1 . .
+[5,] . . . . 1 . . .
+[6,] . . . . . 1 . .
+[7,] . . . . . . 1 .
+[8,] . . . . . . . 1
+
+
+
+
+
+
+
+
+
+4. Bugs
+
+(1) 函数(2)(A21)？
+如果是多于3个组学，这里可能有问题: 无法保持原来的维度。
 
 
 
@@ -14609,6 +16879,9 @@ tSNE: https://distill.pub/2016/misread-tsne/
 
 
 
+========================================
+|-- todo //测试用例 /tests/testthat/
+----------------------------------------
 
 3. 测试用例
 /tests/testthat/
@@ -14646,6 +16919,9 @@ https://www.rstudio.com/products/rstudio/download/
 
 
 
+3. h3 server
+http://h3.biomooc.com:8787/
+
 
 
 
@@ -14659,76 +16935,6 @@ https://www.rstudio.com/products/rstudio/download/
 ========================================
 ----------------------------------------
 
-
-
-========================================
-*** 其他单细胞R包 ***
-----------------------------------------
-
-
-
-========================================
-1.sc3包适合<5k cell的数据集
-----------------------------------------
-paper:Nat Methods. 2017 May;14(5):483-486. doi: 10.1038/nmeth.4236. Epub 2017 Mar 27.
-SC3: consensus clustering of single-cell RNA-seq data.
-https://www.ncbi.nlm.nih.gov/pubmed/28346451
-
-
-A tool for unsupervised clustering and analysis of single cell RNA-Seq data.
-该工具有很多聚类工具。
-
-
-
-
-========================================
-scran 包: Using scran to analyze single-cell RNA-seq data
-----------------------------------------
-1.
-The scran package implements methods to perform low-level processing of scRNA-seq data, including 
-- cell cycle phase assignment, 
-- scaling normalization, 
-- variance modelling and testing for corrrelated genes. 
-This vignette provides brief descriptions of these methods and some toy examples to demonstrate their use.
-
-http://bioconductor.org/packages/release/bioc/vignettes/scran/inst/doc/scran.html
-
-
-
-========================================
-Scater 包的使用
-----------------------------------------
-1. paper 
-D.J. McCarthy, K.R. Campbell, A.T.L. Lun, Q.F. Wills
-Scater: pre-processing, quality control, normalization and visualization of single-cell RNA-seq data in R
-Bioinformatics (2017), Article btw777
-
-(2) 用的paper
-
-
-J Allergy Clin Immunol. 2021 Jun;147(6):2370-2380. doi: 10.1016/j.jaci.2020.11.028. Epub 2020 Dec 9.
-Single-cell RNA sequencing of psoriatic skin identifies pathogenic Tc17 cell subsets and reveals distinctions between CD8 + T cells in autoimmunity and cancer
-https://pubmed.ncbi.nlm.nih.gov/33309739/
-
-
-
-
-
-
-2.
-Scater需要利用SingleCellExperiment这个对象
-
-## 创建 scater 要求的对象
-sce <- SingleCellExperiment(
-  assays = list(counts = as.matrix(counts)), 
-  colData = meta
-)
-
-
-
-
-
-ref:https://www.jianshu.com/p/869590243d64
 
 
 
@@ -14745,8 +16951,9 @@ Cell, 177 (2019), pp. 1888-1902.e21
 
 
 
+
 ========================================
-harmony 包
+|-- harmony 包
 ----------------------------------------
 
 https://github.com/immunogenomics/harmony
@@ -14757,7 +16964,43 @@ https://github.com/immunogenomics/harmony
 
 
 ========================================
+DiffusionMap R tips
 ----------------------------------------
+1. list to vector, using sapply;
+https://cloud.tencent.com/developer/article/1606694
+
+> strsplit(colnames(iris), "\\.")
+[[1]]
+[1] "Sepal"  "Length"
+
+[[2]]
+[1] "Sepal" "Width"
+
+[[3]]
+[1] "Petal"  "Length"
+
+[[4]]
+[1] "Petal" "Width"
+
+[[5]]
+[1] "Species"
+
+> sapply(strsplit(colnames(iris), "\\."), "[", 1)
+[1] "Sepal"   "Sepal"   "Petal"   "Petal"   "Species"
+
+> sapply(strsplit(colnames(iris), "\\."), "[[", 1)
+[1] "Sepal"   "Sepal"   "Petal"   "Petal"   "Species"
+
+关键：利用了 "[" 也是函数，后面是参数1
+等价于 
+> sapply(strsplit(colnames(iris), "\\."), function(x){ x[[1]]})
+[1] "Sepal"   "Sepal"   "Petal"   "Petal"   "Species"
+
+> sapply(strsplit(colnames(iris), "\\."), function(x){ x[1]})
+[1] "Sepal"   "Sepal"   "Petal"   "Petal"   "Species"
+
+
+
 
 
 

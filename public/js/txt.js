@@ -169,6 +169,7 @@ function highlightCurrentContent() {
 
 	//2.全部导航 ele
 	var aSpan=$('f_content').getElementsByTagName("span");
+	//如果还没有加载span，可能js报错，概率较小。概率bug，怎么捕获？怎么fix？//todo
 
 	//3.全部正文锚点 ele
 	var aA= document.querySelectorAll("a[my-data]");

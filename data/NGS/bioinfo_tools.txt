@@ -383,7 +383,7 @@ write.table(dt2, "P1_raw_counts.txt")
 
 
 ========================================
-|--  getfasta: 根据坐标区域来从基因组里面提取fasta序列
+|-- bedtools getfasta: 根据坐标区域来从基因组里面提取fasta序列
 ----------------------------------------
 http://bedtools.readthedocs.io/en/latest/content/tools/getfasta.html
 
@@ -760,6 +760,190 @@ ref: https://bedtools.readthedocs.io/en/latest/content/tools/bamtofastq.html
 
 
 ========================================
+|-- bedtools coverage 计算每个位置的测序深度
+----------------------------------------
+1.
+(1)文献
+In this validation study, however, there were no instances of incorrect input genotypes and thus no errors were returned. Once the genotype is confirmed, a strict read filtering is applied on both the tumor and germline alignments, where only correctly paired reads mapping exclusively to one allele with an edit distance of 0 are conserved. BEDTools37 is then used to determine the read depth at every position for each allele.
+
+最后一句: BEDTools 确定每个等位基因中，每个位置的测序深度。
+
+https://pmc.ncbi.nlm.nih.gov/articles/PMC11300791/
+
+> 37.Quinlan, A. R. & Hall, I. M. BEDTools: a flexible suite of utilities for comparing genomic features. Bioinformatics26, 841–842 (2010). 10.1093/bioinformatics/btq033 [DOI] [PMC free article] [PubMed] [Google Scholar]
+
+
+(2) 文档
+$ bedtools --version
+bedtools v2.31.1
+
+coverage      Compute the coverage over defined intervals.
+Usage:
+	bedtools coverage [OPTIONS] -a <FILE> \
+								 -b <FILE1, FILE2, ..., FILEN>
+	(or):
+	coverageBed [OPTIONS] -a <FILE> \
+						   -b <FILE1, FILE2, ..., FILEN>
+
+注意: As of version 2.24.0, the coverage tool has changed such that the coverage is computed for the A file, not the B file. This changes the command line interface to be consistent with the other tools. 
+从2.24.0版本开始，计算的是A文件的覆盖度，而不是B文件。
+
+
+3)重要参数:
+https://bedtools.readthedocs.io/en/latest/content/tools/coverage.html
+## bedtools coverage -a positions.bed -b aligned_reads.bam -d > position_depth.txt
+
+-a	BAM/BED/GFF/VCF file “A”. Each feature in A is compared to B in search of overlaps. Use “stdin” if passing A with a UNIX pipe.
+-b	One or more BAM/BED/GFF/VCF file(s) “B”. Use “stdin” if passing B with a UNIX pipe. NEW!!!: -b may be followed with multiple databases and/or wildcard (*) character(s).
+
+-d	Report the depth at each position in each A feature. Positions reported are one based. Each position and depth follow the complete A feature.
+
+
+
+
+
+
+2. 测试
+
+(1) 准备bed文件
+$ cd /home/wangjl/tmp
+
+找到一个IGV的峰图范围
+$ cat positions.bed
+chr1	246766959	246768109
+
+
+(2)运行
+$ bedtools coverage -a positions.bed -b /datapool/wangjl/scPolyA-seq2/chenxi/PBMC/cluster_bam/RNA/RNA_cluster0.pA_reads.sorted.bam -d > position_depth.txt
+# 20:09->20:11
+警告:
+	***** WARNING: File /datapool/wangjl/scPolyA-seq2/chenxi/PBMC/cluster_bam/RNA/RNA_cluster0.pA_reads.sorted.bam has inconsistent naming convention for record:
+	GL000008.2	47002	47037	A01758:191:HGG7FDSX5:3:1561:3830:23844_AGTAAACC_TCCACCGTAT	255	-
+
+	***** WARNING: File /datapool/wangjl/scPolyA-seq2/chenxi/PBMC/cluster_bam/RNA/RNA_cluster0.pA_reads.sorted.bam has inconsistent naming convention for record:
+	GL000008.2	47002	47037	A01758:191:HGG7FDSX5:3:1561:3830:23844_AGTAAACC_TCCACCGTAT	255	-
+
+
+(3)查看输出文件
+可见，前三列和输入的-a bed文件一致，第四列是逐个碱基位置编号，第五列是该位置的测序深度。
+
+246768109-246766959=1150, 可见，这是一个半开半闭区间。比如 1-2 只算1个碱基，到底哪边开呢？一般是 [)。在 (5)中我们做测试。
+
+$ wc position_depth.txt
+ 1150  5750 36843 position_depth.txt
+$ head position_depth.txt
+chr1	246766959	246768109	1	17
+chr1	246766959	246768109	2	17
+chr1	246766959	246768109	3	17
+...
+$ tail position_depth.txt
+...
+chr1	246766959	246768109	1148	19
+chr1	246766959	246768109	1149	19
+chr1	246766959	246768109	1150	19
+
+
+(4)R绘图，和IGV峰图比较
+按照x=第4列,y=5th画图
+$ R
+> dat=read.table("position_depth.txt")
+> plot(dat$V4, dat$V5, type="o", cex=0.5)
+
+缩小到长宽基本一致，看起来还是挺像IGV峰图的。
+
+图1：上图是IGV图，下图是逐位点的测序深度连线图。
+
+
+(5) 验证 bedtools 对bed是取左闭右开区间
+在IGV中找到最高峰附近的1bp
+目测: pos=8 上有reads，pos=9上没有。
+$ cat positions2.bed
+chr1	246767468	246767469
+
+$ bedtools coverage -a positions2.bed -b /datapool/wangjl/scPolyA-seq2/chenxi/PBMC/cluster_bam/RNA/RNA_cluster0.pA_reads.sorted.bam -d > position_depth2.txt
+
+$ cat position_depth2.txt
+chr1	246767468	246767469	1	15
+
+
+2)再次测试：chr1 246767468 246767470
+输出:
+$ cat position_depth2.txt
+chr1 246767468 246767470 1 15
+chr1 246767468 246767470 2 15
+失败，竟然都有reads?!
+难道，是取了滑动平均值？取平均就不是按位点取测序深度了。
+
+
+
+3)扩大范围再试，争取测试到有reads和无reads的分界线
+发现往后延申坐标不行，都是15。而往前延申坐标可以！
+
+$ cat positions2.bed
+chr1	246767458	246767470
+输出:
+$ cat position_depth2.txt
+chr1	246767458	246767470	1	80
+chr1	246767458	246767470	2	78
+chr1	246767458	246767470	3	60
+chr1	246767458	246767470	4	53
+chr1	246767458	246767470	5	53
+chr1	246767458	246767470	6	53
+chr1	246767458	246767470	7	53
+chr1	246767458	246767470	8	53
+chr1	246767458	246767470	9	46
+chr1	246767458	246767470	10	46 #这个位置应该是58+10-1=67
+chr1	246767458	246767470	11	15
+chr1	246767458	246767470	12	15
+
+推论：15是本该为0的背景噪音？
+
+
+结论:
+	i) bedtools取bed区间时，按照左闭右开区间。
+	ii) bed记录的坐标是0-based，就是igv(1-based)看到的坐标减去1。
+
+推理: 我想要某个点的 pos=8 的reads 深度，该怎么设置bed？
+	i)bedtools 就需要设置 [pos, pos+1)位置；
+	ii)写成bed格式要坐标-1，就是 chr pos-1 pos，也就是 chr 7 8
+
+验证1: 取pos=8的深度，igv有
+	$ cat positions2.bed
+	chr1	246767467	246767468
+	输出:
+	$ cat position_depth2.txt
+	chr1	246767467	246767468	1	46
+
+验证2: 取pos=9的深度，igv看没
+	$ cat positions2.bed
+	chr1	246767467	246767469
+	输出:
+	$ cat position_depth2.txt
+	chr1	246767467	246767469	1	46
+	chr1	246767467	246767469	2	15
+
+
+图2：使用的样本为 cluster0。IGV坐标中 pos=8有reads，pos=9没有reads。
+
+结论：IGV和位点深度量化相对大小是一致的，绝对大小不一致。
+- IGV 最高点是38，最低点是0。图1中IGV最高也才到66，还是低于(5)-3中的最高值80。
+- IGV继续放大pos=9，还是有零星2个reads的，也比bedtools给出的低。
+说明：IGV可能做了取子集？只是展示了bam的一部分？
+
+
+带图片版: https://blog.csdn.net/wangjunliang/article/details/147462933
+
+
+
+
+
+
+
+
+
+
+
+========================================
 |-- bedtools 其他小功能
 ----------------------------------------
 1. bedtools merge
@@ -814,131 +998,87 @@ SAM (Sequence Alignment/Map) format is a generic format for storing large nucleo
 http://samtools.sourceforge.net/
 
 
-1. [2022.10]CentOS 7.9 重装 samtools 新版本(1.16.1)
-
-git clone https://github.com/samtools/samtools.git
-git clone https://github.com/samtools/htslib.git 
-
-先下载子模块
-$ cd htslib
-$ git submodule update --init --recursive
-
-$ make #编译库
 
 
-开始编译主程序
-$ cd ../samtools
-$ autoheader            # Build config.h.in (this may generate a warning about
-                      # AC_CONFIG_SUBDIRS - please ignore it).
-$ autoconf -Wno-syntax
-$ ./configure prefix=/home/wangjl/
-$ make 
+1. [2024.12] CentOS 7.9 重装 samtools 新版本(1.21)
+* 之前的版本 1.20 总是莫名其妙的问题。
+
+(1) 下载 [失败]
+https://github.com/samtools/samtools/tags
+
+1)这个gz还需要重命名，不好
+$ wget -O samtools-1.21.tar.gz https://github.com/samtools/samtools/archive/refs/tags/1.21.tar.gz
+$ tar zxvf samtools-1.21.tar.gz
+
+$ cd samtools-1.21/
+
+构建 configure 文件
+$ autoheader
+$ autoconf
+
+@J3安装依赖：
+$ sudo yum install ncurses-devel
+
+开始安装: 报错
+	$ ./configure --prefix=/home/wangjl/soft/samtools-1.21
+	$ make -j 30 #21:13->
+	/usr/bin/ld: Dwarf Error: found dwarf version '5', this reader only handles version 2, 3 and 4 information.
+	...
+	collect2: error: ld returned 1 exit status
+	make: *** [Makefile:145: samtools] Error 1
+	make: *** Waiting for unfinished jobs....
+
+	$ make install
+
+
+(1B)下载这个 bz2 [2024.12.4]
+https://github.com/samtools/htslib/releases/download/1.21/htslib-1.21.tar.bz2
+https://github.com/samtools/samtools/releases/download/1.21/samtools-1.21.tar.bz2
+https://github.com/samtools/bcftools/releases/download/1.21/bcftools-1.21.tar.bz2
+然后上传到J3服务器 ~/Downloads/。
+
+解压
+$ tar jxvf htslib-1.21.tar.bz2
+$ tar jxvf samtools-1.21.tar.bz2
+$ tar jxvf bcftools-1.21.tar.bz2
+
+编译安装：
+* 要按照这个顺序，保持htslib先安装，因为后两者依赖该库。
+* 最好不要安装到 ~/.local/，因为这个变动挺快的，还可能有bug不得不更新或者回退。
+$ cd htslib-1.21/
+$ ./configure --prefix=/home/wangjl/soft/htslib-1.21/
+$ make -j16
 $ make install
 
+$ cd ../samtools-1.21/   # and similarly for bcftools and htslib
+$ ./configure --prefix=/home/wangjl/soft/samtools-1.21/
+$ make -j16
+$ make install
+
+$ cd ../bcftools-1.21/
+$ ./configure --prefix=/home/wangjl/soft/bcftools-1.21/
+$ make -j16
+$ make install
+
+配置路径
+$ vim ~/.bashrc
+export PATH=/home/wangjl/soft/samtools-1.21/bin:$PATH
+export PATH=/home/wangjl/soft/bcftools-1.21/bin:$PATH
+export PATH=/home/wangjl/soft/htslib-1.21/bin:$PATH
+重新加载路径
+$ source ~/.bashrc
 
 检查版本号
 $ samtools --version
-samtools 1.16.1-18-g410d910
-Using htslib 1.16-10-g6366029
-Copyright (C) 2022 Genome Research Ltd.
-
-
-2. 功能
-按照标签筛选序列，标签在文件中
-$ samtools view -D BC:barcodes.txt -o /data_folder/data.barcodes.bam /data_folder/data.bam
-
-http://www.htslib.org/doc/samtools-sort.html
+samtools 1.21
+Using htslib 1.21
+Copyright (C) 2024 Genome Research Ltd.
 
 
 
 
 
 
-
-
-
-
-### old part: 
-
-1.安装
-
-(1) 方法1：不一定work...
-第一步，从github下载所需版本samtools软件包
-https://github.com/samtools/samtools
-
-
-或
-https://sourceforge.net/projects/samtools/files/samtools/1.5/
-$ wget https://sourceforge.net/projects/samtools/files/samtools/1.10/samtools-1.10.tar.bz2/download
-
-
-第二步，解压，此处以目前最新版samtools-1.5为例：
-tar -jxf samtools-1.5.tar.bz2
-cd samtools-1.5
-
-
-第三步，编译，安装：
-make
-make prefix=/opt/biosoft/samtools-1.5 install
-
-
-第四步，加入环境变量
-echo 'export PATH=$PATH:/opt/biosoft/samtools-1.5/bin' >> /etc/profile
-
-
-现在你已经不需要刚刚下载和解压的软件包了，愉快的删除吧。
-cd ../ && rm -rf samtools-1.5 samtools-1.5.tar.bz2
-
-
-
-bcftools安装几乎完全一样。需要注意的是，此处我用了root账户。对于普通用户，可以把软件安装在自己有读写权限的目录下，也就是说，要更改prefix=xxx和/etc/profile至你自己的文件目录和文件。
-https://samtools.github.io/bcftools/howtos/install.html
-
-
-
-
-(2) 方法2：CentOS 亲测可用
-从github获取最新版本的包
-git clone https://github.com/samtools/samtools.git
-git clone https://github.com/samtools/htslib.git #并列放到同一个文件夹下
-
-
-1)然后安装hslib
-autoheader
-autoconf
-./configure  #根据提醒，先做 $ git submodule update --init --recursive
-make
-make prefix=~/ install
-
-
-make 报错:
-cram/cram_encode.c: In function ‘cram_build_ref’:
-cram/cram_encode.c:2883:17: error: ‘for’ loop initial declarations are only allowed in C99 mode
-                 for (int j = 0; j < cigar[i] >> BAM_CIGAR_SHIFT; j++)
-                 ^
-cram/cram_encode.c:2883:17: note: use option -std=c99 or -std=gnu99 to compile your code
-make: *** [cram/cram_encode.o] Error 1
-无解，使用 docker Ubuntu 吧。
-
-
-
-
-
-2)进入samtools文件夹，执行命令：
-autoheader            # Build config.h.in (this may generate a warning about
-                      # AC_CONFIG_SUBDIRS - please ignore it).
-autoconf -Wno-syntax  # Generate the configure script
-./configure           # Needed for choosing optional functionality #如果samtool并列没有HTSlib会报错。
-##make
-##make install #error install: cannot create regular file ‘/usr/local/bin/samtools’: Permission denied
-
-make prefix=~/ install #或在~/bin建软链接
-make install
-
-
-检查版本号：
-$ samtools --version
-samtools 1.9-69-gb217a91
 
 
 
@@ -1095,6 +1235,76 @@ $ awk '($3=="*"&&$6>=50)||($3!="*"&&$6>=20)' flt.txt > final.txt
 
 
 ========================================
+|-- 取子集 samtools view xx.bam chr1:100-200
+----------------------------------------
+1.取子集
+(1)
+https://okko73313.blogspot.com/2012/01/extract-single-chromosome-reads-from.html
+$ samtools view -h accepted_hits.bam chr20 > accepted_hits.20.sam
+
+参数解释:
+	-h, --with-header
+		Include the header in the output.
+
+	-H, --header-only
+		Output the header only.
+
+
+
+(2)官方资料
+https://www.htslib.org/doc/samtools-view.html
+
+语法: samtools view [options] in.sam|in.bam|in.cram [region...]
+
+Include customized index file as a part of arguments.
+$ samtools view [options] -X /data_folder/data.bam /index_folder/data.bai chrM:1-10
+
+参数解释:
+	The -X option can be used to allow user to specify customized index file location(s) if the data folder does not contain any index file. See EXAMPLES section for sample of usage.
+
+
+
+(3)REGIONS 参数
+Regions can be specified as: RNAME[:STARTPOS[-ENDPOS]] and all position coordinates are 1-based.
+
+Important note: when multiple regions are given, some alignments may be output multiple times if they overlap more than one of the specified regions.
+
+Examples of region specifications:
+	chr1
+		Output all alignments mapped to the reference sequence named `chr1' (i.e. @SQ SN:chr1).
+
+	chr2:1000000
+		The region on chr2 beginning at base position 1,000,000 and ending at the end of the chromosome.
+
+	chr3:1000-2000
+		The 1001bp region on chr3 beginning at base position 1,000 and ending at base position 2,000 (including both end positions).
+
+	'*'
+		Output the unmapped reads at the end of the file. (This does not include any unmapped reads placed on a reference sequence alongside their mapped mates.)
+
+	.
+		Output all alignments. (Mostly unnecessary as not specifying a region at all has the same effect.)
+#
+
+我的实例：
+$ samtools view /home/zxsys/mnt5/NGS/2025已分析数据/TBNGS275-25_bqsr.bam 12:21329657-21329818 | head -n 2
+NS500421:251:HCLNMAFXC:4:11605:8472:19924	99	12	21329588	60	151M	=	21329796	359	GTACTCTGGTAATTTGGGGAAGATAATGGTGCAAATAAAGGGGAATATTTCTCTGTATTTCTAGGAAAAGTGAAAATATTCAGTAGATAAGCAAAATGTTTAATTCAGTGATGTTCTTACAGTTACAGGTATTCTAAAGAAACTAATATCG	@BADEDCGBBBFEEEIGHGFGIFFCGFJHDIHF1FE@GGHGHGFGEBEEEGEGEICACEEGE@HGB0CFHCI//FFE@EBGEFBBGEBB/GB./F/=A0BD@EBBFCFBH/C0/.FDDA-.B0B*,B1B0+/B04+B/E//BB4+B64A2'	MC:Z:151M	MD:Z:150A0	RG:Z:TBNGS275-25	NM:i:1	AS:i:150	XS:i:59
+NS500421:251:HCLNMAFXC:3:21605:21151:8848	99	12	21329591	60	151M	=	21329825	385	CTCTGGTAATTTGGGGAAGATAATGGTGCAAATAAAGGGGAATATTTCTCTGTATTTCTAGGAAAAGTGAAAATATTCAGTAGATAAGCAAAATGTTTAATTCAGTGATGTTCTTACAGTTACAGGTATTCTAAAGAAACTAATATCGATT	@EGEGDA1EDEEIGGGBG9FF@GFJHDJHFFGFBFFIHHCBGECFEEGEGEIC,E/EGE,FGEFFFFCI0/FFEB/.GEFA@H/E@FGB?E/?BIBEB+CDBC.GBG?DFADFDD@CBGB<AC>G-A@ADAD+D=1///B4+BA8DF;0D2	MC:Z:151M	MD:Z:147A3	RG:Z:TBNGS275-25	NM:i:1	AS:i:147	XS:i:59
+
+
+或者一行生成 bam 子文件:
+$ samtools view -b /home/zxsys/mnt5/NGS/2025已分析数据/TBNGS275-25_bqsr.bam 12:21329657-21329818 > only_chr12.bam
+
+
+
+
+
+
+
+
+
+
+========================================
 |-- 命令行 文本基因组浏览器: samtools tview xx.bam xx.fa
 ----------------------------------------
 1. 文字浏览器:
@@ -1238,9 +1448,21 @@ $ samtools view map/c13ROW40_Aligned.sortedByCoord.out.bam|awk '{print $5}' | so
 
 
 
+(3) 保留 mapQ=255 (第5列)
+$ samtools view -h -q 255 -F 4 -F 256 -b  c12ROW02_A2Aligned.sortedByCoord.out.bam > c12ROW02_A2.sort.dedup.unique.bam
+-q 1：过滤掉比对质量小于1的reads；
+-F 4：过滤掉没有比对上的reads；
+-F 256：过滤掉比对上的多次的reads。
+-b 输出二进制 bam文件
+
+$ samtools view c12ROW02_A2.sort.dedup.unique.bam |awk '{print $5}' | sort | uniq -c
+3546246 255
 
 
-(3) 
+
+
+
+(4) 
 samtools tview -p B05:53425172 accepted_hits.bam Bju.genome.fa
 “.” 比对到正链;
 “，” 表示比对到负链;
@@ -1569,6 +1791,167 @@ $ samtools view -b sorted_accepted_hits.bam > accepted_reads.bam
 $ samtools depth accepted_reads.bam > read_coverage.txt
 
 ref: https://github.com/arefeen/TAPAS
+
+
+
+
+2. 获取一个bam中测序深度最大的位置
+$ samtools depth /home/zxsys/mnt5/NGS/TBNGS275-25_bqsr.bam | awk '{if($3>10) print $0}' | sort -k 3,3nr > TBNGS275-25_bqsr.depth
+
+
+
+
+
+
+
+========================================
+|-- samtools mpileup 获取每个等位基因的深度
+----------------------------------------
+1.要区分不同等位基因的深度，需要先提取变异位点，然后计算每个等位基因的支持reads数
+
+(1) 首先使用samtools mpileup获取变异信息
+samtools mpileup -f reference.fa -l variants.bed aligned_reads.bam > allele_depth.txt
+
+参数解释: http://www.htslib.org/doc/samtools-mpileup.html
+
+-f, --fasta-ref FILE
+	The faidx-indexed reference file in the FASTA format. The file can be optionally compressed by bgzip. [null]
+
+	Supplying a reference file will enable base alignment quality calculation for all reads aligned to a reference in the file. See BAQ below.
+	参考基因组fa文件，做过 faidx-index。
+
+-l, --positions FILE
+	BED or position list file containing a list of regions or sites where pileup or BCF should be generated. Position list files contain two columns (chromosome and position) and start counting from 1. BED files contain at least 3 columns (chromosome, start and end position) and are 0-based half-open.
+	While it is possible to mix both position-list and BED coordinates in the same file, this is strongly ill advised due to the differing coordinate systems. [null]
+	-l 跟着bed文件。
+	* Position list 有两列，1-based;
+	* BED 最少三列，chr, start, end，0-based，半开半闭。[start, end)
+	不建议混淆以上两种输入到一个命令中！
+
+
+(2) 或者使用bcftools //todo
+bcftools mpileup -f reference.fa -T variants.bed aligned_reads.bam | bcftools call -mv -Ov -o alleles.vcf
+
+
+
+
+
+
+2.测试：获取我的酒精代谢相关基因的测序深度
+(1)准备
+$ samtools --version
+samtools 1.21
+Using htslib 1.21
+Copyright (C) 2024 Genome Research Ltd.
+
+-rw-r--r--. 1 wangjl jinlab 46G Mar 25 00:51 /datapool/wangjl/others/wangjl_hair/map/wangjl_hair.Aligned.sortedByCoord.out.bam
+
+
+2) ‌ADH1B 基因‌：乙醇脱氢酶
+# rs1229984（G143A）‌‌基因组坐标‌：chr4:100226173（hg38）‌ 这个坐标可能是错误的，以下2行的ncbi为准。
+ADH1B: 快
+	https://www.ncbi.nlm.nih.gov/snp/?term=rs1229984
+	Alleles:T>A,C,G Chromosome:4:99318162 (GRCh38)
+	我的: T:C=49:1 负链基因，互补后 A:G=49:1 可以认为是 AA 纯和。
+		乙醇快速转化为乙醛，可能引发乙醛蓄积相关症状（如脸红、恶心）‌。
+
+
+注: 参考基因组的chr是NC_开头的。
+
+$ cat /home/wangjl/tmp/variants.bed
+#chr4 100226172 100226173
+#NC_000004.12 100226172 100226173
+NC_000004.12 99318161 99318162
+
+
+
+(2)运行
+reference_fa=/datapool/wangjl/total-seq/ref/hg38/RefSeq/GCF_000001405.40_GRCh38.p14_genomic.fna
+variants_bed=/home/wangjl/tmp/variants.bed
+aligned_reads_bam=/datapool/wangjl/others/wangjl_hair/map/wangjl_hair.Aligned.sortedByCoord.out.bam
+
+samtools mpileup -f $reference_fa -l $variants_bed $aligned_reads_bam > allele_depth.txt
+
+# 10:54->11:11, 17' 感觉特别慢
+[mpileup] 1 samples in 1 input files
+
+
+
+(3)检查结果
+$ cat allele_depth.txt
+NC_000004.12	100226173	A	85	><>><<>>>>>>>><><>>><>><<><<<>><<<<><<>>>>>>><<<<<<<<<<<<<<<<<<<<<><>>><<<<<<<.......	FkFFFFk:kFFFFFkFFFFFFFFFFFFFFFFFFFFFFFFF:FkkFFFFFFFFFFFFFFFFFFF:FFFkFFFFFFFFFF_kFFkFF
+
+怎么理解这个输出？chr, pos, base, num, ? ?
+	见(5)
+
+
+
+(4)前后各延申5bp，再次运行
+输入的bed:
+$ cat /home/wangjl/tmp/variants.bed
+NC_000004.12 100226167 100226178
+
+输出:
+$ cat allele_depth.txt
+NC_000004.12	100226168	T	85	><>><<>>>>>>>><><>>><>><<><<<>><<<<><<>>>>>>><<<<<<<<<<<<<<<<<<<<<><>>><<<<<<<.......	FkFFFFk:kFFFFFkFFFFFFFFFFFFFFFFFFFFFFFFF:FkkFFFFFFFFFFFFFFFFFFF:FFFkFFFFFFFFFFkkFFkFF
+NC_000004.12	100226169	T	85	><>><<>>>>>>>><><>>><>><<><<<>><<<<><<>>>>>>><<<<<<<<<<<<<<<<<<<<<><>>><<<<<<<.......	FkFFFFk:kFFFFFkFFFFFFFFFFFFFFFFFFFFFFFFF:FkkFFFFFFFFFFFFFFFFFFF:FFFkFFFFFFFFFFQ_FFkFF
+...
+发现坐标似乎不对！
+
+
+
+(5)修改坐标为 ncbi 给的，再次运行
+$ cat /home/wangjl/tmp/variants.bed
+NC_000004.12 99318161 99318162
+
+输出:
+$ cat allele_depth2.txt
+NC_000004.12	99318162	T	480	<<><><<<>><>><>>><><<>>>>>>><<<<<<><><>><<<><<<>><>><<<<<>>>><<<><<>>><<<<<><<<><<<<<<<>>>><<><><>>>><>>>>>>><><>><>>>><<><<<<><>><<>>><>><>><<<<<<>>>><<>><>><<><<<><><><>>><<<<>>>><><><>>>>>>>>><<>><<<<<<<<<<<><<<<><<<<><><<<<<<<<<<>>>>><<<><<<><<<<><>>>>>>>>><>>>>><<>><>>>>>>>>>><>><<<<<<><<<<<><<><<<<<<<<<<><<<><<>>>><<><>><>>><>><<<<<<<<<<><><>>>>><<<>><<.,,,.,..,..,.,,,..,..,,,,,,,,.,.,,,.,.,..,.,,,..,.,.,.,,,,....,....,,..,,,,.,C...,,..,.,..,...,,...,.,..,,,..,,C.,,,,..	_kFFFFFkFFkFFFFFFFFFFFFkFkFFFFFQFFFFFFFFFFFkFFFFFFFFFFFFFFFFFFFkFFkkkkFFFFFFkkkkkkkkkkkkFkkkQF_kkFFkFkFFkF_FFkFFkFFkkkF_kkFFFkkEkFk_kkkk_kkkkFkFFkkk_kkkFF_kkkkk_kkkkkFk:kkkkFFkkFFFFkFFk_FFFFkFFFkFFkFF:FFFkkkFFFF:FFFkFFFFFFFFFF:FFFFF:FFFkkkFFkkkkFkkFFFFF_FFFF:FkFkFFFFFF:kk:FFFFFFFFFFFFFF:FFFFFFkkkkFFkkFkFkFkQkFkkFFFkFFF:FFFFF:FFFFFFFFFFFFFFFFFFkFFFFFFFFFkkkkFkkFFFkFkkFkFF_FFFkkkkFFjFFFFFF_kkFFF_kkF__F:FFFFkFkkkFFkkFkkkkFFFFkFkkFFkkFFkQFFFFkkFkkF_FFFFFFF_FFkFFkkkFFFFFkkFFkkkkFF
+
+
+
+输出符号的解释：
+http://www.htslib.org/doc/samtools-mpileup.html
+
+- A single character indicating the read base and the strand to which the read has been mapped:
+- Forward	Reverse	Meaning
+	. dot	, comma	Base matches the reference base
+	ACGTN	acgtn	Base is a mismatch to the reference base
+	>	<	Reference skip (due to CIGAR “N”)
+	*	*/#	Deletion of the reference base (CIGAR “D”)
+
+Deleted bases are shown as “*” on both strands unless --reverse-del is used, in which case they are shown as “#” on the reverse strand.
+
+
+也就是只需要看两类符号：
+	- ., 这两个符号，共119-2=117个；
+	- 不同于第三列T的：C 2个；
+	比例为 117:2=59:1，符合IGV悬浮框给的结果。
+
+
+
+
+(6)再验证: 看叶酸代谢位点
+C677T（rs1801133）‌
+	查询: https://www.ncbi.nlm.nih.gov/snp/?term=rs1801133
+	G>A,C,T;  1:11796321 (GRCh38)
+	我的: A:G=1:3 负链基因，互补后 T:C=1:3 杂合
+
+输入bed文件，坐标为[pos-1, pos)，即:
+$ cat /home/wangjl/tmp/variants.bed
+NC_000001.11 11796320 11796321
+
+$ samtools mpileup -f $reference_fa -l $variants_bed $aligned_reads_bam > allele_depth.txt
+耗时：约20分钟。虽然只有一个位点
+
+$ cat allele_depth.txt
+NC_000001.11	11796321	G	119	><<>><<>><>><>><><<<<<>>><><><>>>>><>>>>><>>>><><>><><<<<><<>>><>>>>>><<<>A..AA,,,,....,,,,a.a,,,.,,,,,aa,,,a..,.,..a.a	kFkF:FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFkFFFFFFFF:FFFFFFFFFFFFkFFFFFFkkkkkFFFFkkkFFFFkkkFFkkF__FkFFFFkkFFFkkFkkkk
+
+计数:
+	- <>之外的符号：共45个
+	- 其中A或a共: 10个
+	比例: G:A=(45-10):10=35:10=3.5:1，差不多能对上。
+#
 
 
 

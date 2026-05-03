@@ -304,8 +304,46 @@ ls rm rmdir mkdir 这些命令都可以使用。同理调用本机都是加 l , 
 ========================================
 |-- Ubuntu 更改国内镜像源（阿里、网易、清华、中科大）
 ----------------------------------------
+下载 iso 文件
+https://mirrors.tuna.tsinghua.edu.cn/ 选择 ubuntu-releases
+https://mirrors.tuna.tsinghua.edu.cn/ubuntu-releases/22.04.2/
 
-1. 更换地址
+$ wget https://mirrors.tuna.tsinghua.edu.cn/ubuntu-releases/22.04.2/ubuntu-22.04.2-desktop-amd64.iso
+
+
+
+
+0.建议留空 /etc/apt/sources.list 文件，
+而是在 /etc/apt/sources.list.d/ 下新增文件：
+配置:
+$ sudo vim /etc/apt/sources.list.d/tuna.list
+deb https://mirrors.tuna.tsinghua.edu.cn/ubuntu/ focal main restricted universe multiverse
+deb https://mirrors.tuna.tsinghua.edu.cn/ubuntu/ focal-updates main restricted universe multiverse
+deb https://mirrors.tuna.tsinghua.edu.cn/ubuntu/ focal-backports main restricted universe multiverse
+deb https://mirrors.tuna.tsinghua.edu.cn/ubuntu/ focal-security main restricted universe multiverse
+
+更新：
+$ sudo apt-get update
+
+可以用新源安装软件了：
+$ sudo apt install python3-pip
+
+
+(2)安装包
+$ pip3 install flask -i https://pypi.douban.com/simple/
+启动：
+$ python3 index.py
+开端口:
+sudo iptables -I INPUT -p tcp --dport 8000 -j ACCEPT
+测试: 
+http://192.168.1.103:8000
+
+
+
+
+
+
+1. 更换源地址
 
 (1)打开Ubuntu的终端输入：
 $ sudo vim /etc/apt/sources.list
@@ -407,10 +445,15 @@ http://mirrors4.ustc.edu.cn/
 http://mirrors6.ustc.edu.cn/
 
 
+教育网的源 https://help.mirrors.cernet.edu.cn/ubuntu/
+
+腾讯云 开源镜像站: https://mirrors.tencent.com/
 
 
 PyPi 镜像
-豆瓣：http://pypi.douban.com/
+豆瓣：http://pypi.doubanio.com/ ->跳转到
+	https://mirrors.cloud.tencent.com/pypi/
+
 
 
 
@@ -424,8 +467,6 @@ https://mirrorz.org/
 
 
 ref: https://blog.csdn.net/u011483658/article/details/95012034
-
-
 
 
 
@@ -544,8 +585,14 @@ NTP synchronized: yes
  Next DST change: DST ends (the clock jumps one hour backwards) at
                   Sun 2020-11-01 01:59:59 EDT
                   Sun 2020-11-01 01:00:00 EST
-#
-时区不对。修改：
+时区不对。
+
+
+查时区：
+$ timedatectl list-timezones | grep -in shanghai
+272:Asia/Shanghai
+
+修改时区：
 $ sudo timedatectl  set-timezone Asia/Shanghai
 ## 需要权限
 
@@ -554,8 +601,161 @@ Mon May 11 17:29:10 HKT 2020
 
 
 
+
+
+
+
+
+
+2. Ubuntu 容器时区错了怎么修改？
+(1) 查看现在时区
+$ date -R
+Sat, 04 May 2024 12:45:42 +0000
+
+最后要是+8才对。也确实比我的win落后8小时，现在是 20:46分。
+
+
+(2) 修改时区
+# timedatectl 
+bash: timedatectl: command not found
+root@c93d39c35e29:/# apt search timedatectl 
+Sorting... Done
+Full Text Search... Done
+
+
+选择时区
+# tzselect
+选择 4 Asia
+选择 9 China
+选择 1 Beijing Time
+问显示时间是否正确，1 Yes
+
+提示：You can make this change permanent for yourself by appending the line
+        TZ='Asia/Shanghai'; export TZ
+	to the file '.profile' in your home directory; then log out and log in again.
+
+# echo "export TZ='Asia/Shanghai'" >> /etc/profile
+执行后无效，docker 怎么所谓退出登录呢？
+
+
+# ls -lth /etc/localtime
+lrwxrwxrwx. 1 root root 27 May 24  2021 /etc/localtime -> /usr/share/zoneinfo/Etc/UTC
+# ln -sf /usr/share/zoneinfo/Asia/Shanghai  /etc/localtime
+
+时间没有更新
+# su root #不行
+# source /etc/profile #可以
+
+# date
+Sat 04 May 2024 09:15:49 PM CST
+# date -R
+Sat, 04 May 2024 21:15:54 +0800
+
+
+
+
 ref:
 https://blog.csdn.net/zlt995768025/article/details/79765738
+
+
+
+
+========================================
+|-- CentOS7 修改时间
+----------------------------------------
+1. 显示时间
+显示时间格式： date [+指定的格式]
+
+date "+%F %T" # 需要用双引号括起来 表示这是一个整体
+
+# 说明：
+    Y: 年
+    m：月
+    d：日
+    H：时
+    M：分
+    S：秒
+
+$ date
+Fri Apr 26 10:41:13 CST 2024
+
+$ date +"%F"
+2024-04-26
+
+$ date +"%T"
+10:41:48
+
+$ date +"%F %T"
+2024-04-26 10:41:59
+
+$ date "+%Y"
+2024
+
+
+
+
+
+
+2. 修改时间（临时）
+
+(1)只修改年月日：
+$ date -s "20220710" 或  date -s "YYYY-MM-DD"  # 时间设置成2022年7月10日0时0分
+
+(2)只修改时分秒：
+date -s "hh:mm:ss"
+
+例如 $ sudo date -s "10:55:30"
+
+(3)全部都改：
+date -s "YYYY-YY-DD HH:mm:ss"
+
+说明：
+使用date命令修改的时间是临时生效的，重启系统后失效，需要将当前时间和硬件时间同步后才可以持久生效。
+
+
+
+
+
+
+
+
+3. hwclock工具
+作用： 实现时间的校对，将硬件时间和系时间进行校对。使用date手动修改了时间后，需要使用hwclock进行校对。
+
+选项：
+-w, --systohc   # 以系统时钟为准，校正硬件时钟
+-s, --hctosys   # 以硬件时钟为准，校正系统时钟
+
+说明： clock是hwclock的一个软链接
+$ ll `which hwclock`
+-rwxr-xr-x. 1 root root 49600 Feb  3  2021 /usr/sbin/hwclock
+$ ll `which clock`
+lrwxrwxrwx. 1 root root 7 Feb 23 22:58 /usr/sbin/clock -> hwclock
+
+
+例如：将系统时间同步到硬件时间
+# 同步的时候没有任何提示
+$ sudo hwclock -w  
+
+例如：将硬件时间同步到系统时间
+# 同步的时候没有任何提示
+$ sudo hwclock -s
+
+
+
+
+3. 开启NTP：时间自动同步协议
+NTP（Network Time Protocol）协议，网络时间协议。利用ntp协议可以实现网络中的计算机时间同步。
+
+$ timedatectl set-ntp true/false
+
+
+
+
+
+
+https://www.jb51.net/server/3161428jo.htm
+
 
 
 
@@ -738,6 +938,57 @@ LANG="en_US.UTF-8"
 2. 如果还不行
 位于/etc/profile.d/目录下的这个lang.sh优先度高于locale.conf
 LANG=zh_CN.UTF-8 改为默认的 LANG=en_US.UTF-8
+
+
+
+
+
+
+
+
+========================================
+|-- 查看系统的 UUID
+----------------------------------------
+
+# dmidecode -t 1
+
+1. 193 server
+$ sudo dmidecode -t 1
+# dmidecode 3.2
+Getting SMBIOS data from sysfs.
+SMBIOS 3.0.0 present.
+
+Handle 0x0001, DMI type 1, 27 bytes
+System Information
+	Manufacturer: Lenovo
+	Product Name: ThinkSystem SR850 -[7X19CTO1WW]-
+	Version: 07
+	Serial Number: J300L69H
+	UUID: e3b816ec-f1f0-11e8-8abd-0a94ef720ea9
+	Wake-up Type: Power Switch
+	SKU Number: 7X19CTO1WW
+	Family: ThinkSystem
+
+
+
+
+
+2. Y station 
+$ sudo dmidecode -t 1
+# dmidecode 3.2
+Getting SMBIOS data from sysfs.
+SMBIOS 3.0.0 present.
+
+Handle 0x0001, DMI type 1, 27 bytes
+System Information
+	Manufacturer: Dell Inc.
+	Product Name: Precision 5820 Tower
+	Version: Not Specified
+	Serial Number: 320WGQ2
+	UUID: 4c4c4544-0032-3010-8057-b3c04f475132
+	Wake-up Type: Power Switch
+	SKU Number: 0738
+	Family: Precision
 
 
 
@@ -4804,1020 +5055,6 @@ lnvgy_fw_sraidmr_730-24.21.0-0076-2_linux_x86-64.bin
 
 
 
-
-
-========================================
-|-- 193 server 重装系统: 使用基于加密文件的登录，禁用单密码登录
-----------------------------------------
-见 http://j.biomooc.com/?file=server/ssh_key_login.md
-
-1. 备份文件
-
-(1)用户名和uid
-
-$ cp /etc/passwd ~/backup/
-$ cp /etc/group ~/backup/
-
-
-(2) 硬盘挂载情况
-$ lsblk
-NAME              MAJ:MIN RM   SIZE RO TYPE  MOUNTPOINT
-sda                 8:0    0 446.1G  0 disk  
-├─sda1              8:1    0    50M  0 part  /boot/efi
-├─sda2              8:2    0   471M  0 part  /boot
-└─sda3              8:3    0 445.6G  0 part  
-  ├─centos00-root 253:0    0 326.4G  0 lvm   /
-  └─centos00-swap 253:1    0 119.2G  0 lvm   [SWAP]
-sdb                 8:16   0   8.2T  0 disk  
-└─sdb1              8:17   0   8.2T  0 part  
-  └─centos-home   253:4    0   8.2T  0 lvm   /home
-sdc                 8:32   0 145.9T  0 disk  
-├─sdc1              8:33   0 145.9T  0 part  
-└─mpatha          253:2    0 145.9T  0 mpath 
-  └─mpatha1       253:3    0 145.9T  0 part  /data
-sdd                 8:48   0 145.9T  0 disk  
-├─sdd1              8:49   0 145.9T  0 part  
-└─mpatha          253:2    0 145.9T  0 mpath 
-  └─mpatha1       253:3    0 145.9T  0 part  /data
-sde                 8:64   0    89T  0 disk  
-└─sde1              8:65   0    89T  0 part  /data_slow
-sdf                 8:80   0    89T  0 disk  
-└─sdf1              8:81   0    89T  0 part  /data2
-sr0                11:0    1   928K  0 rom
-
-
-
-(3) 重装系统
-
-1. 193 server 重装如果失败，可能是需要 初始化 Raid;
-启动 点F1，进入 bios，选择 UEFI
-左侧系统设置，右侧底部 存储
-slot10, Main menu, 然后 Vitual drive management
-Operation: fast initialization
-很快清理掉数据。
-
-然后 UEFI 启动项，选择 U盘启动。或者启动 按F12 选择U盘启动。
-进入启动项3行时，选第一行按字母e，删除 :labels及 quiet 之前的内容，换成 :/dev/sdc4
-ctrl+x 重启即可进入centOS7.9安装界面。
-
-
-
-
-
-
-
-
-2. 恢复用户名系统
-
-(1) 用户名根据id重建的脚本
-
-
-查看原来uid
-$ ls -lth /home
-total 148K
-drwxr-x---. 48 wangjl jinwf 4.0K Sep 23 19:38 wangjl
-drwx------. 23 zhouwg jinwf 4.0K Sep 23 19:18 zhouwg
-drwx--x--x. 39 zhoub  jinwf 4.0K Sep 23 18:09 zhoub
-drwxr-x---. 31   1010 jinwf 4.0K Sep 23 14:40 jhsun
-drwx------. 27   1005 jinwf 4.0K Sep 23 14:02 chengww
-或者
-$ tail -n 2 /home/wangjl/backup/passwd
-Tangjk:x:1030:1001::/home/Tangjk:/bin/bash
-liyh:x:1031:1001::/home/liyh:/bin/bash
-
-
-
-
-
-新建组
-$ sudo groupadd -g 1001 jinwf
-
-新建用户 with uid
-$ usr="wangjl" && uid=1017
-$ sudo useradd -s /bin/bash -d /home/${usr} -m ${usr} -g 1001 -u ${uid}
-
-
-新用户密码 sudo passwd ${usr}
-
-# 1) 固定密码
-$ echo "redhat" | sudo passwd --stdin $usr
-Changing password for user wangjl2.
-passwd: all authentication tokens updated successfully.
-
-
-# Or 2) 随机密码
-$ pass=`date|md5sum |head -c 10` && echo $pass | sudo passwd --stdin $usr
-Changing password for user wangjl2.
-passwd: all authentication tokens updated successfully.
-
-$ echo $pass
-a22e604a69
-
-
-
-
-
-
-3. 怎么免密码登录？
-
-(1) 服务器设置不允许仅用密码登录
-
-Centos7禁用密码登录方法：
-
-$ sudo vim /etc/ssh/sshd_config
-PasswordAuthentication yes ===> PasswordAuthentication no
-
-Restart the server:
-$ sudo systemctl restart sshd.service
-
-
-
-
-
-(2) 用户设置步骤
-
-- Xshell配置 ssh免密登录 密钥公钥 https://blog.csdn.net/m0_68517939/article/details/126779021
-- CentOs7 设置密钥登录、禁用密码、免密登录 https://copyfuture.com/blogs-details/202207090626216182
-
-
-
-使用密钥登录分为3步：
-1) 生成密钥（公钥与私钥对）；
-
-最好加上6位以上的密码，相当于 加密文件 + 密码 双重登录验证。
-
-windowns 使用 git bash: https://git-scm.com/
-下载并默认安装windows git后，右击桌面空白部分，选择 git bash ，然后输入如下命令:
-
-
-$ cd 
-$ cd .ssh/
-$ ssh-keygen -t rsa -C "wangjl2@gmail.com" -f ./id_rsa10  #如果使用
-Generating public/private rsa key pair.
-Enter passphrase (empty for no passphrase):  这里推荐输入一个强密码，不能留空
-Enter same passphrase again:
-Your identification has been saved in ./id_rsa10.
-Your public key has been saved in ./id_rsa10.pub.
-The key fingerprint is:
-SHA256:0qOWvW/BaNO9ttdzN1YcJmJBRjihEWzix1/RKc4XLms wangjl2@gmail.com
-The key's randomart image is:
-+---[RSA 2048]----+
-|      .o..=+. .  |
-|     . ooo.+ +   |
-|    . +.  + = .  |
-|     . +   B + o |
-|      o S+o.= o..|
-|       =+o+E.   o|
-|      +..... . ..|
-|     .   .. o .++|
-|        .o...o. =|
-+----[SHA256]-----+
-
-
-检查生成的文件:
-$ ls -lth
-total 19K
--rw-r--r-- 1 admin 197121  399 9月  23 14:20 id_rsa10.pub
--rw-r--r-- 1 admin 197121 1.8K 9月  23 14:20 id_rsa10
-
-其中带 .pub 后缀的，邮件发给管理员。
-私钥文件没有 .pub 后缀，要像保护自己的密码一样保护它，不要发给任何人。私钥就是你以后登录服务器的凭证。
-
-可以定期生成新的密钥对，并自己把新的公钥加入服务器的 ~/.ssh/authorized_key 文件中，替换掉旧的。
-
-
-
-
-2) 放置公钥(Public Key)到服务器 ~/.ssh/authorized_key 文件中
-
-首次请管理员执行这一步，后来可以不定期自己执行更新替换。
-
-自己执行
-$ cat id_rsa10.pub >> ~/.ssh/authorized_keys
-
-注意检查一下服务器上 ~/.ssh/ 文件夹是否为700，authorized_keys文件是否为600。
-$ chmod 700 ~/.ssh
-$ chmod 600 ~/.ssh/authorized_keys
-
-
-
-新用户由管理员代执行，把自己的公钥邮件发给管理员
-$ cat id_rsa10.pub >> /home/${usr}/.ssh/authorized_keys
-
-$ chmod 700 /home/${usr}/.ssh
-$ chmod 600 /home/${usr}/.ssh/authorized_keys
-
-
-
-
-3) 配置ssh客户端使用密钥登录
-
-ssh 除了使用密码登录外，还可以选择 public key 登录方式: 通过服务器上的公钥配对的私钥文件进行登录。
-
-i) 使用 git bash 登录服务器时，秘钥文件名只能是 id_rsa，且放在 C:\Users\admin\.ssh\id_rsa 位置。
-
-
-ii) 使用 xshell 时
-文件-新建，输入主机名，点击用户身份验证，
-方法：Public Key
-用户名: 自己的用户名
-用户秘钥: 点击左侧的浏览、选择导入，找到 不带 .pub 后缀的私钥，选择，点确定，确定。
-
-打开-选择刚才那个设置，点连接即可。
-
-
-
-
-
-
-
-
-
-4. 如何在本地配置多个 ssh key?
-https://gitee.com/help/articles/4229#article-header1
-
-(1) 生成多个 ssh key 
-
-生成一个公司电脑用的SSH-Key
-$ ssh-keygen -t rsa -C 'xxxxx@company.com' -f ~/.ssh/gitee_id_rsa
-设置密码，至少5位。
-
-生成一个github用的SSH-Key
-$ ssh-keygen -t rsa -C 'xxxxx@qq.com' -f ~/.ssh/github_id_rsa
-
-
--t : 密钥类型, 可以选择 dsa | ecdsa | ed25519 | rsa ;
--f : 密钥目录位置, 默认为当前用户home路径下的 .ssh 隐藏目录, 也就是 ~/.ssh/ , 同时默认密钥文件名以 id_rsa 开头. 如果是 root 用户, 则在 /root/.ssh/id_rsa , 若为其他用户, 则在/home/username/.ssh/id_rsa;
--C : 指定此密钥的备注信息, 需要配置多个免密登录时, 建议携带;
-
-
-(2) 配置文件 ~/.ssh/config 
-在 ~/.ssh 目录下新建一个config文件，添加如下内容（其中Host和HostName填写git服务器的域名，IdentityFile指定私钥的路径）
-
-# gitee
-Host gitee.com
-HostName gitee.com
-PreferredAuthentications publickey
-IdentityFile ~/.ssh/gitee_id_rsa
-# github
-Host github.com
-HostName github.com
-PreferredAuthentications publickey
-IdentityFile ~/.ssh/github_id_rsa
-
-
-
-$ cat ~/.ssh/config # 这是 windows 上的文件
-Host 192.168.2.105
-  HostName 192.168.2.105
-  User wangjl
-  PreferredAuthentications publickey
-  IdentityFile ~/.ssh/gitee_id_rsa
-
-
-
-(3) 公钥放到服务器上
-$ vim ~/.ssh/authorized_keys
-写入 ~/.ssh/gitee_id_rsa.pub 的一行内容。
-
-
-(4) 连接
-
-$ ssh wangjl@192.168.2.105
-Enter passphrase for key '/c/Users/admin/.ssh/gitee_id_rsa':
-Last login: Fri Sep 23 02:28:13 2022 from desktop-6tss3vl.lan
-(base) [wangjl@ct79 ~]$
-
-
-
-
-
-
-
-
-
-
-
-
-========================================
-磁盘阵列 RAID 原理与级别
-----------------------------------------
-
-1. 硬盘 是绝大多数计算机的性能瓶颈
-
-内存的速度可以达到 5G/s
-
-硬盘类型  速度
-SATA <150M/s
-SAS 200M/s 左右
-
-SSD 500M/s 固态硬盘
-
-IOPS  
-
-
-
-
-2. 现代硬盘的缺陷: IO性能极弱、稳定性极差
-- RAID (Redundant Array of Independent Disks) 廉价磁盘冗余阵列技术是通过多次盘并行运行来提高计算机的存储IO性能。
-
-https://www.enterprisestorageforum.com/management/raid-levels-explained/
-- RAID 分为很多种类，称为 RAID 级别，现代 RAID 共有7类，常用的有以下4类
-	RAID 0 读写性能
-	RAID 1 读写性能、冗余性
-	
-	RAID 5 读写性能、冗余性(1块硬盘故障不损失数据)
-	RAID 6 读写性能、冗余性(2块硬盘故障不损失数据)
-
-实际使用最多的是 RAID 5和6。
-
-
-多块磁盘组成一个 RAID 后，系统只看到一个合成的硬盘，看不到底层的硬盘。
-RAID 需要的底层硬盘大小要一致，最好厂家、品牌、规格也一致。防止因为硬盘不兼容出现问题。
-
-
-(1) RAID 0
-最少使用2块硬盘，在读写时，将数据分开读写到多块硬盘的方式，提高读写性能。
-
-RAID 0 
-	A1 A3 A5 ...
-	A2 A4 A6 ...
-
-空间利用率: 所有硬盘空间之和
-性能: 所有硬盘速度之和
-冗余能力: 无 
-
-
-
-(2) RAID 1
-最少2块硬盘，在写数据的时候，数据复制到多块硬盘上。
-在读数据时，以提供冗余性。
-同时从多块硬盘读取数据，以提高读性能。
-
-RAID 1
-	A1 A2 A3 ...
-	A1 A2 A3 ...
-
-空间利用率: min(所有硬盘空间最小的那块)
-性能: 读性能为所有硬盘速度之和，写性能会有所减弱。
-冗余能力: 只要有一块硬盘正常，数据就正常。
-
-
-
-(3) RAID 5
-RAID 5 最少使用3块硬盘， RAID 5和RAID 0类似，读写数据的时候会将数据分布式的读写在所有硬盘上，但是在写数据的时候会对数据进行奇偶校验运算，将校验信息同时保存在硬盘上，校验信息可以进行数据恢复使用。
-
-RAID 5
-	A1 B1 C1 Dp ... 
-	A2 B2 Cp D2 ... 
-	A3 Bp C3 D3 ... 
-	Ap B4 C4 D4 ... 
-
-空间利用率: 1-1/n
-性能: 读性能接近 RAID 0，写性能较 RAID 0 弱一些。
-冗余能力: 可接受1块硬盘损坏。
-
-
-
-(4) RAID 6
-RAID 6 最少使用4块硬盘， RAID 6和RAID 5类似，读写数据的时候会将数据分布式的读写在所有硬盘上，但是在写数据的时候会对数据进行奇偶校验运算，将校验信息同时保存在硬盘上，校验信息可以进行数据恢复使用。
-但比RAID5多保存了一份校验信息，所以冗余叫RAID 5有所提升。
-
-RAID 6
-	A1 B1 C1 Dp ... 
-	A2 B2 Cp Dq ... 
-	A3 Bp Cq D3 ... 
-	Ap Bq C4 D4 ... 
-	Aa B5 C5 D5 ... 
-
-空间利用率: 1-2/n
-性能: 读性能接近 RAID 5，写性能较 RAID 5 弱一些。
-冗余能力: 可接受2块硬盘损坏。
-
-
-
-(5) 其他少用的级别
-RAID 3 is rarely implemented. It uses byte-level striping and parity, and stores parity calculations on dedicated disk. Like RAID 2, it typically cannot service multiple requests at the same time. This does not affect the performance of large sequential reads and writes, but does slow down random access workloads.
-
-parity [ˈpærəti] n. （尤指薪金或地位）平等，相同；（两个不同国家的货币单位的）平价，等价；（数字）奇偶性；
-
-
-https://baike.baidu.com/item/RAID%203/10898521?fr=aladdin
-RAID 3是把数据分成多个“块”，按照一定的容错算法，存放在N+1个硬盘上，实际数据占用的有效空间为N个硬盘的空间总和，而第N+1个硬盘上存储的数据是校验容错信息，当这N+1个硬盘中的其中一个硬盘出现故障时，从其它N个硬盘中的数据也可以恢复原始数据，这样，仅使用这N个硬盘也可以带伤继续工作（如采集和回放素材），当更换一个新硬盘后，系统可以重新恢复完整的校验容错信息。由于在一个硬盘阵列中，多于一个硬盘同时出现故障率的几率很小，所以一般情况下，使用RAID3，安全性是可以得到保障的。
-
-RAID3更加适合应用于那些写入操作较少，读取操作较多的应用环境，如数据库和web服务器等。
-与RAID0相比，RAID3在读写速度方面相对较慢。
-使用的容错算法和分块大小决定RAID使用的应用场合，在通常情况下，RAID3比较适合大文件类型且安全性要求较高的应用，如视频编辑、硬盘播出机、大型数据库等。
-
-
-
-
-
-
-
-3. RAID 的实现
-(1) 软件 RAID 
-通过系统功能或 RAID 软件实现 RAID，没有独立硬件和接口，需要占用一定的系统资源(CPU、硬盘接口速度)，并且受操作系统稳定性影响。
-
-windows 和 linux 都支持。
-
-
-(2) 硬件 RAID (推荐)
-通过独立的 RAID 硬件卡实现，有些主板集成 RAID 硬件，有些需要购买独立的 RAID 硬件卡，硬件 RAID 实现不需要占用其他硬件资源，稳定性和速度都比软件 RAID 要强。
-
-
-
-
-
-
-========================================
-|-- 软件 RAID 的实现: mdadm (没测试过) //todo
-----------------------------------------
-
-1. linux通过 mdadm 实现的 软件 RAID 
-multi disk admin
-
-- mdadm 支持的 RAID 级别有: 0,1,4,5,6
-- mdadm 可以基于多块硬盘、分区或者逻辑卷创建软件 RAID。
-- 创建好的软件 RAID 对应 /dev/mdn, n为第几个 RAID，如第一个创建的 RAID 为 /dev/md0， 第二个为 /dev/md1
-- RAID 的信息保存在 /proc/mdstat 文件中，或通过 mdadm 命令查看。
-
-$ mdadm --version
-mdadm - v4.1 - 2018-10-01
-
-
-
-
-
-
-2. 创建 RAID 
-https://zhuanlan.zhihu.com/p/94109810
-
-可以看到创建时有个Note的提示，是说软raid不能当启动设备，这就是软raid比较鸡肋的地方了。
-
-(1) 创建 RAID 0
-$ sudo mdadm -C /dev/md0 -a yes -I 0 -n 2 /dev/sdb /dev/sdc 
-参数 man mdadm
--C --create 创建一个 RAID 
--a --auto　自动创建对应设备
--I 指定要创建的 RAID 级别
--n --raid-devices 阵列中活动磁盘的数目，该数目加上备用磁盘的数目应该等于阵列中总的磁盘数目;
-
-
-$ mdadm -C /dev/md0 -ayes -l1 -n2 /dev/xvd[b,c]1
--l, --level=
-	Set RAID level.  When used with --create, options are: linear, raid0, 0, stripe, raid1, 1, mirror, raid4, 4, raid5, 5, raid6, 6, raid10, 10, multipath, mp, faulty, container.  Obviously some of these are  synonymous.
-
-	When a CONTAINER metadata type is requested, only the container level is permitted, and it does not need to be explicitly given.
-	When used with --build, only linear, stripe, raid0, 0, raid1, multipath, mp, and faulty are valid.
-	Can be used with --grow to change the RAID level in some cases.  See LEVEL CHANGES below.
-
-
-建完成后可以使用cat /proc/mdstat查看阵列状态。
-图略。
-下图中第一次查看的时候提示resync完成了95.7%，第二次查询的时候两块盘才真正同步完。
-
-
-创建配置文件，保证重启时 RAID 都还在: 
-$ sudo mdadm -D --scan > /etc/mdadm.conf
-
-
-创建文件系统 
-$ mkfs.ext4 /dev/md0 
-挂载使用
-$ mount /dev/md0 /mnt 
-
-
-
-
-
-
-(2) 查看 RAID 信息 
-$ sudo mdadm -D /dev/md0 
-
-/proc 中的文件也包含 RAID 相关信息:
-$ cat /proc/mdstat
-
-
-如果磁盘比较大，则需要一段时间才能创建成功 RAID 5，需要看 /proc/mdstat 进度条。
-
-
-# cat /etc/mdadm.conf
-cat: /etc/mdadm.conf: No such file or directory
-
-# cat /proc/mdstat
-# mdadm --detail /dev/md126
-
-
-
-
-
-
-(3) 也可以使用一个 -x 参数指定一个备份磁盘
-备份磁盘一般不使用，当出现故障盘时，指定的备份磁盘可以自动上线工作:
-$ mdadm -C /dev/md0 -a yes -I 5 -n 3 -x 1 /dev/sdb /dev/sdc /dev/sdd /dev/sde 
-
-最后一个盘 /dev/sde 一般不用，故障时启用，否则就需要人工替换磁盘。
-
-
-
-(4) 关闭 RAID 
-先卸载， umont 
-然后关闭 RAID: $ mdadm -S /dev/md0 
-
-启用一个 RAID: $ mdadm -R /dev/md0 
-
-
-
-(5) 如果不想使用 RAID ，磁盘想单独它用
-
-先卸载，再关闭 RAID。
-然后清空数据: 
-$ mdadm --zero-superblock /dev/sdb
-$ mdadm --zero-superblock /dev/sdc
-
-
-
-
-(6) 模拟故障 
-实验环境中，通过 -f 把一个设备标识位故障
-$ mdadm /dev/md0 -f /dev/sdb 
-
-之后，移除故障硬盘
-$ mdadm /dev/md0 -r /dev/sdb 
-
-换上新的硬盘后，经心得硬盘添加到 RAID 中
-$ mdadm /dev/md0 -a /dev/sdb 
-
-
-
-
-
-
-
-
-
-========================================
-|-- 硬件 RAID, fakeRAID using dmraid, BIOS RAID 
-----------------------------------------
-https://wenku.baidu.com/view/91fae1911937f111f18583d049649b6648d709ee.html
-
-1. 基本信息
-Fake raid is accessed with the dmraid utility, not mdadm.
-https://help.ubuntu.com/community/FakeRaidHowto
-
-$ dmraid -V
-dmraid version:		1.0.0.rc16 (2009.09.16) debug 
-dmraid library version:	1.0.0.rc16 (2009.09.16)
-device-mapper version:	unknown
-
-
-$ dmraid -l
-asr     : Adaptec HostRAID ASR (0,1,10)
-ddf1    : SNIA DDF1 (0,1,4,5,linear)
-hpt37x  : Highpoint HPT37X (S,0,1,10,01)
-hpt45x  : Highpoint HPT45X (S,0,1,10)
-isw     : Intel Software RAID (0,1,5,01)
-jmicron : JMicron ATARAID (S,0,1)
-lsi     : LSI Logic MegaRAID (0,1,10)
-nvidia  : NVidia RAID (S,0,1,10,5)
-pdc     : Promise FastTrack (S,0,1,10)
-sil     : Silicon Image(tm) Medley(tm) (0,1,10)
-via     : VIA Software RAID (S,0,1,10)
-dos     : DOS partitions on SW RAIDs
-
-
-
-
-查看所有的 RAID 磁盘
-$ sudo dmraid -ay
-no raid disks
-
-
-
-
-
-
-2. 检查磁盘硬件
-
-(1) 确定厂家
-使用lspci确保您的服务器已连接到RAID控制器。
-
-To find out which RAID you are using
-$ lspci | grep RAID
-1b:00.0 RAID bus controller: Broadcom / LSI MegaRAID SAS-3 3108 [Invader] (rev 02)
-
-* 文档: https://docs.broadcom.com/doc/pub-005183
-
-这表明我这存在 MegaRaid controller，我可以愉快的使用MegaCli搞事！
-
-
-
-
-(2) 下载软件
-LSI Broadcom RAID Monitoring
-https://www.fractionservers.com/knowledge-base/lsi-raid-monitoring/
-
-$ wget http://dl.marmotte.net/rpms/redhat/el7/x86_64/megacli-8.00.46-2/megacli-8.00.46-2.x86_64.rpm
-$ sudo rpm -ivh megacli-8.00.46-2.x86_64.rpm
-
-
-$ MegaCli -h
-      MegaCLI SAS RAID Management Tool  Ver 8.00.46 Feb 03, 2011
-    (c)Copyright 2010, LSI Corporation, All Rights Reserved.
-NOTE: The following options may be given at the end of any command below: 
-    [-Silent] [-AppLogFile filename] [-NoLog] [-page[N]] 
-                 [-] is optional. 
-                  N - Number of lines per page. 
-
-
-## Checking the RAID status
-$ sudo MegaCli -AdpAllInfo -a0
-...
-                Capabilities
-                ======== ========
-RAID Level Supported             : RAID0, RAID1, RAID5, RAID00, RAID10, RAID50, PRL 11, PRL 11 with spanning, SRL 3 supported, PRL11-RLQ0 DDF layout with no span, PRL11-RLQ0 DDF layout with span
-Supported Drives                 : SAS, SATA
-...
-
-
-
-
-
-
-
-
-https://blog.csdn.net/wojiuwangla/article/details/113940417
-==> 查看raid 状态 
-$ MegaCli -LdInfo -lAll -aALL
-Adapter 0 -- Virtual Drive Information:
-Virtual Drive: 0 (Target Id: 0)
-Name                :System
-RAID Level          : Primary-1, Secondary-0, RAID Level Qualifier-0  #级别0
-Size                : 446.102 GB #这个大小只能是  /dev/sda
-State               : Optimal #状态: 良好
-Strip Size          : 64 KB
-Number Of Drives    : 2 #共2块硬盘
-Span Depth          : 1
-Default Cache Policy: WriteBack, ReadAheadNone, Direct, No Write Cache if Bad BBU
-Current Cache Policy: WriteThrough, ReadAheadNone, Direct, No Write Cache if Bad BBU
-Access Policy       : Read/Write
-Disk Cache Policy   : Disk's Default
-Encryption Type     : None
-
-
-Virtual Drive: 1 (Target Id: 1)
-Name                :localData
-RAID Level          : Primary-5, Secondary-0, RAID Level Qualifier-3 #级别3
-Size                : 8.180 TB  #这个大小可能是 /dev/sdb, 而不是 a
-State               : Degraded #状态: 降级
-Strip Size          : 64 KB
-Number Of Drives    : 6  #共6块硬盘
-Span Depth          : 1
-Default Cache Policy: WriteBack, ReadAheadNone, Direct, No Write Cache if Bad BBU
-Current Cache Policy: WriteThrough, ReadAheadNone, Direct, No Write Cache if Bad BBU
-Access Policy       : Read/Write
-Disk Cache Policy   : Disabled
-Encryption Type     : None
-
-Exit Code: 0x00
-
-指标说明
-State               : Degraded（降级）
-State               : Offline（离线）
-State               : Optimal（正常）
-Number Of Drives    : 2  RAID组包含2块磁盘。
-* degraded [dɪˈɡreɪdɪd] adj. 退化的；堕落的；被降级的
-
-
-
-
-
-==>查看硬盘数量以及有无损坏，有几行就是有几个硬盘
-$ sudo MegaCli -PDList -aALL | grep "Firmware state"
-Firmware state: Online, Spun Up
-Firmware state: Online, Spun Up
-Firmware state: Failed           #故障盘，第三块
-Firmware state: Online, Spun Up
-Firmware state: Online, Spun Up
-Firmware state: Online, Spun Up
-Firmware state: Online, Spun Up
-Firmware state: Online, Spun Up
-
-指标说明
-硬盘状态:
-Firmware state: Online, Spun Up 磁盘正常
-Firmware state: Unconfigured(good), Spun Up 磁盘已安装，但未启用
-Firmware state: Unconfigured(bad) 故障
-Firmware state: Failed 故障
-Firmware state: Rebuild 重建，一般在更换磁盘时显示
-
-
-
-
-==> 查看硬盘所有信息
-$ sudo MegaCli -PDList -aALL > ~/Megacli_firwaare_state.txt
-...
-Enclosure Device ID: 252
-Slot Number: 2  #第三块磁盘，编号从0开始
-Enclosure position: 0
-Device Id: 8
-Sequence Number: 2
-Media Error Count: 0
-Other Error Count: 0
-Predictive Failure Count: 0
-Last Predictive Failure Event Seq Number: 0
-PD Type: SAS
-Raw Size: 1.636 TB [0xd196e9b0 Sectors]
-Non Coerced Size: 1.636 TB [0xd186e9b0 Sectors]
-Coerced Size: 1.635 TB [0xd16e6000 Sectors]
-Firmware state: Failed                #状态是失败
-SAS Address(0): 0x50000398f809389e
-SAS Address(1): 0x0
-Connected Port Number: 2(path0) 
-Inquiry Data: LENOVO  AL15SEB18EQ     TB52T5W2LG6WTB52TB52TB52
-FDE Capable: Not Capable
-FDE Enable: Disable
-Secured: Unsecured
-Locked: Unlocked
-Needs EKM Attention: No
-Foreign State: None 
-Device Speed: Unknown 
-Link Speed: Unknown 
-Media Type: Hard Disk Device
-Drive:  Not Certified
-Drive Temperature :34C (93.20 F)
-...
-
-
-部分参数解释:
-Slot Number: ---硬盘槽号
-PD Type:         -----磁盘接口类型
-InquiryData:               -----硬盘的序列号、型号、固件版本
-Raw Size:  -----磁盘原始大小
-NonCoerced Size:    -----磁盘标准大小
-CoercedSize:  ------磁盘最大可用大小
-Medai Error Count:  ------表示磁盘可能错误，可能是磁盘有坏道，这个值不为0值得注意，数值越大，危险系数越高。
-Other Error Count:   ------表示磁盘可能存在松动，可能需要重新再插入。
-Predictive Failure Count: -----预测故障计数
-
-
-磁盘大小
-$ cat Megacli_firwaare_state.txt | grep "Raw Size"
-Raw Size: 447.130 GB [0x37e436b0 Sectors] # RAID 1
-Raw Size: 447.130 GB [0x37e436b0 Sectors]
-
-Raw Size: 1.636 TB [0xd196e9b0 Sectors]  # RAID 5
-Raw Size: 1.636 TB [0xd196e9b0 Sectors]
-Raw Size: 1.636 TB [0xd196e9b0 Sectors]
-Raw Size: 1.636 TB [0xd196e9b0 Sectors]
-Raw Size: 1.636 TB [0xd196e9b0 Sectors]
-Raw Size: 1.636 TB [0xd196e9b0 Sectors]
-
-
-
-
-==> 查看raid级别
-有时候认出比较难，推荐第二种
-$ sudo MegaCli -LdPdInfo -aALL | grep "RAID Level"
-RAID Level          : Primary-1, Secondary-0, RAID Level Qualifier-0
-RAID Level          : Primary-5, Secondary-0, RAID Level Qualifier-3
-
-raid级别说明:
-RAIDLevel : Primary-0, Secondary-0, RAID Level Qualifier-0     这就是raid0           
-0 0 0 是raid0    
-1 0 0 是raid1  
-5 0 3 是raid5  
-1 3 0 是raid10
-
-raid1 还需要结合Span Depth的值来判断
-Span Depth : 2 表示共2个RAID1盘组做成了RAID10，1表示1个RAID1盘组
-还有一种情况：Primary-1， Secondary-3， RAID LevelQualifier-0 也是表示 RAID-10;
-也可以这么显示raid级别，输入就会返回，这种的基本准确
-
-$ sudo MegaCli -ShowSummary -aALL | grep "RAID Level"
-                RAID Level         : 1 
-                RAID Level         : 5 
-
-
-==> 查看raid级别及查看raid是由哪些硬盘组成的
-$ sudo MegaCli -LdPdInfo -aALL > ~/MegaCli_LdPdInfo.txt
-$ less ~/MegaCli_LdPdInfo.txt
-
-
-硬盘有8块，分别在这些槽位
-$ cat ~/MegaCli_LdPdInfo.txt |  grep "Slot"
-Slot Number: 0
-Slot Number: 1
-Slot Number: 2
-Slot Number: 3
-Slot Number: 4
-Slot Number: 5
-Slot Number: 6
-Slot Number: 7
-
-硬盘类型
-$ cat ~/MegaCli_LdPdInfo.txt |  grep "PD Type"
-PD Type: SATA
-PD Type: SATA
-PD Type: SAS
-PD Type: SAS
-PD Type: SAS
-PD Type: SAS
-PD Type: SAS
-PD Type: SAS
-
-
-
-$ cat ~/MegaCli_LdPdInfo.txt |  grep "Enclosure Device ID"
-Enclosure Device ID: 252
-Enclosure Device ID: 252
-Enclosure Device ID: 252
-Enclosure Device ID: 252
-Enclosure Device ID: 252
-Enclosure Device ID: 252
-Enclosure Device ID: 252
-Enclosure Device ID: 252
-
-硬盘灯闪烁
-$ MegaCli -PdLocate -start -physdrv [32:2] -aALL
-32是 Enclosure Device ID，2是Slot Number
-
-卸载故障盘
-$ MegaCli -PDOffline -PhysDrv[32:2] -a0
-32是Enclosure Device ID，2是Slot Number
-
-关5槽位灯：
-$ MegaCli -PDLocate -stop -physdrv[64:5] -a0
-
-
-查看rebuild进度
-$ MegaCli -PDRbld -ShowProg -PhysDrv[32:2] -aAll
-32是Enclosure Device ID，2是Slot Number
-
-
-
-
-
-
-
-
-
-
-
-==> 获取RAID适配器的信息
-$ sudo MegaCli  -AdpGetPciInfo -aAll
-[sudo] password for wangjl: 
-                                     
-PCI information for Controller 0
------- -------- ---------- --------
-Bus Number      : 1b
-Device Number   : 0
-Function Number : 0
-
-Exit Code: 0x00
-这里看到适配器信息，适配器id为0。
-
-
-
-==> 获取硬盘背板信息
-##sudo MegaCli -EncInfo -a0  #Function Number : a0
-$ sudo MegaCli -EncInfo -0  #Function Number : 0
-Invalid input at or near token 0                                           
-Exit Code: 0x01
-
-
-$ sudo MegaCli -EncInfo -a0
-    Number of enclosures on adapter 0 -- 1
-	
-    Enclosure 0:
-    Device ID                     : 252
-    Number of Slots               : 8
-    Number of Power Supplies      : 0
-    Number of Fans                : 0
-    Number of Temperature Sensors : 0
-    Number of Alarms              : 0
-    Number of SIM Modules         : 1
-    Number of Physical Drives     : 8
-    Status                        : Normal
-    Position                      : 1
-    Connector Name                : Unavailable
-    Partner Device Id             : 65535
-
-    Inquiry data                  :
-        Vendor Identification     : AVAGO   
-        Product Identification    : SGPIO           
-        Product Revision Level    : N/A 
-        Vendor Specific           :                     
-
-Exit Code: 0x00
-
-Device ID	252
-Number of Slots( 可以连接到这个背板的最大物理驱动器	8
-
-
-获取物理驱动器的信息
-$ sudo MegaCli -LdPdInfo -a0
-Adapter #0
-
-Number of Virtual Disks: 2
-Virtual Drive: 0 (Target Id: 0)
-Name                :System
-RAID Level          : Primary-1, Secondary-0, RAID Level Qualifier-0
-Size                : 446.102 GB
-State               : Optimal
-...
-
-Virtual Drive: 1 (Target Id: 1)
-Name                :localData
-RAID Level          : Primary-5, Secondary-0, RAID Level Qualifier-3
-Size                : 8.180 TB
-State               : Degraded
-Strip Size          : 64 KB
-Number Of Drives    : 6
-Span Depth          : 1
-...
-
-Slot Number是物理驱动器连接的插槽号，也就是对应物理驱动器id
-
-
-获取Virtual drives信息
-只想查询a0上的所有虚拟设备信息，-L表示第几个虚拟设备：
-/opt/MegaRAID/MegaCli/MegaCli64  -LDInfo -Lall -a0
-只想查询a0上的所有物理设备信息：
-/opt/MegaRAID/MegaCli/MegaCli64 -PDList -a0
-
-
-
-
-获取Virtual drives内的物理驱动器信息
-这就有点难了， 其实没什么卵用,记下来留着以后copy
-$ cat MegaCli_LdPdInfo.txt |grep -E "Virtual Drive:|Slot Number:" | xargs | sed -r 's/(Slot Number:)(\s[0-9]+)/\2,/g' | sed 's/(Target Id: .)/Physical Drives ids:/g' | sed 's/Virtual Drive:/\nVirtual Drive:/g'
-
-Virtual Drive: 0 Physical Drives ids:  0,  1, 
-Virtual Drive: 1 Physical Drives ids:  2,  3,  4,  5,  6,  7,
-
-
-
-
-
-
-
-显示的信息差不多，raid的厂商，型号，级别，但无法查看各块硬盘的信息。
-$ dmesg |grep -i raid
-
-$ cat /proc/scsi/scsi 
-Attached devices:
-Host: scsi0 Channel: 02 Id: 00 Lun: 00
-  Vendor: Lenovo   Model: RAID 730-8i 1GB  Rev: 4.68
-  Type:   Direct-Access                    ANSI  SCSI revision: 05
-Host: scsi0 Channel: 02 Id: 01 Lun: 00
-  Vendor: Lenovo   Model: RAID 730-8i 1GB  Rev: 4.68
-  Type:   Direct-Access                    ANSI  SCSI revision: 05
-
-Host: scsi14 Channel: 00 Id: 00 Lun: 00
-  Vendor: DELL     Model: MD38xxf          Rev: 0825
-  Type:   Direct-Access                    ANSI  SCSI revision: 05
-Host: scsi14 Channel: 00 Id: 00 Lun: 31
-  Vendor: DELL     Model: Universal Xport  Rev: 0825
-  Type:   Direct-Access                    ANSI  SCSI revision: 05
-
-Host: scsi15 Channel: 00 Id: 00 Lun: 00
-  Vendor: DELL     Model: MD38xxf          Rev: 0825
-  Type:   Direct-Access                    ANSI  SCSI revision: 05
-Host: scsi15 Channel: 00 Id: 00 Lun: 31
-  Vendor: DELL     Model: Universal Xport  Rev: 0825
-  Type:   Direct-Access                    ANSI  SCSI revision: 05
-
-Host: scsi16 Channel: 00 Id: 00 Lun: 00
-  Vendor: DELL     Model: MD38xxi          Rev: 0825
-  Type:   Direct-Access                    ANSI  SCSI revision: 05
-Host: scsi16 Channel: 00 Id: 00 Lun: 31
-  Vendor: DELL     Model: Universal Xport  Rev: 0825
-  Type:   Direct-Access                    ANSI  SCSI revision: 05
-
-
-
-
-
-
-
-
-
-
-
-ref: 
-https://www.cnblogs.com/xth0331/p/9655593.html
-https://zhuanlan.zhihu.com/p/358739776
-http://t.zoukankan.com/xuefy-p-11153280.html
-https://www.linuxprobe.com/basic-learning-07.html
-
-
-
-
-
-
-
 ========================================
 linux 下多路径(multipath)介绍及使用(光纤连接存储): multipath //todo
 ----------------------------------------
@@ -7273,27 +6510,6 @@ done;
 
 
 
-
-
-
-========================================
-Raids 数据恢复 -- 商业软件 (至少可用的方案)
-----------------------------------------
-1. 我搜到的
-https://www.diskinternals.com/
-
-
-
-
-2. 数据恢复公司实际使用的 
-2023.1-4
-
-Files saving log. Produced by UFS Explorer software 
-
-Processed objects:
-Forlder: jinwf
-
-To: //192.168.1.7/data/data2
 
 
 

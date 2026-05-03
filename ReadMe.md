@@ -47,7 +47,7 @@ txtBlog v0.6
 
 ## 优化：  
 	9.全站缓存60s。 已取消缓存，没有并发压力，没必要缓存; 
-	
+	10.[v6.6.4-5]首页用户不指定，则随机生成$k,$id;
 ## 
 #
 
@@ -59,8 +59,9 @@ txtBlog v0.6
 
 
 ## How to run? 如何运行？
-[如何部署?](help/howToRun.md)
 
+- [如何部署?](help/howToRun.md)
+- 底部友情链接: /View/Index/footer.php
 
 
 
@@ -79,6 +80,7 @@ $ git branch
 $ git checkout master
 合并$ git merge --no-ff -m'some comments' otherBranch
 推送$ git push origin master
+$ git checkout dev
 
 
 
@@ -88,5 +90,8 @@ $ git checkout master
 /index.php?c=summary&k=2020 年度总结
 /index.php?c=summary&k=2021 年度总结
 /index.php?c=summary&k=2022 年度总结
+/index.php?c=summary&k=2023 年度总结
+/index.php?c=summary&k=2024 年度总结
 /index.php?c=search 关键词搜索
+/index.php?c=summary&k=2025 年度总结
 ``````

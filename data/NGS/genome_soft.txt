@@ -26,7 +26,6 @@ This has some good examples: http://www.bioinformatics.babraham.ac.uk/projects/f
 Then you can look into the following: Trimmomatic, Fastx-toolkit to trim data.
 
 
-更多质控软件： http://blog.sina.com.cn/s/blog_9b78c9110101couq.html
 
 
 
@@ -1364,6 +1363,441 @@ https://biohpc.cornell.edu/lab/doc/Variant_workshop_Part2.pdf
 
 
 ========================================
+|-- GATK HaplotypeCaller algorithm 的原理: 和 Samtools / bcftools pileup 的差异
+----------------------------------------
+
+1.GATK HaplotypeCaller (HC) 的核心思想可以概括为一句话：
+haplotype / ˈhæpləʊˌtaɪp / n.单体型
+
+不是对每个位点独立做 pileup 判别，而是对“候选变异区间”进行局部重组装（local de novo assembly），再用概率模型进行基因型判定。
+
+下面按算法流程层级系统解释其原理（这是理解 HC 与 Samtools / bcftools pileup 根本差异的关键）。
+
+
+2.关键步骤拆解
+(1)Active Region Detection（活跃区域识别）
+HC 首先扫描全基因组，但不会对每个位点做复杂计算。
+
+它通过以下信号识别 Active Region（可能存在变异的连续区段，通常几十到几百 bp）：
+	mismatch
+	indel signal
+	soft-clipping
+	base quality 加权异常
+计算一个 activity score，超过阈值即标记为 active。
+
+👉 意义
+	降低计算复杂度
+	为后续 assembly 提供连续上下文（尤其对 indel 很关键）
+
+
+
+(2)部 de novo assembly（核心创新）
+对每个 Active Region：
+
+1) 构建 De Bruijn Graph: 德布鲁因图 --> todo?
+	从 reads 中切分 k-mer
+	构建 de Bruijn graph
+	节点：k-mer
+	边：k-1 overlap
+同时包含：
+	参考序列路径（reference path）
+	来自 reads 的变异路径
+
+2) Graph 清理与简化
+	去除低支持分支（noise）
+	合并 bubble
+	限制 haplotype 数量（默认最多 ~128）
+
+3) 生成候选 Haplotype
+最终得到若干条候选 haplotype（序列）：
+	H0: 参考
+	H1: SNP
+	H2: indel
+	H3: SNP+indel
+	...
+👉 这是 HC 能准确识别 indel、复杂变异的根本原因
+
+
+
+(3)Reads → Haplotype 比对（Pair-HMM）
+接下来不是 reads vs reference，而是：
+	reads vs 每一条候选 haplotype
+使用 Pair Hidden Markov Model (Pair-HMM)：
+状态：
+	Match
+	Insertion
+	Deletion
+转移概率：
+	由测序错误率、gap open / extend 决定
+发射概率：
+	来自 base quality
+得到：
+	P(read | haplotype)
+对每个 read × haplotype 都计算一次。
+👉 这是 HC 的统计核心
+
+
+
+
+(4)基因型概率计算（Bayesian Genotyping）
+以二倍体为例，候选基因型：
+	(H0/H0), (H0/H1), (H1/H1), ...
+对某个基因型 G = (Hi, Hj)：
+	P(G|Reads) ∝ P(G) × ∏(reads,  ( P(r|Hi)+P(r|Hj) )/2 )
+
+	通常假设先验 P(G) 相等
+	计算后归一化
+	选择最大后验概率的基因型
+
+并计算：
+	GQ（Genotype Quality）
+	PL（Phred-scaled likelihoods）
+
+
+
+(5)变异输出与规范化
+从 haplotype vs reference 的差异中提取：
+	SNP
+	Indel
+	复杂变异（MNP、compound indel）
+左对齐、规范化
+输出 gVCF / VCF
+
+
+
+
+
+3.HaplotypeCaller 为什么比 pileup 好？
+
+	问题         	pileup  	HaplotypeCaller
+	Indel        	易错位  	assembly 天然支持
+	复杂变异     	几乎不行	haplotype 层面解析
+	测序错误     	位点独立	序列上下文建模
+	Mapping error	难处理  	reads → haplotype
+
+一句话总结：
+	pileup 是“按碱基投票”，HC 是“按序列解释 reads 的来源”。
+
+
+
+
+
+4.HC 的假设与局限
+假设
+	局部区域可由有限 haplotype 表达
+	Reads 错误近似独立
+	错误模型主要来自测序而非结构变异
+局限
+	对大 SV（>50bp）不友好
+	高拷贝重复区 graph 容易爆炸
+	极低覆盖下 assembly 不稳定
+	非二倍体需要特殊参数（如 --ploidy）
+
+
+(2)是否适合HLA typing和HLA loss
+不适合。因为这几个基因相似性太大，又有多倍型，不符合HC的假设。
+
+
+
+
+========================================
+|-- HaplotypeCaller 是否适合100个PCR扩增子的MRD检测？
+----------------------------------------
+1.MRD 监控本质上有三种不同信号类型：
+	MRD 信号         	例子                	算法侧重点
+	已知 SNV / indel	NPM1、DNMT3A hotspot	低频变异检测           x
+	复杂 indel / 重排	FLT3-ITD、NPM1 indel	局部结构解析           *
+	等位 / 克隆比例变化	HLA-loss、LOH       	allele fraction / CN   x
+👉 HaplotypeCaller 只对第 2 类部分友好，对第 1、3 类并不理想。
+
+
+
+2) PCR 扩增子 + HC：算法匹配度分析
+i) PCR 扩增子数据的“反 HC 特性”
+PCR 扩增子测序通常具有：
+	覆盖极深（1,000×–50,000×）
+	read 起止高度一致（边界效应）
+	PCR 错误 ≫ 测序错误
+	等位频率关注点：0.01%–1%
+而 HC 的核心设计是：
+	HC 假设      	扩增子是否满足
+	覆盖均匀    	❌
+	错误独立    	❌（PCR error 相关）
+	二倍体      	❌（MRD 是混合）   ??不也是二倍体？细胞是混合的？
+	等位频率 ≥10%	⚠️
+HC 的 genotype likelihood 框架，天然不为“低频亚克隆”服务。
+
+
+
+ii)HC 在 PCR 扩增子 MRD 中的实际表现
+✅ 它在哪些情况下“还算可以”？
+	中高频（≥5%） indel
+	结构明确、长度稳定的 indel
+	扩增子完整覆盖 indel 区域
+例如：
+	NPM1 type A/B/C indel（诊断期）
+	FLT3-ITD（较大的）
+👉 HC 的 local assembly 在 indel 解析上确实优于 pileup。
+
+
+
+iii)它在哪些情况下明显不合适？
+低频 SNV（<1%）
+	HC 会：
+		强烈偏向 reference genotype
+		直接不报
+UMI 扩增子
+	HC 完全不理解 UMI consensus
+MRD 动态监控
+	你要的是 VAF 连续变化
+	HC 给的是 GT + PL
+👉 HC 的输出目标 ≠ MRD 的临床指标。
+
+
+
+
+2.对比：MRD 场景下更合适的算法范式
+(1)如果你的 MRD 是「已知 hotspot SNV / indel」
+更合适：pileup + error model
+典型工具：
+	VarDict
+	LoFreq
+	FreeBayes（frequency mode）
+	自研 pileup + position-specific error rate
+关键特征：
+	报告 VAF
+	不强制二倍体 genotype
+	对 0.1%–1% 敏感
+
+(2)如果是「复杂 indel / ITD」
+组合策略最稳：
+	HC（候选 indel 发现）
+	+
+	专用 ITD / indel quantification
+例如：
+	FLT3-ITD：getITD / Pindel
+	NPM1：定制 indel parser
+	👉 HC 用来 发现结构，不用来 定量 MRD。
+
+(3)如果是「超低频 MRD（≤0.1%）」
+HC ❌ 完全不合适。
+你需要：
+	UMI
+	duplex consensus
+	position-specific background error
+算法方向：
+	smCounter / fgbio
+	CAPP-Seq error suppression
+	DuplexSeq pipeline
+
+
+
+3.如果你“非要用 HC”，正确姿势是什么？
+✔ 可接受的使用方式（有限）
+	把 HC 当作：indel 候选生成器
+参数上：
+	--ploidy 不要默认 2（但帮助有限）
+	关闭 gVCF joint calling 的幻想
+下游：
+	自己算 VAF
+	不信 GT
+错误期待
+	❌ 指望 HC 给你 MRD 灵敏度
+	❌ 指望 PL / GQ 能区分 0.5% vs 0.1%
+	❌ 指望 HC 处理 PCR 噪声
+
+
+
+
+========================================
+|-- MRD 检测：区分真实克隆 vs 技术噪声
+----------------------------------------
+1.目标
+MRD 的核心不是“有没有变异”，而是：
+	在已知靶点上，稳定、可重复地量化 0.01%–1% 的等位频率变化，
+	并能区分真实克隆 vs 技术噪声。
+
+因此流程遵循三条原则：
+	不强制二倍体基因型（反 HC）
+	显式建模错误率（position-specific）
+	发现 ≠ 定量（indel 结构 vs VAF 分离）
+
+
+(2)penel设计要点
+1)扩增子设计建议
+	项目      	推荐
+	扩增子长度	150–250 bp
+	覆盖目标  	hotspot ± 20 bp
+	GC        	30–70%
+	重叠      	❌ 避免
+	Indel 靶点	单独设计（如 NPM1）
+
+2)是否使用 UMI？（关键分叉）
+	场景     	推荐
+	MRD ≥0.1%	可不加
+	MRD ≤0.1%	必须 UMI
+	纵向随访	强烈建议
+
+没有 UMI 的 MRD，下限通常卡在 0.1% 左右。
+
+
+
+
+2.计算流程
+(1)主线: 总流程图（文字版）
+	FASTQ
+	 ↓
+	Adapter / primer trimming
+	 ↓
+	(UMI) consensus building
+	 ↓
+	Amplicon-aware alignment
+	 ↓
+	候选变异发现
+	 ↓
+	背景错误模型建立
+	 ↓
+	MRD 定量（VAF + CI）
+	 ↓
+	纵向动态与判读
+
+
+(2)具体步骤 + 工具选择
+Step 1：Adapter / Primer trimming（必做）
+目的：
+	去掉 PCR 引物引入的假突变
+	统一 read 边界
+工具：
+	cutadapt（推荐）
+	或 fastp（简单）
+关键参数：
+	必须明确 primer 序列
+	双端一致性过滤
+
+
+Step 2（可选）：UMI 处理（如果有）
+推荐工具
+	fgbio
+	或 smCounter2 pipeline
+流程
+	group by UMI
+	 → read consensus
+	 → duplex（如果有）
+建议阈值
+	单 UMI family ≥3 reads
+	duplex ≥1 正反链
+
+
+
+Step 3：Amplicon-aware 比对
+❌ 不推荐
+	默认 BWA-MEM（会误判 soft-clip）
+✅ 推荐
+	BWA-MEM + 参数调整
+	或 bowtie2（local mode）
+关键点：
+	保留 soft-clipping
+	不强行 indel realignment（HC 会做，pileup 不会）
+
+
+
+Step 4：候选变异发现（“发现层”）
+SNV / 小 indel（<10bp）
+
+推荐工具（任选其一）：
+	工具	原因
+	VarDict	扩增子友好，支持低频
+	LoFreq	position-specific error
+	FreeBayes	frequency mode
+
+关键参数建议：
+	最低 VAF 报告：0.1%
+	最低 supporting reads：5–10
+
+
+复杂 indel / ITD（发现用）
+推荐：
+	GATK HaplotypeCaller（仅此用途）
+	Pindel / getITD（FLT3）
+⚠️ 注意：
+HC 只用于 “结构确认”，不是定量。
+
+
+
+
+
+Step 5：背景错误模型（MRD 的灵魂）
+核心思想
+	每一个位点，都有自己的“噪声指纹”。
+
+构建方法（强烈推荐）
+使用：
+	多个健康对照
+	或患者 remission 样本
+统计：
+	position × alt base × strand  -> error rate distribution
+实践工具
+	自研脚本（最常见）
+	smCounter 内置模型（UMI）
+
+
+
+
+Step 6：MRD 定量（核心输出）
+对每个靶点计算：
+	指标        	含义
+	Alt reads   	支持变异的 reads
+	Total depth 	UMI-consensus 后
+	VAF         	Alt / Total
+	Z-score     	vs 背景错误
+	95% CI      	binomial / beta
+
+
+
+Step 7：阈值判读（你问的重点）
+	🚩 单个位点阳性阈值（推荐）
+	场景	阈值
+	无 UMI	VAF ≥ 0.1% 且 ≥10 reads
+	有 UMI	VAF ≥ 0.01% 且 ≥3 UMI
+	任意	超过背景均值 + 5 SD
+
+样本级 MRD 阳性定义（临床可用）
+推荐 双重标准：
+	至少 1 个 driver 位点 超阈值
+	或 ≥2 个独立位点 同时上升
+
+
+tep 8：纵向动态（比单点更重要）
+推荐指标
+	log10(VAF)
+	fold change vs baseline
+	clone-specific trajectory
+风险信号
+	连续 2 次上升
+	单次 ≥10 倍增长
+
+
+
+
+3.HC 在这套流程里的“正确位置”
+HC = 结构发现工具，不是 MRD 定量工具
+合理使用方式：
+	用途        	是否用 HC
+	indel 结构确认	✅
+	SNV 低频检测	❌
+	MRD 定量    	❌
+	纵向趋势    	❌
+
+
+=> 通过位点特异性背景误差建模与纵向动态分析，实现 0.01%–0.1% 灵敏度的微小残留病监测。
+
+
+
+
+
+
+
+========================================
 |-- Workflow Description Language (WDL)语言
 ----------------------------------------
 1.简介
@@ -2382,6 +2816,412 @@ http://jp.support.illumina.com/sequencing/sequencing_software/igenome.html
 **** 拷贝数变异 CNV 
 ----------------------------------------
 
+WES的CNV探究-conifer软件使用
+
+单个样本NGS数据如何做拷贝数变异分析
+* 肿瘤配对样本用varscan 做cnv分析
+* 使用cnvkit来对大批量wes样本找cnv
+
+拷贝数变异的分析通常需要专门的工具，如CNV检测工具，如CNVkit、PureCN、Control-FREEC、RSeQC等。
+
+
+
+
+
+
+========================================
+使用sequenza软件判定肿瘤纯度、倍性: Tumor purity and ploidy
+----------------------------------------
+1.Sequenza是一个使用配对的肿瘤/正常样本DNA测序数据来估计肿瘤样本纯度和倍性的软件，同时还检测肿瘤样本拷贝数变异。
+https://github.com/Yunuuuu/sequenza
+Sequenza is a tool to analyze genomic sequencing data from paired normal-tumor samples, including cellularity and ploidy estimation; mutation and copy number (allele-specific and total copy number) detection, quantification and visualization.
+
+
+(1)安装
+
+1) py 部分
+$ pip3 install sequenza-utils
+	Successfully installed sequenza-utils-3.0.0
+
+2) R包部分
+$ R
+> install.packages("sequenza")
+	# package ‘sequenza’ is not available for this version of R
+
+> BiocManager::install("sequenza")
+	# package ‘sequenza’ is not available for Bioconductor version '3.18'
+
+# https://github.com/Yunuuuu/sequenza
+> library(devtools)
+> install_github("Yunuuuu/sequenza")
+询问是否更新包，选择3不更新。
+
+> packageVersion("sequenza")
+[1] ‘3.0.0’
+
+
+
+(2)输入：3个文件（tumor vs normal bam, ref fasta）
+A BAM file (or a derived pileup file) from the tumor specimen.
+A BAM file (or a derived pileup file) from the normal specimen.
+A FASTA reference genomic sequence file
+
+1)Process a FASTA file to produce a GC Wiggle track file:
+$ sequenza−utils gc_wiggle −w 50 --fasta hg19.fa -o hg19.gc50Base.wig.gz
+
+2)Process BAM and Wiggle files to produce a seqz file:
+$ sequenza−utils bam2seqz -n normal.bam -t tumor.bam --fasta hg19.fa \
+    -gc hg19.gc50Base.wig.gz -o out.seqz.gz
+
+3)Post-process by binning the original seqz file:
+$ sequenza−utils seqz_binning --seqz out.seqz.gz -w 50 -o out small.seqz.gz
+
+
+(3)可视化 in R
+
+library(sequenza)
+
+# 载入seqz文件
+data.file <-  system.file("data", "example.seqz.txt.gz", package = "sequenza")
+data.file
+
+#1)sequenza.extract: process seqz data, normalization and segmentation
+test <- sequenza.extract(data.file, verbose = FALSE)
+
+#2)sequenza.fit: run grid-search approach to estimate cellularity and ploidy
+CP <- sequenza.fit(test) #耗时
+
+#3)sequenza.results: write files and plots using suggested or selected solution
+sequenza.results(sequenza.extract = test,
+    cp.table = CP, sample.id = "Test",
+    out.dir="TEST")
+
+
+
+
+
+2.测试
+
+骨髓检测移植前后的样品，pre记作normal, 复发post记作tumor。
+$ cd /datapool/wangjl/others/HLA_HD/data/output_hla/24B74088/test2/
+$ mkdir p8/
+
+(1)py
+1)fasta生成wig文件
+$ hg38_fa=/datapool/wangjl/ref/hg38/gencode/GRCh38.p13.genome.fa
+$ sequenza-utils gc_wiggle -w 50 --fasta $hg38_fa -o hg38.gc50Base.wig.gz
+	# 16:48->16:59, 11min
+
+
+2)Process BAM and Wiggle files to produce a seqz file: 统计等位基因深度和频率
+$ normal_bam="../test/SNP/p8/210567-2.chr6.sorted.bam"
+$ tumor_bam="../test/SNP/p8/210968-2.chr6.sorted.bam"
+$ sequenza-utils bam2seqz -n $normal_bam -t $tumor_bam --fasta $hg38_fa \
+    -gc hg38.gc50Base.wig.gz -o p8/out.seqz.gz
+	#17:01->17:03, 2min
+
+3)Post-process by binning the original seqz file: 分bin统计
+$ sequenza-utils seqz_binning --seqz p8/out.seqz.gz -w 50 -o p8/small.seqz.gz
+	#17:03->17:04, 1min
+
+查看:
+	$ ls -lth p8/
+	total 186M
+	-rw-r--r--. 1 wangjl jinlab 219K Jul  2 17:03 small.seqz.gz
+	-rw-r--r--. 1 wangjl jinlab  423 Jul  2 17:03 small.seqz.gz.tbi
+	-rw-r--r--. 1 wangjl jinlab  457 Jul  2 17:03 out.seqz.gz.tbi
+	-rw-r--r--. 1 wangjl jinlab 714K Jul  2 17:03 out.seqz.gz
+
+	-rw-r--r--. 1 wangjl jinlab 185M Jul  2 16:59 hg38.gc50Base.wig.gz # p8/ 平级
+
+查看文件内容：13k行
+	$ zcat p8/small.seqz.gz | wc -l
+	13880
+	$ zcat p8/small.seqz.gz | head
+	chromosome      position        base.ref        depth.normal    depth.tumor     depth.ratio     Af      Bf      zygosity.normal GC.percent      good.reads      AB.normal       AB.tumor        tumor.strand
+	chr6    29791377        N       13      13      1.006   1.0     0       hom     42      49      N       .       0
+	chr6    29828915        N       6       14      2.333   1.0     0       hom     56      22      N       .       0
+	chr6    29888186        N       5       17      3.273   1.0     0       hom     70      51      N       .       0
+	chr6    29888237        N       5       15      3.04    1.0     0       hom     72      5       N       .       0
+	chr6    29889019        N       84      106     1.288   1.0     0       hom     59      51      N       .       0
+	chr6    29889060        A       127     161     1.268   0.994   0       hom     59      161     A       G0.006  G1.0
+	chr6    29889070        N       236     287     1.218   1.0     0       hom     57      51      N       .       0
+	chr6    29889078        G       191     233     1.22    0.996   0       hom     57      233     G       T0.004  T0.0
+	chr6    29889095        C       240     293     1.221   0.997   0       hom     57      293     C       A0.003  A1.0
+	$ zcat p8/small.seqz.gz | tail
+	chr6    33088615        A       1069    1113    1.041   0.999   0       hom     44      1113    A       G0.001  G0.0
+	chr6    33088618        C       981     1021    1.041   0.999   0       hom     44      1021    C       A0.001  A0.0
+	chr6    61322765        N       11      12      1.147   1.0     0       hom     41      50      N       .       0
+	chr6    61322783        C       10      11      1.1     0.909   0       hom     41      11      C       G0.091  G1.0
+	chr6    61322791        A       11      12      1.091   0.917   0       hom     41      12      A       G0.083  G1.0
+	chr6    61322796        A       11      13      1.182   0.923   0       hom     41      13      A       T0.077  T0.0
+	chr6    61322804        T       11      14      1.273   0.857   0       hom     41      14      T       C0.143  C1.0
+	chr6    61322809        G       11      14      1.273   0.929   0       hom     41      14      G       C0.071  C1.0
+	chr6    61322811        G       11      14      1.273   0.929   0       hom     41      14      G       C0.071  C1.0
+	chr6    61322816        N       9       14      1.592   1.0     0       hom     44      20      N       .       0
+
+分bin前: 61k行
+	$ zcat p8/out.seqz.gz | wc
+		61088  855232 3387413
+	$ zcat p8/out.seqz.gz | head -n 3
+	chromosome      position        base.ref        depth.normal    depth.tumor     depth.ratio     Af      Bf      zygosity.normal GC.percent      good.reads      AB.normal       AB.tumor        tumor.strand
+	chr6    29791377        A       11      9       0.818   1.0     0       hom     48      9       A       .       0
+	chr6    29791378        A       11      9       0.818   1.0     0       hom     48      9       A       .       0
+	$ zcat p8/out.seqz.gz | tail -n 3
+	chr6    61322833        A       8       13      1.625   1.0     0       hom     44      13      A       .       0
+	chr6    61322834        G       8       13      1.625   1.0     0       hom     44      13      G       .       0
+	chr6    61322835        C       7       13      1.857   1.0     0       hom     44      13      C       .       0
+
+
+(2)R 统计和绘图
+$ R
+> library(sequenza)
+
+# 载入seqz文件
+data.file <-  "p8/small.seqz.gz"
+data.file
+
+#1)sequenza.extract: process seqz data, normalization and segmentation
+library(parallel)
+test <- sequenza.extract(data.file, window = 1e4, assembly = "hg38", parallel = 1, verbose = T)
+	# 报错: Collecting GC information Error in (function (x, col_types)  : unused argument (parallel = 1)
+
+	https://blog.csdn.net/WortJ/article/details/144569191
+	> packageVersion("iotools")
+	[1] ‘0.3.5’
+	
+	安装这个补丁:
+	https://github.com/WortJohn/sequenza/tree/WortJohn-patch-1
+	> devtools::install_github("WortJohn/sequenza@WortJohn-patch-1")
+	> packageVersion("sequenza") #[1] ‘3.0.0’
+	
+	#尝试下载后安装
+	$ Rscript -e "devtools::install_local('./WortJohn-patch-1.zip', force=TRUE, repos=NULL, type='source', dependencies=FALSE)"
+
+	安装老版本 copynumber
+	> packageVersion("copynumber") #[1] ‘1.40.0’
+	> devtools::install_github("WortJohn/copynumber")
+	> packageVersion("copynumber") #[1] ‘1.38.0’
+	补充了hg38：
+	>?copynumber::pcf
+	assembly: a string specifying which genome assembly version should be
+          applied to determine chromosome arms. Allowed options are
+          "hg38", "hg19", "hg18", "hg17" and "hg16" (corresponding to
+          the four latest human genome annotations in the UCSC genome
+          browser).
+	
+	退出R，重新读取，正常输出:
+	Processing chr6:
+	   24 variant calls.
+	   21 copy-number segments.
+	   382 heterozygous positions.
+	   13497 homozygous positions.
+	There were 27 warnings (use warnings() to see them)
+
+
+#2)sequenza.fit: run grid-search approach to estimate cellularity and ploidy
+CP <- sequenza.fit(test) #耗时
+	报错：Error in result$LPP - max.lik : non-numeric argument to binary operator
+		In addition: There were 50 or more warnings (use warnings() to see the first 50)
+	不太能定位错误地点。
+	str(test) 看似乎有很多NA和NaN，怎么去除呢？
+	失败：做不下去了。
+
+
+#3)sequenza.results: write files and plots using suggested or selected solution
+sequenza.results(sequenza.extract = test,
+    cp.table = CP, sample.id = "Test",
+    out.dir="TEST")
+
+
+
+# 这个图只有chr6，但是只有中间有少量点，太压缩。
+> chromosome.view(mut.tab = test$mutations[[1]], baf.windows = test$BAF[[1]],
+                ratio.windows = test$ratio[[1]],  min.N.ratio = 1,
+                #segments = seg.tab[seg.tab$chromosome == test$chromosomes[1],],
+                main = test$chromosomes[1],
+                cellularity = 0.89, ploidy = 1.9,
+                avg.depth.ratio = 1)
+
+	> summary(t1$position)
+		Min.  1st Qu.   Median     Mean  3rd Qu.     Max. 
+		   1 32522140 32558761 31043675 32582376 32665990
+
+
+
+
+
+(3)R手动画图: x=position, y=depth.normal, depth.tumor
+df1=read.table(gzfile( "p8/small.seqz.gz" ), header = T)
+
+	> dim(df1)
+	[1] 13879    14
+	> head(df1, n=2)
+	  chromosome position base.ref depth.normal depth.tumor depth.ratio Af Bf
+	1       chr6 29791377        N           13          13       1.006  1  0
+	2       chr6 29828915        N            6          14       2.333  1  0
+	  zygosity.normal GC.percent good.reads AB.normal AB.tumor tumor.strand
+	1             hom         42         49         N        .            0
+	2             hom         56         22         N        .            0
+
+	> table(df1$zygosity.normal)
+	  het   hom 
+	  382 13497
+
+	# 去掉全是0的位置
+	plot(df1$depth.normal + df1$depth.tumor, pch=19, cex=0.5, col="grey")
+
+#1 比例
+plot(df1$depth.ratio, pch=19, cex=0.5, col="red")
+plot(df1$depth.ratio, pch=19, cex=0.2, col=c("red", "black")[match(df1$zygosity.normal, c("het", "hom"))] )
+plot(log(1+df1$depth.ratio), pch=19, cex=0.2, col=c("red", "black")[match(df1$zygosity.normal, c("het", "hom"))])
+plot(df1$position, log(1+df1$depth.ratio), pch=19, cex=0.5, col="red",
+	#xlim=c(29941531, 29946870),
+	xlim=c(2.95, 3.35)*1e7,
+	main="depth.ratio")
+
+#2 绘制depth: 太聚集，怎么去除空白？
+plot(df1$position, df1$depth.normal, col="navy", pch=19, xlim=c(2.95, 3.35)*1e7, xlab="position", ylab="depth", main="chr6")
+points(df1$position, df1$depth.tumor, col="#990000", pch=19)
+legend("topleft", legend=c("pre", "post"), col=c("navy", "#990000"), pch=19)
+
+# 按照基因绘制
+pos.list=list(
+	A=c(29941531, 29946870),
+	C=c(31267748,31273092),
+	B=c(31352874,31358179),
+	DRB1=c(32577774,32590848),
+	DQB1=c(32658466,32667657),
+	DPB1=c(33074989,33090696)
+)
+plotGene=function(symbol="A"){
+	start=pos.list[[symbol]][1]
+	end=pos.list[[symbol]][2]
+	plot(df1$position, df1$depth.normal, col="navy", pch=19, cex=0.3,
+		xlim=c(start, end), xlab="position", ylab="depth", main=paste0("HLA-",symbol), mgp=c(2,1,0))
+	points(df1$position, df1$depth.tumor, col="#990000", pch=19, cex=0.3)
+	legend("topleft", legend=c("pre", "post"), col=c("navy", "#990000"),
+		bty="n", #不要图例边框
+		pch=19)
+}
+# plotGene("A")
+
+# 6个基因的覆盖度图
+pdf("p8/QC_coverage.pdf", width=10, height=6)
+par(mfrow=c(2,3))
+for(gene in names(pos.list)){
+	plotGene(gene)
+}
+dev.off()
+
+
+
+
+
+
+
+
+
+Ref:
+https://zhuanlan.zhihu.com/p/697635756
+
+
+
+
+
+========================================
+|-- VarScan(Java 编写的) 检测SNPs, Indels, CNVs: 启发式 //todo
+----------------------------------------
+1. 简介
+https://varscan.sourceforge.net/     老网站
+https://dkoboldt.github.io/varscan/  新网站
+
+https://varscan.sourceforge.net/copy-number-calling.html
+
+
+(1)paper 流程
+2013 Dec 12. doi: 10.1002/0471250953.bi1504s44，文章标题是；Using VarScan 2 for Germline Variant Calling and Somatic Mutation Detection
+https://pubmed.ncbi.nlm.nih.gov/25553206/
+
+
+* 单个样本: bam -samtools-> mpileup -mpileup2cns-> Germline;
+* 配对样本: tumor, normal bam -samtools-> mpileup -somatic-> Germline + Somatic + LOH;
+* Family Trio: parents bams, child bam -samtools-> mpileup -trio-> Germline+ de novo + MIE;
+
+=> Genome Res. 2012
+https://pubmed.ncbi.nlm.nih.gov/22300766/
+VarScan 2: somatic mutation and copy number alteration discovery in cancer by exome sequencing
+
+
+
+
+(2)下载
+https://github.com/dkoboldt/varscan
+
+$ wget https://github.com/dkoboldt/varscan/releases/download/v2.4.6/VarScan.v2.4.6.jar
+$ ls -lth VarScan.v2.4.6.jar 
+-rw-rw-rw-+ 1 wangjl jinlab 124K Mar 29  2023 VarScan.v2.4.6.jar
+
+
+
+
+(3)查看软件帮助：需要java环境
+$ java --version
+openjdk 17.0.0.1 2024-07-02
+OpenJDK Runtime Environment (build 17.0.0.1+2-3)
+OpenJDK 64-Bit Server VM (build 17.0.0.1+2-3, mixed mode, sharing)
+
+
+$ java -jar VarScan.v2.4.6.jar
+VarScan v2.4.6
+***NON-COMMERCIAL VERSION***
+USAGE: java -jar VarScan.jar [COMMAND] [OPTIONS] 
+COMMANDS:
+	pileup2snp		Identify SNPs from a pileup file
+	pileup2indel		Identify indels a pileup file
+	pileup2cns		Call consensus and variants from a pileup file
+	mpileup2snp		Identify SNPs from an mpileup file
+	mpileup2indel		Identify indels an mpileup file
+	mpileup2cns		Call consensus and variants from an mpileup file
+
+	somatic			Call germline/somatic variants from tumor-normal pileups
+	mpileup2somatic		Call germline/somatic variants in multi-tumor-normal mpileup (beta feature in v2.4.5)
+	copynumber		Determine relative tumor copy number from tumor-normal pileups
+	readcounts		Obtain read counts for a list of variants from a pileup file
+
+	filter			Filter SNPs by coverage, frequency, p-value, etc.
+	somaticFilter		Filter somatic variants for clusters/indels
+	fpfilter		Apply the false-positive filter
+
+	processSomatic		Isolate Germline/LOH/Somatic calls from output
+	copyCaller		GC-adjust and process copy number changes from VarScan copynumber output
+	compare			Compare two lists of positions/variants
+	limit			Restrict pileup/snps/indels to ROI positions
+#
+
+
+
+
+
+
+
+
+Ref:https://cloud.tencent.com/developer/article/1708602
+
+
+
+========================================
+|-- FreeBayes  检测SNV变化: 基于贝叶斯理论 //todo
+----------------------------------------
+
+
+
+
+
+
+
+
+
 
 ========================================
 |-- Control-Freec:检测拷贝数变异(CNV)的神器
@@ -2823,7 +3663,78 @@ https://bytebucket.org/tasseladmin/tassel-5-source/wiki/docs/ExecutingTassel.pdf
 
 
 ========================================
+Manta 是一个用于检测基因组结构变异（如插入、缺失、倒位等）的高效工具(依赖py2.7)
 ----------------------------------------
+其核心配置脚本 configManta.py 用于生成工作流程文件。
+
+
+0.简介:
+(1) Structural variant and indel caller for mapped sequencing data
+https://github.com/Illumina/manta
+
+
+Manta 是 illumina 公司开发的一款用于检测结构变异 Structural Variant 和 Indel 的软件，Manta 检测 SV 和 Indel 分为两个主要步骤：
+1）扫描基因组以找到SV相关区域，以及
+2）分析，评分和输出在这些区域发现的SV。
+
+其输出的结果可以作为 strelka 的输入，以提高 strelka 对 indel 检测的准确性。
+值得注意的事，该软件既可以用于 germline SV 的检测（家系样本），也可以用于 Somatic SV 的检测（肿瘤样本）
+
+
+Ref:
+https://cloud.tencent.com/developer/article/2009775
+https://qinqianshan.com/bioinformatics/callvariant/manta/
+
+
+
+
+
+
+
+
+1.安装与环境配置：‌ Manta 通常通过 conda 管理依赖，需创建 Python 2 环境（因工具兼容性要求）：
+
+conda create -n manta python=2.7
+conda activate manta
+conda install manta -c bioconda
+
+安装后验证：configManta.py --help 应显示帮助信息。‌
+
+
+‌2.生成脚本文件：‌ 使用 configManta.py 指定输入 BAM 文件、参考基因组等参数。‌关键点包括：
+
+多个 BAM 文件‌：通过重复 --bam 参数支持（最多 10 个），例如 --bam sample1.bam --bam sample2.bam。
+‌必需参数‌：--referenceFasta 指定参考基因组（需 .fai 索引），--runDir 定义输出目录。
+‌可选优化‌：--exome 标记外显子数据，--callRegions 限制分析区域（如 BED 文件）。
+
+示例命令:
+configManta.py \
+  --bam test1.bam \
+  --bam test2.bam \
+  --referenceFasta GRCh38.fa \
+  --runDir /path/to/output \
+  --exome \
+  --callRegions regions.bed.gz
+
+实例命令:
+/home/zxsys/Downloads/manta-1.6.0.release_src/bin/configManta.py \
+	--tumorBam /results/NGS/TBNGS280-25_marked.bam \
+	--referenceFasta /rawdata/database/Homo_sapiens_assembly19.fasta \
+	--exome \
+	--callRegions /rawdata/database/mutation_panel.bed.gz \
+	--runDir /results/NGS/TBNGS280-25
+
+执行后，输出目录生成 runWorkflow.py 及配置文件。‌
+	NGS/TBNGS280-25/runWorkflow.py
+	NGS/TBNGS280-25/runWorkflow.py.config.pickle 
+
+
+‌3.运行工作流程：‌ 进入输出目录并执行生成的脚本：
+	cd /path/to/output
+	./runWorkflow.py --mode local --jobs 4
+
+
+
 
 
 

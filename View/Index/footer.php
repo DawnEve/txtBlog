@@ -21,13 +21,13 @@
 			//api手册
 			array('http://www.runoob.com/','菜鸟教程网'),
 			array('https://www.coonote.com/','菜鸟笔记'),
-			array('http://www.codebaoku.com/','编程宝库','编程宝库！'),
+			//array('http://www.codebaoku.com/','编程宝库','编程宝库！'), //202504 内容很怪异
 			array('https://www.twle.cn/','简单教程网','提供md编辑器'),
 			array('http://jsbin.com/','jsbin','练习前端的好工具！'),
 			array('https://tool.lu/','在线工具'),
 
-			array('http://jquery.cuishifeng.cn/','jQuery手册'),
-			array('http://css.cuishifeng.cn/','css手册'),
+			//array('http://jquery.cuishifeng.cn/','jQuery手册'), //202504 打不开
+			//array('http://css.cuishifeng.cn/','css手册'),
 
 			array('http://www.w3school.com.cn/','w3school'),
 			array('http://www.shouce.ren/api/index','在线手册下载'),
@@ -66,6 +66,7 @@
 
 			//C++
 			array('https://normaluhr.github.io/2020/12/31/Effective-C++/','Effective C++读书笔记'),
+			array('https://cppguide.cn/','CppGuide社区(张小方)'),
 			
 			//Java
 			array('https://github.com/itwanger/toBeBetterJavaer','toBeBetterJavaer'),
@@ -92,9 +93,9 @@
 			array('http://www.liaoxuefeng.com/','廖雪峰'),
 			array('http://rapheal.sinaapp.com/about/','拉风博客', '腾讯广州研发部，微信产品部门'),
 			array('http://www.cnblogs.com/jikey/p/4426105.html','豪情的博客', '高级qq群'),
-			array('http://www.nowamagic.net/','简明现代魔法','其实每个程序员都是魔法师'),
+			//array('http://www.nowamagic.net/','简明现代魔法','其实每个程序员都是魔法师'),
 			array('http://www.ycku.com/course/','李炎恢','瓢城Web俱乐部'),
-			array('http://bonsaiden.github.io/JavaScript-Garden/zh/#function.closures','js秘密花园'),
+			//array('http://bonsaiden.github.io/JavaScript-Garden/zh/#function.closures','js秘密花园'),
 			array('http://www.bootcss.com/','bootstrap'),
 
 			array('http://www.bluesdream.com/blog/','BlueDream','前端博客'),
@@ -171,6 +172,9 @@
 			array('http://freemind.pluskid.org/','张驰原pluskid(ML/AI)'),
 			array('https://blog.csdn.net/v_july_v/article/details/7624837','july(ML/AI)'),
 			array('http://blog.17study.com.cn/','月色(ML/AI)'),
+			array('https://mofanpy.com/','莫烦'),
+			array('https://kanny.blog.csdn.net/?type=lately','广小隶(图神经网络)'),
+			array('https://blog.xinglovejiao.online/aboutme','快乐江湖(后端+AI双修)'),
 		));
 
 
@@ -195,6 +199,14 @@
 			array('http://www.biotrainee.com:8081/jmzeng/book/basic/','曾健明的笔记'),
 			array('http://blog.biochen.com/about','陈雯(lincRNA)'),
 			array('https://github.com/xuzhougeng/myscripts/blob/master/igv_web.py','徐洲更(生信脚本)'), //其中 igv那个值得学习 
+			array('http://www.yelab.site/','叶幼琼(肿瘤多组学)'), //上海交通大学医学院上海市免疫学研究所，肿瘤多组学与肿瘤免疫课题组长 https://www.shsmu.edu.cn/sii/info/1020/3171.htm
+			array('https://shixiangwang.github.io/home/cn/','王诗翔'),
+			array('https://blog.csdn.net/weixin_53637133?type=lately','追风少年ii(空间组学)'),
+			array('https://lishensuo.github.io/archives/','单细胞大模型(笔记)'),
+			array('https://weiyan.cc/yuque/','维燕的知识花园'), //说的交换biomooc友情链接，它最新更新中竟然不添加我的，立刻删掉对方的。
+			array('https://davetang.org/muse/category/genomics/','davetang(基因组学/R/)'),
+			array('https://felixfan.github.io/tags/','felixfan(R)'),
+			array('https://gps.biocuckoo.cn/index.php','薛宇(华科蛋白修饰预测)'), //构建了多种预测共价修饰底物和位点的计算工具、软件和数据库
 			//array('',''),
 		));
 ?>
@@ -224,7 +236,7 @@ var cnzz_protocol = (("https:" == document.location.protocol) ? " https://" : " 
 			♥ Do have faith in what you're doing. 
 			[<?php echo date('Y-m-d H:i:s',time());?>] 
 			Powered by <a target='_blank' href='https://github.com/DawnEve/txtBlog' title='txtBlog(A simple yet powerful php blog system for reading and organizing txt files.)'>txtBLog 
-			v0.6.5
+			v6.6.7
 			</a>
 			
 			

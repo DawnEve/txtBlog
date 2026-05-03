@@ -150,7 +150,7 @@
 ["crisp", "conspiracy", "porch", "deficit", "distress"]
 ["slack", "gymnasium", "oath", "courtesy"]
 ["petty", "pretext", "pillar", "ankle", "strive", "instruct", "postpone", "suffice", "repetition"]
-
+['revelation', 'tramp', 'customary', 'rib', 'hitherto', 'contend', 'superior', 'lubricate']
 
 
 

@@ -1,0 +1,676 @@
+http协议
+
+
+https://developer.mozilla.org/en-US/docs/Web/HTTP
+
+
+
+
+========================================
+HTTP格式
+----------------------------------------
+每个HTTP请求和响应都遵循相同的格式，一个HTTP包含Header和Body两部分，其中Body是可选的。
+HTTP协议是一种文本协议，所以，它的格式也非常简单。
+
+
+(1.1)HTTP GET请求的格式：
+
+GET /path HTTP/1.1
+Header1: Value1
+Header2: Value2
+Header3: Value3
+
+每个Header一行一个，换行符是\r\n。
+
+
+(1.2)HTTP POST请求的格式：
+
+POST /path HTTP/1.1
+Header1: Value1
+Header2: Value2
+Header3: Value3
+
+body data goes here...
+
+当遇到连续两个\r\n时，Header部分结束，后面的数据全部是Body。
+
+
+
+(2)HTTP响应的格式：
+
+200 OK
+Header1: Value1
+Header2: Value2
+Header3: Value3
+
+body data goes here...
+
+HTTP响应如果包含body，也是通过\r\n\r\n来分隔的。
+请再次注意，Body的数据类型由Content-Type头来确定，如果是网页，Body就是文本，如果是图片，Body就是图片的二进制数据。
+
+当存在Content-Encoding时，Body数据是被压缩的，最常见的压缩方式是gzip，所以，看到Content-Encoding: gzip时，需要将Body数据先解压缩，才能得到真正的数据。压缩的目的在于减少Body的大小，加快网络传输。
+
+要详细了解HTTP协议，推荐“HTTP: The Definitive Guide”一书，非常不错，有中文译本：《HTTP权威指南》
+
+
+========================================
+协议森林
+----------------------------------------
+https://read.douban.com/column/1788114/
+
+通信是一件奇妙的事情。它让信息在不同的个体间传递。动物们散发着化学元素，传递着求偶信息。人则说着甜言蜜语，向情人表达爱意。猎人们吹着口哨，悄悄的围拢猎物。服务生则大声的向后厨吆喝，要加两套炸鸡和啤酒。有了通信，每个人都和周围的世界连接，不再是封闭的灵魂个体。而通信的基础，正是参与通信双方都能理解和使用的协议。互联网是当今最庞大的通信平台。支撑起互联网的，也是一系列相互配合的协议。我想以趣味的方式讲解这些网络协议，呈现出它们令人惊艳的工作方式。
+
+专栏将自下而上的讲解网络协议与它们的产生背景。网络协议属于技术，但深受政策与历史的影响。Ethernet, IP, UDP, TCP, HTTP, DNS... 这些协议形成茂密的树林，盘根错节。协议之间有时合作，有时竞争，有时弱肉强食的取代。了解网络分层，是理解这个森林的第一步。而森林的心脏，是存在了三十多年的TCP/IP套装。该专栏将逐个讲解主流的网络协议。内容改编自同名的博客系列文章。
+
+
+
+
+
+
+========================================
+http 协议的 range header: 支持按范围下载数据，特别适合 基因组大数据 的按需获取
+----------------------------------------
+1. 使用 igv.js 时发现的问题
+本地 fasta 文件加载特别慢，需要好几分钟，
+请教作者 https://github.com/igvteam/igv.js/issues/1508
+
+作者说数据服务器需要支持 range 头: https://github.com/igvteam/igv.js/wiki/Data-Server-Requirements
+
+
+
+
+
+2. 支持 range header 的服务器程序
+(1) RangeHTTPServer
+
+安装方式: pip 安装，然后按照报错修改文件即可。
+$ pip3 install rangehttpserver
+$ pip3 list | grep -i range
+rangehttpserver                   1.2.0
+
+$ python3 -m RangeHTTPServer --port 8890
+报错: OSError: [Errno 98] Address already in use
+测试发现 8890 没有占用，实际上，这个版本使用默认的 8000 端口，这个端口是占用的。
+
+
+按照 其 github 的文件来修改代码: https://github.com/danvk/RangeHTTPServer/blob/master/RangeHTTPServer/__main__.py
+$ vim /home/wangjl/anaconda3/lib/python3.7/site-packages/RangeHTTPServer/__main__.py
+## 删除最后一行，添加下面几行:
+import argparse
+parser = argparse.ArgumentParser()
+parser.add_argument('port', action='store',
+                    default=8000, type=int,
+                    nargs='?', help='Specify alternate port [default: 8000]')
+
+args = parser.parse_args()
+SimpleHTTPServer.test(HandlerClass=RangeRequestHandler, port=args.port)
+
+
+$ python3 -m RangeHTTPServer 8890
+可以了， IGV.js 加载也正常了，几秒加载好，而之前需要好几分钟。
+
+
+
+
+(2) flask script by IGV
+https://github.com/igvteam/igv.js-flask
+
+
+(3) flask 
+partial.py 支持 range 的server
+https://programtalk.com/vs4/python/2323/scout/scout/blueprints/pileup/partial.py/
+
+
+
+
+
+
+
+
+
+
+
+
+========================================
+|-- http断点续传原理：http头 Range、Content-Range
+----------------------------------------
+
+1. HTTP Header里的Range和Content-Range参数
+https://blog.csdn.net/thewindkee/article/details/80189434
+
+这个话题是从实现一个http资源的静态访问引发的。http协议从1.1开始支持获取文件的部分内容，这为并行下载以及断点续传提供了技术支持。它通过在Header里两个参数实现的，
+- 客户端发请求时对应的是Range，
+- 服务器端响应时对应的是Content-Range；
+
+
+(1) Range 头部的格式有以下几种情况：
+https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Range
+
+Range: bytes=0-499 表示第 0-499 字节范围的内容 
+Range: bytes=500-999 表示第 500-999 字节范围的内容 
+Range: bytes=-500 表示最后 500 字节的内容 
+Range: bytes=500- 表示从第 500 字节开始到文件结束部分的内容 
+Range: bytes=0-0,-1 表示第一个和最后一个字节 
+Range: bytes=500-600,601-999 同时指定几个范围
+
+
+(2) 服务器是否支持断点续传
+$ curl -i --range 0-9 http://www.baidu.com/img/bdlogo.gif
+HTTP/1.1 206 Partial Content
+Server: Apache
+Date: Wed, 25 May 2022 06:55:39 GMT
+Content-Type: image/gif
+Content-Length: 10
+Connection: keep-alive
+Accept-Ranges: bytes
+Content-Range: bytes 0-9/1575  ##这里是from to / 总长度
+Etag: "627-4d648041f6b80"
+Last-Modified: Fri, 22 Feb 2013 03:45:02 GMT
+P3p: CP=" OTI DSP COR IVA OUR IND COM "
+Set-Cookie: BAIDUID=E9AEC63F210B4D706FCC37FD5035B61E:FG=1; expires=Thu, 25-May-23 06:55:39 GMT; max-age=31536000; path=/; domain=.baidu.com; version=1
+
+Warning: Binary output can mess up your terminal. Use "--output -" to tell 
+Warning: curl to output it to your terminal anyway, or consider "--output 
+Warning: <FILE>" to save to a file.
+
+服务器的返回头: https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Content-Range
+
+
+
+
+(3) 尝试分2次下载一个图片
+## 第一次下载
+$ curl -D "resp-header1.txt" -H 'Range: bytes=0-2000' \
+    http://localhost:8080/chain.jpg > /tmp/test.jpg 
+
+$ cat resp-header1.txt
+HTTP/1.1 206 Partial Content # 返回状态码是206
+Server: Apache-Coyote/1.1
+Accept-Ranges: bytes
+ETag: W/"4932-1447753566000"
+Last-Modified: Tue, 17 Nov 2015 09:46:06 GMT
+Content-Range: bytes 0-2000/4932
+Content-Type: image/jpeg
+Content-Length: 2001
+Date: Tue, 17 Nov 2015 17:27:45 GMT 
+
+这时在mac下用preview程序打开图片看到是部分的，把剩余部分数据也下载下来才行:
+$ curl -H 'Range: bytes=2001-4932' \
+    http://localhost:8080/chain.jpg >> /tmp/test.jpg
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+========================================
+用 flask 建立服务器，支持 CORS 跨域访问
+----------------------------------------
+1. 跨域访问越来越严格了
+
+(1) 访问: http://ielts.biomooc.com/listening/player.html?url=http://y.biomooc.com:8000/file/audio/HarryPotter1-7StephenFry/Harry%20Potter%204/fry_4_01.mp3
+报错:
+Access to fetch at 'http://y.biomooc.com:8000/file/audio/HarryPotter1-7StephenFry/Harry%20Potter%204/fry_4_01.mp3' from origin 'http://ielts.biomooc.com' has been blocked by CORS policy: The request client is not a secure context and the resource is in more-private address space `private`.
+
+翻译： 客户端不是https，且资源更私密。
+
+
+(2) 原因
+Chrome浏览器94及以后的版本，引入了弃用试验 Block insecure private network requests，就是当目标站点的ip地址比请求发起者的ip地址更加私密时，会进行阻止。 
+
+http://localhost > https://abc.xxx.com > http://yyy.cn 
+
+所以从 http://ielts.biomooc.com 向 http://y.biomooc.com:8000/file/audio/HarryPotter1-7StephenFry/Harry%20Potter%204/fry_4_01.mp3 发起请求会报错！
+
+
+(3) 解决
+以下任意一种方法即可
+1. 使用Chrome低版本或其他浏览器。
+2. 将网站升级为https。
+3. 在Chrome浏览器地址栏搜索 chrome://flags, 然后在搜索框搜索 Block insecure private network requests，最后将其Default改为Disabled。
+
+
+
+
+
+
+2. 设置一个最简单的 flask 数据服务器
+- 支持跨域 cors: 作为 data server 必须的
+- 支持 range header: 作为生物大数据必须的，bam和fa都很大
+- 支持设定根目录 root dir 
+- 支持list出文件名，看看 json or pre 显示
+
+(1) 参考: 
+	https://github.com/igvteam/igv.js/wiki/Data-Server-Requirements
+	https://github.com/igvteam/igv.js-flask
+
+(2) 
+
+
+
+
+========================================
+|-- 我的版本 DaisyHttp: 支持 range 和 cors 的基于 flask 的服务器脚本
+----------------------------------------
+Yi station: /home/wangjl/data/project/DaisyHttp/
+github: https://github.com/BioMooc/DaisyHttp
+
+
+todo
+1. 重写 range 
+2. 结构更清晰化
+
+
+
+
+
+
+
+
+========================================
+WebSocket 是 HTML5 下一种新的协议 (rfc6455, rfc7936)
+----------------------------------------
+1. web + socket
+
+(1) websocket的原理（尝试阅读RFC文档）
+- websocket约定了一个通信的规范，通过一个握手的机制，客户端和服务器之间能建立一个类似tcp的连接，从而方便它们之间的通信
+- 在websocket出现之前，web交互一般是基于http协议的短连接或者长连接
+- websocket是一种全新的协议，不属于http无状态协议，协议名为"ws"
+
+- Socket 是传输控制层协议，WebSocket 是应用层协议。
+	ws -> wss
+	http -> https
+
+一个典型的Websocket握手请求如下：
+
+客户端请求
+	GET / HTTP/1.1
+	Upgrade: websocket
+	Connection: Upgrade
+	Host: example.com
+	Origin: http://example.com
+	Sec-WebSocket-Key: sN9cRrP/n9NdMgdcy2VJFQ==
+	Sec-WebSocket-Version: 13
+
+服务器回应
+	HTTP/1.1 101 Switching Protocols
+	Upgrade: websocket
+	Connection: Upgrade
+	Sec-WebSocket-Accept: fFBooB7FAkLlXgRSz0BT3v4hq5s=
+	Sec-WebSocket-Location: ws://example.com/
+
+解释:
+	Connection 必须设置 Upgrade，表示客户端希望连接升级。
+	Upgrade 字段必须设置 Websocket，表示希望升级到 Websocket 协议。
+	这些键值对没有前后顺序的要求。
+
+握手的意思：
+	websocket 是为了确定该 session 是否可用。
+	因为基于 tcp，所以是可靠的
+	Sec-WebSocket-Key 的内容是 key(base64编码的值)，发送给server，server发送 Sec-WebSocket-Accept 给浏览器，完成握手。
+	Sec-WebSocket-Key 怎么转为 Sec-WebSocket-Accept 的？
+		GUID + Sec-WebSocket-Key 取 hash值，base64编码后给  Sec-WebSocket-Accept
+		key=base64(客户端随机数);
+		value=key+GUID 全局一致;
+		newvalue=SHA-1(value);
+		base64(newvalue);
+	没有加密，依赖wss
+
+
+数据发送的过程：
+	基于tcp如何发送数据
+		tcp分包和粘包的问题：加上包的长度，或者末尾添加"\r\n\r\n";
+		加协议头
+	data frame 数据帧：websocket 有四个部分
+		头、长度、掩码、数据
+		
+
+从 websocket 学习如何创建自定义协议。
+	c++程序员喜欢造轮子：握手 + 数据发送的过程
+
+
+
+
+(2) ws 和 http 的比较
+相同点：
+	都是基于tcp的，都是可靠性传输协议
+	都是应用层协议
+
+不同点：
+	WebSocket是双向通信协议，模拟Socket协议，可以双向发送或接受信息
+	HTTP是单向的
+	WebSocket是需要浏览器和服务器握手进行建立连接的
+	而http是浏览器发起向服务器的连接，服务器预先并不知道这个连接
+
+联系：
+	WebSocket在建立握手时，数据是通过HTTP传输的。但是建立之后，在真正传输时候是不需要HTTP协议的
+
+
+
+
+(3) 应用: 主要用于服务端推送给客户端
+- 网页上主动更新的内容
+- 网页QQ：有消息时服务端主动推送
+- 扫二维码登录：服务器给网页一个二维码，手机扫码登录，服务器知道登录了，再主动通知网页跳转登录
+
+
+
+
+2. 更详细的教程
+https://www.runoob.com/html/html5-websocket.html
+WebSocket协议：5分钟从入门到精通 https://www.cnblogs.com/chyingp/p/websocket-deep-in.html
+https://zh.javascript.info/websocket
+
+
+
+
+========================================
+|-- websocket 示例：基于node.js后端
+----------------------------------------
+
+1. 前端
+$ cat 163/webSocket.html
+<meta charset=utf8 />
+   <!-- 输入内容 -->
+    <input type="text" name="" id="" placeholder="请输入内容">
+    <!-- 发送请求 -->
+    <button>发送</button>   
+    <!-- 接收websocket服务得数据 -->
+    <div></div>
+
+<style>
+        div{
+            width: 300px;
+            height: 200px;
+            border: 1px solid #000;
+            margin-top: 20px;
+        }
+    </style>
+
+<script>
+	var input=document.querySelector('input')
+	var button=document.querySelector('button')
+	var div=document.querySelector('div')
+	
+	// 创建websocket服务地址
+   // const socket=new WebSocket('ws://echo.websocket.org/') 
+	// 'ws://echo.websocket.org/'这个服务地址是websocket官方文档中的地址。不用纠结，后面下一个案例会把他换成自己的
+    const socket=new WebSocket('ws://127.0.0.1:8181') 
+
+    // 当与服务器连接成功出发open事件（websocket四大基本事件 https://www.runoob.com/html/html5-websocket.html）
+    socket.addEventListener('open',function(){
+        div.innerHTML='连接服务器成功'
+    })
+    socket.addEventListener('close',function(){
+        div.innerHTML='服务器连接关闭'
+    })
+	
+    button.addEventListener('click',function(){
+        var value=input.value
+        console.log(value);
+        socket.send(value)
+    })
+
+    socket.addEventListener('message',function(e){
+		wjl=e
+		console.log("get message>>"+e);
+		if(e.data.startsWith("another")){
+			div.innerHTML +="<br>"+e.data
+		}else{
+			div.innerHTML=e.data
+		}
+    })
+</script>
+
+
+2.后端
+$ cat 163/webSocket_server.js
+/*
+>npm install -g ws
++ ws@8.13.0
+added 1 package from 1 contributor in 2.177s
+
+> npm install ws --registry=http://registry.npm.taobao.org
+
+> node webSocket_server.js
+*/
+
+const WebSocket = require('ws');
+console.log("websocket server start at port "+8181)
+console.log(WebSocket)
+ 
+const socket = new WebSocket.Server({ port: 8181 });
+ 
+socket.on('connection', function connection(conn) {
+	console.log("> client conneted");
+	
+	conn.on('message', function(message){
+		socket.clients.forEach(function(conn2){ // 看这里看这里  wss.clients 拿到所有的连接
+			//消息1
+			conn.send(message+" [from server~~~~]") // 发送消息
+			console.log("msg>> "+message)
+
+			//产生随机数
+			var seed=Math.round(Math.random()*100);
+			console.log("seed>> "+seed)
+			if(seed>50){
+				//消息2
+				conn.send("another msg2 from server: seed="+seed);
+			}
+			
+			// 服务端不断的推数据
+			setTimeout(function () {
+				//消息3
+				conn.send('another msg3 from setTimeout: '+seed)
+				console.log("another>> "+seed)
+			}, 500 + seed*10);
+		})
+	});
+
+	conn.on("close", function(message){
+		conn.send(message+" is closing....");
+		console.log("> 连接关闭");
+	})
+});
+
+
+
+3.启动
+
+先启动后端 > node webSocket_server.js
+再用浏览器打开前端 http://localhost/163/webSocket.html
+可以看到页面，状态栏提示: 连接服务器成功
+输入文字，可以看到前后在通信，后台可以主动发送消息。
+
+
+
+ref: 
+https://github.com/Ortonzhang/WebSocket-ws/blob/master/src/demo1/server.js
+https://blog.csdn.net/sinat_36422236/article/details/85051547
+
+
+
+========================================
+|-- WebSocket 示例：基于 python 后台
+----------------------------------------
+1.文件结构
+
+|--app.py
+|--templates/
+|--|--monitor.html
+|--requirements.txt
+
+
+$ cat requirements.txt
+flask==2.0.1
+flask-socketio==5.3.2
+python-engineio==4.3.4
+python-socketio==5.7.2
+
+
+安装包:
+$ pip3 install flask_socketio -i https://pypi.douban.com/simple/
+
+检查版本:
+	$ pip3 list| grep socketio
+	python-socketio                   5.13.0
+	python-engineio                   4.12.2
+	python-socketio                   5.13.0
+
+
+(1) cat app.py
+from flask import Flask, render_template
+from flask_socketio import SocketIO
+import time
+import threading
+
+app = Flask(__name__)
+socketio = SocketIO(app, cors_allowed_origins="*")
+
+tasks = {}
+
+@app.route('/')
+def index():
+    return render_template('monitor.html')
+
+@socketio.on('start_task')
+def handle_start_task(task_id):
+    def background_task():
+        for i in range(1, 101):
+            time.sleep(0.5)  # 模拟耗时操作
+            tasks[task_id] = {'progress': i, 'status': 'running'}
+            socketio.emit('task_update', 
+                         {'task_id': task_id, 
+                          'progress': i,
+                          'status': 'running'})
+        tasks[task_id]['status'] = 'completed'
+        socketio.emit('task_complete', 
+                     {'task_id': task_id, 
+                      'result': 'Task finished successfully'})
+    
+    thread = threading.Thread(target=background_task)
+    thread.start()
+    return {'task_id': task_id}
+
+if __name__ == '__main__':
+    socketio.run(app, debug=True, host="0.0.0.0", port=8004)
+
+
+
+(2) cat templates/monitor.html
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Long Task Monitor</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.0.1/socket.io.js"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-gray-100">
+    <div class="container mx-auto p-8">
+        <h1 class="text-3xl font-bold mb-6">Task Progress Monitor</h1>
+        <button onclick="startTask()" class="bg-blue-500 text-white px-4 py-2 rounded">
+            Start New Task
+        </button>
+        <div id="taskContainer" class="mt-8 space-y-4"></div>
+    </div>
+
+    <script>
+        const socket = io();
+        let currentTaskId = 1;
+        
+        function startTask() {
+            const taskId = `task_${currentTaskId++}`;
+            socket.emit('start_task', taskId);
+            
+            const taskElement = `
+                <div id="${taskId}" class="bg-white p-4 rounded shadow">
+                    <h3 class="font-semibold">Task ID: ${taskId}</h3>
+                    <div class="w-full bg-gray-200 rounded-full h-2.5 mt-2">
+                        <div id="${taskId}_progress" 
+                             class="bg-blue-600 h-2.5 rounded-full" 
+                             style="width: 0%"></div>
+                    </div>
+                    <p id="${taskId}_status" class="mt-2 text-sm">Status: Initializing</p>
+                </div>
+            `;
+            
+            document.getElementById('taskContainer').insertAdjacentHTML('beforeend', taskElement);
+        }
+
+        socket.on('task_update', (data) => {
+            const progressBar = document.getElementById(`${data.task_id}_progress`);
+            const statusText = document.getElementById(`${data.task_id}_status`);
+            
+            progressBar.style.width = `${data.progress}%`;
+            statusText.textContent = `Status: ${data.status} (${data.progress}%)`;
+        });
+
+        socket.on('task_complete', (data) => {
+            const statusText = document.getElementById(`${data.task_id}_status`);
+            statusText.textContent = `Status: completed - ${data.result}`;
+            statusText.classList.add('text-green-600');
+        });
+    </script>
+</body>
+</html>
+
+
+资源文件下载：
+	@J3:/home/wangjl/data4/web/docs/dustbin/tmp/webSocket/static/
+	$ ls -lth
+	total 578K
+	-rw-------+ 1 wangjl jinlab 398K Aug  8 14:05 index.html
+	-rw-------+ 1 wangjl jinlab 181K Apr  1  2021 socket.io.js
+
+
+
+(3)启动
+$ python3 app.py
+
+浏览器查看：http://10.10.117.158:8004
+	点击按钮 Start New Task，可见进度条在逐步增加。
+	但是，不能实现在另一个浏览器标签中查看进度条的效果。
+
+
+
+========================================
+----------------------------------------
+
+
+========================================
+----------------------------------------
+
+
+========================================
+----------------------------------------
+
+
+========================================
+----------------------------------------
+
+
+========================================
+----------------------------------------
+
+
+========================================
+----------------------------------------
+
+
+
+
+
+

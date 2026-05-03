@@ -15,6 +15,308 @@ https://www.linuxprobe.com/basic-learning-07.html
 
 
 ========================================
+源码安装
+----------------------------------------
+1. 源码安装，依赖 gcc
+请查看本博客其他相关专题：
+
+(1) [C++](c/cpp_note.txt): 非root权限安装新版 gcc
+(2) (R/R003-grocer.txt) R / Rstudio 使用最新的gcc 12
+(3) (c/c004-make_debug.txt) 动态链接库的管理：ldd, string, ldconfig
+
+
+
+
+
+========================================
+|-- configure， pkg-config ， PKG_CONFIG_PATH
+----------------------------------------
+在安装开源软件的过程中， 经常会碰到提示配置PKG_CONFIG_PATH路径， 或者直接提示没有安装某某库， 但是我们已经安装了啊。
+其实造成这种情况的原因很简单， 就是安装的目录不能被依赖程序找到。
+
+
+1. 什么是configure
+源码安装过程中大多会用到configure这个程序，一般的configure都是一个script，执行时可以传入必要参数告知配置项目。
+
+而configure脚本在检查相应依赖环境时(例：所依赖软件的版本、相应库版本等)，通常会通过pkg-config的工具来检测相应依赖环境。
+
+
+
+2. 什么是pkg-config
+
+pkg-config用来检索系统中安装库文件的信息。典型的是用作库的编译和连接。
+
+pkg-config 就是用来解决编译连接界面不统一问题的一个工具。
+
+
+它的基本思想：pkg-config是通过库提供的一个.pc文件获得库的各种必要信息的，包括版本信息、编译和连接需要的参数等。需要的时候可以通过pkg-config提供的参数(–cflags, –libs)，将所需信息提取出来供编译和连接使用。这样，不管库文件安装在哪，通过库对应的.pc文件就可以准确定位,可以使用相同的编译和连接命令，使得编译和连接界面统一。
+
+它提供的主要功能有:
+
+　　<1> 检查库的版本号。如果所需库的版本不满足要求，打印出错误信息，避免连接错误版本的库文件。
+　　<2> 获得编译预处理参数，如宏定义，头文件的路径。
+　　<3> 获得编译参数，如库及其依赖的其他库的位置，文件名及其他一些连接参数。
+　　<4> 自动加入所依赖的其他库的设置。
+
+
+
+(1) 一般保存地点
+
+32为系统的pkgconfig目录为  /usr/lib/pkgconfig/
+64为系统的pkgconfig目录为  /usr/lib64/pkgconfig/
+
+$ ls -lth /usr/lib64/pkgconfig/ | head
+total 708K
+lrwxrwxrwx. 1 root root   13 Dec 23 17:12 python2.pc -> python-2.7.pc
+lrwxrwxrwx. 1 root root   10 Dec 23 17:12 python.pc -> python2.pc
+-rw-r--r--. 1 root root  240 Nov 15 00:14 python-2.7.pc
+-rw-r--r--. 1 root root  297 Mar 21  2023 libcrypto.pc
+-rw-r--r--. 1 root root  338 Mar 21  2023 libssl.pc
+-rw-r--r--. 1 root root  220 Mar 21  2023 openssl.pc
+lrwxrwxrwx. 1 root root   11 Sep 24  2022 libpng.pc -> libpng15.pc
+-rw-r--r--. 1 root root 1.6K Sep  1  2022 systemd.pc
+-rw-r--r--. 1 root root  236 Jun 28  2022 gssrpc.pc
+
+
+
+(2) 举例
+例0
+$ cat /usr/lib64/pkgconfig/libsodium.pc 
+prefix=/usr
+exec_prefix=/usr
+libdir=/usr/lib64
+includedir=/usr/include
+
+Name: libsodium
+Version: 1.0.18
+Description: A modern and easy-to-use crypto library
+
+Libs: -L${libdir} -lsodium
+Libs.private:  -pthread 
+Cflags: -I${includedir}
+
+
+
+例1
+$ cat /usr/lib64/pkgconfig/glib-2.0.pc 
+prefix=/usr
+exec_prefix=/usr
+libdir=/usr/lib64
+includedir=/usr/include
+
+glib_genmarshal=glib-genmarshal
+gobject_query=gobject-query
+glib_mkenums=glib-mkenums
+
+Name: GLib
+Description: C Utility Library
+Version: 2.56.1
+Requires.private: libpcre
+Libs: -L${libdir} -lglib-2.0 
+Libs.private: -pthread  -lpcre      
+Cflags: -I${includedir}/glib-2.0 -I${libdir}/glib-2.0/include
+
+
+例2：本地安装的库
+$ find software/gsl-2.7/ | grep -inP "pc$"
+2372:software/gsl-2.7/gsl.pc
+
+$ cat software/gsl-2.7/gsl.pc
+prefix=/home/wangjl/.local
+exec_prefix=/home/wangjl/.local
+libdir=/home/wangjl/.local/lib
+includedir=/home/wangjl/.local/include
+GSL_CBLAS_LIB=-lgslcblas
+
+Name: GSL
+Description: GNU Scientific Library
+Version: 2.7
+Libs: -L/home/wangjl/.local/lib -lgsl ${GSL_CBLAS_LIB} -lm -lm 
+Cflags: -I/home/wangjl/.local/include
+
+$ less ~/.bashrc
+export LD_LIBRARY_PATH=/home/zhoub/local/gdal-2.4.2/lib:$LD_LIBRARY_PATH
+
+
+
+(3) 列举全部包
+列出所有可使用的包，位置在/usr/lib/pkgconfig ，此目录下都是各种.pc文件。
+/usr/local/lib/pkgconfig下面的libname.pc文件，新软件一般都会安装.pc文件，没有可以自己创建，并且设置环境变量PKG_CONFIG_PATH寻找.pc文件路径。
+
+$ pkg-config --list-all | head
+zlib                      zlib - zlib compression library
+gio-unix-2.0              GIO unix specific APIs - unix specific headers for glib I/O library
+mit-krb5                  mit-krb5 - An implementation of Kerberos network authentication
+gdal                      GDAL - GIS file format library
+
+查找具体包
+$ pkg-config --list-all | grep -in sodi
+181:libsodium                 libsodium - A modern and easy-to-use crypto library
+
+$ pkg-config --list-all | grep -in glib-2.0
+24:glib-2.0                  GLib - C Utility Library
+
+
+(4) 协助找到库
+使用 pkg-config 的 –cflags 参数可以给出在编译时所需要的选项，而 –libs 参数可以给出连接时的选项。
+
+例如，假设一个 sample.c 的程序用到了 glib 库，就可以这样编译：
+$ gcc -c `pkg-config --cflags glib-2.0` sample.c
+然后这样连接：$ gcc sample.o -o sample `pkg-config --libs glib-2.0`
+或者上面两步也可以合并为以下一步：$ gcc sample.c -o sample `pkg-config --cflags --libs glib-2.0`
+
+测试：
+$ pkg-config --cflags glib-2.0
+-I/usr/include/glib-2.0 -I/usr/lib64/glib-2.0/include
+
+$ pkg-config --cflags libsodium #返回空白行
+
+$ pkg-config --libs glib-2.0
+-lglib-2.0 
+
+$ pkg-config --cflags --libs glib-2.0
+-I/usr/include/glib-2.0 -I/usr/lib64/glib-2.0/include  -lglib-2.0
+
+
+可以看到：由于使用了pkg-config工具来获得库的选项，所以不论库安装在什么目录下，都可以使用相同的编译和连接命令，带来了编译和连接界面的统一。
+
+使用pkg-config工具提取库的编译和连接参数有两个基本的前提：
+　　<1> 库本身在安装的时候必须提供一个相应的.pc文件。不这样做的库说明不支持pkg-config工具的使用。
+　　<2> pkg-config必须知道要到哪里去寻找此.pc 文件。
+
+
+
+
+
+3. 环境变量PKG_CONFIG_PATH
+
+环境变量PKG_CONFIG_PATH是用来设置.pc文件的搜索路径的，pkg-config按照设置路径的先后顺序进行搜索，直到找到指定的.pc 文件为止。
+这样，库的头文件的搜索路径的设置实际上就变成了对.pc文件搜索路径的设置。
+
+
+(1) 如果不在默认路径，二选一
+
+在安装完一个需要使用的库后，比如Glib，
+	一是将相应的.pc文件，如glib-2.0.pc拷贝到/usr/lib/pkgconfig目录下，
+	二是通过设置环境变量PKG_CONFIG_PATH添加glib-2.0.pc文件的搜索路径。
+
+a) 拷贝到指定路径 
+比如我们安装 A 这个库， 执行 ./configure的时候提示要先安装 B 这个库。
+我们下载了B这个库， 并安装后， 我们在B的源码路径下执行 find  ./  -name  "*.pc"  找到的文件一般为B.pc，
+然后我们把B.pc这个文件复制到操作系统的pkgconfig目录：cp   B.pc   /usr/lib64/pkgconfig/
+然后在执行 A这个库的 ./configure 脚本就可以解决该问题。
+
+
+b) 添加环境变量PKG_CONFIG_PATH，在bash中应该进行如下设置：
+	$ export PKG_CONFIG_PATH=/opt/gtk/lib/pkgconfig:$PKG_CONFIG_PATH
+可以执行下面的命令检查是否 /opt/gtk/lib/pkgconfig 路径已经设置在PKG_CONFIG_PATH环境变量中：
+	$ echo $PKG_CONFIG_PATH #不设置，默认返回空白
+
+
+这样设置之后，使用Glib库的其它程序或库在编译的时候pkg-config就知道首先要到/opt/gtk/lib/pkgconfig这个目录中去寻找glib-2.0.pc了(GTK+和其它的依赖库的.pc文件也将拷贝到这里，也会首先到这里搜索它们对应的.pc文件)。之后，通过pkg-config就可以把其中库的编译和连接参数提取出来供程序在编译和连接时使用。
+
+另外还需要注意的是：环境变量的设置只对当前的终端窗口有效。如果到了没有进行上述设置的终端窗口中，pkg-config将找不到新安装的glib-2.0.pc文件、从而可能使后面进行的安装(如Glib之后的Atk的安装)无法进行。
+
+
+(2) 安全的设置
+
+在我们采用的安装方案中，由于是使用环境变量对GTK+及其依赖库进行的设置，所以当系统重新启动、或者新开一个终端窗口之后，如果想使用新安装的GTK+库，需要如上面那样重新设置 PKG_CONFIG_PATH 和 LD_LIBRARY_PATH 环境变量。
+
+这种使用GTK+的方法，在使用之前多了一个对库进行设置的过程。虽然显得稍微繁琐了一些，但却是一种最安全的使用GTK+库的方式，不会对系统上已经存在的使用了GTK+库的程序(比如GNOME桌面)带来任何冲击。
+
+为了使库的设置变得简单一些，可以把下面的这两句设置保存到一个文件中(比如set_gtk-2.10 文件):
+
+export PKG_CONFIG_PATH=/opt/gtk/lib/pkgconfig:$PKG_CONFIG_PATH
+export LD_LIBRARY_PATH=/opt/gtk/lib:$LD_LIBRARY_PATH
+其中的环境变量LD_LIBRARY_PATH变量主要是添加新安装库的搜索路径。之后，就可以用下面的方法进行库的设置了(其中的source命令也可以用.代替)：
+$ source set_gtk-2.10
+
+只有在用新版的GTK+库开发应用程序、或者运行使用了新版GTK+库的程序的时候，才有必要进行上述设置。
+
+
+
+(3) 写入配置文件
+
+如果想避免使用GTK+库之前上述设置的麻烦，可以把上面两个环境变量的设置在系统的配置文件中(如 /etc/profile)或者自己的用户配置文件中(如 ~/.bash_profile) ；
+库的搜索路径也可以设置在 /etc/ld.so.conf 文件中，等等。这种设置在系统启动时会生效，从而会导致使用 GTK+ 的程序使用新版的 GTK+ 运行库，这有可能会带来一些问题。当然，如果你发现用新版的GTK+代替旧版没有什么问题的话，使用这种设置方式是比较方便的。
+
+加入到~/.bashrc中，例如：
+PKG_CONFIG_PATH=/opt/gtk/lib/pkgconfig
+重启之后：
+[root@localhost ~]# echo $PKG_CONFIG_PATH
+/opt/gtk/lib/pkgconfig
+
+
+
+
+
+4. 运行时库的连接
+
+库文件在连接(静态库和共享库)和运行(仅限于使用共享库的程序)时被使用，其搜索路径是在系统中进行设置的。一般Linux系统把/lib和/usr/lib两个目录作为默认的库搜索路径，所以使用这两个目录中的库是不需要进行设置搜索路径即可直接使用。
+
+对于处于默认库搜索路径之外的库，需要将库的位置添加到库的搜索路径之中。设置库文件的搜索路径有下列两种方式，可任选其一使用：
+
+　　<1> 在环境变量 LD_LIBRARY_PATH 中指明库的搜索路径。
+　　<2> 在/etc/ld.so.conf 文件中添加库的搜索路径。
+
+将自己可能存放库文件的路径都加入到/etc/ld.so.conf中是明智的选择。
+添加方法也极其简单，将库文件的绝对路径直接写进去就OK了，一行一个。例如：
+/usr/X11R6/lib
+/usr/local/lib
+/opt/lib
+
+
+默认是：
+$ cat /etc/ld.so.conf
+include ld.so.conf.d/*.conf
+
+$ ls -lth /etc/ld.so.conf.d/
+total 36K
+-rw-r--r--. 1 root root 68 Nov  8  2022 R-pkg.conf
+-r--r--r--. 1 root root 63 Aug 11  2022 kernel-3.10.0-1160.76.1.el7.x86_64.conf
+-rw-r--r--. 1 root root 26 Feb 24  2022 bind-export-x86_64.conf
+-r--r--r--. 1 root root 63 Oct 20  2020 kernel-3.10.0-1160.el7.x86_64.conf
+-rw-r--r--. 1 root root 17 Oct  2  2020 mariadb-x86_64.conf
+-rw-r--r--. 1 root root 19 Aug  9  2019 dyninst-x86_64.conf
+-rw-r--r--. 1 root root 17 Aug  3  2017 atlas-x86_64.conf
+-rw-r--r--. 1 root root 17 Nov  6  2016 libiscsi-x86_64.conf
+-rw-r--r--. 1 root root 22 Jun 10  2014 qt-x86_64.conf
+
+竟然看到了R的设置：
+$ cat /etc/ld.so.conf.d/R-pkg.conf 
+/usr/local/lib64/proj-4.9.2/lib/
+/usr/local/lib64/gdal-2.4.4/lib/
+
+
+库搜索路径的设置有两种方式：
+	在环境变量 LD_LIBRARY_PATH 中设置
+	以及在 /etc/ld.so.conf 文件中设置。
+		其中，第二种设置方式需要root权限，以改变/etc/ld.so.conf文件并执行/sbin/ldconfig命令。
+		而且，当系统重新启动后，所有的基于GTK2的程序在运行时都将使用新安装的GTK+库。
+		不幸的是，由于GTK+版本的改变，这有时会给应用程序带来兼容性的问题，造成某些程序运行不正常。
+
+为了避免出现上面的这些情况，在GTK+及其依赖库的安装过程中对于库的搜索路径的设置将采用第一种方式进行。这种设置方式不需要root权限，设置也简单。
+
+
+
+
+
+ref:
+https://blog.csdn.net/qq_36182852/article/details/109680418
+https://blog.csdn.net/u010022051/article/details/51728282
+
+
+
+
+
+
+
+
+
+
+
+
+========================================
 Ubuntu 安装程序
 ----------------------------------------
 
@@ -322,7 +624,7 @@ Linux软件安装
 	- 基本信息查询
 	- 软件验证功能
 	- 支持多平台
-	
+
 
 
 rpm包有一个约定的命名规范：
@@ -331,8 +633,8 @@ rpm包有一个约定的命名规范：
 		1.2.0-30：版本号。
 		el6：针对red hat enterprize release 6编译的。
 		i686：针对32位系统。 x86_64是针对64位的。
-	特别注意平台和bits。	
-		
+	特别注意平台和bits。
+
 rpm基础命令：
 	安装命令：rpm -i software.rpm 
 	卸载软件：rpm -e software 
@@ -342,10 +644,11 @@ rpm基础命令：
 可以加入以下参数：
 	-v 显示相关信息
 	-h 显示进度条
-	
+
 
 RPM会保存软件相关的很多信息，所以支持很多查询功能。
 	rpm -qa 列出所有安装的rp软件 
+		$ rpm -qa | grep -in "hdf5" 查看是否安装某版本
 	rpm -qi desktop-effect	软件信息，安装日期、版本号等
 	rpm -ql	desktop-effect 列出属于某软件的文件
 	rpm -qf /usr/share/doc/desktop-effects-0.8.4 查询某个文件属于哪个软件包
@@ -354,7 +657,7 @@ RPM会保存软件相关的很多信息，所以支持很多查询功能。
 	rpm -qip ncbi-blast-2.4.0+-2.x86_64.rpm		安装之前rpm包的信息
 	rpm -qlp ncbi-blast-2.4.0+-2.x86_64.rpm 	查询安装之后可能添加的文件。
 
-	
+
 RPM验证：
 防止传播过程中的恶意修改，为了安全现代系统都加入了对软件完整性的校验。
 验证一般使用非对称加密算法，所以需要一个秘钥。
@@ -550,6 +853,111 @@ update 和 upgrade 的区别
 
 
 	
+========================================
+|-- yum 仓库失效[2024.7之后]，改为 centos-vault
+----------------------------------------
+1. 原仓库已经空了
+	https://mirrors.ustc.edu.cn/centos/7.9.2009/
+
+使用yum安装，会出现404报错：
+http://mirrors.ustc.edu.cn/centos/7.9.2009/os/x86_64/Packages/mariadb-5.5.68-1.el7.x86_64.rpm: [Errno 14] HTTP Error 404 - Not Found                 ]  0.0 B/s |    0 B  --:--:-- ETA
+Trying other mirror.
+mariadb-5.5.68-1.el7.x86_64.rp FAILED
+http://mirrors.163.com/centos/7.9.2009/os/x86_64/Packages/mariadb-5.5.68-1.el7.x86_64.rpm: [Errno 14] HTTP Error 404 - Not Found                     ]  0.0 B/s |    0 B  --:--:-- ETA
+Trying other mirror.
+
+
+非要用，需要手动改为：
+	https://mirrors.ustc.edu.cn/centos-vault/7.9.2009/
+	https://mirrors.bfsu.edu.cn/centos-vault/7.9.2009/
+
+
+
+2. 手动执行
+$ ls -lth /etc/yum.repos.d/
+
+(1) try1: 失败
+复制
+$ sudo cp /etc/yum.repos.d/CentOS-Base.repo /etc/yum.repos.d/CentOS-Base.repo-backup
+
+
+手动替换
+$ sudo vim /etc/yum.repos.d/CentOS-Base.repo
+baseurl=http://mirrors.aliyun.com/centos-vault/$releasever/os/$basearch/
+
+没执行：参考这一句：
+	sed -e "s|^mirrorlist=|#mirrorlist=|g" \
+		-e "s|^#baseurl=http://mirror.centos.org/centos/\$releasever|baseurl=https://vault.centos.org/7.9.2009/|g" \
+		-e "s|^#baseurl=http://mirror.centos.org/\$contentdir/\$releasever|baseurl=https://vault.centos.org/7.9.2009/|g" \
+		-i.bak \
+		/etc/yum.repos.d/CentOS-*.repo
+
+
+运行以下命令生成缓存
+# yum clean all # 清除YUM缓存： /var/cache/yum目录。
+# yum makecache
+
+$ yum repolist #查看源
+
+
+安装包：
+$ sudo yum install mariadb
+失败
+
+
+(2) 直接安装
+下载
+$ wget http://mirrors.ustc.edu.cn/centos-vault/7.9.2009/os/x86_64/Packages/mariadb-5.5.68-1.el7.x86_64.rpm
+
+安装
+$ sudo rpm -i mariadb-5.5.68-1.el7.x86_64.rpm
+$ mysql --version
+mysql  Ver 15.1 Distrib 5.5.68-MariaDB, for Linux (x86_64) using readline 5.1
+
+$ rm mariadb-5.5.68-1.el7.x86_64.rpm
+竟然可以了！
+但是有依赖的可不能这么手动操作。
+
+
+(3) try2: 再次尝试
+$ sudo vim /etc/yum.repos.d/CentOS-Base.repo
+[base]
+name=CentOS-$releasever - Base
+baseurl=http://mirrors.ustc.edu.cn/centos-vault/7.9.2009/os/$basearch/
+gpgcheck=1
+gpgkey=file:///etc/pki/rpm-gpg/RPM-GPG-KEY-CentOS7
+enabled=1
+
+[updates]
+name=CentOS-$releasever - Updates
+baseurl=http://mirrors.ustc.edu.cn/centos-vault/7.9.2009/updates/$basearch/
+gpgcheck=1
+gpgkey=file:///etc/pki/rpm-gpg/RPM-GPG-KEY-CentOS7
+enabled=1
+
+[extras]
+name=CentOS-$releasever - Extras
+baseurl=http://mirrors.ustc.edu.cn/centos-vault/7.9.2009/extras/$basearch/
+gpgcheck=1
+gpgkey=file:///etc/pki/rpm-gpg/RPM-GPG-KEY-CentOS7
+enabled=1
+
+
+运行以下命令生成缓存
+$ yum clean all # 清除YUM缓存： /var/cache/yum目录。
+$ yum makecache
+竟然可以了，不是全部报错了！目前只有docker不行。
+	https://download.docker.com/linux/centos/7/x86_64/stable/repodata/repomd.xml: [Errno 14] curl#35 - "TCP connection reset by peer"
+	删除掉 docker 的源：$ sudo mv /etc/yum.repos.d/docker-ce.repo  /etc/yum.repos.d/docker-ce.repo-back
+	重新执行清理，生成缓存。
+
+$ yum repolist #查看源
+
+$ sudo yum install mariadb
+
+
+
+
 ========================================
 |-- linux软件的安装/卸载/升级/添加环境变量(Ubuntu)
 ----------------------------------------
@@ -1237,7 +1645,49 @@ https://blog.csdn.net/lihuaichen/article/details/84066359
 
 
 ========================================
-定时任务 at/batch, crontab, anacron //todo
+后台启动的多个 R 程序，其工作目录(启动目录)分别是什么？
+----------------------------------------
+问题：有多个自己启动的和vscode启动的R session，不确定哪个是有用的，哪个可以关掉。
+
+1. 查进程号：第二列
+$ ps -aux | head -n 2
+USER        PID %CPU %MEM    VSZ   RSS TTY      STAT START   TIME COMMAND
+root          1  0.0  0.0 210968  5140 ?        Ss    2024 138:50 /usr/lib/systemd/systemd --switched-root --system --deserialize 22
+
+$ ps -aux |grep wangjl| grep "exec/R"
+wangjl    45279  0.0  0.0 2277000 522992 pts/18 Sl+  Jul02   4:31 /home/wangjl/soft/R/4.3.3/lib64/R/bin/exec/R
+wangjl   120214  0.0  0.0 112820   984 pts/52   S+   10:40   0:00 grep --color=auto exec/R
+wangjl   146431  0.1  0.1 2273868 1608024 pts/12 Sl+ Jun18  93:15 /home/wangjl/soft/R/4.3.3/lib64/R/bin/exec/R
+
+
+
+
+2.查找命令的启动目录：通过 /proc/进程号/cwd 查询
+
+* /proc/<PID>/cwd 是进程工作目录的符号链接
+	系统不同可能导致/proc结构差异，CentOS/Ubuntu测试通过
+
+
+$ pid=45279
+$ ls -l /proc/$pid/cwd | awk '{print $11}';
+/datapool/wangjl/others/HLA_HD/data/output_hla/24B74088/test2
+
+	其实就是取第11列：
+	$ ls -l /proc/$pid/cwd
+	lrwxrwxrwx. 1 wangjl jinlab 0 Aug 19 10:32 /proc/45279/cwd -> /datapool/wangjl/others/HLA_HD/data/output_hla/24B74088/test2
+
+$ pid=146431
+$ ls -l /proc/$pid/cwd | awk '{print $11}';
+/data/wangjl/scPolyA-seq2/chenxi/pipeline/scripts_PBMC
+
+可见：这两个R session 的启动目录是不同的，可据此决定kill不用的那个。
+
+
+
+
+
+========================================
+定时任务 at/batch, crontab, anacron
 ----------------------------------------
 1.在未来的某个时间仅执行一次
 at      executes commands at a specified time.
@@ -1323,10 +1773,6 @@ Active: active (running) since Fri 2022-12-23 15:02:19 +08; 3 months 10 days ago
 
 
 
-2. crontab
-
-
-
 
 
 
@@ -1335,12 +1781,365 @@ https://blog.csdn.net/Naisu_kun/article/details/119817215
 https://blog.51cto.com/zhou123/792163
 
 
-========================================
-----------------------------------------
 
 
 ========================================
+|-- crontab定时任务
 ----------------------------------------
+crontab - maintain crontab files for individual users (Vixie Cron)
+
+cron是一个[守护程序]用于在指定的时间内执行行程类的任务，每一个用户都有一个 crontab 文件，来允许他们指定需要执行的内容和时间，此外，系统也有一个 crontab ，用来允许像交替日志和更新本地数据这样有规则的任务。
+
+
+成功的task
+0 0,12 * * * date >> /home/wangjl/web/log.txt #0点和12点写入一次时间戳
+
+建议：如果命令行可以执行，而定时器中不执行，可以把命令写到文件中，在定时器中使用bash 调用该文件。
+
+
+
+
+
+1.使用 crontab -e命令
+这个命令比较简单直接输入就可以
+$ crontab -e
+然后选一个编辑器，比如2，回车。
+
+
+(1)crontab的语法规则格式：
+代表意义	分钟	小时	日期	月份	周	命令
+数字范围	0~59	0~23	1~31	1~12	0~7	需要执行的命令
+周的数字为 0 或 7 时，都代表“星期天”的意思。
+
+
+(2)另外，还有一些辅助的字符，大概有下面这些：
+特殊字符	代表意义
+*(星号)	代表任何时刻都接受的意思。举例来说，0 12 * * * command 日、月、周都是*，就代表着不论何月、何日的礼拜几的12：00都执行后续命令的意思。
+,(逗号)	代表分隔时段的意思。举例来说，如果要执行的工作是3：00与6：00时，就会是：0 3,6 * * * command时间还是有五列，不过第二列是 3,6 ，代表3与6都适用
+-(减号)	代表一段时间范围内，举例来说，8点到12点之间的每小时的20分都进行一项工作：20 8-12 * * * command仔细看到第二列变成8-12.代表 8,9,10,11,12 都适用的意思
+/n(斜线)	那个n代表数字，即是每隔n单位间隔的意思，例如每五分钟进行一次，则：*/5 * * * * command用*与/5来搭配，也可以写成0-59/5，意思相同
+
+
+
+
+
+2.输入你想执行的内容了.
+(1)比如:
+*/2 * * * * date >> /home/wangjl/time.log #每过两分钟就向time.log文件中写入当然的系统时间.
+* * * * * date>>/home/wangjl/web/test/date.txt #每分钟写入文件。
+
+# For example, you can run a backup of all your user accounts at 5 a.m every week with:
+# 0 5 * * 1 tar -zcf /var/backups/home.tgz /home/
+
+格式：
+# For more information see the manual pages of crontab(5) and cron(8)
+# m h  dom mon dow   command
+#minute hour day-of-month month-of-year day-of-week commands
+合法值为：00-59 00-23 01-31 01-12 0-6 (0 is sunday)
+除了数字还有几个特殊的符号："*"、"/"和"-"、","
+	*代表所有的取值范围内的数字
+	"/"代表每的意思,"/5"表示每5个单位，例如每3分钟运行一次命令： */3 * * * * /home/wangjl/XXXX.sh
+	"-"代表从某个数字到某个数字
+	","分开几个离散的数字
+
+参数说明(看例子,就明白了)
+	m 分钟 0-59
+	h 小时 0-23
+	dow 天1-31
+	mon 月 1-12
+	dow  星期 1-6  0表示星期天
+	command 就是要执行的命令
+
+(2)关键是要记住/var/spool/cron这个目录。
+除了root用户之外的用户可以执行crontab配置计划任务。
+所有用户定义的crontab存储在目录/var/spool/cron下，任务会以创建者的身份被执行。
+要以特定用户创建一个crontab，先以该用户登录，执行命令crontab -e，系统会启动在VISUAL或者EDITOR中指定的的编辑软件编辑crontab。文件内容与/etc/crontab格式相同。
+
+最好在crontab文件的每一个条目之上加入一条注释，这样就可以知道它的功能、运行时间，更为重要的是，知道这是哪位用户的定时作业。
+
+$ sudo cat /var/spool/cron/crontabs/wangjl
+看到的内容和 $ crontab -e 看到的内容一样。
+
+
+
+删除crontab文件
+$crontab -r
+
+千万别乱运行crontab -r。它从Crontab目录（/var/spool/cron）中删除用户的Crontab文件。删除了该用户的所有crontab都没了。
+
+
+
+(3)如果一个cron任务需要定期而不是按小时,天,周,月来执行,则需要添加/etc/cron.d目录。这个目录下的所有文件和文件/etc/crontab语法相同
+//todo
+
+
+(4)查看/etc/crontab文件：
+
+$ cat /etc/crontab
+# /etc/crontab: system-wide crontab
+# Unlike any other crontab you don't have to run the `crontab'
+# command to install the new version when you edit this file
+# and files in /etc/cron.d. These files also have username fields,
+# that none of the other crontabs do.
+
+SHELL=/bin/sh
+PATH=/usr/local/sbin:/usr/local/bin:/sbin:/bin:/usr/sbin:/usr/bin
+
+	# @CentOS7$ sudo cat /etc/crontab 
+	SHELL=/bin/bash
+	PATH=/sbin:/bin:/usr/sbin:/usr/bin
+	MAILTO=root
+
+	# For details see man 4 crontabs
+
+	# Example of job definition:
+	# .---------------- minute (0 - 59)
+	# |  .------------- hour (0 - 23)
+	# |  |  .---------- day of month (1 - 31)
+	# |  |  |  .------- month (1 - 12) OR jan,feb,mar,apr ...
+	# |  |  |  |  .---- day of week (0 - 6) (Sunday=0 or 7) OR sun,mon,tue,wed,thu,fri,sat
+	# |  |  |  |  |
+	# *  *  *  *  * user-name  command to be executed
+
+	# m h dom mon dow user  command
+	17 *    * * *   root    cd / && run-parts --report /etc/cron.hourly
+	25 6    * * *   root    test -x /usr/sbin/anacron || ( cd / && run-parts --report /etc/cron.daily )
+	47 6    * * 7   root    test -x /usr/sbin/anacron || ( cd / && run-parts --report /etc/cron.weekly )
+	52 6    1 * *   root    test -x /usr/sbin/anacron || ( cd / && run-parts --report /etc/cron.monthly )
+#
+
+解释：
+SHELL变量的值指定系统使用的SHELL环境(该样例为bash shell)，
+PATH变量定义了执行命令的路径。
+文件/etc/crontab中每行任务的描述格式如下:
+
+  minute hour day month dayofweek command
+  minute - 从0到59的整数
+  hour - 从0到23的整数
+  day - 从1到31的整数 (必须是指定月份的有效日期)
+  month - 从1到12的整数 (或如Jan或Feb简写的月份)
+  dayofweek - 从0到7的整数，0或7用来描述周日 (或用Sun或Mon简写来表示)
+  command - 需要执行的命令(可用as ls /proc >> /tmp/proc或 执行自定义脚本的命令)
+  root表示以root用户身份来运行
+  run-parts表示后面跟着的是一个文件夹，要执行的是该文件夹下的所有脚本
+  
+  对于以上各语句，星号(*)表示所有可用的值。例如*在指代month时表示每月执行(需要符合其他限制条件)该命令。
+  整数间的连字号(-)表示整数列，例如1-4意思是整数1,2,3,4
+  指定数值由逗号分开。如：3,4,6,8表示这四个指定整数。
+  符号“/”指定步进设置。“/”表示步进值。如0-59/2定义每两分钟执行一次。步进值也可用星号表示。如*/3用来运行每三个月份运行指定任务。
+  以“#”开头的为注释行,不会被执行。
+
+开始不知道/etc/crontab文件中的 run-parts 是什么意思，直接把命令按照 /etc/crontab 的格式加上总是无法运行，后来才知道 run-parts 是指后面跟着的是文件夹。
+
+
+
+(5)其他注意事项
+cron服务会每分钟检查一次/etc/crontab、/etc/cron.d/、/var/spool/cron文件下的变更。如果发现变化，就会下载到存储器中。因此，即使crontab文件改变了，程序也不需要重新启动。
+新创建的cron job，不会马上执行，至少要过2分钟才执行。如果重启cron则马上执行。
+
+推荐自定义的任务使用crontab -e命令添加，退出后用/etc/init.d/crond restart命令重启crond进程，官方文件说不用重启进程，但我遇到不重启无法运行任务的情况。
+
+更新系统时间时区后需要重启cron,在ubuntu中服务名为cron:
+$service cron restart
+
+ubuntu下启动、停止与重启cron:
+	$sudo /etc/init.d/cron start
+	$sudo /etc/init.d/cron stop
+	$sudo /etc/init.d/cron restart
+
+
+
+
+
+3.更多例子
+1)在 凌晨00:01运行
+1 0 * * * /home/wangjl/XXXX.sh
+
+2)每个工作日23:59都进行备份作业。
+59 11 * * 1,2,3,4,5 /home/wangjl/XXXX.sh
+
+或者如下写法：
+59 11 * * 1-5 /home/wangjl/XXXX.sh
+
+3)每分钟运行一次命令
+*/1 * * * * /home/wangjl/XXXX.sh
+
+4)每个月的1号 14:10 运行
+10 14 1 * * /home/wangjl/XXXX.sh
+
+每小时的第3和第15分钟执行
+3,15 * * * * myCommand
+
+在上午8点到11点的第3和第15分钟执行
+3,15 8-11 * * * myCommand
+
+每隔两天的上午8点到11点的第3和第15分钟执行
+3,15 8-11 */2  *  * myCommand
+
+实例5：每周一上午8点到11点的第3和第15分钟执行
+3,15 8-11 * * 1 myCommand
+
+每月1、10、22日的4 : 45重启smb
+45 4 1,10,22 * * /etc/init.d/smb restart
+
+实例10：每星期六的晚上11 : 00 pm重启smb 
+命令：
+0 23 * * 6 /etc/init.d/smb restart
+
+
+假设需要每天的 23:01 分创建目录，配置 crontab 如下即可：
+1 23 * * * mkdir -p /path-to-your-dir/`date +%F`
+宕机重启后需要单独另外执行脚本检查是否有缺失
+
+
+实例： 比如搞一个日记本：每天四次时间戳，每周备份一次，中间随便cat>>添加内容。
+* 0,6,12,18 * * * date >> /home/wangjl/web/log.txt #每6个小时写入一次时间戳
+59 23 * * 0 cp /home/wangjl/web/log.txt /home/wangjl/web/log.`date +%F`.txt #每周日晚上11:59备份日记。备注日期。
+
+
+
+实例15：每小时执行/etc/cron.hourly目录内的脚本
+命令：
+01 * * * * root run-parts /etc/cron.hourly
+说明：
+run-parts这个参数后跟文件夹；如果去掉这个参数的话，后面就可以写要运行的某个脚本名，而不是目录名了
+
+注意： 
+1）脚本中涉及文件路径时写全局路径；
+2）脚本执行要用到java或其他环境变量时，通过source命令引入环境变量，如：
+
+cat start_cbp.sh
+#!/bin/sh
+source /etc/profile
+export RUN_CONF=/home/d139/conf/platform/cbp/cbp_jboss.conf
+/usr/local/jboss-4.0.5/bin/run.sh -c mev &
+
+
+
+
+
+
+4. 问题排查
+
+(1) ubuntu 打开 cron 日志（默认是关闭的）
+
+打开 ubuntu 定时器日志
+$ sudo vim /etc/rsyslog.d/50-default.conf #去掉前面的注释符号 #
+cron.*                         /var/log/cron.log
+
+重启服务
+$ sudo service rsyslog restart
+重启系统日志，就能查看 cron 的运行日志了：
+
+$ sudo tail /var/log/cron.log
+Sep  5 10:10:01 zxsys-PowerEdge-T630 CRON[2896]: (marigold) CMD (bash /home/marigold/soft/SeqReportSys/backup/daily.cron 2> /home/marigold/soft/SeqReportSys/backup/xx_logs.txt)
+Sep  5 10:10:01 zxsys-PowerEdge-T630 CRON[2897]: (marigold) CMD (bash -c "echo `date` >> /home/marigold/soft/SeqReportSys/backup/xx_3_Backup-`date +)
+Sep  5 10:10:01 zxsys-PowerEdge-T630 CRON[2898]: (marigold) CMD (echo `date` >> /home/marigold/soft/SeqReportSys/backup/xx_2_Backup-DB_SYSDB_PRO-`date +)
+Sep  5 10:10:01 zxsys-PowerEdge-T630 CRON[2900]: (marigold) CMD (echo `date` >> /home/marigold/soft/SeqReportSys/backup/xx.txt)
+Sep  5 10:10:01 zxsys-PowerEdge-T630 CRON[2894]: (CRON) info (No MTA installed, discarding output)
+Sep  5 10:10:01 zxsys-PowerEdge-T630 CRON[2893]: (CRON) info (No MTA installed, discarding output)
+
+可见，命令在 + 后被截断了。而这些命令在shell下是可以直接运行的。
+
+
+
+(2) 把命令写入 shell 文件再执行
+$ cd /home/marigold/soft/SeqReportSys/
+$ cat script/system/cron/daily.sh
+mysqldump -h192.168.1.3 -P7998 -uroot -p123456 SYSDB_PRO > /home/marigold/soft/SeqReportSys/backup/Backup-DB_SYSDB_PRO-$(date +%Y%m%d\_%H%M%S).sql
+
+写到定时任务中
+$ crontab -e #新增一行
+0 19 * * 1-5 bash /home/marigold/soft/SeqReportSys/script/system/cron/daily.sh
+
+
+
+refer:
+https://linuxtools-rst.readthedocs.io/zh_CN/latest/tool/crontab.html#
+https://blog.csdn.net/u013033143/article/details/82882842
+https://blog.csdn.net/xinyflove/article/details/83178876
+
+
+========================================
+|-- 为 crontab 定时任务 设置 邮件通知
+----------------------------------------
+
+1. 有输出（标准输出和标准错误）的 crontab 任务，会默认发送邮件通知输出内容
+
+默认邮件地址是本地、本用户名。
+比如：You have mail in /var/spool/mail/wangjl
+
+
+(1) 如果没有设置 MAILTO，输出将默认发送到当前用户的本地邮件。
+
+(2) 设置邮箱地址
+当您在 crontab 中设置 MAILTO 变量为某个邮箱地址时，所有输出（标准输出和标准错误）将发送到该邮箱地址。
+如果您指定的邮箱是外部邮箱（例如 your_email@example.com），那么输出将发送到该邮箱，而不再发送到本地邮箱。
+
+
+
+(3) 保留本地地址
+在每个 cron 作业中手动指定输出：
+* * * * * /path/to/your/script | tee >(mail -s "Cron job output" your_email@example.com) > /dev/null
+
+
+
+(4) 禁用邮件发送
+1) 如果您不希望接收邮件，可以将 MAILTO 变量设置为空：
+MAILTO=""
+
+2) 也可以将命令的输出重定向到 /dev/null，这样就不会发送邮件：
+* * * * * /path/to/your/script > /dev/null 2>&1
+
+
+
+(5) 查看和管理本地邮件
+在许多 Linux 发行版中，您可以使用 mail 命令查看本地邮箱：
+$ mail
+还可以使用 mutt 或 mailx 等命令行邮件客户端来管理邮件。
+
+
+
+(6) 没有输出的怎么设置邮件通知？
+造一个输出消息：
+* * * * * /path/to/your/command && echo "Command executed"
+* * * * * /path/to/your/command && echo "Command executed" | mail -s "Command executed"
+
+
+
+
+
+
+
+========================================
+|-- anacron: 非24小时开机的主机使用，可以在开机时补齐任务 //todo
+----------------------------------------
+
+anacron是一种异步的定时任务调度器，大家都知道cron是Linux系统下的定时任务调度器，可以实现异步的任务调度。对于24小时开机运行的服务器可能用不到这种东西，但是非24小时开机，又想定时运行任务的机器还是十分有用的，可以实现异步的调用，下面为大家详细讲解一下anacron 命令。
+
+
+anacron 的工作是确保你的自动化作业定期执行。为了做到这一点，anacron 会检查找出最后一次运行作业的时间，然后检查你告诉它运行作业的频率。
+
+假设你将 anacron 设置为每五天运行一次脚本。每次你打开电脑或从睡眠中唤醒电脑时，anacron都会扫描其日志以确定是否需要运行作业。如果一个作业在五天或更久之前运行，那么 anacron 就会运行该作业。
+
+
+
+
+
+========================================
+定时执行脚本: watch -n 360 script.sh, 默认每秒执行一次，-n指定秒数
+----------------------------------------
+1. 每5s刷新显示时间 
+$ watch -n 5 date
+
+
+2. 每360s=6min执行一次shell脚本
+$ watch -n 360 /datapool/wangjl/web/docs/code/system/monitor_CPU_RAM.sh
+
+* 最好在 tmux 中执行watch命令，防止意外中断。
+* 按下 ctrl+C可终止watch命令。
+
+
 
 
 ========================================

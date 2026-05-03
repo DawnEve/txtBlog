@@ -27,5 +27,22 @@ return array (
   ),
 
 
-  
+  array (
+    0 => 3,
+    1 => '机器学习 ML',
+    2 => array (
+      array('贝叶斯分类器','m31-Bayes','txt'),
+    ),
+  ),
+
+  array (
+    0 => 4,
+    1 => '生物统计学',
+    2 => array (
+      array('NGS统计与统计参数','NGS_statistics','txt'),
+    ),
+  ),
+
+
+
 );

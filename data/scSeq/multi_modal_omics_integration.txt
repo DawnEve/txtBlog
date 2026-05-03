@@ -1,0 +1,2113 @@
+多模态、多组学 单细胞数据整合
+
+
+CITE 数据的分析方法: WNN
+
+
+
+
+========================================
+我的思考：同一套细胞的多组学数据如何整合？
+----------------------------------------
+目前方法的利弊：
+	使用CCA是对共有的、最大的Feature变异方向的提取，也就是失去了该组学特有的部分特征。
+	而直接提取各自的PC的方法（WNN），无法保证这些PC是正交的。
+	我认为更合理的是直接朴素的合并2个组学的高变特征，按特征scale后，接着求PC，做UMAP和分群。
+
+
+
+推荐多模态教程：
+* Seurat4.0系列教程16：多模式参考映射注释细胞 https://www.jianshu.com/p/3045202202c4
+
+
+
+
+
+
+========================================
+多样本整合: Harmony 不是矫正PC，而是矫正 counts 矩阵 //todo
+----------------------------------------
+1.
+It uses an adaptation of Harmony that corrects the underlying count matrix rather than principal components.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+========================================
+Seurat 多组学整合 CCA: 典型相关分析（canonical correlation analysis): 快速分析多变量的相关关系
+----------------------------------------
+1. CCA 权威资料
+https://blog.csdn.net/weixin_60734652/article/details/133022518
+
+Comprehensive Integration of Single-Cell Data, Cell 2019
+	https://www.sciencedirect.com/science/article/pii/S0092867419305598
+
+
+CCA & singleR
+	https://www.jianshu.com/p/0887b49122eb
+
+Seurat团队指出CCA整合方法也可能导致过度矫正，尤其是当数据集之间大部分数据不重叠的情况下。
+
+
+Single-cell RNA-seq: Integration
+	https://github.com/hbctraining/scRNA-seq_online
+	https://hbctraining.github.io/scRNA-seq_online/lessons/06_integration.html
+
+
+2. 要解决的问题
+CCA 就是联系2个不相关的多变量之间的相关性。
+
+(1) 实例
+比如几百个学生的 多学科成绩矩阵A(语数外数理化史地生)，和学生其他指标矩阵B(身高体重肺活量百米握力睡眠时间等)，是否有关系？
+
+A: m1*n
+B: m2*n
+其中n是样本个数：学生个数
+m1和m2是不同类别的特征的维度：成绩的学科m1个，其他指标个数m2个。
+
+思路1：对2个矩阵中的每个特征列，两两求相关性。
+缺点：我们直接对这些变量的相关进行两两分析，很难得到关于这两组变量之间关系的一个清楚的印象
+
+我们需要把多个变量与多个变量之间的相关化为两个具有代表性的变量之间的相关
+
+代表：能较为综合、全面的衡量所在组的内在规律
+一组变量最简单的综合形式就是该组变量的线性组合
+
+典型相关分析是研究两个多变量（向量）之间之间的线性相关关系，能够揭示出两组变量之间的内在联系。
+
+
+(2) 算法的提出
+
+在一元统计分析中，用相关系数来衡量两个随机变量的线性相关关系，用复相关系数研究一个随机变量与多个随机变量的线性相关关系。然而，这些方法均无法用于研究两组变量之间的相关关系，于是提出了CCA
+
+一般有两个典型的目的：
+- 数据简化：用少量的线性组合来解释两组变量之间的相关作用。
+- 数据解释：寻找特征值，这些特征值对于解释两个变量集合之间的相互作用十分关键。
+
+
+(3) 与主成分分析（PCA）之间的关系：
+典型相关分析的基本思想和主成分分析的基本思想相似，它将一组变量与另一组变量之间单变量的多重线性相关性研究，转换为少数几对综合变量之间的简单线性相关性的研究，并且这少数几对变量所包含的线性相关性的信息几乎覆盖了原变量组所包含的全部相应信息。
+
+联系：无论是典型相关分析还是主成分分析，都是线性分析的范畴，一组变量的典型变量和其主成分都是经过线性变换，通过计算矩阵的特征值与特征向量得出的。
+
+区别：主成分分析中只涉及一组变量的相互依赖关系，而典型相关则扩展到了两组变量之间的相互依赖的关系之中，度量了这两组变量之间联系的强度。
+
+
+
+(4) 分析步骤
+1)首先在每组变量中找到变量的线性组合，使得两组的线性组合之间具有最大的相关系数。
+2)然后选取和最初挑选的这对线性组合不相关的线性组合，使其配对，并选取相关系数最大的那一组。
+3)如此继续配对，直到两组变量之间的相关性被提取完。
+
+
+(5) 典型相关系数的假设检验
+在做两组变量 X，Y 的典型相关分析之前，首先应该检验两组变量是否相关，如果不相关，则讨论两组变量的典型相关就毫无意义。
+
+最多可以选取 r = min(p,q) 组，可经由卡方检验决定要选取多少组典型变量。先检验最大的典型根，然后再一个接一个对各个根进行检验，只保留有统计显著性（就是拒绝原假设）的根。
+
+
+(6) 冗余分析
+在进行样本典型相关分析时，分析每组变量提取出的典型变量所能解释的该组样本总方差的比例，称为冗余分析。冗余分析包括组内代表比例和交叉解释比例，是典型相关分析中很重要的部分。
+
+组内代表比例是指本组所有观测变量的总标准方差中由本组形成的各个典型变量所分别代表的比例；
+
+交叉解释比例是指一组变量形成的典型变量对另一组观测变量的总标准方差所解释的比例， 是一种组间交叉共享比例。
+
+冗余分析可以定量地测度典型变量所包含的原始信息量的大小。
+
+
+实际上，只需要掌握典型相关分析的基本原理，基本思想就可以了，具体实际操作并不难，不需要通过公式进行计算，目前基本上是使用SPSS进行分析。
+
+
+
+
+(7) CCA的解释和限制
+CCA的建模目标是实现多个矩阵的共同分解。这个目的使得该工具对于处理跨多个调查层面的丰富样本描述的人群观察特别有用。然而，这种分析技术是否更接近于数据的描述性重表达（即，无监督建模）还是应该更容易理解为预测性降维回归的一种形式（即，监督建模，参见Bach和Jordan，2005；Bzdok等人，2018；Breiman和Friedman，1997；Witten等人，2009）仍然是一个持续的争论。
+
+两种观点都有合理的论据。监督算法依赖于一个指定的建模目标，该目标将从一组输入变量中预测，而无监督算法旨在在没有与模型估计期间可用的关联基准标签的情况下提取观察中的连贯模式（Hastie等人，2001）。有可能随着其中一个变量集的维数减少以接近大多数线性回归类型方法的单一输出，在这种情况下，CCA可能更类似于更多的监督建模方法。相反，随着双方变量集的不断增大，应用CCA可能更接近无监督建模方法的精神。
+
+总的来说，CCA模型是一种相对独特的方法——“介于两者之间”——它共享了监督和无监督方法的经典属性。
+
+
+限制：
+
+在这种通用建模目标的三重视图背景下，CCA可能最自然地符合估计类别，而不是主要的预测或推断工具。由于其探索性质，CCA通常对于专注于揭示复杂高维空间中简洁原则的应用非常有用，作为手头观测的替代描述。
+
+
+与许多统计方法一样，观测值的数量n与变量的数量p之间的关系是考虑CCA是否可能有用的关键方面（Giraud, 2014; Hastie et al., 2015）。普通CCA只能在数据中的观测值数量多于较大变量集的变量数量时才能产生有用的模型拟合（即，n > max(p;q)）。具体来说，如果分析中包括的个体数量接近大脑或行为或基因组变量的数量，那么CCA将很难估算出存在于人口中的任何潜在维度
+
+
+
+
+
+
+3. 具体实现
+实际上，只需要掌握典型相关分析的基本原理，基本思想就可以了，具体实际操作并不难，不需要通过公式进行计算，目前基本上是使用R语言进行分析。
+
+好的示例：
+R code for ecological data analysis, CCA part:
+	https://userweb.eng.gla.ac.uk/umer.ijaz/bioinformatics/ecological.html
+
+Seurat CCA + Mutual Nearest Neighbor (MNN)
+
+
+(1)两个对象分别做分析后：合并后细胞是两个对象的细胞数之和，cell id会加后缀_1, _2。
+
+=> 是不同细胞的转录组整合。
+
+scObj_intigrat.anchors = FindIntegrationAnchors(object.list =  list(scObj_RNA, scObj_DPAU), dims=1:30)
+#Retained 3034 anchors
+scObj_intigrat = IntegrateData(anchorset = scObj_intigrat.anchors, dims = 1:30)
+DefaultAssay(scObj_intigrat) <- "integrated"
+scObj_intigrat #6132
+
+# pipe
+scObj_intigrat <- ScaleData(scObj_intigrat, verbose = FALSE)
+scObj_intigrat <- RunPCA(scObj_intigrat, npcs = 30, verbose = FALSE)
+scObj_intigrat <- RunUMAP(scObj_intigrat, reduction = "pca", dims = 1:30)
+scObj_intigrat <- FindNeighbors(scObj_intigrat, reduction = "pca", dims = 1:30)
+scObj_intigrat <- FindClusters(scObj_intigrat, resolution = 0.5)
+
+# 绘制 UMAP 图
+DimPlot(scObj_intigrat, reduction = "umap")
+
+# save Rds
+saveRDS(scObj_intigrat, file = paste0(outputRoot, keyword, "_03_1-CCA.DPAU_RNA.Seurat.Rds"))
+
+
+
+(2) 样本数量大时，更快的rpca整合步骤
+Reciprocal PCA and Reference-based integration
+
+对于大型的数据来说，CCA寻找锚点细胞的方法有时会耗时较长，比如说如果我们要整合5个数据集，那么CCA需要进行5 choose 2=10次的操作寻找两两间的锚点细胞。当数据量较大并且数据集个数继续增长时，这个计算量还是非常大的。因此Seurat开发了另外两个可用于提高运行效率和实践的方法：Reciprocal PCA (RPCA)和Reference-based integration。主要的改进集中在寻找锚点细胞的函数`FindIntegrationAnchors`中。
+
+该改进方法基本的实现思路是首先通过RPCA而非CCA来识别找到锚点细胞的低维有效空间，在确认任意两个数据集间的锚点细胞时， 将每个数据集映射到其他PCA空间，并通过相同的mutual neighborhood来选择。另外，在常规的流程中都是对所有数据集寻找两两间的锚点细胞，当合并的数据集数目非常大时，可以考虑Reference-based integration作为替代方案，即选取一个或多个数据集作为“参考”数据集，只寻找其他数据集合和参考数据集之间的锚点，而不关注其他数据集之间锚点，从而减少计算量， 比如合并5个数据集时，设置其中一个为参考，那么只需要进行4次比较操作了。
+
+https://cloud.tencent.com/developer/article/1966129
+
+library(Seurat)
+
+# 分别对每个数据集进行进行标准化并找出高变基因
+bm280k.data <- Read10X_h5("../data/ica_bone_marrow_h5.h5")
+bm280k <- CreateSeuratObject(counts = bm280k.data, min.cells = 100, min.features = 500)
+bm280k.list <- SplitObject(bm280k, split.by = "orig.ident")
+bm280k.list <- lapply(X = bm280k.list, FUN = function(x) {
+    x <- NormalizeData(x, verbose = FALSE)
+    x <- FindVariableFeatures(x, verbose = FALSE)
+})
+
+# 选择在数据集中重复的高变基因用于整合
+features <- SelectIntegrationFeatures(object.list = bm280k.list)
+
+# 分别对每个数据集进行PCA降维，用于下面的rpca方法
+bm280k.list <- lapply(X = bm280k.list, FUN = function(x) {
+    x <- ScaleData(x, features = features, verbose = FALSE)
+    x <- RunPCA(x, features = features, verbose = FALSE)
+})
+
+# 利用reference 和rpca寻找锚点细胞，进行整合
+anchors <- FindIntegrationAnchors(object.list = bm280k.list, reference = c(1, 2), reduction = "rpca", dims = 1:50)
+bm280k.integrated <- IntegrateData(anchorset = anchors, dims = 1:50)
+
+# 整合后，查看数据集的分布状况
+bm280k.integrated <- ScaleData(bm280k.integrated, verbose = FALSE)
+bm280k.integrated <- RunPCA(bm280k.integrated, verbose = FALSE)
+bm280k.integrated <- RunUMAP(bm280k.integrated, dims = 1:50)
+DimPlot(bm280k.integrated, group.by = "orig.ident")
+
+
+
+
+
+
+
+
+
+
+========================================
+|-- GPT: 同一个细胞的多组学CCA整合: CCA（Canonical Correlation Analysis）[尝试策略：1. 直接对HVG做CCA，2.对PCA做CCA]
+----------------------------------------
+1. 改怎么实现？
+
+(1) CCA 整合的基本步骤
+准备数据：将不同组学的数据准备为矩阵格式。
+进行 CCA：使用 cancor 函数计算 CCA。
+提取结果：提取 CCA 结果并将它们合并回原始数据。
+
+
+(2) CCA整合
+# 假设我们有两个数据框，分别为 RNA 和 ATAC 组学数据
+# rna_data 和 atac_data 是相同细胞的表达矩阵，行表示基因，列表示细胞
+
+# 1. 准备数据
+rna_data <- as.matrix(rna_data)  # RNA 数据矩阵，行是基因，列是细胞
+atac_data <- as.matrix(atac_data)  # ATAC 数据矩阵，行是开放区域，列是细胞
+
+# 2. 确保细胞 ID 匹配
+common_cells <- intersect(colnames(rna_data), colnames(atac_data))
+rna_data <- rna_data[, common_cells]
+atac_data <- atac_data[, common_cells]
+
+# 3. 进行 CCA
+cca_result <- cancor(rna_data, atac_data)
+
+# 4. 提取 CCA 得分
+rna_cca_scores <- rna_data %*% cca_result$xcoef
+atac_cca_scores <- atac_data %*% cca_result$ycoef
+
+# 5. 创建整合数据框
+integrated_data <- list(
+  rna = rna_cca_scores,
+  atac = atac_cca_scores
+)
+
+# 6. 合并结果为数据框（可选）
+integrated_df <- data.frame(
+  CellID = common_cells,
+  RNA_CCA1 = rna_cca_scores[, 1],
+  RNA_CCA2 = rna_cca_scores[, 2],
+  ATAC_CCA1 = atac_cca_scores[, 1],
+  ATAC_CCA2 = atac_cca_scores[, 2]
+)
+
+# 查看整合结果
+head(integrated_df)
+
+
+
+
+
+
+========================================
+|-- 实例：载入同一个细胞的多模态数据(CITE-seq)，做WNN整合多模态
+----------------------------------------
+1. data 载入，并做到PCA
+
+(1) 读取数据: 4.9k cells
+@J3 shell R
+> system("pwd")
+/home/wangjl/data4/others/hanlu/output
+
+# 可视化: ln -s /home/wangjl/data4/others/hanlu/output/CCA /home/wangjl/data4/web/docs/dustbin/tmp_links/
+
+> options(width=200)
+
+outputRoot="CCA/"
+keyword="try1"
+
+library(Seurat)
+library(ggplot2)
+library(Matrix)
+
+# ../script/Z01_learn_WNN.R:15:
+dat=Read10X_h5("/datapool/wangjl/others/hanlu/raw/GSE210079/GSM6459763_32-3mo_raw_feature_bc_matrix.h5") # RNA+protein
+
+> names(dat)
+[1] "Gene Expression"  "Antibody Capture"
+> str(dat$`Antibody Capture`) #55个蛋白，最后一个是 Biotin，不确定是否要去掉？
+
+# make sure cell id are the same
+all.equal(colnames(dat[["Gene Expression"]]), colnames(dat[["Antibody Capture"]])) #T
+
+
+# (2). use RNA data to create Obj
+title="GSM6459763"
+rna_seurat=CreateSeuratObject(counts = dat$`Gene Expression`, project = paste0(title, "R") )
+
+# Filter: 655671 -> 7851
+rna_seurat[["percent.mt"]] <- PercentageFeatureSet(rna_seurat, pattern = "^MT-")
+rna_seurat <- subset(rna_seurat, subset = nFeature_RNA > 300 & nFeature_RNA < 6000 & percent.mt < 10)
+
+
+# (3). add protein mat
+# https://zhuanlan.zhihu.com/p/567253121
+#adt_assay <- CreateAssayObject(counts = dat$`Antibody Capture`[1:(nrow(dat$`Antibody Capture`)-4),])
+#rna_seurat[["ADT"]] <- adt_assay
+
+#(3B) read protein mat
+protein_seurat=CreateSeuratObject(counts = dat$`Antibody Capture`[1:(nrow(dat$`Antibody Capture`)-4),], 
+	project = paste0(title, "P") )
+
+# keep the same cell id as RNA
+protein_seurat=subset(protein_seurat, cells=colnames(rna_seurat))
+
+
+
+
+(2) 分别做到归一化、标准化、PCA
+# i) 归一化、标准化
+rna_seurat <- NormalizeData(rna_seurat)
+# HVG
+rna_seurat <- FindVariableFeatures(rna_seurat, selection.method = "vst", nfeatures = 3000)
+rna_seurat <- ScaleData(rna_seurat, features = VariableFeatures(object = rna_seurat))
+
+protein_seurat <- NormalizeData(protein_seurat, normalization.method = "CLR", margin = 2)
+# protein_seurat = FindVariableFeatures(protein_seurat)
+protein_seurat <- ScaleData(protein_seurat)
+
+
+# ii) PCA
+rna_seurat <- RunPCA(rna_seurat)
+protein_seurat <- RunPCA(protein_seurat, features=rownames(protein_seurat))
+
+
+
+
+(3) 使用RNA对细胞分群
+pdf(paste0(outputRoot, keyword, "_01_1.Elbow.pdf"), width=4, height=3)
+ElbowPlot(rna_seurat, ndims=50)
+dev.off()
+
+rna_seurat <- FindNeighbors(rna_seurat, dims = 1:20, reduction = "pca") #指定使用的降维数据 pca
+rna_seurat <- FindClusters(rna_seurat, resolution = 1, cluster.name = "unintegrated_clusters") #指定细胞分群的列名，默认是 seurat_clusters
+
+rna_seurat <- RunUMAP(rna_seurat, dims = 1:20, reduction = "pca", reduction.name = "umap.unintegrated") #指定UMAP降维的名字，默认是 umap
+
+> rna_seurat
+An object of class Seurat 
+36601 features across 7851 samples within 1 assay 
+Active assay: RNA (36601 features, 3000 variable features)
+ 2 dimensional reductions calculated: pca, umap.unintegrated
+
+
+pdf(paste0(outputRoot, keyword, "_01_1.UMAP.pdf"), width=5, height=5)
+DimPlot(rna_seurat, reduction = "umap.unintegrated", group.by = c("seurat_clusters"), label=T)+ ggtitle("RNA")
+dev.off()
+
+
+FeaturePlot2=function(obj, features, cols = c("lightgrey", 'red'), ncol=1, ...){
+  FeaturePlot(obj, features =features, 
+              cols=cols,
+              ncol = ncol, ... ) & NoLegend() & NoAxes() & theme(
+                panel.border = element_rect(color = "black", size = 1)
+              )
+}
+
+tmp=c(
+  "PTPRC", "CD3D", "CD3E", #"CD3G", 
+  "CD4", "CD8A", "NKG7", "GZMB", 
+  "FOXP3",  "CCR7", "CTLA4",
+  #"CD79A", 
+  "TNFRSF17",
+  "CD79B", "JCHAIN", 'VPREB3', #"VPREB1",
+  
+  "MPO", "LTF", "CMTM2",
+  "PROK2",
+  
+  "CD14", "FCGR3A", "CD68", 
+  "FCGR3B", #"IL4", "IL5", "IL8", "IL13", 
+  "HBA1", #"HBB", #"HBD",
+  
+  "EPCAM",
+  "PECAM1", "ICAM1", #"TEK", "VWF",
+  "PPBP",
+  
+  "GATA3", 
+  "MKI67", #,"CCNB1", "KRT8", 
+  "CD34" #, "SOCS2"
+)
+length(tmp)
+pdf( paste0(outputRoot, keyword, "_01_1_Manual.marker.FeaturePlot2.pdf"), width=11.52, height=11.1)
+FeaturePlot2(rna_seurat, features =tmp, ncol=6, pt.size=0.5, order=F, raster=F)
+#FeaturePlot2(rna_seurat, features =tmp, ncol=6, pt.size=0.5, order=T, raster=F)
+dev.off()
+
+
+
+
+(4) 使用protein对细胞分群
+pdf(paste0(outputRoot, keyword, "_01B_1.Elbow.pdf"), width=4, height=3)
+ElbowPlot(protein_seurat, ndims=50)
+dev.off()
+
+protein_seurat <- FindNeighbors(protein_seurat, dims = 1:0, reduction = "pca") #指定使用的降维数据 pca
+protein_seurat <- FindClusters(protein_seurat, resolution = 0.01, cluster.name = "unintegrated_clusters") #指定细胞分群的列名，默认是 seurat_clusters
+
+protein_seurat <- RunUMAP(protein_seurat, dims = 1:10, reduction = "pca", reduction.name = "umap.unintegrated") #指定UMAP降维的名字，默认是 umap
+
+> protein_seurat
+An object of class Seurat 
+51 features across 7851 samples within 1 assay 
+Active assay: RNA (51 features, 0 variable features)
+ 2 dimensional reductions calculated: pca, umap.unintegrated
+
+
+pdf(paste0(outputRoot, keyword, "_01B_1.UMAP.pdf"), width=5, height=5)
+DimPlot(protein_seurat, reduction = "umap.unintegrated", group.by = c("seurat_clusters"), label=T)+ ggtitle("ADT")
+dev.off()
+
+
+
+
+
+
+
+
+2. 进行标准的CCA整合(失败)
+https://satijalab.org/seurat/articles/integration_introduction
+
+keyword="try2"
+
+# 1. 确保只使用共同细胞
+common_cells <- intersect(colnames(rna_seurat), colnames(protein_seurat))
+rna_seurat <- rna_seurat[, common_cells]
+protein_seurat <- protein_seurat[, common_cells]
+
+# 2. 数据归一化和标准化（如之前所述），做到PCA
+
+# 3. 找到整合锚点
+anchors <- FindIntegrationAnchors(object.list = list(rna_seurat, protein_seurat), dims = 1:30)
+# 报错：Some cell names are duplicated across objects provided. Renaming to enforce unique cell names.
+	必须是不同细胞id的整合。失败！
+
+# 4. 整合数据
+combined <- IntegrateData(anchorset = anchors, dims = 1:30)
+
+
+
+
+
+
+
+
+
+
+3. 进行标准的wnn整合：多模态整合
+https://satijalab.org/seurat/articles/multimodal_vignette
+https://satijalab.org/seurat/articles/weighted_nearest_neighbor_analysis
+keyword="try3"
+
+# create a new assay to store ADT information
+# adt_assay <- CreateAssay5Object(counts = cbmc.adt)
+# add this assay to the previously created Seurat object
+# cbmc[["ADT"]] <- adt_assay
+
+sce1 = rna_seurat
+
+# 1) set ADT assay
+adt_assay=protein_seurat@assays$RNA
+adt_assay@key="adt_"
+
+sce1[["ADT"]] <- adt_assay
+DefaultAssay(sce1)
+
+# 2) set ADT pca
+adt_pca=protein_seurat@reductions$pca
+adt_pca@assay.used="ADT"
+#sce1@reductions$apca=adt_pca
+sce1[['apca']]=adt_pca
+
+# 3) 多组学整合
+sce1 <- FindMultiModalNeighbors(
+  sce1,
+  reduction.list = list("pca", "apca"),
+  dims.list = list(1:20, 1:10)
+)
+
+> sce1
+An object of class Seurat 
+36652 features across 7851 samples within 2 assays 
+Active assay: RNA (36601 features, 3000 variable features)
+ 1 other assay present: ADT
+ 3 dimensional reductions calculated: pca, umap.unintegrated, apca
+
+> sce1@graphs |> names()
+[1] "RNA_nn"  "RNA_snn" "wknn"    "wsnn"
+
+> sce1@reductions |> names()
+[1] "pca"               "umap.unintegrated" "apca"
+
+> sce1@neighbors |> names() #近邻名字
+[1] "weighted.nn"
+
+# 4) 降维和聚类
+	> sce1 <- RunUMAP(sce1, nn.name = "wknn", reduction.name = "wnn.umap", reduction.key = "wnnUMAP_")
+	Error: Please specify a Neighbor object name, instead of the name of a Graph object | 输入最近邻对象(@neighbors)名字，而不是图对象(@graphs)的名字。
+> sce1 <- RunUMAP(sce1, nn.name = "weighted.nn", reduction.name = "wnn.umap", reduction.key = "wnnUMAP_")
+
+# 注意参数 
+* nn.name: Name of knn output on which to run UMAP  | 检查 sce1@graphs |> names()，应该使用 wknn 作为输入
+* reduction.name: Name to store dimensional reduction under in the Seurat object | 保存输出的umap的名字
+* reduction.key: dimensional reduction key, specifies the string before the number for the dimension names. UMAP by default | 输出的umap的key
+
+
+> sce1@reductions |> names()
+[1] "pca"               "umap.unintegrated" "apca"              "wnn.umap" #新增一个降维名
+
+> sce1 <- FindClusters(sce1, graph.name = "wsnn", algorithm = 3, resolution = 2, verbose = T)
+
+> table(sce1$seurat_clusters)
+#   0    1    2    3    4    5    6    7    8    9   10   11   12   13   14   15   16   17   18   19   20   21   22   23   24   25   26 
+#1169  630  572  558  497  467  457  409  373  359  338  262  247  238  221  180  133  125  117  114  106   82   66   51   43   23   14
+
+
+
+# 5) 可视化：感觉没什么优化，CD4和CD8也没分开
+pdf( paste0(outputRoot, keyword, "_01_1_Manual.marker.FeaturePlot2.pdf"), width=11.52, height=11.1)
+FeaturePlot2(sce1, reduction = "wnn.umap", features =tmp, ncol=6, pt.size=0.5, raster=F)
+dev.off()
+
+pdf(paste0(outputRoot, keyword, "_01B_1.UMAP.pdf"), width=5, height=5)
+DimPlot(sce1, reduction = "wnn.umap", group.by = c("seurat_clusters"), label=T) + ggtitle("WNN:RNA+ADT")
+dev.off()
+
+# 画蛋白
+> sce1@assays$ADT@data |> rownames() |> jsonlite::toJSON()
+["CD117-c-kit","CD226-DNAM-1","CD223-LAG-3","CD314-NKG2D","CD303-BDCA-2","CD274-B7-H1-PD-L1","KLRG1-MAFA","CD20","CD16","CD66b","CD14.1","CD123","CD370-CLEC9A-DNGR1","CD209-DC-SIGN","CD127-IL-7Ra","TIGIT-VSTM3","CD25","CD294-CRTH2","CD21","CD244-2B4","CD79b-Igbeta","CD28.1","CD279-PD-1","CD69.1","CD183-CXCR3","CD196-CCR6","CD197-CCR7","CD45RA","CD10","CD45","CD19.1","CD38.1","CD161","IgD","CD11b","CD185-CXCR5","CD1c","HLA-DR","CD194-CCR4","CD141-Thrombomodulin","Ig-lc-kappa","Ig-lc-lambda","CD138-Sydecan-1","CD27.1","CD33.1","CD57","CD56-NCAM","CD4.1","CD8a","CD11c","CD155-PVR"]
+
+p5 <- FeaturePlot(sce1, features = c("adt_CD45RA","adt_CD16","adt_CD161"),
+                  reduction = 'wnn.umap', max.cutoff = 2, 
+                  cols = c("lightgrey","darkgreen"), ncol = 3)
+p6 <- FeaturePlot(sce1, features = c("rna_TRDC","rna_MPO","rna_AVP"), 
+                  reduction = 'wnn.umap', max.cutoff = 3, ncol = 3)
+pdf(paste0(outputRoot, keyword, "_01B_1.FeaturePlot.pdf"), width=3*3, height=3*2)
+print(p5 / p6)
+dev.off()
+
+# 画权重
+pdf(paste0(outputRoot, keyword, "_01B_1.VlnPlot.pdf"), width=7, height=3)
+VlnPlot(sce1, features = "RNA.weight", group.by = 'seurat_clusters', sort = TRUE, pt.size = 0.1) +  NoLegend()
+dev.off()
+
+
+
+
+
+
+
+
+
+
+========================================
+|-- 一个细胞的多模态数据整合：手写CCA流程，能区分出来CD4和CD8细胞
+----------------------------------------
+==> 上一篇: 实现 CCA 的R包: R::R05-MachineLearning
+
+
+
+
+4. 手写配对多组学CCA整合：从原始数据data开始： 失败，因为太慢了; 改为HVG
+keyword="try4"
+
+# cancor 输入要求行数(观测)相等(列名相等)，列数（特征）可以不同。
+
+# 1) 使用全部基因
+# common_cells <- intersect(colnames(rna_data), colnames(atac_data))
+
+> rna_seurat@assays$RNA@data |> dim()
+[1] 36601  7851
+> rna_seurat@assays$RNA@data[1:2, 1:2]
+2 x 2 sparse Matrix of class "dgCMatrix"
+            AAACCTGAGACTCGGA-1 AAACCTGAGAGTACAT-1
+MIR1302-2HG                  .                  .
+FAM138A                      .                  .
+
+rna_dat <- rna_seurat@assays$RNA@data |> t()
+adt_dat <- protein_seurat@assays$RNA@data |> t()
+
+> dim(rna_dat)
+[1]  7851 36601
+> dim(adt_dat)
+[1] 7851   51
+> table(rownames(rna_dat) == rownames(adt_dat))
+TRUE 
+7851
+
+# 2) 进行 CCA
+cca_result <- cancor(rna_dat, adt_dat)
+# 22:08->次日 9:00，手动停止了。
+# 全基因都用上巨慢！一晚上也没结束！失败！
+	可使用 HVG 进行整合: 尝试
+	可使用 前若干PC来进行整合(见5)
+
+
+
+
+
+
+# 1B) 提取HVG: scale.data
+rna_dat <- rna_seurat@assays$RNA@scale.data |> t()
+adt_dat <- protein_seurat@assays$RNA@scale.data |> t()
+
+
+# 1C) 尝试使用 data
+	keyword="try4B"
+	rna_dat <- rna_seurat@assays$RNA@data[rna_seurat@assays$RNA@var.features, ] |> t()
+	adt_dat <- protein_seurat@assays$RNA@data |> t()
+	# 其他不变: 结果也挺不错
+
+
+> dim(rna_dat)
+[1] 7851 3000
+> dim(adt_dat)
+[1] 7851   51
+
+
+
+# 2) 进行CCA整合
+cca_result <- cancor(rna_dat, adt_dat)
+
+检查结果：
+> cca_result$xcoef[1:3, 1:3]
+                   [,1]          [,2]          [,3]
+AP006222.2 6.760372e-05 -2.610580e-05 -0.0002414473
+LINC01128  1.644651e-05  1.770414e-05  0.0001651683
+SAMD11     3.798353e-05 -1.451013e-04 -0.0000189196
+> cca_result$xcoef |> dim()
+[1] 2987 2987
+
+> cca_result$ycoef[1:3, 1:3]
+                     [,1]          [,2]          [,3]
+CD117-c-kit  1.604975e-04 -0.0003118318  4.024330e-04
+CD226-DNAM-1 4.569425e-04  0.0007606511  1.310858e-03
+CD223-LAG-3  2.762653e-05 -0.0001084770 -1.581207e-05
+> cca_result$ycoef |> dim()
+[1] 51 51
+
+
+# 3). 提取 CCA 得分
+报错：
+	> rna_cca_scores <- as.matrix(rna_dat) %*% cca_result$xcoef
+	Error in as.matrix(rna_dat) %*% cca_result$xcoef : 
+	  non-conformable arguments
+	检查：
+	> dim(rna_dat)
+	[1] 7851 3000
+	> rna_dat[1:2, 1:2]
+						AP006222.2 LINC01128
+	AAACCTGAGACTCGGA-1 -0.04596848 -0.237706
+	AAACCTGAGAGTACAT-1 -0.04596848 -0.237706
+	确实，A*B，A一行又3000个，B的一列只有2987个，获取差集：
+	> t1=setdiff(colnames(rna_dat), rownames(cca_result$xcoef) ); t1
+	[1] "CHL1"     "ADAMTS9"  "MDFI"     "RARRES2"  "NNMT"     "THY1"     "TMEM132C" "COL4A1"   "FBLN5"    "ALDH1A3"  "IRX3"     "SLC7A10"  "MXRA5"
+	> colnames(rna_dat) |> tail(n=13) #不是在最后
+	[1] "HSFX3"      "CXorf40B"   "HSFX4"      "HMGB3"      "AF274853.1" "BGN"        "SSR4"       "TKTL1"      "CTAG2"      "MPP1"       "CLIC2"      "MT-ND6"     "MAFIP"
+
+	> rna_dat[1:20, t1] #目测这几列全是sd=0
+	> apply(rna_dat[, t1], 2, sd) #sd不是0，但是确实很小
+		 CHL1   ADAMTS9      MDFI   RARRES2      NNMT      THY1  TMEM132C    COL4A1     FBLN5   ALDH1A3      IRX3   SLC7A10     MXRA5 
+	0.1598517 0.1598512 0.1598518 0.1598451 0.1958155 0.1598405 0.1598161 0.1598484 0.1598405 0.1598324 0.1598090 0.1598484 0.1598500 
+	> apply(rna_dat[, c("HSFX3", "HSFX4", "CD3E", "GAPDH", "MKI67", "IL2")], 2, sd)
+		HSFX3     HSFX4      CD3E     GAPDH     MKI67       IL2 
+	0.3199728 0.2528968 1.0000000 1.0000000 0.9692828 0.3959867
+
+rna_dat2=rna_dat[, rownames(cca_result$xcoef)]
+rna_cca_scores <- as.matrix(rna_dat2) %*% cca_result$xcoef #as u
+
+adt_cca_scores <- as.matrix(adt_dat) %*% cca_result$ycoef #as v
+
+> dim(rna_cca_scores)
+[1] 7851 2987
+> dim(adt_cca_scores)
+[1] 7851   51
+
+
+
+# 检查CCA投影性质：
+# i. 共有的列向量: 相应位置成比例，不同位置两两正交。
+	> cor(rna_cca_scores[, 1:10], adt_cca_scores[, 1:10]) #除了对角线，其他元素都是0
+	> cor(rna_cca_scores[, 1:10], adt_cca_scores[, 1:10])  - diag(cca_result$cor[1:10])
+	> all( abs( cor(rna_cca_scores[, 1:10], adt_cca_scores[, 1:10])  - diag(cca_result$cor[1:10]) ) < 1e-10 ) #T
+	> all( abs( cor(rna_cca_scores[, 1:51], adt_cca_scores)  - diag(cca_result$cor) ) < 1e-10 ) #T
+	也就是只用一组即可，另一组是冗余。
+
+	由于是正交的，可以直接作为PC的代替，进行后续umap和分群分析。
+
+
+## ii. 这些CCA向量有量纲吗？是否是标准化的？选取前多少进行后续分析？
+	> rna_cca_scores[1:2, 1:3]
+							   [,1]       [,2]        [,3]
+	AAACCTGAGACTCGGA-1 0.0001295819 0.01483231 -0.01289064
+	AAACCTGAGAGTACAT-1 0.0012487640 0.01312913  0.02051372
+	对一行求欧氏距离： 
+	> t1=apply(rna_cca_scores, 1, function(x){ sum(x**2) })
+	> head(t1)
+	AAACCTGAGACTCGGA-1 AAACCTGAGAGTACAT-1 AAACCTGAGATATACG-1 AAACCTGAGCGAAGGG-1 AAACCTGAGCTTCGCG-1 AAACCTGAGGCAGGTT-1 
+			 0.3317732          0.3255800          0.3372605          0.1824315          0.7116331          0.7049047 
+	> summary(t1)
+	   Min. 1st Qu.  Median    Mean 3rd Qu.    Max. 
+	0.07122 0.25610 0.33532 0.38125 0.47968 1.00105
+	确实有距离，每个细胞距离原点不同。
+
+	对一列求欧氏距离： 
+	> t2=apply(rna_cca_scores, 2, function(x){ sum(x**2) })
+	> head(t2)
+	[1] 1.000095 1.000009 1.000459 1.001062 1.001535 1.000934
+	> summary(t2)
+	   Min. 1st Qu.  Median    Mean 3rd Qu.    Max. 
+	  1.000   1.000   1.000   1.002   1.002   1.135
+	> table(abs(t2-1) < 0.1)
+	FALSE  TRUE 
+		2  2985 
+	> table(abs(t2-1) < 0.01)
+	FALSE  TRUE 
+	  110  2877 
+	> table(abs(t2-1) < 0.001)
+	FALSE  TRUE 
+	 1073  1914 
+	确实都在1附近，也就是都是单位列向量。
+
+	只好用原始数据做PCA，来近似作为选取CCA数量的依据。
+
+
+## iii. 对相关系数画图呢？
+	> cca_result$cor |> length()
+	[1] 51
+
+	pdf( paste0(outputRoot, keyword, "_01_1_cca_result_cor.plot.pdf"), width=7, height=4)
+	plot(cca_result$cor, type="o", col="purple", pch=19)
+	dev.off()
+	# 大致x=1:50,y从0.9接近45下降到0.6。
+
+
+
+
+
+
+# 4). 创建整合数据框，导入Seurat作为类似PCA降维
+这里有4种可能：
+* 要用两个组学的信息吗？是不是一个就够了？由于对应位置相关系数接近1，我认为只需要用1个组学的打分。
+* 当作原始数据输入，还是作为PC输入？由于两两正交，可以作为PC。
+* 选取几个CCA进一步分析？用两个组学的原始PCA做碎石图，作为选择CCA数量的参考。
+
+
+# 4A) 只用第一个打分，列数和少的一致
+len=min(ncol(rna_cca_scores), ncol(adt_cca_scores))
+integrated_df = data.frame( rna_cca_scores[,1:len] )
+colnames(integrated_df)=paste0("CCA_", 1:len)
+
+> integrated_df[1:2,1:2]
+                          CCA_1      CCA_2
+AAACCTGAGACTCGGA-1 0.0001295819 0.01483231
+AAACCTGAGAGTACAT-1 0.0012487640 0.01312913
+
+seurat_obj = rna_seurat
+
+# 将 CCA 得分添加到 Seurat 对象中的 `reductions` 列表
+seurat_obj[["CCA"]] <- CreateDimReducObject(embeddings = as.matrix(integrated_df), key = "CCA_")
+	# Warning: No assay specified, setting assay as RNA by default.
+
+> seurat_obj@reductions|> names()
+[1] "pca"               "umap.unintegrated" "CCA"
+
+
+
+
+
+# 5). 进行后续分析，使用 CCA 结果进行 UMAP 和 细胞分群
+# seurat_obj <- RunPCA(seurat_obj, reduction = "CCA", npcs = 10)  # 使用 CCA 结果进行 PCA #不需要再做PCA了
+# 问题：怎么计算解释程度？
+seurat_obj <- RunUMAP(seurat_obj, reduction = "CCA", dims = 1:20)  # 使用 CCA 结果进行 UMAP
+	# Cannot add objects with duplicate keys (offending key: UMAP_), setting key to 'umap_'
+	# > seurat_obj@reductions |> names()
+	[1] "pca"               "umap.unintegrated" "CCA"               "umap"
+	
+	而之前只有两个降维亚类:
+	> rna_seurat@reductions |> names()
+	[1] "pca"               "umap.unintegrated"
+
+	==> 可直接设置umap的obj的key和名字：reduction.key = "ccaUMAP_", reduction.name = "cca.umap",
+	seurat_obj2 <- RunUMAP(seurat_obj, reduction = "CCA", dims = 1:20,
+		reduction.key = "ccaUMAP_", reduction.name = "cca.umap")
+	> seurat_obj2@reductions |> names()
+	[1] "pca"               "umap.unintegrated" "CCA"               "umap"              "cca.umap" #降维名字
+	> seurat_obj2@reductions$cca.umap@key
+	[1] "ccaUMAP_"
+
+
+seurat_obj <- FindNeighbors(seurat_obj, reduction = "CCA", dims = 1:20, graph.name=c("ccaknn", "ccasnn"))
+	> seurat_obj@graphs |> names()
+	[1] "RNA_nn"  "RNA_snn" "ccaknn"  "ccasnn"
+
+seurat_obj <- FindClusters(seurat_obj, resolution = 0.5, cluster.name = "cca_clusters", graph.name="ccasnn")
+#参数解释: 
+	graph.name: Name of graph to use for the clustering algorithm
+	cluster.name：貌似没这个参数，设置后就像不存在一样。 Seurat 4.4.0 依旧保存到 seurat_cluster中
+
+> table(seurat_obj@meta.data$ccasnn_res.0.5)
+   0    1    2    3    4    5    6    7    8    9   10   11 
+2870 1301  948  855  668  352  295  283  128   91   34   26
+
+
+细胞数没有变化：确实是配对组学，符合预期
+> seurat_obj
+An object of class Seurat 
+36601 features across 7851 samples within 1 assay 
+Active assay: RNA (36601 features, 3000 variable features)
+ 4 dimensional reductions calculated: pca, umap.unintegrated, CCA, umap
+
+
+
+# 6.可视化
+pdf( paste0(outputRoot, keyword, "_01_1_Manual.marker.FeaturePlot2.pdf"), width=11.52, height=11.1)
+FeaturePlot2(seurat_obj, reduction = "umap", features =tmp, ncol=6, pt.size=0.5, raster=F)
+dev.off()
+
+pdf(paste0(outputRoot, keyword, "_01_1.UMAP.pdf"), width=5, height=5)
+DimPlot(seurat_obj, reduction = "umap", group.by = c("seurat_clusters"), label=T) + ggtitle("CCA top 20: RNA+ADT")
+dev.off()
+
+效果：好！CD4和CD8确实分开了！！
+
+问题：这些CCA用多少合适？解释度多少？
+	怎么评价两个组学对细胞聚类结果的贡献度？
+
+
+
+
+
+
+
+
+
+
+
+5. 把CCA作为原始数据输入，对细胞降维聚类：使用Seurat包，查看效果: 效果很差！
+keyword="try5"
+
+# 假设 integrated_df 是您的整合数据框，其中包含细胞 ID行 和 CCA 得分
+> dim(integrated_df)
+[1] 7851   51
+> integrated_df[1:2, 1:2]
+                          CCA_1      CCA_2
+AAACCTGAGACTCGGA-1 0.0001295819 0.01483231
+AAACCTGAGAGTACAT-1 0.0012487640 0.01312913
+
+
+# 创建 Seurat 对象
+sce2 <- CreateSeuratObject(counts = as.matrix(integrated_df) |> t(),  #转置，保证 行为基因，列为细胞
+                                  meta.data = data.frame(CellID = rownames(integrated_df), method="CCA", row.names=1 ) )
+> sce2@meta.data |> head()
+                      orig.ident  nCount_RNA nFeature_RNA method
+AAACCTGAGACTCGGA-1 SeuratProject -0.07678311           25    CCA
+AAACCTGAGAGTACAT-1 SeuratProject  0.08524150           30    CCA
+
+
+# 1. 标准化数据
+sce2 <- NormalizeData(sce2)
+sce2 <- ScaleData(sce2)
+
+# 2. 进行 PCA 降维
+sce2 <- RunPCA(sce2, features=rownames(sce2) )
+
+pdf(paste0(outputRoot, keyword, "_01_1.Elbow.pdf"), width=4, height=3)
+ElbowPlot(sce2, ndims=50)
+dev.off()
+这个图很异常！直接就是一条线，sd=1 横线。
+	我认为已经错了！再做没有意义！
+
+
+	# 3. 进行 UMAP 降维
+	sce2 <- RunUMAP(sce2, dims = 1:10)  # 使用前 10 个主成分
+
+	# 4. 聚类分析
+	sce2 <- FindNeighbors(sce2, dims = 1:10)  # 计算邻接图
+	sce2 <- FindClusters(sce2, resolution = 0.5)  # 根据邻接图进行聚类
+
+	# 5. 可视化结果：UMAP 图
+	pdf(paste0(outputRoot, keyword, "_01_2.UMAP.pdf"), width=5, height=5)
+	DimPlot(sce2, reduction = "umap", group.by = "seurat_clusters", label=T)+ ggtitle("CCA as count")
+	dev.off()
+
+	pdf( paste0(outputRoot, keyword, "_01_2_Manual.marker.FeaturePlot2.pdf"), width=8, height=4)
+	FeaturePlot2(sce2, features =c("CCA-1", "CCA-15"), ncol=2, pt.size=0.5, order=F, raster=F)
+	dev.off()
+	效果很差！很嘈杂，没有分类效果！
+#
+
+
+
+
+
+
+
+
+
+6. 从scale.data 做CCA，代替PCA做umap和细胞聚类
+	效果也挺好：见 4(B)
+
+
+
+
+
+
+
+
+
+========================================
+|-- 手写函数：加权 PCA，把特征向量加权为特征值的长度
+----------------------------------------
+7. 写成函数形式
+keyword="try7"
+
+* 两个组学，用Seurat做到PCA：Normalize, HVG, Scale, PCA;
+* 函数功能：从HVG的data或者 scale.data 生成 CCA，代替PC，放到Seurat对象中
+* 用Seurat继续做umap和细胞聚类
+
+(1) 基于HVG的 data 或 scale.data 计算 CCA，并插入到RNA的Seurat对象中返回
+FindIntegrationCCA=function(rna_seurat, protein_seurat, slot="scale.data",	cca.key="CCA_"){
+	#1. load data
+	if(slot=="scale.data"){
+		rna_dat <- rna_seurat@assays$RNA@scale.data |> t()
+		adt_dat <- protein_seurat@assays$RNA@scale.data |> t()
+	}else if(slot=="data"){
+		rna_dat <- rna_seurat@assays$RNA@data[rna_seurat@assays$RNA@var.features, ] |> t()
+		adt_dat <- protein_seurat@assays$RNA@data |> t()
+	}else{
+		stop("slot must be in c('scale.data', 'data')!")
+	}
+	message(sprintf(">1. load data: slot: %s, cell: %d, rna feature: %d, protein feature: %d", 
+		slot,
+		nrow(rna_dat),
+		ncol(rna_dat),
+		ncol(adt_dat)
+	))
+	
+	# 2. do CCA
+	message(">2. CCA begin")
+	cca_result <- cancor(rna_dat, adt_dat)
+	message(sprintf(">CCA number for each modal, rna: %s, adt: %s", nrow(cca_result$xcoef), nrow(cca_result$ycoef) ) )
+	
+	#3. get cca score
+	rna_dat2=rna_dat[, rownames(cca_result$xcoef)]
+	rna_cca_scores <- as.matrix(rna_dat2) %*% cca_result$xcoef #as u
+
+	adt_dat2=adt_dat[, rownames(cca_result$ycoef)]
+	adt_cca_scores <- as.matrix(adt_dat2) %*% cca_result$ycoef #as v
+	message(sprintf(">3. cca score number for, rna: %s, adt: %s", ncol(rna_cca_scores), ncol(adt_cca_scores) ) )
+	
+	#4. select top CCA
+	len=min(ncol(rna_cca_scores), ncol(adt_cca_scores))
+	integrated_df = data.frame( rna_cca_scores[,1:len] )
+	colnames(integrated_df)=paste0("CCA_", 1:len)
+	#integrated_df[1:2,1:2]
+	message(sprintf(">4. keep common CCA number: %d", len ) )
+	
+	#5. insert CCA as PC to Seurat
+	seurat_obj = rna_seurat
+	seurat_obj[["CCA"]] <- CreateDimReducObject(embeddings = as.matrix(integrated_df), key = cca.key, assay  = "RNA")
+	message(sprintf(">5. common CCA has inserted into Seurat object, in seurat_obj@reductions$CCA") )
+	
+	message("> you may run:\n>> seurat_obj <- RunUMAP(seurat_obj, reduction = 'CCA', dims = 1:20, reduction.key = 'ccaUMAP_', reduction.name = 'cca.umap')")
+	message(">> seurat_obj <- FindNeighbors(seurat_obj, reduction = 'CCA', dims = 1:20, graph.name=c('ccaknn', 'ccasnn'))")
+	message(">> seurat_obj <- FindClusters(seurat_obj, resolution = 0.5, graph.name='ccasnn')")
+
+	seurat_obj
+}
+if(0){
+	sc1 = FindIntegrationCCA(rna_seurat, protein_seurat, slot="scale.data", cca.key="CCA_")
+	sc2 = FindIntegrationCCA(rna_seurat, protein_seurat, slot="data", cca.key="CCA_")
+}
+
+
+(2) 基于CCA的降维和细胞聚类
+手动逐步运行:
+	sc1 <- RunUMAP(sc1, reduction = 'CCA', dims = 1:20, reduction.key = 'ccaUMAP_', reduction.name = 'cca.umap')
+	sc1 <- FindNeighbors(sc1, reduction = 'CCA', dims = 1:20, graph.name=c('ccaknn', 'ccasnn'))
+	sc1 <- FindClusters(sc1, resolution = 0.5, graph.name='ccasnn')
+
+或使用聚合函数：
+AnalysisOnCCA=function(seurat_obj, reduction="CCA", dims = 1:20, resolution = 0.5){
+	seurat_obj <- RunUMAP(seurat_obj, reduction = reduction, dims = dims, reduction.key = 'ccaUMAP_', reduction.name = 'cca.umap')
+	seurat_obj <- FindNeighbors(seurat_obj, reduction = reduction, dims = dims, graph.name=c('ccaknn', 'ccasnn'))
+	seurat_obj <- FindClusters(seurat_obj, resolution = resolution, graph.name='ccasnn')
+	return(seurat_obj)
+}
+if(0){
+	sc1=AnalysisOnCCA(sc1, dims=1:20, resolution=0.5)
+	sc2=AnalysisOnCCA(sc2, dims=1:20, resolution=0.5)
+}
+
+
+可视化结果
+	pdf(paste0(outputRoot, keyword, "_01_2.UMAP.pdf"), width=4, height=3.5)
+	DimPlot(sc1, reduction = "cca.umap", group.by = "seurat_clusters", label=T)+ ggtitle("CCA: scale.data")
+	DimPlot(sc2, reduction = "cca.umap", group.by = "seurat_clusters", label=T)+ ggtitle("CCA: data")
+	dev.off()
+
+	pdf( paste0(outputRoot, keyword, "_01_2_Manual.marker.FeaturePlot2.pdf"), width=11, height=12)
+	FeaturePlot2(sc1, features =tmp, reduction = "cca.umap", ncol=5, pt.size=0.5, order=F, raster=F)
+	FeaturePlot2(sc2, features =tmp, reduction = "cca.umap", ncol=5, pt.size=0.5, order=F, raster=F)
+	dev.off()
+
+
+
+
+
+
+========================================
+|-- 加权 PCA：把特征向量加权为特征值的长度，再用于后续降维、聚类，效果是否变好？ [已发表, pmid:38191932]
+----------------------------------------
+8. 矩阵特征分解时
+* 特征值表示变异程度，特征向量表示变异的方向，能否对PC向量 * 特征值，作为每个PC的度量，这样，每个PC加权后自带权重了，就不用考虑每个PC的解释程度了，可以使用全部信息。
+
+(1) 其他讨论
+https://stats.stackexchange.com/questions/113485/weighted-principal-components-analysis
+
+
+(2) 奇异值分解：意义解读 from Seurat 4
+
+为了简化运算，一般使用奇异值分解 SVD 代替特征值分解: A=U.D.V^T。
+
+Seurat 使用奇异值/根号(细胞数-1) 最为对应主成分的方差，右奇异矩阵V作为旋转矩阵。左奇异矩阵u 点乘 奇异值对角矩阵 作为细胞的新坐标。
+
+	# object 是 gene*cell 矩阵，scale.data。
+	pca.results <- irlba(A = t(x = object), nv = npcs, ...) #转置后，对列(gene)奇异值分解
+	feature.loadings <- pca.results$v #右矩阵v是 gene 的loading
+	sdev <- pca.results$d/sqrt(max(1, ncol(object) - 1)) #特征根 / 根号(列数 - 1)
+	# 左奇异矩阵 u 是 cell embeddings，乘以 var 权重
+	cell.embeddings <- pca.results$u %*% diag(pca.results$d)
+
+结论：Seurat中，在观测对象映射到新空间时已经乘上特征根了！想法被否定，也就没有所谓的 weighted PCA了？
+
+
+
+
+
+
+
+2. 不死心，用iris做测试
+(1) 对iris做标准PCA
+
+# 取前4列，按观测行 做scale
+dat=iris[, 1:4] |> t() |> scale() |> t()
+
+# 做PCA，默认按列做center
+dat.pca=prcomp(dat)
+str(dat.pca) #按列做PCA
+
+# 解析数据
+sdev=dat.pca$sdev #特征值，也就是每个PC的解释变异程度
+rotate = dat.pca$rotation #获得每个列的权重系数
+obs.embed = dat %*% rotate #每行obs在新空间的位置
+head(obs.embed)
+
+# 可视化
+plot(obs.embed, col=iris$Species, pch=19, main="PCA")
+
+
+
+# try2: 旋转后乘以乘以特征值: 按列乘
+rotate2= sweep(dat.pca$rotation, MARGIN = 2, STATS = sdev, FUN = "*")
+obs.embed2 = dat %*% rotate2 #每行obs在新空间的位置
+# 可视化
+plot(obs.embed2, col=iris$Species, pch=19, main="weighted PCA")
+
+
+# try3: 每列乘以任意数字呢
+rotate3= sweep(dat.pca$rotation, MARGIN = 2, STATS = c(10, 1, -1, -100), FUN = "*")
+obs.embed3 = dat %*% rotate3 #每行obs在新空间的位置
+# 可视化
+plot(obs.embed3, col=iris$Species, pch=19, main="Random weighted PCA")
+
+
+对比三个图，可以发现仅仅是坐标轴变了，而点的相对位置纹丝不动。也就是去掉坐标轴的数字，三个图毫无变化。
+	但是每个点的距离被缩放了，接着做UMAP和细胞聚类，效果是否会变好呢？
+
+
+检测：每个列向量长度
+	> apply(rotate, 2, function(x){sum(x**2)}) #默认是单位向量
+	PC1 PC2 PC3 PC4 
+	  1   1   1   1 
+	> apply(rotate2, 2, function(x){sum(x**2)}) #使用特征值加权后
+			 PC1          PC2          PC3          PC4 
+	4.317276e-01 7.571397e-03 4.210307e-03 4.756529e-32 
+	> apply(rotate3, 2, function(x){sum(x**2)}) #随机加权
+	  PC1   PC2   PC3   PC4 
+	  100     1     1 10000 
+	#
+
+
+
+
+
+(2) 使用irlba::irlba()做奇异值分解( A=u.d.v^T )，代替PCA
+dat=iris[, 1:4] |> t() |> scale() |> t()
+
+# 做svd分解
+dat.svd=irlba::irlba(dat, nv = 3) #必须严格的比 min(row, col) 小
+str(dat.svd)
+
+sdev.svd=dat.svd$d / sqrt(nrow(dat) - 1) #特征值，也就是每个PC的解释变异程度
+rotate.svd = dat.svd$v #获得每个列的权重系数，就是v矩阵
+obs.embed.svd = dat %*% rotate.svd #每行obs在新空间的位置: raw * rotate
+obs.embed.svd_B = dat.svd$u %*% diag(dat.svd$d) #每行obs在新空间的位置 u*diag(d)
+head(obs.embed.svd)
+
+# 可视化
+plot(obs.embed.svd, col=iris$Species, pch=19, main="svd")
+plot(obs.embed.svd_B, col=iris$Species, pch=19, main="svd") #两个图一模一样！点的位置，坐标轴范围都一模一样。
+
+
+# try2: 旋转后乘以乘以特征值: 按列乘
+rotate2.svd= sweep(dat.svd$v, MARGIN = 2, STATS = sdev.svd, FUN = "*")
+obs.embed2.svd = dat %*% rotate2.svd #每行obs在新空间的位置
+# 可视化
+plot(obs.embed2.svd, col=iris$Species, pch=19, main="weighted svd")
+
+总体上，这个PCA图看着很怪异，好像在一个弧度上。
+
+列向量是否是单位向量？
+
+检测：每个列向量长度
+	> apply(rotate.svd, 2, function(x){sum(x**2)}) #默认是单位向量
+	[1] 1 1 1 
+	> apply(rotate2.svd, 2, function(x){sum(x**2)}) #使用特征值加权后
+	[1] 2.587420915 0.425530516 0.007182796
+
+
+
+
+
+
+
+
+
+
+
+
+
+3. 在单细胞中的应用
+
+(1) 获取数据：仅使用RNA水平
+keyword="try8"
+
+> rna_seurat
+An object of class Seurat 
+36601 features across 7851 samples within 1 assay 
+Active assay: RNA (36601 features, 3000 variable features)
+ 2 dimensional reductions calculated: pca, umap.unintegrated
+#
+
+每个PC的使用情况
+	> rna_seurat@reductions$pca |> str()
+	Formal class 'DimReduc' [package "SeuratObject"] with 9 slots
+	  ..@ cell.embeddings           : num [1:7851, 1:50] -0.957 -1.88 -3.053 8.743 3.481 ...
+	  .. ..- attr(*, "dimnames")=List of 2
+	  .. .. ..$ : chr [1:7851] "AAACCTGAGACTCGGA-1" "AAACCTGAGAGTACAT-1" "AAACCTGAGATATACG-1" "AAACCTGAGCGAAGGG-1" ...
+	  .. .. ..$ : chr [1:50] "PC_1" "PC_2" "PC_3" "PC_4" ...
+	  ..@ feature.loadings          : num [1:3000, 1:50] -0.00125 -0.01603 -0.00108 -0.00154 -0.06729 ...
+	  .. ..- attr(*, "dimnames")=List of 2
+	  .. .. ..$ : chr [1:3000] "HBB" "MPO" "AHSP" "CA1" ...
+	  .. .. ..$ : chr [1:50] "PC_1" "PC_2" "PC_3" "PC_4" ...
+	  ..@ feature.loadings.projected: num[0 , 0 ] 
+	  ..@ assay.used                : chr "RNA"
+	  ..@ global                    : logi FALSE
+	  ..@ stdev                     : num [1:50] 12.03 9.56 6.2 5.58 4.32 ...
+	  ..@ key                       : chr "PC_"
+	  ..@ jackstraw                 :Formal class 'JackStrawData' [package "SeuratObject"] with 4 slots
+	  .. .. ..@ empirical.p.values     : num[0 , 0 ] 
+	  .. .. ..@ fake.reduction.scores  : num[0 , 0 ] 
+	  .. .. ..@ empirical.p.values.full: num[0 , 0 ] 
+	  .. .. ..@ overall.p.values       : num[0 , 0 ] 
+	  ..@ misc                      :List of 1
+	  .. ..$ total.variance: num 2001
+	#
+
+sce3=rna_seurat
+> sce3@reductions$pca@cell.embeddings |> dim()
+[1] 7851   50
+> sce3@reductions$pca@cell.embeddings[1:2, 1:2]
+                         PC_1     PC_2
+AAACCTGAGACTCGGA-1 -0.9566413 10.47306
+AAACCTGAGAGTACAT-1 -1.8801585 12.27510
+
+查看是否标准化过：
+细胞位置和原点的距离，不相等：
+	> t1=sce3@reductions$pca@cell.embeddings
+	> t1B=apply(t1, 2, function(x){ sum(x**2)})
+	> head(t1B)
+		 PC_1      PC_2      PC_3      PC_4      PC_5      PC_6 
+	1135412.6  717025.7  301294.7  244394.6  146650.6  107528.8
+	> summary(t1B)
+	   Min. 1st Qu.  Median    Mean 3rd Qu.    Max. 
+	  16961   20855   30705   83294   50139 1135413
+
+特征值系数列向量：
+	> t2=sce3@reductions$pca@feature.loadings
+	> tmp2=apply(t2, 2, function(x){ sum(x**2)})
+	> head(tmp2)
+	PC_1 PC_2 PC_3 PC_4 PC_5 PC_6 
+	   1    1    1    1    1    1 
+	> summary(tmp2)
+	Min. 1st Qu.  Median    Mean 3rd Qu.    Max. 
+	  1       1       1       1       1       1 
+
+
+(2) 尝试计算细胞的embed: raw_scale * rotate
+
+数据1：原始数据 scale 后
+	> raw_scale= sce3@assays$RNA@scale.data
+	> dim(raw_scale)
+	[1] 3000 7851
+	> raw_scale[1:2, 1:3]
+			   AAACCTGAGACTCGGA-1 AAACCTGAGAGTACAT-1 AAACCTGAGATATACG-1
+	AP006222.2        -0.04596848        -0.04596848        -0.04596848
+	LINC01128         -0.23770605        -0.23770605        -0.23770605
+
+数据2：旋转矩阵，也就是gene的系数
+	> rotate = sce3@reductions$pca@feature.loadings
+	> dim(rotate)
+	[1] 3000   50
+	> rotate[1:3, 1:2]
+				 PC_1          PC_2
+	HBB  -0.001253643  0.0067671960
+	MPO  -0.016032820 -0.0090887788
+	AHSP -0.001077801  0.0005758365
+
+计算细胞在新空间的位置：
+	> raw_scaleB=t(raw_scale)[, rownames(rotate)]
+
+	> dim(raw_scaleB)
+	[1] 7851 3000
+	> raw_scaleB[1:2, 1:3]
+							  HBB       MPO        AHSP
+	AAACCTGAGACTCGGA-1 -0.2325604 -0.126196 -0.07794607
+	AAACCTGAGAGTACAT-1 -0.2325604 -0.126196 -0.07794607
+
+	> cell.embed = raw_scaleB %*% rotate
+
+
+检查：
+	> dim(cell.embed)
+	[1] 7851   50
+	> cell.embed[1:3, 1:3]
+							 PC_1     PC_2       PC_3
+	AAACCTGAGACTCGGA-1 -0.9566413 10.47306 -3.6617474
+	AAACCTGAGAGTACAT-1 -1.8801585 12.27510 -1.0731617
+	AAACCTGAGATATACG-1 -3.0528516 12.64845 -0.2809475
+
+
+和R包的结果对比：一模一样
+	> sce3@reductions$pca@cell.embeddings |> dim()
+	[1] 7851   50
+	> sce3@reductions$pca@cell.embeddings[1:3, 1:3]
+							 PC_1     PC_2       PC_3
+	AAACCTGAGACTCGGA-1 -0.9566413 10.47306 -3.6617474
+	AAACCTGAGAGTACAT-1 -1.8801585 12.27510 -1.0731617
+	AAACCTGAGATATACG-1 -3.0528516 12.64845 -0.2809475
+#
+> all( abs(sce3@reductions$pca@cell.embeddings - cell.embed) < 1e-10 )
+[1] TRUE
+
+
+
+
+
+(2) 使用奇异值加权旋转矩阵: 旋转矩阵按列分别乘以奇异值
+获取奇异值：这是 d/sqrt(cellNum - 1) 的结果，等比缩放，可直接用
+	> sdev.svd = sce3@reductions$pca@stdev
+	> sdev.svd |> head()
+	[1] 12.026577  9.557241  6.195279  5.579701  4.322222  3.701073
+	> sdev.svd |> length()
+	[1] 50
+
+按列，旋转矩阵*奇异值
+	> dim(rotate)
+	[1] 3000   50
+	> rotate[1:2, 1:2]
+				PC_1         PC_2
+	HBB -0.001253643  0.006767196
+	MPO -0.016032820 -0.009088779
+
+	> rotate2= sweep(rotate, MARGIN = 2, STATS = sdev.svd, FUN = "*")
+	> rotate2[1:3, 1:2]
+				PC_1         PC_2
+	HBB  -0.01507703  0.064675721
+	MPO  -0.19281994 -0.086863646
+	AHSP -0.01296226  0.005503408
+
+计算cell在新空间的坐标：raw_scale * rotate
+	使用上文计算过的 raw_scaleB=t(raw_scale)[, rownames(rotate)]
+	> dim(raw_scaleB)
+	[1] 7851 3000
+	> raw_scaleB[1:2, 1:3]
+							  HBB       MPO        AHSP
+	AAACCTGAGACTCGGA-1 -0.2325604 -0.126196 -0.07794607
+	AAACCTGAGAGTACAT-1 -0.2325604 -0.126196 -0.07794607
+
+	> cell.embed2 = raw_scaleB %*% rotate2 #每行obs在新空间的位置
+	> cell.embed2 |> dim()
+	[1] 7851   50
+	> cell.embed2[1:2, 1:2]
+							PC_1     PC_2
+	AAACCTGAGACTCGGA-1 -11.50512 100.0936
+	AAACCTGAGAGTACAT-1 -22.61187 117.3161
+
+
+(3) 创建降维亚类，把新的cell embed 放回到原Seurat对象中
+	> sce3[["wPCA"]] <- CreateDimReducObject(embeddings = as.matrix(cell.embed2), key = "WPCA_")
+	Warning: No assay specified, setting assay as RNA by default.
+
+	> sce3@reductions|> names()
+	[1] "pca"               "umap.unintegrated" "wPCA"
+
+
+
+(4) 基于该PC的后续分析
+sce3 <- RunUMAP(sce3, reduction = "wPCA", dims = 1:50, reduction.key = "wpcaUMAP_", reduction.name = "wpca.umap")
+
+sce3 <- FindNeighbors(sce3, reduction = "wPCA", dims = 1:50, graph.name=c("wpcaknn", "wpcasnn"))
+sce3 <- FindClusters(sce3, resolution = 0.7, graph.name="wpcasnn")
+
+> table(sce3@meta.data$seurat_clusters)
+   0    1    2    3    4    5    6    7    8    9   10   11   12   13 
+1342  969  891  868  793  630  568  472  446  253  224  202  108   85
+
+
+可视化
+	pdf(paste0(outputRoot, keyword, "_01_1-res0.7.UMAP.pdf"), width=5, height=5)
+	DimPlot(sce3, reduction = "wpca.umap", group.by = c("seurat_clusters"), label=T) + ggtitle("weighted PCA 50: RNA")
+	dev.off()
+
+	pdf( paste0(outputRoot, keyword, "_01_1_Manual.marker.FeaturePlot2.pdf"), width=11.52, height=11.1)
+	FeaturePlot2(sce3, reduction = "wpca.umap", features =tmp, ncol=6, pt.size=0.5, raster=F)
+	dev.off()
+
+	更多marker
+	set.seed(42)
+	sce3.marker.sim = FindMarkersDIY2(sce3, "seurat_clusters", downsample = 150)
+	#
+	library(dplyr)
+	pdf( paste0(outputRoot, keyword, "_01_1_Manual.marker——Sim.FeaturePlot2.pdf"), width=20, height=5)
+	DotPlot(sce3, features =unique(c(tmp,
+		sce3.marker.sim %>% group_by(cluster) %>% top_n(n = 5, wt = avg_logFC) %>% pull(gene)
+	) ), cols = c("lightgrey", "red"), cluster.idents = T)+RotatedAxis()
+	dev.off()
+
+结论：似乎在UMAP上铺展的更开了！怎么评估使用加权PCA进行后续降维和分群效果是不是更好呢？
+
+
+
+
+(5) 无法分类的边缘小细胞团？
+
+
+
+
+(6) 随便加权，结果会怎么样？
+
+权重1：给出递增数组权重：
+	PC_weight=c(1:ncol(rotate))
+
+权重2: 随机权重
+	set.seed(42)
+	PC_weight=rnorm( ncol(rotate) )
+	PC_weight=abs(PC_weight)
+
+对PC加权：
+	rotate2_ = sweep(rotate, MARGIN = 2, STATS = PC_weight, FUN = "*")
+	cell.embed2_ = raw_scaleB %*% rotate2_
+
+	sce3[["wPCA"]] <- CreateDimReducObject(embeddings = as.matrix(cell.embed2_), key = "WPCA_")
+
+降维和分群：
+	sce3 <- RunUMAP(sce3, reduction = "wPCA", dims = 1:50, reduction.key = "wpcaUMAP_", reduction.name = "wpca.umap") #耗时1min
+
+	sce3 <- FindNeighbors(sce3, reduction = "wPCA", dims = 1:50, graph.name=c("wpcaknn", "wpcasnn"))
+	sce3 <- FindClusters(sce3, resolution = 0.7, graph.name="wpcasnn")
+
+
+可视化
+	pdf(paste0(outputRoot, keyword, "_01_2-res0.7.UMAP.pdf"), width=5, height=5)
+	DimPlot(sce3, reduction = "wpca.umap", group.by = c("seurat_clusters"), label=T) + ggtitle("weighted PCA 50: RNA")
+	dev.off()
+
+	pdf( paste0(outputRoot, keyword, "_01_2_Manual.marker.FeaturePlot2.pdf"), width=11.52, height=11.1)
+	FeaturePlot2(sce3, reduction = "wpca.umap", features =tmp, ncol=6, pt.size=0.2, raster=F)
+	dev.off()
+
+	更多marker
+	set.seed(42)
+	sce3.marker.sim = FindMarkersDIY2(sce3, "seurat_clusters", downsample = 150)
+	#
+	library(dplyr)
+	pdf( paste0(outputRoot, keyword, "_01_2_Manual.marker——Sim.FeaturePlot2.pdf"), width=20, height=5)
+	DotPlot(sce3, features =unique(c(tmp,
+		sce3.marker.sim %>% group_by(cluster) %>% top_n(n = 5, wt = avg_logFC) %>% pull(gene)
+	) ), cols = c("lightgrey", "red"), cluster.idents = T)+RotatedAxis()
+	dev.off()
+
+
+
+
+
+
+(10) 写成函数形式
+* 默认流程：假设做过了PCA，最好设定多做一些PC
+* 对PC进行加权，并插入到Seurat的 wPCA slot 中
+* 默认流程：后续分析
+
+i)
+	sce3 <- RunPCA(sce3, npcs = 100)
+
+	pdf(paste0(outputRoot, keyword, "_01_2.PCA.pdf"), width=6, height=4)
+	ElbowPlot(sce3, ndims = 100)
+	dev.off()
+
+
+ii) 
+UseWeightedPCA=function(sce, PC_weight="d"){
+	#1. 旋转矩阵，也就是gene的系数
+	rotate = sce@reductions$pca@feature.loadings
+
+	#2. 原始数据 scale 后
+	raw_scale= sce@assays$RNA@scale.data
+	raw_scaleB=t(raw_scale)[, rownames(rotate)]
+
+	#3. 奇异值：A=u.d.v^T的 d / sqrt(nCell - 1)，成比例代替奇异值
+	sdev.svd = sce@reductions$pca@stdev
+
+	#4.权重，默认为d时，就是使用svd分级的奇异值
+	if(PC_weight=="d"){
+		nCell=ncol(sce)
+		PC_weight=sdev.svd * sqrt(nCell-1)
+	}else if(is.null(PC_weight)){
+		#权重2: 随机权重
+		set.seed(42)
+		PC_weight=rnorm( ncol(rotate) )
+		PC_weight=abs(PC_weight)		
+	}
+
+	#5. 对PC加权：
+	rotate2 = sweep(rotate, MARGIN = 2, STATS = PC_weight, FUN = "*")
+	cell.embed2 = raw_scaleB %*% rotate2
+	
+	#6. 加权后的PC放到Suerat的 wPCA slot 中
+	sce[["wPCA"]] <- CreateDimReducObject(embeddings = as.matrix(cell.embed2), key = "WPCA_")
+	
+	message("Then Run UMAP & Cell cluster:")
+	message('sce <- RunUMAP(sce, reduction = "wPCA", dims = 1:50, reduction.key = "wpcaUMAP_", reduction.name = "wpca.umap")')
+	message('sce <- FindNeighbors(sce, reduction = "wPCA", dims = 1:50, graph.name=c("wpcaknn", "wpcasnn"))')
+	message('sce <- FindClusters(sce, resolution = 0.7, graph.name="wpcasnn")')
+	return(sce)
+}
+if(0){
+	sce3=UseWeightedPCA(sce3)
+}
+
+
+
+iii) 手动降维和分群：
+	sce3 <- RunUMAP(sce3, reduction = "wPCA", dims = 1:50, reduction.key = "wpcaUMAP_", reduction.name = "wpca.umap") #耗时1min
+
+	sce3 <- FindNeighbors(sce3, reduction = "wPCA", dims = 1:50, graph.name=c("wpcaknn", "wpcasnn"))
+	sce3 <- FindClusters(sce3, resolution = 0.7, graph.name="wpcasnn")
+或者使用函数：
+	AnalysisOnWPCA=function(seurat_obj, reduction="wPCA", dims = 1:50, resolution = 0.5){	
+		seurat_obj <- RunUMAP(seurat_obj, reduction = reduction, dims = dims, reduction.key = "wpcaUMAP_", reduction.name = "wpca.umap") #耗时1min
+		seurat_obj <- FindNeighbors(seurat_obj, reduction = reduction, dims = dims, graph.name=c("wpcaknn", "wpcasnn"))
+		seurat_obj <- FindClusters(seurat_obj, resolution = resolution, graph.name="wpcasnn")
+		return(seurat_obj)
+	}
+	if(0){
+		sce3=AnalysisOnWPCA(sce3, dims=1:100, resolution=0.7)
+	}
+
+iv) 可视化
+DimPlot(sce3, reduction = "wpca.umap", group.by = c("seurat_clusters"), label=T) + ggtitle("weighted PCA 50: RNA")
+
+
+
+
+
+
+
+
+4.坏消息：已经有人做了：现在是2024年12月，文章是2024年1月发表的：
+
+(1) google: eigen value weighted PCA single cell
+	A fast, scalable and versatile tool for analysis of single-cell ...
+	Nature
+	https://www.nature.com › nature methods › articles
+	by K Zhang · 2024 · Cited by 27 — In this approach, each eigenvector is weighted by the square root of its corresponding eigenvalue, and these weighted eigenvectors are then used ...
+
+A fast, scalable and versatile tool for analysis of single-cell omics data
+https://pubmed.ncbi.nlm.nih.gov/38191932/
+https://www.nature.com/articles/s41592-023-02139-9
+
+Eigenvector selection in spectral embedding
+Not all eigenvectors produced by spectral embedding are informative and relevant for clustering tasks. Selecting appropriate eigenvectors is essential, as using uninformative or irrelevant ones can lead to suboptimal clustering results. We found that the widely used elbow method for determining the number of eigenvectors is not consistently reliable in practice. To identify relevant eigenvectors, we propose a simple heuristic based on the eigenvalues of the graph Laplacian matrix. In this approach, each eigenvector is weighted by the square root of its corresponding eigenvalue, and these weighted eigenvectors are then used for further analyses.
+
+
+(2) 这一篇在讲多组学整合，做单细胞转录组的似乎还没有
+//todo
+
+
+(3) 更多讨论
+* (8年前，应该是 2016年)
+https://stackoverflow.com/questions/34388588/can-i-use-the-eigenvectors-values-as-columns-weight-for-a-machine-learning-model
+
+* (5年前，大概 2019)
+https://stats.stackexchange.com/questions/404731/eigenvalues-as-weighting-factors-for-projection-results-on-corresponding-eigenve
+	Note that we utilize the eigenvalues as weighting factors for projection results on corresponding eigenvectors.
+	So what is the difference between standard PCA projection and weighting by eigenvalues?
+
+
+* 2011: 还有使用相关系数，而不是Pearson相关系数：
+https://www.researchgate.net/publication/47755752_A_Weighted_Principal_Component_Analysis_and_Its_Application_to_Gene_Expression_Data
+In this context, we propose the use of a new correlation coefficient as an alternative to Pearson's. This leads to a so-called weighted PCA (WPCA).
+
+
+* 2023 有人提出一个比PCA好的方法：
+SCA: recovering single-cell heterogeneity through information-based dimensionality reduction
+https://genomebiology.biomedcentral.com/articles/10.1186/s13059-023-02998-7
+
+
+
+
+
+
+
+
+========================================
+Seurat 多组学整合 RPCA //todo
+----------------------------------------
+Fast integration using reciprocal PCA (RPCA)
+	https://satijalab.org/seurat/articles/integration_rpca
+
+
+1. transform 后的 RPCA 整合
+
+## (1) sctransform  ====
+MM.list <- SplitObject(sce1_trf, split.by = "sample")
+# Perform integration with SCTransform-normalized datasets
+# MM.list <- lapply(X = MM.list, FUN = SCTransform, method = "glmGamPoi")
+# Please install the glmGamPoi package. See https://github.com/const-ae/glmGamPoi for details.
+MM.list <- lapply(X = MM.list, FUN = SCTransform)
+
+## (2) rpca ====
+features <- SelectIntegrationFeatures(object.list = MM.list, nfeatures = 3000) #选择高变基因
+MM.list <- PrepSCTIntegration(object.list = MM.list, anchor.features = features) #准备整合，设置anchor
+
+MM.list <- lapply(X = MM.list, FUN = RunPCA, features = features) #做PCA
+anchors <- FindIntegrationAnchors(object.list = MM.list, normalization.method = "SCT", 
+                                  anchor.features = features, dims = 1:30, reduction = "rpca") #rpca 寻找 anchors
+
+MM <- IntegrateData(anchorset = anchors, normalization.method = "SCT", dims = 1:30) # 整合
+
+DefaultAssay(MM) <- "integrated"
+
+
+### save ====
+saveRDS(MM, paste0(outputRoot, keyword, "_04_1_SCTransform.rpca.Seurat.Rds"))
+
+
+
+### PCA & UMAP ====
+
+## Perform PCA
+MM <- RunPCA(MM)
+ElbowPlot(MM, ndims = 50)
+
+## UMAP visualization
+MM <- RunUMAP(MM, dims = 1:30)
+
+
+
+
+
+
+
+
+
+
+
+
+
+========================================
+Seurat v4 多组学整合 WNN (加权最近邻)：Using Seurat with multimodal data: scRNA-seq & 蛋白组 CITE-seq （分别分析，再合并和整合）
+----------------------------------------
+1. 教程
+https://satijalab.org/seurat/articles/multimodal_vignette
+
+Weighted Nearest Neighbors (WNN) approach
+	https://www.cell.com/cell/fulltext/S0092-8674(21)00583-3
+
+
+
+(2) 多模式单细胞数据集的 WNN 工作流
+https://satijalab.org/seurat/articles/weighted_nearest_neighbor_analysis.html
+
+包括三个步骤
+* 每个单独模式数据的独立预处理和降维
+* 学习细胞特定模式的"权重"，并构建一个整合模式的 WNN 图形
+* 基于WNN 图的下游分析（可视化、聚类等）
+
+
+(3) WNN 算法细节
+Seurat4版本的WNN的运行与原理与softmax https://www.jianshu.com/p/513ab4a19276
+
+Seurat 4 R包源码解析 B1: WNN多组学/多模态整合 FindMultiModalNeighbors()
+	https://zhuanlan.zhihu.com/p/2764367833
+
+
+
+
+
+
+
+
+
+
+2. 代码实现
+
+两个对象分别做分析后：合并后细胞数不变
+=> 是同一个细胞的不同多组学数据的整合。
+
+## (1) to one object ====
+scObj=scObj_RNA
+
+
+
+# Aim: 修改细胞名字：short names, change to long names.
+head(scObj_RNA@meta.data, n=2) #use short
+scObj=scObj_RNA
+
+cell.names = scObj@meta.data$cid #long: UMI with hour and Rep
+names(cell.names) = scObj@meta.data$seurat_cid #short: UMI with only number
+head(cell.names) #value 是新名字，names()是老名字
+
+> c("old"="new", 'old2'='new2') # 格式：old cell name = new cell name
+   old   old2 
+ "new" "new2" 
+
+scObj=RenameCells(scObj, new.names = cell.names)
+head(scObj@meta.data) #use long
+
+
+
+
+
+# 1) set DPAU assay
+DPAU_assay=scObj_DPAU@assays$RNA
+DPAU_assay@key="dpau_"
+scObj[["DPAU"]] <- DPAU_assay
+DefaultAssay(scObj)
+
+# 2) set DPAU pca
+DPAU_pca=scObj_DPAU@reductions$pca
+DPAU_pca@assay.used="DPAU"
+scObj@reductions$pca2=DPAU_pca
+
+
+
+## (2) [WNN] in same cell ====
+
+# Identify multimodal neighbors. These will be stored in the neighbors slot, 
+# and can be accessed using bm[['weighted.nn']]
+# The WNN graph can be accessed at bm[["wknn"]], 
+# and the SNN graph used for clustering at bm[["wsnn"]]
+# Cell-specific modality weights can be accessed at bm$RNA.weight
+scObj <- FindMultiModalNeighbors(
+  scObj, 
+  reduction.list = list("pca", "pca2"), 
+  dims.list = list(1:30, 1:10), 
+  modality.weight.name = "RNA.weight"
+) #RNA.weight DPAU.weight
+scObj #3066
+
+#Warning messages:
+#1: Cannot add objects with duplicate keys (offending key: normPC_), setting key to 'pca2.norm_' 
+#2: In FindMultiModalNeighbors(scObj, reduction.list = list("pca", "pca2"),  :
+#   The number of provided modality.weight.name is not equal to the number of modalities. RNA.weight DPAU.weight are used to store the modality weights
+
+
+scObj <- RunUMAP(scObj, 
+                 nn.name="weighted.nn", 
+                 reduction.name = "wnn.umap",
+                 reduction.key = "wnnUMAP_",
+                 verbose = T)
+scObj = FindClusters(scObj, graph.name = "wsnn", algorithm = 3, resolution = 1) #0.5
+
+
+## (3) Dim plot ====
+pdf(paste0(outputRoot, keyword, "_2_3.UMAP.DimPlot.pdf"), width = 3.8, height = 3.4)
+DimPlot(scObj, reduction = "wnn.umap", label=T, #label.size = 2.5,
+        repel = F)+  #NoLegend()+
+  ggtitle("WNN: DPAU+RNA");
+dev.off()
+
+
+
+
+
+
+3. 辅助功能
+
+(1) 高亮显示一个亚群
+# highlight one cluster
+DimPlot(scObj, cells.highlight = Cells( subset(scObj, seurat_clusters=="5") ),
+        #group.by="wsnn_res.0.5", 
+        reduction = "wnn.umap")
+#
+
+
+
+
+
+
+ref:
+https://www.jianshu.com/p/b567188b3984
+
+
+
+
+
+========================================
+基于多组学聚类R包 SNFtool：Similarity Network Fusion //todo
+----------------------------------------
+
+
+
+
+
+
+
+
+
+
+
+Ref:
+http://th.archive.ubuntu.com/cran/web/packages/SNFtool/
+https://www.rdocumentation.org/packages/SNFtool/versions/2.3.1
+https://github.com/maxconway/SNFtool
+R语言之基于多组学的肿瘤亚群聚类分析 https://cloud.tencent.com/developer/article/2171119
+
+
+
+
+
+
+
+========================================
+多组学的例子：文献阅读 //todo
+----------------------------------------
+1.
+https://pubmed.ncbi.nlm.nih.gov/35288753/  Fig3A
+
+
+
+
+
+
+
+
+
+
+========================================
+|-- 基于Signac的motif分析流程：从JASPAR数据库中获取motif位置频率矩阵列表 //todo
+----------------------------------------
+1.
+在基因组学和生物信息学中，motif是指DNA、RNA或蛋白质序列中具有特定生物学功能的、保守的短序列模式。在scATAC-seq或染色质可及性分析 中，motif通常指转录因子能够特异性结合的DNA序列模式。
+
+由于不同细胞中基因的结合位点序列可能有差异，因此不会用一个固定序列来描述，而是用一个概率模型来表示每个位置上出现的A/T/C/G碱基的可能性。目前表示motif会使用两个参数，分别是PFM和PWM，PFM是指Position Frequency Matrix（位置频率矩阵），其用于记录在已知结合位点中，每个位置上A/T/C/G出现的实际次数，PWM是指Position Weight Matrix（位置权重矩阵），其由PFM转换而来，用对数似然比表示每个碱基在该位置的重要性，用于打分新序列是否可能是结合位点。
+
+
+2.
+
+
+
+
+
+
+
+
+
+Ref:
+https://mp.weixin.qq.com/s/Qt_DKC7JXE8Pv-dLkCBGSQ
+
+
+
+
+
+
+========================================
+Seurat 4 整合分析 CITE 数据：表达数据 + ADT = CITE-seq技术  WNN 标准流程
+----------------------------------------
+
+Cite-seq 抗体BioLegend公司有，找达科为购买～服务国内大测序服务商都可以接
+
+
+1. 数据读取
+# 1. load data ----
+library(rhdf5)
+#
+dyn.load('/home/wangjl/.local/lib/libhdf5_hl.so.100')
+library(hdf5r)
+#data <- h5read("your_file.h5", "/path/to/dataset")
+
+library(Seurat)
+# (1). load counts of RNA and protein
+dat=Read10X_h5("/datapool/wangjl/others/hanlu/raw/GSE210079/GSM6459763_32-3mo_raw_feature_bc_matrix.h5")
+str(dat)
+names(dat) #"Gene Expression"  "Antibody Capture" #两个矩阵：RNA和 55个蛋白
+str(dat$`Gene Expression`)
+
+# make sure cell id are the same
+all.equal(colnames(dat[["Gene Expression"]]), colnames(dat[["Antibody Capture"]])) #T
+
+# (2). use RNA data to create Obj
+scRNA=CreateSeuratObject(counts = dat$`Gene Expression`, project = "A1")
+
+# (3). add protein mat
+# https://zhuanlan.zhihu.com/p/567253121
+adt_assay <- CreateAssayObject(counts = dat$`Antibody Capture`)
+scRNA[["ADT"]] <- adt_assay
+
+# (4). check
+# protein names
+rownames(scRNA[["ADT"]])
+
+# assays
+Assays(scRNA) #"RNA" "ADT"
+
+# check default assay, or change default assay
+DefaultAssay(scRNA) #"RNA"
+
+
+(1) 如果我们分别有两个文件，分别提供scRNA-seq的数据以及ADT的数据，那么我们可以分别读取然后对S4对象进行添加
+#counts <- CreateSeuratObject(counts = counts)
+#adt_assay <- CreateAssayObject(counts = adt)
+#counts[["ADT"]] <- adt_assay
+
+但是尽管读取是一起读取并创建了counts对象，但是我们后续创建Seurat对象的时候是需要分别读取的
+scRNA <- CreateSeuratObject(counts[["Gene Expression"]])
+adt <- CreateAssayObject(counts[["Antibody Capture"]])
+all.equal(colnames(counts[["Gene Expression"]]), colnames(counts[["Antibody Capture"]]))
+scRNA[["ADT"]] <- adt
+Assays(scRNA)
+#[1] "RNA" "ADT"
+
+
+
+
+2. scRNA-seq数据分析
+#然后接下来执行scRNA-seq的标准流程
+scRNA[["percent.mt"]] <- PercentageFeatureSet(scRNA, pattern = "^MT-")
+VlnPlot(scRNA, features = c("nFeature_RNA", "nCount_RNA", "percent.mt"), ncol = 3)
+scRNA <- subset(scRNA, subset = nFeature_RNA > 300 & nFeature_RNA < 5000 & percent.mt < 20)
+
+scRNA <- NormalizeData(scRNA)
+scRNA <- FindVariableFeatures(scRNA,nfeatures = 2000)
+scRNA <- ScaleData(scRNA)
+scRNA <- RunPCA(scRNA,dims = 1:20)
+
+scRNA <- FindNeighbors(scRNA, dims = 1:20)
+scRNA <- FindClusters(scRNA, resolution = 0.9, verbose = FALSE)
+scRNA <- RunUMAP(scRNA, dims = 1:20)
+DimPlot(scRNA, label = TRUE)
+
+#寻找差异基因
+scRNA.markers <- FindAllMarkers(scRNA, only.pos = TRUE, min.pct = 0.25, logfc.threshold = 0.25)
+scRNA.markers %>%
+ group_by(cluster) %>%
+ slice_max(n = 10, order_by = avg_log2FC)
+
+
+
+
+3.ADT数据
+For protein integration, you can use CLR to normalize protein data,
+NormalizeData(bm, normalization.method = 'CLR', margin = 2), and follow our integration vignette to integrate ADT data. Reciprocal PCA is suggested to integrate ADT data.
+
+
+然后scRNA-seq的处理就先暂时结束，我们接下来继续处理ADT数据的部分：
+# Normalize ADT data
+DefaultAssay(scRNA) <- "ADT"
+scRNA <- NormalizeData(scRNA, normalization.method = "CLR", margin = 2)
+
+#visualize
+rownames(scRNA[["ADT"]])
+p1 <- FeaturePlot(scRNA, "CD45-TotalSeqB", cols = c("lightgrey", "darkgreen")) + ggtitle("ADT")
+DefaultAssay(scRNA) <- "RNA"
+p2 <- DimPlot(scRNA, label = TRUE)+ggtitle("RNA")
+p1|p2
+
+这里我们需要知道，作者通过CD45蛋白的表达来区分免疫细胞和非免疫细胞，其实我们需要知道CITE-seq之所以要引入蛋白的表达量（ADT）其实就是为了帮助我们更好的对细胞亚群进行注释同时也可以更加精准的帮助我们划分细胞亚群，找到罕见的细胞亚群
+
+
+
+
+
+4. 数据整合
+然后上述流程只不过依旧是单打单的行为，我们接下来要真正尝试去把两种数据结合起来，为此我们需要使用到WNN算法，这个算法就可以把多模态的数据整合起来
+
+#设置并行加快运行速度
+library(future)
+plan("multiprocess", workers =4)#设置线程
+options(future.globals.maxSize = 2000 * 1024^2)
+
+scRNA_WNN <- CreateSeuratObject(counts[["Gene Expression"]])
+adt_WNN <- CreateAssayObject(counts[["Antibody Capture"]])
+# add this assay to the previously created Seurat object
+scRNA_WNN[["ADT"]] <- adt_WNN
+
+DefaultAssay(scRNA_WNN) <- 'RNA'
+scRNA_WNN[["percent.mt"]] <- PercentageFeatureSet(scRNA_WNN, pattern = "^MT-")
+scRNA_WNN <- subset(scRNA_WNN, subset = nFeature_RNA > 300 & nFeature_RNA < 5000 & percent.mt < 20)
+scRNA_WNN <- NormalizeData(scRNA_WNN) %>% FindVariableFeatures() %>% ScaleData() %>% RunPCA()
+
+DefaultAssay(scRNA_WNN) <- 'ADT'
+VariableFeatures(scRNA_WNN) <- rownames(scRNA_WNN[["ADT"]])
+scRNA_WNN <- NormalizeData(scRNA_WNN, normalization.method = 'CLR', margin = 2) %>%
+ ScaleData() %>% RunPCA(reduction.name = 'apca')
+
+这里需要给各位小伙伴解释一下reduction.name参数为什么需要添加，RunPCA函数执行PCA结果，然后通过reduction.name参数我们可以设置结果的名称，默认是叫做PCA，但是因为我们这里是多模态数据，而且我们是针对同一个S4对象，所以我们需要添加不同的名称加以区分
+
+上述代码其实就是在做一件事情：对于每个细胞，根据 RNA 和蛋白质相似性的加权组合计算数据集中最近的邻居（划分亚群），后续我们可以指定每种模式的维度(类似于指定 scRNA-seq 聚类中包含的 PC 数量) ，但是实际上PC数量的选择对结果的影响较小
+
+
+scRNA_WNN <- FindMultiModalNeighbors(
+ scRNA_WNN, reduction.list = list("pca", "apca"),
+ dims.list = list(1:20, 1:10), modality.weight.name = "RNA.weight"
+)
+#基于RNA和蛋白质数据的加权组合创建数据的数据进行UMAP可视化
+scRNA_WNN <- RunUMAP(scRNA_WNN, nn.name = "weighted.nn", reduction.name = "wnn.umap", reduction.key = "wnnUMAP_")
+scRNA_WNN <- FindClusters(scRNA_WNN, graph.name = "wsnn", algorithm = 1, resolution = 0.6, verbose = FALSE)
+p1 <- DimPlot(scRNA_WNN, reduction = 'wnn.umap', label = TRUE, repel = TRUE, label.size = 2.5)
+
+#然后我们比较一下，单纯通过mRNA和以及WNN方法形成的细胞聚类图
+p1 <- DimPlot(scRNA_WNN, reduction = 'wnn.umap', label = TRUE, repel = TRUE, label.size = 2.5)+ggtitle("WNN")
+p2 <- DimPlot(scRNA,label = TRUE) + ggtitle("RNA")
+p1|p2
+#为了保证因素一致，我们调节resolution参数两者是一致的
+
+CITE-seq技术确实可以帮助我们发现罕见细胞亚群，而且因为额外多了一个维度的表达信息，我们可以更加全面的对亚群进行定义，也就是细胞注释
+
+
+
+
+
+
+
+5. 多样本怎么整合？ CITE-seq how to integrate multiple samples?
+* 先整合2模态数据，再合并样本？
+* 还是先合并样本，再整合进两个模态？
+
+(1) 每个模态分别整合
+https://github.com/satijalab/seurat/issues/3890
+I would suggest you integrate ADT and RNA in two different objects first. Then, we can create new assays in the integrated RNA object, and add adt related assays there.
+
+integrated_seurat_rna[["IADT"]] <- integrated_seurat_adt[["integrated"]]
+integrated_seurat_rna[["pca.adt"]] <- integrated_seurat_adt[["pca"]]
+integrated_seurat_rna[["umap.adt"]] <- integrated_seurat_adt[["umap"]]
+
+You can follow log normalization integration workflow for the CLR normalized ADT data.
+
+
+(2) 
+
+
+
+
+
+
+
+
+ref:
+https://zhuanlan.zhihu.com/p/567253121
+https://satijalab.org/seurat/articles/multimodal_vignette.html
+
+
+========================================
+TotalSeq^TM, Total-Seq 同时检测单细胞mRNA和表面抗原
+----------------------------------------
+1.TotalSeq™抗体就是可以在单细胞水平同时检测200+的蛋白表达情况。
+https://mp.weixin.qq.com/s?__biz=MzU5MDE0MjIxOA==&mid=2247486581&idx=1&sn=6ceaa4d62e87795827242687abfa411c
+
+参考文献：都是COVID
+	Sacco et al. Nature Medicine. Feb 2022
+	Su Y, et al. Cell. 185: 885-895. CC BY 4.0.
+	Liu C. et al. Cell. April 2021.
+
+
+
+2. Total-seq的前世今生——前世：CITE-seq 
+
+10x公司于2019年初更新了单细胞测序的试剂盒，将细胞表面蛋白测序所需要的引物纳入现有的试剂盒中，称之为Total-seq。今天，我们就来解锁一下Total-seq的前世今生。
+
+(1) 分子设计
+我们将抗体与寡核苷酸结合，进行了如下设计：
+	1）能够被基于寡聚dT建库的RNA文库所捕获；
+	2）含有用于区分抗体条形码序列；
+	3）能够进行后续的PCR特异扩增。
+	分子结构: 抗体-二硫键-5'PCR Handle - Antibody barcode - polyA 3'
+
+我们使用常用的链霉素-生物素亲和反应将抗体与寡核苷酸的5’端连接起来，同时还包含了一个二硫键，于是在还原条件下寡核苷酸便能够从抗体上释放出来。
+
+(2) 建库步骤
+首先，将抗体-寡核苷酸复合体于单细胞悬液孵育，孵育条件与用流式细胞仪的染色步骤类似。
+之后，洗涤这些细胞，以去除那些未能结合的抗体；样本即可用于做scRNA-seq。
+
+本研究中，我们使用用于Drop-seq及10X Genomics的微流控仪器，将细胞包裹在纳米级的水滴中（Fig 1b）。之后，细胞在水滴中裂解，mRNA和与抗体结合的寡核苷酸通过它们3’端的polyA尾巴，同时与含有polyT的微珠发生退火而结合在一起。在反转录时，与微珠结合的一段特殊的条形码序列能够区分来自于不同细胞的mRNA和与抗体结合的寡核苷酸序列。而扩增了的来源于抗体的序列（ADTs）和cDNA分子能够通过大小区分开，并将其构建为独立的Illumina测序文库（Fig1 b）。
+
+(3) 测序
+需要注意的是，两个文库类型是可以同时进行测序的，但考虑到测序深度问题，由于它们是单独构建的，因此可以将它们合并在单一泳道中并调整它们的相对比例，以确保每个文库都能获得适当的测序深度。
+
+
+
+
+(4) CITE-seq后续发展如何呢？还有哪些新的应用呢？Total-seq又是怎么运作的呢？敬请期待下回分解……
+
+另外，你知道吗？Total-seq还有一个新应用，即可以将不同的样本做上标记，作为一个样本进行scRNA-seq，既节约了费用，又做了多个样本的scRNA-seq，方便后续试验分析。这么高大上的试验，叫做Cell-hashing。有没有迫不及待要开始一段单细胞表面蛋白的新试验之旅了呢？欢迎咨询晶能生物当地销售~
+
+
+
+
+参考文献：
+1. Stoeckius M, Hafemeister C, Stephenson W, et al. Large-scale simultaneous measurement of epitopes and tranomes in single cells[J]. Nature methods, 2017, 14(9): 865.
+
+2. Shahi P, Kim SC, Haliburton JR, Gartner ZJ, Abate AR. Abseq: Ultrahigh-throughput single cell protein profiling with droplet microfluidic barcoding. Scientific Reports. 2017; 7:44447. [PubMed: 28290550]
+
+
+
+========================================
+----------------------------------------
+
+
+
+========================================
+----------------------------------------
+
+
+
+
+
+
+========================================
+----------------------------------------
+
+
+
+========================================
+----------------------------------------
+
+
+
+
+
+
+========================================
+----------------------------------------
+
+
+
+========================================
+----------------------------------------
+
+
+

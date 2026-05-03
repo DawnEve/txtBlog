@@ -881,7 +881,6 @@ $ ps -aux|grep nginx
 
 refer:
 nginx的配置：http://www.cnblogs.com/t-road/p/6738888.html
-agetouch blog:http://agetouch.blog.163.com/blog/static/228535090201791881025259/
 
 
 
@@ -987,6 +986,188 @@ $ python hello.py
  * Debug mode: off
  * Running on http://192.168.2.120:8000/ (Press CTRL+C to quit)
 #
+
+
+
+========================================
+|-- [彻底解决 cors 问题！] nginx 端口转发: 解决不同域名或者端口的CORS问题
+----------------------------------------
+
+1.问题描述
+我在:10000/sys2.html端口有一个igv浏览器，我不想让用户知道该端口，而是统一通过:9003/api2/igv访问，该怎么设置？
+
+解决办法:
+	flask端口改为 9002
+	使用nginx监听 9003 端口，对不同请求，转发给不同服务
+
+
+
+2.设置过程
+用户访问：
+	http://s3.biomooc.com:9003/api2/igv
+实际由 Nginx 转发到：
+	http://s3.biomooc.com:10000/list/sys2.html
+
+(1)设置
+@s3$ sudo vim /etc/nginx/sites-enabled/IGV9002
+server {
+    listen 9003;
+	listen [::]:9003;
+
+    server_name 192.168.1.3;
+	
+	location = /api2/igv {
+		proxy_pass http://127.0.0.1:10000/list/sys2.html;
+		
+		proxy_set_header Host $host;
+		proxy_set_header X-Real-IP $remote_addr;
+		proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+	}
+
+	location /api2/igv {
+		proxy_pass http://127.0.0.1:10000/list/;
+		
+		proxy_set_header Host $host;
+		proxy_set_header X-Real-IP $remote_addr;
+	}
+	
+	# 3. 你的其他 Flask 应用规则保持不变
+    location / {
+        proxy_pass http://192.168.1.3:9002;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+    }
+}
+
+重启服务
+$ sudo service nginx restart
+
+
+访问：
+	http://s3.biomooc.com:8002/api2/igv
+实际返回：
+	http://127.0.0.1:10000/sys2.html
+
+效果：
+	用户访问        	实际
+	/api2/igv        	/sys2.html
+	/api2/igv/js/a.js	/js/a.js
+
+
+(2)特别注意
+<script src="/js/a.js">
+	实际是: http://s3.biomooc.com:8002/js/a.js
+	而不是: /api2/igv/js/a.js
+
+	设置 <base href="/api2/igv/">
+	才能指向资源 /api2/igv/js/a.js
+
+
+(3)优点
+s3.biomooc.com:9003
+        │
+        ▼
+	Nginx
+        ├── /api2/* → Flask API
+        └── /api2/igv/* → 127.0.0.1:10000
+
+优点：
+	无跨域
+	cookie 正常
+	session 正常
+	隐藏 10000
+	URL 干净
+
+
+访问:
+http://192.168.1.3:9003/api2/igv?genome=hg19&bam=http%3A%2F%2F192.168.1.5%3A8888%2Ffile%2FNGS%2F2026%E5%B7%B2%E5%88%86%E6%9E%90%E6%95%B0%E6%8D%AE%2FRTT98-26_bqsr.bam%2Chttp%3A%2F%2F192.168.1.5%3A8888%2Ffile%2FNGS%2F2026%E5%B7%B2%E5%88%86%E6%9E%90%E6%95%B0%E6%8D%AE%2FRTT97-26_bqsr.bam&id=%2F2026%E5%B7%B2%E5%88%86%E6%9E%90%E6%95%B0%E6%8D%AE%2FRTT98-26&locus=chr2%253A234526871
+
+
+
+========================================
+|-- nginx 默认最大post文件限制1Mb，主动设置大一些: client_max_body_size 10M;
+----------------------------------------
+1.关键设置是:
+client_max_body_size
+
+(1)检查是否设置过
+$ grep client_max_body_size /etc/nginx/nginx.conf /etc/nginx/conf.d/* /etc/nginx/sites-enabled/* /etc/nginx/sites-available/*
+没任何输出，说明配置里没显式设置该项，那 Nginx 就是使用的默认值 1M，这极有可能就是问题所在
+
+(2)设置
+在 http、server 或 location 块中添加或修改 client_max_body_size 指令。推荐在 server 块中设置，这样只影响当前站点
+$ sudo vim /etc/nginx/sites-enabled/IGV8002
+
+server {
+    listen 80;
+    server_name example.com; # 你的域名
+
+    # 在这里设置，例如允许post文件大小 10M
+    client_max_body_size 10M;
+
+    location / {
+        # proxy_pass http://你的flask应用地址; # 你的Flask应用地址
+        # ... 其他代理配置
+    }
+}
+
+
+测试并重载配置：
+# 1. 测试配置文件语法是否正确
+$ sudo nginx -t
+
+# 2. 如果测试成功，平滑重载 Nginx 使配置生效
+$ sudo systemctl reload nginx
+# 或者 sudo nginx -s reload
+
+查状态:
+$ service nginx status
+
+
+
+
+
+========================================
+|-- nginx 转发的flask服务，怎么让后台拿到用户真实IP，而不是 127.0.0.1 ?
+----------------------------------------
+需要两步设置:
+- nginx 转发真实IP
+- flask 接收
+
+1.配置 Nginx 传递真实 IP
+
+$ sudo vim /etc/nginx/sites-enabled/IGV8002
+location / {
+    proxy_pass http://你的flask应用地址:端口;  # 例如 http://127.0.0.1:5000
+    proxy_set_header Host $host;
+    
+    # 添加下面这两行（非常重要）
+	# 转发真实IP
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+}
+
+解释:
+	X-Real-IP：直接传递用户的真实 IP。
+	X-Forwarded-For：如果请求经过了多层代理，这个头会记录整个代理链的 IP，Flask 应用的真实 IP 通常是第一个。
+
+重新加载服务:
+	sudo nginx -t  # 测试语法
+	sudo systemctl reload nginx  # 重载配置
+
+* 在每个 location 中都设置。
+
+
+
+
+2.Flask 加：ProxyFix(app.wsgi_app, x_for=1)
+
+# Werkzeug 用的是 remote_addr，而真实 IP 在 X-Forwarded-For，需要用 ProxyFix 映射回来。
+
+from werkzeug.middleware.proxy_fix import ProxyFix
+app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1)
+
+
 
 
 
@@ -3218,7 +3399,84 @@ $ pip install shadowsocks
 
 
 ========================================
+nginx 支持 CORS, Range
 ----------------------------------------
+1. 使用 nginx 提供 bam 文件
+- 急速加载: 支持 Range 头
+- 支持其他端口和子域名页面加载: CORS
+
+完整使用实例见: NGS::本地生信软件(可视化)/本地IGV加载远程bam
+
+(1)配置文件
+$ cat soft/nginx/nginx.conf 
+events {}
+
+http {
+    sendfile on;
+    tcp_nopush on;
+    aio threads;
+    directio 512k;
+    # 在 http、server 或 location 块中添加，解决中文乱码
+    charset utf-8;
+
+    server {
+        listen 8888;
+        server_name _;
+
+        location /file/ {
+            alias /results/;
+            autoindex on;
+            add_header Accept-Ranges bytes;
+
+            add_header Access-Control-Allow-Origin * always;
+            add_header Access-Control-Allow-Methods "GET, OPTIONS" always;
+            add_header Access-Control-Allow-Headers "Range" always;
+            add_header Access-Control-Expose-Headers "Content-Length, Content-Range" always;
+            
+            # 处理预检请求
+            if ($request_method = OPTIONS) {
+                return 204;
+            }
+
+            types {
+                application/octet-stream bam bai bw bigwig;
+            }
+        }
+    }
+}
+
+
+(2)启动服务
+$ docker images
+REPOSITORY   TAG         IMAGE ID       CREATED       SIZE
+nginx        1.15.10     2bcb04bdb83f   6 years ago   109MB
+
+
+$ docker run -d \
+  --name nginx_for_bam \
+  -p 8888:8888 \
+  -v /results/:/results:ro \
+  -v /home/wangjl/soft/nginx/nginx.conf:/etc/nginx/nginx.conf:ro \
+  --rm \
+  nginx:1.15.10
+
+先不用这个:
+  --restart unless-stopped \
+
+缓存太厉害，需换一个无痕窗口，才能支持跨域。
+
+
+$ docker ps
+CONTAINER ID   IMAGE              COMMAND                  CREATED         STATUS                  PORTS                            NAMES
+3370c38bac12   nginx:1.15.10      "nginx -g 'daemon of…"   4 seconds ago   Up Less than a second   80/tcp, 0.0.0.0:8888->8888/tcp   nginx_for_bam
+
+
+(3)访问测试：
+$ curl -I http://s5.biomooc.com:8888/file/NGS/TBNGS22-26_bqsr.bam
+
+
+
+
 
 
 

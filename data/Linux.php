@@ -7,8 +7,13 @@ return array (
     2 => array (
       array('项目描述','Linux001','html',),
       array('FAQ','Linux002','html'),
-      array('windows','windows','txt'),
-      array('shell_最佳实践','shell_best_practice','txt'),
+      array('windows/win10/11','windows','txt'),
+      array('Android 安卓','Android','txt'),
+      array('shell_最佳实践【描述】','shell_best_practice','txt'),
+
+      array('shell cheatsheet 速查','shell_cheatsheet','txt'),
+
+	  array('过时信息 outOfDate','outOfDate', 'txt'), //过时的信息
     ),
   ),
   
@@ -19,18 +24,20 @@ return array (
     2 => array (
 	  array('十大常用命令','Linux100-basic', 'txt'),
 	  array('系统安装与维护_磁盘','Linux101-sys-disk', 'txt'),
+	  array('磁盘阵列 RAID','linux106-RAID', 'txt'),
+
 	  array('软件安装_进程_定时任务','Linux102-soft-process-cron', 'txt'),
 	  array('bash和shell编程','Linux103-shell', 'txt'),
 	  array('字符grep/awk/sed','string_process', 'txt'),
-	  array('用户、权限与日志和安全','linux104-user', 'txt'),
+	  array('用户、权限与日志和安全','linux104-user-auth-log', 'txt'),
 	  array('GPU加速和CUDA编程','linux105-GPU-CUDA', 'txt'),
-	  
-	  array('多媒体','linux301_mutimedia', 'txt'),
+
+
+	  array('多媒体 | 音视频','linux301_mutimedia', 'txt'),
 	  array('编辑器VIM/emacs','editor', 'txt'),
-	  
+
 	  array('深入理解计算机系统/CSAPP','csapp', 'txt'),
-	  
-	  array('过时信息 old_outdated','old_outdated', 'txt'), //过时的信息
+
     ),
   ),
   
@@ -41,11 +48,12 @@ return array (
     0 => 3,
     1 => '网络服务',
     2 => array (
-	  array('网络与iptables','linux201-net', 'txt'),
+	  array('计算机网络原理/iptables','linux201-net-iptables', 'txt'),
+	  array('ssh登录和隧道','linux202-ssh-tunnel', 'txt'),
 	  
-	  array('Linux服务','linux_service','txt' ),
+	  array('服务/DNS/资源监控/共享盘','linux_service','txt' ),
 	  
-	  array('htaccess配置规则','apache001','txt' ),
+	  array('apache htaccess配置规则','apache001','txt' ),
 	  array('虚拟域名和二级域名配置','apache002','txt' ),
 	  array('nginx服务器笔记','nginx002','txt' ),
 	  array('nginx快速入门.md','nginx001','md' ),
@@ -56,11 +64,12 @@ return array (
 
   array (
     0 => 4,
-    1 => '虚拟机和docker',
+    1 => '虚拟机和docker/podman',
     2 => array (
 	  array('VirtualBox','VirtualBox001','md' ),
 	  array('docker笔记.txt','docker_note','txt' ),
 	  array('docker快速入门.md','docker001','md' ),
+	  array('podman笔记.txt','podman_note','txt' ),
 	  array('apache Spark','apacheSpark','txt' ),
 
     ),

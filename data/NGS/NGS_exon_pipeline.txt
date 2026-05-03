@@ -547,147 +547,59 @@ $ rm *sam
 
 
 
-
-
-
-
-
-
-
 ========================================
-|-- 最简单的找变异流程： samtools mpileup + bcftools call
+|-- 最简单的找变异流程： bcftools mpileup + bcftools call
 ----------------------------------------
-#######################
-(4) 使用samtools pileup 找变异
-
-1) 软件
-
-$ samtools mpileup              
-Usage: samtools mpileup [options] in1.bam [in2.bam [...]]
-可选参数: 
--f, --fasta-ref FILE    faidx indexed reference sequence file 
--g, --BCF               generate genotype likelihoods in BCF format
--u, --uncompressed      generate uncompressed VCF/BCF output
-
-
-生成hg38.fasta.fai 文件
-## samtools faidx hg38.fa
-已经下载过了:
-/data/wangjl/soft/GATK/resources/bundle/hg38/Homo_sapiens_assembly38.fasta
-/data/wangjl/soft/GATK/resources/bundle/hg38/Homo_sapiens_assembly38.fasta.fai
-/data/wangjl/soft/GATK/resources/bundle/hg38/Homo_sapiens_assembly38.fasta.dict
+$ bcftools --version
+bcftools 1.21
+Using htslib 1.21
+Copyright (C) 2024 Genome Research Ltd.
 
 
 
+1.比对到参考基因组
+(1)构建索引
+从/datapool/wangjl/ref/hg38/gencode/GRCh38.p13.genome.fa 中使用py获取chr6的序列，保存到 GRCh38.p13.chr6.fa。
+
+$ /datapool/wangjl/others/HLA_HD/soft/bowtie2-2.2.5/bowtie2-build GRCh38.p13.chr6.fa index/bowtie2/chr6
 
 
-$ bcftools 
-Program: bcftools (Tools for variant calling and manipulating VCFs and BCFs)
-Version: 1.11-35-g8a744dd (using htslib 1.11-27-g246c146)
+(2)比对
+$ id=24B74088
+$ /datapool/wangjl/others/HLA_HD/soft/bowtie2-2.2.5/bowtie2 \
+-p 50 \
+-x /datapool/wangjl/ref/hg38/gencode/HLA/index/bowtie2/chr6 \
+-1 /datapool/wangjl/others/HLA_HD/data/fastq/${id}_R1_001.fq \
+-2 /datapool/wangjl/others/HLA_HD/data/fastq/${id}_R2_001.fq \
+-S SNP/4/${id}.chr6.sam \
+--very-sensitive -L 18
+	日志：87.83% overall alignment rate
 
-$ bcftools call
-
-About:   SNP/indel variant calling from VCF/BCF. To be used in conjunction with bcftools mpileup.
-         This command replaces the former "bcftools view" caller. Some of the original
-         functionality has been temporarily lost in the process of transition to htslib,
-         but will be added back on popular demand. The original calling model can be
-         invoked with the -c option.
-Usage:   bcftools call [options] <in.vcf.gz>
-可选参数 
--O, --output-type b|u|z|v     Output type: 'b' compressed BCF; 'u' uncompressed BCF; 'z' compressed VCF; 'v' uncompressed VCF [v]
-       --ploidy ASSEMBLY[?]      Predefined ploidy, 'list' to print available settings, append '?' for details
-       --ploidy-file FILE        Space/tab-delimited list of CHROM,FROM,TO,SEX,PLOIDY
-	值为 z 表示是压缩过的vcf文件 
--v, --variants-only           Output variant sites only 只输出变异部分
--m, --multiallelic-caller     Alternative model for multiallelic and rare-variant calling (conflicts with -c)
-	多等位基因获取
--o, --output FILE             Write output to a file [standard output] 输出文件
+参数解释：
+	-f：指定输入为FASTA格式
+	-U 单端fq， -1 -2 双端fq
+	--very-sensitive：提高灵敏度（适合长序列比对）
+	-L <len>：降低种子长度（默认22，可设为15-20）
 
 
+(3)去除PCR重复
+id=$2 #24B74088
+pid=$3  #"p1"
 
-
-
-2) 测试
-$ samtools pileup c12_ROW03.bam | head
-[main] The `pileup' command has been removed. Please use `mpileup' instead. ## 命令不存在了。
-
-$ samtools mpileup c12_ROW03.bam | head
-[mpileup] 1 samples in 1 input files
-<mpileup> Set max per-file depth to 8000
-chr1    14404   N       10      ^!t^!t^!t^!t^!t^!t^!t^!t^!t^!t  KKK7AKKKKK
-chr1    14405   N       10      tttttttttt      KKK7FKKAKK
-chr1    14406   N       10      tttttttttt      <KKAKKK<KK
-chr1    14407   N       12      ccccccccccc^!c  KKKAKKKK<KKK
-chr1    14408   N       12      tttttttttttt    KKK<KKKFFKKK
-
-第1,2是位置，第3列是fasta中应该的内容。
-第4列是覆盖次数，
-第5列是测序到的碱基内容，覆盖几次就显示几次；大小写表示正负链。
-第6列是质量分数。
+echo -e "\n# 2 rm PCR dup"
+# step1: 添加2个标签
+samtools fixmate -m SNP/${pid}/${id}.chr6.sam SNP/${pid}/${id}.chr6.fix.sam
+# step2: sort: 耗时
+samtools view -bS SNP/${pid}/${id}.chr6.fix.sam | samtools sort -o SNP/${pid}/${id}.chr6.fix.bam
+# step3: mark
+samtools markdup -rs SNP/${pid}/${id}.chr6.fix.bam SNP/${pid}/${id}.chr6.rm.bam
 
 
 
-3) 获取变异 
-$ cd ../mutation/
-
-
-i) 位置叠加
-$ ref="/data/wangjl/soft/GATK/resources/bundle/hg38/Homo_sapiens_assembly38.fasta"
-$ samtools mpileup -ugf $ref ../align/*.bam > out.bcf 
-[mpileup] 7 samples in 7 input files 
-## 21:50 - 22:10 3.2G
-
-$ bcftools view -H out.bcf |less
-前面很多行注释。
-#CHROM  POS     ID      REF     ALT     QUAL    FILTER  INFO    FORMAT  c12_ROW03       c12_ROW10       c14_ROW06       c14_ROW36       c15_ROW25       c16_ROW36       c19_ROW06
-chr1    14403   .       G       <*>     0       .       DP=1;I16=0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0;QS=0,0;MQ0F=1  PL      0,0,0   0,0,0   0,0,0   0,0,0   0,0,0   0,0,0   0,0,0
-
-$ bcftools view out.bcf |grep -v '^#' | awk '$5!="<*>"' | less   ##wc 864770行
-chr1    629227  .       T       G,C,<*> 0       .       DP=79;I16=42,0,3,0,1412,49202,66,1452,158,4210,3,9,515,10571,43,805;QS=5.70265,0.261954,0.0353982,0;VDB=0.921489;SGB=-6.77314;RPB=0.892142;MQB=0.828064;BQB=0.0677083;MQ0F=0.582278     PL      0,48,33,39,36,33,48,33,36,33    0,0,0,0,0,0,0,0,0,0     0,8,10,12,13,11,12,13,11,11     0,12,12,12,12,12,12,12,12,12    0,3,4,3,4,4,3,4,4,4     0,27,16,27,16,16,27,16,16,16    0,18,10,24,13,10,24,13,10,10
-
-chr9    84211542        .       G       GT      0       .       INDEL;IDV=1;IMF=0.5;DP=25;I16=16,0,1,0,345,8271,38,1444,0,0,0,0,140,3148,4,16;QS=3,1;VDB=1.48e-10;SGB=-0.600633;MQ0F=1  PL      4,3,0   0,0,0   0,3,4   0,15,12 0,0,0      0,30,12 0,0,0
-
-
-
-ii) 只保留变异
-$ bcftools call -vmO z -o out2.vcf.gz out.bcf
-## 2.6M
-
-$ zcat out2.vcf.gz | grep -v '^#' |wc  ##  66597
-$ bcftools view -H out.bcf | wc ## 20510860
-保留百分比: 66597/20510860=0.0032
-
-
-$ zcat out2.vcf.gz | grep -v '^#' | head
-chr1    629906  .       C       T       45.4391 .       DP=83;VDB=4.06345e-08;SGB=4.78028;MQSB=1;MQ0F=0.987952;AC=14;AN=14;DP4=0,0,67,9;MQ=0    GT:PL   1/1:9,51,0      1/1:4,3,0       1/1:16,15,0     1/1:4,3,0       1/1:8,66,01/1:9,72,0       1/1:20,18,0
-
-chr1    944391  .       G       A       26.4826 .       DP=153;VDB=0.02;SGB=1.12739;RPB=0.852349;MQB=0.530201;BQB=0.852349;MQ0F=0;AC=1;AN=6;DP4=0,149,0,2;MQ=53 GT:PL   0/0:0,202,248   0/1:60,0,102    ./.:0,0,0       ./.:0,0,0       ./.:0,0,0       0/0:0,235,255   ./.:0,0,0
-解读: 这里需要补习vcf文件格式，有很详细的spec，需要花时间读懂。 //todo 
-第一行就是说 chr1:629906由参考基因组的C突变为测到的T。
-DP=83是这个位点的测序深度。
-1/1 是纯合突变， ./. 是没有测到，0/1 是只有一个位点突变。
-
-
-
-iii) 以上命令合并为一行
-$ ref="/data/wangjl/soft/GATK/resources/bundle/hg38/Homo_sapiens_assembly38.fasta"
-$ samtools mpileup -ugf $ref ../align/*.bam | bcftools call -vmO z -o out2.vcf.gz
-
-就是先把几个文件pileup。
-然后call出相对于ref的突变。
-
-
-
-4) IGV 查看变异 
-需要先构建索引 
-$ cd ../align/
-$ ls *.bam | xargs -i samtools index -@ 3 {}
-
-
-
-
-注意：这个流程没有去除PCR重复。
-正常需要去除PCR重复后再call SNP。
+(4)过滤bam
+只保留匹配的reads，并sort 和 index
+$ samtools view -bS -F 4 SNP/4/${id}.chr6.sam | samtools sort -o SNP/4/${id}.chr6.sorted.bam;
+$ samtools index SNP/4/${id}.chr6.sorted.bam;
 
 
 
@@ -697,51 +609,212 @@ $ ls *.bam | xargs -i samtools index -@ 3 {}
 
 
 
-(5) 去除PCR重复 （全基因组、外显子组去重复，而转录组经常不去除重复的。）
+2.识别SNV/Indel位点
 
-做一个去除前、去除后的统计，看看每个样本去除了多少重复。
+(1)
+bcftools mpileup -f reference.fa -r chr1:10000-10000 sample.bam | bcftools call -mv -Oz -o variants.vcf.gz
+参数解释:
+	-r 参数指定区域，
+	-f 参数指定参考序列的 fasta 文件，
+	-O, --output-type u|b|v|z[0-9]  u/b: un/compressed BCF, v/z: un/compressed VCF, 0-9: compression level [v]
+		-Ou 参数指定输出文件为 VCF 格式， b 二进制 vcf;
 
-$ samtools markdup
-Usage:  samtools markdup <input.bam> <output.bam>
--r           Remove duplicate reads
--S           Mark supplemenary alignments of duplicates as duplicates (slower).
--s           Report stats.
+	-v, --variants-only             Output variant sites only #应该去掉吧？
+	-m, --multiallelic-caller       Alternative model for multiallelic and rare-variant calling (conflicts with -c)
 
-$ cd align/
-$ samtools markdup -rs c12_ROW03.bam c12_ROW03.rm.bam
-READ 4053972 WRITTEN 1693674 
-EXCLUDED 1141885 EXAMINED 2912087
-PAIRED 0 SINGLE 2912087
-DULPICATE PAIR 0 DUPLICATE SINGLE 2360298
-DUPLICATE TOTAL 2360298
+	-r, --regions REG[,...] Comma separated list of regions in which pileup is generated
+	-R, --regions-file FILE Restrict to regions listed in a file
+		  --ignore-RG         Ignore RG tags (one BAM = one sample)
 
-## 检查是否有区别
-$ samtools flagstat c12_ROW03.bam
-4053972 + 0 in total (QC-passed reads + QC-failed reads)
-$ samtools flagstat c12_ROW03.rm.bam
-1693674 + 0 in total (QC-passed reads + QC-failed reads)
+	-t, --targets REG[,...] Similar to -r but streams rather than index-jumps
+	-T, --targets-file FILE Similar to -R but streams rather than index-jumps
+
+
+
+bcftools index variants.vcf.gz
+
+bcftools view -r chr1:10000 variants.vcf.gz
+
+
+=>是不是要设置-d最大？
+	参数简介：-d, --max-depth INT     Max raw per-file depth; avoids excessive memory usage [250]
+
+
+
+(2)区分SNV和Indel呢？
+$ bcftools mpileup -f ref.fa -r chr1:10000-10000 sample.bam | \
+$ bcftools call -mv -Oz -o variants.vcf.gz
+
+# 保留所有 SNV
+$ bcftools view -v snps variants.vcf.gz
+
+ 保留所有 Indel
+$ bcftools view -v indels variants.vcf.gz
+
+
+
+(3)加不加-v有什么区别？
+-v 是 --variants-only 的简写：
+	只输出变异位点（即与参考不同的）
+	去除“参考一致”的位点，即样本与参考完全一致的位置（即使这些位置也被计算）
+
+命令	            //含义	                                           //结果区别
+bcftools call -m	//使用 multi-allelic caller	                       //输出包括变异位点和参考位点（如果没有加 -v）
+bcftools call -mv	//使用 multi-allelic caller 且仅输出有变异的位点   //去除参考一致位点，结果更“干净”
+
+
+
+
+(4)限定只定量某些位点的SNP/Indel呢？提供bed范围
+bcftools mpileup -f reference.fa -R regions.bed sample.bam -Ou | \
+bcftools call -mv -Ou | \
+bcftools view -Oz -o variants.vcf.gz
+
+参数解释:
+	-R regions.bed：只在 BED 里的坐标范围调用
+	-mv：只保留有变异的位点（SNV + Indel）
+	-Ou：输出未压缩中间流（更快）
+	-Oz：最终输出压缩 VCF
+
+bcftools mpileup -r <region> -f <reference.fasta> -Ou <output.vcf>
+	-r 参数指定区域，-f 参数指定参考序列的 fasta 文件，-Ou 参数指定输出文件为 VCF 格式。
+
+bcftools mpileup -r chr22:38519150-385191650 -f /public/analysis/reference/hg19/hg19.fa -Ou Sample.sorted.bam | bcftools call -mv > chr22.vcf
+
+bcftools mpileup mpileup.1.bam --fasta-ref mpileup.ref.fa | bcftools call -mv -o raw.vcf
+
+使用bed指定范围
+bcftools mpileup -r region.bed -f ref.fa in.bam | bcftools call -mv > output.vcf
+
+chr1    10000   20000
+chr2    50000   60000
+
+
+
+
+(5)统计每种变异类型数量（例如用 bcftools stats）：
+$ bcftools stats variants.vcf.gz > stats.txt
+
+或者你可以解析 VCF 文件来统计每个位点的：
+* 类型（SNV or Indel）
+* 支持的 reads 数（用 FORMAT 字段中的 AD/DP）
+
+
+
+(6)输出每个位点的详细变异支持信息
+你可以使用 bcftools query 提取每个位点的字段（比如 AD、DP、GT 等）：
+$ bcftools query -f '%CHROM\t%POS\t%REF\t%ALT\t[%GT\t%AD\t%DP]\n' -R regions.bed variants.vcf.gz > result.tsv
+统计每个位点是否是 SNP 或 Indel，以及变异的 reads 支持数:
+	chr1    10001   G   T   0/1   10,5   15
+	chr1    10002   T   TTT 0/1   8,4    12
 #
-也就是保留了 1693674/4053972=0.417，去掉了一半多。
+更容易理解的形式：逐行读取 BED 文件，并用 pysam 对 BAM pileup 精准统计支持变异的 reads 数：
+	chr1    10001   10002   SNV:A->T   total_reads=15   alt_reads=5
+	chr1    10002   10003   INDEL:+TT  total_reads=12   indel_reads=4
+#py脚本？
+
+
+(7)疑问：bcftools call -m 输出的DP远小于IGV看到的Total Count，为什么？
+bcftools call -m 输出的 DP（Depth, 深度）数值远小于 IGV 中看到的 Total Count（覆盖数），因为：IGV显示的是所有对齐到该位置的 reads，而bcftools（mpileup + call）是经过严格过滤的 reads。
+
+// 工具	                       //统计的范围	                //会过滤的内容	                  =>统计结果
+* IGV	                       //所有对齐到该位置的 reads	//几乎不做过滤（只是视图层展示）   =>显示的是 raw coverage
+* bcftools（mpileup + call）   //经过严格过滤的 reads	    //会过滤低质量、重复、次优匹配的 reads，还可能只计算 高质量碱基	=>显示的是 高质量有效深度（DP）
+
+
+bcftools mpileup 会过滤很多 reads 或碱基，比如：
+	mapping quality 过低（默认 < 10）
+	base quality 过低（默认 < 13）
+	soft clipped、secondary、supplementary alignment
+	不在主染色体上或断裂对齐
+	过多 mismatch 的 reads
+	过深覆盖时的 downsampling（默认限制深度）
+	这些 都不会计入 DP（有效深度）。
+
+你可以用以下命令明确控制这些参数：
+$ bcftools mpileup -f ref.fa -a FORMAT/DP,AD -Q 0 -q 0 -d 100000 -Ou -r chr1:10000-10000 sample.bam | \
+bcftools call -mv -Ov -o out.vcf
+参数解释：
+	-Q 0: 不过滤 base quality
+	-q 0: 不过滤 mapping quality
+	-d 100000: 设置最大深度（默认1000，超出会 downsample）
+	这样你能让 DP 更接近 IGV 所见的总覆盖。
+
+如果你希望 DP 统计尽可能接近 IGV：
+	$ bcftools mpileup -f ref.fa -Q 0 -q 0 -d 100000 -a FORMAT/DP,AD sample.bam | \
+	bcftools call -mv -Ov -o variants.vcf
+
+
+
+
+(8) -A参数获取全部alt碱基及其reads数
+原输入:
+$ cat SNP/4/24B74088.donor.out.vcf | grep -v "^#" | head -n 3
+chr6    31355456        .       A       G,C,T   0       .       DP=2496;I16=1115,809,215,303,67997,2.49843e+06,18213,664461,52974,1.6066e+06,11018,337228,38617,884587,10204,232882;QS=0.826628,0.169406,0.00265511,0.00131075;VDB=0.985316;SGB=-0.693147;RPBZ=-1.43784;MQBZ=-9.38123;MQSBZ=7.52225;BQBZ=-0.305876;SCBZ=0;MQ0F=0.0172276  PL:AD   4,0,216,255,255,255,255,255,255,255:1924,499,13,6
+chr6    31355544        .       G       A,C,T   0       .       DP=2501;I16=959,1101,187,214,73880,2.71804e+06,13258,469178,51531,1.50041e+06,11223,365149,42989,985409,8138,185308;QS=0.83403,0.165097,0.000719153,0.000154104;VDB=0.919992;SGB=-0.693147;RPBZ=-1.5905;MQBZ=3.74022;MQSBZ=-11.168;BQBZ=-4.74567;SCBZ=0;MQ0F=0.012395     PL:AD   0,25,149,255,255,255,255,255,255,255:2060,396,3,2
+chr6    31355576        .       G       A,T,<*> 0       .       DP=2446;I16=978,1017,198,202,71521,2.62618e+06,13416,480484,51138,1.50517e+06,11008,350490,40612,944348,8448,197400;QS=0.833014,0.165777,0.00120929,0;VDB=0.897917;SGB=-0.693147;RPBZ=-0.618562;MQBZ=2.42497;MQSBZ=-17.6126;BQBZ=-3.22074;SCBZ=0;MQ0F=0.0102208   PL:AD   0,5,153,255,255,255,255,255,255,255:1995,395,5,0
+
+不使用-A的输出：
+$ bcftools call -m SNP/4/24B74088.donor.out.vcf | grep -v "^#" | head -n 3
+Note: none of --samples-file, --ploidy or --ploidy-file given, assuming all sites are diploid
+chr6    31355456        .       A       .       24.2974 .       DP=2496;VDB=0.985316;SGB=-0.693147;RPBZ=-1.43784;MQBZ=-9.38123;MQSBZ=7.52225;BQBZ=-0.305876;SCBZ=0;MQ0F=0.0172276;AN=2;DP4=1115,809,215,303;MQ=26       GT:AD   0/0:1924
+chr6    31355544        .       G       .       25.2885 .       DP=2501;VDB=0.919992;SGB=-0.693147;RPBZ=-1.5905;MQBZ=3.74022;MQSBZ=-11.168;BQBZ=-4.74567;SCBZ=0;MQ0F=0.012395;AN=2;DP4=959,1101,187,214;MQ=25   GT:AD   0/0:2060
+chr6    31355576        .       G       .       27.088  .       DP=2446;VDB=0.897917;SGB=-0.693147;RPBZ=-0.618562;MQBZ=2.42497;MQSBZ=-17.6126;BQBZ=-3.22074;SCBZ=0;MQ0F=0.0102208;AN=2;DP4=978,1017,198,202;MQ=25       GT:AD   0/0:1995
+
+使用-A的输出：
+$ bcftools call -mA SNP/4/24B74088.donor.out.vcf | grep -v "^#" | head -n 3
+Note: none of --samples-file, --ploidy or --ploidy-file given, assuming all sites are diploid
+chr6    31355456        .       A       G,C,T   24.2974 .       DP=2496;VDB=0.985316;SGB=-0.693147;RPBZ=-1.43784;MQBZ=-9.38123;MQSBZ=7.52225;BQBZ=-0.305876;SCBZ=0;MQ0F=0.0172276;AC=0,0,0;AN=2;DP4=1115,809,215,303;MQ=26      GT:PL:AD        0/0:4,0,216,255,255,255,255,255,255,255:1924,499,13,6
+chr6    31355544        .       G       A,C,T   25.2885 .       DP=2501;VDB=0.919992;SGB=-0.693147;RPBZ=-1.5905;MQBZ=3.74022;MQSBZ=-11.168;BQBZ=-4.74567;SCBZ=0;MQ0F=0.012395;AC=0,0,0;AN=2;DP4=959,1101,187,214;MQ=25  GT:PL:AD        0/0:0,25,149,255,255,255,255,255,255,255:2060,396,3,2
+chr6    31355576        .       G       A,T     27.088  .       DP=2446;VDB=0.897917;SGB=-0.693147;RPBZ=-0.618562;MQBZ=2.42497;MQSBZ=-17.6126;BQBZ=-3.22074;SCBZ=0;MQ0F=0.0102208;AC=0,0;AN=2;DP4=978,1017,198,202;MQ=25        GT:PL:AD        0/0:0,5,153,255,255,255:1995,395,5
+
+
+
+(9)染色体倍性什么意思？
+	--ploidy ASSEMBLY[?]        Predefined ploidy, 'list' to print available settings, append '?' for details [2]
+	--ploidy-file FILE          Space/tab-delimited list of CHROM,FROM,TO,SEX,PLOIDY
+只是指定数字是1或者2
+以及按照染色体指定
+chr1 2
+chr2 2
+
+
+(10)怎么对bam中的某几十个indel进行定量？
+
+
+
+==> 注意文件名 xx.pileup: bcftools call -mv -Ov target.pileup > target.vcf
 
 
 
 
 
-## 如果使用-S参数，看flag是否有变化
-$ samtools markdup -Ss c12_ROW03.bam c12_ROW03.mark.bam
-READ 4053972 WRITTEN 4053972 
-EXCLUDED 1141885 EXAMINED 2912087
-PAIRED 0 SINGLE 2912087
-DULPICATE PAIR 0 DUPLICATE SINGLE 2360298
-DUPLICATE TOTAL 2360298
-#
-$ samtools view c12_ROW03.bam | head
-E00300:165:H3CMMALXX:5:2219:7953:37313  16      chr1    14404   0       22S14M1D113M    *       0       0       TTTTTTTTTTTTTTTTGTGTTTTTTCTGCTCAGTTCTTATTGATTGGTGTGCCGTTTTCTCTGGAAGCCTCTTAAGAACACAGTGGCGCAGGCTGGGTGGAGCCGTCCTCCCATGGAGCACAGGCAGACAGAAGTCCCCGCCCCAGCTG      F<<7A<F<,,,F<,<7,F,KA<KKKKFFF<KKKFFAAKKKKF<,AKKFAAA<7A,<7,FFFAFFAAKAKKAKKFFAFKFKKK7,AKKFKF<KFF<KKKAKKAKKA,AA,KKKKK<KKKFKK<KKA<FKAAKKFF7AAFKKFAFKFFFAA   NM:i:2  MD:Z:14^T72C40  AS:i:115  XS:i:115 RG:Z:c12_ROW03
 
-$ samtools view c12_ROW03.bam | head
-E00300:165:H3CMMALXX:5:2219:7953:37313  1040    chr1    14404   0       22S14M1D113M    *       0       0       TTTTTTTTTTTTTTTTGTGTTTTTTCTGCTCAGTTCTTATTGATTGGTGTGCCGTTTTCTCTGGAAGCCTCTTAAGAACACAGTGGCGCAGGCTGGGTGGAGCCGTCCTCCCATGGAGCACAGGCAGACAGAAGTCCCCGCCCCAGCTG      F<<7A<F<,,,F<,<7,F,KA<KKKKFFF<KKKFFAAKKKKF<,AKKFAAA<7A,<7,FFFAFFAAKAKKAKKFFAFKFKKK7,AKKFKF<KFF<KKKAKKAKKA,AA,KKKKK<KKKFKK<KKA<FKAAKKFF7AAFKKFAFKFFFAA   NM:i:2  MD:Z:14^T72C40  AS:i:115  XS:i:115 RG:Z:c12_ROW03
 
-看第二列，从16变为1040，增加了1024，就是指的PCR重复。
+
+3.vcf文件怎么看？
+重点看前面的注释，就是#开头的行。
+
+GT:AD:DP:GQ:PL
+GT=0/1：基因型为G/C
+AD=12,4：覆盖到REF的reads数为12，覆盖到ALT的reads数为4
+DP=16：覆盖到13649位点的reads数为16=12+4
+GQ=64：GT=0/1（即基因型为G/C）时的质量值为64
+PL=64,0,281：最有可能的GT是0/1（即基因型为G/C），对应PL值为0，概率为1
+
+GT （GeneType）基因型，代表此样本在此位点携带的两个等位基因，主要分为一下几种情况：
+	0/0 ：纯合, REF一致
+	0/1 ：杂合,一个ALT一个REF
+	1/1: 纯和，都是Alt
+
+
+
+(2)DP 字段位置不同
+在 VCF 中，DP 有两种位置：
+- INFO/DP: 所有样本的总有效深度
+- FORMAT/DP: 每个样本自己的有效深度
+一定要看清楚是哪一个字段，不然容易混淆。
+
 
 
 
@@ -2270,6 +2343,52 @@ CDX	Chinese Dai in Xishuangbanna, China	EAS
 
 
 ========================================
+|-- gnomAD 数据库简介: Genome Aggregation Database
+----------------------------------------
+https://gnomad.broadinstitute.org/
+
+1.About gnomAD
+国际合力，整合外显子和全基因组测序数据，方便科学家使用。
+The Genome Aggregation Database (gnomAD™) is a resource developed by an international coalition of investigators, with the goal of aggregating and harmonizing both exome and genome sequencing data from a wide variety of large-scale sequencing projects, and making summary data available for the wider scientific community.
+
+v4有 730,947 个外显子测序，76,215 个全基因组测序，有不同的祖源，作为疾病或者群体遗传学研究的一部分。
+The v4 data set (GRCh38) provided on this website spans 730,947 exome sequences and 76,215 whole-genome sequences from unrelated individuals, of diverse ancestries, sequenced as part of various disease-specific and population genetic studies.
+
+The gnomAD Principal Investigators and team can be found here, and the groups that have contributed data to the current release are listed here.
+
+All data here are released for the benefit of the wider biomedical community, without restriction on use - see the terms of use. Sign up for our mailing list for future release announcements.
+
+
+
+(2)
+利用过滤器选择特定数据类型（如仅查看SNPs或外显子组变异）‌。数据库‌不提供个体级别的基因型数据‌，且全基因组数据中不包含Y染色体信息。‌‌
+
+
+
+2.下载
+https://learn.microsoft.com/zh-cn/azure/open-datasets/dataset-gnomad
+
+有30T !!
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+========================================
 |-- ClinVar数据库统计单基因遗传病致病位点人群频率
 ----------------------------------------
 原创： 基因游侠  基因检测与解读  2018.5月1日
@@ -2372,7 +2491,10 @@ ref: https://www.cnblogs.com/leezx/p/14464087.html
 
 表达数量性状基因座（expression Quantitative Trait Loci,eQTL）是对上述概念的进一步深化，它指的是染色体上一些能特定调控mRNA和蛋白质表达水平的区域，其mRNA/蛋白质的表达水平量与数量性状成比例关系。
 eQTL可分为顺式作用eQTL和反式作用eQTL，
+
+Cis-eQTL:
 	顺式作用eQTL就是某个基因的eQTL定位到该基因所在的基因组区域，表明可能是该基因本身的差别引起的mRNA水平变化；
+Trans-eQTL:
 	反式作用eQTL是指某个基因的eQTL定位到其他基因组区域，表明其他基因的差别控制该基因mRNA水平的差异。
 
 eQTL就是把基因表达作为一种性状,研究遗传突变与基因表达的相关性: 就好像研究遗传突变与身高的相关性一样。
@@ -2427,7 +2549,7 @@ cor.test(exp1, snp1)$estimate
 #cor
 #0.9948471
 
-# lm(Y~x) 计算线性回归，其系数的p值也相关的p值一致
+# lm(Y~x) 计算线性回归，其系数的p值与相关的p值一致
 fit=lm( exp1 ~ snp1); fit
 summary(fit) # exp1 = 18.5*snp + 0.969
 summary(fit)$coefficients[2,4] # [1] 2.387309e-19
@@ -2522,7 +2644,6 @@ library(MatrixEQTL) 是一个R包：
 		需要注意的是，所有矩阵的样本顺序要保持一致。
 
 
-
 (2) eQTL的数据库：Braineac, GTEx, Blood eQTL Browser,
 Braineac(The Brain eQTLAlmanac)由UK Brain Expression Consortium创建，他们采集134名欧洲捐献者的多个脑区的基因型与基因表达量，进行eQTL分析，建立该数据库。
 http://www.braineac.org/
@@ -2559,6 +2680,462 @@ https://mp.weixin.qq.com/s/X6oiHtKBMBPFqncgL3Enxw
 
 
 
+
+
+
+========================================
+|-- MatrixEQTL R包使用示例
+----------------------------------------
+
+1. 示例数据
+https://www.bios.unc.edu/research/genomic_software/Matrix_eQTL/R.html
+Covariates.txt  geneloc.txt  GE.txt  snpsloc.txt  SNP.txt
+
+(1) 下载数据
+@H3:/datapool/wangjl/others/eQTL/demo/
+The toy dataset consists of five files:
+	genotype SNP.txt,
+	expression GE.txt,
+	a file Covariates.txt with two covariates, gender and age, and
+
+	files geneloc.txt and snpsloc.txt with gene and SNP location information.
+
+	First three files contain artificial information for 16 samples.
+	The sample genotype file contains random values 0, 1, and 2 although the input genotype file is allowed to contain any real values.
+
+
+(2) 文件格式
+$ head SNP.txt -n3 #共15个Snp
+id      Sam_01  Sam_02  Sam_03  Sam_04  Sam_05  Sam_06  Sam_07  Sam_08  Sam_09  Sam_10  Sam_11  Sam_12  Sam_13  Sam_14      Sam_15  Sam_16
+Snp_01  2       0       2       0       2       1       2       1       1       1       2       2       1       2  21
+Snp_02  0       1       1       2       2       1       0       0       0       1       1       1       1       0  11
+
+
+$ head GE.txt -n3 #共10个Gene
+id      Sam_01  Sam_02  Sam_03  Sam_04  Sam_05  Sam_06  Sam_07  Sam_08  Sam_09  Sam_10  Sam_11  Sam_12  Sam_13  Sam_14      Sam_15  Sam_16
+Gene_01 4.91    4.63    5.18    5.07    5.74    5.09    5.31    5.29    4.73    5.72    4.75    4.54    5.01    5.034.84    4.44
+Gene_02 13.78   13.14   13.18   13.04   12.85   13.07   13.09   12.83   14.94   13.86   15.26   14.73   14.08   14.33       14.72   14.97
+
+
+$ head Covariates.txt
+id      Sam_01  Sam_02  Sam_03  Sam_04  Sam_05  Sam_06  Sam_07  Sam_08  Sam_09  Sam_10  Sam_11  Sam_12  Sam_13  Sam_14      Sam_15  Sam_16
+gender  0       0       0       0       0       0       0       0       1       1       1       1       1       1  11
+age     36      40      46      65      69      43      40      54      44      70      24      34      55      62 48       40
+
+
+$ head geneloc.txt -n 3
+geneid  chr     s1      s2
+Gene_01 chr1    721289  731289
+Gene_02 chr1    752565  762565
+
+$ head snpsloc.txt -n3
+snp     chr     pos
+Snp_01  chr1    721289
+Snp_02  chr1    752565
+
+
+
+
+
+
+2. Test all gene-SNP pairs and plot a histogram of all p-values
+
+library(MatrixEQTL)
+
+# 1. settings ----
+base.dir = find.package('MatrixEQTL'); base.dir
+
+# Genotype file name
+SNP_file_name = paste(base.dir, "/data/SNP.txt", sep="");
+
+# Gene expression file name
+expression_file_name = paste(base.dir, "/data/GE.txt", sep="");
+
+# Covariates file name
+# Set to character() for no covariates
+covariates_file_name = paste(base.dir, "/data/Covariates.txt", sep="");
+
+# Output file name
+output_file_name = tempfile();
+
+
+# Linear model to use, modelANOVA, modelLINEAR, or modelLINEAR_CROSS
+useModel = modelLINEAR; # modelANOVA, modelLINEAR, or modelLINEAR_CROSS
+
+# Only associations significant at this level will be saved
+pvOutputThreshold = 1e-2;
+
+# Error covariance matrix
+# Set to numeric() for identity.
+errorCovariance = numeric();
+# errorCovariance = read.table("Sample_Data/errorCovariance.txt");
+
+
+
+# 2. load data ----
+
+## Load genotype data
+snps = SlicedData$new();
+snps$fileDelimiter = "\t";      # the TAB character
+snps$fileOmitCharacters = "NA"; # denote missing values;
+snps$fileSkipRows = 1;          # one row of column labels
+snps$fileSkipColumns = 1;       # one column of row labels
+snps$fileSliceSize = 2000;      # read file in slices of 2,000 rows
+snps$LoadFile(SNP_file_name);
+
+
+## Load gene expression data
+gene = SlicedData$new();
+gene$fileDelimiter = "\t";      # the TAB character
+gene$fileOmitCharacters = "NA"; # denote missing values;
+gene$fileSkipRows = 1;          # one row of column labels
+gene$fileSkipColumns = 1;       # one column of row labels
+gene$fileSliceSize = 2000;      # read file in slices of 2,000 rows
+gene$LoadFile(expression_file_name);
+
+
+## Load covariates
+cvrt = SlicedData$new();
+cvrt$fileDelimiter = "\t";      # the TAB character
+cvrt$fileOmitCharacters = "NA"; # denote missing values;
+cvrt$fileSkipRows = 1;          # one row of column labels
+cvrt$fileSkipColumns = 1;       # one column of row labels
+if(length(covariates_file_name)>0) {
+  cvrt$LoadFile(covariates_file_name);
+}
+
+
+
+# 3. Run ----
+## Run the analysis
+me = Matrix_eQTL_engine(
+  snps = snps,
+  gene = gene,
+  cvrt = cvrt,
+  output_file_name = output_file_name,
+  pvOutputThreshold = pvOutputThreshold,
+  useModel = useModel,
+  errorCovariance = errorCovariance,
+  verbose = TRUE,
+  pvalue.hist = TRUE,
+  min.pv.by.genesnp = FALSE,
+  noFDRsaveMemory = FALSE);
+
+unlink(output_file_name);
+
+
+## Results:
+cat('Analysis done in: ', me$time.in.sec, ' seconds', '\n');
+cat('Detected eQTLs:', '\n');
+show(me$all$eqtls)
+
+## Plot the histogram of all p-values
+plot(me)
+
+
+> show(me$all$eqtls)
+    snps    gene statistic       pvalue          FDR       beta
+1 Snp_05 Gene_03 38.812160 5.515519e-14 8.273279e-12  0.4101317
+2 Snp_13 Gene_09 -3.914403 2.055817e-03 1.541863e-01 -0.2978847
+3 Snp_11 Gene_06 -3.221962 7.327756e-03 2.853368e-01 -0.2332470
+4 Snp_04 Gene_10  3.201666 7.608981e-03 2.853368e-01  0.2321123
+5 Snp_14 Gene_01  3.070005 9.716705e-03 2.915011e-01  0.2147077
+
+
+
+
+
+
+
+
+3. Test local and distant gene-SNP pairs separately and plot Q-Q plots of local and distant p-values
+
+library(MatrixEQTL)
+
+## Location of the package with the data files.
+base.dir = find.package('MatrixEQTL');
+# base.dir = '.';
+
+
+## Settings
+
+# Linear model to use, modelANOVA, modelLINEAR, or modelLINEAR_CROSS
+useModel = modelLINEAR; # modelANOVA, modelLINEAR, or modelLINEAR_CROSS
+
+# Genotype file name
+SNP_file_name = paste(base.dir, "/data/SNP.txt", sep="");
+snps_location_file_name = paste(base.dir, "/data/snpsloc.txt", sep="");
+
+# Gene expression file name
+expression_file_name = paste(base.dir, "/data/GE.txt", sep="");
+gene_location_file_name = paste(base.dir, "/data/geneloc.txt", sep="");
+
+# Covariates file name
+# Set to character() for no covariates
+covariates_file_name = paste(base.dir, "/data/Covariates.txt", sep="");
+
+# Output file name
+output_file_name_cis = tempfile();
+output_file_name_tra = tempfile();
+
+# Only associations significant at this level will be saved
+pvOutputThreshold_cis = 2e-2;
+pvOutputThreshold_tra = 1e-2;
+
+# Error covariance matrix
+# Set to numeric() for identity.
+errorCovariance = numeric();
+# errorCovariance = read.table("Sample_Data/errorCovariance.txt");
+
+# Distance for local gene-SNP pairs
+cisDist = 1e6;
+
+## Load genotype data
+
+snps = SlicedData$new();
+snps$fileDelimiter = "\t";      # the TAB character
+snps$fileOmitCharacters = "NA"; # denote missing values;
+snps$fileSkipRows = 1;          # one row of column labels
+snps$fileSkipColumns = 1;       # one column of row labels
+snps$fileSliceSize = 2000;      # read file in slices of 2,000 rows
+snps$LoadFile(SNP_file_name);
+
+## Load gene expression data
+
+gene = SlicedData$new();
+gene$fileDelimiter = "\t";      # the TAB character
+gene$fileOmitCharacters = "NA"; # denote missing values;
+gene$fileSkipRows = 1;          # one row of column labels
+gene$fileSkipColumns = 1;       # one column of row labels
+gene$fileSliceSize = 2000;      # read file in slices of 2,000 rows
+gene$LoadFile(expression_file_name);
+
+## Load covariates
+
+cvrt = SlicedData$new();
+cvrt$fileDelimiter = "\t";      # the TAB character
+cvrt$fileOmitCharacters = "NA"; # denote missing values;
+cvrt$fileSkipRows = 1;          # one row of column labels
+cvrt$fileSkipColumns = 1;       # one column of row labels
+if(length(covariates_file_name)>0) {
+cvrt$LoadFile(covariates_file_name);
+}
+
+## Run the analysis
+snpspos = read.table(snps_location_file_name, header = TRUE, stringsAsFactors = FALSE);
+genepos = read.table(gene_location_file_name, header = TRUE, stringsAsFactors = FALSE);
+
+me = Matrix_eQTL_main(
+snps = snps,
+gene = gene,
+cvrt = cvrt,
+output_file_name     = output_file_name_tra,
+pvOutputThreshold     = pvOutputThreshold_tra,
+useModel = useModel,
+errorCovariance = errorCovariance,
+verbose = TRUE,
+output_file_name.cis = output_file_name_cis,
+pvOutputThreshold.cis = pvOutputThreshold_cis,
+snpspos = snpspos,
+genepos = genepos,
+cisDist = cisDist,
+pvalue.hist = "qqplot",
+min.pv.by.genesnp = FALSE,
+noFDRsaveMemory = FALSE);
+
+unlink(output_file_name_tra);
+unlink(output_file_name_cis);
+
+## Results:
+
+cat('Analysis done in: ', me$time.in.sec, ' seconds', '\n');
+cat('Detected local eQTLs:', '\n');
+show(me$cis$eqtls)
+cat('Detected distant eQTLs:', '\n');
+show(me$trans$eqtls)
+
+## Plot the Q-Q plot of local and distant p-values
+
+plot(me)
+
+
+
+
+结果：
+> show(me$cis$eqtls)
+    snps    gene statistic       pvalue          FDR      beta
+1 Snp_05 Gene_03 38.812160 5.515519e-14 5.515519e-12 0.4101317
+2 Snp_04 Gene_10  3.201666 7.608981e-03 3.804491e-01 0.2321123
+
+> show(me$trans$eqtls)
+    snps    gene statistic      pvalue       FDR       beta
+1 Snp_13 Gene_09 -3.914403 0.002055817 0.1027908 -0.2978847
+2 Snp_11 Gene_06 -3.221962 0.007327756 0.1619451 -0.2332470
+3 Snp_14 Gene_01  3.070005 0.009716705 0.1619451  0.2147077
+
+
+
+
+
+
+
+
+
+4. 构造人工数据: 列为sample名字，名字要一致
+Create an artificial dataset and plot the histogram and Q-Q plot of all p-values
+
+set.seed(2024)
+library('MatrixEQTL')
+
+# Number of samples
+n = 100;
+
+# Number of variables
+ngs = 2000;
+
+# Common signal in all variables (population stratification)
+pop = 0.2 * rnorm(n);
+
+# data matrices
+snps.mat = matrix(rnorm(n*ngs), ncol = ngs) + pop;
+gene.mat = matrix(rnorm(n*ngs), ncol = ngs) + pop + snps.mat*((1:ngs)/ngs)^9/2;
+
+# data objects for Matrix eQTL engine
+snps1 = SlicedData$new( t( snps.mat ) );
+gene1 = SlicedData$new( t( gene.mat ) );
+cvrt1 = SlicedData$new( );
+rm(snps.mat, gene.mat)
+
+# Slice data in blocks of 500 variables
+snps1$ResliceCombined(500);
+gene1$ResliceCombined(500);
+
+# name of temporary output file
+filename = tempfile();
+
+# Perform analysis recording information for
+# a histogram
+meh = Matrix_eQTL_engine(
+  snps = snps1,
+  gene = gene1,
+  cvrt = cvrt1,
+  output_file_name = filename,
+  pvOutputThreshold = 1e-100,
+  useModel = modelLINEAR,
+  errorCovariance = numeric(),
+  verbose = TRUE,
+  pvalue.hist = 100);
+unlink( filename );
+# png(filename = "histogram.png", width = 650, height = 650)
+plot(meh, col="grey")
+# dev.off();
+
+
+
+
+
+
+
+5.GPT: 在使用 matrixEQTL 包分析结果时，beta 值可以作为筛选条件。
+
+这个beta就是线性回归的回归系数: y = b*x + a + e
+
+* 设定阈值：选择一个阈值，比如 |beta| > 0.5，筛选出具有显著效应的基因。
+* 正效应：选择 beta > 0 的基因，表示甲基化水平增加与基因表达增加相关联。
+* 负效应：选择 beta < 0 的基因，表示甲基化水平增加与基因表达减少相关联。
+* 显著性 + 效应大小：例如，选择 p 值 < 0.05 且 |beta| > 0.5 的基因对，以确保结果既显著又具有生物学意义。
+
+# 假设 results 是包含 beta 和 p 值的数据框
+filtered_results <- results[abs(results$beta) > 0.5 & results$pvalue < 0.05, ]
+
+
+
+
+
+
+
+========================================
+|-- 相关性分析后怎么过滤？怎么做网络分析？
+----------------------------------------
+
+1. 过滤相关性结果
+在相关性分析后，您需要过滤结果以聚焦于有意义的基因对。以下是一些常见的过滤步骤：
+
+* 选择显著性水平：根据 p 值或假发现率（FDR）来筛选相关性。例如，选择 p 值 < 0.05 或 FDR < 0.05 的基因对。
+* 相关性阈值：设定一个相关性系数阈值（如 |r| > 0.5），以仅保留强相关的基因对。
+	比如 |beta| > 0.5，筛选出具有较大效应的基因对。
+* 生物学意义：结合已有文献或生物学知识，进一步筛选与特定生物学过程或疾病相关的基因对。
+
+
+
+2.构建基因调控网络
+在过滤后，您可以构建基因调控网络。以下是一些常见的方法和工具：
+
+(1) 使用 R 包
+igraph：可用于构建和可视化网络。
+
+library(igraph)
+
+# 创建边列表
+edge_list <- data.frame(
+  gene1 = c("geneA", "geneB"),
+  gene2 = c("geneC", "geneD"),
+  weight = c(0.6, 0.8)  # 相关性系数
+)
+
+# 构建图
+g <- graph_from_data_frame(edge_list, directed = FALSE)
+
+# 可视化网络
+plot(g)
+
+
+(2) ggraph：另一个用于网络可视化的 R 包。
+
+library(ggraph)
+
+ggraph(g, layout = "fr") +
+  geom_edge_link(aes(edge_alpha = weight)) +
+  geom_node_point() +
+  geom_node_text(aes(label = name), repel = TRUE)
+
+(3) 使用 Cytoscape
+Cytoscape 是一个强大的网络可视化工具。您可以从 R 导出数据并在 Cytoscape 中加载：
+
+将过滤后的基因对导出为 CSV 文件。
+在 Cytoscape 中导入数据，构建和可视化网络。
+
+
+
+
+3. 网络分析
+一旦构建了网络，可以进行以下分析：
+
+* 网络拓扑分析：计算节点的度、介数中心性、接近中心性等。
+* 模块检测：使用算法（如 Louvain 或 Girvan-Newman）检测网络中的模块或社区。
+* 富集分析：对网络中的基因进行功能富集分析，例如使用 GO 或 KEGG 分析。
+
+
+
+
+4. 结果解释
+
+生物学解释：结合文献和实验结果，解释网络中的关键基因及其生物学意义。
+可视化报告：创建可视化图表和报告，以便与其他研究人员或利益相关者分享结果。
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 ========================================
 |-- 连锁不平衡 (linkage disequilibrium) //todo
 ----------------------------------------
@@ -2577,7 +3154,207 @@ https://mp.weixin.qq.com/s/X6oiHtKBMBPFqncgL3Enxw
 
 
 ========================================
+MNP 技术细节：获取同一个位置的碱基和read名字
 ----------------------------------------
+比对后，怎么拿到同一个read覆盖的位点组合？怎么容错？
+
+1. 策略1：bam中获取某个区域的读段
+bam比对后，通过bed文件获取子集。
+怎么逐个获取read中每个碱基的位置？
+// todo
+
+(1) bam to bed
+https://bedtools.readthedocs.io/en/latest/content/tools/bamtobed.html
+
+$ bedtools bamtobed -i reads.bam | head -3
+chr7   118970079   118970129   TUPAC_0001:3:1:0:1452#0/1   37   -
+chr7   118965072   118965122   TUPAC_0001:3:1:0:1452#0/2   37   +
+chr11  46769934    46769984    TUPAC_0001:3:1:0:1472#0/1   37   -
+
+缺点：无法逐个位点转换？
+
+(2) bam to pileup format
+the way "samtools pileup" generates a pileup file out of a BAM file.
+
+
+
+
+
+2. 策略2：从bam中获取指定位置的碱基和read名字
+
+(1) 不一定使用R
+https://bioinformatics.stackexchange.com/questions/17577/extract-read-names-and-the-associated-nucleotides-on-specific-positions-from-a-b
+读段名字  20  25 30 37
+read1     T   A   -  C
+read2     C   G   A  -
+
+过滤掉有缺失的行，
+然后合并一行，
+使用table，获取每种的频率
+
+线索：pileup interface from pysam (perhaps Rsamtools provides a similar functionality).、
+
+(2) 
+https://bioinformatics.stackexchange.com/questions/7401/access-base-aligned-to-particular-reference-position
+
+
+(3) 更多 samtools 参数 https://samtools.sourceforge.net/mpileup.shtml
+
+
+
+
+
+
+
+3. 可用方案：依赖 pysam 和 pandas，从 bam 中提取
+
+(1) get raw info from bam
+import pysam
+bam_file="/data/wangjl/rsa/HeLa/map/test/2.bam"
+samfile = pysam.AlignmentFile(bam_file, "rb" )
+samfile
+
+# Aim: get MNP info from bam file
+# @samfile a pysam file obj
+# @chromosome like "chr1"
+# @position0Base position number
+# @return an dict, key as "chr:pos", values as vector of [readName, baseAtKey]
+def getDict_Pos_readName_base(samfile, chromosome, position0Bases):
+    # return this dict
+    results = {}
+    
+    if type(position0Bases) == type(1):
+        position0Bases = [ position0Bases ]
+    
+    for position0Base in position0Bases:
+        # .bam is 0-based coord; so remember -1 when using pybam and bam file.
+        pileupObj = samfile.pileup(region = ("%s:%d-%d" % (chromosome, position0Base, position0Base+1)) )
+
+        for pileupcolumn in pileupObj:
+            # if no reads, jump
+            if len(pileupcolumn.pileups)==0:
+                continue
+            # if not this region jump
+            if pileupcolumn.reference_name != chromosome or pileupcolumn.pos != position0Base:
+                continue
+            #
+            chr_pos = chromosome +":"+ str(position0Base)
+            if chr_pos not in results:
+                results[chr_pos]=[]
+            #
+            for pileupread in pileupcolumn.pileups:
+                if not pileupread.is_del and not pileupread.is_refskip:
+                    name_seq = [pileupread.alignment.query_name,
+                                pileupread.alignment.query_sequence[pileupread.query_position] ]
+                    results[chr_pos].append( name_seq )
+    #
+    return results
+
+# test
+dict1 = getDict_Pos_readName_base(samfile, "chr1", 246767261)
+dict1
+
+输出:
+{'chr1:246767261': [['SRR3535826.21091476', 'C'],
+  ['SRR3535826.45114172', 'G'],
+  ['SRR3535826.5821902', 'C'],
+  ['SRR3535826.11258797', 'C'],
+  ['SRR3535826.17575166', 'C'],
+  ['SRR3535826.48835599', 'G'],
+  ['SRR3535826.64409304', 'C']]}
+
+
+dict2 = getDict_Pos_readName_base(samfile, "chr1", 246767261+5)
+dict3 = getDict_Pos_readName_base(samfile, "chr1", 246767261+15)
+
+
+# batch mod: 也适用于多个位点，这种情况不可能跨越chr；如果跨越了，可以使用单一版本，再合并 vector
+dict4 = getDict_Pos_readName_base(samfile, "chr1", [246767261, 246767261+5, 246767261+15])
+dict4
+
+(2) transfer dict to vector
+# simple merge the dict
+def dict2vector(dict0):
+    results=[]
+    for k,v in dict0.items():
+        #print(k, v)
+        for ele in v:
+            results.append([k] + ele)
+    return results
+
+# result
+results = dict2vector(dict1) + dict2vector(dict2) + dict2vector(dict3)
+results
+
+批量模式
+results2 = dict2vector(dict4)
+results2
+
+
+(3) save to file
+output_file = open("/data/wangjl/rsa/HeLa/map/test/3b.txt", "w")
+
+for i in range( len(results2) ):
+    output_file.write( "\t".join( results2[i] )+ "\n" )
+
+output_file.close()
+
+
+(4) vector to table
+import pandas as pd
+
+table = pd.DataFrame(results, columns=['position', 'readname', 'nt'])
+table
+
+table["position"].unique()
+table["readname"].unique()
+
+# 新建空白表格，默认字符串"-"，指定行列
+table_wide = pd.DataFrame(columns=table["position"].unique(), index=table["readname"].unique(), data="-" )
+table_wide
+
+填充字符串
+for i in range(len(table)):
+    row = table.iloc[i]
+    #print(i, row.readname, row.position, row.nt)
+    table_wide.loc[row.readname, row.position] = row.nt
+table_wide
+
+输出：
+	chr1:246767261	chr1:246767266	chr1:246767276
+SRR3535826.21091476	C	T	G
+SRR3535826.45114172	G	T	G
+SRR3535826.5821902	C	T	G
+SRR3535826.11258797	C	T	G
+SRR3535826.17575166	C	T	G
+SRR3535826.48835599	G	T	G
+SRR3535826.64409304	C	T	G
+SRR3535826.1490429	-	T	G
+
+
+(5) table to string
+import re
+
+results = []
+for i in range(len(table_wide)):
+    row = table_wide.iloc[i]
+    results.append( re.sub("\n","", row.to_string(header=False, index=False)) )
+#
+results #['CTG', 'GTG', 'CTG', 'CTG', 'CTG', 'GTG', 'CTG', '-TG']
+
+
+# 统计计数
+pd.DataFrame( data = results )[0].value_counts()
+
+输出: 
+CTG    5
+GTG    2
+-TG    1
+Name: 0, dtype: int64
+
+
+
+
 
 
 

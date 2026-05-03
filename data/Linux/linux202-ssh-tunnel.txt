@@ -1,0 +1,2560 @@
+linux202-ssh-tunnel
+
+	ssh/autossh
+
+
+
+
+========================================
+使用基于加密文件ssh key 登录，禁用单密码登录
+----------------------------------------
+
+193 server 被黑客攻击，被迫重装系统后，设置禁止使用密码登录。
+见 http://j.biomooc.com/?file=server/ssh_key_login.md
+
+
+1. 备份文件
+
+(1)用户名和uid
+
+$ cp /etc/passwd ~/backup/
+$ cp /etc/group ~/backup/
+
+
+(2) 硬盘挂载情况
+$ lsblk
+NAME              MAJ:MIN RM   SIZE RO TYPE  MOUNTPOINT
+sda                 8:0    0 446.1G  0 disk  
+├─sda1              8:1    0    50M  0 part  /boot/efi
+├─sda2              8:2    0   471M  0 part  /boot
+└─sda3              8:3    0 445.6G  0 part  
+  ├─centos00-root 253:0    0 326.4G  0 lvm   /
+  └─centos00-swap 253:1    0 119.2G  0 lvm   [SWAP]
+sdb                 8:16   0   8.2T  0 disk  
+└─sdb1              8:17   0   8.2T  0 part  
+  └─centos-home   253:4    0   8.2T  0 lvm   /home
+sdc                 8:32   0 145.9T  0 disk  
+├─sdc1              8:33   0 145.9T  0 part  
+└─mpatha          253:2    0 145.9T  0 mpath 
+  └─mpatha1       253:3    0 145.9T  0 part  /data
+sdd                 8:48   0 145.9T  0 disk  
+├─sdd1              8:49   0 145.9T  0 part  
+└─mpatha          253:2    0 145.9T  0 mpath 
+  └─mpatha1       253:3    0 145.9T  0 part  /data
+sde                 8:64   0    89T  0 disk  
+└─sde1              8:65   0    89T  0 part  /data_slow
+sdf                 8:80   0    89T  0 disk  
+└─sdf1              8:81   0    89T  0 part  /data2
+sr0                11:0    1   928K  0 rom
+
+
+
+(3) 重装系统
+
+1. 193 server 重装如果失败，可能是需要 初始化 Raid;
+启动 点F1，进入 bios，选择 UEFI
+左侧系统设置，右侧底部 存储
+slot10, Main menu, 然后 Vitual drive management
+Operation: fast initialization
+很快清理掉数据。
+
+然后 UEFI 启动项，选择 U盘启动。或者启动 按F12 选择U盘启动。
+进入启动项3行时，选第一行按字母e，删除 :labels及 quiet 之前的内容，换成 :/dev/sdc4
+ctrl+x 重启即可进入centOS7.9安装界面。
+
+
+
+
+
+
+
+
+2. 恢复用户名系统
+
+(1) 用户名根据id重建的脚本
+
+
+查看原来uid
+$ ls -lth /home
+total 148K
+drwxr-x---. 48 wangjl jinwf 4.0K Sep 23 19:38 wangjl
+drwx------. 23 zhouwg jinwf 4.0K Sep 23 19:18 zhouwg
+drwx--x--x. 39 zhoub  jinwf 4.0K Sep 23 18:09 zhoub
+drwxr-x---. 31   1010 jinwf 4.0K Sep 23 14:40 jhsun
+drwx------. 27   1005 jinwf 4.0K Sep 23 14:02 chengww
+或者
+$ tail -n 2 /home/wangjl/backup/passwd
+Tangjk:x:1030:1001::/home/Tangjk:/bin/bash
+liyh:x:1031:1001::/home/liyh:/bin/bash
+
+
+
+
+
+新建组
+$ sudo groupadd -g 1001 jinwf
+
+新建用户 with uid
+$ usr="wangjl" && uid=1017
+$ sudo useradd -s /bin/bash -d /home/${usr} -m ${usr} -g 1001 -u ${uid}
+
+
+新用户密码 sudo passwd ${usr}
+
+# 1) 固定密码
+$ echo "redhat" | sudo passwd --stdin $usr
+Changing password for user wangjl2.
+passwd: all authentication tokens updated successfully.
+
+
+# Or 2) 随机密码
+$ pass=`date|md5sum |head -c 10` && echo $pass | sudo passwd --stdin $usr
+Changing password for user wangjl2.
+passwd: all authentication tokens updated successfully.
+
+$ echo $pass
+a22e604a69
+
+
+
+
+
+
+3. 怎么免密码登录？
+
+(1) 服务器设置不允许仅用密码登录
+
+Centos7禁用密码登录方法：
+
+$ sudo vim /etc/ssh/sshd_config
+PasswordAuthentication yes ===> PasswordAuthentication no
+
+Restart the server:
+$ sudo systemctl restart sshd.service
+
+
+
+
+
+(2) 用户设置步骤
+
+- Xshell配置 ssh免密登录 密钥公钥 https://blog.csdn.net/m0_68517939/article/details/126779021
+- CentOs7 设置密钥登录、禁用密码、免密登录 https://copyfuture.com/blogs-details/202207090626216182
+
+
+
+使用密钥登录分为3步：
+1) 生成密钥（公钥与私钥对）；
+
+最好加上6位以上的密码，相当于 加密文件 + 密码 双重登录验证。
+
+windowns 使用 git bash: https://git-scm.com/
+下载并默认安装windows git后，右击桌面空白部分，选择 git bash ，然后输入如下命令:
+
+
+$ cd 
+$ cd .ssh/
+$ ssh-keygen -t rsa -C "wangjl2@gmail.com" -f ./id_rsa10  #如果使用
+Generating public/private rsa key pair.
+Enter passphrase (empty for no passphrase):  这里推荐输入一个强密码，不能留空
+Enter same passphrase again:
+Your identification has been saved in ./id_rsa10.
+Your public key has been saved in ./id_rsa10.pub.
+The key fingerprint is:
+SHA256:0qOWvW/BaNO9ttdzN1YcJmJBRjihEWzix1/RKc4XLms wangjl2@gmail.com
+The key's randomart image is:
++---[RSA 2048]----+
+|      .o..=+. .  |
+|     . ooo.+ +   |
+|    . +.  + = .  |
+|     . +   B + o |
+|      o S+o.= o..|
+|       =+o+E.   o|
+|      +..... . ..|
+|     .   .. o .++|
+|        .o...o. =|
++----[SHA256]-----+
+
+
+检查生成的文件:
+$ ls -lth
+total 19K
+-rw-r--r-- 1 admin 197121  399 9月  23 14:20 id_rsa10.pub
+-rw-r--r-- 1 admin 197121 1.8K 9月  23 14:20 id_rsa10
+
+其中带 .pub 后缀的，邮件发给管理员。
+私钥文件没有 .pub 后缀，要像保护自己的密码一样保护它，不要发给任何人。私钥就是你以后登录服务器的凭证。
+
+可以定期生成新的密钥对，并自己把新的公钥加入服务器的 ~/.ssh/authorized_key 文件中，替换掉旧的。
+
+
+
+
+2) 放置公钥(Public Key)到服务器 ~/.ssh/authorized_key 文件中
+
+首次请管理员执行这一步，后来可以不定期自己执行更新替换。
+
+自己执行
+$ cat id_rsa10.pub >> ~/.ssh/authorized_keys
+
+注意检查一下服务器上 ~/.ssh/ 文件夹是否为700，authorized_keys文件是否为600。
+$ chmod 700 ~/.ssh
+$ chmod 600 ~/.ssh/authorized_keys
+
+
+
+新用户由管理员代执行，把自己的公钥邮件发给管理员
+$ cat id_rsa10.pub >> /home/${usr}/.ssh/authorized_keys
+
+$ chmod 700 /home/${usr}/.ssh
+$ chmod 600 /home/${usr}/.ssh/authorized_keys
+
+
+
+
+3) 配置ssh客户端使用密钥登录
+
+ssh 除了使用密码登录外，还可以选择 public key 登录方式: 通过服务器上的公钥配对的私钥文件进行登录。
+
+i) 使用 git bash 登录服务器时，秘钥文件名只能是 id_rsa，且放在 C:\Users\admin\.ssh\id_rsa 位置。
+
+
+ii) 使用 xshell 时
+文件-新建，输入主机名，点击用户身份验证，
+方法：Public Key
+用户名: 自己的用户名
+用户秘钥: 点击左侧的浏览、选择导入，找到 不带 .pub 后缀的私钥，选择，点确定，确定。
+
+打开-选择刚才那个设置，点连接即可。
+
+
+
+
+
+
+
+
+
+4. 如何在本地配置多个 ssh key?
+https://gitee.com/help/articles/4229#article-header1
+
+(1) 生成多个 ssh key 
+
+生成一个公司电脑用的SSH-Key
+$ ssh-keygen -t rsa -C 'xxxxx@company.com' -f ~/.ssh/gitee_id_rsa
+设置密码，至少5位。
+
+生成一个github用的SSH-Key
+$ ssh-keygen -t rsa -C 'xxxxx@qq.com' -f ~/.ssh/github_id_rsa
+
+
+-t : 密钥类型, 可以选择 dsa | ecdsa | ed25519 | rsa ;
+-f : 密钥目录位置, 默认为当前用户home路径下的 .ssh 隐藏目录, 也就是 ~/.ssh/ , 同时默认密钥文件名以 id_rsa 开头. 如果是 root 用户, 则在 /root/.ssh/id_rsa , 若为其他用户, 则在/home/username/.ssh/id_rsa;
+-C : 指定此密钥的备注信息, 需要配置多个免密登录时, 建议携带;
+
+
+(2) 配置文件 ~/.ssh/config 
+在 ~/.ssh 目录下新建一个config文件，添加如下内容（其中Host和HostName填写git服务器的域名，IdentityFile指定私钥的路径）
+
+# gitee
+Host gitee.com
+HostName gitee.com
+PreferredAuthentications publickey
+IdentityFile ~/.ssh/gitee_id_rsa
+# github
+Host github.com
+HostName github.com
+PreferredAuthentications publickey
+IdentityFile ~/.ssh/github_id_rsa
+
+
+
+$ cat ~/.ssh/config # 这是 windows 上的文件
+Host 192.168.2.105
+  HostName 192.168.2.105
+  User wangjl
+  PreferredAuthentications publickey
+  IdentityFile ~/.ssh/gitee_id_rsa
+
+
+
+(3) 公钥放到服务器上
+$ vim ~/.ssh/authorized_keys
+写入 ~/.ssh/gitee_id_rsa.pub 的一行内容。
+
+
+(4) 连接
+
+$ ssh wangjl@192.168.2.105
+Enter passphrase for key '/c/Users/admin/.ssh/gitee_id_rsa':
+Last login: Fri Sep 23 02:28:13 2022 from desktop-6tss3vl.lan
+(base) [wangjl@ct79 ~]$
+
+
+
+
+
+
+
+
+========================================
+|-- 为了节省时间，使用基于加密文件ssh key 登录，也允许密码登录
+----------------------------------------
+对于可信任的固定机器(我的PC)，允许免密登录server(s3)
+
+目录:
+- git bash
+- xshell
+- vscode
+
+1. Ubuntu18 server设置
+(1)已安装
+sudo apt-get install openssh-serve
+(2)修改配置
+$ sudo vim /etc/ssh/sshd_config
+# 开启密钥登录，只要这一行即可
+PubkeyAuthentication yes
+
+#root 用户能否通过 SSH 登录
+# PermitRootLogin yes
+
+重启SSH服务
+$ sudo systemctl restart ssh
+
+(2)生成密钥对: 同上一节
+
+(3)把公钥 id_rsa.pub 复制到服务器
+注意：s3 server 公钥文件 ~/.ssh/authorized_keys, 之前写成了 ~/.ssh/authorized_key, 一直报错，修改为复数后就可以直接登录了。
+
+(4)登录
+git bash 
+$ ssh wangjl@s3.biomooc.com
+$
+
+或者指定密钥文件位置:
+$ ssh wangjl@s3.biomooc.com -i /c/Users/admin/.ssh/id_rsa
+$
+
+
+
+
+
+
+========================================
+基于 xshell 的内网穿透： SSH 端口转发又叫 SSH 隧道（tunnel） 原理与实战
+----------------------------------------
+1. 简单模型
+A服务器在局域网，我在外部用C电脑能连接和A同一个网的B跳板机。
+整个模型是： C -> || B -> A ||
+
+- 主机B和A在同一个局域网
+- 平常通过B（win）访问服务器A（Linux）
+- 在外网能通过 xshell 能连接B主机
+
+(1) 之前是通过2次跳转，先连接B，再连接A。
+缺点： 麻烦，且无法访问A的 Rstudio 等交互式页面。
+
+(2) 通过隧道连接 Rstudio
+a) 创建隧道
+点击顶部文件夹图标右边的下三角，找到B的连接，右击-属性；
+点击 连接-ssh-隧道，单击添加，
+	设置登录方式，也就是站到B主机上： 类型：本地（拨出），	源主机： localhost，侦听端口：8787
+	设置服务器A的信息： 目标主机： 10.10.x.143，目标端口：8787
+	自定义注释： 说明：Rstudio server
+	点确定。
+	还可以再添加一下 jupyter 的设置，只是端口号不同，比如 8890
+重新连接主机B，xshell标签图标变成圆圈，表示设置成功。
+b) 访问Rstudio
+浏览器访问 http://localhost:8787/
+即可访问服务器A了。
+
+
+
+
+
+
+2. 怎么自己构建主机B呢？
+https://blog.csdn.net/qijiajun97/article/details/104194201
+
+(1) 云主机D
+就是A和C都能访问的主机。设置允许端口转发
+$ vim /etc/ssh/sshd_config
+找到文件中被注释掉的GatewayPorts no，去注释，并将no改成yes
+如果没找到就在末尾添加上GatewayPorts yes
+
+打开防火墙端口，比如 12345
+
+
+(2) 设置B电脑为跳板机
+打开XShell，添加连接，设置： 名称：跳板机，协议：ssh，主机：云主机的公网ip，端口号：22
+	用户身份验证：云主机的用户名和密码。
+	SSH-隧道，设置转移规则： 类型：远程(传入),源主机：0.0.0.0，侦听端口： 云主机开的端口，比如 12345。
+		目标主机： 内网主机A的IP，目标端口：22
+跳板机B必须在线，否则无法实现转发。
+
+
+(3) 外部电脑C的配置
+任意一个ssh软件，
+	IP: 云主机IP
+	端口： 云主机打开的端口，比如 12345
+	用户名：服务器A的用户名
+	密码：服务器A的密码
+
+实现了在外网通过ssh隧道服务连接内网服务器。
+
+
+(4) 设置隧道后，所有的ssh相关的服务都可以在外网使用，比如 sftp 文件传输
+除了ssh登录外，ssh相关协议也是支持的。
+比如，在外网电脑C上使用支持 sftp 的软件。
+
+这套操作的原理是SSH的隧道协议，具体可以看
+	SSH Tunnel 一般场景用法： https://blog.csdn.net/wxqee/article/details/49234595
+
+
+
+
+
+
+3. 案例2: 通过ssh隧道转发本地ssh,实现内网穿透
+https://blog.csdn.net/u010494323/article/details/134277926
+实际场景，有A服务器，位于某内网环境，没有外网IP，外面无法SSH
+但我自己有比如阿里云上的一台服务器D，我想直接SSH A服务器，怎么办？
+
+D 服务器IP 101.198.*.*
+A 服务器执行 # ssh -R 2201:0.0.0.0:22 -p 22 USERNAME@101.198.*.* -f -N
+
+
+
+
+
+
+ref:
+https://blog.csdn.net/qq_61562251/article/details/134910406
+
+
+
+
+
+========================================
+|-- SSH Tunnel 一般场景用法： ssh -p port 本地转发-L / 远程转发-R / 动态转发-D
+----------------------------------------
+反向端口转发是把本机的端口转发到远程的机子上；
+与之对应，正向端口转发则是把远程的端口转发到本地。
+
+0. 背景介绍
+
+服务器打开web服务，但是没有防火墙操作权限，只能访问22端口，怎么访问web服务？
+
+(1)常用示例
+对本地-L 端口 8888 的访问，转发到远程端口8887。
+中间的ip写成localhost，表示与@后的ip一致。
+两者的IP也可以不同，但是要求后面的IP能登录前面的IP。
+$ ssh -L 8888:localhost:8887 wangjl@h2.biomooc.com # 添加-fN参数则后台运行
+$ python3 -m http.server 8887 #远程服务启动
+浏览器访问 http://localhost:8888/
+
+需确保远程服务器SSH配置允许端口转发（AllowTcpForwarding yes）
+
+ssh 参数：
+	-C：压缩传输
+	-f：将ssh转⼊后台，不占⽤当前shell
+	-N：静默连接，减少被发现。 表示只是建立连接，而不登录。
+	-g：允许远程主机连接本地⽤于端⼝转发
+	-L：本地端⼝转发
+	-R：远程端口转发
+	-D：动态端⼝
+	-p：指定ssh端口
+	-T:不分配伪终端 tty
+	
+	-i ssh key 私钥文件
+
+
+常用组合：
+	-Ngf -R
+	-fCNT -L
+
+
+man 手册：
+-C      Requests compression of all data (including stdin, stdout, stderr, and data for forwarded X11, TCP and UNIX-domain connections).  The compression algorithm is the same used by gzip(1).  Compression is desirable on modem lines and other slow connections, but will only slow down things on fast networks. The default value can be set on a host-by-host basis in the configuration files; see the Compression option.
+
+允许远程主机连接本地⽤于转发端⼝。
+-g      Allows remote hosts to connect to local forwarded ports.  If used on a multiplexed connection, then this option must be specified on the master process.
+
+-N      Do not execute a remote command.  This is useful for just forwarding ports.
+
+-T      Disable pseudo-terminal allocation.
+
+
+
+
+(2) 端口转发时可见范围： 本地(127.0.0.1) vs 局域网(0.0.0.0)
+$ lsof -i:8881
+Or
+$ netstat -lntp | grep 8881
+(Not all processes could be identified, non-owned process info
+ will not be shown, you would have to be root to see it all.)
+tcp        0      0 127.0.0.1:8881          0.0.0.0:*               LISTEN      -                   
+tcp6       0      0 ::1:8881                :::*                    LISTEN      -
+如果看到远端主机是 127.0.0.1 表示只能本地访问，要 0.0.0.0：port 才能使所有本局域网的IP都能访问。
+
+$ netstat -lntp | grep 8787 #参考 Rstudio 的地址
+tcp        0      0 0.0.0.0:8787            0.0.0.0:*               LISTEN      -
+
+
+
+
+
+(3) 端口转发 默认关闭，需要打开
+
+确保SSH服务器的/etc/ssh/sshd_config配置文件的AllowTcpForwarding和GatewayPorts均配置为yes
+然后 sudo systemctl restart sshd 重启 ssh- daemon 服务就开启成功了。
+
+$ sudo vim /etc/ssh/sshd_config
+AllowTcpForwarding yes
+GatewayPorts yes
+
+重启ssh 服务
+$ sudo systemctl restart sshd #CentOS
+Or
+$ sudo service ssh restart #Ubuntu
+$ sudo netstat -anp | grep 8888
+
+查看端口是否开放：
+$ telnet 192.168.2.120 8888
+
+
+
+
+(10) 测试用机器：
+	A: local Win
+	B: Y station
+	C: 105 VB
+	D: Z server
+
+
+
+
+
+
+
+1. ssh 基本用法 A->B
+@A$ ssh userB@IP_B #登录B主机
+
+
+
+
+2. SSH 的 -L, -R, -D 三种用法
+(1) 本地转发 -L 用法 [-L address]
+	 -L [bind_address:]port:host:hostport
+     -L [bind_address:]port:remote_socket
+     -L local_socket:host:hostport
+     -L local_socket:remote_socket
+
+指定本地连接到远程主机的端口。
+Specifies that connections to the given TCP port or Unix socket on the local (client) host are to be forwarded to the given host and port, or Unix socket, on the remote side.  This works by allocating a socket to listen to either a TCP port on the local side, optionally bound to the specified bind_address, or to a Unix socket.  Whenever a connection is made to the local port or socket, the connection is forwarded over the secure channel, and a connection is made to either host port hostport, or the Unix socket remote_socket, from the remote machine.
+
+Port forwardings can also be specified in the configuration file. Only the superuser can forward privileged ports.  IPv6 addresses can be specified by enclosing the address in square brackets.
+
+By default, the local port is bound in accordance with the GatewayPorts setting.  However, an explicit bind_address may be used to bind the connection to a specific address.  The bind_address of “localhost” indicates that the listening port be bound for local use only, while an empty address or ‘*’ indicates that the port should be available from all interfaces.
+
+
+i) ssh -L 用法1（本地起端口映射到其他机器）
+A->B-> | C
+A-> | C
+	@B$ sudo ssh -L 8888 userC@hostC
+	@A$ ssh -p 8888 userC@hostB
+
+意思是在 HostB 上，让 localhost 起 8888 端口，使之映射到 HostC 的 22 端口（默认）。
+如此，在 HostA 上可以使用 HostB:8888 就像使用 HostC:22 一样。
+
+
+测试报错：
+	@B$ sudo ssh -L 8888 wangjl@192.168.2.105
+	@B$ ssh -N -L 8888:192.168.2.105:22 wangjl@192.168.2.105
+	[sudo] password for wangjl: 
+	Bad local forwarding specification '8888'
+	@B$ sudo ssh -L 8888:192.168.2.105:22 wangjl@192.168.2.105 #可以执行，登录
+
+查端口占用：
+	@B$ sudo netstat -anp | grep 8888
+	tcp        0      0 127.0.0.1:8888          0.0.0.0:*               LISTEN      3999593/sshd: wangj 
+	tcp6       0      0 ::1:8888                :::*                    LISTEN      3999593/sshd: wangj 
+	unix  3      [ ]         STREAM     CONNECTED     58888    1/init               /run/systemd/journal/stdout
+	wangjl@YStation:~$ 
+	wangjl@YStation:~$ ps 3999593
+		PID TTY      STAT   TIME COMMAND
+	3999593 ?        S      0:00 sshd: wangjl@pts/7
+	wangjl@YStation:~$ kill -9 3999593
+测试端口是否可用
+	@B$ python3 -m http.server 8888
+	@A2$ $ curl -I http://192.168.2.120:8888
+	HTTP/1.0 200 OK
+	
+再执行：
+	不行的：
+	@B$ ssh -L 8888:192.168.2.105:22 wangjl@192.168.2.105
+	@B$ ssh -L 8888:localhost:22 wangjl@192.168.2.105
+	@B$ ssh -Ng -L 8888 wangjl@192.168.2.105
+	@B$ ssh -Ng -L 8888:locathost:22 wangjl@192.168.2.105
+	可以的
+	@B$ ssh -fNg -L 8888:192.168.2.105:22 wangjl@192.168.2.105 #必须参数 -g，没有则无法从A连接C
+	@B$ ssh -Ng -L 8888:192.168.2.105:22 wangjl@192.168.2.105 #必须指定完整转发格式 本地端口:远程IP:远程端口
+	检查：
+	@B$ sudo netstat -anp | grep 8888 #注意区别：之前第三列是 127.0.0.1，只能本地可见，必须 0.0.0.0 才能局域网可见
+	tcp        0      0 0.0.0.0:8888            0.0.0.0:*               LISTEN      4036534/ssh         
+	tcp6       0      0 :::8888                 :::*                    LISTEN      4036534/ssh
+	登录：
+	@A2$ ssh -p 8888 wangjl@192.168.2.120 #输入C的密码，登录了C
+
+
+
+
+ii) ssh -L 用法2（本地起端口映射到其他机器） OK 我的模式
+本地主机（A）、跳板机（B）、目标主机（C）
+A指定本地端口访问通过SSH连接转发给B，B将这些数据转发给C，同时将结果传回给A。（一般情况下B的端口是远程连接端口）
+A：ssh -CfNg -L 本地端口:⽬标ip:⽬标端⼝ 跳板账号@ip
+
+A-> | B-> C
+A-> | C
+	@A$ ssh -L 8888:HostC:22 UserB@HostB
+	@A$ ssh -p 8888 userC@localhost
+意思是在 HostA 上，让 localhost 起 8888 端口，使之映射到 HostC 的 22 端口。
+如此，在 HostA 上可以使用 localhost:8888 就像使用 HostC:22 一样。
+
+测试：
+	@A$ ssh -N -L 8888:192.168.2.105:22 wangjl@y.biomooc.com
+	@A$ ssh -p 8888 wangjl@localhost #输入C的密码登录C成功。 该条不退出(exit)，前一条也不会退出。
+
+几个命令：
+	A： ssh -CfNg -L 本地端口:⽬标ip:⽬标端⼝ 跳板账号@ip
+	netstat -antulp | grep 6666 # 查看端⼝占⽤
+	进行远程桌面连接：rdesktop 127.0.0.1:本地端口
+	远程终端连接：ssh -p 端口 账户@ip地址
+
+
+
+
+
+
+
+
+
+
+
+(2) 远程转发 -R 用法 [-R address]
+需要设置，见上文1.3
+	 -R [bind_address:]port:host:hostport
+     -R [bind_address:]port:local_socket
+     -R remote_socket:host:hostport
+     -R remote_socket:local_socket
+     -R [bind_address:]port
+
+指定远程转发到本地。
+Specifies that connections to the given TCP port or Unix socket on the remote (server) host are to be forwarded to the local side.
+
+This works by allocating a socket to listen to either a TCP port or to a Unix socket on the remote side.  Whenever a connection is made to this port or Unix socket, the connection is forwarded over the secure channel, and a connection is made from the local machine to either an explicit destination specified by host port hostport, or local_socket, or, if no explicit destination was specified, ssh will act as a SOCKS 4/5 proxy and forward connections to the destinations requested by the remote SOCKS client.
+
+Port forwardings can also be specified in the configuration file. Privileged ports can be forwarded only when logging in as root on the remote machine.  IPv6 addresses can be specified by enclosing the address in square brackets.
+
+By default, TCP listening sockets on the server will be bound to the loopback interface only.  This may be overridden by specifying a bind_address.  An empty bind_address, or the address ‘*’, indicates that the remote socket should listen on all interfaces. Specifying a remote bind_address will only succeed if the server's GatewayPorts option is enabled (see sshd_config(5)).
+
+If the port argument is ‘0’, the listen port will be dynamically allocated on the server and reported to the client at run time. When used together with -O forward the allocated port will be printed to the standard output.
+
+
+
+i) ssh -R 用法1（非本地起端口映射到其他机器）
+A->B-> | C
+A->| C
+	HostC$ ssh -R 8888:localhost:22 UserB@HostB
+	@A $ ssh -p 8888 UserC@hostB
+意思是在 HostC 上，让 HostB 起 8888 端口，使之映射到 localhost 的 22 端口。
+如此，在 HostA 上可以使用 HostB:8888 就像使用 HostC:22 一样。
+
+测试： 
+	@C $ ssh -Ng -R 8888:localhost:22 wangjl@y.biomooc.com #输入B的密码
+	@A $ ssh -p 8888 wangjl@y.biomooc.com  #失败
+	@A2 $ ssh -p 8888 wangjl@192.168.2.120 #输入C密码登录C
+	@B $ ssh -p 8888 wangjl@localhost #输入C密码登录C
+	
+查端口：
+	要加 sudo
+	@B$ sudo netstat -anp | grep 8888
+	tcp        0      0 0.0.0.0:8888            0.0.0.0:*               LISTEN      4040417/sshd: wangj 
+	tcp        0      0 192.168.2.120:8888      192.168.2.105:58410     ESTABLISHED 4040417/sshd: wangj
+	
+	$ ps 4040417
+		PID TTY      STAT   TIME COMMAND
+	4040417 ?        S      0:00 sshd: wangjl
+
+
+
+ii) ssh -R 用法2（非本地起端口映射到其他机器）
+A->|B->C
+A->|C
+	@A$ ssh -CfNg -R 自定义端⼝:hostC:⽬标端⼝ 跳板账号B@hostB
+	@A$ ssh -p 自定义端口 userC@hostB
+
+准备：
+	A:y station
+	B:j.server
+	C:Z server
+	@B$ sudo iptables -I INPUT -p tcp --dport 8881 -j ACCEPT #开端口
+	配置文件，见上文1.3
+	
+测试：
+	@A$ ssh -Ng -R 8881:z.biomooc.com:22 wangjl@j.biomooc.com #输入B的密码，挂起
+	@A$ ssh -p 8881 wangjl@j.biomooc.com #输入C的密码，确实登录了C
+	@B$ ssh -p 8881 wangjl@localhost #输入C的密码，确实登录了C
+
+检查：
+	@B$ sudo netstat -anp | grep 8881
+	tcp        0      0 127.0.0.1:8881          0.0.0.0:*               LISTEN      8268/sshd: wangjl   
+	tcp6       0      0 ::1:8881                :::*                    LISTEN      8268/sshd: wangjl 
+	修改配置文件前，第三列是 127.0.0.1，只能本地可见。
+	按上文1.3修改配置文件后，重启ssh服务，重新连接，可以看到 0.0.0.0 为局域网可见：
+	$ sudo netstat -anp | grep 8881
+	tcp        0      0 0.0.0.0:8881            0.0.0.0:*               LISTEN      8875/sshd: wangjl   
+	tcp        0      0 10.20.57.27:8881        10.20.89.188:58696      ESTABLISHED 8875/sshd: wangjl
+
+
+
+
+
+iii) ssh -R 用法3（非本地起端口映射到其他机器）
+
+A->B-> | C -> D
+A->| D
+	HostC$ ssh -R 8888:HostD:22 UserB@HostB
+	@A$ ssh -p 8888 userD@hostB
+
+意思是在 HostC 上，让 HostB 起 8888 端口，使之映射到 HostD 的 22 端口。
+	在C上执行，C就像一个转发器（B端口->D端口），本机无暴漏端口。
+	检查端口时，在B上。
+如此，在 HostA 上可以使用 HostB:8888 就像使用 HostD:22 一样。
+
+准备：
+	A： win
+	B: J
+	C: y
+	D: 105
+
+测试： 
+	@C$ ssh -Ng -R 8881:192.168.2.105:22 wangjl@j.biomooc.com #输入B的密码
+	@A$ ssh -p 8881 wangjl@j.biomooc.com #输入D的密码，登录D
+	@C$ ssh -p 8881 wangjl@j.biomooc.com #输入D的密码，登录D
+	
+	检查端口 
+	@B$ sudo netstat -anp | grep 8881
+	tcp  0  0 0.0.0.0:8881  0.0.0.0:*   LISTEN      4177/sshd: wangjl   
+	tcp6 0  0 :::8881       :::*        LISTEN      4177/sshd: wangjl
+
+
+
+
+
+
+
+
+
+
+
+
+
+(3) 动态转发 -D 用法 [-D [bind_address:]port] 没看懂
+ -D [bind_address:]port
+Specifies a local “dynamic” application-level port forwarding. This works by allocating a socket to listen to port on the local side, optionally bound to the specified bind_address.  Whenever a connection is made to this port, the connection is forwarded over the secure channel, and the application protocol is then used to determine where to connect to from the remote machine.  Currently the SOCKS4 and SOCKS5 protocols are supported, and ssh will act as a SOCKS server.  Only root can forward privileged ports.  Dynamic port forwardings can also be specified in the configuration file.
+
+IPv6 addresses can be specified by enclosing the address in square brackets.  Only the superuser can forward privileged ports.  By default, the local port is bound in accordance with the GatewayPorts setting.  However, an explicit bind_address may be used to bind the connection to a specific address.  The bind_address of “localhost” indicates that the listening port be bound for local use only, while an empty address or ‘*’ indicates that the port should be available from all interfaces.
+
+相对于本地转发和远程转发的单一端口转发模式而言，动态转发有点更加强劲的端口转发功能，即是无需固定指定被访问目标主机的端口号。这个端口号需要在本地通过协议指定，该协议就是简单、安全、实用的 SOCKS 协议。
+
+
+i) 本地的代理服务，通过 localhost:22 隧道入口建立 Failed
+	HostA$ ssh -D 8080 user@hostB
+此时 localhost:8080 就是本地的 Socket 代理服务器。
+效果，即浏览器配置了 本机IP:8080 Socket5 的代理后，就可以像在本机上一样访问网站资源了。
+
+测试：
+	@win$ ssh -D 50000 wangjl@j.biomooc.com
+	用firefox浏览器，在浏览器里设置使用socks5代理127.0.0.1:50000，然后浏览器就可以访问host1所在网络内的任何IP了。
+How to use socks5?
+	在Windows系统上，您可以通过以下步骤设置和使用Socks5代理：
+	step1：打开控制面板并进入“Internet选项”。
+	step2：选择“连接”选项卡，并点击“局域网设置”。
+	step3：勾选“使用代理服务器”，在地址和端口号处分别填写Socks5代理服务器的IP地址和端口号，并在认证选项卡中填写用户名和密码（如果需要）。
+	step4：点击“确定”并关闭窗口。
+	step5：重新启动您的浏览器或其他网络应用程序，您应该能够成功连接到Socks5代理服务器并浏览网页或使用网络应用程序。
+
+
+i) 本地的代理服务，通过 HostB:22 隧道入口建立
+	HostA$ ssh -D 8080 UserB:HostB
+或写全
+	HostA$ ssh -D localhost:8080 -p 22 UserB:HostB
+
+此时 localhost:8080 就是HostB上的 Socket 代理服务器。
+效果，即浏览器配置了 本机IP:8080 Socket5 的代理后，就可以像在HostB上一样访问网站资源了。
+
+
+
+
+
+
+
+
+
+
+ref： 
+https://blog.csdn.net/wxqee/article/details/49234595
+https://blog.csdn.net/qq_61562251/article/details/134910406
+https://zhuanlan.zhihu.com/p/148825449
+
+
+
+
+
+========================================
+|-- ssh 配置文件: ~/.ssh/config 配置别名
+----------------------------------------
+
+1. 设置别名： 传输文件 scp 为例
+基本用法：
+Host lab
+    HostName remote
+    User user
+    Port port
+
+scp 和 ssh 类似，区别是端口号前者使用-P。
+
+(1) 把本地的 /path/to/local/file 文件传输到远程的 /path/to/remote/file
+$ scp -P port /path/to/local/file user@remote:/path/to/remote/file
+也可以使用别名
+$ scp /path/to/local/file lab:/path/to/remote/file
+
+(2) 把远程的 /path/to/remote/file 下载到本地的 /path/to/local/file
+$ scp lab:/path/to/remote/file /path/to/local/file
+#远程的默认路径是家目录
+#下面命令把当前目录下的 file 传到远程的 ~/dir/file
+$ scp file lab:dir/file
+
+# 加上 -r 命令可以传送文件夹
+# 下面命令可以把当前目录下的 dir 文件夹传到远程的家目录下
+$ scp -r dir lab:
+
+# 别忘了 . 可以用来指代当前目录
+# 下面命令可以把远程的 ~/dir 目录下载到当前目录里面
+$ scp -r lab:dir/ .
+
+
+
+
+2. 指定私钥（~/.ssh/id_rsa），实现无密码登录
+Host ssh-host1
+	user root
+	Hostname 1.2.3.4
+	Port 2222
+	# 私钥文件
+	identityfile ~/.ssh/id_rsa_mysql
+	RemoteForward 0.0.0.0:3306 mysql-ip:3306
+
+Host VB105
+  HostName 192.168.2.105
+  User wangjl
+  PreferredAuthentications publickey
+  IdentityFile ~/.ssh/gitee_id_rsa
+
+
+
+
+
+3. 综合示例：转发多个端口
+Host vm
+	User root
+	Hostname 181.220.x.x
+	# 将vm中的127.0.0.1:1081转发到localhost的30081
+	LocalForward localhost:30081 127.0.0.1:1081
+	# 本地开放一个30082端口
+	DynamicForward 127.0.0.1:30082
+
+
+
+
+
+ref:
+https://blog.csdn.net/omaidb/article/details/128400531
+
+
+
+
+
+========================================
+|-- ssh/config： vscode利用跳板机二次ssh连接server
+----------------------------------------
+1.需要连接跳板机， 然后ssh 连接 bf2.
+
+命令行需要首先 ssh sdfk@tiaobanji ，然后在跳板机上 ssh ubuntu@yourip
+
+怎么用vscode 来连接呢?
+
+
+
+2. 设置.ssh/config
+Host bf2
+  HostName yourip
+  User ubuntu
+  ProxyCommand ssh sdfk@tiaobanji -W %h:%p
+
+Host tiaobanji
+  ForwardAgent yes
+  StrictHostKeyChecking no
+  UserKnownHostsFile=/dev/null
+  User sdfk
+
+注意如果是window 主机 用vscode ssh 连接 unix 服务器话， 要把自己的id_rsa 设置为LF格式而不是CRLF， 这样才能连接上 unix 服务器， 否则会显示管道无法写入， invalid format.
+
+private key 需要在结尾有new line， 否则也会invalid format.
+
+远程vscode 想显示图片， 可以下载xquartz。
+
+
+
+
+
+3. 实战：确实可以连接内网代码
+(1) vim ~/.ssh/config
+Host j3
+  HostName j3.biomooc.com
+  User wangjl
+  ProxyCommand ssh wangjl@tiaobanji -W %h:%p
+
+Host tiaobanji
+  HostName gate3.biosino.org
+  ForwardAgent yes
+  StrictHostKeyChecking no
+  UserKnownHostsFile=/dev/null
+  User wangjl
+
+(2) 登录
+vscode 重启，点击连接j3，
+依次输入跳板机密码，输入内部服务器密码。
+
+
+
+
+
+
+
+ref:
+https://zhuanlan.zhihu.com/p/660733922
+https://code.visualstudio.com/docs/remote/ssh
+
+
+
+
+========================================
+|-- ssh 反向隧道实现内网穿透： 需要一台公网云主机
+----------------------------------------
+1. 场景1： 学校实验室有台服务器，我在家怎么登录它？
+再买一台云主机即可。
+
+A： win at home 家庭或者宿舍，不做设置。
+
+B: 105 Server at school 学校实验室/公司服务器 lab
+C: 公网云主机 （跳板机，jumpbox），A和B都可以访问该主机
+
+A->C;
+B->C;
+
+怎么在家让笔记本A访问服务器B: A->B？ 
+
+
+(1) 在B服务器设置
+@B lab$ ssh -R 10022:localhost:22 user@jumpboxC
+将 lab Server 上的 22 端口反向转发到了 jumpbox 的 10022 端口。
+或者说：把远程端口(跳板机C) 1022 转发到 本地(@B)22端口。
+
+只要保持这个 ssh 不断，任何一台机器都可以首先连接到 jumpboxC，然后通过 ssh user@localhost -p 10022 连回到 labB。可以看到，这里 jumpbox 起到了一个跳板的作用，所以我们把它称作跳板机。
+
+(2) 测试连接
+@C jumpbox$ ssh user@localhost -p 10022
+
+
+
+(3) 示例
+	A: win
+	B: 105 server 
+	C: J server
+
+服务器连接云主机
+	@B$ ssh -Ng -R 8888:localhost:22 wangjl@j.biomooc.com #输入C的密码，挂起
+	
+在云主机测试
+	@C$ ssh wangjl@localhost -p 8888 #输入B的密码，登录B
+	检查端口号
+	@C$ sudo netstat -anp | grep 8888
+	tcp        0      0 0.0.0.0:8888            0.0.0.0:*               LISTEN      7381/sshd: wangjl   
+	tcp6       0      0 :::8888                 :::*                    LISTEN      7381/sshd: wangjl
+
+在笔记本A上通过云主机C登录实验室服务器B:
+	@A$ ssh wangjl@j.biomooc.com -p 8888 #输入B的密码，登录B
+
+切断连接：
+	@C$ kill -9 7381
+	或者
+	@B$ ctrl+C 快捷键
+
+
+(4) 缺点： 不稳定
+
+不过上面这么做并不稳健，如果因为网络波动导致 ssh -R 那个连接断了，那么从 jumpbox 就完全失去了到 lab 的控制。万幸的是，有一个叫做 autossh 的软件，可以自动的检测断线，并在断线的时候重连。
+
+autossh 见本页专题。
+
+
+
+
+
+
+
+
+
+
+2. 场景2：我本地有个网站，怎么分享给远方朋友？
+买台云服务器即可。
+
+本地网站 $ python3 -m http.server 8000
+本地可见： http://localhost:8000/
+
+本地执行 local$ ssh -NR 0.0.0.0:18000:localhost:8000 jumpbox
+	把远程端口(jumpbox:18000)映射到本地8000
+远方朋友：  http://jumpbox:18000/ 
+
+
+测试：
+	local: y 
+	yun: jumpbox J
+	本地网站：http://y.biomooc.com:8000
+
+执行端口转发：
+	local$ ssh -NR 0.0.0.0:8888:localhost:8000 wangjl@j.biomooc.com #输入j密码
+
+尝试访问： http://j.biomooc.com:8888
+	结果同上。
+
+
+注意: 这里明确指定了 0.0.0.0，这告诉 ssh，要把 8888 端口绑定在远端的所有IP上。
+如果像之前那样省略的话，缺省值是只绑定在 localhost，也就是只有在 jumpbox 本机才可以访问，而其他人都不能访问。
+或者修改配置文件，并指定-g参数。
+
+查看端口：
+	local$ sudo netstat -anp | grep 8888
+	tcp        0      0 0.0.0.0:8888    0.0.0.0:*    LISTEN      9225/sshd: wangjl   
+	tcp6       0      0 :::8888         :::*         LISTEN      9225/sshd: wangjl	
+
+
+
+
+
+
+3. 场景3： 比方说在本地的127.0.0.1:1080运行了HTTP代理服务，现在我想让另一台机子 remote 也能够使用这个HTTP代理。
+
+local$ ssh -NR 11080:localhost:1080 remote
+local$ ssh remote
+remote$ export http_proxy=http://127.0.0.1:11080/
+remote$ export https_proxy=http://127.0.0.1:11080/
+remote$ curl http://ifconfig.co
+
+看看返回的IP，是不是 remote 也用上了代理？
+
+
+
+
+
+
+
+4. 本地端口映射
+
+(1) 注意区分这里的 localhost 的区别！
+
+之前我们把 lab 的22端口反向转发到了 jumpbox 的10022端口。
+	lab$ ssh -R 10022:localhost:22 jumpbox
+	或者说 把(-R)远程的 1x 转发到 本地 22。此处的 localhost 就是当前登录主机 lab；
+
+现在我想把它转发到本机的20022端口，只需要执行 ssh -L 就行了，例如：
+	local$ ssh -NL 20022:localhost:10022 user@jumpbox
+	把(-L)本地端口 2xx 映射到 远程本机J的 1xx 端口。此处的 localhost 是将要登录的云跳板机。
+
+登录：
+	local$ ssh localhost -p 20022
+	lab$
+
+(2)示例：
+	A-local: Y station - Ubuntu 客户端
+	B-lab: 105 server 目标主机
+	C-jumpbox: J server 云主机 跳板
+
+lab上设置反向代理，反向连接云主机： 远端J:8888-> 本地22
+	lab-B$ ssh -Ng -R 8888:localhost:22 wangjl@j.biomooc.com # 输入C的密码
+	检查端口 
+	@B$ sudo netstat -anp | grep 8888
+	tcp        0      0 0.0.0.0:8888            0.0.0.0:*               LISTEN      11142/sshd: wangjl
+
+	局域网外登录lab-B，通过云主机C：
+	@A$ ssh -p 8888 wangjl@j.biomooc.com #输入B的密码，登录B
+
+本地端口转发： 本地端口 9 转发到 云主机C端口8
+	local-A$ ssh -NL 8889:localhost:8888 wangjl@j.biomooc.com #输入C的密码
+
+	查看端口： 发现是 127.0.0.1 只能本地使用； 而使用 -g 参数或者写为 0.0.0.0:8889 后，就变成了 0.0.0.0 了，全局域网可见。
+	local-A$ sudo netstat -anp | grep 8889
+	tcp        0      0 127.0.0.1:8889          0.0.0.0:*    LISTEN      4176314/ssh         
+	tcp6       0      0 ::1:8889                :::*         LISTEN      4176314/ssh
+
+	登录： 使用本地端口9
+	local-A$ ssh -p 8889 wangjl@localhost #输入B的密码，登录lab-B
+
+
+
+
+
+ref:
+https://zhuanlan.zhihu.com/p/266522925
+https://zhuanlan.zhihu.com/p/21999778
+
+
+
+
+
+========================================
+|-- autossh 的使用：断线自动重连
+----------------------------------------
+autossh is a program to start a copy of ssh and monitor it, restarting it as necessary should it die or stop passing traffic.
+
+1. 安装
+Ubuntu
+$ sudo apt-get install autossh
+
+CentOS:
+$ sudo yum install autossh
+
+Mac: $ brew install autossh
+
+
+
+
+2. 本地转发 -L [本地主机:]本地主机端口:目标主机:目标主机端口
+
+(1) 命令与参数
+local$ autossh -M 5678:5679 -f -CNT -L localhost:3306:mysql:3306 ssh-host
+
+将本地端口映射到远程主机上
+	-M 监控端口:[echo端口],请在服务器上将 监控端口 和 监控端口+1 开放。如果只指定一个，则其+1默认被使用。判断断线的机制
+	-f 使autossh在运行ssh之前进入后台。
+
+	ssh参数
+	-C 使用数据压缩
+	-N 只连接远程主机，不打开远程shell(不需执行指令，只作端口转发)
+	-T: 不分配伪终端 tty
+
+	转发命令
+	-L 将`本地主机端口`通过`ssh-host主机端口`转发到`目标主机端口`上
+	-g: 允许代理服务器连接到本地转发端口(谨慎使用)
+
+
+(2)实战: A->|B->C
+	A-local: j
+	B-jumpbox: y
+	C-lab: 105 server - centOS7.9 on B:VB
+安装
+	@A$ sudo yum install autossh
+	@A$ autossh -V #autossh 1.4g
+
+原型：
+	@A$ ssh -L 8888:HostC:22 UserB@HostB #在A上开一个端口 8，指向C的22端口。貌似与B无关，B就是转发器。
+	@A$ ssh -p 8888 userC@localhost
+开启该隧道：
+	@A$ autossh -M 8889 -Ng -L 8888:192.168.2.105:22 wangjl@y.biomooc.com #输入B的密码
+登录测试：
+	@A$ ssh -p 8888 wangjl@localhost #输入C的密码，登录C
+
+查看M 监控的啥？ 
+	@A$ sudo netstat -anp | grep 8889
+	tcp        0      0 0.0.0.0:8889            0.0.0.0:*               LISTEN      22625/ssh           
+	tcp6       0      0 :::8889                 :::*                    LISTEN      22625/ssh
+	@A$ sudo netstat -anp | grep 8888
+	tcp        0      0 0.0.0.0:8888            0.0.0.0:*               LISTEN      22625/ssh           
+	tcp6       0      0 :::8888                 :::*                    LISTEN      22625/ssh 
+
+	浏览器查看，打不开： http://j.biomooc.com:8889
+
+主动杀进程后：
+	@A$ kill -9 22625
+	@A$ 之前的 autossh 要求输入B的密码。wangjl@y.biomooc.com's password: 
+	可见，要做成断线自动重新连接，还需要设置免密登录。否则，断线就等着让输入密码，无法连接。
+
+
+
+
+
+
+
+
+3. 远程转发 -R ssh-host主机端口:目标主机:目标主机端口
+
+(1) 反向隧道实现内网穿透： A家->C云主机 |->B服务器
+
+在B服务器上设置 @B lab$ ssh -R 10022:localhost:22 user@jumpboxC
+Or
+@B$ autossh -M 5678:5679 -f -CNT -R 0.0.0.0:1080:host2:1081 ssh-host 
+
+注意： ssh-host机器的sshd_config里要打开AllowTcpForwarding选项，否则-R远程端口转发会失败。
+如要绑定0.0.0.0需要打开sshd_config里的GatewayPorts选项。
+
+开启一个本地socks端口：
+	-M 监控端口:[echo端口],请在服务器上将 监控端口 和 监控端口+1 开放
+	-f 后台运行autossh
+	
+	ssh参数
+	-C 使用数据压缩
+	-N 只连接远程主机，不打开远程shell(不需执行指令，只作端口转发)
+	-T: 不分配伪终端 tty
+	
+	转发命令
+	-R 将`ssh-host主机端口`通过`本地主机端口`转发到`目标主机`上
+	-g: 允许代理服务器连接到本地转发端口(谨慎使用)
+
+(2) 实战
+	A: win
+	B-lab: 105 server 
+	C-jumpbox: J server
+
+启动隧道
+	@B$ autossh -M 8889:8890 -f -CNT -Ng -R 0.0.0.0:8888:localhost:22 wangjl@j.biomooc.com
+检查端口： 三个端口都在 C 上？
+	@C$sudo netstat -anp | grep 8888
+	tcp        0      0 0.0.0.0:8888            0.0.0.0:*               LISTEN      22625/ssh
+登录，通过云主机C：
+	@A$ ssh wangjl@j.biomooc.com -p 8888 #输入B的密码，登录B
+杀进程： 没有自动重启连接
+	$ kill -9 22625
+
+
+
+
+
+ref:
+https://blog.csdn.net/omaidb/article/details/128400531
+
+
+
+
+
+
+
+
+
+
+
+
+========================================
+|-- 动态代理的使用： socks 代理设置和使用
+----------------------------------------
+使用情景：假设A是win客户端，B是远程主机。我想连接B并通过B访问互联网及B所在的局域网。
+
+1. 设置 socks 代理服务器: 从B访问公网
+(1)@A 打开 xshell，设置隧道：
+	菜单 文件-打开；
+	选择自己设置的连接B主机的条目，右键-属性，找到 连接-SSH-隧道；
+	点击 添加，类型 Dynamic(SOCKS4/5)，侦听端口 1080，勾选仅接受本地连接，确定；
+
+查看隧道状态：
+	菜单 查看 - 隧道窗格；
+	底下新窗口，选择最后一个 转移规则，可以看到隧道状态列表。
+	如果状态是 打开，表示正常。
+
+(2) 命令行设置 //todo
+@A$ 
+
+
+
+
+
+
+2. 本地使用
+
+(1) 设置
+win10 右下角 右击网络，选择 打开网络和Internet设置，
+	左边选择 代理；
+	右边 手动设置代理：
+		1)使用代理服务器：开
+		2)地址： http://socks=127.0.0.1 端口 1080
+		3)请勿对以下列条目开头的地址使用代理服务器：添加: ;blog.dawneve.com;
+		4)请勿对代理服务器用于本地Intranet地址：勾选
+		5)保存。
+
+原来跳过代理的4)设置：
+localhost;127.*;10.*;172.16.*;172.17.*;172.18.*;172.19.*;172.20.*;172.21.*;172.22.*;172.23.*;172.24.*;172.25.*;172.26.*;172.27.*;172.28.*;172.29.*;172.30.*;172.31.*;192.168.*;
+现在的设置:
+	删除掉 10.*;
+	结尾添加 blog.dawneve.com;x.dawneve.com;
+
+
+
+
+(2) 测试
+查看地址：
+	https://www.showmyip.gr/
+	Your IP is: 202.127.25.182
+	
+	$ ping gate1.picb.ac.cn
+	PING gate1.picb.ac.cn (202.127.25.182) 56(84) bytes of data.
+	64 bytes from 202.127.25.182 (202.127.25.182): icmp_seq=1 ttl=61 time=0.594 ms
+
+现在A的任何网络请求，都是从B开始转发到公网的。
+	而对A所在局域网的请求则可能失败，除非主动设置了：请勿对以下列条目开...
+
+如果对B所在局域网访问失败，可能是跳过了那些IP，而在A本地找这些IP：只需要删掉，让它们走代理B访问即可。
+	比如 http://10.10.118.143:8787 访问B所在环境的Rstudio server
+
+
+
+(3) 在win上取消设置
+参考2(1)，设置 使用代理服务器 关。即可直接连接公网。
+
+
+
+
+
+
+
+
+
+
+========================================
+|-- 实战：设置某云主机(tx)为跳板机，连接内网实验室服务器(Y)，并设置开机启动服务
+----------------------------------------
+1.购买
+CPU 2核，内存2G，硬盘50GB
+¥79.00/年
+
+
+
+2. 新建用户名
+(1) 新建管理员 wangjl2
+$ sudo useradd -m -s /bin/bash wangjl2
+$ sudo passwd wangjl2
+
+添加sudo权限
+$ sudo vim /etc/sudoers #添加一行
+
+(2) 新建一般用户 sam
+$ sudo useradd -m -s /bin/bash sam
+$ sudo passwd sam
+
+
+
+
+
+
+3. 作为跳板机，连接内网服务器
+(1) 设置跳板机：有两个必须都设置！
+AllowTcpForwarding 打开注释。
+被注释掉的GatewayPorts no，去注释，并将no改成yes
+
+$ sudo vim /etc/ssh/sshd_config
+AllowTcpForwarding yes
+GatewayPorts yes
+
+重启服务
+$ sudo service sshd restart
+
+查看端口是否开放：
+@Y$ telnet 118.89.82.18 8888
+	失败：需要设置上一条的 sshd_config 文件后，重启sshd服务再试。
+	telnet: Unable to connect to remote host: Connection refused
+
+	成功：
+	Trying 118.89.82.18...
+	Connected to 118.89.82.18.
+	Escape character is '^]'.
+	SSH-2.0-OpenSSH_8.2p1 Ubuntu-4ubuntu0.11
+	^C
+	Connection closed by foreign host.
+
+
+(1B) 设置云服务器
+打开端口: 云$ sudo iptables -I INPUT -p tcp --dport 8888 -j ACCEPT
+
+打开防火墙：网页上设置 8888 允许。
+	https://console.cloud.tencent.com/lighthouse/instance/detail?rid=4&id=lhins-9ox4ow18&tab=firewall
+
+添加IP到白名单： https://console.cloud.tencent.com/cwp/manage/crack/banwhitelist
+	若有非白名单来源IP尝试登录，并命中密码破解规则时，系统将自动发出异常告警或阻断。
+
+
+
+
+
+(2) 新建隧道
+所需计算机及功能定位:	A外部计算机 -> B跳板机(云) -> C(内网 large server Y)
+
+@C$ tmux 
+@C$ ssh -Ng -R 8888:localhost:22 sam@118.89.82.18 #输入B的密码。保持挂机状态，要在tmux中执行！！
+
+check B$ netstat -anp | grep 8888
+	tcp        0      0 127.0.0.1:8888          0.0.0.0:*               LISTEN      49744/sshd: sam
+	tcp6       0      0 ::1:8888                :::*                    LISTEN      49744/sshd: sam
+或者：
+	$ ss -ntlp | grep 8889
+	LISTEN 129    128          0.0.0.0:8889       0.0.0.0:*
+	LISTEN 0      128             [::]:8889          [::]:*
+
+
+跳板机上登录：
+@B $ ssh -p 8888 wangjl@localhost #输入C密码登录C
+
+外网任意登录：
+@A $ ssh -p 8888 wangjl@118.89.82.18 #输入C密码登录C
+	报错: ssh: connect to host 118.89.82.18 port 8888: Connection refused
+
+##
+内网创建用户
+@C$ sudo useradd -m -s /bin/bash sust
+@C$ sudo passwd sust #
+
+@A $ ssh -p 8888 sust@118.89.82.18
+
+缺点：网络波动时连接容易断！
+
+我第二天尝试，连接已经断了。显示如下：
+	wangjl@YStation:~$ ssh -Ng -R 8888:localhost:22 sam@118.89.82.18
+	sam@118.89.82.18's password: 
+	Permission denied, please try again.
+	sam@118.89.82.18's password: 
+	client_loop: send disconnect: Broken pipe
+	大概是半夜断了，让重新输入密码。
+
+期望：
+	内网需要有人登录服务器，重新连接云主机。比较麻烦。
+	能否一次建立更稳定的连接呢？
+
+
+
+
+(3) autossh: 自动重新连接
+
+1) 复制Y的pub key到云主机
+内网服务器Y的key:
+wangjl@YStation:~$ cat ~/.ssh/id_rsa.pub 
+ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQC6IbVrxRgm/+sG8CIHAbpqkye+gz/oHl5LWNu9Fdpds/NKDgzjtoqHkHmXFk9HTpYjF+2GTfkKqnmBvmA9UmZMC/8bHQyPEoBj8Qzowyq6hoq8LaxqHDVBxckDCZg/HYB/nQt5B2zhEIE/z9Vl9VSSnnm1QuXs4kc4Ds7b1NmA27vWbtzNt/f9T+CjmPMK099DfrN35ISpGHBaax6H+o0+npGd3ndNdm1qerLfypBjAOre2Op3QyDU8x0+L1Dis83FYbEZzsKu30GZaH79KzDGkoMijGjLwc0Hble4waBjIttU+CXyYjOn8BGOsWCBEFkc8kPNhIsX1IKW2qUt06iX jimmyMall@163.com
+
+
+云主机
+sam@VM-16-11-ubuntu:~$ mkdir ~/.ssh
+$ vim ~/.ssh/authorized_keys
+复制 id_rsa.pub 的内容到该文件。
+
+
+
+2) 登录内网Y station，连接跳板机
+Y$ autossh -M 8889:8890 -f -CNT -Ng -R 0.0.0.0:8888:localhost:22 sam@118.89.82.18 -i ~/.ssh/id_rsa
+
+Y上检测连接的进程：
+	wangjl@YStation:~$ ps -aux | grep -in autossh
+	380:wangjl   2063096  0.0  0.0   2516    88 ?        Ss   11:03   0:00 /usr/lib/autossh/autossh -M 8889 8890    -CNT -Ng -R 0.0.0.0:8888:localhost:22 sam@118.89.82.18 -i /home/wangjl/.ssh/id_rsa
+	
+	结束该进程 kill <pid>
+
+在跳板机检测端口：
+	云$ sudo netstat -anp | grep 8888
+	sam@VM-16-11-ubuntu:~$ netstat -anp | grep 8888
+	(Not all processes could be identified, non-owned process info
+	 will not be shown, you would have to be root to see it all.)
+	tcp        0      0 0.0.0.0:8888            0.0.0.0:*               LISTEN      -
+	tcp6       0      0 :::8888                 :::*                    LISTEN      -
+
+
+3) 从外网登录: 内网服务器Y的用户名@云跳板机IP
+$ ssh wangjl@118.89.82.18 -p 8888
+或
+$ ssh sust@tx.biomooc.com -p 8888
+
+这样能稳定连接。
+	明天检查效果。
+
+
+
+
+
+
+
+
+4A. 设置Y主机开机启动该连接: Ubuntu::autossh @Y:8887
+https://zhuanlan.zhihu.com/p/680289253
+
+(1)查看docker的自启动设置：
+	$ cat /etc/systemd/system/snap.docker.dockerd.service
+	[Unit]
+	# Auto-generated, DO NOT EDIT
+	Description=Service for snap application docker.dockerd
+	Requires=snap-docker-796.mount
+	Wants=network.target
+	After=snap-docker-796.mount network.target snapd.apparmor.service
+	X-Snappy=yes
+
+	[Service]
+	EnvironmentFile=-/etc/environment
+	ExecStart=/usr/bin/snap run docker.dockerd
+	SyslogIdentifier=docker.dockerd
+	Restart=on-failure
+	WorkingDirectory=/var/snap/docker/796
+	TimeoutStopSec=30
+	Type=simple
+	Delegate=true
+
+	[Install]
+	WantedBy=multi-user.target
+
+
+查看 sshd 的自启动设置：
+	$ cat /etc/systemd/system/teamviewerd.service
+	[Unit]
+	Description = TeamViewer remote control daemon
+	After = network.target network-online.target dbus.service
+	Wants = network-online.target
+	Requires = dbus.service
+
+	[Service]
+	Type = forking
+	PIDFile = /var/run/teamviewerd.pid
+	ExecStart = /opt/teamviewer/tv_bin/teamviewerd -d
+	Restart = on-abort
+	StartLimitInterval = 60
+	StartLimitBurst = 10
+
+	[Install]
+	WantedBy = multi-user.target
+
+
+(2)为让其开机自启，先创建一个名为 autossh.service 的 systemd 文件。
+Y$ sudo vim /etc/systemd/system/autossh.service
+[Unit]
+Description=Keep the ssh tunnel open
+After=network.target
+
+[Service]
+User=wangjl
+Environment="AUTOSSH_GATETIME=0"
+# ExecStart=/home/ubuntu/mount1/Resources/shell/autossh.sh
+ExecStart=/home/wangjl/soft/shell/autossh.sh
+
+[Install]
+WantedBy=multi-user.target
+
+
+
+(3)其中autossh.sh 是 autossh 的脚本，内容为:
+	/usr/bin/autossh -M 0 -N \
+	  -o "ServerAliveInterval 60" \
+	  -o "ServerAliveCountMax 3" \
+	  -D 0.0.0.0:2222 \
+	  -L 0.0.0.0:10809:127.0.0.1:10809 \
+	  -L 0.0.0.0:8888:127.0.0.1:8081 \
+	  -L 0.0.0.0:8080:127.0.0.1:8080 \
+	  -L 0.0.0.0:8096:127.0.0.1:8096 \
+	  wang@***.***.***.*** -p 2222 -i /root/wang.pem
+
+
+我的版本：Y$ autossh -M 8889:8890 -f -CNT -Ng -R 0.0.0.0:8888:localhost:22 sam@118.89.82.18 -i ~/.ssh/id_rsa
+
+保持以上8888不变的情况下，重新开一个8887，防止连不上：
+	$ autossh -M 0 -f -CNT -Ng -R 0.0.0.0:8887:localhost:22 sam@118.89.82.18 -i ~/.ssh/id_rsa #ok
+	$ autossh -M 0 -f -CNTg -R 0.0.0.0:8887:localhost:22 sam@118.89.82.18 -i ~/.ssh/id_rsa #ok
+	$ autossh -M 0 -f -CNTg -o "ServerAliveInterval 60" -o "ServerAliveCountMax 3" -R 0.0.0.0:8887:localhost:22 sam@118.89.82.18 -i ~/.ssh/id_rsa
+
+
+
+$ vim /home/wangjl/soft/shell/autossh.sh
+#!/bin/bash
+## kill $(ps -ef | grep '[a]utossh' | awk '{print $2}');
+## sudo systemctl daemon-reload && systemctl restart saltlake.service
+/usr/bin/autossh -M 0 -CNTg \
+-o "ServerAliveInterval 60" \
+-o "ServerAliveCountMax 3" \
+-R 0.0.0.0:8887:localhost:22 \
+sam@118.89.82.18 -p 22 -i /home/wangjl/.ssh/id_rsa
+#-o "LogLevel DEBUG" >> /home/wangjl/autossh.log 2>&1  #调试用
+
+问题：以上命令脚本直接执行"bash xx.bash"可以连接，使用服务方式启动就无法连接了！？
+	1. id_rsa 文件不能用~前缀，要用绝对路径
+	2. 服务文件 autossh.service 添加 User=设置。
+
+参数解释：
+	-N 参数告诉 ssh 不要执行任何远程命令。
+	-o 参数设置 ssh 的选项。
+		ServerAliveInterval 设置为 60，即每 60 秒 autossh 就会通过加密通道向云服务器发送一条消息，以请求其响应。
+		ServerAliveCountMax 设置为 3，则当客户端连续 3 次发送消息后仍未收到服务器的响应时，autossh 将断开并重新连接。
+	-M 参数用于设置监控端口。
+		autossh 会通过这个端口发送测试数据，并期望能从服务器那里收到回应。
+		如果 autosssh 无法通过监控端口收到回应，它会认为 tunnel 已经断开，并尝试重新建立连接。
+		由于已经设置了 -o 选项，因此 -M 为 0 亦可。
+	-C 压缩传输
+	-T:不分配伪终端 tty。 -T 不显示终端，只显示连接成功信息
+		这意味着使用 -T 时，SSH连接不会为远程命令提供终端，适用于只需要数据传输而不涉及交互式操作的场景。
+		ssh -T user@remotehost some-command  #执行 some-command，但不提供终端
+
+	-g：允许远程主机连接本地用于端口转发
+
+注意：在守护进程中请不要设置 -f 参数。
+	-f 参数会让 autossh 在后台运行，这意味着 autossh 会立即返回，而不是一直运行。
+	然而，对于 systemd 服务来说，通常希望服务在前台运行。
+	在守护进程中，也可以顺便加入 -D 0.0.0.0:7777 实现 socks5 代理。
+
+
+
+(4)重新加载 systemd 以应用新的配置:
+$ sudo systemctl daemon-reload
+
+
+(5) 设置开机自启。
+$ sudo systemctl enable autossh.service
+Created symlink /etc/systemd/system/multi-user.target.wants/autossh.service → /etc/systemd/system/autossh.service.
+
+查看是否设置成功：
+	$ systemctl list-unit-files | grep autossh
+	UNIT FILE                                  STATE           VENDOR PRESET
+	autossh.service                            enabled         enabled
+
+	docker.service                             enabled         enabled
+	nginx.service                              enabled         enabled
+	time-sync.target                           static          disabled
+	mysql.service                              enabled         enabled
+	teamviewerd.service                        enabled         enabled
+
+关闭开机启动:
+	$ sudo systemctl disable teamviewerd
+	Removed /etc/systemd/system/multi-user.target.wants/teamviewerd.service.
+	$ systemctl list-unit-files | grep team
+	teamviewerd.service                        disabled        enabled #对比发现，第二列是设置是否开机启动
+
+
+
+(6) (可选)立即启用服务。
+$ sudo systemctl start autossh.service
+
+
+(7) 检查服务的状态:
+$ systemctl status autossh.service
+或：
+$ service autossh status
+
+$ systemctl status autossh.service
+● autossh.service - Keep the ssh tunnel open
+     Loaded: loaded (/etc/systemd/system/autossh.service; enabled; vendor preset: enabled)
+     Active: failed (Result: exit-code) since Mon 2024-09-23 20:14:13 CST; 33s ago
+   Main PID: 691922 (code=exited, status=203/EXEC)
+
+难道是没有执行权限？
+或者端口8889占用？改为 8887
+$ chmod o+x /home/wangjl/soft/shell/autossh.sh
+
+$ ls -lht /home/wangjl/soft/shell/autossh.sh
+-rw-rw-r-x 1 wangjl wangjl 317 Sep 23 20:12 /home/wangjl/soft/shell/autossh.sh
+
+启动服务：sudo systemctl start autossh.service
+
+检查效果：
+$ systemctl status autossh.service
+● autossh.service - Keep the ssh tunnel open
+     Loaded: loaded (/etc/systemd/system/autossh.service; enabled; vendor preset: enabled)
+     Active: active (running) since Mon 2024-09-23 20:17:19 CST; 6s ago
+   Main PID: 692335 (autossh.sh)
+      Tasks: 2 (limit: 38026)
+     Memory: 2.3M
+     CGroup: /system.slice/autossh.service
+             ├─692335 /bin/bash /home/wangjl/soft/shell/autossh.sh
+             └─692344 /usr/lib/autossh/autossh -M 0 -N -CT -g -o ServerAliveInterval 60 -o ServerAliveCountMax 3 -R 0.0.0.0:8887:localhost:22 sam@11>
+
+至少user自己可执行权限
+	-rw-rw-r-- 1 wangjl wangjl 317 Sep 23 20:16 /home/wangjl/soft/shell/autossh.sh #启动失败
+	-rwxrw-r-- 1 wangjl wangjl 317 Sep 23 20:16 /home/wangjl/soft/shell/autossh.sh #可以启动
+
+
+
+(8) 打开新端口 8887
+@tx$ sudo iptables -I INPUT -p tcp --dport 8887 -j ACCEPT
+打开防火墙：网页上设置 8887 允许。
+	https://console.cloud.tencent.com/lighthouse/instance/detail?rid=4&id=lhins-9ox4ow18&tab=firewall
+
+
+是否可以看到进程：
+	@Y$ ps -aux | grep -in autossh
+	392:root      693282  0.0  0.0   2504  1844 ?        S    20:22   0:00 /usr/lib/autossh/autossh -M 0 -N -CT -g -o ServerAliveInterval 60 -o ServerAliveCountMax 3 -R 0.0.0.0:8887:localhost:22 sam@118.89.82.18 -p 22 -i /root/.ssh/id_rsa
+
+	@tx$ sudo netstat -anp | grep 8887
+
+是否可以登录
+	@tx$ ssh wangjl@localhost -p 8887
+	@J3$ ssh wangjl@tx.biomooc.com -p 8887
+
+问题：
+	作为服务启动正常，本机可见进程。云主机看不到该端口？！
+	增加日志参数 -o "LogLevel DEBUG" >> /var/log/autossh.log 2>&1
+	错误提示：登录失败
+		debug1: identity file /root/.ssh/id_rsa type -1
+		* 命令行中ssh key使用了相对地址~，要使用绝对地址 /home/wangjl/xx
+		* 同时要设置服务文件 autossh.service 中 Service 的 User=。
+	终于可以连接了。
+
+
+
+
+
+
+
+4B. 设置Y主机开机启动该连接: CentOS7.9::ssh @J:8888
+(1) 临时方案: 8888 端口在 J server 的启动是一次性的，不会断电自动重启。
+2024.10.28
+原因：无法安装autossh，源不行了。
+
+步骤：
+* 预先把我@J账号下的 id_rsa.pub 放到云服务器 sam用户的 .ssh/授权下。
+* 然后@J 连接云服务器：$ ssh -Ng -R 8888:localhost:22 sam@118.89.82.18 -i ~/.ssh/id_rsa
+* 可以在云服务器连接J server了。
+
+
+(2) 无autossh，怎么设置每1小时检测一次连接状态，如果断了就重新连接一次
+1) 写脚本
+@J$ cat ~/soft/ssh_reconnect.sh
+#!/bin/bash
+
+# SSH 反向隧道命令
+SSH_COMMAND="ssh -Ng -R 8888:localhost:22 sam@118.89.82.18 -i /home/wangjl/.ssh/id_rsa"
+
+# SSH 反向隧道连接
+while true; do
+    # 检查连接状态
+    if ! pgrep -f "$SSH_COMMAND" > /dev/null; then
+        echo "[$(date)] SSH tunnel is down. Restarting..."
+        # 启动 SSH 反向隧道
+        $SSH_COMMAND &
+    else
+        echo "[$(date)] SSH tunnel is active."
+    fi
+    
+    sleep 3600  # 如果挂了，每 1 小时检查一次
+done
+
+2) 设置可执行
+$ chmod +x ~/soft/ssh_reconnect.sh
+
+测试： $ ~/soft/ssh_reconnect.sh
+查进程：$ ps -aux | grep -i ssh
+杀进程: $ kill xxxx #ps的第二列是进程号
+
+3) 创建 systemd 服务文件
+接下来，创建一个 systemd 服务单元文件，以便在启动时运行该脚本。
+$ sudo vim /etc/systemd/system/ssh_reconnect.service
+[Unit]
+Description=SSH Reverse Tunnel Service On Every 3 hours
+After=network.target
+
+[Service]
+User=wangjl
+ExecStart=/home/wangjl/soft/ssh_reconnect.sh
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target
+
+
+4) 启用并启动服务
+运行以下命令以启用并启动该服务：
+
+# 重新加载 systemd 以识别新服务
+sudo systemctl daemon-reload
+
+# 启用服务以便开机启动
+sudo systemctl enable ssh_reconnect.service
+
+# 启动服务
+sudo systemctl start ssh_reconnect.service
+或者 sudo service ssh_reconnect restart
+
+5) 检查服务状态
+你可以使用以下命令检查服务的状态：
+
+sudo systemctl status ssh_reconnect.service
+
+6) 日志查看
+要查看该服务的日志，可以使用：
+journalctl -u ssh_reconnect.service -f
+
+7) 登录查看
+在远程服务器登录 $ ssh wangjl@localhost -p 8888
+在外网登录 $ ssh wangjl@tx.biomooc.com -p 8888
+
+
+
+
+
+
+
+
+
+
+5. 通过 autossh 能链接到内网主机，但是经常中断(4A 已解决)
+
+(1) 问题：正在操作，就直接断开了
+Connection to localhost closed by remote host.
+Connection to localhost closed.
+
+wangjl@YStation:~$ ssh wangjl@甚至还没输入完毕，就断开了// Connection to localhost closed by remote host.
+Connection to localhost closed.
+wangjl2@VM-16-11-ubuntu:~$
+
+修改文件: 原来第一个是开的，其余3三个注释状态
+	$ sudo vim /etc/ssh/sshd_config
+	GetewayPorts yes
+	TCPKeepAlive yes
+	ClientAliveInterval 60
+	ClientAliveCountMax 3
+
+	参数解释：
+	TCPKeepAlive yes 启用 TCP 保活机制
+	ServerAliveInterval 30 每30秒向服务器发送一次心跳消息。
+
+
+重启服务 $ sudo service sshd restart
+
+再试看是否断开：
+	[wangjl@biosrv ~]$ Connection to localhost closed by remote host.
+	Connection to localhost closed.
+	这次坚持的时间长了点，不过还是断了。
+	ClientAliveInterval 30，
+
+
+
+(2) 以上配置的 8887 端口可以持续连接
+远程连接，几个小时不断。
+
+//todo why 另一个不行? 是 命令行 哪个-o参数的影响吗？
+
+@Y$ ps -aux | grep autossh
+wangjl    128519  0.0  0.0   2516  1692 ?        Ss   Sep20   0:00 /usr/lib/autossh/autossh -M 8889 8890    -CNT -Ng -R 0.0.0.0:8888:localhost:22 sam@118.89.82.18 -i /home/wangjl/.ssh/id_rsa
+wangjl    702538  0.0  0.0   2504   644 ?        S    Sep23   0:00 /usr/lib/autossh/autossh -M 0 -CNTg -o ServerAliveInterval 60 -o ServerAliveCountMax 3 -R 0.0.0.0:8887:localhost:22 sam@118.89.82.18 -p 22 -i /home/wangjl/.ssh/id_rsa
+
+
+
+
+
+
+
+
+
+
+10.在外部怎么通过跳板机连接内网Rstudio？
+假设已经建立内网服务器到跳板机的连接。
+外部通过跳板机访问内网硬件：指定内网ip和隧道端口号（-p 端口号）。
+
+(1)指定把本地端口8080映射到内网的3306端口。
+	ssh -f -N -C -L 8080:inner_IP:3306 user@example.com -p 8888
+(2)需要建立多个隧道，可以使用多个-L参数。
+在跳板机用localhost和 -p 端口号，表示连接内网中直接连接跳板机的那个机器。
+	$ ssh -f -N -L 8080:localhost:3306 -L 9090:localhost:9200 user@example.com
+
+(3)实例：通过跳板机连接内网服务器的8000端口的服务
+	$ ssh -f -N -L 8001:10.20.42.53:8000 -L 9090:localhost:9200 wangjl@tx.biomooc.com -p 8888
+	本地浏览器访问: localhost:8001
+
+
+
+
+
+
+
+Ref: 
+首次记录在 txtBlog2/server/105_yun_server
+
+
+
+
+
+
+
+========================================
+|-- 实战2：设置 X server 193 as 第三个lab server登陆点[X:8889(autossh)]: autossh
+----------------------------------------
+On X server
+
+1.生成key
+@x$ cd .ssh/
+$ ssh-keygen -t rsa -C "wangjl2@biomooc.com" -f ./id_rsa_BM  #如果使用
+
+-rw-------. 1 wangjl jinwf 1.7K Feb 17 15:19 id_rsa_BM
+-rw-r--r--. 1 wangjl jinwf  401 Feb 17 15:19 id_rsa_BM.pub
+
+
+
+2.放授权
+
+(1) 预先把我@X账号下的 id_rsa_BM.pub 放到云服务器 sam用户的 ~/.ssh/authorized_keys 授权下。
+	@tx$ sudo vim /etc/ssh/sshd_config
+	# 开启密钥登录，只要这一行即可
+	PubkeyAuthentication yes
+	重启SSH服务
+	$ sudo systemctl restart ssh
+
+	尝试无密登录
+	@x$ ssh sam@118.89.82.18 -i ~/.ssh/id_rsa_BM
+
+(2) 然后@X 连接云服务器：$ ssh -Ng -R 8889:localhost:22 sam@118.89.82.18 -i ~/.ssh/id_rsa_BM
+输入key的密码，输入sam@tx的密码后。还是没有免密登录！//之前的key有密码！忘了密码。
+
+sam@tx$ ss -ntlp | grep 8889
+LISTEN 0      128          0.0.0.0:8889      0.0.0.0:*
+LISTEN 0      128             [::]:8889         [::]:*
+
+sam@tx$ nc -vz localhost 8889
+Connection to localhost (127.0.0.1) 8889 port [tcp/*] succeeded!
+
+	@X$ssh -v -Ng -R 8889:127.0.0.1:22 sam@118.89.82.18
+
+
+(3) 可以在笔记本连接X server了。
+@tx$ ssh wangjl@localhost -p 8889
+	云服务器不行，因为没有放登录私钥。
+	至始至终只有笔记本上有私钥。
+
+@笔记本$ ssh wangjl@tx.biomooc.com -p 8889 -i ~/.ssh/193_id_rsa
+连上了！！
+
+
+(4)缺点是：容易断开，动辄 broken pipe
+
+
+
+
+
+
+3.使用 autossh
+$ sudo yum install autossh
+失败，报错是 其他用户下的conda，莫名其妙
+
+(1)下载安装
+$ cd ~/software/
+$ wget http://www.harding.motd.ca/autossh/autossh-1.4e.tgz
+
+tar -xzf autossh-1.4e.tgz
+cd autossh-1.4e
+
+# Compile and install
+./configure
+make
+sudo make install
+
+(2)检查
+$ which autossh
+/usr/local/bin/autossh
+[wangjl@biosrv autossh-1.4e]$ autossh -V
+autossh 1.4e
+
+
+(3)启动
+@x $ ssh -Ng -R 8889:localhost:22 sam@118.89.82.18 -i ~/.ssh/id_rsa_BM
+	可以
+
+	启动密钥:
+		$ eval $(ssh-agent -s)
+		Agent pid 413706
+	添加密钥：
+		$ ssh-add ~/.ssh/gitee_id_rsa
+		Enter passphrase for /home/wangjl/.ssh/gitee_id_rsa:
+	检查：说明之前key有密码，重新生成key即可跳过这些步骤。
+		$ ssh-add -l
+		The agent has no identities.
+
+
+停掉之前的连接
+@X $ autossh -M 18890 -Ng -R 8889:localhost:22 sam@118.89.82.18 -i ~/.ssh/id_rsa_BM
+	不行，看日志 $ sudo grep -i autossh /var/log/messages /var/log/syslog 2>/dev/null
+	提示端口 8891 已经占用。关键是我没用这个端口，好像 -M 是一对端口，指定的和下一个都用。
+	端口号前加1再试：可以了。
+	/var/log/messages:Feb 17 14:33:04 biosrv autossh[389675]: bind on 127.0.0.1:8891: Address already in use
+
+在笔记本登录：ok
+$ ssh wangjl@tx.biomooc.com -p 8889 -i ~/.ssh/193_id_rsa
+Last login: Tue Feb 17 15:25:17 2026 from localhost
+$
+
+
+
+(4)去外网又无法连接X了（第二天）
+$ ssh wangjl@tx.biomooc.com -p 8889 -i ~/.ssh/193_id_rsa
+Connection closed by 118.89.82.18 port 8889
+
+再试一次：把ssh key放到sam@tx上：
+笔记本$ scp ~/.ssh/193_id_rsa sam@tx.biomooc.com:/home/sam/.ssh/
+sam@tx.biomooc.com's password:
+193_id_rsa                                    100% 2455    54.2KB/s   00:00
+
+在tx上:
+检查端口：
+	$ ss -ntlp | grep 8889
+	LISTEN 129    128          0.0.0.0:8889       0.0.0.0:*
+	LISTEN 0      128             [::]:8889          [::]:*
+
+尝试登录X：
+$ ssh -vvv wangjl@localhost -p 8889 -i ~/.ssh/193_id_rsa
+报错:
+	Permissions 0644 for '/home/sam/.ssh/193_id_rsa' are too open.
+	It is required that your private key files are NOT accessible by others.
+	This private key will be ignored.
+修改为 600 权限：
+	$ chmod 600 ~/.ssh/193_id_rsa
+还是报错，断开：
+	debug1: Local version string SSH-2.0-OpenSSH_8.9p1 Ubuntu-3ubuntu0.6
+	kex_exchange_identification: Connection closed by remote host
+	Connection closed by 127.0.0.1 port 8889
+删除tx上的私钥: ~$ rm ~/.ssh/193_id_rsa
+
+
+
+
+
+
+(5)第三天又可以连接了，但是不停的有报错信息
+debug3: obfuscate_keystroke_timing: starting: interval ~20ms
+debug3: obfuscate_keystroke_timing: stopping: chaff time expired (0 chaff packets sent)
+	后来想起来了，是因为有 -vvv 参数，去掉就正常了。
+	目前是 8889 端口(systemd服务) + 8890 端口(tmux中执行) 双通道。
+
+换个端口，再执行
+##pkill autossh
+@x$ autossh -M 0 -Ng \
+-o ServerAliveInterval=30 \
+-o ServerAliveCountMax=3 \
+-R 8890:127.0.0.1:22 sam@118.89.82.18 -i ~/.ssh/id_rsa_BM
+
+或者: 主动加上 0.0.0.0 IP: 未测试
+	$ autossh -M 0 -N \
+	-o ServerAliveInterval=60 \
+	-o ServerAliveCountMax=3 \
+	-R 0.0.0.0:8890:127.0.0.1:22 sam@118.89.82.18 -i ~/.ssh/id_rsa_BM
+
+再在tx上开端口后，尝试在笔记本连接x：
+$ ssh wangjl@118.89.82.18 -p 8890 -i ~/.ssh/193_id_rsa
+$
+
+
+
+
+
+
+4.凑合的方案：由于(3)3 可用，这个用不着了。
+# 每30秒检查一次连接，断开就重连
+while true; do 
+    ssh -R 8889:localhost:22 sam@118.89.82.18 -i ~/.ssh/gitee_id_rsa -N -o ServerAliveInterval=30 -o ExitOnForwardFailure=yes
+    sleep 10
+done
+
+
+
+
+
+========================================
+|-- 实战2-进阶：把 8889 端口的反向隧道连接 进一步设置为X开机启动: systemd 服务
+----------------------------------------
+
+涉及主机：
+	大服务器 X（在内网）: 有需要使用的软件和数据
+	刚购买的云主机 tx
+	笔记本电脑：有私钥，作为客户端，在内网能登录X和tx，在外网只能登录tx
+
+主要步骤：
+
+
+1.创建 systemd 服务配置文件
+
+$ sudo vim /etc/systemd/system/autossh-tunnel.service
+[Unit]
+Description=AutoSSH Tunnel to Jump Server
+# 在网络可用后再启动此服务
+After=network.target
+# 如果依赖远程主机名解析，可以添加 network-online.target
+# Wants=network-online.target
+
+[Service]
+# 指定运行服务的普通用户，替换 wangjl 为你的用户名
+User=wangjl
+# 如果是开机启动，建议将 AUTOSSH_GATETIME 设为0，让 autossh 立即尝试重启
+Environment="AUTOSSH_GATETIME=0"
+# 服务的启动命令
+# 注意：-i 参数需要使用绝对路径 /home/wangjl/.ssh/id_rsa_BM
+ExecStart=/usr/local/bin/autossh -M 0 -Ng \
+    -o ServerAliveInterval=30 \
+    -o ServerAliveCountMax=3 \
+    -R 8889:127.0.0.1:22 \
+    sam@118.89.82.18 \
+    -i /home/wangjl/.ssh/id_rsa_BM
+
+# 设置服务崩溃后总是重启
+Restart=always
+# 重启前等待10秒
+RestartSec=10
+# 如果进程安静退出，也视为失败并重启
+SuccessExitStatus=1
+
+[Install]
+# 使服务在系统进入多用户模式（正常启动）时启用
+WantedBy=multi-user.target
+
+
+(2)关键配置说明：
+
+User=wangjl: 必须修改为你的实际用户名。以指定用户身份运行，可以正确读取该用户的 ~/.ssh/ 目录下的配置文件、known_hosts 等。
+
+Environment="AUTOSSH_GATETIME=0": 这是一个重要的环境变量。如你之前遇到的，autossh 在首次启动失败后有一个“起始门限”时间（默认30秒），会直接退出而不重启。设置为 0 可以禁用这个行为，确保在开机启动时，即使网络尚未完全就绪导致首次连接失败，autossh 也能按照 Restart= 策略持续尝试重启。
+
+ExecStart: 这里使用了 autossh 的绝对路径 /usr/local/bin/autossh（你之前 which autossh 的结果），并使用了密钥的绝对路径 -i /home/wangjl/.ssh/id_rsa_BM，以避免环境变量问题。
+
+Restart=always: 告诉 systemd，无论因为什么原因，只要服务进程退出，就自动重启。RestartSec=10 则是在重启前等待10秒。
+
+SuccessExitStatus=1: 告诉 systemd，当 autossh 退出并返回代码 1 时，也视其为一种“成功”的退出，以便触发重启策略。这可以应对某些特定的退出情况。
+
+
+
+
+
+
+
+2.重新加载并启用服务
+保存文件后，在终端中依次执行以下命令：
+
+(1)重新加载 systemd 配置，让它知道我们创建了一个新服务：
+$ sudo systemctl daemon-reload
+
+(2)设置服务开机自启：
+$ sudo systemctl enable autossh-tunnel.service
+日志: Created symlink from /etc/systemd/system/multi-user.target.wants/autossh-tunnel.service to /etc/systemd/system/autossh-tunnel.service.
+
+这个命令会在 /etc/systemd/system/multi-user.target.wants/ 目录下创建一个符号链接，确保系统启动时自动运行此服务。
+
+(3)立即启动服务（无需重启）：
+$ sudo systemctl start autossh-tunnel.service
+
+
+
+
+
+3.验证服务状态
+执行以下命令，检查服务是否已成功运行，并查看其日志输出：
+
+查看服务运行状态：
+$ sudo systemctl status autossh-tunnel.service
+
+如果一切正常，你应该会看到 Active: active (running) 的绿色字样，并且没有明显的错误日志。
+
+查看详细日志：
+$ sudo journalctl -u autossh-tunnel.service -f -n 50
+这会动态显示该服务的日志，方便你观察连接是否建立或有任何错误。-n 50 显示最后50行，-f 用于持续跟踪新日志。
+
+
+反向隧道就已经配置为开机自启动了。推荐使用 systemd 服务的方式，因为它更加规范、易于管理和排错。AUTOSSH_GATETIME=0 这个环境变量的设置对开机启动场景尤其关键
+
+
+
+
+
+
+========================================
+使用跳板机两次跳转 访问内网端口 webPan.py:8000
+----------------------------------------
+1.本地端口转发
+(1)尝试1: failed
+ssh -L 本地端口:内网服务器地址:内网服务器端口 用户名@跳板机地址
+
+$ ssh -L 10086:10.10.118.143:8000 wangjl@gate1.picb.ac.cn
+
+测试：失败
+http://127.0.0.1:10086/
+
+
+(2)尝试2: ok
+ssh -J user@公网IP -L 本地端口:内网服务IP:服务端口 user@内网IP
+$ ssh -J wangjl@gate1.picb.ac.cn -L 10086:j3.biomooc.com:8000 wangjl@j3.biomooc.com
+
+@j3$ ln -s /datapool/wangjl/others /home/wangjl/data4/web/docs/dustbin/tmp/
+
+访问:
+http://127.0.0.1:10086
+
+
+
+(3)-J 参数解释
+-J [user@]host[:port]
+    Connect to the target host by first making a ssh connection to the jump host and then establishing a TCP forwarding to the ultimate destination from there.  Multiple jump hops may be specified separated by comma characters.  This is a shortcut to specify a ProxyJump configuration directive.
+    # 先通过一个跳板机建立一个TCP转发指向最终目标。
+    可以指定多跳，用逗号隔开
+    这是指定 ProxyJump 配置文件指令的简化。
+
+
+
+
+
+2.跳板登录ssh 获取 shell
+ssh -J user@公网IP user@内网IP
+
+$ ssh -J wangjl@gate1.picb.ac.cn wangjl@j3.biomooc.com
+
+
+
+
+
+
+
+
+
+
+
+========================================
+|-- 通过跳板机 双跳 访问内网IP固定的服务: IGV.js 的bam是内网其他主机或端口提供的，且内网IP写死到网页中
+----------------------------------------
+1.最佳方案
+
+(1)问题
+前端页面中有写死局域网IP的bam调用，两次跳转能访问html页面，但是里面另一个IP的调用无法访问。
+var bam_path="http://j3.biomooc.com:8892/list/chenxi/PBMC/18hRep2/"+path0+cid+ suffix;
+
+(2)方案
+SSH 本地端口转发
+X 本机 /etc/hosts 映射内网 IP
+
+不改 A 的任何代码
+不写任何 VPN
+
+
+
+
+
+2.具体执行
+(1)修改hosts文件
+C:\Windows\System32\drivers\etc\hosts
+
+127.0.0.1 10.0.0.23
+127.0.0.1 h3.biomooc.com
+# 10.10.117.158 j3 real local IP
+
+
+
+
+(2A)两跳连接: 示例
+ssh -N \
+  -J user@J.example.com \
+  -L 8090:10.0.0.23:8090 \
+  -L 8080:10.0.0.23:8080 \
+  -L 8892:10.0.0.45:8892 \
+  user@10.0.0.23
+
+或者写 ~/.ssh/config:
+Host jump
+  HostName J.example.com
+  User user
+
+Host inner-a
+  HostName 10.0.0.23
+  User user
+  ProxyJump jump
+  LocalForward 8090 10.0.0.23:8090
+  LocalForward 8080 10.0.0.23:8080
+  LocalForward 8892 10.0.0.45:8892
+
+然后: $ ssh -N inner-a
+
+
+
+(2B) 实例
+$ ssh -N \
+  -J wangjl@gate1.picb.ac.cn \
+  -L 8000:j3.biomooc.com:8000 \
+  -L 8090:j3.biomooc.com:8090 \
+  -L 8080:j3.biomooc.com:8080 \
+  -L 8891:j3.biomooc.com:8891 \
+  -L 8892:j3.biomooc.com:8892 \
+  -L 8099:j3.biomooc.com:8099 \
+  -L 8895:j3.biomooc.com:8895 \
+  wangjl@10.10.117.157
+
+可以访问igv.js了！
+	http://j3.biomooc.com:8090/list/index6B.html?cellType=time&gene=PSMD7&n=5
+
+端口对应关系: 
+	8000 sphinx wiki文档
+	8090 IGV.js
+	8895 R API for cell ids
+	bam files: 8080 8892 8099 8891
+
+
+
+
+
+
+
+
+
+
+
+
+========================================
+|-- 通过跳板机，访问内网的 Rstudio h3:8787
+----------------------------------------
+1.设置
+
+(1)hosts 文件
+C:\Windows\System32\drivers\etc\hosts
+
+127.0.0.1 h3.biomooc.com
+127.0.0.1 j3.biomooc.com
+
+
+(2)git bash 修改配置文件
+$ vim ~/.ssh/config
+Host jump
+  HostName gate1.picb.ac.cn
+  User wangjl
+
+# how to use: ssh -N rstudio-h3
+Host rstudio-h3
+  HostName 10.10.117.158
+  User wangjl
+  ProxyJump jump
+  LocalForward 8787 h3.biomooc.com:8787
+  LocalForward 8000 j3.biomooc.com:8000
+
+
+然后: $ ssh -N rstudio-h3
+	输入两次密码
+
+打开浏览器: http://localhost:8787
+	即可访问 Rstudio server 版。
+
+
+
+
+
+
+
+
+
+
+========================================
+基于 mobaXterm 的内网穿透：ssh 终端和 隧道 //todo
+----------------------------------------
+1. 下载与安装
+https://mobaxterm.mobatek.net/download-home-edition.html
+下载便携版。解压就可以使用。
+
+
+
+2.通过跳板机连接内网服务器的8000端口的服务
+
+(0)帮助文档
+https://mobaxterm.mobatek.net/documentation.html#4_10_1
+
+	Connect through SSH gateway (jump host)
+	Use a gateway SSH server in order to reach your end server
+
+	MobaXterm will
+	1. open a SSH tunnel to your gateway SSH server
+	2. use this tunnel to connect directly to the end server
+
+	Note 1: if you use X11-forwarding, DISPLAY will be automatically redirected
+	Note 2: if you use the SFTP browser, it will also be automatically redirected
+
+
+(1) ssh 通过跳板机连接内网服务器
+最原始的：先登录 jump server，再登录内网服务器。
+
+步骤:
+- 选择 ssh
+- Basic SSH settings: 设置 remote host, user, port;
+- Network settings 设置 跳板机:
+	Proxy type: SSH forwarding;
+	Host: gate2.icb.ac.cn
+	Login: username
+	Port: 22
+- 首页写内网服务器的信息。
+
+(2) ssh 隧道
+Local port forwarding: 本地:端口 访问的是 remote:端口，中间跳板机仅仅是中介。
+	本地端口: 8000
+	jump server: wangjl@gate2.icb.ac.cn:22
+	remote server: j3.biomooc.com:8000
+
+问题：不稳定。
+
+
+
+
+========================================
+疑难杂症：xshell 导入 rsa 私钥失败？
+----------------------------------------
+1.
+新版本git(我用的git 2.39.0)使用 OPENSSH 而不是 RSA 的私钥，可能导致有些老系统不认可。
+$ head -n 2 ~/.ssh/id_rsa
+-----BEGIN OPENSSH PRIVATE KEY-----
+
+
+需要加 -m PEM 参数，才能生成之前的版本：
+$ cd ~/.ssh/
+$ ssh-keygen -t rsa -m PEM -C "jimmymall@live.com" 文件名输入 193_id_rsa
+$ head -n 2 ~/.ssh/193_id_rsa
+-----BEGIN RSA PRIVATE KEY-----
+
+
+
+
+
+2.系统支持什么类型的加密协议？
+
+登陆后查看：
+$ sudo sshd -T | grep pubkeyaccepted
+pubkeyacceptedkeytypes ecdsa-sha2-nistp256-cert-v01@openssh.com,ecdsa-sha2-nistp384-cert-v01@openssh.com,ecdsa-sha2-nistp521-cert-v01@openssh.com,ssh-ed25519-cert-v01@openssh.com,ssh-rsa-cert-v01@openssh.com,ssh-dss-cert-v01@openssh.com,ecdsa-sha2-nistp256,ecdsa-sha2-nistp384,ecdsa-sha2-nistp521,ssh-ed25519,rsa-sha2-512,rsa-sha2-256,ssh-rsa,ssh-dss
+
+
+登陆前查看证书协议：
+$ ssh-keygen -lf ~/.ssh/id_rsa
+2048 SHA256:Pj1vQcM2k1iBs5H2PRhw9Fym/Xz53zTsNJXS8Asw5U4 wangjl@nih_jin (RSA)
+或者：
+256 SHA256:xxxx user@host (ED25519)
+这样就能知道是 RSA 还是 ED25519。
+
+
+
+========================================
+|-- ssh 免密登录报错：Permission denied (publickey,gssapi-keyex,gssapi-with-mic).
+----------------------------------------
+1. 问题
+$ ssh wangjl@x.biomooc.com
+wangjl@x.biomooc.com: Permission denied (publickey,gssapi-keyex,gssapi-with-mic).
+
+解决办法:
+$ ssh wangjl@x.biomooc.com -i ~/.ssh/id_rsa_193
+
+
+原因：只能找到默认的 ssh key 文件: ~/.ssh/id_rsa，其他的需要明确位置。
+
+
+
+
+2.保证协议类型
+$ sudo chown chengm /home/chengm/.ssh/authorized_keys
+$ sudo ls -lth /home/chengm/.ssh/
+total 12K
+-rw-------. 1 chengm root  401 Aug 28 20:52 authorized_keys
+-rw-r--r--. 1 chengm jinwf 908 Dec 31  2024 known_hosts
+-rw-------. 1 chengm root  583 Sep 26  2022 authorized_keys-old
+
+检查:
+1)/home/chengm/.ssh 权限必须是700
+	drwx------.  2 chengm jinwf   91 Aug 28 21:21 .ssh #合格
+修改方法:
+	$ usr=chengm
+	$ sudo chmod 700 /home/${usr}/.ssh
+
+2)/home/chengm/.ssh/authorized_keys  权限必须是600
+$ sudo ls -lth /home/${usr}/.ssh/authorized_keys
+-rw-------. 1 chengm root 402 Aug 28 21:21 /home/chengm/.ssh/authorized_keys
+修改方法：
+	$ sudo chmod 600 /home/${usr}/.ssh/authorized_keys
+
+3)修改文件所有者必须是用户自己
+$ sudo chown $usr /home/${usr}/.ssh
+$ sudo chown $usr /home/${usr}/.ssh/authorized_keys
+
+4)家目录不能是777，最多是755: 这个是本次检修才知道的。
+$ ls -ld /home/chengm
+drwxr-xr-x. 17 chengm jinwf 4096 Aug 18 20:26 /home/chengm
+
+修改方法: $ sudo chmod 755 /home/chengm
+
+
+
+
+(2)查看错误日志
+tail -f /var/log/auth.log    # Debian/Ubuntu
+$ journalctl -u sshd -f        # CentOS/RHEL
+	日志里会写明：是因为 bad ownership/permissions 还是 key mismatch。
+看到一条:
+	Aug 28 21:37:07 biosrv sshd[329220]: Authentication refused: bad ownership or modes for directory /home/chengm
+	说明目录权限不对：bad ownership or modes
+
+查看：应该是分享过文件，导致权限过大。
+	$ ls -ld /home/chengm
+	drwxrwxrwx. 17 chengm jinwf 4096 Aug 18 20:26 /home/chengm
+	$ ls -ld /home/wangjl/
+	drwxr-x---. 49 wangjl jinwf 4096 Aug 28 21:34 /home/wangjl/
+
+	注意：不能是 777 或 775，OpenSSH 要求 home 目录不能被 group/others 写入。
+修改：
+	$ sudo chmod 755 /home/chengm
+	$ ls -ld /home/chengm
+	drwxr-xr-x. 17 chengm jinwf 4096 Aug 18 20:26 /home/chengm
+
+再次登录：正常。
+
+
+
+
+
+========================================
+|-- 修改ssh端口号
+----------------------------------------
+1. Linux中SSH默认端口为22，为了安全考虑，我们有必要对22端口进行修改，现修改端口为60000；
+
+修改方法如下：
+在/etc/ssh/sshd_config中找到Port 22，将其修改为60000,或使用/usr/sbin/sshd -p 60000指定端口。
+
+如果用户想让22和60000端口同时开放，只需在/etc/ssh/sshd_config增加一行内容如下：
+$ sudo vim /etc/ssh/sshd_config
+Port 22
+Port 60000
+保存并退出
+
+重启ssh服务:
+$ sudo service ssh restart
+或者 /etc/init.d/ssh restart
+
+ssh user@ip -P 60000 
+
+
+
+
+2.
+增加 UseDNS no配置，可以提速。
+ref:
+解决SSH登录国外VPS连接特别慢的问题
+https://www.zhujimi.net/ssh-close-usedns.html
+
+
+
+
+
+
+
+
+========================================
+----------------------------------------
+
+
+========================================
+----------------------------------------
+
+
+========================================
+----------------------------------------
+
+
+========================================
+----------------------------------------
+

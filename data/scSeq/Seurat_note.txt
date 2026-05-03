@@ -1,6 +1,6 @@
-Suerat包是大一统的scRNAseq分析包
+Seurat包是大一统的scRNAseq分析包
 
-
+- 技巧与重回函数汇总
 
 docker:
 1. aertslab/pyscenic
@@ -29,8 +29,6 @@ Seurat 包的安装
 # https://cran.rstudio.com//src/contrib/Archive/RcppTOML/RcppTOML_0.1.3.tar.gz
 
 
-
-
 (2) 安装reticulate 老版本
 > install.packages("reticulate")
 
@@ -41,12 +39,88 @@ ERROR: compilation failed for package ‘reticulate’
 > install_version("reticulate", version = "1.20")
 
 
-
-
-
 (3) 再次尝试安装Seurat
 install.packages("Seurat"); 
 library("Seurat")
+
+
+
+(4) 2023.10 在 Z server 安装 Seurat 
+
+# 安装R包的方法：单细胞
+# https://www.jianshu.com/p/bf01f4901ae8
+# https://www.jianshu.com/p/bf01f4901ae8
+# gcc 版本对照表 https://blog.csdn.net/qq_39974998/article/details/130396600
+
+#options(BioC_mirror="https://mirrors.ustc.edu.cn/bioc/")
+##指定镜像，这个是中国科技大学镜像
+# 
+options(BioC_mirror="https://mirrors.tuna.tsinghua.edu.cn/bioconductor/")
+
+options("repos" = c(CRAN="https://mirrors.tuna.tsinghua.edu.cn/CRAN/")) 
+##指定install.packages安装镜像，这个是清华镜像
+
+install.packages("pheatmap")
+install.packages("BiocManager")
+install.packages("ggplot2")
+install.packages("Seurat")
+
+
+#BioConductor 的包
+if (!requireNamespace("devtools"))
+  install.packages("devtools")
+#
+devtools::install_github("TomKellyGenetics/leiden")
+
+# ERROR: dependencies ‘leiden’, ‘RcppAnnoy’, ‘reticulate’, 
+# ‘sctransform’, ‘uwot’ are not available for package ‘Seurat’
+
+install.packages("leiden")
+
+
+require(devtools)
+install_version("RcppTOML", version = "0.1.3")
+# BiocManager::install("RcppTOML")
+# BiocManager::install("Seurat")
+install_version("reticulate", version = "1.20")
+install_version("RcppAnnoy", version = "0.0.19")
+install_version("sctransform", version = "0.3.3")
+install_version("spatstat.core", version = "2.4.4")
+install_version("uwot", version = "0.1.11")
+# ‘RcppAnnoy’, ‘sctransform’, ‘spatstat.core’, ‘uwot’ are not available for package ‘Seurat’
+install_version("Seurat", version = "4.1.1")
+
+library(Seurat)
+
+
+
+BiocManager::install('Biobase')
+install.packages('NMF')
+library(NMF)
+
+
+
+(5)2026.1.9 on S3
+v4不再更新了，2026要考虑迁移到 v5了
+# 设置CRAN镜像为清华大学源并安装Seurat v4
+options(repos = c(CRAN = "https://mirrors.tuna.tsinghua.edu.cn/CRAN/"))
+
+# 载入了名字空间‘sctransform’ 0.3.5，但需要的是>= 0.4.0
+install.packages("https://mirrors.tuna.tsinghua.edu.cn/CRAN/src/contrib/Archive/sctransform/sctransform_0.4.0.tar.gz", repos=NULL, type="source")
+
+install.packages("https://mirrors.tuna.tsinghua.edu.cn/CRAN/src/contrib/Archive/Matrix/Matrix_1.6-1.tar.gz", repos=NULL, type="source")
+
+# 最终目标:
+remotes::install_version("SeuratObject", "4.1.4")
+remotes::install_version("Seurat", "4.4.0", upgrade = FALSE)
+
+
+
+
+
+
+
+
 
 
 
@@ -124,10 +198,867 @@ Error: package or namespace load failed for ‘hdf5r’ in dyn.load(file, DLLpat
 
 
 ========================================
+|-- 如何使用 Seurat 的 leiden 算法：R导出snn矩阵文件，py leidenalg 包分群后导出文件，读取回R
+----------------------------------------
+建议直接看1和5.
+
+
+1. R中设置 leiden 算法 依赖的py包
+
+使用Leiden时，需要在R中设置 py 资源。只能R第一次启动时设置，设置后不能修改；想修改就需要重启R session。
+# set Python version you use in R
+
+library("reticulate")
+use_python("/home/wangjl/soft/python3/python-3.10.14/bin/python3", required = T)
+py_config()
+
+检查版本号
+system("pip3 list | grep leidenalg")
+# leidenalg                     0.10.2
+
+如果没有安装，需要安装
+system("pip3 -V")
+system("which pip3")
+
+## Leiden algorithm ----
+system("pip3 install leidenalg -i https://pypi.douban.com/simple/")
+system("which pip3")
+
+
+
+
+
+
+
+2. R 代码
+
+library(Seurat)
+sce1_alt4 <- FindClusters(sce1, resolution = 0.4, algorithm =4, method = "igraph")
+
+#
+# Github issue: Leiden 实现有问题，只能用小数据集，大数据集需要是指定很慢的 method = "igraph"
+# https://github.com/satijalab/seurat/issues/7340
+#9:07->9:37 res=0.2 和 算法1 没啥变化
+# sce1_res0.2=sce1_alt4
+#9:41->
+
+
+
+
+
+
+
+
+3. 如何直接使用 py 包，做Leiden聚类后再把输出文件导入R中？[建议直接看 4.]
+
+(1) leidenalg 包需要什么输入
+https://github.com/vtraag/leidenalg
+
+
+1) 主要语句：
+leidenalg.find_partition(graph, 
+                         partition_type, 
+                         initial_membership=None, 
+                         weights=None, 
+                         n_iterations=2,
+                         max_comm_size=0, 
+                         seed=None, 
+                         **kwargs
+                         )
+#
+
+
+2) 内置例子
+import numpy  as np
+import igraph as ig
+import leidenalg as la
+
+# 创建一个简单的网络
+g = ig.Graph.Famous('Zachary')
+
+# 计算社区分配
+partition = la.find_partition(g, la.ModularityVertexPartition)
+#partition = la.find_partition(g, la.ModularityVertexPartition, resolution=0.3) #设置分辨率
+    
+# 打印社区分配结果
+print(partition)
+Clustering with 34 elements and 4 clusters
+[0] 8, 9, 14, 15, 18, 20, 22, 26, 29, 30, 32, 33
+[1] 0, 1, 2, 3, 7, 11, 12, 13, 17, 19, 21
+[2] 23, 24, 25, 27, 28, 31
+[3] 4, 5, 6, 10, 16
+
+# 简单的可视化
+ig.plot(partition)
+# AttributeError: Plotting not available; please install pycairo or cairocffi
+	$ pip3 install pycairo 
+	##Successfully installed pycairo-1.27.0
+	$ sudo yum install cairo-devel
+	测试：import cairo
+
+
+
+
+
+3) 使用自己的数据（未测试）
+#1读取前两列
+import networkx as nx
+import pandas as pd
+import numpy  as np
+import igraph as ig
+import leidenalg as la
+
+data = pd.read_csv('email.edgelist.txt',delimiter='\t',header=None)
+data = data.iloc[1:,:2]
+data.columns = ['src','dst']
+data
+
+
+#2 创建一个igraph的空图
+g = ig.Graph()
+da = data[['src','dst']].values
+
+# 边构建
+edges = []
+for num in range(len(da)):
+    edges.append((da[num,0],da[num,1]))
+
+# 节点构建
+nodes = set(data['src'].astype('str').tolist()+data['dst'].astype('str').tolist())
+
+for node in nodes:
+    g.add_vertex(node)
+    
+g.add_edges(edges)
+
+#3 计算社区分配
+partition = la.find_partition(g, la.ModularityVertexPartition)
+
+
+#4 创建一个新的DataFrame来存储节点Label及其模块化社区编号
+com = pd.DataFrame({"group_id": g.vs['name'], 
+                    "Community": partition.membership
+                   })
+
+com.head()
+
+
+#5 统计每个群组人数
+com.groupby('GroupID').count().sort_values(by='User_ID', ascending=False) .head(120)
+
+# 也可以提取子图看看
+sub_g = partition.subgraph(112)
+sub_g.vcount()
+
+
+
+
+
+
+
+
+
+
+4. GPT方案：使用 scanpy [直接导出邻接图的，请看 5 ]
+Seurat 的 FindClusters() 使用 leiden算法是依赖python包的，但是数据量太大会报错。怎么从R导出文件，在python中用leidenalg包分类并输出细胞分类文件，再导回到R中？
+
+(1) 从R导出data为csv文件
+# 提取细胞表达矩阵
+expression_data <- as.data.frame(seurat_obj@assays$RNA@counts)
+# 导出为 CSV 文件
+write.csv(expression_data, "expression_data.csv")
+
+
+(2) 在 Python 中使用 leidenalg 进行分类
+import pandas as pd
+import numpy as np
+import scanpy as sc
+import leidenalg
+import igraph as ig
+
+# 读取 CSV 文件
+data = pd.read_csv("expression_data.csv", index_col=0)
+
+# 创建 AnnData 对象
+adata = sc.AnnData(data)
+
+# 计算邻接图
+sc.pp.neighbors(adata)
+
+# 使用 Leiden 算法进行聚类
+leiden_clusters = leidenalg.find_partition(adata.obsp['connectivities'], 
+                                            partition_type=leidenalg.RBConfigurationVertexPartition)
+
+# 将聚类结果添加到 AnnData 对象中
+adata.obs['leiden'] = np.array(leiden_clusters.membership)
+
+# 导出细胞分类结果
+adata.obs.to_csv("cell_clusters.csv")
+
+
+(3) 从 Python 导入分类结果到 R
+# 读取细胞分类结果
+cell_clusters <- read.csv("cell_clusters.csv", row.names = 1)
+
+# 将分类结果合并到 Seurat 对象
+seurat_obj$leiden <- cell_clusters$leiden  # 假设列名为 'leiden'
+
+# 检查结果
+head(seurat_obj@meta.data)
+
+
+
+
+
+
+
+
+
+
+
+5. 直接从R导出邻接图，在py中做分群
+
+(0) Seurat 怎么包装的py包，重点关注参数设置
+https://zhuanlan.zhihu.com/p/521391359
+  else if (algorithm == 4) {
+	ids <- RunLeiden(
+	  object = object,
+	  method = method,
+	  partition.type = "RBConfigurationVertexPartition",
+	  initial.membership = initial.membership,
+	  node.sizes = node.sizes,
+	  resolution.parameter = r,
+	  random.seed = random.seed,
+	  n.iter = n.iter
+	)
+  }
+#
+
+
+
+(1) 从R导出邻接图到文件
+# 计算邻接图（如果尚未计算）
+seurat_obj <- FindNeighbors(seurat_obj)
+
+# 提取邻接矩阵
+adjacency_matrix <- seurat_obj@graphs$RNA_snn  # 这里 'RNA_snn' 是默认的图名称
+
+# 将邻接矩阵转换为数据框并导出：报错！
+	# write.csv(as.data.frame(as.matrix(adjacency_matrix)), paste0(outputRoot, keyword, "_adjacency_matrix.csv") )
+	# Error: cannot allocate vector of size 198.8 Gb 服务器500G内存，但是现在剩余不够200G了
+
+# 导出为稀疏矩阵格式
+library(Matrix)
+writeMM(adjacency_matrix, paste0(outputRoot, keyword, "_adjacency_matrix.mtx") )
+# /home/wangjl/data4/others/hanlu/output/BCMA3/GSE271915_adjacency_matrix.mtx
+
+# 导出细胞名称（列名）
+writeLines(colnames(adjacency_matrix), paste0(outputRoot, keyword, "_cells.csv") )
+# /home/wangjl/data4/others/hanlu/output/BCMA3/GSE271915_cells.csv
+
+
+
+(2) 在 Python 中使用 leidenalg 进行分群，并导出结果到csv
+import pandas as pd
+from scipy.io import mmread
+import numpy as np
+import leidenalg
+import igraph as ig
+
+def time_now():
+  import time
+  return "["+time.strftime("%Y/%m/%d %H:%M:%S", time.localtime())+"]"
+
+# Python 包对细胞分群
+# v0.2 add msg
+# v0.3 add time to msg
+# RNA_snnFle: 输入1 邻接矩阵: RNA_snn 的稀疏矩阵格式 adjacency_matrix.mtx
+# cellidFile: 输入2 细胞名字(无标题): cells.csv #其实没啥用，就是为了输入、输出时凑形式列
+# outputFile: 输出csv文件，单列带标题(Leiden): cell_clusters.csv
+def py_FindClusters(RNA_snnFle, cellidFile, outputFile, resolution=0.8, UNDIRECTED=True):
+	#1. 读取稀疏邻接矩阵
+	sparse_matrix = mmread(RNA_snnFle).tocsc()
+
+	# 读取细胞名称
+	cells = pd.read_csv(cellidFile, header=None).squeeze().values
+
+	# 确保细胞数量与稀疏矩阵的行数匹配
+	if len(cells) != sparse_matrix.shape[0]:
+		raise ValueError("细胞名称数量与稀疏矩阵的行数不匹配。")
+	print(time_now(), ">1.Read File: ok")
+	
+	#2. 创建图
+	# 获取边的索引和权重
+	rows, cols = sparse_matrix.nonzero()
+	weights = sparse_matrix.data
+
+	if UNDIRECTED:
+		# 创建无向图
+		g = ig.Graph()
+		g.add_vertices(sparse_matrix.shape[0])  # 添加细胞作为顶点
+		g.add_edges(zip(rows, cols))  # 添加边
+		g.es['weight'] = weights  # 添加边权重
+		print(time_now(), ">2.Graph: UNDIRECTED ok")
+	else:
+		#有向图
+		g = ig.Graph.DataFrame(pd.DataFrame({'source': rows, 'target': cols, 'weight': weights}))
+		print(time_now(), ">2.Graph: DIRECTED ok")
+
+	#3. 使用 Leiden 算法进行聚类: 大概2min
+	partition = leidenalg.find_partition(g, leidenalg.RBConfigurationVertexPartition, resolution_parameter=resolution)
+	print(time_now(), ">3.partition: ok")
+
+	#4. 将聚类结果添加到 DataFrame 中
+	cell_clusters = pd.DataFrame(index=cells)
+	cell_clusters['leiden'] = partition.membership
+
+	# 导出细胞分类结果
+	cell_clusters.to_csv(outputFile)
+	print(time_now(), ">4.saved to: ", outputFile)
+#
+pre_fix="/home/wangjl/data4/others/hanlu/output/BCMA3/GSE271915_"
+RNA_snn=pre_fix+"adjacency_matrix.mtx"
+cellid=pre_fix+"cells.csv"
+outputFile=pre_fix +"cell_clusters.csv"
+#
+py_FindClusters(RNA_snn, cellid, pre_fix+"res0.6_cell_clusters.csv", resolution=0.8)
+# 大概2min
+
+
+(3) 结果导入到R
+cell_clusters <- read.csv( paste0(outputRoot, keyword, "_cell_clusters.csv"), row.names = 1)
+sce1$leiden <- cell_clusters$leiden  # 假设列名为 'leiden'
+table(sce1$leiden)
+DimPlot(sce1, label = T, group.by = "leiden") + ggtitle("Leiden, res=0.8")
+
+
+
+
+ref: https://zhuanlan.zhihu.com/p/712714461
+
+
+
+
+
+
+========================================
+|-- 下载 Seurat 官方网站镜像 (2022.4.15)
+----------------------------------------
+1. 当可以访问的时候 (2022.4.15)
+备份以防万一: 
+$ wget -m -L –reject = http://www.satijalab.org/seurat
+
+
+(1) 进入工作站目录
+$ cd /home/wangjl/data/web/docs/docs/satijalab.org/
+$ mv seurat seurat-backup
+
+
+换成
+$ cd /home/wangjl/data/web/docs/docs/
+$ rm -rf satijalab.org
+
+
+
+(2)下载好久
+$ wget -m --no-check-certificate https://satijalab.org/seurat/index.html #好多文件，应该是都下下来了！
+16:37 --> 16:65
+Downloaded: 1335 files, 531M in 2m 46s (3.20 MB/s)
+
+
+压缩备份
+$ tar -czvf seurat-docs-20220415.tar.gz satijalab.org
+
+$ ls -lth seurat-docs-20220415.tar.gz
+-rw-rw-r-- 1 wangjl wangjl 392M Apr 15 16:56 seurat-docs-20220415.tar.gz
+
+$ du -sh satijalab.org/
+535M	satijalab.org/
+压缩到原来的 66%。
+
+
+
+(3) 怎么本地化 js 文件呢? //todo
+
+
+
+
+
+
+
+
+
+
+
+
+
+2. 使用 远程 docker 下载 (2021.9.23)
+下载一个 nginx ，方便预览文件
+总体计划: 使用远端 docker 下载需要的东西，使用 nginx 展示内容并下载
+https://labs.play-with-docker.com/
+
+
+$ docker pull nginx
+$ docker run --rm -it nginx nginx -version
+nginx version: nginx/1.21.3
+
+还是使用带版本号的靠谱，后期可重复。
+$ docker pull nginx:1.21
+$ docker run --rm -it nginx:1.21 nginx -version
+nginx version: nginx/1.21.3
+
+
+$ cd /home/tom/
+$ cat nginx.config  #注意改nginx监听的端口号了
+server {
+    listen       8008;
+    listen  [::]:8008;
+    server_name  localhost;
+    #access_log  /var/log/nginx/host.access.log  main;
+    location / {
+        root   /usr/share/nginx/html;
+        index  index.html index.htm;
+		
+        # list files
+        autoindex on; 
+        autoindex_exact_size on; 
+        autoindex_localtime on; 
+    }
+}
+
+
+把本地映射到docker内的web目录
+$ docker run --rm -d -p 8000:8008 \
+--mount type=bind,source=/home/tom/,target=/usr/share/nginx/html/ \
+--mount type=bind,source=/home/tom/nginx.config,target=/etc/nginx/conf.d/default.conf \
+nginx:1.21
+
+下载命令: 约10Mb。
+## curl https://www.dropbox.com/s/3dby3bjsaf5arrw/cell_cycle_vignette_files.zip -o test.zip -J -L -k
+
+$ wget -r -p -np -k http://www.satijalab.org/seurat
+内置的wget不好用，不支持-r参数！！
+
+
+
+
+
+2. 重新搜一个 docker 版的 wget
+
+$ docker pull mwendler/wget
+$ alias wget='docker run -v $PWD:/work --workdir=/work --rm mwendler/wget' #把当前目录挂载到容器的工作目录
+
+
+$ wget -r -p -np -k --no-check-certificate http://www.satijalab.org/seurat
+参数解释:
+-r, –recursive（递归） specify recursive download
+-k, –convert-links（转换链接、将 HTML 页面中的链接转换为相对链接即本地链接）
+	make links in downloaded HTML or CSS point to local files
+-p, –page-requisites（下载所有的图片等页面显示所需的内容）
+	 get all images, etc. needed to display HTML page
+-np, –no-parent（不追溯至父级）
+	don't ascend to the parent directory
+–restrict-file-names=nocontrol 用来解决中文乱码问题（需要可以试试）
+
+
+
+
+(2) 使用 wget 同步网站镜像
+$ wget -m -L –reject = http://www.satijalab.org/seurat
+
+一般情况下使用-m参数就可以：
+$ wget -m --no-check-certificate https://www.satijalab.org/seurat #这个就下载一个首页文件。
+
+$ wget -m --no-check-certificate https://satijalab.org/seurat/index.html #好多文件，应该是都下下来了！
+
+参数解释：
+-m,  --mirror      shortcut for -N -r -l inf --no-remove-listing
+-L,  --relative    follow relative links only
+
+可以设置正则表达式过滤链接
+-R,  --reject=LIST               comma-separated list of rejected extensions
+   --accept-regex=REGEX        regex matching accepted URLs
+   --reject-regex=REGEX        regex matching rejected URLs
+   --regex-type=TYPE           regex type (posix|pcre)
+
+是否显示详细下载情况
+  -v,  --verbose                   be verbose (this is the default)
+  -nv, --no-verbose                turn off verboseness, without being quiet
+       --report-speed=TYPE         output bandwidth as TYPE.  TYPE can be bits
+
+
+(3) 下载过程中卡死了，仔细一看，js控制台报错了
+打不开的js:
+https://cdn.rawgit.com/zenorocha/clipboard.js/master/dist/clipboard.min.js 
+已有的js，不知道怎么注入到当前页面中
+https://raw.githubusercontent.com/zenorocha/clipboard.js/master/dist/clipboard.min.js
+javascript:(function(s){s.src='https://static.runoob.com/assets/clipboard.min.js';document.body.appendChild(s)})(document.createElement('script'));
+
+不知道 墙 啥时候放行这个js文件。。。
+
+
+(4) 先把已经下载的抓到本地
+回到本地宿主机:
+$ cd /home/wangjl/data/web/docs/docs/seurat/
+$ wget -m --no-check-certificate http://ip172-18-0-69-c55t5u7njsv000dv7nk0-8000.direct.labs.play-with-docker.com/site/satijalab.org/seurat/index.html
+
+
+
+最后因为404报错停下了。
+HTTP request sent, awaiting response... 404 Not Found
+2021-09-23 11:13:20 ERROR 404: Not Found.
+
+FINISHED --2021-09-23 11:13:20--
+Total wall clock time: 16m 35s
+Downloaded: 516 files, 324M in 10m 39s (519 KB/s)
+
+
+总共下载326M数据。
+$ du -sh /home/wangjl/data/web/docs/docs/seurat/
+326M	/home/wangjl/data/web/docs/docs/seurat/
+
+最后去掉多余的文件夹外壳，保存在 webPan.py 上。
+/home/wangjl/data/web/docs/docs/satijalab.org
+访问地址: http://y.biomooc.com:8000/file/docs/satijalab.org/index.html
+
+
+压缩:
+$ tar -czvf seurat.tar.gz satijalab.org
+-rw-rw-r-- 1 wangjl wangjl 216M Sep 23 14:09  seurat.tar.gz
+加上日期 seurat-20210923.tar.gz
+
+$ du -sh satijalab.org/
+325M	satijalab.org/
+压缩到原来的 66%。
+
+
+
+(5) 缺一个文件，在线代理查看一下: 未解决
+https://proxysite.page/en
+
+https://satijalab.org/seurat/articles/install.html
+https://satijalab.org/seurat/articles/pbmc3k_tutorial_files/header-attrs-2.10/header-attrs.js
+
+
+
+
+
+
+
+
+========================================
+|-- 构建和使用 docker 版的 Seurat 4.3.0 (Ubuntu20.04 + R4.2)
+----------------------------------------
+1. 准备构建资源
+
+总思路： 下载 Seurat 官方镜像，安装 Rstudio server。
+
+(1) 获取可用标签： 都不能打开
+https://satijalab.org/seurat/articles/install_v5
+https://hub.docker.com/r/satijalab/seurat
+
+$ curl -L -s https://registry.hub.docker.com/v1/repositories/satijalab/seurat/tags
+
+
+
+(2) 下载最新版本：最新的是 4.3.0，而不是 v5
+$ docker pull satijalab/seurat:latest
+$ docker images
+REPOSITORY         TAG        IMAGE ID       CREATED         SIZE
+ubuntu             20.04      18ca3f4297e7   2 weeks ago     72.8MB
+satijalab/seurat   latest     fe258afe286e   11 months ago   3.93GB
+
+查看其中的R和Seurat版本号：
+$ docker run -it --rm --name test satijalab/seurat bash
+root@dd0ca6330828:/# R --version
+R version 4.2.0 (2022-04-22) -- "Vigorous Calisthenics"   #R版本 4.2
+Copyright (C) 2022 The R Foundation for Statistical Computing
+Platform: x86_64-pc-linux-gnu (64-bit)
+
+root@c85aad337520:/# apt --version #是一个 Ubuntu 系统
+apt 2.0.9 (amd64)
+root@c85aad337520:/# yum --version
+bash: yum: command not found
+
+root@c85aad337520:/# cat /proc/version #这又像一个CentOS系统？不对，这是host系统
+Linux version 3.10.0-1160.76.1.el7.x86_64 (mockbuild@kbuilder.bsys.centos.org) (gcc version 4.8.5 20150623 (Red Hat 4.8.5-44) (GCC) ) #1 SMP Wed Aug 10 16:21:17 UTC 2022
+
+# cat /etc/issue  #系统版本
+Ubuntu 20.04.5 LTS \n \l
+
+# R
+> packageVersion("Seurat")  #Seurat 版本[1] ‘4.3.0’
+> packageVersion("SeuratObject") # 4.1.3
+> q()
+
+
+$ gcc --version
+gcc (Ubuntu 9.4.0-1ubuntu1~20.04.2) 9.4.0
+
+
+
+
+(3) 所需要的 Rstudio 最新版本 for Ubuntu20
+https://posit.co/download/rstudio-server/
+
+$ cd /home/wangjl/Downloads/
+$ sudo apt-get install gdebi-core
+$ wget https://download2.rstudio.org/server/focal/amd64/rstudio-server-2023.12.1-402-amd64.deb
+$ sudo gdebi rstudio-server-2023.12.1-402-amd64.deb
+
+下载太慢，用193几秒下好，再远程传输：
+$ scp rstudio-server-2023.12.1-402-amd64.deb wangjl@gate1.picb.ac.cn:/picb/jinlab/wangjl/
+
+
+核对：
+Size: 102.96 MB | SHA-256: 64044984 | Version: 2023.12.1+402 | Released: 2024-01-29
+-rw-r--r--.  1 wangjl jinlab  99M Feb  7 18:05 rstudio-server-2023.12.1-402-amd64.deb
+$ sha256sum rstudio-server-2023.12.1-402-amd64.deb
+64044984a5791690586e21bf4411019ed3dccaf32a69e0838090762f3eba8da0  rstudio-server-2023.12.1-402-amd64.deb
+大小不一致，但是sha256 一致。
+
+
+
+
+
+
+
+
+
+2. 开始构建镜像
+http://biomooc.dawneve.com/linux/docker_image_seurat4.0.html
+采用节省时间的方法，手动构建法。
+
+可用，到逐步好用。
+
+(1) 第一步 更新
+
+启动容器
+$ docker run -it --rm --name seurat4.3a satijalab/seurat bash
+
+更新：
+# apt-get update && apt-get install -y gdebi-core  #17:34 -->17:35
+# apt-get install -y psmisc sudo libclang-dev libpq5
+# apt-get install -y vim
+
+提交修改：
+$ docker commit seurat4.3a satijalab/seurat:v4.3a
+
+$ docker images
+REPOSITORY          TAG        IMAGE ID       CREATED         SIZE
+satijalab/seurat    v4.3a      b6d9f9388bd4   2 seconds ago   4.49GB
+ubuntu              20.04      18ca3f4297e7   2 weeks ago     72.8MB
+satijalab/seurat    latest     fe258afe286e   11 months ago   3.93GB
+
+
+
+(2) 第二步 安装rstudio
+
+复制Rstudio安装文件到镜像中：
+$ docker cp ~/Downloads/rstudio-server-2023.12.1-402-amd64.deb seurat4.3a:/tmp/
+Successfully copied 103MB to seurat4.3a:/tmp/
+
+安装rstudio，在容器中执行
+# gdebi /tmp/rstudio-server-2023.12.1-402-amd64.deb
+# rm /tmp/rstudio-server-2023.12.1-402-amd64.deb
+
+设置参数：
+# vim /etc/rstudio/rserver.conf
+# www-port=8787
+auth-timeout-minutes=1800
+
+重启服务后才生效
+# service rstudio-server restart
+
+提交修改：
+$ docker commit seurat4.3a satijalab/seurat:v4.3b
+
+$ docker images
+REPOSITORY         TAG        IMAGE ID       CREATED              SIZE
+satijalab/seurat   v4.3b      d1cd61d77a2e   About a minute ago   5.07GB
+
+
+
+
+(3) 测试
+$ port=8890   #奇怪 8087 就不行，浏览器打不开
+$ docker run --name=Rs4.3b --rm -it -d -p ${port}:8787 \
+--mount type=bind,source=/home/${USER}/picb/,target=/data/ \
+satijalab/seurat:v4.3b
+
+打开端口
+$ sudo iptables -I INPUT -p tcp --dport ${port} -j ACCEPT
+
+
+用户系统和外部uid，gid一致：
+$ id
+uid=5662(wangjl) gid=1210(jinlab) groups=1210(jinlab),996(docker) context=unconfined_u:unconfined_r:unconfined_t:s0-s0:c0.c1023
+$ user=${USER} && uid=`id ${user} -u` && gid=`id ${user} -g`
+
+$ docker exec -it Rs4.3b bash
+新建组
+# groupadd -g 1210 dockerGroup
+新建用户
+# useradd -s /bin/bash -d /home/wangjl2  -m wangjl2 -u 5662 -g 1210
+# passwd wangjl2 # 16..
+# su wangjl2
+$ cd
+$ ln -s /data/ ~/
+
+启动服务
+$ exit
+# service rstudio-server start
+
+
+登录网页版： 可正常登录
+http://localhost:8890
+测试发现，也能画图，也能保存结果。
+
+
+
+
+
+
+========================================
+Seurat 标准使用流程，简便函数
+----------------------------------------
+1.标准分析流程
+
+library(dplyr)
+library(Seurat)
+library(patchwork)
+
+# step1 load df
+pbmc.data <- Read10X(data.dir = "../data/pbmc3k/filtered_gene_bc_matrices/hg19/")
+# Initialize the Seurat object with the raw (non-normalized data).
+
+# step2 create Seurat obj
+pbmc <- CreateSeuratObject(counts = pbmc.data, project = "pbmc3k", min.cells = 3, min.features = 200)
+pbmc
+
+# 如果有 meta 数据
+	pbmc <- CreateSeuratObject(counts = pbmc.data,
+							   meta.data = meta,   #添加meta信息
+							   project = "myeloid",
+							   min.cells = 3,
+							   min.features = 200)
+
+# step3 add meta.data
+pbmc[["percent.mt"]] <- PercentageFeatureSet(pbmc, pattern = "^MT-")
+pbmc[["percent.rp"]] <- PercentageFeatureSet(pbmc, pattern = "^RP[SL]")
+# cell cycle
+pbmc <- CellCycleScoring(pbmc,
+                         s.features = cc.genes$s.genes,
+                         g2m.features = cc.genes$g2m.genes)
+
+# step4 QC
+# Visualize QC metrics as a violin plot
+VlnPlot(pbmc, features = c("nFeature_RNA", "nCount_RNA", "percent.mt", "percent.rp"), ncol = 4, pt.size=0)
+VlnPlot(pbmc, features = c("nFeature_RNA", "nCount_RNA", "percent.mt", "percent.rp"), ncol = 4, pt.size=0,
+        group.by = "orig.ident")
+
+# FeatureScatter is typically used to visualize feature-feature relationships, but can be used
+# for anything calculated by the object, i.e. columns in object metadata, PC scores etc.
+#plot1 <- FeatureScatter(pbmc, feature1 = "nCount_RNA", feature2 = "percent.mt")
+plot2 <- FeatureScatter(pbmc, feature1 = "nCount_RNA", feature2 = "nFeature_RNA")
+#plot1 + plot2
+plot2
+
+# filter
+#pbmc <- subset(pbmc, subset = nFeature_RNA > 200 & nFeature_RNA < 2500 & percent.mt < 5)
+
+
+# step5 Normalizing the data
+pbmc <- NormalizeData(pbmc, normalization.method = "LogNormalize", scale.factor = 10000)
+
+
+# step6 Identification of highly variable features (feature selection)
+pbmc <- FindVariableFeatures(pbmc, selection.method = "vst", nfeatures = 2000)
+
+# step7 Scaling the data
+pbmc <- ScaleData(pbmc)
+
+# step8 (PCA) Perform linear dimensional reduction
+pbmc <- RunPCA(pbmc, features = VariableFeatures(object = pbmc))
+DimPlot(pbmc, reduction = "pca")
+
+# step9 Determine the 'dimensionality' of the dataset
+ElbowPlot(pbmc, ndims = 50)
+
+# step10 Cluster the cells
+pbmc <- FindNeighbors(pbmc, dims = 1:20)
+pbmc <- FindClusters(pbmc, resolution = 0.5)
+
+# Look at cluster IDs of the first 5 cells
+head(Idents(pbmc), 5)
+
+# step 11 Run non-linear dimensional reduction (UMAP/tSNE)
+pbmc <- RunUMAP(pbmc, dims = 1:20)
+
+DimPlot(pbmc, reduction = "umap", label=T)
+
+	DimPlot(pbmc, group.by="timepoint", label=T)
+
+
+
+
+# step 12 Finding differentially expressed features (cluster biomarkers)
+pbmc.markers <- FindAllMarkers(pbmc, only.pos = TRUE, min.pct = 0.25, logfc.threshold = 0.25)
+pbmc.markers %>% group_by(cluster) %>% top_n(n = 2, wt = avg_log2FC)  #可能有版本差异 avg_log2FC
+# cluster0.markers <- FindMarkers(pbmc, ident.1 = 0, logfc.threshold = 0.25, test.use = "roc", only.pos = TRUE)
+
+VlnPlot(pbmc, features = c("MS4A1", "CD79A"))
+# you can plot raw counts as well
+VlnPlot(pbmc, features = c("NKG7", "PF4"), slot = "counts", log = TRUE)
+
+FeaturePlot(pbmc, features = c("MS4A1", "GNLY", "CD3E", "CD14", "FCER1A", "FCGR3A", "LYZ", "PPBP", "CD8A"))
+
+	# heatmap
+	top10 <- pbmc.markers %>% group_by(cluster) %>% top_n(n = 10, wt = avg_log2FC)
+	DoHeatmap(pbmc, features = top10$gene, label = T)  #+ NoLegend()
+
+	genes=c("CD300LF", 
+			"CD14", "FCGR3A", 
+			"CCR2", "CCL2", "CCL18", "MMP9", "CX3CR1", 
+			"MT1G", "SLC2A1", "LYVE1",
+			"CD163","CD68", "MKI67", "CCNE2", "SCCPDH")
+	FeaturePlot(pbmc, features = genes, cols = c("lightgrey", "red"), ncol=4)
+	DotPlot(pbmc, features = genes, cols = c("lightgrey", "red"), group.by="cellSubType")+RotatedAxis()
+
+
+
+# step 13 Assigning cell type identity to clusters
+new.cluster.ids <- c("Naive CD4 T", "CD14+ Mono", "Memory CD4 T", "B", "CD8 T", "FCGR3A+ Mono", "NK", "DC", "Platelet")
+names(new.cluster.ids) <- levels(pbmc)
+pbmc <- RenameIdents(pbmc, new.cluster.ids)
+DimPlot(pbmc, reduction = "umap", label = TRUE, pt.size = 0.5) + NoLegend()
+
+
+
+# 保存结果
+saveRDS(pbmc, "data/01_myeloid_7952_final.Seurat.Rds")
+
+
+
+
+
+
+
+
+
+
+
+2.简便函数
+
+参考: seuratDemos:: https://seurat.biomooc.com/Functions.html#12
+
+
+
+
+
+========================================
 Seurat FAQ: 宏观策略到参数细节
 ----------------------------------------
-
-
 
 4. seurat包的UMAP图集群分布的影响因素
 https://zhuanlan.zhihu.com/p/427166749
@@ -168,7 +1099,7 @@ A： PCA 分析和 UMAP 分析的目的不同。 PCA 分析把高表达变异基
 
 
 
-6. 关 于 聚 类 分 析
+6. 关于聚类分析
 
 Q: cluster ID 为何从 0 开始？是否可以从 1 开始？从 0 开始是因为有什么‘算法’方面特殊的优势么？
 A： 默认 clusterID 是从 0 开始，没有特殊的优势，可以使用 RenameIdents 函数重命名clusterID。
@@ -188,18 +1119,118 @@ A： Seurat 的聚类方法是基于 SNN 图和 Louvain 或 SLM 算法， FindNe
 
 
 
-
-
-
-
-
 ref:
 https://zhuanlan.zhihu.com/p/153404850
 
 
 
+
+
+
+
 ========================================
-Seurat对象的slot和处理流程： 从Suerat对象中找可用的数据
+|-- clustree::clustree() 可视化探索最合适的分辨率: resolution
+----------------------------------------
+1. 最合适的分辨率： 
+
+(1) 初步探索1个：1 is too large, best res=0.1
+
+for (res in c(0.01, 0.05, seq(0.1,0.9, 0.1) )) {
+  print(res)
+  scObj_CD45_2 = FindClusters(scObj_CD45_2, resolution = res, algorithm = 1)
+}
+
+library(clustree)
+p2_tree=clustree(scObj_CD45_2@meta.data, prefix = "RNA_snn_res.")
+p2_tree
+
+
+(2). 可视化显示每个分辨率
+
+#' 展示所有分辨率的UMAP图
+#'
+#' @param obj 
+#' @param ncol 
+#' @param combine 
+#'
+#' @return
+#' @export
+#'
+#' @examples
+ShowAllResolutions = function(obj, ncol=4, combine=T){
+  dims=grep("^RNA_snn_res", colnames(obj@meta.data), value=T) |> sort();
+  len = length(dims)
+  plots <- vector(mode = 'list', length = len);
+  for(i in 1:len ){ 
+    plots[[i]]=DimPlot(obj, label=T, group.by=dims[i] )+ggtitle( dims[i] )
+  }
+  if (isTRUE(x = combine)) {
+    plots <- patchwork::wrap_plots(plots, ncol = ncol)
+  }
+  return(plots)
+}
+if(0){
+  p1=ShowAllResolutions(scObj_CD45_2, ncol=4)
+}
+
+
+
+
+
+
+
+========================================
+|-- 可视化每个亚群的位置
+----------------------------------------
+ShowCluster = function(scObj, clusterId, slot="seurat_clusters", color="darkred"){
+  df2 = as.data.frame(scObj@meta.data);
+  DimPlot(scObj, label = F, #group.by = "sample", 
+          #cells.highlight = df2[which(df2[, slot] == clusterId), "cell"],
+          cells.highlight = rownames( df2[which(df2[, slot] == clusterId), ]),
+          cols.highlight = color, cols = "grey")+ #c("darkred", "darkblue")
+    labs(title=paste0(slot, ": ", clusterId))+
+    theme(
+      legend.position = "none"
+    )
+}
+if(0){
+  ShowCluster(sce1, "17", "leiden")
+}
+
+
+
+# 展示每个类的范围
+ShowClusters = function(object, group.by="seurat_clusters", color="darkred", ncol=3, combine=T){
+  col = object@meta.data[, group.by]
+  if(is.factor(col)){
+    idents = levels(col)
+  }else{
+    idents = unique(col)
+  }
+  plots <- vector(mode = 'list', length = length(x = idents))
+  len=length(idents)
+  for(i in 1:len){
+    message(">i=", i, "/", len)
+    plots[[i]]=ShowCluster(object, idents[i], group.by)
+  }
+  if (combine) {
+    plots <- wrap_plots(plots, ncol = ncol, guides = "collect")
+  }
+  return(plots)
+}
+if(0){
+  tmp = ShowClusters(sce1, "leiden", ncol=6)
+  print(tmp)
+}
+
+
+
+
+
+
+
+========================================
+Seurat对象的slot和处理流程： 从Seurat对象中找可用的数据 str(scObj)
 ----------------------------------------
 原始代码： https://github.com/satijalab/seurat/
 
@@ -233,7 +1264,7 @@ attr(,"package")
  [6] "neighbors"    "reductions"   "images"       "project.name" "misc"        
 [11] "version"      "commands"     "tools" 
 
-> showMethods(classes="Suerat")
+> showMethods(classes="Seurat")
 
 Function ".DollarNames":
  <not an S4 generic function>
@@ -241,6 +1272,7 @@ Function ".DollarNames":
 Function "%&%":
  <not an S4 generic function>
 ...
+
 > getMethod(f="show", signature="Seurat")
 Method Definition:
 
@@ -256,7 +1288,7 @@ function (object)
 
 
 
-> str(pbmc2) # Suerat 3.0.1
+> str(pbmc2) # Seurat 3.0.1
 Formal class 'Seurat' [package "Seurat"] with 12 slots
   ..@ assays      :List of 1
   .. ..$ RNA:Formal class 'Assay' [package "Seurat"] with 7 slots
@@ -559,7 +1591,7 @@ Formal class 'Seurat' [package "Seurat"] with 12 slots
 
 
 
-1. Suerat 3.0.1
+1. Seurat 3.0.1
 (1)#UMAP分类标签的位置
 pbmc2@assays$RNA@scale.data
 table(pbmc2@active.ident)
@@ -736,10 +1768,135 @@ https://github.com/DawnEve/scRNAseqCode
 
 
 ========================================
-|-- 多组数据的整合、批次效应: harmony  //todo
+|-- 多组数据的整合、批次效应: harmony
 ----------------------------------------
 1. 使用方法
 https://satijalab.org/seurat/v3.2/integration.html
+
+(1) harmony算法与其他整合算法相比的优势：
+- 整合数据的同时对稀有细胞的敏感性依然很好；
+- 省内存；
+- 适合于更复杂的单细胞分析实验设计，可以比较来自不同供体，组织和技术平台的细胞。
+
+
+(2) 基本原理
+
+我们用不同颜色表示不同数据集，用形状表示不同的细胞类型。首先，Harmony应用主成分分析（一文看懂PCA主成分分析）将转录组表达谱嵌入到低维空间中，然后应用迭代过程去除数据集特有的影响。
+
+（A）Harmony概率性地将细胞分配给cluster，从而使每个cluster内数据集的多样性最大化。
+（B）Harmony计算每个cluster的所有数据集的全局中心，以及特定数据集的中心。
+（C）在每个cluster中，Harmony基于中心为每个数据集计算校正因子。
+（D）最后，Harmony使用基于C的特定于细胞的因子校正每个细胞。由于Harmony使用软聚类，因此可以通过多个因子的线性组合对其A中进行的软聚类分配进行线性校正，来修正每个单细胞。
+重复步骤A到D，直到收敛为止。聚类分配和数据集之间的依赖性随着每一轮的减少而减小。
+
+
+(3) 示例
+
+library(Seurat)
+library(cowplot)
+library(harmony)
+load('data/pbmc_stim.RData') #加载矩阵数据
+#在运行Harmony之前，创建一个Seurat对象并按照标准PCA进行分析。
+pbmc <- CreateSeuratObject(counts = cbind(stim.sparse, ctrl.sparse), project = "PBMC", min.cells = 5) %>%
+    Seurat::NormalizeData(verbose = FALSE) %>%
+    FindVariableFeatures(selection.method = "vst", nfeatures = 2000) %>%
+    ScaleData(verbose = FALSE) %>%
+    RunPCA(pc.genes = pbmc@var.genes, npcs = 20, verbose = FALSE) 
+
+pbmc@meta.data$stim <- c(rep("STIM", ncol(stim.sparse)), rep("CTRL", ncol(ctrl.sparse)))#赋值条件变量
+
+# 未经校正的PC中的数据集之间存在明显差异
+options(repr.plot.height = 5, repr.plot.width = 12)
+p1 <- DimPlot(object = pbmc, reduction = "pca", pt.size = .1, group.by = "stim")
+p2 <- VlnPlot(object = pbmc, features = "PC_1", group.by = "stim", pt.size = .1)
+plot_grid(p1,p2)
+
+
+2) Run Harmony
+运行Harmony的最简单方法是传递Seurat对象并指定要集成的变量。RunHarmony返回Seurat对象，并使用更正后的Harmony坐标（使用Harmony代替PCA）。将plot_convergence设置为TRUE，这样我们就可以确保Harmony目标函数在每一轮中都变得更好。
+
+RunHarmony函数中主要参数：
+- group.by.vars参数是设置按哪个分组来整合
+- max.iter.harmony设置迭代次数，默认是10。运行RunHarmony结果会提示在迭代多少次后完成了收敛。
+- ⚠️lambda 参数，默认值是1，决定了Harmony整合的力度。lambda值调小，整合力度变大，反之。（只有这个参数影响整合力度，调整范围一般在0.5-2之间）
+- ⚠️theta 参数：Diversity clustering penalty parameter. Specify for each variable in group.by.vars. Default theta=2. theta=0 does not encourage any diversity. Larger values of theta result in more diverse clusters. 这个参数我常用默认值，但在不同文献中这个参数往往不同。
+- ⚠️dims.use 参数：Which PCA dimensions to use for Harmony. By default, use all.
+- sigma参数：Width of soft kmeans clusters. Default sigma=0.1. Sigma scales the distance from a cell to cluster centroids. Larger values of sigma result in cells assigned to more clusters. Smaller values of sigma make soft kmeans cluster approach hard clustering.
+
+
+options(repr.plot.height = 2.5, repr.plot.width = 6)
+pbmc <- pbmc %>% RunHarmony("stim", plot_convergence = TRUE) #Harmony converged after 8 iterations
+
+Harmory运行后的结果储存在：
+pbmc@reductions$harmony
+
+> scObj@reductions$harmony[1:3,1:4]
+             harmony_1   harmony_2  harmony_3   harmony_4
+RP11-34P13.7  4822.785    581.2719  -1928.599    353.9254
+FO538757.2   18815.930 -49360.2172 -21452.936  -8208.2729
+AP006222.2   18817.910 -72234.6732 -46611.394 -12277.6396
+
+
+使用Embeddings命令访问新的Harmony embeddings。
+harmony_embeddings <- Embeddings(pbmc, 'harmony')
+harmony_embeddings[1:5, 1:5]
+
+> Embeddings(scObj, 'harmony')[1:3, 1:4]
+                   harmony_1  harmony_2  harmony_3  harmony_4
+AAACGGGCATGACGGA-1  24.96812  1.6123402  0.4014826 -10.221284
+AAAGATGAGCAGACTG-1  28.14937  0.5829318  0.8305650 -16.066575
+AAAGATGAGTGTACTC-1  25.97696 -1.7031176 -1.6094473  -8.406375
+
+
+让我们查看确认数据集在Harmony运行之后的前两个维度中得到很好的整合。
+options(repr.plot.height = 5, repr.plot.width = 12)
+p1 <- DimPlot(object = pbmc, reduction = "harmony", pt.size = .1, group.by = "stim")
+p2 <- VlnPlot(object = pbmc, features = "harmony_1", group.by = "stim", pt.size = .1)
+plot_grid(p1,p2)
+
+
+
+3) Downstream analysis 下游分析: UMAP
+
+许多下游分析是在低维嵌入而不是基因表达上进行的。要使用校正后的Harmony embeddings而不是PC，设置reduction ='harmony'。
+
+pbmc <- pbmc %>%
+    RunUMAP(reduction = "harmony", dims = 1:20) %>%
+    FindNeighbors(reduction = "harmony", dims = 1:20) %>%
+    FindClusters(resolution = 0.5) %>%
+    identity()
+
+在UMAP embedding中，我们可以看到更复杂的结构。由于我们使用harmony embeddings，因此UMAP embeddings混合得很好。
+options(repr.plot.height = 4, repr.plot.width = 10)
+DimPlot(pbmc, reduction = "umap", group.by = "stim", pt.size = .1, split.by = 'stim')
+
+
+# tSNE
+pbmc=RunTSNE(pbmc,reduction = "harmony", dims = 1:20)
+TSNEPlot(object = pbmc, pt.size = 0.5, label = TRUE,split.by='stim') 
+
+两样本合并的TSNE和UMAP图
+DimPlot(pbmc, reduction = "umap",pt.size = .1,  label = TRUE)
+TSNEPlot(pbmc, pt.size = .1, label = TRUE) 
+
+
+4) 关于Harmony操作是否会对差异分析产生影响
+Harmony输入的是 scRNA@reductions$pca 的数据，得出的结果储存在 scRNA@reductions$harmony 中。
+
+而差异分析使用的是 scRNA@assays$RNA@counts 数据，互不影响。
+
+
+
+4. 多样本批次矫正方法汇总
+工具		/Batch-effect-corrected output	/方法
+Seurat2	R	/Normalized canonical components	/Canonical correlation analysis and dynamic time warping
+Seurat3	R	/Normalized gene expression matrix	/CCA and mutural nearest neighbors-anchors
+Harmony	R	/Normalized feature reduction vectors	/Iterative clustering in dimensionally reduced space
+MNN Correct	R	/Normalized gene expression matrix	/Mutual nearest neighbor in gene expression space
+...
+
+
+
 
 
 
@@ -780,6 +1937,81 @@ stromal (CD10+,MME,fibo or CD31+,PECAM1,endo)
 
 
 
+3. 头颈癌：Single-cell transcriptome profiling of the stepwise progression of head and neck cancer
+https://pubmed.ncbi.nlm.nih.gov/36828832/
+https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc=GSE181919
+
+Choi JH, Lee BS, Jang JY, Lee YS et al. Single-cell transcriptome profiling of the stepwise progression of head and neck cancer. Nat Commun 2023 Feb 24;14(1):1055. PMID: 36828832
+
+(1) 背景
+Head and neck squamous cell carcinoma (HNSCC) undergoes stepwise progression from normal tissue to metastasized tumors. 
+To comprehensively delineate the heterogeneity of tumor cells and their interactions during the progression of HNSCC, we employed single-cell RNA-seq (scRNA-seq) profiling for the tissues of normal, leukoplakia, HNSCC, and metastasized HNSCC. 
+
+We identified novel clones of malignant cells expressing LGALS7B and fibroblasts expressing CXCL8, and the abundance of these cells in the tumor tissue was associated with poorer prognostic outcomes. 
+
+In addition, we demonstrated that fibroblasts in leukoplakia and tumor tissue express COL1A1, which interacts with CD44+ malignant cells, facilitating HNSCC progression. 
+
+CD4+FOXP3+ regulatory T cells expand in leukoplakia and express LAIR2 with collagen stimulation, which may provide a favorable microenvironment for tumor progression. 
+
+In conclusion, stromal and immune cell interactions play critical roles in the stepwise progression of HNSCC, and we have identified steps during HNSCC progression for possible therapeutic interventions
+
+
+(2) 实验设计
+Single-cell transcriptome profiling from 37 tissue specimens of 
+non-tumoral surrounding normal tissue (NL, n = 9), 
+leukoplakia (LP, n = 4), 
+primary cancer (CA, n = 20), 
+and metastatic tumors in lymph nodes (LN, n = 4)
+
+按进展顺序 NL -> LP -> CA -> LN;
+
+
+(3) 聚类 Processing and clustering of scRNA-seq data
+
+Processing and clustering of scRNA-seq data The raw data of the gene expression matrix was filtered using the "Seurat" R package with the following criteria of the cells with > 200 genes and < 8000 genes, < 10% of mitochondrial gene expression in UMI counts, and the genes expressed in > 0.1% cells. 
+
+The batch effects of the samples were corrected using 'RunHarmony' in the "Harmony" R package, 
+
+dimension reduction was performed using UMAP with the 'RunUMAP' function (dims = 1:50), and the clustering was performed using a shared-nearest neighbor graph algorithm 'FindClusters’ function (resolution = 0.2). 
+
+Subtyping of the malignant cells, cancer-associated fibroblasts (CAFs), and T cells were performed using the following parameters. 
+For malignant cells, dims = 1:20, lambda = 1, theta = 0, and resolution = 0.05; 
+for CAFs, dims = 1:10, lambda = 1, theta = 0, and resolution = 0.2; 
+for T cells, dim = 1:50, lambda = 1, theta = 2, and resolution = 0.2.
+
+
+(4) Cell typing, deconvolution, and gene set analyses
+
+Cell typing was performed by manually examining the expression levels of the canonical marker genes for 
+
+malignant cells (KRT14, KRT17, KRT6A, KRT5, KRT19, KRT8, KRT16, KRT18, KRT6B, KRT15, KRT6C, KRTCAP3, EPCAM, SFN), 
+fibroblasts (FAP, PDPN, COL1A2, DCN, COL3A1, COL6A1), 
+myocytes (ACTA1, ACTN2, MYL2, MYH2), 
+T cells (CD2, CD3D, CD3E, CD3G), 
+B/Plasma cells (SLAMF7, CD79A, BLNK, FCRL5), 
+macrophages (CD14, CD163, CD68, FCGR2A, CSF1R), 
+dendritic cells (CD40, CD80, CD83, CCR7), 
+mast cells (CMA1, MS4A2, TPSAB1, TPSB2) and 
+endothelial cells (PECAM1, VWF, ENG). 
+
+Deconvolution of the bulk RNA-Seq data s was performed using “MuSiC” R package 1 . 
+
+The proliferation index score was calculated as the sum of the S scores and G2M scores using the 'CellCycleScoring' function in the Seurat R package. 
+
+The scores for 'tumor-infiltrating lymphocyte (TIL)' and 'dysfunctional T cell' were calculated as the average expression values of the marker genes, respectively 2, 3
+
+
+(5) Harmony 就是代替 PCA 的，并且用于后续的非线性降维
+
+
+
+
+
+
+
+
+
+
 
 ========================================
 |-- 细胞周期对聚类的影响: Cell-Cycle Scoring and Regression 细胞周期打分和回归
@@ -791,6 +2023,38 @@ https://satijalab.org/seurat/v3.2/cell_cycle_vignette.html
 We demonstrate how to mitigate the effects of cell cycle heterogeneity in scRNA-seq data by calculating cell cycle phase scores based on canonical markers, and regressing these out of the data during pre-processing. 
 
 两种策略，一种是完全regression，另一种是只针对 S和G2M 的差异回归。 
+
+
+(2) Seurat 代码实现
+## cell cycle score ----
+scObj2b_2 <- CellCycleScoring(scObj2b_2, s.features = cc.genes$s.genes, g2m.features = cc.genes$g2m.genes, set.ident = TRUE)
+RidgePlot(scObj2b_2, features = c("PCNA", "TOP2A", "MCM6", "MKI67", "PLK1",
+                                  "CCNB1", "CCNB2", "CCNE1", "CCNE2"), ncol = 3)
+
+head(scObj2b_2@meta.data)
+
+#plot1
+scObj2b_2@meta.data %>% ggplot( aes(x=S.Score, y=G2M.Score, color=seurat_clusters))+
+  geom_point(size=0.5) + 
+  theme_classic(base_size = 12)+LargeLegend(3)+
+  facet_grid(~time)+
+  theme(
+    strip.background = element_blank()
+  )
+#
+# plot2
+DimPlot(scObj2b_2, group.by = "Phase", label=T)
+DimPlot(scObj2b_2,  label=T, split.by = "Phase")
+DimPlot(scObj2b_2, group.by = "Phase", label=F, split.by = "time", ncol = 3)
+# plot3
+pie( table(scObj2b_2$Phase), col = scales::hue_pal()(3) )
+#
+table2barplot( table(scObj2b_2$Phase, scObj2b_2$seurat_clusters) )
+#
+
+
+
+
 
 
 
@@ -819,6 +2083,8 @@ Whitfield et al. (Whitfield et al., 2002) (Table S2)
 
 (1)BrdU:https://baike.baidu.com/item/BrdU/8395857?fr=aladdin
 PI:https://baike.baidu.com/item/pi/4004256
+
+
 
 
 
@@ -1007,6 +2273,118 @@ test.tc11@meta.data <- test.tc11@meta.data[, -which(colnames(test.tc11@meta.data
 
 
 
+========================================
+|-- 计算一个基因集 的打分：PercentageFeatureSet(pbmc, pattern = "^MT-")
+----------------------------------------
+启发：
+
+使用scRNA-seq数据验证肝脏区域特征基因表达
+使用 Seurat 包的“PercentageFeatureSet”函数计算门静脉周围和中心周围肝脏标记基因以及与脂肪酸生物合成和铁稳态等区域功能相关的基因表达。
+
+
+
+1. Seurat 提供的教程
+(1)用法
+pbmc[["percent.mt"]] <- PercentageFeatureSet(pbmc, pattern = "^MT-")
+
+(2)帮助系统
+PercentageFeatureSet(
+  object,
+  pattern = NULL,
+  features = NULL,
+  col.name = NULL,
+  assay = NULL
+)
+
+参数解释
+pattern: A regex pattern to match features against
+features: A defined feature set. If features provided, will ignore the pattern matching
+col.name: Name in meta.data column to assign. If this is not null, returns a Seurat object with the proportion of the feature set stored in metadata.
+assay: Assay to use
+
+返回值：
+Returns a vector with the proportion of the feature set or if md.name is set, returns a Seurat object with the proportion of the feature set stored in metadata.
+
+
+
+
+
+
+
+========================================
+|-- 查看历史命令的参数： scObj@commands$FindClusters
+----------------------------------------
+1. Seurat 会记录使用过的主要命令及其参数。
+历史上使用过的命令都记录在 slot=commands 中：
+
+> scObj@commands$FindClusters
+Command: FindClusters(object = sce, resolution = resolution)
+Time: 2024-05-31 19:43:04.326552
+graph.name : RNA_snn 
+modularity.fxn : 1 
+resolution : 0.5 
+method : matrix 
+algorithm : 1 
+n.start : 10 
+n.iter : 10 
+random.seed : 0 
+group.singletons : TRUE 
+verbose : TRUE 
+
+
+
+
+
+
+========================================
+|-- SCTransform: 优势与流程
+----------------------------------------
+1. 优势
+SCTransform normalization的优势：
+
+- 一个SCTransform函数即可替代NormalizeData, ScaleData, FindVariableFeatures三个函数;
+- 对测序深度的校正效果要好于log标准化(10万以内的细胞都建议使用SCT);
+- SCTransform,可用于矫正线粒体、细胞周期等因素的影响，但不能用于批次矫正;
+- 改善信/噪比；
+- 发现稀有细胞。
+
+
+
+
+
+2. 流程
+
+(1) 官方流程
+# run sctransform
+sce1_trf <- SCTransform(sce1, #vars.to.regress = "percent.mt", 
+                        verbose = T)
+
+# These are now standard steps in the Seurat workflow for visualization and clustering
+sce1_trf <- RunPCA(sce1_trf, verbose = T)
+sce1_trf <- RunUMAP(sce1_trf, dims = 1:50, verbose = T)
+
+sce1_trf <- FindNeighbors(sce1_trf, dims = 1:50, verbose = T)
+sce1_trf <- FindClusters(sce1_trf, resolution = 0.8, verbose = T)
+DimPlot(sce1_trf, label = TRUE)
+
+
+# 自定义颜色可视化
+ncluster <- length(unique(sce1_trf[[]]$seurat_clusters))
+mycol <- colorRampPalette(brewer.pal(8, "Set2"))(ncluster)
+DimPlot(sce1_trf, label = T, cols = mycol)
+
+
+
+
+(2) 更多参数：leiden 细胞聚类算法
+srat <- FindNeighbors(srat, dims = 1:30, k.param = 15, verbose = F)
+
+## Leiden algorithm即algorithm = 4， 需要配置python环境
+srat <- FindClusters(srat, verbose = F, algorithm = 4, resolution = 0.95)
+
+
+
+
 
 
 
@@ -1100,206 +2478,289 @@ Seurat 4.1.0 的 240 个函数名： ls("package:Seurat")
 
 
 
+
 ========================================
-下载 Suerat 官方网站镜像 (2022.4.15)
+|-- 并行运算：FindAllMarkers 多线程/ 多核
 ----------------------------------------
-1. 当可以访问的时候 (2022.4.15)
-备份以防万一: 
-$ wget -m -L –reject = http://www.satijalab.org/seurat
-
-
-(1) 进入工作站目录
-$ cd /home/wangjl/data/web/docs/docs/satijalab.org/
-$ mv seurat seurat-backup
-
-
-换成
-$ cd /home/wangjl/data/web/docs/docs/
-$ rm -rf satijalab.org
-
-
-
-(2)下载好久
-$ wget -m --no-check-certificate https://satijalab.org/seurat/index.html #好多文件，应该是都下下来了！
-16:37 --> 16:65
-Downloaded: 1335 files, 531M in 2m 46s (3.20 MB/s)
-
-
-压缩备份
-$ tar -czvf seurat-docs-20220415.tar.gz satijalab.org
-
-$ ls -lth seurat-docs-20220415.tar.gz
--rw-rw-r-- 1 wangjl wangjl 392M Apr 15 16:56 seurat-docs-20220415.tar.gz
-
-$ du -sh satijalab.org/
-535M	satijalab.org/
-压缩到原来的 66%。
-
-
-
-(3) 怎么本地化 js 文件呢? //todo
+1. 可用版本
+library(future)
+plan(strategy = "multisession", workers=10) #多线程
+bmmc.markersNMF <- FindAllMarkers(pbmc.nmf, only.pos = TRUE, min.pct = 0.25, logfc.threshold = 0.25)
+plan(strategy = "sequential") #恢复单线程
 
 
 
 
+2. 查看可用 线程数
+library(future)
+plan(strategy = "multisession", workers=10) #multi-core not supported in Rstudio
+future::nbrOfWorkers() #10
+bmmc.markersNMF <- FindAllMarkers(pbmc.nmf, only.pos = TRUE, min.pct = 0.25, logfc.threshold = 0.25)
+plan(strategy = "sequential") #single core
+future::nbrOfWorkers() #1
+
+
+安装limma包后 # BiocManager::install('limma')
+再次调用 FindAllMarkers 函数 报错：
+MultisessionFuture (future_sapply-1) failed to call grmall() on cluster RichSOCKnode #7 (PID 131960 on localhost ‘localhost’). The reason reported was ‘error writing to connection’. Post-mortem diagnostic: No process exists with this PID, i.e. the localhost worker is no longer alive. The total size of the 7 globals exported is 8.92 MiB. The three largest globals are ‘data.use’ (8.91 MiB of class ‘S4’), ‘...future.FUN’ (14.94 KiB of class ‘function’) and ‘...future.elements_ii’ (672 bytes of class ‘list’)
 
 
 
+========================================
+|-- 后台异步执行 FindAllMarkers, 不影响前台继续可视化
+----------------------------------------
+1.启动并行计划（一次即可）
+library(future)
+library(promises)
+
+plan(multisession, workers = 4)  # 或 multicore (Linux)
+
+
+2.异步启动 FindAllMarkers
+markers_future <- future({
+  FindAllMarkers(
+    scObj,
+    only.pos = TRUE,
+    min.pct = 0.25,
+    logfc.threshold = 0.25
+  )
+})
+
+此时：
+	marker 在后台算
+你可以继续：
+	DimPlot(scObj)
+	DotPlot(scObj, features = genes)
 
 
 
+3.随时检查进度 / 状态
+是否完成？
+resolved(markers_future)
+# FALSE / TRUE
 
 
 
-2. 使用 远程 docker 下载 (2021.9.23)
-下载一个 nginx ，方便预览文件
-总体计划: 使用远端 docker 下载需要的东西，使用 nginx 展示内容并下载
-https://labs.play-with-docker.com/
-
-
-$ docker pull nginx
-$ docker run --rm -it nginx nginx -version
-nginx version: nginx/1.21.3
-
-还是使用带版本号的靠谱，后期可重复。
-$ docker pull nginx:1.21
-$ docker run --rm -it nginx:1.21 nginx -version
-nginx version: nginx/1.21.3
-
-
-$ cd /home/tom/
-$ cat nginx.config  #注意改nginx监听的端口号了
-server {
-    listen       8008;
-    listen  [::]:8008;
-    server_name  localhost;
-    #access_log  /var/log/nginx/host.access.log  main;
-    location / {
-        root   /usr/share/nginx/html;
-        index  index.html index.htm;
-		
-        # list files
-        autoindex on; 
-        autoindex_exact_size on; 
-        autoindex_localtime on; 
-    }
+已完成则取结果（不阻塞）
+if (resolved(markers_future)) {
+  scObj.markers <- value(markers_future)
 }
 
 
-把本地映射到docker内的web目录
-$ docker run --rm -d -p 8000:8008 \
---mount type=bind,source=/home/tom/,target=/usr/share/nginx/html/ \
---mount type=bind,source=/home/tom/nginx.config,target=/etc/nginx/conf.d/default.conf \
-nginx:1.21
+4. 获取结果
+强制等待（只有你真正需要时，或者step3为T时），该命令阻塞主进程。
+scObj.markers <- value(markers_future)
 
-下载命令: 约10Mb。
-## curl https://www.dropbox.com/s/3dby3bjsaf5arrw/cell_cycle_vignette_files.zip -o test.zip -J -L -k
-
-$ wget -r -p -np -k http://www.satijalab.org/seurat
-内置的wget不好用，不支持-r参数！！
+保存到Seurat对象中
+scObj@misc[["markers"]] = scObj.markers
 
 
 
 
 
-2. 重新搜一个 docker 版的 wget
 
-$ docker pull mwendler/wget
-$ alias wget='docker run -v $PWD:/work --workdir=/work --rm mwendler/wget' #把当前目录挂载到容器的工作目录
-
-
-$ wget -r -p -np -k --no-check-certificate http://www.satijalab.org/seurat
-参数解释:
--r, –recursive（递归） specify recursive download
--k, –convert-links（转换链接、将 HTML 页面中的链接转换为相对链接即本地链接）
-	make links in downloaded HTML or CSS point to local files
--p, –page-requisites（下载所有的图片等页面显示所需的内容）
-	 get all images, etc. needed to display HTML page
--np, –no-parent（不追溯至父级）
-	don't ascend to the parent directory
-–restrict-file-names=nocontrol 用来解决中文乱码问题（需要可以试试）
+5.捕获错误（非常重要）
+markers_future %...!% {
+  message("FindAllMarkers failed:")
+  print(.)
+}
 
 
 
-
-(2) 使用 wget 同步网站镜像
-$ wget -m -L –reject = http://www.satijalab.org/seurat
-
-一般情况下使用-m参数就可以：
-$ wget -m --no-check-certificate https://www.satijalab.org/seurat #这个就下载一个首页文件。
-
-$ wget -m --no-check-certificate https://satijalab.org/seurat/index.html #好多文件，应该是都下下来了！
-
-参数解释：
--m,  --mirror      shortcut for -N -r -l inf --no-remove-listing
--L,  --relative    follow relative links only
-
-可以设置正则表达式过滤链接
--R,  --reject=LIST               comma-separated list of rejected extensions
-   --accept-regex=REGEX        regex matching accepted URLs
-   --reject-regex=REGEX        regex matching rejected URLs
-   --regex-type=TYPE           regex type (posix|pcre)
-
-是否显示详细下载情况
-  -v,  --verbose                   be verbose (this is the default)
-  -nv, --no-verbose                turn off verboseness, without being quiet
-       --report-speed=TYPE         output bandwidth as TYPE.  TYPE can be bits
-
-
-(3) 下载过程中卡死了，仔细一看，js控制台报错了
-打不开的js:
-https://cdn.rawgit.com/zenorocha/clipboard.js/master/dist/clipboard.min.js 
-已有的js，不知道怎么注入到当前页面中
-https://raw.githubusercontent.com/zenorocha/clipboard.js/master/dist/clipboard.min.js
-javascript:(function(s){s.src='https://static.runoob.com/assets/clipboard.min.js';document.body.appendChild(s)})(document.createElement('script'));
-
-不知道 墙 啥时候放行这个js文件。。。
-
-
-(4) 先把已经下载的抓到本地
-回到本地宿主机:
-$ cd /home/wangjl/data/web/docs/docs/seurat/
-$ wget -m --no-check-certificate http://ip172-18-0-69-c55t5u7njsv000dv7nk0-8000.direct.labs.play-with-docker.com/site/satijalab.org/seurat/index.html
+优点
+	真正异步
+	不污染主 session
+	非常适合 交互式探索
+注意
+	scObj 会被 完整复制 到 worker
+	内存要够（Seurat 对象很大）
 
 
 
-最后因为404报错停下了。
-HTTP request sent, awaiting response... 404 Not Found
-2021-09-23 11:13:20 ERROR 404: Not Found.
-
-FINISHED --2021-09-23 11:13:20--
-Total wall clock time: 16m 35s
-Downloaded: 516 files, 324M in 10m 39s (519 KB/s)
-
-
-总共下载326M数据。
-$ du -sh /home/wangjl/data/web/docs/docs/seurat/
-326M	/home/wangjl/data/web/docs/docs/seurat/
-
-最后去掉多余的文件夹外壳，保存在 webPan.py 上。
-/home/wangjl/data/web/docs/docs/satijalab.org
-访问地址: http://y.biomooc.com:8000/file/docs/satijalab.org/index.html
-
-
-压缩:
-$ tar -czvf seurat.tar.gz satijalab.org
--rw-rw-r-- 1 wangjl wangjl 216M Sep 23 14:09  seurat.tar.gz
-加上日期 seurat-20210923.tar.gz
-
-$ du -sh satijalab.org/
-325M	satijalab.org/
-压缩到原来的 66%。
 
 
 
-(5) 缺一个文件，在线代理查看一下: 未解决
-https://proxysite.page/en
 
-https://satijalab.org/seurat/articles/install.html
-https://satijalab.org/seurat/articles/pbmc3k_tutorial_files/header-attrs-2.10/header-attrs.js
+========================================
+|-- 保存 FindAllMarkers 计算结果到R对象
+----------------------------------------
+
+scObj_pA.markers <- FindAllMarkers(scObj_pA, only.pos = TRUE, min.pct = 0.25, logfc.threshold = 0.25)
+scObj_pA.markers %>% group_by(cluster) %>% top_n(n = 2, wt = avg_log2FC)
+
+
+# (2)save ----
+scObj_pA@misc[["markers"]] = scObj_pA.markers # 保存到对象中
+
+saveRDS(scObj_pA, file = paste0(outputRoot, "PBMC_CD4T_activation_pA_count_matrix-v3.Rds") )
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+========================================
+|-- merge() Seurat 对象：2个及多个
+----------------------------------------
+1. 官方教程
+# merge two objects
+merge(x = pbmc_small, y = pbmc_small)
+
+# to merge more than two objects, pass one to x and a list of objects to y
+merge(x = pbmc_small, y = c(pbmc_small, pbmc_small))
+
+
+2. 更多样本怎么办？
+As of 2023 (or Seurat >4 or >3?), simply use merge and write
+
+> combined.obj <- merge(x = ls.Seurat[[1]], y = ls.Seurat[2:length(ls.Seurat)], add.cell.ids = vec_sample_IDs)
+
+Since y can take a list.
+
+
+(1) 完整代码：合并很多样本，1病人/样本。
+# load data to lists
+ls.Seurat=list()
+for(i in 1:42){
+  matrix.loc=sprintf("GSE148071_lung42/GSM4453%s_P%s_exp.txt", 576+i-1,  i)
+  #print(matrix.loc)
+  obj=Read10X_5(matrix.loc)
+  ls.Seurat[[i]]=obj
+}
+
+vec_sample_IDs = paste0("P", 1:42)
+combined.obj <- merge(x = ls.Seurat[[1]], 
+                      y = ls.Seurat[2:length(ls.Seurat)], 
+                      add.cell.ids = vec_sample_IDs) # add prefix before cell id
+combined.obj
+head(combined.obj@assays$RNA@counts[1:4,13455:13458])
+
+
+
+(2) 另一个实现
+MM <- merge(x = MM_list[[1]],
+            y = MM_list[-1],
+            add.cell.ids = names(MM_list))
+
+
+
+
+ref: https://bioinformatics.stackexchange.com/questions/9225/how-to-merge-more-than-two-sample-in-seurat
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+========================================
+|-- 修改细胞名字：RenameCells(obj, named_newID_Arr)
+----------------------------------------
+用于多个数据集合并前
+Change the cell names in all the different parts of an object. Can be useful before combining multiple objects.
+
+1. Aim: 修改细胞名字：short names, change to long names.
+head(scObj_RNA@meta.data, n=2) #use short
+scObj=scObj_RNA
+
+cell.names = scObj@meta.data$cid #long: UMI with hour and Rep
+names(cell.names) = scObj@meta.data$seurat_cid #short: UMI with only number
+head(cell.names) #value 是新名字，names()是老名字
+
+> c("old"="new", 'old2'='new2') # 格式：old cell name = new cell name
+   old   old2 
+ "new" "new2" 
+
+scObj=RenameCells(scObj, new.names = cell.names)
+head(scObj@meta.data) #use long
+
+
+
+
+
+2. 添加前缀
+
+RenameCells(
+  object,
+  add.cell.id = NULL
+)
+
+如：
+obj2=RenameCells( obj,  add.cell.id = "B1")
+
+> obj@meta.data[1:2, 1:2]
+                orig.ident nCount_RNA
+AAACACCA_0hRep1     0hRep1      45113
+AAACGAGA_0hRep1     0hRep1      56217
+> obj2@meta.data[1:2, 1:2]
+                   orig.ident nCount_RNA
+B1_AAACACCA_0hRep1     0hRep1      45113
+B1_AAACGAGA_0hRep1     0hRep1      56217
+
+自动在 cell id前都添加了前缀，下划线隔开。
+
+
+
+
+
+
+
+========================================
+|-- 对一个大类进行细分 FindSubCluster
+----------------------------------------
+
+1. 描述
+scObj2B=scObj2
+#DimPlot(scObj2B, label=T, raster = F, group.by = "RNA_snn_res.0.1")
+Idents(scObj2B)="RNA_snn_res.0.1" #
+DimPlot(scObj2B, label=T, raster = F) #必须手动修改默认分组，下文的 cluster 参数依赖默认分组。
+
+scObj2B <- FindSubCluster(scObj2B, cluster="0", graph.name="RNA_nn",
+                         subcluster.name = "sub.cluster",  resolution = 0.2, algorithm = 1)
+DimPlot(scObj2B, reduction = "umap", group.by = "sub.cluster", label = TRUE, raster = F) #在meta.data中新增一列 sub.cluster
+head(scObj2B@meta.data)
+table(scObj2B@meta.data$sub.cluster)
+#DimPlot(scObj2B, label = T)
+
+
+
+
+
+2. 重新进行聚类
+
+
+
+
+
+
+
+
+
+
+ref:
+https://www.biostars.org/p/492863/
+https://satijalab.org/seurat/reference/findsubcluster
 
 
 
@@ -1321,7 +2782,7 @@ a2=sce@assays$RNA@data #counts 怎么变的 data?
 a1[10:20,1:3]
 a2[10:20,1:3]
 a3=apply(a1, 2, function(x){
-log(x/sum(x) * 1e4 +1) #先按列标准化，扩大到1e4，加1，之后取自然对数。
+    log(x/sum(x) * 1e4 +1) #先按列标准化，扩大到1e4，加1，之后取自然对数。
 })
 a3[10:20,1:3] #和a2一样
 
@@ -1333,7 +2794,7 @@ hist( apply(expm1(a2), 2, sum), n=100 )
 hist( apply(expm1(a3), 2, sum), n=100 )
 
 
-(2) 取平均表达量
+(2) 取平均表达量 - 按细胞
 
 # 求平均，按列。求的是取对数前-1，也就是 counts的平均。
 avg.exp <- apply(X = data.use, MARGIN = 2, FUN = function(x) {
@@ -1341,6 +2802,439 @@ avg.exp <- apply(X = data.use, MARGIN = 2, FUN = function(x) {
 })
 
 
+(3) 求平均表达量 - 按基因
+
+
+
+
+
+
+
+
+
+
+
+
+========================================
+|-- 什么时候使用expm1？
+----------------------------------------
+
+在上面归一化的处理中，我们应用了log1p做数值变化，以使基因的原始count去偏态，符合正态分布。那么，也引出来一个问题，我们什么时候使用expm1？
+
+1. 场景1：在 AverageExpression() 源码中，对归一化的基因表达矩阵seurat_obj[['RNA']]@data进行expm1处理
+
+这个怎么理解呢？我在网上也看到网友对此问题的疑惑，为什么“take un-log data when calculate average expression”。
+
+data.use <- expm1(x = data.use)
+
+toRet <- SetAssayData(object = toRet, assay = names(x = data.return)[i], 
+                    slot = "data", new.data = log1p(x = as.matrix(x = data.return[[i]])))
+
+
+(1) 函数计算
+> t1=AverageExpression(scObj, group.by = "seurat_clusters")[['RNA']]
+> dim(t1)
+[1] 20000    19
+
+> t1[1:4,1:5]
+                        0           1           2           3           4
+RP11-34P13.7  0.002931872 0.003326554 0.005790386 0.003155577 0.002494124
+FO538757.2    0.382159160 0.249731641 0.267545334 0.222562765 0.196198151
+AP006222.2    0.269136199 0.061290994 0.086654934 0.120747568 0.137966105
+RP4-669L17.10 0.005504739 0.003823366 0.002833042 0.003918494 0.002222287
+
+耗时
+用户  系统  流逝 
+4.270 1.878 6.142 
+
+
+
+(2)手工计算: 很慢
+
+计算过程: 
+- log的标准化到1e4的表达值 data，行为gene，列为cell id;
+- 转置为行名为cell id，列为gene;  按行 cell id 对应的 cluster 拆分；
+- 每个小矩阵 按列求 均值，就是每个基因在该 cluster 的平均表达量。求平均使用 log 前的值，也就是 expm1(data)
+
+t2 = sapply( split( as.data.frame(t(expm1(scObj@assays$RNA@data))), scObj$seurat_clusters), 
+             function(x){
+               colMeans(x) # 按列求平均
+             })
+Warning message: 警告 需要内存很大。怎么降低内存消耗呢？ 经过测试，把 expm1 放到 colMeans 中会更慢！
+In asMethod(object) :
+  sparse->dense coercion: allocating vector of size 8.1 GiB
+
+
+如果报错，尝试 expm1 前多加一个 as.data.frame
+system.time({
+  dat2 = sapply( X=split(
+      as.data.frame(t(expm1( as.data.frame (pbmc@assays$RNA@data))) ), 
+      pbmc$seurat_clusters
+    ), 
+    FUN = function(x){
+      colMeans(x) # 按列求平均
+    })
+})
+dat2[1:3, 1:5]
+
+
+> dim(t2)
+[1] 20000    19
+
+> t2[1:4,1:5]
+                        0           1           2           3           4
+RP11-34P13.7  0.002931872 0.003326554 0.005790386 0.003155577 0.002494124
+FO538757.2    0.382159160 0.249731641 0.267545334 0.222562765 0.196198151
+AP006222.2    0.269136199 0.061290994 0.086654934 0.120747568 0.137966105
+RP4-669L17.10 0.005504739 0.003823366 0.002833042 0.003918494 0.002222287
+
+耗时：比R包多用了10倍时间。
+用户  系统  流逝 
+42.975 21.957 64.887
+
+
+验证2个手工计算和包计算的一致
+> table(abs(t1-t2)<0.00001)
+  TRUE 
+380000 
+
+
+(3) => 更快的方法: 读源码精简出来的
+
+system.time({
+    data.use <- GetAssayData(object = scObj, assay = 'RNA', slot = 'data')
+    #data.use <- data.use[rownames(scObj), ]
+    data.use <- expm1(x = data.use)
+
+
+    t1=FetchData(scObj, vars=("ident"))
+    category.matrix = Matrix::sparse.model.matrix(object=as.formula("~0+t1[,1]") )
+
+    category.matrix = sweep(x = category.matrix, MARGIN = 2, STATS = colSums(x = category.matrix), FUN = "/")
+    
+    colnames(category.matrix) = gsub(pattern = "t1\\[, [1-9]*\\]", replacement = "", x = colnames(category.matrix))
+
+
+    t3 <- as.matrix(x = (data.use %*% category.matrix))
+})
+
+> dim(t3)
+[1] 20000    19
+
+> t3[1:4,1:5]
+                        0           1           2           3           4
+RP11-34P13.7  0.002931872 0.003326554 0.005790386 0.003155577 0.002494124
+FO538757.2    0.382159160 0.249731641 0.267545334 0.222562765 0.196198151
+AP006222.2    0.269136199 0.061290994 0.086654934 0.120747568 0.137966105
+RP4-669L17.10 0.005504739 0.003823366 0.002833042 0.003918494 0.002222287
+
+耗时：
+用户  系统  流逝 
+2.924 0.172 3.094 
+
+
+测试: 结果和R包函数一致
+> table(abs(t1-t3)<0.00001)
+  TRUE 
+380000 
+
+
+
+(4) 所以画热图时，这个还是要再取log的！
+
+> max(t3)
+[1] 4663.597
+> min(t3)
+[1] 0
+
+log(t3 +1) 或者用函数 t2=log1p(t3)
+
+> min(t2)
+[1] 0
+> max(t2)
+[1] 8.447757
+
+
+
+
+
+
+
+
+
+2. 场景2：在计算线粒体比例也用到了expm1
+
+mito.genes <- grep("^MT-", rownames(pbmc@data), value = T)
+percent.mito <- colSums(expm1(pbmc@data[mito.genes, ]))/colSums(expm1(pbmc@data))
+
+#AddMetaData adds columns to object@data.info, and is a great place to stash QC stats
+pbmc <- AddMetaData(pbmc, percent.mito, "percent.mito")
+VlnPlot(pbmc, c("nGene", "nUMI", "percent.mito"), nCol = 3)
+
+
+
+
+
+
+
+3. 在seurat的代码中会出现对已经log1p归一化的数值进行expm1，比如线粒体的占比和AverageExpression的处理，背后的逻辑怎么理解？
+
+在网上找到一些零星的信息：
+
+The expm1 does un-log the data, but the normalization persists (this would be lost in the counts slot)
+
+expm1() transformed in order to recover normalized values not in log scale
+
+
+
+
+
+ref:
+https://www.jianshu.com/p/2203a20cb369
+
+
+
+
+========================================
+|-- 求基因集合的平均表达量，要在data直接求平均（推荐[1 dot 1 cell]）？还是expm1后求平均再取log1p（适合[1 dot 1 gene]）
+----------------------------------------
+1.“平均”是在什么尺度上做的（log vs linear），会直接影响统计解释。
+
+(1)AI认为更合理: 在 log-normalized 数据（Seurat@data）上直接取平均（或加权平均）
+
+使用 Seurat 的 data slot（默认是 log1p(normalized counts)）
+
+对 gene set 在每个 cell 上求：score=1/n * Sigma( log(1+xi) )
+
+
+
+=> 为什么不建议“先 exp 再平均再 log”？（关键点）
+（即先还原到线性空间再平均）
+
+1)单细胞数据是强烈 skewed / 零膨胀
+	少数高表达基因会 dominate 平均值
+	gene set 中 expression variance 极大（跨3–5个数量级）
+	* 线性平均 = 被高表达基因劫持
+
+2)log 空间平均 ≈ “几何平均”的稳定版本
+1/N * ∑log(1+xi) ≈ log(geometric mean)
+
+更适合表达数据（log-normal 分布）
+
+3)和 Seurat / Scanpy 方法一致
+主流方法全部基于 log 空间：
+	Seurat AddModuleScore
+	Scanpy score_genes
+	GSVA（单细胞版本）
+都不是在 raw counts 上做平均
+
+
+
+
+
+2.Seurat 官方推荐方式
+(1)方法1：AddModuleScore（推荐）
+obj <- AddModuleScore(
+  object = obj,
+  features = list(gene_set),
+  name = "GS"
+)
+
+输出：meta.data 新增一列 GS1
+
+优点：
+	自动做 背景基因校正（control genes）
+	避免：
+		library size bias
+		gene set size bias
+这是最标准做法
+
+
+(2)方法2：自己算（更可控）
+如果你坚持自己算：
+
+mat <- GetAssayData(obj, slot = "data")  # log-normalized
+score <- colMeans(mat[gene_set, ])
+obj$GS_score <- score
+
+
+
+
+
+3.什么时候才考虑“exp 再平均”？
+只有在以下情况才有意义：
+	你要模拟 bulk expression
+	（pseudo-bulk）
+
+mat <- GetAssayData(obj, slot = "counts")
+pb <- rowSums(mat[, group_cells]) / n_cells
+log1p(pb)
+
+这是 cell aggregation，不是 gene set scoring
+
+
+
+
+
+4.我的场景
+(1)方法1
+obj <- AddModuleScore(obj, features = list(gene_set), name = "GS")
+VlnPlot(obj, features = "GS1", group.by = "time")
+或者：
+VlnPlot(obj, features = "GS_score", group.by = "time")
+
+
+(2)更“论文级严谨”: z-score per gene 后再平均
+mat <- GetAssayData(obj, slot = "data")
+mat_z <- t(scale(t(mat[gene_set, ])))
+score <- colMeans(mat_z)
+
+适用于：
+	gene set expression variance 很大
+	避免某些 marker gene dominate
+
+
+
+
+
+
+==> 比较几种方法的不同？
+1 dot 1 gene: ./scripts_PBMC/c07D_2pAgenes_DPAU_gDPAU.R-2415-    title=sprintf("N=%s, tandem p=%s\nexonSwitch p=%s", dat_plot$gene |> unique() |> length(), round(p1, 3), round(p2, 3) ))
+	直接求几个细胞的平均值：平均值/gene,
+	-> 改做 1 dot 1 cell?
+
+
+
+1 dot 1 gene: ./scripts_PBMC/c07D_2pAgenes_DPAU_gDPAU.R-1920-my.labels=c("Consistent pA", "Tandem APA", "Exon switch APA")
+	avg/gene;
+	-> 尝试不同方法的结果：
+		violin plot:
+		0h, 18h:
+		不同的平均化:
+
+
+
+
+
+
+
+========================================
+|-- 小提琴图比较一个基因集的表达水平在2个条件之间的差异，对单细胞求平均时: 1 dot 1 cell[推荐, 一个观察值1个细胞], 1 dot 1 gene[不合理]
+----------------------------------------
+1.这个问题本质上是：统计单位（unit of analysis）应该是 cell 还是 gene？
+
+小提琴图中，一个点 = 一个细胞（cell）才是合理且主流的做法
+gene 不是独立样本，不应该作为 violin 的观测单位
+
+
+
+2.为什么“一个点=基因”是错误建模（关键逻辑）
+如果你这样做：
+	gene set ~1000 个基因
+	每个基因算一个表达值
+	violin 中每个点 = 一个 gene
+
+(1)问题1：伪重复（pseudo-replication）
+	这些 gene：
+		来自同一个 cell
+		共享同一个测序噪声 / library size / biological state
+
+	不独立
+		但统计模型会错误认为：n = 1000（样本量很大）
+		实际上：n = 细胞数（比如 5000）
+
+
+(2)问题2：统计意义完全错位
+你真正想问的是：
+	“这个 gene set 在 0h vs 18h 的细胞中是否整体上调？”
+而不是：
+	“这些 gene 在整体上是否表达不同？”
+	gene 是 feature，不是 observation
+
+
+
+(3)问题3：gene-level violin 没有生物学解释
+gene 间 variance >> condition effect
+会被：
+	housekeeping gene
+	高表达 gene
+严重干扰
+
+
+
+
+
+3.正确建模（标准做法）
+=> 一个点 = 一个 cell
+流程：
+
+Step1：对每个 cell 计算 gene set score
+mat <- GetAssayData(obj, slot = "data")  # log-normalized
+score <- colMeans(mat[gene_set, ])
+obj$GS_score <- score
+或：
+obj <- AddModuleScore(obj, features = list(gene_set), name = "GS")
+
+Step2：画 violin（cell-level）
+VlnPlot(obj, features = "GS_score", group.by = "time")
+	每个点 = 一个 cell
+	分布 = gene set activity distribution
+
+
+
+
+
+
+4.什么时候“gene作为点”才有意义？
+只有在以下分析中才成立：
+
+(1) gene-level统计（DEG分析）
+例如：
+	每个 gene 一个 logFC
+	比较 gene set vs background
+这是 enrichment analysis（如 GSEA）
+
+(2) heatmap / dotplot
+	gene = 行
+	cell group = 列
+用于展示 pattern，而不是统计检验
+
+
+
+
+
+
+
+5.更高级一点：避免另一个坑（cell也可能不独立）
+你现在是：
+	cell-level violin（常规 OK）
+但如果你是多样本（病人）：
+	真正独立单位其实是“样本”，不是 cell
+否则会出现：
+	一个病人 5000 cells → 权重过大
+	统计显著性被放大
+
+更严谨（论文级）：
+
+(1)方法1：pseudo-bulk（推荐）
+# 每个 sample 一个值
+aggregate(cell_score ~ sample + condition, FUN = mean)
+
+# violin 改成 boxplot（sample-level）
+
+(2)方法2：mixed model
+lmer(score ~ condition + (1|sample))
+
+
+
+
+
+
+6. 总结（一句话版本）
+方式        	合理性      	说明
+一个点 = cell	✅ 标准做法 	单细胞分析主流
+一个点 = gene	❌ 错误     	伪重复，统计失效
+一个点 = sample	⭐⭐⭐⭐⭐       	最严谨（发表级）
 
 
 
@@ -1356,6 +3250,176 @@ avg.exp <- apply(X = data.use, MARGIN = 2, FUN = function(x) {
 ----------------------------------------
 
 https://mp.weixin.qq.com/s?__biz=MzI5MTcwNjA4NQ==&mid=2247484978&idx=1&sn=07b7f734ad0ad44562186c1ef3663057&scene=21#wechat_redirect
+
+
+
+
+
+========================================
+|-- UMAP 算法 //todo
+----------------------------------------
+* UMAP是一种基于流形学习的非线性降维技术，设计灵感来源于t-SNE，但在效率和可扩展性方面进行了显著改进。
+* UMAP的核心优势在于它能够在减少全局结构失真的同时，保留数据的局部结构，这使得UMAP非常适合于探索性数据分析和数据可视化。
+
+
+1. 算法原理
+(1)构建高维邻域图
+* 近邻搜索：UMAP在高维的迷宫中寻找每个点的朋友，为接下来的探险做准备。
+* 权重图构建：它通过一种特殊的距离来衡量这些朋友之间的关系，建立一张精密的地图。
+
+(2)降维优化
+* 捕捉本质：UMAP试图捕捉每个点的本质，将它们从高维的迷宫中解放出来，放到可以触及的二维平面上。
+
+(3)流形学习假设
+* 探索低维世界：UMAP认为，尽管数据看似复杂，但它们的真实形态是简单的，我们只是需要找到正确的视角。
+
+
+
+
+2. 主要数学公式
+(1)高维距离度量
+* 测量距离：就像用尺子测量物体的长度，UMAP用特定的方法来测量数据点之间的距离。
+
+(2)优化目标函数
+* 最小化误差：UMAP试图让高维和低维世界中的关系尽可能一致，减少迁移过程中的误差。
+C=累加(i, p*log(p) + (1-p)*log(1-p) )
+
+(3)概率分布匹配
+* 匹配规律：UMAP尝试让这两个世界中的规律匹配，确保转换后的世界依旧真实可信。
+
+
+
+
+
+3. R 实现 uwot::umap
+只看第(2)即可。
+
+# 1. 创建随机数据矩阵
+set.seed(123)
+n_cells <- 2000
+data_matrix <- matrix(rnorm(n_cells * 10), nrow = n_cells, ncol = 10)
+dim(data_matrix)
+
+# 2. umap
+# input row as cells, 
+# return: keep row number, but only 2 columns as UMAP1-2
+umap_result <- uwot::umap(data_matrix[,1:2])
+dim(umap_result)
+
+# 3. draw
+#
+color_scheme <- c("Group A" = "blue", "Group B" = "red")
+
+umap_df <- data.frame(UMAP1 = umap_result[, 1], UMAP2 = umap_result[, 2])
+umap_df$group <- sample(c("Group A", "Group B"), n_cells, replace = TRUE)
+library(ggplot2)
+umap_plot <- ggplot(umap_df, aes(x = UMAP1, y = UMAP2, color = group)) +
+  geom_point(size = 3) +
+  scale_color_manual(values = color_scheme) +
+  ggtitle("UMAP of Random Data with Color Testing") +
+  theme_minimal()
+umap_plot
+
+
+
+
+
+
+
+
+
+
+
+4. Python 实现
+(1) 安装
+pip install umap-learn
+
+(2) 初始化参数
+UMAP提供了多个参数，允许用户根据具体的数据集和需求进行调整，以下是一些重要的初始化参数：
+
+* n_neighbors: 控制UMAP算法考虑的邻近点的数量，较小的值强调保持局部数据结构，较大的值有助于更好地捕捉全局数据结构。
+* n_components: 降维后的空间维数，常用值为2或3，便于数据可视化。
+* metric:用于计算数据点间距离的度量，如'euclidean', 'manhattan', 'cosine'等，选择合适的度量标准对保持数据结构很重要。
+* min_dist: 控制嵌入空间中点之间的最小距离，较小的值使得UMAP更强调保持局部结构，较大的值有助于点在嵌入空间中更均匀地分布。
+* random_state: 确保每次运行UMAP时结果的可重复性，对于实验和产品化过程很重要。
+
+(3)参数调节技巧
+数据探索和可视化：对于数据探索和可视化，推荐使用n_neighbors较小的值（如5至50之间），min_dist较小（如0.0到0.3之间），以便强调数据的局部结构。
+聚类：进行聚类时，可能需要通过调整n_neighbors来平衡局部和全局结构的重要性，以便更好地识别聚类。
+特征提取：如果使用UMAP进行特征提取以供后续学习任务，可能需要增加n_components的值，以保留更多的信息。
+
+
+(4) 案例分析1：数据探索与聚类
+在一个电子商务平台的用户行为数据集上应用UMAP，通过降维发现潜在的用户群体，并对其进行聚类分析，从而帮助营销团队制定针对性的策略。
+
+import umap
+import numpy as np
+from sklearn.datasets import make_blobs
+from sklearn.cluster import KMeans
+import matplotlib.pyplot as plt
+
+# 生成模拟数据集
+data, labels = make_blobs(n_samples=300, centers=5, random_state=42)
+
+# 使用UMAP进行降维
+reducer = umap.UMAP(random_state=42)
+#umap_model = umap.UMAP(n_neighbors=5, n_components=2, metric='euclidean')
+
+# 拟合模型并进行降维
+data_reduced = reducer.fit_transform(data)
+#umap_result = umap_model.fit_transform(data)
+
+
+# 使用KMeans进行聚类
+kmeans = KMeans(n_clusters=5)
+clusters = kmeans.fit_predict(data_reduced)
+
+# 可视化降维结果和聚类
+plt.scatter(data_reduced[:, 0], data_reduced[:, 1], c=clusters, cmap='viridis')
+plt.title("UMAP Reduction and Clustering")
+plt.xlabel("UMAP 1")
+plt.ylabel("UMAP 2")
+plt.show()
+
+
+
+
+更多参数设置：
+1) 不同的距离度量方法（如欧氏距离、曼哈顿距离等）
+# 创建UMAP对象，使用欧氏距离度量方法
+umap_obj_euclidean = umap.UMAP(n_neighbors=15, min_dist=0.1, metric='euclidean', n_epochs=500)
+umap_model = umap.UMAP(n_neighbors=10, n_components=3, metric='cosine')
+
+
+2) 不同的优化算法选择（如叶平面法、林伯格-马奇克索斯法等）
+# 创建UMAP对象，使用叶平面法优化算法
+umap_obj_1 = umap.UMAP(n_neighbors=15, min_dist=0.1, low_memory=True, random_state=42, a=None, b=None)
+
+
+3) 将训练好的UMAP模型保存到文件中，以便将来使用。
+# 保存UMAP模型到文件
+umap_model = umap.UMAP(n_neighbors=5, n_components=2, metric='euclidean')
+umap_model.fit(X)
+umap_model.save("umap_model.pkl")
+
+# 加载UMAP模型
+loaded_model = umap.UMAP()
+loaded_model.load("umap_model.pkl")
+
+
+
+4) Seurat 中使用py时 默认设置为 min.dist = 0.3 和 n.neighbors = 30L 
+* min-dist, the desired separation between close points in the embedding space
+	一个是亚群内相邻两个点的期望距离
+* n, the number of neighbors to consider when approximating the local metric
+	另一个是局部尺度下的邻近分群的数量，
+
+修改为：sce.all <- RunUMAP(sce.all, dims = 1:30, min.dist = 0.01, n.neighbors = 4L)
+结果：分的更开了，但是小的边角小类也多起来了。
+
+
+
+
 
 
 
@@ -1422,7 +3486,6 @@ DimPlot(object = pbmc, reduction.use = "mds", pt.size = 2) +
 |-- 修改 seurat 的分类列，后续按照新 Idents 进行比较marker、画热图等
 ----------------------------------------
 1.
-
 (1) add new column as cell identity
 pbmc12@meta.data$cellType=cellInfo2[rownames( pbmc12@meta.data), ]$cellType
 table(pbmc12@meta.data$seurat_clusters, pbmc12$cellType)
@@ -1480,10 +3543,63 @@ head(scRNAsub2@meta.data)
 
 
 
+(4) 给meta.data 添加一列
+1) 第一层
+cluster2type <- c(
+  "0"="MNCs",
+  "1"="MNCs",
+  "2"="T cells",
+  "3"="T cells",
+  "4"="T cells",
+  "5"="NKs",
+  "6"="T cells",
+  "7"="MNCs", 
+  "8"="PCs/MMs", 
+  "9"="GMPs", 
+  "10"="T cells", 
+  "11"="T cells", 
+  "12"="T cells", 
+  "13"="T cells", 
+  "14"="GMPs", 
+  "15"="B cells", 
+  "16"="T cells", 
+  "17"="MKs", 
+  "18"="DCs", 
+  "19"="pDCs")
+
+MM[['cell_type']] = unname(cluster2type[MM@meta.data$seurat_clusters]) #有问题：最好加一层 as.character()
+sce1[['cell_type']] = unname(cluster2type[ as.character(sce1@meta.data$seurat_clusters) ] )
+
+【可选】还可加上因子
+MM@meta.data$cell_type<-factor(MM@meta.data$cell_type,levels = c("T cells","NKs","B cells","PCs/MMs","MNCs","GMPs","DCs","pDCs","MKs"))
 
 
 
-2.
+2) 高一层 Add major cell type information
+# 格式： oldName=newName
+cluster2type <- c(
+  "T cells"="Lymphocytes",
+  "NKs"="Lymphocytes",
+  "B cells"="Lymphocytes",
+  "PCs/MMs"="Lymphocytes",
+  "MNCs"="Myeloid cells",
+  "GMPs"="Myeloid cells",
+  "DC"="Myeloid cells", 
+  "pDC"="Myeloid cells",
+  "MKs"="Myeloid cells")
+
+MM[['cell_type1']] = unname(cluster2type[MM@meta.data$cell_type]) #有问题：最好加一层 as.character()
+
+
+
+
+
+
+
+
+
+
+2. 组间比较，获取marker
 # 指定比较
 # find all markers distinguishing cluster 5 from clusters 0,1 and 2
 BC_HeLa.markers <- FindMarkers(pbmc12, ident.1 = c("BC_0","BC_1"), 
@@ -1512,6 +3628,16 @@ pbmc.markers %>% group_by(cluster) %>% filter(p_val_adj<0.05 & abs(avg_logFC)>lo
 1. 指定顶部颜色块：group.colors
 DoHeatmap(pbmc12, features = rbind(gset1, gset2)$gene, 
           group.colors= c("#FF9ECE","#F81082", '#005FFF', '#98BEFD') )
+
+
+指定热图颜色：蓝 白 红 
+library(Seurat)
+library(ggplot2)
+pbmc<-readRDS(pbmc3k.rds)
+
+DoHeatmap(pbmc)+scale_fill_gradientn(colors = c("blue", "white", "red"))
+
+
 
 
 2. 调整文字字号大小
@@ -1552,11 +3678,11 @@ DotPlot(scRNA, features = rev( unique( c("CD3D","CD4","CD8A","CD8B","GZMB", "CCR
 ####replot markergenes
 # v2.0新增2个filter
 # v2.1 新增可以设置 seurat 对象，方便从外部修改对象的ident后重新传入值
-DotPlotPDF=function(genelist,prefix="",width=26,height=10, suerat_obj=br10){
+DotPlotPDF=function(genelist,prefix="",width=26,height=10, seurat_obj=br10){
   #filter1:保证基因唯一性
   genelist=unique(genelist)
   #filter2:保证基因在数据中存在
-  gene.exist=rownames(suerat_obj@data)#有的基因名字
+  gene.exist=rownames(seurat_obj@data)#有的基因名字
   #打印出不存在的基因
   gene.reserve=c()
   for(g in genelist){
@@ -1570,7 +3696,7 @@ DotPlotPDF=function(genelist,prefix="",width=26,height=10, suerat_obj=br10){
   CairoPDF( paste0(prefix,"_DotPlot.pdf") , width = width, height = height)
   #控制x坐标循序，可以把x逆序，如rev(genelist)
   #怎么控制y坐标顺序？
-  marker_dot_plot <- DotPlot(object = suerat_obj, genes.plot = gene.reserve, plot.legend = TRUE,
+  marker_dot_plot <- DotPlot(object = seurat_obj, genes.plot = gene.reserve, plot.legend = TRUE,
                              cols.use = c("black","red"), x.lab.rot = T,dot.scale = 10, do.return=T)
   marker_dot_plot <- marker_dot_plot + theme(axis.text.x = element_text(angle = 60, vjust = 1, hjust = 1))
   print(marker_dot_plot)
@@ -1599,6 +3725,14 @@ DotPlotPDF(markers,"top5",width=5,height=4.5)
 |-- DimPlot()高亮显示某一类细胞
 ----------------------------------------
 1. 使用 seurat 包的函数，指定 cells.highlight 参数
+
+showCluster=function(obj, num, col="red"){
+  DimPlot(obj, cells.highlight=WhichCells(obj, idents=num),
+          cols.highlight = col)
+}
+showCluster(scObj, 5)
+
+
 (1) WhichCells 函数获取cid
 Idents(scRNA)="predicted.id"
 sub1 <- WhichCells(scRNA, idents = c("CD8 Naive") ) #返回的是细胞cid
@@ -1638,8 +3772,6 @@ umap_tx = integrated@reductions$umap@cell.embeddings %>%
 
 ggplot(umap_tx, aes(x=UMAP_1, y=UMAP_2, color=tx)) + geom_point() + 
 	scale_color_manual(values=c("group1_untreated" = "darkblue", "group1_treated" = "darkred"))
-
-
 
 
 
@@ -1732,6 +3864,16 @@ FeaturePlot(pbmc3k.final, features = c("MS4A1", "CD79A"), split.by = "groups")
 
 
 
+(6) order=T 把关心的基因显示到上层
+FeaturePlot(scObj, features = c("PCF11"), cols =c("lightgrey", "red"), order = T)
+
+
+(7) 可视化技巧：自定义渐变颜色，高亮显示某一个feature的高值
+my.colors = colorRampPalette(c("lightblue", "white", "darkred"))(100)
+FeaturePlot(sce1, feature = "percent.mt", raster = F, cols = my.colors)
+
+
+
 
 
 2. VlnPlot 的堆叠小提琴图
@@ -1787,6 +3929,48 @@ DotPlot(pbmc, features = features, split.by = "groups") + RotatedAxis()
 
 
 
+(3) DotPlot 重绘，自定义分组的颜色
+
+# 要提前设置号字符串的顺序：指定为因子顺序
+scObj$tissue.type=factor(scObj$tissue.type, 
+                         levels = c("NL", "LP",  'CA',    'LN'))
+
+
+# named color
+color.head=c('#617381', "#76AB9B", '#CE5A5B', "#EA7C5B");
+names(color.head) =c("NL", "LP", "CA", "LN")
+color.head
+
+# draw with Seurat
+g1=DotPlot(scObj, features = c("CD300LF"), group.by = "tissue.type", 
+        cluster.idents = F)+labs(x="", y="") + NoLegend(); g1 #+ #+RotatedAxis() #+ coord_flip()
+# >> get data from ggplot obj
+head(g1$data)
+#            avg.exp  pct.exp features.plot id avg.exp.scaled
+#CD300LF  0.04571820 4.370236       CD300LF CA      1.0291080
+#CD300LF1 0.03949094 4.144320       CD300LF LN      0.6632240
+
+# re-plot with ggplot2
+ggplot(g1$data, aes(x=features.plot, y=id, size=pct.exp, color=id))+
+  geom_point(show.legend = F)+
+  scale_color_manual(values=color.head)+
+  theme_classic(base_size = 14)+
+  labs(x="", y="")
+#
+
+
+(4) 旋转xy轴，交换xy坐标轴
+https://github.com/satijalab/seurat/issues/4866
+p1 <- DotPlot(pbmc, features = c("CD3E", "AIF1"))
+p2 <- DotPlot(pbmc, features = c("CD3E", "AIF1")) + coord_flip()
+
+
+
+
+
+
+
+
 4. DimPlot 
 
 (1) 加上标题
@@ -1802,9 +3986,17 @@ baseplot + FontSize(x.title = 20, y.title = 20) + NoLegend()
 
 
 
+
+
+
 5. 系统发育分析（Phylogenetic Analysis of Identity Classes）
 pbmc<-BuildClusterTree(pbmc)
 Tool(object = pbmc, slot = 'BuildClusterTree')
+
+
+
+
+
 
 
 
@@ -1812,6 +4004,7 @@ Tool(object = pbmc, slot = 'BuildClusterTree')
 ?AverageExpression
 
 AverageExp<-AverageExpression(pbmc,features=unique(top10$gene))
+
 
 
 
@@ -1839,6 +4032,7 @@ https://www.jianshu.com/p/03b94b2034d5
 
 
 
+
 ref:
 https://www.jianshu.com/p/a2fe2549cea1
 https://www.jianshu.com/p/484762bb96c2
@@ -1858,7 +4052,34 @@ http://www.360doc.com/content/21/0715/15/76149697_986668012.shtml
 ----------------------------------------
 
 
+========================================
+|-- 获取 Seurat 中默认颜色配方/ 配色提取
+----------------------------------------
+1. DimPlot中默认的配色方案
+library(scales)
+show_col(hue_pal()(16))
 
+
+
+2. 提取DimPlot中画聚类时用到的颜色
+
+library(scales)
+p1 <- DimPlot(pbmc.nmf, group.by = "celltype_assign")
+x<-ggplot_build(p1)
+info = data.frame(colour = x$data[[1]]$colour, group = x$data[[1]]$group)
+info <- unique((arrange(info, group)))
+cols <- as.character(info$colour)
+
+> cols
+ [1] "#F8766D" "#EC823C" "#DD8D00" "#CA9700" "#B3A000" "#97A900" "#71B000" "#2FB600" "#00BB4B" "#00BF76" "#00C098" "#00C0B7"
+[13] "#00BDD1" "#00B7E8" "#00AEFA" "#3DA1FF" "#8F91FF" "#BE80FF" "#DE71F9" "#F265E7" "#FE61CF" "#FF64B3" "#FF6C92"
+
+
+
+
+
+ref:
+https://www.jianshu.com/p/229af1b135b5
 
 
 ========================================
@@ -2485,8 +4706,9 @@ pl+scale_color_discrete(name="Sample")
 
 
 ========================================
-|-- 原生R画不同类的细胞数: myBarPlot()
+|-- 不同类的细胞数bar图: R原生myBarPlot() 及 ggplot
 ----------------------------------------
+1. R base barplot
 
 # bar plot for each column in meta.data
 myBarPlot=function(scRNA, group.by="seurat_clusters",textPosY=-150, angle=60, isShow=F){
@@ -2525,6 +4747,75 @@ myBarPlot(scRNA, "predicted.id", textPosY=-50)
 
 # options(repr.plot.width=8, repr.plot.height=4)
 myBarPlot(scRNA, "seurat_clusters", textPosY=-50)
+
+
+
+
+
+
+
+
+2. table2barplot from table
+src: @X:20220
+
+#' draw barplot, from a data.frame generated by table(para1, para2), colored by 1st parameter of table()
+#' v2.1
+#' v2.2 第一参数的空值跳过
+#'
+#' @param tbl1 data.frame, draw by each column
+#' @param colors colors of each row(default NULL, auto-color)
+#' @param scale whether scale to 1 or not(default T)
+#' @param title the main title of the figure,(is main in the function)
+#' @param legendY the position y of legend, adjust as needed, default -0.25
+#' @param omit whether to omit some columns
+#' @param ... 
+#'
+#' @return NULL
+#' @export
+#'
+#' @examples
+#' 
+table2barplot = function(tbl1, colors=NULL,levels=NULL, scale=T, title="", 
+                       omit=NULL, xlab="", ylab="", legendTitle=NULL){
+  tbl1= tbl1[, which(colSums(tbl1)>0)] #remove all 0 columns
+  tbl1= tbl1[which(rowSums(tbl1)>0), ] #remove all 0 rows
+  # remove some columns by column names
+  if(!is.null(omit)){
+    tbl1=tbl1[, setdiff( colnames(tbl1), as.character( omit ) ) ]
+  }
+  # table to data.frame(wide to long)
+  df2=as.data.frame(tbl1)
+  if(!is.null(levels)){
+    df2$Var1=factor(df2$Var1, levels =levels )#change order
+  }
+  if(""==ylab){ ylab=ifelse(scale, "Freq", "Count") }
+  if(""==xlab){ xlab="Index" }
+  
+  # draw
+  g1=ggplot(df2, aes(x=Var2, y=Freq, fill=Var1))+
+    geom_bar(stat="identity", position=ifelse(scale, "fill","stack") )+
+    labs(x=xlab, y=ylab, title=title)+
+    theme_classic(base_size = 14)+
+    theme(axis.text.x=element_text(angle=60, hjust=1,size=rel(1.2)) )
+  if(is.null(colors)){
+    return (g1 + scale_fill_discrete( ifelse(is.null(legendTitle), "", legendTitle) ) )
+  }else{
+    return( g1+scale_fill_manual(legendTitle, values = colors) )
+  }
+}
+
+if(0){
+  table2barplot(
+    as.table(t(
+      apply(
+        table(scObj$time, scObj$seurat_clusters), 
+        1, 
+        function(x){ x/sum(x) * 1e4})
+    )),
+    colors = c("0h"="#FFA500", "18h"="#FF1493", "48h"="#4876FF"),
+    title="time"
+  )
+}
 
 
 

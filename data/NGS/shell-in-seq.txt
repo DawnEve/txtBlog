@@ -12,6 +12,64 @@ shell-in-seq
 
 
 ========================================
+服务器之间传输文件 / 远程拷贝时保留软链接: 推荐使用 rsync -avl (GPT未验证)
+----------------------------------------
+默认scp复制软连接指向的文件，而不是软连接本身。
+如果你只想复制符号链接，而不复制它指向的文件，可以先打包再传输，或者使用 rsync 更加灵活。
+
+
+文件迁移前，先看原位置内是否有软连接：find /path/to/ -type l
+	$ find /data3/wangjl/scPolyA-seq2/chenxi/MDA -type l
+	/data3/wangjl/scPolyA-seq2/chenxi/MDA/raw/SUSTC-20220617-L-01-2022-06-211426
+
+
+
+1. 使用 scp 复制符号链接本身
+(1)压缩包含符号链接的目录
+$ tar -czf archive.tar.gz /path/to/directory
+(2) 使用 scp 传输压缩文件
+$ scp archive.tar.gz user@remote:/path/to/destination
+(3) 第三步：在目标服务器上解压文件
+$ tar -xzf archive.tar.gz -C /path/to/extract
+这样会保留符号链接本身，而不会复制其指向的文件。
+
+
+
+
+2. 使用 rsync 复制符号链接
+rsync 是一种比 scp 更加灵活的工具，支持直接复制符号链接本身。
+
+##rsync -avz -e ssh -l user@remote:/path/to/source /path/to/destination
+
+$ rsync -avl src_dir user@host:dest_dir
+参数解释：
+	-v, --verbose               increase verbosity
+	-a, --archive               archive mode; equals -rlptgoD (no -H,-A,-X)
+	-e, --rsh=COMMAND           specify the remote shell to use
+	-z, --compress              compress file data during the transfer
+
+	-l, --links 	#When symlinks are encountered, recreate the symlink on the destination.
+		-l 保留软连接本身
+	-L, --copy-links 	#When symlinks are encountered, the item that they point to (the referent) is copied, rather than the symlink.
+		-L 则复制文件，目标位置是文件副本，而不是软连接本身。
+	--safe-links: 忽略指向源路径目录树以外的链接（这是默认行为）。
+
+(2) rsync -avl 和 rsync -avzP 的区别？
+首先，都保留软连接。
+-z (compress)：在传输过程中压缩文件，以减少带宽使用，适合网络传输。
+-P (partial & progress)：显示进度，并在传输中断时保留部分传输的文件，便于下次继续传输。
+	代价是，速度减慢了。
+
+总结
+* 使用 rsync -avl 适合本地或快速网络传输，注重文件属性的完整保留。
+* 使用 rsync -avzP 适合远程传输或带宽有限的情况，注重减少传输时间和显示进度信息。
+
+
+
+
+
+
+========================================
 使用find和grep做关键词文件文本搜索，高亮显示
 ----------------------------------------
 1.关键词搜索
@@ -550,6 +608,87 @@ github: https://github.com/DawnEve/snakemakeWorkflow/tree/master/shell/demo1
 
 
 
+========================================
+|-- 为节省硬盘，对文件夹中的fastq压缩：子文件夹遍历压缩
+----------------------------------------
+0.压缩的好处：减少对硬盘的占用
+
+压缩率:
+- 默认的 gzip xx.fastq 会压缩并删除原始文件。
+- 测试发现，fastq压缩后，硬盘占用减少了 75% 左右
+
+	$ ls -lth /datapool/wangjl/rsa/CD4T/*fastq
+	-rw-rw-r--+ 1 wangjl jinlab 22G Sep 26  2024 /datapool/wangjl/rsa/CD4T/SRR9861783_2.fastq
+	-rw-rw-r--+ 1 wangjl jinlab 22G Sep 26  2024 /datapool/wangjl/rsa/CD4T/SRR9861783_1.fastq
+	-rw-rw-r--+ 1 wangjl jinlab 25G Sep 26  2024 /datapool/wangjl/rsa/CD4T/SRR9861792_1.fastq
+	-rw-rw-r--+ 1 wangjl jinlab 25G Sep 26  2024 /datapool/wangjl/rsa/CD4T/SRR9861792_2.fastq
+
+	压缩后:
+	$ ls -lth /datapool/wangjl/rsa/CD4T/*fastq.gz
+	-rw-rw-r--+ 1 wangjl jinlab 5.5G Sep 26  2024 /datapool/wangjl/rsa/CD4T/SRR9861783_2.fastq.gz
+	-rw-rw-r--+ 1 wangjl jinlab 4.9G Sep 26  2024 /datapool/wangjl/rsa/CD4T/SRR9861783_1.fastq.gz
+	-rw-rw-r--+ 1 wangjl jinlab 5.7G Sep 26  2024 /datapool/wangjl/rsa/CD4T/SRR9861792_1.fastq.gz
+	-rw-rw-r--+ 1 wangjl jinlab 6.4G Sep 26  2024 /datapool/wangjl/rsa/CD4T/SRR9861792_2.fastq.gz
+	平均是 1/4，缩小了3/4
+
+
+1. 对文件夹中的fastq压缩
+$ ls /datapool/wangjl/rsa/MDA-MB-231/*fastq | while read id; do echo $id; gzip $id; done
+	很耗时，建议放到 tmux 中执行。
+
+
+
+2.对 /datapool/wangjl/rsa/ 子文件夹中的fastq 进行压缩
+
+#!/bin/bash
+
+# 定义目标目录
+target_dir="/datapool/wangjl/rsa"
+
+# 使用find命令查找所有子目录中的.fastq文件
+# -type f 确保只查找文件
+# -name "*.fastq" 匹配所有.fastq文件
+find "$target_dir" -type f -name "*.fastq" | while read -r file; do
+    echo "正在压缩文件: $file"
+    gzip "$file"
+done
+
+echo "所有.fastq文件压缩完成！"
+
+
+
+
+
+
+========================================
+用win git bash 按url文件下载：只要curl，无wget
+----------------------------------------
+1.语句
+$ cat font_in_KaTeX_Typewriter.txt  | head
+https://psc2.cf2.poecdn.net/assets/_next/static/media/KaTeX_AMS-Regular.a79f1c31.woff2
+https://psc2.cf2.poecdn.net/assets/_next/static/media/KaTeX_AMS-Regular.1608a09b.woff
+https://psc2.cf2.poecdn.net/assets/_next/static/media/KaTeX_AMS-Regular.4aafdb68.ttf
+
+
+$ cat font_in_KaTeX_Typewriter.txt | while read url; do 
+fname=${url##*/};
+echo $url $fname;
+curl $url -o $fname;
+done;
+
+
+
+2. 解释
+
+# 假设URL存储在变量中
+url="http://example.com/path/to/your/file.txt"
+
+# 使用bash的参数替换功能获取最后一个'/'后的内容作为文件名
+filename="${url##*/}"
+echo $filename
+
+
+
 
 
 
@@ -603,6 +742,77 @@ for f in ${file_list[@]}
 do 
     mv $f*.gz needstar
 done
+
+
+========================================
+|-- 使用shell通过关键词获取测序文件名R1和R2
+----------------------------------------
+1.场景
+文件夹下是fastq文件，能通过关键词配对。
+但是命名规则可能不同，比如
+xx.R1.fq, xx.R2.fq
+yy_R1.fq, yy_R2.fq
+
+
+()代码1: 基本写法
+id=2080-3-1
+id=24B74088
+files=(/datapool/wangjl/others/HLA_HD/data/fastq/${id}?R[12]*.fq)
+echo "input file names:"
+echo ">R1: ${files[0]}"
+echo ">R2: ${files[1]}"
+
+输出:
+	>R1: /datapool/wangjl/others/HLA_HD/data/fastq/2080-3-1_R1.fq
+	>R2: /datapool/wangjl/others/HLA_HD/data/fastq/2080-3-1_R2.fq
+
+输出2:
+	>R1: /datapool/wangjl/others/HLA_HD/data/fastq/24B74088_R1_001.fq
+	>R2: /datapool/wangjl/others/HLA_HD/data/fastq/24B74088_R2_001.fq
+
+
+(2)代码2: 验证必须是2个文件，否则报错
+if [ ${#files[@]} -ne 2 ]; then
+    echo "错误：需要2个文件，但找到了 ${#files[@]} 个（${files[*]}）"
+    exit 1
+fi
+
+
+(3)完整代码
+
+$ vim test2.sh
+id=$1
+files=(/datapool/wangjl/others/HLA_HD/data/fastq/${id}?R[12]*.fq)
+if [ ${#files[@]} -ne 2 ]; then
+    echo "错误：需要2个文件，但找到了 ${#files[@]} 个（${files[*]}）"
+    exit 1
+fi
+echo "input file names:"
+echo ">R1: ${files[0]}"
+echo ">R2: ${files[1]}"
+
+
+测试:
+	$ bash bin/test/test2.sh 24B74088
+	input file names:
+	>R1: /datapool/wangjl/others/HLA_HD/data/fastq/24B74088_R1_001.fq
+	>R2: /datapool/wangjl/others/HLA_HD/data/fastq/24B74088_R2_001.fq
+
+	$ bash bin/test/test2.sh 2080-3-1
+	input file names:
+	>R1: /datapool/wangjl/others/HLA_HD/data/fastq/2080-3-1_R1.fq
+	>R2: /datapool/wangjl/others/HLA_HD/data/fastq/2080-3-1_R2.fq
+
+整个数组一起输出:
+$ echo ${files[*]}
+/datapool/wangjl/others/HLA_HD/data/fastq/24B74088_R1_001.fq /datapool/wangjl/others/HLA_HD/data/fastq/24B74088_R2_001.fq
+
+
+
+
+
+Ref: hla-hd::bin/test/test2.sh
+
 
 
 
@@ -865,12 +1075,170 @@ $ find /tmp/ -type f -atime +36 2>/dev/null
 
 
 ========================================
+取gz文件的前10万行，压缩为gz
 ----------------------------------------
+
+$ zcat input.gz | head -n 100000 | gzip > output.gz
+
+
+
+
 
 
 
 ========================================
+统计每个用户占用多少磁盘空间，从大到小排序，并输出到文件
 ----------------------------------------
+1. 使用find+xargs实现多进程并行计算
+
+(1)直接一个文件输出结果
+TARGET_DIR=/datapool/
+MAX_PROCESSES=40
+
+find "$TARGET_DIR" -maxdepth 1 -type d ! -path "$TARGET_DIR" | \
+	xargs -I {} -P $MAX_PROCESSES du -sh {} 2>/dev/null | \
+	sort -hr | tee /home/wangjl/datapool_size.txt
+
+缺点：如果一个进程D了，结果看不到。
+
+
+
+(2)记录中间文件：多进程找并写入文件，再排序
+
+TARGET_DIR=/datapool/
+MAX_PROCESSES=40
+
+find "$TARGET_DIR" -maxdepth 1 -type d ! -path "$TARGET_DIR" | \
+	xargs -I {} -P $MAX_PROCESSES du -sh {} 2>/dev/null | \
+	tee /home/wangjl/datapool_size.txt
+
+# 排序
+cat /home/wangjl/datapool_size.txt | sort -hr > /home/wangjl/datapool_size.html
+
+
+注意：为了防止权限不够而统计失败，最好使用管理员权限执行。
+	直接在find 最前面添加 sudo 竟然不行，还是有些文件夹查不到大小：4.0K    /datapool/chengm
+		说明 sudo 不能在管道之间传递，只负责紧邻的一个命令的提权。
+
+
+(3)怎么整条语句都是root执行？合成一条语句
+示例：
+	sudo bash -c "du /root/* -sh"
+	与
+	sudo du /root/* -sh #会报错
+
+把(2)保存为脚本，再sudo执行：
+	$ sudo bash ~/tmp/getEachSize.sh
+
+结果符合预期：
+	4.0K    /datapool/pujing
+	4.0K    /datapool/jinwenfei
+	12K     /datapool/.Trash-5721
+	4.0K    /datapool/Shared_data
+	8.0K    /datapool/Jinlab_Shared
+	18T     /datapool/zhangge
+	11G     /datapool/software
+	28G     /datapool/star_index
+	5.4T    /datapool/songqianqian
+	255G    /datapool/.Trash-5723
+	423G    /datapool/liwen
+	50T    /datapool/liuyulei
+	2.8T    /datapool/huanghuan
+	2.0T    /datapool/.Trash-5708
+	4.8T    /datapool/sunfeifei
+	652G    /datapool/wanjiafang
+	42G     /datapool/chenyawen
+	4.0T    /datapool/huchenyang
+	9.0T    /datapool/yushiya
+	14T     /datapool/wuhaoran
+	9.4T    /datapool/wangjl
+	1.2T    /datapool/wangyixuan
+	20T     /datapool/aixinlu
+	17T     /datapool/huyue2023
+	12T     /datapool/chengm
+	7.1T    /datapool/wangyuzhou
+	9.6T    /datapool/panyuwen
+	2.4T    /datapool/zhumengxuan
+	7.3T    /datapool/chuxu
+	18T     /datapool/zhangyutao
+	16T     /datapool/wangshiyu
+
+
+
+
+
+
+(4)整合为脚本，并设置定期启动
+$ bash monitor_DiskSizeByUser.sh
+#!/bin/bash
+#
+# Aim: get disk size occupied by each user, order: DESC;
+# How to use: $ sudo bash path/to/this/script/monitor_DiskSizeByUser.sh /datapool/ 40 /home/wangjl/tmp/report/
+# By wangjl
+# v0.1
+# v0.2
+
+# 0 检查参数个数是否为3
+if [ $# -ne 3 ]; then
+    echo "错误：脚本需要 exactly 3 个参数" >&2
+    echo "用法: $0 <calcPath> <coreNumber> <outputDir>" >&2
+    exit 1
+fi
+
+# I 设置参数默认值
+echo "-->[`date`]Step1: get and set params"
+TARGET_DIR=${1:-/datapool/}
+MAX_PROCESSES=${2:-40}
+OUTPUT_DIR=${3:-/home/$USER/}
+
+filename=${OUTPUT_DIR}/"diskUsedSize.$(date +%Y%m%d-%H%M%S)"
+echo $filename
+
+# 显示实际使用的值
+echo "统计目录: $TARGET_DIR"
+echo "最大进程数: $MAX_PROCESSES"
+echo "输出目录: $OUTPUT_DIR"
+
+# II 多进程统计每个子目录的大小
+echo "-->[`date`]Step2: calc subdir size"
+find "$TARGET_DIR" -maxdepth 1 -type d ! -path "$TARGET_DIR" | \
+	xargs -I {} -P $MAX_PROCESSES du -sh {} 2>/dev/null | \
+	tee ${filename}.txt
+
+# III 排序
+echo "-->[`date`]Step3: order by size DESC"
+echo -e "<pre>`date`\n" > ${filename}.html
+cat ${filename}.txt | sort -hr >> ${filename}.html
+echo "-->Done! Output: ${filename}.html"
+
+
+
+注: 后续的优化见脚本: 
+	https://gitee.com/dawnEve/system_moniter/blob/master/cmd/monitor_DiskSizeByUser.sh
+
+
+
+(4B)运行脚本
+i)
+	$ sudo bash /picb/jinlab/wangjl/monitor_DiskSizeByUser.sh /datapool/ 40 /picb/jinlab/wangjl/dustbin/
+	#报错
+		tee: diskUsedSize.20251115-172234.txt: Permission denied
+	sudo 必须输出到 ~/下。
+	$ sudo bash /picb/jinlab/wangjl/monitor_DiskSizeByUser.sh /datapool/ 40 /home/wangjl/tmp/report/
+
+
+ii)
+	$ sudo bash /picb/jinlab/wangjl/monitor_DiskSizeByUser.sh /picb/jinlab/ 40 /picb/jinlab/wangjl/dustbin/
+	报错：
+		tee: diskUsedSize.20251115-171955.txt: Permission denied
+		find: ‘/picb/jinlab/’: Permission denied
+
+再次运行: 失败
+	$ sudo -i #也报错
+	$ sudo bash /picb/jinlab/wangjl/monitor_DiskSizeByUser.sh /picb/jinlab/ 40 /picb/jinlab/wangjl/dustbin/
+
+普通账号运行 /picb/:
+	$ bash /picb/jinlab/wangjl/monitor_DiskSizeByUser.sh /picb/jinlab/ 40 /picb/jinlab/wangjl/dustbin/
 
 
 

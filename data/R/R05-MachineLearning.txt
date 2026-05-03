@@ -2,10 +2,11 @@ R与机器学习
 
 目标: 
 	掌握回归: 线性回归(lm)、多元回归，非线性回归
-	聚类: K-means, KNN, 
+	聚类: K-means, KNN, 层次聚类, SOM 聚类;
+        单细胞聚类: Louvain, Leiden, 
 	分类: SVM, lm, 
-	降维等机器学习的基本算法: 线性降维(PCA, LDA?)，非线性降维(tNSE, UMAP)
-	研究深度学习算法: CNN, 
+	降维等机器学习的基本算法: 线性降维(PCA, NMF, LDA?)，非线性降维(tNSE, UMAP)
+	研究深度学习算法: CNN, RNN, 
 
 
 我的机器学习代码库: 
@@ -93,12 +94,23 @@ false positive: 检测为T，而真实为F。
 false negative: 检测为F，而真实为T。
 true positive: 检测为T，真实也为T。
 
+0) 非医学常用：金标准/Real是行{医学不推荐写法}，不过以下用到ABCD的都是按照这个表
                 预测分类 
 		     假F/0     真T/1      
 真实 假F/0   TN(A)     FP(B)
 真实 真T/1   FN(C)     TP(D)
+* 注: 这里的ABCD可能和其他地方的不一致，但是TN等是一致的。
 
-注: 这里的ABCD可能和其他地方的不一致，但是TN等是一致的。
+
+1) 医学常用，金标准写成列{医学推荐写法}。上文的转置，并调换了T/F的顺序。
+很好: https://www.medcalc.org/en/manual/roc-curves.php
+                 金标准(或真实值)
+		      真T/1      假F/0
+试验结果 阳+   TP         FP
+试验结果 阴-   FN         TN
+* 第一列: sens=TP/(TP+FN)  #敏感度: 
+* 第二列: spec=TN/(FP+TN)  #特异性: 
+* ROC curve: x=FPR=1-spec, y=TPR=sens
 
 
 混淆矩阵
@@ -108,21 +120,16 @@ False Positive(假正，FP)：将负类预测为正类数误报 (Type I error)
 False Negative(假负，FN)：将正类预测为负类数→漏报 (Type II error)
 
 
-
-
-
-(2) 
+(2) 定义
 敏感性（Sensitivity）实际上就是预测正确的1占真正的1的百分比；又叫真阳性率。
 特异性（Specificity）实际上就是预测正确的0占真正的0的百分比；又叫真阴性率。
 
-
 公式
+	敏感性，真值中预测出真值的百分比。(相对于的总体是 真实值class=1的部分)
+	sens = TP / (TP + FN) =D/(C+D)
 
-敏感性，真值中预测出真值的百分比。(相对于的总体是 真实值class=1的部分)
-sens = TP / (TP + FN) =D/(C+D)
-
-特异性，假值中预测出为假值的百分比。()
-spec = TN / (TN + FP) =A/(A+B)
+	特异性，假值中预测出为假值的百分比。
+	spec = TN / (TN + FP) =A/(A+B)
 
 
 (3) 还经常用到的几个指标为：
@@ -422,6 +429,124 @@ x_test=x[ind==2,];dim(x_test) #去掉标签
 
 
 
+========================================
+AIC（赤池信息准则）和BIC（贝叶斯信息准则）是常用的模型选择和评估方法 //todo
+----------------------------------------
+
+1.最优模型选择准则：AIC和BIC，用于 logistic 模型变量筛选
+
+aic和bic经常被用作为逻辑回归模型通过逐步回归的方法来筛选变量的标准，
+当然广义上来说，标准也可以是ks，用了ks的话可能也不算是逐步回归了；
+
+(1) 定义
+赤池信息准则（Akaike Information Criterion，AIC）和贝叶斯信息准则（Bayesian Information Criterion，BIC）
+
+(2) 适用情况
+统计学里（应该是）这两个标准有不同的假设，AIC的假设是不存在最优模型，BIC的假设是存在最优模型。
+根据假设，可以发现这两个标准的原理。AIC是为了寻找现模型和最优模型的最短距离，BIC是求得到最优模型的最大后验概率。
+
+AIC用于判断哪个模型最适合用于预测(best used for prediction)，AIC也是越低越好。
+BIC用于判断哪个模型拟合最好(best fit)，BIC越低越好。
+
+要点：
+    best predict → AIC
+    best fit → BIC
+    二者越小越好
+
+
+
+
+2. 计算方法
+计算每个模型的均方根误差（RMSE），然后根据RMSE计算AIC和BIC的值。
+
+(1) 先回顾一下R2和调整R2。
+
+首先是 R2 = RSS / TSS 
+
+在多元线性回归中，R2不太适合作为模型拟合优度的衡量标准。这是因为当模型中加入自变量时，R2会增加或保持不变，但不会减少。
+
+在多元回归中使用R2的问题包括：
+- R2不能提供关于这些系数是否具有统计学意义的信息。
+- R2不能提供关于估计系数和预测是否存在偏差的信息。
+- R2无法判断模型拟合是否良好。一个好的模型可能具有较低的R2。
+
+其次是 调整 R2 = 1 - [RSS/(n-k-1)] / [TSS/(n-1)]
+
+二者的关系可以写为：
+    adj-R2 = 1 - (n-1)/(n-k-1) * (1-R2)
+
+对于k≥1，则 R2严格大于 调整R2。此外，调整R2可能是负数，而R2的最小值为零。
+
+- 若新增加的变量的t值的绝对值大于1，则调整R2会增加
+- 若新增加的变量的t值的绝对值小于1，则调整R2会减少
+
+注意，这里的表述并没有说是1%或5%的水平显著之类。
+
+当加入自变量时，由于R2和调整R2都可能增加，面临模型过拟合风险。但AIC和BIC可以帮助比较模型质量并确定最精简的模型。
+
+
+
+
+(2) AIC用来评估解释相同因变量的模型集合
+表达式为：AIC = n*ln(SSE/n) + 2(k-1)
+
+AIC统计量取决于样本量(n)、模型中自变量的个数(k)和模型的平方和误差(SSE)。多元回归的一个目标是在不添加无关的自变量的情况下推导出最佳拟合模型。AIC是模型简约性的度量，因此AIC越低表示模型拟合越好。2(k + 1)是在模型中添加自变量的惩罚。
+
+
+(3) 而BIC（或SBC）允许具有相同因变量的模型进行比较
+表达式为：BIC = n*ln(SSE/n) + ln(n)(k+1)
+
+与AIC相比，BIC评估模型中有更多参数的惩罚更大，所以它倾向于选择小而简洁的模型。这是因为ln(n)大于2，即使样本容量很小。
+
+
+(4) 用途
+从实践上讲，如果将模型用于预测，则采用AIC方法，但如果要求最佳拟合优度则采用BIC方法。单独考虑这些衡量的价值是没有意义的，在一组模型中AIC或BIC的相对值才重要。
+
+
+
+
+
+
+
+
+
+
+
+
+2. 疑似AI生成的答案
+
+在统计学和机器学习中，AIC（赤池信息准则）和BIC（贝叶斯信息准则）是常用的模型选择和评估方法。它们的主要思想是根据模型拟合数据的程度来评估模型的优劣。通常情况下，AIC和BIC的值越小，模型的性能就越好。本文将详细介绍AIC和BIC的原理、应用以及注意事项。
+
+首先，让我们了解一下AIC和BIC的背景。AIC和BIC是由日本统计学家赤池弘次提出的一种模型选择和评估方法。AIC的目标是在假设模型拟合数据的过程中找到最优模型，而BIC则是在假设数据来自独立同分布的样本中，根据贝叶斯定理来选择最优模型。虽然两者在计算上有一些差异，但它们的基本思想是一致的，即值越小，模型性能越好。
+
+接下来，我们将详细解释AIC和BIC的原理。AIC是通过比较不同模型对数据的拟合程度来评估模型的优劣。具体来说，它计算了模型对数据的预测误差，并将这个误差加权平均以考虑模型复杂度。BIC的计算方式与AIC类似，但它是基于贝叶斯定理的，考虑了模型复杂度和样本容量对模型的影响。在实际应用中，我们通常会根据AIC或BIC的值来选择最优模型。
+
+为了更好地理解AIC和BIC的应用，我们可以通过一个案例进行分析。假设我们有三个模型，分别是线性回归模型、二次回归模型和三次回归模型。我们可以通过在训练集上进行交叉验证来计算每个模型的均方根误差（RMSE），然后根据RMSE计算AIC和BIC的值。根据这些值，我们可以选择最优模型。
+
+在使用AIC和BIC时，我们需要注意一些事项。首先，我们需要确保数据是独立同分布的，否则计算结果将不准确。其次，我们需要考虑模型的复杂度。如果模型过于复杂，可能会导致过拟合，而如果模型过于简单，则可能会导致欠拟合。因此，我们需要根据实际情况来选择最优模型。
+
+总之，AIC和BIC是评估模型性能的重要方法。在实际应用中，我们通常会根据AIC和BIC的值来选择最优模型。但是，我们需要确保数据是独立同分布的，并根据实际情况来选择最优模型。
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+ref:
+https://zhuanlan.zhihu.com/p/366895163
+https://zhuanlan.zhihu.com/p/293315874
+https://zhuanlan.zhihu.com/p/572708522 公式
+
+
 
 
 ========================================
@@ -437,6 +562,117 @@ SVM 分类 //todo
 ========================================
 SVR: 支持向量回归 //todo 
 ----------------------------------------
+
+
+
+
+========================================
+R包计算各种距离：vegan::vegdist()函数 计算距离矩阵/相异性(Dissimilarity Indices for Community Ecologists)
+----------------------------------------
+1、基本介绍
+vegan包中的vegdist()函数是用于计算生态学研究中样本间距离或相异性的函数。该函数主要用于计算样本之间的距离矩阵，以便进行后续的聚类分析(Cluster Analysis)、非参数多样性测试(Non-parametric Diversity Testing)、主坐标分析(PCoA分析)等。
+
+* 目的：计算样本之间的距离矩阵，用于比较它们之间的相似性或差异性。
+* 输入：通常是一个数据矩阵，其中行代表样本，列代表各个特征或物种的相对丰度。
+* 输出：距离矩阵，其中每个元素表示两个样本之间的距离或相异性。
+
+
+
+
+
+
+2、基本语法及参数解释
+vegdist(x, method="bray", binary=FALSE, diag=FALSE, upper=FALSE,
+        na.rm = FALSE, ...) 
+
+参数解释：
+x：数据矩阵，其中行代表样本，列代表各个特征或物种的相对丰度。
+
+method：距离计算方法。这是一个字符串参数，用于指定计算距离的方法。常见的方法包括："manhattan", "euclidean", "canberra", "clark", "bray", "kulczynski", "jaccard", "gower", "altGower", "morisita", "horn", "mountford", "raup", "binomial", "chao", "cao", "mahalanobis", "chisq", "chord", "hellinger", "aitchison", 或 "robust.aitchison"
+
+binary：逻辑值，用于指定是否计算二元指数。
+	如果为TRUE，则使用二元数据计算距离；
+	如果为FALSE，则使用定量数据计算距离。默认值为FALSE。
+
+diag：逻辑值，用于指定是否计算对角线上的距离。
+	如果为TRUE，则对角线上的距离将被计算并返回到结果中；
+	如果为FALSE，则对角线上的距离将被忽略。默认值为FALSE。
+
+upper：逻辑值，用于指定是否返回距离矩阵的上三角部分。
+	如果为TRUE，则返回距离矩阵的上三角部分（不包括对角线）；
+	如果为FALSE，则返回完整的距离矩阵。默认值为FALSE。
+
+na.rm：逻辑值，用于指定是否删除包含NA值的行或列。
+	如果为TRUE，则在计算距离之前将删除包含NA值的行或列；
+	如果为FALSE，则保留包含NA值的行或列。默认值为FALSE。
+
+...：其他参数，用于传递给底层的距离计算函数。可以根据具体需要传递其他参数。
+
+
+
+
+
+3、举例
+library(vegan)
+
+# 计算欧氏距离
+dist_matrix <- vegdist(data_matrix, method = "euclidean")
+
+# 计算Bray-Curtis距离
+dist_matrix <- vegdist(data_matrix, method = "bray")
+
+# 计算Jaccard距离
+dist_matrix <- vegdist(data_matrix, method = "jaccard")
+
+# 其他距离方法参考文档以获得更多选项
+注：后面几个参数不常用，data_matrix和 method为必填项。
+
+注意事项：
+
+使用前确保已经安装并加载了vegan包。
+不同的距离方法适用于不同的数据类型和分析目的，选择适合你研究的距离方法。
+可以通过查看函数文档或使用?vegdist命令来获取更多信息和参数选项。
+
+
+
+
+
+4、method部分补充 
+这些是在生态学和生物统计学中常用的不同距离或相似性指数，用于衡量样本或群落之间的差异或相似性。
+以下是对这些指数的简要解释：
+
+1.Manhattan Distance：曼哈顿距离，也称为城市街区距离，是两个点之间的绝对距离。
+2.Euclidean Distance：欧氏距离，是两个点之间的直线距离。
+3.Canberra Distance：坎贝拉距离，用于衡量两个样本之间的相似性，特别适用于高维数据。
+4.Clark Distance：克拉克距离，一种特定的相似性指数，用于衡量样本之间的差异。
+5.Bray-Curtis Distance：Bray-Curtis距离，用于衡量两个样本之间的相对差异，通常用于生态学中的物种组成数据。
+6.Kulczynski Distance：Kulczynski距离，用于比较两个样本之间的相似性或差异。
+7.Jaccard Distance：Jaccard距离，用于衡量两个样本之间的相似性，通常用于存在-缺失数据。
+8.Gower Distance：Gower距离，用于比较样本之间的相似性，适用于混合数据类型。
+9.AltGower Distance：另一种形式的Gower距离，适用于混合数据类型。
+10.Morisita Distance：Morisita距离，用于衡量样本之间的相似性，特别适用于物种丰富度数据。
+11.Horn Distance：Horn距离，用于比较两个样本之间的相似性或差异。
+12.Mountford Distance：Mountford距离，一种用于存在-缺失数据的相似性指数。
+13.Raup Distance：Raup距离，用于比较两个样本之间的相似性或差异，特别适用于存在-缺失数据。
+14.Binomial Distance：二项式距离，用于衡量两个样本之间的相似性。
+15.Chao Distance：Chao距离，一种用于处理样本大小不同的相似性指数。
+16.Cao Distance：Cao距离，用于比较两个样本之间的相似性或差异。
+17.Mahalanobis Distance：马氏距离，用于衡量多维数据中两个样本之间的距离。
+18.Chisq Distance：卡方距离，用于比较两个样本之间的相似性或差异。
+19.Chord Distance：Chord距离，用于计算两个样本之间的相似性。
+20.Hellinger Distance：Hellinger距离，用于比较两个样本之间的相似性，通常用于频率数据。
+21.Aitchison Distance：Aitchison距离，用于处理正组成数据的距离度量。
+22.Robust Aitchison Distance：鲁棒Aitchison距离，用于处理非负数据（包括零值）的距离度量，相比标准Aitchison距离更鲁棒。
+
+这些距离或相似性指数根据不同的数据类型、性质和分析目的，选择合适的指数进行数据分析和解释。
+
+
+
+ref:
+https://blog.csdn.net/qq_55230229/article/details/137965196
+https://rdrr.io/cran/vegan/man/vegdist.html
+
+
 
 
 
@@ -1352,14 +1588,471 @@ legend(x=usrP[1],y=usrP[4]+2, #"top",
 # ref: https://zhuanlan.zhihu.com/p/375110294
 
 
+========================================
+|-- prcomp() 做PCA：旋转矩阵，新空间的投影；使用前若干PC用SVM做分类
+----------------------------------------
+1. iris 数据集做PCA
+
+(1) 使用函数 prcomp()
+data <- iris[, 1:4]
+
+# 进行PCA分析
+pca_result <- prcomp(data, scale. = TRUE)
+
+# 查看PCA结果
+summary(pca_result)
+
+# 提取主成分：就是在新空间的投影
+principal_components <- pca_result$x
+
+# 提取特征向量：就是旋转矩阵
+loadings <- pca_result$rotation
+
+# 提取特征值
+explained_variance <- pca_result$sdev^2
+explained_variance_ratio <- explained_variance / sum(explained_variance)
+
+# 打印结果
+print(principal_components)
+
+
+
+(2) 可视化PCA结果
+# 可视化前两个主成分（常用）
+library(factoextra)
+fviz_pca_ind(pca_result,
+             geom.ind = "point", # Show points only (but not "text")
+             col.ind = iris$Species, # Color by groups
+             palette = c("#00AFBB", "#E7B800", "#FC4E07"),
+             addEllipses = TRUE, # Concentration ellipses
+             legend.title = "Species"
+             ) +
+  labs(title = "PCA of Iris Dataset",
+       x = "Principal Component 1",
+       y = "Principal Component 2") +
+  theme_minimal()
+
+# 可视化变量(不常用)
+fviz_pca_var(pca_result,
+             col.var = "contrib", # Color by contributions to the PC
+             gradient.cols = c("#00AFBB", "#E7B800", "#FC4E07"),
+             legend.title = "Contrib"
+             ) +
+  labs(title = "Variables Contribution to Principal Components") +
+  theme_minimal()
+
+# 可视化变量和个体
+fviz_pca_biplot(pca_result,
+                geom.ind = "point", # Show points only (but not "text")
+                col.ind = iris$Species, # Color by groups
+                palette = c("#00AFBB", "#E7B800", "#FC4E07"),
+                addEllipses = TRUE, # Concentration ellipses
+                legend.title = "Species"
+                ) +
+  labs(title = "PCA Biplot of Iris Dataset") +
+  theme_minimal()
+
+
+
+(3) 基于前面若干PC用SVM做分类
+library(ggplot2)
+library(caret)
+library(e1071)
+
+# 创建数据框，包括PCA主成分和物种标签
+pca_data <- data.frame(principal_components, Species = iris$Species)
+
+# 分割数据集为训练集和测试集
+set.seed(123)  # 设置随机种子以确保结果可重复
+trainIndex <- createDataPartition(pca_data$Species, p = 0.8, 
+                                  list = FALSE, 
+                                  times = 1)
+trainData <- pca_data[trainIndex,]
+testData <- pca_data[-trainIndex,]
+
+# 训练SVM模型
+svm_model <- svm(Species ~ ., data = trainData, kernel = "linear")
+
+# 对测试集进行预测
+predictions <- predict(svm_model, testData)
+
+# 计算模型准确率
+confusionMatrix(predictions, testData$Species)
+
+
+
+
+
+
+
+
+
+
 
 
 ========================================
-logistic 回归，及odd ratio
+|-- 含有NA值的矩阵怎么做 PCA ?
 ----------------------------------------
-1.
+
+几个问题：
+* pca可以用相关系数矩阵做吗？效果比协方差矩阵比怎么样？
+	可以。比如 SYNCSA::pca()
+* pca做完后变量和样本的新坐标怎么旋转获得？
+	矩阵分解前的矩阵(一般做过center) %*% 旋转矩阵(特征向量或者svd$v矩阵)
+* pca做不做scale和center对结果有影响吗？
+	必须做 center，就是减去列的平均值
+	scale可选，是否忽略每列的量纲的影响。基因认为是微小等效的，可以做scale。
+* pca用因子分解和奇异值分解有啥区别？后者怎么获得变量和样本的新坐标？
+	旋转矩阵：特征向量，或奇异值分解的右矩阵v。
+	映射坐标：centered * 旋转矩阵
+
+> 详情见：https://blog.csdn.net/wangjunliang/article/details/142871996
+
+
+
+
+1. 对含有NA的矩阵做PCA的几个方法。根据情况选择：Aided by GPT
+
+(1) 删除缺失值
+如果缺失值不多，可以直接删除含有缺失值的行或列。
+data_clean <- na.omit(data)  # 删除含有 NA 的行
+pca_result <- prcomp(data_clean, scale. = TRUE)
+
+(2) 用均值/中位数填充
+用每列的均值或中位数填充缺失值。
+data_filled <- data
+for (i in 1:ncol(data_filled)) {
+  data_filled[is.na(data_filled[, i]), i] <- mean(data_filled[, i], na.rm = TRUE)  # 或使用 median()
+}
+pca_result <- prcomp(data_filled, scale. = TRUE)
+
+
+(3) 使用协方差矩阵，填充缺失值
+有些 PCA 实现支持处理缺失值，通过使用协方差矩阵补充完整性。
+
+library(missMDA)  # 需要安装 missMDA 包
+data_imputed <- imputePCA(data)$completeObs  #极其耗时！ 15k行*3k列 矩阵可能十几个小时
+pca_result <- prcomp(data_imputed, scale. = TRUE)
+
+
+(4) 使用特定的 PCA 方法
+1) 使用可以处理缺失值的 PCA 方法，如 PCA 函数（例如在 FactoMineR 包中）。
+library(FactoMineR)
+pca_result <- PCA(data, ncp = 5, graph = FALSE)  # ncp 为主成分数量
+# Missing values are replaced by the column mean. 同(2)
+
+
+2) 只使用完整的obs
+包 SYNCSA::pca()
+描述: The function use the option "pairwise.complete.obs" (in function cor) for calculate the correlation. The correlation between each pair of variables is computed using all complete pairs of observations on those variables.
+原理: 它会在计算相关性时，仅考虑每对变量的完整观测值，而不是填充缺失值。
+
+install.packages("SYNCSA")
+library(SYNCSA)
+data <- data.frame(
+    Var1 = c(1, 2, NA, 4),
+    Var2 = c(NA, 2, 3, 4),
+    Var3 = c(1, NA, NA, 4)
+)
+pca_result <- SYNCSA::pca(data)
+print(pca_result)
+
+
+总结：
+处理含有缺失值的数据时，选择合适的方法取决于数据的具体情况和缺失值的数量。对于小规模的缺失值，填充或删除通常是可行的；对于大规模缺失值，使用特定的 PCA 方法可能更为合适。
+
+Ref：
+https://stats.stackexchange.com/questions/414126/pca-in-r-without-deleting-or-imputing-missing-values
+https://stats.stackexchange.com/questions/35561/imputation-of-missing-values-for-pca
+
+
+
+
+
+
+2. 示例数据
+(1)尝试1 missMDA::imputePCA [巨慢，且无法判断是否正确]
+缺失值处理：使用迭代方法和主成分分析来估计缺失值，考虑了数据的整体结构。
+适用场景：适合需要更精确估计缺失值的分析，能够更好地保留数据的特征。
+
+警告：很耗费CPU，且时常很长。只建议在服务器上使用，尽可能在tmux的shell中执行。
+
+library(missMDA)
+
+# 用 imputePCA 填充缺失值。特别慢，2k*3k的矩阵，需要7个小时。(19pm -> 1.5am)
+imputed_data <- imputePCA(tmp)$completeObs
+
+# 然后进行 PCA 分析
+pca_result <- FactoMineR::PCA(imputed_data, graph = FALSE)
+
+
+
+
+
+(2)尝试2 只用完整的obs
+install.packages("SYNCSA")
+library(SYNCSA)
+data <- data.frame(
+    Var1 = c(1, 2, NA, 4),
+    Var2 = c(NA, 2, 3, 4),
+    Var3 = c(1, NA, NA, 4)
+)
+pca_result <- SYNCSA::pca(data)
+print(pca_result)
+
+
+
+
+阅读函数实现及我的注释：不改变意思的情况下，语句顺序做了调整。
+疑问：这里使用 相关系数cor() 而不是 协方差矩阵cov() 做矩阵分解，合适吗？
+
+> SYNCSA::pca
+function (data) 
+{
+	#(1) 保存行名/列名
+    colnames(data) <- colnames(data, do.NULL = FALSE, prefix = "Var.")
+    rownames(data) <- rownames(data, do.NULL = FALSE, prefix = "Ind.")
+	
+	#(2) 标准化：对原始值 scale和center，去掉NA，转为矩阵
+    data.norm <- as.matrix(cent.norm(data, na.rm = TRUE))
+	#按列，看是否是NA
+    data.NA <- apply(data.norm, 2, is.na)
+	#对NA填充为0
+    data.norm[data.NA] <- 0
+	
+	#(3) 相关系数：对原始值使用完整值计算 列之间的相关系数
+    COR <- cor(data, use = "pairwise.complete.obs")
+
+	#(4) 对相关系数 做矩阵分解
+    RES_eig <- eigen(COR)
+	
+	#(5) 返回值的项: 分解
+    res <- list(call = match.call()) #定义返回值
+    res$decomposition <- RES_eig
+
+
+	#(6) 返回值的项：特征值
+	# 取特征值的非负值
+    eig <- RES_eig$values[RES_eig$values >= 0]
+	#计算特征值占总和的百分比、累计百分比
+    res.eig <- data.frame(Eigenvalues = eig, Perc.Inertia = eig/sum(eig), 
+        Cum.Inertia = cumsum(eig/sum(eig)))
+	#给行名：Axis.1-4
+    rownames(res.eig) <- paste("Axis.", 1:length(eig), sep = "")
+    res$eigenvalues <- res.eig
+	
+	#(7) 返回值的项：行(obs)的新坐标
+	#新行坐标：标准化后的值 * 特征向量(特征值非负的特征向量)
+    ind.coord <- data.norm %*% RES_eig$vectors[, RES_eig$values >= 
+        0, drop = FALSE]
+	#给列名：Axis.1-4
+    colnames(ind.coord) <- paste("Axis.", 1:ncol(ind.coord), 
+        sep = "")
+    res$individuals <- ind.coord
+	
+	#(8) 返回值的项：列(var)的新坐标
+	#新列坐标：特征向量(特征值非负的) * 特征值的开方 对应的对角矩阵
+    var.coord <- RES_eig$vectors[, RES_eig$values >= 0, drop = FALSE] %*% 
+        diag(sqrt(eig))
+	#给列名：Axis.1-4
+    colnames(var.coord) <- paste("Axis.", 1:ncol(var.coord), 
+        sep = "")
+	#给行名：原始列名
+    rownames(var.coord) <- colnames(data)
+    res$variables <- var.coord
+	
+	#(9) 给类名，返回
+    class(res) <- "pcasyncsa"
+    return(res)
+}
+
+
+
+
+
+(3) 尝试自己实现NA值的PCA
+1) 主要运算
+	A=matrix(c(2,1,1, 1,2,1, 1,1,2), nrow=3, byrow = T); A
+	eigen(A) #特征值分解 A.x=l.x
+	svd(A) #奇异值分解 A=U.D.V^T
+	prcomp(A) #主成分分析
+	# 输入参数 x: 进行PCA分析的数据集。通常是一个数值矩阵或者数据框，其中行代表观测值，列代表变量。
+
+2) 计算每个主成分解释比例 / How to calc variation pct?
+> prcomp(A)$sdev
+[1] 7.071068e-01 7.071068e-01 1.586363e-16
+> sqrt(eigen( cov(A) )$values) #same as prcomp | 同上
+[1] 7.071068e-01 7.071068e-01 1.490116e-08
+> sqrt(eigen( cor(A) )$values) #not same as prcomp, but ratio almost the same | 不同上
+[1] 1.224745e+00 1.224745e+00 3.332001e-08
+
+# 解释百分比：就是协方差矩阵的 特征根 / 特征根的和
+# 为啥不是原始矩阵的特征值？
+variances <- prcomp(A)$sdev^2
+total_variance <- sum(variances)
+explained_variance_ratio <- variances / total_variance
+cumulative_explained_variance <- cumsum(explained_variance_ratio)
+#
+> explained_variance_ratio 
+[1] 5.000000e-01 5.000000e-01 2.516548e-32
+
+
+
+
+3) 自定义计算含NA值的矩阵做PCA
+
+#' 对含有NA值的矩阵做PCA：使用完整配对样品算协方差矩阵，再做奇异值分解
+#' 
+#' * 参考 SYNCSA::pca()，但使用cov而不是cor()
+#' * 使用Seurat用的SVD方法求特征根：irlba包
+#'
+#' v0.2 可用了，至少对于gDPAU来说
+#' v0.3 对 协方差矩阵 做(v0.2矩阵分解)svd分解
+#' v0.4 add para HVG list; modify cell.min as user set in parameter
+#'
+#' @param data pA usage matrix
+#' @param npcs PC number you want
+#' @param min.cell.per.gene at least how many cell per pA. For gDPAU, below 250 will error
+#' @param isDraw draw plot or not
+#' @param HVG.list HVG list, an array
+#' 
+CompleteObs_pca3=function(data, npcs=50, HVG.list=c(), min.cell.per.gene=300, isDraw=F){
+  # refer SYNCSA::pca()
+  
+  #0. 根据每列非NA个数筛选变量
+  dat=t(data)
+  tmp=apply(dat, 2, function(x){
+    sum( !(is.na(x)) )
+  })
+  cell.min=ncol(dat)*0.05;
+  message("step0: obs per cell, 5% is ", cell.min)
+  if(min.cell.per.gene > 0){ cell.min = min.cell.per.gene}
+  message("step0: obs per cell, you set cell.min = min.cell.per.gene = ", cell.min)
+  
+  # 绘图
+  if(isDraw){
+    hist(tmp, n=100, main=paste0("Obs number per column\nmin.cell.per.gene=", min.cell.per.gene) )
+    abline(v=cell.min, lty=2, lwd=2, col="red")
+  }
+  #
+  keep=tmp > cell.min
+  message("step0: keep variable number:")
+  print(table(keep))
+  dat=dat[, keep]
+  dim(dat) #5913
+  
+  # consider HVG
+  if(length(HVG.list)>0){
+    message("step0: intersect with HVG list, HVG number=", length(HVG.list))
+    message("step0: intersect with HVG list, before, gene=", ncol(dat))
+    dat=dat[, intersect(colnames(dat), HVG.list), drop=F]
+    message("step0: intersect with HVG list, after, remain gene=", ncol(dat))
+  }
+
+
+  npcs <- min(npcs, ncol(x = dat) - 1); npcs #计算几个PC
+  
+  #定义返回值
+  res <- list(call = match.call())
+  
+  #(1) 保存行名/列名
+  colnames(dat) <- colnames(dat, do.NULL = FALSE, prefix = "Var.")
+  rownames(dat) <- rownames(dat, do.NULL = FALSE, prefix = "Ind.")
+  
+  #(2) 标准化：对原始值 scale和center，去掉NA，转为矩阵
+  cent.norm=function (x, na.rm = FALSE){
+    x.cent <- sweep(x, 2, colMeans(x, na.rm = na.rm), "-")
+    x.norm <- apply(x.cent^2, 2, sum, na.rm = na.rm)
+    x.cent.norm <- sweep(x.cent, 2, sqrt(x.norm), "/")
+    return(x.cent.norm)
+  }
+  dat.norm <- as.matrix(cent.norm(dat, na.rm = TRUE))
+  #按列，看是否是NA
+  dat.NA <- apply(dat.norm, 2, is.na)
+  #对NA填充为0
+  dat.norm[dat.NA] <- 0
+  
+  #(3) 协方差矩阵：对原始值使用完整值计算 列之间的相关系数
+  message("step3: cov begin | ", Sys.time())
+  COV2 <- cov( dat, use = "pairwise.complete.obs")
+  message("step3: cov end . | ", Sys.time())
+  
+  #如果有NA，就没法继续了: 请提高min.cell.per.gene再试
+  NA_number=sum(is.na(COV2))
+  message("NA number in COV2: ",  NA_number)
+  if(NA_number>0){
+    stop("NA still exist in COV matrix! try to increase parameter min.cell.per.gene\n", 
+         "now min.cell.per.gene=", min.cell.per.gene)
+  }
+  
+  #(4) 协方差矩阵 做svd分解
+  library(irlba)
+  pca.results <- irlba (A=COV2, nv = npcs)
+  #如果有NA，则报错：BLAS/LAPACK routine 'DLASCL' gave error code -4
+  
+  #返回值的项: 分解
+  res$decomposition <- pca.results
+  
+  #(5) 返回值的项：标准差
+  sdev <- pca.results$d/sqrt(max(1, ncol(COV2) - 1)) #特征根 / 根号(列数 - 1)
+  res$sdev=sdev
+  
+  #(6) 返回值的项：特征值及其解释百分数
+  # 取特征值的非负值: 奇异值都是特征值的绝对值
+  eig <- pca.results$d
+  #计算特征值占总和的百分比、累计百分比
+  res.eig <- data.frame(Eigenvalues = eig, Perc.Inertia = eig/sum(eig), 
+                        Cum.Inertia = cumsum(eig/sum(eig)))
+  #给行名：PC_1-4
+  rownames(res.eig) <- paste("PC_", 1:length(eig), sep = "")
+  res$eigenvalues <- res.eig
+  
+  #(7) 返回值的项：行(obs)的新坐标
+  #新行坐标：列中心化后的矩阵 * 特征向量(非负特征值对应的特征向量)
+  ind.coord <- dat.norm %*% pca.results$v
+  #给列名：PC_1,
+  colnames(ind.coord) <- paste("PC_", 1:ncol(ind.coord), sep = "")
+  res$cell.embeddings <- ind.coord
+  
+  #(8) 返回值的项：列(var)的新坐标
+  var.coord <- pca.results$v
+  #给列名：PC_1,
+  colnames(var.coord) <- paste("PC_", 1:ncol(var.coord),  sep = "")
+  #给行名：原始列名
+  rownames(var.coord) <- colnames(dat)
+  res$feature.loadings <- var.coord
+  
+  #(9) 给类名，返回
+  class(res) <- "pcaWithNA"
+  return(res)
+}
+if(0){
+  result = CompleteObs_pca3(gDPAU)
+}
+
+
+
+
+========================================
+优势比/比值比(odd ratio, OR)，相对危险度(Relative Risk, RR)
+----------------------------------------
+odds [ɒdz] n. （事物发生的）可能性，机会；困难，不利条件；投注赔率；（力量、权力或资源上的）优势
+
+--> 注意：为了方便计算，通常把结果放到顶部，暴漏因素放到左侧。
+
+
+1.定义
 (1) Odds Ratio的定义
 https://psychscenehub.com/psychpedia/odds-ratio-2/
+
+优势比/比值比(odds ratio；OR)是一种描述概率的方式，用于反映分类变量之间的相关性。
+
+优势(Odds)：设定p为事件发生的概率，则发生的优势为，odds= p/1-p。
+优势比(Odds Ratio)：p1为事件1发生的概率，p2为事件2发生的可能/概率，
+    优势比为odds ratio= (p1/(1-p1)) / (p2/(1-p2))
+    可以理解为事件1发生的概率相较于事件2发生概率的比值。
+
+
 
 一个模型，录取率和性别
      Admit, not admit
@@ -1380,8 +2073,6 @@ odds ratio=优势比=odds(M)/odds(F)=7/3 / (3/7)=49/9=5.4;
 ad/bc=49/9
 
 
-
-
 2) An odds ratio (OR) is a statistic that quantifies the strength of the association between two events, A and B. 
 Odds Ratio (OR) is a measure of association between exposure and an outcome. The OR represents the odds that an outcome will occur given a particular exposure, compared to the odds of the outcome occurring in the absence of that exposure.
 有该暴露时的某结果发生的odds，比上没有该暴露时的结果发生的odds。
@@ -1396,14 +2087,165 @@ Look at CI and P value for statistical significance of value
 3)解读
 Interpretation
 According to the tablet above, individuals with admited are 5.4 times more likely to be exposed to Male than those without admited.
-如何解读OR: https://psychscenehub.com/psychpedia/odds-ratio-2/
 
 
 
 
 
+(2) 示例: 如何解读OR https://psychscenehub.com/psychpedia/odds-ratio-2/
 
-(2)在研究两元分类响应变量和诸多自变量间的相互关系时，常选用logistic回归模型。
+odds=Probability of event / Probability of non-event;
+	发生比=发生的概率 / 不发生的概率 = p/(1-p)
+	odds定义为一个占比，发生的概率占不发生的比例。
+	比如筛子随机投出4的概率是p=1/6，但是发生比odds=p/(1-p)=1/5;
+
+优势比(odds ratio, OR) 是衡量暴漏与结果的相关性的。
+	OR 表示暴漏条件下发生比，除以非暴漏条件下发生比。
+	OR=odds(A | B) / odds( A | !B)
+
+	或则使用 log2(OR)=log2(odds1/odds2)=log2(odds1) - log2(odds2)
+
+	比如有干扰(人吹风捣乱)很难投色子投出4，概率p2=1/10，发生比odds2=p2/(1-p2)=1/9;
+	OR=odds(有干扰投出4)/odds(没干扰投出4)=(1/9) / (1/5)=5/9
+
+Odds ratio 的重要点:
+	暴漏和非暴漏条件下发生的比例未知:
+	OR>1 表明暴漏条件提高了事件发生的可能性;
+	OR<1 表明降低了事件发生的可能性（如果是疾病的发生，表示暴漏条件有保护作用，是一个 protective exposure）
+	查看统计量的 CI 和 P 值：https://psychscenehub.com/psychinsights/guide-p-values-confidence-intervals/
+	稀有情况下 OR=RR (RR=Relative Risk)。当疾病发生率<10%时成立。
+
+临床例子和计算：
+	雌激素(暴漏) 对 子宫内膜癌 (结果)的相关性，2x2表格如下:
+	          癌症 Yes  | 癌症 No
+	激素 yes   56(a)        274(b)
+	激素 no    18(c)        390(d)
+
+	有激素时的癌症频率 p1=a/(a+b)=0.169697;   发生比 odds1=p1/(1-p1)=0.2043796
+	无激素时的癌症频率 p2=c/(c+d)=0.04411765; 发生比 odds2=p2/(1-p2)=0.04615385
+	OR=odds(有激素)/odds(无激素)=odds1/odds2=4.42
+	公式展开: OR=p1/(1-p1)/(p2/(1-p2))=(a/b)/(c/d)=ad/(bc)=56*390/(274*18)=4.42
+
+解释: 
+	According to the table above, individuals with endometrial cancer are 4.42 times more likely to be exposed to estrogen than those without endometrial carcinoma.
+	根据上表，患有子宫内膜癌的人接触雌激素的可能性是没有子宫内膜癌的人的4.42倍。
+
+
+不建议的解释：该例子中，暴漏组是非暴漏组得 子宫内膜癌 的概率的4.42倍。
+	Learning point: lt is not appropriate to interpret this as "individuals with estrogen exposure are 4.42times more likely to develop Endometrial cancer than those without exposure.' The reason is that case-control study begins from outcome i.e. selection of a sample with the outcome of interest which in this case is endometrial cancer.
+
+	因为：将其解释为“接触雌激素的个体患子宫内膜癌的可能性是未接触雌激素的个体的 4.42 倍”是不恰当的。原因是“病例-对照”研究从结果开始，即选择具有感兴趣结果的样本，在本例中是子宫内膜癌。
+
+	// 不是太理解这个解释 //todo
+
+
+
+(3)病例对照 vs 队列研究 中的OR
+
+1) 在病例对照研究中，比值比指病例组中暴露与非暴露人数的比值和对照组中暴露与非暴露人数的比值的比，即暴露比值比。
+           疾病case   control
+暴漏 Yes      a           b
+暴漏 No       c           d
+
+OR=(a/c)/(b/d)=ad/(bc)
+
+2) 在队列研究中，比值比指的是暴露组中发病与非发病者的比值和非暴露组中发病与非发病者的比值的比，即发病比值比。
+          发病     未发病
+暴漏 Yes   a        b
+暴漏 No    c        d
+
+OR=(a/b)/(c/d)=ad/(bc)
+
+可见：虽然两个研究设计中OR算法不一样，但病例对照研究中的OR = 队列研究中的OR = ad/(bc)。
+
+
+
+
+(4)RR(Relative Risk )：即相对危险度。是指暴露组发病率/对照组发病率。
+
+相对危险度RR= (a/(a+b))/(c/(c+d))
+
+相对危险度表明暴露组发病率是对照组发病率的多少倍。
+说明暴露组发病的危险性是非暴露组的倍数。
+RR值越大，表明暴露的效应越大，暴露与结局的关联的强度越大。
+
+
+
+
+
+2.病例对照研究与队列研究的区别
+
+再看一下队列研究和病例对照研究的区别。我们以饮茶和肾结石的发病为例进行介绍。
+
+(1)队列研究。如我们要进行前瞻的队列研究，常规的做法是分别找一群饮茶的人和不饮茶的人，随访若干年，看饮茶和不饮茶的人群中分别有多少人得了肾结石。如下图:
+
+例：一次队列研究
+-> 时间轴
+某个时间点: 饮茶者，非饮茶者；
+追踪随访：比较两组肾结石发生率：（模拟数据）
+		   有结石  无结石
+	饮茶     10    990
+	不饮茶   5     995
+
+计算：
+	饮茶组的肾结石发病率 = a/(a+b) = 10/1000
+　　非饮茶组的发病率 = c/(c+d) = 8/1000
+
+　　那么，根据概念：
+　　RR=(a/(a+b))/(c/(c+d)) = (10/1000)/(5/1000)=10/5=2
+　　OR=(a/b)/(c/d) = (10/990)/(5/995)=2.010
+
+
+
+(2)病例对照研究：如果我们要进行病例对照研究，通常的做法是找一些肾结石患者和一些正常对照，去调查他们既往分别有多少人饮茶，如下图：
+
+例: 病例对照研究
+暴漏 / 非暴漏      <-   case / control   <- 特定人群范围内的研究对象。
+-> 时间轴
+
+这个时候，由于疾病在研究之前就已经发生，我们没有办法来计算肾结石患者的发病率，只能计算暴露比值比OR:
+　　OR = (肾结石组暴露人数/非暴露人数) / (非肾结石组暴露人数/非暴露人数) = (a/c)/(b/d)
+　　到此，我们应该明白了为什么病例对照研究不能计算RR，只能计算OR。
+
+
+
+
+3.OR与RR的关系
+我们再看下RR的公式：
+　　RR =(a/(a+b))/(c/(c+d))
+
+我们假设肾结石的发病率很低( 比如上述案例肾结石发病率=1%)，即a和c都特别小，那么a+b ~ b，c+d ~ d，所以有：
+　　RR = (a/(a+b))/(c/(c+d)) ~ (a/b)/(c/d) = OR
+
+就是说，当发病率很低时，可以用OR近似替代RR。
+
+
+
+4.什么时候使用OR或RR
+
+病例对照研究中只能计算OR。
+
+队列研究可以计算RR，其临床意义清晰(比如暴露组发病率是非暴露组发病率的多少倍)，而OR的临床意义相对模糊且不好解释，所以一般不用OR。
+
+在一些特殊情况下也可以计算OR，比如Logistic回归中计算的“Exp(B)”就是OR。
+
+
+
+
+Ref:
+https://mp.weixin.qq.com/s?__biz=Mzg5MzY3NDA2MA==&mid=2247485390&idx=1&sn=29e9d2fa48e42abfaa6de68816389045
+
+
+
+
+
+========================================
+|-- logistic 回归，及 优势比(odd ratio)
+----------------------------------------
+
+1.定义
+
+(1)在研究两元分类响应变量和诸多自变量间的相互关系时，常选用logistic回归模型。
 
 两元分类变量Y的一个结果记为“成功”，另一个结果记为“失败”，分别用1和0表示。
 n个自变量(解释变量)记为X1,X2,...,Xn，在n个自变量作用下出现“成功”的条件概率记为
@@ -1425,7 +2267,7 @@ For example, in logistic regression the odds ratio represents the constant effec
 
 
 推导 OR和系数的关系:
-Z=ln( p / (1-p))=ln(odds);
+Z=logit(p)=ln( p / (1-p))=ln(odds);
 logit(p1)-logit(p2)=ln( p1/(1-p1) / ( p2/(1-p2) ) )=ln( odds ratio )
 
 对于logistic模型 Y~B0+B1X，X每变动1时 Odds 的比值都应该是一样的，这个比值就是 Odds Ratio;
@@ -1539,6 +2381,8 @@ Odds Ratio=exp(Coefficient)
 
 3. Logistic Regression
 http://r-statistics.co/Logistic-Regression-With-R.html
+
+
 
 
 
@@ -1834,7 +2678,7 @@ Lasso回归则是在一般线性回归基础上加入了正则项，在保证最
 重点来了：采用L1范数则是lasso 回归，L2范数则是岭回归了。那么函数有啥区别呢？如下：
 	公式略。本博客暂时不支持公式。
 - L1范数是所有参数绝对值之和，对应的回归方法叫做Lasso回归。
-- L2范数是所有参数的平方和，对应的回归方法叫做Ridge回归，岭回归需要注意的是，正则项中的回归系数为每个自变量对应的回归系数，不包含回归常数项。
+- L2范数是所有参数的平方和的平方根，对应的回归方法叫做Ridge回归，岭回归需要注意的是，正则项中的回归系数为每个自变量对应的回归系数，不包含回归常数项。
 
 
 L1和L2各有优劣，
@@ -1938,6 +2782,38 @@ Active.Coefficients <- Coefficients[Active.Index]
 Active.Index
 Active.Coefficients
 row.names(Coefficients)[Active.Index] #10个非0参数
+
+
+
+
+
+
+3.更多模型
+https://www.jianshu.com/p/9fa8098f2c00
+fit=glmnet(as.matrix(x), fit_sur, family='cox')
+除了 family='cox'，还有其他选项：
+
+(1) 线性模型
+线性回归Glmnet主要包含两类模型。包括gaussian (the Gaussian family)和mgaussian (the multiresponse Gaussian family)。
+
+- 因变量y只有一维：gaussian
+- 需要预测多个值时：多任务学习 mgaussian
+
+当我们构建回归模型时，y为连续变量，指定family = "gaussian/mgaussian"构建广义线性模型，在使用交叉验证cv.glmnet时损失函数选用type.measure = "mse"使用均方误差，使用predict预测新样本时指定type = "response"输出预测值。
+
+(2) Logistic Regression
+对于连续变量我们可以拟合GLM并对新样本进行预测，但当输出值为离散变量表示样本的分类情况时，我们就需要使用一种激活函数将输出值限定在0-1之间，用以代表模型输出该样本属于某一类别的概率
+
+- 当y仅包含两种分类时可以使用二分类模型: Binomial Models
+- 对于多分类问题，其用法类似于二分类logistic回归: Multinomial Models
+
+当我们构建分类模型时，y为离散变量代表分类数据，指定family = "binomial/multinomial"以及type.multinomial = "grouped"构建逻辑回归模型，在使用交叉验证cv.glmnet时损失函数选用type.measure = "class/auc"使用错配误差或auc（二分类），使用predict预测新样本时指定type = "class"输出预测的类。
+
+
+(3) Cox回归
+在Glmnet中还可以使用Cox风险比例模型，常用于研究预测变量与生存时间的关系。在通常的生存分析框架中，我们有生存时间以及生存状态（0=alive，1=dead）。
+
+当我们构建Cox回归模型时，y为离散变量代表分类数据，指定family = "cox"构建Cox回归模型
 
 
 
@@ -2238,6 +3114,13 @@ https://vimsky.com/article/4400.html
 出版社的专题 https://www.oreilly.com/content/an-illustrated-introduction-to-the-t-sne-algorithm/
 
 t-SNE visualization of CNN codes: http://cs.stanford.edu/people/karpathy/cnnembed/
+
+
+
+
+
+
+
 
 
 
@@ -2579,6 +3462,2545 @@ legend('topright', pch=16, col=unique(iris[,5]), legend =unique(iris[,5]) )
 
 
 ========================================
+典型相关分析法(Canonical Correlation Analysis, CCA)及其变种：稀疏典型相关分析法(sCCA)，正则化 rCCA
+----------------------------------------
+1. CCA 简介
+
+(1)典型关联分析(CCA)原理总结（转自刘建平Pinard）
+https://www.jianshu.com/p/7486e2b426dd
+https://www.cnblogs.com/pinard/p/6288716.html
+
+典型关联分析(Canonical Correlation Analysis，以下简称CCA)是最常用的挖掘数据关联关系的算法之一。比如我们拿到两组数据，第一组是人身高和体重的数据，第二组是对应的跑步能力和跳远能力的数据。那么我们能不能说这两组数据是相关的呢？CCA可以帮助我们分析这个问题。
+
+
+
+(2) 综述中的 CCA
+https://www.ncbi.nlm.nih.gov/pmc/articles/PMC8114078/
+
+Canonical correlation analysis (CCA) is a correlation-based multivariate analysis method to examine the linear relationship between two datasets [99], [100]. 
+
+A set of linear combinations of all variables in each of the two datasets is determined so that it maximizes the correlation between them and best explains both within and between dataset variability. 
+
+The high dimensionality, sparsity and variable feature spaces across the different omics layers pose constraints for the linear combinations limiting the biological applicability of CCA. 
+Generally, to solve these issues variants of CCA including sparse CCA [100] and penalized matrix decomposition (PMD) method [101] have been proposed. 
+为了解决稀疏性，提出了CCA变种:
+> 100. Hardoon D.R., Shawe-Taylor J. Sparse canonical correlation analysis. Mach Learn. 2011;83(3):331–353. doi: 10.1007/s10994-010-5222-7.
+> 101. Witten D.M., Tibshirani R., Hastie T. A penalized matrix decomposition, with applications to sparse principal components and canonical correlation analysis. Biostatistics. 2009;10(3):515–534. doi: 10.1093/biostatistics/kxp008.
+
+
+1)Seurat3 实现的对角化CCA方法：整合不同细胞的数据
+For instance Seurat3 [87] implements CCA in order to integrate two single-cell omics datasets. 
+It first jointly reduces the dimensionality of two datasets using the diagonalized CCA 
+followed by a search for a mutual nearest neighbor in lower dimensional space, 
+and then establishes the cellular relationship across the datasets as an anchor.
+- 对2个数据集适用 对角化CCA 联合降维
+- 对典型相关向量应用L2正则化：then apply L2-normalization to the canonical correlation vectors
+- 低纬度寻找 相互最近临： search for MNNs in this shared low-dimensional representation. 
+- 在不同数据集建立细胞之间的联系，作为锚点
+
+用于整合 小鼠视觉皮层的 scRNA-seq + scATAC-seq，骨髓的 scRNA-seq + 膜蛋白。
+This has been used, for example, to integrate scRNA-seq and scATAC-seq data from the mouse visual cortex and scRNA-seq and surface protein expression from bone marrow [87]. 
+
+> 87. Stuart T., Butler A., Hoffman P., Hafemeister C., Papalexi E., Mauck W.M. Comprehensive Integration of Single-Cell Data. Cell. 2019;177(7):1888–1902.e21. doi: 10.1016/j.cell.2019.05.031.
+https://www.ncbi.nlm.nih.gov/pmc/articles/PMC6687398/
+
+
+2) 双阶典型相关分析 bi-order canonical correlation analysis (bi-CCA)
+Another recent adaptation of CCA for single-cell multi-omics clustering is bindSC [80] which utilizes bi-order canonical correlation analysis (bi-CCA) that captures the correlated variables from both cells and features between two modalities to formulate the canonical correlation vectors in a latent space. 
+分别捕获细胞和基因，到一个潜在空间中。
+> 80. Dou J., Liang S., Mohanty V., Cheng X., Kim S., Choi J. Unbiased integration of single cell multi-omics data. BioRxiv. 2020 doi: 10.1101/2020.12.11.422014.
+已发表：Bi-order multimodal integration of single-cell data https://pubmed.ncbi.nlm.nih.gov/35534898/
+	看Fig1. 是对不同的细胞: Cell set1 + Cell set2.
+
+3) 多于2个的模态整合
+While Seurat3 or bindSC can only be applied to two datasets at a time, multiset CCA [102] aims to simultaneously find multivariate associations between more than two modalities. In multiset CCA, the canonical coefficients of all variables are optimized to maximize the pairwise canonical correlations [103]. Currently, we are not aware of multiset CCA being applied to single-cell multi-omics.
+> 102. KETTENRING J.R. Canonical analysis of several sets of variables. Biometrika. 1971;58(3):433–451. doi: 10.1093/biomet/58.3.433.
+> 103. Zhuang X., Yang Z., Cordes D. A technical review of canonical correlation analysis for neuroscience applications. Hum Brain Mapp. 2020;41(13):3807–3833. doi: 10.1002/hbm.v41.1310.1002/hbm.25090. 
+
+
+
+
+
+
+
+(3) Seurat CCA 的数学原理
+Seurat CCA? It's just a simple extension of PCA! https://xinmingtu.cn/blog/2022/CCA_dual_PCA/
+博客认为：Difference between “Seurat CCA” and Real CCA
+The “Seurat CCA” is taking the projection vector from the traditional CCA directly as cell embeddings. But in fact, the classical definition of CCA would imply projecting genes into a common space rather than cells.
+
+
+
+
+
+
+(4) Seurat CCA 的过程
+https://hbctraining.github.io/scRNA-seq_online/lessons/06_integration.html
+
+i) Perform canonical correlation analysis (CCA)
+
+CCA identifies shared sources of variation between the conditions/groups. It is a form of PCA, in that it identifies the greatest sources of variation in the data, but only if it is shared or conserved across the conditions/groups (using the 3000 most variant genes from each sample).
+使用每个条件中3k高变基因，找共有的最大变异。
+
+This step roughly aligns the cells using the greatest shared sources of variation.
+
+* NOTE: The shared highly variable genes are used because they are the most likely to represent those genes distinguishing the different cell types present.
+
+
+ii) Identify anchors or mutual nearest neighbors (MNNs) across datasets (sometimes incorrect anchors are identified)
+通过数据集相互最近临，寻找锚点
+
+MNNs can be thought of as ‘best buddies’. For each cell in one condition:
+
+* The cell’s closest neighbor in the other condition is identified based on gene expression values - its ‘best buddy’.
+* The reciprocal analysis is performed, and if the two cells are ‘best buddies’ in both directions, then those cells will be marked as anchors to ‘anchor’ the two datasets together.
+基于基因表达，寻找细胞的最近临(MNN)
+对另一套数据集也这么做，如果两个细胞相互都是对方的最近临，则作为锚点。
+
+* “The difference in expression values between cells in an MNN pair provides an estimate of the batch effect, which is made more precise by averaging across many such pairs. A correction vector is obtained and applied to the expression values to perform batch correction.” [Stuart and Bulter et al. (2018)].
+MNN对的表达差异，可以用于估计批次效应。使用多对就更精确的估计批次效应。
+获取修正向量，应用到表达值上，修正批次效应。
+
+
+iii) Filter anchors to remove incorrect anchors:
+
+Assess the similarity between anchor pairs by the overlap in their local neighborhoods (incorrect anchors will have low scores) - do the adjacent cells have ‘best buddies’ that are adjacent to each other?
+局部重叠，查看配对锚点细胞的相似性(错误锚点打分低)：近距离的细胞的最佳伙伴是否也是最近？
+
+
+iv) Integrate the conditions/datasets:
+
+Use anchors and corresponding scores to transform the cell expression values, allowing for the integration of the conditions/datasets (different samples, conditions, datasets, modalities)
+适用锚点和对应的打分，转化细胞表达值，来整合不同条件/数据集(不同样本，条件，数据集，模态)。
+
+NOTE: Transformation of each cell uses a weighted average of the two cells of each anchor across anchors of the datasets. Weights determined by cell similarity score (distance between cell and k nearest anchors) and anchor scores, so cells in the same neighborhood should have similar correction values.
+转化每个细胞，使用两个数据集锚点的权重平均值。权重就是细胞相似打分(细胞间距离，k最临近锚点)和锚点打分，所以相近的细胞有相似的修正值。
+
+If cell types are present in one dataset, but not the other, then the cells will still appear as a separate sample-specific cluster.
+
+
+
+
+
+(5) CCA 不适用的情况
+https://satijalab.org/seurat/articles/integration_rpca
+However, CCA-based integration may also lead to overcorrection, especially when a large proportion of cells are non-overlapping across datasets.
+
+
+
+
+
+
+
+
+
+2. CCA及其变种的适用情况
+(1) 一般形式
+典型相关分析法（CCA）是分析两个数据矩阵的经典方法，不需要降维提取主成分。但普通CCA只适用于行比列多的矩阵，即样本比基因多。
+其中用CCA()函数可得到每个元素（比如每个EBV基因）的典型系数（canonical coefficient），它表示该元素对整个矩阵典型相关系数的贡献，如果某个元素的典型系数非零，则表示它对全局相关性有很大贡献，被选为核心（essential）基因。
+
+
+问题：但是，对于不超过2万细胞的单细胞数据，通常是样本(细胞)少、基因多。
+
+当数据中样本数量少于特征数量时，也就是在高维设置中，经典的 Canonical Correlation Analysis (CCA) 可能会遇到困难，因为计算相关矩阵的逆在数学上可能是不稳定的或不可能的。
+
+
+(2) 正则化 rCCA
+为了解决这个问题，可以采用一些改进的方法，特别是使用正则化技术。
+
+正则化 CCA 是解决样本数量少于特征数量的一种有效方法。它通过在CCA的优化问题中添加正则化项来实现。这种方法不仅可以处理高维数据，还可以提高模型的泛化能力。
+
+步骤和方法：
+i)引入正则化参数：
+在求解 CCA 的标准方程时，对特征的协方差矩阵 X^T.X 和Y^T.Y 加入正则化项。具体来说，修改为 
+X^T.X + λ[x].I 和 Y^T.Y + λ[y].I，其中 λ[x] 和 λ[y] 是正则化参数，I 是单位矩阵。
+^是上标
+[]是下标
+
+ii)选择正则化参数：
+正则化参数的选择通常依赖于交叉验证或其他模型选择方法，目的是找到一个平衡模型复杂度和拟合度的最佳值。
+
+=> 问题：怎么选择 正则化参数？评价指标是什么？
+
+iii)计算正则化的 CCA：
+使用修改后的协方差矩阵计算 CCA，求解得到的规范相关变量将考虑到正则化的影响，从而避免了过拟合并增强了数学稳定性。
+
+
+
+
+
+(3) 稀疏 sCCA
+
+Sparse CCA 也是一种可行的选择，尤其是当需要在特征非常多的情况下从中选择最有影响力的特征。Sparse CCA 通过在模型中引入稀疏性约束，只保留对解释两组变量关系最重要的特征，从而简化了问题并减少了计算负担。
+
+优点
+	在高维数据分析中非常有效，能够识别和利用最有影响力的变量。
+	帮助简化模型，提高模型的解释性和泛化能力。
+缺点
+	选择合适的正则化参数可以是一个挑战。
+	稀疏性可能会导致重要信息的遗漏，特别是当所有变量都相对重要时。
+
+
+
+
+(4) Partial CCA
+Partial CCA 是在传统的 CCA 框架内引入了偏差（partialing out）的概念，旨在剔除一组或多组干扰变量的影响，从而更准确地捕捉两组主要变量之间的相关性。这种方法在存在潜在干扰因素或混杂变量时特别有用。
+
+
+优点
+	能够剔除不感兴趣的变量的影响，从而更准确地估计主要变量之间的关联。
+	在多变量分析中提高了结果的解释性。
+缺点
+	需要预先确定哪些变量是干扰变量。
+	计算复杂度较高，尤其是在变量多的情况下。
+
+
+
+
+
+
+(10) 其他方法
+* 核CCA（Kernel CCA）：通过使用核技术，将数据映射到高维空间，可以有效处理非线性关系和高维问题。
+
+* 随机投影/降维：在进行 CCA 前，可以先使用随机投影或其他降维技术减少特征的数量。
+
+
+对于样本数少于特征数的问题，通过引入正则化和考虑稀疏性的方法可以有效解决经典CCA的局限性。选择合适的方法取决于具体的数据特征和研究目标。在实际应用中，这些方法往往需要结合交叉验证等技术来确定最优的模型参数。
+
+
+
+
+========================================
+|-- CCA 典型相关分析及其变种，R包分析 pbmc3k 按特征拆分的2个矩阵
+----------------------------------------
+0. 步骤：
+1)对两个矩阵，分别求高变基因
+	# Select the most variable features to use for integration
+2)取data 或 scale.data，按照高变基因取子集
+3)调用R包，进行CCA分解
+4)获取u向量，代替PCA，进行UMAP和细胞分群
+
+
+R包
+stats::cancor() #经典CCA，报错：观测数少于特征数
+vegan::cca() partial constrained correspondence analysis.
+CCA::rcc()  Regularized Canonical Correlation Analysis
+PMA::CCA() 稀疏典型相关分析 sparse canonical correlation analysis using the penalized matrix decomposition.
+nscancor::nscancor() 用于非负和稀疏CCA的R包[not run]
+
+
+
+
+
+1. 准备数据
+# A. 准备pbmc3k数据集 ----
+
+## (1) Cluster cell ====
+library(Seurat)
+# file_2="D:\\code_R\\filtered_gene_bc_matrices\\hg19\\"
+pbmc.data <- Read10X(data.dir = "D:\\code_R\\filtered_gene_bc_matrices\\hg19\\")
+pbmc <- CreateSeuratObject(counts = pbmc.data, project = "pbmc3k", min.cells = 3, min.features = 200)
+pbmc
+pbmc[["percent.mt"]] <- PercentageFeatureSet(pbmc, pattern = "^MT-")
+pbmc <- NormalizeData(pbmc, normalization.method = "LogNormalize", scale.factor = 10000)
+pbmc <- FindVariableFeatures(pbmc, selection.method = "vst", nfeatures = 2000)
+pbmc <- ScaleData(pbmc, features = rownames(pbmc))
+
+pbmc <- RunPCA(pbmc, features = VariableFeatures(object = pbmc))
+DimPlot(pbmc, reduction = "pca")
+ElbowPlot(pbmc)
+
+pbmc <- FindNeighbors(pbmc, dims = 1:10)
+pbmc <- FindClusters(pbmc, resolution = 0.5)
+
+pbmc <- RunUMAP(pbmc, dims = 1:10)
+DimPlot(pbmc, reduction = "umap", label=T)
+
+# save
+saveRDS(pbmc, file="D:\\code_R\\filtered_gene_bc_matrices\\pbmc3k.final.Rds")
+#scObj=readRDS(file="D:\\code_R\\filtered_gene_bc_matrices\\pbmc3k.final.Rds")
+
+
+## (2) split features ====
+scObj=pbmc
+#
+set.seed(202405)
+features_index = sample(1:3, nrow(scObj), replace = T )
+table(features_index)
+
+scObj1=scObj[which(features_index==1), ]
+# find HVG
+scObj1=FindVariableFeatures(scObj1, selection.method = "vst", nfeatures = 3000)
+scObj1 #4643 2700
+
+
+scObj2=scObj[which(features_index!=1), ]
+# find HVG
+scObj2=FindVariableFeatures(scObj2, selection.method = "vst", nfeatures = 4000)
+scObj2 #9071 2700
+
+
+
+
+
+2. stats::cancor[NOT suitable]
+
+
+
+
+
+3. CCA::rcc() 正则化的CCA
+
+适用于 变量(列) 超过 行(样品)的情况：2万基因 > 3千细胞
+The function performs the Regularized extension of the Canonical Correlation Analysis to seek correlations between two data matrices when the number of columns (variables) exceeds the number of rows (observations)
+
+> cca.rs1 = CCA::rcc(X=X_vector , Y=Y_vector)
+错误于CCA::rcc(X = X_vector, Y = Y_vector): 
+  缺少参数"lambda1",也缺失默认值
+
+必须提供参数3和4，正则化参数：Regularization parameter
+	不知道怎么设置？
+
+示例：
+	data(nutrimouse)
+	X=as.matrix(nutrimouse$gene)
+	Y=as.matrix(nutrimouse$lipid)
+	res.cc=rcc(X,Y,0.1,0.2)
+	plt.cc(res.cc)
+
+
+示例2：
+X_vector = t(scObj1@assays$RNA@data[VariableFeatures(scObj1), ]|> as.matrix())
+Y_vector = t(scObj2@assays$RNA@data[VariableFeatures(scObj2), ]|>as.matrix())
+
+cca.rs1 = CCA::rcc(X=X_vector , Y=Y_vector, lambda1 = 0.1, lambda2 = 0.2)
+u_vector =  cca.rs1$scores$xscores
+u_vector[1:2,1:2]
+#                        [,1]       [,2]
+#AAACATACAACCAC-1 -0.83568478 -0.1218233
+#AAACATTGAGCTAC-1 -0.02981178  1.4936991
+
+# another calculation (similar to u_vector)
+u_vector2=(as.matrix(X_vector) %*% cca.rs1$xcoef)
+
+## (2) UMAP based on CCA ====
+library(uwot)
+umap_results = umap(u_vector[,1:10], n_neighbors = 15, n_components = 2, metric = "cosine") #2min
+umap_results = umap(u_vector[,1:10], n_neighbors = 15, n_components = 2) #2min
+
+colnames(umap_results)=paste0("UMAP_",1:2)
+umap_results=as.data.frame(umap_results)
+plot(umap_results$UMAP_1, umap_results$UMAP_2, pch=19, col="#88888822", main="UMAP based on u", cex=0.5)
+head(umap_results)
+
+# plot
+dat2=umap_results
+dat2$cluster = scObj@meta.data[rownames(dat2),]$seurat_clusters
+library(ggplot2)
+ggplot(dat2, aes(UMAP_1, UMAP_2, color=cluster))+
+  geom_point(size=0.5)+theme_classic()+ggtitle("CCA-based cluster")+
+  LargeLegend(2)
+
+
+# Seurat object
+p0=DimPlot(scObj, reduction = "umap", label=T)+ggtitle("Classical Seurat")
+scObj_re2=scObj
+scObj_re2@reductions$cca=scObj_re2@reductions$pca
+scObj_re2@reductions$cca@feature.loadings=cca.rs1$xcoef
+scObj_re2@reductions$cca@cell.embeddings=u_vector
+#scObj_re2@reductions$cca@stdev = cca.rs1$CCA$eig
+scObj_re2@reductions$cca@key="CCA_"
+
+scObj_re2=Seurat::RunUMAP(scObj_re2, reduction = "cca", dims = 1:10)
+p2=DimPlot(scObj_re2, reduction = "umap", label=T)+ggtitle("CCA-based UMAP")
+p0+p2
+
+
+
+
+
+
+4. vegan::cca() partial constrained correspondence analysis.
+
+https://cran.r-project.org/web/packages/vegan/index.html
+Ordination methods, diversity analysis and other functions for community and vegetation ecologists.
+
+vegan::cca(), 
+Function cca performs correspondence analysis, or optionally constrained correspondence analysis (a.k.a. canonical correspondence analysis), or optionally partial constrained correspondence analysis.
+
+
+X_vector = t(scObj1@assays$RNA@data[VariableFeatures(scObj1),] |> as.matrix())
+Y_vector = t(scObj2@assays$RNA@data[VariableFeatures(scObj2),] |>as.matrix())
+
+library(vegan)
+cca.rs3 <- vegan::cca(X_vector, Y_vector )
+
+# get U vector
+u_vector=cca.rs3$CCA$u
+dim(u_vector) #[1] 2700 2699
+u_vector[1:2, 1:3]
+#                       CCA1        CCA2       CCA3
+#AAACATACAACCAC-1 0.5914861 -0.7230028  0.3977991
+#AAACATTGAGCTAC-1 0.1675775 -0.1583371 -1.4463575
+cca.cells=rownames(u_vector)
+setdiff(colnames(scObj), cca.cells) #all cell included
+
+# get V vector
+v_vector=cca.rs3$CCA$v
+dim(v_vector) #[1] 3000 2699
+v_vector[1:2, 1:3]
+#               CCA1       CCA2       CCA3
+#PF4     -20.8000835 -10.635738 -0.4798296
+#HLA-DRA  -0.4860016   1.079377 -2.5370283
+cca.genes=rownames(v_vector)
+setdiff(rownames(scObj), cca.genes) |> length()
+
+
+# cells: u
+#like PCA
+#plot(u_vector[,1], u_vector[,2])
+plot(u_vector[,1], u_vector[,2], pch=19, col="#88888822", main="u vector: cells")
+plot(u_vector[,1], u_vector[,3], pch=19, col="#88888822", main="u vector: cells")
+
+
+## (2) umap based on v vector ====
+library(uwot)
+umap_results = umap(u_vector[,1:10], n_neighbors = 15, n_components = 2, metric = "cosine") #2min
+
+colnames(umap_results)=paste0("UMAP_",1:2)
+umap_results=as.data.frame(umap_results)
+plot(umap_results$UMAP_1, umap_results$UMAP_2, pch=19, col="#88888822", main="UMAP based on u", cex=0.5)
+head(umap_results)
+
+# plot
+dat2=umap_results
+dat2$cluster = scObj@meta.data[rownames(dat2),]$seurat_clusters
+library(ggplot2)
+ggplot(dat2, aes(UMAP_1, UMAP_2, color=cluster))+
+  geom_point(size=0.5)+theme_classic()+ggtitle("Based on CCA U vector")+
+  LargeLegend(2)
+
+
+# Seurat object
+p0=DimPlot(scObj, reduction = "umap", label=T)+ggtitle("Classical Seurat")
+scObj_re2=scObj
+scObj_re2@reductions$cca=scObj_re2@reductions$pca
+scObj_re2@reductions$cca@feature.loadings=v_vector
+scObj_re2@reductions$cca@cell.embeddings=u_vector
+scObj_re2@reductions$cca@stdev = cca.rs3$CCA$eig
+scObj_re2@reductions$cca@key="CCA_"
+
+#
+library(factoextra)
+#factoextra::fviz_eig(scObj_re2@reductions$cca@stdev)
+(ElbowPlot(scObj_re2, reduction = "pca", ndims = 50)+ggtitle("PCA")) +
+(ElbowPlot(scObj_re2, reduction = "cca", ndims = 50)+ggtitle("CCA"))
+
+
+# cca plot
+plot(x=Embeddings(scObj_re2, reduction = "cca")[,1],
+     y=Embeddings(scObj_re2, reduction = "pca")[,1],
+     pch=19, col="#88888844", cex=0.5)
+
+# UMAP
+scObj_re2=RunUMAP(scObj_re2, reduction = "cca", dims = 1:10, reduction.name = "ccaUMAP")
+p1=DimPlot(scObj_re2, reduction = "ccaUMAP", label=T)+ggtitle("CCA-based UMAP")
+p0+p1
+
+# cell cluster
+scObj_re2=FindNeighbors(scObj_re2, reduction = "cca", dims = 1:10, graph.name=c("cca_nn", "cca_snn") )
+scObj_re2@graphs |> names()
+scObj_re2=FindClusters(scObj_re2, resolution = 0.9, graph.name="cca_snn")
+
+p2=DimPlot(scObj_re2, reduction = "umap", label=T)+ggtitle("CCA-based Cluster")
+p3=DimPlot(scObj_re2, reduction = "ccaUMAP", label=T)+ggtitle("CCA-based UMAP+Cluster")
+
+(p0+p1)/(p2+p3)
+
+
+
+## (3) markers & save ====
+library(dplyr)
+scObj_re2.markers <- FindAllMarkers(scObj_re2, only.pos = TRUE, min.pct = 0.25, logfc.threshold = 0.25)
+scObj_re2@misc[["markers"]]=scObj_re2.markers
+scObj_re2.markers %>% group_by(cluster) %>% top_n(n = 2, wt = avg_log2FC)
+
+DotPlot(scObj_re2, features = unique(c(
+  "PTPRC", "CD3D", "CD3E", "CD4", "CD8A", "CD8B", "FOXP3", "IL2RA", 'GZMA', "GZMK", "SELL", 'CD274',
+  "MS4A1", "GNLY", "CD3E", "CD14", "FCER1A", "FCGR3A", "LYZ", "PPBP", 
+  "CD8A",
+  scObj_re2.markers %>% group_by(cluster) %>% top_n(n = 7, wt = avg_log2FC) %>% pull(gene)
+)), cluster.idents = T) + RotatedAxis()
+
+# save
+saveRDS(scObj_re2, paste0(outputRoot, keyword, "_1_use_data.vegan_cca.Seurat.Rds"))
+
+
+
+
+
+
+
+
+
+5. PMA::CCA() Perform sparse canonical correlation analysis using the penalized matrix decomposition.
+
+https://cran.r-project.org/web/packages/PMA/index.html
+Performs Penalized Multivariate Analysis: a penalized matrix decomposition, sparse principal components analysis, and sparse canonical correlation analysis, described in Witten, Tibshirani and Hastie (2009) <doi:10.1093/biostatistics/kxp008> and Witten and Tibshirani (2009) Extensions of sparse canonical correlation analysis, with applications to genomic data <doi:10.2202/1544-6115.1470>.
+
+
+X_vector = t(scObj1@assays$RNA@data[VariableFeatures(scObj1),] |> as.matrix())
+Y_vector = t(scObj2@assays$RNA@data[VariableFeatures(scObj2),] |>as.matrix())
+
+cca.rs4 = PMA::CCA(X_vector, Y_vector, typex="standard",typez="standard", K=100) #17:05->17:10
+str(cca.rs4)
+
+
+## (1) get u vectors ====
+u_vector=X_vector %*% cca.rs4$u
+dim(u_vector)
+u_vector[1:2,1:2]
+
+plot(u_vector[,1], u_vector[,2])
+plot(u_vector[,1], u_vector[,3])
+
+## (2) umap based on u vector ====
+library(uwot)
+umap_results = umap(u_vector[,1:10], n_neighbors = 15, n_components = 2) #2min
+
+colnames(umap_results)=paste0("UMAP_",1:2)
+umap_results=as.data.frame(umap_results)
+plot(umap_results$UMAP_1, umap_results$UMAP_2, pch=19, col="#88888822", main="UMAP based on u", cex=0.5)
+head(umap_results)
+
+# plot
+dat2=umap_results
+dat2$cluster = scObj@meta.data[rownames(dat2),]$seurat_clusters
+library(ggplot2)
+pG=ggplot(dat2, aes(UMAP_1, UMAP_2, color=cluster))+
+  geom_point(size=0.5)+theme_classic()+ggtitle("Based on CCA U vector")+
+  LargeLegend(2)
+
+# Seurat object
+p0=DimPlot(scObj, reduction = "umap", label=T)+ggtitle("Classical Seurat")
+scObj_re2=scObj
+scObj_re2@reductions$cca=scObj_re2@reductions$pca
+scObj_re2@reductions$cca@feature.loadings=cca.rs4$u
+scObj_re2@reductions$cca@cell.embeddings=u_vector
+#scObj_re2@reductions$cca@stdev = cca.rs4$CCA$eig
+scObj_re2@reductions$cca@key="CCA_"
+
+scObj_re2=RunUMAP(scObj_re2, reduction = "cca", dims = 1:10 )
+#DimPlot(scObj_re2, reduction = "cca", label=T)
+p1=DimPlot(scObj_re2, reduction = "umap", label=T)+ggtitle("UMAP based CCA")
+pG+p0+p1
+
+
+
+
+
+
+
+
+
+6. nscancor::nscancor() Non-Negative and Sparse CCA
+
+https://cran.r-project.org/web/packages/nscancor/
+Two implementations of canonical correlation analysis (CCA) that are based on iterated regression.
+
+X_vector = t(scObj1@assays$RNA@data[VariableFeatures(scObj1),] |> as.matrix())
+Y_vector = t(scObj2@assays$RNA@data[VariableFeatures(scObj2),] |>as.matrix())
+
+## (1) partial cca ====
+library(nscancor)
+cca.rs6 <- nscancor::nscancor(X_vector, Y_vector)
+#错误于nscancor::nscancor(X_vector, Y_vector): 
+#缺少参数"ypredict",也缺失默认值
+	怎么设置 predict ？？
+
+
+
+
+
+=> 下一篇: CCA整合同一个细胞的多组学整合: scSeq::multi_modal_omics
+
+Ref:
+CCA 整合同一个组学的多样本：https://hbctraining.github.io/scRNA-seq_online/lessons/06_integration.html
+
+
+
+
+
+
+========================================
+LDA 线性判别分析(Linear Discriminant Analysis)[核心思想：“投影后类内方差最小，类间方差最大”]，及 R语言示例
+----------------------------------------
+1.原理
+和PCA一样，LDA也是一种线性降维方法。不同的是，PCA是无监督的，而LDA是一种有监督的降维方法。
+LDA需要构造出投影矩阵，满足最大化投影后各类的类间距离，最小化投影后各类的类内方差。
+
+
+(2) 基于类别可分性的降维
+LDA 的目标是找到一个投影方向，使得不同类别数据在投影后的空间中尽可能地分开，同时同一类别数据的内聚性尽可能高。与 PCA 主要关注数据的方差不同，LDA 更侧重于类别之间的区分。
+
+假设我们有两类数据，分别用不同颜色的点表示在二维平面上。LDA 试图找到一条直线，当把数据点投影到这条直线上时，两类数据的投影点之间的间隔尽可能大，并且每类数据投影后的分布尽可能紧凑。
+
+
+LDA 是已知标签，目的是找出能区分标签的最好方向，及分类界限。
+示意图: https://zhuanlan.zhihu.com/p/33185052?from_voters_page=true
+
+
+(3)类间散度和类内散度
+为了实现这个目标，LDA 使用了类间散度矩阵（Sb）和类内散度矩阵（Sw）的概念。类间散度矩阵衡量了不同类别中心之间的距离，它表示了类别之间的分离程度。类内散度矩阵则衡量了每个类别内部数据的分散程度。LDA 的目标是最大化类间散度与类内散度的比值（J=Sb/Sw），通过求解这个优化问题来找到最佳的投影方向。
+
+
+(4)投影实现降维
+当找到最佳投影方向（通过求解广义特征值问题得到）后，就可以将原始数据投影到这个方向上，从而将高维数据转换为低维数据。在多类别情况下，LDA 可能会找到多个投影方向来区分不同的类别，这些投影方向构成的子空间用于数据的降维。
+
+
+
+
+
+2.示例
+
+(1)使用MASS包的lda函数: 分辨鸢尾花数据的分类界限
+# install.packages("MASS")
+library(MASS)
+
+# 加载数据集
+# data(iris)
+
+# 仅使用花瓣的长度和宽度进行LDA
+lda_model <- lda(iris$Species ~ ., data = iris[, c("Sepal.Length", "Sepal.Width", "Petal.Length", "Petal.Width")], 
+                 prior = c(0.33, 0.33, 0.34))  # 设置先验概率
+
+	# 或者
+	lda_model2 <- lda(Species ~ Sepal.Length + Sepal.Width + Petal.Length + Petal.Width, data = iris, 
+					 prior = c(0.33, 0.33, 0.34))  # 设置先验概率
+	 
+
+# 查看模型结果
+print(lda_model)
+
+输出:
+	Call:
+	lda(iris$Species ~ ., data = iris[, c("Sepal.Length", "Sepal.Width", 
+		"Petal.Length", "Petal.Width")], prior = c(0.33, 0.33, 0.34))
+
+	Prior probabilities of groups:
+		setosa versicolor  virginica 
+		  0.33       0.33       0.34 
+
+	Group means:
+			   Sepal.Length Sepal.Width Petal.Length Petal.Width
+	setosa            5.006       3.428        1.462       0.246
+	versicolor        5.936       2.770        4.260       1.326
+	virginica         6.588       2.974        5.552       2.026
+
+	Coefficients of linear discriminants:
+						LD1         LD2
+	Sepal.Length  0.8293547  0.02488036
+	Sepal.Width   1.5324414  2.16596010
+	Petal.Length -2.2003362 -0.93398623
+	Petal.Width  -2.8131231  2.83654950
+
+	Proportion of trace:
+	   LD1    LD2 
+	0.9912 0.0088
+
+# 画图
+plot(lda_model)
+
+# 数据结构
+str(lda_model)
+# 为什么还有SVD?
+
+
+
+# 查看混淆矩阵，判断模型效果
+predictions <- predict(lda_model, iris)
+table(predictions$class, iris$Species)  # 查看混淆矩阵来评估模型性能
+#             setosa versicolor virginica
+#  setosa         50          0         0
+#  versicolor      0         48         1
+#  virginica       0          2        49
+
+
+
+
+
+(2)官方文档
+http://127.0.0.1:12681/library/MASS/html/lda.html
+
+Iris <- data.frame(rbind(iris3[,,1], iris3[,,2], iris3[,,3]),
+                   Sp = rep(c("s","c","v"), rep(50,3)))
+set.seed(2025)
+train <- sample(1:150, 75)
+table(Iris$Sp[train])
+## your answer may differ
+##  c  s  v
+## 23 26 26
+
+# 训练模型
+z <- lda(Sp ~ ., Iris, prior = c(1,1,1)/3, subset = train)
+
+# 预测
+predict(z, Iris[-train, ])$class
+## [1] s s s s s s s s s s s s s s s s s s s s s s s s c c c c c c c c v c c c c c
+## [39] c c v c c c c c c c c c c v v v v v v v v v v c v v v v c v v v v v v v v
+## Levels: c s v
+
+# 更新模型：增加一个变量
+(z1 <- update(z, . ~ . - Petal.W.))
+
+
+# 检查模型效果：
+	> table(predict(z, Iris)$class, iris$Species)
+		setosa versicolor virginica
+	  c      0         48         2
+	  s     50          0         0
+	  v      0          2        48
+	> table(predict(z1, Iris)$class, iris$Species)
+		setosa versicolor virginica
+	  c      0         47         3
+	  s     50          0         0
+	  v      0          3        47
+# 加一个变量效果似乎更差了
+
+
+
+
+
+
+Ref:
+- PCA和LDA简明教程 https://zhuanlan.zhihu.com/p/9969196935
+- https://www.cnblogs.com/pinard/p/6244265.html （推荐）
+- https://blog.csdn.net/m0_44975814/article/details/145049312
+- https://zhuanlan.zhihu.com/p/79696530
+
+
+
+========================================
+|-- LDA与PCA的区别/应用场景
+----------------------------------------
+1.PCA 和 LDA 的区别
+（1）目标不同
+PCA：主要目标是在数据空间中找到数据变化最大的方向，以最大程度地保留数据的方差。它是一种无监督的降维方法，不考虑数据的类别标签，只是关注数据本身的分布特性。
+LDA：以分类为导向，目的是找到能够使不同类别数据之间的区分度最大的投影方向。它是一种有监督的降维方法，需要利用数据的类别标签来进行降维操作。
+
+（2）适用的数据类型
+PCA：适用于数据没有类别标签或者不需要考虑类别信息的情况。例如，在对图像进行特征提取时，如果只是想减少图像数据的维度而不涉及图像的分类，PCA 可能是一个很好的选择。
+LDA：在有明确类别标签的分类问题中表现出色。比如在人脸识别中，不同人的脸属于不同的类别，LDA 可以通过找到区分不同人脸类别的投影方向来进行降维和分类。
+
+（3）对数据分布的假设
+PCA：假设数据是在高维空间中呈椭圆形分布（更准确地说是高斯分布），并且希望找到这个椭圆的主轴方向。它主要关注数据的全局结构，对数据中的噪声比较敏感。
+LDA：假设每个类别内部的数据服从高斯分布，并且不同类别之间的高斯分布具有不同的均值。它更侧重于类别之间的差异，对于类别内部的数据分布变化相对不太敏感，只要类别之间的区分度能够得到保持。
+
+（4）降维后的结果
+PCA：降维后的结果是数据在方差最大方向上的投影，新的维度（主成分）是按照数据方差大小排序的。这些主成分可能并不直接对应于任何实际的物理或语义特征，但它们能够有效地表示数据的主要变化趋势。
+LDA：降维后的维度具有明确的类别区分意义，即每个维度都有助于最大程度地分离不同类别。这使得 LDA 降维后的结果在分类任务中更具有可解释性。
+
+
+
+
+
+2. PCA 和 LDA 的应用场景
+（1）PCA 的应用场景
+1)数据可视化
+在高维数据（如基因数据、文本数据等）中，通过 PCA 将数据降到二维或三维空间，可以直观地观察数据的分布情况。例如，在分析文档集合时，可以将词频向量表示的文档通过 PCA 降维后，在平面上绘制出文档的分布，从而发现文档之间的相似性和聚类情况。
+
+2)数据预处理
+在机器学习算法中，高维数据可能会导致模型训练时间过长和过拟合。PCA 可以作为数据预处理步骤，减少数据的维度，同时保留数据的主要信息。例如，在支持向量机（SVM）训练之前，对高维数据进行 PCA 降维，可以加快 SVM 的训练速度，并且在一定程度上提高模型的泛化能力。
+
+3)信号处理
+在音频和图像信号处理中，PCA 可以用于提取信号的主要成分。例如，在音频信号中，可以通过 PCA 提取主要的频率成分，去除噪声和次要频率成分，从而实现音频信号的压缩和降噪。在图像压缩中，PCA 可以将图像的像素矩阵降维，用较少的系数来表示图像，达到压缩图像数据的目的。
+
+
+(2)LDA 的应用场景
+1)模式识别与分类
+在人脸识别系统中，LDA 可以用于提取能够区分不同人脸的特征。通过将人脸图像的高维像素数据投影到 LDA 找到的低维空间中，这些低维特征可以有效地用于分类不同的人脸。同样，在手写数字识别中，LDA 可以帮助找到区分不同数字的特征方向，提高数字分类的准确率。
+
+2)生物医学领域的分类问题
+在疾病诊断中，例如根据基因表达数据来区分癌症和非癌症样本。LDA 可以利用已知的疾病类别标签，找到能够区分不同疾病状态的基因表达模式，从而为疾病的早期诊断和分类提供依据。
+
+
+=> 机器视觉中的应用
+在目标检测和识别中，LDA 可以用于区分不同类型的目标。例如，在交通场景中，通过 LDA 可以找到能够区分汽车、行人、自行车等不同目标的特征方向。将图像中的目标区域提取出来并投影到 LDA 的低维空间中，然后根据这些低维特征进行目标分类。在安防监控系统中，LDA 可以帮助识别不同的行为模式，如正常行走、可疑徘徊等，从而提高监控系统的智能性。
+
+
+=> 自然语言处理中的应用
+在主题模型中，LDA（这里指潜在狄利克雷分配，与线性判别分析同名但不同概念）和线性判别分析 LDA 都有应用。线性判别分析 LDA 可以用于区分不同主题的文本。例如，在学术文献分类中，LDA 可以根据文献的内容和类别标签（如计算机科学、生物学等不同学科领域），找到能够区分不同学科主题的特征方向。这些特征可以用于自动分类学术文献，提高文献检索系统的准确性。
+
+
+=> 机器学习算法中的应用
+在分类算法中，LDA 可以作为一种特征提取和降维方法与其他分类算法结合使用。例如，
+- 在决策树分类器中，将原始数据通过 LDA 降维后再输入到决策树中，可以提高决策树的分类性能。LDA 可以帮助决策树更好地找到区分不同类别数据的特征，减少决策树的深度和复杂度，从而提高分类效率和准确性。
+- 在贝叶斯分类器中，LDA 降维后的特征可以用于估计类条件概率，提高贝叶斯分类器的性能。
+
+
+
+
+
+========================================
+|-- 线性分类判别LDA和二次分类判别QDA(Quadratic Discriminant Analysis)实例
+----------------------------------------
+1.区别：方差是否相同
+线性分类判别
+	对于二分类问题，LDA针对的是：数据服从高斯分布，且均值不同，方差相同。
+
+二次分类判别
+	对于二分类问题，QDA针对的是：数据服从高斯分布，且均值不同，方差不同。
+	数据方差相同的时候，一次判别就可以，如左图所示;但如果方差差别较大，就是一个二次问题了
+
+
+Fisher一个总原则是：投影之后的数据，最小化类内误差，同时最大化类间误差
+
+
+(2)
+QDA 是 LDA (Linear Discriminant Analysis，线性判别分析）的一种扩展形式，与LDA类似，QDA 也是一种基于贝叶斯决策理论的分类器。与LDA不同的是，QDA假设每个类别的协方差矩阵不相同，因此在分类时使用的决策边界是二次曲线。
+
+
+
+
+2.示例
+(1) MASS::qda()
+library(MASS)
+
+# Set a seed for reproducibility
+set.seed(123) 
+
+# Create a training and testing split (e.g., 70% train, 30% test)
+train_index <- sample(1:nrow(iris), 0.7 * nrow(iris))
+train_data <- iris[train_index, ]
+test_data <- iris[-train_index, ]
+
+# 拟合模型
+# Fit the QDA model using the training data
+# The formula `Species ~ .` indicates Species is the dependent variable
+# and all other columns in train_data are independent variables.
+qda_model <- qda(Species ~ ., data = train_data)
+
+# 做预测
+# Predict the species for the test data
+predictions <- predict(qda_model, newdata = test_data)
+
+# The 'class' element of the predictions object contains the predicted classes
+predicted_classes <- predictions$class
+
+
+# 评价模型
+# Create a confusion matrix to assess performance
+confusion_matrix <- table(Actual = test_data$Species, Predicted = predicted_classes)
+print(confusion_matrix)
+# 输出
+				Predicted
+	Actual       setosa versicolor virginica
+	  setosa         14          0         0
+	  versicolor      0         17         1
+	  virginica       0          0        13
+
+# Calculate the accuracy
+accuracy <- mean(predicted_classes == test_data$Species)
+print(paste("Accuracy:", round(accuracy, 4)))
+# [1] "Accuracy: 0.9778"
+
+
+
+
+Ref:
+https://cloud.tencent.com/developer/article/1727290
+
+
+
+========================================
+NMF 非负矩阵分解 与 R 包实现
+----------------------------------------
+更多原理介绍见 Math/ 线代2
+对单细胞的分群见 scSeq/adv_method.txt
+
+
+1. NMF在单细胞研究中的优势
+
+单细胞研究避免不了要回答两个问题：组织中有哪些细胞类型，每个细胞类型又有哪些表达模式？NMF解决这类问题具有天然的优势，因为它分解的因子很容易与细胞类型或表达模式对应起来。Github上有很多基于NMF和其变种算法的单细胞分析工具，我比较喜欢的有单细胞整合分析工具liger和空间转录组去卷积工具SPOTlight。应用NMF分析方法发表的高分文章也有很多，我给大家介绍一篇，更多的文章请自己搜索。
+
+Chen, YP., Yin, JH., Li, WF. et al. Single-cell transcriptomics reveals regulators underlying immune cell diversity and immune subtypes associated with prognosis in nasopharyngeal carcinoma. Cell Res 30, 1024–1042 (2020). https://doi.org/10.1038/s41422-020-0374-x
+
+
+(1) 安装NMF基础包
+BiocManager::install('Biobase')
+install.packages('NMF')
+
+(2) nmf函数简介
+NMF包通过nmf()函数实现矩阵分解，它的用法及重要参数如下：
+> nmf(x, rank, method, seed, nrun, ...)
+    x：待分解非负矩阵，数据格式可以是matrix，data.frame， ExpressionSet
+    rank：分解的基数量，对于单细胞数据，可以设置为期望的细胞类型数量或表达模式数量
+    method：因式分解的常用方法，这里介绍三种常用的
+      1、基于KL 散度进行度量目标函数的多重迭代梯度下降算法——brunet(默认算法)
+      2、基于欧几里得距离度量目标函数的多重迭代梯度下降算法——lee
+      3、交替最小二乘法(Alternating Least Squares(ALS))——snmf/r
+    seed：因式分解的初始化种子
+    nrun：运行次数
+
+rank值一般是要通过测试评估后确定的，但是分析单细胞数据这是一个很难完成的工作，5000个细胞的测试时间可能超过10个小时。
+替代办法是使用经验或先验知识指定，可以尝试略多于细胞类型或细胞状态（细胞亚群再聚类时）的一个数值，例如我在本帖的PBMC数据分解中就指定为rank=10。
+
+因为NMF一般是从随机数开始，通过迭代算法收敛误差的方法求出最优W和H矩阵，所以seed不同最后的结果也不同。为了减少seed的影响求得最优解，常规的办法是通过nrun参数设置运行100-200次矩阵分解选取最优值，也可以使用特殊的算法选择一个最佳的seed（设置seed='nndsvd'或seed='ica'），这样运行一次也能得到最优解。
+
+
+重要参数翻译：
+1) method
+specification of the NMF algorithm. The most common way of specifying the algorithm is to pass the access key (i.e. a character string) of an algorithm stored in the package's dedicated registry, but methods exists that handle other types of values, such as function or list object. See their descriptions in section Methods.
+
+If method is missing the algorithm to use is obtained from the option nmf.getOption('default.algorithm'), unless it can be infer from the type of NMF model to fit, if this later is available from other arguments. Factory fresh default value is ‘brunet’, which corresponds to the standard NMF algorithm from Brunet2004 (see section Algorithms).
+
+Cases where the algorithm is inferred from the call are when an NMF model is passed in arguments rank or seed (see description for nmf,matrix,numeric,NULL in section Methods).
+
+
+> nmf.getOption('default.algorithm') #默认方法
+[1] "brunet"
+
+
+
+==> ‘nsNMF’
+Nonsmooth NMF from Pascual-Montano et al. (2006). It uses a modified version of Lee and Seung's multiplicative updates for the Kullback-Leibler divergence Lee et al. (2001), to fit a extension of the standard NMF model, that includes an intermediate smoothing matrix, meant meant to produce sparser factors.
+
+Default stopping criterion: invariance of the connectivity matrix (see nmf.stop.connectivity).
+
+
+
+2)nrun	
+默认是1，除非 rank 是一个多于1个元素的向量，这时每个rank值默认运行30个run，用于计算 consensus matrix 来选择最优rank。
+number of runs to perform. It specifies the number of runs to perform. By default only one run is performed, except if rank is a numeric vector with more than one element, in which case a default of 30 runs per value of the rank are performed, allowing the computation of a consensus matrix that is used in selecting the appropriate rank (see consensus).
+
+当使用随机种子方法时，通常必须运行多个run，达到稳定、避免局部最优解。
+When using a random seeding method, multiple runs are generally required to achieve stability and avoid bad local minima.
+
+
+
+
+
+
+(3) 下面我们测试一下不同方法的运行时间
+
+library(Biobase)
+library(NMF)
+## 参数测试
+data("esGolub")
+#esGolub <- esGolub[1:500,]
+t1 <- nmf(esGolub, 3, method = "brunet", seed = 219)
+runtime(t1)   # elapsed: 1.239 
+t2 <- nmf(esGolub, 3, method = "lee", seed = 219)
+runtime(t2)   # elapsed: 1.471 
+t3 <- nmf(esGolub, 3, method = "snmf/r", seed = 219)
+runtime(t3)   # elapsed: 0.995 
+t4 <- nmf(esGolub, 3, method = "brunet", seed = 'nndsvd')
+runtime(t4)   # elapsed: 3.156
+t5 <- nmf(esGolub, 3, method = "brunet", nrun = 100)
+runtime(t5)   # elapsed: 2.363
+
+
+
+
+
+
+2. 文献复现
+使用 NMF 的文献：https://pubmed.ncbi.nlm.nih.gov/32929364/
+Fig2(C) Cophenetic and dispersion metrics for NMF across 2 to 10 clusters with 50 runs suggest 4 stable subtypes.
+cophenetic 共表型性的
+dispersion [dɪˈspɜːʃn] n. 传播，散布；分布
+
+(1) 最佳分类的确定
+nmf_res <- nmf(tcga_log2fpkm, ranks=2:10, nrun=50)
+plot(nmf_res)
+
+
+(2) 轮廓图
+res_3 <- nmf(tcga_log2fpkm, ranks=2:10, nrun=50)
+pdf(paste0(outputRoot, keyword, "_03_rank_3.silhouette.pdf"), width=5.5, height=5.5)
+# no color
+#sil_3=silhouette(res_3)
+#plot(sil_3)
+
+#set color
+sil_3C=sortSilhouette( silhouette(res_3) )
+df1=sil_3C
+df1=head(df1, n=nrow(df1)) |> as.data.frame()
+plot(sil_3C, 
+     col=(df1$cluster+1),
+     main=attr(sil_3C, "call") |> deparse() )
+dev.off()
+
+
+
+
+
+
+========================================
+|-- NMF 非负矩阵分解 聚类，及效果评价: 一致性聚类（consensus）
+----------------------------------------
+1、NMF方法简介
+NMF（Non-negative Matrix Factorization，非负矩阵分解）是一种矩阵分解方法，最早是在1999年Nature杂志刊登的由D.D.Lee和H.S.Seung两位科学家提出的一个对非负矩阵研究的成果。
+
+NMF的目标：
+给定一个所有元素均为非负的矩阵V，维数为n*m。要寻找到两个非负矩阵W和H，使得尽可能满足V=WH。其中W维数为n*r，H维数为r*m。
+
+NMF的算法思想：
+NMF的目标不是找到使得V=WH严格成立的矩阵分解，而是使得V和WH尽可能接近。这就需要构造一个代价函数J(V,W,H)，满足V和WH越接近，J越小。然后可以根据J本身的连续性、凹凸性等特征，使用恰当的优化方法，最终得到符合条件的W和H。
+
+其中，代价函数J可以取很多种，这里介绍两种：
+
+
+(1) 2范数距离：J=||V-WH||。
+2范数距离定义如下：
+使用拉格朗日KKT方法来寻找最优解，每次迭代公式如下：
+当W和H是一个稳定点时，迭代收敛。
+
+(2) KL距离：J=D(V||WH)。
+KL距离定义如下：
+使用拉格朗日KKT方法来寻找最优解，每次迭代公式如下：
+当W和H是一个稳定点时，迭代收敛。
+
+
+
+
+
+2、NMF聚类应用
+
+有一个数据集，共m个样本，每个样本维度为n，构成了矩阵X，大小为n*m，即每一列为一个样本。
+
+使用NMF方法，寻找到了W和H，使得X=WH。其中，X的第i列，就等于W乘以H的第i列，可以这样理解，H的第i列的第j个元素，相当于W的第j列的权重，X的第i列就是W的每一列与权重的乘积的求和。或者说，W的每一列相当于一个基向量，H的每一列相当于坐标向量。这样，就将原本样本的n维，转换成了r 维，r 维的每个元素对应一个基向量的坐标。因此，将原本对X聚类的问题，通过降维，转化为了对H聚类的问题。接下来就可以使用经典的聚类方法，比如k均值等。
+
+
+
+(1) 问题1：最佳点的选取
+https://cloud.tencent.com/developer/article/1936854
+
+library(NMF)
+coad.log2fpkm.enengy <- enengyTurExp##
+ranks <- 2:10
+estim.coad <- nmf(coad.log2fpkm.enengy,ranks, nrun=50)
+duplicated(colnames(coad.log2fpkm.enengy))
+
+#Estimation of the rank: Quality measures computed from 10 runs for each value of r.
+plot(estim.coad) ## 重要的图
+
+具体怎么选择rank，官方文档是这样建议的：
+
+(Brunet2004) proposed to take the first value of r for which the cophenetic coefficient starts decreasing, (Hutchins2008) suggested to choose the first value where the RSS curve presents aninflection point, and (Frigyesi2008) considered the smallest value at which the decrease in the RSS is lower than the decrease of the RSS obtained from random data.
+
+文章用了三个指标：cophenetic, dispersion 和silhouette。判断最佳rank值的准则就是，cophenetic值随K变化的最大变动的前点，上面结果中cophenetic值在rank为4-5时是第一个变化最大的拐点，所以选择最佳rank值为4。文章中也是4。
+
+
+
+#再次NMF,rank=4
+seed = 2020820
+nmf.rank4 <- nmf(coad.log2fpkm.enengy, 
+                 rank = 4, 
+                 nrun=50,
+                 seed = seed, 
+                 method = "brunet")
+
+#设置颜色
+jco <- c("#2874C5","#EABF00","#C6524A","#868686")
+index <- extractFeatures(nmf.rank4,"max") 
+sig.order <- unlist(index)
+NMF.Exp.rank4 <- coad.log2fpkm.enengy[sig.order,]
+NMF.Exp.rank4 <- na.omit(NMF.Exp.rank4) #sig.order有时候会有缺失值
+group <- predict(nmf.rank4) # 提出亚型
+table(group)
+consensusmap(nmf.rank4,
+             labRow = NA,
+             labCol = NA,
+             annCol = data.frame("cluster"=group[colnames(NMF.Exp.rank4)]),
+             annColors = list(cluster=c("1"=jco[1],"2"=jco[2],"3"=jco[3],"4"=jco[4])))
+
+从结果来看，分4个亚群还是可以的。
+
+文章中只给出了consensus matrix这个图（如下）。
+
+
+
+
+
+(2)问题2：所以说NMF本身只是特征压缩的算法，想要聚类还要再KMEANS是吗？
+在R中，你可以使用predict函数来获取NMF模型的分类结果。但是，需要注意的是，NMF本身并不是一个分类方法，而是一个数据压缩和可视化的工具。如果你想用NMF进行分类，你可能需要先将数据转换为适合NMF处理的形式，然后再将NMF的输出作为分类算法的输入。
+
+1A) 使用predict函数获取分类结果
+group <- predict(nmf.rank4) # 提出亚型 **
+
+
+1B) R中使用NMF进行数据压缩，然后用其他分类算法（例如k-means）来获取分类结果
+library(NMF)
+nmf_model <- NMF(df, num.basis = 5, seed = 123)
+ 
+# 提取分解得到的特征矩阵
+features <- nmf.basis(nmf_model)
+ 
+# 使用k-means对特征矩阵进行分类
+library(cluster)
+km_model <- kmeans(features, centers = 3) # 假设我们分成3类
+ 
+# 获取分类结果
+predictions <- km_model$cluster
+ 
+# 输出分类结果
+print(predictions)
+
+
+
+
+
+
+
+
+
+
+
+========================================
+|-- NMF 对 TCGA AML 聚类实例
+----------------------------------------
+3. 聚类实例
+(0) 输入矩阵: 如TCGA表达数据框 log2(FPKM + 1)矩阵
+# load fpkm
+fpkm=read.table(paste0(outputRoot, "../TCGA-LAML.htseq_fpkm.tsv"), 
+                row.names = 1, header = T, check.names = F )
+fpkm[1:3,1:4]
+dim(fpkm) # 60483   151
+
+# rm last A or B, to be the same as clin
+colnames(fpkm) = sapply( colnames(fpkm), function(x){
+  substr(x, 1, nchar(x)-1)
+} ) |> as.character()
+
+
+# load gene anno
+anno=read.table(paste0(outputRoot, "../gencode.v22.annotation.gene.probeMap"), row.names = 1, header = T )
+anno[1:3,]
+dim(anno) # 60483     5
+
+## load clinic
+clin=read.table(paste0(outputRoot, "../survival_LAML_survival.txt"), 
+                row.names = 1, 
+                header = T, sep="\t", check.names = F )
+clin[1:3, ]
+dim(clin) #200 10
+
+
+## connect
+patient = intersect( colnames(fpkm), rownames(clin))
+length(patient) # 151
+
+fpkm = fpkm[,patient]
+dim(fpkm) #60483   151
+
+clin = clin[patient,]
+dim(clin) #151  10
+
+fpkm = as.matrix(fpkm)
+identical(rownames(clin), colnames(fpkm)) #T
+
+#colnames(meta)[c(1,3)] = c("event","time") #OS, OS.time
+
+
+
+
+(0B) 单因素筛选，缩小基因集合
+# tableS3.txt是这篇文章的附表三，里面是免疫相关的基因，有2006个。
+# https://www.ncbi.nlm.nih.gov/pmc/articles/PMC8377979/#MOESM3
+# 为了缩小一下基因数量，我选了免疫相关的基因，并做了批量单因素cox
+
+# 下文仅做了单因素cox筛选
+
+## 1) 基因筛选 ----
+# rm genes whose 0 acounts for >= 1/4 of all cells
+dim(fpkm) #60483   151
+fpkm = fpkm[apply(fpkm, 1, function(x){ sum(x==0) < 0.25 *ncol(fpkm)} ), ]
+dim(fpkm) # 32273   151
+
+#tmp = read.table("tables3.txt",header = T)[,1]
+#exp = exp[rownames(exp)%in%tmp,]
+
+
+## 2)批量单因素cox ----
+#cs = rownames(surv_cox(fpkm, clin, pvalue_cutoff = 0.001))
+
+library(survival)
+# res.cox<-coxph(Surv(time,status)~age+sex+ph.ecog,data=lung)
+
+symbol="SCCPDH"
+dif=clin[,c("OS", "OS.time")]
+dif$val= fpkm[ anno[which(anno$gene==symbol), ] |> rownames(), , drop=F] |> colSums()
+head(dif)
+#res.cox <- coxph(Surv(time, status) ~ age, data = )
+res.cox <- coxph(Surv(OS.time, OS) ~ val, data =dif )
+res.cox
+summary(res.cox)
+summary(res.cox)$logtest['pvalue']
+summary(res.cox)$waldtest['pvalue']
+
+
+
+## 批量单因素cox回归分析
+# 总结做单因素cox回归分析的特征
+#covariates <- c("age", "sex", "bili", "albumin", "copper", "alk.phos", "ast", "trig", "platelet", "protime", "stage")
+covariates <- unique(anno$gene)
+covariates |> head()
+
+# 分别对每一个变量，构建生存分析的公式
+#univ_formulas <- sapply(covariates, function(x) as.formula(paste('Surv(OS.time, OS)~', x)))
+formulas_cox=as.formula( paste('Surv(OS.time, OS)~val') )
+
+# 循环对每一个特征做cox回归分析
+univ_models <- sapply( covariates, function(symbol){
+  #message("symbol:", symbol)
+  dif=clin[,c("OS", "OS.time")]
+  if(!(symbol %in% anno$gene)){
+    return(-1)
+  }else{
+    enId=anno[which(anno$gene==symbol), ] |> rownames()
+    if( any(enId %in% rownames(fpkm)) ){
+      enId=enId[ enId %in% rownames(fpkm) ]
+      dif$val= fpkm[enId, , drop=F] |> colSums()
+      #print(head(dif, n=2))
+      res.cox = coxph( formulas_cox, data = dif )
+      return( summary(res.cox)$waldtest['pvalue'] |> signif(digits=2) |> as.numeric() )
+      #return(summary(res.cox)$logtest['pvalue'] |> as.numeric())
+    }
+    return(-1)
+  }
+} ) # 16:39-->16:41
+# filter -1
+length(univ_models) #58387
+univ_models=univ_models[univ_models!= -1]
+length(univ_models) #31721
+hist(univ_models, n=1000)
+#
+# rm non-sig
+table(univ_models<0.05)
+#FALSE  TRUE 
+#24807  6914
+#
+table(univ_models<0.01)
+#FALSE  TRUE 
+#28489  3232
+#
+cs=univ_models[univ_models<0.01]
+length(cs) #3232
+tail(cs, n=3)
+#SLC10A3    G6PD   CLIC2 
+#3.5e-03 6.8e-06 6.4e-03 
+
+# subset fpkm, change emsemble to gene symbol
+nmf.input <- t(sapply(names(cs), function(symbol){
+  enId=anno[which(anno$gene==symbol), ] |> rownames()
+  enId = enId[enId %in% rownames(fpkm) ]
+  fpkm[enId , , drop=F] |> colSums()
+})) |> as.data.frame()
+#
+dim(nmf.input) #3232  151
+nmf.input[1:3, 1:3] #row as gene, col as cell
+#             TCGA-AB-2949-03 TCGA-AB-2943-03 TCGA-AB-2851-03
+#U6                  23.706904       22.027168      22.7322383
+
+
+
+
+
+
+
+
+
+
+(1) data filter
+cell_info = data.frame(cname=colnames(nmf.input),
+           time=clin$OS.time,
+           status=clin$OS,
+           row.names = 1)
+dim(cell_info) #151   2
+head(cell_info)
+
+# sub time NA as -1
+cell_info$time=ifelse(is.na(cell_info$time), -1, cell_info$time)
+
+#
+#gene_info = data.frame(gene=rownames(X), gid=1:4, row.names = 1)
+#head(gene_info)
+
+#
+pdf(paste0(outputRoot, keyword, "_03_A00_fpkm.hist.pdf"), width=5, height=4)
+hist(nmf.input |> unlist(), n=1000)
+hist(log2(nmf.input+1) |> unlist(), n=1000, ylim=c(0, 2000))
+abline(v=4, col="red", lty=2)
+#
+nmf.input.log2=log2(nmf.input+1)
+nmf.input.log2[nmf.input.log2>4]=4
+hist(nmf.input.log2 |> unlist(), n=1000, ylim=c(0, 2000))
+dev.off()
+
+#
+library(NMF)
+pdf(paste0(outputRoot, keyword, "_03_A01_log2fpkmP1.heatmap.pdf"), width=12, height=7)
+opar=par(mfrow = c(1, 2))
+#aheatmap(X, annCol = cell_info, annRow = gene_info)
+aheatmap(nmf.input.log2, annCol = cell_info)
+#aheatmap(nmf.input, scale = "column")
+aheatmap(nmf.input.log2, scale = "row")
+par(opar)
+dev.off()
+
+
+
+
+(2) 假设聚成5类
+注意：1)输入变量不能有负数，2)行的和不能为0。
+# vm[is.na(vm)]=0
+vm[vm<0]=0
+vm= vm[rowSums(vm) > 0, ]
+
+library(NMF)
+library(pheatmap)
+res = nmf(nmf.input.log2, rank=5, nrun = 10) # 1min
+res
+
+
+
+(3) coefmap: 混合系数矩阵(cell)
+# NMF结果的混合系数矩阵可以使用coefmap()函数进行绘制。
+# 该函数默认添加2个注释通道用来展示从最佳拟合结果中获得的簇（聚类数）和一致性矩阵的层次聚类。
+
+pdf(paste0(outputRoot, keyword, "_03_A02_res.coefmap.pdf"), width=12, height=4.5)
+opar = par(mfrow = c(1, 2))
+# coefmap from multiple run fit: includes a consensus track
+coefmap(res)
+# coefmap of a single run fit: no consensus track
+coefmap(minfit(res))
+par(opar)
+dev.off()
+
+
+# 自动注释的通道可以使用tracks=NA进行隐藏
+pdf(paste0(outputRoot, keyword, "_03_A03_res.tracks_EQ_NA.coefmap.pdf"), width=12, height=5)
+opar = par(mfrow = c(1,2))
+# removing all automatic annotation tracks
+coefmap(res, tracks = NA)
+# customized plot
+coefmap(res, Colv = 'euclidean',
+        main = "Metagene contributions in each sample", labCol = NULL,
+        annRow = list(Metagene = ":basis"), 
+        #annCol = list(':basis', Class = a, Index = c),
+        annCol = list(':basis', #status = clin$OS, 
+                      year=clin$OS.time/365 ),
+        annColors = list(Metagene = 'Set2'), 
+        info = TRUE)
+par(opar)
+dev.off()
+
+
+
+
+
+(4) basismap: 基底矩阵(gene)
+pdf(paste0(outputRoot, keyword, "_03_A04_res.basismap.pdf"), width=8, height=6)
+opar <- par(mfrow=c(1,2))
+# default plot
+basismap(res)
+# customized plot: only use row special annotation track.
+basismap(res, main="Metagenes", 
+         #annRow=list(d, e), 
+         tracks=c(Metagene=':basis'))
+par(opar)
+dev.off()
+
+
+
+
+(5) consensusmap:一致性矩阵
+pdf(paste0(outputRoot, keyword, "_03_A05_res.consensusmap.pdf"), width=12, height=6)
+opar <- par(mfrow=c(1,2))
+# default plot
+consensusmap(res)
+# customized plot
+consensusmap(res, 
+             annCol=cell_info, 
+             annColors=list(status='orange'), 
+             labCol='sample ', 
+             main='Cluster stability', 
+             sub='Consensus matrix and all covariates')
+dev.off()
+
+
+
+=> 报错：Error: C stack usage  7969332 is too close to the limit
+https://stackoverflow.com/questions/14719349/error-c-stack-usage-is-too-close-to-the-limit
+
+$ ulimit -s # print default
+8192
+$ R --slave -e 'Cstack_info()["size"]'
+   size 
+8388608
+
+> Cstack_info()
+      size    current  direction eval_depth 
+   7969177      29216          1          2 
+
+$ ulimit -s
+8192
+
+修改:
+$ ulimit -s 16384 # enlarge stack limit to 16 megs
+$ R --slave -e 'Cstack_info()["size"]'
+    size 
+16777216 
+
+$ ulimit -s 102400 #设置为 105512M=105G?
+$ ulimit -s 5512384 #设置为 5512M=5G
+$ ulimit -s unlimited #采用
+
+$ /usr/local/bin/R --slave -e 'Cstack_info()["size"]'
+    size 
+62632755
+
+
+
+
+==> 权宜的解决方法：调整完毕后需要在终端中执行R脚本，这样才会应用到刚刚修改的配置信息
+$ ulimit -s unlimited
+$ R or Rscript xx.R #run in shell R then
+
+
+
+
+
+
+
+
+
+
+4. 同一方法，计算多个rank的结果
+res2_7 <- nmf(nmf.input.log2, 2:7, nrun=10, .options='v') #17:43->17:48
+
+pdf(paste0(outputRoot, keyword, "_04_res.rank2_7.consensusmap.pdf"), width=18, height=11)
+consensusmap(res2_7)
+plot(res2_7) #绘制7个折线图，判断最佳分类数
+dev.off()
+
+
+
+
+
+
+
+
+5. 单个rank，多种方法 ----
+res_methods <- nmf(nmf.input.log2, rank = 6, method = list('lee', 'brunet', 'nsNMF'), nrun=10) #17:52->17:55
+class(res_methods)
+# rank=6, good but 5 cluster
+# rank=5, very bad;
+
+#res.multi.method <- nmf(dat, 3, list('brunet', 'lee', 'ns'), seed=222)
+compare(res.multi.method) #输出表格
+
+
+pdf(paste0(outputRoot, keyword, "_05_res.methods3.consensusmap.pdf"), width=12, height=11)
+consensusmap(res_methods)
+dev.off()
+
+#
+#demo('aheatmap')
+
+
+
+
+
+
+
+6. 判断最佳分组：TCGA 样本作为输入
+
+dim(nmf.input.log2)
+nmf.input.log2[1:4, 1:4]
+
+
+## (1)第一步：尝试多个rank ----
+library(NMF)
+ranks <- 2:10
+estim <- lapply(ranks, function(r){
+  message("ranks=", r)
+  # nrun设置为5以免运行时间过长
+  fit <- nmf(nmf.input.log2, r, nrun = 5, seed = 4, method = "lee") 
+  
+  list(fit = fit, consensus = consensus(fit), .opt = "vp",coph = cophcor(fit))
+})
+
+names(estim) <- paste('rank', ranks)
+sapply(estim, '[[', 'coph')
+
+# 绘制随rank变化的cophenetic系数图
+#png("Cophenetic coefficient for seleting optimal nmf rank.png")
+pdf(paste0(outputRoot, keyword, "_06_A01_Cophenetic_coefficient.ranks.line.pdf"), width=5, height=4)
+par(cex.axis=1.2)
+plot(ranks, sapply(estim, '[[', 'coph'), 
+     xlab="", ylab="", type="b", 
+     col="red", lwd=3, xaxt="n")
+axis(side = 1, at=1:10)
+title(xlab="number of clusters", ylab="Cophenetic coefficient", 
+      mgp=c(2.2,1,0),
+      cex.lab=1.3)
+dev.off()
+# 理论上，根据 cophenetic 得分选择rank=N，因为它是拐点，但是常常也选择N-1作为最佳。
+
+
+
+
+## (2)第二步：筛选signature ----
+# 对样本聚类分组的基因
+rank <- 6
+seed <- 2019620
+#rownames(nmf.input) <- gsub("Signature","Sig",rownames(nmf.input)) # 行名简化
+mut.nmf <- nmf(nmf.input.log2, 
+               rank = rank, 
+               seed = seed, 
+               method = "lee")
+mut.nmf
+index <- extractFeatures(mut.nmf, "max")
+sig.order <- unlist(index) #只有第n个基因用于后续分析
+
+
+
+
+
+## (3)第三步：使用挑选出的signature再次NMF ----
+sig.order=sig.order[!is.na(sig.order)] #rm NA
+nmf.input.log2_b=nmf.input.log2[sig.order, ]
+dim(nmf.input.log2_b) #69 151
+#
+library(pheatmap)
+pdf(paste0(outputRoot, keyword, "_06_A03_select_signature.pheatmap.pdf"), width=5, height=9)
+pheatmap(nmf.input.log2_b, cluster_rows = T, cluster_cols = T,
+         #scale = "row",
+         show_colnames = F,
+         clustering_method = "ward.D2",
+         main="")
+dev.off()
+
+#
+mut.nmf2 <- nmf(nmf.input.log2_b, 
+                rank = rank, 
+                seed = seed, 
+                method = "lee") 
+group <- predict(mut.nmf2) # 提出亚型 **====>>> 对样本的分类结果，可用于后续分析
+table(group)
+length(group) #151 cells
+
+pdf(paste0(outputRoot, keyword, "_06_A04_select_signature.consensusmap.pdf"), width=4.5, height=5)
+consensusmap(mut.nmf2)
+consensusmap(mut.nmf2, 
+             annCol=cell_info, 
+             annColors=list(status='orange'), 
+             labCol='sample ', 
+             main='Cluster stability', 
+             sub='Consensus matrix and all covariates')
+dev.off()
+
+
+
+
+
+ref:
+https://blog.csdn.net/HappyRocking/article/details/42212155
+
+
+
+
+
+========================================
+聚类 及 最佳聚类数的确定 //toto
+----------------------------------------
+无监督聚类最常见的三种方法：K-means, 层次聚类, SOM 聚类。
+
+自组织映射(SOM clustering)
+
+
+
+silhouette [ˌsɪluˈet] n. （浅色背景衬托出的）暗色轮廓；剪影，（尤指人脸的）侧影；（人的）体形，（事物的）形状 v. 把……画成黑色轮廓像，使现出影像（或轮廓）
+
+
+一致性聚类(consensus clustering)
+
+
+
+Ref: 
+https://zhuanlan.zhihu.com/p/24546995
+
+
+
+
+========================================
+|-- 无监督聚类：K-means 及其可视化
+----------------------------------------
+无监督聚类最常见的三种方法：K-means, 层次聚类, SOM 聚类。
+
+1. 示例：对鸢尾花分类
+(1) 执行就一行
+dat=t(iris[,1:4]) #一列一个样本
+colnames(dat)=paste0(iris$Species, "_", 1:ncol(dat))
+dat[, 1:4]
+#             setosa_1 setosa_2 setosa_3 setosa_4
+#Sepal.Length      5.1      4.9      4.7      4.6
+#Sepal.Width       3.5      3.0      3.2      3.1
+#Petal.Length      1.4      1.4      1.3      1.5
+#Petal.Width       0.2      0.2      0.2      0.2
+
+
+# 选作：最佳分类个数
+factoextra::fviz_nbclust( t(dat), kmeans, method = "silhouette")
+
+
+# 聚类：对传入矩阵的行进行聚类
+kclu=kmeans(t(dat),centers=3)
+
+
+(2)查看和保存结果
+str(kclu)
+kclu$cluster |> head()
+
+plot(kclu$withinss, type="o")
+
+kclu.df=data.frame(
+	type=kclu$cluster |> names(),
+	cluster=kclu$cluster |> as.numeric(),
+	row.names = 1
+)
+head(kclu.df)
+write.table(kclu.df, paste0(outputRoot, keyword, "_01_0.Kmeans_cluster.txt"))
+
+
+
+(3) 可视化
+library("factoextra")
+fviz_cluster(kclu, data = t(dat))
+
+
+
+(4) 和真实标签比较
+> table(kclu$cluster, iris$Species)
+
+    setosa versicolor virginica
+  1     50          0         0
+  2      0          2        36
+  3      0         48        14
+
+
+(5) 最佳分类数的确定：轮廓系数法
+
+# 辅助确定最佳聚类数 4.7*2.6
+factoextra::fviz_nbclust( t(DPAU_2), kmeans, method = "silhouette")
+
+library(cluster)
+set.seed(101)
+pamclu=cluster::pam(t(DPAU_2), k=7)
+
+{
+	pdf( paste0(outputRoot, keyword, "_01_2.K_means.7.silhouette.pdf"), width=6, height=5)
+	df1=silhouette(pamclu)
+	df1=head(df1, n=nrow(df1)) |> as.data.frame()
+	plot(silhouette(pamclu), 
+		 col = df1$cluster +1,
+		 #xlim=c(min(df1$sil_width)-0.2, max(df1$sil_width))+0.2,
+		 main=NULL)
+	dev.off()
+}
+
+解释：
+> ?cluster::pam
+基于划分的聚类算法主要有K均值和K中心点算法，其他的方法都是这两种算法的变种。
+Partitioning Around Medoids
+Description: Partitioning (clustering) of the data into k clusters “around medoids”, a more robust version of K-means.
+
+
+
+
+
+
+
+
+
+
+2. 对变量做标准化很重要！
+
+(1)1. raw (错了好多)
+
+dat=iris[, 1:4]
+rownames(dat) = paste0("obs", 1:nrow(dat))
+dat[1:3,]
+
+km_model <- kmeans( dat, centers = 3)
+
+# 获取分类结果
+predictions <- km_model$cluster
+table(predictions)
+
+dat$origin=iris$Species
+dat$pred=predictions
+
+table(dat$origin, dat$pred)
+#           1  2  3
+#setosa      0  0 50
+#versicolor 48  2  0
+#virginica  14 36  0
+
+plot(dat$Sepal.Length, dat$Sepal.Width, col=dat$origin, pch=19)
+plot(dat$Sepal.Length, dat$Sepal.Width, col=dat$pred, pch=19)
+
+
+
+
+
+(2). normalize (几乎全对)
+
+dat=iris[, 1:4]
+rownames(dat) = paste0("obs", 1:nrow(dat))
+dat[1:3,]
+
+dat=apply(dat, 1, function(x){
+  x/sum(x) * 1e4
+}) |> t()  |> as.data.frame()
+head(dat)
+
+# 行作为观测值
+km_model <- kmeans( dat, centers = 3)
+
+# 获取分类结果
+predictions <- km_model$cluster
+table(predictions)
+
+dat$origin=iris$Species
+dat$pred=predictions
+
+table(dat$origin, dat$pred)
+#             1  2  3
+#setosa     50  0  0
+#versicolor  0 45  5
+#virginica   0  0 50
+
+
+
+
+
+
+
+3. 最佳分类数
+https://blog.csdn.net/qq_19600291/article/details/118308653
+https://blog.csdn.net/wangjunliang/article/details/144060572
+
+(0) 预处理数据
+dat=iris[, 1:4]
+rownames(dat) = paste0("obs", 1:nrow(dat))
+dat[1:3,]
+
+dat=apply(dat, 1, function(x){
+  x/sum(x) * 1e4
+}) |> t()  |> as.data.frame()
+head(dat)
+
+
+(1) factoextra - silhouette: n=2
+library(factoextra)
+tmp = factoextra::fviz_nbclust( dat, kmeans, method = "silhouette")
+#str(tmp)
+tmp #图
+
+# fviz_nbclust(dat, kmeans, method = "silhouette", k.max = 20)
+
+
+(2) 碎石图: n=2
+# 在一个循环中进行15次的kmeans聚类分析
+{
+	totalwSS=vector(mode = "numeric", 15)
+	for (i in 1:15){
+	  t1= kmeans(dat, i)
+	  totalwSS[i] <- t1$tot.withinss
+	}
+	# 聚类碎石图 - 使用plot函数绘制total_wss与no-of-clusters的数值。
+	plot(x=1:15,                         # x= 类数量, 1 to 15
+		 totalwSS,                      #每个类的total_wss值
+		 col="navy", lwd=2,
+		 type="b"                       # 绘制两点，并将它们连接起来
+	)
+}
+
+(3) silhouette 画图: n=2?
+逐个画:
+# 逐个画轮廓系数
+library(cluster)
+dis = dist(dat) #行之间的距离
+#
+n=3
+kclu <- kmeans(dat, centers = 3, nstart=25)
+kclu.sil=sortSilhouette( silhouette(kclu$cluster, dist = dis) )
+plot(kclu.sil, 
+     col =1:n, #c("red", "orange", "blue"), 
+     main="")
+
+#
+n=4
+#library(cluster)
+#dis = dist(dat) #行之间的距离
+kclu <- kmeans(dat, centers = n, nstart=25)
+kclu.sil=sortSilhouette( silhouette(kclu$cluster, dist = dis) )
+plot(kclu.sil, 
+     col =1:n, # c("red", "orange", "blue"), 
+     main="")
+#
+#
+n=8
+#library(cluster)
+#dis = dist(dat) #行之间的距离
+kclu <- kmeans(dat, centers = n, nstart=25)
+kclu.sil=sortSilhouette( silhouette(kclu$cluster, dist = dis) )
+plot(kclu.sil, 
+     col =1:n, # c("red", "orange", "blue"), 
+     main="")
+#
+
+批量计算：
+silhouette_score <- function(k){
+  km <- kmeans(dat, centers = k, nstart=25)
+  ss <- silhouette(km$cluster, dist(dat))
+  mean(ss[, 3])
+}
+k <- 2:15
+avg_sil <- sapply(k, silhouette_score)
+plot(k, avg_sil, 
+     type='b',
+     xlab='Number of clusters', ylab='Average Silhouette Scores', 
+     frame=FALSE)
+
+最大是2，其次是3类。
+
+根据本文图1，忽略颜色，只看数值分布，确实最佳是2类。
+	用标准化后的数据呢？
+	plot(dat, col=iris$Species, main="Normalized data")
+	plot(dat,main="Normalized data")
+	结论不变：如果忽略颜色，依旧是很清晰的2类。
+
+
+
+
+
+(4) pam 是一种更稳定的 kmeans
+Partitioning Around Medoids:
+Partitioning (clustering) of the data into k clusters “around medoids”, a more robust version of K-means.
+
+
+Ks=sapply(2:15, function(i){
+  summary(silhouette(pam(dat, k=i)))$avg.width
+})
+plot(2:15,Ks,xlab="k",ylab="av. silhouette",type="b", pch=19)
+
+
+效果：
+t1=pam(dat, k=3)
+> table(t1$clustering, iris$Species)   
+    setosa versicolor virginica
+  1     50          0         0
+  2      0         44         0
+  3      0          6        50
+还是有几个错的。
+
+
+
+
+
+
+========================================
+|-- 无监督聚类：层次聚类
+----------------------------------------
+无监督聚类最常见的三种方法：K-means, 层次聚类, SOM 聚类。
+
+1. 单细胞的聚类
+
+(1) 求距离
+
+1) dist() 函数 求距离，求行之间的距离
+
+在R基础包stat中已经包含了一个可以计算所有样本对之间的距离的函数dist(),dist()函数可用的距离有，“euclidean”、“maximum”、“manhattan”、“canberra”、“binary”或“minkowski”等。。
+
+dist(x, method = "euclidean", diag = FALSE, upper = FALSE, p = 2)
+
+
+因为我们需要的是细胞之间的距离，所以，需要对原始的表达矩阵进行转置。
+d <- dist(t(alldata@reductions[["pca"]]@cell.embeddings), method = "euclidean")
+
+
+=> 实例: 求行之间的距离
+dat=iris;
+rownames(dat) = paste0(dat$Species, 1:nrow(dat))
+head(dat)
+
+d2=dist(dat[, 1:4]); d2
+
+##
+clst= hclust(d2, method = "ward.D2")
+plot(clst)
+
+
+
+
+2) cor() 函数 求相关
+
+除了dist()计算的距离以外，我们还可以利用 cor() 计算细胞之间的相关性从而评估细胞之间的联系，但是相关性系数是从-1到1，其中小于0的数值在距离上并没有意义，所以，这个时候，我们需要做一些转换，把相关性系数转换为距离对象，这时候我们通过一个公式 
+adj = (1 − cor(x) ) / 2
+将其转换为邻接矩阵。
+
+# 计算相关性
+sample_cor <- cor(Matrix::t(alldata@reductions[["pca"]]@cell.embeddings))
+# 转换为邻接矩阵
+sample_cor <- (1 - sample_cor)/2
+# 转换为距离对象
+d2 <- as.dist(sample_cor)
+
+
+=> 实例：
+dat=iris;
+rownames(dat) = paste0(dat$Species, 1:nrow(dat))
+
+dat_cor = cor( t(dat[,1:4]) ) #按列求相关
+#max(dat_cor); min(dat_cor)
+
+dat_cor <- (1 - dat_cor)/2
+
+d2b=as.dist(dat_cor)
+
+##
+clst2=hclust(d2b, method="ward.D2")
+plot(clst2)
+
+
+
+
+(2) 层次聚类
+在计算完距离之后，就可以使用hclust函数进行层次聚类了，其中可以使用的方法有：“ward.D”、“ward.D2”、“single”、“complete”、“average”、“mcquitty”、“median”或“centroid”。这里仅展示"ward.D2"方法。
+
+
+#1) euclidean，欧氏距离
+h_euclidean <- hclust(d2, method = "ward.D2")
+> table(cutree(h_euclidean,3), iris$Species )
+    setosa versicolor virginica
+  1     50          0         0
+  2      0         49        15
+  3      0          1        35
+
+绘图，圈出来可能的分类：
+plot(h_euclidean)
+rect.hclust(h_euclidean, k = 3, border =c("#E41E25", "#FBD800", "#208A41") )
+
+
+
+#2) correlation，相关性距离
+h_correlation <- hclust(d2b, method = "ward.D2")
+plot(h_correlation) #效果不好
+> table(cutree(h_correlation,3), iris$Species )
+    setosa versicolor virginica
+  1     50          0         0
+  2      0         33         0
+  3      0         17        50
+
+
+
+(3) 确定类型数
+创建完树状图后，我们紧接着就是去定义哪些样本属于哪些集群，即在不同的级别以固定的阈值（cuttree）切割树以定义集群，从而定义集群的数量和高度，也可以尝试不同的集群。
+
+> rs = cutree(h_euclidean,k = 3)
+> str(rs)
+ Named int [1:150] 1 1 1 1 1 1 1 1 1 1 ...
+ - attr(*, "names")= chr [1:150] "setosa1" "setosa2" "setosa3" "setosa4" ...
+> head(rs)
+setosa1 setosa2 setosa3 setosa4 setosa5 setosa6 
+      1       1       1       1       1       1 
+> table(rs, iris$Species)
+rs  setosa versicolor virginica
+  1     50          0         0
+  2      0         49        15
+  3      0          1        35 
+#
+
+
+
+
+
+用于单细胞数据：
+#euclidean distance
+alldata$hc_euclidean_5 <- cutree(h_euclidean,k = 5)
+alldata$hc_euclidean_10 <- cutree(h_euclidean,k = 10)
+alldata$hc_euclidean_15 <- cutree(h_euclidean,k = 15)
+
+#correlation distance
+alldata$hc_corelation_5 <- cutree(h_correlation,k = 5)
+alldata$hc_corelation_10 <- cutree(h_correlation,k = 10)
+alldata$hc_corelation_15 <- cutree(h_correlation,k = 15)
+
+library(ggplot2)
+library(cowplot)
+plot_grid(ncol = 3,
+  DimPlot(alldata, reduction = "umap", group.by = "hc_euclidean_5")+ggtitle("hc_euc_5"),
+  DimPlot(alldata, reduction = "umap", group.by = "hc_euclidean_10")+ggtitle("hc_euc_10"),
+  DimPlot(alldata, reduction = "umap", group.by = "hc_euclidean_15")+ggtitle("hc_euc_15"),
+
+  DimPlot(alldata, reduction = "umap", group.by = "hc_corelation_5")+ggtitle("hc_cor_5"),
+  DimPlot(alldata, reduction = "umap", group.by = "hc_corelation_10")+ggtitle("hc_cor_10"),
+  DimPlot(alldata, reduction = "umap", group.by = "hc_corelation_15")+ggtitle("hc_cor_15")
+
+
+
+
+Ref:
+https://blog.csdn.net/songyi10/article/details/126536239
+
+
+
+========================================
+|-- 无监督聚类：Self Organizing Maps (SOM) 一种基于神经网络的聚类算法 //todo
+----------------------------------------
+无监督聚类最常见的三种方法：K-means, 层次聚类, SOM 聚类。
+
+另见 python/ 机器学习
+
+
+
+
+
+
+========================================
+|** 聚类算法常用内部评价指标：轮廓系数、肘部法（Elbow Method）、Gap statistic、Calinski-Harabasz Index（CH）、Davies-Bouldin Index（DB）
+----------------------------------------
+https://blog.csdn.net/xiaolong124/article/details/126345406
+
+
+Determining optimal number of clusters (k)
+* Elbow Method
+* Silhouette Method
+* Gap Static Method
+
+
+
+
+
+========================================
+|-- 无监督聚类数的评价: 肘部法（Elbow Method）
+----------------------------------------
+肘部法（Elbow Method）：该方法通过绘制聚类簇数与聚类内部平方和（Within-cluster Sum of Squares，WCSS）之间的关系图来确定最佳簇数。通过观察图形的肘部弯曲点，选择该点对应的簇数作为最佳簇数。
+
+
+x=t(iris[,1:4])
+
+library(cluster)
+wss = sapply(1:10, function(k){kmeans( t(x), k)$tot.withinss})
+plot(1:10, wss, type="b", xlab="Number of clusters", ylab="WCSS")
+
+
+
+
+
+========================================
+|-- 无监督聚类数的评价: Gap statistic
+----------------------------------------
+
+library(cluster)
+set.seed(101)
+# define the clustering function
+pam1 <- function(x,k){
+  list(cluster = pam(x,k, cluster.only=TRUE))
+}
+
+# calculate the gap statistic
+mat=t(iris[, 1:4])
+pam.gap= clusGap(t(mat), FUN = pam1, K.max = 8, B=50)
+
+# plot the gap statistic accross k values
+plot(pam.gap, main = "Gap statistic for the 'Leukemia' data")
+
+
+选择方法：达到最大值的最小k。
+
+Formally written, we would pick the smallest k satisfying the following condition:  
+Gap(k)≥Gap(k+1)−s(k+1), where  s(k+1)  is the simulation error for Gap(k+1).
+
+
+
+
+ref:
+https://compgenomr.github.io/book/clustering-grouping-samples-based-on-their-similarity.html#how-to-choose-k-the-number-of-clusters
+
+
+
+
+========================================
+|-- 无监督聚类数的评价: 轮廓系数(silhouette Coefficient)
+----------------------------------------
+==> 文章实例
+https://pubmed.ncbi.nlm.nih.gov/32929364/ Fig2
+(A) Consensus heatmaps showing the robustness of sample classification using non-negative matrix factorization (NMF) clustering. 
+(B) Silhouette plot displaying the composition (n = number of samples) and stability (average width) of clustering. 
+
+
+
+1.轮廓系数 （Silhouette Coefficient）
+对于一个样本集合，它的轮廓系数是所有样本轮廓系数的平均值。
+轮廓系数的取值范围是[-1,1]，同类别样本距离越相近，不同类别样本距离越远，分数越高。
+
+(1) 定义
+https://baike.baidu.com/item/轮廓系数/17361607
+
+针对某个样本的轮廓系数s为：
+	s=(b-a) / max(a,b)
+	其中,a表示某个样本与其所在簇内其他样本的平均距离，
+	b表示某个样本与其他簇样本的平均距离。
+
+聚类总的轮廓系数SC为：
+	SC=累加(i=1,N, si) / N;
+
+
+
+
+(2)R包cluster::silhouette 函数 计算方法
+n个样本分成 defined if 2 <= k <= n-1 才可以计算轮廓系数。
+
+For each observation i, the silhouette width s(i) is defined as follows:
+Put a(i) = average dissimilarity between i and all other points of the cluster to which i belongs (if i is the only observation in its cluster, s(i) := 0 without further calculations). For all other clusters C, put d(i,C) = average dissimilarity of i to all observations of C. The smallest of these d(i,C) is b(i) := \min_C d(i,C), and can be seen as the dissimilarity between i and its “neighbor” cluster, i.e., the nearest one to which it does not belong. Finally,
+
+s(i) := ( b(i) - a(i) ) / max( a(i), b(i) ).
+
+silhouette.default() is now based on C code donated by Romain Francois (the R version being still available as cluster:::silhouette.default.R).
+
+Observations with a large s(i) (almost 1) are very well clustered, a small s(i) (around 0) means that the observation lies between two clusters, and observations with a negative s(i) are probably placed in the wrong cluster.
+
+
+a)可见轮廓系数的值是介于 [-1,1] ，越趋近于1代表内聚度和分离度都相对较优。
+将所有点的轮廓系数求平均，就是该聚类结果总的轮廓系数：Average silhouette
+a(i) ：i向量到同一簇内其他点不相似程度的平均值
+b(i) ：i向量到其他簇的平均不相似程度的最小值
+
+注：不相似程度 == (某种)距离
+
+b)最佳聚类数的确定
+轮廓系数是类的密集与分散程度的评价指标。
+
+s(i) = [b(i) -a(i)] / max(a(i), b(i))
+
+a(i)是测量i与组内的相似度，b(i)是测量i与组间的相似度。
+s(i)范围从-1到1，值越大说明组内吻合越高，组间距离越远——也就是说，轮廓系数值越大，聚类效果越好。
+
+注意：
+* 上部分中所说的“距离”，指的是不相似度（区别于相似度）。“距离“值越大，代表不相似度程度越高。
+* 欧氏距离就满足这个条件，而Tanimoto Measure 则用做相似度度量。
+* 当簇内只有一点时，我们定义轮廓系数s(i)为0。
+
+
+
+
+
+
+
+
+2. 代码实现: python 核心代码
+    def silhouette_coefficient(self, data_num, cluster, dis_matrix):
+        sum = 0
+        for index in range(data_num):
+            cluster_in = 0
+            cluster_in_num = 0
+            cluster_out = 0
+            cluster_out_num = 0
+            for class_index in range(len(cluster)):
+                if index == class_index:
+                    continue
+                elif cluster[index] == cluster[class_index]:
+                    cluster_in_num += 1
+                    cluster_in += dis_matrix[index][class_index]
+                else:
+                    cluster_out_num += 1
+                    cluster_out += dis_matrix[index][class_index]
+            sum += (cluster_out / cluster_out_num - cluster_in / cluster_in_num) / max(cluster_out / cluster_out_num,
+                                                                                       cluster_in / cluster_in_num)
+        sc = sum / data_num
+        return sc
+
+轮廓系数为-1时表示聚类结果不好，
+为+1时表示簇内实例之间紧凑，
+为0时表示有簇重叠。
+
+轮廓系数越大，表示簇内实例之间紧凑，簇间距离大，这正是聚类的标准概念。
+- 簇内的样本应该尽可能相似。
+- 不同簇之间应该尽可能不相似。
+
+
+对于簇结构为凸的数据轮廓系数值高，而对于簇结构非凸需要使用DBSCAN进行聚类的数据，轮廓系数值低。
+因此，轮廓系数不应该用来评估不同聚类算法之间的优劣，比如Kmeans聚类结果与DBSCAN聚类结果之间的比较。
+
+
+应用
+轮廓系数广泛应用于各种聚类算法的性能评估和比较，如K均值聚类、层次聚类、DBSCAN等。它也被用于确定最佳的聚类数目和帮助解释聚类结果。
+
+
+https://blog.csdn.net/xiaolong124/article/details/126345406
+
+
+
+
+
+
+3. R代码实现
+(1) 
+a)Average silhouette values for k-medoids clustering for k values between 2 and 7
+library(cluster)
+set.seed(101)
+mat= t(iris[,1:4])
+pamclu=cluster::pam(t(mat),k=3)
+plot(silhouette(pamclu),main=NULL)
+
+
+
+b)Silhouette values for k-medoids with k=2 to 7
+
+mat= t(iris[,1:4])
+Ks=sapply(2:7, function(i){
+  summary(silhouette(pam(t(mat),k=i)))$avg.width
+})
+plot(2:7,Ks,xlab="k",ylab="av. silhouette",type="b", pch=19)
+下跌前的最后一个最高点对应的k。
+
+
+
+
+
+(2)示例: pam, k=7
+
+library(factoextra)
+fviz_nbclust(dataset, kmeans, method = "silhouette")
+
+
+library(cluster)
+set.seed(101)
+pamclu=cluster::pam(t(DPAU_2), k=7)
+
+{
+	pdf( paste0(outputRoot, keyword, "_01_2.K_means.7.silhouette.pdf"), width=6, height=5)
+	df1=head(df1, n=nrow(df1)) |> as.data.frame()
+	plot(silhouette(pamclu), 
+		 col = df1$cluster +1,
+		 #xlim=c(min(df1$sil_width)-0.2, max(df1$sil_width))+0.2,
+		 main=NULL)
+	dev.off()
+}
+
+
+
+(3) kmeans 的轮廓系数图, kmeans, k=5
+dat=DPAU_2
+kclu=kmeans(t(dat), centers=5)
+
+#kclu$clustering=kclu$cluster #add this list element: clustering
+distance=dist( t(dat) )  #10min
+kclu.sil=sortSilhouette( silhouette(kclu$cluster, dist = distance ) )
+#rownames(kclu.sil)=colnames(dat)
+head(kclu.sil)
+#     cluster neighbor sil_width
+#1226       1        2 0.1124117
+#991        1        2 0.1113240
+pdf( paste0(outputRoot, keyword, "_01_2.K_means.5.silhouette.pdf"), width=6, height=5)
+df1=kclu.sil
+df1=head(df1, n=nrow(df1)) |> as.data.frame()
+plot(kclu.sil, 
+     col = rev(df1$cluster+1),
+     do.col.sort=F,
+     main=NULL)
+
+factoextra::fviz_silhouette(kclu.sil)
+dev.off()
+
+
+
+# 方法2: 
+library(cluster)
+library(factoextra)
+sil = silhouette(kmeans(x,3))
+summary(sil)
+fviz_silhouette(sil)
+
+
+Silhouette Method of kmeans: https://medium.com/codesmart/r-series-k-means-clustering-silhouette-794774b46586
+例1 x:number of cluster, y:Average Silhouette Scores
+silhouette_score <- function(k){
+  km <- kmeans(df, centers = k, nstart=25)
+  ss <- silhouette(km$cluster, dist(df))
+  mean(ss[, 3])
+}
+k <- 2:10
+avg_sil <- sapply(k, silhouette_score)
+plot(k, type='b', avg_sil, xlab='Number of clusters', ylab='Average Silhouette Scores', frame=FALSE)
+
+# 另一种画法，图同上
+factoextra::fviz_nbclust(df, kmeans, method='silhouette')
+
+
+# Actual Clustering
+km.final <- kmeans(df, 2)
+## Total Within cluster sum of square
+
+km.final$tot.withinss
+[1] 113217528521
+## Cluster sizes
+
+km.final$size
+[1] 375  65
+
+data$cluster <- km.final$cluster
+head(data, 6)
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+(4) 层次聚类的轮廓系数图, hclust, k=5
+
+dat=DPAU_2
+distance=dist( t(dat) ) 
+out.hclust=hclust(distance, method = "ward.D2")
+
+# visual
+pdf( paste0(outputRoot, keyword, "_01_2.hclust.4.silhouette.pdf"), width=6, height=5)
+plot(out.hclust,
+     #hang = -1,
+     #hang=0.1,
+     hang=0,
+     ann=F, axes=F, 
+     labels = F, #no labels
+     cex = 0.7,
+     col = "grey20")
+rect.hclust( out.hclust, k=4, border = c("#FF6B6B", "#4ECDC4", "#556270", "deeppink") )
+# sil plot
+out.hclust.D2=cutree(out.hclust, k=4)
+sil_hclust=sortSilhouette(silhouette(out.hclust.D2, distance))
+rownames(sil_hclust) = rownames(as.matrix(distance))[attr(sil_hclust, 'iOrd')]
+#
+plot(sil_hclust, 
+     col=out.hclust.D2[rownames( head(sil_hclust, n=nrow(sil_hclust)) )]+1,
+     main=attr(sil_hclust, "call") |> deparse() )
+dev.off()
+
+
+
+不绘制样本名：
+mat=t(iris[,1:4])
+hcl=hclust(dist(t(mat)))
+plot(hcl,labels = FALSE, hang= -1)
+#rect.hclust(hcl, h = 80, border = "red")
+rect.hclust(hcl, k=3, border = c("red", "orange", "cyan") )
+
+
+
+
+
+
+
+(5) NMF 的轮廓图
+http://www.idata8.com/rpackage/NMF/silhouette.NMF.html
+plot(silhouette(res))
+
+示例: 
+pdf(paste0(outputRoot, keyword, "_03_rank_3.silhouette.pdf"), width=5.5, height=5.5)
+# no color
+#sil_3=silhouette(res_3)
+#plot(sil_3)
+
+#set color
+sil_3C=sortSilhouette( silhouette(res_3) )
+df1=sil_3C
+df1=head(df1, n=nrow(df1)) |> as.data.frame()
+plot(sil_3C, 
+     col=(df1$cluster+1),
+     main=attr(sil_3C, "call") |> deparse() )
+dev.off()
+
+
+
+
+
+ref:
+[1] Rousseeuw, P.J. (1987) Silhouettes: A graphical aid to the interpretation and validation of cluster analysis. J. Comput. Appl. Math., 20, 53-65.
+[2] chapter 2 of Kaufman and Rousseeuw (1990), see the references in plot.agnes.
+
+
+
+
+
+
+
+
+
+
+========================================
+|-- 无监督聚类数的评价：一致性聚类（consensus），通俗理解： 随机抽样后，两两样品在一个分类的概率
+----------------------------------------
+1. 初次遇到
+
+https://pubmed.ncbi.nlm.nih.gov/32929364/ Fig.2A
+
+原始文献：
+Monti,S., et al. (2003) Consensus clustering: A resampling-based method for class discovery and visualization of gene microarray, Mach Learn,52, 91-118
+
+
+
+
+
+
+
+
+2. 作用
+https://blog.csdn.net/nixiang_888/article/details/122224201
+
+当我们听到一致性聚类的时候，有时候我们会认为这是一种聚类方法。如果您也这样想的话，那就完全入坑了。下面我们来说一下，什么是一致性聚类（consensus）?
+
+一致性聚类是为不同的聚类算法，选择最优的聚类数量（K）。其具体的原理是：通过改变聚类的数据集（里面的数据全部从原始数据中抽取，也可以理解为是原始数据的子集），考量任意一个数据在不同样本中聚类表现的一致性来确定聚类的参数是否合适。
+
+
+第一步：从原始数据中随机抽取子集，当然子集的规模不能太小，最好是原始数据集的半数以上（这是我自己理解的，数据太少聚类的话没有意义），子集要尽量多，以确保里面的每一个数据都多次被取到（100次以上），然后，我们选择任意一种聚类方法，可以使K-means或者层次聚类，对所有的数据子集分别聚类。
+
+第二步：这一步的关键在于建立一个新的矩阵：consensus matrix， 我们之前说聚类的输入通常是一个distance matrix。 那么consensus matrix怎么建呢？假设有D_1，D_2...D_n 这N个数据，那么consensus matrix是 N × N N \times NN×N 的方阵。
+D1 D2 D3… Dn
+D1 C11 C12 C13… C1n
+D2 C21 C22 C23… C2n
+… Cij
+Dn Cn1 Cn2 Cn3… Cnn
+
+其中，Cij 代表的是在多次的聚类过程中，数据 Di 和数据 Dj 被聚到同一类里面的概率（该值在0和1之间），
+等于1代表100次聚类这两个数据点全部在同一个类里面，
+等于0代表代表100次聚类全部不在同一个类里面。
+
+我们取不同的k值时，显然聚类效果不同，越是干净，越是效果好；不好的聚类参数则表现出越是有很多“噪音”。
+
+有些情况下，仅仅通过看不同参数下consensus matrix聚类出来的热图就基本可以判断怎么选择了。当然还有根据consensus matrix得来的数学参数用于评估聚类的稳定性的
+
+
+
+
+
+
+
+
+3. 步骤
+https://blog.csdn.net/qq_30057549/article/details/88351895
+
+for i in 1:k 
+    for each iter:
+        - 随机取子集
+        - 运行聚类算法
+        - 保存聚类标签
+    创建一致性矩阵 D.k 
+依赖一致性分布，返回 最佳 D.k
+
+
+https://blog.csdn.net/nixiang_888/article/details/122224201
+
+对原始数据抽样 100 次，聚类。
+计算 一致性矩阵 consensus matrix：
+    行列都是样本名，
+    行列交叉的值是：每次聚类 两两样品 聚到一个类中的概率。
+        （该值在0和1之间），等于1代表100次聚类这两个数据点全部在同一个类里面，等于0代表代表100次聚类全部不在同一个类里面。
+使用 层次聚类 画出 consensus matrix。
+
+
+好的聚类方法会得到怎么样的consensus matrix呢？
+对了，全部由0或1组成的方阵，代表着那些很像的数据总在一类，而不像的数据则总是不在一类，这正符合了聚类的初衷是吧。
+再对consensus matrix做一次聚类(这里用层次聚类方便可视化）
+- 我们取不同的k值时，显然聚类效果不同，越是干净，越是效果好；
+- 不好的聚类参数则表现出越是有很多“噪音”。
+
+
+
+
+
+4. NMF 拟合实例 
+一致性矩阵：consensusmap
+当使用NMF进行矩阵的时候，一种评估基于指定rank评估聚类稳定性的方法是考虑由多个独立NMF运行结果计算得到的连接矩阵。
+
+(1) 单个拟合
+我们所用数据res设定的参数是nrun=10，因此包含了10次运行得到的最佳结果以及基于所有运行的一致性矩阵。
+
+opar <- par(mfrow=c(1,2))
+# default plot
+consensusmap(res)
+
+# customized plot
+consensusmap(res, annCol=covariates, annColors=list(c='blue')
+    , labCol='sample ', main='Cluster stability'
+    , sub='Consensus matrix and all covariates')
+par(opar)
+
+
+(2) 同一个方法，计算多个rank的结果
+函数nmf可以接受一组rank序列用来拟合多个不同的rank的结果。
+res2_7 <- nmf(X, 2:7, nrun=10, .options='v')
+
+然后可以同样的画图
+consensusmap(res2_7)
+
+
+(3) 单个rank，多种方法
+可以比较同一rank不同方法的结果。
+
+res_methods <- nmf(X, 3, list('lee', 'brunet', 'nsNMF'), nrun=10)
+class(res_methods)
+consensusmap(res_methods)
+
+
+通用热图引擎：aheatmap
+还有很多自定义画热图的例子，使用下面的命令查看。
+
+demo('aheatmap')
+# or
+demo('heatmaps')
+
+
+ref:
+https://www.jianshu.com/p/f5cbbe771ce2
+
+
+
+
+
+
+
+
+
+
+
+
+========================================
+R语言与神经网络 //todo
+----------------------------------------
+
+
+
+
+
+ref:
+R语言 建立一个简单的神经网络 https://geek-docs.com/r-language/r-tutorials/g_building-a-simple-neural-network-in-r-programming.html
+
+
+
+
+
+
+========================================
 ****** 广告 ******
 ----------------------------------------
 
@@ -2638,9 +6060,6 @@ https://mp.weixin.qq.com/s?__biz=MjM5MDc0NDU2NQ==&mid=2650376120&idx=1&sn=bac5fd
 ========================================
 |-- 文章实例：解决的问题，及用到的机器学习方法
 ----------------------------------------
-
-
-
 1.[4.856, 2019] 核磁图像提高宫颈癌淋巴结转移的诊断效果
 
 Radiother Oncol. 2019 Jun 25;138:141-148. doi: 10.1016/j.radonc.2019.04.035. [Epub ahead of print]

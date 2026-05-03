@@ -1,9 +1,19 @@
 单细胞进阶分析主要是
-	- 拟时序分析：
-	- 细胞通讯分析：
-	- SCENIC转录因子分析：
-	- RNA Velocity 分析：
 	- 数据整合
+
+	- inferCNV 拷贝数变异推断
+
+	- 拟时序分析：
+	- 细胞通讯分析 cellChat
+	- RNA Velocity 分析：
+	- SCENIC 转录因子分析：
+
+	- scMetabolism 和 SCPA 代谢分析
+	- 单细胞联合Bulk反卷积
+	- 单细胞联合Bulk表型分析
+	- 单细胞联合空转 CellTrek 分析
+	- 宿主-微生物组相互作用的单细胞分析(SAHMI)
+
 
 https://github.com/DawnEve/scRNAseqCode
 
@@ -18,6 +28,1921 @@ https://github.com/DawnEve/scRNAseqCode
 
 单细胞分析十八般武艺
 https://mp.weixin.qq.com/mp/appmsgalbum?__biz=MzIyMzMwNDQ2MA==&action=getalbum&album_id=1593332494622359552
+
+
+
+
+
+
+
+========================================
+NMF 非负矩阵降维 && RunUMAP 使用NMF代替PCA聚类，使用 Leiden 算法
+----------------------------------------
+这里只是代码，解释见 R/R05-MachineLearning.txt 机器学习
+
+- 5000个细胞的测试时间可能超过10个小时。
+- 30k cells: 5days!!
+
+#2. cluster with NMF----
+scObj = NormalizeData(scObj) %>% FindVariableFeatures() %>% ScaleData()
+	
+	* 是否可以使用 ScaleData(center=F)
+	* 或者使用 normalize的数据，这样没有负数
+
+vm <- scObj@assays$RNA@scale.data
+vm[vm < 0] <- 0
+dim(vm)
+
+vm <- vm[apply(vm, 1, var) > 0, ]
+dim(vm)
+
+
+library(NMF)
+if(0){
+  res <- nmf(vm, rank=15, 
+             nrun=1,
+             method = "snmf/r", seed = 'nndsvd')
+  saveRDS(res, file=paste0(outputRoot, "/data/BMMC_04_NMF_res_noPost.list.Rds"), compress = F)
+  Sys.time()
+}else{
+  res = readRDS( file=paste0(outputRoot, "/data/BMMC_04_NMF_res_noPost.list.Rds") )
+}
+res
+
+
+## add to Seurat obj ----
+scObj <- RunPCA(scObj)
+scObj@reductions$nmf <- scObj@reductions$pca
+scObj@reductions$nmf@cell.embeddings <- t(coef(res))
+scObj@reductions$nmf@feature.loadings <- basis(res)  
+#
+#
+colnames(scObj@reductions$nmf@cell.embeddings) = paste0("NMF_", 1:ncol(scObj@reductions$nmf@cell.embeddings))
+scObj@reductions$nmf@key="NMF_"
+
+
+## UMAP based on NMF ----
+set.seed(2023)
+scObj.nmf <- RunUMAP(scObj, reduction = 'nmf', dims = 1:15) %>% 
+  FindNeighbors(reduction = 'nmf', dims = 1:15)
+#
+
+
+## Leiden algorithm ----
+# system("pip3 install leidenalg -i https://pypi.douban.com/simple/")
+
+# set Python version
+library("reticulate")
+use_python("/home/wangjl/software/anaconda3/bin/python3", required = T)
+py_config()
+system("pip3 -V")
+system("which pip3")
+system("pip3 list | grep leidenalg")
+
+# Leiden
+scObj.nmf = FindClusters(scObj.nmf, resolution = 0.5, algorithm=4) #1 分出来， 0.45差不多
+DimPlot(scObj.nmf, label = T, raster = T, pt.size = 1.5)+ggtitle("NMF res=0.5 Leiden")
+ggsave( paste0(outputRoot, "04_NMF_UMAP.pdf"), width=4.8, height=4, useDingbats = F)
+
+showCluster(scObj.nmf, 19)
+
+DotPlot(scObj.nmf, features = unique( c( "PLK1",
+  grep("^SOCS", rownames(scObj.nmf), value=T),
+  grep("^CCN", rownames(scObj.nmf), value=T)
+) ) )+RotatedAxis()
+
+
+
+
+
+
+
+
+========================================
+|-- 实例：对 pbmc3k 数据用 NMF 做分群
+----------------------------------------
+
+(1) 基于PCA分解的降维聚类
+library(Seurat)
+library(tidyverse)
+library(NMF)
+rm(list = ls())
+ 
+## 创建seurat对象
+pbmc <- Read10X_h5("pbmc.h5")
+pbmc <- CreateSeuratObject(pbmc, project = "pbmc", min.cells = 3, min.features = 500)
+pbmc$percent.mt <- PercentageFeatureSet(pbmc, pattern = "^MT-")
+pbmc <- subset(pbmc, percent.mt<20)
+pbmc <- NormalizeData(pbmc) %>% FindVariableFeatures() %>% ScaleData(do.center = F)
+ 
+## 使用pca的分解结果降维聚类
+pbmc <- RunPCA(pbmc)
+set.seed(219)
+pbmc.pca <- RunUMAP(pbmc, dims = 1:15) %>% FindNeighbors(dims = 1:15) %>% FindClusters()
+ 
+## 结果可视化
+p <- DimPlot(pbmc.pca, label = T)   ggsci::scale_color_igv()
+ggsave("pbmc_pca.png", p, width = 9, height = 6)
+p <- FeaturePlot(pbmc.pca, features = c('CD3D', 'CD3E', 'MS4A1', 'CD79A', 'GNLY', 'NKG7', 'CD14', 
+                                        'FCGR3A', 'PPBP', 'FCER1A', 'CD4', 'CD8A'), ncol = 4)
+ggsave("pbmc_pca_markers.png", p, width = 12, height = 8)
+
+
+
+(2) 基于NMF分解的降维聚类
+## 高变基因表达矩阵的分解
+# pbmc大体可分成T，B，NK，CD14 Mono，CD16 Mono，DC，Platelet等类型，考虑冗余后设置rank=10
+vm <- pbmc@assays$RNA@scale.data
+
+## ==> 直接做 NMF 会报错，因为 起始矩阵有负数。
+# 错误: NMF::nmf - Input matrix x contains some negative entries.
+# 过滤
+vm[vm < 0] <- 0 #负数设置为 0
+dim(vm)
+vm <- vm[apply(vm, 1, var) > 0, ] #全是0的行去掉
+dim(vm)
+
+
+res <- nmf(vm, 10, method = "snmf/r", seed = 'nndsvd')  #这一步大约20-60min
+# 其他例子中用到的参数： nmf(data, rank = r, nrun = 1, seed = 'ica', method = 'nsNMF') #nsNMF更慢，需要2个小时
+# # 默认交替最小二乘法(Alternating Least Squares(ALS))——snmf/r  
+# 参数rank=，是期望的细胞亚群数量
+
+runtime(res)
+#    用户     系统     流逝 
+#1063.147   78.019 1139.831 
+
+# 查看结果：
+plot(t(coef(res) ), 
+     col= scObj$seurat_clusters)
+head(basis(res))
+
+
+
+## 分解结果返回suerat对象
+pbmc@reductions$nmf <- pbmc@reductions$pca
+pbmc@reductions$nmf@cell.embeddings <- t(coef(res))    
+pbmc@reductions$nmf@feature.loadings <- basis(res)  
+ 
+## 使用nmf的分解结果降维聚类
+set.seed(219)
+pbmc.nmf <- RunUMAP(pbmc, reduction = 'nmf', dims = 1:10) %>% 
+  FindNeighbors(reduction = 'nmf', dims = 1:10) %>% FindClusters(resolution = 0.8)
+
+## 结果可视化  
+p <- DimPlot(pbmc.nmf, label = T)   ggsci::scale_color_igv()
+ggsave("pbmc_nmf.png", p, width = 9, height = 6)
+p <- FeaturePlot(pbmc.nmf, features = c('CD3D', 'CD3E', 'MS4A1', 'CD79A', 'GNLY', 'NKG7', 'CD14', 
+                                        'FCGR3A', 'PPBP', 'FCER1A', 'CD4', 'CD8A'), ncol = 4)
+ggsave("pbmc_nmf_markers.png", p, width = 12, height = 8)
+
+
+
+(3) NMF因子可解释性探索
+对比PCA分析的结果，NMF虽然毫不逊色，但是它的运行时间更长。（1min vs 1h）
+
+我们为什么要用NMF呢？一个很重要的原因是NMF的因子可解释性更强，每个因子贡献度最大的基因基本代表了某种或某个状态细胞的表达模式，相比差异分析得到marker基因更有代表性。
+
+
+(4) NMF因子与细胞类型的关系
+## 人工定义细胞类型
+pbmc.nmf$celltype <- pbmc.nmf$seurat_clusters
+pbmc.nmf$celltype <- recode(pbmc.nmf$celltype,
+                            '1' = "B cells", 
+                            '5' = "NKs", 
+                            '10' = "CD8  T", 
+                            '6' = "CD8  T", 
+                            '4' = "CD4  T",
+                            '9' = "CD4  T", 
+                            '0' = "CD4  T", 
+                            '3' = "CD4  T", 
+                            '7' = "CD4  T", 
+                            '2' = "CD14  Mono",
+                            '8' = "CD14  Mono", 
+                            '11' = "CD16  Mono", 
+                            '12' = "DCs", 
+                            '13' = "Platelet", 
+                            '14' = "Unknown")
+p <- DimPlot(pbmc.nmf, group.by = 'celltype', label = T, label.size = 3) 
+    +  ggsci::scale_color_npg(alpha = 0.6)
+ggsave("pbmc_nmf_celltype.png", p, width = 9, height = 6)
+
+
+
+## 查看细胞因子上的荷载
+tmp <- data.frame(t(coef(res)), check.names = F)
+colnames(tmp) <- paste0("factor", 1:ncol(tmp))
+pbmc.nmf <- AddMetaData(pbmc.nmf, metadata = tmp) #给 str(pbmc.nmf@meta.data) 添加若干列
+
+p4 <- FeaturePlot(pbmc.nmf, features = paste0("factor", 1:11), ncol = 4); p4
+#ggsave("pbmc_nmf_factors.png", p4, width = 12, height = 8)
+
+## 查看细胞主成分上的荷载
+p5 <- FeaturePlot(pbmc.nmf, features = paste0("PC_", 1:12), ncol = 4); p5
+#ggsave("pbmc_nmf_PCs.png", p, width = 12, height = 8)
+
+# 对比上下两张图，很容易发现NMF的因子比PCA的PC轴解释性更强。
+
+
+
+
+## (6) 提取celltype的signatures ----
+## 提取每个因子贡献度最大的20个基因
+f <- extractFeatures(res, 20L)
+f <- lapply(f, function(x) rownames(res)[x])
+f <- do.call("rbind", f)
+View(t(f) )
+#DT::datatable(t(f))
+
+NMF的11个因子中，很容易发现我们对细胞进行分类的marker基因，是不是很神奇？
+
+
+
+
+
+
+
+
+
+
+ref:
+单细胞分析之NMF(非负矩阵分解) https://www.plob.org/article/27713.html
+
+单细胞数据分析——非负矩阵分解（NMF）识别功能模块 https://blog.csdn.net/m0_47675572/article/details/131169434
+    对于细胞分群效果不理想，如上皮细胞存在异质性等，可以考虑使用非负矩阵分解（NMF）的方式去定义元程序（meta program，即功能模块）和元标签（meta label，即功能基因集）。
+
+https://www.bilibili.com/video/BV1K3411x7J8/
+
+https://cloud.tencent.com/developer/article/1806266
+
+
+
+
+
+========================================
+|-- 更快的py命令行 cNMF 对tumor细胞做模块发现: consensus non-negative matrix factorization (cNMF)
+----------------------------------------
+整体的架构: https://zhuanlan.zhihu.com/p/10482193594 可视化效果很好
+（1）选择要分析的基因，一般我们选择高变基因（或者高度变异的前多少个基因，一般5000为主）
+（2）矩阵的选择，一般要选择经过scale后的矩阵，并且将负值设置为零来调整居中的表达式矩阵。
+（3）conducted NMF runs with various K values (K = 5,6,7,8,9,10), resulting in 45 NMF programs for each sample.
+（4）识别共识转录程序：过滤掉低质量的(sd很低，接近0的；平均打分较低的部分)
+（5）Spearman correlation was performed to determine the interrelationships between different programs.
+（6）基于阈值0.8对相关矩阵进行二值化，并对二值化后的矩阵进行层次聚类分析。将不同K运行中相似的程序进行合并，计算合并后程序中细胞和基因的平均归一化系数。根据每个合并程序的系数得分，选择前150个基因作为特征基因。为了识别不同样本中反复出现的NMF程序（“meta程序”），计算Jaccard相似性矩阵，该矩阵表示不同程序的特征基因的重叠。
+
+
+
+#######
+2017年发表于Cell的头颈鳞癌单细胞文章：
+	Single-Cell Transcriptomic Analysis of Primary and Metastatic Tumor Ecosystems in Head and Neck Cancer
+研究者使用非负矩阵分解来揭示在恶性细胞亚群中得到优先共同表达的一系列基因。例如，对于MEEI25恶性细胞，研究者定义了6个不同的基因特征。对10个肿瘤样本中的每一个都应用该方法，共定义了60个基因特征。
+
+接下来，研究者使用层次聚类来将这些60个特征提取成元特征，这些元特征反映了在多个肿瘤内变化的常见表达程序。来自不同肿瘤的特征之间的高一致性表明它们反映了肿瘤内表达异质性的共同模式。
+
+- 对每个样本做nmf，获得6个特征
+- 全部10个样品都做，得到60个特征
+- 对这些特征进行层次聚类？
+
+
+
+
+
+
+1. 简介
+(1) 文献信息
+paper: Single-cell RNA sequencing elucidated the landscape of breast cancer brain metastases and identified ILF2 as a potential therapeutic target.
+
+2.7 | Identification of common expression modules
+Based on the consensus non-negative matrix factorization algorithm
+(cNMF; https://github.com/dylkot/cNMF), transcriptional modules
+were extracted as meta-signatures, and their scores were calculated.
+A meta-signature was developed, and the samples were hierarchically
+clustered.
+
+
+3.6 | Identification of common modules of malignant cells in BCBrM lesions
+Subsequently, we examined transcriptome patterns and subpopulation
+clustering to determine the diversity of malignant cells. The
+InferCNV algorithm was employed to distinguish normal epithelial
+cells from malignant cells (Figure S6A). Genes with differential expression
+patterns were annotated into six main subclusters (Figure 6A).
+We utilised heatmaps and feature plots to present the most differentially
+expressed genes within each cluster (Figure 6B,C). A metacluster
+algorithm was developed to identify common modules among
+BCBrM samples. We compared the most active cancer hallmarks from
+program cells with those from non-program cells for each program.
+Five expression modules were identified, each characterised by distinct
+biological functions and cell statuses. These modules encompass
+proliferation, immune response, metabolism, metastasis, and hypoxia
+(Figure 6D).
+
+- inferCNV 对上皮细胞区分出tumor cell 和 non-tumor cell
+- 对 tumor cell 进行NMF 分解，得到k个基因模块
+
+
+效果图:
+- https://zhuanlan.zhihu.com/p/429373915
+
+
+(2) 使用的py包 github
+https://github.com/dylkot/cNMF
+cNMF is a pipeline for inferring gene expression programs from scRNA-Seq. It takes a count matrix (N cells X G genes) as input and produces a (K x G) matrix of gene expression programs (GEPs) and a (N x K) matrix specifying the usage of each program for each cell in the data. 
+
+输入: 基因矩阵 N细胞 x G基因，但是实际上是R Seurat的counts稀疏矩阵。
+
+教程：https://htmlpreview.github.io/?https://github.com/dylkot/cNMF/blob/master/Tutorials/R_vignette.nb.html
+引用：https://elifesciences.org/articles/43803
+
+还有一个并行版本: https://github.com/codyheiser/cnmf 参数略有不同，是下载安装的。热度较低，我没尝试。
+也在引用: Kotliar, et al. 2019.
+
+
+(3) 安装
+$ pip3 install cnmf
+$ pip3 list | grep -i nmf
+cnmf                              1.6.0
+
+
+(4) 主要命令
+$ cnmf prepare --output-dir ./example_data --name example_cNMF -c ./example_data/counts_prefiltered.txt -k 5 6 7 8 9 10 11 12 13 --n-iter 100 --seed 14
+
+$ cnmf factorize --output-dir ./example_data --name example_cNMF --worker-index 0 --total-workers 1
+
+$ cnmf combine --output-dir ./example_data --name example_cNMF
+
+$ cnmf k_selection_plot --output-dir ./example_data --name example_cNMF
+
+$ cnmf consensus --output-dir ./example_data --name example_cNMF --components 10 --local-density-threshold 0.01 --show-clustering
+
+
+如何选择K? 最稳定的最大K，或者局部最优的K。
+This outputs a K selection plot to example_data/example_cNMF/example_cNMF.k_selection.png. There is no universally definitive criteria for choosing K but we will typically use the largest value that is reasonably stable and/or a local maximum in stability. See the discussion and methods section and the response to reviewer comments in the manuscript for more discussion about selecting K.
+
+
+
+
+
+
+2. 实际使用的命令行
+
+- 取子集就可以输出运行命令行了，后续在R中同时进行重新聚类
+- 等命令行结果出来，可以导入R绘图。
+
+(1) 准备输入文件:类似cell ranger的输出矩阵
+在Seurat中过滤后的Seurat对象，保存为三个文件：
+
+saveSparseMatrix(sub.Tumor, "/datapool/wangjl/others/zhaoym/output/03_UMAP_3origin/NMF/try2/input/")
+$ ls -lth input/
+total 664M
+-rw-rw-rw-+ 1 wangjl jinlab 417K Jan 29 23:31 barcodes.tsv
+-rw-rw-rw-+ 1 wangjl jinlab 1.2M Jan 29 23:31 genes.tsv
+-rw-rw-rw-+ 1 wangjl jinlab 662M Jan 29 23:31 matrix.mtx
+
+(2) 运行命令
+/home/wangjl/data4/others/zhaoym/output/03_UMAP_3origin/NMF/try2/
+$ outputDir="/datapool/wangjl/others/zhaoym/output/03_UMAP_3origin/NMF/try2/"
+$ inputDir="/datapool/wangjl/others/zhaoym/output/03_UMAP_3origin/NMF/try2/input/"
+
+默认10-20个线程：1.6万细胞。
+
+1) normalizes (4min)
+$ cnmf prepare --output-dir $outputDir --name tumor_cNMF -c ${inputDir}/matrix.mtx -k 3 4 5 6 7 8 9 10 11 12 13 --n-iter 100 --seed 14 --total-workers 20
+#23:36->23:40
+
+2) 分解步骤: 10线程15min
+mkdir $outputDir/dustbin/
+
+直接用循环: 启动10个进程
+for i in `seq 0 9`; do echo $i;
+cnmf factorize --output-dir $outputDir --name tumor_cNMF --worker-index $i --total-workers 10 | tee $outputDir/dustbin/worker_logs.index.${i}.log &
+done;
+# 23:41->23:56
+检查是否结束 $ ps -aux | grep -in factorize |wc
+
+3) 合并每个k的结果：(3min) 
+$ cnmf combine --output-dir $outputDir --name tumor_cNMF
+#23:57->0:00
+
+4) 选择最优K值 (2min)
+$ cnmf k_selection_plot --output-dir $outputDir --name tumor_cNMF
+#0:01->0:03
+挑选局部最稳定的k=4 或 6
+
+todo: 前4步可以写脚本完成，没什么参数可调。甚至--name也可以固定，只需要保证文件路径可读性强。
+
+
+
+5) 绘制一致性矩阵 (2min)
+$ cnmf consensus --output-dir $outputDir --name tumor_cNMF --components 4 --local-density-threshold 0.01 --show-clustering
+#0:11->0:13
+参数 --local-density-threshold 0.01  可以从柱状图看到，一般只要第一个柱子，其他可以过滤掉。float >0 and <=2
+
+$ cnmf consensus --output-dir $outputDir --name tumor_cNMF --components 6 --local-density-threshold 0.01 --show-clustering
+# 再试试9和10
+
+=> 这是之前最优为K=5时的输出文件：V=W.H
+	-rw-rw-rw-+    1 wangjl jinlab 128K Jan 29 20:44 epi_cNMF.clustering.k_5.dt_0_01.png
+	-rw-rw-rw-+    1 wangjl jinlab 145K Jan 29 20:44 epi_cNMF.starcat_spectra.k_5.dt_0_01.txt
+	-rw-rw-rw-+    1 wangjl jinlab 1.5M Jan 29 20:44 epi_cNMF.gene_spectra_tpm.k_5.dt_0_01.txt
+	-rw-rw-rw-+    1 wangjl jinlab 3.3M Jan 29 20:44 epi_cNMF.gene_spectra_score.k_5.dt_0_01.txt  #MP x Gene, 每个元程序(MP)中，每个基因的权重。取top20/30/50个权重最大的基因确定该MP的功能。
+	-rw-rw-rw-+    1 wangjl jinlab 2.8M Jan 29 20:44 epi_cNMF.usages.k_5.dt_0_01.consensus.txt   #cell x MP，每个cell中，几个MP的打分
+	-rw-rw-rw-+    1 wangjl jinlab 174K Jan 29 20:44 epi_cNMF.spectra.k_5.dt_0_01.consensus.txt
+
+查看文件内容：
+	usage <- read.table(usage_file, sep='\t', row.names=1, header=TRUE) #epi_cNMF.usages.k_5.dt_0_01.consensus.txt   #[1] 27783     5 row=cell
+	spectra_score <- read.table(spectra_score_file, sep='\t', row.names=1, header=TRUE) #epi_cNMF.gene_spectra_score.k_5.dt_0_01.txt #5 29634, col=gene
+	spectra_tpm <- read.table(spectra_tpm_file, sep='\t', row.names=1, header=TRUE) #epi_cNMF.gene_spectra_tpm.k_5.dt_0_01.txt  # 5 29634 col=gene
+	head(usage,2)
+	#                                X1        X2        X3          X4         X5
+	#AAACCTGAGAAACGCC_NS_13    0.8023598 0.1015964 0.1079933 0.005098293 0.00000000
+	#AAACCTGAGACGCTTT_LUNG_T18 0.2176260 0.0000000 0.3020943 0.015068932 0.01199723
+
+	# row scale, so each cell sums to 1 标准化到每一行的和为1
+	usage_norm <- as.data.frame(t(apply(usage, 1, function(x) x / sum(x))))
+	dim(usage_norm)
+	head(usage_norm, 2)
+	#                                 X1         X2        X3          X4         X5
+	#AAACCTGAGAAACGCC_NS_13    0.7889106 0.09989345 0.1061831 0.005012836 0.00000000
+	#AAACCTGAGACGCTTT_LUNG_T18 0.3980091 0.00000000 0.5524905 0.027559081 0.02194134
+
+
+后续处理:
+	# 然后画每一列一个散点+箱线图 (jitter + boxplot): 如果某个样本中的某个MP都在0附近，可以认为是随即噪音，过滤掉该样本中的这个MP。
+	# 每个样品的每个MP的均值计算出来，升序排序，然后去掉太小的，比如 <=0.03 舍弃。
+	# 相关性热图：用每个样本中每个MP的权重，相互做相关性分析。
+	# 表达热图：每个模块，按样品显示top50基因，还是按MP显示前50基因？都可以，看目的了。
+https://www.bilibili.com/video/BV1K3411x7J8?spm_id_from=333.788.player.switch&vd_source=826befc4ac0d0fa3b98deaa3efc7f800&p=2
+
+
+
+
+
+3. 使用R可视化
+
+script: /datapool/wangjl/others/zhaoym/script/b03_Epi_cNMF_plot.R
+output: /home/wangjl/data4/others/zhaoym/output/03_UMAP_3origin/NMF/
+
+#(1) 合并到 Seurat 对象
+all(rownames(sub.Tumor@meta.data) == rownames(usage_norm)) #T
+sub.Tumor@meta.data=cbind(sub.Tumor@meta.data, usage_norm)
+
+
+#(2) on tsne
+plots=list()
+for(i in 1:ncol(usage_norm)){
+  fn=colnames(usage_norm)[i]
+  message(i, " ", fn)
+  #p2 <- FeaturePlot(sub.Tumor, features = fn, cols = c("white", colorset.pattern[i]), reduction = "umap")
+  p2 <- FeaturePlot(sub.Tumor, features = fn, cols = c("white", colorset.pattern[i]), reduction = "tsne")
+  plots[[i]]=p2
+}
+patchwork::wrap_plots(plots, ncol = 4)
+
+
+#(3) get top 50 genes ====
+get_top_colnames <- function(row) {
+  # Orders the values in descending order and gets the names of the top 20
+  print(row[1:5])
+  top_indices <- order(row, decreasing = TRUE)[1:50]
+  return(colnames(spectra_score)[top_indices])
+}
+top_colnames <- apply(spectra_score, 1, get_top_colnames)
+
+top_colnames <- as.data.frame(top_colnames)
+head(top_colnames)
+
+Rlist2csv(top_colnames,
+          paste0(outputRoot, keyword, "_T03_01.Epi_NMF.top20.csv")
+)
+
+
+缺点：怎么画的相关性图？
+
+
+
+
+
+
+
+
+4. 自动化运行：自动对每个样本运行
+
+(0) Seurat V4过滤
+#保留>=100个细胞的样本，共12个。
+> table(tmp$Sample)
+LUNG_T18 LUNG_T19 LUNG_T20 LUNG_T28    NS_02    NS_03    NS_04    NS_07    NS_12    NS_13    NS_17    NS_19 
+     978      167      280      924      134     2673     1150     4953     2692      886      964      765 
+#
+
+
+(1) 按样品保存Seurat到稀疏矩阵文件
+#按样本拆分
+sampleObj.list <- Seurat::SplitObject(tmp, split.by = "Sample")
+length(sampleObj.list) #12
+
+#保存到文件，一个文件夹一个样本
+base_dir="/datapool/wangjl/others/zhaoym/output/03_UMAP_3origin/NMF/sample/"
+for(i in 1:length(sampleObj.list) ) {
+  sample.name=names(sampleObj.list)[i]
+  message(i, "\t", sample.name)
+  # 获取样本子对象
+  #DimPlot(sampleObj.list[[i]], label=T, group.by = "Sample")
+  sample.dir=paste0(base_dir, sample.name, "/")
+  if(!dir.exists(sample.dir)){
+    message(">\tcreate dir: ", sample.dir)
+    dir.create(sample.dir)
+  }
+  # save sample
+  saveSparseMatrix(sampleObj.list[[i]], sample.dir )
+  message(">> save sparse matrix to: ", sample.dir)
+}
+# 文件夹是样本名，文件名都是一样的。
+
+
+try3A: 第一次测试使用全部基因输入，指定高变基因个数3000个
+try3B: --genes-file hvg3000.list.txt 指定使用的(这3000个)高变基因，一个基因一行
+####################
+# 载入高变基因
+library(Seurat)
+scObj=readRDS("/home/wangjl/data4/others/zhaoym/output/03_UMAP_3origin/NMF/try2/Tumor_sub.Tumor_umap_tsne.Seurat.Rds")
+genes.HVG=VariableFeatures(scObj)
+writeLines(genes.HVG, "/home/wangjl/data4/others/zhaoym/output/03_UMAP_3origin/NMF/sample/hvg3000.list.txt")
+
+	> str(genes.HVG)
+	 chr [1:3000] "HP" "BPIFA1" "S100A8" "NTS" "IGF2" "SFTPC" "KRT81" "PSCA" ...
+####################
+$ cp hvg3000.list.txt ../sample/
+try3: 去掉参数 prepare --numgenes 3000
+
+
+
+
+
+
+(2) 执行脚本step1-4: 
+* 新增参数 --n-iter 300 难道之前默认是1？这么算，可能需要很多时间：15min*300/60/24=3day 一个样本？
+	原来就是iter=100，改为300实际是1小时，平衡一下，改为200
+
+$ cat /home/wangjl/data4/others/zhaoym/script/do_cNMF_step1to4.sh
+# v2 使用多进程，加快速度
+# v3 添加高变基因文件，去掉参数 prepare --numgenes 3000
+# v4 真正支持单脚本多线程：shell 多线程 -j 参数
+sample=$1 #参数1是样本名，也是文件夹名
+#Windex=$2 #--worker-index 从0开始，到 Wtotal-1
+Wtotal=$2 #--total-workers
+hvgFile=$3 #hvg gene list
+# how to run: save sparse matrix in ./sampleName/,
+# goto ./try3/, and $ bash path/to/this/script.sh sampleName 10 hvg3000.list.txt
+
+echo -e "\n[`date`] Start nmf ${sample}"
+outputDir="./"
+inputDir="../sample/${sample}"
+
+echo "[`date`] step1 prepare ${sample}"
+cnmf prepare --output-dir $outputDir --name $sample -c ${inputDir}/matrix.mtx -k 3 4 5 6 7 8 9 10 --n-iter 200 --seed 42 --total-workers $Wtotal --genes-file $hvgFile
+echo "[`date`] step2 factorize ${sample}"
+
+for ((i = 0; i < Wtotal; i++)); do echo "$i, $Wtotal";
+	cnmf factorize --output-dir $outputDir --name $sample --worker-index $i --total-workers $Wtotal &
+done;
+echo "waiting for factorize run: $Wtotal threads"
+wait
+
+echo "[`date`] step3 combine ${sample}"
+cnmf combine --output-dir $outputDir --name $sample
+echo "[`date`] step4 k_selection_plot ${sample}"
+cnmf k_selection_plot --output-dir $outputDir --name $sample
+echo -e "[`date`] End nmf for ${sample}\n"
+
+
+
+运行: 在sample/并列位置的文件夹内执行脚本
+$ cd /home/wangjl/data4/others/zhaoym/output/03_UMAP_3origin/NMF/try3
+单个测试:
+	$ id="NS_02"
+	$ bash /home/wangjl/data4/others/zhaoym/script/do_cNMF_step1to4.sh $id 10 ../sample/hvg3000.list.txt
+	# 23:26->0.15, 如果1h/sample，也来得及
+	# 0:16->0:34 降低 iter=200, k=3:10
+	# B 20:47->20:56 指定3k个基因，9min
+	# C 13:27->13:31  多线程，3k HVG，4min
+
+
+	$ id=LUNG_T19
+	$ bash /home/wangjl/data4/others/zhaoym/script/do_cNMF_step1to4.sh $id 10 ../sample/hvg3000.list.txt
+	# 0:06->0:17 ，测试 iter=1，确实快，时间主要消耗在这一步
+	# B 20:56->21:02 指定3k个基因，6min
+
+
+批量运行: 手动分成3个多进程
+* 为了更快，还可以执行多进程: xx.sh 0 2; xx.sh 1 2 hvg3000.list.txt。本例采用单线程。
+$ ls ../sample/ | grep -v "txt$" | head -n 4 | while read id; do echo $id; 
+bash /home/wangjl/data4/others/zhaoym/script/do_cNMF_step1to4.sh $id 10 ../sample/hvg3000.list.txt;
+done | tee cNMF_step1to4-1.log
+# 0:26->2:39; # B 21:02->22:01; # C 13:54->14:17
+	LUNG_T18
+	LUNG_T19
+	LUNG_T20
+	LUNG_T28
+
+NS_02 #单个运行
+
+$ ls ../sample/ | grep -v "txt$" | head -n 8 | tail -n3 | while read id; do echo $id; 
+bash /home/wangjl/data4/others/zhaoym/script/do_cNMF_step1to4.sh $id 10 ../sample/hvg3000.list.txt;
+done | tee cNMF_step1to4-2.log
+# 0:26->5:25; # B 20:59->0:14, 3h14'; # C 13:55->14:28
+	NS_03
+	NS_04
+	NS_07
+
+
+$ ls ../sample/ | grep -v "txt$" | tail -n4 | while read id; do echo $id; 
+bash /home/wangjl/data4/others/zhaoym/script/do_cNMF_step1to4.sh $id 10 ../sample/hvg3000.list.txt;
+done | tee cNMF_step1to4-3.log
+# 0:26->4:27; # B 20:59->0:22, 3h22'; # C 13:56->
+	NS_12
+	NS_13
+	NS_17
+	NS_19
+# 报错：ERROR; return code from pthread_create() is 11
+# 逐个跑，还是同样报错，NS_13；# 再跑，还是报错，似乎不能打开太多文件？
+$ ulimit -u 20150
+# 等其他结束，再跑就可以了。不确定是 ulimit 的作用，还是不能并行的原因。不能并行的可能性更大。
+
+缺点：如果参数设置错误，怎么停止? ctrl+c后台还在输出
+	只能 $ ps -aux | grep -i cnmf 找到pid杀进程。
+
+
+
+
+
+
+
+
+
+
+(3) 目测最佳K后，执行脚本step5: 
+1) 手动
+生成图片网页:
+$ ls ../sample/ | grep -v "txt$" | while read id; do echo $id;
+h2="<hr><h2>${id}</h2>";
+img="<img src=${id}/${id}.k_selection.png width=300>";
+echo ${h2} >> samples.bestK.html; 
+echo ${img} >> samples.bestK.html; 
+done;
+# 添加样式，截图:
+echo "<style>h2 {padding-bottom: 0px; margin-bottom: 0px; padding-left: 80px; font-size: 14px;}</style>" >> samples.bestK.html
+
+
+# 生成样本名
+$ ls ../sample/ | grep -v "txt$" | while read id; do echo $id >> samples.bestK.txt; done
+每列一个样本名，共一列
+
+
+目测最佳的K值，手动新增一列，逗号分隔，添加该K值:
+$ cat samples.bestK.txt
+LUNG_T18,6
+LUNG_T19,7
+LUNG_T20,5
+LUNG_T28,6
+NS_02,4
+NS_03,6
+NS_04,6
+NS_07,5
+NS_12,5
+NS_13,8
+NS_17,6
+NS_19,7
+
+#
+LUNG_T18 LUNG_T19 LUNG_T20 LUNG_T28    NS_02    NS_03    NS_04    NS_07    NS_12    NS_13    NS_17    NS_19 
+     978      167      280      924      134     2673     1150     4953     2692      886      964      765 
+#
+
+
+
+
+2) 从该配置文件拆解出K，并执行step5
+outputDir="./"
+while IFS=',' read -r sample K; do
+    echo "start sample: $sample, K: $K";
+	cnmf consensus --output-dir $outputDir --name $sample --components $K --local-density-threshold 0.01 --show-clustering | tee step5.${sample}.log &
+done < samples.bestK.txt
+# 10:33->10:42, 9min; # B 10:37->10:43, 6min; # C 15：29->
+$ ps -aux | grep -i cnmf |wc -l #检查是否结束
+
+
+
+
+3)一致性矩阵汇总到网页:
+outputDir="./"
+while IFS=',' read -r sample K; do
+    echo "sample: $sample, K: $K";
+	echo "<hr> <h2>${sample}</h2> <img src=../${sample}/${sample}.clustering.k_${K}.dt_0_01.png>" >>sample.consensus.html
+done < samples.bestK.txt
+
+# 添加样式:
+echo "<style>img {height: 300px;}</style>" >> sample.consensus.html
+# 目测哪个效果不好，可以调整K重新运行。
+
+
+
+
+
+
+(4) 做质控图 QC: 只需要去掉下四分位数即可
+直接跳到 ii) 
+
+==> 异常: 为什么都没有usage 矩阵的值了? 只有细胞行，和数字列，值是空白。//todo 没法做QC图了
+	是不是因为同时指定了 HVG 列表和基因个数？不是，去掉3k只提供gene文件，还是没有usage矩阵。
+	先跳过本步骤，全用继续做下一步:
+	$R
+	samples=read.csv("samples.bestK.txt", header=F)
+	colnames(samples)=c("sample", "K")
+	#
+	dat=NULL
+	for(i in 1:nrow(samples)){
+		sample=samples[i, "sample"]
+		K=samples[i, "K"]
+		for(j in 1:K){
+			dat=rbind(dat, data.frame(
+				sample=sample,
+				K=K,
+				index=j
+			))
+		}
+	}
+	dat$nmfName=paste0(dat$sample, "_", dat$index)
+	dat$keep=T
+	write.csv(dat, "QC/nmf_keep_info.csv")
+
+
+i)每个样本的每列MP做 jitter+boxplot 图。使用R脚本。[不需要画]
+$ head -n 3 LUNG_T18/LUNG_T18.usages.k_9.dt_0_01.consensus.txt 
+        1       2       3       4       5       6       7       8       9
+AAACGGGAGAATTGTG_LUNG_T18       0.0     0.31819502372529657     0.0     0.2465987963038762      0.5066274940376272      0.07023532930599198  0.0     0.0     0.0
+AAACGGGCAGTAACGG_LUNG_T18       0.0     0.0     0.0     0.0     0.20107966982230227     1.1167408522073285      0.0     0.0     0.0
+
+
+$ R
+> samples=read.csv("samples.bestK.txt", header=F)
+> colnames(samples)=c("sample", "K")
+
+for(i in 1:nrow(samples)){
+	print(i)
+
+	# 读取第一个文件
+	#i=1
+	sample=samples[i, "sample"]
+	K=samples[i, "K"]
+
+	usages=read.table(paste0(sample, "/",sample,".usages.k_", K,".dt_0_01.consensus.txt"), header=T, row.names=1)
+	#> dim(usages)
+	#[1] 978   9
+	#> usages[1:3, 1:3]
+	#								 X1         X2          X3
+	#AAACGGGAGAATTGTG_LUNG_T18 0.0000000 0.31819502 0.000000000
+	#AAACGGGCAGTAACGG_LUNG_T18 0.0000000 0.00000000 0.000000000
+	#AAACGGGGTAGATTAG_LUNG_T18 0.2180838 0.08387731 0.002623709
+
+
+	# 分布图
+	pdf(paste0("QC/", sample, ".hist.pdf"), width=4, height=4)
+	for(i in 1:ncol(usages))
+		hist(usages[,i], n=100, main=paste0(sample, "_", i ), xlab="NMF score")
+	dev.off()
+
+	# 箱线图
+	# 宽边长
+	usages.long=reshape2::melt(usages,
+	  id.vars=c(),#保留变量，如果为空，则使用所有非数字变量。
+	  #measure.vars=  使用到的变量列，如果为空，则使用id外的所有列。
+	  variable.name="MP", #新变量的列名
+	  value.name="score" #值的列名
+	)
+
+	library(ggplot2)
+	p1=ggplot(usages.long, aes(x=MP, y=score))+
+		geom_jitter(size=0.1, color="red")+
+		geom_violin(alpha=0.8, scale="width")+
+		geom_boxplot(alpha=0.8, outliers=F, width=0.2)+
+		theme_classic()+
+		ggtitle( paste0(sample, "_", i ) )
+	pdf(paste0("QC/", sample, ".boxPlot.pdf"), width=4, height=4)
+	print(p1)
+	dev.off()
+}
+
+结论: box plot 显示，几乎都是0的去掉。判断标准，看不到boxplot。
+$ mkdir QC/
+
+$ cp samples.bestK.txt QC/non-0-NMF.txt
+
+$ cat QC/non-0-NMF.txt
+LUNG_T18,9,1,6
+LUNG_T19,8,1,7
+LUNG_T20,6,1,6
+LUNG_T28,7,1,6
+NS_02,7,1,5
+NS_03,7,1,6
+NS_04,6,1,5
+NS_07,6,1,3
+NS_12,5,1,3
+NS_13,7,1,4
+NS_17,6,1,5
+NS_19,5,1,5
+
+
+
+ii) 绘制这些NMF的均值，按从小到大排序
+$ R
+> samples=read.csv("QC/non-0-NMF.txt", header=F)
+#colnames(samples)=c("sample", "K", "from", "to")
+colnames(samples)=c("sample", "K")
+
+dat=NULL
+for(i in 1:nrow(samples)){
+	print(i)
+
+	# 读取第一个文件 #i=1
+	sample=samples[i, "sample"]
+	K=samples[i, "K"]
+	#from=samples[i, "from"]
+	#to=samples[i, "to"]
+	from=1
+	to=K
+	usages=read.table(paste0(sample, "/",sample,".usages.k_", K,".dt_0_01.consensus.txt"), header=T, row.names=1)
+
+	# 求每一列的mean和sd
+	tmp=NULL
+	for(j in 1:ncol(usages)){
+		tmp=rbind(tmp, data.frame(
+			avg=mean(usages[,j]),
+			median=median(usages[,j]),
+			sd=sd(usages[,j]),
+			sample=sample, 
+			K=K,
+			index=j,
+			nmfName=paste0(sample, "_", j),
+			isHV=ifelse( j>=from & j<=to, "yes", "no" )
+		) )
+	}
+	print(dim(tmp))
+	dat=rbind(dat, tmp)
+}
+#
+	> dim(dat)
+	[1] 79  7
+	> head(dat, 2)
+			avg    median        sd   sample K    nmfName isHV
+	1 0.2724599 0.1989523 0.2616365 LUNG_T18 9 LUNG_T18_1  yes
+	2 0.2297874 0.1949670 0.2059128 LUNG_T18 9 LUNG_T18_2  yes
+
+	查看分位数:
+	> summary(dat$avg)
+		Min.  1st Qu.   Median     Mean  3rd Qu.     Max. 
+	0.008162 0.055991 0.109382 0.152676 0.247003 0.506085 
+	下四分位数: 
+	QL <- quantile(dat$avg, probs = 0.25) #[1] 0.0559911
+
+
+# 绘制avg曲线
+dat.plot=dat[order(dat$avg),]
+dat.plot$nmfName=factor(dat.plot$nmfName, levels=dat.plot$nmfName)
+#
+p1=ggplot(dat.plot, aes(x=nmfName, y=avg, color=isHV)) +
+  geom_point(size = 3) +  # 添加点
+  geom_line(group = 1, color = "blue") +   # 添加连线
+  labs(title = "Line Plot of weight per nmf per sample",
+       x = "Sample & NMF index",
+       y = "Avg Values") +
+  #scale_x_discrete(limits= dat.plot$nmfName)+
+  geom_hline(yintercept=quantile(dat.plot$avg, probs = 0.25), linetype=2, color="red")+
+  theme_bw()+
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+pdf("QC/All_sample.nmf_avg.line.pdf", width=12, height=4)
+print(p1)
+dev.off()
+#
+
+# 绘制sd曲线：似乎和avg类似，忽略sd指标
+# avg 去掉下四分位数以下的，这个比较客观。
+
+dat$keep=dat$avg >= quantile(dat$avg, probs = 0.25)
+> table(dat$keep)
+FALSE  TRUE 
+   20    59
+#
+
+# 保存结果
+write.csv(dat, "QC/nmf_keep_info.csv")
+
+
+
+
+
+
+(5) 识别元程序: 载入每个NMF的基因权重行，只保留高变基因，计算样本之间相关性矩阵，画标注样本名的热图
+/datapool/wangjl/others/zhaoym/output/03_UMAP_3origin/NMF/try3
+$ wc NS_17/NS_17.gene_spectra_score.k_6.dt_0_01.txt
+      7  149358 3055947 NS_17/NS_17.gene_spectra_score.k_6.dt_0_01.txt
+
+$ R
+> nmf_keep_info=read.csv("QC/nmf_keep_info.csv", header=T, row.names=1)
+# 按样品分割
+nmf_keep_info2=split(nmf_keep_info, nmf_keep_info$sample)
+
+weights = list()
+# 载入基因权重矩阵，载入耗时 10min?
+for(sample2 in names(nmf_keep_info2) ){
+	print(sample2)
+	info=nmf_keep_info2[[sample2]]
+	K=info[1, "K"]
+	# 读取权重文件
+	file.name=paste0(sample2, "/", sample2, ".gene_spectra_score.k_",K,".dt_0_01.txt")
+	message( sprintf("loading weight from: %s", file.name) )
+	gene.wt=read.table(file.name, header=T, row.names=1, sep="\t")
+	message( sprintf("dim:%s %s", nrow(gene.wt), ncol(gene.wt) ) )
+	print(gene.wt[, 1:5])
+	#
+	#weights[[sample2]]=gene.wt[info[which(info$keep), "index"],] # 保留需要keep的行
+	weights[[sample2]]=gene.wt #全部都要
+	print(sprintf("End for sample: %s\n\n", sample2))
+}
+
+	# 检测每个NMF的维度
+	sapply(weights, function(x){
+		dim(x)
+	}) |> t() |> as.data.frame() #a row is a pattern, a colunm is a gene
+	# 或者
+	do.call(rbind, lapply(weights, dim))
+
+# 共有非NA基因，按第一行算：求交集基因
+genes=lapply(weights, function(x){
+	t1=x[1,]
+	t2=colnames(t1)[!is.na(t1)]
+	message("length: ", length(t2))
+	t2
+})
+genes.common=Reduce(intersect, genes)
+
+	> str(genes.common)
+	 chr [1:13182] "A1BG" "A2M" "A4GALT" "AAAS" "AACS" "AAED1" "AAGAB" "AAK1" ...
+
+# 载入高变基因
+#library(Seurat)
+#scObj=readRDS("/home/wangjl/data4/others/zhaoym/output/03_UMAP_3origin/NMF/try2/Tumor_sub.Tumor_umap_tsne.Seurat.Rds")
+#genes.HVG=VariableFeatures(scObj)
+genes.HVG=readLines("../sample/hvg3000.list.txt")
+
+	> length(genes.HVG)
+	[1] 3000
+
+# 求交集
+genes.common2=intersect(genes.HVG, genes.common)
+> length(genes.common2)
+[1] 1516
+
+
+# 每个样本只保留共有基因，然后行名前加样本名
+dat.plot=NULL
+for(sn in names(weights)){
+	print(sn)
+	tmp=weights[[sn]]
+	rownames(tmp)=paste0(sn, "_", rownames(tmp))
+	tmp=tmp[, genes.common2]
+	dat.plot=rbind(dat.plot, tmp)
+}
+write.table(dat.plot, paste0("_05_NMF_gene_weight.HVG.df.txt"))
+
+	> dim(dat.plot)
+	[1]   59 1516
+	> dat.plot[1:3, 1:3]
+					  S100A8         FCGBP       SCGB3A1
+	LUNG_T18_1 -5.292433e-05  0.0006087513 -0.0002419917
+	LUNG_T18_2 -1.346219e-04 -0.0002533632  0.0008401202
+	LUNG_T18_3 -8.822652e-05 -0.0002458686 -0.0003585916
+
+# 计算样本之间的spearman相关性
+sample.cor=cor(t(dat.plot), method="spearman")
+	> dim(sample.cor)
+	[1] 59 59
+	> sample.cor[1:2, 1:2]
+			   LUNG_T18_1 LUNG_T18_2
+	LUNG_T18_1  1.0000000 -0.4826312
+	LUNG_T18_2 -0.4826312  1.0000000
+
+
+# 画热图的样本注释
+nmf_keep_info_T=nmf_keep_info[which(nmf_keep_info$keep==T), ]
+	> nmf_keep_info_T |> dim()
+	[1] 59  9
+	> nmf_keep_info_T[1:2, ]
+			avg    median        sd   sample K index    nmfName isHV keep
+	1 0.2724599 0.1989523 0.2616365 LUNG_T18 9     1 LUNG_T18_1  yes TRUE
+	2 0.2297874 0.1949670 0.2059128 LUNG_T18 9     2 LUNG_T18_2  yes TRUE
+
+annotation_col = data.frame(
+  id=nmf_keep_info_T$nmfName,
+  sample = nmf_keep_info_T$sample, 
+  origin=ifelse( startsWith(nmf_keep_info_T$sample, "LUNG_T"), "tLung", "mBrain"),
+  row.names=1
+)
+
+	> head(annotation_col)
+				 sample origin
+	LUNG_T18_1 LUNG_T18  tLung
+	LUNG_T18_2 LUNG_T18  tLung
+	LUNG_T18_3 LUNG_T18  tLung
+
+c1=scales::hue_pal()(12)
+names(c1)=unique(nmf_keep_info_T$sample)
+
+ann_colors = list(
+  sample = c1,
+  origin = c(tLung = "orange", mBrain = "deeppink")
+)
+
+# 画热图
+library(pheatmap)
+# 截断极端值
+cutByThresh=function(dat, thresh=0.3){
+	dat[dat>thresh]=thresh
+	dat[dat< (-thresh)]=-thresh
+	dat
+}
+sample.cor2=cutByThresh(sample.cor, 0.5)
+
+sample.ht=pheatmap(sample.cor2, border_color=NA,
+	#scale="row",
+	annotation_col = annotation_col, 
+	#annotation_row = annotation_row,
+	annotation_colors = ann_colors,
+	clustering_method = 'ward.D2',
+	cutree_row=5, cutree_cols=5,
+	main="Meta-programs by NMF")
+
+
+# 二值化
+sample.cor3=sample.cor
+thresh=0.2
+sample.cor3[which(sample.cor3>=thresh)]=thresh
+sample.cor3[which(sample.cor3<thresh)]=0
+#
+sample.ht3=pheatmap(sample.cor3, border_color=NA,
+	#scale="row",
+	annotation_col = annotation_col, 
+	#annotation_row = annotation_row,
+	annotation_colors = ann_colors,
+	clustering_method = 'ward.D2',
+	cutree_row=6, cutree_cols=6,
+	main="Meta-programs by NMF")
+
+
+# 尝试欧式距离 dist(求行之间的欧氏距离) //todo
+# 距离和相似性：https://stackoverflow.com/questions/47874486/pheatmap-default-distance-metric-r //todo
+	> dat.plot[1:3, 1:3]                                                                                                                 
+					  S100A8         FCGBP       SCGB3A1
+	LUNG_T18_1  2.146416e-04  0.0004116337 -0.0003871179
+	LUNG_T18_2 -9.542673e-05 -0.0003142863  0.0006338614
+	LUNG_T18_3 -8.046273e-05 -0.0002308644 -0.0004237258
+# 计算欧氏距离
+#sample.dist=dist(dat.plot, method="euclidean") #对行求相互之间的欧氏距离
+
+# install.packages("proxy")      # 如果尚未安装
+library("proxy")
+sample.dist=dist(dat.plot, method="cosine") #对行求相互之间的 cosine 距离
+# 将距离矩阵转换为相似性的矩阵格式
+sample.sim <- 1-as.matrix(sample.dist)
+
+cutByThresh3=function(dat, thresh.H=1, thresh.L=-1){
+	dat[dat>thresh.H]=thresh.H
+	dat[dat<(thresh.L)]=thresh.L
+	dat
+}
+
+dat_ht=cutByThresh3(sample.sim, 0.8, 0)
+
+# Specifying clustering from distance matrix
+drows = dist(dat_ht, method = "cosine")
+dcols = dist(t(dat_ht), method = "cosine")
+
+# 进行层次聚类
+	cluster_result <- hclust(drows, method = "ward.D2")
+
+	# 切割聚类以获取亚群编号
+	clusters <- cutree(cluster_result, k = 7)
+
+	# 创建注释数据框
+	annotation_col2=annotation_col
+	annotation_col2$MP = as.factor(clusters[rownames(annotation_col)])
+	
+	# 添加颜色
+	ann_colors2=ann_colors
+	color.mp=scales::hue_pal()(7)
+	names(color.mp)=1:7
+	ann_colors2$MP=color.mp
+
+
+library(grid)
+sample.ht4=ComplexHeatmap::pheatmap(dat_ht, border_color=NA, #慢
+	#scale="row",
+	name="Cosine\ncorrelation",
+	clustering_distance_rows = drows, clustering_distance_cols = dcols,
+	#clustering_distance_rows = "correlation",
+	annotation_col = annotation_col2, 
+	#annotation_row = annotation_row,
+	annotation_colors = ann_colors2,
+	clustering_method = 'ward.D2',
+	cutree_row=7, cutree_cols=7,
+	color = c(
+		colorRampPalette(colors = c("white","yellow"))(20),
+		colorRampPalette(colors = c("yellow","red"))(20),
+		colorRampPalette(colors = c("red","#661121"))(20)
+		),
+	layer_fun = function(j, i, x, y, width, height, fill, slice_r, slice_c) {
+           v = ComplexHeatmap:::pindex(dat_ht, i, j)
+           #grid.text(sprintf("%.1f", v), x, y, gp = gpar(fontsize = 10))
+           if(slice_r == slice_c) {
+             grid::grid.rect(gp = gpar(lwd = 4, fill = "transparent", col="black"))
+           }
+         },
+	main="Meta-programs by NMF, using cosine dist") # 效果最好！
+#
+pdf("MP.heatmap.pdf", width=12, height=11)
+print(sample.ht)
+
+grid::grid.newpage()
+print(sample.ht3)
+
+grid::grid.newpage()
+print(sample.ht4)
+dev.off()
+
+
+
+
+
+#####################################
+Q: 怎么知道每个cluster中的行名？
+==>方法1 [从聚类结果获取: 每类的样品名] 没采用
+p=sample.ht4
+
+#1) 获取每个cluster的rownames
+#r.dend <- ComplexHeatmap::row_dend(p) #Extract row dendogram #
+rcl.list <- ComplexHeatmap::row_order(p) #Extract clusters (output is a list) #主要是这个
+
+rownames.per.cluster=lapply(rcl.list, function(x){
+	p@row_names_param$labels[x]
+})
+#
+	> do.call(rbind, lapply(rownames.per.cluster, length))
+		 [,1]
+	[1,]    6
+	[2,]   14
+	[3,]   11
+	[4,]   13
+	[5,]    9
+	[6,]    8
+	[7,]   10
+
+=>或者 方法2：提前聚类，然后作为标签覆盖到图上：采用
+	# 进行层次聚类
+	cluster_result <- hclust(drows, method = "ward.D2")
+
+	# 切割聚类以获取亚群编号
+	clusters <- cutree(cluster_result, k = 7)
+
+	# 创建注释数据框
+	annotation_col2 <- data.frame(Cluster = as.factor(clusters))
+	rownames(annotation_col2) <- rownames(dat_ht)
+
+	rownames.per.cluster2=split(annotation_col2|>rownames(), annotation_col2$Cluster)
+
+	> do.call(rbind, lapply(rownames.per.cluster2, length))
+	  [,1]
+	1    8
+	2   13
+	3   10
+	4   14
+	5   11
+	6    6
+	7    9
+通过 set.diff() 互相之间没有差异，那就是完全一致。
+	test2=function(i, j){
+		c(
+		setdiff(rownames.per.cluster[[i]], rownames.per.cluster2[[j]]) |> length(),
+		setdiff(rownames.per.cluster2[[j]], rownames.per.cluster[[i]]) |> length()
+		)
+	}
+	test2(1,6)
+	test2(2,4)
+	test2(3,5)
+	test2(4,2)
+	test2(5,7)
+	test2(6,1)
+	test2(7,3)
+#####################################
+
+
+
+
+
+
+2) 找到每个cluster的特征基因
+i 获取每个 MP 的权重最高的top30基因，合并后，找到频率最高的前30个基因
+	> table(clusters)
+	clusters
+	 1  2  3  4  5  6  7 
+	 8 13 10 14 11  6  9 
+	> head(clusters)
+	LUNG_T18_1 LUNG_T18_2 LUNG_T18_3 LUNG_T18_4 LUNG_T18_5 LUNG_T18_6 
+			 1          2          3          4          5          6 
+
+ii 对每个cluster内，获取权重top30 基因，混合后取频率top30 作为特征基因
+getSignatureGens=function(clusters, nmf.gene.wt, topN=50){
+	lapply(unique(clusters), function(clusterName){
+		x=names(clusters[which(clusters==clusterName)])
+		genes.freq=do.call("c", lapply(x, function(i){
+			val=nmf.gene.wt[i,]
+			val=val[, order(-as.numeric(val))]
+			colnames(val)[1:topN]
+		})) |>table() |> as.data.frame()
+
+		genes.freq=genes.freq[order(-genes.freq$Freq),]
+
+		return( as.character(genes.freq[1:topN, "Var1"]) )
+	})
+}
+
+sig.genes=getSignatureGens(clusters, dat.plot, 50)
+names(sig.genes)=paste0("MP", unique(clusters))
+#保存到文件，一列一个基因集合，用于GO富集: Rlist2csv(sig.genes, "NMF.MP.sig.genes.7MP.csv")
+
+查看：
+	> str(sig.genes)
+	List of 7
+	 $ MP1: chr [1:50] "ERO1A" "NDRG1" "ZFAS1" "HILPDA" ...
+	 $ MP2: chr [1:50] "CD63" "NDUFA4" "LDHB" "MGST1" ...
+	 $ MP3: chr [1:50] "KRT7" "KRT19" "TRIB3" "MAP1B" ...
+	 $ MP4: chr [1:50] "CKS1B" "H2AFZ" "TUBA1B" "ANLN" ...
+	 $ MP5: chr [1:50] "FCER1G" "SPI1" "AIF1" "ALOX5AP" ...
+	 $ MP6: chr [1:50] "C9orf116" "CAPS" "PIFO" "PPIL6" ...
+	 $ MP7: chr [1:50] "FOSB" "EGR1" "FTL" "NFKBIZ" ...
+
+如果只保留基因频率至少是2的？ //todo
+
+
+
+=> 显示每个基因集合的表达水平，显示到UMAP上
+$ R
+library(Seurat)
+sub.Tumor=readRDS("/home/wangjl/data4/others/zhaoym/output/03_UMAP_3origin/NMF/try2/Tumor_sub.Tumor_umap_tsne.Seurat.Rds")
+
+
+# 模块打分 on UMAP
+mp.genes <- read.csv("NMF.MP.sig.genes.7MP.csv")
+tmp <- AddModuleScore(sub.Tumor, features = mp.genes, ncores=4, name = "MP")
+head(tmp@meta.data, 2)
+
+colorset.pattern=c("#A7312F", "#202583", "#4F88B8", "#F5A525", "#1B6B36", "#96238F", "#DD44C8")
+
+# on tsne
+plots=list()
+for(i in 1:length(mp.genes)){
+  fn=names(mp.genes)[i]
+  message(i, " ", fn)
+  p2 <- FeaturePlot(tmp, features = fn, cols = c("#eeeeee", colorset.pattern[i]), reduction = "umap")
+  #p2 <- FeaturePlot(tmp, features = fn, cols = c("#eeeeee", colorset.pattern[i]), reduction = "tsne")
+  plots[[i]]=p2
+}
+pdf("NMF.MP.sig.genes.7MP.score.pdf", width=12, height=5)
+patchwork::wrap_plots(plots, ncol = 4)
+dev.off()
+
+
+
+
+
+
+
+
+(6) 识别元程序2: 载入59个NMF的基因权重行，只保留高变基因，计算样本top50基因之间的Jaccard相似性矩阵，画标注样本名的热图
+似乎结果更好一些。
+
+取top50基因，求各自的Jaccard相似度:
+	> dim(dat.plot)
+	[1]   59 1516
+	> dat.plot[1:3, 1:3]
+					  S100A8         FCGBP       SCGB3A1
+	LUNG_T18_1 -5.292433e-05  0.0006087513 -0.0002419917
+	LUNG_T18_2 -1.346219e-04 -0.0002533632  0.0008401202
+	LUNG_T18_3 -8.822652e-05 -0.0002458686 -0.0003585916
+#
+
+# 判断每一行的topNN基因
+nn=50
+top50=matrix(0, nrow=nrow(dat.plot), ncol=ncol(dat.plot), byrow=T)
+for(i in 1:nrow(top50)){
+	t1=dat.plot[i,] #第i行
+	t2=t1[,order(-as.numeric(t1) )] #降序排列
+	topN=t2[,1:nn] |> names() #gene names
+	top50[i, ]=ifelse(colnames(dat.plot) %in% topN, 1, 0)
+}
+
+	> sum(top50)
+	[1] 3550
+	> sum(top50)/71
+	[1] 50
+
+# 计算Jaccard相似性
+SNN2=top50 %*% t(top50)
+
+# 计算点与点之间的 Jaccard 相似度:
+k=nn #最近邻个数50/样品
+SNN3=matrix(0, nrow=nrow(SNN2), ncol=ncol(SNN2), byrow=T)
+for(i in 1:nrow(SNN2)){
+  for(j in 1:ncol(SNN3)){
+    val=SNN2[i,j]
+    SNN3[i,j]=val/(2*k - val)
+  }
+}
+
+colnames(SNN3)=rownames(dat.plot)
+rownames(SNN3)=rownames(dat.plot)
+
+# 绘制热图
+cutByThresh2=function(dat, threshold=0.25){
+	dat[dat>threshold]=threshold
+	dat
+}
+
+dat_ht2=cutByThresh2(SNN3, 0.25)
+
+
+# 进行层次聚类
+	drows = dist(dat_ht2, method = "euclidean")
+	
+	cluster_result <- hclust(drows, method = "ward.D2")
+
+	# 切割聚类以获取亚群编号
+	clusters <- cutree(cluster_result, k = 7)
+
+	# 创建注释数据框
+	annotation_col2=annotation_col
+	annotation_col2$MP = as.factor(clusters[rownames(annotation_col)])
+	
+	# 添加颜色
+	ann_colors2=ann_colors
+	color.mp=scales::hue_pal()(7)
+	names(color.mp)=1:7
+	ann_colors2$MP=color.mp
+
+
+sample.ht4=ComplexHeatmap::pheatmap(dat_ht2, border_color=NA,
+	#scale="row",
+	name="Jaccard\nsimilarity",
+	annotation_col = annotation_col2, 
+	#annotation_row = annotation_row,
+	annotation_colors = ann_colors2,
+	clustering_method = 'ward.D2',
+	cutree_row=7, cutree_cols=7,
+	#color = c(colorRampPalette(colors = c("white","yellow"))(20), colorRampPalette(colors = c("yellow","red"))(20)),
+		color = c(
+		colorRampPalette(colors = c("white","yellow"))(20),
+		colorRampPalette(colors = c("yellow","red"))(20),
+		colorRampPalette(colors = c("red","#661121"))(20)
+		),
+	layer_fun = function(j, i, x, y, width, height, fill, slice_r, slice_c) {
+           v = ComplexHeatmap:::pindex(dat_ht, i, j)
+           #grid.text(sprintf("%.1f", v), x, y, gp = gpar(fontsize = 10))
+           if(slice_r == slice_c) {
+             grid::grid.rect(gp = gpar(lwd = 4, fill = "transparent", col="black"))
+           }
+         },	
+	main=paste0("Meta-programs by NMF using Jaccard similarity of top ", nn, " genes") )
+
+pdf("MP.Jaccard.heatmap.pdf", width=12, height=11)
+print(sample.ht4)
+dev.off()
+
+
+
+
+2) 找到每个cluster的特征基因：meta-signatures
+i 获取每个 MP 的权重最高的top30基因，合并后，找到频率最高的前30个基因
+	> table(clusters)
+	clusters
+	 1  2  3  4  5  6  7 
+	15 14 14 11  6  5  6
+	> head(clusters)
+	LUNG_T18_1 LUNG_T18_2 LUNG_T18_3 LUNG_T18_4 LUNG_T18_5 LUNG_T18_6 
+			 1          2          1          3          4          5
+
+ii 对每个cluster内，获取权重top30 基因，混合后取频率top30 作为特征基因
+sig.genes=getSignatureGens(clusters, dat.plot, 50) #函数定义见上文(5)
+names(sig.genes)=paste0("MP", unique(clusters))
+#保存到文件，一列一个基因集合，用于GO富集: Rlist2csv(sig.genes, "NMF.MP.sig.genes.Jaccard.7MP.csv")
+
+查看:
+	> str(sig.genes)
+	List of 7
+	 $ MP1: chr [1:50] "KRT19" "KRT7" "TACSTD2" "TNFRSF12A" ...
+	 $ MP2: chr [1:50] "FOSB" "SLC34A2" "FTL" "C11orf96" ...
+	 $ MP3: chr [1:50] "CKS1B" "H2AFZ" "TUBA1B" "ANLN" ...
+	 $ MP4: chr [1:50] "FCER1G" "SPI1" "AIF1" "ALOX5AP" ...
+	 $ MP5: chr [1:50] "C9orf116" "CAPS" "PIFO" "PPIL6" ...
+	 $ MP6: chr [1:50] "ERO1A" "NDRG1" "SLC2A1" "ZFAS1" ...
+	 $ MP7: chr [1:50] "CD63" "NDUFA4" "LDHB" "MGST1" ...
+#
+
+
+
+
+3) 绘制单细胞水平的表达水平图：都是按照样品绘制的表达热图
+# 使用data数据，取交集基因，作为行
+# 列为 16k cell
+	> sub.Tumor@assays$RNA@data |> dim()
+	[1] 29634 16763
+
+	> sub.Tumor@assays$RNA@data[1:3, 1:2]
+	3 x 2 sparse Matrix of class "dgCMatrix"
+			 AAACCTGAGACGCTTT_NS_04 AAACCTGAGATGTGTA_NS_17
+	A1BG                          .                      .
+	A1BG-AS1                      .                      .
+	A1CF                          .                      .
+
+# 去重复基因
+gene.uniq=sig.genes |> unlist() |> unique() #321个
+
+# 去除前面集合中已经出现过的基因
+	unique_genes <- lapply(seq_along(sig.genes), function(i) {
+	  current_set <- sig.genes[[i]]
+	  if(1==i) return(current_set)
+	  previous_genes <- unlist(sig.genes[1:(i - 1)])
+	  unique_set <- setdiff(current_set, previous_genes)
+	  return(unique_set)
+	})
+	names(unique_genes) <- names(sig.genes)
+	sapply(unique_genes, length) |> sum() #321个
+	# 输出结果
+	unique_genes
+
+
+
+# 取子集
+exp.gene=sub.Tumor@assays$RNA@data[gene.uniq,]
+	> exp.gene |> dim()
+	[1]   321 16763
+	> exp.gene[1:2, 1:2]
+	2 x 2 sparse Matrix of class "dgCMatrix"
+		  AAACCTGAGACGCTTT_NS_04 AAACCTGAGATGTGTA_NS_17
+	KRT19              2.1119930               2.092692
+	KRT7               0.9360157               1.708822
+
+# 绘制热图: 按某一个病人绘制
+	> table(sub.Tumor$Sample)
+	LUNG_T06 LUNG_T08 LUNG_T18 LUNG_T19 LUNG_T20 LUNG_T25 LUNG_T28 LUNG_T30 
+		  21       11      978      167      280        9      924        6 
+	LUNG_T31 LUNG_T34    NS_02    NS_03    NS_04    NS_06    NS_07    NS_12 
+		  97        8      134     2673     1150        9     4953     2692 
+	   NS_13    NS_16    NS_17    NS_19 
+		 886       36      964      765
+#
+drawExp_nmf_signature=function(sampleID){
+	#sampleID="NS_19"
+	cells=sub.Tumor@meta.data[which(sub.Tumor@meta.data$Sample==sampleID),] |> rownames()
+	tmp1=as.matrix(exp.gene[, cells]) |> t() |> scale() |> t()
+
+	tmp1[which(tmp1<(-2))]=-2
+	tmp1[which(tmp1>(2))]=2
+	sample_ht5=ComplexHeatmap::pheatmap(tmp1, border_color=NA,
+		#scale="row",
+		name="Gene\nExpression",
+		cluster_rows = F, cluster_cols = T,	clustering_method = 'ward.D2',
+		use_raster=F, #是否栅格化，栅格化后速度快; 默认过大就栅格化
+		show_rownames = F, show_colnames = F,
+		legend=T,
+		#legend_position="left", # 不存在该参数
+		color = colorRampPalette(c("#4575B4", "white", "firebrick3"))(50),
+		layer_fun = function(j, i, x, y, width, height, fill, slice_r, slice_c) {
+			# 绘制水平虚线：热图添加水平直线
+			for(row in i){
+				# 绘制虚线
+				if(row %in% c(sapply(unique_genes, length) |> cumsum() |> as.numeric()) ){
+					# 计算虚线的y坐标
+					y_position = unit(y[row - min(i) + 1], "native")
+					grid.lines(x = unit(c(0, 1.15), "npc"), 
+					  y = y_position, 
+					  gp = gpar(lwd = 1, lty = "dashed", col = "black"))
+					#
+					
+					# 获取当前集合的前5个基因
+					gene_set_index = which(cumsum(sapply(unique_genes, length)) >= row)[1]
+					gene_names = unique_genes[[gene_set_index]][1:min(3, length(unique_genes[[gene_set_index]]))]
+					
+					# 计算上下虚线的中间位置
+					y_offset = unit(0.05, "native")  # 固定间隔
+
+					# 打印代表性基因名字
+					#gene_set_index = which(cumsum(sapply(unique_genes, length)) >= row)[1]
+					#gene_names = representative_genes[[gene_set_index]]
+					
+					grid.text(label = paste(gene_names, collapse = "\n"), 
+							x = unit(1.1, "npc"),
+							y = y_position + y_offset,  # 在虚线之间的位置
+							# y = unit(y[row - min(i) + 1], "native"), 
+							gp = gpar(col = "black", fontsize = 6, fontface = "italic"),
+							just = "left")  # 左对齐
+				}
+			}
+		},
+		main=paste0("Gene expression level of each meta-signatures: ", sampleID))
+	sample_ht5
+} #缺点：右侧图例和文字重合了，后期依靠AI修改吧。暂时不知道怎么画这个图
+pdf("MP.signatures.Exp.perCell.heatmap.pdf", width=6, height=4)
+for(sp in c(nmf_keep_info$sample |> unique()) ){
+	print(sp)
+	print(drawExp_nmf_signature(sp))
+} #耗时 10min #19:02->19:10
+dev.off()
+
+
+
+
+
+
+
+
+
+
+
+
+
+(7) 另一种策略: Cell 2017
+- 对每个样本做nmf，获得6个特征: 改为最佳K？
+- 全部12个样品都做，得到72个特征
+- 对这些特征进行层次聚类？ 和之前比，不过滤了，全用上
+
+
+Q: 对合成的大矩阵进行NMF分解，和原来的单个小矩阵有什么关系？
+	gene*[cells1, cells2] = W . H
+	M x N              = N.L . L.N
+
+
+
+
+
+
+
+
+
+
+
+
+
+========================================
+|-- [务虚] 样本之间的相关性热图 怎么画? 怎么解读？
+----------------------------------------
+1. 相关线索
+(1) 样本之间的相关性比较：
+https://github.com/dylkot/cNMF/issues/52
+	- 使用TPM还是Z-score? 最好使用Z-score
+	- 最好使用高变基因来做：结合上文，就是高变基因的权重，来做相关性热图。
+
+
+(2) github等代码线索：
+1)
+https://github.com/mulqueenr/bc_multiome_nf_analysis/blob/main/src/Fig2_genenmf_metaprograms.R
+bc_multiome_nf_analysis/src/Fig2_genenmf_metaprograms.R
+
+2) 效果图 & 可能很多源码
+https://blog.csdn.net/m0_47675572/article/details/131169434
+
+3) 基于R的分析系统 EcoTyper (Cell paper 2021)：提到NMF包
+https://github.com/digitalcytometry/ecotyper/blob/master/pipeline/state_discovery_combine_NMF_restarts.R
+
+4) 使用NMF的R代码
+https://github.com/ZedekiahZhou/PanCan_scMetab/tree/main
+
+5) Cell paper: use NMF
+https://www.cell.com/cancer-cell/fulltext/S1535-6108(24)00234-4?_returnURL=https%3A%2F%2Flinkinghub.elsevier.com%2Fretrieve%2Fpii%2FS1535610824002344%3Fshowall%3Dtrue
+Spatiotemporal single-cell analysis decodes cellular dynamics underlying different responses to immunotherapy in colorectal cancer
+https://github.com/yqq-chen/CRC_ICB
+
+
+
+6) Cancer Cell 2022
+https://pubmed.ncbi.nlm.nih.gov/36423636/
+Mapping single-cell transcriptomes in the intra-tumoral and associated territories of kidney cancer
+
+We report six conserved meta-programs that distinguish tumor cell function, and find an epithelial-mesenchymal transition meta-program highly enriched at the tumor-normal interface that co-localizes with IL1B-expressing macrophages, offering a potential therapeutic target.
+
+In total, we dissected 45 intra-tumor expression programs from the ten ccRCC tumors and classified six meta-programs (MPs) shared by multiple tumors (Figure 6B and Table S5).
+
+MP1 was characterized by expression of genes such as FOS and JUN, thus representing a stress-response-related signature in tumor cells. 
+MP2 consisted of genes (i.e., NAT8 and ACSM2B) that were specifically expressed by proximal tubule (PT, 近曲小管) cells. The presence of PT signature among tumor cells confirmed the previous finding that PT cells are the cell type of origin of ccRCC.25 
+Interestingly, we found that MP3 was enriched for genes such as TGFBI and MT2A (Figure 6B), which are related to the epithelial-to-mesenchymal transition (EMT) and have not been reported in RCC previously (Figure 2).
+MP4 consisted of non-coding RNA genes such as NEAT1 and HCG18, probably reflecting some stress or cell death (CD)-related cell state. 
+MP5 was characterized by expression of MHC-II-related genes such as CD74 and HLA-DRA.
+Genes such as TOP2A and MKI67 were found in MP6, indicating that this MP is related to the proliferation of tumor cells.
+
+
+
+7) Cell, 2017 Fig3.A,B
+https://pubmed.ncbi.nlm.nih.gov/29198524/
+Single-Cell Transcriptomic Analysis of Primary and Metastatic Tumor Ecosystems in Head and Neck Cancer
+
+Stromal and immune cells had consistent expression programs across patients.
+Our results provide insight into the HNSCC ecosystem and define stromal interactions and a p-EMT program associated with metastasis.
+
+Malignant cells varied in their expression of cell cycle, stress, hypoxia and epithelial differentiation programs. 
+
+https://blog.csdn.net/weixin_53637133/article/details/138366584
+使用matlab做的分析: https://github.com/TrinityCTAT/Trinity_CTAT/wiki
+
+> 发现7个模块，至少在两个肿瘤中表达。
+Seven expression programs were preferentially expressed by subsets of malignant cells in at least two tumors. 
+两个元程序反映细胞周期的两个阶段。
+Two programs (clusters 1,2 in Figures 3A and 3B) reflected the G1/S and G2/M phases of the cell cycle and distinguished cycling cells in each tumor (14–40% of cells in different tumors) (Figure S3A; Table S7). 
+第三个程序是细胞活化早期基因
+A third program (cluster 6 in Figures 3A and 3B) consisted of JUN, FOS, and immediate early genes implicated in cellular activation and stress responses (Figure S3A; Table S7). 
+第四个程序在缺氧相关基因富集
+A fourth program was enriched for hypoxia-related genes and increased in HNSCC cells cultured in hypoxic conditions (Figures 3B, S3A and S5Q; Table S7).
+
+> 两个元程序主要是 上皮基因
+Two additional programs (clusters 4,5 in Figures 3A and 3B) consisted primarily of epithelial genes, such as EPCAM, cytokeratins (e.g. KRT6, 16, 17, 75), and kallikreins (KLK5-11) (Figure S3A; Table S7). 
+所有恶性细胞都表达上皮marker，
+While all malignant cells expressed epithelial markers, many of which were largely uniform across malignant cells (Figures 1C, 1D and S3E), expression of these particular epithelial genes varied coherently across malignant cells (Figure S3D), and may reflect the degree of epithelial differentiation. 
+最后一个包含ECM和EMT，存在10个肿瘤中的7个中。
+A final expression program (cluster 3 in Figures 3A and 3B) contained genes associated with ECM and had features of EMT (Figure S3A; Table S7). This program was evident in subsets of cells from seven of the ten tumors examined (Figure S3B).
+
+
+
+
+
+8). Nature 2023
+https://pubmed.ncbi.nlm.nih.gov/37258682/
+Hallmarks of transcriptional intratumour heterogeneity across a thousand tumours
+
+Here we curate, annotate and integrate the data from 77 different studies to reveal the patterns of transcriptional ITH across 1,163 tumour samples covering 24 tumour types. 
+
+Among the malignant cells, we identify 41 consensus meta-programs, each consisting of dozens of genes that are coordinately upregulated in subpopulations of cells within many tumours. The meta-programs cover diverse cellular processes including both generic (for example, cell cycle and stress) and lineage-specific patterns that we map into 11 hallmarks of transcriptional ITH. Most meta-programs of carcinoma cells are similar to those identified in non-malignant epithelial cells, suggesting that a large fraction of malignant ITH programs are variable even before oncogenesis, reflecting the biology of their cell of origin.
+
+https://blog.csdn.net/lidaoPKUHSC/article/details/136271824
+
+使用 from sklearn.decomposition import NMF 分解，然后使用R归纳提取。
+
+
+
+
+
+
+
+2. 代码实现
+见上一节
+
+
+
+
+
+
+
+
+
+========================================
+|-- GeneNMF 包做 NMF 分析：可视化函数更多
+----------------------------------------
+1. 简介
+
+GeneNMF 分析主要包括三个步骤：
+A.不同样本的非负矩阵分解
+B.‌基因模块聚类和分群
+C.确定基因模块功能
+
+https://zhuanlan.zhihu.com/p/17506956194
+根据单细胞scRNA分析得到的RDS文件，提取过滤后的data信息来进行每个分组（推荐sample）的NMF分析；
+然后根据每个基因模块之间的成对相似性对基因程序聚类和可视化；
+最后对每个基因程序的基因进行富集分析和Ucell打分，评估不同基因程序的生物学意义。
+
+
+https://mp.weixin.qq.com/s/6qP0fv5oIpBCpnZhXOYujQ
+它特别用于提取癌细胞中的复发基因程序
+（参见 Barkely 等人（2022 年）和 Gavish 等人（2023 年）），否则这些程序很难整合和联合分析。
+PCNS DLBCL患者肿瘤内恶性MPs的识别，https://doi.org/10.1038/s41421-023-00559-7
+
+GeneNMF 将各个数据集的表达矩阵分解为几个可解释的维度，然后计算“元程序”（meta-program，MPs：元程序），定义为在多个样本和方法初始化中发现表达的共识基因集。
+
+
+这个警告，可能是要用Seurat V5，而我用的是V4？不过不影响后续结果：
+	Warning: The following arguments are not used: layer
+
+
+(2) 安装
+https://github.com/carmonalab/GeneNMF
+
+install.packages("GeneNMF")
+
+(3) 教程
+https://carmonalab.github.io/GeneNMF.demo/NMF_demo_cancercells.html
+
+
+
+
+
+
+
+
+
+2. 实战
+> table(sub.Tumor$Sample)
+LUNG_T06 LUNG_T08 LUNG_T18 LUNG_T19 LUNG_T20 LUNG_T25 LUNG_T28 LUNG_T30 LUNG_T31 LUNG_T34    NS_02    NS_03    NS_04    NS_06 
+      21       11      978      167      280        9      924        6       97        8      134     2673     1150        9 
+   NS_07    NS_12    NS_13    NS_16    NS_17    NS_19 
+    4953     2692      886       36      964      765 
+#
+
+# (0). split sample====
+table(sub.Tumor$Sample)
+#sampleObj.list <- Seurat::SplitObject(sub.Tumor, split.by = "Sample")
+
+# 只保留>=100个细胞的样品: only keep samples with >=100 cells
+	sub.Tumor$Sample |> table()
+
+	t1=sub.Tumor$Sample |> table()
+	t1=t1[t1>=100] |> names(); t1
+
+	tmp=subset(sub.Tumor, Sample %in% t1)
+	tmp
+	tmp@meta.data$Sample=as.character(tmp@meta.data$Sample)
+	DimPlot(tmp)
+	DimPlot(tmp, group.by = "Sample")
+#
+sampleObj.list <- Seurat::SplitObject(tmp, split.by = "Sample")
+length(sampleObj.list) #12
+
+
+library(GeneNMF)
+
+# (1). 导入 ====
+geneNMF.programs <- multiNMF(sampleObj.list, 
+                             assay="RNA",
+                             k=4:9, 
+                             hvg=VariableFeatures(sub.Tumor), #高变基因，来自Seurat，共3k个
+                             slot="scale.data", center=F,scale=F,  #使用scale过的，所以不用再scale和center了
+                             min.exp = 0.05,
+                             min.cells.per.sample = 20) #16k cells
+# 11:45->11:48, 3min
+
+
+#2. 计算 MP 指标和最具影响力的 MP 基因。
+# geneNMF.metaprograms <- getMetaPrograms(geneNMF.programs, nMP=5)
+geneNMF.metaprograms <- getMetaPrograms(geneNMF.programs,
+                                        metric = "cosine",
+                                        weight.explained = 0.5,
+                                        min.confidence = 0.7,
+                                        hclust.method="ward.D2",
+                                        #remove.empty = TRUE,
+                                        nMP=6)
+
+> str(geneNMF.metaprograms)
+List of 6
+
+Returns a list with 
+	i) 'metaprograms.genes' top genes for each meta-program; 
+	metaprograms.genes.weights
+	ii) 'metaprograms.metrics' dataframe with meta-programs statistics: 
+		a) freq. of samples where the MP is present, 
+		b) average silhouette width, 
+		c) mean similarity (cosine or Jaccard), 
+		d) number of genes in MP, 
+		e) number of gene programs in MP; 
+	iii) 'programs.similarity': matrix of similarities (Jaccard or cosine) between meta-programs; 
+	iv) 'programs.tree': hierarchical clustering of meta-programs (hclust tree); 
+	v) 'programs.clusters': meta-program identity for each program
+
+#3. 可视化 一致性矩阵
+ph <- plotMetaPrograms(geneNMF.metaprograms, similarity.cutoff = c(0.1,1))
+#
+pdf(paste0(outputRoot, keyword, "_T04_01_geneNMF.metaprograms_heatmap.pdf"), width=6.5, height=6.1)
+print(ph)
+dev.off()
+
+
+#4. view gene per cluster
+geneNMF.metaprograms$metaprograms.metrics #gene number/mp
+
+# gene names per mp
+lapply(geneNMF.metaprograms$metaprograms.genes, head)
+
+# gene wt
+geneNMF.metaprograms$metaprograms.genes.weights$MP2 #cell cycle
+geneNMF.metaprograms$metaprograms.genes.weights$MP7 # cilium movement
+geneNMF.metaprograms$metaprograms.genes.weights$MP3 # hypoxia
+geneNMF.metaprograms$metaprograms.genes.weights$MP1 # immune response
+
+#  names() |> jsonlite::toJSON()
+
+
+#4B. 注释top基因集: use C5
+library(msigdbr)
+library(fgsea)
+top_p <- lapply(geneNMF.metaprograms$metaprograms.genes, function(program) {
+  runGSEA(program, universe=rownames(sub.Tumor), category = "C5", subcategory = "GO:BP")
+})
+# 例如，MP1 似乎与细胞循环/细胞分裂有关。
+head(top_p$MP1)
+head(top_p$MP2)
+head(top_p$MP3)
+head(top_p$MP4)
+head(top_p$MP5)
+
+#4C. 注释top基因集: use C8
+
+
+
+#5. 模块打分 on UMAP
+mp.genes <- geneNMF.metaprograms$metaprograms.genes
+library(AUCell, lib.loc = "/datapool/wangjl/R/x86_64-pc-linux-gnu-library/4.3.3/")
+tmp <- AddModuleScore(sub.Tumor, features = mp.genes, ncores=4, name = "MP")
+head(tmp@meta.data, 2)
+
+# on tsne
+plots=list()
+for(i in 1:length(mp.genes)){
+  fn=names(mp.genes)[i]
+  message(i, " ", fn)
+  #p2 <- FeaturePlot(tmp, features = fn, cols = c("white", colorset.pattern[i]), reduction = "umap")
+  p2 <- FeaturePlot(tmp, features = fn, cols = c("white", colorset.pattern[i]), reduction = "tsne")
+  plots[[i]]=p2
+}
+patchwork::wrap_plots(plots, ncol = 5)
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+========================================
+GSVA 分析：差异通路分析: GSVA+limma差异通路分析+发散条形图
+----------------------------------------
+http://www.bio-info-trainee.com/9663.html
+
+输入log表达矩阵 data，输出每个细胞中的打分标准化值。
+
+学习：https://blog.csdn.net/weixin_45822007/article/details/123013713
+Lambrechts D, Wauters E, Boeckx B, et al. Phenotype molding of stromal cells in the lung tumor microenvironment[J]. Nat Med,  2018, 24(8): p. 1277-1289.
+
+思考: https://blog.csdn.net/Aechh/article/details/126955370
+
+
+
+1. 使用方法
+
+(1) 计算GSVA分数
+数据基于单细胞转录组Seurat对象object。首先加载msigdbr和GSVA两个包，msigdbr用于获取MSigdb（Molecular Signatures Database）数据库KEGG基因集，数据库包含了以下9种不同基因的基因，可供下载以及R软件包载入。
+
+使用gsva函数计算GSVA富集分数，parallel.sz指定并行计算的进程数，这里要设置为1，默认0或者大于1的执行速度更慢，属实鸡肋，设置为1要快很多。另外输入矩阵为object对象中log转化后的表达矩阵指定kcdf参数为"Gaussian"，如果是counts矩阵则指定kcdf=“Poisson”。
+
+method参数可以设置为"gsva"或者"zscore"，单细胞数据较大，一般有上万个细胞，指定method = "zscore"会快很多。
+
+library(msigdbr)
+library(GSVA)
+## 表达矩阵
+expr=as.matrix(object@assays$RNA@data)
+##通路基因集
+msgdC2 = msigdbr(species = "Homo sapiens", category = "C2",subcategory = "KEGG")
+keggSet = msgdC2 %>% split(x = .$gene_symbol, f = .$gs_description)
+
+kegg <- gsva(expr, gset.idx.list = keggSet, kcdf="Gaussian",method = "zscore",
+                 parallel.sz=1,parallel.type="snow")
+#
+
+(2) linear model
+使用limma包获取差异基因集
+
+library(limma)
+## limma gsva通路活性评估
+de_gsva <- function(exprSet,meta,compare = NULL){
+
+	allDiff = list()
+	  design <- model.matrix(~0+factor(meta))
+	  colnames(design)=levels(factor(meta))
+	  rownames(design)=colnames(exprSet)
+	  
+	  fit 
+}
+
+
+
 
 
 
@@ -223,6 +2148,155 @@ doublet_scores, predicted_doublets = scrub.scrub_doublets(min_counts=2, min_cell
 
 
 
+========================================
+|-- 双细胞检测 doublet detection: R包: DoubletFinder
+----------------------------------------
+1. 简介
+https://github.com/chris-mcginnis-ucsf/DoubletFinder
+
+https://blog.csdn.net/weixin_41368414/article/details/133897327
+https://cloud.tencent.com/developer/article/2171121?areaSource=102001.17&traceId=CbY7J5XapuqNMW6MC-KM6
+
+
+
+
+
+
+
+2. 使用
+(1) 安装
+> remotes::install_github('chris-mcginnis-ucsf/DoubletFinder', update=F)
+> library("DoubletFinder")
+
+
+(2) 参数 DoubletFinder takes the following arguments:
+
+seu ~ This is a fully-processed Seurat object (i.e., after NormalizeData, FindVariableGenes, ScaleData, RunPCA, and RunTSNE have all been run).
+
+PCs ~ The number of statistically-significant principal components, specified as a range (e.g., PCs = 1:10)
+
+pN ~ This defines the number of generated artificial doublets, expressed as a proportion of the merged real-artificial data. Default is set to 25%, based on observation that DoubletFinder performance is largely pN-invariant (see McGinnis, Murrow and Gartner 2019, Cell Systems).
+	默认 25%，产生的人为混合细胞比例
+
+pK ~ This defines the PC neighborhood size used to compute pANN, expressed as a proportion of the merged real-artificial data. No default is set, as pK should be adjusted for each scRNA-seq dataset. Optimal pK values should be estimated using the strategy described below.
+	没有默认值，定义了用于计算pANN的PC邻居数量，表示为合并的真实人工数据的比例。
+
+nExp ~ This defines the pANN threshold used to make final doublet/singlet predictions. This value can best be estimated from cell loading densities into the 10X/Drop-Seq device, and adjusted according to the estimated proportion of homotypic doublets
+
+
+
+
+
+(3) 分析
+# step1 分群
+1)先分类好。
+
+2)推荐按样本分析。
+sce_list <- SplitObject(scObj2B, split.by = "orig.ident")
+
+
+3)确定参数：
+pc.num <- 1:50
+DoubletRate = 0.075 ## Assuming 7.5% doublet formation rate - tailor for your dataset
+
+
+
+4)对sce_list中的每一个样本都需要走一遍流程，之后再进行合并。
+
+library("DoubletFinder")
+
+## pK Identification (no ground-truth)
+## Step2: 确定参数，寻找最优pK值
+## 对Cell哈希和Demuxlet数据集进行pN- pk参数扫描的ROC分析表明，DoubletFinder的性能在很大程度上不受pN值选择的影响:
+sweep.res.list <- paramSweep(sce_list[[1]], PCs = pc.num, sct = FALSE) #sct也可以选择T
+参数解释：一般是建议按照每个cluster进行分析，SCT参数是指SCTransform，如果是其他方式比如harmony之后的，可以考虑不选择T。
+	很慢：10:10-> 10:56
+	且十分消耗CPU：192个CPU全用！占用130G内存
+	[1] "Creating artificial doublets for pN = 5%": 做一遍Seurat流程
+	[1] "Creating artificial doublets for pN = 10%": ...
+	[1] "Creating artificial doublets for pN = 15%": ... 到 30%停下来了。
+
+
+报错：rror in seu@assays$RNA$counts : $ operator not defined for this S4 class
+	查看github，可能是升级为SeuratV5格式了: https://github.com/chris-mcginnis-ucsf/DoubletFinder
+		(11/21/2023) Made compatible with Seurat v5 and removed '_v3' flag from relevant function names.
+	修改代码: 
+		library("DoubletFinder")
+		#foo <- edit(foo)
+		paramSweep_V4=edit(paramSweep) #把2个 $counts 改为 @counts ，保存
+		sweep.res.list <- paramSweep_V4(seu=sce_list[[1]], PCs = pc.num, sct = FALSE)
+
+	
+sweep.stats <- summarizeSweep(sweep.res.list, GT = FALSE)
+bcmvn <- find.pK(sweep.stats) #出图：丑，没x和y label
+# NULL
+
+
+mpK <- as.numeric(as.vector(bcmvn$pK[which.max(bcmvn$BCmetric)]))
+mpK #0.12
+
+
+Step3: 双细胞比例计算
+对模拟scRNA-seq数据进行pN-pK参数扫描的ROC分析:
+(I)细胞状态数量不同，
+(II)转录异质性程度不同，
+表明(I)最佳pK值选择取决于细胞状态的总数，(II)当应用于转录同质数据时，DoubletFinder的性能会受到影响。
+
+
+# 计算homotypic doublets的比例和预期的doublet数目
+homotypic.prop <- modelHomotypic(sce_list[[1]]$sub.cluster.T)   # 最好提供celltype
+homotypic.prop
+
+nExp_poi <- round(DoubletRate * ncol(sce_list[[1]]))
+nExp_poi.adj <- round(nExp_poi * (1 - homotypic.prop))
+
+
+
+
+Step4: 使用确定的参数鉴定doublets
+# 报错 Error in seu@assays$RNA$counts : $ operator not defined for this S4 class
+doubletFinder_V4=edit(doubletFinder) #修改 $counts 为 @counts
+sce_list[[1]] <- doubletFinder_V4(sce_list[[1]], 
+                            PCs = pc.num, 
+                            pN = 0.25,
+                            pK = mpK, 
+                            nExp = nExp_poi.adj, 
+                            reuse.pANN = F, 
+                            sct = F) # 也可以选择T
+#
+Step5: 结果可视化
+这里确定了Doublet-Low Confidience， Doublet-High Confidience，Singlet三种细胞类型。
+
+pbmc = sce_list[[1]]
+head(pbmc@meta.data)
+
+head(pbmc@meta.data$DF.classifications_0.25_0.12_282, 5)
+## "Singlet" "Singlet" "Singlet" "Singlet" "Singlet"
+
+pbmc@meta.data[, "DF_hi.lo"] <- pbmc@meta.data$DF.classifications_0.25_0.12_282
+
+table(pbmc@meta.data$DF_hi.lo)
+#Doublet Singlet 
+#    282    4563 
+
+## 结果展示，分类结果在pbmc@meta.data中
+DimPlot(pbmc, reduction = "umap", group.by = "DF_hi.lo", cols = c("black", "gold"))
+
+DimPlot(sce_list[[1]],
+        reduction = "umap", 
+        group.by = "DF.classifications_0.25_0.12_282")
+#
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -316,9 +2390,12 @@ https://www.jianshu.com/p/f196c98e0954
 ========================================
 |-- CellChat：细胞间相互作用分析利器
 ----------------------------------------
+http://www.cellchat.org/
+https://github.com/sqjin/CellChat
+
 https://www.jianshu.com/p/da145cff3d41
 
-1.
+1. 简介
 细胞间信息传递方式一个是细胞表面配受体的相互作用，另一个通过细胞产生的可溶性小分子，即细胞因子。在单细胞数据分析中下游，有时候我们想看某几种细胞类型之间的相互作用，就有人推荐我们做一个配受体分析。那什么是配受体？我们在文章Cell-Cell Interaction Database|| 单细胞配受体库你还在文章的附录里找吗？中提到配受体其实是细胞的特定蛋白，蛋白追溯到基因表达上就是基因对。
 
 Inference and analysis of cell-cell communication using CellChat
@@ -329,23 +2406,22 @@ bioRxiv 2020.07.21.214387; doi: https://doi.org/10.1101/2020.07.21.214387
 http://www.cellchat.org/
 https://github.com/sqjin/CellChat
 
-
 应用案例文章分析: https://zhuanlan.zhihu.com/p/525115168
 
 
 
-
-2. 实例：用CellChat来分析一下我们的PBMC数据，看看配受体分析的一般流程。
-
-https://htmlpreview.github.io/?https://github.com/sqjin/CellChat/blob/master/tutorial/CellChat-vignette.html
-https://zhuanlan.zhihu.com/p/525365897
+2.安装
+NMF 0.27
+BiocManager::install("ComplexHeatmap") #2.18.0
+BiocManager::install("BiocNeighbors") #1.20.2
+devtools::install_github("sqjin/CellChat") #1.6.1
+library(CellChat)
 
 
 (1) 安装 
 > devtools::install_github("sqjin/CellChat")
 
 CentOS 正常，Docker 不正常。
-
 
 Installing package into ‘/docker/jinwf/wangjl/R_inDocker/x86_64-pc-linux-gnu-library/4.1’
 (as ‘lib’ is unspecified)
@@ -375,15 +2451,45 @@ $ sudo apt install cmake
 
 
 
-(2) 
+(2) 安装 (2023.6 on Ubuntu 20.04)
+> devtools::install_github("sqjin/CellChat")
+Error: Failed to install 'CellChat' from GitHub:
+  HTTP error 403.
+  API rate limit exceeded for 116.6.234.147. (But here's the good news: Authenticated requests get a higher rate limit. Check out the documentation for more details.)
+
+  Rate limit remaining: 0/60
+  Rate limit reset at: 2023-06-14 02:52:39 UTC
+
+  To increase your GitHub API rate limit
+  - Use `usethis::create_github_token()` to create a Personal Access Token.
+  - Use `usethis::edit_r_environ()` and add the token as `GITHUB_PAT`.
 
 
+(3) 尝试安装2
+$ git --version
+git version 2.25.1
+
+$ cd ~/data/
+$ git clone https://github.com/sqjin/CellChat.git
+Cloning into 'CellChat'...
+remote: Enumerating objects: 1226, done.
+remote: Counting objects: 100% (430/430), done.
+remote: Compressing objects: 100% (225/225), done.
+remote: Total 1226 (delta 301), reused 309 (delta 205), pack-reused 796
+Receiving objects: 100% (1226/1226), 46.58 MiB | 6.41 MiB/s, done.
+Resolving deltas: 100% (744/744), done.
 
 
+$ gcc --version
+gcc (Ubuntu 9.4.0-1ubuntu1~20.04.1) 9.4.0
+Copyright (C) 2019 Free Software Foundation, Inc.
+
+> devtools::install_git(url="~/data/CellChat/")
 
 
-
-
+NMF 0.27
+circlize 0.4.16
+ComplexHeatmap 2.18.0
 
 
 
@@ -392,39 +2498,104 @@ $ sudo apt install cmake
 
 
 ========================================
-SCENIC转录因子分析: 单细胞基因调控网络分析
+|-- CellChat 实例
 ----------------------------------------
+1. 用CellChat来分析一下我们的PBMC数据，看看配受体分析的一般流程。
 
-py https://www.bilibili.com/video/BV1az4y1673b/
+https://htmlpreview.github.io/?https://github.com/sqjin/CellChat/blob/master/tutorial/CellChat-vignette.html
+https://zhuanlan.zhihu.com/p/525365897
+
+library(CellChat)
+library(patchwork)
+options(stringsAsFactors = FALSE)
+
+(1) CellChat需要两个输入
+* 一个是细胞的基因表达数据，
+* 另一个是细胞标签(即细胞标签)。
+
+对于基因表达数据矩阵，基因应该在带有行名的行中，cell应该在带有名称的列中。CellChat分析的输入是均一化的数据(Seurat@assay$RNA@data)。如果用户提供counts数据，可以用normalizeData函数来均一化。对于细胞的信息，需要一个带有rownames的数据格式作为CellChat的输入。
+
+
+
+1) 数据库名字:
+> dplyr::glimpse(CellChatDB$interaction)
+Rows: 1,939
+Columns: 11
+$ interaction_name   <chr> "TGFB1_TGFBR1_TGFBR2", "TGFB2_TGFBR1_TGFBR2", "TGFB3_TGFBR1_TGFBR2", "TGFB1_ACVR1B_TGFBR2", "TGFB1_ACVR…
+$ pathway_name       <chr> "TGFb", "TGFb", "TGFb", "TGFb", "TGFb", "TGFb", "TGFb", "TGFb", "TGFb", "TGFb", "TGFb", "TGFb", "BMP", …
+$ ligand             <chr> "TGFB1", "TGFB2", "TGFB3", "TGFB1", "TGFB1", "TGFB2", "TGFB2", "TGFB3", "TGFB3", "TGFB1", "TGFB2", "TGF…
+$ receptor           <chr> "TGFbR1_R2", "TGFbR1_R2", "TGFbR1_R2", "ACVR1B_TGFbR2", "ACVR1C_TGFbR2", "ACVR1B_TGFbR2", "ACVR1C_TGFbR…
+$ agonist            <chr> "TGFb agonist", "TGFb agonist", "TGFb agonist", "TGFb agonist", "TGFb agonist", "TGFb agonist", "TGFb a…
+$ antagonist         <chr> "TGFb antagonist", "TGFb antagonist", "TGFb antagonist", "TGFb antagonist", "TGFb antagonist", "TGFb an…
+$ co_A_receptor      <chr> "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "",…
+$ co_I_receptor      <chr> "TGFb inhibition receptor", "TGFb inhibition receptor", "TGFb inhibition receptor", "TGFb inhibition re…
+$ evidence           <chr> "KEGG: hsa04350", "KEGG: hsa04350", "KEGG: hsa04350", "PMID: 27449815", "PMID: 27449815", "PMID: 274498…
+$ annotation         <chr> "Secreted Signaling", "Secreted Signaling", "Secreted Signaling", "Secreted Signaling", "Secreted Signa…
+$ interaction_name_2 <chr> "TGFB1 - (TGFBR1+TGFBR2)", "TGFB2 - (TGFBR1+TGFBR2)", "TGFB3 - (TGFBR1+TGFBR2)", "TGFB1 - (ACVR1B+TGFBR…
+> 
+
+
+
+2) 并行设置
+future::plan(strategy ="multisession", workers = 4) # do parallel, Rstudio内不支持 multicore 模式
+
+
+
+
+
+
+
+Ref: CellChat 帮助文档
+https://zhuanlan.zhihu.com/p/554129661
+https://zhuanlan.zhihu.com/p/629468306
+
+
+
+
+
+
+========================================
+SCENIC 转录因子分析: 单细胞基因调控网络分析
+----------------------------------------
 
 1. 概述
 (1)软件 SCENIC(Single Cellr Egulatory Network Inference and Clustering)
 利用单细胞转录组数据，进行调控子的分析，并构建基因调控网络，鉴定稳定的细胞状态。
 
+可以和RNA聚合酶II结合，参与转录起始的蛋白质，叫TF。
+	iPS: Oct4, Sox2, Klf4, c-Myc
+
 (2) SCENIC 分析流程主要分2大步4小步
 1)Gene regulatory network:
-- Co-expression 
+- Co-expression
 - Motif discovery 
 2)Cell states
 - Cell scoring
 - Clustering
 
 (3) 子软件 主要是4个
-- GENIE3: 共表达模块分析
+- GENIE3: 共表达模块分析。每个模块包含一个TF及其靶基因。
 - RcisTarget: 调控元件分析
 - AUCell: 细胞网络活动度分析
 - cluster: 鉴定稳定的细胞状态
 
 
+(4) SCENIC 能做什么？
+- 识别转录因子(TFs)与潜在靶基因之间共表达的模块，鉴定 regulon，获得每个细胞的 regulon 活性得分(regulon activity score, RAS)
+- 通过计算 regulon 特异得分(regulon specificity score, RSS)来获取预测的 regulon 与每种细胞类型的特定对应关系
+- 利用 regulon 的关联特异性指数(connection specificity index, CSI)来表示不同 regulon 之间的关联性，同时具有较高的 CSI 的 regulons 可能共同调控下游基因，并共同负责细胞功能。
+
+
+
+单细胞转录组分析目的
+- 细胞类型鉴定
+- 拟时间分析
+在单细胞转录组中，基因调控网络分析主要实现前者: 细胞类型鉴定。
 
 
 
 
-
-
-
-2. SCENIC 和 pySCENIC 的异同点
-
+(5). SCENIC 和 pySCENIC 的异同点
 相同点 
 	- 功能基本相同，都可以进行基因调控子分析和细胞状态的鉴定
 	- 研发团队相同，作者排序略有差异
@@ -435,14 +2606,107 @@ py https://www.bilibili.com/video/BV1az4y1673b/
 	- 网址不同
 		https://github.com/aertslab/SCENIC 
 		https://github.com/aertslab/pySCENIC
+推荐：耗时部分使用py版，可视化使用R。
 
 
 
-3. 单细胞转录组分析目的
-- 细胞类型鉴定
-- 拟时间分析
 
-在单细胞转录组中，基因调控网络分析主要实现前者: 细胞类型鉴定。
+(6) 结果怎么看？
+* 热图：各组种 regulons 的 RAS 活性热图
+	row: 不同的 regulon
+	colunm: 不同的分组(是均值)，也可以用每列是一个细胞。
+	color: 蓝到红，表示RAS活性得分由低到高，RAS得分越高表示 regulon 在该组中的活性越强
+
+* 各组 regulons 的RSS特异性热图：红表示特异性越强
+* 各组 Regulons 特异性排序图：每个cluster都有一个该图。
+	x 表示排名
+	y 表示RSS得分。得分越高可能与该亚群特异性越高。
+
+* Regulon 模块的CSI关联性聚类热图
+	- 行和列都是 regulon，颜色越黄表示CSI关联度越高。越高的regulon可能具有相似的细胞功能，共同调控下游基因。
+	- 可以根据聚类效果判断给出n个模块，比如n=5
+
+* 各组中 Regulon 模块的平均活性热图。
+	* 行 模块，来自上图，比如n=5
+	* 列 cluster
+	* 颜色表示 rebulon 模块的平均RAS活性由低到高。
+
+* 表1：注释到motif的高置信度的转录因子与靶基因的对应关系
+	col1: TF名称
+	col2-: 相对应靶基因名称，可能多个
+
+* 表2: 各转录因子相应的靶基因富集到的motif信息
+	列名: TF/gene/nMotifs/bestMotif/NES/highConfA../Genie3Weight
+	解释: TF, 靶基因，靶基因在数据库中的motif数量，富集到的最佳motif，标准富集分数(NES)，是否为高可信注释，TF与靶基因的相关性权重
+
+* 表3: 靶基因注释到的motif信息
+	logo: motif 的logo图
+	motifDB: 数据库中的长度？
+	NES: 标准化后的富集得分
+	geneSet: 基因集名称
+	TF_highConf: 注释到该motif的高置信度TF
+	TF_lowConf: 注释到该motif的低置信度TF
+#
+
+
+
+
+
+
+
+2. 主要流程
+https://pyscenic.readthedocs.io/en/latest/index.html
+https://lishensuo.github.io/posts/bioinfo/010单细胞分析工具--转录因子pyscenic/
+
+三个子命令:
+	grn/ 表达矩阵 到 共表达模块
+	ctx/ 寻找基因集合的富集的 motifs；可选：基于 cis 调控线索，从基因集合中剪枝
+	aucell/ 对单细胞定量基因活性
+
+
+
+(1)网络推断 Network inference
+
+输入：单细胞表达矩阵，转录因子列表；
+	这一步主要就是读入单细胞数据，过滤低质量的细胞、低表达的基因；
+	然后将单细胞count表达矩阵(行名是细胞，列名是基因)存储为csv格式（或者loom）;
+输出：TF-gene.csv文件。第1列是转录因子，第2列是共表达的基因，第3列是共表达强度(weight)
+
+针对转录因子列表里的每一个转录因子，探索在单细胞表达矩阵中哪些基因与之存在共表达关系。
+通过基于树(tree-based)的回归模型，根据转录因子的表达去预测基因的表达情况。具体算法可选择GRNBoost2或者GENIE3，前者的计算效率会更高。
+
+
+
+(2)得到 TF-regulon
+
+输入：上一步得到的TF-gene.csv，motif-gene注释数据，motif-TF注释数据，单细胞表达数据
+输出：motif富集结果或者regulon数据
+
+Module generation:
+	根据第二步得到的TF-gene.csv文件，计算中TF -module(one Translate factor and its target genes)。
+
+	根据调控基因与转录因子的相关性方向可分为 activating module(ρ ≥ +0.03)与 repressing module(ρ ≤ −0.03)。由于负相关模块(TF介导对靶基因的转录抑制)的数量一般较少，默认后续分析只保留正相关的activating module进行后续分析。
+
+	最后可限制module所包含的最少基因数，默认为20。
+
+
+Motif enrichment:
+	在提供的motif-gene注释文件中，提供了每个motif的基因排名，即哪些基因的上游区域含有最类似该motif的区域。
+
+	基于此计算出每个module中所富集的motif有哪些。然后根据motif-TF注释数据，判断module 所富集到的motif是否为该module TF的motif。再然后，通过module的motif预测模块中真正的靶基因，去除其中的假阳性或者间接靶点。
+
+	最后通过合并同一个TF的所有保留基因，作为一个Regulon(one TF and its target gene)
+
+
+
+(3) Regulon活性评分
+基于上一步得到的所有Regulon(可认为是Gene Set)，结合单细胞表达矩阵去评价每一个细胞对于每一个Regulon的表达程度评分。
+
+不同细胞对于同一Regulon的表达活性是可以比较的，但同一细胞的不同Regulon的表达与否是不好比较的。
+
+文章提供一种分析思路，将Regulon的活性得分二值化，即是否激活(On/Off)。这主要通过对那些具有 bimodal distribution双峰分布曲线的Regulon进行混合高斯分布拟合，确定合适的分割阈值，从而将细胞划分为两种状态。
+
+
 
 
 
@@ -455,7 +2719,7 @@ py https://www.bilibili.com/video/BV1az4y1673b/
 
 
 ========================================
-|- 转录因子调控网络 SCENIC: single-cell regulatory network inference and clustering //todo
+|- 文献：转录因子调控网络 SCENIC: single-cell regulatory network inference and clustering //todo
 ----------------------------------------
 SCENIC | 从单细胞数据推断基因调控网络和细胞类型 
 
@@ -471,7 +2735,9 @@ https://www.nature.com/articles/nmeth.4463
 
 
 
-2. 文章中的实例
+
+
+2. 文章中的实例 2020
 https://mp.weixin.qq.com/s?__biz=MzAxMDkxODM1Ng==&mid=2247497665&idx=1&sn=74ac0e87b9689d5df7c0208e1c1dc0ac
 
 (1)2018年CELL文章的800多个单细胞
@@ -520,6 +2786,49 @@ TF各取2个进行tSNE的可视化
 
 
 
+
+
+3. 文章中的应用 2021
+(1) paper1: 2021 BD
+材料: 两对原发性和转移性的恶性浆液性卵巢癌样本
+研究背景: 鉴定出一种具有高度增殖和耐药潜力的侵袭性上皮细胞亚群，并通过实验验证它们在卵巢癌细胞生长和迁移中的作用。
+通过逆时序分析，发现包括翻译机制在内的多种信号通路的失调与卵巢癌转移有关。
+
+SCENIC分析揭示了基因调控网络的相互作用，并通过JUN/AP-1抑制剂T-5224验证，表明JUN可作为潜在的卵巢癌治疗靶点。
+* SCENIC分析：原发与转移细胞 / 上皮细胞 / 成纤维细胞
+* 表明: JUN在3组细胞中均表现出活跃状态。
+
+
+(2) paper2: 2021 10x
+材料：4个健康人的6个角膜样本；小鼠整个角膜组织
+角膜缘上皮细胞做亚群分析，得3个亚群。基于marker定义为 角膜缘干/祖细胞、上基层细胞和表皮细胞。
+接下来，从3个方面完善上述结果：
+* 免疫荧光对三个亚群进行定位：免疫荧光几个基因的定位
+* 对每个亚群高表达基因进行富集分析，从功能上辅助验证: 三个亚群高表达的基因做DoHeatmap，及对应的相关GO。
+* 通过 SCENIC 分析得到三个亚群的特征调控子，从TF和其下游靶基因功能和表达趋势上辅助判断亚群定位的准确性和相应的生物学功能特征。
+	- TF 热图
+	- target genes of TP63
+
+
+(3) paper3: 2020 10x
+材料：8例BC(bladder urothelial carcinoma)肿瘤样本和3例相邻正常粘膜
+髓系细胞中识别出7种细胞类型。
+通过TF motif 的活性可以确定细胞类型之间的差异。
+
+* 热图：单核细胞(Mono)和肿瘤相关巨噬细胞(TAM)的转录组似乎呈现出持续的变化，表明被招募到肿瘤区域的单核细胞被重编程为TAMs，
+	- 对Mono和TAMs进行逆时序分析和RNA速率分析，都观察到了类似现象：
+
+* 对DC细胞的三个亚型做 SCENIC 识别出的关键motif，作者发现，
+	- BACH1, MAFG和NFE2的motif活性下降，
+	- 而MAF, STAT1和STAT2则升高，这可能是导致M2极化的原因。
+	这些结果为抑制或逆转免疫抑制微环境的形成提供了潜在的靶点。
+
+
+
+
+
+
+
 ref:
 实例：https://www.jianshu.com/p/0bf18fe92c7d
 http://blog.sciencenet.cn/home.php?mod=space&uid=118204&do=blog&id=1208136
@@ -528,57 +2837,3005 @@ https://mp.weixin.qq.com/s?__biz=MzAxMDkxODM1Ng==&mid=2247497665&idx=1&sn=74ac0e
 
 
 
+
+
+
+
+
 ========================================
-inferCNV
+|- SCENIC 实战: python 版 命令行
 ----------------------------------------
-1. 安装
-(1)安装inferCNV之前需要安装JAGS程序，下载地址：
+
+https://github.com/aertslab/pySCENIC
+https://pyscenic.readthedocs.io/en/latest/
+
+
+0.要点：
+(1). 可以输入counts csv文件，也可以输入loom文件。
+转为 loom 的方法 https://bookdown.org/ytliu13207/SingleCellMultiOmicsDataAnalysis/scenic.html
+http://j3.biomooc.com:8000/code_reader/?file=/file/./code/zhangzm/scenic/run.scenic.step1.zhangLab10X.R
+
+(2). 为节省时间，可以先过滤掉一些基因
+	如 去掉低表达的基因:
+		cellInfo <- combined@meta.data
+
+		exprMat <- combined@assays$RNA@data
+		loci1 <- which(rowSums(exprMat) > 1*.01*ncol(exprMat))
+		exprMat_filter <- exprMat[loci1, ]
+	去掉核糖体基因:
+		### filter out genes in blacklist
+		f.gene.blackList.bool <- (rownames(exprMat) %in% env.misc$all.gene.ignore.df$geneSymbol) |
+								grepl("^RP[LS]",rownames(exprMat),perl=T) |
+								rownames(exprMat)=="MALAT1"
+		f.gene.blackList <- unname(rownames(exprMat)[f.gene.blackList.bool])
+		genesKept <- setdiff(genesKept,f.gene.blackList)
+		cat(sprintf("final genes kept (remove those in black list): %d\n",length(genesKept)))
+
+	仅保留RcisTarget包中数据库有的基因
+		目的：移除下游分析不需要的基因，节省GENIE3/GRNBoost运行的时间
+		# (Adjust minimum values according to your dataset)
+		genesKept <- geneFiltering(exprMat, scenicOptions=scenicOptions,
+	                          minCountsPerGene=3*.01*ncol(exprMat),
+	                          minSamples=ncol(exprMat)*.01)
+
+
+(3) 预处理阶段
+=> step-Pre1: 抽取细胞样品
+# 一般抽取 10-20%的细胞进行运算：如1.5k个细胞
+set.seed(42)
+subcell.id <- sample(colnames(scObj),6000) ##抽样
+scObj_sub=subset(scObj, cells=subcell.id)
+DimPlot(scObj_sub, label=T)
+
+
+#转为稀疏矩阵
+library(Matrix)
+	expr_matrix <- as(expr_matrix, "sparseMatrix") #报错：内存不够
+	expr_matrix[1:3, 1:3]
+
+# 输出为csv文件
+expr_matrix <- GetAssayData(scObj_sub, slot = "counts")  # 或 "data" 根据需要
+write.csv(as.data.frame(expr_matrix), file = paste0(outputRoot, keyword, "sub6000.expr_matrix.csv") )
+
+
+
+=> step-Pre2: csv to loom
+$ cat counts_CsvToLoom.py
+
+import argparse
+import os, sys
+
+import loompy as lp;
+import numpy as np;
+import scanpy as sc;
+def time_now():
+    import time
+    return time.strftime("[%Y/%m/%d %H:%M:%S] ", time.localtime())
+def main():
+    parser= argparse.ArgumentParser(description='make input for pySCENIC')
+    parser.add_argument('-i', '--input', type=str, required=True, metavar='input_csv')
+    parser.add_argument('-o', '--output', type=str, required=True, metavar='outout_loom')
+    args = parser.parse_args()
+    print(time_now(), "intput file:", args.input)
+    print(time_now(), "Begin .csv to .loom ...")
+
+    x=sc.read_csv(args.input)
+    print(time_now(),"shape:", x.X.shape)
+    row_attrs = {"Gene": np.array(x.obs_names),}
+    col_attrs = {"CellID": np.array(x.var_names)}
+    #name = args.input.split('.')[0]
+
+    loom_name=args.output
+    if not loom_name.endswith(".loom"):
+        loom_name += ".loom"
+    lp.create(loom_name,x.X,row_attrs,col_attrs)
+    print(time_now(),"Success!")
+    print(time_now(),"output loom file:", loom_name)
+
+if __name__ == '__main__':
+    main()
+
+$ python3 counts_CsvToLoom.py -i try3/sct_rpcasub6000.expr_matrix.csv -o try3/py3.loom
+[2025/01/19 15:08:28]  intput file: try3/sct_rpcasub6000.expr_matrix.csv
+[2025/01/19 15:08:28]  Begin .csv to .loom ...
+[2025/01/19 15:08:54]  shape: (36601, 6000)
+[2025/01/19 15:10:43]  Success!
+[2025/01/19 15:10:43]  output loom file: try3/py3.loom
+
+
+
+=> 接着运行 docker 版3个命令行
+
+	第三方依赖文件:
+		step1: TF列表 txt 1个
+		step2: cisTargetDB 2个 feather文件
+			anno tbl 一个
+/datapool/wangjl/others/zhaoym/output/demo_SCENIC
+	-rw-rw-rw-+ 1 wangjl jinlab  12K Jan 16 15:32 allTFs_hg38.txt
+	-rw-rw-rw-+ 1 wangjl jinlab 95M Jan 16 15:32 motifs-v10nr_clust-nr.hgnc-m0.001-o0.0.tbl
+	-rw-rw-rw-+ 1 wangjl jinlab 1.2G Jan 16 16:44 cisTarget_databases/hg38__refseq-r80__500bp_up_and_100bp_down_tss.mc9nr.genes_vs_motifs.rankings.feather
+	-rw-rw-rw-+ 1 wangjl jinlab 1.2G Jan 16 16:44 cisTarget_databases/hg38__refseq-r80__10kb_up_and_down_tss.mc9nr.genes_vs_motifs.rankings.feather
+
+
+输入文件: csv or loom: The name of the file that contains the expression matrix for the single cell experiment. Two file formats are supported: csv (rows=cells x columns=genes) or loom (rows=genes x columns=cells)
+	* 保存表达矩阵有风险，太大有可能无法保存/R中转置，建议使用loom格式的输入
+	* 因为上文保存csv时没有转置，所以运行如下3个命令都要加参数 --transpose；使用 loom 输入不需要该参数
+
+	-rw-rw-rw-+ 1 wangjl jinlab  34M Jan 19 11:24 scenic.loom
+
+输出:
+	$ ls -lth try3B/
+	total 277M
+	-rw-rw-rw-+ 1 wangjl jinlab  20M Jan 19 13:34 auc_mtx.csv
+	-rw-rw-rw-+ 1 wangjl jinlab 6.8M Jan 19 13:30 regulons.csv
+	-rw-rw-rw-+ 1 wangjl jinlab 210M Jan 19 12:20 expr_mat.adjacencies.tsv
+
+
+* 全过程命令化: https://www.jianshu.com/p/71ed43163ce1
+* 命令行3的输出也可以是 loom: https://mp.weixin.qq.com/s/9n1ITFcC3fT8uyQGlL3Qtw
+
+
+
+
+
+
+三个shell命令行:
+	expMat=try3/scenic.loom #from py
+
+	step1:
+	$ pyscenic grn --num_workers 50 \
+				-o try3/expr_mat.adjacencies.tsv \
+				${expMat} \
+				allTFs_hg38.txt
+	#11:25->12:24
+	# step1 可以考虑参数  --method grnboost2 \
+
+
+	step2:
+	$ pyscenic ctx --num_workers 50 \
+	        try3/expr_mat.adjacencies.tsv \
+	        cisTarget_databases/hg38__refseq-r80__500bp_up_and_100bp_down_tss.mc9nr.genes_vs_motifs.rankings.feather \
+	        cisTarget_databases/hg38__refseq-r80__10kb_up_and_down_tss.mc9nr.genes_vs_motifs.rankings.feather \
+	        --annotations_fname motifs-v10nr_clust-nr.hgnc-m0.001-o0.0.tbl \
+	        --expression_mtx_fname ${expMat} \
+	        --mode "custom_multiprocessing" \
+	        --output try3/regulons.csv
+	#13:16->13:32
+
+	step3:
+	$ pyscenic aucell --num_workers 20 \
+	        ${expMat} \
+	        --transpose \
+	        try3/regulons.csv \
+	        -o try3/auc_mtx.csv
+	#13:33->13:34
+	# step3 输出可以考虑 --output aucell.loom
+
+
+
+
+
+
+=> 使用R可视化：见下一节
+
+
+
+
+
+
+
+
+
+
+
+
+############################# 探索过程
+
+
+
+
+1. 准备数据
+
+(1) 安装
+python >=3.7
+$ which python3
+~/soft/python3/python-3.10.14/bin/python3
+
+$ pip3 install pyscenic
+$ pip3 list | grep pyscenic
+pyscenic                          0.12.1
+
+
+$ pip3 install scanpy  # 1.10.4
+
+
+
+
+
+(2) 辅助数据：3类
+$ cd /home/wangjl/data4/ref/cisTarget_databases/
+
+1) motif–gene注释数据(genome ranking database)
+Databases ranking the whole genome of your species of interest based on regulatory features (i.e. transcription factors) in feather format.
+
+> These ranking databases are 1.1 Gb each so downloading them might take a while. An annotations file is typically 100Mb in size.
+
+https://resources.aertslab.org/cistarget/databases/
+https://resources.aertslab.org/cistarget/databases/homo_sapiens/hg38/refseq_r80/mc_v10_clust/gene_based/
+同R版本 hg38_10kbp_up_10kbp_down_full_tx_v10_clust.genes_vs_motifs.rankings.feather.sha1sum.txt
+
+第十版： v10
+	i) hg38: https://resources.aertslab.org/cistarget/databases/homo_sapiens/hg38/refseq_r80/mc_v10_clust/gene_based/
+	$ cd /home/wangjl/data4/ref/cisTarget_databases/
+	wget https://resources.aertslab.org/cistarget/databases/homo_sapiens/hg38/refseq_r80/mc_v10_clust/gene_based/hg38_10kbp_up_10kbp_down_full_tx_v10_clust.genes_vs_motifs.rankings.feather
+
+	wget https://resources.aertslab.org/cistarget/databases/homo_sapiens/hg38/refseq_r80/mc_v10_clust/gene_based/hg38_10kbp_up_10kbp_down_full_tx_v10_clust.genes_vs_motifs.scores.feather
+
+	wget https://resources.aertslab.org/cistarget/databases/homo_sapiens/hg38/refseq_r80/mc_v10_clust/gene_based/hg38_500bp_up_100bp_down_full_tx_v10_clust.genes_vs_motifs.rankings.feather
+
+	wget https://resources.aertslab.org/cistarget/databases/homo_sapiens/hg38/refseq_r80/mc_v10_clust/gene_based/hg38_500bp_up_100bp_down_full_tx_v10_clust.genes_vs_motifs.scores.feather
+
+	下载sha1sum文件，核对: sha1sum -c hg38_10kbp_up_10kbp_down_full_tx_v10_clust.genes_vs_motifs.rankings.feather.sha1sum.txt 
+
+	-rw-rw-rw-+ 1 wangjl jinlab 252M Jun  8  2022 hg38_500bp_up_100bp_down_full_tx_v10_clust.genes_vs_motifs.scores.feather
+	-rw-rw-rw-+ 1 wangjl jinlab 299M Jun  8  2022 hg38_500bp_up_100bp_down_full_tx_v10_clust.genes_vs_motifs.rankings.feather
+	-rw-rw-rw-+ 1 wangjl jinlab 327M Jun  8  2022 hg38_10kbp_up_10kbp_down_full_tx_v10_clust.genes_vs_motifs.scores.feather
+	-rw-rw-rw-+ 1 wangjl jinlab 297M Jun  8  2022 hg38_10kbp_up_10kbp_down_full_tx_v10_clust.genes_vs_motifs.rankings.feather
+
+
+
+在官网database下载两个feather文件（1.2G） 第九版 mc9nr
+	i) hg38: https://resources.aertslab.org/cistarget/databases/homo_sapiens/hg38/refseq_r80/mc9nr/gene_based/
+	$ cd /home/wangjl/data4/ref/cisTarget_databases/
+
+	wget https://resources.aertslab.org/cistarget/databases/homo_sapiens/hg38/refseq_r80/mc9nr/gene_based/hg38__refseq-r80__10kb_up_and_down_tss.mc9nr.genes_vs_motifs.rankings.feather
+
+	wget https://resources.aertslab.org/cistarget/databases/homo_sapiens/hg38/refseq_r80/mc9nr/gene_based/hg38__refseq-r80__500bp_up_and_100bp_down_tss.mc9nr.genes_vs_motifs.rankings.feather
+
+
+	-rw-rw-rw-+ 1 wangjl jinlab 1.2G Jan 16 16:44 hg38__refseq-r80__500bp_up_and_100bp_down_tss.mc9nr.genes_vs_motifs.rankings.feather
+	-rw-rw-rw-+ 1 wangjl jinlab 1.2G Jan 16 16:44 hg38__refseq-r80__10kb_up_and_down_tss.mc9nr.genes_vs_motifs.rankings.feather
+
+
+
+
+
+
+2)motif–TF注释数据
+
+Motif to TF annotations database providing the missing link between an enriched motif and the transcription factor that binds this motif. This pipeline needs a TSV text file where every line represents a particular annotation.
+
+v10: Annotations based on the 2022 SCENIC+ motif collection. Use these files if you are using the mc_v10_clust databases.
+https://resources.aertslab.org/cistarget/motif2tf/
+
+	$ cd /home/wangjl/data4/ref/cisTarget_databases/py/
+	$ wget https://resources.aertslab.org/cistarget/motif2tf/motifs-v10nr_clust-nr.hgnc-m0.001-o0.0.tbl
+
+
+3)转录因子列表
+A list of transcription factors is required for the network inference step (GENIE3/GRNBoost2).
+
+https://resources.aertslab.org/cistarget/tf_lists/
+
+	$ cd /home/wangjl/data4/ref/cisTarget_databases/py/
+	$ wget https://resources.aertslab.org/cistarget/tf_lists/allTFs_hg38.txt
+
+
+
+=> 复制一份，方便docker内访问：
+	$ ls -lth /home/wangjl/data4/ref/cisTarget_databases/py/*
+	-rw-rw-rw-+ 1 wangjl jinlab 95M Aug 17  2022 /home/wangjl/data4/ref/cisTarget_databases/py/motifs-v10nr_clust-nr.hgnc-m0.001-o0.0.tbl
+	-rw-rw-rw-+ 1 wangjl jinlab 12K Apr 27  2022 /home/wangjl/data4/ref/cisTarget_databases/py/allTFs_hg38.txt
+
+	$ cp /home/wangjl/data4/ref/cisTarget_databases/py/* /datapool/wangjl/others/zhaoym/output/demo_SCENIC/
+	$ cp -r /home/wangjl/data4/ref/cisTarget_databases/*feather /datapool/wangjl/others/zhaoym/output/demo_SCENIC/cisTarget_databases/
+	软连接不行，docker内部看不到。
+
+
+
+
+
+
+
+(3)Seurat v4作为输入
+
+表达数据
+motif数据库：上游500bp, 10kb, 等
+
+@J3 $ cd /datapool/wangjl/others/zhaoym/script
+$ R
+library(Seurat)
+scObj = readRDS("/datapool/wangjl/others/zhaoym/output/03_UMAP_3origin/GSE131907_03_2_All_CD45.re-cluster_std.cell_type_CD45.Seurat.Rds")
+
+outputRoot="/datapool/wangjl/others/zhaoym/output/demo_SCENIC/"
+
+
+
+====> 耗时
+	1.5k细胞，第一步最耗时 2.5h，第二步 0.5h，第三步 1min
+
+
+
+# 一般抽取 10-20%的细胞进行运算
+set.seed(42)
+subcell.id <- sample(colnames(scObj),1500) ##抽样
+scObj_sub=subset(scObj, cells=subcell.id)
+DimPlot(scObj_sub, label=T)
+
+	> saveRDS(scObj_sub, paste0(outputRoot, 'sub1500.Seurat.Rds') )
+	# "/datapool/wangjl/others/zhaoym/output/demo_SCENIC/sub1500.Seurat.Rds"
+
+
+
+SCENIC分析需要的表达矩阵格式为：行名是细胞，列名是基因。
+	要么直接转置
+	要么在之后pyscenic分析时添加参数 --transpose，进行转置。
+
+
+# 输入的是 raw cuonts:
+	expr_matrix <- GetAssayData(scObj_sub, slot = "counts")  # 或者 "data" 视情况而定
+
+	# 转为稀疏矩阵
+	library(Matrix)
+	expr_matrix <- as(expr_matrix, "sparseMatrix")
+	
+	expr_matrix[1:3, 1:2]
+	#3 x 2 sparse Matrix of class "dgCMatrix"
+	#         GTGAAGGGTGTGGCTC_LUNG_N01 GGACATTCAAGCCGCT_LUNG_N01
+	#A1BG                             .                         .
+	#A1BG-AS1                         .                         .
+	#A1CF                             .                         .
+
+
+	# 提取细胞和基因信息：
+	cell_metadata <- scObj_sub@meta.data
+	cell_metadata[1:2,1:3]
+	#                          orig.ident nCount_RNA nFeature_RNA
+	#GTGAAGGGTGTGGCTC_LUNG_N01     lung58      15315         3372
+	#GGACATTCAAGCCGCT_LUNG_N01     lung58      10459         2656
+	
+	gene_names <- rownames(expr_matrix)
+	gene_names[1:3]
+	#[1] "A1BG"     "A1BG-AS1" "A1CF"
+	
+	paste0(outputRoot, "sub1500.csv")
+
+
+# 或者写loom文件:
+	# Python版的SCENIC是推荐使用loom作为输入数据
+	
+	# 1) 简易版loom: 跳过
+	library(SCopeLoomR)
+	Assays(scObj_sub)  #[1] "RNA"
+	assay="RNA"
+	loom = build_loom(file.name = paste0(outputRoot, "sub1500.loom"), dgem = scObj_sub@assays[[assay]]@counts)
+	# "/datapool/wangjl/others/zhaoym/output/demo_SCENIC/sub1500.loom"
+	close_loom(loom)
+	
+	# 1B) 添加umap的loom
+	scObj_sub@reductions$umap@cell.embeddings[1:3, ]
+	#							UMAP_1    UMAP_2
+	#GTGAAGGGTGTGGCTC_LUNG_N01 5.401718 -9.565255
+	#GGACATTCAAGCCGCT_LUNG_N01 5.366917 -9.613433
+	#TGATTTCAGGGCACTA_NS_19    6.144428 -1.714500
+
+	loom2 = build_loom(file.name = paste0(outputRoot, "sub1500_umap.loom"), 
+		dgem = scObj_sub@assays[[assay]]@counts,
+		default.embedding = scObj_sub@reductions$umap@cell.embeddings,
+		default.embedding.name = "umap")
+	close_loom(loom2)
+	# "/datapool/wangjl/others/zhaoym/output/demo_SCENIC/sub1500_umap.loom"
+
+	# 1C) 输出为csv文件
+	expr_matrix <- GetAssayData(scObj_sub, slot = "counts")  # 或 "data" 根据需要
+	write.csv(as.data.frame(expr_matrix), file = paste0(outputRoot, "sub1500.expr_matrix.csv") )
+	# "/datapool/wangjl/others/zhaoym/output/demo_SCENIC/sub1500.expr_matrix.csv"
+
+	write.table(as.data.frame(expr_matrix), file = paste0(outputRoot, "sub1500.expr_matrix.tsv"), sep="\t", quote=F)
+	# "/datapool/wangjl/others/zhaoym/output/demo_SCENIC/sub1500.expr_matrix.tsv"
+	
+	# 1D) 行列转置后输出为tsv https://github.com/aertslab/pySCENIC/issues/385
+	write.table(as.data.frame(t(expr_matrix)), file = paste0(outputRoot, "sub1500.expr_matrix.T.tsv"), sep="\t", quote=F)
+
+	# 2) meta信息
+	write.table(scObj_sub@meta.data, paste0(outputRoot, 'sub1500.metadata.csv'), sep='\t', quote=F)
+	# "/datapool/wangjl/others/zhaoym/output/demo_SCENIC/sub1500.metadata.csv"
+
+
+	# 3) umap信息
+	> umap = FetchData(scObj_sub, vars=c("UMAP_1", "UMAP_2", "cell"))
+	> head(umap)
+								 UMAP_1     UMAP_2                      cell
+	GTGAAGGGTGTGGCTC_LUNG_N01  5.401718 -9.5652546 GTGAAGGGTGTGGCTC_LUNG_N01
+	GGACATTCAAGCCGCT_LUNG_N01  5.366917 -9.6134332 GGACATTCAAGCCGCT_LUNG_N01
+	TGATTTCAGGGCACTA_NS_19     6.144428 -1.7145004    TGATTTCAGGGCACTA_NS_19
+
+	write.table(umap, paste0(outputRoot, 'sub1500.umap.tsv'), sep='\t', quote=F)
+
+
+
+
+2. 运行方式
+
+(1) 命令行模式
+$ which pyscenic 
+~/soft/python3/python-3.10.14/bin/pyscenic
+
+$ pyscenic -h
+
+	AttributeError: module 'numpy' has no attribute 'object'.
+	`np.object` was a deprecated alias for the builtin `object`. To avoid this error in existing code, use `object` by itself. Doing this will not modify any behavior and is safe.
+	这个报错说明：新版本numpy做了调整，去掉了 np.object。只能尝试用一个老版本的 numpy。
+
+	$ pip3 list | grep -i numpy
+	numpy                             1.26.4
+
+	建议: $ pip3 install numpy==1.23.4
+	https://stackoverflow.com/questions/75069062/module-numpy-has-no-attribute-object
+
+
+轻量级的 py 虚拟环境 virtualenv：
+	$ pip3 install virtualenv
+	$ virtualenv --version
+	virtualenv 20.28.1 from /home/wangjl/soft/python3/python-3.10.14/lib/python3.10/site-packages/virtualenv/__init__.py
+
+	创建文件夹:
+	$ mkdir ~/soft/pythonVe
+	$ cd ~/soft/pythonVe/
+	
+	新建环境，并命名
+	$ virtualenv -p python3 env-pyscenic #等待一会
+	created virtual environment CPython3.10.14.final.0-64 in 4840ms
+	  creator CPython3Posix(dest=/datapool/wangjl/soft/pythonVe/env-pyscenic, clear=False, no_vcs_ignore=False, global=False)
+	  seeder FromAppData(download=False, pip=bundle, setuptools=bundle, wheel=bundle, via=copy, app_data_dir=/home/wangjl/.local/share/virtualenv)
+		added seed packages: pip==24.3.1, setuptools==75.6.0, wheel==0.45.1
+	  activators BashActivator,CShellActivator,FishActivator,NushellActivator,PowerShellActivator,PythonActivator
+
+	进入虚拟环境
+	$ source ~/soft/pythonVe/env-pyscenic/bin/activate
+	(env-pyscenic) [wangjl@jinlab-svr3 pythonVe]$ #前面已经添加环境名字 env-pyscenic
+	实质: 激活环境后，virtualenv会修改相关环境变量，让命令python和pip均指向当前的virtualenv环境。
+	小结：virtualenv为应用提供了隔离的Python运行环境，解决了不同应用间多版本的冲突问题。
+
+
+	安装老版本的py包: 
+	$ pip3 -V
+	pip 24.3.1 from /datapool/wangjl/soft/pythonVe/env-pyscenic/lib/python3.10/site-packages/pip (python 3.10)
+
+	$ pip3 install numpy==1.23.4
+	
+	尝试调用命令行:依旧报错！
+	$ pyscenic -h
+
+
+需要重新安装?
+	$ pip3 install pyscenic
+	
+	$ which pyscenic
+	/datapool/wangjl/soft/pythonVe/env-pyscenic/bin/pyscenic
+	
+	使用命令
+	$ pyscenic -h
+	
+	查看包:
+	$ pip3 freeze
+	$ grep "numpy" freeze.txt
+	numpy==2.0.2
+	numpy-groupies==0.11.2
+	
+	$ pip3 install numpy==1.23.5
+	
+	使用绝对路径:
+	$ /datapool/wangjl/soft/pythonVe/env-pyscenic/bin/pyscenic -h
+	usage: pyscenic [-h] {grn,add_cor,ctx,aucell} ...
+
+	Single-Cell rEgulatory Network Inference and Clustering (0.12.1)
+
+	positional arguments:
+	  {grn,add_cor,ctx,aucell}
+							sub-command help
+		grn                 Derive co-expression modules from expression matrix.
+		add_cor             [Optional] Add Pearson correlations based on TF-gene expression to the network adjacencies output from the GRN step, and output these to a new adjacencies file. This will normally be
+							done during the "ctx" step.
+		ctx                 Find enriched motifs for a gene signature and optionally prune targets from this signature based on cis-regulatory cues.
+		aucell              Quantify activity of gene signatures across single cells.
+
+	options:
+	  -h, --help            show this help message and exit
+
+	Arguments can be read from file using a @args.txt construct. For more information on loom file format see http://loompy.org . For more information on gmt file format see
+	https://software.broadinstitute.org/cancer/software/gsea/wiki/index.php/Data_formats .
+
+
+说明：一定要使用绝对路径！否则可能还是用的原来的老地址。
+
+	退出环境: $ deactivate
+	删除环境：就是删除 /datapool/wangjl/soft/pythonVe/env-pyscenic 文件夹即可
+
+删除全局环境的 pyscenic
+	$ pip3 uninstall pyscenic
+
+
+
+
+
+
+(2) Docker: 最省事的运行环境
+# pySCENIC CLI version (recommended).
+$ docker pull aertslab/pyscenic:0.12.1
+
+从tx云下载
+	$ docker images
+	REPOSITORY          TAG             IMAGE ID       CREATED       SIZE
+	aertslab/pyscenic   0.12.1          4d3790890827   2 years ago   986MB
+
+	压缩为gz文件
+	$ docker save aertslab/pyscenic:0.12.1 | gzip > aertslab__pyscenic_0.12.1.image.tar.gz
+	
+	-rw-rw-r-- 1 wangjl2 wangjl2 293M Jan 16 15:01 aertslab__pyscenic_0.12.1.image.tar.gz
+	$ md5sum aertslab__pyscenic_0.12.1.image.tar.gz
+	d02591d3985e7a9a60ac0cd5898f402c  aertslab__pyscenic_0.12.1.image.tar.gz
+
+	传输
+	$ scp aertslab__pyscenic_0.12.1.image.tar.gz wangjl@gate1.picb.ac.cn:/picb/jinlab/wangjl/
+
+	导入
+	$ gunzip -c /picb/jinlab/wangjl/aertslab__pyscenic_0.12.1.image.tar.gz | docker load
+
+	查看
+	$ docker images | grep pyscenic
+	aertslab/pyscenic           0.12.1                              4d3790890827   2 years ago     986MB
+
+
+
+可以使用命令行模式运行
+
+	docker run -it --rm \
+		-v /data:/data \
+		aertslab/pyscenic:0.12.1 pyscenic grn \
+			--num_workers 6 \
+			-o /data/expr_mat.adjacencies.tsv \
+			/data/expr_mat.tsv \
+			/data/allTFs_hg38.txt
+
+	docker run -it --rm \
+		-v /data:/data \
+		aertslab/pyscenic:0.12.1 pyscenic ctx \
+			/data/expr_mat.adjacencies.tsv \
+			/data/hg19-tss-centered-5kb-7species.mc9nr.genes_vs_motifs.rankings.feather \
+			/data/hg19-tss-centered-10kb-7species.mc9nr.genes_vs_motifs.rankings.feather \
+			--annotations_fname /data/motifs-v9-nr.hgnc-m0.001-o0.0.tbl \
+			--expression_mtx_fname /data/expr_mat.tsv \
+			--mode "custom_multiprocessing" \
+			--output /data/regulons.csv \
+			--num_workers 6
+
+	docker run -it --rm \
+		-v /data:/data \
+		aertslab/pyscenic:0.12.1 pyscenic aucell \
+			/data/expr_mat.tsv \
+			/data/regulons.csv \
+			-o /data/auc_mtx.csv \
+			--num_workers 6
+
+
+
+
+
+A) 启动docker，设置交互式环境
+$ id
+uid=5662(wangjl) gid=1210(jinlab)
+
+$ cd /datapool/wangjl/others/zhaoym/output/demo_SCENIC
+$ tmux
+$ docker run --name pyscenic -it -v `pwd`:/data aertslab/pyscenic:0.12.1 bash
+
+创建用户名和密码：保持和host的uid和gid一致
+# DEFAULT_USER="wangjl2" && uid=5662 && gid=1210
+# groupadd -g $gid groupA
+# useradd -s /bin/bash -d /home/${DEFAULT_USER} -m ${DEFAULT_USER} -u $uid -g $gid
+# echo "${DEFAULT_USER}:123456.." | chpasswd
+
+切换到用户
+# su wangjl2
+$ cd /data
+
+$ ls -lth
+total 370M
+drwxrwxrwx+ 2 wangjl2 groupA 4.0K Jan 16  2025 try2
+-rw-rw-rw-+ 1 wangjl2 groupA  95M Jan 16 07:32 motifs-v10nr_clust-nr.hgnc-m0.001-o0.0.tbl
+-rw-rw-rw-+ 1 wangjl2 groupA  12K Jan 16 07:32 allTFs_hg38.txt
+-rw-rw-rw-+ 1 wangjl2 groupA  86M Jan 16 06:39 sub1500.expr_matrix.T.tsv
+
+
+查看位置：
+$ which pyscenic
+/opt/venv/bin/pyscenic
+
+$ python3 -V
+Python 3.10.6
+
+$ pip3 -V
+pip 22.2.1 from /opt/venv/lib/python3.10/site-packages/pip (python 3.10)
+
+
+
+
+B) 查看py包的版本号
+$ docker exec -it pyscenic bash
+root@fc98566b5a12:/# su wangjl2
+wangjl2@fc98566b5a12:/$ cd /data/
+
+$ pip3 freeze > py_docker.version
+
+$ cat py_docker.version | grep -i distri
+distributed==2022.11.1
+
+pyscenic==0.12.1+0.gce41b61.dirty
+dask==2022.11.1
+
+
+
+
+
+# step1 运行 grn @docker
+$ pyscenic grn \
+        --num_workers 6 \
+        -o /data/try2/expr_mat.adjacencies.tsv \
+        /data/sub1500.expr_matrix.T.tsv \
+        /data/allTFs_hg38.txt
+#15:38->17:30
+
+
+# step2 运行 ctx @docker
+$ pyscenic ctx --num_workers 6 \
+        /data/try2/expr_mat.adjacencies.tsv \
+        /data/cisTarget_databases/hg38__refseq-r80__500bp_up_and_100bp_down_tss.mc9nr.genes_vs_motifs.rankings.feather \
+        /data/cisTarget_databases/hg38__refseq-r80__10kb_up_and_down_tss.mc9nr.genes_vs_motifs.rankings.feather \
+        --annotations_fname /data/motifs-v10nr_clust-nr.hgnc-m0.001-o0.0.tbl \
+        --expression_mtx_fname /data/sub1500.expr_matrix.T.tsv \
+        --mode "custom_multiprocessing" \
+        --output /data/try2/regulons.csv
+#17:35->18:30
+	2025-01-16 09:37:52,970 - pyscenic.utils - WARNING - Note on correlation calculation: the default behaviour for calculating the correlations has changed after pySCENIC verion 0.9.16. Previously, the default was to calculate the correlation between a TF and target gene using only cells with non-zero expression values (mask_dropouts=True). The current default is now to use all cells to match the behavior of the R verision of SCENIC. The original settings can be retained by setting 'rho_mask_dropouts=True' in the modules_from_adjacencies function, or '--mask_dropouts' from the CLI.
+			Dropout masking is currently set to [False].
+
+
+# step3 运行 aucell @docker
+$ pyscenic aucell --num_workers 6 \
+        /data/sub1500.expr_matrix.T.tsv \
+        /data/try2/regulons.csv \
+        -o /data/try2/auc_mtx.csv
+# 19:15->19:16
+
+
+
+
+
+
+
+
+
+3. 教程 in Jupyter cmd
+
+(0) 准备工作
+在py环境中启动 jupyter notebook
+环境dir: /datapool/wangjl/soft/pythonVe
+工作目录: /datapool/wangjl/others/zhaoym/output/demo_SCENIC
+	/home/wangjl/data4/web/docs/code/notebook/ [不用]
+
+在tmux中启动notebook
+@3$ jupyter notebook --no-browser --port 8091 --ip=0.0.0.0
+浏览器查看：http://j3.biomooc.com:8091/tree
+不行，也要使用绝对路径，否则还是找不到新安装的 pyscenic 包。
+
+
+	$ pip3 install jupyter
+
+	$ which jupyter
+	/datapool/wangjl/soft/pythonVe/env-pyscenic/bin/jupyter
+	
+	$ /datapool/wangjl/soft/pythonVe/env-pyscenic/bin/jupyter notebook --no-browser --port 8091 --ip=0.0.0.0
+
+
+
+
+对照文档
+https://htmlpreview.github.io/?https://github.com/aertslab/SCENICprotocol/blob/master/notebooks/PBMC10k_SCENIC-protocol-CLI.html
+	数据部分见 上文1(3)
+	流程竟然也是 命令行。而且版本问题很这么人，这么看直接用docker不是更完美？
+
+
+
+(1) step1
+pyscenic grn --num_workers 6 \
+        -o /data/expr_mat.adjacencies.tsv \
+        /data/expr_mat.tsv \
+        /data/allTFs_hg38.txt
+
+也可以输入loom文件
+启动另一个环境:
+$ source ~/soft/pythonVe/env-pyscenic/bin/activate
+
+$ cd /datapool/wangjl/others/zhaoym/output/demo_SCENIC
+$ pyscenic grn --num_workers 6 \
+        -o try1/expr_mat.adjacencies.tsv \
+        sub1500_umap.loom \
+        /home/wangjl/data4/ref/cisTarget_databases/py/allTFs_hg38.txt
+# 14:05-> 报错：BlockingIOError: [Errno 11] Unable to synchronously open file (unable to lock file, errno = 11, error message = 'Resource temporarily unavailable')
+	前面R保存loom文件后要执行关闭: close_loom(loom2)
+# 14:09->报错：
+	2025-01-16 14:09:28,252 - pyscenic.cli.pyscenic - INFO - Loading expression matrix.
+	2025-01-16 14:09:29,990 - pyscenic.cli.pyscenic - INFO - Inferring regulatory networks.
+	preparing dask client
+	parsing input
+	creating dask graph
+	not shutting down client, client was created externally
+	finished
+	...
+	TypeError: Must supply at least one delayed object
+
+
+尝试文本文件呢？说明必须转置 行为cell， 列为特征
+$ pyscenic grn --num_workers 6 \
+        -o try1/expr_mat.adjacencies.tsv \
+        sub1500.expr_matrix.tsv \
+        /home/wangjl/data4/ref/cisTarget_databases/py/allTFs_hg38.txt
+报错：ValueError: Intersection of gene_names and tf_names is empty.
+
+
+行列转置后： pySCENIC expects cells in rows, genes in columns, try using --transpose
+$ pyscenic grn --num_workers 6 \
+        -o try1/expr_mat.adjacencies.tsv \
+        sub1500.expr_matrix.T.tsv \
+        /home/wangjl/data4/ref/cisTarget_databases/py/allTFs_hg38.txt
+报错：TypeError: Must supply at least one delayed object
+
+
+
+尝试修改版本：https://github.com/aertslab/pySCENIC/issues/561
+	之前的版本：
+		dask-expr==1.1.21
+		distributed==2024.12.1
+	安装: $ pip3 install dask-expr==0.5.3 distributed==2024.2.1
+	$ pyscenic grn --num_workers 6 \
+			-o try1/expr_mat.adjacencies.tsv \
+			sub1500.expr_matrix.T.tsv \
+			/home/wangjl/data4/ref/cisTarget_databases/py/allTFs_hg38.txt
+#14:52->17:11
+
+
+
+
+
+(2) step2
+$ pyscenic ctx --num_workers 6 \
+        try1/expr_mat.adjacencies.tsv \
+        cisTarget_databases/hg38__refseq-r80__500bp_up_and_100bp_down_tss.mc9nr.genes_vs_motifs.rankings.feather \
+        cisTarget_databases/hg38__refseq-r80__10kb_up_and_down_tss.mc9nr.genes_vs_motifs.rankings.feather \
+        --annotations_fname motifs-v10nr_clust-nr.hgnc-m0.001-o0.0.tbl \
+        --expression_mtx_fname sub1500.expr_matrix.T.tsv \
+        --mode "custom_multiprocessing" \
+        --output try1/regulons.csv
+#17:40->18:02
+	2025-01-16 17:41:01,788 - pyscenic.utils - WARNING - Note on correlation calculation: the default behaviour for calculating the correlations has changed after pySCENIC verion 0.9.16. Previously, the default was to calculate the correlation between a TF and target gene using only cells with non-zero expression values (mask_dropouts=True). The current default is now to use all cells to match the behavior of the R verision of SCENIC. The original settings can be retained by setting 'rho_mask_dropouts=True' in the modules_from_adjacencies function, or '--mask_dropouts' from the CLI.
+			Dropout masking is currently set to [False].
+
+=> 计算 TF 和 靶基因 的相关性时，v0.9.18 and later 默认是使用全部基因（包含是0的表达），之前是默认去掉dropout。
+--mask_dropouts 添加后，
+
+
+(3) step3
+$ pyscenic aucell --num_workers 6 \
+        ./sub1500.expr_matrix.T.tsv \
+        try1/regulons.csv \
+        -o try1/auc_mtx.csv
+#19:16->19:17
+
+
+
+
+
+=> 结果为什么差别这么大？docker 的输出文件很大? 以docker版为准
+	@host$ ls -lth try1
+	total 56M
+	-rw-rw-rw-+ 1 wangjl jinlab 3.9M Jan 16 19:16 auc_mtx.csv
+	-rw-rw-rw-+ 1 wangjl jinlab 2.0M Jan 16 18:02 regulons.csv
+	-rw-rw-rw-+ 1 wangjl jinlab  51M Jan 16 17:11 expr_mat.adjacencies.tsv
+
+	@docker $ ls -lth try2
+	total 121M
+	-rw-rw-rw-+ 1 wangjl jinlab 6.9M Jan 16 19:15 auc_mtx.csv
+	-rw-rw-rw-+ 1 wangjl jinlab 3.7M Jan 16 18:23 regulons.csv
+	-rw-rw-rw-+ 1 wangjl jinlab 111M Jan 16 17:15 expr_mat.adjacencies.tsv
+
+
+
+
+(4) 将AUCell结果二值化：on/off。需要进入python环境。
+使用 docker 环境:
+
+	from pyscenic import binarization
+	import pandas as pd
+	#auc_mtx = pd.read_csv("try2/auc_mtx.csv", index_col="Regulon")
+	# auc_mtx = pd.read_csv("try2/auc_mtx.csv")
+	auc_mtx = pd.read_csv("try2/auc_mtx.csv", index_col="Cell")
+
+		>>> auc_mtx.iloc[1:3, 1:4]
+								   ARID3A(+)   ARNT(+)  ARNT2(+)
+		Cell                                                    
+		GGACATTCAAGCCGCT_LUNG_N01   0.059701  0.093452   0.01507
+		TGATTTCAGGGCACTA_NS_19      0.058858  0.063454   0.00000
+
+    # 输入 n_cells x n_regulons, 如果不是请做转置
+	    >>> auc_mtx2=auc_mtx.T
+		>>> auc_mtx2.iloc[1:3, 1:4]
+		Regulon                ATF4(+)   ATF5(+)   ATF6(+)
+		CTGCCTAAGGATTACA-1_5  0.115117  0.155008  0.109105
+		CCCGGAAGTGTCGCTG-1_9  0.187938  0.242806  0.104459
+
+
+	# time consuming. 
+	auc_binary = binarization.binarize(auc_mtx, num_workers=20)
+	# 结果返回一个tuple，包含两个元素：第一个是二值化后的表达矩阵；第二个是每个转录因子二值化的阈值
+
+	>>> auc_binary[0].shape
+	(1500, 288)
+	>>> auc_binary[1].shape
+	(288,)
+
+	检查
+	>>> auc_binary[0].iloc[1:3, 1:5]
+							   ARID3A(+)  ARNT(+)  ARNT2(+)  ATF1(+)
+	Cell                                                            
+	GGACATTCAAGCCGCT_LUNG_N01          0        1         1        0
+	TGATTTCAGGGCACTA_NS_19             0        0         0        0
+
+	>>> auc_binary2[1].iloc[1:3, ]
+	Regulon
+	ATF4(+)    0.066488
+	ATF5(+)    0.128438
+	dtype: float64
+
+	# 保存结果
+	auc_binary[0].to_csv("try2/auc_binary.csv")
+	auc_binary[1].to_csv("try2/auc_binary_Threshold.csv")
+
+
+
+
+(5) 查看结果
+$ ls -lth try2/
+total 122M
+-rw-rw-rw-+ 1 wangjl jinlab 8.2K Jan 16 19:45 auc_binary_Threshold.csv #289
+-rw-rw-rw-+ 1 wangjl jinlab 884K Jan 16 19:45 auc_binary.csv    #1501
+-rw-rw-rw-+ 1 wangjl jinlab 6.9M Jan 16 19:15 auc_mtx.csv       #1501
+-rw-rw-rw-+ 1 wangjl jinlab 3.7M Jan 16 18:23 regulons.csv  #2333
+-rw-rw-rw-+ 1 wangjl jinlab 111M Jan 16 17:15 expr_mat.adjacencies.tsv  #3534112
+
+
+$ head  try2/expr_mat.adjacencies.tsv 
+TF      target  importance
+RPS4X   RPL3    131.31598666943776
+GATA2   TPSB2   125.40733790106808
+XBP1    SSR4    124.78749197917512
+GATA2   TPSAB1  124.37523861981833
+RPS4X   RPL23A  114.52717012965724
+XBP1    FKBP11  113.1227881718132
+
+
+
+
+
+
+
+
+
+========================================
+|-- SCENIC 结果可视化 | 依靠R绘图
+----------------------------------------
+这个图怎么画？
+	1. https://github.com/aertslab/pySCENIC/issues/568 col: regulons, row: cells. color bar: cor(exp level among cell samples)
+	2. 
+
+
+0. 结果可视化
+
+https://zhuanlan.zhihu.com/p/721586467
+py: https://htmlpreview.github.io/?https://github.com/aertslab/SCENICprotocol/blob/master/notebooks/PBMC10k_downstream-analysis.html
+R: 
+	https://htmlpreview.github.io/?https://github.com/aertslab/SCENIC/blob/master/inst/doc/SCENIC_Running.html
+	https://zhuanlan.zhihu.com/p/721586467
+	https://htmlpreview.github.io/?https://github.com/aertslab/SCENIC/blob/master/Tutorials_JupyterNotebooks/SCENIC_tutorial_2-ExploringOutput.html [good for R]
+
+
+py 尝试失败，不会用py画图。
+先尝试R 可视化。
+
+
+
+$ R
+> options(width=200)
+outputRoot= "/datapool/wangjl/others/zhaoym/output/demo_SCENIC/"
+
+library(SCENIC)
+library(AUCell)
+
+
+
+
+
+
+
+
+2. 用R包
+https://htmlpreview.github.io/?https://github.com/aertslab/SCENIC/blob/master/Tutorials_JupyterNotebooks/SCENIC_tutorial_2-ExploringOutput.html
+
+(1) 载入数据
+install.package("data.table")
+
+1) 载入 regulons:  motif enrichment results
+# regulons = read.csv("try2/regulons.csv", header=T, sep=","); regulons[1:3, 1:7]
+
+motifEnrichmentFile="try2/regulons.csv"
+	motifEnrichment <- data.table::fread(motifEnrichmentFile, header=T, skip=1)[-3,]
+	colnames(motifEnrichment)[1:2] <- c("TF", "MotifID")
+
+	> motifEnrichment  |> dim()
+	[1] 2330   10
+	> motifEnrichment |> names()
+	 [1] "TF"                    "MotifID"               "AUC"                   "NES"                   "MotifSimilarityQvalue" "OrthologousIdentity"   "Annotation"            "Context"               "TargetGenes"           "RankAtMax"
+
+	> motifEnrichment[1:3, -c(9)] #第九列内容太多
+		   TF                                                     MotifID        AUC      NES MotifSimilarityQvalue OrthologousIdentity                                                                                          Annotation
+	   <char>                                                      <char>      <num>    <num>                 <num>               <num>                                                                                              <char>
+	1:     TF                                                     MotifID         NA       NA                    NA                  NA                                                                                                    
+	2:   ARNT taipale_tf_pairs__GCM1_MAX_NNCACGTGNNNNNNNNNNRTGCGGGYRN_CAP 0.05503787 3.218343           7.55372e-06                   1 gene is annotated for similar motif transfac_public__M00236 ('V$ARNT_01: Arnt'; q-value = 7.55e-06)
+	3:   ATF2                                        transfac_pro__M00801 0.06676723 4.530911           0.00000e+00                   1                                                                          gene is directly annotated
+																														 Context RankAtMax
+																														  <char>     <int>
+	1:                                                                                                                                  NA
+	2: frozenset({'weight>75.0%', 'hg38__refseq-r80__500bp_up_and_100bp_down_tss.mc9nr.genes_vs_motifs.rankings', 'activating'})      3952
+	3: frozenset({'weight>75.0%', 'hg38__refseq-r80__500bp_up_and_100bp_down_tss.mc9nr.genes_vs_motifs.rankings', 'activating'})      2475
+
+第9列就是一个regulon？
+The networks provided by SCENIC are based on regulons, each regulon includes a TF and its potential target genes.
+
+> motifEnrichment[2, 9]
+	<char>1: [('JAG1', 0.594796329924399), ('PPP1R10', 1.619973256498361), ('CTF1', 0.7086032329766699), ('SPATS2L', 2.025894857188161), ('MLEC', 0.8187705861700921), ('RBBP8', 0.8311616720448604), ('DSCR3', 0.4671522898774125), ('MOSPD3', 1.23253571755565357), ('UNC13B', 0.4067330232126434), ('KITLG', 1.4700254368800438), ('PRRC2A', 2.230914313407273), ('SMARCA5', 1.2473160643488228), ('ZC3H13', 0.9017512504676296), ('STOM', 0.3783082726716905), ('TBC1D25', 0.5547439114130897), ('PIK3CA'4, 1.3806904853419355), ('ZBTB7C', 0.5540526816093668), ('C1orf233', 2.2338539201174896), ('SVIL', 0.6151838146743253), ('UBL3', 2.020453623948451), ('ANAPC15', 2.4811030359569117), ('BAZ1B', 1.8348156368056936), ('IGFBP2', 0.962166458952348)2, ('TESK2', 0.6165064182765722), ('UACA', 0.7498370013695022), ('AHI1', 1.9962766727448928), ('IST1', 0.6751954567608551), ('WWOX', 1.199813359748025), ('ZBTB43', 0.6914367531271952), ('BCAR1', 0.7321808469804939), ('PGPEP1', 0.7869229385148C965), ('PPP4R2', 2.4094514161222897), ('ABCF1', 1.967460466566672), ('SEL1L', 0.6469078891260198), ('RIF1', 0.5349330732480552), ('FAM133A', 1.719843804882827), ('VIM-AS1', 0.4461067435769479), ('RBM47', 1.934755802545269), ('ACO2', 0.60200659952785545), ('AGPS', 0.4693334145790926), ('SAR1A', 0.8548159394600829), ('KCTD17', 1.6163830337093568), ('RPS6KA1', 0.3992755708694444), ('HCCS', 0.6083103799458297), ('STAT2', 0.6070388548880781), ('ABLIM3', 0.3810969959123535), ('HCFC1',F 0.4852414153355728), ('RNGTT', 1.1704293767310745), ('ARNT', 1.0), ('FHAD1', 1.813616183619873), ('MTMR11', 3.9154593412204943), ('ASCC2', 3.188947245250511), ('UNC119', 1.196755770915168), ('PPIL1', 0.6897972670978924), ('FHL1', 0.38072666688418212), ('KCNC3', 0.5417425985665488), ('EXOC6B', 0.5713558150469618), ('ADO', 0.6944745539669218), ('MYLPF', 0.7551829795649256), ('CD40', 0.8351385432366323), ('PAXBP1', 0.5464854500994332), ('HMGN1', 0.5596478842003414), ('OR2A1-AS1',  1.960563566470154), ('KIDINS220', 0.7710183815500715), ('RAB10', 0.4184272593882642), ('SLC25A25', 0.4813584757616813), ('SLC2A6', 0.7810052181605249), ('RAB13', 0.5663924448132862), ('SERF2', 0.4002051760695859), ('PI4K2A', 1.78698852599892255), ('CLTC', 0.4800749043628372), ('RASSF1-AS1', 0.6119796257972029), ('MAD2L1BP', 0.4082316756597564), ('MOSPD2', 0.5304281096107532), ('TUSC2', 4.262431694314596), ('ITGA5', 1.014655356982316), ('PTK2B', 1.8782508278538528), ('ANKRD28', 19.034894150366773), ('ADPGK-AS1', 1.0483557258513478), ('PHYKPL', 0.482325613073358), ('TMEM91', 2.85074325476216), ('BOC', 0.9926501508776768), ('ACOT9', 0.3823717803665589), ('CEP164', 0.4750761386183795), ('HDAC3', 0.4088306228678748), ('D9PH2', 1.57607407346742), ('CPSF2', 0.9871468775525812), ('TMEM183A', 0.5354496400345037), ('KANSL1L', 1.2114888465397835), ('RPP14', 0.593649567927828), ('UBA6', 0.7767591686411646), ('CASKIN2', 0.7024877126855021), ('CEP70', 0.68661861160989243), ('TPM3', 0.4192527376691315), ('LSS', 1.0939067834266365), ('CLDN7', 0.4864139630714392), ('MRPL49', 0.5723979433221289), ('WBP1L', 5.0177498233531095), ('FBXO6', 2.842911136487017), ('NUS1', 0.4334254949293425), ('TAF10', 0.560030414213194), ('NUDT19', 2.851467715685483), ('C9orf85', 0.6231072036139031)]
+
+
+
+
+2)读取RegulonsAUC 信息: 行列装置，保持 row:regulon, col:cell
+
+- SCENIC 除了提供 regulon，还量化了单细胞中 regulon 的活性。
+- 这是 AUCell 计算的，AUC 值就是该 regulon 中基因的相对表达水平。
+- 这能进一步分析：哪个reguon在特定细胞亚型中更活跃，基于活性网络寻找细胞状态。更多组合，发挥想象力。
+
+regulonAUC=read.csv("try2/auc_mtx.csv", row.names=1, check.names=F) |> t() |> as.data.frame()
+	regulonAUC |> dim()
+	> [1] 288 1500
+
+	> regulonAUC[1:3, 1:3]
+			  GTGAAGGGTGTGGCTC_LUNG_N01 GGACATTCAAGCCGCT_LUNG_N01 TGATTTCAGGGCACTA_NS_19
+	ACAA1(+)                  0.0000000                0.00000000             0.13360324
+	ARID3A(+)                 0.0466371                0.05970120             0.05885845
+	ARNT(+)                   0.0841948                0.09345152             0.06345400
+
+	> regulonAUC[286:288, 1:3]
+			   GTGAAGGGTGTGGCTC_LUNG_N01 GGACATTCAAGCCGCT_LUNG_N01 TGATTTCAGGGCACTA_NS_19
+	ZSCAN2(+)                 0.02484891                0.04509183                      0
+	ZSCAN26(+)                0.00000000                0.00000000                      0
+	ZXDC(+)                   0.00000000                0.00000000                      0
+
+
+3) 提取regulon的阈值
+regulonAucThresholds <- read.csv("try2/auc_binary_Threshold.csv", header=T, row.names=1); 
+	> regulonAucThresholds |> head()
+					  X0
+	ACAA1(+)  0.04063688
+	ARID3A(+) 0.09565843
+	ARNT(+)   0.08190122
+
+	> tail(regulonAucThresholds[order(regulonAucThresholds[,1]), , drop=F])
+					 X0
+	TCF7(+)   0.2630432
+	SATB1(+)  0.2924407
+	CEBPB(+)  0.3433907
+
+
+4)提取umap信息
+embeddings = read.table("sub1500.umap.tsv")[, c(1:2)];
+	> head(embeddings, 2)
+								UMAP_1    UMAP_2
+	GTGAAGGGTGTGGCTC_LUNG_N01 5.401718 -9.565255
+	GGACATTCAAGCCGCT_LUNG_N01 5.366917 -9.613433
+
+
+5)meta 信息
+	meta.data = read.table("sub1500.metadata.csv", sep="\t"); 
+	head(meta.data)
+
+
+
+
+
+(2) 导入seurat对象和加载的regulon信息进行匹配应对
+library(Seurat)
+sce = readRDS(paste0(outputRoot, 'sub1500.Seurat.Rds') )
+
+
+# 取交集
+sub_regulonAUC <- regulonAUC[, match(colnames(sce),colnames(regulonAUC))]
+dim(sub_regulonAUC)  #288 1500
+
+	> sub_regulonAUC[1:3, 1:3]
+			  GTGAAGGGTGTGGCTC_LUNG_N01 GGACATTCAAGCCGCT_LUNG_N01 TGATTTCAGGGCACTA_NS_19
+	ACAA1(+)                  0.0000000                0.00000000             0.13360324
+	ARID3A(+)                 0.0466371                0.05970120             0.05885845
+	ARNT(+)                   0.0841948                0.09345152             0.06345400
+
+	> sce 
+	An object of class Seurat 
+	29634 features across 1500 samples within 1 assay 
+	Active assay: RNA (29634 features, 3000 variable features)
+	 2 dimensional reductions calculated: pca, umap
+
+
+确认是否一致
+identical(colnames(sub_regulonAUC), colnames(sce)) #T
+
+# 构建细胞类型注释信息
+cellTypes <- data.frame(row.names = colnames(sce), 
+                        celltype = sce$cell_type)
+	> head(cellTypes)
+								   celltype
+	GTGAAGGGTGTGGCTC_LUNG_N01 Myeloid cells
+	GGACATTCAAGCCGCT_LUNG_N01 Myeloid cells
+
+
+	> sub_regulonAUC[1:2,1:2] 
+			  GTGAAGGGTGTGGCTC_LUNG_N01 GGACATTCAAGCCGCT_LUNG_N01
+	ACAA1(+)                  0.0000000                 0.0000000
+	ARID3A(+)                 0.0466371                 0.0597012
+
+	save(sub_regulonAUC,
+		 cellTypes,
+		 sce,
+		 file = 'post/for_rss_and_visual.Rdata')
+
+	> table(sce$cell_type)
+	T lymphocytes B lymphocytes Myeloid cells    Mast cells 
+			  799           116           537            48
+
+
+
+
+(3_1) 绘制每个cell type的均值 细胞活性图
+
+# 根据自己需要的信息进行划分
+selectedResolution <- "celltype"
+cellsPerGroup <- split(rownames(cellTypes), cellTypes[,selectedResolution])
+
+# 保留唯一/非重复的 regulon
+sub_regulonAUC <- sub_regulonAUC[onlyNonDuplicatedExtended(rownames(sub_regulonAUC)),] 
+dim(sub_regulonAUC) # 288 1500
+
+
+# Calculate average expression:
+regulonActivity_byCellType <- sapply(cellsPerGroup,
+                                     function(cells) rowMeans( sub_regulonAUC[,cells]))
+
+	> regulonActivity_byCellType |> dim()
+	[1] 288   4
+	> regulonActivity_byCellType[1:3, ]
+			  T lymphocytes B lymphocytes Myeloid cells Mast cells
+	ACAA1(+)     0.02292227    0.03172650    0.04790970 0.02673049
+	ARID3A(+)    0.06850298    0.08186978    0.06678233 0.06624976
+	ARNT(+)      0.04540959    0.04591297    0.05760510 0.04469860
+
+# Scale expression:
+regulonActivity_byCellType_Scaled <- t(scale(t(regulonActivity_byCellType), center = T, scale=T))
+
+	> regulonActivity_byCellType_Scaled[1:3, ]
+			  T lymphocytes B lymphocytes Myeloid cells Mast cells
+	ACAA1(+)     -0.8546008    -0.0541614     1.4171375 -0.5083753
+	ARID3A(+)    -0.3169704     1.4873118    -0.5492265 -0.6211148
+	ARNT(+)      -0.4871105    -0.4052940     1.4950748 -0.6026703
+
+
+
+# plot:
+# options(repr.plot.width=8, repr.plot.height=10) # To set the figure size in Jupyter
+library(ComplexHeatmap)
+hm1 <- draw(ComplexHeatmap::Heatmap(regulonActivity_byCellType, name="Regulon activity",
+			clustering_method_rows="ward.D2",
+			clustering_method_columns="ward.D2",
+                       row_names_gp=grid::gpar(fontsize=6)) ) # row font size
+# row scale
+hm2 <- draw(ComplexHeatmap::Heatmap(regulonActivity_byCellType_Scaled, name="Regulon activity",
+			clustering_method_rows="ward.D2",
+			clustering_method_columns="ward.D2",
+                       row_names_gp=grid::gpar(fontsize=6))) # row font size
+
+#
+# 换个颜色热图
+library(ComplexHeatmap)
+library(circlize)
+library(RColorBrewer)
+hm3 = draw(Heatmap(
+  regulonActivity_byCellType_Scaled,
+  name                         = "z-score",
+  col                          = colorRamp2(seq(from=-2,to=2,length=11),
+                                            rev(brewer.pal(11, "Spectral"))),
+  show_row_names               = TRUE,
+  show_column_names            = TRUE,
+  row_names_gp                 = gpar(fontsize = 12),
+  clustering_method_rows = "ward.D2",
+  clustering_method_columns = "ward.D2",
+  row_title_rot                = 0,
+  cluster_rows                 = TRUE,
+  cluster_row_slices           = FALSE,
+  cluster_columns              = FALSE
+  ))
+
+pdf(paste0(outputRoot, '/post/Avg_Regulon_Activity_per_cluster.pdf'), width=5, height=8)
+print(hm1)
+print(hm2)
+print(hm3)
+dev.off()
+
+# 按照scale后的，获取顺序
+regulonOrder <- rownames(regulonActivity_byCellType_Scaled)[row_order(hm2)] # to save the clustered regulons for later
+
+
+
+# 获取准确值 To see the exact values:
+topRegulators <- reshape2::melt(regulonActivity_byCellType_Scaled)
+colnames(topRegulators) <- c("Regulon", "CellType", "RelativeActivity")
+topRegulators$CellType <- factor(as.character(topRegulators$CellType))
+
+topRegulators|> dim() #[1] 1152    3
+topRegulators <- topRegulators[which(topRegulators$RelativeActivity>0),]
+topRegulators|> dim() #[1] 500   3
+
+	dim(topRegulators) #500   3
+
+	> head(topRegulators)
+		  Regulon      CellType RelativeActivity
+	4    ARNT2(+) T lymphocytes        1.0987935
+	5     ATF1(+) T lymphocytes        1.1601663
+	10    ATF6(+) T lymphocytes        0.9887868
+
+
+
+
+# 使用scale前的挑选top
+topRegulators2 <- reshape2::melt(regulonActivity_byCellType)
+colnames(topRegulators2) <- c("Regulon", "CellType", "RelativeActivity")
+topRegulators2$CellType <- factor(as.character(topRegulators2$CellType))
+
+topRegulators2|> dim() #[1] 1152    3
+topRegulators2 <- topRegulators2[which(topRegulators2$RelativeActivity>0),]
+topRegulators2|> dim() #[1] 1147   3
+
+	> head(topRegulators2)
+		Regulon      CellType RelativeActivity
+	1  ACAA1(+) T lymphocytes      0.022922265
+	2 ARID3A(+) T lymphocytes      0.068502975
+	3   ARNT(+) T lymphocytes      0.045409588
+
+
+
+
+
+==> 选择前5个 Select the top 5 regulons from each cell type
+https://htmlpreview.github.io/?https://github.com/aertslab/SCENICprotocol/blob/master/notebooks/PBMC10k_downstream-analysis.html
+
+top10 = topRegulators %>% group_by(CellType) %>% top_n(n = 10, wt = RelativeActivity) %>% pull(Regulon) %>% unique()
+	> top10 |> length()
+	[1] 40
+
+top102 = topRegulators2 %>% group_by(CellType) %>% top_n(n = 15, wt = RelativeActivity) %>% pull(Regulon) %>% unique()
+	> top102 |> length()
+	[1] 41
+
+hm4 = draw(Heatmap(
+  regulonActivity_byCellType_Scaled[top10, ],
+  name                         = "z-score",
+  col                          = colorRamp2(seq(from=-2,to=2,length=11),
+                                            rev(brewer.pal(11, "Spectral"))),
+  show_row_names               = TRUE,
+  show_column_names            = TRUE,
+  row_names_gp                 = gpar(fontsize = 12),
+  clustering_method_rows = "ward.D2",
+  clustering_method_columns = "ward.D2",
+  row_title_rot                = 0,
+  cluster_rows                 = TRUE,
+  cluster_row_slices           = FALSE,
+  cluster_columns              = FALSE
+  ))
+
+hm42 = draw(Heatmap(
+  regulonActivity_byCellType[top102, ] |> t() |> scale() |> t(), #scale 前挑选top，然后再按行做 scale
+  name                         = "z-score",
+  col                          = colorRamp2(seq(from=-2,to=2,length=11),
+                                            rev(brewer.pal(11, "Spectral"))),
+  show_row_names               = TRUE,
+  show_column_names            = TRUE,
+  row_names_gp                 = gpar(fontsize = 12),
+  clustering_method_rows = "ward.D2",
+  clustering_method_columns = "ward.D2",
+  row_title_rot                = 0,
+  cluster_rows                 = TRUE,
+  cluster_row_slices           = FALSE,
+  cluster_columns              = FALSE
+  ))
+
+pdf(paste0(outputRoot, '/post/Avg_Regulon_Activity_per_cluster_Top10.pdf'), width=3.5, height=7)
+print(hm4)
+print(hm42)
+dev.off()
+
+
+#画单细胞水平：读入数据在后面
+
+p3=pheatmap::pheatmap(t(auc_mtx)[top10, ],
+	border_color = NA, #scale='row', 
+	clustering_method='ward.D2',
+	cluster_rows = TRUE, cluster_cols = TRUE,
+	show_colnames  =F,
+	#color=colorRampPalette(c("white", "black"))(10),
+	#color=colorRamp2(seq(from=-2,to=2,length=11), rev(brewer.pal(11, "Spectral")))(-2:0),
+	#color=colorRampPalette(c("#5E4FA2FF", "#8BCFA5FF", "#FFFFBFFF")|>rev())(20),
+	 color=colorRampPalette(c("#5E4FA2FF", "#8BCFA5FF", "#FFFFEFFF")|>rev())(20),
+	annotation_col = annotation_col, #列 注释
+	main = "AUC Matrix Heatmap | Top 10")
+
+pdf(paste0(outputRoot, '/post/Regulon_Activity_per_Cell_Top10.pdf'), width=5, height=6)
+grid::grid.newpage()
+grid::grid.draw(p3$gtable)
+dev.off()
+
+
+
+
+
+
+
+
+(3_2) 细胞特异的调控子 Cell-type specific regulators
+=> scenic自带的方式-regulon特异性分数(RSS)
+
+To identify cluster-specific regulons (especially for analyses with many cell types, where some regulons are common to multiple of them) we find specially useful the Regulon Specificity Score (RSS) (proposed by Suo et al. for the Mouse Cell Atlas in 2018).
+
+rss <- calcRSS(AUC=getAUC(sub_regulonAUC), cellAnnotation=cellTypes[colnames(sub_regulonAUC), selectedResolution])
+
+	获取 getAUC 函数的定义:
+	> getAUC
+	standardGeneric for "getAUC" defined from package "AUCell"
+	...
+	Methods may be defined for arguments: object
+	Use  showMethods(getAUC)  for currently available ones.
+
+	> showMethods(getAUC)
+	Function: getAUC (package AUCell)
+	object="aucellResults"
+
+	> getMethod("getAUC", signature = "AUCell")
+
+	获取函数定义:
+	> getMethod("getAUC", signature = "aucellResults")
+	Method Definition:
+
+	function (object)
+	{
+		if ("AUC" %in% assayNames(object)) {
+			SummarizedExperiment::assays(object)[["AUC"]]
+		}
+		else {
+			stop("This object does not contain an AUC matrix.")
+		}
+	}
+	<bytecode: 0x17acdbd0>
+	<environment: namespace:AUCell>
+
+	Signatures:
+			object         
+	target  "aucellResults"
+	defined "aucellResults"
+	
+	函数就是获取AUC slot，我直接传给一个数据框呢？
+
+
+
+# regulon特异性分数(Regulon Specificity Score, RSS)
+selectedResolution <- "celltype"
+
+rss <- calcRSS(AUC=sub_regulonAUC, cellAnnotation=cellTypes[colnames(sub_regulonAUC), selectedResolution])
+
+#rss <- calcRSS(AUC=getAUC(sub_regulonAUC), 
+#               cellAnnotation=cellTypes[colnames(sub_regulonAUC), selectedResolution])
+# https://zhuanlan.zhihu.com/p/721586467
+
+	> dim(rss)
+	[1] 288   4
+
+	> rss[1:3, ]
+			  Myeloid cells T lymphocytes B lymphocytes Mast cells
+	ACAA1(+)      0.2990759     0.1385507    0.06822702 0.03154414
+	ARID3A(+)     0.3292412     0.4608485    0.12032536 0.05110337
+	ARNT(+)       0.3738062     0.4234031    0.09854141 0.04798891
+
+
+rss=na.omit(rss)
+	> dim(rss) #[1] 288   4
+
+rssPlot <- plotRSS(rss,
+  labelsToDiscard = NULL, # 指定需要在热图中排除的行或列标签
+  zThreshold = 1, # 设定调控子的阈值，默认1
+  cluster_columns = FALSE, # 是否对列进行聚类
+  order_rows = T, # 是否对行进行排序
+  thr = 0.01, # 阈值参数，用于过滤 RSS 值。默认0.01
+  varName = "cellType",
+  col.low = '#330066',  
+  col.mid = '#66CC66',  
+  col.high= '#FFCC33',
+  revCol = F,
+  verbose = TRUE
+)
+报错：
+	Failed with error:  ‘Package ‘data.table’ version 1.15.0 cannot be unloaded:
+	 Error in unloadNamespace(package) : namespace ‘data.table’ is imported by ‘AUCell’, ‘SCENIC’, ‘plotly’ so cannot be unloaded
+	’
+
+#rssPlot #是一个list，很长
+
+library(dplyr)
+library(plotly)
+
+p <- plotly::ggplotly(rssPlot$plot)
+p <- p %>%
+  layout(
+    title = "RSS Plot",
+    xaxis = list(title = "Celltypes"),
+    yaxis = list(title = "Regulons")
+  )
+p
+官网提供了plotRSS结果，里面比较关键的是Z.value值，越高就说明该regulon与某一群细胞的关系最显著。
+
+
+
+
+==> 绘制每个细胞亚群的RSS
+# plotRSS_oneSet 结果，将气泡图的结果进一步可视化了。
+
+plotRSS_oneSet(rss, setName = "T lymphocytes") # cluster ID
+
+	> table(sce$cell_type)
+	T lymphocytes B lymphocytes Myeloid cells    Mast cells 
+			  799           116           537            48
+	#
+
+pdf(paste0(outputRoot, '/post/RegulonSpecificityScore_RSS_cellType.pdf'), width=4, height=4)
+for(ct in as.character(unique(sce$cell_type))){
+	message(ct)
+	print( plotRSS_oneSet(rss, setName = ct)) # cluster ID
+}
+dev.off()
+# 图：TF 排序
+
+
+
+
+
+
+
+==> 组间差异分析: one to others https://zhuanlan.zhihu.com/p/721586467
+# 采用了将得到的scaled Data进行不同组别的差异分析
+
+library(dplyr) 
+rss2=regulonActivity_byCellType_Scaled
+head(rss2)
+dif = do.call(rbind,
+             lapply(1:ncol(rss2), function(i){
+               dat= data.frame(
+                 path  = rownames(rss2), # 当前regulon的名称
+                 cluster = colnames(rss2)[i], # 当前cluster的名称
+                 sd.1 = rss2[,i], # 当前cluster中每个调控因子的值
+                 sd.2 = apply(rss2[,-i], 1, median)  #除了当前cluster之外的所有cluster 中该调控因子的中位值
+               )
+             }))
+dif$fc = dif$sd.1 - dif$sd.2
+
+top5 <- dif %>% 
+  group_by(cluster) %>% 
+  top_n(10, fc)
+rowcn = data.frame(celltype = top5$cluster) 
+n = rss2[top5$path,] 
+
+breaksList = seq(-1.5, 1.5, by = 0.1)
+colors <- colorRampPalette(c("#336699", "white", "tomato"))(length(breaksList))
+
+pdf(paste0(outputRoot, '/post/TFs_Dif_perCluster.pdf'), width=3.7, height=7)
+pheatmap(n,
+         annotation_row = rowcn, #name="Regulon Activity",
+         color = colors,
+         cluster_rows = F,
+         cluster_cols = FALSE,
+         show_rownames = T,
+         #gaps_col = cumsum(table(annCol$Type)),  # 使用排序后的列分割点
+         #gaps_row = cumsum(table(annRow$Methods)), # 行分割
+         fontsize_row = 12,
+         fontsize_col = 12,
+         annotation_names_row = FALSE)
+dev.off()
+
+
+
+
+
+
+
+
+(B3) 手动画 热图: AUC 单细胞水平效果不好
+
+auc_mtx <- read.csv("try2/auc_mtx.csv", row.names = 1, check.names=F)
+
+	> auc_mtx[1:2, 1:3]
+							  ACAA1(+) ARID3A(+)    ARNT(+)
+	GTGAAGGGTGTGGCTC_LUNG_N01        0 0.0466371 0.08419480
+	GGACATTCAAGCCGCT_LUNG_N01        0 0.0597012 0.09345152
+	> auc_mtx |> dim()
+	[1] 1500  288
+
+# 绘制 AUC 热图
+library(pheatmap)
+annotation_col=data.frame(
+	cid=meta.data$cell,
+	celltype=meta.data$cell_type,
+	row.names=1
+)
+
+library(viridis)
+colorlist = viridis(100, alpha = 1, begin = 0, end = 1, direction = 1, option = "A"); colorlist
+
+p1=pheatmap::pheatmap(t(auc_mtx),
+	border_color = NA, #scale='row', 
+	clustering_method='ward.D2',
+	cluster_rows = TRUE, cluster_cols = TRUE,
+	show_colnames  =F,
+	color=colorlist,
+	annotation_col = annotation_col, #列 注释
+	main = "AUC Matrix Heatmap")
+
+
+(B4) 手动画 热图: auc_binary 单细胞水平效果不好
+auc_binary <- read.csv("try2/auc_binary.csv", row.names = 1, check.names=F)
+
+	> auc_binary[1:2, 1:3]
+							  ACAA1(+) ARID3A(+) ARNT(+)
+	GTGAAGGGTGTGGCTC_LUNG_N01        0         0       1
+	GGACATTCAAGCCGCT_LUNG_N01        0         0       1
+	> auc_binary |> dim()
+	[1] 1500  288
+
+p2=pheatmap::pheatmap(t(auc_binary),
+	border_color = NA, #scale='row', 
+	clustering_method='ward.D2',
+	cluster_rows = TRUE, cluster_cols = TRUE,
+	show_colnames  =F,
+	color=colorRampPalette(c("white", "black"))(10),
+	annotation_col = annotation_col, #列 注释
+	main = "AUC binary Matrix Heatmap")
+
+pdf(paste0(outputRoot, '/post/Regulon_Activity_per_Cell.pdf'), width=10, height=3.5)
+grid::grid.newpage()
+grid::grid.draw(p1$gtable)
+#
+grid::grid.newpage()
+grid::grid.draw(p2$gtable)
+dev.off()
+
+
+https://zhuanlan.zhihu.com/p/721586467
+
+
+
+
+
+(4) 每个 regulon 的 AUC 的分布 hist
+髓系中的 Top10:
+> top10=topRegulators %>% filter(CellType=="Myeloid cells") %>% top_n(n = 10, wt = RelativeActivity) %>% arrange(-RelativeActivity)
+> top10                                                          
+     Regulon      CellType RelativeActivity
+1  SREBF1(+) Myeloid cells         1.498494
+2   CEBPA(+) Myeloid cells         1.498170
+3  SCAND1(+) Myeloid cells         1.497379
+4    MAFG(+) Myeloid cells         1.497317
+5  TCF7L2(+) Myeloid cells         1.496523
+6    RELA(+) Myeloid cells         1.496168
+7    ARNT(+) Myeloid cells         1.495075
+8   NPAS2(+) Myeloid cells         1.493305
+9   STAT1(+) Myeloid cells         1.491116
+10   ATF5(+) Myeloid cells         1.490607
+
+
+i=5; #ok
+i=10;
+reg_name = top10$Regulon[i];
+hist(auc_mtx[, reg_name], n=100, main=reg_name, col="#B5C3DD", border=T);
+abline(v=regulonAucThresholds[reg_name, ], col="red", lty=2)
+
+
+
+
+
+
+
+
+(5) 特定转录因子绘图 on umap: 把行为单细胞-列为regulon的df 合并到meta.data中，就可以使用Seurat可视化函数了
+i) https://mp.weixin.qq.com/s/9n1ITFcC3fT8uyQGlL3Qtw
+# 把每个转录因子的活性合并到 metadata 里面：
+# precoess
+sub_regulonAUC <- regulonAUC[,match(colnames(seurat.data),colnames(regulonAUC))]
+# check
+identical(colnames(sub_regulonAUC), colnames(seurat.data))
+# combine
+seurat.data@meta.data = cbind(seurat.data@meta.data ,t(assay(sub_regulonAUC)))
+
+
+
+ii) https://zhuanlan.zhihu.com/p/721586467
+library(SummarizedExperiment)
+seurat.data <- sce
+Idents(seurat.data) <- "celltype"
+regulonsToPlot = c("PLAG1(+)","HIVEP1(+)")
+regulonsToPlot %in% row.names(sub_regulonAUC)
+seurat.data@meta.data = cbind(seurat.data@meta.data ,
+                              t(assay(sub_regulonAUC[regulonsToPlot,])))
+
+# Vis
+p1 = DotPlot(seurat.data, features = unique(regulonsToPlot)) + RotatedAxis()
+p2 = RidgePlot(seurat.data, features = regulonsToPlot , ncol = 2) 
+p3 = VlnPlot(seurat.data, features = regulonsToPlot,pt.size = 0)
+p4 = FeaturePlot(seurat.data,features = regulonsToPlot)
+
+wrap_plots(p1,p2,p3,p4)
+
+
+
+
+
+对 auc_mtx 做UMAP: https://htmlpreview.github.io/?https://github.com/aertslab/SCENICprotocol/blob/master/notebooks/PBMC10k_SCENIC-protocol-CLI.html
+# UMAP
+runUmap = umap.UMAP(n_neighbors=10, min_dist=0.4, metric='correlation').fit_transform
+dr_umap = runUmap( auc_mtx )
+pd.DataFrame(dr_umap, columns=['X', 'Y'], index=auc_mtx.index).to_csv( "scenic_umap.txt", sep='\t')
+
+
+
+
+
+
+(6) 如果输出的loom，在R中的操作和绘图
+
+library(Seurat)
+library(SCopeLoomR)
+library(AUCell)
+library(SCENIC)
+library(dplyr)
+library(KernSmooth)
+library(RColorBrewer)
+library(plotly)
+library(BiocParallel)
+library(grid)
+library(ComplexHeatmap)
+library(data.table)
+library(scRNAseq)
+library(patchwork)
+library(ggplot2)
+library(stringr)
+library(circlize)
+
+setwd("pyscenic_test/")
+
+# load data
+loom <- open_loom('aucell.loom')
+
+regulons_incidMat <- SCopeLoomR::get_regulons(loom, column.attr.name="Regulons")
+regulons_incidMat[1:4,1:4]
+#          AL627309.1 AP006222.2 RP11-206L10.2 RP11-206L10.9
+# ACAA1(+)          0          0             0             0
+# ATF1(+)           0          0             0             0
+
+
+# regulonsToGeneLists 函数返回每个转录因子调控的靶基因列表：
+regulons <- SCENIC::regulonsToGeneLists(regulons_incidMat)
+head(regulons,3)
+# $`ACAA1(+)`
+# [1] "SEMA4A"  "ZEB2"    "PCYT1A"  "TRIM38"  "HLA-DRA" "TSPAN33" "CNOT4"
+# [8] "OSTF1"   "SH2B3"   "ERCC1"
+#
+# $`ATF1(+)`
+# [1] "UBE4B"   "ZCCHC11" "SFT2D2"  "DDX59"   "LBH"     "FOXP1"   "UGDH"
+# [8] "HOMER1"  "NDFIP1"  "LY86"    "NUB1"    "SASH3"   "NFX1"    "ATF1"
+# [15] "DICER1"  "ATP10A"  "ALDOA"   "CCL5"    "TBX21"
+#
+
+
+
+# get_regulons_AUC 返回计算好的转录因子的活性分数矩阵，行为转录因子，列为细胞
+regulonAUC <- SCopeLoomR::get_regulons_AUC(loom,column.attr.name='RegulonsAUC')
+regulonAUC
+# AUC for 114 regulons (rows) and 2700 cells (columns).
+#
+# Top-left corner of the AUC matrix:
+#            cells
+# regulons   AAACATACAACCAC AAACATTGAGCTAC AAACATTGATCAGC AAACCGTGCTTCCG AAACCGTGTATGCG
+# ACAA1(+)     0.01370262     0.09650146     0.00000000     0.11807580     0.04227405
+# ATF1(+)      0.05048335     0.07250269     0.03521559     0.00000000     0.08424122
+
+
+
+
+get_regulon_thresholds 返回每个转录因子的 AUC 阈值：
+
+regulonAucThresholds <- SCopeLoomR::get_regulon_thresholds(loom)
+head(regulonAucThresholds,3)
+# 0.0420843310110376 0.0788214508694053  0.102648709410756
+# "ACAA1(+)"          "ATF1(+)"          "ATF3(+)"
+
+embeddings <- SCopeLoomR::get_embeddings(loom)
+embeddings
+# list()
+
+close_loom(loom)
+
+
+
+
+处理一下 pbmc3k：
+pbmc3k <- UpdateSeuratObject(pbmc3k)
+
+seurat.data <- pbmc3k %>%
+  NormalizeData(verbose = F) %>%
+  FindVariableFeatures(selection.method = "vst", nfeatures = 2000, verbose = F) %>%
+  ScaleData(verbose = F) %>%
+  RunPCA(npcs = 30, verbose = F) %>%
+  RunUMAP(reduction = "pca", dims = 1:30, verbose = F) %>%
+  FindNeighbors(reduction = "pca", k.param = 10, dims = 1:30)
+
+Idents(seurat.data) <- "seurat_annotations"
+
+# 把每个转录因子的活性合并到 metadata 里面：
+# precoess
+sub_regulonAUC <- regulonAUC[,match(colnames(seurat.data),colnames(regulonAUC))]
+# check
+identical(colnames(sub_regulonAUC), colnames(seurat.data))
+# combine
+seurat.data@meta.data = cbind(seurat.data@meta.data ,t(assay(sub_regulonAUC)))
+
+# 可视化
+VlnPlot(seurat.data, features = c("TCF4(+)","GATA3(+)"),pt.size = 0)
+FeaturePlot(object = seurat.data,features = c("TCF4(+)","GATA3(+)"))
+RidgePlot(seurat.data, features = c("TCF4(+)","GATA3(+)") , ncol = 2)
+
+
+
+==>热图可视化 AVG expression: cluster level
+cellClusters <- data.frame(row.names = colnames(seurat.data),
+                           seurat_clusters = as.character(seurat.data$seurat_annotations)) |>
+  dplyr::mutate(seurat_clusters = ifelse(is.na(seurat_clusters),"unkown",seurat_clusters))
+
+cellsPerGroup <- split(rownames(cellClusters),cellClusters$seurat_clusters)
+
+# remove extened regulons
+sub_regulonAUC <- sub_regulonAUC[onlyNonDuplicatedExtended(rownames(sub_regulonAUC)),]
+# Calculate average expression:
+regulonActivity_byGroup <- sapply(cellsPerGroup,
+                                  function(cells)
+                                    rowMeans(getAUC(sub_regulonAUC)[,cells]))
+# scale
+regulonActivity_byGroup_Scaled <- t(scale(t(regulonActivity_byGroup),center = T, scale=T))
+# heatmap
+Heatmap(matrix = t(regulonActivity_byGroup_Scaled[1:20,]))
+
+
+
+==> 转录因子活性热图: 单细胞水平
+ht_auc <- assay(sub_regulonAUC)
+ht_auc <- ht_auc[,as.character(unlist(cellsPerGroup))]
+identical(colnames(ht_auc),as.character(unlist(cellsPerGroup)))
+# [1] TRUE
+
+ht_auc_scale <- t(scale(t(ht_auc),center = T,scale = T))
+
+# x = 1
+lapply(seq_along(names(cellsPerGroup)),function(x){
+  rep(names(cellsPerGroup)[x],length(cellsPerGroup[[x]]))
+}) |> unlist() -> celltypes
+
+col_anno <- columnAnnotation(celltype = celltypes)
+
+# plot
+Heatmap(matrix = ht_auc_scale,
+        top_annotation = col_anno,
+        col = colorRamp2(c(-2, 0, 2), c("#003399", "white", "#990066")),
+        cluster_columns = F,
+        show_row_names = F,
+        show_column_names = F)
+
+
+
+
+==> 利用 AUC 计算的阈值，绘制二分类变量热图，也是文献经常见的：
+all cells heatmap
+ht_auc <- data.frame(ht_auc)
+
+# x = 1
+purrr::map_df(seq_along(regulonAucThresholds),function(x){
+  tmp <- ht_auc[regulonAucThresholds[x],]
+  val <- as.numeric(names(regulonAucThresholds[x]))
+  tmp <- data.frame(apply(tmp, c(1,2), function(x) ifelse(x > val,1,0)))
+  return(tmp)
+}) -> binary_tfs
+
+binary_tfs <- binary_tfs[,as.character(unlist(cellsPerGroup))]
+identical(colnames(binary_tfs),as.character(unlist(cellsPerGroup)))
+# [1] TRUE
+
+mark <- sample(rownames(binary_tfs),size = 10,replace = F)
+at <- match(mark,rownames(binary_tfs))
+
+tfs_mark = rowAnnotation(foo = anno_mark(at = at, labels =mark))
+
+# plot
+Heatmap(matrix = binary_tfs,
+        name = "Binary activity of regulon",
+        cluster_columns = F,
+        col = c("white", "black"),
+        top_annotation = col_anno,
+        right_annotation = tfs_mark,
+        # km = 5,
+        show_row_names = F,
+        show_column_names = F)
+
+# 对细胞聚类：
+Heatmap(matrix = binary_tfs,
+        name = "Binary activity of regulon",
+        col = c("white", "black"),
+        top_annotation = col_anno,
+        show_row_names = F,
+        show_column_names = F)
+
+
+
+
+
+
+
+
+
+
+(10) 每个TF的motif //todo
+https://scenic.aertslab.org/scenic_paper/tutorials/RcisTarget.html
+
+motifEnrichmentTable_wGenes_wLogo <- addLogo(motifEnrichmentTable_wGenes)
+
+resultsSubset <- motifEnrichmentTable_wGenes_wLogo[1:20,]
+
+library(DT)
+datatable(resultsSubset[,-c("enrichedGenes", "TF_inferred"), with=FALSE], 
+          escape = FALSE, # To show the logo
+          filter="top", options=list(pageLength=5))
+#
+
+
+
+
+
+
+
+
+
+(11) shiny 小程序
+可选择 regulon, 
+aucellApp <- AUCell_createViewerApp(auc=regulonAUC,
+                                    thresholds=regulonAucThresholds,
+                                    tSNE=selectedEmbedding, 
+                                    exprMat=exprMat_log)
+savedSelections <- shiny::runApp(aucellApp)
+
+
+
+https://bioconductor.org/packages/release/bioc/vignettes/AUCell/inst/doc/AUCell.html
+https://bookdown.org/ytliu13207/SingleCellMultiOmicsDataAnalysis/scenic-differential-regulons.html
+https://htmlpreview.github.io/?https://github.com/aertslab/SCENIC/blob/master/Tutorials_JupyterNotebooks/SCENIC_tutorial_2-ExploringOutput.html
+
+##########
+构建自己的 motif 库：https://github.com/aertslab/create_cisTarget_databases
+
+
+SCENIC 下游分析(py) https://huayc09.github.io/SeuratExtend/articles/SCENIC.html
+
+https://lusystemsbio.github.io/EMT-Cancer-scRnaSeq/EMT-Cancer-scRnaSeq_v1.html
+
+
+
+
+
+
+
+========================================
+|-- SCENIC Differential Regulons
+----------------------------------------
+https://bookdown.org/ytliu13207/SingleCellMultiOmicsDataAnalysis/scenic-differential-regulons.html
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+========================================
+一张表弄懂细胞可塑性、细胞分化轨迹、细胞谱系和RNA速率
+----------------------------------------
+https://blog.sciencenet.cn/home.php?do=blog&id=1251830&mod=space&uid=3447504
+
+1. 概念	介绍
+(1) 可塑性（Plasiticity）	
+定义：细胞以可逆的方式动态切换出不同的细胞表型（Phenotype）的能力，通常指的是干细胞（Stem Cells），例如：癌症干细胞（Cancer Stem Cells）。因为这一切换过程涉及到多种细胞内在以及外在因素的调控，因此这是一个复杂的过程。
+
+过程：细胞表型的切换需要抑制前一个细胞表型有关的基因表达，同时需要激活新的细胞表型有关的基因的表达。
+
+意义：研究细胞可塑性对于探索癌细胞抗药性、肿瘤复发以及癌细胞的转移具有重要意义。
+
+(2) 分化轨迹（Trajectory）	
+定义：又名伪时间序列（Pseudo-Time），指的是根据表达模式的相似度构造出的细胞分化的方向和路径。这是一个虚拟的概念。
+
+拓扑结构：如今人们已经构造出了多种细胞分化轨迹的形状，包括：圈、直线、分叉、树、连通图和不连通图，等等。拓扑结构的不同决定了需要采用不同的算法构造分化轨迹。
+
+意义：获取细胞的分化轨迹有助于进一步对细胞进行分类和分型，可以起到降低噪音、提高准确率的作用。
+
+
+(3) 细胞谱系（Lineage）	
+定义：细胞谱系指的是原始细胞（例如：胚胎干细胞）演化为一个分化细胞的历程。它的起点是起始细胞，终点是一个不能再分裂的细胞。
+
+方法：最初人们主要依靠肉眼观察来研究细胞谱系，该方法仅仅适用于某些透明的生物细胞。后来，由于共聚焦显微镜的发明与推广，人们可以观察更加复杂的细胞谱系。另外一种主流方法就是克隆法。
+
+
+(4) RNA速率（RNA Velocity）	
+定义：RNA速率指的是基因表达状态相对于时间的导数，或者说是已剪接mRNA（Spliced mRNA）和未剪接mRNA（Unspliced mRNA）的含量相对于时间的变化速率。RNA速率为正值，表示该基因正在被上调，也就是目前有大量的未剪接的mRNA；相反，RNA速率为负值，表示该基因正在被下调。
+
+意义：RNA速率可用于预测细胞未来的表达状态研究细胞动态（Dynamics），构造细胞分化轨迹，估计转录、剪接和降解的速率以及对不同的细胞动力学机制（Kinetics Regime）进行分类。
+
+
+
+
+
+========================================
+RNA kinetics / RNA 速率，RNA velocity /?
+----------------------------------------
+你会选择拟时许分析还是RNA velocity分析呢
+
+1.
+
+RNA速度将极大地帮助分析发育谱系和细胞动力学，特别是在人类。
+
+因为我们在进行RNA速率分析的时候，需要区分表达矩阵内前提mRNA（unspliced）和成熟的mRNA（spliced），所以需要从原始数据入手，得到loom文件后，再去进行后续分析。
+
+
+
+
+
+2. 代码 
+
+(1) 安装py包
+pip install -U scvelo
+
+pip install -i https://pypi.tuna.tsinghua.edu.cn/simple velocyto
+
+
+(2) 运行velocyto
+$ velocyto run -o ./ -m /path/mouse/mus_repeat.gtf new.bam ../mouse/genes.gtf
+
+
+(3) R转化loom文件为h5ad文件
+library(Seurat)
+library(SeuratWrappers)
+library(SeuratDisk)
+# loom_data bm bm[["RNA"]] bm bm bm bm bm
+
+DefaultAssay(bm) <- "RNA"
+SaveH5Seurat(bm, filename = "test.h5Seurat")
+Convert("test.h5Seurat", dest = "h5ad")
+
+
+(4) scvelo RNA速率分析
+adata = scv.read("/path/test.h5ad")
+scv.pp.filter_and_normalize(adata, min_shared_counts=20, n_top_genes=2000)
+scv.pp.moments(adata, n_pcs=30, n_neighbors=30)
+scv.tl.velocity(adata)
+scv.tl.velocity_graph(adata)
+
+scv.set_figure_params(dpi=300)
+scv.pl.velocity_embedding_stream(adata, basis="umap", size= 10, alpha=0.6, color="seurat_clusters")
+
+
+
+
+
+
+
+ref:
+- RNA velocity of single cells, (2018), Nature
+-  V. Bergen, M. Lange, S. Peidli, F. Alexander Wolf & F. J. Theis, Generalizing RNA velocity to transient cell states through dynamical modeling, (2020), Nature Biotechnology
+- V. Bergen, R. Soldatov, P. V. Kharchenko, F. J. Theis, RNA velocity — current challenges and future perspectives, (2021), Molecular Systems Biology
+
+https://www.jianshu.com/p/1e7acde1a318
+http://www.biomarker.com.cn/archives/28929
+
+
+
+
+
+
+
+========================================
+inferCNV 安装: H3:8787, 及 J3 docker 可用
+----------------------------------------
+1. 安装 @H3:8787
+https://github.com/broadinstitute/inferCNV/wiki/Installing-infercnv
+
+(1) 安装依赖 jags
+安装inferCNV之前需要安装JAGS程序，下载地址：
 https://sourceforge.net/projects/mcmc-jags/files/JAGS/4.x/
 
-$ wget https://sourceforge.net/projects/mcmc-jags/files/JAGS/4.x/Source/JAGS-4.3.0.tar.gz
-$ tar zxvf JAGS-4.3.0.tar.gz
-$ cd JAGS-4.3.0/
-$ ./configure --prefix="/home/wangjl/"
-$ make && make install
+$ wget https://sourceforge.net/projects/mcmc-jags/files/JAGS/4.x/Source/JAGS-4.3.2.tar.gz
+$ tar zxvf JAGS-4.3.2.tar.gz
+$ cd JAGS-4.3.2
+$ ./configure --prefix=/home/wangjl/.local/  #库都放到这里
+	## configure: error: "You need to install the LAPACK library"
+	$ sudo yum install blas-devel lapack-devel
+$ make -j32
+$ make install
 
-$ jags
-Welcome to JAGS 4.3.0 on Tue Feb 23 12:19:27 2021
+$ vim ~/.bashrc #添加
+export LD_LIBRARY_PATH=/home/wangjl/.local/lib/:$LD_LIBRARY_PATH
+export PATH=/home/wangjl/.local/bin:$PATH
+export PKG_CONFIG_PATH=/home/wangjl/.local/lib/pkgconfig:$PKG_CONFIG_PATH
+
+在 ~/.Rprofile 中添加
+Sys.setenv("PKG_CONFIG_PATH"=paste0("/home/wangjl/.local/lib/pkgconfig:", Sys.getenv("PKG_CONFIG_PATH") ) )
+
+
+$ source ~/.bashrc
 
 $ which jags
-/home/wangjl/bin/jags
+~/.local/bin/jags
+
+$ jags
+Welcome to JAGS 4.3.2 on Fri May 31 20:42:48 2024
 
 此程序安装之后，inferCNV依赖的rjags包才能正常安装，否则报错：configuration failed for package ‘rjags’
 
 
+
 2) 放到路径中
 $ pkg-config --modversion jags
-4.3.0
+4.3.2
 
-## 在R中
+
 > install.packages("rjags", configure.args="--enable-rpath")
 
+> library(rjags)
+Loading required package: coda
+Linked to JAGS 4.3.2
+Loaded modules: basemod,bugs
 
 
 
 
-(2) 安装发行版，作者推荐
+(2) 安装R包：失败
+@H3$ R #4.3.2
 if (!requireNamespace("BiocManager", quietly = TRUE))
      install.packages("BiocManager")
-BiocManager::install("infercnv")
+> BiocManager::install("infercnv")
+	> options(BioC_mirror="https://mirrors.tuna.tsinghua.edu.cn/bioconductor")
+	> options(BioC_mirror="https://mirrors.westlake.edu.cn/bioconductor/")
 
+	报错: RROR: dependency ‘parallelDist’ is not available for package ‘infercnv’
+	怎么安装 parallelDist
+	
+	> install.packages("parallelDist")
+	搞不定。
+	
 library(infercnv) # v 1.0.4
 
 
+报错内容：编译中夹杂一条 WARNING: ignoring environment value of R_HOME
+	/home/wangjl/soft/gcc-12.3.0/bin/g++ -std=c++11 -fPIC -std=gnu++11 -shared -L/opt/R/4.3.2/lib64/R/lib -L/usr/local/lib64 -o parallelDist.so DistanceDTWFactory.o DistanceFactory.o RcppExports.o Util.o parallelDist.o WARNING: ignoring environment value of R_HOME -lopenblas -lgfortran -lm -lquadmath -L/opt/R/4.3.2/lib64/R/lib -lR
+	["/picb/jinlab/wangjl/R/x86_64-pc-linux-gnu-library/4.3/00LOCK-parallelDist/00new","/picb/jinlab/wangjl/R/x86_64-pc-linux-gnu-library/4.3","/opt/R/4.3.2/lib64/R/library","/picb/jinlab/wangjl/Downloads/R-4.3.2/library"]
 
-# or 安装github上的最新版
-library("devtools")
-devtools::install_github("broadinstitute/infercnv")
+	/bin/ld: cannot find WARNING:: No such file or directory
+	/bin/ld: cannot find ignoring: No such file or directory
+	/bin/ld: cannot find environment: No such file or directory
+	/bin/ld: cannot find value: No such file or directory
+	/bin/ld: cannot find of: No such file or directory
+	/bin/ld: cannot find R_HOME: No such file or directory
+	collect2: error: ld returned 1 exit status
+	make: *** [parallelDist.so] Error 1
+	ERROR: compilation failed for package ‘parallelDist’
+
+
+问题：能找到该变量，为什么编译时说找不到呢？
+> system("echo $R_HOME")
+/opt/R/4.3.2/lib64/R
+
+提问：https://github.com/cran/parallelDist/issues/1
+
+
+
+(2B) 安装github上的最新版 @H
+> library("devtools") #2.4.5
+> devtools::install_github("broadinstitute/infercnv")
+
+降低版本呢？
+trying URL 'https://mirrors.tuna.tsinghua.edu.cn/CRAN/src/contrib/parallelDist_0.2.6.tar.gz'
+> devtools::install_version("parallelDist", version="0.2.1")
+还是同样报错。定义过R_HOME为什么找不到呢？
+
+
+修改包：还是最新版吧
+	$ cd /picb/jinlab/wangjl/others/shenwh/PTC/output/infercnv
+	$ wget https://mirrors.tuna.tsinghua.edu.cn/CRAN/src/contrib/parallelDist_0.2.6.tar.gz
+	$ tar zxvg parallelDist_0.2.6.tar.gz
+	$ cd parallelDist/
+	$ find . | xargs grep -in HOME --color=auto 2>/dev/null
+	./src/Makevars.win:5:PKG_LIBS += $(shell "${R_HOME}/bin${R_ARCH_BIN}/Rscript.exe" \
+	./src/Makevars:3:PKG_LIBS = `${R_HOME}/bin/Rscript -e "RcppParallel::RcppParallelLibs()"` $(LAPACK_LIBS) $(BLAS_LIBS) $(FLIBS)
+
+	$ vim ./src/Makevars
+	添加一句：
+	#R_HOME=/opt/R/4.3.2/lib64/R 没用，已删除
+	重新打包：
+	$ cd ..
+	$ tar zcvf parallelDist_0.2.6b.tar.gz parallelDist #不用打包，或者不能这样打包
+	$ R CMD BUILD parallelDist #应该这样打包
+	直接安装吧：
+	
+
+本地安装: install 应按大写
+$ R CMD install parallelDist_0.2.6b.tar.gz
+	报错：install: missing destination file operand after  ‘parallelDist_0.2.6b.tar.gz’
+
+	$ R CMD install --help
+	install [OPTION]... [-T] SOURCE DEST
+
+	> install.packages("/picb/jinlab/wangjl/others/shenwh/PTC/output/infercnv/parallelDist_0.2.6b.tar.gz")
+	$ R CMD install parallelDist_0.2.6b.tar.gz /picb/jinlab/wangjl/R/x86_64-pc-linux-gnu-library/4.3 #仅仅是复制到后面的路径
+
+build 应按大写
+$ R CMD build parallelDist
+	同样报错。
+
+https://github.com/cran/parallelDist
+> devtools::install_github("alexeckert/parallelDist")
+	更新 RcppArmad... (0.12.6.6.1 -> 0.12.8.4.0) [CRAN]
+	同样报错
+
+
+
+十分关键！！修改包编译文件：
+	$ vim src/Makevars
+	CXX_STD = CXX11
+	#R_HOME=/opt/R/4.3.2/lib64/R
+	#PKG_LIBS = `${R_HOME}/bin/Rscript -e "RcppParallel::RcppParallelLibs()"` $(LAPACK_LIBS) $(BLAS_LIBS) $(FLIBS)  #去掉R_HOME外的花括号，改为
+	PKG_LIBS = `$R_HOME/bin/Rscript -e "RcppParallel::RcppParallelLibs()"` $(LAPACK_LIBS) $(BLAS_LIBS) $(FLIBS)
+	这里的$()似乎都是函数，能否找到呢？
+
+
+直接安装文件夹
+$ cd ..
+$ R CMD INSTALL parallelDist
+
+在R中检查：
+> packageVersion("parallelDist")
+[1] ‘0.2.6’
+成功安装！
+
+
+继续安装 目的包：
+> options(BioC_mirror="https://mirrors.westlake.edu.cn/bioconductor/")
+> BiocManager::install("infercnv")
+
+> packageVersion("infercnv")
+[1] ‘1.18.1’
+
+H3:8787 安装成功
 
 
 
 
-2. 使用10x pbmc-10k 单数据集。
 
+(3). 下载使用镜像@J3
+下载：
+$ docker pull trinityctat/infercnv:latest
+
+$ docker images
+REPOSITORY             TAG       IMAGE ID       CREATED         SIZE
+trinityctat/infercnv   latest    ee7df60bf751   4 months ago    5.1GB
+
+
+运行：
+$ cd /picb/jinlab/wangjl/others/shenwh/PTC/output/infercnv
+$ docker run --rm -it -v `pwd`:`pwd` trinityctat/infercnv:latest bash
+
+
+
+=>用户系统一致：
+宿主机：
+	$ id 
+	uid=5662(wangjl) gid=1210(jinlab) groups=1210(jinlab),980(docker) context=unconfined_u:unconfined_r:unconfined_t:s0-s0:c0.c1023
+
+容器内：
+	新建组
+	# groupadd -g 1210 dockerGroup
+	新建用户
+	# useradd -s /bin/bash -d /home/wangjl2  -m wangjl2 -u 5662 -g 1210
+	# passwd wangjl2 #16
+	# su wangjl2
+	$ cd /picb/jinlab/wangjl/others/shenwh/PTC/output/infercnv/
+#
+
+
+
+
+
+
+
+
+========================================
+|-- inferCNV 示例
+----------------------------------------
+
+1. 准备三个输入文件
+https://github.com/broadinstitute/inferCNV/wiki/File-Definitions
+
+inferCNV requires:
+* a raw counts matrix of single-cell RNA-Seq expression
+* an annotations file which indicates which cells are tumor vs. normal.
+* a gene/chromosome positions file
+
+(1) Raw Counts Matrix for Genes x Cells
+genes (rows) vs. cells (columns) containing assigned read counts
+tab-delimited file.
+
+(2) Sample annotation file
+two columns, tab-delimited, and there is no column header.
+The first column is the cell name, and the 2nd column indicates the known cell type.
+
+MGH54_P2_C12    Microglia/Macrophage
+MGH36_P6_F03    Microglia/Macrophage
+MGH54_P16_F12   Oligodendrocytes (non-malignant)
+MGH54_P12_C10   Oligodendrocytes (non-malignant)
+MGH36_P1_B02    malignant_MGH36
+MGH36_P1_H10    malignant_MGH36
+
+
+(3) Gene ordering file
+The gene ordering file provides the chromosomal location for each gene. 
+The format is tab-delimited and has no column header, simply providing the gene name, chromosome, and gene span:
+
+WASH7P  chr1    14363   29806
+LINC00115       chr1    761586  762902
+NOC2L   chr1    879584  894689
+MIR200A chr1    1103243 1103332
+SDF4    chr1    1152288 1167411
+UBE2J2  chr1    1189289 1209265
+
+
+
+
+2. 运行：两步
+
+(1) create the infercnv object
+library(infercnv)
+infercnv_obj = CreateInfercnvObject(raw_counts_matrix="singleCell.counts.matrix",
+                                    annotations_file="cellAnnotations.txt",
+                                    delim="\t",
+                                    gene_order_file="gene_ordering_file.txt",
+                                    ref_group_names=c("normal"))
+
+(2) perform infercnv operations to reveal cnv signal
+infercnv_obj = infercnv::run(infercnv_obj,
+                             cutoff=1,  # use 1 for Smart-seq2, 0.1 for 10x Genomics
+                             out_dir="output_dir",  # dir is auto-created for storing outputs
+                             cluster_by_groups=T,   # cluster
+                             denoise=T,
+                             HMM=T)
+
+https://github.com/broadinstitute/inferCNV/wiki
+
+
+
+
+
+(3) 内置函数
+infercnv包也包含了画图函数plot_cnv
+
+library(RColorBrewer)
+infercnv::plot_cnv(infercnv_obj, #上两步得到的infercnv对象
+                   plot_chr_scale = T, #画染色体全长，默认只画出（分析用到的）基因
+                   output_filename = "better_plot", output_format = "pdf", #保存为pdf文件
+                   custom_color_pal =  color.palette(c("#8DD3C7","white","#BC80BD"), c(2, 2))) #改颜色
+#
+plot_cnv(infercnv_obj,
+         out_dir=tempfile(),
+         obs_title="Observations (Cells)",
+         ref_title="References (Cells)",
+         cluster_by_groups=TRUE,
+         x.center=1,
+         x.range="auto",
+         hclust_method='ward.D',
+         color_safe_pal=FALSE,
+         output_filename="infercnv",
+         output_format="png",
+         png_res=300,
+         dynamic_resize=0
+         )
+#
+https://www.rdocumentation.org/packages/infercnv/versions/1.3.3/topics/plot_cnv
+
+
+
+
+
+
+
+3. 实战
+(1) 准备3个文件
+#筛选分析需要的细胞类型
+seurat_object <- subset(seurat_object, idents=c('Epithelial cells', 'Myeloid cells', 'T cells'))
+#抽样，仅用于该教程
+# seurat_object <- subset(seurat_object, downsample=200)
+counts <- GetAssayData(seurat_object, slot = 'counts')
+
+#1) 表达矩阵
+> counts[100:102,1:2]
+3 x 2 sparse Matrix of class "dgCMatrix"
+                AAACCTGAGGTTACCT-1_1 AAACCTGAGTTGCAGG-1_1
+ARHGEF16                           .                    .
+MEGF6                              .                    .
+ENSG00000238260                    .                    .
+
+最好输出为纯文本文件：
+counts <- GetAssayData(scObj_epi, slot = 'counts') |> as.matrix()
+
+
+#2) 细胞注释
+anno <- data.frame(Idents(seurat_object))
+colnames(anno)="celltype"
+anno$celltype=paste0("c", anno$celltype) #转为字符串，否则可能报错
+
+> table(anno$celltype)
+  c0   c1  c10  c12  c14   c4   c5 
+1432 1305  243  121   77  991  661
+
+> head(anno)
+                     celltype
+AAACCTGAGGTTACCT-1_1       c4
+AAACCTGAGTTGCAGG-1_1       c4
+AAACCTGCAATCCAAC-1_1       c4
+
+
+# 3) 基因注释
+第一列为基因名称，第二列为染色体名称，第三列为基因起始位置，第四列为基因终止位置。
+件制作方式见 https://github.com/broadinstitute/inferCNV/wiki/instructions-create-genome-position-file
+
+先把脚本下载下来，再处理gtf文件，生成 human_genes_pos.txt
+https://github.com/broadinstitute/infercnv/tree/master/scripts
+https://github.com/broadinstitute/infercnv/blob/master/scripts/gtf_to_position_file.py
+参考: python ./scripts/gtf_to_position_file.py --attribute_name "gene_name" your_reference.gtf human_genes_pos.txt
+
+$ cd /picb/jinlab/wangjl/others/shenwh/PTC/output/infercnv
+
+解压gtf文件
+$ gunzip -c /picb/jinlab/wangjl/ref/10x/refdata-gex-GRCh38-2024-A/genes/genes.gtf.gz > /picb/jinlab/wangjl/ref/10x/refdata-gex-GRCh38-2024-A/genes/refdata-gex-GRCh38-2024-A.gene.gtf
+
+$ python3 /picb/jinlab/wangjl/others/shenwh/script/gtf_to_position_file.py --attribute_name "gene_name" /picb/jinlab/wangjl/ref/10x/refdata-gex-GRCh38-2024-A/genes/refdata-gex-GRCh38-2024-A.gene.gtf /picb/jinlab/wangjl/ref/10x/refdata-gex-GRCh38-2024-A/genes/human_genes_pos.txt
+
+$ cp /picb/jinlab/wangjl/ref/10x/refdata-gex-GRCh38-2024-A/genes/human_genes_pos.txt .
+
+$ wc human_genes_pos.txt 
+  38583  154336 1312381 human_genes_pos.txt
+$ head human_genes_pos.txt 
+DDX11L2 chr1    11869   14409
+MIR1302-2HG     chr1    29554   31109
+FAM138A chr1    34554   36081
+ENSG00000290826 chr1    57598   64116
+OR4F5   chr1    65419   71585
+ENSG00000238009 chr1    89295   133723
+ENSG00000239945 chr1    89551   91105
+
+
+gene_order <- "/picb/jinlab/wangjl/ref/10x/refdata-gex-GRCh38-2024-A/genes/human_genes_pos.txt"
+
+
+
+(2) 传输到docker中
+# save as Rds
+infercnv.input=list(
+  counts,
+  anno,
+  gene_order
+)
+saveRDS(infercnv.input, paste0(outputRoot, keyword, "_4_1.infercnv.input.Rds"))
+
+$ cp /picb/jinlab/wangjl/others/shenwh/PTC/output/PTC_4_1.infercnv.input.Rds /picb/jinlab/wangjl/others/shenwh/PTC/output/infercnv/
+
+# read to Docker R, in same uid and gid
+$ R
+infercnv.input=readRDS("/picb/jinlab/wangjl/others/shenwh/PTC/output/infercnv/PTC_4_1.infercnv.input.Rds")
+
+counts = infercnv.input[[1]]; 
+anno = infercnv.input[[2]]; 
+gene_order = infercnv.input[[3]]
+
+
+
+
+(3) 创建R对象
+library(infercnv)
+infercnv_obj = CreateInfercnvObject(raw_counts_matrix = counts,
+                                     annotations_file = anno,
+                                     delim="\t",
+                                     gene_order_file = gene_order,
+                                     min_max_counts_per_cell = c(100, +Inf),
+                                     ref_group_names = c("c14", "c2"))  #字符串格式，否则可能未知错误。
+  #建议 normal 至少放2个细胞亚群，太多可以对cell id抽样，取子集:  ref_group_names = c("Myeloid cells", "T cells"))
+
+
+提示：
+INFO [2024-06-01 09:41:18] num genes removed taking into account provided gene ordering list: 897 = 3.21978534764349% removed.
+WARN [2024-06-01 09:15:35] Please use "options(scipen = 100)" before running infercnv if you are using the analysis_mode="subclusters" option or you may encounter an error while the hclust is being generated.
+> options(scipen = 100)
+
+
+
+
+
+
+(4) 运行R主程序，及各种参数解释
+The 'cluster_by_groups' setting indicates to perform separate clustering for the tumor cells according to the patient type, as defined in the cell annotations file.
+
+* 如果没有 cluster_by_groups=T 参数的话,图形丑且不能用。
+	以后都要设置T。
+	cluster_by_groups=T, ## 选择TRUE是按样本分组。
+	改为FALSE会进行按另一个参数k_obs_groups给出的分组数（默认为1）进行分组
+* num_threads=5, # 设置线程数, 多线程运行，加快计算速度
+	注意：R的多进程极其消耗内存！建议设置在10以下进程，要克制！否则会内存爆满！
+
+* hclust_method="ward.D2", plot_steps=F) 可能第一列只有一类
+* leiden_resolution = 0.01, 0.1, 0.2 和 0.6 的差异是：第一列的聚类？
+* HMM = TRUE, 
+
+* analysis_mode = "samples",  # analysis_mode ='subclusters' # 区分肿瘤亚型，慢
+
+* noise_logistic = F, sd_amplifier = 1.3, 3 #降噪参数，越大越干净 #https://zhuanlan.zhihu.com/p/625589597?utm_id=0
+* write_expr_matrix = T # 产生文件 infercnv.observations.txt https://www.jianshu.com/p/65d1841cb59b
+
+
+注意两个参数cluster_by_groups=F，以及analysis_mode="subclusters"，这个参数最终会将肿瘤细胞分为8个cluster(少数情况是7类，如果实在找不出进一步的差别)，每个cluster有各自的CNV模式，如果analysis_mode="samples"，则一个样本不同细胞最终预测的CNV模式是唯一的。另外需要注意的是，一般文章放的热图是去噪后的热图，那张图两种模式没什么区别，因为去噪和预测CNV在inferCNV里面是分开的两步。
+
+
+
+steps:
+1) smoothing by chromosome
+2) centering by cell
+3) substracting normal from Tumor cells
+4) De-noising
+	denoise=TRUE
+Or
+5) CNV prediction
+	HMM=TRUE
+
+
+
+(4A) 初步尝试
+# 1st try (3k cells: 12:32->17:23, 5h)
+infercnv_obj2 = infercnv::run(infercnv_obj,
+                             cutoff=0.1,
+                             cluster_by_groups=TRUE, 
+                             out_dir="/picb/jinlab/wangjl/others/shenwh/PTC/output/infercnv/A1/", 
+                             k_obs_groups=8,
+                             num_threads=5, #克制R的多线程数，一定要在10个以下！
+                             denoise=TRUE,
+                             write_expr_matrix=T,
+                             HMM=TRUE)
+
+参数解释：
+- cutoff：默认0.1，过滤低表达基因
+	 use 1 for smart-seq, 0.1 for 10x-genomics
+- min_cells_per_gene：默认3，过滤表达比例较低基因
+- window_length：默认101，滑窗中包含的基因数目
+- cluster_by_groups：默认FALSE，对肿瘤细胞进行聚类，展示为不同的亚群
+	 cluster_by_groups=T, 选择TRUE是按样本分组；默认FALSE会进行按另一个参数k_obs_groups给出的分组数（默认为1）进行分组
+- k_obs_groups：默认1，肿瘤细胞聚类数目
+- num_threads：线程数
+- denoise：默认FALSE，对CNV矩阵进行降噪
+- out_dir = ".", 
+
+- HMM=F, # 是否基于HMM预测CNV,True的话时间很久
+- analysis_mode ='subclusters' # 区分肿瘤亚型，慢
+
+
+报错: Error: unexpected input in "​"
+	不知道原因，可能是 cluster不能是数字，必须是字符？
+	改变R run 参数顺序
+	这2个调整后，好了。
+# 17:57-> 20:22, 共耗时 2.5h，4830个细胞 50核（不要设置这么多了）
+
+
+
+
+
+(4B) 快速运行
+如果想提速，如下2个参数使用默认值：
+* HMM参数 when set to True, runs HMM to predict CNV level (default: FALSE)
+* denoise  If True, turns on denoising according to options below (default: FALSE) 
+
+#Quik: (3k cells: 17:25->17:38, 13min)
+# 不好，对输入细胞进行重新聚类，打乱了顺序！
+infercnv_obj2B = infercnv::run(infercnv_obj,
+                             cutoff=0.1,
+                             out_dir="/picb/jinlab/wangjl/others/shenwh/PTC/output/infercnv/B/", 
+                             cluster_by_groups=F, 
+                             k_obs_groups=8,
+                             num_threads=5,
+                             denoise=F,
+                             write_expr_matrix=T,
+                             HMM=F)
+#
+
+
+
+(4C) 最佳实践 1
+如果想提速，如下2个参数使用默认值：
+* HMM参数 when set to True, runs HMM to predict CNV level (default: FALSE)
+* denoise  If True, turns on denoising according to options below (default: FALSE) 
+
+# best act 1: (3k cells: 20:22->00:44, 4h22min)
+infercnv_obj2C = infercnv::run(infercnv_obj,
+                             cutoff=0.1,
+                             out_dir="/picb/jinlab/wangjl/others/shenwh/PTC/output/infercnv/C/", 
+                             cluster_by_groups=T, 
+                             #analysis_mode="subclusters", #默认是"samples"
+                             num_threads=5,
+                             denoise=T,
+                             write_expr_matrix=T,
+                             HMM=T)
+
+建议：去噪，HMM预测CNV这两项一般都选上。
+cluster_by_groups：先区分细胞来源，再做层次聚类 
+个人觉得使用analysis_mode = "subclusters"模式后的热图更好看
+
+
+(4D) 最佳实践 2
+start = Sys.time()
+
+# best act 2: (3k cells: 00:44->5:37, 5h)
+infercnv_obj2D = infercnv::run(infercnv_obj,
+                             cutoff=0.1,
+                             out_dir="/picb/jinlab/wangjl/others/shenwh/PTC/output/infercnv/D/", 
+                             cluster_by_groups=T, 
+                             analysis_mode="subclusters", #默认是"samples"
+                             num_threads=5,
+                             denoise=T,
+							 write_expr_matrix = T, # 为了获得文件 infercnv.observations.txt
+                             HMM=T);
+
+Sys.time()- start   # Time difference of 2.750998 hours
+
+添加参数再跑一遍 write_expr_matrix = T
+	确实很快，出现文件 infercnv.observations.txt， 10776行，831MMb
+
+保存结果：
+> saveRDS(infercnv_obj2D, file=paste0("/picb/jinlab/wangjl/others/shenwh/PTC/output/infercnv/PCT_4_D2.epi_infercnv_obj2.Rds"))
+转移：
+$ cp /picb/jinlab/wangjl/others/shenwh/PTC/output/infercnv/PCT_4_D2.epi_infercnv_obj2.Rds /picb/jinlab/wangjl/others/shenwh/PTC/output/
+
+
+
+
+
+
+
+(5) 结果解读: 4A运行的结果
+InferCNV通过与一组参考正常细胞相比，探索肿瘤基因组不同位置的基因表达强度来推断染色体变异。通过绘制热图很容易就能看出肿瘤基因组中哪些区域与正常区域相比是发生了扩增还是缺失。
+
+
+常见问题：
+* 哪种细胞类型可能是潜在的恶性细胞？
+* 参考正常细胞怎么选择？
+* 参考正常细胞必须提供吗？
+* 最终能得到哪些细胞属于恶性细胞的结果吗？
+
+
+主要的结果文件：
+	infercnv.preliminary.png ：初步 inferCNV 视图（去噪或 HMM 预测之前）
+	* infercnv.png ：由 inferCNV 生成的最终热图，应用了去噪方法
+	infercnv.references.txt ：正常/对照细胞矩阵数据
+	* infercnv.observations.txt ：肿瘤细胞矩阵数据
+	infercnv.observation_groupings.txt ：肿瘤细胞簇。
+	infercnv.observations_dendrogram.txt ：与热图匹配的肿瘤细胞的 newick 格式树状图
+	infercnv.heatmap_thresholds.txt
+
+
+$ head infercnv.observation_groupings.txt
+"Dendrogram Group" "Dendrogram Color" "Annotation Group" "Annotation Color"
+"CTCTAATAGATCCGAG-1_1" "c0_s27" "#8DD3C7" "1" "#8DD3C7"
+"CCGGGATTCGGCTTGG-1_1" "c0_s25" "#9AD8C4" "1" "#8DD3C7"
+"CAGGTGCCACCATGTA-1_1" "c0_s24" "#A8DDC2" "1" "#8DD3C7"
+
+
+$ cat infercnv.heatmap_thresholds.txt
+0.831837776354686
+0.854259406174062
+0.876681035993437
+0.899102665812812
+0.921524295632187
+0.943945925451562
+0.966367555270937
+0.988789185090312
+1.01121081490969
+1.03363244472906
+1.05605407454844
+1.07847570436781
+1.10089733418719
+1.12331896400656
+1.14574059382594
+1.16816222364531
+
+
+ii) infercnv.png
+一般需要查看的结果为infercnv.png，横坐标代表不同细胞，纵坐标代表染色体位置。
+
+如果 inferCNV 结果较为可信的话，在上半部分，热图基本为白底，在下半部分，蓝色条带表示染色体基因低表达（缺失），红色表示高表达，其余文件可根据需要进行进一步分析。
+
+热图展示每个细胞在各个染色体区域的相对表达强度，上方热图代表参考细胞的展示结果，下方热图代表目标细胞的展示结果。图中每一行表示一个细胞，每一列表示一个基因。
+
+* 热图左边第一个图注代表聚类数目，只有一个时表示没有聚类，
+* 左边第二个图注代表细胞类型，上方图注为对应排列的染色体。
+* 红色表示CNV 扩增，蓝色表示CNV 缺失，颜色越深代表CNV变异越明显。
+
+
+出现各种奇怪的图，基本就两个原因：
+1.参数原因（cluster_by_groups和leiden_resolution参数特别重要）
+2.细胞数量原因 。详情见官方链接 https://www.youtube.com/watch?v=-qOcHAavZT8
+
+
+
+
+
+
+
+
+
+(5B) 4B的运行结果解读：https://cloud.tencent.com/developer/article/1737241
+
+1) infercnv.observations.txt
+每一列表示一个细胞，每一行表示一个基因，数值表示基因的CNV值。大于1表示扩增，小于1表示缺失。
+
+为啥没这个文件了？
+	https://github.com/broadinstitute/infercnv/issues/481
+	
+	Those files are generated at the same type as the plots if the "write_expr_matrix" option is set to TRUE, but the default is now set to FALSE and properly linked with plot_cnv.
+	现在默认 write_expr_matrix=F，不输出这些文件。
+	
+	If you simply restart the same run of infercnv you already did but changing this option, it should reload a backup from the end of the process and simply plot the figure again while this time outputting the files.
+	如果再跑一次，加上这些选项，则可以载入备份，直接输出这些文件。
+
+
+2) infercnv.observations_dendrogram.txt
+读取自己走完inferCNV流程后的结果文件夹里面的 infercnv.observations_dendrogram.txt 文件，里面存储着inferCNV的CNV热图的细胞的层次聚类情况：
+
+
+
+
+
+
+
+
+(6) 结果美化
+* 设置样品颜色 the colors of sample labels https://github.com/broadinstitute/infercnv/issues/319
+* 设置热图颜色	https://github.com/broadinstitute/infercnv/issues/201
+	custom_color_pal=color.palette(c("darkgreen", "white", "darkred"), c(2, 2)) #1.3.2
+* infercnv.observations_dendrogram.txt 热图附带的层次聚类结果 https://cloud.tencent.com/developer/inventory/7049/article/1737241
+
+
+
+
+
+
+========================================
+|-- inferCNV 区分恶性细胞？
+----------------------------------------
+1. 文献介绍
+
+(1) 对每个细胞的 CNV 水平进行定量分析
+https://zhuanlan.zhihu.com/p/687041660
+2019年9月发表的胰腺导管腺癌（PDAC）的研究论文，文章除热图外，还使用小提琴图展示7个PDAC和1个对照样本的不同细胞类型之间的CNV分数分布（CNV分数计算方法见文章正文），结果表明2型管状细胞（Ductal cell2）的 CNV 水平明显高于其他类型的细胞，
+之后进一步分析该细胞亚群的差异基因、功能通路、marker基因，并辅助免疫组化染色实验，证实该细胞亚型为恶性细胞。
+
+图: 4*2=8个小图，每个都是小提琴图，x为细胞亚群，y为CNV level.
+	除了N2，其他7个图的 Ductal cell2 的 CNV level 都很高。
+
+(2)
+https://cloud.tencent.com/developer/article/1737216
+2020的文章《Single-Cell Transcriptome Analysis Reveals Intratumoral Heterogeneity in ccRCC, which Results in Different Clinical Outcomes》，就是选取ccRCC的3个病例的21个样本（12个肿瘤，9个对照），质控后总计24550个细胞，使用inferCNV算法可以区分成为7786个非恶性，16764个恶性细胞。
+
+按100个基因在染色体滑动平均。
+输入：300个 fibroblast, 300 endothelial(NI03)，另外500个fibro，500个endo作为ref对照。
+通过进化树最高层切割：plot cells on a dendrogram which was then cut at the highest point in which all the spiked in endo and fibro cells belonged to one cluster(K=6, one fibro control was missassigned).
+和 spike in control 聚类的叫 nontumor, 其余的叫 tumor。
+
+
+(3) Therapy-Induced Evolution of Human Lung Cancer Revealed by Single-Cell RNA Sequencing
+
+
+
+
+
+2. 代码实现：亚群级别查看
+
+看 cnv score，发现分布在1附近。说明大部分是单倍体。
+选择sd最高的基因，对cnv score做log后，取绝对值再相加。
+	如果本来都是1，则结果还是0。
+	否则，无论是 gain 还是 loss，值都会变大。
+
+
+cnv_table <- read.table(paste0(outputRoot, "/infercnv/B/infercnv.observations.txt"), header=T)
+dim(cnv_table) #8138 28783
+cnv_table[1:2, 1:2]
+#      ATAGACCAGCGATATA_LUNG_N20 CGACCTTAGATATGCA_LUNG_T19
+#NOC2L                  1.001131                  1.001131
+#HES4                   1.001131                  1.001131
+max(cnv_table) #1.266895
+min(cnv_table) #0.7331055
+
+
+# sd max genes
+gene.sd=apply(cnv_table, 1, sd)
+gene.sd=gene.sd[order(-gene.sd)]
+gene.sd[1:3]
+plot(gene.sd, col="red", type="l", lwd=2)
+# top 1000 as HVG
+cnv_table2=cnv_table[ names(gene.sd[1:1000]),]
+dim(cnv_table2) #1000 28783
+
+# use all genes? top sd genes?
+cnv.score.list = sapply( split(rownames(anno), anno$celltype), function(cids){
+  cids = intersect(cids, colnames(cnv_table2))
+  apply(cnv_table2[, cids], 1, mean) |> unlist()
+})
+dim(cnv.score.list) #1000   14
+cnv.score.list[1:2, 1:3]
+#            c0       c10      c11
+#PCM1  1.005136 0.9049356 1.006593
+#ASAH1 1.005512 0.9041140 1.006484
+
+dat = data.frame(
+  value=cnv.score.list |> as.data.frame() |> unlist(),
+  gene= rep(rownames(cnv.score.list), ncol(cnv.score.list)),
+  cluster=rep(colnames(cnv.score.list), each=nrow(cnv.score.list))
+)
+head(dat)
+#        value    gene cluster
+#c01 0.9957994 S100A16      c0
+#c02 0.9954988 S100A14      c0
+#c03 0.9953203 S100A13      c0
+#
+hist(dat$value, n=100) # normal distribution, mean=1
+
+library(ggplot2)
+cnv.median=sapply(dat$cluster|>unique(), function(x){
+  val = dat[which(dat$cluster==x), ]$value
+  val = abs(log2(val))
+  #c(mean(val), median(val))
+  median(val)
+}) # rowMeans() ## 0.02120095(mean) 0.01176219(median)
+cnv.median
+#         c0         c10         c11         c14         c16         c17         c19 
+#0.012328019 0.024370428 0.012771528 0.022374955 0.031357906 0.022250027 0.019277977 
+#        c22          c3          c4          c5          c6          c7          c9 
+#0.004500395 0.033408237 0.009663631 0.011196361          NA 0.031532327 0.030664951 
+#
+cnv.median=cnv.median[order(-cnv.median)]
+dat$cluster=factor(dat$cluster, levels = names(cnv.median))
+#
+write.table(dat, paste0(outputRoot, keyword, "_00_Cell_type.inferCNV_score-allEpi.boxplot.df.txt"))
+#
+cnv.median[c("c0", "c5")] |> mean()
+pdf(paste0(outputRoot, keyword, "_00_Cell_type.inferCNV_score-allEpi.boxplot.pdf"), width=4.1, height=4)
+ggplot(dat, aes(cluster, abs(log2(value+1e-10)), fill=cluster))+
+  #geom_violin(scale = "width", show.legend = F)+
+  #geom_boxplot(width=0.1, show.legend = F, fill="white", outliers = F)+
+  geom_boxplot(width=0.6, show.legend = F, outliers = F)+
+  theme_classic(base_size = 14)+
+  labs(x="Cell cluster", y="Absolute of log2(CNV score)", title="inferCNV")+
+  theme(
+    axis.text.x = element_text(angle = 45, hjust = 1)
+  )+
+  geom_hline(yintercept = (cnv.median[c("c0", "c5")] |> mean()), linetype=2, color="red")
+dev.off()
+#
+其中c0和c5(B, T细胞)是除了ref(fibroblast)之外的内参，用于大致看一下位置。
+
+这个图只能判断亚群级别。
+
+细胞级别还需要聚类。
+
+
+
+
+
+
+
+
+
+3. 代码实现：对每个细胞聚类
+
+前往不要轻易用层次聚类，巨慢，而且容易崩溃！
+热图仅仅查看效果。
+
+
+(1) (inferCNV) were clustered using unsupervised clustering (K-means) and presented in a heatmap.
+
+* kmeans 对行做聚类。
+* 最好做标准化：每个细胞中的基因标准化到1e4。
+	iris 对行做标准化后，kmeans分类几乎全正确，用原始数据很多错的。
+
+
+# 选作：最佳分类个数
+factoextra::fviz_nbclust( t(dat), kmeans, method = "silhouette")
+
+km_model <- kmeans(cnv_table2, centers = 3)
+
+
+ref:
+https://gitee.com/dawnEve/others/blob/master/zhaoyumiao/script/b01_inferCNV_epi_fibro.R
+
+
+
+
+
+
+
+
+
+
+========================================
+|-- inferCNV 如何找到染色体缺失的那部分基因？和细胞id？
+----------------------------------------
+1. 二次利用
+
+根据图 infercnv.png 判断哪个分组有CNV变异大的细胞，根据文件：
+* infercnv.observations.txt #见上文 3(5B)
+* infercnv.observation_groupings.txt
+* infercnv_subclusters.observation_groupings.txt
+
+如何取出CNV变化的cell id 和基因呢？
+
+
+
+
+
+(1) 找到缺失的基因 ====
+如何找到染色体缺失的那部分基因 https://zhuanlan.zhihu.com/p/600044931
+
+library(dplyr)
+library(ggplot2)
+library(reshape2)
+
+# 定义缺失列或感兴趣的列
+chr_num<-c("chr1","chr6") #目测 infercnv.png 缺失的染色体
+
+# 读取准备文件
+exp.obs.All = read.table( paste0(outputRoot, "infercnv/D/infercnv.observations.txt"), sep = " ", header = T, check.names = F )
+dim(exp.obs.All) #10775  4737
+exp.obs.All[1:3, 1:3]
+#          CCTTACGCACCAGATT-1_1 GATGAGGAGGTCGGAT-1_1 AGTTGGTGTGCGCTTG-1_1
+#LINC01128             1.001399             1.001399             1.001399
+#NOC2L                 1.001399             1.001399             1.001399
+#PLEKHN1               1.001399             1.001399             1.001399
+
+gene_order <- "/picb/jinlab/wangjl/ref/10x/refdata-gex-GRCh38-2024-A/genes/human_genes_pos.txt"
+genecodev1 <- read.table(gene_order, sep = "\t", header = F)
+rownames(genecodev1)=genecodev1$V1
+dim(genecodev1) #[1] 38584     4
+genecodev1[1:2, ]
+#           V1   V2    V3    V4
+#1     DDX11L2 chr1 11869 14409
+#2 MIR1302-2HG chr1 29554 31109
+
+
+# 定位缺失基因
+chr_genes<-genecodev1[which(genecodev1$V2 %in% chr_num), 1] #5534
+#exp.obs <- exp.obs.All[chr_genes,] %>% na.omit()  #1734 4737 this may not right!!??
+exp.obs <- exp.obs.All[intersect( chr_genes, rownames(exp.obs.All) ),] #[1] 1695 4737
+
+
+# gene表达均值的分布
+hist(rowMeans(exp.obs), n=100, 
+     mgp=c(2,1,0),
+     xlab="Average expression/genes",
+     main= paste0( "genes in ", paste(chr_num, collapse = ",")) )
+abline(v=0.972, col="red", lty=2)
+
+
+# 样本的Expression均值筛选，可以修改为0.9或1左右，根据热图结果自己控制，数字越小越严格
+selected_exp <- exp.obs[which(rowMeans(exp.obs)<0.972), ]%>%as.matrix()
+dim(selected_exp) #100 4737
+selected_exp[1:2, 1:2]
+#        CCTTACGCACCAGATT-1_1 GATGAGGAGGTCGGAT-1_1
+#CEPT1               1.001399            0.9158052
+#DENND2D             1.001399            0.9161874
+
+
+heat_data<-reshape2::melt(selected_exp) #长宽矩阵转化，为作图准备
+colnames(heat_data)=c("symbol", "cell_id", "value")
+head(heat_data)
+
+# 查看缺失列的expression热图
+ggplot(heat_data, aes(symbol, cell_id, fill= value)) + 
+  geom_tile() +  labs(x="")+ theme_classic()+
+  theme(
+    axis.text.x = element_text(angle = 60, hjust = 1),
+    axis.text.y = element_blank(),
+  )+
+  scale_fill_gradient2(low ="#00008b",mid = "#ffffff",high = "#8b0000",midpoint = 1)
+
+# 输出genes
+write.table(x = row.names(selected_exp), 
+            file = paste0(outputRoot, "infercnv/D/interest_genes.del.chr1_6.txt"), 
+            sep = "\t",row.names = F,col.names = F,quote = F)
+row.names(selected_exp) |> head()
+
+
+## 阈值为1时
+可以看到基本expression都是小于1的，也有接近于1的情况
+
+## 阈值为0.9时
+得到的基因基本都满足条件了
+
+## 当然还有输出基因的结果
+这个文件中的基因即可进行后续分析
+> row.names(selected_exp) |> head()
+[1] "CEPT1"           "DENND2D"         "ENSG00000272009" "ZNF165"          "ZSCAN26"         "ZSCAN31"  
+......
+
+
+
+
+
+
+
+(2) pheatmap ====
+#get cell_id and cluster
+scObj_epi$cid=rownames(scObj_epi@meta.data)
+cell_info=FetchData(scObj_epi, vars = c("cid", "seurat_clusters"))
+cell_info$seurat_clusters=paste0("c", cell_info$seurat_clusters)
+cell_info=cell_info[order(cell_info$seurat_clusters),]
+head(cell_info)
+
+# 构建行注释信息:cell
+annotation_row = data.frame(
+  cluster = cell_info$seurat_clusters
+)
+rownames(annotation_row) = cell_info$cid
+head(annotation_row)
+table(annotation_row$cluster)
+
+
+# 构建列注释信息: gene
+rownames(genecodev1)=genecodev1$V1
+annotation_col = genecodev1[rownames(selected_exp), c(1,2)]
+colnames(annotation_col)=c("symbol", "chr")
+annotation_col=annotation_col[order(annotation_col$chr), ,drop=F]
+annotation_col=annotation_col[,2, drop=F]
+head(annotation_col)
+table(annotation_col$chr)
+
+
+# 自定注释信息的颜色列表
+ann_colors = list(
+  cluster = c(c0="#8DD3C7", c1="#CAAEC5", c10="#B2B2A5", c12="#DED3B3", c4="#C191C2", c5="#FFED6F"),
+  chr = c(chr1 = "#8DD3C7", chr6 = "#CFA9BB")
+)
+
+# order cid
+dat=t(selected_exp)
+common_cids=rev( intersect(cell_info$cid, rownames(dat)) )
+dat=dat[common_cids, rownames(annotation_col)]
+
+dim(dat) # 4737 343
+dat[1:2, 1:2]
+write(dat, paste0(outputRoot, "infercnv/D/interest_genes.del.chr1_6.heatmap.txt"))
+
+library(pheatmap)
+pdf(paste0(outputRoot, "infercnv/D/interest_genes.del.chr1_6.heatmap.pdf"), width=5, height=4)
+pheatmap::pheatmap(dat, border_color =NA,
+                   annotation_row = annotation_row, #row: cell cluster
+                   annotation_col = annotation_col, #col: gene chr
+                   annotation_colors = ann_colors,
+                   cluster_rows=F, cluster_cols=F,
+                   show_rownames=F,
+                   show_colnames=F,
+                   main="Del chr1,chr6")
+dev.off()
+#
+
+
+
+(3) boxplot
+http://www.360doc.com/content/21/0715/15/76149697_986667784.shtml
+
+- 读取infercnv.observations.txt文件来计算CNV score
+- 按照分区填充新矩阵
+	[范围) 评级，填充值，意思
+	[  0, 0.3) A, -2; # complete loss. 2pts
+	[0.3, 0.7) B, -1; # loss of one copy. 1pts
+	[0.7, 1.3) C, 0; # Neutral, 0pts
+	[1.3, 1.5) D, 1; # addition of one copy. 1pts
+	[1.5, 2) E, 2; # addition of two copy. 2pts
+	[2, ) F, 2; # addition of more than two copy. 2pts
+
+绘制 cnv score:
+	按cell cluster
+	按是否是肿瘤
+	按样品
+
+
+
+
+
+
+
+
+
+
+2. inferCNV结合UPhyloplot2分析肿瘤进化
+https://www.dxy.cn/bbs/newweb/pc/post/45112367
+
+
+这个小软件其实很简单，两百行代码，只有一个功能就是画图，里面唯一的分析就是计算一下各种CNV cluster的比例，小于5%的cluster不画。
+
+https://github.com/harbourlab/uphyloplot2
+
+单独看每一个样本的进化树，上方主干对应的CNV事件，是早期就发生的；下方分枝的CNV事件是后期发生的。其中蕴含的逻辑就是含有某个CNV的细胞占比越多，那么这个CNV就发生得越早；含有某个CNV的细胞占比越少，这个CNV就发生得越晚。
+
+注意：这种方法做出的进化树只涉及细胞占比信息，和其他利用突变数量推测molecular time的算法不一样。 ﻿
+
+
+
+
+
+
+
+
+
+ref:
+https://zhuanlan.zhihu.com/p/625589597?utm_id=0
 
 
 

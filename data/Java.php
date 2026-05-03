@@ -12,6 +12,7 @@ return array (
       array('Java准备-环境-工具','java00-prep','txt',),
       array('设计模式design_pattern','design_pattern','md',),
 
+      array('Java过时/老版本-outOfDate','outOfDate','txt'),
     ),
   ),
 
@@ -23,6 +24,7 @@ return array (
     2 => 
     array (
       array('java基础','java01-base','txt',),
+      array('java 读写 I/O','java-IO','txt',),
       array('java高级','java02-adv','txt',),
       array('java Web','java03-JavaWeb','txt',),
     ),

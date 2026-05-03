@@ -1,6 +1,7 @@
 安装phpstorm
 ===================
 
+> PhpStorm: The PHP IDE by JetBrains
 
 ## 安装java
 
@@ -127,20 +128,20 @@ http://knpuniversity.com/screencast/phpstorm
 如何打开：菜单 File->setting；
 快捷键：ctrl+alt+S;
 
-#### 设置主题  
+### 设置主题  
 可以在 appearance 设置主题，推荐使用更漂亮更护眼的主题。
 
-#### 设置字体   
+### 设置字体   
 搜索font，找到如何设置字体大小(editor->colors & fonts->font)。注意：改变之前先另存为主题，再修改字体。
 	也可以修改行间距line spacing.
 
 
-#### 在编辑器包含或者不包含文件夹
+### 在编辑器包含或者不包含文件夹
 右击文件夹->mark directory as->excluded.
 点击project files就可以看到所有结果。
 点击project就可以看到隐藏后的文件结构。
 
-#### 安装插件
+### 安装插件
 在设置中选plugins，点击下面的的browse repositories，然后输入需要的插件的名字，右边有install 按钮。
 
 推荐安装 symfony plugin，对sf很有用。

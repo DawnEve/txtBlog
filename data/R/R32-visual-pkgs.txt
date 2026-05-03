@@ -266,7 +266,7 @@ head(tmp.type)
 ###
 #查看cell cycle基因对细胞分类的效果
 #breaks
-bk <- c(seq(-6,-0.1,by=0.01),seq(0,6,by=0.01)) #[-2, 6]
+bk <- c(seq(-6,-0.1,by=0.01),seq(0,6,by=0.01)) #[-2, 6]          #<<== 精确控制颜色，保持中间的为白色
 CairoPDF(file="06-3-heatmap-nonS-sync.pdf",width=8,height=10)
 pheatmap(tmp, border=FALSE, 
          cluster_cols = F,
@@ -363,12 +363,15 @@ pheatmap(test, cluster_row = FALSE)
 # color参数自定义颜色
 pheatmap(test, color = colorRampPalette(c("navy", "white", "firebrick3"))(50))
 
+color = c(colorRampPalette(colors = c("#272788", "#47B9EA",  "#AFCC49", "#FAEA00", "#E63504", "#A40C09"))(100)), #冷to暖 0-6 log表达值 Good
+color = c( colorRampPalette(colors = c("#003F74", "white"))(20), colorRampPalette(colors = c("white", "#95001F"))(20)), #蓝白红 Good
+
+
 
 
 (5) 图例控制
 # legend_breaks参数设定图例显示范围，legend_labels参数添加图例标签
 pheatmap(test, legend_breaks = c(1:5), legend_labels = c("1.0","2.0","3.0","4.0","5.0"))
-
 
 # legend = FALSE参数去掉图例
 pheatmap(test, legend = FALSE)
@@ -743,9 +746,37 @@ na_col
 
 ref:
 https://mp.weixin.qq.com/s?__biz=MzIyNDI1MzgzOQ==&mid=2650394128&idx=1&sn=5cb8b1a16077abc451a20fde62e6d347
+https://biostatsquid.com/step-by-step-heatmap-tutorial-with-pheatmap/
 
 
 
+
+
+
+========================================
+|-- pheatmap 包输出为pdf
+----------------------------------------
+
+res=pheatmap(mat, ...)
+
+
+save_pheatmap_pdf <- function(x, filename, width=7, height=7) {
+  stopifnot(!missing(x))
+  stopifnot(!missing(filename))
+  
+  pdf(filename, width=width, height=height)
+  grid::grid.newpage()
+  grid::grid.draw(x$gtable)
+  dev.off()
+}
+
+save_pheatmap_pdf(res, "./test.pdf",8,12)
+
+
+
+ref:
+https://stackoverflow.com/questions/43051525/how-to-draw-pheatmap-plot-to-screen-and-also-save-to-file
+https://www.jingege.wang/2022/01/23/pheatmap热图颜色范围自定义/
 
 
 
@@ -766,6 +797,15 @@ ComplexHeatmap is implemented under grid system, so users need to know basic gri
 整个图的排布: 热图 - row annotations / row names / dendrogram / title
 
 
+(2) 安装
+BiocManager::install("ComplexHeatmap")
+
+
+
+
+
+
+
 
 
 
@@ -775,6 +815,90 @@ ComplexHeatmap is implemented under grid system, so users need to know basic gri
 可视化笔记在 《R 语言最佳实践》: https://dawneve.github.io/R_best_practice/
 
 
+(1) 先用heatma获取顺序，再用 pheatmap 可视化：右侧显示部分代表基因
+
+# heatmap of dyn APA genes
+library(pheatmap)
+library(viridis)
+pdf(paste0(outputRoot, "_02_3_DEAPA.gDPAU-time.heatmap.pdf"), width=2.7, height=4.3)
+# scale row: use later
+ht.gDPAU.time = pheatmap::pheatmap(gDPAU_mean.time,
+                                   clustering_method = "ward.D2",
+                                   cutree_rows = 3,
+                                   scale = "row",
+                                   show_rownames = F,
+                                   #color = viridis(20),
+                                   main=paste0("Average gDPAU among time\nRow scale; n=", nrow(gDPAU_mean.time)) )
+dev.off()
+
+
+## complext heatmap ====
+#1) 获取聚类后的基因顺序
+row_cluster = cutree(ht.gDPAU.time$tree_row, k=3)
+# 对聚类后的数据进行重新排序
+newOrder = gDPAU_mean.time[ht.gDPAU.time$tree_row$order,] |> as.data.frame()
+newOrder[,ncol(newOrder)+1]= row_cluster[match(rownames(newOrder), names(row_cluster))]
+colnames(newOrder)[ncol(newOrder)]="Cluster"
+# 查看重新排序后的数据
+head(newOrder)
+table(newOrder$Cluster)
+#  1   2   3 
+# 257 179 197 
+
+#2) redraw with complexheatmap, with some genes
+#BiocManager::install("ComplexHeatmap")
+library(ComplexHeatmap)
+
+# select some gene in each cluster
+genelist= lapply( split( rownames(newOrder), newOrder$Cluster), function(x){
+  set.seed(42)
+  sample(x, 5)
+}) |> unlist()
+#$`1`
+#[1] "TMEM127" "PACS2"   "TTC28"   "GART"    "LATS1"  
+#$`2`
+#[1] "CRTC1"  "BRCA1"  "TCF4"   "PDCD2L" "CAMK1D"
+#$`3`
+#[1] "CAPG"   "LY75"   "ZNF652" "DLGAP4" "ARL6" 
+
+gene_pos=which( rev(rownames(newOrder)) %in% genelist) #11 191 221 434 532 536 574 586 630
+#右侧要注释的基因
+row_anno=rowAnnotation(gene=anno_mark(at=gene_pos, #位置
+                                      labels=genelist, #文字
+                                      labels_gp=gpar(fontsize=8, col="black"))) #样式
+
+#cluster 颜色
+colors.cluster = c('#E64B35','#4DBBD5','#3C5488')
+# 左侧聚类bar图
+left_anno = rowAnnotation(cluster=anno_block(
+  gp=gpar(fill=colors.cluster),
+  labels=sprintf("%s genes",
+                #unique( newOrder$Cluster), 
+                table(newOrder$Cluster) |> as.numeric() ) ,
+  labels_gp = gpar(cex=1, col="white")
+))
+
+ht.gDPAU.time2 = Heatmap(
+  (function(){
+    t1=t(scale(t(newOrder[, 1:3])))
+    t1[ rev(rownames(t1)),]
+  })(),
+  #t(scale(t(gDPAU_mean.time))),
+  cluster_rows = FALSE,
+  cluster_columns = FALSE,
+  left_annotation = left_anno,
+  heatmap_legend_param = list(title=""), #修改图例标题，该语句或者 name=语句
+  show_row_names = F, #不显示右侧注释
+  #clustering_method_rows="ward.D2", clustering_method_columns = "ward.D2", split=3,
+  split=paste0("Cluster ", rev(newOrder$Cluster) ),
+  #col= viridis(20),
+  col= colorRampPalette(c("navy", "white", "firebrick3"))(50),
+  right_annotation = row_anno) #只显示感兴趣基因
+#
+pdf(paste0(outputRoot, "_02_3_DEAPA.gDPAU-time.ComplexHeatmap-withGenes.pdf"), width=3.2, height=4.3)
+print(ht.gDPAU.time2)
+dev.off()
+#
 
 
 
@@ -782,12 +906,8 @@ ComplexHeatmap is implemented under grid system, so users need to know basic gri
 
 
 
-
-
-
-
-1.要求画热图：
-(1).有三个数据文件，每个都是这样的7行9列：
+(2) 画热图例2：
+1).有三个数据文件，每个都是这样的7行9列：
 2-HG	Citrate	Fumarate	lsocitrate	Lactate	maltate	Succinate	Age	Gender
 Any cancer	0.001	0.001	0.25	0.001	0.25	0.001	0.25	0.001	0.25
 Breast cancer	0.1	0.1	0.002525	0.1	0.002525	0.1	0.002525	0.1	0.002525
@@ -799,20 +919,14 @@ Lhermitte-Duclos disease	0.0263	0.0263	0.09878	0.0263	0.09878	0.0263	0.09878	0.0
 
 三个文件rbind拼接，同时在最左侧显示数据来源。
 文件之间显示分割线。
-
-(2)行列名字标注到热图的left和top;
-(3)共用一个图例，显示到右侧。
-
+2)行列名字标注到热图的left和top;
+3)共用一个图例，显示到右侧。
 
 
-
-
-
-2. 代码：
+代码
 library(ComplexHeatmap)
 library(circlize)
 setwd("/home/wangjl/web/docs/docs")
-
 
 see=function(df){
   print(dim(df))
@@ -858,7 +972,6 @@ library(Cairo)
 CairoPDF(file='test3.pdf',width=8,height=5)
 p1
 dev.off()
-
 ## end
 
 
@@ -872,7 +985,7 @@ https://www.jianshu.com/p/d8b8f7acf47c
 ========================================
 韦恩图绘制 venn图: VennDiagram 包
 ----------------------------------------
-# 经典的2类交集韦恩图，顶上标标签，圆圈标数字个数，面积成比例
+例1: 经典的2类交集韦恩图，顶上标标签，圆圈标数字个数，面积成比例
 library (VennDiagram)
 #grid.newpage()
 venn.plot <- draw.pairwise.venn(393, 269, 94, c("BC", "HeLa"), 
@@ -885,6 +998,51 @@ venn.plot <- draw.pairwise.venn(393, 269, 94, c("BC", "HeLa"),
                                 
                                 cat.col = c('#F81082', '#619CFF'), margin=0.3, scaled = T);
 #
+例2: 给出三个基因集，画韦恩图。
+- 控制字体
+- 输出到pdf中
+
+# https://stackoverflow.com/questions/12803390/venndiagram-internal-labels
+library (VennDiagram)
+
+venn.plot2=venn.diagram(x=list(
+    h18_vs_0=getDEAPA(gDPAU.18h_0h), 
+    h48_vs_0=getDEAPA(gDPAU.48h_0h), 
+    h48_vs_18=getDEAPA(gDPAU.48h_18h)
+  ),
+  filename=NULL, #"My1.png", 
+  main="DE APA: gDPAU | time",
+  col="white", 
+  #fill=c(colors()[616], colors()[38], colors()[468]),
+  fill=c("#FFA500", "#FF1493", "#4876FF"),
+  alpha=c(0.4, 0.4, 0.4), lwd=c(1, 1, 1), 
+  cex=1.5, #0.55, #number font size
+  cat.dist=c(0.05, 0.01, 0.02),  #标签距离边界
+  cat.pos=c(320, 40, 180), #标签角度，y轴正方向为0
+  cat.cex=1.2, #0.45,
+  margin=0.1,
+  
+  main.fontfamily="sans", #标题，默认都是 serif
+  fontfamily ="sans", #每个圆圈的数字
+  cat.fontfamily = "sans" #每个圆圈的标签
+)
+#
+pdf(paste0(outputRoot, "_02_2_DEAPA.gDPAU-time.Venn.pdf"), width=3, height=3)
+grid.newpage()
+grid.draw(venn.plot2);
+dev.off();
+#
+
+
+
+
+
+
+
+
+
+
+
 
 
 1.VennDiagram包
@@ -1298,7 +1456,7 @@ dev.off()
 ========================================
 |-- 画多个(n>5)集合的交集: UpSetR包
 ----------------------------------------
-1. UpsetR这个包确实对多个交集的可视化做了提供了更好的展示方式
+1. UpSetR这个包确实对多个交集的可视化做了提供了更好的展示方式
 
 (1) 示例1：简单数据示例
 install.packages("UpSetR")
@@ -1357,6 +1515,55 @@ expressionInput <- c(one = 2, two = 1, three = 2,
 11   0   1     1
 12   0   0     1
 13   0   0     1
+
+
+
+
+
+3) 调整与美化后的集合图
+
+library(ggplot2)
+library(RColorBrewer)
+upset(fromList(listinput),      
+      #nsets=length(listinput), #显示数据集的所有数据,nsets = 数值调整可视化数据集数量
+      #nintersects=3, #显示前多少个bar
+      #sets=c("set1","set2","set3","set4","set5","set6", "set7"), # 指定集合或用keep.order = TRUE保持集合按输入的顺序排序
+      
+      #number.angles = 60, #bar上 交互集合柱状图的 数字柱标倾角
+      point.size=3, #图中点的大小
+      line.size=1, #图中连接线粗细
+      
+      
+      main.bar.color = 'black', #y轴柱状图颜色
+      matrix.color="black", #x轴点的颜色
+      
+      mainbar.y.label="Number of overlap\ngenes(X 10^4)",  #default "Intersection Size", #y轴的标签
+      sets.x.label="Total number of\n enriched genes(X 10^3)", #default "Set size",   #x轴的标签
+      
+      # RColorBrewer包: Set1中只有6个颜色，Set3中有12个颜色，Paired中有12个颜色
+      sets.bar.color=brewer.pal(3,"Set3"),#x轴下 左水平bar 颜色; 
+      #matrix.color = "yellow", #?
+      # att.color="yellow", #?
+      #color.pal="Dark2", #?
+      
+      mb.ratio = c(0.5, 0.4), #bar plot和matrix plot图形高度的占比
+      order.by = "freq", #y轴矩阵排序,如"freq"频率，"degree"程度
+      
+      text.scale=c(1.5,1.5,1.5,1.5,1.5, 1), 
+      #6个参数intersection size title（y标题大小）, intersection size tick labels（y刻度标签大小）, set size title（set标题大小）, set size tick labels（set刻度标签大小）, set names（set 分类标签大小）, numbers above bars（柱数字大小）的设置
+      # https://www.jianshu.com/p/8323604f3d69
+      
+      #shade.color="#ff000022" #图中阴影部分的颜色
+      
+      queries = list(list(query = intersects,params = list("one","two","three"), color="Red",active = T)), #高亮显示某一列
+)
+
+
+
+
+
+
+
 
 
 
@@ -1420,6 +1627,44 @@ upset(df, sets = c("Action", "Adventure", "Comedy", "Drama", "Mystery",
 
 
 
+(3) 实例3：给每行、每列、每个交集连线设置不同的颜色
+
+https://mp.weixin.qq.com/s/DW_K4366RBSHuPI81es-Ig
+	输入三个集合："MCG", "WBG", "KCG"
+	queries = list(
+		list(query = intersects, params = list(c("MCG", "WBG", "KCG")), color = "#af2934", active = TRUE), #给三个交集设置颜色 红色
+		list(query = intersects, params = list(c("WBG", "KCG")), color = "#ffe327", active = TRUE), #给这两个的交集设置颜色：黄色
+		list(query = intersects, params = list(c("KCG", "MCG")), color = "#2f4e87", active = TRUE) #给这两个的交集设置颜色：蓝色
+	),
+
+	text.scale = c(1.5, 1.5, 1.5, 1.5, 1.5, 2.0), #文字大小
+
+	#左侧
+	sets.bar.color = c("#266b69", "#eb4601", "#f6c619"), #左侧水平bar的颜色，按从下向上显示的顺序
+
+	#右侧
+	mb.ratio = c(0.7, 0.3),#上下比例，按x轴切分
+
+	number.angles = 10, #竖直bar顶部数字旋转角度
+	main.bar.color = 'purple4', #右上，bar颜色
+
+	#右侧下部
+	shade.color = "#b0b9b8" # 右下，图中阴影部分的颜色
+	point.size = 3, #右下，点的大小
+	line.size = 1, #右下，线的粗细
+
+	#坐标轴标签
+	sets.x.label = "set size", #x轴label
+	mainbar.y.label = "Intersection size", #y轴label
+#
+
+
+
+
+
+
+
+
 
 2. 是否能给出交集元素？
 https://github.com/hms-dbmi/UpSetR/issues/85
@@ -1428,6 +1673,16 @@ https://github.com/hms-dbmi/UpSetR/issues/85
 
 
 例: intersect(listinput[['one']], listinput[['two']]) #1 2 5
+
+> setdiff( intersect(listinput[['h48_vs_0']], listinput[['h48_vs_18']]),   listinput[['h18_vs_0']] ) |> 
+     #length() |>
+     jsonlite::toJSON()
+["ADA2","CDC14A","SNHG4"]
+
+
+
+
+
 
 
 
@@ -1443,6 +1698,37 @@ webapp: https://hiplot.com.cn/basic/upset-plot
 
 https://www.zhihu.com/question/59118999/answer/741196973
 更多实例: https://my.oschina.net/shenweiyan/blog/4538670
+
+http://research.libd.org/rstatsclub/post/hacking-our-way-through-upsetr/
+https://stackoverflow.com/questions/67094573/upsetr-sets-bar-interacting-different-color-and-its-sets-intersections
+
+
+
+
+
+
+
+
+
+========================================
+|-- 给 UpSetR包添加标题
+----------------------------------------
+https://github.com/hms-dbmi/UpSetR/issues/76
+
+
+After using the upset command, you can use the grid.text from the package grid.
+In my case I used like this:
+
+grid.text("My_Title",x = 0.65, y=0.95, gp=gpar(fontsize=20))
+
+优化后
+pdf(paste0(outputRoot, keyword, "_02_4.DPAU.time.UpSetR.pdf"), width=4.5, height = 5.6)
+print(result.upset)
+grid::grid.text("DPAU | all 2pA genes",x = 0.65, y=0.98, gp=gpar(fontsize=12))
+dev.off()
+
+
+
 
 
 ========================================
@@ -2599,7 +2885,7 @@ rect.hclust( out.hclust, k=3, border = c("#FF6B6B", "#4ECDC4", "#556270") )
 
 算法不清楚，看文献：
 (1).如果是dna或者蛋白序列信息，可以使用mega构建进化树。
-how: http://blog.sina.com.cn/s/blog_5eb2fefb0101gny0.html
+
 (2).如果是vntr数据，或者多位点可变数量串联重复序列分析(multiple-locus variable-numbertandem-repeat analysis,MLVA)数据，则只能用BioNumerics 了。
 http://www.applied-maths.com/bionumerics
 http://www.bionumerics.cn/download.html
@@ -2946,6 +3232,200 @@ ggviolin(df1, x="dose", y="len", fill = "dose",
 ref:
 https://zhuanlan.zhihu.com/p/102653888
 http://blog.sciencenet.cn/blog-3334560-1091714.html
+
+
+
+
+========================================
+R 包绘制边缘密度分布图
+----------------------------------------
+
+数据：
+set.seed(2024)
+dat=diamonds[sample(1:nrow(diamonds), 1000),]
+
+
+
+
+========================================
+|-- ggExtra 包绘制边缘密度分布图
+----------------------------------------
+另见：R/ggplot2.txt gridExtra 包
+效果图见: 
+
+
+1. 主函数
+#常规使用ggplot2作图
+library(ggplot2)
+p <- ggplot(`iris`, aes_string('Sepal.Length', 'Sepal.Width')) +
+  aes_string(colour = 'Species') +
+  geom_point() + 
+  theme_bw()+
+  theme(legend.position = "bottom")
+
+library(ggExtra)
+p1 <- ggMarginal(p+ggtitle("type='histogram'"), type="histogram")
+p1
+
+* type 有5种选项 type = c("density", "histogram", "boxplot", "violin", "densigram"),
+* 共2个边缘： margins = c("both", "x", "y")
+
+
+
+
+
+
+2. 示例
+# 1. get data
+set.seed(2024)
+dat=diamonds[sample(1:nrow(diamonds), 1000),]
+library(ggplot2)
+# 2. base plot
+# with legend
+p1=ggplot(dat, aes(carat, price, color=clarity))+
+  geom_point()+
+  theme_classic()+
+  theme(
+    panel.border = element_rect(size = 1, colour = "black", fill="#00112200")
+  ); p1
+# no legend
+p2=ggplot(dat, aes(carat, price, color=clarity))+
+  geom_point(show.legend = F)+
+  theme_classic()+
+  theme(
+    panel.border = element_rect(size = 1, colour = "black", fill="#00112200")
+  ); p2
+
+# 3.margin density
+library(ggExtra)
+ggExtra::ggMarginal(p1+ggtitle("p1-A"), type = "density")
+ggMarginal(p1+ggtitle("p1-B"), colour = "red")
+
+# no legend
+ggMarginal(p2+ggtitle("p2-A"), groupColour = TRUE)
+ggMarginal(p2+ggtitle("p2-B"),type = "density",groupColour = TRUE,groupFill = TRUE)
+ggMarginal(p2+ggtitle("p2-C"),  
+           xparams=list( fill = c("deeppink")),
+           yparams=list( fill = c("navy")),
+           color=NA)
+#
+
+
+
+
+3. 绘制条状图
+
+# 每一类的细胞数
+ggExtra::plotCount(table(scObj$seurat_clusters), fill="orange")+
+  theme_classic()+ ggtitle("seurat_clusters")
+
+
+
+
+
+
+
+
+
+
+
+
+========================================
+|-- ggplot2绘图+aplot拼图 绘制边缘密度图，及 aplot 拼接ggplot2图片
+----------------------------------------
+1.
+library(RColorBrewer)
+len=length( unique(dat$clarity) ); len
+
+# upper density
+top_panel <- ggplot()+
+  geom_density(data = dat,
+               mapping=aes(carat, fill=clarity, color=clarity),
+               alpha=0.5)+
+  scale_fill_manual(values = brewer.pal(len,'Set2'))+ #设置填充颜色
+  scale_color_manual(values = brewer.pal(len,'Set2'))+ # 设置线的颜色
+  theme_void()+ # 设置主题
+  theme(legend.position="none") # 去除图例
+top_panel
+
+# 右侧密度分布图
+right_panel <- ggplot()+
+  geom_density(data=dat,
+               aes(price, fill=clarity,color=clarity),
+               alpha=0.5)+
+  scale_fill_manual(values = brewer.pal(len,'Set2'))+ #设置填充颜色
+  scale_color_manual(values = brewer.pal(len,'Set2'))+ # 设置线的颜色
+  theme_void()+ # 设置主题
+  coord_flip()+ # 翻转坐标轴
+  theme(legend.position="none")# 去除图例
+right_panel
+
+# aplot 包拼图
+library(aplot)
+p1 %>% insert_right(right_panel, width=.4) %>% insert_top(top_panel, height=0.2)  
+p2 %>% insert_right(right_panel, width=.4) %>% insert_top(top_panel, height=0.2)  
+#ggsave('plot2.pdf',width = 6,height = 5)
+
+
+
+
+2. aplot 拼接ggplot2图片
+
+使用aplot拼一个热图
+	https://blog.csdn.net/Ayue0616/article/details/126107777
+
+拼接边缘密度图 https://blog.csdn.net/wangjunliang/article/details/139392652
+
+
+
+
+
+========================================
+|-- ggpubr 包绘制边缘密度分布图
+----------------------------------------
+1. 尝试1
+# fig1
+library(ggpubr)
+gp1<-ggscatterhist(
+  iris, x = "Sepal.Length", y = "Sepal.Width",
+  color = "Species", size = 3, alpha = 0.6)
+gp1
+# 不支持theme()
+# gp1+theme(panel.background = element_rect(fill="#00112200", color="black"))
+
+
+
+
+
+2. 绘制
+# fig2
+set.seed(2024)
+dat=diamonds[sample(1:nrow(diamonds), 1000),]
+
+ggscatterhist(
+  dat, x = "carat", y = "price",
+  color = "clarity", size = 2, alpha = 0.6)
+
+
+
+# Fig3: 指定边缘密度图填充色
+ggscatterhist(
+  dat, x = "carat", y = "price",
+  color = "clarity", size = 3, alpha = 0.6,
+  #palette = c("#00AFBB", "#E7B800", "#FC4E07"),
+  margin.params = list(fill = "clarity", color = "black", size = 0.2)
+)
+
+
+# Fig4：指定主图黑边框
+ggscatterhist(
+  dat, x = "carat", y = "price",
+  color = "clarity", size = 3, alpha = 0.6,
+  #palette = c("#00AFBB", "#E7B800", "#FC4E07"),
+  margin.params = list(fill = "clarity", color = "black", size = 0.2),
+  ggtheme = theme_classic() + #指定周围边框
+    theme(panel.background = element_rect(fill="#00112200", color="black"))
+)
 
 
 
@@ -3501,6 +3981,12 @@ saveWidget(Sankey.p, file="/tmp/Sankey.html")
 library(webshot)
 # webshot::install_phantomjs() #建议新开R安装，防止卡死当前进程。
 webshot("/tmp/Sankey.html", "Sankey.pdf")
+
+
+(2B) 保存为html
+saveNetwork(Sankey.p, file = paste0(outputRoot, keyword, "_01_14.myNetwork.html") )
+目测网页比例有问题，怎么调呢？ //todo
+
 
 
 (3) 配置颜色部分，形式相对固定，不必纠结具体的语法规则

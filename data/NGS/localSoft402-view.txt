@@ -1,7 +1,7 @@
-NGS 可视化软降和流程 
+NGS 可视化软件和流程 
 
 
-
+- IGV
 
 生物信息学应该掌握的N张图
 https://www.bilibili.com/video/av43587619
@@ -146,9 +146,10 @@ https://bedtools.readthedocs.io/en/latest/content/tools/genomecov.html
 
 
 ========================================
-Integrative Genomics Viewer (IGV)使用方法，及导入本地fa和gtf文件
+Integrative Genomics Viewer (IGV)使用方法
 ----------------------------------------
 IGV User Guide ： http://software.broadinstitute.org/software/igv/UserGuide
+	=> 新网址 https://igv.org/doc/desktop/#
 
 
 https://wikis.utexas.edu/display/bioiteam/Integrative+Genomics+Viewer+%28IGV%29+tutorial
@@ -275,21 +276,7 @@ command中先选择Sort，input中输入gtf绝对路径(gencode.v30lift37.annota
 
 
 
-### IGV官方介绍怎么制作自己的参考文件：
-http://software.broadinstitute.org/software/igv/NewGenomeMgmt
-Creating a .genome File
-1)Click Genomes>Create .genome File. IGV displays the a window where you enter the information.
-2)填写一个名字geneCodeV30HG19，这个名字将会显示到IGV左上角。
-填写hg19.fa文件路径，gene栏填写对应的gtf文件路径，点击创建，选择地址保存。
-大概5min结束，能在硬盘上看到文件 geneCodeV30HG19.genome,54M.
-3)IGV左上角下拉框，选择刚生成的genome即可。
-但是，还是不行，loading Genome... 等了半天，没有报错，但是还是没载入。//todo2
 
-
-Feature display name: To override the default setting for which field is used to label the features in the IGV track, add the following line to the file:
-##displayName=<field name>
-
-Coloring features: To specify a color for a given feature, you can add this to the file as shown in the following example. Color values can be in either hexadecimal or RGB (r, g, b) format.
 
 
 
@@ -304,13 +291,98 @@ TDF 可由 tools - igvtools 的count 处理bam得到.
 	Count 支持的格式: sam,bam,bed等;
 	toTDF: 转化 sorted文件，如 wig, gct, igv 等;
 #
-
-
 如果BAM文件太大，可以使用 igvtools 将BAM转为TDF文件再可视化：
 $ igvtools count -z 5 -w 25 *.bam *.bam.tdf hg38
 
 但是TDF文件只能反映基因组每个区域的测序深度，无法看到具体的比对情况，适合用来检查已经找到的Peak或者CNV。
 
+
+2)TDF 文件
+将 bam 文件导入 IGV 之后，可以直观的查看测序深度的分布情况，但是直接导入 bam 文件会占用较大的内存，如果只是想要查看测序深度信息，可以将其转化为 tdf 文件格式来进行查看。
+相比 bam 文件，tdf 文件更小，且导入和查看也更快速，tdf 文件是一种类似 bedgraph 格式的二进制文件，用窗口的方式来记录测序深度信息，可以通过 igvtools 来生成 tdf 文件。
+
+# tdf 默认以 25bp 为窗口，统计该窗口内测序深度的平均值
+$ igvtools count input.bam out.tdf hg19.chrom.sizes
+
+# 修改窗口大小，窗口越大，对应的文件大小越小，分辨率也低
+$ igvtools count -w 50 input.bam out.tdf hg19.chrom.sizes 
+
+其中，第一个参数为输入文件，支持bam，sam等格式；第二个参数为输出文件，支持 tdf 和 wig 两种格式；第三个参数为基因组的 ID 或者保存染色体大小的 chrom.sizes 文件。
+
+
+3)bedGraph vs TDF vs bigwig
+在统计区域上，bigwig > TDF > bedGraph，均以窗口的方式来统计测序深度（bam 以单个碱基为单位），三种文件在小分辨率下几乎没差异，在大分辨率下就会看出细节差异。
+
+小分辨率(256kb)：三者峰型基本一致。
+大分辨率(8024bp)：差别挺大
+整体上统计区间: 
+在文件大小上: bam > bedGraph > TDF > bigwig。
+将 tdf 文件转换为 bedgraph 纯文本格式: igvtools tdftobedgraph input.tdf out.bedgraph
+
+
+
+
+
+
+
+(5)导入bed文件
+bed 文件用于记录染色体区域信息，其可以具有多个变种，如转录本结构可以用 bed12 格式来记录，peak calling 的结果可以用 bed6+4 来记录，常见的 bed 相关格式有 bed、narrowpeak、broadpeak 和 bigbed，均可以导入 IGV 进行查看。
+其中，narrowpeak 和 broadpeak 常用于存储 peak calling 的结果，分别为 bed6+4 和 bed6+3 格式，即分别为 10 列和 9 列，bigbed 是二进制的 bed 文件。
+由于 IGV 要求导入数据必须为排序后的结果，此处需要对 bed 文件进行排序，同时还需要构建索引，可以直接按照 IGV 的提示完成索引构建。
+
+$ sort -k1,1 -k2,2n input.bed > sort.bed
+
+将 bed 文件与其索引置于同一路径下，并将 bed 文件导入 IGV 中。
+bed 文件中的每一行为一个染色体区域，对应图中蓝色的矩形区域。如果 bed 文件的第四列提供了染色体区域名称，在矩形区域的下方会显示对应的标识符，可以根据标识符进行检索。
+bed 文件可以用于快速查找感兴趣的基因组区域，最经典的应用场景为将 peak calling 和对应样本的文件同时导入 IGV 即可快速查看 peak 区域的测序深度分布情况。
+
+
+
+2)bigbed 与 bed 格式可以通过 UCSC 提供的工具来进行格式转换：
+# conda install -c bioconda ucsc-bedtobigbed
+# conda install -c bioconda ucsc-bigbedtobed
+
+# bed to bigbed
+sort -k1,1 -k2,2n input.bed > sort.bed
+bedToBigBed  sort.bed hg19.chrom.sizes out.bigbed
+
+# bigbed to bed
+bigBedToBed input.bigBed out.bed
+
+
+3)chrom.sizes 文件可以直接在 igvtools 的安装目录下的 lib/genomes文件夹中找到，也可以通过如下命令生成染色体长度文件 chrom.sizes：
+# conda install -c bioconda ucsc-twobitinfo
+# conda install -c bioconda ucsc-fatotwobit
+faToTwoBit hg19.fa hg19.2bit
+twoBitInfo hg19.2bit stdout | sort -k1,1 -k2,2n > hg19.chrom.sizes
+
+
+
+
+
+(6)序列比对
+IGV 通过调用 UCSC 的 Blat 软件（https://genome.ucsc.edu/cgi-bin/hgBlat?command=start）来实现序列比对，在IGV中，通过工具栏的 Tools -> BLAT 菜单，可以自定义输入查询序列，直接在该输入框中粘贴查询序列的碱基即可。
+
+鼠标左键选中每一行，可以在基因组浏览器中展示比对结果，其中 Blat 的 track 则显示的是查询序列的比对位置。
+
+
+(7)motif
+本部分以 RNA 甲基化测序 m6A_seq 为例展示 IGV 的 motif 结合位点查找功能，已知 m6A 修饰位点的 motif 序列为 RRACH，通过 peak calling 可以识别到包含 m6A 修饰位点的 peak 区域，此时需要预测在 peak 区域中发生了甲基化修饰的 A 碱基，可以通过 IGV 的 motif 查找功能确定候选位点。
+
+示例数据来源：GSE140557，格式为 narrowpeak，保存的是 peak calling 的结果。
+
+在IGV中，通过工具栏的 Tools -> Find Motif 功能在基因组的正负链分别查找潜在的motif结合位点。
+
+
+
+(8)igvtools
+可以单独下载，但是要和igv版本号一致，否则可能报错。
+或可以通过 IGV 工具的图形界面 直接完成 igvtools 的运行，而无需使用命令行。
+菜单 Tools-Run igvtools, 选择 Command:
+	Count
+	Sort
+	Index
+	toTDF
 
 
 
@@ -326,6 +398,8 @@ track 默认是单行显示;
 	细线：内含子区域;
 	没有线: 基因间区.
 右击，选择 Expanded 或 squished 可展开track，查看不同转录本的情况。
+	- Expanded 模式下转录本区分的最清楚，但是占据的空间很大，
+	- Squished 则是一种折中方案，抛弃了gene_name，进一步压缩了空间。
 
 放大，可以看到fasta显示3个读码框，及对应的氨基酸，可以单击箭头改变方向，查看另外3个读码框。
 
@@ -342,6 +416,11 @@ ii) Color alignment by - read strand;
 
 ## 还可以看 junction 区域。
 
+三种视图:
+	- alignment track，展示序列的比对情况，默认情况下，与参考基因组精确匹配的碱基用灰色表示，错配的碱基则根据A,T,C,G映射到不同的颜色。在reads中，进一步对插入和缺失进行了标记，插入的碱基用 Ⅰ 表示，缺失用 - 表示。
+	- coverage track，柱状图展示每个位点的测序深度信息。
+	- splice junction track，对于RNA_seq的数据，由于内含子的存在，reads比对到基因组上需要跳过内含子，splice junction track 用曲线将外显子边界连接起来。
+		同时，还可以通过右键 -> Sashimi Plot 来实现可变剪切可视化。
 
 
 (3) 如何保存当前视图？
@@ -425,6 +504,99 @@ library("trackViewer")
 ref:
 美化svg https://www.bilibili.com/video/BV16J411s7Gf
 https://software.broadinstitute.org/software/igv/LoadData
+
+https://blog.csdn.net/import__/article/details/142707509
+
+
+
+
+
+
+========================================
+|-- 为 igv.js 制作并导入本地fa和gtf文件：自定义参考基因组 xx.fa, xx.gtf
+----------------------------------------
+1.步骤
+(1)准备好 xx.fa, xx.gtf 文件
+* .fa 要求第一行>chrH, 
+* .gtf要求第一列是chrH，其中chrH可以是任意内容，和fa文件首行对应。但不能包含冒号":"，可以使用_替换。
+
+$ cat xx.fa
+>B*54_01_01_01  4081 bp
+ATGC...
+
+$ cat xx.gtf
+##description: hla gtf, test1
+##provider: IMGT
+##contact: wjl
+##format: gtf
+##date: 2025-06-19
+B*54_01_01_01	HAVANA	gene	1	4090	.	+	.	gene_id "ENSG00000290825.1"; gene_type "protein_coding"; gene_name "HLA-B";
+B*54_01_01_01	HAVANA	transcript	285	2972	.	+	.	gene_id "ENSG00000290825.1"; transcript_id "ENST00000456328.2"; gene_type "protein_coding"; gene_name "HLA-B"; transcript_type "protein_coding"; transcript_name "HLA-B-202";
+B*54_01_01_01	HAVANA	exon	285	358	.	+	.	gene_id "ENSG00000290825.1"; transcript_id "ENST00000456328.2"; gene_type "protein_coding"; gene_name "HLA-B"; transcript_type "protein_coding"; transcript_name "HLA-B-202"; exon_number 1;
+B*54_01_01_01	HAVANA	exon	485	756	.	+	.	gene_id "ENSG00000290825.1"; transcript_id "ENST00000456328.2"; gene_type "protein_coding"; gene_name "HLA-B"; transcript_type "protein_coding"; transcript_name "HLA-B-202"; exon_number 2;
+B*54_01_01_01	HAVANA	exon	1000	1276	.	+	.	gene_id "ENSG00000290825.1"; transcript_id "ENST00000456328.2"; gene_type "protein_coding"; gene_name "HLA-B"; transcript_type "protein_coding"; transcript_name "HLA-B-202"; exon_number 3;
+B*54_01_01_01	HAVANA	exon	1851	2127	.	+	.	gene_id "ENSG00000290825.1"; transcript_id "ENST00000456328.2"; gene_type "protein_coding"; gene_name "HLA-B"; transcript_type "protein_coding"; transcript_name "HLA-B-202"; exon_number 4;
+B*54_01_01_01	HAVANA	exon	2231	2350	.	+	.	gene_id "ENSG00000290825.1"; transcript_id "ENST00000456328.2"; gene_type "protein_coding"; gene_name "HLA-B"; transcript_type "protein_coding"; transcript_name "HLA-B-202"; exon_number 5;
+B*54_01_01_01	HAVANA	exon	2787	2822	.	+	.	gene_id "ENSG00000290825.1"; transcript_id "ENST00000456328.2"; gene_type "protein_coding"; gene_name "HLA-B"; transcript_type "protein_coding"; transcript_name "HLA-B-202"; exon_number 6;
+B*54_01_01_01	HAVANA	exon	2929	2972	.	+	.	gene_id "ENSG00000290825.1"; transcript_id "ENST00000456328.2"; gene_type "protein_coding"; gene_name "HLA-B"; transcript_type "protein_coding"; transcript_name "HLA-B-202"; exon_number 7;
+
+
+(2)使用命令生成索引文件
+	$ samtools faidx xx.fa  #生成 xx.fa.fai
+
+	$ (grep ^"#" xx.gtf; grep -v ^"#" xx.gtf | sort  -t $'\t' -k1,1V -k4,4n -k5,5n) | bgzip  > xx.sorted.gtf.gz
+	$ tabix -p gff xx.sorted.gtf.gz
+就可以直接载入igv了。
+
+参考本博客: NGS/基因组参考
+
+
+
+
+(3)载入
+菜单 Genomes - Load Genome from File...
+
+
+
+(4)另一个制作方法：没尝试
+https://blog.csdn.net/import__/article/details/142707509
+$ sort -k1,1 -k4,4n -k5,5n hg19.gtf > hg19.sort.gtf
+$ igvtools index hg19.sort.gtf
+
+
+
+
+
+
+
+Ref:
+https://blog.csdn.net/wangjunliang/article/details/140672588 制作gtf文件索引
+https://blog.csdn.net/wangjunliang/article/details/140558617 解析gtf文件
+
+
+
+
+
+
+
+
+
+
+2. IGV官方介绍怎么制作自己的参考文件：
+http://software.broadinstitute.org/software/igv/NewGenomeMgmt [打不开了]
+
+Creating a .genome File
+1)Click Genomes>Create .genome File. IGV displays the a window where you enter the information.
+2)填写一个名字geneCodeV30HG19，这个名字将会显示到IGV左上角。
+	填写hg19.fa文件路径，gene栏填写对应的gtf文件路径，点击创建，选择地址保存。
+	大概5min结束，能在硬盘上看到文件 geneCodeV30HG19.genome,54M.
+3)IGV左上角下拉框，选择刚生成的genome即可。
+	但是，还是不行，loading Genome... 等了半天，没有报错，但是还是没载入。//todo2
+
+Feature display name: To override the default setting for which field is used to label the features in the IGV track, add the following line to the file:
+##displayName=<field name>
+
+Coloring features: To specify a color for a given feature, you can add this to the file as shown in the following example. Color values can be in either hexadecimal or RGB (r, g, b) format.
 
 
 
@@ -616,6 +788,12 @@ https://igv.org/ 官网提供了
 https://github.com/igvteam
 https://github.com/igvteam/igv.js
 https://github.com/igvteam/igv.js/wiki
+
+(3)文档和API接口
+https://igv.org/doc/igvjs/
+
+https://igv.org/doc/igvjs/#Browser-API/
+
 
 
 
@@ -1142,7 +1320,7 @@ visibilityWindow: 1000
 
 
 
-ref:
+ref: 
 0. IGV官方项目 
 基于nodeJS的 https://github.com/igvteam/igv-webapp
 纯js https://github.com/igvteam/igv.js
@@ -1152,6 +1330,17 @@ https://blog.csdn.net/qq_35696312/article/details/84587553
 2.一个基于igv.js实现的python脚本，实现简单的网页版IGV
 https://blog.csdn.net/u012110870/article/details/109571112
 
+
+
+
+========================================
+|-- IGV查看bed峰图 //todo
+----------------------------------------
+
+http://www.360doc.com/content/20/0304/19/68068867_896721933.shtml
+bed to tdf 才能用IGV看。
+wig也可以直接用IGV看。
+https://www.cnblogs.com/djx571/p/12110883.html
 
 
 
@@ -1197,6 +1386,482 @@ https://blog.csdn.net/u012110870/article/details/109571112
 青 #24D0C7
 黄 #FFC05F
 重蓝: #250787
+
+
+
+
+
+
+========================================
+windows 本地化 IGV 设置本地 ref 基因组 (IGV处于不联网环境)
+----------------------------------------
+1. 自定义本地ref
+(1)设置位置
+1)igv 菜单 View - Preference
+2)Advanced 页
+3)底部 IGV Dir Move 设置: C:\Users\admin\igv\genomes\hg19.genome
+
+最后转移到大D盘，见2(7)
+
+
+
+(2)下载参考信息
+通过 https://s3.amazonaws.com/igv.org.genomes/genomes.txt
+或(推荐) https://s3.amazonaws.com/igv.org.genomes/genomes.json
+各下载6个文件: fastaURL/indexURL /cytobandURL/aliasURL /refseqURL及tbi
+
+  {
+    "id": "hg19",
+    "name": "Human (GRCh37/hg19)",
+    "fastaURL": "https://igv-genepattern-org.s3.amazonaws.com/genomes/seq/hg19/hg19.fasta",
+    "indexURL": "https://igv-genepattern-org.s3.amazonaws.com/genomes/seq/hg19/hg19.fasta.fai",
+    "cytobandURL": "https://igv-genepattern-org.s3.amazonaws.com/genomes/seq/hg19/cytoBand.txt",
+    "aliasURL": "https://s3.amazonaws.com/igv.org.genomes/hg19/hg19_alias.tab",
+    "tracks": [
+      {
+        "name": "Refseq Genes",
+        "format": "refgene",
+        "id": "hg19_genes",
+        "url": "https://hgdownload.soe.ucsc.edu/goldenPath/hg19/database/ncbiRefSeq.txt.gz",
+        "indexed": false,
+        "order": 1000000,
+        "infoURL": "https://www.ncbi.nlm.nih.gov/gene/?term=$$"
+      }
+    ],
+    "chromosomeOrder": "chr1,chr2,chr3,chr4,chr5,chr6,chr7,chr8,chr9,chr10,chr11,chr12,chr13,chr14,chr15,chr16,chr17,chr18,chr19,chr20,chr21,chr22,chrX,chrY"
+  },
+
+  {
+    "id": "hg38",
+    "name": "Human (GRCh38/hg38)",
+    "fastaURL": "https://igv-genepattern-org.s3.amazonaws.com/genomes/seq/hg38/hg38.fa",
+    "indexURL": "https://igv-genepattern-org.s3.amazonaws.com/genomes/seq/hg38/hg38.fa.fai",
+    "cytobandURL": "https://igv-genepattern-org.s3.amazonaws.com/genomes/hg38/cytoBandIdeo.txt.gz",
+    "aliasURL": "https://igv-genepattern-org.s3.amazonaws.com/genomes/hg38/hg38_alias.tab",
+    "chromSizesURL": "https://hgdownload.soe.ucsc.edu/goldenPath/hg38/bigZips/hg38.chrom.sizes",
+    "twoBitURL": "https://hgdownload.soe.ucsc.edu/goldenPath/hg38/bigZips/hg38.2bit",
+    "tracks": [
+      {
+        "name": "Refseq Genes",
+        "format": "refgene",
+        "url": "https://hgdownload.soe.ucsc.edu/goldenPath/hg38/database/ncbiRefSeq.txt.gz",
+        "indexed": false,
+        "order": 1000001,
+        "infoURL": "https://www.ncbi.nlm.nih.gov/gene/?term=$$"
+      }
+    ],
+    "chromosomeOrder": "chr1,chr2,chr3,chr4,chr5,chr6,chr7,chr8,chr9,chr10,chr11,chr12,chr13,chr14,chr15,chr16,chr17,chr18,chr19,chr20,chr21,chr22,chrX,chrY"
+  },
+
+
+
+
+
+
+2.本地定义ref的文件格式 user-defined-genomes.txt ->直接看(3)
+基因组位置: C:\Users\admin\igv\genomes\hg19\
+安装目录: D:\Program Files\IGV_2.8.13\
+
+
+参考:
+hg38	D:\Program Files (x86)\IGV_2.8.13\igv\genomes\hg38.genome	hg38
+ucschg19	D:\Program Files (x86)\IGV_2.8.13\igv\genomes\ucschg19.genome	ucschg19
+bcr-abl1	D:\Program Files (x86)\IGV_2.8.13\igv\genomes\bcr-abl1.genome	bcr-abl1
+e14a2	D:\Program Files (x86)\IGV_2.8.13\igv\genomes\e14a2.genome	e14a2
+
+
+(1)deepseek: 失败
+格式:
+	[基因组ID]  [显示名称]  [FASTA文件路径]  [可选基因注释文件路径]
+	my_genome1  My_Custom_Genome  /path/to/genome.fasta
+	hg19  hg19  C:\Users\admin\igv\genomes\hg19.genome\hg19.fasta  C:\Users\admin\igv\genomes\hg19.genome\
+
+
+(2)chatgpt: 失败
+name    fastaFile    indexFile    cytobandFile    geneFile
+	字段之间 必须是 Tab
+	不需要表头
+	后面的字段可以留空，但 Tab 位置必须保留
+
+hg19	C:\Users\admin\igv\genomes\hg19.genome\hg19.fasta				
+
+默认修改为了:
+hg19.fasta	C:\Users\admin\igv\genomes\hg19.genome\hg19.fasta	C:\Users\admin\igv\genomes\hg19.genome\hg19.fasta
+
+
+
+(3)自己生成 .genome 文件: 来自 igv.js 的ref文件
+IGV 菜单 Genomes -> Create .genome File
+在 GUI 里指定：
+	Uniq identifier: hg19_RefSeq #不能是 "hg19"，否则会导致无法搜索基因名!!!
+	Descriptive name: hg19C  #名字随便
+	FASTA file: C:\Users\admin\igv\genomes\hg19\hg19.fasta
+	可选:
+	Cytoband file: C:\Users\admin\igv\genomes\hg19\cytoBand.txt
+	Gene file(?annotation(RefSeq)): C:\Users\admin\igv\genomes\hg19\ncbiRefSeq.sorted.txt.gz
+	Alias file: C:\Users\admin\igv\genomes\hg19\hg19_alias.tab
+点击OK，生成：hg19_RefSeq.genome
+
+$ cat user-defined-genomes.txt
+hg19C	C:\Users\admin\igv\genomes\hg19_RefSeq.genome	hg19_RefSeq
+
+第一列显示到igv基因组列表中。
+中间一列是刚生成的 .genome 文件
+最后一列：
+
+
+ii)Uniq identifier 相同时，无法搜索基因的原因？
+IGV 内置有一个 hg19 genome
+它绑定了：
+	内置 gene search 逻辑
+	内置 alias / symbol lookup 机制
+	当你创建 自定义 .genome 但 ID 仍然叫 hg19 时：
+IGV 会发生 ID 冲突，搜基因会走同名的search，结果找不到文件，搜索失败。
+
+
+
+
+
+
+(4)C盘较小，移动文件夹到D盘:
+操作: 先关闭IGV
+	1)打开IGV，菜单 View->Preference，Advanced 选项卡，点击 底部Move按钮，选择该路径 D:\Program Files\IGV_2.8.13\，输入 igv 点击确定, save.
+	这样创建新文件夹 D:\Program Files\IGV_2.8.13\igv\，里面有3项: genomes\, igv.log, prefs.properties
+	2)剪切内容
+	from: C:\Users\admin\igv\genomes\
+	to: D:\Program Files\IGV_2.8.13\igv\genomes\
+	3)关掉igv，再次打开igv：可用 hg19C 基因组
+
+查看文件：	D:\Program Files\IGV_2.8.13\igv\genomes\user-defined-genomes.txt
+	已经被自动修改为新路径:
+	hg19C	D:\Program Files\IGV_2.8.13\igv\genomes\hg19_RefSeq.genome	hg19_RefSeq
+	说明： .genome 是入口文件，且它记录的是xx.fa的相对地址
+
+
+
+
+
+3.创建参考基因组 hg38
+参考2(3)
+(1)从 j3::scIGV 下载hg38数据到win本地
+from:@j3$ ls -lth /home/wangjl/soft/scIGV/ref/hg38/
+total 3.1G
+lrwxrwxrwx. 1 wangjl jinlab   42 Jul 24  2024 gencode -> /data/wangjl/scPolyA-seq2/ref/hg38/gencode
+drwxr-xr-x+ 4 wangjl jinlab 4.0K Apr  9  2024 backup
+-rw-r--r--+ 1 wangjl jinlab 9.7K Mar 28  2024 cytoBandIdeo.txt.gz   *
+-rw-r--r--+ 1 wangjl jinlab  27K Mar 28  2024 hg38_alias.tab        *
+-rw-r--r--+ 1 wangjl jinlab 3.1G Mar 28  2024 hg38.fa               *
+-rw-r--r--+ 1 wangjl jinlab  19K Mar 28  2024 hg38.fa.fai           *
+-rw-r--r--+ 1 wangjl jinlab 6.7M Mar 28  2024 ncbiRefSeq.txt.gz     *
+-rw-r--r--+ 1 wangjl jinlab 162K Mar 28  2024 ncbiRefSeq.txt.gz.tbi *
+
+6个文件右击 download，保存到本地: C:\Users\admin\igv\genomes\hg38\
+fasta文件较大，需要等待: 9:30->10:00
+
+=> 移动文件夹到D盘，见2(7)
+
+
+
+
+(2)创建新.genome文件: 参考2(3)
+IGV 菜单 Genomes -> Create .genome File
+在 GUI 里指定：
+	Uniq identifier: hg38_RefSeq #作为 文件名.genome, 不能是 "hg38"，否则可能导致无法搜索基因名!!!
+	Descriptive name: human_hg38  #名字随便，显示到IGV GUI中
+	FASTA file: D:\Program Files\IGV_2.8.13\igv\genomes\hg38\hg38.fa
+	可选:
+	Cytoband file: D:\Program Files\IGV_2.8.13\igv\genomes\hg38\cytoBandIdeo.txt.gz
+	Gene file(?annotation(RefSeq)): D:\Program Files\IGV_2.8.13\igv\genomes\hg38\ncbiRefSeq.txt.gz
+	Alias file: D:\Program Files\IGV_2.8.13\igv\genomes\hg38\hg38_alias.tab
+点击OK，选择上一层目录，生成：hg38_RefSeq.genome
+
+
+
+查看配置文件:
+$ cat user-defined-genomes.txt
+human_hg38	D:\Program Files\IGV_2.8.13\igv\genomes\hg38_RefSeq.genome	hg38_RefSeq
+hg19C	D:\Program Files\IGV_2.8.13\igv\genomes\hg19_RefSeq.genome	hg19_RefSeq
+
+
+
+
+
+
+
+========================================
+|-- 本地IGV加载远程bam(nginx 提供 bam URL): 支持 并发访问 + 在线急速加载(Range) + 按需加载(Range) + 跨域(CORS)
+----------------------------------------
+
+1.bam 文件能不下载，且能在IGV中查看吗？
+
+(1)加载两个webPan.py 提供的 bam URL 到IGV失败？
+因为 Werkzeug 是“看起来支持 Range”，实际上只支持一个并发。
+
+IGV 对 BAM 的访问模式是：
+	多线程
+	大量 HTTP Range
+	并发 seek
+	BAM + BAI 同时请求
+
+1)查看：支持 Ranges
+$ curl -I http://s5.biomooc.com:8000/file/NGS/TBNGS21-26_bqsr.bam
+	HTTP/1.0 200 OK
+	Content-Disposition: inline; filename=TBNGS21-26_bqsr.bam
+	Content-Type: application/octet-stream
+	Content-Length: 1791206364
+	Last-Modified: Fri, 06 Feb 2026 17:48:28 GMT
+	Cache-Control: no-cache
+	ETag: "1770400108.5401716-1791206364-2923825779"
+	Date: Mon, 09 Feb 2026 10:06:08 GMT
+	Access-Control-Allow-Origin: *
+	Accept-Ranges: bytes
+	Server: Werkzeug/2.0.3 Python/3.6.9
+
+2)解决方法
+使用nginx访问文件: 传输数据
+使用Flask鉴权: 不传输数据
+//todo
+
+
+
+(2)最简单的，先用nginx传输数据，使用s5 docker 版实现：
+@s5$ cd ~/soft/nginx/
+$ vim nginx.conf
+events {}
+
+http {
+    sendfile on;
+    tcp_nopush on;
+    aio threads;
+    directio 512k;
+    # 在 http、server 或 location 块中添加，解决中文乱码
+    charset utf-8;
+
+    server {
+        listen 8888;
+        server_name _;
+
+        location /file/ {
+            alias /results/;
+            autoindex on;
+            add_header Accept-Ranges bytes;
+
+            add_header Access-Control-Allow-Origin * always;
+            add_header Access-Control-Allow-Methods "GET, OPTIONS" always;
+            add_header Access-Control-Allow-Headers "Range" always;
+            add_header Access-Control-Expose-Headers "Content-Length, Content-Range" always;
+	        
+            # 处理预检请求
+            if ($request_method = OPTIONS) {
+                return 204;
+            }
+
+            types {
+                application/octet-stream bam bai bw bigwig;
+            }
+        }
+    }
+}
+
+
+
+##### 注释版本
+	events {}
+
+	http {
+		sendfile on;
+		tcp_nopush on;
+		aio threads;
+		directio 512k;
+
+		# 在 http、server 或 location 块中添加，解决中文乱码
+		charset utf-8; 
+
+		server {
+			listen 8888;      #端口号
+			server_name _;    #IP地址，也可是 localhost, ss.xx.com
+			
+			location /file/ {     #url后接路径 http://s5.biomooc.com:8888/file/
+				alias /results/;  #必须/结尾，真实文件路径
+				autoindex on;     #显示文件夹内容
+				add_header Accept-Ranges bytes;  #添加新 头 声明
+				# 如果是预检请求，直接返回 204
+				if ($request_method = 'OPTIONS') {
+					return 204;
+				}
+				types {
+					application/octet-stream bam bai bw bigwig;  #对这几个文件开启流
+				}
+			}
+			
+		};
+	}
+
+
+
+$ docker images
+REPOSITORY   TAG         IMAGE ID       CREATED       SIZE
+nginx        1.15.10     2bcb04bdb83f   6 years ago   109MB
+
+
+$ docker run -d \
+  --name nginx_for_bam \
+  -p 8888:8888 \
+  -v /results/:/results:ro \
+  -v /home/wangjl/soft/nginx/nginx.conf:/etc/nginx/nginx.conf:ro \
+  --rm \
+  nginx:1.15.10
+
+先不用这个:
+  --restart unless-stopped \
+
+缓存太厉害，需换一个无痕窗口，才能支持跨域。
+
+
+$ docker ps
+CONTAINER ID   IMAGE              COMMAND                  CREATED         STATUS                  PORTS                            NAMES
+3370c38bac12   nginx:1.15.10      "nginx -g 'daemon of…"   4 seconds ago   Up Less than a second   80/tcp, 0.0.0.0:8888->8888/tcp   nginx_for_bam
+
+
+(3)访问测试
+$ curl -I http://s5.biomooc.com:8888/file/NGS/TBNGS22-26_bqsr.bam
+	\HTTP/1.1 200 OK
+	Server: nginx/1.15.10
+	Date: Mon, 09 Feb 2026 10:48:57 GMT
+	Content-Type: application/octet-stream
+	Content-Length: 1820511595
+	Last-Modified: Fri, 06 Feb 2026 18:48:09 GMT
+	Connection: keep-alive
+	ETag: "69863769-6c82cd6b"
+	Accept-Ranges: bytes
+	Accept-Ranges: bytes
+
+$ curl -I \
+>   -H "Origin: http://192.168.1.3:10000" \
+>   http://s5.biomooc.com:8888/file/NGS/TBNGS22-26_bqsr.bam
+	HTTP/1.1 200 OK
+	Server: nginx/1.15.10
+	...
+	Access-Control-Allow-Origin: *
+	Access-Control-Expose-Headers: Content-Length, Content-Range
+	...
+
+$ curl -I \
+>   -H "Range: bytes=0-100" \
+>   http://s5.biomooc.com:8888/file/NGS/TBNGS22-26_bqsr.bam
+	HTTP/1.1 206 Partial Content
+	...
+	Content-Range: bytes 0-100/1820511595
+
+
+
+(4)使用IGV加载bam
+	1)打开列表 http://s5.biomooc.com:8888/file/NGS/
+	2)复制链接：找标本编号(比如ctrl+F 搜 21-)，对其bam文件右击，复制链接地址
+	3.IGV 菜单 File - Load from URL，第一行bam文件，第二行是bam index 文件。
+		http://s5.biomooc.com:8888/file/NGS/TBNGS22-26_bqsr.bam
+		http://s5.biomooc.com:8888/file/NGS/TBNGS22-26_bqsr.bai
+	点击OK，即可载入一个bam。
+	4.同上，载入更多bam。
+
+
+
+
+
+========================================
+|-- 桌面版 IGV 快捷键 及 常用设置: 颜色,
+----------------------------------------
+1.IGV快捷键
+(1)效率必备
+	操作	    快捷键
+	跳到位点	Ctrl + L
+	放大	    +
+	缩小	    -
+	排序	    Right click -> Sort by base
+	复制截图	Save image
+
+
+
+
+2.IGV桌面版 常用设置
+(1)颜色设置
+右击 reads - color alignments by -> read strand;
+
+
+
+
+
+
+
+
+
+========================================
+[效率工具] 为提高人工审核SNV是否真实的效率，网页版 igv.js 审核页面要怎么设计？
+----------------------------------------
+目标:
+	在 10–20 秒内，完成 1 个 SNV 的真伪判断
+	尽量不需要鼠标右键、不需要切换设置、不依赖记忆
+
+
+1.宏观目标
+(1).IGV 中你真正要“扫”的 6 个视觉信号
+	正反链是否均有 ALT
+	ALT 是否集中在 read 边缘
+	是否所有 ALT read 来自同一插入片段长度
+	是否伴随局部错配密集区
+	对照中是否存在同型噪声
+	是否在同一 read 上出现多个不合理变异
+
+
+(2).每个突变位点自动生成 IGV session（进阶）
+最理想状态：
+	每个候选突变 = 一个 .xml IGV session
+	打开即是：
+		固定 track 顺序
+		固定 zoom
+		固定颜色
+这在临床报告、专利流程、质量体系中非常加分。
+
+
+
+(3).在“无 UMI”前提下，人工判定的真实依据
+你现在真正能依赖的只有这 6 条：
+	正反链是否均有 ALT
+	ALT 是否集中在 reads 末端
+	ALT 是否伴随局部错配密集
+	ALT reads 的插入片段长度是否异常一致
+	对照样本是否出现同型 ALT
+	mapping / base quality 是否合理
+这 6 条，IGV.js 必须“默认可见”，而不是靠点击。
+
+2)在无 UMI 的前提下，
+低频 SNV 的真伪判断 = 结构合理性 + 对照排除。
+
+igv.js 的任务，是把这两件事“默认摆在你眼前”。
+
+
+
+
+
+
+2.实施设计：网页版 igv.js 怎么用于快速筛选位点
+http://192.168.1.3:10000/list/sys1.html?bam=http://s5.biomooc.com:8000/file/NGS/TBNGS21-26_bqsr.bam&genome=hg19
+F12 console:
+> goToPosition("chr7:151932945")
+> goToPosition("TP53")
+
+
+
+
+
+
+
+Ref:
+设计要点: https://chatgpt.com/c/698bcd36-89d0-8320-9336-392897c91faa
+
+
+
+
 
 
 
@@ -1265,8 +1930,14 @@ https://jbrowse.org/jb2/
 
 https://learn.gencore.bio.nyu.edu/jbrowse-visualizing-data-quickly-easily/
 
+要点
+Uploading a dataset
+How to manipulate the dataset visualization
+Some features
+Sharing URLs
 
-(2) 源码 
+
+(1) 1.0 源码 
 https://github.com/GMOD/jbrowse  主要是 js + perl
 Full-featured and stable genome browser built with JavaScript and HTML5.
 
@@ -1277,11 +1948,24 @@ Monorepo with JBrowse 2 web, JBrowse 2 desktop, the JB core package, and core pl
 
 
 
-(2) 要点
-Uploading a dataset
-How to manipulate the dataset visualization
-Some features
-Sharing URLs
+
+(2) 2.0 版本
+JBrowse 2: a modular genome browser with views of synteny and structural variation
+https://genomebiology.biomedcentral.com/articles/10.1186/s13059-023-02914-z
+
+https://github.com/GMOD/jb2profile
+
+
+
+(2B) R 接口
+JBrowseR: JBrowse 2 genome browser 的R接口: https://pubmed.ncbi.nlm.nih.gov/34196689/
+The browser can be deployed from the R console, or embedded in Shiny applications or R Markdown documents.
+https://github.com/GMOD/JBrowseR/
+https://gmod.github.io/JBrowseR/
+
+使用实例: http://www.bioailab.com:3838/scAPAatlas/
+
+
 
 
 
@@ -1307,7 +1991,7 @@ lampp 服务器 https://zhuanlan.zhihu.com/p/116005246
 
 
 ========================================
-安装本地版的 doker UCSC gene browser: //todo
+安装本地版的 docker UCSC gene browser: //todo
 ----------------------------------------
 UCSC-browser学习：创建自己的track hubs: https://www.jianshu.com/p/486f75b9d90f
 http://genome-asia.ucsc.edu/goldenPath/help/mirror.html
@@ -1362,6 +2046,8 @@ MEME套装包含几个命令行工具，和一个可选的web服务。web需要 
 tar zxf meme-5.0.5.tar.gz
 cd meme-5.0.5
 ./configure --prefix=$HOME/meme --with-url=http://meme-suite.org/ --enable-build-libxml2 --enable-build-libxslt
+	不建议放到 ~/meme, 因为会让家目录变得复杂化。
+	建议安装到 /home/$USER/soft/meme
 make
 make test
 make install
@@ -1910,17 +2596,6 @@ http://www.360doc.com/content/19/1225/20/68068867_882178087.shtml
 http://homer.ucsd.edu/homer/interactions/HiCtagDirectory.html
 
 
-
-
-
-========================================
-|-- IGV查看bed峰图 //todo
-----------------------------------------
-
-http://www.360doc.com/content/20/0304/19/68068867_896721933.shtml
-bed to tdf 才能用IGV看。
-wig也可以直接用IGV看。
-https://www.cnblogs.com/djx571/p/12110883.html
 
 
 

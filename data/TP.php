@@ -29,24 +29,16 @@ return array (
     2 => array (
       array('快速入门','thinkPHP-quick','txt' ),
       array('函数详解','thinkPHP-function','txt' ),
+      array('框架研究: bug发现与修复','thinkPHP101-20160915','txt' ),
     ),
   ),
    
-  array (
-    0 => 2,
-    1 => '框架研究',
-    2 => array (
-      array('bug发现与修复','thinkPHP101-20160915','txt' ),
-      array('框架原理与实现','thinkPHP102-20160915','txt' ),
-    ),
-  ),
-
 
 //ci框架
 
   array (
     0 => 1,
-    1 => 'ci框架',
+    1 => 'CodeIgniter(ci)框架',
     2 => array (
       array('ci简介','ci001','html',),
       //array('参考资料','ci002','html'),

@@ -17,6 +17,12 @@ RcppParallel 则是调用C/C++的多线程。
 
 
 
+future包能显著提升R代码的执行效率，尤其适合数据密集型任务。如需进一步优化，可结合 parallel 或 foreach 包。
+
+
+
+
+
 ========================================
 基准测试: 求矩阵的每一行的sd
 ----------------------------------------
@@ -220,6 +226,8 @@ system.time({
 
 
 
+
+
 5.使用 which()语句
 
 利用which()语句来筛选数据集，我们可以达到Rcpp三分之一的运算速率。
@@ -263,6 +271,8 @@ system.time({
 })
 # user  system elapsed 
 #  0.505   0.000   0.505 
+
+
 
 
 
@@ -322,7 +332,7 @@ system.time({
 # user  system elapsed 
 # 0.010   0.004   0.014 
 
-下面是利用C++语言编写的函数代码，将其保存为“MyFunc.cpp”并利用sourceCpp进行调用。
+下面是利用C++语言编写的函数代码，将其保存为“MyFunc2.cpp”并利用sourceCpp进行调用。
 //source for MyFunc2.cpp 
 #include <Rcpp.h>
 using namespace Rcpp;
@@ -446,7 +456,6 @@ tips-1.尽早地移除变量并恢复内存容量
 
 ref:
 https://www.r-bloggers.com/2016/01/strategies-to-speedup-r-code/
-http://blog.sina.com.cn/s/blog_13eaccf160102wqlp.html
 https://www.cda.cn/view/17597.html
 
 
@@ -463,8 +472,9 @@ future 包为R用户提供了并行与分布处理的统一接口，还有些包
 
 
 1. 文档
-https://cran.r-project.org/web/packages/future/vignettes/future-1-overview.html
 https://future.futureverse.org/
+https://cran.r-project.org/web/packages/future/vignettes/future-1-overview.html
+https://cran.r-project.org/web/packages/future/vignettes/future-4-issues.html
 
 
 
@@ -518,15 +528,25 @@ Hello world!
 后者的输出在第一次调用时，而不是定义时立刻执行。
 
 
+
+
 为什么 future 有用呢？因为我们可以通过简单的设置实现异步执行
 
 > library("future")
-> plan(multisession)
+> plan(multisession) #内核多可能报错
+Error: Cannot create 144 parallel PSOCK nodes. Each node needs one connection, but there are only 124 connections left out of the maximum 128 available on this R installation
+
+
+> plan(multisession, workers=2)
+
 > v %<-% {
+	Sys.sleep(5)
    cat("Hello world!\n")
    3.14
 }
-> v
+> 1+1 #不阻断当前交互
+[1] 2
+> v #输入v等待5s出结果；或者等待5s后再输入v直接出结果
 Hello world!
 [1] 3.14
 
@@ -537,7 +557,8 @@ Hello world!
 
 
 
-(3) 明示和暗示的 future 
+
+(3) 显式和隐式的 future 
 # for explicit futures, we use:
 f <- future({ expr }) - creates a future
 v <- value(f) - gets the value of the future (blocks if not yet resolved)
@@ -545,7 +566,7 @@ v <- value(f) - gets the value of the future (blocks if not yet resolved)
 # For implicit futures, we use:
 v %<-% { expr } - creates a future and a promise to its value
 
-后文使用简单的暗示形式，当然讨论的内容也都适用于明示形式。
+后文使用简单的隐式形式，当然讨论的内容也都适用于显式形式。
 
 
 
@@ -592,7 +613,7 @@ a %<-% {
 	Sys.sleep(6)
     pid <- Sys.getpid()
     cat("Future 'a' ...\n")
-    3.14
+    pid
 }
 b %<-% {
 	Sys.sleep(3)
@@ -601,7 +622,7 @@ b %<-% {
     Sys.getpid()
 }
 # 如果等待时间过长，则直接0秒出结果。这可能是 Sys.sleep() 的bug
-message(a, b, pid)
+sprintf("%s %s %s", a, b, pid)
 
 
 
@@ -638,7 +659,7 @@ plan(sequential) # 回到单线程
 https://cran.r-project.org/web/packages/future/vignettes/future-1-overview.html
 
 library(future)
-plan(multisession)
+plan(multisession, workers=2)
 a %<-% {
   cat("Future 'a' ...")
   Sys.sleep(2)
@@ -647,6 +668,7 @@ a %<-% {
 }
 cat("Waiting for 'a' to be resolved ...\n")
 # Waiting for 'a' to be resolved ...
+
 f <- futureOf(a)
 count <- 1
 while (!resolved(f)) {
@@ -677,7 +699,7 @@ Future 'a' ...done
 (1) 对于给list的赋值操作，隐式会触发错误，而显式不会
 
 library(future)
-plan(multisession)
+plan(multisession, workers=2)
 f <- list()
 for (ii in 1:3) {
   f[[ii]] <- future({
@@ -689,14 +711,13 @@ str(f)
 f[[1]]
 #等待5秒，则答案秒出，说明计算一直在进行，future一旦创建，就开始计算了
 v <- lapply(f, FUN = value)
-str(v)
 
 > str(v)
 List of 3
- $ : int 2309686
- $ : int 2309687
- $ : int 2309685
-#
+ $ : int 51541
+ $ : int 51542
+ $ : int 51541
+# 说明随机使用的2个进程
 
 
 # 而使用隐式则报错
@@ -713,7 +734,7 @@ Error: Subsetting can not be done on a ‘list’; only to an environment: ‘f2
 
 
 (2) 如果是隐式的，可以赋值给环境(包括当前环境)
-plan(multisession)
+plan(multisession, workers=2)
 v <- new.env()
 for (name in c("a", "b", "c")) {
   v[[name]] %<-% {
@@ -722,9 +743,12 @@ for (name in c("a", "b", "c")) {
 }
 class(v$a) #a计算了
 v <- as.list(v) #b和c计算了
-str(v)
 
-
+> str(v)
+List of 3
+ $ a: int 51541
+ $ b: int 51542
+ $ c: int 51541
 
 
 
@@ -829,6 +853,8 @@ table(rs1-rs0<1e-10) #all TRUE
 (2) 3核多进程
 注意，这里踩坑了: 开始把第三个变量命名为c，总是各种报错，原因是和函数c()冲突了，改为c1则正常。
 
+library(future)
+plan(multisession, workers=3)
 {
   chunk=round(nrow(df1)/3)
 
@@ -902,13 +928,14 @@ table(rs0_-rs0<1e-10)
 
 
 
-3. 使用 future_apply 函数，貌似没有快多少(是不是我用的不对?)
+3. 使用 future_apply 函数，貌似没有快多少
 
 library(future)
 library(future.apply)
 plan(multisession, workers=8)
+
 # future.apply::future_apply
-system.time({ #17.079s; 观察 htop 有过1s时间的并发，很快结束。不过总时间太长
+system.time({ #4.211s; 观察 htop 有过1s时间的并发，很快结束。不过总时间太长
   #rs3=future_apply(df1, 1, sd, future.chunk.size=nrow(df1)/6)
   rs3=future_apply(df1, 1, sd)
 })
@@ -1040,7 +1067,214 @@ https://zhuanlan.zhihu.com/p/493477082?
 
 
 ========================================
+|-- future 包，非阻塞的执行耗时脚本，传入指定变量
 ----------------------------------------
+目的：有一段代码，后面暂时用不到，但是又很耗时，占了当前R session，难道只能等半个小时，等到它结束才能画图？
+
+可以使用R多线程，在支线进程中执行耗时任务，同时不阻塞当前R进程，可以继续干活。
+
+* 在Rstudio下只能使用 plan(multisession, workers=5)，跨平台多进程(推荐使用)。
+* 在shell R下，还可以使用 plan(multiprocess)[不支持了]，plan(multicore)[Not supported on Windows.]
+
+> Strategy ‘multiprocess’ is deprecated in future (>= 1.20.0) [2020-10-30].
+Instead, explicitly specify either ‘multisession’ (recommended) or ‘multicore’. In the current R session, ‘multiprocess’ equals ‘multisession’.
+
+注意: 本测试在Linux下(CentOS7.9), R 4.3.3
+* plan(sequential) # 恢复 设置为单进程模式
+* 嵌套并行‌：支持多层并行任务分配(本文不讲)。
+
+
+
+1.非阻塞的启动R多进程支线任务
+
+# 第一步，开启多线程。只能linux系统，必须开多线程
+library(future)
+plan(multisession, workers = 3) # 设置为多进程模式
+
+# 第二部：定义耗时任务
+save_task <- future({
+  pid=Sys.getpid() #记录线程编号
+  print( paste0("Start ...", pid) )
+
+  # 这里保存Rds文件，可能需要花费几十分钟到2个小时
+  # save.image("end.RData")
+  Sys.sleep(10) # 模拟耗时1小时
+
+  print( paste0("End...", pid) )
+  100 #最后一行是线程的返回值，类似函数的感觉。
+})
+
+# 第三步，继续执行其他任务
+# 在任务运行时，可以继续执行其他代码，不用等待耗时任务结束
+print("正在后台保存文件，可以继续执行其他任务...")
+
+
+
+
+
+2.检查一个支线任务是否结束
+
+* 要检查任务的状态，可以使用 value() 函数，它会阻塞直到任务完成并返回结果。
+* resolved() 函数用于检查任务是否已完成，是非阻塞的。
+* 如果想非阻塞地检查结果，可以结合使用 resolved() 和 value() 函数。
+
+	# f 是一个future任务
+	# f=save_task
+	# 非阻塞地检查是否完成
+	if (resolved(f)) {
+	  result <- value(f)  # 如果已完成，获取结果
+	  print(result)
+	} else {
+	  print("任务尚未完成")
+	}
+
+
+继续本示例：
+> resolved(save_task) #非阻塞的查看状态，可以随时查看状态，返回T/F
+> value(save_task ) #阻塞的查看返回结果：最后一行的值
+[1] "Start ...55433"
+[1] "End...55433"
+[1] 100
+
+> # plan(sequential) # 恢复 设置为单进程模式
+
+
+
+
+
+3. 等待所有支线任务都结束
+场景：分别计算每个亚群的高变基因，每个亚群都计算完才能进行下一步。
+
+# arr 是数组，其成员是 future 变量
+while(any(!resolved(arr))){ } #阻塞，直到所有支线都出结果：直到任何一个都是T
+
+
+
+4. 竞速模式：等待最快的一个线程得到结果
+场景：分别使用多个网站下载相同的数据，只要有一个途径下载好，即可开始下一步。
+
+while(all(!resolved(arr))){ } #阻塞，直到有一个支线出结果: 直到至少一个是T[竞速模式]
+
+示例:
+	require(future)
+	#plan(multiprocess)
+	plan(multisession, workers=5)
+
+	longRunningFunction <- function(value, seed=0) {
+	  set.seed(seed)
+	  random1<- runif(min= 5 ,max = 30,n = 1)
+	  Sys.sleep(random1)
+	  return(value)
+	}
+
+	arr = list()
+
+	#changed starting number to 1 since R lists start at 1, not 0
+	i=1
+
+	#If the number of futures generated is more than the number of cores available, then the main thread will block until the first future completes and allows more futures to be started
+	while(i < 6) {
+	  arr[[i]] = future(longRunningFunction(i, seed = i), seed = T)
+	  i = i + 1
+	}
+
+	# 一开始都是F，都没有解析出；最后都是T，都解析了。
+	while(any(!resolved(arr))){ } #阻塞，直到所有支线都出结果：直到任何一个都是T[全部结束]
+	#while(all(!resolved(arr))){ } #阻塞，直到有一个支线出结果: 直到至少一个是T[竞速模式]
+
+	raceresults_from_future<-lapply(arr[resolved(arr)], value)
+
+	如果是全部结束(any)
+	> print(paste("raceresults_from_future: ",raceresults_from_future) )
+	[1] "raceresults_from_future:  1" "raceresults_from_future:  2"
+	[3] "raceresults_from_future:  3" "raceresults_from_future:  4"
+	[5] "raceresults_from_future:  5"
+
+
+	如果是竞速(all):
+	> print(paste("raceresults_from_future: ",raceresults_from_future) )
+	[1] "raceresults_from_future:  2" "raceresults_from_future:  3"
+
+
+
+
+
+5. 传入环境，给多线程的内存消耗瘦身
+* future开启的支线默认是复制主进程的全部环境，这会导致R的内存开销很大，而其中很大一部分是用不到的拷贝。
+* 可以手动指定某些变量传入执行环境，来达到多进程内存瘦身的目的。
+
+(1)通过 future()第二个参数envir = 环境类型变量
+
+	out.a=123
+
+	# 1 开启多线程。只能linux系统，必须开多线程
+	library(future)
+	plan(multisession, workers = 3) # 设置为多进程模式
+
+
+	# 2 创建环境
+	#  用于限定多进程拷贝的变量个数，默认是拷贝父进程的整个环境
+	e1 <- new.env(parent = baseenv())
+	e1$a=out.a+1902
+	get("a", e1) #2025 #获取环境中的变量值
+
+	assign("b", -3210, envir = e1) #给环境e1中的变量b赋值
+	get("b", envir = e1) #-3210 获取环境中的变量值
+
+
+	# 3 环境作为future的第二个参数
+	task2 <- future({
+	  pid=Sys.getpid()
+	  print(sprintf("task [%s]", pid))
+	  Sys.sleep(5)
+	  a+100 #最后一行是线程的返回值，类似函数的感觉。
+	}, 
+	  envir = e1 ) #envir 传入变量，否则默认传入父环境
+
+	# 可以执行其他任务
+
+	# 4 查看多进程结果
+	resolved(task2) #非阻塞(立刻返回)的查看状态，可以随时查看状态，返回T/F
+	while(!resolved(task2)){} #阻塞，直到支线任务完成
+	value(task2 ) #阻塞的(直到有结果)查看返回结果：最后一行的值 2125
+	task2
+
+	plan(sequential) # 恢复 设置为单进程模式
+
+
+(2)通过参数列表选择性传递‌
+将目标变量封装为参数列表，通过 future 的 globals 参数精确控制：
+
+x=10
+f <- future({
+  print(input$x)  # 通过参数访问
+}, globals = list(input = list(x = x)))  # 仅传递x
+
+value(f)  # 输出: [1] 10
+
+
+
+(3)两种方法均能有效隔离非必要变量，避免内存冗余。区别是：
+- 方法1需手动管理环境类型的变量，适合复杂场景；
+- 方法2语法更简洁，但需调整代码逻辑
+
+
+
+(4)实例：传入函数
+//todo
+
+
+
+
+
+
+
+
+
+ref:
+https://blog.csdn.net/wangjunliang/article/details/145290727
+https://rstudio.github.io/promises/articles/promises_03_overview.html
+竞速模式 https://stackoverflow.com/questions/52040744/r-waiting-for-a-list-of-promises-to-resolve
 
 
 

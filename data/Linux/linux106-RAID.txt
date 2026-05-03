@@ -1,0 +1,2522 @@
+linux106-RAID
+
+磁盘阵列（Redundant Array of Independent Disks, RAID）是一种将多块独立硬盘组合成一个高性能、高冗余的逻辑存储单元的技术。它通过数据条带化（分块）、镜像或校验技术，在提升读写速度的同时，提供单块或多块硬盘故障时的容错能力。
+
+常用于服务器和大容量存储场景。 
+
+
+
+
+
+
+
+========================================
+磁盘阵列 RAID 原理与级别
+----------------------------------------
+
+1. 硬盘 是绝大多数计算机的性能瓶颈
+
+内存的速度可以达到 5G/s
+
+硬盘类型  速度
+SATA <150M/s
+SAS 200M/s 左右
+
+SSD 500M/s 固态硬盘
+
+IOPS  
+
+
+
+
+2. 现代硬盘的缺陷: IO性能极弱、稳定性极差
+- RAID (Redundant Array of Independent Disks) 廉价磁盘冗余阵列技术是通过多次盘并行运行来提高计算机的存储IO性能。
+
+https://www.enterprisestorageforum.com/management/raid-levels-explained/
+- RAID 分为很多种类，称为 RAID 级别，现代 RAID 共有7类，常用的有以下4类
+	RAID 0 读写性能
+	RAID 1 读写性能、冗余性
+	
+	RAID 5 读写性能、冗余性(1块硬盘故障不损失数据)
+	RAID 6 读写性能、冗余性(2块硬盘故障不损失数据)
+
+实际使用最多的是 RAID 5和6。
+
+
+多块磁盘组成一个 RAID 后，系统只看到一个合成的硬盘，看不到底层的硬盘。
+RAID 需要的底层硬盘大小要一致，最好厂家、品牌、规格也一致。防止因为硬盘不兼容出现问题。
+
+
+(1) RAID 0
+最少使用2块硬盘，在读写时，将数据分开读写到多块硬盘的方式，提高读写性能。
+
+RAID 0 
+	A1 A3 A5 ...
+	A2 A4 A6 ...
+
+空间利用率: 所有硬盘空间之和
+性能: 所有硬盘速度之和
+冗余能力: 无 
+
+
+
+(2) RAID 1
+最少2块硬盘，在写数据的时候，数据复制到多块硬盘上。
+在读数据时，以提供冗余性。
+同时从多块硬盘读取数据，以提高读性能。
+
+RAID 1
+	A1 A2 A3 ...
+	A1 A2 A3 ...
+
+空间利用率: min(所有硬盘空间最小的那块)
+性能: 读性能为所有硬盘速度之和，写性能会有所减弱。
+冗余能力: 只要有一块硬盘正常，数据就正常。
+
+
+
+(3) RAID 5
+RAID 5 最少使用3块硬盘， RAID 5和RAID 0类似，读写数据的时候会将数据分布式的读写在所有硬盘上，但是在写数据的时候会对数据进行奇偶校验运算，将校验信息同时保存在硬盘上，校验信息可以进行数据恢复使用。
+
+RAID 5
+	A1 B1 C1 Dp ... 
+	A2 B2 Cp D2 ... 
+	A3 Bp C3 D3 ... 
+	Ap B4 C4 D4 ... 
+
+空间利用率: 1-1/n
+性能: 读性能接近 RAID 0，写性能较 RAID 0 弱一些。
+冗余能力: 可接受1块硬盘损坏。
+
+
+
+(4) RAID 6
+RAID 6 最少使用4块硬盘， RAID 6和RAID 5类似，读写数据的时候会将数据分布式的读写在所有硬盘上，但是在写数据的时候会对数据进行奇偶校验运算，将校验信息同时保存在硬盘上，校验信息可以进行数据恢复使用。
+但比RAID5多保存了一份校验信息，所以冗余较RAID 5有所提升。
+
+RAID 6
+	A1 B1 C1 Dp ... 
+	A2 B2 Cp Dq ... 
+	A3 Bp Cq D3 ... 
+	Ap Bq C4 D4 ... 
+	Aq B5 C5 D5 ... 
+
+空间利用率: 1-2/n
+性能: 读性能接近 RAID 5，写性能较 RAID 5 弱一些。
+冗余能力: 可接受2块硬盘损坏。
+
+
+
+(5) 其他少用的级别
+RAID 3 is rarely implemented. It uses byte-level striping and parity, and stores parity calculations on dedicated disk. Like RAID 2, it typically cannot service multiple requests at the same time. This does not affect the performance of large sequential reads and writes, but does slow down random access workloads.
+
+parity [ˈpærəti] n. （尤指薪金或地位）平等，相同；（两个不同国家的货币单位的）平价，等价；（数字）奇偶性；
+
+
+https://baike.baidu.com/item/RAID%203/10898521?fr=aladdin
+RAID 3是把数据分成多个“块”，按照一定的容错算法，存放在N+1个硬盘上，实际数据占用的有效空间为N个硬盘的空间总和，而第N+1个硬盘上存储的数据是校验容错信息，当这N+1个硬盘中的其中一个硬盘出现故障时，从其它N个硬盘中的数据也可以恢复原始数据，这样，仅使用这N个硬盘也可以带伤继续工作（如采集和回放素材），当更换一个新硬盘后，系统可以重新恢复完整的校验容错信息。由于在一个硬盘阵列中，多于一个硬盘同时出现故障率的几率很小，所以一般情况下，使用RAID3，安全性是可以得到保障的。
+
+RAID3更加适合应用于那些写入操作较少，读取操作较多的应用环境，如数据库和web服务器等。
+与RAID0相比，RAID3在读写速度方面相对较慢。
+使用的容错算法和分块大小决定RAID使用的应用场合，在通常情况下，RAID3比较适合大文件类型且安全性要求较高的应用，如视频编辑、硬盘播出机、大型数据库等。
+
+
+
+
+
+
+
+3. RAID 的实现
+(1) 软件 RAID 
+通过系统功能或 RAID 软件实现 RAID，没有独立硬件和接口，需要占用一定的系统资源(CPU、硬盘接口速度)，并且受操作系统稳定性影响。
+
+windows 和 linux 都支持。
+
+
+(2) 硬件 RAID (推荐)
+通过独立的 RAID 硬件卡实现，有些主板集成 RAID 硬件，有些需要购买独立的 RAID 硬件卡，硬件 RAID 实现不需要占用其他硬件资源，稳定性和速度都比软件 RAID 要强。
+
+
+
+
+
+
+========================================
+|-- 软件 RAID 的实现: mdadm (没测试过) //todo
+----------------------------------------
+
+1. linux通过 mdadm 实现的 软件 RAID 
+multi disk admin
+
+- mdadm 支持的 RAID 级别有: 0,1,4,5,6
+- mdadm 可以基于多块硬盘、分区或者逻辑卷创建软件 RAID。
+- 创建好的软件 RAID 对应 /dev/mdn, n为第几个 RAID，如第一个创建的 RAID 为 /dev/md0， 第二个为 /dev/md1
+- RAID 的信息保存在 /proc/mdstat 文件中，或通过 mdadm 命令查看。
+
+$ mdadm --version
+mdadm - v4.1 - 2018-10-01
+
+
+
+
+
+
+2. 创建 RAID 
+https://zhuanlan.zhihu.com/p/94109810
+
+可以看到创建时有个Note的提示，是说软raid不能当启动设备，这就是软raid比较鸡肋的地方了。
+
+(1) 创建 RAID 0
+$ sudo mdadm -C /dev/md0 -a yes -I 0 -n 2 /dev/sdb /dev/sdc 
+参数 man mdadm
+-C --create 创建一个 RAID 
+-a --auto　自动创建对应设备
+-I 指定要创建的 RAID 级别
+-n --raid-devices 阵列中活动磁盘的数目，该数目加上备用磁盘的数目应该等于阵列中总的磁盘数目;
+
+
+$ mdadm -C /dev/md0 -ayes -l1 -n2 /dev/xvd[b,c]1
+-l, --level=
+	Set RAID level.  When used with --create, options are: linear, raid0, 0, stripe, raid1, 1, mirror, raid4, 4, raid5, 5, raid6, 6, raid10, 10, multipath, mp, faulty, container.  Obviously some of these are  synonymous.
+
+	When a CONTAINER metadata type is requested, only the container level is permitted, and it does not need to be explicitly given.
+	When used with --build, only linear, stripe, raid0, 0, raid1, multipath, mp, and faulty are valid.
+	Can be used with --grow to change the RAID level in some cases.  See LEVEL CHANGES below.
+
+
+建完成后可以使用cat /proc/mdstat查看阵列状态。
+图略。
+下图中第一次查看的时候提示resync完成了95.7%，第二次查询的时候两块盘才真正同步完。
+
+
+创建配置文件，保证重启时 RAID 都还在: 
+$ sudo mdadm -D --scan > /etc/mdadm.conf
+
+
+创建文件系统 
+$ mkfs.ext4 /dev/md0 
+挂载使用
+$ mount /dev/md0 /mnt 
+
+
+
+
+
+
+(2) 查看 RAID 信息 
+$ sudo mdadm -D /dev/md0 
+
+/proc 中的文件也包含 RAID 相关信息:
+$ cat /proc/mdstat
+
+
+如果磁盘比较大，则需要一段时间才能创建成功 RAID 5，需要看 /proc/mdstat 进度条。
+
+
+# cat /etc/mdadm.conf
+cat: /etc/mdadm.conf: No such file or directory
+
+# cat /proc/mdstat
+# mdadm --detail /dev/md126
+
+
+
+
+
+
+(3) 也可以使用一个 -x 参数指定一个备份磁盘
+备份磁盘一般不使用，当出现故障盘时，指定的备份磁盘可以自动上线工作:
+$ mdadm -C /dev/md0 -a yes -I 5 -n 3 -x 1 /dev/sdb /dev/sdc /dev/sdd /dev/sde 
+
+最后一个盘 /dev/sde 一般不用，故障时启用，否则就需要人工替换磁盘。
+
+
+
+(4) 关闭 RAID 
+先卸载， umont 
+然后关闭 RAID: $ mdadm -S /dev/md0 
+
+启用一个 RAID: $ mdadm -R /dev/md0 
+
+
+
+(5) 如果不想使用 RAID ，磁盘想单独它用
+
+先卸载，再关闭 RAID。
+然后清空数据: 
+$ mdadm --zero-superblock /dev/sdb
+$ mdadm --zero-superblock /dev/sdc
+
+
+
+
+(6) 模拟故障 
+实验环境中，通过 -f 把一个设备标识位故障
+$ mdadm /dev/md0 -f /dev/sdb 
+
+之后，移除故障硬盘
+$ mdadm /dev/md0 -r /dev/sdb 
+
+换上新的硬盘后，经心得硬盘添加到 RAID 中
+$ mdadm /dev/md0 -a /dev/sdb 
+
+
+
+
+
+
+
+
+
+========================================
+|-- 硬件 RAID, fakeRAID using dmraid, BIOS RAID 
+----------------------------------------
+https://wenku.baidu.com/view/91fae1911937f111f18583d049649b6648d709ee.html
+
+1. 基本信息
+Fake raid is accessed with the dmraid utility, not mdadm.
+https://help.ubuntu.com/community/FakeRaidHowto
+
+$ dmraid -V
+dmraid version:		1.0.0.rc16 (2009.09.16) debug 
+dmraid library version:	1.0.0.rc16 (2009.09.16)
+device-mapper version:	unknown
+
+
+$ dmraid -l
+asr     : Adaptec HostRAID ASR (0,1,10)
+ddf1    : SNIA DDF1 (0,1,4,5,linear)
+hpt37x  : Highpoint HPT37X (S,0,1,10,01)
+hpt45x  : Highpoint HPT45X (S,0,1,10)
+isw     : Intel Software RAID (0,1,5,01)
+jmicron : JMicron ATARAID (S,0,1)
+lsi     : LSI Logic MegaRAID (0,1,10)
+nvidia  : NVidia RAID (S,0,1,10,5)
+pdc     : Promise FastTrack (S,0,1,10)
+sil     : Silicon Image(tm) Medley(tm) (0,1,10)
+via     : VIA Software RAID (S,0,1,10)
+dos     : DOS partitions on SW RAIDs
+
+
+
+
+查看所有的 RAID 磁盘
+$ sudo dmraid -ay
+no raid disks
+
+
+
+
+
+
+2. 检查磁盘硬件
+
+(1) 确定厂家
+使用lspci确保您的服务器已连接到RAID控制器。
+
+To find out which RAID you are using
+$ lspci | grep RAID
+1b:00.0 RAID bus controller: Broadcom / LSI MegaRAID SAS-3 3108 [Invader] (rev 02)
+
+* 文档: https://docs.broadcom.com/doc/pub-005183
+
+这表明我这存在 MegaRaid controller，我可以愉快的使用MegaCli搞事！
+
+
+
+
+(2) 下载软件
+LSI Broadcom RAID Monitoring
+https://www.fractionservers.com/knowledge-base/lsi-raid-monitoring/
+
+$ wget http://dl.marmotte.net/rpms/redhat/el7/x86_64/megacli-8.00.46-2/megacli-8.00.46-2.x86_64.rpm
+$ sudo rpm -ivh megacli-8.00.46-2.x86_64.rpm
+
+
+$ MegaCli -h
+      MegaCLI SAS RAID Management Tool  Ver 8.00.46 Feb 03, 2011
+    (c)Copyright 2010, LSI Corporation, All Rights Reserved.
+NOTE: The following options may be given at the end of any command below: 
+    [-Silent] [-AppLogFile filename] [-NoLog] [-page[N]] 
+                 [-] is optional. 
+                  N - Number of lines per page. 
+
+
+## Checking the RAID status
+$ sudo MegaCli -AdpAllInfo -a0
+...
+                Capabilities
+                ======== ========
+RAID Level Supported             : RAID0, RAID1, RAID5, RAID00, RAID10, RAID50, PRL 11, PRL 11 with spanning, SRL 3 supported, PRL11-RLQ0 DDF layout with no span, PRL11-RLQ0 DDF layout with span
+Supported Drives                 : SAS, SATA
+...
+
+
+
+
+
+
+
+========================================
+使用 MegaCli 查看 RAID 状态
+----------------------------------------
+https://blog.csdn.net/wojiuwangla/article/details/113940417
+
+==> 查看raid 状态 
+$ MegaCli -LdInfo -lAll -aALL
+Adapter 0 -- Virtual Drive Information:
+Virtual Drive: 0 (Target Id: 0)
+Name                :System
+RAID Level          : Primary-1, Secondary-0, RAID Level Qualifier-0  #级别0
+Size                : 446.102 GB #这个大小只能是  /dev/sda
+State               : Optimal #状态: 良好
+Strip Size          : 64 KB
+Number Of Drives    : 2 #共2块硬盘
+Span Depth          : 1
+Default Cache Policy: WriteBack, ReadAheadNone, Direct, No Write Cache if Bad BBU
+Current Cache Policy: WriteThrough, ReadAheadNone, Direct, No Write Cache if Bad BBU
+Access Policy       : Read/Write
+Disk Cache Policy   : Disk's Default
+Encryption Type     : None
+
+
+Virtual Drive: 1 (Target Id: 1)
+Name                :localData
+RAID Level          : Primary-5, Secondary-0, RAID Level Qualifier-3 #级别3
+Size                : 8.180 TB  #这个大小可能是 /dev/sdb, 而不是 a
+State               : Degraded #状态: 降级
+Strip Size          : 64 KB
+Number Of Drives    : 6  #共6块硬盘
+Span Depth          : 1
+Default Cache Policy: WriteBack, ReadAheadNone, Direct, No Write Cache if Bad BBU
+Current Cache Policy: WriteThrough, ReadAheadNone, Direct, No Write Cache if Bad BBU
+Access Policy       : Read/Write
+Disk Cache Policy   : Disabled
+Encryption Type     : None
+
+Exit Code: 0x00
+
+指标说明
+State               : Degraded（降级）
+State               : Offline（离线）
+State               : Optimal（正常）
+Number Of Drives    : 2  RAID组包含2块磁盘。
+* degraded [dɪˈɡreɪdɪd] adj. 退化的；堕落的；被降级的
+
+
+
+
+
+==>查看硬盘数量以及有无损坏，有几行就是有几个硬盘
+$ sudo MegaCli -PDList -aALL | grep "Firmware state"
+Firmware state: Online, Spun Up
+Firmware state: Online, Spun Up
+Firmware state: Failed           #故障盘，第三块
+Firmware state: Online, Spun Up
+Firmware state: Online, Spun Up
+Firmware state: Online, Spun Up
+Firmware state: Online, Spun Up
+Firmware state: Online, Spun Up
+
+指标说明
+硬盘状态:
+Firmware state: Online, Spun Up 磁盘正常
+Firmware state: Unconfigured(good), Spun Up 磁盘已安装，但未启用
+Firmware state: Unconfigured(bad) 故障
+Firmware state: Failed 故障
+Firmware state: Rebuild 重建，一般在更换磁盘时显示
+	需要 24 小时，结束后会重启电脑。重建过程中写入的数据可能丢失。
+
+
+
+
+==> 查看硬盘所有信息
+$ sudo MegaCli -PDList -aALL > ~/Megacli_firwaare_state.txt
+...
+Enclosure Device ID: 252
+Slot Number: 2  #第三块磁盘，编号从0开始
+Enclosure position: 0
+Device Id: 8
+Sequence Number: 2
+Media Error Count: 0
+Other Error Count: 0
+Predictive Failure Count: 0
+Last Predictive Failure Event Seq Number: 0
+PD Type: SAS
+Raw Size: 1.636 TB [0xd196e9b0 Sectors]
+Non Coerced Size: 1.636 TB [0xd186e9b0 Sectors]
+Coerced Size: 1.635 TB [0xd16e6000 Sectors]
+Firmware state: Failed                #状态是失败
+SAS Address(0): 0x50000398f809389e
+SAS Address(1): 0x0
+Connected Port Number: 2(path0) 
+Inquiry Data: LENOVO  AL15SEB18EQ     TB52T5W2LG6WTB52TB52TB52
+FDE Capable: Not Capable
+FDE Enable: Disable
+Secured: Unsecured
+Locked: Unlocked
+Needs EKM Attention: No
+Foreign State: None 
+Device Speed: Unknown 
+Link Speed: Unknown 
+Media Type: Hard Disk Device
+Drive:  Not Certified
+Drive Temperature :34C (93.20 F)
+...
+
+
+部分参数解释:
+Slot Number: ---硬盘槽号
+PD Type:         -----磁盘接口类型
+InquiryData:               -----硬盘的序列号、型号、固件版本
+Raw Size:  -----磁盘原始大小
+NonCoerced Size:    -----磁盘标准大小
+CoercedSize:  ------磁盘最大可用大小
+Medai Error Count:  ------表示磁盘可能错误，可能是磁盘有坏道，这个值不为0值得注意，数值越大，危险系数越高。
+Other Error Count:   ------表示磁盘可能存在松动，可能需要重新再插入。
+Predictive Failure Count: -----预测故障计数
+
+
+磁盘大小
+$ cat Megacli_firwaare_state.txt | grep "Raw Size"
+Raw Size: 447.130 GB [0x37e436b0 Sectors] # RAID 1
+Raw Size: 447.130 GB [0x37e436b0 Sectors]
+
+Raw Size: 1.636 TB [0xd196e9b0 Sectors]  # RAID 5
+Raw Size: 1.636 TB [0xd196e9b0 Sectors]
+Raw Size: 1.636 TB [0xd196e9b0 Sectors]
+Raw Size: 1.636 TB [0xd196e9b0 Sectors]
+Raw Size: 1.636 TB [0xd196e9b0 Sectors]
+Raw Size: 1.636 TB [0xd196e9b0 Sectors]
+
+
+
+
+==> 查看raid级别
+有时候认出比较难，推荐第二种
+$ sudo MegaCli -LdPdInfo -aALL | grep "RAID Level"
+RAID Level          : Primary-1, Secondary-0, RAID Level Qualifier-0
+RAID Level          : Primary-5, Secondary-0, RAID Level Qualifier-3
+
+raid级别说明:
+RAIDLevel : Primary-0, Secondary-0, RAID Level Qualifier-0     这就是raid0           
+0 0 0 是raid0    
+1 0 0 是raid1  
+5 0 3 是raid5  
+1 3 0 是raid10
+
+RAID Level          : Primary-6, Secondary-0, RAID Level Qualifier-3
+6 0 3 是RAID6
+
+
+raid1 还需要结合Span Depth的值来判断
+Span Depth : 2 表示共2个RAID1盘组做成了RAID10，1表示1个RAID1盘组
+还有一种情况：Primary-1， Secondary-3， RAID LevelQualifier-0 也是表示 RAID-10;
+也可以这么显示raid级别，输入就会返回，这种的基本准确
+
+$ sudo MegaCli -ShowSummary -aALL | grep "RAID Level"
+                RAID Level         : 1 
+                RAID Level         : 5 
+#
+
+
+
+==> 查看raid级别及查看raid是由哪些硬盘组成的
+$ sudo MegaCli -LdPdInfo -aALL > ~/MegaCli_LdPdInfo.txt
+$ less ~/MegaCli_LdPdInfo.txt
+
+
+硬盘有8块，分别在这些槽位
+$ cat ~/MegaCli_LdPdInfo.txt |  grep "Slot"
+Slot Number: 0
+Slot Number: 1
+Slot Number: 2
+Slot Number: 3
+Slot Number: 4
+Slot Number: 5
+Slot Number: 6
+Slot Number: 7
+
+硬盘类型
+$ cat ~/MegaCli_LdPdInfo.txt |  grep "PD Type"
+PD Type: SATA
+PD Type: SATA
+PD Type: SAS
+PD Type: SAS
+PD Type: SAS
+PD Type: SAS
+PD Type: SAS
+PD Type: SAS
+
+
+
+$ cat ~/MegaCli_LdPdInfo.txt |  grep "Enclosure Device ID"
+Enclosure Device ID: 252
+Enclosure Device ID: 252
+Enclosure Device ID: 252
+Enclosure Device ID: 252
+Enclosure Device ID: 252
+Enclosure Device ID: 252
+Enclosure Device ID: 252
+Enclosure Device ID: 252
+
+硬盘灯闪烁
+$ MegaCli -PdLocate -start -physdrv [32:2] -aALL
+32是 Enclosure Device ID，2是Slot Number
+
+卸载故障盘
+$ MegaCli -PDOffline -PhysDrv[32:2] -a0
+32是Enclosure Device ID，2是Slot Number
+
+关5槽位灯：
+$ MegaCli -PDLocate -stop -physdrv[64:5] -a0
+
+
+查看rebuild进度
+## MegaCli -PDRbld -ShowProg -PhysDrv[32:2] -aAll
+# 32是Enclosure Device ID，2是Slot Number
+
+$ sudo MegaCli64 -PDRbld -ShowProg -PhysDrv [32:09] -a0
+Rebuild Progress on Device at Enclosure 32, Slot 9 Completed 89% in 395 Minutes.
+
+
+
+
+
+
+
+
+
+==> 获取RAID适配器的信息
+$ sudo MegaCli  -AdpGetPciInfo -aAll
+[sudo] password for wangjl: 
+                                     
+PCI information for Controller 0
+------ -------- ---------- --------
+Bus Number      : 1b
+Device Number   : 0
+Function Number : 0
+
+Exit Code: 0x00
+这里看到适配器信息，适配器id为0。
+
+
+
+==> 获取硬盘背板信息
+##sudo MegaCli -EncInfo -a0  #Function Number : a0
+$ sudo MegaCli -EncInfo -0  #Function Number : 0
+Invalid input at or near token 0                                           
+Exit Code: 0x01
+
+
+$ sudo MegaCli -EncInfo -a0
+    Number of enclosures on adapter 0 -- 1
+	
+    Enclosure 0:
+    Device ID                     : 252
+    Number of Slots               : 8
+    Number of Power Supplies      : 0
+    Number of Fans                : 0
+    Number of Temperature Sensors : 0
+    Number of Alarms              : 0
+    Number of SIM Modules         : 1
+    Number of Physical Drives     : 8
+    Status                        : Normal
+    Position                      : 1
+    Connector Name                : Unavailable
+    Partner Device Id             : 65535
+
+    Inquiry data                  :
+        Vendor Identification     : AVAGO   
+        Product Identification    : SGPIO           
+        Product Revision Level    : N/A 
+        Vendor Specific           :                     
+
+Exit Code: 0x00
+
+Device ID	252
+Number of Slots( 可以连接到这个背板的最大物理驱动器	8
+
+
+获取物理驱动器的信息
+$ sudo MegaCli -LdPdInfo -a0
+Adapter #0
+
+Number of Virtual Disks: 2
+Virtual Drive: 0 (Target Id: 0)
+Name                :System
+RAID Level          : Primary-1, Secondary-0, RAID Level Qualifier-0
+Size                : 446.102 GB
+State               : Optimal
+...
+
+Virtual Drive: 1 (Target Id: 1)
+Name                :localData
+RAID Level          : Primary-5, Secondary-0, RAID Level Qualifier-3
+Size                : 8.180 TB
+State               : Degraded
+Strip Size          : 64 KB
+Number Of Drives    : 6
+Span Depth          : 1
+...
+
+Slot Number 是物理驱动器连接的插槽号，也就是对应物理驱动器id
+
+
+获取Virtual drives信息
+只想查询a0上的所有虚拟设备信息，-L表示第几个虚拟设备：
+/opt/MegaRAID/MegaCli/MegaCli64  -LDInfo -Lall -a0
+只想查询a0上的所有物理设备信息：
+/opt/MegaRAID/MegaCli/MegaCli64 -PDList -a0
+
+
+
+
+获取Virtual drives内的物理驱动器信息
+这就有点难了， 其实没什么卵用,记下来留着以后copy
+$ cat MegaCli_LdPdInfo.txt |grep -E "Virtual Drive:|Slot Number:" | xargs | sed -r 's/(Slot Number:)(\s[0-9]+)/\2,/g' | sed 's/(Target Id: .)/Physical Drives ids:/g' | sed 's/Virtual Drive:/\nVirtual Drive:/g'
+
+Virtual Drive: 0 Physical Drives ids:  0,  1, 
+Virtual Drive: 1 Physical Drives ids:  2,  3,  4,  5,  6,  7,
+
+
+查看 逻辑磁盘/虚拟磁盘 使用了哪些 物理磁盘：
+$ sudo MegaCli64 -LdPdInfo -aALL | grep -E "Virtual Drive:|Slot Number:" | xargs | sed -r 's/(Slot Number:)(\s[0-9]+)/\2,/g' | sed 's/(Target Id: .)/Physical Drives ids:/g' | sed 's/Virtual Drive:/\nVirtual Drive:/g'
+Virtual Drive: 0 Physical Drives ids:  9,  1,  2,  4,  5,  6,  7,  8, 
+Virtual Drive: 1 Physical Drives ids:  9,  1,  2,  4,  5,  6,  7,  8, 
+Virtual Drive: 2 Physical Drives ids:  9,  1,  2,  4,  5,  6,  7,  8,
+
+
+
+
+
+
+显示的信息差不多，raid的厂商，型号，级别，但无法查看各块硬盘的信息。
+$ dmesg |grep -i raid
+
+$ cat /proc/scsi/scsi 
+Attached devices:
+Host: scsi0 Channel: 02 Id: 00 Lun: 00
+  Vendor: Lenovo   Model: RAID 730-8i 1GB  Rev: 4.68
+  Type:   Direct-Access                    ANSI  SCSI revision: 05
+Host: scsi0 Channel: 02 Id: 01 Lun: 00
+  Vendor: Lenovo   Model: RAID 730-8i 1GB  Rev: 4.68
+  Type:   Direct-Access                    ANSI  SCSI revision: 05
+
+Host: scsi14 Channel: 00 Id: 00 Lun: 00
+  Vendor: DELL     Model: MD38xxf          Rev: 0825
+  Type:   Direct-Access                    ANSI  SCSI revision: 05
+Host: scsi14 Channel: 00 Id: 00 Lun: 31
+  Vendor: DELL     Model: Universal Xport  Rev: 0825
+  Type:   Direct-Access                    ANSI  SCSI revision: 05
+
+Host: scsi15 Channel: 00 Id: 00 Lun: 00
+  Vendor: DELL     Model: MD38xxf          Rev: 0825
+  Type:   Direct-Access                    ANSI  SCSI revision: 05
+Host: scsi15 Channel: 00 Id: 00 Lun: 31
+  Vendor: DELL     Model: Universal Xport  Rev: 0825
+  Type:   Direct-Access                    ANSI  SCSI revision: 05
+
+Host: scsi16 Channel: 00 Id: 00 Lun: 00
+  Vendor: DELL     Model: MD38xxi          Rev: 0825
+  Type:   Direct-Access                    ANSI  SCSI revision: 05
+Host: scsi16 Channel: 00 Id: 00 Lun: 31
+  Vendor: DELL     Model: Universal Xport  Rev: 0825
+  Type:   Direct-Access                    ANSI  SCSI revision: 05
+
+
+
+
+
+
+
+
+
+
+
+ref: 
+https://www.cnblogs.com/xth0331/p/9655593.html
+https://zhuanlan.zhihu.com/p/358739776
+http://t.zoukankan.com/xuefy-p-11153280.html
+https://www.linuxprobe.com/basic-learning-07.html
+
+
+
+
+
+
+========================================
+|-- RAID 磁盘状态日常查询，报警，更换 | 磁盘 rebuild 过程中不要做任何写操作/设置操作
+----------------------------------------
+s103磁盘1黄灯，且 predictive failure 上周4，这周 5，且速度卡顿。
+	换掉该磁盘后，发现磁盘9从热备份变为rebuld状态。
+	而磁盘1是未配置状态：需要把磁盘1设置为热备份状态吗？不需要，可能可以自动完成 -> 真的自动完成了，见3
+
+
+1.RAID 整体状态
+(0)硬件信息
+$ lspci | grep RAID
+03:00.0 RAID bus controller: LSI Logic / Symbios Logic MegaRAID SAS-3 3108 [Invader] (rev 02)
+
+
+(1)虚拟磁盘 状态
+$ sudo MegaCli64 -cfgdsply -aAll | grep ^State
+State               : Partially Degraded
+State               : Partially Degraded
+State               : Partially Degraded
+
+2)阵列卡型号信息
+$ sudo MegaCli64 -adpallinfo -aall
+Adapter #0
+                    Versions
+                ================
+Product Name    : PERC H730 Adapter    # 阵列卡名称
+Serial No       : 55F00R4
+FW Package Build: 25.2.2-0004          #阵列卡firmware版本号，版本如果太低，建议升级以提高稳定性及性能
+
+
+
+
+3)RAID 级别: RAID Level
+$ sudo MegaCli64 -cfgdsply -aall | grep "RAID Level"
+RAID Level          : Primary-6, Secondary-0, RAID Level Qualifier-3
+RAID Level          : Primary-6, Secondary-0, RAID Level Qualifier-3
+RAID Level          : Primary-6, Secondary-0, RAID Level Qualifier-3
+
+
+4)大小 Size
+$ sudo MegaCli64 -cfgdsply -aall | grep "^Size"
+Size                : 99.996 GB
+Size                : 99.996 GB
+Size                : 21.633 TB
+
+
+对应三个逻辑磁盘：
+$ lsblk
+NAME             MAJ:MIN RM  SIZE RO TYPE MOUNTPOINT
+sda                8:0    0  100G  0 disk               #100GB
+└─sda1             8:1    0  100G  0 part 
+  ├─os1-root     253:0    0 46.6G  0 lvm  /
+  └─os1-var      253:4    0 18.6G  0 lvm  /var
+sdb                8:16   0  100G  0 disk               #100GB
+└─sdb1             8:17   0  100G  0 part 
+  ├─os2-root     253:3    0 46.6G  0 lvm  
+  └─os2-var      253:5    0 18.6G  0 lvm  
+sdc                8:32   0 21.6T  0 disk               #21TB
+└─sdc1             8:33   0 21.6T  0 part 
+  ├─data-swap    253:1    0  130G  0 lvm  [SWAP]
+  ├─data-home    253:2    0   20G  0 lvm  /home
+  ├─data-tmp     253:6    0  100G  0 lvm  /tmp
+  └─data-results 253:7    0 21.4T  0 lvm  /results
+
+
+
+对应的剩余磁盘空间：
+$ df -lTh | grep -v tmpfs
+	Filesystem               Type      Size  Used Avail Use% Mounted on
+	/dev/mapper/os1-root     ext4       46G  9.4G   34G  22% /
+	/dev/mapper/data-home    ext4       20G   83M   19G   1% /home
+	/dev/mapper/os1-var      ext4       19G  3.9G   14G  23% /var
+	/dev/mapper/data-tmp     ext4       98G  800M   93G   1% /tmp
+	/dev/mapper/data-results ext4       22T   17T  4.2T  80% /results
+
+
+
+
+
+(2)物理磁盘 状态
+
+	# 不建议使用乱序
+	$ sudo MegaCli64 -cfgdsply -aall | grep -P "Firmware state" #只显示8个，且顺序时乱的
+	Firmware state: Rebuild
+	Firmware state: Online, Spun Up
+	Firmware state: Online, Spun Up
+	Firmware state: Online, Spun Up
+	Firmware state: Online, Spun Up
+	Firmware state: Online, Spun Up
+	Firmware state: Online, Spun Up
+	Firmware state: Online, Spun Up
+
+		$ sudo MegaCli64 -cfgdsply -aall | grep -P "Slot" #磁盘编号是乱的
+		Slot Number: 9
+		Slot Number: 1
+		Slot Number: 2
+		Slot Number: 4
+		Slot Number: 5
+		Slot Number: 6
+		Slot Number: 7
+		Slot Number: 8
+
+查看全部盘: 硬件状态
+$ sudo MegaCli64 -PDList -aALL | grep "state"  #显示10个盘，顺序时对的
+Firmware state: Unconfigured(good), Spun Up
+Firmware state: Online, Spun Up
+Firmware state: Online, Spun Up
+Firmware state: Unconfigured(good), Spun Up
+Firmware state: Online, Spun Up
+Firmware state: Online, Spun Up
+Firmware state: Online, Spun Up
+Firmware state: Online, Spun Up
+Firmware state: Online, Spun Up
+Firmware state: Rebuild
+
+	$ sudo MegaCli64 -PDList -aALL | grep "Slot" #磁盘编号是对的
+	Slot Number: 0
+	Slot Number: 1
+	Slot Number: 2
+	Slot Number: 3
+	Slot Number: 4
+	Slot Number: 5
+	Slot Number: 6
+	Slot Number: 7
+	Slot Number: 8
+	Slot Number: 9
+
+硬盘状态解释:
+	如果是unconfigured表示该硬盘未分配加入到阵列中；
+	如果是 unconfigured(bad)表示该盘不但是未分配，而且还坏了，正是“出师未捷身先死”；
+	如果是failed，表示该盘故障无法识别；
+	如果是rebuilding，表示该盘正在重建数据
+
+
+(3)磁盘大小查询
+$ sudo MegaCli64 -PDList -aall | grep  "Raw Size"
+Raw Size: 3.638 TB [0x1d1c0beb0 Sectors]
+Raw Size: 3.638 TB [0x1d1c0beb0 Sectors]
+Raw Size: 3.638 TB [0x1d1c0beb0 Sectors]
+Raw Size: 2.728 TB [0x15d50a3b0 Sectors]
+Raw Size: 3.638 TB [0x1d1c0beb0 Sectors]
+Raw Size: 3.638 TB [0x1d1c0beb0 Sectors]
+Raw Size: 3.638 TB [0x1d1c0beb0 Sectors]
+Raw Size: 3.638 TB [0x1d1c0beb0 Sectors]
+Raw Size: 3.638 TB [0x1d1c0beb0 Sectors]
+Raw Size: 3.638 TB [0x1d1c0beb0 Sectors]
+
+
+
+
+
+
+
+
+2.错误指标监视
+(1)三个错误计数器
+$ sudo MegaCli64 -PDList -aAll | grep Count:
+Media Error Count: 0
+Other Error Count: 0
+Predictive Failure Count: 0 # 这3行 x10
+
+每个盘有三个错误计数器，任何一个值大于100就要立刻引起关注，尤其要关注起增长速度。
+1T以上SATA盘，计数值不够精确，可能所有盘上该值都会大于0，一般重启就会重新清0，如果重启后还是大于0的话，赶紧报修吧。
+SAS盘的计数值则比较准确。
+
+
+盘类型查询：
+$ sudo MegaCli64 -PDList -aAll | grep -P "PD Type:"
+	PD Type: SAS #x10
+
+
+
+(2)警告 alert
+$ sudo MegaCli64 -PDList -aall | grep "alert"
+Drive has flagged a S.M.A.R.T alert : No
+Drive has flagged a S.M.A.R.T alert : No
+Drive has flagged a S.M.A.R.T alert : No
+Drive has flagged a S.M.A.R.T alert : Yes #不识别的磁盘
+Drive has flagged a S.M.A.R.T alert : No
+Drive has flagged a S.M.A.R.T alert : No
+Drive has flagged a S.M.A.R.T alert : No
+Drive has flagged a S.M.A.R.T alert : No
+Drive has flagged a S.M.A.R.T alert : No
+Drive has flagged a S.M.A.R.T alert : No
+
+
+
+(3)是否被RAID识别
+$ sudo MegaCli64 -PDList -aAll | grep "Foreign State"
+Foreign State: None 
+Foreign State: None 
+Foreign State: None 
+Foreign State: Foreign 
+Foreign State: None 
+Foreign State: None 
+Foreign State: None 
+Foreign State: None 
+Foreign State: None 
+Foreign State: None
+
+
+
+
+(4)温度
+查看电池温度，如果相比上一次查看高出不少，就需要关注了，或者可以根据经验设置一个基线值
+$ sudo MegaCli64 -PDList -aall | grep "Temperature"
+Drive Temperature :42C (107.60 F)
+Drive Temperature :50C (122.00 F)
+Drive Temperature :51C (123.80 F)
+Drive Temperature :46C (114.80 F)
+Drive Temperature :49C (120.20 F)
+Drive Temperature :45C (113.00 F)
+Drive Temperature :49C (120.20 F)
+Drive Temperature :52C (125.60 F)
+Drive Temperature :51C (123.80 F)
+Drive Temperature :44C (111.20 F)
+
+
+
+
+
+
+3.其他指标
+(1)电池状态
+$ sudo MegaCli64 -adpbbucmd  -aall | grep -i "Battery State"
+Battery State: Optimal #只有一条。电池状态，如果不是为Optimal，就需要关注了
+
+$ sudo MegaCli64 -adpbbucmd  -aall | grep -i "Charger "
+Charger Status: Complete #电池充放电状态
+
+
+
+(2)阵列卡日志，关注里面的error/fail/warn等多个关键字
+$ sudo MegaCli64 -fwtermlog -dsply -aALL
+
+$ sudo MegaCli64 -fwtermlog -dsply -aALL | grep -i -P "(error|fail)" | tail -n 5
+01/25/26  1:21:17: C0:EVT#52572-01/25/26  1:21:17:  96=Predictive failure: PD 03(e0x20/s3)
+01/26/26  1:17:19: C0:EVT#52573-01/26/26  1:17:19:  96=Predictive failure: PD 00(e0x20/s0)
+01/26/26  1:17:19: C0:EVT#52574-01/26/26  1:17:19:  96=Predictive failure: PD 03(e0x20/s3)
+01/26/26  2:22:30: C0:EVT#52578-01/26/26  2:22:30: 114=State change on PD 00(e0x20/s0) from ONLINE(18) to FAILED(11)
+01/26/26  2:22:31: C0:EVT#52585-01/26/26  2:22:31: 114=State change on PD 00(e0x20/s0) from FAILED(11) to UNCONFIGURED_BAD(1)
+	半夜 2:22 物理磁盘0状态改变，ONLINE(18) -> FAILED(11) -> UNCONFIGURED_BAD(1)
+
+$ date #当前时间正确
+Mon Jan 26 11:43:27 CST 2026
+
+2)查看全部日志，这个时间点附近:
+	01/26/26  2:22:30: C0:EVT#52578-01/26/26  2:22:30: 114=State change on PD 00(e0x20/s0) from ONLINE(18) to FAILED(11)    ## * 磁盘0状态改变
+	01/26/26  2:22:30: C0:EVT#52579-01/26/26  2:22:30:  81=State change on VD 00/0 from OPTIMAL(3) to PARTIALLY DEGRADED(1)
+	01/26/26  2:22:30: C0:EVT#52580-01/26/26  2:22:30: 250=VD 00/0 is now PARTIALLY DEGRADED
+	01/26/26  2:22:30: C0:EVT#52581-01/26/26  2:22:30:  81=State change on VD 01/1 from OPTIMAL(3) to PARTIALLY DEGRADED(1)
+	01/26/26  2:22:30: C0:EVT#52582-01/26/26  2:22:30: 250=VD 01/1 is now PARTIALLY DEGRADED
+	01/26/26  2:22:30: C0:EVT#52583-01/26/26  2:22:30:  81=State change on VD 02/2 from OPTIMAL(3) to PARTIALLY DEGRADED(1)
+	01/26/26  2:22:30: C0:EVT#52584-01/26/26  2:22:30: 250=VD 02/2 is now PARTIALLY DEGRADED
+	01/26/26  2:22:30: C0:LoadBalance 0
+	01/26/26  2:22:31: C0:ArDiskTypeMisMatch : NO_MIXING_VIOLATION  array=0  destPD=9
+	01/26/26  2:22:31: C0:DDF_HspHistWrite : pd=9, enclPd=20, slot=0, entryType=0
+	01/26/26  2:22:31: C0:EVT#52585-01/26/26  2:22:31: 114=State change on PD 00(e0x20/s0) from FAILED(11) to UNCONFIGURED_BAD(1)  ## * 磁盘0状态改变
+
+
+	01/26/26  2:22:31: C0:PD=0 is already cleared from ld=2
+	01/26/26  2:22:31: C0:PD=0 is already cleared from ld=1
+	01/26/26  2:22:31: C0:PD=0 is already cleared from ld=0
+	01/26/26  2:22:31: C0:copyback enabled - spare record not removed - setting PD_INFO.commisionedHsp bit on sparePd=9
+	01/26/26  2:22:31: C0:EVT#52586-01/26/26  2:22:31: 106=Rebuild automatically started on PD 09(e0x20/s9)
+	01/26/26  2:22:31: C0:EVT#52587-01/26/26  2:22:31: 103=Rebuild progress on PD 09(e0x20/s9) is 0.00%(0s)
+	01/26/26  2:22:31: C0:EVT#52588-01/26/26  2:22:31: 114=State change on PD 09(e0x20/s9) from HOT SPARE(2) to REBUILD(14)          # 磁盘1 状态改变
+
+
+	01/26/26  2:25:04: C0:Load Balance Statistics Path0PDs b Path1PDs 0
+	01/26/26  2:25:04: C0:EVT#52589-01/26/26  2:25:04:  91=Inserted: PD 00(e0x20/s0)
+	01/26/26  2:25:04: C0:EVT#52590-01/26/26  2:25:04: 247=Inserted: PD 00(e0x20/s0) Info: enclPd=20, scsiType=0, portMap=00, sasAddr=5000c500e2b4387d,0000000000000000
+	01/26/26  2:25:04: C0:No anchor PI signature on pd 0 - app=ffff ref=ffffffff size=1d1c0beaf salt=d1c0b67f
+	01/26/26  2:25:04: C0:EVT#52591-01/26/26  2:25:04: 114=State change on PD 00(e0x20/s0) from UNCONFIGURED_BAD(1) to UNCONFIGURED_GOOD(0)  ## * 磁盘0状态改变
+	01/26/26  2:25:04: C0:pdHspHistCheckInsertedPd: Start copy back from sparePd=09 to pd=0, changing entryType to ok
+
+
+$ sudo MegaCli64 -fwtermlog -dsply -aALL | grep "Rebuild progress" | tail -n 5
+	01/26/26  2:36:03: C0:EVT#52594-01/26/26  2:36:03: 103=Rebuild progress on PD 09(e0x20/s9) is 0.99%(812s)
+	01/26/26  2:49:19: C0:EVT#52595-01/26/26  2:49:19: 103=Rebuild progress on PD 09(e0x20/s9) is 1.99%(1608s)
+	01/26/26  3:02:39: C0:EVT#52596-01/26/26  3:02:39: 103=Rebuild progress on PD 09(e0x20/s9) is 2.99%(2408s)
+	01/26/26  3:16:08: C0:EVT#52597-01/26/26  3:16:08: 103=Rebuild progress on PD 09(e0x20/s9) is 3.99%(3217s)
+	01/26/26  3:29:26: C0:EVT#52598-01/26/26  3:29:26: 103=Rebuild progress on PD 09(e0x20/s9) is 4.99%(4015s)
+	01/26/26  3:42:45: C0:EVT#52599-01/26/26  3:42:45: 103=Rebuild progress on PD 09(e0x20/s9) is 5.99%(4814s)  #正在磁盘9上重建
+	
+	$ sudo MegaCli64 -fwtermlog -dsply -aALL | grep "Rebuild progress" | tail
+	01/26/26  6:55:24: C0:EVT#52613-01/26/26  6:55:24: 103=Rebuild progress on PD 09(e0x20/s9) is 19.98%(16373s)
+
+	查了一下，和系统时间不同步。
+	AI说：
+		MegaCli 看到的 RAID 日志时间 ≠ Linux 系统时间，这是正常现象。
+		RAID 控制器有自己的独立时钟，默认不与操作系统或 NTP 同步。
+	计算了一下，差别8小时: 可能是时区差别。
+
+
+
+
+
+3)变更日志
+$ sudo MegaCli64 -fwtermlog -dsply -aALL | grep "State change" | tail -n 10
+	12/09/25  1:24:43: C0:EVT#52297-12/09/25  1:24:43: 114=State change on PD 09(e0x20/s9) from ONLINE(18) to HOT SPARE(2) 
+	01/22/26  2:55:11: C0:EVT#52412-01/22/26  2:55:11: 114=State change on PD 03(e0x20/s3) from UNCONFIGURED_GOOD(0) to UNCONFIGURED_BAD(1)
+	01/22/26  2:59:23: C0:EVT#52415-01/22/26  2:59:23: 114=State change on PD 03(e0x20/s3) from UNCONFIGURED_BAD(1) to UNCONFIGURED_GOOD(0)
+	01/26/26  2:22:30: C0:EVT#52578-01/26/26  2:22:30: 114=State change on PD 00(e0x20/s0) from ONLINE(18) to FAILED(11)
+	01/26/26  2:22:30: C0:EVT#52579-01/26/26  2:22:30:  81=State change on VD 00/0 from OPTIMAL(3) to PARTIALLY DEGRADED(1)
+	01/26/26  2:22:30: C0:EVT#52581-01/26/26  2:22:30:  81=State change on VD 01/1 from OPTIMAL(3) to PARTIALLY DEGRADED(1)
+	01/26/26  2:22:30: C0:EVT#52583-01/26/26  2:22:30:  81=State change on VD 02/2 from OPTIMAL(3) to PARTIALLY DEGRADED(1)
+	01/26/26  2:22:31: C0:EVT#52585-01/26/26  2:22:31: 114=State change on PD 00(e0x20/s0) from FAILED(11) to UNCONFIGURED_BAD(1)
+	01/26/26  2:22:31: C0:EVT#52588-01/26/26  2:22:31: 114=State change on PD 09(e0x20/s9) from HOT SPARE(2) to REBUILD(14)
+	01/26/26  2:25:04: C0:EVT#52591-01/26/26  2:25:04: 114=State change on PD 00(e0x20/s0) from UNCONFIGURED_BAD(1) to UNCONFIGURED_GOOD(0)
+
+
+$ sudo MegaCli64 -fwtermlog -dsply -aALL | grep "State change" | grep "on PD" | tail -n 10
+	12/08/25  7:10:19: C0:EVT#52188-12/08/25  7:10:19: 114=State change on PD 00(e0x20/s0) from UNCONFIGURED_GOOD(0) to COPYBACK(20)
+	12/08/25  7:10:19: C0:EVT#52191-12/08/25  7:10:19: 114=State change on PD 03(e0x20/s3) from UNCONFIGURED_BAD(1) to UNCONFIGURED_GOOD(0)
+	12/09/25  1:24:43: C0:EVT#52295-12/09/25  1:24:43: 114=State change on PD 00(e0x20/s0) from COPYBACK(20) to ONLINE(18)
+	12/09/25  1:24:43: C0:EVT#52297-12/09/25  1:24:43: 114=State change on PD 09(e0x20/s9) from ONLINE(18) to HOT SPARE(2)                   #9号设置为热备份
+	01/22/26  2:55:11: C0:EVT#52412-01/22/26  2:55:11: 114=State change on PD 03(e0x20/s3) from UNCONFIGURED_GOOD(0) to UNCONFIGURED_BAD(1)
+	01/22/26  2:59:23: C0:EVT#52415-01/22/26  2:59:23: 114=State change on PD 03(e0x20/s3) from UNCONFIGURED_BAD(1) to UNCONFIGURED_GOOD(0)
+	01/26/26  2:22:30: C0:EVT#52578-01/26/26  2:22:30: 114=State change on PD 00(e0x20/s0) from ONLINE(18) to FAILED(11)
+	01/26/26  2:22:31: C0:EVT#52585-01/26/26  2:22:31: 114=State change on PD 00(e0x20/s0) from FAILED(11) to UNCONFIGURED_BAD(1)
+	01/26/26  2:22:31: C0:EVT#52588-01/26/26  2:22:31: 114=State change on PD 09(e0x20/s9) from HOT SPARE(2) to REBUILD(14)
+	01/26/26  2:25:04: C0:EVT#52591-01/26/26  2:25:04: 114=State change on PD 00(e0x20/s0) from UNCONFIGURED_BAD(1) to UNCONFIGURED_GOOD(0)
+
+
+历史记录中已完成重建的记录:
+$ sudo MegaCli64 -fwtermlog -dsply -aALL | grep "Rebuild complete"
+	12/06/25  0:36:58: C0:EVT#51960-12/06/25  0:36:58:  99=Rebuild complete on VD 00/0
+	12/06/25  0:44:41: C0:EVT#51961-12/06/25  0:44:41:  99=Rebuild complete on VD 01/1
+	12/07/25  8:05:20: C0:EVT#52065-12/07/25  8:05:20:  99=Rebuild complete on VD 02/2
+	12/07/25  8:05:20: C0:EVT#52066-12/07/25  8:05:20: 100=Rebuild complete on PD 09(e0x20/s9)
+	01/26/26  2:28:39: C0:EVT#52592-01/26/26  2:28:39:  99=Rebuild complete on VD 00/0
+	01/26/26  2:34:38: C0:EVT#52593-01/26/26  2:34:38:  99=Rebuild complete on VD 01/1
+
+	# 补上这两行
+	01/27/26  9:15:35: C0:EVT#52695-01/27/26  9:15:35:  99=Rebuild complete on VD 02/2
+	01/27/26  9:15:35: C0:EVT#52696-01/27/26  9:15:35: 100=Rebuild complete on PD 09(e0x20/s9)
+
+
+4)查看重建进度
+$ sudo MegaCli64 -PDRbld -ShowProg -PhysDrv [32:09] -aALL  #09是磁盘编号
+	Rebuild Progress on Device at Enclosure 32, Slot 9 Completed 19% in 260 Minutes.
+
+$ sudo MegaCli64 -PDRbld -ShowProg -PhysDrv [32:09] -a0
+	Rebuild Progress on Device at Enclosure 32, Slot 9 Completed 19% in 265 Minutes.
+
+	恢复后则显示：
+	Device(Encl-32 Slot-9) is not in rebuild process
+
+以动态可视化文字界面显示
+$ sudo MegaCli64 -PDRbld -ProgDsply -PhysDrv [32:09] -a0
+Rebuild progress of physical drives...
+  Enclosure:Slot               Percent Complete                       Time Elps
+       032 :09     #########**************19 %*********************** 04:28:21
+    Press <ESC> key to quit...
+
+
+
+每小时查看一次进度
+$ sudo MegaCli64 -PDRbld -ShowProg -PhysDrv [32:9] -aALL
+
+查看是否出现介质错误 / 预测故障
+$ sudo MegaCli64 -PDList -aALL | egrep -i "Slot Number|Firmware state|Media Error|Predictive Failure"
+
+
+
+
+
+
+
+
+4.复制后的状态
+(1)拔掉旧盘插入新盘(2026.1.26 11:00+)
+slot 9 马上变 Rebuld 状态。
+slot 0 是 Firmware state: Unconfigured(good), Spun Up
+
+(2)备份后(2026.1.27 17:30+)
+大约24小时后（因为有测序数据写入，可能占用了IO，这次是30小时），Rebuld结束。
+
+$ sudo MegaCli64 -PDList -aALL | grep "Firmware state"
+Firmware state: Copyback              #slot0 是 Copyback 状态
+Firmware state: Online, Spun Up
+Firmware state: Online, Spun Up
+Firmware state: Unconfigured(good), Spun Up
+Firmware state: Online, Spun Up
+Firmware state: Online, Spun Up
+Firmware state: Online, Spun Up
+Firmware state: Online, Spun Up
+Firmware state: Online, Spun Up
+Firmware state: Online, Spun Up      #slot 9是 Online 状态
+
+
+(3)次日(2026.1.28 8:20)
+$ sudo MegaCli64 -PDList -aALL | grep "Firmware state"
+[sudo] password for wangjl: 
+Firmware state: Online, Spun Up        #slot0 正常
+Firmware state: Online, Spun Up
+Firmware state: Online, Spun Up
+Firmware state: Unconfigured(good), Spun Up
+Firmware state: Online, Spun Up
+Firmware state: Online, Spun Up
+Firmware state: Online, Spun Up
+Firmware state: Online, Spun Up
+Firmware state: Online, Spun Up
+Firmware state: Hotspare, Spun Up    #slot9 重新变成 Hotspare
+
+整体状态良好:
+$ sudo MegaCli64 -LDInfo -LALL -aALL | grep -E "State|Degraded|Rebuild"
+State               : Optimal
+State               : Optimal
+State               : Optimal
+
+
+
+(4)初步检查，这次rebuild过程中写入的数据还在
+上次为什么消失了？
+
+
+
+
+==> 详细错误信息
+
+$ sudo MegaCli64 -cfgdsply -aall | grep -P "(Slot Number|Count:|Firmware state)"
+Slot Number: 9
+Media Error Count: 0
+Other Error Count: 0
+Predictive Failure Count: 0
+Firmware state: Rebuild
+Slot Number: 1
+Media Error Count: 0
+Other Error Count: 0
+Predictive Failure Count: 0
+Firmware state: Online, Spun Up
+Slot Number: 2
+Media Error Count: 0
+Other Error Count: 0
+Predictive Failure Count: 0
+Firmware state: Online, Spun Up
+Slot Number: 4
+Media Error Count: 0
+Other Error Count: 0
+Predictive Failure Count: 0
+Firmware state: Online, Spun Up
+Slot Number: 5
+Media Error Count: 0
+Other Error Count: 0
+Predictive Failure Count: 0
+Firmware state: Online, Spun Up
+Slot Number: 6
+Media Error Count: 0
+Other Error Count: 0
+Predictive Failure Count: 0
+Firmware state: Online, Spun Up
+Slot Number: 7
+Media Error Count: 0
+Other Error Count: 0
+Predictive Failure Count: 0
+Firmware state: Online, Spun Up
+Slot Number: 8
+Media Error Count: 0
+Other Error Count: 0
+Predictive Failure Count: 0
+Firmware state: Online, Spun Up
+
+
+
+
+
+
+
+
+
+ref:
+https://blog.csdn.net/English0523/article/details/82893085
+
+
+
+
+
+
+========================================
+|-- 什么情况下 Copyback 会自动发生 / 如何禁止 Copyback？
+----------------------------------------
+1.Copyback 是什么
+Copyback = 当原 RAID 成员盘“重新变得可用”时，
+控制器把数据从 Hotspare 自动拷回原盘，并让 Hotspare 退回备用。
+
+
+2.什么情况下会自动发生 Copyback
+自动 Copyback 的必要条件（同时满足）
+	阵列曾经 Degraded
+	Hotspare 介入并完成 Rebuild
+	原始盘仍然存在于系统中
+	原始盘状态变为：
+		Unconfigured(good) 或
+		Online（但未在 RAID）
+	Copyback 被允许（默认是 ON）
+
+你这次的情形完全命中。
+	不对，我的不是原盘，只是原盘位新插入的盘。
+
+
+哪些“原始盘恢复”会触发 Copyback？
+	场景	                            是否触发
+	盘被短暂掉线（背板抖动）	        yes
+	更换线缆 / 背板重连     	        y
+	硬盘短暂 timeout 后恢复	            y
+	你手动把盘设回 Unconfigured(good)	y
+	盘被明确标记 Failed	                 x
+	盘被物理拔掉	                     x
+
+控制器不关心“你信不信这块盘”，只看“它还能不能用”。
+
+
+
+
+
+3.为什么有时你不想要 Copyback
+Copyback 的代价（真实世界）
+	x 二次全盘 I/O（Hotspare -> 原盘）
+	x 延长 RAID 高负载时间
+	x 如果“原盘其实不健康”，可能：
+		Copyback 中途失败
+		造成第二次 Degraded
+
+典型不想要的场景
+	原盘有 Predictive Failure
+	原盘是老盘
+	你打算直接用 Hotspare 顶替
+	你希望 RAID 尽快稳定，不再折腾
+
+
+
+
+
+4.如何禁止 Copyback（你最关心的）
+(1)方法一（推荐 / 全局）：关闭 Auto Copyback
+sudo MegaCli64 -AdpSetProp -AutoCopyBackDsbl -aALL
+验证：
+$ sudo MegaCli64 -AdpGetProp CopyBackDsbl -aALL
+	Adapter 0: Copyback: Enabled #这是默认值
+
+	你会看到类似：Auto Copyback: Disabled
+	含义：
+		以后 不会自动 copyback
+		Hotspare 会一直作为 RAID 成员
+		原盘不会被重新拉回
+
+查看更多磁盘属性:
+$ sudo MegaCli64 -AdpAllInfo -aALL | grep -i copy
+	Disable Copyback                        : No
+	Enable Copyback on SMART                : No
+	Enable Copyback to SSD on SMART Error   : No
+
+
+
+
+
+
+(2)方法二（局部 / 不推荐）：提前标记原盘 Failed
+sudo MegaCli64 -PDOffline -PhysDrv [E:S] -aALL
+sudo MegaCli64 -PDMarkMissing -PhysDrv [E:S] -aALL
+
+缺点：
+	有人为风险
+	不适合自动化
+	误操作代价高
+
+
+
+5.那关闭 Auto Copyback 有没有副作用？
+有，但通常是可控且可接受的
+
+	影响	                说明
+	Hotspare 长期被占用	    是
+	原盘被闲置	            是
+	阵列性能下降	        x（没有）
+	RAID 风险上升	        x（反而更低）
+
+生产环境普遍做法：
+	关闭 Auto Copyback + 人工判断是否换回
+
+
+
+
+6.推荐给你的“标准运维策略”（很实用）
+建议你以后统一采用：
+	关闭 Auto Copyback
+	Rebuild 完成后：
+		如果原盘健康 → 手动换回（可选）
+		如果原盘可疑 → 直接更换，Hotspare 升正
+
+这条规则可以写进运维 SOP：
+	Hotspare 一旦介入并完成 rebuild，不自动 copyback，由人工决定原盘是否可信。
+
+
+
+
+7.如果你想“只对某次 rebuild 禁止 copyback”
+MegaRAID 不支持“单次 copyback 策略”
+只有：
+	全局 Auto Copyback
+	人工干预
+所以你现在这个理解已经是最优解。
+
+
+
+
+
+8.一句话总结
+
+Copyback 会在“原盘重新可用 + AutoCopyback 开启”时自动发生；
+关闭 AutoCopyback 是避免二次风险的最干净、最安全方式。
+
+如果你愿意，我可以帮你把 “Rebuild / Copyback / Patrol Read / CC” 的自动策略一次性梳成一张表，以后再遇到 RAID 行为异常，一眼就知道是哪一条在起作用。
+
+
+
+
+
+
+========================================
+|-- 初步检查，这次rebuild过程中写入的数据还在，上次另一个RAID重建后，为什么 rebuld 过程中删除的几个文件又出现了？
+----------------------------------------
+1.这是正常硬件行为
+RAID 在你不知情的情况下，合法地选择了另一份历史 block 状态
+
+
+2.建议:
+Rebuild / Copyback 期间： 只读 or 尽量不写
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+========================================
+简单 RAID 状态监控系统：bash 生成 txt 文件 + web 查看文字
+----------------------------------------
+
+todo:
+整合到 监控脚本中: https://gitee.com/dawnEve/system_moniter
+
+
+1.总体架构
+- 后台：crontab定时任务(6小时更新一次: crontab -l)。每个服务器shell脚本生成RAID状态txt文件
+	一个shell脚本
+- 中间件：webPan文件根目录，除了IP，其他一致。
+- 前台：s3上网页ajax获取txt，js高亮显示
+	一个html网页
+	几行html A 链接
+
+
+(1)后台shell脚本
+	时间 / 主机信息
+	Logical Drive 总体状态
+	是否有 rebuild / init / CC 正在进行
+	物理盘异常（非 Online / Hotspare）
+	最近的 RAID 事件（可选，简短）
+
+	每个磁盘状态
+	错误数
+
+开发方法: test on 103, copy to s3, s5
+	shell 脚本: 固定从 103 home 复制，地址固定，添加x权限
+	V0.2 debug 调整 Firmware state 到行末
+
+@103$ cd ~
+$ cat raid_status.sh
+#!/bin/bash
+# RAID status snapshot (read-only cmd)
+
+OUT=$1 #"/var/log/raid_status.txt"
+echo "output: $OUT"
+TS=$(date "+%F %T %Z")
+VERSION="V0.2"
+HOST=$(hostname)
+
+{
+echo "===== RAID STATUS SNAPSHOT ====="
+echo "Version      : $VERSION"
+echo "Host      : $HOST"
+echo "Time      : $TS"
+
+echo
+echo "=== Logical Drive Status ==="
+MegaCli64 -LDInfo -Lall -aALL 2>/dev/null | \
+egrep -i "Virtual Drive|State|RAID Level|^Size"
+
+echo
+echo "=== 磁盘划分 ==="
+lsblk | grep -v "loop"
+
+echo
+echo "=== 磁盘使用率 ==="
+df -lTh | grep -v tmpfs | grep -v loop | grep -v overlay
+
+echo
+echo "=== Physical Drive Status ==="
+# Online, Spun Up
+MegaCli64 -PDList -aALL | grep -P "(Slot|state)" | awk '{if(NR%2==1) {line=$0} else {print line " " $0}}'
+
+echo
+echo "=== Rebuild / Init / CC(Check Consistency) Progress ==="
+
+#RB=$(MegaCli64 -PDRbld -ShowProg -aALL 2>/dev/null | grep -i "Completed")
+cmd="sudo MegaCli64 -PDRbld -ShowProg -PhysDrv [32:09] -a0"
+echo "You can run(09 is slot number): $cmd"
+
+# INIT=$(MegaCli64 -LDInit -ShowProg -LALL -aALL 2>/dev/null | grep -i "Init")
+# CC=$(MegaCli64 -LDCC -ShowProg -LALL -aALL 2>/dev/null | grep -i "Completed")
+
+# [ -n "$RB" ]   && echo "Rebuild :" && echo "$RB"   || echo "Rebuild : none"
+# [ -n "$INIT" ] && echo "Init    :" && echo "$INIT" || echo "Init    : none"
+# [ -n "$CC" ]   && echo "CC      :" && echo "$CC"   || echo "CC      : none"
+
+echo
+echo "=== Physical Drive Exceptions ==="
+MegaCli64 -PDList -aALL 2>/dev/null | \
+awk '
+/Slot Number/ {
+    slot = $NF
+}
+/Media Error Count/ {
+    media = $NF
+}
+/Predictive Failure Count/ {
+    pf = $NF
+}
+/Firmware state/ {
+    state = $0
+    if ((media + 0) > 0 || (pf + 0) > 0) {
+        print "Slot " slot " | " state " | MediaErr=" media " | PredFail=" pf
+    }
+
+    slot = state = media = pf = ""
+}
+'
+
+echo
+echo "=== Error & Failure Count ==="
+MegaCli64 -PDList -aAll | grep -P "(Slot|Count:)"
+
+echo
+echo "=== Recent RAID Events (last 15) ==="
+echo "Note: hour should +8"
+MegaCli64 -fwtermlog -dsply -aALL 2>/dev/null | tail -n 15
+
+echo "=============== =================="
+} > "$OUT"
+
+# 或者按时间滚动输出：
+# OUT="/var/log/raid_status_$(date +%F_%H%M).txt"
+
+
+
+(2)手动执行
+$ sudo bash /home/wangjl/raid_status.sh /results/analysis/output/Home/raid_status.txt
+
+查看:
+http://192.168.1.103:8000/file/raid_status.txt
+
+
+
+(3)自动定时执行 sudo 命令
+$ crontab -e
+# 添加一行：每3min执行一次
+#*/3 * * * * /usr/bin/sudo /bin/bash /home/wangjl/raid_status.sh /results/analysis/output/Home/raid_status.txt
+# 每6小时执行一次
+* */6 * * * /usr/bin/sudo /bin/bash /home/wangjl/raid_status.sh /results/analysis/output/Home/raid_status.txt
+
+crontab -l
+
+
+设置允许路径
+$ sudo visudo #添加一行
+#opsuser ALL=(root) NOPASSWD: /usr/local/bin/raid_status.txt.sh
+wangjl ALL=(root) NOPASSWD: /home/wangjl/raid_status.sh
+	推荐: 精确到脚本路径，不要给 NOPASSWD: ALL
+
+2)检测
+$ sudo -l
+你应看到类似：(ALL) NOPASSWD: /home/wangjl/raid_status.sh
+
+再测试：
+@103$ sudo bash /home/wangjl/raid_status.sh /results/analysis/output/Home/raid_status.txt
+必须不提示输入密码。
+	发现还让输入密码！！
+
+3)添加可执行权限
+$ chmod +x raid_status.sh
+$ /usr/bin/sudo /home/wangjl/raid_status.sh /results/analysis/output/Home/raid_status.txt
+同时，crontab 命令中也去掉 /bin/bash
+
+
+
+
+
+2.迁移到s3
+(1)复制脚本
+@s3$ cd
+$ scp wangjl@192.168.1.103:/home/wangjl/raid_status.sh .
+
+添加可执行权限
+$ chmod +x raid_status.sh
+
+
+(2)手动执行
+$ sudo /home/wangjl/raid_status.sh /home/marigold/data/web/docs/raid_status.txt
+
+查看: http://s3.biomooc.com:8000/file/raid_status.txt
+
+
+(3)设置定时任务
+$ crontab -e
+# 添加一行：每6小时执行一次
+* */6 * * * /usr/bin/sudo /home/wangjl/raid_status.sh /home/marigold/data/web/docs/raid_status.txt
+
+$ crontab -l
+
+
+(4)自动定时执行 sudo 命令
+设置允许路径
+$ sudo vim /etc/sudoers #添加一行
+wangjl ALL=(root) NOPASSWD: /home/wangjl/raid_status.sh
+	推荐: 精确到脚本路径，不要给 NOPASSWD: ALL
+
+2)检测
+$ sudo -l
+你应看到类似：(ALL) NOPASSWD: /home/wangjl/raid_status.sh
+
+再测试：
+@s3$ /usr/bin/sudo /home/wangjl/raid_status.sh /home/marigold/data/web/docs/raid_status.txt
+必须不提示输入密码。
+
+
+
+
+
+
+3.迁移到s5
+(1)复制脚本
+@s5$ cd
+$ scp wangjl@192.168.1.103:/home/wangjl/raid_status.sh .
+
+添加可执行权限
+$ chmod +x raid_status.sh
+
+(2)手动执行
+$ sudo /home/wangjl/raid_status.sh /results/raid_status.txt
+
+查看: http://s3.biomooc.com:8000/file/raid_status.txt
+
+
+(3)设置定时任务
+$ crontab -e
+# 添加一行：每6小时执行一次
+* */6 * * * /usr/bin/sudo /home/wangjl/raid_status.sh /results/raid_status.txt
+
+$ crontab -l
+
+
+(4)自动定时执行 sudo 命令
+设置允许路径
+$ sudo vim /etc/sudoers #添加一行
+wangjl ALL=(root) NOPASSWD: /home/wangjl/raid_status.sh
+
+
+==> 修改hostname:
+$ hostname
+CMF3322
+$ vim /etc/hostname #修改为server5, 下次重启生效
+$ cat /etc/hostname 
+server5
+
+
+
+
+
+
+
+4.网页汇总
+(1)总链接 -> 升级链接为(3)
+wangjl@s3
+$ vim /var/www/sys/index.html
+
+添加:
+<h2>RAID status(Fresh every 6 hours)</h2>
+<p>
+  <a href="http://192.168.1.3:8000/file/raid_status.txt">s3</a> |
+  <a href="http://192.168.1.5:8000/file/raid_status.txt">s5</a> |
+  <a href="http://192.168.1.103:8000/file/raid_status.txt">s103</a>
+</p>
+
+url: http://sys.biomooc.com/
+
+
+
+
+(2)高亮显示错误行
+$ cat /var/www/sys/raid_status.html
+
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>RAID Status Monitor</title>
+<style>
+body {
+    font-family: monospace;
+    background: #111;
+    color: #eee;
+    padding: 20px;
+}
+.line {
+    /*padding: 4px 6px;*/
+    white-space: pre;
+}
+.ok {
+    /*color: #4CAF50;*/
+}
+.warn {
+    color: #FFC107;
+    font-weight: bold;
+}
+.err {
+    color: #F44336;
+    font-weight: bold;
+}
+</style>
+</head>
+<body>
+
+<h2>RAID Status (<span id="host"></span>)</h2>
+<div id="content">Loading...</div>
+
+<script>
+// const url = "http://192.168.1.103:8000/file/raid_status.txt";
+// const url = `http://${host}:8000/file/raid_status.txt`;
+
+// URL参数 host= 获取IP地址
+const params = new URLSearchParams(window.location.search);
+const host = params.get("host") || "192.168.1.103";
+
+const ipPattern = /^(\d{1,3}\.){3}\d{1,3}$/;
+const safeHost = ipPattern.test(host) ? host : "192.168.1.103";
+
+const url = `http://${safeHost}:8000/file/raid_status.txt`;
+
+document.getElementById("host").textContent = safeHost;
+
+function classify(line) {
+    /* 1. RAID State 行优先判断 */
+    if (line.trim().startsWith("State")) {
+        if (/failed/i.test(line)) {
+            return "err";
+        }
+        if (/degrad/i.test(line)) {
+            return "warn";
+        }
+        return "ok";
+    }
+	
+	if (line.trim().startsWith("==")) {
+        if (/Physical Drive Exceptions/i.test(line)) {
+            return "warn";
+        }
+        return "ok";
+    }
+
+	if (line.match(/Firmware state/)) {
+        if (! /Online, Spun Up/i.test(line)) {
+            return "warn";
+        }
+        return "ok";
+    }
+
+	/* 2. Error Count 行 */
+    const m = line.match(/Count:\s*(\d+)/);
+    if (!m) return "ok";
+
+    const value = parseInt(m[1], 10);
+    if (value === 0) return "ok";
+
+	/* 3.Predictive Failure 特殊对待 */
+    if (line.includes("Predictive Failure")) return "err";
+
+	/* 4.其他 Error Count */
+    return "warn";
+}
+
+function loadRaidStatus() {
+    fetch(url)
+        .then(resp => {
+            if (!resp.ok) throw new Error("HTTP error");
+            return resp.text();
+        })
+        .then(text => {
+            const container = document.getElementById("content");
+            container.innerHTML = "";
+
+            text.split(/\r?\n/).forEach(line => {
+                const div = document.createElement("div");
+                div.className = "line " + classify(line);
+                // div.textContent = line;
+				div.textContent = line === "" ? "\u00A0" : line;
+                container.appendChild(div);
+            });
+        })
+        .catch(err => {
+            document.getElementById("content").textContent =
+                "Failed to load raid_status.txt";
+        });
+}
+
+// 首次加载
+loadRaidStatus();
+
+// 每60秒自动刷新
+//setInterval(loadRaidStatus, 60000);
+</script>
+
+</body>
+</html>
+
+
+查看效果:
+	http://sys.biomooc.com/raid_status.html
+	http://sys.biomooc.com/raid_status.html?host=192.168.1.3
+
+
+(3)总链接修改
+wangjl@s3
+$ vim /var/www/sys/index.html
+
+修改url:
+<h2>RAID status(Fresh every 6 hours)</h2>
+<p>
+  <a href="raid_status.html?host=192.168.1.3">s3</a> |
+  <a href="raid_status.html?host=192.168.1.5">s5</a> |
+  <a href="raid_status.html?host=192.168.1.103">s103</a>
+</p>
+
+url: http://sys.biomooc.com/
+
+可以每周抄写磁盘状态了。
+	E:\hospital\C04-测序报告生成系统\备份统计表\02-磁盘状态统计表.xlsx
+	电子版 + 纸质版
+
+
+
+
+
+
+
+
+========================================
+|-- Media Error Count 和 Predictive Failure Count 大于0，哪个更危险？ => 任何出现 Predictive Failure 的物理盘，不得再作为 Hotspare 或 RAID 成员
+----------------------------------------
+一般情况下 Predictive Failure Count > 0 比 Media Error Count > 0 更危险、优先级更高。
+
+1.Media Error Count（介质错误）
+硬盘在读写扇区时出现不可恢复的介质错误
+
+典型特征
+	可能长期停留在一个小数字
+	不一定继续增长
+	很多企业盘允许少量 Media Error 长期存在
+
+
+2.Predictive Failure Count（预测失败）
+含义
+	硬盘固件 / RAID 控制器判定：
+		“这块盘的健康状态已经触发失败预测模型”
+通常基于：
+	SMART 关键属性异常
+	重映射失败
+	校准失败
+	内部自检异常
+	频繁超时 / 重试
+
+这是“统计学 + 厂商模型”的结论，而不是单一错误
+
+RAID 控制器的态度
+	标记为 Predicted Failure
+	很多控制器会：
+		降低该盘优先级
+		建议立即更换
+		在下次重启或 rebuild 时直接踢盘
+#
+
+
+
+
+========================================
+s3 磁盘快坏了一块怎么办？接近 彻底坏 的指标是哪些？
+----------------------------------------
+0.标准
+立即备份‌：所有Media Error Count不为0的磁盘，其上的数据都需要立即备份。
+‌
+监控趋势‌：对于Media Error Count为19、8、2的磁盘，可以定期（比如每天）运行检查命令，观察错误计数是否快速增加。
+‌
+准备更换‌：对于Media Error Count为264的磁盘，应尽快准备备件，在业务低峰期进行更换。
+
+
+
+操作优先级建议‌：
+	‌1. Predictive Failure Count > 0‌ → 立即更换
+	‌2. Media Error Count ≥ 50‌ → 24小时内更换
+	‌3. Media Error Count > 0 但 < 50‌ → 加强监控，每周复查
+	‌4. Other Error Count > 0‌ → 优先检查线缆与背板
+
+设置警告:
+	Media Error Count > 10 → 邮件告警
+	Predictive Failure Count > 0 → 短信+电话告警
+
+
+
+1.
+$ sudo MegaCli64 -LdPdInfo -aALL | grep "Predictive Failure Count"
+Predictive Failure Count: 0 #27个重复
+	如果某个磁盘的“Predictive Failure Count”不为0，说明RAID卡已经预测到该磁盘即将故障，这是‌最高级别的预警‌，需要优先处理。
+
+$ sudo MegaCli64 -LdPdInfo -aALL | grep "Other Error Count"
+Other Error Count: 0  #27个重复
+	这个值不为0可能表示磁盘连接松动或接口问题，可以尝试重新插拔磁盘。
+
+
+
+
+
+
+2.查看这些磁盘是否在重建或降级状态
+
+(1)查看阵列状态
+$ sudo MegaCli64 -LDInfo -LALL -aALL | grep -E "State|Degraded|Rebuild"
+State               : Optimal
+State               : Optimal
+State               : Optimal
+
+(2)查看是否有离线磁盘
+$ sudo MegaCli64 -PDList -aALL | grep "Firmware state" | grep -v "Online\|Hotspare"
+Firmware state: Unconfigured(good), Spun Up
+
+
+
+
+
+
+
+3.如果错误计数在持续增加，就立即备份数据
+
+$ sudo MegaCli64 -PDList -aALL | grep "Media Error Count:"
+Media Error Count: 0
+Media Error Count: 19
+Media Error Count: 8
+Media Error Count: 0
+Media Error Count: 264
+Media Error Count: 0
+Media Error Count: 2
+Media Error Count: 0
+Media Error Count: 0
+Media Error Count: 0
+
+
+$ sudo MegaCli64 -PDList -aALL | grep "Foreign State"
+	是否不识别？
+
+
+
+4.日常常用命令: 快速诊断命令速查
+(1)查看所有物理磁盘健康状态（含关键指标）
+$ sudo MegaCli64 -PDList -aALL | grep -E "(Slot|Media Error Count|Predictive Failure Count|Other Error Count|Firmware state)"
+
+
+(2)查看逻辑阵列状态
+$ sudo MegaCli64 -LDInfo -Lall -aALL
+
+
+(3)查看RAID重建进度（如有）
+MegaCli64 -PDRbld -ShowProg -PhysDrv [E:S] -aALL
+
+$ sudo MegaCli64 -PDRbld -ShowProg -PhysDrv [32:09] -aAll
+Rebuild Progress on Device at Enclosure 32, Slot 9 Completed 89% in 418 Minutes.
+	需要修改 09，它是磁盘slot编号
+
+
+(4)查看RAID卡错误日志（定位历史故障）
+MegaCli64 -FwTermLog -Dsply -aALL
+
+
+
+
+5.重建过程中
+(1)重要提醒
+	不要同时更换多块磁盘 - 一次只换一块，等重建完成再换下一块
+	重建期间避免断电 - 重建时断电可能导致数据损坏
+	定期检查 - 每月至少检查一次磁盘健康状态
+	准备热备盘 - 建议配置热备盘以缩短恢复时间
+
+
+
+(2)配置热备盘
+# 查看是否配置了热备盘
+sudo MegaCli64 -PDList -aALL | grep "Hotspare"
+
+# 设置全局热备盘
+$ sudo MegaCli64 -PDHSP -Set -PhysDrv [Enclosure:Slot] -a0
+
+
+-> 热备盘（Hotspare）是预先安装在 RAID 阵列中但未使用的备用硬盘，当阵列中有硬盘故障时，它能自动替换故障盘并开始数据重建。
+
+
+
+
+
+
+
+========================================
+|-- 在 s3 设置 slot 9 为热备份盘
+----------------------------------------
+1.首先确认备份磁盘详细信息
+(1)先确认 Enclosure Device ID
+$ sudo MegaCli64 -PDList -aALL | grep -B5 "Slot Number: 9"
+Drive has flagged a S.M.A.R.T alert : No
+
+Enclosure Device ID: 32
+Slot Number: 9
+
+
+(2)查看 Slot 9 的完整信息（确认容量和型号）
+$ sudo MegaCli64 -PDInfo -PhysDrv [32:9] -a0
+
+Raw Size: 3.638 TB [0x1d1c0beb0 Sectors]
+Non Coerced Size: 3.637 TB [0x1d1b0beb0 Sectors]
+Firmware state: Unconfigured(good), Spun Up
+
+
+
+
+
+
+2.设置热备盘
+
+$ sudo MegaCli64 -PDList -aALL | grep -E "(Slot|Media Error Count|Predictive Failure Count|Other Error Count|Firmware state)"
+确认状态:
+	Slot Number: 4
+	Media Error Count: 264      #slot=4坏了
+	Other Error Count: 0
+	Predictive Failure Count: 0
+	Firmware state: Online, Spun Up
+
+	Slot Number: 9
+	Media Error Count: 0
+	Other Error Count: 0
+	Predictive Failure Count: 0
+	Firmware state: Unconfigured(good), Spun Up  #slot=9 的未配置
+
+
+(1)设置为全局热备盘（最常见的做法）
+$ sudo MegaCli64 -PDHSP -Set -PhysDrv [32:9] -a0
+	Adapter: 0: Set Physical Drive at EnclId-32 SlotId-9 as Hot Spare Success.
+
+(2)或者设置为专用热备盘（只服务于特定阵列组）
+# sudo MegaCli64 -PDHSP -Set -PhysDrv [32:9] -a0 -Dedicated -Array0
+
+
+
+3.验证设置结果
+(1)查看热备盘状态
+$ sudo MegaCli64 -PDList -aALL | grep -B5 -A5 "Slot Number: 9"
+	Drive has flagged a S.M.A.R.T alert : No
+
+	Enclosure Device ID: 32
+	Slot Number: 9
+	Enclosure position: 1
+	Device Id: 9
+	WWN: 5000CCA25DDDBDCF
+	Sequence Number: 2
+	Media Error Count: 0
+
+(2)或者用这个命令确认
+$ sudo MegaCli64 -PDInfo -PhysDrv [32:9] -a0 | grep -i "firmware state"
+Firmware state: Hotspare, Spun Up
+
+
+
+
+4.磁盘状态
+(1)2026.1.22
+Slot	Media Errors	风险等级	建议行动
+4	264	🔴 极高风险	立即准备更换
+1	19	🟠 高风险	密切监控
+2	8	🟡 中风险	定期检查
+6	2	🟢 低风险	正常监控
+9	0	✅ 健康	设为热备盘
+
+
+
+5.热备盘生效后的预期行为
+(1)当前状态：
+	- Slot 4 (264 errors) 随时可能故障
+	- Slot 9 设为热备盘
+
+(2)当 Slot 4 故障时：
+	1. 阵列进入降级状态（但数据完整）
+	2. 热备盘（Slot 9）自动激活（约1-2分钟）
+	3. 开始自动重建数据到 Slot 9
+	4. 重建期间避免断电和大量IO
+	5. 重建完成后，阵列恢复正常
+	6. 物理更换 Slot 4 的故障磁盘
+	7. 将新磁盘设为新的热备盘
+
+(3)假设 Slot 4 故障时的变化：
+	# 监控状态变化的命令
+	$ watch -n 5 'sudo MegaCli64 -PDList -aALL | grep -E "(Slot Number:|Firmware state:)" | grep -A1 "Slot Number:"'
+	故障前：
+	Slot Number: 4    → Firmware state: Online, Spun Up (有264 errors)
+	Slot Number: 9    → Firmware state: Hotspare, Spun Up
+
+	故障发生时（约30秒内）：
+	Slot Number: 4    → Firmware state: Failed
+	Slot Number: 9    → Firmware state: Rebuild
+
+	重建过程中：
+	Slot Number: 4    → Firmware state: Failed
+	Slot Number: 9    → Firmware state: Rebuild (X% Progress)
+
+	重建完成后：
+	Slot Number: 4    → Firmware state: Failed (需物理更换)
+	Slot Number: 9    → Firmware state: Online, Spun Up (完全替换Slot 4)
+
+
+Firmware state 状态说明:
+	Online, Spun Up      - 磁盘在线正常运行
+	Hotspare             - 热备盘待命中
+	Hotspare, Spun Up    - 热备盘已启动待命
+	Rebuild              - 正在重建数据
+	Failed               - 磁盘已故障
+	Unconfigured(good)   - 未配置的健康磁盘
+	Unconfigured(bad)    - 未配置的有问题磁盘
+	Offline              - 磁盘离线
+
+
+(4)状态变化时间线
+$ sudo MegaCli64 -LDInfo -LALL -aALL | grep -E "State|Degraded|Rebuild" # 阵列状态
+	State               : Optimal
+	State               : Optimal
+	State               : Optimal
+
+时间        Slot 4 (高风险)        Slot 9 (热备盘)          阵列状态
+T0          Online (264 errors)    Hotspare                Optimal
+T1          Failed                 Hotspare → Rebuild      Degraded
+T1+2min     Failed                 Rebuilding (0%)         Degraded
+...         Failed                 Rebuilding (XX%)        Degraded
+T1+4小时    Failed                Rebuilding (100%)       Degraded → Optimal
+T1+4小时1分 Failed                Online                  Optimal
+T2          物理更换新磁盘         Online                  Optimal
+
+
+
+
+
+
+
+
+
+6.监控热备盘状态
+每天执行一次
+$ sudo MegaCli64 -PDList -aALL | grep -E "(Slot|Media Error Count|Predictive Failure Count|Other Error Count|Firmware state)"
+
+磁盘状态统计:
+$ sudo MegaCli64 -PDList -aALL | grep "Firmware state" | sort | uniq -c
+    1 Firmware state: Hotspare, Spun Up
+    9 Firmware state: Online, Spun Up
+
+
+
+
+
+7.更换故障盘的准备命令
+
+当 Slot 4 故障时，执行以下步骤：
+
+(1). 确认故障状态
+sudo MegaCli64 -PDList -aALL | grep -B5 -A5 "Slot Number: 4"
+
+(2). 查看是否正在重建
+sudo MegaCli64 -PDRbld -ShowProg -aALL
+
+(3). 等待重建完成后，更换物理磁盘
+
+(4). 将新磁盘设为热备盘
+# sudo MegaCli64 -PDHSP -Set -PhysDrv [32:新Slot] -a0
+
+# 或者如果需要，将新磁盘加入阵列
+# sudo MegaCli64 -CfgLdAdd -rX [32:新Slot] WB Direct -a0
+
+
+
+
+
+
+
+
+
+========================================
+|-- [2026.2.24] slot1 磁盘黄灯，slot9 热备份已变为online，slot4 media error 最高
+----------------------------------------
+大概过年坏了。
+年后看到 slot1 闪黄灯
+	- 修复脚本 raid_status.sh
+	- 闪黄灯 == bad 对应
+
+
+
+1.建议修复磁盘顺序
+(1)第一优先：Slot 4
+理由：
+	MediaErr 极高
+	最可能触发第二次降级
+
+(2)第二优先：Slot 2
+
+
+
+
+
+
+2.为什么 rebuild 期间最危险？
+因为 RAID rebuild 需要：
+	全盘读取
+	老化盘最容易在此时掉线
+这就是为什么：
+	优先换高 MediaErr 盘
+
+
+
+
+
+
+3.最终是先替换黄灯盘
+(1)拔掉slot1，插入新磁盘
+2026.2.25
+	$ sudo MegaCli64 -PDRbld -ShowProg -PhysDrv [32:1] -a0
+	Device(Encl-32 Slot-1) is not in rebuild process
+	Exit Code: 0x00
+
+	$ sudo MegaCli64 -PDList -a0 | grep -E "Inquiry|Copyback"
+	Inquiry Data: HGST    HUS726040ALS210 KU27K4KXXAJL            
+	Firmware state: Copyback
+	Inquiry Data: TOSHIBA MG10SDA400NY    EP02Z5C2A00YF2QL
+	...
+
+次日早上查进度:
+	$ sudo MegaCli64 -PDCpyBk -ShowProg -PhysDrv [32:1] -a0
+	Copyback Progress on Device at Enclosure 32, Slot 1 Completed 98% in 919 Minutes.
+	Exit Code: 0x00
+
+	再次查询:
+	$ sudo MegaCli64 -PDCpyBk -ShowProg -PhysDrv [32:1] -a0
+	Physical Drive is not in Copyback state.
+
+
+
+
+
+
+
+========================================
+|-- 开启巡查(Patrol Read, 1-2周一次)和完整性校验(Consistency Check，一个月一次，可手工进行)
+----------------------------------------
+1.企业级最佳实践（重要）
+(1)要做
+1）开启 Patrol Read -> 巡逻读 /巡查读取 /巡检读取 -> 每1-2周一次
+防止 silent error。
+
+2）开启 Consistency Check   -> 每月一次，可手动进行。略微影响IO性能
+定期扫描。
+
+
+
+
+(2)为什么做？
+1)为什么Patrol Read重要？
+RAID6 崩溃最常见原因不是硬盘坏，而是：
+	rebuild 期间读另一块盘时发现 silent error
+	导致无法重建
+Patrol Read 就是预防这个。
+
+
+2)完整性校验有啥用？
+
+
+
+
+
+
+2.Patrol Read 实操命令
+(1)是否开启？
+$ sudo MegaCli64 -AdpPR -Info -aALL
+s3
+	Adapter 0: Patrol Read Information:
+
+	Patrol Read Mode: Manual                    #没开启
+	Patrol Read Execution Delay: 168 hours
+	Number of iterations completed: 200 
+	Next start time: 01/15/2022, 03:00:00
+	Current State: Stopped
+	Patrol Read on SSD Devices: Disabled
+
+s5
+	Adapter 0: Patrol Read Information:
+
+	Patrol Read Mode: Auto
+	Patrol Read Execution Delay: 168 hours
+	Number of iterations completed: 254 
+	Next start time: 02/28/2026, 03:00:00
+	Current State: Stopped
+	Patrol Read on SSD Devices: Disabled
+
+s03
+	Adapter 0: Patrol Read Information:
+
+	Patrol Read Mode: Auto
+	Patrol Read Execution Delay: 168 hours
+	Number of iterations completed: 444 
+	Next start time: 02/28/2026, 03:00:00
+	Current State: Stopped
+	Patrol Read on SSD Devices: Disabled
+
+固态硬盘ssd
+
+
+(2)开启
+$ sudo MegaCli64 -AdpPR -Start -aALL #巡逻读取
+
+
+(3)设置周期
+168h=7天
+$ sudo MegaCli64 -AdpPR -SetDelay 168 -aALL #巡逻读取
+
+
+
+
+
+
+
+
+3.Consistency Check 实操命令
+(1)是否开启
+$ sudo MegaCli64 -AdpCcSched -Info -aALL
+输出会包含：
+	是否启用
+	周期
+	上次运行时间
+
+s3
+	Adapter #0
+
+	Operation Mode: Disabled
+	Execution Delay: 168
+	Next start time: 01/17/2026, 03:00:00
+	Current State: Stopped
+	Number of iterations: 0
+	Number of VD completed: 0
+	Excluded VDs          : None
+	Exit Code: 0x00
+
+s5
+	Adapter #0
+
+	Operation Mode: Disabled
+	Execution Delay: 168
+	Next start time: 11/23/2024, 03:00:00
+	Current State: Stopped
+	Number of iterations: 0
+	Number of VD completed: 0
+	Excluded VDs          : None
+	Exit Code: 0x00
+
+s103
+	Adapter #0
+
+	Operation Mode: Disabled
+	Execution Delay: 168
+	Next start time: 09/06/2025, 03:00:00
+	Current State: Stopped
+	Number of iterations: 0
+	Number of VD completed: 0
+	Excluded VDs          : None
+	Exit Code: 0x00
+
+
+(2)Consistency Check 开启
+一般 SetPeriod 后(见下文(3))会自动启用，但建议确认：
+$ sudo MegaCli64 -AdpCcSched -Info -aALL
+
+
+(3)设置周期
+$ sudo MegaCli64 -AdpCcSched -SetPeriod 30 -aALL   #Consistency Check 
+说明：
+	单位是天
+	适合生产环境
+推荐：
+	RAID6：30–60 天
+	关键数据：30 天
+
+
+
+(4)手动启动一次（建议首次执行）
+第一次启用时，建议手动运行： -> 我认为手动执行就够用了。
+$ sudo MegaCli64 -LDCC -Start -Lall -aALL
+说明：
+	所有 logical drive
+	后台运行
+
+查看进度
+$ sudo MegaCli64 -LDCC -ShowProg -Lall -aALL
+
+
+停止 CC（必要时）
+$ sudo MegaCli64 -LDCC -Stop -Lall -aALL
+
+
+
+
+(5)设置运行时间（MegaCLI 的局限）
+重要：
+	MegaCLI 本身 无法精确设置 CC 在某个时间点运行。
+	只能设置周期。
+如果你希望：
+	每月某天夜间运行
+	必须结合 Linux 计划任务。
+
+
+关闭 RAID 自动周期
+$ sudo MegaCli64 -AdpCcSched -Disable -aALL
+
+
+crontab 设置: 建议使用root账号设置
+$ sudo crontab -e
+0 2 1 * * /usr/local/bin/MegaCli64 -LDCC -Start -Lall -aALL
+
+避免高峰期
+	更灵活
+	更可控
+这是很多数据中心做法。
+
+
+
+
+
+
+
+
+
+========================================
+|-- 购买磁盘：厂家，型号，大小
+----------------------------------------
+1.物理磁盘基本信息:
+sudo MegaCli64 -PDList -aALL 2>/dev/null > raids_status.txt
+cat raid_status.txt | grep -P "(Inquiry|PD Type|Raw Size)"
+
+(1)合二为一
+$ sudo MegaCli64 -PDList -aALL 2>/dev/null | grep -P "(Inquiry|PD Type|Raw Size)"
+
+
+(2)查看可用大小
+$ sudo MegaCli64 -PDList -aALL 2>/dev/null | grep -P "^Coerced Size"
+s3
+	Coerced Size: 3.637 TB [0x1d1b00000 Sectors]
+	Coerced Size: 3.637 TB [0x1d1b00000 Sectors]
+	Coerced Size: 3.637 TB [0x1d1b00000 Sectors]
+	Coerced Size: 3.637 TB [0x1d1b00000 Sectors]
+	Coerced Size: 3.637 TB [0x1d1b00000 Sectors]
+	Coerced Size: 3.637 TB [0x1d1b00000 Sectors]
+	Coerced Size: 3.637 TB [0x1d1b00000 Sectors]
+	Coerced Size: 3.637 TB [0x1d1b00000 Sectors]
+	Coerced Size: 3.637 TB [0x1d1b00000 Sectors]
+	Coerced Size: 3.637 TB [0x1d1b00000 Sectors]
+
+s5(主要是小硬盘 3T)
+	Coerced Size: 2.728 TB [0x15d400000 Sectors]
+	Coerced Size: 2.728 TB [0x15d400000 Sectors]
+	Coerced Size: 2.728 TB [0x15d400000 Sectors]
+	Coerced Size: 2.728 TB [0x15d400000 Sectors]
+	Coerced Size: 2.728 TB [0x15d400000 Sectors]
+	Coerced Size: 2.728 TB [0x15d400000 Sectors]
+	Coerced Size: 2.728 TB [0x15d400000 Sectors]
+	Coerced Size: 2.728 TB [0x15d400000 Sectors]
+	Coerced Size: 2.728 TB [0x15d400000 Sectors]
+	Coerced Size: 2.728 TB [0x15d400000 Sectors]
+	Coerced Size: 3.637 TB [0x1d1b00000 Sectors]  #一块大硬盘
+	Coerced Size: 2.728 TB [0x15d400000 Sectors]
+
+s103(主要是大硬盘 4T)
+	Coerced Size: 3.637 TB [0x1d1b00000 Sectors]
+	Coerced Size: 3.637 TB [0x1d1b00000 Sectors]
+	Coerced Size: 3.637 TB [0x1d1b00000 Sectors]
+	Coerced Size: 2.728 TB [0x15d400000 Sectors]  #一块小硬盘
+	Coerced Size: 3.637 TB [0x1d1b00000 Sectors]
+	Coerced Size: 3.637 TB [0x1d1b00000 Sectors]
+	Coerced Size: 3.637 TB [0x1d1b00000 Sectors]
+	Coerced Size: 3.637 TB [0x1d1b00000 Sectors]
+	Coerced Size: 3.637 TB [0x1d1b00000 Sectors]
+	Coerced Size: 3.637 TB [0x1d1b00000 Sectors]
+
+
+
+
+
+
+
+
+========================================
+RAID 数据恢复 -- 商业软件 (至少可用的方案)
+----------------------------------------
+1. 我搜到的
+https://www.diskinternals.com/
+
+
+
+
+2. 数据恢复公司实际使用的 
+2023.1-4
+
+Files saving log. Produced by UFS Explorer software 
+
+Processed objects:
+Forlder: jinwf
+
+To: //192.168.1.7/data/data2
+
+
+
+
+
+========================================
+----------------------------------------
+
+
+========================================
+----------------------------------------
+
+
+========================================
+----------------------------------------
+
+
+========================================
+----------------------------------------
+
+
+
+
+
+========================================
+----------------------------------------
+
+
+========================================
+----------------------------------------
+
+
