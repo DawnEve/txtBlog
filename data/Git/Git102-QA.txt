@@ -708,40 +708,97 @@ su@SUCHANGLI /e/eoe_client/android-app (master)
 
 问题: 经常合并失败，但是比较文件，没有任何差异。
 
+我期望：只在south分支上开发，季度末合并到master分支。
+	开发点都在south分支上，master分支只有合并点。
+	south和master是两条平行直线，只在季度末有从south到master的提交点。
+
+
+小结: south 一直开发 → 季度一次合并 → master 只有合并点
+
+GPT说需要满足三个约束:
+	1.合并前，south 必须基于最新 master
+	2.只允许一次 merge：master ← south
+		禁止:git merge origin/master
+			git merge master（在 south 上） 
+	3.south 不允许出现 merge commit
+
+
+你这种：多设备 + 双远程 + 分支平行 → 永远禁止 rebase！
+	rebase = 改写历史 = 多设备噩梦 = 你现在绝对不能碰
+	该场景:
+		master 永远只合不入
+		south 永远只改不合
+		永远只用 merge --no-ff
+		永远不用 rebase**
+
+两个分支完全一样时(指向同一个commit点):
+	根本不需要：
+		rebase
+		fetch
+		ff-only
+		重放
+	什么都不需要！
+	直接 merge --no-ff 就够了！
+
 
 
 1.规定笔记本是唯一 merge 点，台式机只生产south分支
 
-(1)合并顺序
-# 1. 同步 master（关键）
-git checkout master
-git fetch origin
-git merge --ff-only origin/master
-
-# 2. 更新 south
+(1)合并顺序 on 笔记本：master只接受south的合并，不直接开发
+# 1. 更新 south 到最新
 git checkout south
-git pull gitee south
+git pull gitee south --ff-only
+git pull origin south --ff-only
 
-# 3. 关键：把 south 基于 master 重放
-git rebase master
-
-* 把 south 上这一个季度的提交，搬到最新 master 后面
-* 消除“分叉历史”，让后面能 fast-forward 合并
-
-如果有冲突，按提示解决：
-	git add .
-	git rebase --continue
-
-
-# 4. 合并（应当是 fast-forward）
+# 2. 更新 master 到最新
 git checkout master
-git merge --ff-only south
-如果这里失败，说明 Step 3 没做好（或还有分叉），不要硬合并。
+git pull gitee master --ff-only
+
+	# git pull origin master #拉取+合并：可能产生合并提交
+git pull origin master --ff-only #和底下两句 完全等价
+	# git fetch origin
+	# git merge --ff-only origin/master #只拉取 + 只允许快进：不会产生任何合并提交
 
 
-# 5. 推送
+	# 2B. [关键] 把 south 基于 master 重放: 放到 master 的后面
+	先执行(1)
+	# git rebase master  #保证 master 是 south 的祖先
+		删除这一步，保持south独立，否则不是两条平行直线，而是梳子状
+
+	* 把 south 上这一个季度的提交，搬到最新 master 后面
+	* 消除“分叉历史”，让后面能 fast-forward 合并
+
+	如果有冲突，按提示解决：
+		git add .
+		git rebase --continue
+
+
+
+# 3. 季度合并（唯一一次合并，只创建合并点）
+	# git checkout master
+	# git merge --ff-only south  #没有merge点
+
+	# git merge --no-ff south  # 如果想要merge点，用这行
+git merge --no-ff south -m "Q2 2026 release"
+
+
+	如果这里失败，说明 Step 3 没做好（或还有分叉），不要硬合并。
+
+	--no-ff：
+		强制生成一个 merge commit
+		这个 commit 就是你要的“季度节点”
+
+	效果:
+		master  -  M <- 唯一merge点
+		south -.-. /
+
+
+# 4. 推送到双远程
 git push origin master
 git push gitee master
+
+# 5. 切回 south 继续开发
+git checkout south
 
 
 当push报错时:
@@ -753,31 +810,69 @@ git push gitee master
 	如果两边都有，说明有分叉: git rebase origin/master   # 推荐
 
 
-
-直接把 south 指到 master
+2)重置 south，开启新季度[重要，选一个执行即可回归正常]
+直接把 south 指到 master [采用]
 	git checkout south
-	git reset --hard master
+	git reset --hard master #让south完全等同于master
 	git push gitee south --force
 	git push origin south --force
 	等价于你之前说的“删除 south 再建”，但更快。
 
-或者: 让 south 合并 master [采用]
+或者: 让 south 合并 master [本次采用，不推荐]
 	git checkout south
 	git merge master
 	git push gitee south
+	但 south 会开始出现 merge，不再“纯直线”
 
 绝对不要再执行 git merge origin/master
 
 
 
+(2)台式机：日常开发，只能访问gitee
+# 只操作 south 分支
+git checkout south
+git pull gitee south --ff-only # 拉去笔记本的更新
 
-(2)名词解释: --ff-only 和 --no-ff 有什么区别？
+# ... 开发工作 ...
+git add .
+git commit -m "v0.2.1 feature description"
+git push gitee south
+完全不需要切换或更新 master
+
+台式机禁止操作
+	不要 pull github
+	不要操作 master 分支
+	不要合并任何分支
+
+
+(3)笔记本日常获取south分支(和台式机保持一致)
+# 笔记本上，日常拉取台式机的更新
+git checkout south
+
+git pull gitee south --ff-only
+	# git fetch gitee south
+	# git merge gitee/south --ff-only   # 不能用 git rebase master，否则台式机下次 pull 时会冲突
+
+# 3. 开发、提交
+git add .
+git commit -m "笔记本开发内容"
+
+# 4. 同时推送到 Gitee 和 GitHub（保持两边一致）
+git push gitee south
+git push origin south
+
+
+
+
+
+
+
+2.解释
+(1)名词解释: --ff-only 和 --no-ff 有什么区别？
 前者只对线性合并，非线性有可能合并失败。
 后者一定合并，可能是空变化的合并。
 
-
-(3) git merge master origin/master 有风险
-
+(2) git merge master origin/master 有风险
 以后在执行前先跑：
 	git log --oneline master..origin/master
 	git log --oneline origin/master..master
@@ -790,8 +885,7 @@ git push gitee master
 	git fetch origin
 	git merge --ff-only origin/master
 
-
-(4)如果已经 push 被拒（正确处理方式）
+(3)如果已经 push 被拒（正确处理方式）
 不要 merge，改用：
 	git fetch origin
 	git rebase origin/master
@@ -800,17 +894,32 @@ git push gitee master
 	消除“空 merge”
 	保持历史干净
 
-
-(5)以后只要看到：
+(4)以后只要看到：
 Merge remote-tracking branch 'origin/master'
 默认当成：“这一步很可能不该做”
 
+(5)如果两个不一样：说明 south 没跟上 master
+git merge-base master south
+git rev-parse master
+应该先：git rebase master
+
+(6)在 merge 前检查：
+git log --oneline --left-right master...south
+如果出现：
+	< 说明 master 有 south 没有的东西
+	> 说明 south 有 master 没有的东西
+	如果两边都有：
+		说明已经分叉
+		你这次 merge 会开始变复杂
 
 
 
 
-2.诊断哪里出问题了
-(1)
+3.诊断哪里出问题了
+(1) 查看历史
+$ git log --oneline -10
+$ git log --oneline --graph master origin/master south
+
 $ git log --graph --oneline --all
 *   cf90d6b (origin/master, origin/HEAD, gitee/master, master) Merge remote-tracking branch 'origin/master'
 |\
