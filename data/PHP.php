@@ -36,10 +36,10 @@ return array (
     1 => '数据库',
     2 => 
     array (
-      array('mysql简介','mysql001','html',),
-      array('mysql常用操作','mysql101-basic', 'txt'),
-      array('Mysql高级话题','mysql102-adv','txt' ),
-      array('Mysql优化指南','mysql103-opt', 'txt'),
+      array('MySQL简介','MySQL001','html',),
+      array('MySQL常用操作','MySQL101-basic', 'txt'),
+      array('MySQL高级话题','MySQL102-adv','txt' ),
+      array('MySQL优化指南','MySQL103-opt', 'txt'),
       array('PostgreSQL 数据库','postgres_base', 'txt'),
     ),
   ),
