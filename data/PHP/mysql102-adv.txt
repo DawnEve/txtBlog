@@ -60,19 +60,126 @@ https://www.cnblogs.com/jpfss/p/8308656.html
 
 
 
-
-
-
 ========================================
-分库分表 sharding 
+|-- 外键
 ----------------------------------------
-https://juejin.im/post/5d4b6dc1f265da03c1288332
+1.外键，简单说，就是一个表中的字段，指向另一个表中的主键。它用来在两张表之间建立关联，确保数据的一致性和完整性。
+
+举个例子你会更容易理解：
+
+一个例子：学生和班级
+假设有两张表：
+	班级表：有字段 班级ID (主键) 和 班级名称
+	学生表：有字段 学生ID、学生姓名，以及 所在班级ID
+
+这里的所在班级ID就是外键。它指向 班级表 的 班级ID。
+
+
+
+2.外键的两个主要作用
+
+(1)保证数据一致
+
+通过外键约束，学生表里每个学生的 所在班级ID，必须是 班级表 里真实存在的 班级ID。
+
+如果你想录入一个属于“三班”的学生，但“三班”不在 班级表里，数据库就会报错。这避免了“孤儿数据”。
+
+(2)防止误删
+
+如果班里还有学生，你就不能直接删除这个班级。数据库会阻止你，防止出现学生“没有班级”的情况。
+
+你只能先把学生转走或删除，才能删班级（具体行为取决于你设置的规则）。
+
+
+
+3.关键点总结
+	关系：外键所在的表是“从表”或“子表”；它指向的是“主表”或“父表”。
+	关联：外键通常对应另一张表的主键。
+	目的：维护数据的完整性和逻辑关系，避免产生无效数据。
+
+数据库也正是通过主键和外键，来管理不同表格之间的关系，所以叫“关系型数据库”。
 
 
 
 
 ========================================
-加索引，能提高update语句的效率，至少一个数量级
+|-- 级联操作(比如 ON DELETE CASCADE)
+----------------------------------------
+1.级联操作就是解决“当主表数据变化时，从表数据该怎么办”的一套自动规则。
+
+还是用班级表（主表）和学生表（从表）的例子，假设学生表的外键叫 class_id，指向班级表的 id。
+
+当你删除或更新一个班级时，数据库有4种处理方式：
+
+(1). CASCADE（级联）
+含义：把操作“传导”到子表。
+	删班级：班级被删除，该班下的所有学生也被自动删除。
+	改班级ID：班级ID变了，学生表里的 class_id 也自动跟着变。
+适用：像“订单和订单项”——订单没了，订单明细自然也没意义了。
+
+(2). SET NULL（设为空）
+含义：主表操作后，子表的外键值变为 NULL。
+	删班级：学生的 class_id 被设为 NULL，代表“暂未分配班级”。
+	改班级ID：也会被设为 NULL。
+前提：该外键字段必须允许为空，否则会出错。
+适用：像“员工和部门”——部门解散了，员工还在，只是暂时没有归属部门。
+
+(3). SET DEFAULT（设为默认值）
+含义：主表操作后，子表的外键值被设为一个预设的默认值。
+	删班级：学生的 class_id 变成你提前设置好的默认值（比如 1，代表“待定班级”）。
+注意：实际工作中用得较少，因为要求默认值在主表中必须真实存在。
+
+(4). RESTRICT / NO ACTION（拒绝/无动作）
+含义：最严格的保护。禁止任何会破坏引用的操作。
+	只要班级里还有1个学生，想删除这个班级？直接报错，拒绝执行。
+	必须先清空学生，才能删班级或改班级ID。
+适用：数据一致性要求非常高的场景。
+
+
+2.直观对比表（以“删除班级1”为例）
+
+操作类型	班级表  	学生表（原属于班级1的学生）
+RESTRICT	删除失败	无变化，操作被阻止
+CASCADE 	已删除  	学生全部被自动删除
+SET NULL	已删除  	学生的 class_id 变成 NULL
+SET DEFAULT	已删除  	学生的 class_id 变成预设默认值（如 0 或 1）
+
+
+
+
+3.SQL语句怎么写？
+在创建外键时指定：
+-- 级联删除
+FOREIGN KEY (class_id) REFERENCES classes(id) ON DELETE CASCADE
+
+-- 删除时设为空
+FOREIGN KEY (class_id) REFERENCES classes(id) ON DELETE SET NULL
+
+-- 拒绝删除
+FOREIGN KEY (class_id) REFERENCES classes(id) ON DELETE RESTRICT
+
+简单总结：如果你想让数据库自动维护关联数据，就用 CASCADE；
+想更安全就选 RESTRICT 或 SET NULL。
+
+
+
+
+
+4.Tips
+(1)一个重要的安全提醒: 慎用 ON DELETE CASCADE！
+因为它会静默删除数据。一个不留神，删了主表一条记录，可能连带删掉几千条子表记录，且不会逐条弹出提示。生产环境操作前，务必确认清楚逻辑或先做备份。
+
+
+(2)RESTRICT 和 NO ACTION 细微的区别？
+在 MySQL 中，NO ACTION 和 RESTRICT 被实现为完全一样，都是立即检查。你写成哪个，效果都是 RESTRICT。
+只有在 PostgreSQL 等支持 DEFERRABLE（可延迟）特性的数据库里，它们才有上述区别。
+
+
+
+
+
+========================================
+|-- 加索引(index)，能提高update语句的效率，至少一个数量级
 ----------------------------------------
 
 直接创建索引
@@ -110,6 +217,15 @@ ALTER TABLE table_name ADD INDEX index_name ON (column(length))
 
 这时给title字段添加一个BTREE索引：
 mysql> ALTER TABLE article ADD INDEX index_article_title ON title(200);
+
+
+
+
+========================================
+分库分表 sharding 
+----------------------------------------
+https://juejin.im/post/5d4b6dc1f265da03c1288332
+
 
 
 
@@ -325,6 +441,23 @@ change id id int auto_increment;
 
 
 
+
+
+
+
+========================================
+|-- 如何查询出自增列的断号（被删掉的）
+----------------------------------------
+select (id-1) as id_jump from word_ms a where not exists (select 1 from word_ms where id+1=a.id) order by id_jump;
+
+
+ref:
+https://bbs.csdn.net/topics/360242343
+
+
+
+
+
 ========================================
 优化Python对MySQL批量插入的效率
 ----------------------------------------
@@ -367,6 +500,8 @@ db.close()
 
 ref:
 https://www.cnblogs.com/hyace/p/4173831.html
+
+
 
 
 
@@ -420,18 +555,184 @@ mysql> SELECT p_id, symbol, updatedAt FROM paper_tbl WHERE from_unixtime(updated
 
 
 
+========================================
+存储过程: 就是把编程语言里的“函数”概念，搬到了数据库里
+----------------------------------------
+是什么：预存在数据库里的一段可执行程序。
+做什么：封装复杂的、重复性的SQL操作。
+什么时候用：对性能要求极高的核心数据处理、复杂的报表生成、或需要简化应用代码管理时。
+什么时候慎用：项目可能频繁换数据库、逻辑极其复杂难调试、或希望在应用层保持灵活性的场景。
+
+
+1.假设你要给一个员工加薪。
+没有存储过程时，你需要写完整的 UPDATE 语句。
+(1). 创建一个存储过程
+CREATE PROCEDURE UpdateSalary (IN emp_id INT, IN new_salary DECIMAL)
+BEGIN
+    -- 这是一个存储过程的代码块
+    UPDATE employees SET salary = new_salary WHERE id = emp_id;
+    -- 还可以加一些逻辑，比如记录日志
+    INSERT INTO salary_log (employee_id, update_date) VALUES (emp_id, NOW());
+END;
+
+这个存储过程名叫 UpdateSalary，它需要你提供“员工ID”和“新工资”。
+
+(2). 调用（使用）这个存储过程
+以后，应用程序或数据库管理员只需要写这一句简单的代码，UPDATE 和 INSERT 两条SQL就会自动执行。
+
+-- 给ID为 100 的员工把工资改为 80000
+CALL UpdateSalary(100, 80000);
+
+
+2.缺点
+- 可移植性差：不同数据库（MySQL, SQL Server, Oracle, PostgreSQL）的存储过程语法差异很大。换数据库时，存储过程几乎要重写。
+
+- 难以调试和版本控制：很难像Java/Python代码那样进行断点调试或用Git管理版本。
+
+- 占用数据库计算资源：现在的架构趋势是让数据库专心做存储，让应用服务器做逻辑，这样更容易水平扩展。
+
 
 
 
 
 ========================================
-如何查询出自增列的断号（被删掉的）
+|-- 存储过程 和 函数 的区别？
 ----------------------------------------
-select (id-1) as id_jump from word_ms a where not exists (select 1 from word_ms where id+1=a.id) order by id_jump;
+1.函数必须返回一个值，并且可以作为表达式的一部分；而存储过程是一系列操作的集合，可以作为独立任务执行。
+
+(1)调用方式
+	存储过程: 使用 CALL 语句独立执行。
+	函数: 作为表达式的一部分被调用，例如 SELECT func()、WHERE func(col) > 10。
+
+(2)典型用途
+	存储过程: 封装复杂业务逻辑、批处理、数据导入导出、报表生成。
+	函数: 计算一个值（如税率、全名、年龄）、数据格式转换、减少SQL中的重复代码。
+
+(3)副作用（修改数据）
+	存储过程: 可以随意修改表数据（INSERT、UPDATE、DELETE、甚至 CREATE/DROP）。
+	函数: 理论上应该是“纯函数”，但实践中也可以修改数据，但强烈不推荐，且有限制（如MySQL中函数内不能使用会导致隐式提交的语句）。
 
 
-ref:
-https://bbs.csdn.net/topics/360242343
+
+
+2.例子
+(1)存储过程 示例：处理订单
+-- 创建一个存储过程，完成下单的整个流程：扣库存、生成订单、生成支付记录
+CREATE PROCEDURE PlaceOrder(IN customer_id INT, IN product_id INT, IN qty INT)
+BEGIN
+    -- 执行多个修改操作，包含分支和循环逻辑
+    START TRANSACTION;
+    UPDATE inventory SET stock = stock - qty WHERE product_id = product_id;
+    INSERT INTO orders (cust_id, date) VALUES (customer_id, NOW());
+    INSERT INTO payments (order_id, amount) VALUES (LAST_INSERT_ID(), ...);
+    COMMIT;
+END;
+
+-- 调用它，不能用在SELECT里
+CALL PlaceOrder(1, 100, 2);
+
+
+
+(2)函数 示例：计算总价（含税）
+
+-- 创建一个函数，计算含税价格
+CREATE FUNCTION CalculateTax(price DECIMAL, rate DECIMAL) 
+RETURNS DECIMAL
+DETERMINISTIC  -- 相同输入总是返回相同输出
+BEGIN
+    RETURN price * (1 + rate);
+END;
+
+-- 在SQL查询中直接使用该函数，非常自然
+SELECT 
+    product_name,
+    price,
+    CalculateTax(price, 0.13) AS price_with_tax
+FROM products;
+
+
+
+3.一个关键结论
+- 如果你需要在一个查询中对每一行计算一个结果（比如 SELECT ... WHERE ...），必须用函数。
+- 如果你需要执行一个包含多个步骤、可能没有返回值或者有多个结果集的操作，请用存储过程。
+
+- 函数是用来“算一个值”的，可以被SQL查询调用；
+- 存储过程是用来“做一件事”的，必须用CALL单独执行。
+
+现在的使用倾向：数据库仅存储，使用编程语言计算。
+
+
+
+
+
+
+
+========================================
+视图 View
+----------------------------------------
+1.
+视图，本质上是一个虚拟表。它并不像普通表那样真实存储数据，而只是一个被保存下来的SQL查询语句。
+
+当你去查询视图时，数据库会自动执行它背后定义好的那个查询，然后把结果像一张表一样返回给你。
+
+视图就是数据库里的“快捷方式”或“滤镜”——它不存数据，只存查询逻辑。主要用来简化复杂查询和控制数据访问权限。
+
+
+
+2.核心场景）
+视图主要解决安全和复杂查询的复用两大问题。
+
+(1). 简化复杂查询（最常用）
+假设你每次都要写一个极其复杂的 JOIN 来查询报表：
+	-- 这个语句很长，每次都要重新写一遍
+	SELECT u.name, o.order_id, p.title, p.price, c.coupon_value
+	FROM users u
+	JOIN orders o ON u.id = o.user_id
+	JOIN products p ON o.product_id = p.id
+	LEFT JOIN coupons c ON o.coupon_id = c.id;
+
+创建视图后，把它保存起来：
+	CREATE VIEW order_detail_view AS
+	SELECT u.name, o.order_id, p.title, p.price, c.coupon_value
+	FROM users u
+	JOIN orders o ON u.id = o.user_id
+	JOIN products p ON o.product_id = p.id
+	LEFT JOIN coupons c ON o.coupon_id = c.id;
+
+以后查询报表时，只需要一句简单的：
+	SELECT * FROM order_detail_view WHERE price > 100;
+
+
+(2)限制数据访问（提升安全性）
+
+如果你不想让某个用户看到员工的工资和身份证号，可以创建一个只包含姓名、部门、入职日期的视图。然后给这个用户只查询视图的权限，不给他访问底层全量员工表的权限。
+
+-- 创建安全视图，隐藏敏感字段
+CREATE VIEW employee_public AS
+SELECT name, department, hire_date
+FROM employees;
+-- 隐藏了：salary, id_card_number, home_address
+
+
+(3). 隔离底层逻辑
+
+如果数据库表结构改了（比如把full_name拆成了first_name和last_name），只要修改视图定义，让视图依然提供full_name。所有旧应用程序查询视图的代码完全不用改。
+
+
+
+
+
+10.更新限制：在MySQL中，只要视图包含以下任何一种，就不能更新（INSERT/UPDATE/DELETE）：
+	多表连接
+	聚合函数（SUM、COUNT等）
+	DISTINCT、GROUP BY、HAVING
+	子查询
+	派生列（如 SELECT salary*12 AS yearly）
+#
+
+
+
+
 
 
 
